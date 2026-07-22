@@ -1,0 +1,47 @@
+# Secrets & local config — never commit
+functions-restapi/local.settings.json
+**/local.settings.json
+.env
+.env.*
+!.env.example
+# Parameter files may hold real values; commit only *.example variants
+infra-*/parameters/*.local.json
+
+# Dependencies & build output
+node_modules/
+dist/
+bin/
+obj/
+*.tsbuildinfo
+
+# Azure Functions
+functions-restapi/.python_packages/
+functions-restapi/__blobstorage__/
+functions-restapi/__queuestorage__/
+
+# OS / editor
+.DS_Store
+*.swp
+.vscode/
+.idea/
+
+# Handoff artifact (large binary snapshot, not source)
+MVTA_OnBoard_ClaudeCode_Handoff.zip
+
+# NOT part of this project - these reference a different Azure resource
+# group/app (mvta-tools-rg, a Document AI platform) and migrate_prod_to_dev_db.sh
+# contains a live SQL admin password in plaintext. Never let these into a
+# commit; move them out of this folder entirely.
+verify_dev_infrastructure.sh
+download_prod_function_source.sh
+migrate_prod_to_dev_db.sh
+mvta-functions-prod-source.zip
+
+# Reference documents / design mockups - not source, not deployable, some are
+# large binaries. Tracked outside git; keep the repo to app code + infra.
+*.docx
+~$*.docx
+*.png
+*.jpg
+MVTA_Alerts_Optin_Widget.html
+MVTA_OnBoard_Phase1_Infrastructure_1.zip

@@ -1,0 +1,21 @@
+{
+  "name": "mvta-onboard-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "description": "MVTA OnBoard web apps (rider-facing + staff console). npm workspaces monorepo.",
+  "workspaces": [
+    "packages/shared",
+    "packages/rider-app",
+    "packages/onboard-console"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "npm run build:shared && npm run build --workspace @mvta/rider-app && npm run build --workspace @mvta/onboard-console",
+    "build:shared": "npm run build --workspace @mvta/shared",
+    "dev:rider": "npm run dev --workspace @mvta/rider-app",
+    "dev:console": "npm run dev --workspace @mvta/onboard-console",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  }
+}

@@ -1,0 +1,128 @@
+/* MVTA OnBoard console — design system from the approved dashboard mockup
+   (MVTA_OnBoard_Dashboard_Mockup.html): green topbar, tab nav, live sidebar,
+   green panel headers, pill badges, sync footer. */
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 24px;
+  background: #edebe4;
+  color: #2c2c2a;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 13px;
+}
+
+.frame {
+  background: #fff;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid #ccc;
+  max-width: 1180px;
+  margin: 0 auto;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 48px);
+}
+
+/* ---------- topbar ---------- */
+.topbar { background: #00553d; padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.topbar-left { display: flex; align-items: center; gap: 10px; }
+.logo-badge { background: rgba(255, 255, 255, 0.15); color: #fff; font-weight: bold; font-size: 12px; padding: 5px 9px; border-radius: 4px; letter-spacing: 0.5px; }
+.app-name { color: #fff; font-weight: bold; font-size: 16px; }
+.ver-pill { background: rgba(255, 255, 255, 0.15); color: #d9ede3; font-size: 11px; padding: 3px 8px; border-radius: 10px; }
+.topbar-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tr-text { color: #bfe0d2; font-size: 12px; }
+.pill-user { background: rgba(255, 255, 255, 0.12); color: #fff; font-size: 12px; padding: 4px 10px; border-radius: 10px; }
+.btn-signout { background: #fff; color: #00553d; font-size: 12px; font-weight: bold; padding: 5px 12px; border-radius: 4px; border: none; cursor: pointer; }
+
+/* ---------- tab nav ---------- */
+.tabnav { background: #f6f5f1; border-bottom: 1px solid #ddd; display: flex; padding: 0 12px; flex-wrap: wrap; }
+.tabnav a { padding: 11px 14px; font-size: 13px; color: #3a3a38; font-weight: bold; border-bottom: 3px solid transparent; text-decoration: none; }
+.tabnav a.active { background: #fff; color: #00553d; border-bottom: 3px solid #00553d; }
+
+/* ---------- layout ---------- */
+.body-area { display: flex; flex: 1; align-items: stretch; }
+.sidebar { width: 230px; background: #f6f5f1; border-right: 1px solid #ddd; padding: 16px 14px; flex-shrink: 0; }
+.main { flex: 1; padding: 18px; min-width: 0; }
+
+/* ---------- sidebar ---------- */
+.side-label { font-size: 11px; font-weight: bold; color: #8a8a82; letter-spacing: 0.5px; margin: 14px 0 8px; text-transform: uppercase; }
+.side-label:first-child { margin-top: 0; }
+.live-badge { display: flex; align-items: center; font-size: 11.5px; color: #1f7a4c; font-weight: bold; margin-bottom: 8px; }
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: #2fae66; display: inline-block; margin-right: 6px; }
+.datasource-card { background: #fff; border: 1px solid #d8e6dd; border-radius: 5px; padding: 10px 12px; font-size: 11.5px; color: #3a3a38; line-height: 1.7; }
+.datasource-card .ok { color: #1f7a4c; font-weight: bold; }
+.datasource-card .err { color: #8a1f1f; font-weight: bold; }
+.refresh-btn { width: 100%; margin-top: 10px; padding: 7px; font-size: 12px; font-weight: bold; background: #fff; border: 1px solid #ccc; border-radius: 4px; color: #3a3a38; cursor: pointer; }
+.stat-card { border-left: 4px solid #ccc; background: #fff; padding: 8px 10px; margin-bottom: 8px; border-radius: 0 4px 4px 0; }
+.stat-card .stat-label { font-size: 10.5px; font-weight: bold; letter-spacing: 0.4px; }
+.stat-card .stat-value { font-size: 16px; font-weight: bold; color: #2c2c2a; margin: 2px 0; }
+.stat-card .stat-sub { font-size: 10.5px; color: #8a8a82; }
+.totals-row { display: flex; justify-content: space-between; font-size: 12px; color: #3a3a38; padding: 5px 0; border-bottom: 1px solid #eee; }
+.totals-row .n { font-weight: bold; }
+
+/* ---------- panels ---------- */
+.panel-header { background: #00553d; color: #fff; padding: 10px 16px; border-radius: 5px 5px 0 0; font-size: 14px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
+.panel-body { border: 1px solid #ddd; border-top: none; border-radius: 0 0 5px 5px; padding: 14px 16px; margin-bottom: 20px; background: #fff; }
+.panel-desc { font-size: 12px; color: #4f4f4f; margin: 0 0 14px; line-height: 1.5; }
+
+/* ---------- forms ---------- */
+textarea.compose { width: 100%; min-height: 56px; padding: 9px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; font-family: inherit; margin-bottom: 12px; }
+.field-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+.field-grid.single { grid-template-columns: 1fr; }
+.field-label { font-size: 11px; color: #4f4f4f; margin: 0 0 3px; font-weight: bold; }
+.field-label .hint { font-weight: normal; color: #8a8a82; }
+select.f, input.f { width: 100%; padding: 7px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 12.5px; font-family: inherit; }
+.channels-row { display: flex; flex-wrap: wrap; margin-bottom: 14px; }
+.channels-row label { display: flex; align-items: center; font-size: 12px; color: #2c2c2a; margin-right: 16px; margin-bottom: 4px; }
+.channels-row input { margin-right: 5px; }
+.infer-box { background: #f6f5f1; border: 1px solid #e2e2da; border-radius: 4px; padding: 10px 12px; margin-bottom: 14px; }
+.infer-label { font-size: 10px; font-weight: bold; color: #8a8a82; text-transform: uppercase; letter-spacing: 0.4px; margin: 0 0 6px; }
+.chip { background: #dcede6; color: #00301f; font-size: 11px; padding: 3px 9px; border-radius: 16px; margin-right: 6px; display: inline-block; }
+.btn-post { background: #00553d; color: #fff; border: none; border-radius: 4px; padding: 9px 20px; font-size: 12.5px; font-weight: bold; cursor: pointer; }
+.btn-post:disabled { opacity: 0.6; cursor: default; }
+
+/* ---------- tables ---------- */
+table.data { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+table.data th { background: #00553d; color: #fff; text-align: left; padding: 8px 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; }
+table.data td { padding: 8px 10px; border-bottom: 1px solid #eee; color: #2c2c2a; }
+table.data tr:nth-child(even) td { background: #fafaf8; }
+.td-dim { font-size: 11px; color: #4f4f4f; }
+
+/* ---------- pills / buttons ---------- */
+.pill-sm { font-size: 10.5px; font-weight: bold; padding: 3px 8px; border-radius: 10px; white-space: nowrap; }
+.pill-warning { background: #fcefd8; color: #7a4a00; }
+.pill-danger { background: #fbe0e0; color: #8a1f1f; }
+.pill-accent { background: #dceaf8; color: #0b4c82; }
+.pill-success { background: #e3f0d4; color: #33530f; }
+.pill-muted { background: #ececea; color: #4f4f4f; }
+.btn-sm { font-size: 11px; padding: 4px 9px; border: 1px solid #ccc; border-radius: 4px; background: #fff; margin-right: 4px; cursor: pointer; }
+.btn-sm:hover { border-color: #00553d; color: #00553d; }
+.btn-sm.danger:hover { border-color: #8a1f1f; color: #8a1f1f; }
+
+/* ---------- footer ---------- */
+.footer { background: #f6f5f1; border-top: 1px solid #ddd; padding: 8px 16px; display: flex; justify-content: space-between; font-size: 10.5px; color: #8a8a82; flex-wrap: wrap; gap: 4px; }
+
+/* ---------- states / misc ---------- */
+.muted { color: #8a8a82; }
+.error-text { color: #8a1f1f; font-size: 12.5px; }
+.ok-text { color: #1f7a4c; font-size: 12.5px; font-weight: bold; }
+.empty-note { color: #8a8a82; font-size: 12.5px; padding: 12px 0; }
+
+.signin { text-align: center; padding: 80px 20px; }
+.signin h1 { color: #00553d; }
+.btn-primary { background: #00553d; color: #fff; border: none; border-radius: 4px; padding: 10px 16px; font-weight: bold; cursor: pointer; font-size: 13px; }
+
+.role-denied { padding: 40px 8px; }
+.role-denied h1 { color: #8a1f1f; font-size: 18px; margin: 0 0 8px; }
+.role-denied p { color: #4f4f4f; max-width: 480px; }
+
+/* OCC Tools internal switcher */
+.occ-switch { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.occ-switch button { font-size: 12px; font-weight: bold; padding: 7px 14px; border: 1px solid #ccc; border-radius: 4px; background: #fff; color: #3a3a38; cursor: pointer; }
+.occ-switch button.active { background: #00553d; border-color: #00553d; color: #fff; }
+
+/* Light normalization so embedded OCC modules sit inside the shell without
+   fighting it: kill their page-level backgrounds, inherit the console font. */
+.occ-embed .evmon, .occ-embed .dmx, .occ-embed .otp-app { font-family: inherit; }
+.occ-embed .otp-app { min-height: 60vh; }

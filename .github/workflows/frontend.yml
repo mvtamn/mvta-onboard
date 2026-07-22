@@ -1,0 +1,63 @@
+name: Deploy frontends (Static Web Apps)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "frontend/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - app: rider-app
+            output: frontend/packages/rider-app/dist
+            token_secret: SWA_TOKEN_RIDERAPP
+          - app: onboard-console
+            output: frontend/packages/onboard-console/dist
+            token_secret: SWA_TOKEN_ONBOARD
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build (${{ matrix.app }})
+        working-directory: frontend
+        # Build shared first (dependency), then the app. Build-time env vars
+        # (VITE_*) come from GitHub Actions variables, never hardcoded.
+        env:
+          VITE_API_BASE: ${{ vars.VITE_API_BASE }}
+          VITE_ENTRA_CLIENT_ID: ${{ vars.VITE_ENTRA_CLIENT_ID }}
+          VITE_ENTRA_TENANT_ID: ${{ vars.VITE_ENTRA_TENANT_ID }}
+          VITE_API_SCOPE: ${{ vars.VITE_API_SCOPE }}
+        run: |
+          npm run build:shared
+          npm run build --workspace @mvta/${{ matrix.app }}
+
+      - name: Deploy to SWA
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets[matrix.token_secret] }}
+          action: upload
+          app_location: ${{ matrix.output }}
+          skip_app_build: true
+          skip_api_build: true

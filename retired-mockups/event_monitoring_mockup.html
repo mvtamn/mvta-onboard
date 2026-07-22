@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Event Vehicle Monitoring — MVTA</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+  body { background: #eef2ef; color: #2c4a3f; font-size: 13px; }
+
+  .app { max-width: 1400px; margin: 0 auto; background: #ffffff; min-height: 100vh; }
+
+  .topbar {
+    background: #3d6b5c; color: #ffffff; padding: 10px 20px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .topbar-left { display: flex; align-items: center; gap: 12px; }
+  .logo-badge { background: #ffffff; color: #2c4a3f; font-weight: 600; font-size: 12px; padding: 5px 9px; border-radius: 4px; letter-spacing: .02em; }
+  .app-title { font-weight: 500; font-size: 15px; }
+  .version-badge { background: #2c4a3f; font-size: 11px; padding: 3px 8px; border-radius: 4px; color: #cfe6d4; }
+  .topbar-right { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+  .pill { background: #2c4a3f; padding: 4px 10px; border-radius: 4px; }
+  .pill.live { color: #a9d6b8; }
+  .btn-header { height: 28px; padding: 0 12px; font-size: 12px; background: #ffffff; color: #2c4a3f; border: none; border-radius: 4px; cursor: pointer; }
+
+  .tabbar {
+    background: #f4f7f5; border-bottom: 1px solid #d7e2dc;
+    display: flex; gap: 4px; padding: 0 16px;
+  }
+  .tab {
+    padding: 10px 14px; font-size: 13px; color: #6b7c74; cursor: pointer;
+    border-bottom: 2px solid transparent; display: flex; align-items: center; gap: 6px;
+  }
+  .tab.active { color: #2c4a3f; font-weight: 500; border-bottom-color: #3d6b5c; }
+  .tab .dot { width: 6px; height: 6px; border-radius: 50%; background: #b5442a; display: none; }
+  .tab.has-alert .dot { display: inline-block; }
+
+  .layout { display: grid; grid-template-columns: 230px 1fr; min-height: calc(100vh - 90px); }
+
+  .sidebar { background: #f8faf8; border-right: 1px solid #d7e2dc; padding: 16px 14px; }
+  .side-label { font-size: 11px; font-weight: 600; color: #7c8c84; letter-spacing: .04em; margin-bottom: 8px; margin-top: 18px; }
+  .side-label:first-child { margin-top: 0; }
+  .status-line { font-size: 12px; color: #2c4a3f; display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #3d9e6f; }
+  .info-box {
+    background: #e8f3ea; border: 1px solid #c3e0c9; border-radius: 6px;
+    padding: 9px 11px; font-size: 12px; color: #2c4a3f; line-height: 1.6;
+  }
+  .info-box div:first-child { font-weight: 500; margin-bottom: 2px; }
+
+  .monitor-card {
+    background: #ffffff; border-left: 3px solid #2e7d4f; border-radius: 0 4px 4px 0;
+    padding: 6px 10px; font-size: 11.5px; margin-bottom: 6px; border-top: 1px solid #eaeee9;
+    border-right: 1px solid #eaeee9; border-bottom: 1px solid #eaeee9;
+  }
+  .monitor-card .veh { font-weight: 500; color: #2c4a3f; }
+  .monitor-card .stat { margin-top: 1px; }
+
+  .totals-row { font-size: 12px; color: #3c4c45; display: flex; justify-content: space-between; padding: 4px 0; }
+  .totals-row b { color: #2c4a3f; }
+
+  .main { padding: 18px 22px; }
+
+  .map-card {
+    position: relative; background: #f2f6f3; border: 1px solid #d7e2dc; border-radius: 8px;
+    height: 230px; overflow: hidden; margin-bottom: 20px;
+  }
+  .map-label { position: absolute; font-size: 11px; color: #6b7c74; font-weight: 500; }
+  .marker { position: absolute; width: 11px; height: 11px; border-radius: 50%; border: 2px solid #ffffff; box-shadow: 0 0 0 1px rgba(0,0,0,0.08); }
+
+  .panel-header {
+    background: #3d6b5c; color: #ffffff; padding: 9px 14px; border-radius: 6px 6px 0 0;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .panel-header .title { font-size: 13px; font-weight: 500; }
+  .btn-panel { height: 27px; padding: 0 11px; font-size: 12px; background: #2c4a3f; color: #ffffff; border: none; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-bottom: 22px; }
+  thead th { background: #e8f3ea; text-align: left; padding: 7px 12px; color: #2c4a3f; border: 1px solid #d7e2dc; font-weight: 600; font-size: 11.5px; letter-spacing: .01em; }
+  tbody td { padding: 7px 12px; border: 1px solid #e2e8e4; }
+  tbody tr:nth-child(even) { background: #fafcfa; }
+  .veh-id { font-weight: 500; color: #2c4a3f; }
+  .status-text { font-weight: 500; }
+  .swap-btn { height: 25px; width: 25px; padding: 0; background: #ffffff; border: 1px solid #c7d6cd; border-radius: 4px; cursor: pointer; color: #2c4a3f; }
+  .swap-btn:hover { background: #f4f7f5; }
+
+  .selector-panel {
+    display: none; background: #f4f7f5; border: 1px solid #d7e2dc; border-radius: 6px;
+    padding: 12px; margin: -8px 0 22px;
+  }
+  .selector-title { font-size: 12px; font-weight: 500; color: #2c4a3f; margin-bottom: 8px; }
+  .selector-option {
+    width: 100%; text-align: left; height: 32px; padding: 0 10px; font-size: 12px;
+    display: flex; justify-content: space-between; align-items: center;
+    background: #ffffff; border: 1px solid #c7d6cd; border-radius: 4px; color: #2c4a3f;
+    cursor: pointer; margin-bottom: 6px;
+  }
+  .selector-option:hover { border-color: #3d6b5c; }
+  .selector-option .avail { color: #6b7c74; }
+  .selector-empty { font-size: 12px; color: #6b7c74; }
+
+  .alerts-wrap { border: 1px solid #d7e2dc; border-top: none; border-radius: 0 0 6px 6px; padding: 12px; }
+  .alert-card {
+    background: #fdf3ef; border: 1px solid #e6c9ba; border-radius: 6px; padding: 11px; margin-bottom: 10px;
+  }
+  .alert-top { display: flex; justify-content: space-between; margin-bottom: 5px; }
+  .alert-veh { font-size: 12.5px; font-weight: 500; color: #2c4a3f; }
+  .alert-delay { font-size: 11.5px; color: #b5442a; }
+  .alert-reason { font-size: 12.5px; color: #4a5a52; margin-bottom: 9px; }
+  .alert-draft { font-size: 12.5px; padding: 7px 9px; background: #ffffff; border: 1px solid #e6c9ba; border-radius: 4px; color: #2c4a3f; margin-bottom: 9px; }
+  .alert-actions { display: flex; gap: 8px; }
+  .btn-approve { height: 27px; padding: 0 12px; font-size: 12px; background: #3d6b5c; color: #ffffff; border: none; border-radius: 4px; cursor: pointer; }
+  .btn-dismiss { height: 27px; padding: 0 12px; font-size: 12px; background: #ffffff; color: #2c4a3f; border: 1px solid #c7d6cd; border-radius: 4px; cursor: pointer; }
+  .no-alerts { font-size: 12.5px; color: #6b7c74; padding: 4px 0; }
+
+  .icon { display: inline-block; width: 13px; text-align: center; }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <div class="topbar">
+    <div class="topbar-left">
+      <span class="logo-badge">MVTA</span>
+      <span class="app-title">Event vehicle monitoring</span>
+      <span class="version-badge">v1.0.0</span>
+    </div>
+    <div class="topbar-right">
+      <span>Session: Jul 5, 2026</span>
+      <span class="pill live">Live</span>
+      <span class="pill">J. Okafor, OCC</span>
+      <button class="btn-header">Sign out</button>
+    </div>
+  </div>
+
+  <div class="tabbar">
+    <div class="tab active"><span class="icon">&#9679;</span>Live map</div>
+    <div class="tab">Vehicle list</div>
+    <div class="tab has-alert">Delay alerts<span class="dot"></span></div>
+    <div class="tab">Audit log</div>
+  </div>
+
+  <div class="layout">
+
+    <div class="sidebar">
+      <div class="side-label">Data source</div>
+      <div class="status-line"><span class="status-dot"></span>Live &middot; 9:29 PM</div>
+      <div class="info-box">
+        <div>Live from GTFS-RT + MN 511</div>
+        <div>Vehicles: 6 &middot; Corridors: 3</div>
+        <div>Synced 12s ago</div>
+      </div>
+
+      <div class="side-label">Monitored</div>
+      <div id="side-summary"></div>
+
+      <div class="side-label">Registry totals</div>
+      <div class="totals-row"><span>Vehicles (event)</span><b>6</b></div>
+      <div class="totals-row"><span>Monitored</span><b id="tot-monitored">4</b></div>
+      <div class="totals-row"><span>Delayed</span><b id="tot-delayed">1</b></div>
+      <div class="totals-row"><span>Offline</span><b>1</b></div>
+    </div>
+
+    <div class="main">
+
+      <div class="map-card">
+        <svg width="100%" height="100%" viewBox="0 0 900 230" style="position:absolute; top:0; left:0;">
+          <line x1="40" y1="190" x2="860" y2="190" stroke="#c7d6cd" stroke-width="10" />
+          <line x1="220" y1="190" x2="150" y2="20" stroke="#c7d6cd" stroke-width="8" />
+          <line x1="620" y1="190" x2="720" y2="20" stroke="#c7d6cd" stroke-width="8" />
+          <circle cx="150" cy="20" r="7" fill="#8fa89c" />
+          <circle cx="720" cy="20" r="7" fill="#8fa89c" />
+          <circle cx="450" cy="190" r="9" fill="#8fa89c" />
+        </svg>
+        <div class="map-label" style="top:6px; left:140px;">Lot A</div>
+        <div class="map-label" style="top:6px; left:706px;">Lot C</div>
+        <div class="map-label" style="bottom:6px; left:400px;">Fairgrounds</div>
+        <div id="map-markers"></div>
+      </div>
+
+      <div class="panel-header">
+        <span class="title">Monitored vehicles</span>
+        <button class="btn-panel" id="add-btn"><span class="icon">+</span>Add vehicle</button>
+      </div>
+      <table>
+        <thead>
+          <tr><th>Vehicle</th><th>Lot</th><th>Status</th><th>Swap</th></tr>
+        </thead>
+        <tbody id="vehicle-table-body"></tbody>
+      </table>
+
+      <div class="selector-panel" id="selector-panel">
+        <div class="selector-title">Swap in a vehicle</div>
+        <div id="selector-options"></div>
+      </div>
+
+      <div class="panel-header">
+        <span class="title">Delay alerts</span>
+      </div>
+      <div class="alerts-wrap" id="alerts-body"></div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+var pool = [
+  { id: "MV-118", lot: "Lot A", status: "live", delay: 0, x: 260, y: 130, conf: null, reason: null },
+  { id: "MV-142", lot: "Lot A", status: "live", delay: 14, x: 190, y: 70, conf: "high", reason: "Heavy congestion on the Lot A connector ramp" },
+  { id: "MV-207", lot: "Lot C", status: "live", delay: 0, x: 660, y: 120, conf: null, reason: null },
+  { id: "MV-233", lot: "Lot C", status: "stale", delay: 6, x: 700, y: 60, conf: "medium", reason: "Speed 20% below normal for this segment" },
+  { id: "MV-119", lot: "Lot A", status: "offline", delay: null, x: null, y: null, conf: null, reason: null },
+  { id: "MV-260", lot: "Lot C", status: "live", delay: 0, x: 540, y: 165, conf: null, reason: null }
+];
+var monitoredIds = ["MV-118", "MV-142", "MV-207", "MV-233"];
+var dismissed = {};
+
+function byId(id) { return pool.find(function (p) { return p.id === id; }); }
+
+function statusColor(v) {
+  if (v.status === "offline") return "#8a8a86";
+  if (v.delay && v.delay >= 10) return "#b5442a";
+  if (v.status === "stale") return "#a86a10";
+  return "#2e7d4f";
+}
+function statusLabel(v) {
+  if (v.status === "offline") return "Offline";
+  if (v.delay && v.delay >= 10) return "Delayed " + v.delay + " min";
+  if (v.status === "stale") return "Stale signal";
+  return "On time";
+}
+
+function render() {
+  var tbody = document.getElementById("vehicle-table-body");
+  tbody.innerHTML = "";
+  monitoredIds.forEach(function (id) {
+    var v = byId(id);
+    var tr = document.createElement("tr");
+    tr.innerHTML =
+      '<td class="veh-id">' + v.id + "</td>" +
+      "<td>" + v.lot + "</td>" +
+      '<td class="status-text" style="color:' + statusColor(v) + ';">' + statusLabel(v) + "</td>" +
+      '<td><button class="swap-btn" data-swap="' + v.id + '" aria-label="Swap ' + v.id + '">&#8646;</button></td>';
+    tbody.appendChild(tr);
+  });
+  Array.prototype.forEach.call(tbody.querySelectorAll("[data-swap]"), function (btn) {
+    btn.addEventListener("click", function () { openSelector(btn.getAttribute("data-swap")); });
+  });
+
+  var markers = document.getElementById("map-markers");
+  markers.innerHTML = "";
+  monitoredIds.forEach(function (id) {
+    var v = byId(id);
+    if (v.x === null) return;
+    var dot = document.createElement("div");
+    dot.className = "marker";
+    dot.style.left = v.x + "px";
+    dot.style.top = v.y + "px";
+    dot.style.background = statusColor(v);
+    dot.title = v.id;
+    markers.appendChild(dot);
+  });
+
+  var sideSummary = document.getElementById("side-summary");
+  sideSummary.innerHTML = "";
+  monitoredIds.forEach(function (id) {
+    var v = byId(id);
+    var row = document.createElement("div");
+    row.className = "monitor-card";
+    row.style.borderLeftColor = statusColor(v);
+    row.innerHTML =
+      '<div class="veh">' + v.id + "</div>" +
+      '<div class="stat" style="color:' + statusColor(v) + ';">' + statusLabel(v) + "</div>";
+    sideSummary.appendChild(row);
+  });
+
+  document.getElementById("tot-monitored").textContent = monitoredIds.length;
+  document.getElementById("tot-delayed").textContent = monitoredIds.filter(function (id) {
+    var v = byId(id);
+    return v.delay && v.delay >= 10;
+  }).length;
+
+  var alertsBody = document.getElementById("alerts-body");
+  alertsBody.innerHTML = "";
+  var active = monitoredIds.filter(function (id) {
+    var v = byId(id);
+    return v.delay && v.delay >= 10 && !dismissed[id];
+  });
+  if (active.length === 0) {
+    alertsBody.innerHTML = '<div class="no-alerts">No delay alerts right now.</div>';
+  }
+  active.forEach(function (id) {
+    var v = byId(id);
+    var card = document.createElement("div");
+    card.className = "alert-card";
+    card.innerHTML =
+      '<div class="alert-top"><span class="alert-veh">' + v.id + " &middot; " + v.lot + "</span>" +
+      '<span class="alert-delay">+' + v.delay + " min &middot; " + v.conf + " confidence</span></div>" +
+      '<div class="alert-reason">' + v.reason + "</div>" +
+      '<div class="alert-draft">Draft: &ldquo;Lot A shuttle running approximately ' + v.delay + " minutes behind due to traffic. Next pickup delayed.&rdquo;</div>" +
+      '<div class="alert-actions">' +
+      '<button class="btn-approve" data-approve="' + id + '">Approve and publish</button>' +
+      '<button class="btn-dismiss" data-dismiss="' + id + '">Dismiss</button>' +
+      "</div>";
+    alertsBody.appendChild(card);
+  });
+  Array.prototype.forEach.call(alertsBody.querySelectorAll("[data-approve]"), function (btn) {
+    btn.addEventListener("click", function () {
+      alert("This would call POST /alerts/" + btn.getAttribute("data-approve") + "/approve, publishing through the core Messages pipeline.");
+    });
+  });
+  Array.prototype.forEach.call(alertsBody.querySelectorAll("[data-dismiss]"), function (btn) {
+    btn.addEventListener("click", function () {
+      dismissed[btn.getAttribute("data-dismiss")] = true;
+      render();
+    });
+  });
+}
+
+function openSelector(outgoingId) {
+  var panel = document.getElementById("selector-panel");
+  var opts = document.getElementById("selector-options");
+  var spares = pool.filter(function (p) { return monitoredIds.indexOf(p.id) === -1; });
+  opts.innerHTML = "";
+  if (spares.length === 0) {
+    opts.innerHTML = '<div class="selector-empty">No unmonitored vehicles available.</div>';
+  }
+  spares.forEach(function (s) {
+    var row = document.createElement("button");
+    row.className = "selector-option";
+    row.innerHTML = "<span>" + s.id + " &middot; " + s.lot + '</span><span class="avail">' + (s.status === "offline" ? "Offline" : "Available") + "</span>";
+    row.addEventListener("click", function () {
+      var idx = monitoredIds.indexOf(outgoingId);
+      monitoredIds[idx] = s.id;
+      panel.style.display = "none";
+      render();
+    });
+    opts.appendChild(row);
+  });
+  panel.style.display = "block";
+}
+
+document.getElementById("add-btn").addEventListener("click", function () {
+  openSelector(monitoredIds[monitoredIds.length - 1]);
+});
+
+render();
+</script>
+
+</body>
+</html>

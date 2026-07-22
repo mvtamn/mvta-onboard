@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>MVTA Service Alerts</title>
+<style>
+* { box-sizing: border-box; }
+body { margin:0; padding:24px; background:#F3F2ED; font-family: Arial, Helvetica, sans-serif; }
+.frame { background:#fff; border-radius:12px; overflow:hidden; border:1px solid #ddd; max-width:720px; margin:0 auto; }
+.alertbar { background:#F78E1E; color:#4A1B0C; padding:10px 20px; font-size:13px; font-weight:bold; display:flex; align-items:center; gap:8px; }
+.nav { padding:14px 24px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #eee; }
+.logo { font-weight:bold; font-size:20px; }
+.navlinks span { margin-left:20px; }
+.navlinks span:first-child { margin-left:0; }
+.content { padding:28px 24px 32px; }
+.crumb { font-size:12px; color:#888; margin:0 0 6px; }
+.title { color:#00553D; font-size:24px; font-weight:bold; margin:0 0 6px; }
+.subtitle { color:#4F4F4F; font-size:14px; margin:0 0 20px; }
+.filterbar { display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap; }
+.filter-chip { background:#F1EFE8; color:#2C2C2A; font-size:13px; padding:7px 14px; border-radius:20px; font-weight:bold; cursor:pointer; border:none; }
+.filter-chip.active { background:#00553D; color:#fff; }
+.count { font-size:13px; color:#4F4F4F; margin-bottom:14px; }
+.card { border:1px solid #eee; border-radius:10px; padding:16px 18px; margin-bottom:12px; }
+.card-top { display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
+.badge { font-size:11px; font-weight:bold; padding:4px 10px; border-radius:20px; }
+.badge-delay, .badge-detour, .badge-demand_response_delay { background:#FCEFD8; color:#7A4A00; }
+.badge-outage, .badge-closure { background:#DCEAF8; color:#0B4C82; }
+.badge-general { background:#E3F0D4; color:#33530F; }
+.badge-emergency { background:#FBE0E0; color:#8A1F1F; }
+.badge-critical, .badge-major { background:#FBE0E0; color:#8A1F1F; }
+.badge-minor { background:#FCEFD8; color:#7A4A00; }
+.badge-informational { background:#DCEAF8; color:#0B4C82; }
+.card-route { font-size:12px; color:#4F4F4F; font-weight:bold; }
+.card-text { font-size:14px; color:#2C2C2A; line-height:1.5; margin:0 0 10px; }
+.card-meta { font-size:12px; color:#888; display:flex; }
+.card-meta span { margin-right:18px; }
+.empty { text-align:center; padding:50px 20px; color:#888; font-size:14px; }
+.error { text-align:center; padding:30px 20px; color:#8A1F1F; font-size:13px; }
+.retry-btn { font-size:12px; padding:6px 14px; border:1px solid #bbb; border-radius:4px; background:#fff; margin-left:10px; cursor:pointer; }
+.loading { text-align:center; padding:50px 20px; color:#888; font-size:14px; }
+</style>
+</head>
+<body>
+<div class="frame">
+<div class="alertbar">&#9888; Service alerts &nbsp;|&nbsp; Real-time updates from MVTA OnBoard</div>
+<div class="nav">
+<div class="logo"><span style="color:#00553D">M</span><span style="color:#639281">V</span><span style="color:#F78E1E">TA</span></div>
+<div class="navlinks"><span>Plan a trip</span><span>Ride guide</span><span>Contact us</span></div>
+</div>
+<div class="content">
+<p class="crumb">Home / Service Alerts</p>
+<p class="title">Service Alerts</p>
+<p class="subtitle">All active delays, detours, closures, and service notices, updated in real time.</p>
+
+<div class="filterbar" id="filterbar">
+<button class="filter-chip active" data-route="all">All routes</button>
+</div>
+<p class="count" id="count"></p>
+<div id="results"><div class="loading">Loading active alerts&hellip;</div></div>
+</div>
+</div>
+
+<script>
+// Points at the live Front Door endpoint (proxies to the REST API's /api/*
+// route) - update this if the Front Door endpoint changes.
+const API_BASE = "https://endpoint-mvta-onboard-dev-haehgsbbe6esd8cc.z03.azurefd.net";
+
+let allMessages = [];
+let activeRouteFilter = "all";
+
+const CATEGORY_LABELS = {
+  delay: "Delay", detour: "Detour", closure: "Closure", outage: "Outage",
+  general: "General", emergency: "Emergency", demand_response_delay: "Zona Delay",
+};
+const SEVERITY_LABELS = {
+  informational: "Informational", minor: "Minor", major: "Major", critical: "Critical",
+};
+
+function timeAgo(isoString) {
+  if (!isoString) return null;
+  const diffMs = Date.now() - new Date(isoString).getTime();
+  const mins = Math.round(diffMs / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours} hr ago`;
+  return new Date(isoString).toLocaleDateString();
+}
+
+function formatExpires(isoString) {
+  if (!isoString) return "";
+  const d = new Date(isoString);
+  return d.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function renderRouteFilters() {
+  const routes = new Set();
+  allMessages.forEach((m) => (m.routes_affected || []).forEach((r) => routes.add(r)));
+  const bar = document.getElementById("filterbar");
+  bar.innerHTML = "";
+  const allBtn = document.createElement("button");
+  allBtn.className = "filter-chip" + (activeRouteFilter === "all" ? " active" : "");
+  allBtn.textContent = "All routes";
+  allBtn.onclick = () => { activeRouteFilter = "all"; render(); };
+  bar.appendChild(allBtn);
+  routes.forEach((r) => {
+    const btn = document.createElement("button");
+    btn.className = "filter-chip" + (activeRouteFilter === r ? " active" : "");
+    btn.textContent = r;
+    btn.onclick = () => { activeRouteFilter = r; render(); };
+    bar.appendChild(btn);
+  });
+}
+
+function render() {
+  renderRouteFilters();
+  const filtered = activeRouteFilter === "all"
+    ? allMessages
+    : allMessages.filter((m) => (m.routes_affected || []).includes(activeRouteFilter));
+
+  document.getElementById("count").textContent =
+    filtered.length === 0 ? "" : `${filtered.length} active alert${filtered.length === 1 ? "" : "s"}`;
+
+  const resultsEl = document.getElementById("results");
+  if (filtered.length === 0) {
+    resultsEl.innerHTML = `<div class="empty">No active alerts right now &mdash; everything's running normally.</div>`;
+    return;
+  }
+
+  resultsEl.innerHTML = filtered.map((m) => {
+    const routeLabel = (m.routes_affected && m.routes_affected.length)
+      ? m.routes_affected.join(", ")
+      : (m.zones_affected && m.zones_affected.length)
+        ? "Zona: " + m.zones_affected.join(", ")
+        : (m.stops_affected && m.stops_affected.length)
+          ? m.stops_affected.join(", ")
+          : "All routes";
+    const posted = timeAgo(m.created_at);
+    return `
+      <div class="card">
+        <div class="card-top">
+          <span class="badge badge-${m.category}">${CATEGORY_LABELS[m.category] || m.category}</span>
+          <span class="badge badge-${m.severity}">${SEVERITY_LABELS[m.severity] || m.severity}</span>
+          <span class="card-route">${routeLabel}</span>
+        </div>
+        <p class="card-text">${m.summary}</p>
+        <div class="card-meta">
+          ${posted ? `<span>Posted ${posted}</span>` : ""}
+          <span>Expires ${formatExpires(m.expires_at)}</span>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+async function loadMessages() {
+  try {
+    const res = await fetch(`${API_BASE}/api/messages/active`);
+    if (!res.ok) throw new Error(`Server returned ${res.status}`);
+    const data = await res.json();
+    allMessages = data.messages || [];
+    render();
+  } catch (err) {
+    document.getElementById("results").innerHTML = `
+      <div class="error">
+        Couldn't load alerts right now (${err.message}).
+        <button class="retry-btn" onclick="loadMessages()">Retry</button>
+      </div>
+    `;
+  }
+}
+
+loadMessages();
+setInterval(loadMessages, 30000);
+</script>
+</body>
+</html>

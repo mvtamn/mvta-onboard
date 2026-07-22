@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.local
+.env
+.env.*
+!.env.example
+# committed on purpose: dev-only defaults, no secrets (VITE_AUTH_MODE=mock)
+!.env.development
+.DS_Store
+*.tsbuildinfo

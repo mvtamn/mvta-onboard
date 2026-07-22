@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/staticwebapp.config.json",
+  "navigationFallback": {
+    "rewrite": "/index.html",
+    "exclude": ["/assets/*", "/*.{css,js,ico,png,jpg,svg,woff,woff2}"]
+  },
+  "globalHeaders": {
+    "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
+    "Permissions-Policy": "geolocation=(), camera=(), microphone=()"
+  },
+  "responseOverrides": {
+    "404": { "rewrite": "/index.html", "statusCode": 200 }
+  }
+}

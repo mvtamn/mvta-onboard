@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OCC Decision Matrix — Quick Reference</title>
+<style>
+  /* ============================================================
+     Palette and type sourced from MVTA-STY-002 (Internal Document
+     Style Guide), Sections 3.1–3.2. Reused here so this tool reads
+     as part of the same document family as the SOP/REF files it
+     links to — not a separate visual system.
+        Primary Teal   #417B68  — headings, table headers, rules
+        Accent Orange  #ED7D31  — callouts / warnings
+        Dark Gray      #3B3B3B — body text
+        Mid Gray       #4F4F4F — borders, footer text
+        Light Gray     #F2F2F2 — alternating rows
+        White          #FFFFFF — background
+     Severity red/green are NOT in the style guide (it only defines
+     document formatting, not operational signal colors) and are
+     added here as the minimum needed for Stop/Clear recognition,
+     kept visually secondary to the teal/orange brand pair.
+     ============================================================ */
+  :root{
+    --teal:#417B68;
+    --teal-dark:#345F52;
+    --orange:#ED7D31;
+    --gray-dark:#3B3B3B;
+    --gray-mid:#4F4F4F;
+    --gray-light:#F2F2F2;
+    --white:#FFFFFF;
+    --stop:#C0392B;
+    --restricting:#ED7D31;
+    --clear:#4F8F5B;
+    --stop-bg:#FBEAE8;
+    --restricting-bg:#FDF1E7;
+    --clear-bg:#EAF3EC;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--white);
+    color:var(--gray-dark);
+    font-family:Arial, Helvetica, sans-serif;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:0 24px 60px;}
+
+  /* Document-style header bar, per Section 3.3 page layout */
+  .dochead{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:12px 24px;border-bottom:3px solid var(--teal);
+  }
+  .dochead .agency{color:var(--teal);font-weight:bold;font-size:14px;letter-spacing:.02em;}
+  .dochead .doctitle{color:var(--gray-mid);font-size:13px;}
+
+  header.hero{padding:30px 0 20px;}
+  header.hero h1{
+    font-family:Arial, Helvetica, sans-serif;
+    font-weight:bold;
+    color:var(--teal);
+    font-size:26px;
+    margin:0 0 8px;
+  }
+  header.hero p{
+    color:var(--gray-mid);
+    margin:0 0 14px;
+    max-width:640px;
+    font-size:14px;
+    line-height:1.55;
+  }
+  .metablock{
+    display:inline-grid;
+    grid-template-columns:auto auto;
+    gap:4px 18px;
+    border:1px solid var(--gray-mid);
+    background:var(--gray-light);
+    padding:12px 16px;
+    font-size:12px;
+    color:var(--gray-dark);
+  }
+  .metablock .label{color:var(--gray-mid);font-weight:bold;}
+
+  /* Controls */
+  .controls{margin-top:22px;display:flex;flex-direction:column;gap:12px;}
+  .searchrow{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+  .search{
+    flex:1;min-width:220px;
+    background:var(--white);
+    border:1px solid var(--gray-mid);
+    border-radius:3px;
+    padding:10px 13px;
+    color:var(--gray-dark);
+    font-size:14px;
+    font-family:inherit;
+  }
+  .search:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px rgba(65,123,104,.15);}
+
+  .viewtoggle{display:flex;border:1px solid var(--teal);border-radius:3px;overflow:hidden;}
+  .viewtoggle button{
+    font-family:inherit;font-size:12.5px;font-weight:bold;letter-spacing:.03em;
+    padding:9px 16px;border:none;background:var(--white);color:var(--teal);cursor:pointer;
+  }
+  .viewtoggle button.active{background:var(--teal);color:var(--white);}
+
+  .sevfilters, .doctypefilters{display:flex;gap:8px;flex-wrap:wrap;}
+  .sevbtn{
+    font-size:11.5px;font-weight:bold;letter-spacing:.03em;text-transform:uppercase;
+    border:1px solid var(--gray-mid);
+    background:var(--white);
+    color:var(--gray-mid);
+    padding:8px 13px;
+    border-radius:3px;
+    cursor:pointer;
+    display:flex;align-items:center;gap:7px;
+  }
+  .sevbtn .ring{width:9px;height:9px;border-radius:50%;}
+  .sevbtn[data-active="true"]{color:var(--white);border-color:var(--gray-dark);background:var(--gray-dark);}
+  .sevbtn.stop .ring{background:var(--stop);}
+  .sevbtn.restricting .ring{background:var(--restricting);}
+  .sevbtn.clear .ring{background:var(--clear);}
+
+  .doctypebtn{
+    font-size:11.5px;font-weight:bold;
+    border:1px solid var(--teal);
+    background:var(--white);
+    color:var(--teal);
+    padding:7px 13px;
+    border-radius:3px;
+    cursor:pointer;
+  }
+  .doctypebtn[data-active="true"]{background:var(--teal);color:var(--white);}
+
+  .tagrow{display:flex;flex-wrap:wrap;gap:8px;}
+  .tag{
+    font-size:12px;padding:5px 12px;border-radius:14px;
+    border:1px solid var(--gray-mid);
+    background:var(--white);
+    color:var(--gray-mid);
+    cursor:pointer;user-select:none;
+  }
+  .tag[data-active="true"]{background:var(--teal);border-color:var(--teal);color:var(--white);}
+
+  .meta{color:var(--gray-mid);font-size:12px;margin-top:2px;}
+
+  /* ---------------- LIST VIEW ---------------- */
+  .matrix-list{margin-top:20px;display:flex;flex-direction:column;}
+  .row{
+    background:var(--white);
+    border:1px solid var(--gray-mid);
+    border-left:5px solid var(--gray-mid);
+    border-top:none;
+    padding:16px 18px;
+    display:grid;
+    grid-template-columns:auto 1fr auto;
+    gap:20px;
+    align-items:start;
+  }
+  .row:first-child{border-top:1px solid var(--gray-mid);}
+  .row:nth-child(even){background:var(--gray-light);}
+  .row.stop{border-left-color:var(--stop);}
+  .row.restricting{border-left-color:var(--restricting);}
+  .row.clear{border-left-color:var(--clear);}
+
+  .signal{width:13px;height:13px;border-radius:50%;margin-top:4px;}
+  .signal.stop{background:var(--stop);}
+  .signal.restricting{background:var(--restricting);}
+  .signal.clear{background:var(--clear);}
+
+  .rowbody h3{font-size:16px;margin:0 0 10px;color:var(--gray-dark);font-weight:bold;}
+  .field{display:grid;grid-template-columns:130px 1fr;gap:12px;margin-bottom:8px;}
+  .field .flabel{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--teal);font-weight:bold;padding-top:1px;}
+  .field .fvalue{font-size:13.5px;line-height:1.5;color:var(--gray-dark);}
+  .rowbody .tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;}
+  .rowbody .tags span{font-size:10.5px;color:var(--gray-mid);border:1px solid var(--gray-mid);padding:2px 8px;border-radius:10px;}
+
+  .rowaction{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:7px;min-width:160px;}
+  .sevlabel{font-size:11px;font-weight:bold;letter-spacing:.05em;text-transform:uppercase;}
+  .sevlabel.stop{color:var(--stop);}
+  .sevlabel.restricting{color:var(--restricting);}
+  .sevlabel.clear{color:var(--clear);}
+  .doccode{font-size:11px;color:var(--gray-mid);font-weight:bold;}
+  .doclink{
+    font-size:12.5px;color:var(--white);text-decoration:none;background:var(--teal);
+    padding:7px 12px;border-radius:3px;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;
+  }
+  .doclink:hover{background:var(--teal-dark);}
+  .reviewed{color:var(--gray-mid);font-size:10.5px;}
+
+  /* ---------------- GRID VIEW ---------------- */
+  .matrix-grid{
+    margin-top:20px;
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));
+    gap:16px;
+  }
+  .card{
+    background:var(--white);
+    border:1px solid var(--gray-mid);
+    border-top:4px solid var(--gray-mid);
+    border-radius:3px;
+    padding:16px 16px 14px;
+    display:flex;flex-direction:column;gap:10px;
+  }
+  .card.stop{border-top-color:var(--stop);}
+  .card.restricting{border-top-color:var(--restricting);}
+  .card.clear{border-top-color:var(--clear);}
+
+  .card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+  .card-top h3{font-size:15px;margin:0;color:var(--gray-dark);font-weight:bold;line-height:1.3;}
+  .card-sev{display:flex;align-items:center;gap:5px;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;}
+  .card-sev .signal{margin-top:0;}
+  .card-sev.stop{color:var(--stop);}
+  .card-sev.restricting{color:var(--restricting);}
+  .card-sev.clear{color:var(--clear);}
+
+  .card .cfield{font-size:12.5px;line-height:1.5;}
+  .card .cfield .clabel{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--teal);font-weight:bold;display:block;margin-bottom:2px;}
+  .card .ctags{display:flex;flex-wrap:wrap;gap:5px;}
+  .card .ctags span{font-size:10px;color:var(--gray-mid);border:1px solid var(--gray-mid);padding:1px 7px;border-radius:9px;}
+
+  .card-foot{
+    margin-top:auto;padding-top:10px;border-top:1px solid var(--gray-light);
+    display:flex;justify-content:space-between;align-items:center;
+  }
+  .card-foot .doccode{font-size:10.5px;color:var(--gray-mid);}
+  .card-foot a{
+    font-size:11.5px;color:var(--white);background:var(--teal);text-decoration:none;
+    padding:5px 10px;border-radius:3px;
+  }
+  .card-foot a:hover{background:var(--teal-dark);}
+
+  .empty{text-align:center;padding:60px 20px;color:var(--gray-mid);border:1px dashed var(--gray-mid);border-radius:3px;margin-top:20px;}
+
+  /* Document-style footer bar, per Section 10.1 */
+  .docfoot{
+    margin-top:36px;
+    border-top:3px solid var(--teal);
+    padding:12px 24px;
+    display:flex;justify-content:space-between;
+    font-size:11px;color:var(--gray-mid);
+  }
+
+  @media (max-width:720px){
+    .row{grid-template-columns:auto 1fr;}
+    .rowaction{grid-column:1 / -1;flex-direction:row;justify-content:space-between;align-items:center;margin-top:10px;min-width:0;}
+    .field{grid-template-columns:1fr;gap:2px;}
+    .dochead{flex-direction:column;align-items:flex-start;gap:4px;}
+  }
+</style>
+</head>
+<body>
+
+<div class="dochead">
+  <div class="agency">MINNESOTA VALLEY TRANSIT AUTHORITY</div>
+  <div class="doctitle">OCC Decision Matrix — Master REF</div>
+</div>
+
+<div class="wrap">
+  <header class="hero">
+    <h1>Control Center Decision Matrix</h1>
+    <p>Condition, criteria, and required action for control center staff — each entry links to its governing SOP or REF document on SharePoint.</p>
+    <div class="metablock">
+      <div class="label">Reference Code</div><div>REF-2026-[PENDING] <span style="color:var(--gray-mid);font-weight:normal;">(reserve in SOP Tracking Master before issuing)</span></div>
+      <div class="label">Document Type</div><div>Master REF — navigational index linking to individual SOP/REF quick reference documents</div>
+      <div class="label">Revision</div><div>00</div>
+      <div class="label">Issued By</div><div>Operations Control Center</div>
+    </div>
+  </header>
+
+  <div class="controls">
+    <div class="searchrow">
+      <input class="search" id="searchInput" type="text" placeholder="Search conditions, criteria, actions, or tags…">
+      <div class="viewtoggle">
+        <button id="btnListView" class="active">List</button>
+        <button id="btnGridView">Grid</button>
+      </div>
+    </div>
+    <div class="sevfilters" id="sevFilters">
+      <button class="sevbtn stop" data-sev="stop" data-active="false"><span class="ring"></span>Stop</button>
+      <button class="sevbtn restricting" data-sev="restricting" data-active="false"><span class="ring"></span>Restricting</button>
+      <button class="sevbtn clear" data-sev="clear" data-active="false"><span class="ring"></span>Clear</button>
+    </div>
+    <div class="doctypefilters" id="doctypeFilters">
+      <button class="doctypebtn" data-doctype="SOP" data-active="false">SOP</button>
+      <button class="doctypebtn" data-doctype="REF" data-active="false">REF</button>
+    </div>
+    <div class="tagrow" id="tagRow"></div>
+    <div class="meta" id="resultMeta"></div>
+  </div>
+
+  <div class="matrix-list" id="matrixList"></div>
+  <div class="matrix-grid" id="matrixGrid" style="display:none;"></div>
+  <div class="empty" id="emptyState" style="display:none;">No entries match your search or filters.</div>
+</div>
+
+<div class="docfoot">
+  <div>INTERNAL DOCUMENT</div>
+  <div id="clock">--:--:--</div>
+  <div>REF-2026-[PENDING]</div>
+</div>
+
+<script>
+/* ============================================================================
+   DATA SOURCE — REPLACE FOR PRODUCTION
+   ----------------------------------------------------------------------------
+   MOCK_DATA stands in for the real decision matrix records. In production,
+   replace it with a fetch() call to an endpoint on the Document AI Platform
+   v6 App Service:
+
+     const res = await fetch('/api/occ/decision-matrix');
+     const DATA = await res.json();
+
+   That endpoint calls Microsoft Graph (app-only, Sites.Read.All scoped to
+   the Operations site) against the document library holding the governing
+   documents, and reads these metadata columns per item — NOT file contents:
+
+     - Condition        (single line text)   -> what's happening
+     - Criteria          (multi line text)    -> what qualifies it as this case
+     - RequiredAction     (multi line text)    -> what staff must do
+     - Severity          (choice: Stop / Restricting / Clear)
+     - DocType           (choice: SOP / REF) — per MVTA-STY-002 Section 2.1,
+       real MVTA document types are SOP, REF, and APP. "QRG" is not a
+       separate type — it's a REF used as a Master REF (a navigational
+       index linking to other REFs), per Section 2.5. This page itself is
+       one such Master REF.
+     - DocCode           (text, matches the ID in the document's own
+       metadata header block: SOP-[CATEGORY]-[SEQ]-[REV] or
+       REF-[YEAR]-[SEQ], per Section 2.3)
+     - Tags              (choice, allow multiple values)
+     - LastReviewed      (date)
+
+   The library item's own file supplies the webUrl the "Open" link points
+   to. DocCode should always be reserved from the SOP Tracking Master
+   before a real entry goes live — never assign one locally.
+============================================================================ */
+
+const MOCK_DATA = [
+  {
+    id: "occ-01", condition: "Vehicle Collision", severity: "stop",
+    tags: ["Safety", "Emergency Response"],
+    criteria: "Any collision involving passenger or bystander injury, a second vehicle, or a blocked travel lane.",
+    requiredAction: "Notify command staff immediately, dispatch EMS/police per protocol, hold vehicle in place until cleared.",
+    docType: "SOP", docCode: "SOP-OCC-001-00",
+    docUrl: "https://mvtamn.sharepoint.com/sites/Operations/_SOPs/_OCC%20Documents/SOP_OCC-001-00_Vehicle_Collision.docx",
+    lastReviewed: "2026-05-12"
+  },
+  {
+    id: "occ-02", condition: "Onboard Medical Emergency", severity: "stop",
+    tags: ["Medical", "Emergency Response"],
+    criteria: "Passenger or operator shows signs of a medical event (loss of consciousness, chest pain, seizure, severe allergic reaction).",
+    requiredAction: "Confirm EMS dispatch, hold vehicle location, keep line open with operator until responders arrive on scene.",
+    docType: "SOP", docCode: "SOP-OCC-002-00",
+    docUrl: "https://mvtamn.sharepoint.com/sites/Operations/_SOPs/_OCC%20Documents/SOP_OCC-002-00_Medical_Emergency.docx",
+    lastReviewed: "2026-04-28"
+  },
+  {
+    id: "occ-03", condition: "Suspicious Package / Bomb Threat", severity: "stop",
+    tags: ["Security", "Emergency Response"],
+    criteria: "Unattended or suspicious item reported onboard or at a facility, or a direct threat received by phone/radio.",
+    requiredAction: "Do not approach or handle the item. Evacuate per protocol, notify law enforcement and command staff immediately.",
+    docType: "SOP", docCode: "SOP-OCC-003-00",
+    docUrl: "https://mvtamn.sharepoint.com/sites/Operations/_SOPs/_OCC%20Documents/SOP_OCC-003-00_Suspicious_Package.docx",
+    lastReviewed: "2026-03-02"
+  },
+  {
+    id: "occ-04", condition: "Passenger Assault / Threat to Operator", severity: "restricting",
+    tags: ["Security", "Passenger Conduct"],
+    criteria: "Verbal threat, physical altercation, or aggressive behavior directed at the operator or another passenger.",
+    requiredAction: "Assess operator safety, request law enforcement response if ongoing, document per the conduct reference.",
+    docType: "REF", docCode: "REF-2026-011",
+    docUrl: "https://mvtamn.sharepoint.com/sites/Operations/_SOPs/_OCC%20Documents/REF_REF-2026-011_Operator_Threat_Response.docx",
+    lastReviewed: "2026-06-01"
+  },
+  {
+    id: "occ-05", condition: "Severe Weather Detour", severity: "restricting",
+    tags: ["Weather"],
+    criteria: "Route impacted by flooding, ice, or a high-wind advisory affecting safe vehicle operation.",
+    requiredAction: "Supervisor confirms detour routing before it is broadcast to operators; log affected trips.",
+    docType: "REF", docCode: "REF-2026-012",
+    docUrl: "https://mvtamn.sharepoint.com/sites/Operations/_SOPs/_OCC%20Documents/REF_REF-2026-012_Severe_Weather_Detour.docx",
+    lastReviewed: "2026-01-15"
+  },
+  {
+    id: "occ-06", condition: "Mechanical Breakdown — In Service", severity: "restricting",
+    tags: ["Mechanical"],
+    criteria: "Vehicle disabled on route and unable to continue safely under its own power.",
+    requiredAction: "Arrange bridge vehicle, notify affected stops if delay exceeds threshold, confirm passengers are secure.",
+    docType: "SOP", docCode: "SOP-OCC-004-00",
+    docUrl: "https://mvtamn.sharepoint.com/sites/Operations/_SOPs/_OCC%20Documents/SOP_OCC-004-00_Mechanical_Breakdown.docx",
+    lastReviewed: "2026-05-30"
+  },
+  {
+    id: "occ-07", condition: "Lost or Vulnerable Passenger", severity: "restricting",
+    tags: ["Safety", "Passenger Conduct"],
+    criteria: "Unaccompanied minor or vulnerable adult unable to reach their intended destination contact.",
+    requiredAction: "Hold vehicle, loop in supervisor, do not release passenger until a verified contact or authority takes custody.",
+    docType: "REF", docCode: "REF-2026-013",
+    docUrl: "https://mvtamn.sharepoint.com/sites/Operations/_SOPs/_OCC%20Documents/REF_REF-2026-013_Vulnerable_Passenger.docx",
+    lastReviewed: "2026-02-19"
+  },
+  {
+    id: "occ-08", condition: "Standard Service Delay", severity: "clear",
+    tags: ["Mechanical", "Weather"],
+    criteria: "Delay from routine traffic or congestion with no safety concern and no missed connections.",
+    requiredAction: "Operator logs delay per standard procedure; no OCC escalation required.",
+    docType: "REF", docCode: "REF-2026-014",
+    docUrl: "https://mvtamn.sharepoint.com/sites/Operations/_SOPs/_OCC%20Documents/REF_REF-2026-014_Standard_Delay.docx",
+    lastReviewed: "2026-06-10"
+  },
+  {
+    id: "occ-09", condition: "Fare Dispute", severity: "clear",
+    tags: ["Passenger Conduct"],
+    criteria: "Routine disagreement over fare or transfer validity with no safety concern.",
+    requiredAction: "Operator handles per standard customer service reference; no dispatch action needed.",
+    docType: "REF", docCode: "REF-2026-015",
+    docUrl: "https://mvtamn.sharepoint.com/sites/Operations/_SOPs/_OCC%20Documents/REF_REF-2026-015_Fare_Dispute.docx",
+    lastReviewed: "2026-03-22"
+  },
+  {
+    id: "occ-10", condition: "Scheduled Detour Notification", severity: "clear",
+    tags: ["Weather", "Mechanical"],
+    criteria: "Planned construction or event detour already on file with an approved routing packet.",
+    requiredAction: "Confirm operators received the routing packet before shift start; no further action unless conditions change.",
+    docType: "REF", docCode: "REF-2026-016",
+    docUrl: "https://mvtamn.sharepoint.com/sites/Operations/_SOPs/_OCC%20Documents/REF_REF-2026-016_Scheduled_Detour.docx",
+    lastReviewed: "2026-06-18"
+  }
+];
+
+const SEV_LABEL = { stop: "Stop", restricting: "Restricting", clear: "Clear" };
+
+let state = { query: "", severities: new Set(), docTypes: new Set(), tags: new Set(), view: "list" };
+
+function allTags(data){
+  const s = new Set();
+  data.forEach(d => d.tags.forEach(t => s.add(t)));
+  return [...s].sort();
+}
+
+function renderTagRow(){
+  const row = document.getElementById('tagRow');
+  row.innerHTML = '';
+  allTags(MOCK_DATA).forEach(tag => {
+    const el = document.createElement('div');
+    el.className = 'tag';
+    el.textContent = tag;
+    el.dataset.active = state.tags.has(tag);
+    el.onclick = () => { state.tags.has(tag) ? state.tags.delete(tag) : state.tags.add(tag); renderTagRow(); renderMatrix(); };
+    row.appendChild(el);
+  });
+}
+
+function matches(item){
+  const q = state.query.trim().toLowerCase();
+  if (q) {
+    const hay = (item.condition + ' ' + item.criteria + ' ' + item.requiredAction + ' ' + item.tags.join(' ') + ' ' + item.docCode).toLowerCase();
+    if (!hay.includes(q)) return false;
+  }
+  if (state.severities.size && !state.severities.has(item.severity)) return false;
+  if (state.docTypes.size && !state.docTypes.has(item.docType)) return false;
+  if (state.tags.size && ![...state.tags].every(t => item.tags.includes(t))) return false;
+  return true;
+}
+
+function renderMatrix(){
+  const filtered = MOCK_DATA.filter(matches);
+  document.getElementById('resultMeta').textContent = `${filtered.length} of ${MOCK_DATA.length} entries`;
+  document.getElementById('emptyState').style.display = filtered.length ? 'none' : 'block';
+
+  const listEl = document.getElementById('matrixList');
+  const gridEl = document.getElementById('matrixGrid');
+
+  listEl.innerHTML = '';
+  filtered.forEach(item => {
+    const row = document.createElement('div');
+    row.className = `row ${item.severity}`;
+    row.innerHTML = `
+      <div class="signal ${item.severity}"></div>
+      <div class="rowbody">
+        <h3>${item.condition}</h3>
+        <div class="field"><div class="flabel">Criteria</div><div class="fvalue">${item.criteria}</div></div>
+        <div class="field"><div class="flabel">Required Action</div><div class="fvalue">${item.requiredAction}</div></div>
+        <div class="tags">${item.tags.map(t => `<span>${t}</span>`).join('')}</div>
+      </div>
+      <div class="rowaction">
+        <div class="sevlabel ${item.severity}">${SEV_LABEL[item.severity]}</div>
+        <div class="doccode">${item.docType} · ${item.docCode}</div>
+        <a class="doclink" href="${item.docUrl}" target="_blank" rel="noopener">Open ↗</a>
+        <div class="reviewed">Reviewed ${item.lastReviewed}</div>
+      </div>`;
+    listEl.appendChild(row);
+  });
+
+  gridEl.innerHTML = '';
+  filtered.forEach(item => {
+    const card = document.createElement('div');
+    card.className = `card ${item.severity}`;
+    card.innerHTML = `
+      <div class="card-top">
+        <h3>${item.condition}</h3>
+        <div class="card-sev ${item.severity}"><span class="signal ${item.severity}"></span>${SEV_LABEL[item.severity]}</div>
+      </div>
+      <div class="cfield"><span class="clabel">Criteria</span>${item.criteria}</div>
+      <div class="cfield"><span class="clabel">Required Action</span>${item.requiredAction}</div>
+      <div class="ctags">${item.tags.map(t => `<span>${t}</span>`).join('')}</div>
+      <div class="card-foot">
+        <div class="doccode">${item.docType} · ${item.docCode}</div>
+        <a href="${item.docUrl}" target="_blank" rel="noopener">Open ↗</a>
+      </div>`;
+    gridEl.appendChild(card);
+  });
+}
+
+document.getElementById('searchInput').addEventListener('input', e => { state.query = e.target.value; renderMatrix(); });
+
+document.querySelectorAll('.sevbtn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const sev = btn.dataset.sev;
+    state.severities.has(sev) ? state.severities.delete(sev) : state.severities.add(sev);
+    btn.dataset.active = state.severities.has(sev);
+    renderMatrix();
+  });
+});
+
+document.querySelectorAll('.doctypebtn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const dt = btn.dataset.doctype;
+    state.docTypes.has(dt) ? state.docTypes.delete(dt) : state.docTypes.add(dt);
+    btn.dataset.active = state.docTypes.has(dt);
+    renderMatrix();
+  });
+});
+
+const btnList = document.getElementById('btnListView');
+const btnGrid = document.getElementById('btnGridView');
+btnList.addEventListener('click', () => {
+  state.view = 'list';
+  btnList.classList.add('active'); btnGrid.classList.remove('active');
+  document.getElementById('matrixList').style.display = '';
+  document.getElementById('matrixGrid').style.display = 'none';
+});
+btnGrid.addEventListener('click', () => {
+  state.view = 'grid';
+  btnGrid.classList.add('active'); btnList.classList.remove('active');
+  document.getElementById('matrixGrid').style.display = '';
+  document.getElementById('matrixList').style.display = 'none';
+});
+
+function tickClock(){
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString('en-US', { hour12:false });
+}
+setInterval(tickClock, 1000);
+tickClock();
+
+renderTagRow();
+renderMatrix();
+</script>
+
+</body>
+</html>

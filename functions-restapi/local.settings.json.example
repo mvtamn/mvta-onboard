@@ -1,0 +1,8 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "SQL_CONNECTION_STRING": "Server=tcp:sql-mvta-dev-mvta-jx4471.database.windows.net,1433;Database=sqldb-mvta-onboard-dev;User ID=mvtaonboardadmin;Password=REPLACE_ME;Encrypt=true;TrustServerCertificate=false;Connection Timeout=30;"
+  }
+}

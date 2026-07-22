@@ -1,0 +1,821 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>OTP Compliance — MVTA Onboard App</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    /* Official MVTA brand palette (StyleGuide2025) */
+    --brand-dark-green:#00553D;
+    --brand-light-green:#639281;
+    --brand-dark-orange:#F78E1E;
+    --brand-light-orange:#FAAD60;
+    --brand-green-vm:#417B68;      /* Secondary: "Green Between V & M" */
+    --brand-burnt-orange:#C34B18;
+    --brand-icy-gray:#E5E5E1;
+    --brand-dark-gray:#4F4F4F;
+    --brand-black:#000000;
+    --brand-white:#FFFFFF;
+
+    --sidebar-bg:var(--brand-dark-green);
+    --sidebar-bg-2:#003D2C;
+    --sidebar-hover:rgba(255,255,255,.08);
+    --sidebar-active:rgba(255,255,255,.14);
+    --sidebar-text:#E4EFEA;
+    --sidebar-text-dim:#8FBBA9;
+    --sidebar-border:rgba(255,255,255,.10);
+
+    --page-bg:var(--brand-white);
+    --meta-bar-bg:var(--brand-icy-gray);
+    --card-bg:var(--brand-white);
+    --card-border:#DCDCD7;
+    --heading:#1A1A1A;
+    --body-text:var(--brand-dark-gray);
+    --muted:#767671;
+
+    --green:var(--brand-dark-green);
+    --green-soft:#E1EBE7;
+    --amber:var(--brand-dark-orange);
+    --amber-soft:#FDECD7;
+    --amber-icon-bg:#FDECD7;
+    --amber-icon-glyph:var(--brand-burnt-orange);
+    --gray-status:var(--brand-dark-gray);
+    --gray-status-soft:#ECECEA;
+    --highlight:#FDF1E1;
+    --highlight-border:var(--brand-light-orange);
+
+    --btn-primary-bg:var(--brand-light-green);
+    --btn-primary-bg-hover:var(--brand-dark-green);
+    --btn-secondary-border:#D6D6D1;
+
+    --radius-lg:14px;
+    --radius-md:9px;
+    --radius-sm:6px;
+  }
+  [data-theme="dark"]{
+    --page-bg:#0F1A15;
+    --meta-bar-bg:#16241D;
+    --card-bg:#152219;
+    --card-border:#25392F;
+    --heading:#EEF3F0;
+    --body-text:#C7D2CC;
+    --muted:#8AA096;
+    --green-soft:#193B2C;
+    --amber-soft:#3A2A15;
+    --amber-icon-bg:#3A2A15;
+    --gray-status-soft:#243128;
+    --highlight:#3A2A15;
+    --highlight-border:var(--brand-dark-orange);
+    --btn-secondary-border:#2E4238;
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--page-bg);
+    color:var(--body-text);
+    font-family:'Inter',sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{text-decoration:none; color:inherit;}
+  button{font-family:'Inter',sans-serif; cursor:pointer;}
+
+  .app{display:flex; min-height:100vh;}
+
+  /* ================= SIDEBAR ================= */
+  .sidebar{
+    width:234px;
+    flex-shrink:0;
+    background:var(--sidebar-bg);
+    display:flex;
+    flex-direction:column;
+    padding:18px 14px;
+  }
+  .brand{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:6px 8px 20px;
+  }
+  .brand-mark{
+    width:32px; height:32px;
+    border-radius:8px;
+    background:linear-gradient(135deg,var(--brand-light-green) 0%,var(--brand-dark-green) 45%,var(--brand-dark-orange) 100%);
+    display:flex; align-items:center; justify-content:center;
+    color:#fff; font-weight:800; font-size:13px;
+    flex-shrink:0;
+  }
+  .brand-text{color:#fff; font-weight:700; font-size:15px; line-height:1.2;}
+  .brand-sub{color:var(--sidebar-text-dim); font-size:11px; margin-top:1px;}
+
+  nav.navlist{display:flex; flex-direction:column; gap:2px; margin-top:4px;}
+  .navlabel{
+    color:var(--sidebar-text-dim);
+    font-size:10.5px;
+    font-weight:700;
+    letter-spacing:.07em;
+    text-transform:uppercase;
+    padding:16px 12px 6px;
+  }
+  .navitem{
+    display:flex;
+    align-items:center;
+    gap:11px;
+    padding:9px 12px;
+    border-radius:var(--radius-sm);
+    color:var(--sidebar-text);
+    font-size:13.5px;
+    font-weight:500;
+  }
+  .navitem svg{width:17px; height:17px; flex-shrink:0; opacity:.85;}
+  .navitem:hover{background:var(--sidebar-hover);}
+  .navitem.active{background:var(--sidebar-active); color:#fff; font-weight:600;}
+  .navitem.active svg{opacity:1;}
+
+  .sidebar-spacer{flex:1;}
+  .sidebar-footer{
+    border-top:1px solid var(--sidebar-border);
+    padding-top:14px;
+    margin-top:10px;
+  }
+  .status-row{
+    display:flex; align-items:center; gap:7px;
+    padding:0 12px 10px;
+    color:var(--sidebar-text-dim);
+    font-size:12px;
+  }
+  .status-dot{width:7px; height:7px; border-radius:50%; background:var(--brand-light-green); flex-shrink:0;}
+  .version-pill{
+    margin:0 12px;
+    display:inline-block;
+    background:rgba(255,255,255,.07);
+    color:var(--sidebar-text-dim);
+    font-size:11px;
+    padding:4px 9px;
+    border-radius:999px;
+  }
+
+  /* ================= MAIN ================= */
+  .main{flex:1; display:flex; flex-direction:column; min-width:0;}
+
+  header.topbar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:20px 28px 18px;
+  }
+  header.topbar h1{
+    font-size:22px;
+    font-weight:800;
+    color:var(--heading);
+    margin:0;
+  }
+  header.topbar .subtitle{color:var(--muted); font-size:13px; margin-top:3px;}
+  .topbar-actions{display:flex; align-items:center; gap:10px;}
+  .icon-btn{
+    width:36px; height:36px;
+    border-radius:50%;
+    border:1px solid var(--card-border);
+    background:var(--card-bg);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .icon-btn svg{width:16px; height:16px; color:var(--body-text);}
+  .user-chip{
+    display:flex; align-items:center; gap:8px;
+    padding:5px 12px 5px 5px;
+    border-radius:999px;
+    background:var(--card-bg);
+    border:1px solid var(--card-border);
+  }
+  .avatar{
+    width:26px; height:26px; border-radius:50%;
+    background:var(--brand-green-vm); color:#fff;
+    display:flex; align-items:center; justify-content:center;
+    font-size:11px; font-weight:700;
+  }
+  .user-chip .uname{font-size:13px; font-weight:600; color:var(--heading);}
+  .user-chip svg{width:13px; height:13px; color:var(--muted);}
+
+  .meta-bar{
+    background:var(--meta-bar-bg);
+    padding:12px 28px;
+    display:flex;
+    gap:48px;
+  }
+  .meta-item .meta-label{
+    font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--muted); margin-bottom:3px;
+  }
+  .meta-item .meta-value{font-size:13.5px; font-weight:600; color:var(--heading);}
+
+  .content{
+    flex:1;
+    display:flex;
+    gap:20px;
+    padding:22px 28px 32px;
+    align-items:flex-start;
+  }
+  .content.single{display:block;}
+
+  .card{
+    background:var(--card-bg);
+    border:1px solid var(--card-border);
+    border-radius:var(--radius-lg);
+    box-shadow:0 1px 2px rgba(20,30,25,.04);
+  }
+
+  /* ---- checklist-style queue ---- */
+  .queue-card{flex:1; min-width:0; padding:26px 26px 22px;}
+  .queue-toolbar{
+    display:flex; gap:10px; margin-bottom:18px; flex-wrap:wrap;
+  }
+  .queue-toolbar select, .queue-toolbar input{
+    font-family:'Inter',sans-serif;
+    font-size:12.5px;
+    padding:7px 10px;
+    border:1px solid var(--card-border);
+    border-radius:var(--radius-sm);
+    background:var(--card-bg);
+    color:var(--body-text);
+  }
+
+  .check-row{
+    display:flex;
+    gap:14px;
+    padding:15px 10px;
+    border-bottom:1px solid var(--card-border);
+    align-items:flex-start;
+  }
+  .check-row:last-child{border-bottom:none;}
+  .check-row.highlight{
+    background:var(--highlight);
+    border:1px solid var(--highlight-border);
+    border-radius:var(--radius-md);
+    padding:15px 14px;
+    margin:2px 0;
+  }
+  .status-icon{
+    width:24px; height:24px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0; margin-top:1px;
+  }
+  .status-icon.ok{background:var(--green);}
+  .status-icon.warn{background:var(--amber);}
+  .status-icon.rejected{background:var(--gray-status);}
+  .status-icon svg{width:13px; height:13px; color:#fff;}
+
+  .check-body{flex:1; min-width:0;}
+  .check-title-row{display:flex; align-items:center; justify-content:between; gap:10px; flex-wrap:wrap;}
+  .check-title{font-size:14.5px; font-weight:700; color:var(--heading);}
+  .route-chip{
+    display:inline-block;
+    background:var(--sidebar-bg);
+    color:#fff;
+    font-size:10.5px;
+    font-weight:700;
+    padding:2px 7px;
+    border-radius:5px;
+    margin-right:8px;
+    vertical-align:middle;
+  }
+  .check-desc{color:var(--muted); font-size:12.5px; margin-top:3px;}
+  .adherence-strip{
+    display:flex; height:7px; width:180px; border-radius:2px; overflow:hidden;
+    margin-top:9px; border:1px solid var(--card-border);
+  }
+  .seg{height:100%;}
+  .seg.early{background:var(--brand-light-orange);}
+  .seg.ontime{background:var(--green);}
+  .seg.late{background:var(--brand-burnt-orange);}
+  .seg.missed{background:var(--gray-status);}
+
+  .check-actions{display:flex; gap:8px; align-items:center; flex-shrink:0; margin-top:1px;}
+  .check-actions select{
+    font-family:'Inter',sans-serif; font-size:12px; padding:6px 8px;
+    border:1px solid var(--card-border); border-radius:var(--radius-sm); background:var(--card-bg); color:var(--body-text);
+  }
+  .btn{
+    font-family:'Inter',sans-serif; font-weight:600; font-size:12.5px;
+    border:none; border-radius:var(--radius-sm); padding:8px 14px; cursor:pointer;
+  }
+  .btn-primary{background:var(--btn-primary-bg); color:#fff;}
+  .btn-primary:hover{background:var(--btn-primary-bg-hover);}
+  .btn-secondary{background:var(--card-bg); color:var(--heading); border:1px solid var(--btn-secondary-border);}
+  .btn-secondary:hover{border-color:var(--brand-burnt-orange); color:var(--brand-burnt-orange);}
+  .resolved-tag{font-size:12px; color:var(--green); font-weight:600;}
+  .resolved-tag.rejected{color:var(--muted);}
+
+  .cta-row{display:flex; gap:10px; justify-content:center; margin-top:22px;}
+
+  /* ---- right timeline panel ---- */
+  .timeline-card{
+    width:300px; flex-shrink:0;
+    padding:20px 20px 8px;
+  }
+  .timeline-card h2{font-size:16px; font-weight:800; color:var(--heading); margin:0 0 14px;}
+  .timeline-item{
+    position:relative;
+    padding:0 0 16px 18px;
+    border-left:2px solid var(--card-border);
+    margin-left:3px;
+  }
+  .timeline-item:last-child{border-left-color:transparent; padding-bottom:2px;}
+  .timeline-item::before{
+    content:'';
+    position:absolute; left:-5.5px; top:2px;
+    width:9px; height:9px; border-radius:50%;
+    background:var(--sidebar-bg);
+    border:2px solid var(--card-bg);
+  }
+  .timeline-item .t-title{font-size:13px; font-weight:700; color:var(--heading);}
+  .timeline-item .t-desc{font-size:11.5px; color:var(--muted); margin-top:2px; line-height:1.5;}
+
+  /* ---- stat cards (dashboard) ---- */
+  .stat-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:22px;}
+  .stat-card{padding:18px 18px; }
+  .stat-card .stat-label{font-size:11.5px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.03em;}
+  .stat-card .stat-value{font-size:26px; font-weight:800; color:var(--heading); margin-top:6px;}
+  .stat-card .stat-sub{font-size:11.5px; color:var(--muted); margin-top:3px;}
+
+  /* ---- tables ---- */
+  table.data{width:100%; border-collapse:collapse;}
+  table.data th{
+    text-align:left; font-size:10.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+    color:var(--muted); padding:10px 14px; border-bottom:1px solid var(--card-border);
+  }
+  table.data td{padding:11px 14px; border-bottom:1px solid var(--card-border); font-size:13px; color:var(--body-text);}
+  .flag{display:inline-block; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:700;}
+  .flag-below{background:#F6E2D6; color:var(--brand-burnt-orange);}
+  .flag-ok{background:var(--green-soft); color:var(--green);}
+  .delta-up{color:var(--green); font-weight:600;}
+  .delta-flat{color:var(--muted);}
+
+  /* ---- weather form ---- */
+  .form-card{padding:22px 24px; margin-bottom:18px;}
+  .form-row{display:flex; gap:16px; margin-bottom:14px; flex-wrap:wrap;}
+  .form-row:last-child{margin-bottom:0;}
+  .form-row label{display:flex; flex-direction:column; gap:6px; font-size:11.5px; color:var(--muted); font-weight:600;}
+  .form-row label.grow{flex:1; min-width:260px;}
+  .form-row select, .form-row input{
+    font-family:'Inter',sans-serif; font-size:13px; padding:8px 11px;
+    border:1px solid var(--card-border); border-radius:var(--radius-sm); background:var(--card-bg); color:var(--body-text);
+  }
+  .badge{display:inline-block; padding:3px 9px; border-radius:999px; font-size:11px; font-weight:700;}
+  .badge-approved{background:var(--green-soft); color:var(--green);}
+  .badge-proposed{background:var(--amber-soft); color:var(--amber);}
+  .badge-notified{background:#E3ECE8; color:var(--brand-green-vm);}
+  .badge-pending{background:var(--gray-status-soft); color:var(--gray-status);}
+
+  .section-title{font-size:16px; font-weight:800; color:var(--heading); margin:0 0 4px;}
+  .section-sub{font-size:13px; color:var(--muted); margin:0 0 18px; max-width:640px;}
+
+  .placeholder-card{padding:60px 30px; text-align:center; color:var(--muted); font-size:13.5px;}
+
+  .hidden{display:none !important;}
+</style>
+</head>
+<body data-theme="light">
+<div class="app">
+
+  <!-- ================= SIDEBAR ================= -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">M</div>
+      <div>
+        <div class="brand-text">OTP Compliance</div>
+        <div class="brand-sub">MVTA Onboard App</div>
+      </div>
+    </div>
+
+    <nav class="navlist">
+      <a class="navitem" data-page="dashboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+        Dashboard
+      </a>
+      <a class="navitem active" data-page="queue">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 L22 12 L12 22 L2 12 Z"/></svg>
+        Review Queue
+      </a>
+      <a class="navitem" data-page="routes">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M12 20V4M20 20v-7"/></svg>
+        Route Summary
+      </a>
+      <a class="navitem" data-page="weather">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.5 17H7a4 4 0 1 1 1.2-7.8A5.5 5.5 0 0 1 18 11.2 3.5 3.5 0 0 1 17.5 17Z"/></svg>
+        Weather Exclusions
+      </a>
+      <a class="navitem" data-page="monthly">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M8.5 14l2 2 4-4"/></svg>
+        Monthly Assessments
+      </a>
+      <a class="navitem" data-page="audit">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+        Audit Stream
+      </a>
+      <a class="navitem" data-page="admin">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1Z"/></svg>
+        Administration
+      </a>
+
+      <div class="navlabel">Tools</div>
+      <a class="navitem" data-page="tuner">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg>
+        Threshold Tuner
+      </a>
+    </nav>
+
+    <div class="sidebar-spacer"></div>
+    <div class="sidebar-footer">
+      <div class="status-row"><span class="status-dot"></span>Module ready</div>
+      <span class="version-pill">v1.0.0 · Dev</span>
+    </div>
+  </aside>
+
+  <!-- ================= MAIN ================= -->
+  <div class="main">
+    <header class="topbar">
+      <div>
+        <h1 id="page-title">Review Queue</h1>
+        <div class="subtitle" id="page-subtitle">Approve or reject stops flagged for chronic early-departure bias</div>
+      </div>
+      <div class="topbar-actions">
+        <button class="icon-btn" id="theme-toggle" title="Toggle theme">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36A5.4 5.4 0 0 1 12 3Z"/></svg>
+        </button>
+        <div class="user-chip">
+          <div class="avatar">TF</div>
+          <span class="uname">Tyre Fant</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+      </div>
+    </header>
+
+    <div class="meta-bar">
+      <div class="meta-item"><div class="meta-label">Service Week</div><div class="meta-value">Jul 7 – Jul 13, 2026</div></div>
+      <div class="meta-item"><div class="meta-label">Metric</div><div class="meta-value">Departure adherence</div></div>
+      <div class="meta-item"><div class="meta-label">Imported</div><div class="meta-value">18,036 timepoint events</div></div>
+    </div>
+
+    <!-- ============ DASHBOARD ============ -->
+    <section id="page-dashboard" class="content single hidden">
+      <div class="stat-grid">
+        <div class="card stat-card"><div class="stat-label">Pending review</div><div class="stat-value" id="stat-pending">–</div><div class="stat-sub">Candidate stops</div></div>
+        <div class="card stat-card"><div class="stat-label">Approved</div><div class="stat-value" id="stat-approved">–</div><div class="stat-sub">Active exclusion rules</div></div>
+        <div class="card stat-card"><div class="stat-label">Routes below 90%</div><div class="stat-value" id="stat-below">–</div><div class="stat-sub">Official departure OTP</div></div>
+        <div class="card stat-card"><div class="stat-label">Weather exclusions</div><div class="stat-value" id="stat-weather">–</div><div class="stat-sub">Logged this year</div></div>
+      </div>
+      <div class="card placeholder-card">Route-level OTP trend and penalty exposure charts land here once Power BI is wired in.</div>
+    </section>
+
+    <!-- ============ REVIEW QUEUE ============ -->
+    <section id="page-queue" class="content">
+      <div class="card queue-card">
+        <div class="queue-toolbar">
+          <select id="filter-route"><option value="">All routes</option></select>
+          <select id="filter-status">
+            <option value="pending">Pending review</option>
+            <option value="all">All candidates</option>
+            <option value="resolved">Resolved only</option>
+          </select>
+          <input id="filter-search" type="text" placeholder="Search stop name…">
+        </div>
+        <div id="card-list"></div>
+      </div>
+      <aside class="card timeline-card">
+        <h2>Review Timeline</h2>
+        <div id="timeline-list"></div>
+      </aside>
+    </section>
+
+    <!-- ============ ROUTE SUMMARY ============ -->
+    <section id="page-routes" class="content single hidden">
+      <p class="section-title">Route OTP — official vs. raw</p>
+      <p class="section-sub">Official % is departure adherence (Attachment G), excluding approved stop rules and excluded days. Raw % is the unfiltered departure export.</p>
+      <div class="card" style="overflow:hidden;">
+        <table class="data">
+          <thead><tr><th>Route</th><th>Departure events</th><th>Raw OTP %</th><th>Official OTP %</th><th>Δ from exclusions</th><th>Status vs. 90%</th></tr></thead>
+          <tbody id="routes-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============ WEATHER EXCLUSIONS ============ -->
+    <section id="page-weather" class="content single hidden">
+      <p class="section-title">Weather &amp; emergency day exclusions</p>
+      <p class="section-sub">Pulls a full service date out of the monthly assessment — agency-wide or for specific routes — with a contractor notification trail.</p>
+      <div class="card form-card">
+        <div class="form-row">
+          <label>Scope
+            <select id="de-scope">
+              <option value="Agency">All routes (agency-wide)</option>
+              <option value="Route">Specific route</option>
+            </select>
+          </label>
+          <label id="de-route-wrap" class="hidden">Route<input id="de-route" type="text" placeholder="e.g. 490"></label>
+          <label>Service date<input id="de-date" type="date"></label>
+          <label>Reason<select id="de-reason"></select></label>
+        </div>
+        <div class="form-row">
+          <label class="grow">Notes<input id="de-notes" type="text" placeholder="e.g. Metro-wide snow emergency, routes on winter detour"></label>
+          <button class="btn btn-primary" id="de-add" style="align-self:flex-end;">Add exclusion</button>
+        </div>
+      </div>
+      <div class="card" style="overflow:hidden;">
+        <table class="data">
+          <thead><tr><th>Date</th><th>Scope</th><th>Reason</th><th>Status</th><th>Contractor notified</th></tr></thead>
+          <tbody id="dates-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============ PLACEHOLDER PAGES ============ -->
+    <section id="page-monthly" class="content single hidden">
+      <p class="section-title">Monthly Assessments</p>
+      <p class="section-sub">Locked, versioned monthly OTP snapshots per route.</p>
+      <div class="card placeholder-card">No finalized months yet in Dev. Run <code>sp_FinalizeMonthlyOtpAssessment</code> once a service month closes.</div>
+    </section>
+    <section id="page-audit" class="content single hidden">
+      <p class="section-title">Audit Stream</p>
+      <p class="section-sub">Every exclusion rule change and finalization action, in order.</p>
+      <div class="card placeholder-card">Audit log view — coming once the module is connected to Dev SQL.</div>
+    </section>
+    <section id="page-admin" class="content single hidden">
+      <p class="section-title">Administration</p>
+      <p class="section-sub">Reason codes, approval roles, and detection thresholds.</p>
+      <div class="card placeholder-card">Admin settings — coming soon.</div>
+    </section>
+    <section id="page-tuner" class="content single hidden">
+      <p class="section-title">Threshold Tuner</p>
+      <p class="section-sub">Adjust the candidate-detection sensitivity and preview how it changes the Review Queue.</p>
+      <div class="card placeholder-card">Tuning workspace — coming soon.</div>
+    </section>
+
+  </div>
+</div>
+
+<script>
+const DATA = {"routes": [{"route": "493", "total": 102.0, "ontime": 45.0, "pct_raw": 44.1}, {"route": "490", "total": 508.0, "ontime": 231.0, "pct_raw": 45.5}, {"route": "499", "total": 582.0, "ontime": 309.0, "pct_raw": 53.1}, {"route": "460", "total": 615.0, "ontime": 383.0, "pct_raw": 62.3}, {"route": "440", "total": 690.0, "ontime": 439.0, "pct_raw": 63.6}, {"route": "477", "total": 783.0, "ontime": 528.0, "pct_raw": 67.4}, {"route": "465", "total": 974.0, "ontime": 685.0, "pct_raw": 70.3}, {"route": "444", "total": 2833.0, "ontime": 2008.0, "pct_raw": 70.9}, {"route": "Orange LINK", "total": 938.0, "ontime": 685.0, "pct_raw": 73.0}, {"route": "495", "total": 3262.0, "ontime": 2393.0, "pct_raw": 73.4}, {"route": "420", "total": 576.0, "ontime": 455.0, "pct_raw": 79.0}, {"route": "480", "total": 263.0, "ontime": 208.0, "pct_raw": 79.1}, {"route": "470", "total": 340.0, "ontime": 269.0, "pct_raw": 79.1}, {"route": "475", "total": 714.0, "ontime": 569.0, "pct_raw": 79.7}, {"route": "447", "total": 552.0, "ontime": 443.0, "pct_raw": 80.3}, {"route": "497", "total": 492.0, "ontime": 401.0, "pct_raw": 81.5}, {"route": "436", "total": 888.0, "ontime": 752.0, "pct_raw": 84.7}, {"route": "442", "total": 710.0, "ontime": 627.0, "pct_raw": 88.3}, {"route": "445", "total": 1104.0, "ontime": 999.0, "pct_raw": 90.5}, {"route": "446", "total": 1110.0, "ontime": 1041.0, "pct_raw": 93.8}], "candidates": [{"route": "490", "stopName": "Wash/Coffman SW", "stopId": 13209, "direction": "North", "n": 34, "early_pct": 32.4, "late_pct": 44.1, "ontime_pct": 23.5, "missed_pct": 0.0, "avg_var": 164.0}, {"route": "470", "stopName": "Eagan TS", "stopId": 30535, "direction": "South", "n": 34, "early_pct": 20.6, "late_pct": 35.3, "ontime_pct": 44.1, "missed_pct": 0.0, "avg_var": 144.7}, {"route": "490", "stopName": "12 St/Hennep. S", "stopId": 19332, "direction": "North", "n": 34, "early_pct": 52.9, "late_pct": 11.8, "ontime_pct": 35.3, "missed_pct": 0.0, "avg_var": -132.2}, {"route": "477", "stopName": "2 Av S/10 St NE", "stopId": 53307, "direction": "North", "n": 89, "early_pct": 19.1, "late_pct": 15.7, "ontime_pct": 65.2, "missed_pct": 0.0, "avg_var": 85.2}, {"route": "470", "stopName": "2 Av S/10 St NE", "stopId": 53307, "direction": "North", "n": 34, "early_pct": 17.6, "late_pct": 8.8, "ontime_pct": 73.5, "missed_pct": 0.0, "avg_var": 67.6}, {"route": "460", "stopName": "I35W/Lake St E", "stopId": 17780, "direction": "North", "n": 89, "early_pct": 36.0, "late_pct": 1.1, "ontime_pct": 62.9, "missed_pct": 0.0, "avg_var": -37.2}, {"route": "490", "stopName": "2 Av S/10 St NE", "stopId": 53307, "direction": "North", "n": 34, "early_pct": 44.1, "late_pct": 20.6, "ontime_pct": 35.3, "missed_pct": 0.0, "avg_var": -32.0}, {"route": "477", "stopName": "I35W/Lake St E", "stopId": 17780, "direction": "North", "n": 89, "early_pct": 25.8, "late_pct": 10.1, "ontime_pct": 64.0, "missed_pct": 0.0, "avg_var": 29.2}, {"route": "444", "stopName": "Burnsville Tran", "stopId": 31928, "direction": "North", "n": 282, "early_pct": 41.5, "late_pct": 11.3, "ontime_pct": 46.8, "missed_pct": 0.4, "avg_var": 22.6}, {"route": "470", "stopName": "I35W/Lake St E", "stopId": 17780, "direction": "North", "n": 34, "early_pct": 20.6, "late_pct": 0.0, "ontime_pct": 79.4, "missed_pct": 0.0, "avg_var": 14.4}, {"route": "444", "stopName": "Burnsville Tran", "stopId": 31928, "direction": "South", "n": 284, "early_pct": 50.4, "late_pct": 12.7, "ontime_pct": 37.0, "missed_pct": 0.0, "avg_var": 0.7}]};
+
+const reasonCodes = [
+  ['SCHED_RECOVERY','Scheduled recovery / layover'],
+  ['TERMINAL_HOLD','Terminal / station hold'],
+  ['NON_REVENUE','Non-revenue stop'],
+  ['SCHEDULE_DESIGN','Schedule design issue'],
+  ['DATA_QUALITY','Data quality issue'],
+  ['OTHER','Other']
+];
+const dateReasonCodes = [
+  ['WEATHER_SNOW','Snow event'],
+  ['WEATHER_ICE','Ice event'],
+  ['WEATHER_FLOOD','Flooding'],
+  ['EMERGENCY_ROAD','Emergency road closure'],
+  ['DECLARED_EMERGENCY','Declared emergency'],
+  ['OTHER','Other']
+];
+
+const state = {};
+DATA.candidates.forEach((c,i)=> state[i] = {status:'pending', reason:'SCHED_RECOVERY'});
+
+const timelineSeed = [
+  {title:'Service week imported', desc:'Jul 7–13, 2026 · 18,036 timepoint events · T. Fant'},
+  {title:'Candidate detection run', desc: DATA.candidates.length + ' stops flagged for early-departure bias'},
+  {title:'Metric confirmed', desc:'Attachment G basis set to Departure adherence'},
+];
+let timelineLog = [];
+
+function pushTimeline(title, desc){
+  timelineLog.unshift({title, desc});
+  renderTimeline();
+}
+
+function renderTimeline(){
+  const items = [...timelineLog, ...timelineSeed].slice(0, 10);
+  document.getElementById('timeline-list').innerHTML = items.map(t => `
+    <div class="timeline-item">
+      <div class="t-title">${t.title}</div>
+      <div class="t-desc">${t.desc}</div>
+    </div>
+  `).join('');
+}
+
+const checkSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>';
+const warnSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 8v5M12 17h.01"/></svg>';
+const xSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+
+function pctSeg(c){
+  const other = Math.max(0, 100 - c.early_pct - c.ontime_pct - c.late_pct - c.missed_pct);
+  return [
+    {cls:'early', v:c.early_pct},{cls:'ontime', v:c.ontime_pct},
+    {cls:'late', v:c.late_pct},{cls:'missed', v:c.missed_pct + other}
+  ];
+}
+function renderStrip(c){ return pctSeg(c).map(s=>`<div class="seg ${s.cls}" style="width:${s.v}%"></div>`).join(''); }
+
+function populateFilters(){
+  const sel = document.getElementById('filter-route');
+  [...new Set(DATA.candidates.map(c=>c.route))].sort().forEach(r=>{
+    const o = document.createElement('option'); o.value=r; o.textContent='Route '+r; sel.appendChild(o);
+  });
+  const rsel = document.getElementById('de-reason');
+  dateReasonCodes.forEach(([code,label])=>{
+    const o = document.createElement('option'); o.value=code; o.textContent=label; rsel.appendChild(o);
+  });
+}
+
+function renderStats(){
+  const total = DATA.candidates.length;
+  const approved = Object.values(state).filter(s=>s.status==='approved').length;
+  const rejected = Object.values(state).filter(s=>s.status==='rejected').length;
+  const pending = total - approved - rejected;
+  document.getElementById('stat-pending').textContent = pending;
+  document.getElementById('stat-approved').textContent = approved;
+  document.getElementById('stat-weather').textContent = dateExclusions.length;
+  const belowCount = DATA.routes.filter(r=>computeOfficialPct(r) < 90).length;
+  document.getElementById('stat-below').textContent = belowCount;
+}
+
+function computeOfficialPct(r){
+  const relevant = DATA.candidates.map((c,i)=>({c,i})).filter(({c,i}) => c.route===r.route && state[i].status==='approved');
+  let excludedEvents=0, excludedOnTime=0;
+  relevant.forEach(({c})=>{ excludedEvents+=c.n; excludedOnTime += Math.round(c.n*c.ontime_pct/100); });
+  const newTotal = r.total - excludedEvents;
+  const newOnTime = r.ontime - excludedOnTime;
+  return newTotal>0 ? Math.round((newOnTime/newTotal)*1000)/10 : r.pct_raw;
+}
+
+function renderCards(){
+  const routeFilter = document.getElementById('filter-route').value;
+  const statusFilter = document.getElementById('filter-status').value;
+  const search = document.getElementById('filter-search').value.toLowerCase();
+  const list = document.getElementById('card-list');
+  list.innerHTML = '';
+
+  DATA.candidates.forEach((c,i)=>{
+    const st = state[i];
+    if (routeFilter && c.route !== routeFilter) return;
+    if (statusFilter==='pending' && st.status!=='pending') return;
+    if (statusFilter==='resolved' && st.status==='pending') return;
+    if (search && !c.stopName.toLowerCase().includes(search)) return;
+
+    const row = document.createElement('div');
+    row.className = 'check-row' + (st.status==='pending' ? ' highlight' : '');
+    const icon = st.status==='approved' ? `<div class="status-icon ok">${checkSvg}</div>`
+               : st.status==='rejected' ? `<div class="status-icon rejected">${xSvg}</div>`
+               : `<div class="status-icon warn">${warnSvg}</div>`;
+
+    const varLabel = c.avg_var < 0 ? `${Math.abs(c.avg_var)}s early (avg)` : `${c.avg_var}s late (avg, mixed pattern)`;
+
+    let actions;
+    if (st.status === 'pending'){
+      actions = `
+        <select data-i="${i}" class="reason-select">
+          ${reasonCodes.map(([code,label])=>`<option value="${code}" ${st.reason===code?'selected':''}>${label}</option>`).join('')}
+        </select>
+        <button class="btn btn-primary" data-i="${i}" data-action="approve">Approve</button>
+        <button class="btn btn-secondary" data-i="${i}" data-action="reject">Reject</button>
+      `;
+    } else if (st.status === 'approved'){
+      const label = reasonCodes.find(r=>r[0]===st.reason)[1];
+      actions = `<span class="resolved-tag">Excluded — ${label}</span>`;
+    } else {
+      actions = `<span class="resolved-tag rejected">Kept in OTP calc</span>`;
+    }
+
+    row.innerHTML = `
+      ${icon}
+      <div class="check-body">
+        <div class="check-title"><span class="route-chip">RT ${c.route}</span>${c.stopName}</div>
+        <div class="check-desc">Stop ${c.stopId} · ${c.direction||'—'} · ${c.n} trips sampled · ${varLabel}</div>
+        <div class="adherence-strip">${renderStrip(c)}</div>
+      </div>
+      <div class="check-actions">${actions}</div>
+    `;
+    list.appendChild(row);
+  });
+
+  document.querySelectorAll('.btn[data-action]').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      const i = +e.currentTarget.dataset.i;
+      const action = e.currentTarget.dataset.action;
+      const rsel = document.querySelector(`.reason-select[data-i="${i}"]`);
+      if (rsel) state[i].reason = rsel.value;
+      state[i].status = action==='approve' ? 'approved' : 'rejected';
+      const c = DATA.candidates[i];
+      pushTimeline(
+        action==='approve' ? 'Exclusion approved' : 'Candidate rejected',
+        `Route ${c.route} · ${c.stopName} · ${state[i].status==='approved' ? reasonCodes.find(r=>r[0]===state[i].reason)[1] : 'kept in OTP calc'}`
+      );
+      renderCards(); renderRoutes(); renderStats();
+    });
+  });
+  document.querySelectorAll('.reason-select').forEach(sel=>{
+    sel.addEventListener('change', e=> state[+e.target.dataset.i].reason = e.target.value);
+  });
+}
+
+function renderRoutes(){
+  const tbody = document.getElementById('routes-body');
+  tbody.innerHTML = '';
+  DATA.routes.forEach(r=>{
+    const officialPct = computeOfficialPct(r);
+    const delta = Math.round((officialPct - r.pct_raw)*10)/10;
+    const below = officialPct < 90;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><span class="route-chip">RT ${r.route}</span></td>
+      <td>${r.total}</td>
+      <td>${r.pct_raw}%</td>
+      <td><b>${officialPct}%</b></td>
+      <td class="${delta>0?'delta-up':'delta-flat'}">${delta>0?'+':''}${delta} pts</td>
+      <td>${below ? `<span class="flag flag-below">Below 90%</span>` : `<span class="flag flag-ok">Meets 90%</span>`}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+const dateExclusions = [
+  {scope:'Agency', route:null, date:'2026-01-12', reason:'WEATHER_SNOW', notes:'Metro-wide snow emergency, all routes on winter detour', status:'Approved', notified:true, notifiedDate:'2026-01-13', acknowledged:true},
+  {scope:'Route', route:'490', date:'2026-02-03', reason:'EMERGENCY_ROAD', notes:'CR11 bridge closure rerouted Route 490 for the day', status:'Approved', notified:true, notifiedDate:'2026-02-05', acknowledged:false}
+];
+
+document.getElementById('de-scope').addEventListener('change', e=>{
+  document.getElementById('de-route-wrap').classList.toggle('hidden', e.target.value!=='Route');
+});
+document.getElementById('de-add').addEventListener('click', ()=>{
+  const scope = document.getElementById('de-scope').value;
+  const route = document.getElementById('de-route').value.trim();
+  const date = document.getElementById('de-date').value;
+  const reason = document.getElementById('de-reason').value;
+  const notes = document.getElementById('de-notes').value.trim();
+  if (!date){ alert('Enter a service date.'); return; }
+  if (scope==='Route' && !route){ alert('Enter a route for a route-specific exclusion.'); return; }
+  dateExclusions.unshift({scope, route: scope==='Route'?route:null, date, reason, notes, status:'Proposed', notified:false, notifiedDate:null, acknowledged:false});
+  document.getElementById('de-route').value=''; document.getElementById('de-notes').value='';
+  pushTimeline('Weather exclusion logged', `${date} · ${scope==='Agency'?'All routes':'Route '+route} · ${dateReasonCodes.find(r=>r[0]===reason)[1]}`);
+  renderDateExclusions(); renderStats();
+});
+
+function renderDateExclusions(){
+  const tbody = document.getElementById('dates-body');
+  tbody.innerHTML = '';
+  dateExclusions.slice().sort((a,b)=>b.date.localeCompare(a.date)).forEach(d=>{
+    const reasonLabel = dateReasonCodes.find(r=>r[0]===d.reason)[1];
+    const scopeLabel = d.scope==='Agency' ? 'All routes' : `Route ${d.route}`;
+    const statusBadge = d.status==='Approved' ? `<span class="badge badge-approved">Approved</span>` : `<span class="badge badge-proposed">Proposed</span>`;
+    const notifyBadge = !d.notified ? `<span class="badge badge-pending">Not yet notified</span>`
+      : d.acknowledged ? `<span class="badge badge-approved">Acknowledged ${d.notifiedDate}</span>`
+      : `<span class="badge badge-notified">Notified ${d.notifiedDate}</span>`;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${d.date}</td><td>${scopeLabel}</td>
+      <td>${reasonLabel}${d.notes?`<div class="check-desc" style="margin-top:2px;">${d.notes}</div>`:''}</td>
+      <td>${statusBadge}</td><td>${notifyBadge}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+/* ---------------- nav / page switching ---------------- */
+const pageMeta = {
+  dashboard:{title:'Dashboard', sub:'Portfolio view across all routes and open review items'},
+  queue:{title:'Review Queue', sub:'Approve or reject stops flagged for chronic early-departure bias'},
+  routes:{title:'Route Summary', sub:'Official departure OTP vs. raw, compared to the 90% threshold'},
+  weather:{title:'Weather Exclusions', sub:'Log and track weather/emergency service day exclusions'},
+  monthly:{title:'Monthly Assessments', sub:'Locked OTP snapshots used for contractor assessment'},
+  audit:{title:'Audit Stream', sub:'Full history of exclusion rule and finalization actions'},
+  admin:{title:'Administration', sub:'Reason codes, roles, and detection thresholds'},
+  tuner:{title:'Threshold Tuner', sub:'Preview candidate detection sensitivity changes'},
+};
+document.querySelectorAll('.navitem').forEach(item=>{
+  item.addEventListener('click', ()=>{
+    const page = item.dataset.page;
+    document.querySelectorAll('.navitem').forEach(n=>n.classList.remove('active'));
+    item.classList.add('active');
+    document.querySelectorAll('[id^="page-"]').forEach(sec=>sec.classList.add('hidden'));
+    document.getElementById('page-'+page).classList.remove('hidden');
+    document.getElementById('page-title').textContent = pageMeta[page].title;
+    document.getElementById('page-subtitle').textContent = pageMeta[page].sub;
+  });
+});
+
+document.getElementById('theme-toggle').addEventListener('click', ()=>{
+  const body = document.body;
+  body.dataset.theme = body.dataset.theme === 'dark' ? 'light' : 'dark';
+});
+
+['filter-route','filter-status','filter-search'].forEach(id=>{
+  document.getElementById(id).addEventListener('input', renderCards);
+});
+
+populateFilters();
+renderTimeline();
+renderCards();
+renderRoutes();
+renderDateExclusions();
+renderStats();
+</script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+
+    "SQL_CONNECTION_STRING": "Server=tcp:sql-mvta-dev-mvta-jx4471.database.windows.net,1433;Database=sqldb-mvta-onboard-dev;User ID=mvtaonboardadmin;Password=REPLACE_ME;Encrypt=true;TrustServerCertificate=false;",
+
+    "SERVICE_BUS_QUEUE": "message-created-events",
+    "SERVICE_BUS_CONFIRM_QUEUE": "confirmation-requested-events",
+
+    "// note": "The Service Bus TRIGGERS use identity-based auth via the 'ServiceBusConnection' prefix below (local auth/SAS is disabled on the namespace). In Azure, set ServiceBusConnection__fullyQualifiedNamespace as an app setting and grant the dispatch app's managed identity the Service Bus Data Receiver role (done in Bicep).",
+    "ServiceBusConnection__fullyQualifiedNamespace": "sb-mvta-onboard-dev.servicebus.windows.net",
+
+    "ACS_ENDPOINT": "https://<your-acs-resource>.communication.azure.com",
+    "ACS_SMS_FROM": "+18005550100",
+    "ACS_EMAIL_FROM": "DoNotReply@<your-verified-domain>",
+    "RIDER_APP_BASE_URL": "https://<front-door-endpoint>"
+  }
+}

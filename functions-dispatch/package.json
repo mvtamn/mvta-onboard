@@ -1,0 +1,28 @@
+{
+  "name": "mvta-onboard-dispatch",
+  "version": "1.0.0",
+  "description": "Dispatch handler for MVTA OnBoard - fans out SMS/email via Azure Communication Services in response to Service Bus events.",
+  "main": "dist/src/functions/*.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "prestart": "npm run build",
+    "start": "func start",
+    "test": "echo \"no tests yet\""
+  },
+  "dependencies": {
+    "@azure/communication-email": "^1.0.0",
+    "@azure/communication-sms": "^1.1.0",
+    "@azure/functions": "^4.5.0",
+    "@azure/identity": "^4.5.0",
+    "mssql": "^11.0.1"
+  },
+  "devDependencies": {
+    "@types/mssql": "^9.1.5",
+    "@types/node": "^20.14.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

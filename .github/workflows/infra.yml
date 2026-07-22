@@ -1,0 +1,98 @@
+name: Deploy infrastructure (Bicep)
+
+# Reproducible, auditable infra deploys. Auth is OIDC federated identity - no
+# cloud credentials are stored in GitHub (only the client/tenant/subscription
+# IDs, which are not secrets). Configure a federated credential on a deployment
+# app registration and grant it least-privilege RBAC on rg-mvta-onboard-<env>.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infra-stage0/**"
+      - "infra-phase1/**"
+      - ".github/workflows/infra.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write # required for OIDC
+  contents: read
+
+concurrency:
+  group: infra-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: dev
+    env:
+      RESOURCE_GROUP: rg-mvta-onboard-dev
+      LOCATION: westus2
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Validate (what-if) stage 0
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az deployment group what-if \
+              --resource-group "$RESOURCE_GROUP" \
+              --template-file infra-stage0/main.bicep \
+              --parameters infra-stage0/parameters/dev.parameters.json \
+              --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}"
+
+      - name: Deploy stage 0 (network, KV, SQL, monitoring)
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az deployment group create \
+              --resource-group "$RESOURCE_GROUP" \
+              --template-file infra-stage0/main.bicep \
+              --parameters infra-stage0/parameters/dev.parameters.json \
+              --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}"
+
+      # dev is the ONLY live environment (no test/prod yet) - it is effectively
+      # production. what-if before every phase-1 deploy so changes to the live
+      # Function Apps / SWAs / Service Bus are reviewed in the run log first.
+      - name: Validate (what-if) phase 1
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az deployment group what-if \
+              --resource-group "$RESOURCE_GROUP" \
+              --template-file infra-phase1/main-phase1.bicep \
+              --parameters infra-phase1/parameters/phase1-dev.parameters.json \
+              --parameters frontDoorId="${{ vars.FRONT_DOOR_ID }}"
+
+      - name: Deploy phase 1 (functions, SWAs, Service Bus, WAF policy)
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az deployment group create \
+              --resource-group "$RESOURCE_GROUP" \
+              --template-file infra-phase1/main-phase1.bicep \
+              --parameters infra-phase1/parameters/phase1-dev.parameters.json \
+              --parameters frontDoorId="${{ vars.FRONT_DOOR_ID }}"
+
+      - name: Smoke-test the live API after infra changes
+        uses: azure/cli@v2
+        with:
+          # HANDOFF §5 lesson: "config is fixed" does not mean "app recovered".
+          # Check through Front Door (the real rider-facing path) - a direct
+          # azurewebsites.net probe would be blocked by design once the
+          # Front-Door-only inbound restriction is enabled. Fail loudly so a
+          # code redeploy (func publish --force) can be triggered immediately.
+          inlineScript: |
+            status=$(curl -s -o /dev/null -w "%{http_code}" "https://endpoint-mvta-onboard-dev-haehgsbbe6esd8cc.z03.azurefd.net/api/health" || true)
+            echo "Health check returned: $status"
+            if [ "$status" != "200" ]; then
+              echo "::error::/api/health returned $status after infra deploy - the app may need a code redeploy (see HANDOFF §5.4)."
+              exit 1
+            fi

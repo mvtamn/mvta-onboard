@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "onboard-console",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "frontend", "run", "dev:console"],
+      "port": 5174
+    },
+    {
+      "name": "rider-app",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "frontend", "run", "dev:rider"],
+      "port": 5173
+    }
+  ]
+}

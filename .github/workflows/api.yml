@@ -1,0 +1,84 @@
+name: Deploy Function Apps (REST API + dispatch)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "functions-restapi/**"
+      - "functions-dispatch/**"
+      - ".github/workflows/api.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "functions-restapi/**"
+      - "functions-dispatch/**"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: [functions-restapi, functions-dispatch]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ${{ matrix.app }}/package-lock.json
+      - name: Install
+        working-directory: ${{ matrix.app }}
+        run: npm ci
+      - name: Build (TypeScript)
+        working-directory: ${{ matrix.app }}
+        run: npm run build
+      - name: Unit tests
+        working-directory: ${{ matrix.app }}
+        run: npm test
+
+  deploy:
+    needs: test
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: dev
+    strategy:
+      matrix:
+        include:
+          - app: functions-restapi
+            function_app: func-mvta-restapi-dev
+          - app: functions-dispatch
+            function_app: func-mvta-dispatch-dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ${{ matrix.app }}/package-lock.json
+
+      - name: Install, build, then prune to production deps
+        working-directory: ${{ matrix.app }}
+        # Dev deps are needed to compile TypeScript; prune them afterwards so
+        # the deployed package ships only dist/ + production node_modules.
+        run: |
+          npm ci
+          npm run build
+          npm prune --omit=dev
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to Function App
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ matrix.function_app }}
+          package: ${{ matrix.app }}
