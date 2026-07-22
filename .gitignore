@@ -43,5 +43,6 @@ mvta-functions-prod-source.zip
 ~$*.docx
 *.png
 *.jpg
+*.csv
 MVTA_Alerts_Optin_Widget.html
 MVTA_OnBoard_Phase1_Infrastructure_1.zip
