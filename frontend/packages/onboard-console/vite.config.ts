@@ -7,7 +7,7 @@ export default defineConfig({
   base: "/console/",
   plugins: [react()],
   server: {
-    port: 5174,
+    port: process.env.PORT ? Number(process.env.PORT) : 5174,
     proxy: {
       "/api": {
         // Default to the live dev Front Door so previews show real data from

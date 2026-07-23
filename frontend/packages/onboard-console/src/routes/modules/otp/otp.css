@@ -1,163 +1,45 @@
-/* OTP Compliance module — scoped under .otp-app. Google Fonts CDN dropped;
-   uses a system/Inter-fallback stack so no external font host is needed. */
-.otp-app {
-  --brand-dark-green: #00553d;
-  --brand-light-green: #639281;
-  --brand-dark-orange: #f78e1e;
-  --brand-light-orange: #faad60;
-  --brand-green-vm: #417b68;
-  --brand-burnt-orange: #c34b18;
-  --brand-dark-gray: #4f4f4f;
-
-  --sidebar-bg: var(--brand-dark-green);
-  --sidebar-text: #e4efea;
-  --sidebar-text-dim: #8fbba9;
-  --sidebar-border: rgba(255, 255, 255, 0.1);
-
-  --page-bg: #fff;
-  --meta-bar-bg: #e5e5e1;
-  --card-bg: #fff;
-  --card-border: #dcdcd7;
-  --heading: #1a1a1a;
-  --body-text: var(--brand-dark-gray);
-  --muted: #767671;
-  --green: var(--brand-dark-green);
-  --green-soft: #e1ebe7;
-  --amber: var(--brand-dark-orange);
-  --amber-soft: #fdecd7;
-  --gray-status: var(--brand-dark-gray);
-  --gray-status-soft: #ececea;
-  --highlight: #fdf1e1;
-  --highlight-border: var(--brand-light-orange);
-  --btn-primary-bg: var(--brand-light-green);
-  --btn-primary-bg-hover: var(--brand-dark-green);
-  --btn-secondary-border: #d6d6d1;
-  --radius-lg: 14px;
-  --radius-md: 9px;
-  --radius-sm: 6px;
-
-  display: flex;
-  min-height: 70vh;
-  border: 1px solid var(--card-border);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  background: var(--page-bg);
-  color: var(--body-text);
-  font-family: "Inter", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-}
-.otp-app.otp-dark {
-  --page-bg: #0f1a15;
-  --meta-bar-bg: #16241d;
-  --card-bg: #152219;
-  --card-border: #25392f;
-  --heading: #eef3f0;
-  --body-text: #c7d2cc;
-  --muted: #8aa096;
-  --green-soft: #193b2c;
-  --amber-soft: #3a2a15;
-  --gray-status-soft: #243128;
-  --highlight: #3a2a15;
-  --highlight-border: var(--brand-dark-orange);
-  --btn-secondary-border: #2e4238;
+/* OTP Compliance module - scoped under .otp-panel. Renders inside the
+   console's own panel-body chrome (no separate sidebar/topbar of its own -
+   see OtpModule.tsx). Uses the global color tokens (see ../../../styles.css)
+   so it respects the light/dark theme toggle; only concepts with no shared
+   console equivalent get their own rules here. */
+.otp-panel {
+  --late-orange: #c34b18;
 }
 
-.otp-app button { font-family: inherit; cursor: pointer; }
+.otp-meta { background: var(--surface-alt-bg); border: 1px solid var(--border); border-radius: 4px; padding: 10px 14px; display: flex; gap: 40px; margin-bottom: 14px; flex-wrap: wrap; }
+.otp-meta-item .otp-meta-label { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 3px; }
+.otp-meta-item .otp-meta-value { font-size: 12.5px; font-weight: 600; color: var(--text); }
 
-.otp-sidebar { width: 220px; flex-shrink: 0; background: var(--sidebar-bg); display: flex; flex-direction: column; padding: 18px 14px; }
-.otp-brand { display: flex; align-items: center; gap: 10px; padding: 6px 8px 20px; }
-.otp-brand .brand-mark { width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, var(--brand-light-green) 0%, var(--brand-dark-green) 45%, var(--brand-dark-orange) 100%); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 13px; }
-.otp-brand .brand-text { color: #fff; font-weight: 700; font-size: 15px; }
-.otp-brand .brand-sub { color: var(--sidebar-text-dim); font-size: 11px; margin-top: 1px; }
-.otp-nav { display: flex; flex-direction: column; gap: 2px; }
-.otp-nav .navlabel { color: var(--sidebar-text-dim); font-size: 10.5px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; padding: 16px 12px 6px; }
-.otp-nav .navitem { text-align: left; background: none; border: none; padding: 9px 12px; border-radius: var(--radius-sm); color: var(--sidebar-text); font-size: 13.5px; font-weight: 500; }
-.otp-nav .navitem:hover { background: rgba(255, 255, 255, 0.08); }
-.otp-nav .navitem.active { background: rgba(255, 255, 255, 0.14); color: #fff; font-weight: 600; }
-.otp-foot { margin-top: auto; border-top: 1px solid var(--sidebar-border); padding-top: 14px; }
-.otp-foot .status-row { display: flex; align-items: center; gap: 7px; padding: 0 12px 10px; color: var(--sidebar-text-dim); font-size: 12px; }
-.otp-foot .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--brand-light-green); }
-.otp-foot .version-pill { margin: 0 12px; display: inline-block; background: rgba(255, 255, 255, 0.07); color: var(--sidebar-text-dim); font-size: 11px; padding: 4px 9px; border-radius: 999px; }
-
-.otp-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-.otp-topbar { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px 14px; }
-.otp-topbar h1 { font-size: 20px; font-weight: 800; color: var(--heading); margin: 0; }
-.otp-topbar .subtitle { color: var(--muted); font-size: 13px; margin-top: 3px; }
-.otp-app .icon-btn { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--card-border); background: var(--card-bg); color: var(--body-text); font-size: 15px; }
-.otp-metabar { background: var(--meta-bar-bg); padding: 12px 24px; display: flex; gap: 48px; }
-.otp-metabar .meta-label { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-bottom: 3px; }
-.otp-metabar .meta-value { font-size: 13.5px; font-weight: 600; color: var(--heading); }
-
-.otp-content { flex: 1; padding: 22px 24px 30px; }
-.otp-content .single { display: block; }
 .otp-two { display: flex; gap: 20px; align-items: flex-start; }
+.otp-queue { flex: 1; min-width: 0; }
+.otp-queue-toolbar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+.otp-queue-toolbar select, .otp-queue-toolbar input { font-family: inherit; font-size: 12.5px; padding: 7px 8px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface-bg); color: var(--text); }
 
-.otp-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--radius-lg); box-shadow: 0 1px 2px rgba(20, 30, 25, 0.04); }
-
-.queue-card { flex: 1; min-width: 0; padding: 22px 22px 18px; }
-.queue-toolbar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
-.queue-toolbar select, .queue-toolbar input { font-family: inherit; font-size: 12.5px; padding: 7px 10px; border: 1px solid var(--card-border); border-radius: var(--radius-sm); background: var(--card-bg); color: var(--body-text); }
-
-.check-row { display: flex; gap: 14px; padding: 15px 10px; border-bottom: 1px solid var(--card-border); align-items: flex-start; }
+.check-row { display: flex; gap: 14px; padding: 15px 10px; border-bottom: 1px solid var(--border); align-items: flex-start; }
 .check-row:last-child { border-bottom: none; }
-.check-row.highlight { background: var(--highlight); border: 1px solid var(--highlight-border); border-radius: var(--radius-md); padding: 15px 14px; margin: 2px 0; }
-.status-icon { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; color: #fff; font-weight: 700; font-size: 13px; }
-.status-icon.ok { background: var(--green); }
-.status-icon.warn { background: var(--amber); }
-.status-icon.rejected { background: var(--gray-status); }
+.check-row.highlight { background: var(--highlight-bg); border: 1px solid var(--highlight-border); border-radius: 4px; padding: 15px 14px; margin: 2px 0; }
+.status-icon { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; color: #fff; font-weight: 700; font-size: 12px; }
+.status-icon.ok { background: var(--success-text); }
+.status-icon.warn { background: #f78e1e; }
+.status-icon.rejected { background: var(--text-dim); }
 .check-body { flex: 1; min-width: 0; }
-.check-title { font-size: 14.5px; font-weight: 700; color: var(--heading); display: flex; align-items: center; flex-wrap: wrap; }
-.route-chip { display: inline-block; background: var(--sidebar-bg); color: #fff; font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 5px; margin-right: 8px; }
-.check-desc { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
-.adherence-strip { display: flex; height: 7px; width: 180px; border-radius: 2px; overflow: hidden; margin-top: 9px; border: 1px solid var(--card-border); }
+.check-title { font-size: 14px; font-weight: 700; color: var(--text); display: flex; align-items: center; flex-wrap: wrap; }
+.route-chip { display: inline-block; background: var(--brand-green); color: #fff; font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 5px; margin-right: 8px; }
+.check-desc { color: var(--text-muted); font-size: 12px; margin-top: 3px; }
+.adherence-strip { display: flex; height: 7px; width: 180px; border-radius: 2px; overflow: hidden; margin-top: 9px; border: 1px solid var(--border); }
 .seg { height: 100%; }
-.seg.early { background: var(--brand-light-orange); }
-.seg.ontime { background: var(--green); }
-.seg.late { background: var(--brand-burnt-orange); }
-.seg.missed { background: var(--gray-status); }
+.seg.early { background: #faad60; }
+.seg.ontime { background: var(--success-text); }
+.seg.late { background: var(--late-orange); }
+.seg.missed { background: var(--text-dim); }
 .check-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
-.check-actions select { font-family: inherit; font-size: 12px; padding: 6px 8px; border: 1px solid var(--card-border); border-radius: var(--radius-sm); background: var(--card-bg); color: var(--body-text); }
-.otp-app .btn { font-family: inherit; font-weight: 600; font-size: 12.5px; border: none; border-radius: var(--radius-sm); padding: 8px 14px; }
-.otp-app .btn-primary { background: var(--btn-primary-bg); color: #fff; }
-.otp-app .btn-primary:hover { background: var(--btn-primary-bg-hover); }
-.otp-app .btn-secondary { background: var(--card-bg); color: var(--heading); border: 1px solid var(--btn-secondary-border); }
-.resolved-tag { font-size: 12px; color: var(--green); font-weight: 600; }
-.resolved-tag.rejected { color: var(--muted); }
+.check-actions select { font-family: inherit; font-size: 12px; padding: 6px 8px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface-bg); color: var(--text); }
 
-.timeline-card { width: 290px; flex-shrink: 0; padding: 20px 20px 8px; }
-.timeline-card h2 { font-size: 16px; font-weight: 800; color: var(--heading); margin: 0 0 14px; }
-.timeline-item { position: relative; padding: 0 0 16px 18px; border-left: 2px solid var(--card-border); margin-left: 3px; }
+.otp-timeline { width: 280px; flex-shrink: 0; }
+.otp-timeline h2 { font-size: 15px; font-weight: 700; color: var(--text); margin: 0 0 14px; }
+.timeline-item { position: relative; padding: 0 0 16px 18px; border-left: 2px solid var(--border); margin-left: 3px; }
 .timeline-item:last-child { border-left-color: transparent; padding-bottom: 2px; }
-.timeline-item::before { content: ""; position: absolute; left: -5.5px; top: 2px; width: 9px; height: 9px; border-radius: 50%; background: var(--sidebar-bg); border: 2px solid var(--card-bg); }
-.timeline-item .t-title { font-size: 13px; font-weight: 700; color: var(--heading); }
-.timeline-item .t-desc { font-size: 11.5px; color: var(--muted); margin-top: 2px; line-height: 1.5; }
-
-.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 22px; }
-.stat-card { padding: 18px; }
-.stat-card .stat-label { font-size: 11.5px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
-.stat-card .stat-value { font-size: 26px; font-weight: 800; color: var(--heading); margin-top: 6px; }
-.stat-card .stat-sub { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
-
-.otp-app table.data { width: 100%; border-collapse: collapse; }
-.otp-app table.data th { text-align: left; font-size: 10.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); padding: 10px 14px; border-bottom: 1px solid var(--card-border); }
-.otp-app table.data td { padding: 11px 14px; border-bottom: 1px solid var(--card-border); font-size: 13px; color: var(--body-text); }
-.flag { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; }
-.flag-below { background: #f6e2d6; color: var(--brand-burnt-orange); }
-.flag-ok { background: var(--green-soft); color: var(--green); }
-.delta-up { color: var(--green); font-weight: 600; }
-.delta-flat { color: var(--muted); }
-
-.form-card { padding: 22px 24px; margin-bottom: 18px; }
-.form-row { display: flex; gap: 16px; margin-bottom: 14px; flex-wrap: wrap; }
-.form-row:last-child { margin-bottom: 0; }
-.form-row label { display: flex; flex-direction: column; gap: 6px; font-size: 11.5px; color: var(--muted); font-weight: 600; }
-.form-row label.grow { flex: 1; min-width: 260px; }
-.form-row select, .form-row input { font-family: inherit; font-size: 13px; padding: 8px 11px; border: 1px solid var(--card-border); border-radius: var(--radius-sm); background: var(--card-bg); color: var(--body-text); }
-.badge { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; }
-.badge-approved { background: var(--green-soft); color: var(--green); }
-.badge-proposed { background: var(--amber-soft); color: var(--amber); }
-.badge-notified { background: #e3ece8; color: var(--brand-green-vm); }
-.badge-pending { background: var(--gray-status-soft); color: var(--gray-status); }
-
-.otp-app .section-title { font-size: 16px; font-weight: 800; color: var(--heading); margin: 0 0 4px; }
-.otp-app .section-sub { font-size: 13px; color: var(--muted); margin: 0 0 18px; max-width: 640px; }
-.placeholder-card { padding: 60px 30px; text-align: center; color: var(--muted); font-size: 13.5px; }
+.timeline-item::before { content: ""; position: absolute; left: -5.5px; top: 2px; width: 9px; height: 9px; border-radius: 50%; background: var(--brand-green); border: 2px solid var(--surface-bg); }
+.timeline-item .t-title { font-size: 13px; font-weight: 700; color: var(--text); }
+.timeline-item .t-desc { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; line-height: 1.5; }

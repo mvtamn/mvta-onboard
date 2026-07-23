@@ -1,128 +1,231 @@
-/* MVTA OnBoard console — design system from the approved dashboard mockup
-   (MVTA_OnBoard_Dashboard_Mockup.html): green topbar, tab nav, live sidebar,
-   green panel headers, pill badges, sync footer. */
+/* MVTA OnBoard console — left-sidebar nav shell with light/dark theming,
+   inspired by the Document AI reference. Brand green stays constant across
+   themes (it's a dark fill either way); page/surface/text/border tokens flip
+   under [data-theme="dark"], set on the document root by ThemeContext. */
+:root {
+  --page-bg: #edebe4;
+  --surface-bg: #fff;
+  --surface-alt-bg: #f6f5f1;
+  --border: #ddd;
+  --border-strong: #ccc;
+  --border-soft: #eee;
+  --text: #2c2c2a;
+  --text-dim: #4f4f4f;
+  --text-muted: #8a8a82;
+
+  --brand-green: #00553d;
+  --brand-green-hover: #003d2c;
+  --nav-bg: var(--brand-green);
+  --danger-text: #8a1f1f;
+  --success-text: #1f7a4c;
+  --live-dot: #2fae66;
+  --table-stripe: #fafaf8;
+
+  --pill-warning-bg: #fcefd8; --pill-warning-fg: #7a4a00;
+  --pill-danger-bg: #fbe0e0; --pill-danger-fg: #8a1f1f;
+  --pill-accent-bg: #dceaf8; --pill-accent-fg: #0b4c82;
+  --pill-success-bg: #e3f0d4; --pill-success-fg: #33530f;
+  --pill-muted-bg: #ececea; --pill-muted-fg: #4f4f4f;
+
+  --datasource-border: #d8e6dd;
+  --chip-bg: #dcede6; --chip-fg: #00301f;
+  --highlight-bg: #fdf1e1; --highlight-border: #faad60;
+
+  --nav-item-fg: rgba(255, 255, 255, 0.85);
+  --nav-item-fg-dim: rgba(255, 255, 255, 0.5);
+  --nav-item-hover-bg: rgba(255, 255, 255, 0.08);
+  --nav-item-active-bg: rgba(255, 255, 255, 0.14);
+  --nav-border: rgba(255, 255, 255, 0.12);
+}
+
+:root[data-theme="dark"] {
+  --page-bg: #0b120e;
+  --surface-bg: #152219;
+  --surface-alt-bg: #16241d;
+  --border: #25392f;
+  --border-strong: #2e4238;
+  --border-soft: #1c2a23;
+  --text: #eef3f0;
+  --text-dim: #c7d2cc;
+  --text-muted: #8aa096;
+
+  /* Nav sidebar goes near-black-green in dark mode instead of staying the
+     bright brand fill - matches the reference's fully-dark cohesion rather
+     than a light-mode-only accent color surviving into dark mode. */
+  --nav-bg: #0a1310;
+
+  --danger-text: #e08585;
+  --success-text: #5fbf8f;
+  --table-stripe: #1a2a22;
+
+  --pill-warning-bg: #3a2a15; --pill-warning-fg: #f0b070;
+  --pill-danger-bg: #3a1f1f; --pill-danger-fg: #f0a0a0;
+  --pill-accent-bg: #1a2a3a; --pill-accent-fg: #8ec4f0;
+  --pill-success-bg: #193b2c; --pill-success-fg: #8fd6ac;
+  --pill-muted-bg: #243128; --pill-muted-fg: #b0bab3;
+
+  --datasource-border: #25392f;
+  --chip-bg: #193b2c; --chip-fg: #cdeedd;
+  --highlight-bg: #3a2a15; --highlight-border: #cc8a3d;
+}
+
 * { box-sizing: border-box; }
 body {
   margin: 0;
   padding: 24px;
-  background: #edebe4;
-  color: #2c2c2a;
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--page-bg);
+  color: var(--text);
+  font-family: -apple-system, "Segoe UI", Inter, Roboto, Arial, sans-serif;
   font-size: 13px;
 }
 
 .frame {
-  background: #fff;
-  border-radius: 4px;
+  background: var(--surface-bg);
+  border-radius: 14px;
   overflow: hidden;
-  border: 1px solid #ccc;
-  max-width: 1180px;
+  border: 1px solid var(--border);
+  max-width: 1280px;
   margin: 0 auto;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
   display: flex;
-  flex-direction: column;
   min-height: calc(100vh - 48px);
 }
 
-/* ---------- topbar ---------- */
-.topbar { background: #00553d; padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
-.topbar-left { display: flex; align-items: center; gap: 10px; }
-.logo-badge { background: rgba(255, 255, 255, 0.15); color: #fff; font-weight: bold; font-size: 12px; padding: 5px 9px; border-radius: 4px; letter-spacing: 0.5px; }
-.app-name { color: #fff; font-weight: bold; font-size: 16px; }
-.ver-pill { background: rgba(255, 255, 255, 0.15); color: #d9ede3; font-size: 11px; padding: 3px 8px; border-radius: 10px; }
-.topbar-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.tr-text { color: #bfe0d2; font-size: 12px; }
-.pill-user { background: rgba(255, 255, 255, 0.12); color: #fff; font-size: 12px; padding: 4px 10px; border-radius: 10px; }
-.btn-signout { background: #fff; color: #00553d; font-size: 12px; font-weight: bold; padding: 5px 12px; border-radius: 4px; border: none; cursor: pointer; }
+/* ---------- left nav sidebar ---------- */
+.nav-sidebar { width: 232px; flex-shrink: 0; background: var(--nav-bg); display: flex; flex-direction: column; padding: 18px 14px; }
+.nav-brand { display: flex; align-items: center; gap: 10px; padding: 6px 8px 22px; }
+.nav-brand .logo-badge { background: rgba(255, 255, 255, 0.15); color: #fff; font-weight: bold; font-size: 12px; padding: 5px 9px; border-radius: 6px; letter-spacing: 0.5px; }
+.nav-brand-text { color: #fff; font-weight: bold; font-size: 15px; line-height: 1.2; }
+.nav-brand-sub { color: var(--nav-item-fg-dim); font-size: 11px; margin-top: 1px; }
 
-/* ---------- tab nav ---------- */
-.tabnav { background: #f6f5f1; border-bottom: 1px solid #ddd; display: flex; padding: 0 12px; flex-wrap: wrap; }
-.tabnav a { padding: 11px 14px; font-size: 13px; color: #3a3a38; font-weight: bold; border-bottom: 3px solid transparent; text-decoration: none; }
-.tabnav a.active { background: #fff; color: #00553d; border-bottom: 3px solid #00553d; }
+.nav-list { display: flex; flex-direction: column; gap: 2px; }
+.nav-section-label { color: var(--nav-item-fg-dim); font-size: 10.5px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; padding: 16px 12px 6px; }
+.nav-list a { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 6px; color: var(--nav-item-fg); font-size: 13.5px; font-weight: 500; text-decoration: none; }
+.nav-list a svg { width: 16px; height: 16px; flex-shrink: 0; opacity: 0.85; }
+.nav-list a:hover { background: var(--nav-item-hover-bg); }
+.nav-list a.active { background: var(--nav-item-active-bg); color: #fff; font-weight: 600; }
+.nav-list a.active svg { opacity: 1; }
 
-/* ---------- layout ---------- */
-.body-area { display: flex; flex: 1; align-items: stretch; }
-.sidebar { width: 230px; background: #f6f5f1; border-right: 1px solid #ddd; padding: 16px 14px; flex-shrink: 0; }
-.main { flex: 1; padding: 18px; min-width: 0; }
+.nav-spacer { flex: 1; }
+.nav-footer { border-top: 1px solid var(--nav-border); padding-top: 14px; margin-top: 10px; }
+.nav-status { display: flex; align-items: center; gap: 7px; padding: 0 12px 10px; color: var(--nav-item-fg-dim); font-size: 12px; }
+.nav-status .live-dot { background: var(--live-dot); }
+.nav-version { margin: 0 12px; display: inline-block; background: rgba(255, 255, 255, 0.07); color: var(--nav-item-fg-dim); font-size: 11px; padding: 4px 9px; border-radius: 999px; }
 
-/* ---------- sidebar ---------- */
-.side-label { font-size: 11px; font-weight: bold; color: #8a8a82; letter-spacing: 0.5px; margin: 14px 0 8px; text-transform: uppercase; }
+/* ---------- content column ---------- */
+.content-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.content-topbar { background: var(--surface-bg); border-bottom: 1px solid var(--border); padding: 14px 22px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.content-topbar h1 { font-size: 22px; font-weight: 800; color: var(--text); margin: 0; letter-spacing: -0.01em; }
+.content-topbar .subtitle { color: var(--text-muted); font-size: 12.5px; margin-top: 3px; }
+.topbar-actions { display: flex; align-items: center; gap: 10px; }
+.tr-text { color: var(--text-muted); font-size: 12px; }
+.pill-user { display: flex; align-items: center; gap: 8px; background: var(--surface-alt-bg); border: 1px solid var(--border); color: var(--text); font-size: 12px; padding: 4px 12px 4px 4px; border-radius: 999px; }
+.avatar { width: 24px; height: 24px; border-radius: 50%; background: var(--brand-green); color: #fff; font-size: 10.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.btn-signout { background: var(--surface-bg); color: var(--brand-green); font-size: 12px; font-weight: bold; padding: 5px 14px; border-radius: 8px; border: 1px solid var(--border-strong); cursor: pointer; }
+.theme-toggle-btn { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border-strong); background: var(--surface-bg); color: var(--text); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
+.theme-toggle-btn:hover { border-color: var(--brand-green); }
+
+.content-main { flex: 1; padding: 20px 22px; overflow: auto; }
+/* flex-wrap so the rail drops below the primary column instead of
+   overlapping it when the window is too narrow for both side by side. */
+.content-layout { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+.content-layout .content-primary { flex: 1 1 320px; min-width: 0; }
+.content-layout .content-rail { flex: 0 0 260px; width: 260px; }
+
+/* ---------- live status (Dashboard right-rail) ---------- */
+.side-label { font-size: 11px; font-weight: bold; color: var(--text-muted); letter-spacing: 0.5px; margin: 14px 0 8px; text-transform: uppercase; }
 .side-label:first-child { margin-top: 0; }
-.live-badge { display: flex; align-items: center; font-size: 11.5px; color: #1f7a4c; font-weight: bold; margin-bottom: 8px; }
-.live-dot { width: 7px; height: 7px; border-radius: 50%; background: #2fae66; display: inline-block; margin-right: 6px; }
-.datasource-card { background: #fff; border: 1px solid #d8e6dd; border-radius: 5px; padding: 10px 12px; font-size: 11.5px; color: #3a3a38; line-height: 1.7; }
-.datasource-card .ok { color: #1f7a4c; font-weight: bold; }
-.datasource-card .err { color: #8a1f1f; font-weight: bold; }
-.refresh-btn { width: 100%; margin-top: 10px; padding: 7px; font-size: 12px; font-weight: bold; background: #fff; border: 1px solid #ccc; border-radius: 4px; color: #3a3a38; cursor: pointer; }
-.stat-card { border-left: 4px solid #ccc; background: #fff; padding: 8px 10px; margin-bottom: 8px; border-radius: 0 4px 4px 0; }
-.stat-card .stat-label { font-size: 10.5px; font-weight: bold; letter-spacing: 0.4px; }
-.stat-card .stat-value { font-size: 16px; font-weight: bold; color: #2c2c2a; margin: 2px 0; }
-.stat-card .stat-sub { font-size: 10.5px; color: #8a8a82; }
-.totals-row { display: flex; justify-content: space-between; font-size: 12px; color: #3a3a38; padding: 5px 0; border-bottom: 1px solid #eee; }
-.totals-row .n { font-weight: bold; }
+.live-badge { display: flex; align-items: center; font-size: 11.5px; color: var(--success-text); font-weight: bold; margin-bottom: 8px; }
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--live-dot); display: inline-block; margin-right: 6px; }
+.datasource-card { background: var(--surface-bg); border: 1px solid var(--datasource-border); border-radius: 10px; padding: 12px 14px; font-size: 11.5px; color: var(--text-dim); line-height: 1.7; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04); }
+.datasource-card .ok { color: var(--success-text); font-weight: bold; }
+.datasource-card .err { color: var(--danger-text); font-weight: bold; }
+.refresh-btn { width: 100%; margin-top: 10px; padding: 8px; font-size: 12px; font-weight: bold; background: var(--surface-bg); border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text-dim); cursor: pointer; }
+.stat-card { border-left: 4px solid var(--border-strong); background: var(--surface-bg); padding: 10px 12px; margin-bottom: 8px; border-radius: 0 8px 8px 0; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04); }
+.stat-card .stat-label { font-size: 10.5px; font-weight: bold; letter-spacing: 0.4px; color: var(--text-dim); }
+.stat-card .stat-value { font-size: 16px; font-weight: bold; color: var(--text); margin: 2px 0; }
+.stat-card .stat-sub { font-size: 10.5px; color: var(--text-muted); }
+.totals-row { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-dim); padding: 5px 0; border-bottom: 1px solid var(--border-soft); }
+.totals-row .n { font-weight: bold; color: var(--text); }
 
 /* ---------- panels ---------- */
-.panel-header { background: #00553d; color: #fff; padding: 10px 16px; border-radius: 5px 5px 0 0; font-size: 14px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
-.panel-body { border: 1px solid #ddd; border-top: none; border-radius: 0 0 5px 5px; padding: 14px 16px; margin-bottom: 20px; background: #fff; }
-.panel-desc { font-size: 12px; color: #4f4f4f; margin: 0 0 14px; line-height: 1.5; }
+.panel-header { background: var(--brand-green); color: #fff; padding: 12px 18px; border-radius: 10px 10px 0 0; font-size: 14.5px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
+.panel-body { border: 1px solid var(--border); border-top: none; border-radius: 0 0 10px 10px; padding: 16px 18px; margin-bottom: 22px; background: var(--surface-bg); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04); }
+.panel-desc { font-size: 12px; color: var(--text-dim); margin: 0 0 14px; line-height: 1.5; }
 
 /* ---------- forms ---------- */
-textarea.compose { width: 100%; min-height: 56px; padding: 9px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; font-family: inherit; margin-bottom: 12px; }
+textarea.compose { width: 100%; min-height: 56px; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 8px; font-size: 13px; font-family: inherit; margin-bottom: 12px; background: var(--surface-bg); color: var(--text); }
 .field-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
 .field-grid.single { grid-template-columns: 1fr; }
-.field-label { font-size: 11px; color: #4f4f4f; margin: 0 0 3px; font-weight: bold; }
-.field-label .hint { font-weight: normal; color: #8a8a82; }
-select.f, input.f { width: 100%; padding: 7px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 12.5px; font-family: inherit; }
+.field-label { font-size: 11px; color: var(--text-dim); margin: 0 0 3px; font-weight: bold; }
+.field-label .hint { font-weight: normal; color: var(--text-muted); }
+select.f, input.f { width: 100%; padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: 8px; font-size: 12.5px; font-family: inherit; background: var(--surface-bg); color: var(--text); }
 .channels-row { display: flex; flex-wrap: wrap; margin-bottom: 14px; }
-.channels-row label { display: flex; align-items: center; font-size: 12px; color: #2c2c2a; margin-right: 16px; margin-bottom: 4px; }
+.channels-row label { display: flex; align-items: center; font-size: 12px; color: var(--text); margin-right: 16px; margin-bottom: 4px; }
 .channels-row input { margin-right: 5px; }
-.infer-box { background: #f6f5f1; border: 1px solid #e2e2da; border-radius: 4px; padding: 10px 12px; margin-bottom: 14px; }
-.infer-label { font-size: 10px; font-weight: bold; color: #8a8a82; text-transform: uppercase; letter-spacing: 0.4px; margin: 0 0 6px; }
-.chip { background: #dcede6; color: #00301f; font-size: 11px; padding: 3px 9px; border-radius: 16px; margin-right: 6px; display: inline-block; }
-.btn-post { background: #00553d; color: #fff; border: none; border-radius: 4px; padding: 9px 20px; font-size: 12.5px; font-weight: bold; cursor: pointer; }
+.infer-box { background: var(--surface-alt-bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; }
+.infer-label { font-size: 10px; font-weight: bold; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; margin: 0 0 6px; }
+.chip { background: var(--chip-bg); color: var(--chip-fg); font-size: 11px; padding: 3px 9px; border-radius: 16px; margin-right: 6px; display: inline-block; }
+.btn-post { background: var(--brand-green); color: #fff; border: none; border-radius: 8px; padding: 9px 20px; font-size: 12.5px; font-weight: bold; cursor: pointer; }
 .btn-post:disabled { opacity: 0.6; cursor: default; }
 
 /* ---------- tables ---------- */
-table.data { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-table.data th { background: #00553d; color: #fff; text-align: left; padding: 8px 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; }
-table.data td { padding: 8px 10px; border-bottom: 1px solid #eee; color: #2c2c2a; }
-table.data tr:nth-child(even) td { background: #fafaf8; }
-.td-dim { font-size: 11px; color: #4f4f4f; }
+table.data { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12.5px; }
+table.data th { background: var(--brand-green); color: #fff; text-align: left; padding: 9px 12px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; }
+table.data th:first-child { border-top-left-radius: 8px; }
+table.data th:last-child { border-top-right-radius: 8px; }
+table.data td { padding: 9px 12px; border-bottom: 1px solid var(--border-soft); color: var(--text); }
+table.data tr:nth-child(even) td { background: var(--table-stripe); }
+.td-dim { font-size: 11px; color: var(--text-dim); }
 
 /* ---------- pills / buttons ---------- */
 .pill-sm { font-size: 10.5px; font-weight: bold; padding: 3px 8px; border-radius: 10px; white-space: nowrap; }
-.pill-warning { background: #fcefd8; color: #7a4a00; }
-.pill-danger { background: #fbe0e0; color: #8a1f1f; }
-.pill-accent { background: #dceaf8; color: #0b4c82; }
-.pill-success { background: #e3f0d4; color: #33530f; }
-.pill-muted { background: #ececea; color: #4f4f4f; }
-.btn-sm { font-size: 11px; padding: 4px 9px; border: 1px solid #ccc; border-radius: 4px; background: #fff; margin-right: 4px; cursor: pointer; }
-.btn-sm:hover { border-color: #00553d; color: #00553d; }
-.btn-sm.danger:hover { border-color: #8a1f1f; color: #8a1f1f; }
+.pill-warning { background: var(--pill-warning-bg); color: var(--pill-warning-fg); }
+.pill-danger { background: var(--pill-danger-bg); color: var(--pill-danger-fg); }
+.pill-accent { background: var(--pill-accent-bg); color: var(--pill-accent-fg); }
+.pill-success { background: var(--pill-success-bg); color: var(--pill-success-fg); }
+.pill-muted { background: var(--pill-muted-bg); color: var(--pill-muted-fg); }
+/* Also used on <a> tags (e.g. external document links styled as buttons) -
+   explicit color/text-decoration/display so it matches actual <button>s
+   instead of inheriting the browser's default link underline/blue. */
+.btn-sm { font-size: 11px; padding: 5px 11px; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--surface-bg); margin-right: 4px; cursor: pointer; color: var(--text); text-decoration: none; display: inline-block; }
+.btn-sm:hover { border-color: var(--brand-green); color: var(--brand-green); }
+.btn-sm.danger:hover { border-color: var(--danger-text); color: var(--danger-text); }
 
-/* ---------- footer ---------- */
-.footer { background: #f6f5f1; border-top: 1px solid #ddd; padding: 8px 16px; display: flex; justify-content: space-between; font-size: 10.5px; color: #8a8a82; flex-wrap: wrap; gap: 4px; }
+/* ---------- footer (inside content column) ---------- */
+.footer { background: var(--surface-alt-bg); border-top: 1px solid var(--border); padding: 8px 22px; display: flex; justify-content: space-between; font-size: 10.5px; color: var(--text-muted); flex-wrap: wrap; gap: 4px; }
 
 /* ---------- states / misc ---------- */
-.muted { color: #8a8a82; }
-.error-text { color: #8a1f1f; font-size: 12.5px; }
-.ok-text { color: #1f7a4c; font-size: 12.5px; font-weight: bold; }
-.empty-note { color: #8a8a82; font-size: 12.5px; padding: 12px 0; }
+.muted { color: var(--text-muted); }
+.error-text { color: var(--danger-text); font-size: 12.5px; }
+.ok-text { color: var(--success-text); font-size: 12.5px; font-weight: bold; }
+.empty-note { color: var(--text-muted); font-size: 12.5px; padding: 12px 0; }
 
 .signin { text-align: center; padding: 80px 20px; }
-.signin h1 { color: #00553d; }
-.btn-primary { background: #00553d; color: #fff; border: none; border-radius: 4px; padding: 10px 16px; font-weight: bold; cursor: pointer; font-size: 13px; }
+.signin h1 { color: var(--brand-green); }
+.btn-primary { background: var(--brand-green); color: #fff; border: none; border-radius: 8px; padding: 10px 18px; font-weight: bold; cursor: pointer; font-size: 13px; }
 
 .role-denied { padding: 40px 8px; }
-.role-denied h1 { color: #8a1f1f; font-size: 18px; margin: 0 0 8px; }
-.role-denied p { color: #4f4f4f; max-width: 480px; }
+.role-denied h1 { color: var(--danger-text); font-size: 18px; margin: 0 0 8px; }
+.role-denied p { color: var(--text-dim); max-width: 480px; }
 
-/* OCC Tools internal switcher */
+/* OCC Tools switcher - used both for the top-level module switch and (as
+   .small) for a module's own internal page sub-nav, so nested navigation
+   reads as "one app, sections" rather than competing nav bars. */
 .occ-switch { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
-.occ-switch button { font-size: 12px; font-weight: bold; padding: 7px 14px; border: 1px solid #ccc; border-radius: 4px; background: #fff; color: #3a3a38; cursor: pointer; }
-.occ-switch button.active { background: #00553d; border-color: #00553d; color: #fff; }
+.occ-switch button { font-size: 12px; font-weight: bold; padding: 7px 16px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface-bg); color: var(--text-dim); cursor: pointer; }
+.occ-switch button.active { background: var(--brand-green); border-color: var(--brand-green); color: #fff; }
+.occ-switch.small { gap: 6px; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border-soft); }
+.occ-switch.small button { font-size: 11px; font-weight: bold; padding: 5px 12px; border-radius: 999px; }
+
+/* Generic bordered content box, reused by OCC Tools modules instead of each
+   one defining its own "card" class for the same white-box-with-border look. */
+.subcard { background: var(--surface-bg); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04); }
+
+/* Generic stat-card row, reused wherever a handful of stat-cards sit side by
+   side (Subscribers tab, OTP dashboard, etc). */
+.stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
 
 /* Light normalization so embedded OCC modules sit inside the shell without
    fighting it: kill their page-level backgrounds, inherit the console font. */
-.occ-embed .evmon, .occ-embed .dmx, .occ-embed .otp-app { font-family: inherit; }
-.occ-embed .otp-app { min-height: 60vh; }
+.occ-embed .evmon, .occ-embed .dmx, .occ-embed .otp-panel { font-family: inherit; }

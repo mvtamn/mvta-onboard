@@ -40,7 +40,7 @@ export function Subscribers() {
       <div className="panel-body">
         {error ? <p className="error-text">{error} (requires staff sign-in)</p> : null}
         {summary ? (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 16 }}>
+          <div className="stat-grid">
             {cards.map((c) => (
               <div className="stat-card" key={c.label} style={{ borderLeftColor: c.color }}>
                 <div className="stat-label">{c.label}</div>

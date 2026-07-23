@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { App } from "./App.js";
+import { ThemeProvider } from "./theme/ThemeContext.js";
 import "./styles.css";
 
 // Bootstrap branches on auth mode:
@@ -17,11 +18,13 @@ async function bootstrap() {
     const { MockAuthProvider } = await import("./auth/MockAuthProvider.js");
     root.render(
       <React.StrictMode>
-        <MockAuthProvider>
-          <BrowserRouter basename="/console">
-            <App />
-          </BrowserRouter>
-        </MockAuthProvider>
+        <ThemeProvider>
+          <MockAuthProvider>
+            <BrowserRouter basename="/console">
+              <App />
+            </BrowserRouter>
+          </MockAuthProvider>
+        </ThemeProvider>
       </React.StrictMode>,
     );
     return;
@@ -51,13 +54,15 @@ async function bootstrap() {
 
   root.render(
     <React.StrictMode>
-      <MsalProvider instance={msalInstance}>
-        <MsalAuthProvider>
-          <BrowserRouter basename="/console">
-            <App />
-          </BrowserRouter>
-        </MsalAuthProvider>
-      </MsalProvider>
+      <ThemeProvider>
+        <MsalProvider instance={msalInstance}>
+          <MsalAuthProvider>
+            <BrowserRouter basename="/console">
+              <App />
+            </BrowserRouter>
+          </MsalAuthProvider>
+        </MsalProvider>
+      </ThemeProvider>
     </React.StrictMode>,
   );
 }

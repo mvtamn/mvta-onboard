@@ -1,52 +1,38 @@
-/* Event Vehicle Monitoring module — scoped under .evmon. */
-.evmon { font-size: 13px; color: #2c4a3f; }
-.evmon-layout { display: grid; grid-template-columns: 230px 1fr; gap: 0; border: 1px solid #d7e2dc; border-radius: 8px; overflow: hidden; }
+/* Event Vehicle Monitoring module - scoped under .evmon. Renders inside the
+   console's own panel-body chrome. Reuses global classes (side-label,
+   live-badge, datasource-card, totals-row, panel-header, table.data, pill-sm,
+   btn-sm/btn-post) and the global color tokens (see ../../../styles.css) so
+   this respects the light/dark theme toggle automatically; only the concepts
+   with no shared equivalent (map, monitor list, vehicle swap picker, alert
+   cards) get their own rules here. */
+.evmon { font-size: 13px; color: var(--text); }
+.evmon-layout { display: grid; grid-template-columns: 230px 1fr; gap: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
 
-.evmon-side { background: #f8faf8; border-right: 1px solid #d7e2dc; padding: 16px 14px; }
-.evmon .side-label { font-size: 11px; font-weight: 600; color: #7c8c84; letter-spacing: 0.04em; margin: 18px 0 8px; }
-.evmon .side-label:first-child { margin-top: 0; }
-.evmon .status-line { font-size: 12px; display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
-.evmon .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #3d9e6f; }
-.evmon .info-box { background: #e8f3ea; border: 1px solid #c3e0c9; border-radius: 6px; padding: 9px 11px; font-size: 12px; line-height: 1.6; }
-.evmon .info-box div:first-child { font-weight: 500; margin-bottom: 2px; }
-.evmon .monitor-card { background: #fff; border-left: 3px solid #2e7d4f; border-radius: 0 4px 4px 0; padding: 6px 10px; font-size: 11.5px; margin-bottom: 6px; border-top: 1px solid #eaeee9; border-right: 1px solid #eaeee9; border-bottom: 1px solid #eaeee9; }
-.evmon .monitor-card .veh { font-weight: 500; }
-.evmon .totals-row { font-size: 12px; color: #3c4c45; display: flex; justify-content: space-between; padding: 4px 0; }
-.evmon .totals-row b { color: #2c4a3f; }
+.evmon-side { background: var(--surface-alt-bg); border-right: 1px solid var(--border); padding: 16px 14px; }
+.evmon .monitor-card { background: var(--surface-bg); border-left: 3px solid var(--border-strong); border-radius: 0 4px 4px 0; padding: 6px 10px; font-size: 11.5px; margin-bottom: 6px; border-top: 1px solid var(--border-soft); border-right: 1px solid var(--border-soft); border-bottom: 1px solid var(--border-soft); }
+.evmon .monitor-card .veh { font-weight: 600; }
 
-.evmon-main { padding: 18px 22px; background: #fff; }
-.evmon .map-card { position: relative; background: #f2f6f3; border: 1px solid #d7e2dc; border-radius: 8px; height: 230px; overflow: hidden; margin-bottom: 20px; }
-.evmon .map-label { position: absolute; font-size: 11px; color: #6b7c74; font-weight: 500; }
-.evmon .marker { position: absolute; width: 11px; height: 11px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,0.08); }
+.evmon-main { padding: 18px; background: var(--surface-bg); }
+.evmon .map-card { position: relative; background: var(--surface-alt-bg); border: 1px solid var(--border); border-radius: 6px; height: 220px; overflow: hidden; margin-bottom: 20px; }
+.evmon .map-label { position: absolute; font-size: 11px; color: var(--text-muted); font-weight: 600; }
+.evmon .marker { position: absolute; width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--surface-bg); box-shadow: 0 0 0 1px rgba(0,0,0,0.08); }
 
-.evmon .panel-header { background: #3d6b5c; color: #fff; padding: 9px 14px; border-radius: 6px 6px 0 0; display: flex; align-items: center; justify-content: space-between; }
-.evmon .panel-header .title { font-size: 13px; font-weight: 500; }
-.evmon .btn-panel { height: 27px; padding: 0 11px; font-size: 12px; background: #2c4a3f; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+.evmon .veh-id { font-weight: 600; }
+.evmon .status-text { font-weight: 600; }
 
-.evmon-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-bottom: 22px; }
-.evmon-table thead th { background: #e8f3ea; text-align: left; padding: 7px 12px; color: #2c4a3f; border: 1px solid #d7e2dc; font-weight: 600; font-size: 11.5px; }
-.evmon-table tbody td { padding: 7px 12px; border: 1px solid #e2e8e4; }
-.evmon-table tbody tr:nth-child(even) { background: #fafcfa; }
-.evmon .veh-id { font-weight: 500; }
-.evmon .status-text { font-weight: 500; }
-.evmon .swap-btn { height: 25px; width: 25px; padding: 0; background: #fff; border: 1px solid #c7d6cd; border-radius: 4px; cursor: pointer; color: #2c4a3f; }
-.evmon .swap-btn:hover { background: #f4f7f5; }
+.evmon .selector-panel { background: var(--surface-alt-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px; margin: -8px 0 20px; }
+.evmon .selector-title { font-size: 12px; font-weight: 600; margin-bottom: 8px; }
+.evmon .selector-option { width: 100%; text-align: left; height: 32px; padding: 0 10px; font-size: 12px; display: flex; justify-content: space-between; align-items: center; background: var(--surface-bg); border: 1px solid var(--border-strong); border-radius: 4px; color: var(--text); cursor: pointer; margin-bottom: 6px; }
+.evmon .selector-option:hover { border-color: var(--brand-green); }
+.evmon .selector-option .avail { color: var(--text-muted); }
+.evmon .selector-empty { font-size: 12px; color: var(--text-muted); }
 
-.evmon .selector-panel { background: #f4f7f5; border: 1px solid #d7e2dc; border-radius: 6px; padding: 12px; margin: -8px 0 22px; }
-.evmon .selector-title { font-size: 12px; font-weight: 500; margin-bottom: 8px; }
-.evmon .selector-option { width: 100%; text-align: left; height: 32px; padding: 0 10px; font-size: 12px; display: flex; justify-content: space-between; align-items: center; background: #fff; border: 1px solid #c7d6cd; border-radius: 4px; color: #2c4a3f; cursor: pointer; margin-bottom: 6px; }
-.evmon .selector-option:hover { border-color: #3d6b5c; }
-.evmon .selector-option .avail { color: #6b7c74; }
-.evmon .selector-empty { font-size: 12px; color: #6b7c74; }
-
-.evmon .alerts-wrap { border: 1px solid #d7e2dc; border-top: none; border-radius: 0 0 6px 6px; padding: 12px; }
-.evmon .alert-card { background: #fdf3ef; border: 1px solid #e6c9ba; border-radius: 6px; padding: 11px; margin-bottom: 10px; }
-.evmon .alert-top { display: flex; justify-content: space-between; margin-bottom: 5px; }
-.evmon .alert-veh { font-size: 12.5px; font-weight: 500; }
-.evmon .alert-delay { font-size: 11.5px; color: #b5442a; }
-.evmon .alert-reason { font-size: 12.5px; color: #4a5a52; margin-bottom: 9px; }
-.evmon .alert-draft { font-size: 12.5px; padding: 7px 9px; background: #fff; border: 1px solid #e6c9ba; border-radius: 4px; margin-bottom: 9px; }
+.evmon .alerts-wrap { border: 1px solid var(--border); border-top: none; border-radius: 0 0 5px 5px; padding: 12px; margin-bottom: 20px; }
+.evmon .alert-card { background: var(--highlight-bg); border: 1px solid var(--highlight-border); border-radius: 6px; padding: 11px; margin-bottom: 10px; }
+.evmon .alert-card:last-child { margin-bottom: 0; }
+.evmon .alert-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; flex-wrap: wrap; gap: 6px; }
+.evmon .alert-veh { font-size: 12.5px; font-weight: 600; }
+.evmon .alert-reason { font-size: 12.5px; color: var(--text-dim); margin-bottom: 9px; }
+.evmon .alert-draft { font-size: 12.5px; padding: 7px 9px; background: var(--surface-bg); border: 1px solid var(--highlight-border); border-radius: 4px; margin-bottom: 9px; }
 .evmon .alert-actions { display: flex; gap: 8px; }
-.evmon .btn-approve { height: 27px; padding: 0 12px; font-size: 12px; background: #3d6b5c; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
-.evmon .btn-dismiss { height: 27px; padding: 0 12px; font-size: 12px; background: #fff; color: #2c4a3f; border: 1px solid #c7d6cd; border-radius: 4px; cursor: pointer; }
-.evmon .no-alerts { font-size: 12.5px; color: #6b7c74; padding: 4px 0; }
+.evmon .no-alerts { font-size: 12.5px; color: var(--text-muted); padding: 4px 0; }

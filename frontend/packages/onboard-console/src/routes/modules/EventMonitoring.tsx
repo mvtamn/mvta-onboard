@@ -43,31 +43,30 @@ export function EventMonitoring() {
       <div className="evmon-layout">
         <aside className="evmon-side">
           <div className="side-label">Data source</div>
-          <div className="status-line">
-            <span className="status-dot" />
+          <div className="live-badge">
+            <span className="live-dot" />
             Live · GTFS-RT + MN 511
           </div>
-          <div className="info-box">
-            <div>Live from GTFS-RT + MN 511</div>
-            <div>Vehicles: {POOL.length} · Corridors: 3</div>
-            <div>Synced 12s ago</div>
+          <div className="datasource-card">
+            <div><span className="ok">✓</span> Live from GTFS-RT + MN 511</div>
+            Vehicles: {POOL.length} · Corridors: 3
+            <br />
+            Synced 12s ago
           </div>
 
           <div className="side-label">Monitored</div>
           {monitored.map((v) => (
             <div className="monitor-card" key={v.id} style={{ borderLeftColor: statusColor(v) }}>
               <div className="veh">{v.id}</div>
-              <div className="stat" style={{ color: statusColor(v) }}>
-                {statusLabel(v)}
-              </div>
+              <div style={{ color: statusColor(v) }}>{statusLabel(v)}</div>
             </div>
           ))}
 
           <div className="side-label">Registry totals</div>
-          <div className="totals-row"><span>Vehicles (event)</span><b>{POOL.length}</b></div>
-          <div className="totals-row"><span>Monitored</span><b>{monitoredIds.length}</b></div>
-          <div className="totals-row"><span>Delayed</span><b>{delayedCount}</b></div>
-          <div className="totals-row"><span>Offline</span><b>{POOL.filter((p) => p.status === "offline").length}</b></div>
+          <div className="totals-row"><span>Vehicles (event)</span><span className="n">{POOL.length}</span></div>
+          <div className="totals-row"><span>Monitored</span><span className="n">{monitoredIds.length}</span></div>
+          <div className="totals-row"><span>Delayed</span><span className="n">{delayedCount}</span></div>
+          <div className="totals-row"><span>Offline</span><span className="n">{POOL.filter((p) => p.status === "offline").length}</span></div>
         </aside>
 
         <div className="evmon-main">
@@ -96,30 +95,32 @@ export function EventMonitoring() {
           </div>
 
           <div className="panel-header">
-            <span className="title">Monitored vehicles</span>
-            <button className="btn-panel" onClick={() => setSwapFor(monitoredIds[monitoredIds.length - 1])}>
+            <span>Monitored vehicles</span>
+            <button className="btn-sm" onClick={() => setSwapFor(monitoredIds[monitoredIds.length - 1])}>
               + Add vehicle
             </button>
           </div>
-          <table className="evmon-table">
-            <thead>
-              <tr><th>Vehicle</th><th>Lot</th><th>Status</th><th>Swap</th></tr>
-            </thead>
-            <tbody>
-              {monitored.map((v) => (
-                <tr key={v.id}>
-                  <td className="veh-id">{v.id}</td>
-                  <td>{v.lot}</td>
-                  <td className="status-text" style={{ color: statusColor(v) }}>{statusLabel(v)}</td>
-                  <td>
-                    <button className="swap-btn" aria-label={`Swap ${v.id}`} onClick={() => setSwapFor(v.id)}>
-                      ⇆
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="panel-body" style={{ marginBottom: 20, padding: 0 }}>
+            <table className="data">
+              <thead>
+                <tr><th>Vehicle</th><th>Lot</th><th>Status</th><th>Swap</th></tr>
+              </thead>
+              <tbody>
+                {monitored.map((v) => (
+                  <tr key={v.id}>
+                    <td className="veh-id">{v.id}</td>
+                    <td>{v.lot}</td>
+                    <td className="status-text" style={{ color: statusColor(v) }}>{statusLabel(v)}</td>
+                    <td>
+                      <button className="btn-sm" aria-label={`Swap ${v.id}`} onClick={() => setSwapFor(v.id)}>
+                        ⇆
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           {swapFor && (
             <div className="selector-panel">
@@ -137,7 +138,7 @@ export function EventMonitoring() {
             </div>
           )}
 
-          <div className="panel-header"><span className="title">Delay alerts</span></div>
+          <div className="panel-header"><span>Delay alerts</span></div>
           <div className="alerts-wrap">
             {activeAlerts.length === 0 ? (
               <div className="no-alerts">No delay alerts right now.</div>
@@ -146,7 +147,7 @@ export function EventMonitoring() {
                 <div className="alert-card" key={v.id}>
                   <div className="alert-top">
                     <span className="alert-veh">{v.id} · {v.lot}</span>
-                    <span className="alert-delay">+{v.delay} min · {v.conf} confidence</span>
+                    <span className="pill-sm pill-danger">+{v.delay} min · {v.conf} confidence</span>
                   </div>
                   <div className="alert-reason">{v.reason}</div>
                   <div className="alert-draft">
@@ -154,8 +155,8 @@ export function EventMonitoring() {
                     traffic. Next pickup delayed.&rdquo;
                   </div>
                   <div className="alert-actions">
-                    <button className="btn-approve" onClick={() => approve(v)}>Approve and publish</button>
-                    <button className="btn-dismiss" onClick={() => setDismissed((d) => ({ ...d, [v.id]: true }))}>
+                    <button className="btn-post" onClick={() => approve(v)}>Approve and publish</button>
+                    <button className="btn-sm" onClick={() => setDismissed((d) => ({ ...d, [v.id]: true }))}>
                       Dismiss
                     </button>
                   </div>

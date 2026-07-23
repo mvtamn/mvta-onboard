@@ -33,7 +33,12 @@ export interface CreateMessageBody {
   zones_affected?: string[] | null;
   tags?: string[] | null;
   channels?: string[] | null;
-  created_by: string;
+  // Optional: for a human caller this is always overridden server-side with
+  // the verified auth principal (see messagesCreate.ts) - a client can't claim
+  // to be someone else. Only consulted as a fallback label for a
+  // System.Ingestion caller with no human identity (e.g. Power Automate
+  // self-labeling as 'delay_detection').
+  created_by?: string;
   expires_at: string;
   expiration_source: ExpirationSource;
 }

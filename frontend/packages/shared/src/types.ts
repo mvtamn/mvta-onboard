@@ -43,7 +43,10 @@ export interface CreateMessageInput {
   zones_affected?: string[];
   tags?: string[];
   channels?: string[];
-  created_by: string;
+  // Never send this for a human caller - the server always derives it from
+  // the verified auth principal (see functions-restapi/src/functions/
+  // messagesCreate.ts). Optional only for a future System.Ingestion caller.
+  created_by?: string;
   expires_at: string;
   expiration_source: ExpirationSource;
 }

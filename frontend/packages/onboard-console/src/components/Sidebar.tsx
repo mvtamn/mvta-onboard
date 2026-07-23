@@ -2,14 +2,15 @@ import type { LiveStats } from "../hooks/useLiveStats.js";
 
 const dash = (v: number | null | undefined) => (v === null || v === undefined ? "—" : v.toLocaleString());
 
-// Live data-source sidebar per the approved dashboard mockup. Counts degrade
-// to "—" when an auth-gated endpoint isn't reachable (mock preview mode).
+// Live data-source panel, shown as the Dashboard's right-rail context panel
+// (see routes/Dashboard.tsx). Counts degrade to "—" when an auth-gated
+// endpoint isn't reachable (mock preview mode).
 export function Sidebar({ stats }: { stats: LiveStats }) {
   const gtfsPending = stats.pending?.filter((a) => a.source === "gtfs_rt").length ?? null;
   const zonaPending = stats.pending?.filter((a) => a.source === "zona").length ?? null;
 
   return (
-    <div className="sidebar">
+    <div>
       <div className="side-label">Data source</div>
       <div className="live-badge">
         <span className="live-dot" />

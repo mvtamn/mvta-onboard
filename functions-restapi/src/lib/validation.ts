@@ -43,12 +43,16 @@ export function validateCreateMessage(body: UnknownBody): string[] {
   if (!includes(VALID_EXPIRATION_SOURCES, body.expiration_source)) {
     errors.push(`expiration_source must be one of: ${VALID_EXPIRATION_SOURCES.join(", ")}`);
   }
-  if (!body.created_by || typeof body.created_by !== "string") {
-    errors.push(
-      "created_by is required (staff identifier, or 'delay_detection' / 'wait_time_monitor' for system-generated messages)",
-    );
-  } else if (body.created_by.length > MAX_CREATED_BY_LENGTH) {
-    errors.push(`created_by must be at most ${MAX_CREATED_BY_LENGTH} characters`);
+  // created_by is optional here: for a human caller the server always derives
+  // it from the verified auth principal (messagesCreate.ts), never from the
+  // body. It's only consulted as a System.Ingestion fallback label (e.g.
+  // 'delay_detection'), so if present it just needs to be a reasonable string.
+  if (body.created_by !== undefined && body.created_by !== null) {
+    if (typeof body.created_by !== "string") {
+      errors.push("created_by must be a string if provided");
+    } else if (body.created_by.length > MAX_CREATED_BY_LENGTH) {
+      errors.push(`created_by must be at most ${MAX_CREATED_BY_LENGTH} characters`);
+    }
   }
 
   // summary is optional (messagesCreate derives one from raw_text when absent),

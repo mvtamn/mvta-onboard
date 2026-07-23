@@ -112,6 +112,20 @@ test("rejects created_by longer than the column allows", () => {
   assert.ok(errors.some((e) => e.includes("created_by")));
 });
 
+test("created_by is optional - omitting it entirely still validates", () => {
+  // The server always derives created_by from the verified auth principal
+  // (see messagesCreate.ts), never from the client body, so the frontend
+  // legitimately never sends this field for a human caller.
+  const errors = validateCreateMessage({
+    raw_text: "test",
+    category: "outage",
+    severity: "minor",
+    expires_at: "2026-07-06T23:59:00Z",
+    expiration_source: "inferred_text",
+  });
+  assert.deepStrictEqual(errors, []);
+});
+
 test("accepts null optional array fields", () => {
   const errors = validateCreateMessage({
     raw_text: "test",

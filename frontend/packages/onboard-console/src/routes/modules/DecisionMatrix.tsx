@@ -10,9 +10,13 @@ import "./decisionMatrix.css";
 
 const SEVERITIES: Severity[] = ["stop", "restricting", "clear"];
 const DOCTYPES: DocType[] = ["SOP", "REF"];
+const SEV_PILL: Record<Severity, string> = { stop: "pill-danger", restricting: "pill-warning", clear: "pill-success" };
 
 // OCC Decision Matrix — ported from occ_decision_matrix.html. Search + filter
 // reference over the decision matrix; each entry links to its SOP/REF.
+// Severity uses the same pill-sm convention as every other status indicator
+// in the console (message severity, subscriber status, etc), so this reads as
+// part of the same app rather than a separately-styled reference tool.
 export function DecisionMatrix() {
   const [query, setQuery] = useState("");
   const [severities, setSeverities] = useState<Set<Severity>>(new Set());
@@ -86,12 +90,11 @@ export function DecisionMatrix() {
           {SEVERITIES.map((sev) => (
             <button
               key={sev}
-              className={`sevbtn ${sev}`}
+              className="sevbtn"
               data-active={severities.has(sev)}
               onClick={() => toggle(severities, sev, setSeverities)}
             >
-              <span className="ring" />
-              {SEV_LABEL[sev]}
+              <span className={`pill-sm ${SEV_PILL[sev]}`}>{SEV_LABEL[sev]}</span>
             </button>
           ))}
         </div>
@@ -149,7 +152,6 @@ export function DecisionMatrix() {
 function MatrixRow({ item }: { item: MatrixEntry }) {
   return (
     <div className={`row ${item.severity}`}>
-      <div className={`signal ${item.severity}`} />
       <div className="rowbody">
         <h3>{item.condition}</h3>
         <div className="field"><div className="flabel">Criteria</div><div className="fvalue">{item.criteria}</div></div>
@@ -157,9 +159,9 @@ function MatrixRow({ item }: { item: MatrixEntry }) {
         <div className="tags">{item.tags.map((t) => <span key={t}>{t}</span>)}</div>
       </div>
       <div className="rowaction">
-        <div className={`sevlabel ${item.severity}`}>{SEV_LABEL[item.severity]}</div>
+        <span className={`pill-sm ${SEV_PILL[item.severity]}`}>{SEV_LABEL[item.severity]}</span>
         <div className="doccode">{item.docType} · {item.docCode}</div>
-        <a className="doclink" href={item.docUrl} target="_blank" rel="noopener noreferrer">Open ↗</a>
+        <a className="btn-sm" href={item.docUrl} target="_blank" rel="noopener noreferrer">Open ↗</a>
         <div className="reviewed">Reviewed {item.lastReviewed}</div>
       </div>
     </div>
@@ -171,14 +173,14 @@ function MatrixCard({ item }: { item: MatrixEntry }) {
     <div className={`card ${item.severity}`}>
       <div className="card-top">
         <h3>{item.condition}</h3>
-        <div className={`card-sev ${item.severity}`}><span className={`signal ${item.severity}`} />{SEV_LABEL[item.severity]}</div>
+        <span className={`pill-sm ${SEV_PILL[item.severity]}`}>{SEV_LABEL[item.severity]}</span>
       </div>
       <div className="cfield"><span className="clabel">Criteria</span>{item.criteria}</div>
       <div className="cfield"><span className="clabel">Required Action</span>{item.requiredAction}</div>
       <div className="ctags">{item.tags.map((t) => <span key={t}>{t}</span>)}</div>
       <div className="card-foot">
         <div className="doccode">{item.docType} · {item.docCode}</div>
-        <a href={item.docUrl} target="_blank" rel="noopener noreferrer">Open ↗</a>
+        <a className="btn-sm" href={item.docUrl} target="_blank" rel="noopener noreferrer">Open ↗</a>
       </div>
     </div>
   );

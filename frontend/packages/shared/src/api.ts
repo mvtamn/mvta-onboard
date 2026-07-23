@@ -38,6 +38,29 @@ export class ApiError extends Error {
   }
 }
 
+// The live API has been observed returning a bare scalar (e.g. a route number)
+// for these fields instead of a JSON array - likely a not-yet-redeployed
+// backend predating the current contract. Every consumer in both frontends
+// calls array methods (.join, .includes, .forEach) on these directly, so a
+// scalar here throws and - with no error boundary - takes down the whole
+// React root. Normalize once, at the boundary where untrusted JSON enters the
+// type system, so the ActiveMessage type's promise (string[]) is actually kept
+// regardless of what the backend sends today.
+function toStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(String);
+  if (value === null || value === undefined || value === "") return [];
+  return [String(value)];
+}
+
+function normalizeActiveMessage(m: ActiveMessage): ActiveMessage {
+  return {
+    ...m,
+    routes_affected: toStringArray(m.routes_affected),
+    stops_affected: toStringArray(m.stops_affected),
+    zones_affected: toStringArray(m.zones_affected),
+  };
+}
+
 export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
   const root = baseUrl.replace(/\/+$/, "");
 
@@ -69,13 +92,14 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
 
   return {
     // Public read - no auth.
-    getActiveMessages(filters?: { channel?: string; route?: string; zone?: string }) {
+    async getActiveMessages(filters?: { channel?: string; route?: string; zone?: string }) {
       const qs = new URLSearchParams();
       if (filters?.channel) qs.set("channel", filters.channel);
       if (filters?.route) qs.set("route", filters.route);
       if (filters?.zone) qs.set("zone", filters.zone);
       const suffix = qs.toString() ? `?${qs.toString()}` : "";
-      return request<{ messages: ActiveMessage[] }>(`/api/messages/active${suffix}`);
+      const data = await request<{ messages: ActiveMessage[] }>(`/api/messages/active${suffix}`);
+      return { messages: data.messages.map(normalizeActiveMessage) };
     },
 
     // Staff write - requires an Entra token (OCC.Publisher / OCC.Admin).

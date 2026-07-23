@@ -22,7 +22,7 @@ const DEFAULT_CHANNELS = new Set(["Website", "Mobile app", "SMS", "Email"]);
 // the category's default TTL is applied (expiration_source=category_default),
 // fetched from /admin/expiration-defaults.
 export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
-  const { account, roles } = useAuth();
+  const { roles } = useAuth();
   const canPublish = roles.some((r) => r === "OCC.Publisher" || r === "OCC.Admin");
 
   const [rawText, setRawText] = useState("");
@@ -92,7 +92,8 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
         severity,
         tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
         channels: [...channels],
-        created_by: account?.username ?? "onboard-console",
+        // created_by is intentionally omitted - the server derives it from
+        // the verified auth principal (see messagesCreate.ts), not the body.
         expires_at: expiresAt,
         expiration_source: source,
       });

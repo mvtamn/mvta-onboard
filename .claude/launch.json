@@ -5,13 +5,15 @@
       "name": "onboard-console",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "frontend", "run", "dev:console"],
-      "port": 5174
+      "port": 5174,
+      "autoPort": true
     },
     {
       "name": "rider-app",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "frontend", "run", "dev:rider"],
-      "port": 5173
+      "port": 5173,
+      "autoPort": true
     }
   ]
 }

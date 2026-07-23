@@ -43,6 +43,18 @@ app.http("messagesCreate", {
     // Shape proven by validateCreateMessage above.
     const body = raw as CreateMessageBody;
 
+    // created_by is never trusted from the request body for a human caller -
+    // it's always the verified auth principal's identity, so staff can't post
+    // as someone else. Only a System.Ingestion caller with no human identity
+    // (a bare service-principal call, no userDetails) falls back to whatever
+    // label it self-reports (e.g. 'delay_detection'); any other caller with no
+    // resolvable identity gets a fixed "system" label rather than the body.
+    const isSystemCaller = authResult.principal.roles.includes("System.Ingestion");
+    const createdBy =
+      authResult.principal.userDetails ||
+      (isSystemCaller && body.created_by) ||
+      "system";
+
     try {
       const pool = await getPool();
       const sqlRequest = pool.request();
@@ -56,7 +68,7 @@ app.http("messagesCreate", {
       sqlRequest.input("zones_affected", sql.NVarChar, body.zones_affected ? JSON.stringify(body.zones_affected) : null);
       sqlRequest.input("tags", sql.NVarChar, body.tags ? JSON.stringify(body.tags) : null);
       sqlRequest.input("channels", sql.NVarChar, body.channels ? JSON.stringify(body.channels) : null);
-      sqlRequest.input("created_by", sql.NVarChar, body.created_by);
+      sqlRequest.input("created_by", sql.NVarChar, createdBy);
       sqlRequest.input("expires_at", sql.DateTime2, new Date(body.expires_at));
       sqlRequest.input("expiration_source", sql.NVarChar, body.expiration_source);
 
