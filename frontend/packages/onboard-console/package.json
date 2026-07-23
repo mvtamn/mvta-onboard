@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "postbuild": "mkdir -p dist/console && mv dist/index.html dist/assets dist/console/",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit"
   },
