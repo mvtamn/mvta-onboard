@@ -128,6 +128,18 @@ export interface SuggestedAlert {
   message_id: string | null;
 }
 
+export interface TripDelay {
+  trip_id: string;
+  route_id: string;
+  vehicle_id: string | null;
+  next_stop_id: string | null;
+  delay_seconds: number;
+  polls_over_threshold: number;
+  first_seen_at: string;
+  last_polled_at: string;
+  suggested_alert_id: string | null;
+}
+
 export const CATEGORY_LABELS: Record<Category, string> = {
   delay: "Delay",
   detour: "Detour",

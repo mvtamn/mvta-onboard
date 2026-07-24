@@ -17,6 +17,7 @@ import type {
   SubscribersSummary,
   SuggestedAlert,
   SuggestedAlertStatus,
+  TripDelay,
 } from "./types.js";
 
 export type TokenProvider = () => Promise<string | null>;
@@ -205,6 +206,10 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
         { method: "POST" },
         true,
       );
+    },
+
+    getTripDelays() {
+      return request<{ delays: TripDelay[] }>("/api/trip-delays", {}, true);
     },
   };
 }
