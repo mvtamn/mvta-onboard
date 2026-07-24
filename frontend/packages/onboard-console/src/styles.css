@@ -191,6 +191,10 @@ table.data tr:nth-child(even) td { background: var(--table-stripe); }
 .btn-sm { font-size: 11px; padding: 5px 11px; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--surface-bg); margin-right: 4px; cursor: pointer; color: var(--text); text-decoration: none; display: inline-block; }
 .btn-sm:hover { border-color: var(--brand-green); color: var(--brand-green); }
 .btn-sm.danger:hover { border-color: var(--danger-text); color: var(--danger-text); }
+/* Toggle-style buttons (e.g. auto-refresh) - amber highlight for the "on"
+   state, distinct from a plain .btn-sm even when sitting on the green
+   panel-header bar (a brand-green "on" state would blend into that). */
+.btn-sm.active { background: var(--highlight-bg); border-color: var(--highlight-border); color: var(--text); }
 
 /* ---------- footer (inside content column) ---------- */
 .footer { background: var(--surface-alt-bg); border-top: 1px solid var(--border); padding: 8px 22px; display: flex; justify-content: space-between; font-size: 10.5px; color: var(--text-muted); flex-wrap: wrap; gap: 4px; }

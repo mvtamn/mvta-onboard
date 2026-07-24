@@ -133,6 +133,7 @@ export interface TripDelay {
   route_id: string;
   vehicle_id: string | null;
   next_stop_id: string | null;
+  next_stop_name: string | null;
   delay_seconds: number;
   polls_over_threshold: number;
   first_seen_at: string;

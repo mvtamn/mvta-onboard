@@ -3,12 +3,14 @@ import { EventMonitoring } from "./modules/EventMonitoring.js";
 import { DecisionMatrix } from "./modules/DecisionMatrix.js";
 import { OtpModule } from "./modules/otp/OtpModule.js";
 import { LiveDelays } from "./modules/LiveDelays.js";
+import { SpeedAlerts } from "./modules/SpeedAlerts.js";
 
 const TOOLS = [
   { key: "event-monitoring", label: "Event Monitoring" },
   { key: "decision-matrix", label: "Decision Matrix" },
   { key: "otp", label: "OTP Compliance" },
   { key: "live-delays", label: "Live Delays" },
+  { key: "speed-alerts", label: "Speed Alerts" },
 ] as const;
 
 type ToolKey = (typeof TOOLS)[number]["key"];
@@ -34,6 +36,7 @@ export function OccTools() {
         {tool === "decision-matrix" && <DecisionMatrix />}
         {tool === "otp" && <OtpModule />}
         {tool === "live-delays" && <LiveDelays />}
+        {tool === "speed-alerts" && <SpeedAlerts />}
       </div>
     </>
   );

@@ -3,6 +3,12 @@ import { type TripDelay, ApiError, OCCUPANCY_LABELS, CURRENT_STATUS_LABELS } fro
 import { api } from "../../config.js";
 
 const ESCALATION_THRESHOLD_SECONDS = 15 * 60;
+const AUTO_REFRESH_INTERVAL_MS = 15_000;
+
+function nextStopLabel(d: TripDelay): string {
+  if (!d.next_stop_id) return "—";
+  return d.next_stop_name ? `${d.next_stop_name} (#${d.next_stop_id})` : d.next_stop_id;
+}
 
 function delayPill(seconds: number) {
   const minutes = Math.round(seconds / 60);
@@ -37,6 +43,7 @@ function occupancyPill(status: number | null) {
 export function LiveDelays() {
   const [delays, setDelays] = useState<TripDelay[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [autoRefresh, setAutoRefresh] = useState(false);
 
   const load = useCallback(() => {
     api
@@ -50,19 +57,31 @@ export function LiveDelays() {
 
   useEffect(load, [load]);
 
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const id = setInterval(load, AUTO_REFRESH_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [autoRefresh, load]);
+
   return (
     <>
       <div className="panel-header">
         <span>Live Delays</span>
-        <button className="btn-sm" onClick={load}>
-          ↻ Refresh
-        </button>
+        <div>
+          <button className={`btn-sm ${autoRefresh ? "active" : ""}`} onClick={() => setAutoRefresh((v) => !v)}>
+            {autoRefresh ? "⏸ Auto-refresh: on (15s)" : "▶ Auto-refresh: off"}
+          </button>
+          <button className="btn-sm" onClick={load}>
+            ↻ Refresh
+          </button>
+        </div>
       </div>
       <div className="panel-body">
         <p className="panel-desc">
-          Every currently-monitored trip's live delay, speed, and occupancy from GTFS-Realtime,
-          refreshed every 5 minutes. A delay sustained over 15 minutes escalates into a Suggested
-          Alerts candidate for review.
+          Every currently-monitored trip's live delay, speed, and occupancy from GTFS-Realtime.
+          The underlying data refreshes server-side every 5 minutes; auto-refresh just keeps this
+          view in sync without a manual click. A delay sustained over 15 minutes escalates into a
+          Suggested Alerts candidate for review.
         </p>
         {error ? <p className="error-text">{error}</p> : null}
         {delays === null ? (
@@ -88,7 +107,7 @@ export function LiveDelays() {
                 <tr key={d.trip_id}>
                   <td>{d.route_id}</td>
                   <td className="td-dim">{d.vehicle_id ?? "—"}</td>
-                  <td className="td-dim">{d.next_stop_id ?? "—"}</td>
+                  <td className="td-dim">{nextStopLabel(d)}</td>
                   <td>{delayPill(d.delay_seconds)}</td>
                   <td className="td-dim">{formatSpeed(d.speed_mps)}</td>
                   <td>{occupancyPill(d.occupancy_status)}</td>
