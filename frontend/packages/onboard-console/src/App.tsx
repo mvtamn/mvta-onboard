@@ -59,15 +59,19 @@ export function App() {
 
   if (!account) {
     return (
-      <div className="frame">
-        <div className="content-col">
-          <div className="signin">
-            <h1>MVTA OnBoard Console</h1>
-            <p>Staff sign-in required.</p>
-            <button className="btn-primary" onClick={signIn}>
-              Sign in with Microsoft
-            </button>
-          </div>
+      <div className="signin-backdrop">
+        <div className="signin-card">
+          <span className="signin-logo">MVTA</span>
+          <div className="signin-eyebrow">Staff Console</div>
+          <h1>Welcome to the MVTA OnBoard console</h1>
+          <p className="signin-desc">
+            Sign in with your MVTA Microsoft 365 account to manage service alerts and rider
+            notifications.
+          </p>
+          <button className="btn-primary signin-btn" onClick={signIn}>
+            Sign in with Microsoft
+          </button>
+          <p className="signin-footer">Internal MVTA use only</p>
         </div>
       </div>
     );

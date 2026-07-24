@@ -61,6 +61,25 @@ function normalizeActiveMessage(m: ActiveMessage): ActiveMessage {
   };
 }
 
+// Front Door has shown real edge-node propagation flakiness in this
+// environment (a rule reported healthy by the control plane didn't apply
+// consistently on every edge POP). A GET is safe to retry - unlike a write -
+// so a transient network-level failure (fetch() rejecting outright, not an
+// HTTP error response) gets a couple of quick retries before surfacing to
+// the UI.
+const GET_RETRY_DELAYS_MS = [500, 1500];
+
+async function fetchWithRetry(input: string, init: RequestInit): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fetch(input, init);
+    } catch (err) {
+      if (attempt >= GET_RETRY_DELAYS_MS.length) throw err;
+      await new Promise((resolve) => setTimeout(resolve, GET_RETRY_DELAYS_MS[attempt]));
+    }
+  }
+}
+
 export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
   const root = baseUrl.replace(/\/+$/, "");
 
@@ -78,7 +97,9 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
       if (token) headers.set("Authorization", `Bearer ${token}`);
     }
 
-    const res = await fetch(`${root}${path}`, { ...init, headers });
+    const method = (init.method ?? "GET").toUpperCase();
+    const doFetch = method === "GET" ? fetchWithRetry : fetch;
+    const res = await doFetch(`${root}${path}`, { ...init, headers });
     const isJson = res.headers.get("content-type")?.includes("application/json");
     const payload = isJson ? await res.json().catch(() => null) : null;
 
