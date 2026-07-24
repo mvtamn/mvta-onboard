@@ -14,6 +14,9 @@ function buildConfig(): Configuration {
     auth: {
       clientId: import.meta.env.VITE_ENTRA_CLIENT_ID,
       authority: `https://login.microsoftonline.com/${import.meta.env.VITE_ENTRA_TENANT_ID}`,
+      // Served behind Front Door at /console/* (see vite.config.ts) - matches
+      // the redirect URI that must be registered on the app registration's
+      // SPA platform: <front-door-endpoint>/console/.
       redirectUri: window.location.origin + "/console/",
       postLogoutRedirectUri: window.location.origin + "/console/",
     },

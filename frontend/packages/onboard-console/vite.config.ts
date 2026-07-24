@@ -1,8 +1,14 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// The console is served under /console/* by Front Door, so the built assets
-// must resolve from that base path.
+// Served behind Front Door at /console/* (confirmed live: route-onboard's
+// rsConsoleV2 rule set strips the /console prefix via UrlRewrite before
+// forwarding to this SWA's origin, which serves plain /assets/*). Because the
+// rewrite happens server-side at the edge, the BROWSER-facing asset URLs must
+// stay /console/assets/* so Front Door's own route pattern matches them - this
+// base is what's actually correct for production. Direct access to the bare
+// SWA hostname (bypassing Front Door) is NOT a supported path and will 404 on
+// assets; always test via the Front Door endpoint.
 export default defineConfig({
   base: "/console/",
   plugins: [react()],

@@ -25,7 +25,14 @@ jobs:
             output: frontend/packages/rider-app/dist
             token_secret: SWA_TOKEN_RIDERAPP
           - app: onboard-console
-            output: frontend/packages/onboard-console/dist
+            # dist-wrapped, not dist: this app is served behind Front Door at
+            # /console/*, and Front Door forwards requests WITHOUT stripping
+            # that prefix (the rule meant to strip it server-side proved
+            # unreliable in practice - see wrap-dist.mjs for the full story).
+            # `npm run build`'s postbuild hook (wrap-dist.mjs) nests dist/
+            # under a literal console/ subfolder so the deployed file layout
+            # matches the requested URLs directly, with no rewrite needed.
+            output: frontend/packages/onboard-console/dist-wrapped
             token_secret: SWA_TOKEN_ONBOARD
     steps:
       - uses: actions/checkout@v4

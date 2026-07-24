@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/staticwebapp.config.json",
   "navigationFallback": {
-    "rewrite": "/index.html",
-    "exclude": ["/assets/*", "/*.{css,js,ico,png,jpg,svg,woff,woff2}"]
+    "rewrite": "/console/index.html",
+    "exclude": ["/console/assets/*", "/console/*.{css,js,ico,png,jpg,svg,woff,woff2}"]
   },
   "globalHeaders": {
     "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://login.microsoftonline.com https://login.microsoftonline.com/*; frame-src https://login.microsoftonline.com; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://login.microsoftonline.com",
@@ -13,6 +13,6 @@
     "Permissions-Policy": "geolocation=(), camera=(), microphone=()"
   },
   "responseOverrides": {
-    "404": { "rewrite": "/index.html", "statusCode": 200 }
+    "404": { "rewrite": "/console/index.html", "statusCode": 200 }
   }
 }
