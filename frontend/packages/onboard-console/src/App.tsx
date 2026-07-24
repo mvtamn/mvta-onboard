@@ -84,7 +84,7 @@ export function App() {
           <span className="logo-badge">MVTA</span>
           <div>
             <div className="nav-brand-text">OnBoard</div>
-            <div className="nav-brand-sub">v1.0.0</div>
+            <div className="nav-brand-sub">v{__APP_VERSION__}</div>
           </div>
         </div>
 
@@ -169,7 +169,7 @@ export function App() {
         </main>
 
         <div className="footer">
-          <span>MVTA OnBoard · v1.0.0 · Azure SQL + Service Bus + Entra ID · Internal Use Only</span>
+          <span>MVTA OnBoard · v{__APP_VERSION__} · Azure SQL + Service Bus + Entra ID · Internal Use Only</span>
           <span>
             {stats.activeCount ?? "—"} active · {stats.pending?.length ?? "—"} pending alerts · Synced{" "}
             {stats.syncedAt ? stats.syncedAt.toLocaleTimeString() : "—"}
