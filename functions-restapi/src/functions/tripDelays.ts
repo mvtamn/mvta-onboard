@@ -11,6 +11,9 @@ interface TripDelayRow {
   vehicle_id: string | null;
   next_stop_id: string | null;
   next_stop_name: string | null;
+  previous_stop_id: string | null;
+  previous_stop_name: string | null;
+  direction_label: string | null;
   delay_seconds: number;
   polls_over_threshold: number;
   first_seen_at: Date;
@@ -38,12 +41,15 @@ app.http("tripDelaysList", {
       const pool = await getPool();
       const result = await pool.request().query<TripDelayRow>(`
         SELECT d.trip_id, d.route_id, d.vehicle_id, d.next_stop_id, s.stop_name AS next_stop_name,
+               d.previous_stop_id, ps.stop_name AS previous_stop_name, td.direction_label,
                d.delay_seconds, d.polls_over_threshold, d.first_seen_at, d.last_polled_at,
                d.suggested_alert_id, d.latitude, d.longitude, d.bearing, d.speed_mps,
                d.occupancy_status, d.current_status, d.position_updated_at
         FROM MonitoredTripDelays d
         LEFT JOIN GtfsStops s ON s.stop_id = d.next_stop_id
-        ORDER BY d.delay_seconds DESC
+        LEFT JOIN GtfsStops ps ON ps.stop_id = d.previous_stop_id
+        LEFT JOIN GtfsTripDirections td ON td.trip_id = d.trip_id
+        ORDER BY d.route_id, d.delay_seconds DESC
       `);
       return { status: 200, jsonBody: { delays: result.recordset } };
     } catch (err) {

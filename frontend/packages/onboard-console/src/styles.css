@@ -178,6 +178,11 @@ table.data td { padding: 9px 12px; border-bottom: 1px solid var(--border-soft); 
 table.data tr:nth-child(even) td { background: var(--table-stripe); }
 .td-dim { font-size: 11px; color: var(--text-dim); }
 
+/* Route-grouped tables (e.g. Live Delays) - a header row breaking the flat
+   list into per-route sections. Overrides the even/odd zebra striping
+   above regardless of the row's position, so it stays visually distinct. */
+table.data tr.route-group-header td { background: var(--surface-alt-bg); color: var(--text); font-weight: bold; font-size: 12px; border-bottom: 1px solid var(--border-strong); padding-top: 10px; }
+
 /* ---------- pills / buttons ---------- */
 .pill-sm { font-size: 10.5px; font-weight: bold; padding: 3px 8px; border-radius: 10px; white-space: nowrap; }
 .pill-warning { background: var(--pill-warning-bg); color: var(--pill-warning-fg); }

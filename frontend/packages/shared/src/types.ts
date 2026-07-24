@@ -134,6 +134,9 @@ export interface TripDelay {
   vehicle_id: string | null;
   next_stop_id: string | null;
   next_stop_name: string | null;
+  previous_stop_id: string | null;
+  previous_stop_name: string | null;
+  direction_label: string | null;
   delay_seconds: number;
   polls_over_threshold: number;
   first_seen_at: string;

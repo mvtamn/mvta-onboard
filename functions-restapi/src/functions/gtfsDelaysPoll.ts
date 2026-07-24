@@ -43,6 +43,9 @@ async function upsertDelay(pool: sql.ConnectionPool, delay: MappedTripDelay): Pr
       UPDATE SET
         route_id = @route_id,
         vehicle_id = @vehicle_id,
+        previous_stop_id = CASE
+          WHEN target.next_stop_id IS NOT NULL AND target.next_stop_id <> @next_stop_id
+          THEN target.next_stop_id ELSE target.previous_stop_id END,
         next_stop_id = @next_stop_id,
         delay_seconds = @delay_seconds,
         polls_over_threshold = CASE WHEN @delay_seconds > ${DELAY_THRESHOLD_SECONDS} THEN target.polls_over_threshold + 1 ELSE 0 END,
