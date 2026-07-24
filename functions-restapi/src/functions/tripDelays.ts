@@ -15,6 +15,13 @@ interface TripDelayRow {
   first_seen_at: Date;
   last_polled_at: Date;
   suggested_alert_id: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  bearing: number | null;
+  speed_mps: number | null;
+  occupancy_status: number | null;
+  current_status: number | null;
+  position_updated_at: Date | null;
 }
 
 app.http("tripDelaysList", {
@@ -30,7 +37,9 @@ app.http("tripDelaysList", {
       const pool = await getPool();
       const result = await pool.request().query<TripDelayRow>(`
         SELECT trip_id, route_id, vehicle_id, next_stop_id, delay_seconds,
-               polls_over_threshold, first_seen_at, last_polled_at, suggested_alert_id
+               polls_over_threshold, first_seen_at, last_polled_at, suggested_alert_id,
+               latitude, longitude, bearing, speed_mps, occupancy_status,
+               current_status, position_updated_at
         FROM MonitoredTripDelays
         ORDER BY delay_seconds DESC
       `);

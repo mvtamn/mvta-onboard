@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { type TripDelay, ApiError } from "@mvta/shared";
+import { type TripDelay, ApiError, OCCUPANCY_LABELS, CURRENT_STATUS_LABELS } from "@mvta/shared";
 import { api } from "../../config.js";
 
 const ESCALATION_THRESHOLD_SECONDS = 15 * 60;
@@ -15,6 +15,18 @@ function delayPill(seconds: number) {
       +{minutes} min
     </span>
   );
+}
+
+function formatSpeed(speedMps: number | null): string {
+  if (speedMps === null) return "—";
+  const mph = speedMps * 2.23694;
+  return `${Math.round(mph)} mph`;
+}
+
+function occupancyPill(status: number | null) {
+  if (status === null) return <span className="td-dim">—</span>;
+  const cls = status >= 5 ? "pill-danger" : status >= 3 ? "pill-warning" : "pill-success";
+  return <span className={`pill-sm ${cls}`}>{OCCUPANCY_LABELS[status] ?? status}</span>;
 }
 
 // Every currently-monitored trip's live delay, from GTFS-RT TripUpdate - all
@@ -48,8 +60,9 @@ export function LiveDelays() {
       </div>
       <div className="panel-body">
         <p className="panel-desc">
-          Every currently-monitored trip's live delay from GTFS-Realtime, refreshed every 5 minutes.
-          A delay sustained over 15 minutes escalates into a Suggested Alerts candidate for review.
+          Every currently-monitored trip's live delay, speed, and occupancy from GTFS-Realtime,
+          refreshed every 5 minutes. A delay sustained over 15 minutes escalates into a Suggested
+          Alerts candidate for review.
         </p>
         {error ? <p className="error-text">{error}</p> : null}
         {delays === null ? (
@@ -64,6 +77,9 @@ export function LiveDelays() {
                 <th>Vehicle</th>
                 <th>Next stop</th>
                 <th>Delay</th>
+                <th>Speed</th>
+                <th>Occupancy</th>
+                <th>Status</th>
                 <th>Suggested alert</th>
               </tr>
             </thead>
@@ -74,6 +90,11 @@ export function LiveDelays() {
                   <td className="td-dim">{d.vehicle_id ?? "—"}</td>
                   <td className="td-dim">{d.next_stop_id ?? "—"}</td>
                   <td>{delayPill(d.delay_seconds)}</td>
+                  <td className="td-dim">{formatSpeed(d.speed_mps)}</td>
+                  <td>{occupancyPill(d.occupancy_status)}</td>
+                  <td className="td-dim">
+                    {d.current_status !== null ? CURRENT_STATUS_LABELS[d.current_status] ?? d.current_status : "—"}
+                  </td>
                   <td>
                     {d.suggested_alert_id ? (
                       <span className="pill-sm pill-accent">Escalated</span>

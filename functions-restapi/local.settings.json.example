@@ -8,6 +8,8 @@
     "GTFS_RT_ALERT_URL": "https://srv.mvta.com/infoPoint/GTFS-realtime.ashx?&Type=Alert&debug=true",
     "// note2": "GTFS_RT_TRIPUPDATE_URL feeds delay detection (gtfsDelaysPoll.ts); GTFS_STATIC_URL is the daily schedule sync (gtfsStopsSync.ts) used to resolve stop names.",
     "GTFS_RT_TRIPUPDATE_URL": "https://srv.mvta.com/infoPoint/GTFS-realtime.ashx?&Type=TripUpdate&debug=true",
-    "GTFS_STATIC_URL": "https://mvta-dispatch.myavail.cloud/opensilvermyavailserver/files/gtfs/google_transit.zip"
+    "GTFS_STATIC_URL": "https://mvta-dispatch.myavail.cloud/opensilvermyavailserver/files/gtfs/google_transit.zip",
+    "// note3": "GTFS_RT_VEHICLE_URL feeds live position/occupancy (gtfsVehiclePositionsPoll.ts) - the third and final GTFS-RT feed type.",
+    "GTFS_RT_VEHICLE_URL": "https://srv.mvta.com/infoPoint/GTFS-realtime.ashx?&Type=VehiclePosition&debug=true"
   }
 }
