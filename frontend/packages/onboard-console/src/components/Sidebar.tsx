@@ -46,7 +46,7 @@ export function Sidebar({ stats }: { stats: LiveStats }) {
         <div className="stat-sub">Fixed-route delay candidates</div>
       </div>
       <div className="stat-card" style={{ borderLeftColor: "#417B68" }}>
-        <div className="stat-label" style={{ color: "#2C5A47" }}>ZONA</div>
+        <div className="stat-label" style={{ color: "#2C5A47" }}>MVTA CONNECT</div>
         <div className="stat-value">{dash(zonaPending)}</div>
         <div className="stat-sub">Wait-time candidates</div>
       </div>

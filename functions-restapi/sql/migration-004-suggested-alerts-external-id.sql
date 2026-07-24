@@ -4,7 +4,7 @@
 -- re-fetches the same feed repeatedly - without a way to recognize an alert
 -- it's already seen, every poll would insert a duplicate pending row for the
 -- same ongoing CAD detour notice. external_id holds the feed's own entity ID
--- (source-specific: GTFS-RT Entity.Id today; a future Zona/SpareLabs producer
+-- (source-specific: GTFS-RT Entity.Id today; a future MVTA Connect (On-Demand)/SpareLabs producer
 -- would use its own ID scheme under the same column).
 --
 -- Run once against the live database (private endpoint - see HANDOFF §5.7 for

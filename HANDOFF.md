@@ -6,7 +6,7 @@
 
 ## 1. What this project is
 
-MVTA OnBoard is a transit rider notification system for Minnesota Valley Transit Authority (MVTA). Staff compose service announcements (delays, detours, outages) in a web console; Claude parses free text into structured data; the result fans out to riders via website, SMS, email, and (later) push notifications, digital signage, and social media. It also includes proactive delay detection (GTFS-Realtime for fixed-route, SpareLabs/"Zona" for demand-response) that suggests alerts for staff to review and approve — never auto-published.
+MVTA OnBoard is a transit rider notification system for Minnesota Valley Transit Authority (MVTA). Staff compose service announcements (delays, detours, outages) in a web console; Claude parses free text into structured data; the result fans out to riders via website, SMS, email, and (later) push notifications, digital signage, and social media. It also includes proactive delay detection (GTFS-Realtime for fixed-route, SpareLabs for MVTA Connect (On-Demand) demand-response) that suggests alerts for staff to review and approve — never auto-published.
 
 Two source documents define the full design (referenced throughout this handoff, ask the user for these if not already in your context):
 - `Transit_Notification_Architecture.docx` — full architecture, schema, API spec, security design
@@ -116,7 +116,7 @@ Only 3 of ~16 endpoints exist. Still to build:
 - `POST /subscribers/{id}/device-token`, `DELETE .../device-token/{id}` — push (Phase 2, lower priority right now)
 - `GET /admin/messages?tag=` — tag search
 - `GET /suggested-alerts?status=pending`, `POST /suggested-alerts/{id}/approve`, `.../dismiss` — the human-review queue for predictive alerts (Phase 3, but keep the human-in-the-loop design principle in mind even when just planning this)
-- `POST /webhooks/sparelabs` — Zona wait-time webhook (Phase 3)
+- `POST /webhooks/sparelabs` — MVTA Connect (On-Demand) wait-time webhook (Phase 4)
 
 **For the current SMS/email priority, the critical path is**: `POST /subscribers`, the confirmation endpoints, and the dispatch handler's actual send logic (currently nonexistent).
 

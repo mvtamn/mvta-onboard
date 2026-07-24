@@ -10,8 +10,8 @@ import { useAuth } from "../auth/AuthContext.js";
 import { api } from "../config.js";
 
 // Suggested Alerts - the human-review queue (HANDOFF §2.3). Detection feeds
-// (GTFS-Realtime, Zona) insert pending rows in Phase 3; staff approve (which
-// publishes through the normal Messages pipeline) or dismiss. Nothing
+// (GTFS-Realtime, MVTA Connect) insert pending rows here; staff approve
+// (which publishes through the normal Messages pipeline) or dismiss. Nothing
 // auto-publishes.
 export function SuggestedAlerts({ onChanged }: { onChanged?: () => void }) {
   const { roles } = useAuth();
@@ -56,17 +56,17 @@ export function SuggestedAlerts({ onChanged }: { onChanged?: () => void }) {
       <div className="panel-header">Suggested Alerts</div>
       <div className="panel-body">
         <p className="panel-desc">
-          Delay and wait-time candidates detected from GTFS-Realtime and Zona. Nothing publishes
-          without your review — Approve posts through the normal Messages pipeline; Dismiss
-          discards the suggestion.
+          Delay and wait-time candidates detected from GTFS-Realtime and MVTA Connect (On-Demand).
+          Nothing publishes without your review — Approve posts through the normal Messages
+          pipeline; Dismiss discards the suggestion.
         </p>
         {error ? <p className="error-text">{error}</p> : null}
         {alerts === null ? (
           <p className="muted">Loading… (requires staff sign-in)</p>
         ) : alerts.length === 0 ? (
           <p className="empty-note">
-            No pending suggestions. Detection feeds (GTFS-RT, Zona) come online in Phase 3 — this
-            queue is ready for them.
+            No pending suggestions right now. GTFS-Realtime alert and delay detection are live —
+            MVTA Connect (On-Demand) wait-time detection is not yet connected.
           </p>
         ) : (
           <table className="data">
@@ -85,7 +85,7 @@ export function SuggestedAlerts({ onChanged }: { onChanged?: () => void }) {
                 <tr key={a.alert_id}>
                   <td>
                     <span className={`pill-sm ${a.source === "gtfs_rt" ? "pill-warning" : "pill-success"}`}>
-                      {a.source === "gtfs_rt" ? "GTFS-RT" : "Zona"}
+                      {a.source === "gtfs_rt" ? "GTFS-RT" : "MVTA Connect"}
                     </span>
                   </td>
                   <td>{a.draft_text}</td>

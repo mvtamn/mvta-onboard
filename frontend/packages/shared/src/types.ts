@@ -138,7 +138,32 @@ export interface TripDelay {
   first_seen_at: string;
   last_polled_at: string;
   suggested_alert_id: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  bearing: number | null;
+  speed_mps: number | null;
+  occupancy_status: number | null;
+  current_status: number | null;
+  position_updated_at: string | null;
 }
+
+// GTFS-Realtime standard enums (raw ints from VehiclePosition, translated
+// client-side - same convention as CATEGORY_LABELS/SEVERITY_LABELS below).
+export const OCCUPANCY_LABELS: Record<number, string> = {
+  0: "Empty",
+  1: "Many seats available",
+  2: "Few seats available",
+  3: "Standing room only",
+  4: "Crushed standing room",
+  5: "Full",
+  6: "Not accepting passengers",
+};
+
+export const CURRENT_STATUS_LABELS: Record<number, string> = {
+  0: "Approaching stop",
+  1: "Stopped at stop",
+  2: "En route",
+};
 
 export const CATEGORY_LABELS: Record<Category, string> = {
   delay: "Delay",
@@ -147,7 +172,7 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   outage: "Outage",
   general: "General",
   emergency: "Emergency",
-  demand_response_delay: "Zona Delay",
+  demand_response_delay: "MVTA Connect Delay",
 };
 
 export const SEVERITY_LABELS: Record<Severity, string> = {

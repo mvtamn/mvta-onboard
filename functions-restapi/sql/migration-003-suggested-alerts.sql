@@ -1,16 +1,16 @@
 -- Migration 003: SuggestedAlerts - the human-review queue for predictive
 -- alerts (HANDOFF §2.3: NOTHING auto-publishes; staff approve or dismiss).
 --
--- Detection feeds (GTFS-Realtime fixed-route delays, Zona wait times) arrive
--- in Phase 3 and will INSERT pending rows here. The queue endpoints and the
--- console tab are functional now so the workflow exists before the feeds do.
+-- Detection feeds (GTFS-Realtime fixed-route delays, MVTA Connect (On-Demand)
+-- wait times) INSERT pending rows here. The queue endpoints and console tab
+-- were built before either feed existed, so the workflow was ready for them.
 --
 -- Run once against the live database (private endpoint - see HANDOFF §5.7 for
 -- the temporary-public-access procedure). GO separates batches.
 
 CREATE TABLE SuggestedAlerts (
     alert_id         UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    source           NVARCHAR(20)     NOT NULL,   -- gtfs_rt | zona
+    source           NVARCHAR(20)     NOT NULL,   -- gtfs_rt | zona (MVTA Connect (On-Demand))
     draft_text       NVARCHAR(MAX)    NOT NULL,   -- proposed rider-facing text
     category         NVARCHAR(50)     NOT NULL,
     severity         NVARCHAR(20)     NOT NULL,

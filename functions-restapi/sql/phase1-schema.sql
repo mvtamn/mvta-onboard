@@ -10,7 +10,7 @@ CREATE TABLE Messages (
     severity             NVARCHAR(20)          NOT NULL,
     routes_affected      NVARCHAR(MAX)         NULL,  -- JSON array
     stops_affected       NVARCHAR(MAX)         NULL,  -- JSON array
-    zones_affected       NVARCHAR(MAX)         NULL,  -- JSON array, Zona zones
+    zones_affected       NVARCHAR(MAX)         NULL,  -- JSON array, MVTA Connect (On-Demand) zones
     tags                 NVARCHAR(MAX)         NULL,  -- JSON array, internal-only
     channels             NVARCHAR(MAX)         NULL,  -- JSON array; empty/null = all
     created_by           NVARCHAR(200)         NOT NULL,

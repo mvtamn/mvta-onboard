@@ -16,7 +16,7 @@ export function AlertCard({ m }: { m: ActiveMessage }) {
     m.routes_affected?.length
       ? m.routes_affected.join(", ")
       : m.zones_affected?.length
-        ? "Zona: " + m.zones_affected.join(", ")
+        ? "MVTA Connect: " + m.zones_affected.join(", ")
         : m.stops_affected?.length
           ? m.stops_affected.join(", ")
           : "All routes";
