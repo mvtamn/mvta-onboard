@@ -1,5 +1,9 @@
 # MVTA OnBoard — Suggested Improvements
 
+> This discussion draft has been incorporated into
+> `MVTA_ONBOARD_MANUAL.md`. Retain it for the full design rationale and detailed
+> feature concepts; use the consolidated manual for current status and priority.
+
 **Prepared:** July 26, 2026  
 **Purpose:** Discussion draft for product, operations, UX, and technical review
 

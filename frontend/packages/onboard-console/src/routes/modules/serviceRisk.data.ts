@@ -30,6 +30,8 @@ export interface FixedRouteRisk {
   downstreamTrip: string | null;
   downstreamDelayMinutes: number | null;
   timeline: DepartureTimelineStop[];
+  serviceDate?: string | null;
+  suggestedAlertId?: string | null;
 }
 
 export interface OnDemandRisk {
@@ -47,6 +49,8 @@ export interface OnDemandRisk {
   availableVehicles: number;
   nearestEligibleVehicle: string;
   reasons: string[];
+  sourceTripId?: string;
+  suggestedAlertId?: string | null;
 }
 
 export const FIXED_ROUTE_RISKS: FixedRouteRisk[] = [

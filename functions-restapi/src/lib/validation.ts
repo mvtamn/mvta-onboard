@@ -75,6 +75,48 @@ export function validateCreateMessage(body: UnknownBody): string[] {
   return errors;
 }
 
+export function validatePrepareSuggestedAlert(body: UnknownBody): string[] {
+  const errors: string[] = [];
+
+  if (body.source !== "gtfs_rt" && body.source !== "zona") {
+    errors.push("source must be gtfs_rt or zona");
+  }
+  if (
+    typeof body.external_id !== "string" ||
+    body.external_id.trim() === "" ||
+    body.external_id.length > 100
+  ) {
+    errors.push("external_id is required and must be at most 100 characters");
+  }
+  if (typeof body.draft_text !== "string" || body.draft_text.trim() === "") {
+    errors.push("draft_text is required and must be a non-empty string");
+  }
+  if (!includes(VALID_CATEGORIES, body.category)) {
+    errors.push(`category must be one of: ${VALID_CATEGORIES.join(", ")}`);
+  }
+  if (!includes(VALID_SEVERITIES, body.severity)) {
+    errors.push(`severity must be one of: ${VALID_SEVERITIES.join(", ")}`);
+  }
+  for (const field of ["routes_affected", "zones_affected"]) {
+    const value = body[field];
+    if (
+      value !== undefined &&
+      (!Array.isArray(value) || value.some((item) => typeof item !== "string"))
+    ) {
+      errors.push(`${field} must be an array of strings if provided`);
+    }
+  }
+  if (
+    body.detail === null ||
+    typeof body.detail !== "object" ||
+    Array.isArray(body.detail)
+  ) {
+    errors.push("detail is required and must be an object");
+  }
+
+  return errors;
+}
+
 // E.164: leading +, then 8-15 digits. Matches the Subscribers.phone_number
 // NVARCHAR(20) column, which is documented as E.164 format.
 const E164_RE = /^\+[1-9]\d{7,14}$/;

@@ -75,8 +75,10 @@ Fixed Route Risk:
 - Shows the current delay, predicted maximum, first threshold departure,
   confidence, evidence, and stop-by-stop timeline.
 - Preserves the previous Live Delays table under **Current telemetry**.
-- Supports local workflow interactions: acknowledge, monitor, and prepare
-  alert.
+- Opens an existing Suggested Alert or creates one idempotent pending draft
+  for review when **Prepare alert** is selected against live data.
+- Shows a non-persistent customer-language preview when sample data is active.
+- Supports local acknowledge and monitor states.
 
 On-Demand Quality:
 
@@ -87,7 +89,14 @@ On-Demand Quality:
 
 Both screens fall back to clearly labeled preview scenarios when their
 authenticated API is unavailable. Preview records must never be presented as
-live operational data.
+live operational data, and preview alert drafts are never saved.
+
+### Alert preparation
+
+`POST /api/suggested-alerts/prepare` creates or reuses a pending review item.
+It uses `source + external_id` for deduplication and never publishes directly.
+The console navigates to and highlights the prepared item in Suggested Alerts,
+where authorized staff can approve and publish or dismiss it.
 
 ## Database deployment order
 
@@ -198,8 +207,9 @@ The adapter should:
   time.
 - The on-demand screen cannot show live data until the vendor adapter populates
   migration 009's table.
-- Workflow button state is currently local UI state. It is not yet persisted as
-  an Operational Event.
+- Acknowledge and monitor state is currently local UI state. Alert preparation
+  is persisted through Suggested Alerts, but a broader Operational Event model
+  is still needed.
 
 ## Recommended next work
 
@@ -212,10 +222,9 @@ The adapter should:
 6. Import `stop_times.txt`, service calendars, shapes, and block IDs.
 7. Persist acknowledge/monitor/prepare-alert actions in an Operational Event
    model.
-8. Connect **Prepare alert** to the existing Suggested Alert or Compose
-   workflow.
-9. Add integration tests using a test SQL database.
-10. Add live smoke tests for both authenticated endpoints.
+8. Add integration tests using a test SQL database.
+9. Add live smoke tests for both authenticated endpoints and alert
+   preparation.
 
 ## Validation
 

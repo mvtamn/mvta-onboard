@@ -43,6 +43,17 @@ export interface CreateMessageBody {
   expiration_source: ExpirationSource;
 }
 
+export interface PrepareSuggestedAlertBody {
+  source: "gtfs_rt" | "zona";
+  external_id: string;
+  draft_text: string;
+  category: Category;
+  severity: Severity;
+  routes_affected?: string[];
+  zones_affected?: string[];
+  detail: Record<string, unknown>;
+}
+
 export interface SubscribeBody {
   phone_number?: string | null;
   email?: string | null;

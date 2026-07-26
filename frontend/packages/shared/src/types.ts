@@ -128,6 +128,23 @@ export interface SuggestedAlert {
   message_id: string | null;
 }
 
+export interface PrepareSuggestedAlertInput {
+  source: "gtfs_rt" | "zona";
+  external_id: string;
+  draft_text: string;
+  category: Category;
+  severity: Severity;
+  routes_affected?: string[];
+  zones_affected?: string[];
+  detail: Record<string, unknown>;
+}
+
+export interface PrepareSuggestedAlertResult {
+  alert_id: string;
+  status: SuggestedAlertStatus;
+  created: boolean;
+}
+
 export interface TripDelay {
   trip_id: string;
   route_id: string;

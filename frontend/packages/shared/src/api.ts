@@ -17,6 +17,8 @@ import type {
   SubscribersSummary,
   SuggestedAlert,
   SuggestedAlertStatus,
+  PrepareSuggestedAlertInput,
+  PrepareSuggestedAlertResult,
   TripDelay,
   OnDemandRiskRecord,
 } from "./types.js";
@@ -191,6 +193,14 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
 
     getSuggestedAlerts(status: SuggestedAlertStatus | "all" = "pending") {
       return request<{ alerts: SuggestedAlert[] }>(`/api/suggested-alerts?status=${status}`, {}, true);
+    },
+
+    prepareSuggestedAlert(input: PrepareSuggestedAlertInput) {
+      return request<PrepareSuggestedAlertResult>(
+        "/api/suggested-alerts/prepare",
+        { method: "POST", body: JSON.stringify(input) },
+        true,
+      );
     },
 
     approveSuggestedAlert(id: string) {

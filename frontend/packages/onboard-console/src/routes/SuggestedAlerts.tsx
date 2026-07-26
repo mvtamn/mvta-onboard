@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   type SuggestedAlert,
   CATEGORY_LABELS,
@@ -15,6 +16,9 @@ import { api } from "../config.js";
 // auto-publishes.
 export function SuggestedAlerts({ onChanged }: { onChanged?: () => void }) {
   const { roles } = useAuth();
+  const [searchParams] = useSearchParams();
+  const focusId = searchParams.get("focus");
+  const focusRow = useRef<HTMLTableRowElement | null>(null);
   const canReview = roles.some((r) => r === "OCC.Publisher" || r === "OCC.Admin");
 
   const [alerts, setAlerts] = useState<SuggestedAlert[] | null>(null);
@@ -23,15 +27,20 @@ export function SuggestedAlerts({ onChanged }: { onChanged?: () => void }) {
 
   const load = useCallback(() => {
     api
-      .getSuggestedAlerts("pending")
+      .getSuggestedAlerts(focusId ? "all" : "pending")
       .then((d) => {
         setAlerts(d.alerts);
         setError(null);
       })
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load suggested alerts."));
-  }, []);
+  }, [focusId]);
 
   useEffect(load, [load]);
+  useEffect(() => {
+    if (alerts && focusId && focusRow.current) {
+      focusRow.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [alerts, focusId]);
 
   async function act(id: string, action: "approve" | "dismiss") {
     setBusy(id);
@@ -60,6 +69,11 @@ export function SuggestedAlerts({ onChanged }: { onChanged?: () => void }) {
           Nothing publishes without your review — Approve posts through the normal Messages
           pipeline; Dismiss discards the suggestion.
         </p>
+        {focusId ? (
+          <p className="review-focus-note">
+            Draft prepared from OCC service risk. Review the customer wording before approving it.
+          </p>
+        ) : null}
         {error ? <p className="error-text">{error}</p> : null}
         {alerts === null ? (
           <p className="muted">Loading… (requires staff sign-in)</p>
@@ -76,13 +90,18 @@ export function SuggestedAlerts({ onChanged }: { onChanged?: () => void }) {
                 <th>Draft</th>
                 <th>Category</th>
                 <th>Severity</th>
+                <th>Status</th>
                 <th>Detected</th>
                 {canReview ? <th>Actions</th> : null}
               </tr>
             </thead>
             <tbody>
               {alerts.map((a) => (
-                <tr key={a.alert_id}>
+                <tr
+                  key={a.alert_id}
+                  ref={a.alert_id === focusId ? focusRow : undefined}
+                  className={a.alert_id === focusId ? "review-focus-row" : undefined}
+                >
                   <td>
                     <span className={`pill-sm ${a.source === "gtfs_rt" ? "pill-warning" : "pill-success"}`}>
                       {a.source === "gtfs_rt" ? "GTFS-RT" : "MVTA Connect"}
@@ -91,15 +110,26 @@ export function SuggestedAlerts({ onChanged }: { onChanged?: () => void }) {
                   <td>{a.draft_text}</td>
                   <td className="td-dim">{CATEGORY_LABELS[a.category] ?? a.category}</td>
                   <td className="td-dim">{SEVERITY_LABELS[a.severity] ?? a.severity}</td>
+                  <td>
+                    <span className={`pill-sm ${a.status === "pending" ? "pill-warning" : a.status === "approved" ? "pill-success" : "pill-muted"}`}>
+                      {a.status}
+                    </span>
+                  </td>
                   <td className="td-dim">{timeAgo(a.created_at)}</td>
                   {canReview ? (
                     <td>
-                      <button className="btn-sm" disabled={busy === a.alert_id} onClick={() => act(a.alert_id, "approve")}>
-                        Approve &amp; publish
-                      </button>
-                      <button className="btn-sm danger" disabled={busy === a.alert_id} onClick={() => act(a.alert_id, "dismiss")}>
-                        Dismiss
-                      </button>
+                      {a.status === "pending" ? (
+                        <>
+                          <button className="btn-sm" disabled={busy === a.alert_id} onClick={() => act(a.alert_id, "approve")}>
+                            Approve &amp; publish
+                          </button>
+                          <button className="btn-sm danger" disabled={busy === a.alert_id} onClick={() => act(a.alert_id, "dismiss")}>
+                            Dismiss
+                          </button>
+                        </>
+                      ) : (
+                        <span className="td-dim">Review complete</span>
+                      )}
                     </td>
                   ) : null}
                 </tr>

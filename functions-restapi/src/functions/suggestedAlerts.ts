@@ -11,9 +11,9 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { requireRole, STAFF_READ_ROLES, PUBLISH_ROLES } from "../lib/auth";
-import { isGuid } from "../lib/validation";
+import { isGuid, validatePrepareSuggestedAlert } from "../lib/validation";
 import { publishMessageCreated } from "../lib/events";
-import type { Category, Severity } from "../lib/types";
+import type { Category, PrepareSuggestedAlertBody, Severity } from "../lib/types";
 
 interface SuggestedAlertRow {
   alert_id: string;
@@ -30,6 +30,154 @@ interface SuggestedAlertRow {
   reviewed_at: Date | null;
   message_id: string | null;
 }
+
+async function linkPreparedAlertToRisk(
+  tx: sql.Transaction,
+  body: PrepareSuggestedAlertBody,
+  alertId: string,
+): Promise<void> {
+  const tripId = body.detail.trip_id;
+  if (typeof tripId !== "string" || tripId === "") return;
+
+  const linkReq = new sql.Request(tx);
+  linkReq.input("trip_id", sql.NVarChar, tripId);
+  linkReq.input("alert_id", sql.UniqueIdentifier, alertId);
+  if (body.source === "gtfs_rt") {
+    const serviceDate =
+      typeof body.detail.service_date === "string"
+        ? body.detail.service_date
+        : null;
+    linkReq.input("service_date", sql.NVarChar, serviceDate);
+    await linkReq.query(`
+      UPDATE MonitoredTripDelays
+      SET suggested_alert_id = @alert_id
+      WHERE trip_id = @trip_id
+        AND (@service_date IS NULL OR service_date = @service_date)
+    `);
+  } else {
+    await linkReq.query(`
+      UPDATE MonitoredOnDemandWaits
+      SET suggested_alert_id = @alert_id
+      WHERE trip_id = @trip_id
+    `);
+  }
+}
+
+// Creates a reviewable draft from an OCC risk card. This endpoint never
+// publishes. source + external_id is the idempotency key, so repeated clicks
+// and the background detector converge on one review item.
+app.http("suggestedAlertsPrepare", {
+  route: "suggested-alerts/prepare",
+  methods: ["POST"],
+  authLevel: "anonymous",
+  handler: async (request: HttpRequest, context: InvocationContext) => {
+    const authResult = requireRole(request, PUBLISH_ROLES);
+    if (!authResult.authorized) {
+      return { status: authResult.status, jsonBody: { error: authResult.message } };
+    }
+
+    let raw: unknown;
+    try {
+      raw = await request.json();
+    } catch {
+      return { status: 400, jsonBody: { error: "Request body must be valid JSON" } };
+    }
+    const validationErrors = validatePrepareSuggestedAlert(
+      raw as Record<string, unknown>,
+    );
+    if (validationErrors.length > 0) {
+      return {
+        status: 400,
+        jsonBody: { error: "Validation failed", details: validationErrors },
+      };
+    }
+    const body = raw as PrepareSuggestedAlertBody;
+
+    const pool = await getPool();
+    const tx = new sql.Transaction(pool);
+    try {
+      await tx.begin();
+
+      const existingReq = new sql.Request(tx);
+      existingReq.input("source", sql.NVarChar, body.source);
+      existingReq.input("external_id", sql.NVarChar, body.external_id);
+      const existing = await existingReq.query<{
+        alert_id: string;
+        status: string;
+      }>(`
+        SELECT alert_id, status
+        FROM SuggestedAlerts WITH (UPDLOCK, HOLDLOCK)
+        WHERE source = @source AND external_id = @external_id
+      `);
+      const prior = existing.recordset[0];
+      if (prior) {
+        await linkPreparedAlertToRisk(tx, body, prior.alert_id);
+        await tx.commit();
+        if (prior.status !== "pending") {
+          return {
+            status: 409,
+            jsonBody: {
+              error: `The alert for this risk was already ${prior.status}.`,
+              alert_id: prior.alert_id,
+              alert_status: prior.status,
+            },
+          };
+        }
+        return {
+          status: 200,
+          jsonBody: { alert_id: prior.alert_id, status: prior.status, created: false },
+        };
+      }
+
+      const insertReq = new sql.Request(tx);
+      insertReq.input("source", sql.NVarChar, body.source);
+      insertReq.input("external_id", sql.NVarChar, body.external_id);
+      insertReq.input("draft_text", sql.NVarChar, body.draft_text.trim());
+      insertReq.input("category", sql.NVarChar, body.category);
+      insertReq.input("severity", sql.NVarChar, body.severity);
+      insertReq.input(
+        "routes_affected",
+        sql.NVarChar,
+        body.routes_affected ? JSON.stringify(body.routes_affected) : null,
+      );
+      insertReq.input(
+        "zones_affected",
+        sql.NVarChar,
+        body.zones_affected ? JSON.stringify(body.zones_affected) : null,
+      );
+      insertReq.input("detail", sql.NVarChar, JSON.stringify(body.detail));
+      const inserted = await insertReq.query<{ alert_id: string; status: string }>(`
+        INSERT INTO SuggestedAlerts (
+          source, external_id, draft_text, category, severity,
+          routes_affected, zones_affected, detail
+        )
+        OUTPUT INSERTED.alert_id, INSERTED.status
+        VALUES (
+          @source, @external_id, @draft_text, @category, @severity,
+          @routes_affected, @zones_affected, @detail
+        )
+      `);
+      const alert = inserted.recordset[0];
+      await linkPreparedAlertToRisk(tx, body, alert.alert_id);
+      await tx.commit();
+      context.log(
+        `OCC prepared suggested alert ${alert.alert_id} for ${body.source}:${body.external_id}`,
+      );
+      return {
+        status: 201,
+        jsonBody: { alert_id: alert.alert_id, status: alert.status, created: true },
+      };
+    } catch (err) {
+      try {
+        await tx.rollback();
+      } catch {
+        /* already rolled back / not begun */
+      }
+      context.error("POST /suggested-alerts/prepare failed:", err);
+      return { status: 500, jsonBody: { error: "Internal server error" } };
+    }
+  },
+});
 
 app.http("suggestedAlertsList", {
   route: "suggested-alerts",

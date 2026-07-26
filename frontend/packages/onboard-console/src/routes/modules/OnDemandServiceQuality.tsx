@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { type OnDemandRiskRecord } from "@mvta/shared";
+import {
+  ApiError,
+  type OnDemandRiskRecord,
+  type PrepareSuggestedAlertInput,
+} from "@mvta/shared";
+import { useNavigate } from "react-router-dom";
 import { api } from "../../config.js";
 import {
   ON_DEMAND_RISKS,
@@ -59,14 +64,45 @@ function fromOnDemandRecord(record: OnDemandRiskRecord): OnDemandRisk {
     reasons: record.prediction_reasons.length
       ? record.prediction_reasons
       : ["Prediction evidence is not available for this record."],
+    sourceTripId: record.trip_id,
+    suggestedAlertId: record.suggested_alert_id,
+  };
+}
+
+function onDemandDraft(risk: OnDemandRisk): PrepareSuggestedAlertInput {
+  return {
+    source: "zona",
+    external_id: `wait:${risk.sourceTripId ?? risk.tripNumber}`.slice(0, 100),
+    draft_text:
+      `MVTA Connect customers in Zone ${risk.zone}: Pickup for this trip is predicted ` +
+      `after approximately ${risk.predictedWaitMinutes} minutes, above the 25-minute ` +
+      "service standard. Please check for updated pickup information.",
+    category: "demand_response_delay",
+    severity: risk.predictedWaitMinutes >= 40 ? "major" : "minor",
+    zones_affected: [risk.zone],
+    detail: {
+      detection_type: "on_demand_wait_risk",
+      trip_id: risk.sourceTripId ?? risk.tripNumber,
+      external_trip_id: risk.tripNumber,
+      zone_id: risk.zone,
+      current_wait_minutes: risk.currentWaitMinutes,
+      predicted_wait_minutes: risk.predictedWaitMinutes,
+      assigned_vehicle_id: risk.vehicle,
+      confidence: risk.confidence.toLowerCase(),
+      prepared_from: "occ_on_demand_quality",
+    },
   };
 }
 
 export function OnDemandServiceQuality() {
+  const navigate = useNavigate();
   const [selectedId, setSelectedId] = useState(ON_DEMAND_RISKS[0].id);
   const [workflow, setWorkflow] = useState<Record<string, RiskWorkflow>>({});
   const [liveRisks, setLiveRisks] = useState<OnDemandRisk[] | null>(null);
   const [liveMessage, setLiveMessage] = useState<string | null>(null);
+  const [previewDrafts, setPreviewDrafts] = useState<Record<string, string>>({});
+  const [preparing, setPreparing] = useState(false);
+  const [prepareError, setPrepareError] = useState<string | null>(null);
   const risks = liveRisks ?? ON_DEMAND_RISKS;
   const selected = useMemo(
     () =>
@@ -87,9 +123,39 @@ export function OnDemandServiceQuality() {
       })
       .catch(() => {
         setLiveRisks(null);
-        setLiveMessage("The on-demand producer is not connected, so review scenarios are shown.");
+        setLiveMessage(
+          "Preview mode — local mock sign-in cannot access operational wait-time data. " +
+          "No alerts or workflow changes will be saved.",
+        );
       });
   }, []);
+
+  async function prepareUpdate(risk: OnDemandRisk) {
+    setPrepareError(null);
+    const draft = onDemandDraft(risk);
+    if (liveRisks === null) {
+      setPreviewDrafts((current) => ({ ...current, [risk.id]: draft.draft_text }));
+      setWorkflow((current) => ({ ...current, [risk.id]: "Alert prepared" }));
+      return;
+    }
+    if (risk.suggestedAlertId) {
+      navigate(`/suggested?focus=${encodeURIComponent(risk.suggestedAlertId)}`);
+      return;
+    }
+    setPreparing(true);
+    try {
+      const result = await api.prepareSuggestedAlert(draft);
+      navigate(`/suggested?focus=${encodeURIComponent(result.alert_id)}`);
+    } catch (err) {
+      setPrepareError(
+        err instanceof ApiError
+          ? err.message
+          : "The customer update draft could not be prepared.",
+      );
+    } finally {
+      setPreparing(false);
+    }
+  }
 
   const predictedPoor = risks.filter((risk) => risk.predictedWaitMinutes > 25).length;
   const currentlyPoor = risks.filter((risk) => risk.currentWaitMinutes > 25).length;
@@ -179,6 +245,11 @@ export function OnDemandServiceQuality() {
         <OnDemandDetail
           risk={selected}
           workflow={workflow[selected.id] ?? "New"}
+          isPreview={liveRisks === null}
+          previewDraft={previewDrafts[selected.id] ?? null}
+          preparing={preparing}
+          prepareError={prepareError}
+          onPrepare={() => void prepareUpdate(selected)}
           onWorkflow={(state) => setWorkflow((current) => ({ ...current, [selected.id]: state }))}
         />
       </div>
@@ -207,10 +278,20 @@ function RiskStat({
 function OnDemandDetail({
   risk,
   workflow,
+  isPreview,
+  previewDraft,
+  preparing,
+  prepareError,
+  onPrepare,
   onWorkflow,
 }: {
   risk: OnDemandRisk;
   workflow: RiskWorkflow;
+  isPreview: boolean;
+  previewDraft: string | null;
+  preparing: boolean;
+  prepareError: string | null;
+  onPrepare: () => void;
   onWorkflow: (workflow: RiskWorkflow) => void;
 }) {
   const state = waitState(risk);
@@ -271,8 +352,24 @@ function OnDemandDetail({
         </ul>
       </div>
 
+      {previewDraft ? (
+        <div className="risk-draft-preview" role="status">
+          <span>Customer update preview — not saved</span>
+          <p>{previewDraft}</p>
+        </div>
+      ) : null}
+      {prepareError ? <p className="risk-action-error">{prepareError}</p> : null}
+
       <div className="risk-actions">
-        <button className="btn-primary" onClick={() => onWorkflow("Alert prepared")}>Prepare customer update</button>
+        <button className="btn-primary" disabled={preparing} onClick={onPrepare}>
+          {preparing
+            ? "Preparing…"
+            : isPreview
+              ? "Preview customer update"
+              : risk.suggestedAlertId
+                ? "Review customer update"
+                : "Prepare customer update"}
+        </button>
         <button className="btn-sm" onClick={() => onWorkflow("Acknowledged")}>Acknowledge</button>
         <button className="btn-sm" onClick={() => onWorkflow("Monitoring")}>Monitor</button>
       </div>

@@ -1,9 +1,12 @@
 # MVTA OnBoard
 
-Transit-rider notification system for Minnesota Valley Transit Authority. Staff
-compose service announcements in a web console; alerts fan out to riders via the
-public web, SMS, and email. See [HANDOFF.md](HANDOFF.md) for full project
-background and the live Azure environment details.
+Transit-rider notification and OCC service-risk system for Minnesota Valley
+Transit Authority. Staff monitor fixed-route and on-demand service quality,
+prepare and approve customer communications, and manage active alerts.
+
+See [MVTA_ONBOARD_MANUAL.md](MVTA_ONBOARD_MANUAL.md) for the consolidated
+operations, product, architecture, development, deployment, and roadmap manual.
+`HANDOFF.md` is retained as historical project background.
 
 ## Repository layout
 

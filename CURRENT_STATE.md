@@ -1,7 +1,7 @@
 # MVTA OnBoard — Current State
 
 **Last reviewed:** July 26, 2026  
-**Repository version:** Onboard Console 1.1.0  
+**Repository version:** Onboard Console 1.2.1
 **Environment:** `dev` is the only live Azure environment and is effectively production.
 
 This document is the current repository-level source of truth for what has
@@ -114,6 +114,7 @@ Implemented HTTP endpoints include:
 | `PATCH` | `/api/admin/expiration-defaults/{category}` | Admin | Update an expiration default |
 | `GET` | `/api/admin/subscribers/summary` | Admin | View masked subscriber statistics |
 | `GET` | `/api/suggested-alerts` | Staff | List suggested alerts |
+| `POST` | `/api/suggested-alerts/prepare` | Publisher/Admin/Ingestion | Create or reuse a reviewable risk draft |
 | `POST` | `/api/suggested-alerts/{id}/approve` | Publisher/Admin | Approve and publish a suggestion |
 | `POST` | `/api/suggested-alerts/{id}/dismiss` | Publisher/Admin | Dismiss a suggestion |
 | `GET` | `/api/trip-delays` | Staff | Read current and predicted fixed-route departure risk |
@@ -190,7 +191,7 @@ uses deployment-token secrets.
 Local verification performed July 26, 2026:
 
 - REST API TypeScript build: passed.
-- REST API unit tests: **67 passed, 0 failed**.
+- REST API unit tests: **69 passed, 0 failed**.
 - Dispatch TypeScript build: passed.
 - Shared frontend package build: passed.
 - Rider application production build: passed.
@@ -206,6 +207,11 @@ Quality screens. Fixed-route predictions use live TripUpdate records after
 migration 008 is applied. On-demand records require a vendor adapter to
 populate migration 009's table. Both screens use clearly labeled review
 scenarios when their authenticated data source is unavailable.
+
+Live risks now open an existing Suggested Alert or create one deduplicated
+pending draft for human review. Preview risks show customer-language previews
+without saving them. Acknowledge and monitor states remain local until an
+Operational Event model is added.
 
 The dispatch project's test command is currently a placeholder and executes no
 tests. CI does not currently perform a database, Service Bus, Azure
@@ -297,24 +303,7 @@ operation. A temporary Service Bus failure can therefore leave:
 - An active web alert that was never dispatched by SMS/email.
 - A pending subscriber who never received a confirmation.
 
-### 7.5 GTFS delay deduplication may outlive a service day
-
-GTFS delay suggestions use the realtime `trip_id` as their external identifier.
-The database permanently enforces uniqueness on `(source, external_id)`.
-
-If MVTA reuses scheduled trip IDs across service days, a trip can create only
-one delay suggestion for the lifetime of the Suggested Alerts table. Later
-delays for the same trip ID will hit the uniqueness constraint. A durable key
-should distinguish feed type and service instance, for example:
-
-```text
-trip_update:{service_date}:{trip_id}
-```
-
-Alert-feed entity IDs and TripUpdate trip IDs should also occupy separate
-external-ID namespaces.
-
-### 7.6 Subscriber duplication is not prevented
+### 7.5 Subscriber duplication is not prevented
 
 Phone and email indexes are non-unique. Repeated opt-ins can create multiple
 subscriber records for the same contact method. Once confirmation is
@@ -362,10 +351,9 @@ Outstanding security and compliance work includes:
    queue delivery, audience selection, and delivery logging.
 6. Introduce a transactional outbox or another replayable event-publication
    mechanism.
-7. Correct GTFS delay external IDs to include feed type and service instance.
-8. Add an automated, versioned database migration process.
-9. Update or archive stale implementation sections in `HANDOFF.md` and keep
-   this document current after material releases.
+7. Add an automated, versioned database migration process.
+8. Use `MVTA_ONBOARD_MANUAL.md` as the consolidated source of truth and retain
+   `HANDOFF.md` only as historical background.
 
 ## 10. Definition of a complete SMS/email proof of concept
 

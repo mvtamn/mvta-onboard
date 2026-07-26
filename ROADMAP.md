@@ -1,5 +1,8 @@
 # Roadmap
 
+> The consolidated roadmap is maintained in `MVTA_ONBOARD_MANUAL.md`. This
+> file retains additional detail about speed-signal accuracy.
+
 Future work under consideration, not yet scheduled or built. See `CHANGELOG.md` for what's already shipped and `HANDOFF.md` for the original project background.
 
 ## Speed Alerts accuracy improvements

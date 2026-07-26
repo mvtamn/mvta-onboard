@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { validateCreateMessage, MAX_SUMMARY_LENGTH, MAX_CREATED_BY_LENGTH } from "./validation";
+import {
+  validateCreateMessage,
+  validatePrepareSuggestedAlert,
+  MAX_SUMMARY_LENGTH,
+  MAX_CREATED_BY_LENGTH,
+} from "./validation";
 
 test("valid message passes with no errors", () => {
   const errors = validateCreateMessage({
@@ -138,4 +143,34 @@ test("accepts null optional array fields", () => {
     tags: null,
   });
   assert.deepStrictEqual(errors, []);
+});
+
+test("valid suggested alert preparation passes", () => {
+  const errors = validatePrepareSuggestedAlert({
+    source: "gtfs_rt",
+    external_id: "delay:2026-07-26:trip-42",
+    draft_text: "Route 442 is predicted to depart 18 minutes late.",
+    category: "delay",
+    severity: "minor",
+    routes_affected: ["442"],
+    detail: { trip_id: "trip-42" },
+  });
+  assert.deepStrictEqual(errors, []);
+});
+
+test("suggested alert preparation rejects invalid dedup and detail fields", () => {
+  const errors = validatePrepareSuggestedAlert({
+    source: "manual",
+    external_id: "",
+    draft_text: "",
+    category: "delay",
+    severity: "minor",
+    routes_affected: "442",
+    detail: null,
+  });
+  assert.ok(errors.some((e) => e.includes("source")));
+  assert.ok(errors.some((e) => e.includes("external_id")));
+  assert.ok(errors.some((e) => e.includes("draft_text")));
+  assert.ok(errors.some((e) => e.includes("routes_affected")));
+  assert.ok(errors.some((e) => e.includes("detail")));
 });

@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { type TripDelay } from "@mvta/shared";
+import {
+  ApiError,
+  type PrepareSuggestedAlertInput,
+  type TripDelay,
+} from "@mvta/shared";
+import { useNavigate } from "react-router-dom";
 import { api } from "../../config.js";
 import { LiveDelays } from "./LiveDelays.js";
 import {
@@ -78,6 +83,8 @@ function fromTripDelay(delay: TripDelay): FixedRouteRisk {
       : ["Prediction confidence details are not available for this observation."],
     downstreamTrip: null,
     downstreamDelayMinutes: null,
+    serviceDate: delay.service_date,
+    suggestedAlertId: delay.suggested_alert_id,
     timeline: delay.departure_predictions.map((prediction) => {
       const predicted = prediction.predicted_departure_at
         ? new Date(prediction.predicted_departure_at)
@@ -130,12 +137,46 @@ function departureDelay(value: number | null, predicted = false) {
   );
 }
 
+function fixedRouteDraft(risk: FixedRouteRisk): PrepareSuggestedAlertInput {
+  const predicted = risk.predictedMaxMinutes ?? risk.currentDelayMinutes ?? 0;
+  const affectedDeparture =
+    risk.firstAffectedDeparture === "No future threshold crossing"
+      ? "a future departure"
+      : risk.firstAffectedDeparture;
+  return {
+    source: "gtfs_rt",
+    external_id: `delay:${risk.serviceDate ?? "current"}:${risk.tripId}`.slice(0, 100),
+    draft_text:
+      `Route ${risk.route} riders: This trip is predicted to depart approximately ` +
+      `${predicted} minutes late at ${affectedDeparture}. Please allow extra travel time ` +
+      "and check for updates.",
+    category: "delay",
+    severity: predicted >= 30 ? "major" : "minor",
+    routes_affected: [risk.route],
+    detail: {
+      detection_type: "departure_risk",
+      service_date: risk.serviceDate ?? null,
+      trip_id: risk.tripId,
+      vehicle_id: risk.vehicle,
+      predicted_max_departure_delay_minutes: risk.predictedMaxMinutes,
+      first_affected_departure: risk.firstAffectedDeparture,
+      first_affected_time: risk.firstAffectedTime,
+      confidence: risk.confidence.toLowerCase(),
+      prepared_from: "occ_fixed_route_risk",
+    },
+  };
+}
+
 export function FixedRouteServiceRisk() {
+  const navigate = useNavigate();
   const [view, setView] = useState<View>("exceptions");
   const [selectedId, setSelectedId] = useState(FIXED_ROUTE_RISKS[0].id);
   const [workflow, setWorkflow] = useState<Record<string, RiskWorkflow>>({});
   const [liveRisks, setLiveRisks] = useState<FixedRouteRisk[] | null>(null);
   const [liveMessage, setLiveMessage] = useState<string | null>(null);
+  const [previewDrafts, setPreviewDrafts] = useState<Record<string, string>>({});
+  const [preparing, setPreparing] = useState(false);
+  const [prepareError, setPrepareError] = useState<string | null>(null);
   const risks = liveRisks ?? FIXED_ROUTE_RISKS;
   const selected = useMemo(
     () =>
@@ -164,9 +205,37 @@ export function FixedRouteServiceRisk() {
       })
       .catch(() => {
         setLiveRisks(null);
-        setLiveMessage("Authenticated prediction data is unavailable, so review scenarios are shown.");
+        setLiveMessage(
+          "Preview mode — local mock sign-in cannot access operational prediction data. " +
+          "No alerts or workflow changes will be saved.",
+        );
       });
   }, []);
+
+  async function prepareAlert(risk: FixedRouteRisk) {
+    setPrepareError(null);
+    const draft = fixedRouteDraft(risk);
+    if (liveRisks === null) {
+      setPreviewDrafts((current) => ({ ...current, [risk.id]: draft.draft_text }));
+      setWorkflow((current) => ({ ...current, [risk.id]: "Alert prepared" }));
+      return;
+    }
+    if (risk.suggestedAlertId) {
+      navigate(`/suggested?focus=${encodeURIComponent(risk.suggestedAlertId)}`);
+      return;
+    }
+    setPreparing(true);
+    try {
+      const result = await api.prepareSuggestedAlert(draft);
+      navigate(`/suggested?focus=${encodeURIComponent(result.alert_id)}`);
+    } catch (err) {
+      setPrepareError(
+        err instanceof ApiError ? err.message : "The alert draft could not be prepared.",
+      );
+    } finally {
+      setPreparing(false);
+    }
+  }
 
   if (view === "telemetry") {
     return (
@@ -262,6 +331,11 @@ export function FixedRouteServiceRisk() {
         <DepartureRiskDetail
           risk={selected}
           workflow={workflow[selected.id] ?? "New"}
+          isPreview={liveRisks === null}
+          previewDraft={previewDrafts[selected.id] ?? null}
+          preparing={preparing}
+          prepareError={prepareError}
+          onPrepare={() => void prepareAlert(selected)}
           onWorkflow={(state) => setWorkflow((current) => ({ ...current, [selected.id]: state }))}
         />
       </div>
@@ -320,10 +394,20 @@ function RiskStat({
 function DepartureRiskDetail({
   risk,
   workflow,
+  isPreview,
+  previewDraft,
+  preparing,
+  prepareError,
+  onPrepare,
   onWorkflow,
 }: {
   risk: FixedRouteRisk;
   workflow: RiskWorkflow;
+  isPreview: boolean;
+  previewDraft: string | null;
+  preparing: boolean;
+  prepareError: string | null;
+  onPrepare: () => void;
   onWorkflow: (workflow: RiskWorkflow) => void;
 }) {
   return (
@@ -396,8 +480,18 @@ function DepartureRiskDetail({
         </div>
       ) : null}
 
+      {previewDraft ? (
+        <div className="risk-draft-preview" role="status">
+          <span>Customer alert preview — not saved</span>
+          <p>{previewDraft}</p>
+        </div>
+      ) : null}
+      {prepareError ? <p className="risk-action-error">{prepareError}</p> : null}
+
       <div className="risk-actions">
-        <button className="btn-primary" onClick={() => onWorkflow("Alert prepared")}>Prepare alert</button>
+        <button className="btn-primary" disabled={preparing} onClick={onPrepare}>
+          {preparing ? "Preparing…" : isPreview ? "Preview alert draft" : risk.suggestedAlertId ? "Review alert" : "Prepare alert"}
+        </button>
         <button className="btn-sm" onClick={() => onWorkflow("Acknowledged")}>Acknowledge</button>
         <button className="btn-sm" onClick={() => onWorkflow("Monitoring")}>Monitor</button>
       </div>

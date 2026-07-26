@@ -1,5 +1,10 @@
 # MVTA OnBoard — Project Handoff to Claude Code
 
+> **Historical document:** This handoff describes an early implementation
+> stage and is retained for background and hard-won infrastructure notes. Use
+> `MVTA_ONBOARD_MANUAL.md` for current capabilities, operations, deployment,
+> and priorities.
+
 **Purpose of this document**: full context for continuing development in Claude Code. Written after a long infrastructure build session in Claude chat — everything here is real and verified, not aspirational. Where something is untested or incomplete, it's flagged explicitly.
 
 ---

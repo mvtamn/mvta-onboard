@@ -15,6 +15,22 @@ badge and footer read this version at build time - see `vite.config.ts`).
   currently get "Not authenticated" on authenticated reads/writes until an
   infra deploy or a direct `az webapp auth` fix is applied.
 
+## [1.2.1] - 2026-07-26
+
+### Added
+- Persistent OCC alert preparation through the existing Suggested Alerts
+  human-review queue, with source-qualified deduplication.
+- Direct navigation to and highlighting of the prepared review item.
+- Non-persistent customer-language previews for local sample scenarios.
+- A consolidated operations, product, architecture, deployment, and roadmap
+  manual.
+
+### Changed
+- Preview banners now explain that mock sign-in cannot access operational data
+  and that preview actions are not saved.
+- Suggested Alerts can display and focus a previously reviewed item without
+  offering invalid approval actions.
+
 ## [1.2.0] - 2026-07-26
 
 ### Added
