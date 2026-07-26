@@ -7,6 +7,9 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 ## [Unreleased]
 
+- Expanded the consolidated manual with application ownership, maintenance
+  cadence, change control, database and integration care, incident recovery,
+  and safe Claude/Codex collaboration guidance.
 - Confirmation + STOP/HELP subscriber endpoints (blocked on Azure
   Communication Services provisioning).
 - **Known live-environment issue:** the Function App's Easy Auth

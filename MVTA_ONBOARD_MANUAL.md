@@ -572,7 +572,257 @@ and capacity concerns using event-specific thresholds.
 A post-event report should compare planned and operated service and retain
 alerts, incidents, controller actions, and data gaps.
 
-## 19. Product roadmap
+## 19. Application maintenance
+
+### 19.1 Maintenance ownership
+
+Assign named owners for:
+
+| Area | Primary responsibility |
+| --- | --- |
+| Product and operating policy | Thresholds, workflows, terminology, and priorities |
+| OCC procedures | Decision Matrix content, approvals, and revision schedule |
+| Application | Frontend, API, integrations, testing, and releases |
+| Data | GTFS quality, on-demand contract, retention, and reporting definitions |
+| Azure platform | Identity, networking, secrets, monitoring, cost, and recovery |
+| Communications | Templates, channels, accessibility, and customer language |
+| Compliance | OTP rules, exclusions, approvals, and contractor scorecards |
+
+Do not allow an AI assistant, vendor, or developer to change an operating
+threshold or compliance rule solely because it appears technically convenient.
+Product and operating-policy owners approve those decisions.
+
+### 19.2 Recommended maintenance cadence
+
+**Each operating day**
+
+- Check API, GTFS, Service Bus, database, and dispatch health.
+- Review stale feeds, missing vehicles, failed deliveries, and unreviewed
+  Suggested Alerts.
+- Confirm that preview data is never being treated as live data.
+
+**Each week**
+
+- Review application and Function logs.
+- Review failed or repeatedly retried integrations.
+- Check prediction false positives, missed events, and data gaps.
+- Review open security, dependency, and operational issues.
+- Confirm that temporary firewall rules and test settings were removed.
+
+**Each month**
+
+- Review Azure cost, capacity, role assignments, Key Vault access, and expiring
+  credentials or certificates.
+- Test a representative fixed-route alert from detection through review.
+- Test an on-demand scenario when its producer is connected.
+- Review delivery success and subscriber suppression.
+- Reconcile documentation with the deployed release.
+
+**Each quarter**
+
+- Run a recovery and rollback exercise.
+- Review retention, PII handling, and audit access.
+- Review OCC procedures and OTP exclusion rules with their owners.
+- Reassess prediction thresholds and confidence using measured outcomes.
+- Remove obsolete feature flags, preview paths, and stale documentation.
+
+### 19.3 Source-of-truth order
+
+When documentation conflicts, use this order:
+
+1. Approved operating and contract policy.
+2. The deployed database schema and application behavior.
+3. This consolidated manual.
+4. `CHANGELOG.md`.
+5. Current source code and automated tests for implementation detail.
+6. `CURRENT_STATE.md` and `FEATURE_IMPLEMENTATION_HANDOFF.md`.
+7. Historical planning documents such as `HANDOFF.md` and
+   `SUGGESTED_IMPROVEMENTS.md`.
+
+The code is not automatically the authority for policy. A hard-coded value can
+be a defect even when the tests confirm it.
+
+### 19.4 Change and release procedure
+
+For every material change:
+
+1. State the operational problem and acceptance criteria.
+2. Identify whether the change affects policy, customer communication,
+   security, PII, database schema, infrastructure, or deployment.
+3. Inspect the current implementation and working tree before editing.
+4. Preserve unrelated work.
+5. Add or update tests for changed behavior.
+6. Apply database migrations before deploying dependent code.
+7. Build the API, dispatch application, shared package, rider app, and console
+   in proportion to the change.
+8. Review the final diff for secrets, accidental environment files, mock data,
+   and unintended scope.
+9. Update this manual and `CHANGELOG.md`.
+10. Deploy through the approved Git workflow.
+11. Verify health plus the changed route or screen.
+12. For authenticated changes, complete a real Entra smoke test; an anonymous
+    `401` proves protection but not successful staff access.
+13. Record the release, known limitations, and rollback point.
+
+Prefer a feature branch and reviewed pull request for normal work. Direct
+updates to `main` should be limited to explicitly authorized work because
+`main` triggers the development deployment workflows.
+
+### 19.5 Maintaining the database
+
+- Treat migrations as immutable once applied.
+- Add a new numbered migration instead of editing an applied migration.
+- Test migrations against a representative nonproduction copy when possible.
+- Back up or confirm point-in-time recovery before destructive schema work.
+- Deploy schema before code that reads or writes the new fields.
+- Record when and where each migration was applied.
+- Add a schema-version table and automated migration runner as a priority.
+- Never leave SQL public network access enabled after maintenance.
+
+### 19.6 Maintaining integrations
+
+For every external source, document:
+
+- Owner and support contact.
+- Authentication and secret location.
+- Endpoint and expected update frequency.
+- Payload version and representative redacted sample.
+- Timestamp and timezone semantics.
+- Retry, timeout, deduplication, and stale-data behavior.
+- PII classification.
+- Monitoring and failure alert.
+- Safe degraded behavior.
+
+Missing or stale data must become an explicit unknown or degraded state. It
+must not silently become “on time,” “normal,” or “no issue.”
+
+### 19.7 Using Claude and Codex
+
+Claude and Codex can both help maintain MVTA OnBoard. A useful working
+separation is:
+
+- **Claude:** product critique, OCC workflow review, customer-language review,
+  procedure drafting, policy questions, option comparison, and design
+  discussion.
+- **Codex:** repository inspection, implementation, tests, migrations,
+  documentation updates, Git work, deployment checks, and evidence-backed
+  diagnosis.
+
+This is a working convention, not a technical restriction. Either assistant
+can review the other's output. For higher-risk changes, use one to implement
+and the other to challenge assumptions, test acceptance criteria, and look for
+operational consequences.
+
+Before asking either assistant to work, provide:
+
+- The goal and who will use the result.
+- Whether the request is review, diagnosis, implementation, or deployment.
+- The applicable departure or wait-time rule.
+- The environment in scope.
+- Whether database migrations are already applied.
+- Files, screenshots, errors, or examples that define the current problem.
+- Actions the assistant may take, such as editing, committing, or deploying.
+- Any deadline or change-freeze constraint.
+
+Ask the assistant to read this manual, inspect the current code, and verify
+facts rather than relying on an older chat summary.
+
+### 19.8 AI safety and review rules
+
+When using Claude, Codex, or another AI tool:
+
+- Do not paste passwords, connection strings, access tokens, private keys,
+  confirmation codes, or unredacted customer PII into a prompt.
+- Use synthetic or redacted operational examples whenever possible.
+- Never allow generated code to bypass Entra roles, human alert approval,
+  double opt-in, audit logging, or governed OTP exclusions.
+- Require parameterized SQL and server-side authorization.
+- Verify generated customer messages for accuracy, accessibility, affected
+  audience, channels, and expiration.
+- Treat AI-generated SQL migrations and infrastructure changes as high risk.
+- Review external packages, licenses, and network dependencies before adding
+  them.
+- Require evidence for “fixed,” “tested,” “deployed,” and “live.”
+- Keep final operational and publication decisions with authorized staff.
+
+An assistant may identify a likely issue from sample data, but it must not make
+a disciplinary conclusion about an operator or contractor.
+
+### 19.9 Reusable prompts
+
+**Repository review**
+
+```text
+Read MVTA_ONBOARD_MANUAL.md, CHANGELOG.md, and the relevant source files.
+Review the current implementation for [area]. Do not edit anything. Report
+confirmed behavior, risks, stale documentation, and prioritized next actions.
+Distinguish repository evidence from assumptions about the live environment.
+```
+
+**Implementation**
+
+```text
+Read MVTA_ONBOARD_MANUAL.md first. Implement [change] while preserving these
+rules: fixed-route performance uses departures; the threshold is more than
+15 minutes; on-demand poor service is more than 25 minutes; automated
+detections require human approval. Add tests, update the manual and changelog,
+and show validation results. Do not deploy until authorized.
+```
+
+**Release**
+
+```text
+Review the pending diff and confirm the database prerequisites. Run the
+relevant tests and production builds, check for secrets and unrelated changes,
+then deploy through the approved Git workflow. Verify health, the changed
+public surface, and any authenticated behavior that can be tested. Report the
+commit, deployment result, limitations, and rollback point.
+```
+
+**Claude product review**
+
+```text
+Using MVTA_ONBOARD_MANUAL.md as the current source of truth, review this
+feature from an OCC and customer-communication perspective. Check terminology,
+decision points, evidence, accessibility, human approval, and possible
+unintended operational consequences. Do not assume proposed roadmap items are
+already implemented.
+```
+
+### 19.10 AI handoff format
+
+When transferring work between Claude, Codex, or a human maintainer, include:
+
+- Objective and user-facing outcome.
+- Current branch and last commit.
+- Files changed.
+- Database migrations and whether they were applied.
+- Tests and builds run, with results.
+- Deployment status and verified URLs or routes.
+- Known limitations and unverified assumptions.
+- Exact next action.
+- Explicit warning about any temporary access, mock data, or incomplete
+  rollback.
+
+Do not use “done” to mean only that code was written. State separately whether
+work was implemented, tested, committed, pushed, deployed, and verified.
+
+### 19.11 Incident and rollback procedure
+
+If a release causes an operational issue:
+
+1. Protect customer and staff safety first.
+2. Stop further publication or dispatch if incorrect messages could be sent.
+3. Record the time, release commit, affected component, and symptoms.
+4. Preserve logs and evidence without copying PII into general chat tools.
+5. Restore the last known-good application release or disable the affected
+   feature using an approved reversible method.
+6. Do not reverse an applied database migration destructively unless a tested
+   rollback exists.
+7. Verify API health, authentication, core public alerts, and dispatch.
+8. Document the cause, recovery, and prevention work.
+
+## 20. Product roadmap
 
 ### Near term
 
@@ -608,7 +858,7 @@ alerts, incidents, controller actions, and data gaps.
 6. Learned prediction models only after the explainable baseline has enough
    clean outcome data for comparison.
 
-## 20. Success measures
+## 21. Success measures
 
 Measure:
 
@@ -626,7 +876,7 @@ Measure:
 - Credible speed events and telemetry dismissals.
 - Special-event planned versus operated service.
 
-## 21. Immediate completion criteria
+## 22. Immediate completion criteria
 
 The notification proof of concept is operationally complete when a repeatable
 test proves:
@@ -649,4 +899,3 @@ The predictive OCC capability is operationally complete when:
 5. Alert preparation creates one reviewable draft.
 6. Approval and publication are auditable.
 7. Recovery and closure are linked to the originating condition.
-
