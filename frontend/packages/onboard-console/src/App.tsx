@@ -35,7 +35,11 @@ const PAGE_META: { match: (path: string) => boolean; title: string; sub: string 
   { match: (p) => p === "/subscribers", title: "Subscribers", sub: "Opt-in totals and recent signups" },
   { match: (p) => p === "/audit", title: "Audit Log", sub: "Search every message ever posted" },
   { match: (p) => p === "/admin", title: "Admin", sub: "Expiration defaults and system configuration" },
-  { match: (p) => p.startsWith("/occ"), title: "OCC Tools", sub: "Event monitoring, decision matrix, and OTP compliance" },
+  {
+    match: (p) => p.startsWith("/occ"),
+    title: "OCC Tools",
+    sub: "Service-risk prediction, procedure guidance, compliance, and vehicle monitoring",
+  },
 ];
 
 function currentPageMeta(pathname: string) {

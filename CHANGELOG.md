@@ -15,6 +15,30 @@ badge and footer read this version at build time - see `vite.config.ts`).
   currently get "Not authenticated" on authenticated reads/writes until an
   infra deploy or a direct `az webapp auth` fix is applied.
 
+## [1.2.0] - 2026-07-26
+
+### Added
+- **Fixed Route Service Risk** OCC workspace with exception-first monitoring,
+  future departure predictions, first threshold-crossing departure,
+  confidence evidence, a stop-by-stop timeline, and access to the existing
+  current-telemetry view.
+- **On-Demand Service Quality** OCC workspace for the 25-minute wait-time
+  standard, including predicted versus actual wait, assignment context,
+  confidence evidence, and customer-update workflow actions.
+- Vendor-neutral `GET /api/on-demand-risks` contract and
+  `MonitoredOnDemandWaits` schema for a future on-demand feed adapter.
+- Current-state, suggested-improvements, and feature-implementation handoff
+  documents.
+
+### Changed
+- GTFS TripUpdate processing now treats departures as MVTA's operational
+  measure, retaining predictions for every usable future stop.
+- Fixed-route escalation now uses the maximum predicted future departure
+  delay across two consecutive polls instead of only the first stop's current
+  delay.
+- GTFS delay-suggestion deduplication now includes service date so recurring
+  scheduled trips can create new exceptions on later service days.
+
 ## [1.1.0] - 2026-07-24
 
 ### Added

@@ -4,6 +4,7 @@ import {
   mapTripUpdateEntity,
   severityForDelayMinutes,
   buildDelayDraftText,
+  buildDepartureRiskDraftText,
   type GtfsRtTripUpdateEntity,
 } from "./gtfsTripUpdates";
 
@@ -35,28 +36,31 @@ const RUNNING_LATE: GtfsRtTripUpdateEntity = {
   Alert: null,
 };
 
-test("maps a delayed trip using the first (soonest) stop's arrival delay", () => {
+test("maps a delayed trip using the first stop's departure delay", () => {
   const mapped = mapTripUpdateEntity(RUNNING_LATE);
   assert.ok(mapped);
   assert.strictEqual(mapped!.trip_id, "t388-b5-sl2B-v62");
   assert.strictEqual(mapped!.route_id, "444");
+  assert.strictEqual(mapped!.service_date, "20260724");
   assert.strictEqual(mapped!.vehicle_id, "4136");
   assert.strictEqual(mapped!.next_stop_id, "31462");
-  assert.strictEqual(mapped!.delay_seconds, 76);
+  assert.strictEqual(mapped!.delay_seconds, 93);
 });
 
-test("ignores stop updates beyond the first", () => {
+test("retains departure predictions beyond the first stop", () => {
   const mapped = mapTripUpdateEntity(RUNNING_LATE);
-  assert.notStrictEqual(mapped!.delay_seconds, 65);
+  assert.strictEqual(mapped!.departure_predictions.length, 2);
+  assert.strictEqual(mapped!.departure_predictions[1].departure_delay_seconds, 86);
+  assert.strictEqual(mapped!.predicted_max_departure_delay_seconds, 93);
 });
 
-test("falls back to Departure.Delay when Arrival is null", () => {
+test("falls back to Arrival.Delay when Departure is null", () => {
   const entity: GtfsRtTripUpdateEntity = {
     ...RUNNING_LATE,
     TripUpdate: {
       ...RUNNING_LATE.TripUpdate!,
       StopTimeUpdates: [
-        { StopSequence: 1980, StopId: "31462", Arrival: null, Departure: { Delay: 40, Time: 0 }, schedule_relationship: 0 },
+        { StopSequence: 1980, StopId: "31462", Arrival: { Delay: 40, Time: 0 }, Departure: null, schedule_relationship: 0 },
       ],
     },
   };
@@ -97,7 +101,26 @@ test("handles a nearly-on-time trip (small/negative delay)", () => {
     },
   };
   const mapped = mapTripUpdateEntity(entity);
-  assert.strictEqual(mapped!.delay_seconds, -24);
+  assert.strictEqual(mapped!.delay_seconds, 63);
+});
+
+test("finds the first future departure projected over 15 minutes", () => {
+  const entity: GtfsRtTripUpdateEntity = {
+    ...RUNNING_LATE,
+    TripUpdate: {
+      ...RUNNING_LATE.TripUpdate!,
+      StopTimeUpdates: [
+        { StopSequence: 1, StopId: "A", Arrival: null, Departure: { Delay: 600, Time: 1784903913 }, schedule_relationship: 0 },
+        { StopSequence: 2, StopId: "B", Arrival: null, Departure: { Delay: 960, Time: 1784904513 }, schedule_relationship: 0 },
+        { StopSequence: 3, StopId: "C", Arrival: null, Departure: { Delay: 1100, Time: 1784905113 }, schedule_relationship: 0 },
+      ],
+    },
+  };
+  const mapped = mapTripUpdateEntity(entity);
+  assert.ok(mapped);
+  assert.strictEqual(mapped.first_threshold_stop_id, "B");
+  assert.strictEqual(mapped.predicted_max_departure_delay_seconds, 1100);
+  assert.ok(mapped.first_threshold_departure_at instanceof Date);
 });
 
 test("severityForDelayMinutes: 15-30 min is minor", () => {
@@ -123,4 +146,12 @@ test("buildDelayDraftText includes the stop name when known", () => {
 test("buildDelayDraftText omits the stop phrase when the stop name is unknown", () => {
   const text = buildDelayDraftText("444", 18, null);
   assert.strictEqual(text, "Route 444 is running approximately 18 minutes late.");
+});
+
+test("buildDepartureRiskDraftText uses departure-focused language", () => {
+  const text = buildDepartureRiskDraftText("444", 18, "Burnsville Transit Station");
+  assert.strictEqual(
+    text,
+    "Route 444 is predicted to depart up to 18 minutes late beginning at Burnsville Transit Station.",
+  );
 });

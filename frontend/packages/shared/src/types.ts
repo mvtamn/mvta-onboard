@@ -131,6 +131,7 @@ export interface SuggestedAlert {
 export interface TripDelay {
   trip_id: string;
   route_id: string;
+  service_date: string | null;
   vehicle_id: string | null;
   next_stop_id: string | null;
   next_stop_name: string | null;
@@ -138,6 +139,14 @@ export interface TripDelay {
   previous_stop_name: string | null;
   direction_label: string | null;
   delay_seconds: number;
+  predicted_max_departure_delay_seconds: number | null;
+  first_threshold_stop_id: string | null;
+  first_threshold_stop_name: string | null;
+  first_threshold_departure_at: string | null;
+  departure_predictions: DeparturePrediction[];
+  prediction_confidence: "high" | "medium" | "low" | null;
+  prediction_reasons: string[];
+  prediction_updated_at: string | null;
   polls_over_threshold: number;
   first_seen_at: string;
   last_polled_at: string;
@@ -149,6 +158,34 @@ export interface TripDelay {
   occupancy_status: number | null;
   current_status: number | null;
   position_updated_at: string | null;
+}
+
+export interface DeparturePrediction {
+  stop_sequence: number;
+  stop_id: string | null;
+  departure_delay_seconds: number;
+  predicted_departure_at: string | null;
+}
+
+export interface OnDemandRiskRecord {
+  trip_id: string;
+  external_trip_id: string | null;
+  zone_id: string;
+  wait_started_at: string;
+  predicted_pickup_at: string | null;
+  current_wait_minutes: number;
+  predicted_wait_minutes: number | null;
+  assigned_vehicle_id: string | null;
+  stops_ahead: number | null;
+  accessible_vehicle_required: boolean;
+  eligible_vehicles_in_zone: number | null;
+  nearest_vehicle_context: string | null;
+  trend: "worsening" | "stable" | "recovering";
+  prediction_confidence: "high" | "medium" | "low" | null;
+  prediction_reasons: string[];
+  source_updated_at: string | null;
+  last_polled_at: string;
+  suggested_alert_id: string | null;
 }
 
 // GTFS-Realtime standard enums (raw ints from VehiclePosition, translated

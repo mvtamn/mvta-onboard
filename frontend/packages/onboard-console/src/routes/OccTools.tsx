@@ -2,14 +2,16 @@ import { useState } from "react";
 import { EventMonitoring } from "./modules/EventMonitoring.js";
 import { DecisionMatrix } from "./modules/DecisionMatrix.js";
 import { OtpModule } from "./modules/otp/OtpModule.js";
-import { LiveDelays } from "./modules/LiveDelays.js";
+import { FixedRouteServiceRisk } from "./modules/FixedRouteServiceRisk.js";
+import { OnDemandServiceQuality } from "./modules/OnDemandServiceQuality.js";
 import { SpeedAlerts } from "./modules/SpeedAlerts.js";
 
 const TOOLS = [
   { key: "event-monitoring", label: "Event Monitoring" },
   { key: "decision-matrix", label: "Decision Matrix" },
   { key: "otp", label: "OTP Compliance" },
-  { key: "live-delays", label: "Live Delays" },
+  { key: "fixed-route-risk", label: "Fixed Route Risk" },
+  { key: "on-demand-quality", label: "On-Demand Quality" },
   { key: "speed-alerts", label: "Speed Alerts" },
 ] as const;
 
@@ -35,7 +37,8 @@ export function OccTools() {
         {tool === "event-monitoring" && <EventMonitoring />}
         {tool === "decision-matrix" && <DecisionMatrix />}
         {tool === "otp" && <OtpModule />}
-        {tool === "live-delays" && <LiveDelays />}
+        {tool === "fixed-route-risk" && <FixedRouteServiceRisk />}
+        {tool === "on-demand-quality" && <OnDemandServiceQuality />}
         {tool === "speed-alerts" && <SpeedAlerts />}
       </div>
     </>

@@ -62,27 +62,74 @@ export async function fetchTripUpdateFeed(url: string): Promise<GtfsRtTripUpdate
 export interface MappedTripDelay {
   trip_id: string;
   route_id: string;
+  service_date: string | null;
   vehicle_id: string | null;
   next_stop_id: string | null;
   delay_seconds: number;
+  predicted_max_departure_delay_seconds: number;
+  first_threshold_stop_id: string | null;
+  first_threshold_departure_at: Date | null;
+  departure_predictions: DeparturePrediction[];
 }
+
+export interface DeparturePrediction {
+  stop_sequence: number;
+  stop_id: string | null;
+  departure_delay_seconds: number;
+  predicted_departure_at: string | null;
+}
+
+const DEPARTURE_RISK_THRESHOLD_SECONDS = 15 * 60;
 
 export function mapTripUpdateEntity(entity: GtfsRtTripUpdateEntity): MappedTripDelay | null {
   const tripUpdate = entity.TripUpdate;
   if (!tripUpdate) return null;
 
-  const nextStop = (tripUpdate.StopTimeUpdates ?? [])[0];
+  const updates = [...(tripUpdate.StopTimeUpdates ?? [])].sort(
+    (a, b) => a.StopSequence - b.StopSequence,
+  );
+  const nextStop = updates[0];
   if (!nextStop) return null;
 
-  const delay = nextStop.Arrival?.Delay ?? nextStop.Departure?.Delay;
+  // MVTA evaluates service performance using departures. Arrival remains a
+  // fallback only when the producer omits Departure for a stop.
+  const delay = nextStop.Departure?.Delay ?? nextStop.Arrival?.Delay;
   if (delay === undefined || delay === null) return null;
+
+  const departurePredictions: DeparturePrediction[] = updates.flatMap((update) => {
+    const departureDelay = update.Departure?.Delay ?? update.Arrival?.Delay;
+    if (departureDelay === undefined || departureDelay === null) return [];
+    const epochSeconds = update.Departure?.Time ?? update.Arrival?.Time;
+    const predictedAt =
+      epochSeconds && Number.isFinite(epochSeconds)
+        ? new Date(epochSeconds * 1000).toISOString()
+        : null;
+    return [{
+      stop_sequence: update.StopSequence,
+      stop_id: update.StopId,
+      departure_delay_seconds: departureDelay,
+      predicted_departure_at: predictedAt,
+    }];
+  });
+
+  const predictedMax = Math.max(...departurePredictions.map((p) => p.departure_delay_seconds));
+  const firstThreshold = departurePredictions.find(
+    (p) => p.departure_delay_seconds > DEPARTURE_RISK_THRESHOLD_SECONDS,
+  );
 
   return {
     trip_id: tripUpdate.Trip.TripId,
     route_id: tripUpdate.Trip.RouteId,
+    service_date: tripUpdate.Trip.StartDate || null,
     vehicle_id: tripUpdate.Vehicle?.Id ?? null,
     next_stop_id: nextStop.StopId,
     delay_seconds: delay,
+    predicted_max_departure_delay_seconds: predictedMax,
+    first_threshold_stop_id: firstThreshold?.stop_id ?? null,
+    first_threshold_departure_at: firstThreshold?.predicted_departure_at
+      ? new Date(firstThreshold.predicted_departure_at)
+      : null,
+    departure_predictions: departurePredictions,
   };
 }
 
@@ -97,4 +144,13 @@ export function severityForDelayMinutes(minutes: number): Severity {
 export function buildDelayDraftText(routeId: string, delayMinutes: number, stopName: string | null): string {
   const stopPhrase = stopName ? ` near ${stopName}` : "";
   return `Route ${routeId} is running approximately ${delayMinutes} minutes late${stopPhrase}.`;
+}
+
+export function buildDepartureRiskDraftText(
+  routeId: string,
+  delayMinutes: number,
+  stopName: string | null,
+): string {
+  const stopPhrase = stopName ? ` beginning at ${stopName}` : "";
+  return `Route ${routeId} is predicted to depart up to ${delayMinutes} minutes late${stopPhrase}.`;
 }

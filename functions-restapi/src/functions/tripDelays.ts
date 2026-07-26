@@ -15,6 +15,15 @@ interface TripDelayRow {
   previous_stop_name: string | null;
   direction_label: string | null;
   delay_seconds: number;
+  service_date: string | null;
+  predicted_max_departure_delay_seconds: number | null;
+  first_threshold_stop_id: string | null;
+  first_threshold_stop_name: string | null;
+  first_threshold_departure_at: Date | null;
+  departure_predictions: string | null;
+  prediction_confidence: string | null;
+  prediction_reasons: string | null;
+  prediction_updated_at: Date | null;
   polls_over_threshold: number;
   first_seen_at: Date;
   last_polled_at: Date;
@@ -42,16 +51,33 @@ app.http("tripDelaysList", {
       const result = await pool.request().query<TripDelayRow>(`
         SELECT d.trip_id, d.route_id, d.vehicle_id, d.next_stop_id, s.stop_name AS next_stop_name,
                d.previous_stop_id, ps.stop_name AS previous_stop_name, td.direction_label,
-               d.delay_seconds, d.polls_over_threshold, d.first_seen_at, d.last_polled_at,
+               d.delay_seconds, d.service_date, d.predicted_max_departure_delay_seconds,
+               d.first_threshold_stop_id, fs.stop_name AS first_threshold_stop_name,
+               d.first_threshold_departure_at, d.departure_predictions,
+               d.prediction_confidence, d.prediction_reasons, d.prediction_updated_at,
+               d.polls_over_threshold, d.first_seen_at, d.last_polled_at,
                d.suggested_alert_id, d.latitude, d.longitude, d.bearing, d.speed_mps,
                d.occupancy_status, d.current_status, d.position_updated_at
         FROM MonitoredTripDelays d
         LEFT JOIN GtfsStops s ON s.stop_id = d.next_stop_id
         LEFT JOIN GtfsStops ps ON ps.stop_id = d.previous_stop_id
+        LEFT JOIN GtfsStops fs ON fs.stop_id = d.first_threshold_stop_id
         LEFT JOIN GtfsTripDirections td ON td.trip_id = d.trip_id
-        ORDER BY d.route_id, d.delay_seconds DESC
+        ORDER BY
+          CASE WHEN d.predicted_max_departure_delay_seconds > 900 THEN 0 ELSE 1 END,
+          d.predicted_max_departure_delay_seconds DESC,
+          d.route_id
       `);
-      return { status: 200, jsonBody: { delays: result.recordset } };
+      const delays = result.recordset.map((row) => ({
+        ...row,
+        departure_predictions: row.departure_predictions
+          ? JSON.parse(row.departure_predictions)
+          : [],
+        prediction_reasons: row.prediction_reasons
+          ? JSON.parse(row.prediction_reasons)
+          : [],
+      }));
+      return { status: 200, jsonBody: { delays } };
     } catch (err) {
       context.error("GET /trip-delays failed:", err);
       return { status: 500, jsonBody: { error: "Internal server error" } };

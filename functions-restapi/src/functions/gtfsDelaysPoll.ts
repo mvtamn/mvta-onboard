@@ -15,7 +15,7 @@ import {
   fetchTripUpdateFeed,
   mapTripUpdateEntity,
   severityForDelayMinutes,
-  buildDelayDraftText,
+  buildDepartureRiskDraftText,
   type MappedTripDelay,
 } from "../lib/gtfsTripUpdates";
 
@@ -28,13 +28,58 @@ interface MergeResult {
   suggested_alert_id: string | null;
 }
 
+function predictionQuality(delay: MappedTripDelay): {
+  confidence: "high" | "medium" | "low";
+  reasons: string[];
+} {
+  const reasons: string[] = [];
+  const predictionCount = delay.departure_predictions.length;
+  const timedPredictions = delay.departure_predictions.filter(
+    (prediction) => prediction.predicted_departure_at !== null,
+  ).length;
+
+  reasons.push(`${predictionCount} future departure prediction${predictionCount === 1 ? "" : "s"} available.`);
+  if (delay.vehicle_id) reasons.push("TripUpdate is linked to an assigned vehicle.");
+  else reasons.push("No assigned vehicle is present in the TripUpdate.");
+  if (timedPredictions === predictionCount) reasons.push("Every retained prediction includes an absolute departure time.");
+  else reasons.push(`${predictionCount - timedPredictions} prediction${predictionCount - timedPredictions === 1 ? "" : "s"} use delay only.`);
+
+  const confidence =
+    predictionCount >= 3 && !!delay.vehicle_id && timedPredictions >= 2
+      ? "high"
+      : predictionCount >= 2
+        ? "medium"
+        : "low";
+  return { confidence, reasons };
+}
+
 async function upsertDelay(pool: sql.ConnectionPool, delay: MappedTripDelay): Promise<MergeResult> {
+  const quality = predictionQuality(delay);
   const request = pool.request();
   request.input("trip_id", sql.NVarChar, delay.trip_id);
   request.input("route_id", sql.NVarChar, delay.route_id);
+  request.input("service_date", sql.NVarChar, delay.service_date);
   request.input("vehicle_id", sql.NVarChar, delay.vehicle_id);
   request.input("next_stop_id", sql.NVarChar, delay.next_stop_id);
   request.input("delay_seconds", sql.Int, delay.delay_seconds);
+  request.input(
+    "predicted_max_departure_delay_seconds",
+    sql.Int,
+    delay.predicted_max_departure_delay_seconds,
+  );
+  request.input("first_threshold_stop_id", sql.NVarChar, delay.first_threshold_stop_id);
+  request.input(
+    "first_threshold_departure_at",
+    sql.DateTime2,
+    delay.first_threshold_departure_at,
+  );
+  request.input(
+    "departure_predictions",
+    sql.NVarChar,
+    JSON.stringify(delay.departure_predictions),
+  );
+  request.input("prediction_confidence", sql.NVarChar, quality.confidence);
+  request.input("prediction_reasons", sql.NVarChar, JSON.stringify(quality.reasons));
   const result = await request.query<MergeResult>(`
     MERGE MonitoredTripDelays WITH (HOLDLOCK) AS target
     USING (SELECT @trip_id AS trip_id) AS src
@@ -42,18 +87,38 @@ async function upsertDelay(pool: sql.ConnectionPool, delay: MappedTripDelay): Pr
     WHEN MATCHED THEN
       UPDATE SET
         route_id = @route_id,
+        service_date = @service_date,
         vehicle_id = @vehicle_id,
         previous_stop_id = CASE
           WHEN target.next_stop_id IS NOT NULL AND target.next_stop_id <> @next_stop_id
           THEN target.next_stop_id ELSE target.previous_stop_id END,
         next_stop_id = @next_stop_id,
         delay_seconds = @delay_seconds,
-        polls_over_threshold = CASE WHEN @delay_seconds > ${DELAY_THRESHOLD_SECONDS} THEN target.polls_over_threshold + 1 ELSE 0 END,
+        predicted_max_departure_delay_seconds = @predicted_max_departure_delay_seconds,
+        first_threshold_stop_id = @first_threshold_stop_id,
+        first_threshold_departure_at = @first_threshold_departure_at,
+        departure_predictions = @departure_predictions,
+        prediction_confidence = @prediction_confidence,
+        prediction_reasons = @prediction_reasons,
+        prediction_updated_at = SYSUTCDATETIME(),
+        polls_over_threshold = CASE WHEN @predicted_max_departure_delay_seconds > ${DELAY_THRESHOLD_SECONDS} THEN target.polls_over_threshold + 1 ELSE 0 END,
         last_polled_at = SYSUTCDATETIME()
     WHEN NOT MATCHED THEN
-      INSERT (trip_id, route_id, vehicle_id, next_stop_id, delay_seconds, polls_over_threshold, first_seen_at, last_polled_at)
-      VALUES (@trip_id, @route_id, @vehicle_id, @next_stop_id, @delay_seconds,
-              CASE WHEN @delay_seconds > ${DELAY_THRESHOLD_SECONDS} THEN 1 ELSE 0 END, SYSUTCDATETIME(), SYSUTCDATETIME())
+      INSERT (
+        trip_id, route_id, service_date, vehicle_id, next_stop_id, delay_seconds,
+        predicted_max_departure_delay_seconds, first_threshold_stop_id,
+        first_threshold_departure_at, departure_predictions,
+        prediction_confidence, prediction_reasons, prediction_updated_at,
+        polls_over_threshold, first_seen_at, last_polled_at
+      )
+      VALUES (
+        @trip_id, @route_id, @service_date, @vehicle_id, @next_stop_id, @delay_seconds,
+        @predicted_max_departure_delay_seconds, @first_threshold_stop_id,
+        @first_threshold_departure_at, @departure_predictions,
+        @prediction_confidence, @prediction_reasons, SYSUTCDATETIME(),
+        CASE WHEN @predicted_max_departure_delay_seconds > ${DELAY_THRESHOLD_SECONDS} THEN 1 ELSE 0 END,
+        SYSUTCDATETIME(), SYSUTCDATETIME()
+      )
     OUTPUT INSERTED.polls_over_threshold, INSERTED.suggested_alert_id;
   `);
   return result.recordset[0];
@@ -65,22 +130,27 @@ async function escalateToSuggestedAlert(
   context: InvocationContext,
 ): Promise<void> {
   let stopName: string | null = null;
-  if (delay.next_stop_id) {
+  const affectedStopId = delay.first_threshold_stop_id ?? delay.next_stop_id;
+  if (affectedStopId) {
     const stopReq = pool.request();
-    stopReq.input("stop_id", sql.NVarChar, delay.next_stop_id);
+    stopReq.input("stop_id", sql.NVarChar, affectedStopId);
     const stopResult = await stopReq.query<{ stop_name: string }>(
       "SELECT TOP 1 stop_name FROM GtfsStops WHERE stop_id = @stop_id",
     );
     stopName = stopResult.recordset[0]?.stop_name ?? null;
   }
 
-  const delayMinutes = Math.round(delay.delay_seconds / 60);
-  const draftText = buildDelayDraftText(delay.route_id, delayMinutes, stopName);
+  const delayMinutes = Math.round(delay.predicted_max_departure_delay_seconds / 60);
+  const draftText = buildDepartureRiskDraftText(delay.route_id, delayMinutes, stopName);
   const severity = severityForDelayMinutes(delayMinutes);
 
   const insertReq = pool.request();
   insertReq.input("source", sql.NVarChar, "gtfs_rt");
-  insertReq.input("external_id", sql.NVarChar, delay.trip_id);
+  insertReq.input(
+    "external_id",
+    sql.NVarChar,
+    `delay:${delay.service_date ?? "unknown"}:${delay.trip_id}`.slice(0, 100),
+  );
   insertReq.input("draft_text", sql.NVarChar, draftText);
   insertReq.input("category", sql.NVarChar, "delay");
   insertReq.input("severity", sql.NVarChar, severity);
@@ -90,10 +160,13 @@ async function escalateToSuggestedAlert(
     sql.NVarChar,
     JSON.stringify({
       detection_type: "delay",
+      service_date: delay.service_date,
       trip_id: delay.trip_id,
       vehicle_id: delay.vehicle_id,
-      stop_id: delay.next_stop_id,
-      delay_seconds: delay.delay_seconds,
+      stop_id: affectedStopId,
+      current_departure_delay_seconds: delay.delay_seconds,
+      predicted_max_departure_delay_seconds: delay.predicted_max_departure_delay_seconds,
+      first_threshold_departure_at: delay.first_threshold_departure_at?.toISOString() ?? null,
     }),
   );
   const inserted = await insertReq.query<{ alert_id: string }>(`
@@ -108,7 +181,7 @@ async function escalateToSuggestedAlert(
   updateReq.input("alert_id", sql.UniqueIdentifier, alertId);
   await updateReq.query("UPDATE MonitoredTripDelays SET suggested_alert_id = @alert_id WHERE trip_id = @trip_id");
 
-  context.log(`GTFS-RT delay escalated: trip ${delay.trip_id} (route ${delay.route_id}, ${delayMinutes} min) -> suggested alert ${alertId}`);
+  context.log(`GTFS-RT departure risk escalated: trip ${delay.trip_id} (route ${delay.route_id}, predicted ${delayMinutes} min) -> suggested alert ${alertId}`);
 }
 
 app.timer("gtfsDelaysPoll", {
@@ -144,7 +217,7 @@ app.timer("gtfsDelaysPoll", {
       // "All delays get reported" - logged every run regardless of size,
       // independent of whether this trip ever escalates to a rider alert.
       context.log(
-        `GTFS-RT trip delay: route ${mapped.route_id} trip ${mapped.trip_id} delay=${mapped.delay_seconds}s next_stop=${mapped.next_stop_id ?? "?"}`,
+        `GTFS-RT departure risk: route ${mapped.route_id} trip ${mapped.trip_id} current=${mapped.delay_seconds}s predicted_max=${mapped.predicted_max_departure_delay_seconds}s next_stop=${mapped.next_stop_id ?? "?"}`,
       );
 
       try {

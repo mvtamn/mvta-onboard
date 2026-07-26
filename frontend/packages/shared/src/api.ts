@@ -18,6 +18,7 @@ import type {
   SuggestedAlert,
   SuggestedAlertStatus,
   TripDelay,
+  OnDemandRiskRecord,
 } from "./types.js";
 
 export type TokenProvider = () => Promise<string | null>;
@@ -210,6 +211,10 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
 
     getTripDelays() {
       return request<{ delays: TripDelay[] }>("/api/trip-delays", {}, true);
+    },
+
+    getOnDemandRisks() {
+      return request<{ risks: OnDemandRiskRecord[] }>("/api/on-demand-risks", {}, true);
     },
   };
 }
