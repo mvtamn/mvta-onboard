@@ -18,6 +18,24 @@ badge and footer read this version at build time - see `vite.config.ts`).
   currently get "Not authenticated" on authenticated reads/writes until an
   infra deploy or a direct `az webapp auth` fix is applied.
 
+## [1.2.2] - 2026-07-27
+
+### Added
+- **Alert via Teams** Compose option with separate Operations and Customer
+  Service targets.
+- Affected-route entry in Compose for internal and customer route-impact
+  messages.
+- Channel visibility in Active Messages and Audit Log.
+- Future Teams Adaptive Card and approved-image connector contract in the
+  consolidated manual.
+- Dispatch channel-selection unit tests.
+
+### Fixed
+- Subscriber dispatch now honors explicit SMS and email selections, preventing
+  internal or Teams-only messages from being sent to riders.
+- The rider application now explicitly requests Website messages, preventing
+  internal-only messages from appearing as public service alerts.
+
 ## [1.2.1] - 2026-07-26
 
 ### Added

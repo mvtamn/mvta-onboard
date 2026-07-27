@@ -62,6 +62,7 @@ function normalizeActiveMessage(m: ActiveMessage): ActiveMessage {
     routes_affected: toStringArray(m.routes_affected),
     stops_affected: toStringArray(m.stops_affected),
     zones_affected: toStringArray(m.zones_affected),
+    channels: toStringArray(m.channels),
   };
 }
 

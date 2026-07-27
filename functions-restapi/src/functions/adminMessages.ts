@@ -29,7 +29,7 @@ app.http("adminMessages", {
       let query = `
         SELECT TOP (@limit)
                message_id, summary, raw_text, category, severity, tags,
-               routes_affected, status, created_by, created_at, expires_at, updated_at
+               routes_affected, channels, status, created_by, created_at, expires_at, updated_at
         FROM Messages
         WHERE 1 = 1
       `;
@@ -51,6 +51,7 @@ app.http("adminMessages", {
         severity: string;
         tags: string | null;
         routes_affected: string | null;
+        channels: string | null;
         status: string;
         created_by: string;
         created_at: Date;
@@ -66,6 +67,7 @@ app.http("adminMessages", {
         severity: row.severity,
         tags: row.tags ? (JSON.parse(row.tags) as string[]) : [],
         routes_affected: row.routes_affected ? (JSON.parse(row.routes_affected) as string[]) : [],
+        channels: row.channels ? (JSON.parse(row.channels) as string[]) : [],
         status: row.status,
         created_by: row.created_by,
         created_at: row.created_at,

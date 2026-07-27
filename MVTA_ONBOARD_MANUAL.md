@@ -331,17 +331,58 @@ The dispatch application:
 
 - Consumes message-created Service Bus events.
 - Selects confirmed subscribers.
-- Calls Azure Communication Services for configured SMS and email channels.
+- Honors the message's explicit SMS and email channel selections.
+- Calls Azure Communication Services only for requested SMS and email channels.
 - Records delivery attempts and provider identifiers.
 - Safely no-ops when provider settings are absent.
+
+### Microsoft Teams route-impact alerts
+
+Compose supports an internal **Alert via Teams** option with these initial
+audiences:
+
+- Operations
+- Customer Service
+
+The audience is stored in the existing message `channels` array as:
+
+```text
+Teams: Operations
+Teams: Customer Service
+```
+
+Affected routes are stored in `routes_affected`. These values are included in
+the message-created event and form the stable contract for a future Teams
+connector. Teams-only messages do not dispatch to rider SMS/email, and the
+public rider application requests only messages routed to `Website`.
+
+The Teams connector is not active yet. Until it is built, Compose clearly
+states that the routing request is recorded but no Teams post occurs.
+
+The future connector should:
+
+1. Consume the normal message-created event.
+2. Map the two stable audience values to configured Teams channel IDs.
+3. Post an Adaptive Card containing summary, severity, affected routes,
+   expiration, publisher, and a link back to OnBoard.
+4. Support an optional approved route-impact image after an asset-storage and
+   retention design is approved.
+5. Record delivery status, Teams message ID, target, timestamp, and error.
+6. Support update, recovery, and retraction behavior.
+7. Keep Teams channel IDs, Graph credentials, workflow URLs, and secrets in
+   approved configuration or Key Vault rather than message records.
+8. Escape and validate all message and image content.
+
+Do not treat selecting Teams in Compose as proof of delivery until a delivery
+record from the connector exists.
 
 Known gaps:
 
 - Live ACS resource and sender configuration have not been reconfirmed.
 - Confirmation callback endpoints are incomplete.
 - Inbound SMS `STOP` and `HELP` are incomplete.
-- Zone preference and requested-channel targeting require verification and
-  completion.
+- Zone preference targeting requires verification and completion.
+- The Teams Adaptive Card/image connector and delivery log are not built.
 - Event publication is best-effort after the database commit; there is no
   transactional outbox or replay workflow.
 - Subscriber contacts are not protected by a complete deduplication policy.

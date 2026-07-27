@@ -14,6 +14,10 @@ import { api } from "../config.js";
 
 const ALL_CHANNELS = ["Website", "Mobile app", "Digital signage", "Social media", "SMS", "Push", "Email"];
 const DEFAULT_CHANNELS = new Set(["Website", "Mobile app", "SMS", "Email"]);
+const TEAMS_TARGETS = [
+  { value: "Teams: Operations", label: "Operations" },
+  { value: "Teams: Customer Service", label: "Customer Service" },
+] as const;
 
 // New Announcement form per the approved dashboard mockup. The "Claude's
 // inferred fields" box is a visual placeholder until the Power Automate +
@@ -30,7 +34,9 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
   const [severity, setSeverity] = useState<Severity>("minor");
   const [explicitExpires, setExplicitExpires] = useState("");
   const [tags, setTags] = useState("");
+  const [routes, setRoutes] = useState("");
   const [channels, setChannels] = useState<Set<string>>(new Set(DEFAULT_CHANNELS));
+  const [teamsEnabled, setTeamsEnabled] = useState(false);
   const [defaults, setDefaults] = useState<ExpirationDefault[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,10 +72,30 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
     });
   }
 
+  function toggleTeams(enabled: boolean) {
+    setTeamsEnabled(enabled);
+    setChannels((prev) => {
+      const next = new Set(prev);
+      for (const target of TEAMS_TARGETS) {
+        if (enabled) next.add(target.value);
+        else next.delete(target.value);
+      }
+      return next;
+    });
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setOkMsg(null);
+
+    if (
+      teamsEnabled &&
+      !TEAMS_TARGETS.some((target) => channels.has(target.value))
+    ) {
+      setError("Select at least one Teams audience.");
+      return;
+    }
 
     let expiresAt: string;
     let source: "explicit" | "category_default";
@@ -91,16 +117,25 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
         category,
         severity,
         tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+        routes_affected: routes.split(",").map((route) => route.trim()).filter(Boolean),
         channels: [...channels],
         // created_by is intentionally omitted - the server derives it from
         // the verified auth principal (see messagesCreate.ts), not the body.
         expires_at: expiresAt,
         expiration_source: source,
       });
-      setOkMsg(`Posted. Message ${res.message_id.slice(0, 8)}… expires ${new Date(res.expires_at).toLocaleString()}.`);
+      const teamsNote = teamsEnabled
+        ? " Teams routing was recorded; the Teams connector is not active yet."
+        : "";
+      setOkMsg(
+        `Posted. Message ${res.message_id.slice(0, 8)}… expires ${new Date(res.expires_at).toLocaleString()}.${teamsNote}`,
+      );
       setRawText("");
       setTags("");
+      setRoutes("");
       setExplicitExpires("");
+      setChannels(new Set(DEFAULT_CHANNELS));
+      setTeamsEnabled(false);
       onPosted?.();
     } catch (err) {
       if (err instanceof ApiError && err.details) {
@@ -153,7 +188,18 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
           />
         </div>
       </div>
-      <div className="field-grid single">
+      <div className="field-grid two">
+        <div>
+          <p className="field-label">
+            Affected routes <span className="hint">(comma separated)</span>
+          </p>
+          <input
+            className="f"
+            value={routes}
+            onChange={(e) => setRoutes(e.target.value)}
+            placeholder="e.g. 442, 477"
+          />
+        </div>
         <div>
           <p className="field-label">
             Tags <span className="hint">(internal only — not shown to riders)</span>
@@ -173,6 +219,41 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
             {c}
           </label>
         ))}
+      </div>
+      <div className={`teams-delivery-card ${teamsEnabled ? "selected" : ""}`}>
+        <label className="teams-delivery-toggle">
+          <input
+            type="checkbox"
+            checked={teamsEnabled}
+            onChange={(e) => toggleTeams(e.target.checked)}
+          />
+          <span>
+            <strong>Alert via Teams</strong>
+            <small>Internal route-impact notification</small>
+          </span>
+        </label>
+        {teamsEnabled ? (
+          <div className="teams-delivery-options">
+            <p className="field-label">Teams audiences</p>
+            <div className="channels-row">
+              {TEAMS_TARGETS.map((target) => (
+                <label key={target.value}>
+                  <input
+                    type="checkbox"
+                    checked={channels.has(target.value)}
+                    onChange={() => toggleChannel(target.value)}
+                  />
+                  {target.label}
+                </label>
+              ))}
+            </div>
+            <p className="teams-connector-note">
+              The audience and affected routes will be saved now. A future
+              connector will post an Adaptive Card and optional approved image
+              to the mapped Teams channels; no Teams post is sent yet.
+            </p>
+          </div>
+        ) : null}
       </div>
       <div className="infer-box">
         <p className="infer-label">Claude's inferred fields</p>

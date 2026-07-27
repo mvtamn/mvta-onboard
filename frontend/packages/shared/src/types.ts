@@ -28,6 +28,7 @@ export interface ActiveMessage {
   routes_affected: string[];
   stops_affected: string[];
   zones_affected: string[];
+  channels: string[];
   expires_at: string;
   created_at: string;
 }
@@ -79,6 +80,7 @@ export interface AdminMessage {
   severity: Severity;
   tags: string[];
   routes_affected: string[];
+  channels: string[];
   status: MessageStatus;
   created_by: string;
   created_at: string;

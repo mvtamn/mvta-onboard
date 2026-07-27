@@ -101,6 +101,7 @@ export function MessagesTable({ onChanged }: { onChanged?: () => void }) {
             <th>Category</th>
             <th>Severity</th>
             <th>Routes</th>
+            <th>Channels</th>
             <th>Expires</th>
             {canWrite ? <th>Actions</th> : null}
           </tr>
@@ -120,6 +121,7 @@ export function MessagesTable({ onChanged }: { onChanged?: () => void }) {
                 </span>
               </td>
               <td className="td-dim">{m.routes_affected?.join(", ") || "—"}</td>
+              <td className="td-dim">{m.channels?.join(", ") || "All"}</td>
               <td>
                 {editing === m.message_id ? (
                   <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>

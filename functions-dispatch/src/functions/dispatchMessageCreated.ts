@@ -9,6 +9,7 @@ import { app, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { sendSms, sendEmail } from "../lib/acs";
 import { escapeHtml } from "../lib/html";
+import { channelRequested, teamsTargets } from "../lib/deliveryChannels";
 import type { ConnectionPool } from "mssql";
 
 interface MessageCreatedEvent {
@@ -71,8 +72,25 @@ app.serviceBusQueue("dispatchMessageCreated", {
   queueName: "message-created-events",
   handler: async (message: unknown, context: InvocationContext) => {
     const event = message as MessageCreatedEvent;
-    const pool = await getPool();
+    const sendSmsChannel = channelRequested(event.channels, "SMS");
+    const sendEmailChannel = channelRequested(event.channels, "Email");
+    const requestedTeamsTargets = teamsTargets(event.channels);
 
+    if (requestedTeamsTargets.length > 0) {
+      context.log(
+        `Message ${event.message_id} requested future Teams delivery to: ${requestedTeamsTargets.join(", ")}. No Teams connector is configured yet.`,
+      );
+    }
+
+    // Internal/web-only messages should not fan out to rider SMS/email.
+    if (!sendSmsChannel && !sendEmailChannel) {
+      context.log(
+        `Message ${event.message_id} requested no subscriber SMS/email channels; subscriber dispatch skipped.`,
+      );
+      return;
+    }
+
+    const pool = await getPool();
     const findSubs = pool.request();
     findSubs.input("category", sql.NVarChar, event.category);
     const { recordset } = await findSubs.query<SubscriberRow>(`
@@ -90,7 +108,7 @@ app.serviceBusQueue("dispatchMessageCreated", {
     for (const sub of recordset) {
       if (!routeMatches(parseAudience(sub.routes), alertRoutes)) continue;
 
-      if (sub.phone_number) {
+      if (sendSmsChannel && sub.phone_number) {
         try {
           const res = await sendSms(sub.phone_number, body, context);
           await logDelivery(
@@ -108,7 +126,7 @@ app.serviceBusQueue("dispatchMessageCreated", {
         }
       }
 
-      if (sub.email && sub.email_status === "confirmed") {
+      if (sendEmailChannel && sub.email && sub.email_status === "confirmed") {
         try {
           const res = await sendEmail(
             sub.email,

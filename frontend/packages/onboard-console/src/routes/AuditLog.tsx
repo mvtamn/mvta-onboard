@@ -71,6 +71,7 @@ export function AuditLog() {
                   <th>Category</th>
                   <th>Status</th>
                   <th>Tags</th>
+                  <th>Channels</th>
                   <th>By</th>
                   <th>Posted</th>
                   <th>Expires</th>
@@ -85,6 +86,7 @@ export function AuditLog() {
                       <span className={`pill-sm ${STATUS_PILL[m.status] ?? "pill-muted"}`}>{m.status}</span>
                     </td>
                     <td className="td-dim">{m.tags.join(", ") || "—"}</td>
+                    <td className="td-dim">{m.channels.join(", ") || "All"}</td>
                     <td className="td-dim">{m.created_by}</td>
                     <td className="td-dim">{new Date(m.created_at).toLocaleDateString()}</td>
                     <td className="td-dim">{formatExpires(m.expires_at)}</td>

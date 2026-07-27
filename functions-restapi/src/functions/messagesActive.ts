@@ -67,6 +67,7 @@ app.http("messagesActive", {
         routes_affected: row.routes_affected ? (JSON.parse(row.routes_affected) as string[]) : [],
         stops_affected: row.stops_affected ? (JSON.parse(row.stops_affected) as string[]) : [],
         zones_affected: row.zones_affected ? (JSON.parse(row.zones_affected) as string[]) : [],
+        channels: row.channels ? (JSON.parse(row.channels) as string[]) : [],
         expires_at: row.expires_at,
         created_at: row.created_at,
       }));

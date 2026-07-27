@@ -1,7 +1,7 @@
 # MVTA OnBoard — Current State
 
 **Last reviewed:** July 26, 2026  
-**Repository version:** Onboard Console 1.2.1
+**Repository version:** Onboard Console 1.2.2
 **Environment:** `dev` is the only live Azure environment and is effectively production.
 
 This document is the current repository-level source of truth for what has
@@ -79,6 +79,8 @@ retired-mockups/               Superseded HTML design references
   - `System.Ingestion` on the API
 - Dashboard and active-message management.
 - Message composition.
+- Internal Teams route-impact targeting for Operations and Customer Service
+  (routing is stored; the external Teams connector is not yet active).
 - Message summary/expiration editing.
 - Message retraction.
 - Audit-log search.
@@ -192,6 +194,7 @@ Local verification performed July 26, 2026:
 
 - REST API TypeScript build: passed.
 - REST API unit tests: **69 passed, 0 failed**.
+- Dispatch channel-selection unit tests: **4 passed, 0 failed**.
 - Dispatch TypeScript build: passed.
 - Shared frontend package build: passed.
 - Rider application production build: passed.
@@ -213,8 +216,8 @@ pending draft for human review. Preview risks show customer-language previews
 without saving them. Acknowledge and monitor states remain local until an
 Operational Event model is added.
 
-The dispatch project's test command is currently a placeholder and executes no
-tests. CI does not currently perform a database, Service Bus, Azure
+Dispatch currently has focused channel-routing tests but not provider or
+database integration tests. CI does not currently perform a database, Service Bus, Azure
 Communication Services, authentication, or end-to-end delivery test.
 
 ## 6. Known live-environment issue

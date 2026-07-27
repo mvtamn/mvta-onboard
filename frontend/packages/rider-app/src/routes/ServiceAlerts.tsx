@@ -13,7 +13,10 @@ export function ServiceAlerts() {
 
   async function load() {
     try {
-      const data = await api.getActiveMessages();
+      // The public rider page must only show messages explicitly routed to
+      // the Website channel (or legacy messages whose channel list is null).
+      // Internal Teams-only alerts must never appear here.
+      const data = await api.getActiveMessages({ channel: "Website" });
       setMessages(data.messages ?? []);
       setError(null);
     } catch (err) {
