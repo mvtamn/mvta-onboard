@@ -179,6 +179,25 @@ export interface TripDelay {
   position_updated_at: string | null;
 }
 
+export type TripDelayDataState =
+  | "current"
+  | "no_current_trips"
+  | "stale"
+  | "configuration_missing";
+
+export interface TripDelayDiagnostics {
+  state: TripDelayDataState;
+  trip_updates_configured: boolean;
+  vehicle_positions_configured: boolean;
+  static_gtfs_configured: boolean;
+  active_trip_count: number;
+  threshold_risk_count: number;
+  last_trip_update_at: string | null;
+  static_stop_count: number;
+  direction_reference_count: number;
+  stale_after_minutes: number;
+}
+
 export interface DeparturePrediction {
   stop_sequence: number;
   stop_id: string | null;

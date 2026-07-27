@@ -4,6 +4,10 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
 import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import {
+  determineTripDelayState,
+  TRIP_DELAY_STALE_AFTER_MINUTES,
+} from "../lib/tripDelayDiagnostics";
 
 interface TripDelayRow {
   trip_id: string;
@@ -77,7 +81,52 @@ app.http("tripDelaysList", {
           ? JSON.parse(row.prediction_reasons)
           : [],
       }));
-      return { status: 200, jsonBody: { delays } };
+      const [stopCountResult, directionCountResult] = await Promise.all([
+        pool.request().query<{ count: number }>(
+          "SELECT COUNT_BIG(*) AS count FROM GtfsStops",
+        ),
+        pool.request().query<{ count: number }>(
+          "SELECT COUNT_BIG(*) AS count FROM GtfsTripDirections",
+        ),
+      ]);
+      const lastTripUpdateAt = result.recordset.reduce<Date | null>(
+        (latest, row) =>
+          !latest || row.last_polled_at > latest ? row.last_polled_at : latest,
+        null,
+      );
+      const thresholdRiskCount = result.recordset.filter(
+        (row) =>
+          (row.predicted_max_departure_delay_seconds ?? row.delay_seconds) > 900,
+      ).length;
+      const tripUpdatesConfigured = Boolean(
+        process.env.GTFS_RT_TRIPUPDATE_URL?.trim(),
+      );
+      const staticStopCount = Number(stopCountResult.recordset[0]?.count ?? 0);
+      const directionReferenceCount = Number(
+        directionCountResult.recordset[0]?.count ?? 0,
+      );
+      const diagnostics = {
+        state: determineTripDelayState({
+          tripUpdatesConfigured,
+          activeTripCount: delays.length,
+          thresholdRiskCount,
+          lastTripUpdateAt,
+          staticStopCount,
+          directionReferenceCount,
+        }),
+        trip_updates_configured: tripUpdatesConfigured,
+        vehicle_positions_configured: Boolean(
+          process.env.GTFS_RT_VEHICLE_URL?.trim(),
+        ),
+        static_gtfs_configured: Boolean(process.env.GTFS_STATIC_URL?.trim()),
+        active_trip_count: delays.length,
+        threshold_risk_count: thresholdRiskCount,
+        last_trip_update_at: lastTripUpdateAt?.toISOString() ?? null,
+        static_stop_count: staticStopCount,
+        direction_reference_count: directionReferenceCount,
+        stale_after_minutes: TRIP_DELAY_STALE_AFTER_MINUTES,
+      };
+      return { status: 200, jsonBody: { delays, diagnostics } };
     } catch (err) {
       context.error("GET /trip-delays failed:", err);
       return { status: 500, jsonBody: { error: "Internal server error" } };

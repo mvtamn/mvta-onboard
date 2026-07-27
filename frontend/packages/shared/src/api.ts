@@ -20,6 +20,7 @@ import type {
   PrepareSuggestedAlertInput,
   PrepareSuggestedAlertResult,
   TripDelay,
+  TripDelayDiagnostics,
   OnDemandRiskRecord,
 } from "./types.js";
 
@@ -221,7 +222,11 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
     },
 
     getTripDelays() {
-      return request<{ delays: TripDelay[] }>("/api/trip-delays", {}, true);
+      return request<{ delays: TripDelay[]; diagnostics: TripDelayDiagnostics }>(
+        "/api/trip-delays",
+        {},
+        true,
+      );
     },
 
     getOnDemandRisks() {

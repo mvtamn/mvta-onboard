@@ -3,6 +3,7 @@ import {
   ApiError,
   type PrepareSuggestedAlertInput,
   type TripDelay,
+  type TripDelayDiagnostics,
 } from "@mvta/shared";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../config.js";
@@ -17,6 +18,7 @@ import {
 import "./serviceRisk.css";
 
 type View = "exceptions" | "telemetry";
+type DataMode = "loading" | "live" | "preview";
 
 function titleCase<T extends string>(value: T): Capitalize<T> {
   return `${value.charAt(0).toUpperCase()}${value.slice(1)}` as Capitalize<T>;
@@ -167,17 +169,114 @@ function fixedRouteDraft(risk: FixedRouteRisk): PrepareSuggestedAlertInput {
   };
 }
 
+function fixedRouteLoadError(err: unknown): string {
+  if (
+    import.meta.env.DEV &&
+    String(import.meta.env.VITE_AUTH_MODE).toLowerCase() === "mock"
+  ) {
+    return (
+      "Preview mode — this local development console uses mock sign-in and cannot " +
+      "open protected operational predictions. Use the deployed console for live data. " +
+      "Preview alerts and workflow changes are not saved."
+    );
+  }
+  if (err instanceof ApiError) {
+    if (err.status === 401) {
+      return (
+        "Preview mode — your sign-in session was not accepted by the prediction service. " +
+        "Sign in again to restore live data. Preview alerts and workflow changes are not saved."
+      );
+    }
+    if (err.status === 403) {
+      return (
+        "Preview mode — your account does not have a Fixed Route Risk staff role. " +
+        "Ask an administrator to check your OCC role assignment."
+      );
+    }
+    if (err.status >= 500) {
+      return (
+        "Preview mode — the prediction service or database is temporarily unavailable. " +
+        "Preview alerts and workflow changes are not saved."
+      );
+    }
+    return `Preview mode — operational predictions could not be loaded: ${err.message}`;
+  }
+  return (
+    "Preview mode — the console could not reach the prediction service. " +
+    "Check the network connection or open the deployed console."
+  );
+}
+
+function fixedRouteFeedMessage(diagnostics: TripDelayDiagnostics): string {
+  const updated = diagnostics.last_trip_update_at
+    ? timeLabel(diagnostics.last_trip_update_at)
+    : null;
+  const references =
+    `${diagnostics.static_stop_count.toLocaleString()} stops and ` +
+    `${diagnostics.direction_reference_count.toLocaleString()} trip directions loaded`;
+
+  if (diagnostics.state === "configuration_missing") {
+    return (
+      "Live data is unavailable because the GTFS-Realtime TripUpdate feed is not configured. " +
+      `Static reference status: ${references}.`
+    );
+  }
+  if (diagnostics.state === "stale") {
+    return (
+      `TripUpdate observations are older than ${diagnostics.stale_after_minutes} minutes` +
+      `${updated ? ` (last received ${updated})` : ""}. Treat displayed risks as stale.`
+    );
+  }
+  if (diagnostics.state === "no_current_trips") {
+    return (
+      "The authenticated feed is configured, but there are no current monitored trip " +
+      `observations. Static reference status: ${references}.`
+    );
+  }
+  return (
+    `${diagnostics.active_trip_count} active trips checked; ` +
+    `${diagnostics.threshold_risk_count} exceed the 15-minute departure threshold` +
+    `${updated ? `; last update ${updated}` : ""}.`
+  );
+}
+
+function fixedRouteEmptyState(diagnostics: TripDelayDiagnostics | null) {
+  if (diagnostics?.state === "configuration_missing") {
+    return {
+      title: "TripUpdate feed configuration is missing",
+      detail:
+        "Add the GTFS-Realtime TripUpdate feed setting before relying on fixed-route predictions.",
+    };
+  }
+  if (diagnostics?.state === "no_current_trips") {
+    return {
+      title: "No current trip observations",
+      detail:
+        "The feed is configured, but it is not currently reporting trips for monitoring.",
+    };
+  }
+  return {
+    title: "No fixed-route departure risks",
+    detail:
+      "No monitored trip is currently predicted to depart more than 15 minutes late.",
+  };
+}
+
 export function FixedRouteServiceRisk() {
   const navigate = useNavigate();
   const [view, setView] = useState<View>("exceptions");
   const [selectedId, setSelectedId] = useState(FIXED_ROUTE_RISKS[0].id);
   const [workflow, setWorkflow] = useState<Record<string, RiskWorkflow>>({});
-  const [liveRisks, setLiveRisks] = useState<FixedRouteRisk[] | null>(null);
-  const [liveMessage, setLiveMessage] = useState<string | null>(null);
+  const [dataMode, setDataMode] = useState<DataMode>("loading");
+  const [liveRisks, setLiveRisks] = useState<FixedRouteRisk[]>([]);
+  const [diagnostics, setDiagnostics] = useState<TripDelayDiagnostics | null>(null);
+  const [liveMessage, setLiveMessage] = useState(
+    "Connecting to authenticated departure predictions…",
+  );
   const [previewDrafts, setPreviewDrafts] = useState<Record<string, string>>({});
   const [preparing, setPreparing] = useState(false);
   const [prepareError, setPrepareError] = useState<string | null>(null);
-  const risks = liveRisks ?? FIXED_ROUTE_RISKS;
+  const risks = dataMode === "preview" ? FIXED_ROUTE_RISKS : liveRisks;
   const selected = useMemo(
     () =>
       risks.find((risk) => risk.id === selectedId) ??
@@ -189,7 +288,7 @@ export function FixedRouteServiceRisk() {
   useEffect(() => {
     api
       .getTripDelays()
-      .then(({ delays }) => {
+      .then(({ delays, diagnostics: feedDiagnostics }) => {
         const mapped = delays
           .map(fromTripDelay)
           .filter(
@@ -200,22 +299,26 @@ export function FixedRouteServiceRisk() {
               risk.currentDelayMinutes > 15,
           );
         setLiveRisks(mapped);
-        setLiveMessage(null);
+        setDiagnostics(feedDiagnostics ?? null);
+        setDataMode("live");
+        setLiveMessage(
+          feedDiagnostics
+            ? fixedRouteFeedMessage(feedDiagnostics)
+            : "Authenticated departure prediction data is connected.",
+        );
         if (mapped.length > 0) setSelectedId(mapped[0].id);
       })
-      .catch(() => {
-        setLiveRisks(null);
-        setLiveMessage(
-          "Preview mode — local mock sign-in cannot access operational prediction data. " +
-          "No alerts or workflow changes will be saved.",
-        );
+      .catch((err: unknown) => {
+        setDiagnostics(null);
+        setDataMode("preview");
+        setLiveMessage(fixedRouteLoadError(err));
       });
   }, []);
 
   async function prepareAlert(risk: FixedRouteRisk) {
     setPrepareError(null);
     const draft = fixedRouteDraft(risk);
-    if (liveRisks === null) {
+    if (dataMode === "preview") {
       setPreviewDrafts((current) => ({ ...current, [risk.id]: draft.draft_text }));
       setWorkflow((current) => ({ ...current, [risk.id]: "Alert prepared" }));
       return;
@@ -266,10 +369,16 @@ export function FixedRouteServiceRisk() {
       />
 
       <div className="concept-banner">
-        <span className="concept-badge">{liveRisks === null ? "Preview data" : "Live data"}</span>
-        {liveRisks === null
-          ? liveMessage ?? "Loading authenticated departure predictions; review scenarios are shown meanwhile."
-          : "Future departure predictions are calculated from the current GTFS-Realtime TripUpdate feed."}
+        <span className="concept-badge">
+          {dataMode === "loading"
+            ? "Connecting"
+            : dataMode === "preview"
+              ? "Preview data"
+              : diagnostics?.state === "current"
+                ? "Live data"
+                : "Feed status"}
+        </span>
+        <span>{liveMessage}</span>
       </div>
 
       <div className="risk-stat-grid" aria-label="Fixed route risk summary">
@@ -279,10 +388,15 @@ export function FixedRouteServiceRisk() {
         <RiskStat value={routesAffected} label="Routes affected" tone="accent" />
       </div>
 
-      {risks.length === 0 ? (
+      {dataMode === "loading" ? (
+        <div className="risk-empty-state" role="status">
+          <strong>Loading departure-risk data</strong>
+          <span>The console is checking the protected prediction service and feed status.</span>
+        </div>
+      ) : risks.length === 0 ? (
         <div className="risk-empty-state">
-          <strong>No fixed-route departure risks</strong>
-          <span>No monitored trip is currently predicted to depart more than 15 minutes late.</span>
+          <strong>{fixedRouteEmptyState(diagnostics).title}</strong>
+          <span>{fixedRouteEmptyState(diagnostics).detail}</span>
         </div>
       ) : (
       <div className="risk-workspace">
@@ -331,7 +445,7 @@ export function FixedRouteServiceRisk() {
         <DepartureRiskDetail
           risk={selected}
           workflow={workflow[selected.id] ?? "New"}
-          isPreview={liveRisks === null}
+          isPreview={dataMode === "preview"}
           previewDraft={previewDrafts[selected.id] ?? null}
           preparing={preparing}
           prepareError={prepareError}
