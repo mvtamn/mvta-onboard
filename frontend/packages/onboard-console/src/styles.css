@@ -119,6 +119,32 @@ body {
 .content-topbar .subtitle { color: var(--text-muted); font-size: 12.5px; margin-top: 3px; }
 .topbar-actions { display: flex; align-items: center; gap: 10px; }
 .tr-text { color: var(--text-muted); font-size: 12px; }
+.fixed-route-refresh-indicator {
+  align-items: center;
+  background: var(--surface-alt-bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-dim);
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 700;
+  gap: 6px;
+  padding: 5px 9px;
+  white-space: nowrap;
+}
+.fixed-route-refresh-indicator > span {
+  background: var(--live-dot);
+  border-radius: 50%;
+  display: inline-block;
+  height: 7px;
+  width: 7px;
+}
+.fixed-route-refresh-indicator > span.refresh-pulse {
+  animation: refresh-pulse 1s ease-in-out infinite;
+}
+@keyframes refresh-pulse {
+  50% { opacity: 0.35; transform: scale(0.8); }
+}
 .pill-user { display: flex; align-items: center; gap: 8px; background: var(--surface-alt-bg); border: 1px solid var(--border); color: var(--text); font-size: 12px; padding: 4px 12px 4px 4px; border-radius: 999px; }
 .avatar { width: 24px; height: 24px; border-radius: 50%; background: var(--brand-green); color: #fff; font-size: 10.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .btn-signout { background: var(--surface-bg); color: var(--brand-green); font-size: 12px; font-weight: bold; padding: 5px 14px; border-radius: 8px; border: 1px solid var(--border-strong); cursor: pointer; }

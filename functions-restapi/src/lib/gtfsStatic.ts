@@ -25,6 +25,19 @@ export interface GtfsTripRow {
   trip_headsign: string | null;
 }
 
+export interface GtfsRouteRow {
+  route_id: string;
+  agency_id: string | null;
+  route_short_name: string | null;
+  route_long_name: string | null;
+  route_desc: string | null;
+  route_type: number;
+  route_url: string | null;
+  route_color: string | null;
+  route_text_color: string | null;
+  route_sort_order: number | null;
+}
+
 // Minimal RFC4180-ish line splitter - GTFS static files are a well-defined,
 // small CSV format; a full CSV library is unwarranted for two files, but a
 // naive String.split(",") would break on a quoted value that itself
@@ -120,6 +133,66 @@ export function parseTripsCsv(csv: string): GtfsTripRow[] {
   return rows;
 }
 
+export function parseRoutesCsv(csv: string): GtfsRouteRow[] {
+  const lines = csv.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  if (lines.length === 0) return [];
+
+  const header = parseCsvLine(lines[0]).map((value) => value.trim());
+  const indexOf = (name: string) => header.indexOf(name);
+  const idIdx = indexOf("route_id");
+  const agencyIdx = indexOf("agency_id");
+  const shortIdx = indexOf("route_short_name");
+  const longIdx = indexOf("route_long_name");
+  const descIdx = indexOf("route_desc");
+  const typeIdx = indexOf("route_type");
+  const urlIdx = indexOf("route_url");
+  const colorIdx = indexOf("route_color");
+  const textColorIdx = indexOf("route_text_color");
+  const sortIdx = indexOf("route_sort_order");
+
+  if (idIdx === -1 || shortIdx === -1 || longIdx === -1 || typeIdx === -1) {
+    throw new Error(
+      "routes.txt is missing required route_id/route name/route_type columns",
+    );
+  }
+
+  const optional = (cols: string[], index: number): string | null => {
+    if (index === -1) return null;
+    return cols[index]?.trim() || null;
+  };
+
+  const rows: GtfsRouteRow[] = [];
+  for (const line of lines.slice(1)) {
+    const cols = parseCsvLine(line);
+    const route_id = cols[idIdx]?.trim();
+    const route_short_name = optional(cols, shortIdx);
+    const route_long_name = optional(cols, longIdx);
+    const route_type = Number.parseInt(cols[typeIdx]?.trim(), 10);
+    if (
+      !route_id ||
+      (!route_short_name && !route_long_name) ||
+      !Number.isFinite(route_type)
+    ) {
+      continue;
+    }
+    const sortOrderRaw = optional(cols, sortIdx);
+    const sortOrder = sortOrderRaw === null ? NaN : Number.parseInt(sortOrderRaw, 10);
+    rows.push({
+      route_id,
+      agency_id: optional(cols, agencyIdx),
+      route_short_name,
+      route_long_name,
+      route_desc: optional(cols, descIdx),
+      route_type,
+      route_url: optional(cols, urlIdx),
+      route_color: optional(cols, colorIdx),
+      route_text_color: optional(cols, textColorIdx),
+      route_sort_order: Number.isFinite(sortOrder) ? sortOrder : null,
+    });
+  }
+  return rows;
+}
+
 const DIRECTION_WORD_TO_LABEL: Record<string, string> = {
   North: "NB",
   South: "SB",
@@ -174,6 +247,7 @@ export function resolveDirectionLabels(trips: GtfsTripRow[]): ResolvedTripDirect
 export interface GtfsStaticData {
   stops: GtfsStopRow[];
   trips: GtfsTripRow[];
+  routes: GtfsRouteRow[];
 }
 
 export async function fetchAndParseStatic(url: string): Promise<GtfsStaticData> {
@@ -192,9 +266,14 @@ export async function fetchAndParseStatic(url: string): Promise<GtfsStaticData> 
   if (!tripsEntry) {
     throw new Error("GTFS static feed zip has no trips.txt entry");
   }
+  const routesEntry = zip.getEntry("routes.txt");
+  if (!routesEntry) {
+    throw new Error("GTFS static feed zip has no routes.txt entry");
+  }
 
   return {
     stops: parseStopsCsv(stopsEntry.getData().toString("utf-8")),
     trips: parseTripsCsv(tripsEntry.getData().toString("utf-8")),
+    routes: parseRoutesCsv(routesEntry.getData().toString("utf-8")),
   };
 }

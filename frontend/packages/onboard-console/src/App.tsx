@@ -24,6 +24,11 @@ import { Subscribers } from "./routes/Subscribers.js";
 import { AuditLog } from "./routes/AuditLog.js";
 import { Admin } from "./routes/Admin.js";
 import { OccTools } from "./routes/OccTools.js";
+import {
+  FixedRouteRefreshProvider,
+  formatRefreshCountdown,
+  useFixedRouteRefresh,
+} from "./context/FixedRouteRefreshContext.js";
 
 const ADMIN = ["OCC.Admin"] as const;
 
@@ -51,6 +56,19 @@ function initialsOf(name: string): string {
   if (parts.length === 0) return "?";
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function FixedRouteRefreshIndicator() {
+  const { secondsLeft, refreshing } = useFixedRouteRefresh();
+  return (
+    <span
+      className="fixed-route-refresh-indicator"
+      title="Fixed Route Risk continues refreshing while you navigate the console"
+    >
+      <span className={refreshing ? "refresh-pulse" : ""} />
+      Fixed route {refreshing ? "refreshing…" : `refresh ${formatRefreshCountdown(secondsLeft)}`}
+    </span>
+  );
 }
 
 export function App() {
@@ -82,8 +100,9 @@ export function App() {
   }
 
   return (
-    <div className="frame">
-      <aside className="nav-sidebar">
+    <FixedRouteRefreshProvider>
+      <div className="frame">
+        <aside className="nav-sidebar">
         <div className="nav-brand">
           <span className="logo-badge">MVTA</span>
           <div>
@@ -119,15 +138,16 @@ export function App() {
             {stats.activeCount ?? "—"} active · Synced {stats.syncedAt ? stats.syncedAt.toLocaleTimeString() : "—"}
           </span>
         </div>
-      </aside>
+        </aside>
 
-      <div className="content-col">
+        <div className="content-col">
         <header className="content-topbar">
           <div>
             <h1>{meta.title}</h1>
             <div className="subtitle">{meta.sub}</div>
           </div>
           <div className="topbar-actions">
+            <FixedRouteRefreshIndicator />
             <span className="tr-text">Session: {new Date().toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}</span>
             <span className="pill-user">
               <span className="avatar">{initialsOf(account.name ?? account.username)}</span>
@@ -179,7 +199,8 @@ export function App() {
             {stats.syncedAt ? stats.syncedAt.toLocaleTimeString() : "—"}
           </span>
         </div>
+        </div>
       </div>
-    </div>
+    </FixedRouteRefreshProvider>
   );
 }

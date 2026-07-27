@@ -81,13 +81,20 @@ app.http("tripDelaysList", {
           ? JSON.parse(row.prediction_reasons)
           : [],
       }));
-      const [stopCountResult, directionCountResult] = await Promise.all([
+      const [stopCountResult, directionCountResult, routeCountResult] =
+        await Promise.all([
         pool.request().query<{ count: number }>(
           "SELECT COUNT_BIG(*) AS count FROM GtfsStops",
         ),
         pool.request().query<{ count: number }>(
           "SELECT COUNT_BIG(*) AS count FROM GtfsTripDirections",
         ),
+        pool.request().query<{ count: number }>(`
+          IF OBJECT_ID('dbo.GtfsRoutes', 'U') IS NULL
+            SELECT CAST(0 AS BIGINT) AS count
+          ELSE
+            SELECT COUNT_BIG(*) AS count FROM GtfsRoutes
+        `),
       ]);
       const lastTripUpdateAt = result.recordset.reduce<Date | null>(
         (latest, row) =>
@@ -122,6 +129,9 @@ app.http("tripDelaysList", {
         active_trip_count: delays.length,
         threshold_risk_count: thresholdRiskCount,
         last_trip_update_at: lastTripUpdateAt?.toISOString() ?? null,
+        route_reference_count: Number(
+          routeCountResult.recordset[0]?.count ?? 0,
+        ),
         static_stop_count: staticStopCount,
         direction_reference_count: directionReferenceCount,
         stale_after_minutes: TRIP_DELAY_STALE_AFTER_MINUTES,

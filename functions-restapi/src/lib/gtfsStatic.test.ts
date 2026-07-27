@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { parseStopsCsv, parseTripsCsv, deriveDirectionLabel, resolveDirectionLabels } from "./gtfsStatic";
+import {
+  parseStopsCsv,
+  parseTripsCsv,
+  parseRoutesCsv,
+  deriveDirectionLabel,
+  resolveDirectionLabels,
+} from "./gtfsStatic";
 
 test("parseStopsCsv parses a basic stops.txt", () => {
   const csv = "stop_id,stop_name,stop_lat,stop_lon\n56878,Main St & 5th Ave,44.86,-93.20\n";
@@ -28,6 +34,36 @@ test("parseTripsCsv skips rows missing required columns", () => {
   const csv = "route_id,service_id,trip_id,trip_headsign,direction_id\n,,,,\n";
   const rows = parseTripsCsv(csv);
   assert.deepStrictEqual(rows, []);
+});
+
+test("parseRoutesCsv preserves MVTA route names and display metadata", () => {
+  const csv =
+    "route_id,agency_id,route_short_name,route_long_name,route_desc,route_type,route_url,route_color,route_text_color,route_sort_order\n" +
+    '425,0,"Orange LINK","Orange LINK: Apple Valley-Burnsville-Eag","Rt Orange LINK",3,,c34b18,ffffff,400\n';
+  const rows = parseRoutesCsv(csv);
+  assert.deepStrictEqual(rows, [
+    {
+      route_id: "425",
+      agency_id: "0",
+      route_short_name: "Orange LINK",
+      route_long_name: "Orange LINK: Apple Valley-Burnsville-Eag",
+      route_desc: "Rt Orange LINK",
+      route_type: 3,
+      route_url: null,
+      route_color: "c34b18",
+      route_text_color: "ffffff",
+      route_sort_order: 400,
+    },
+  ]);
+});
+
+test("parseRoutesCsv requires an id, a name, and a valid route type", () => {
+  const csv =
+    "route_id,route_short_name,route_long_name,route_type\n" +
+    ",420,Apple Valley,3\n" +
+    "421,,,3\n" +
+    "422,422,Example,not-a-number\n";
+  assert.deepStrictEqual(parseRoutesCsv(csv), []);
 });
 
 test("deriveDirectionLabel finds a leading cardinal word", () => {

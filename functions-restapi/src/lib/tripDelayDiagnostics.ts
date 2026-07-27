@@ -22,6 +22,7 @@ export interface TripDelayDiagnostics {
   active_trip_count: number;
   threshold_risk_count: number;
   last_trip_update_at: string | null;
+  route_reference_count: number;
   static_stop_count: number;
   direction_reference_count: number;
   stale_after_minutes: number;

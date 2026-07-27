@@ -7,6 +7,11 @@ import {
 } from "@mvta/shared";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../config.js";
+import {
+  FIXED_ROUTE_REFRESH_OPTIONS,
+  formatRefreshCountdown,
+  useFixedRouteRefresh,
+} from "../../context/FixedRouteRefreshContext.js";
 import { LiveDelays } from "./LiveDelays.js";
 import {
   FIXED_ROUTE_RISKS,
@@ -207,12 +212,31 @@ function fixedRouteLoadError(err: unknown): string {
   );
 }
 
+function fixedRouteRefreshWarning(
+  err: unknown,
+  lastCompletedAt: Date | null,
+): string {
+  const lastSuccess = lastCompletedAt
+    ? lastCompletedAt.toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+        second: "2-digit",
+      })
+    : "an earlier refresh";
+  const detail = err instanceof ApiError ? err.message : "the service could not be reached";
+  return (
+    `The latest refresh failed (${detail}). Showing the last successful data from ` +
+    `${lastSuccess}; the console will retry automatically.`
+  );
+}
+
 function fixedRouteFeedMessage(diagnostics: TripDelayDiagnostics): string {
   const updated = diagnostics.last_trip_update_at
     ? timeLabel(diagnostics.last_trip_update_at)
     : null;
   const references =
-    `${diagnostics.static_stop_count.toLocaleString()} stops and ` +
+    `${Number(diagnostics.route_reference_count ?? 0).toLocaleString()} routes, ` +
+    `${diagnostics.static_stop_count.toLocaleString()} stops, and ` +
     `${diagnostics.direction_reference_count.toLocaleString()} trip directions loaded`;
 
   if (diagnostics.state === "configuration_missing") {
@@ -264,6 +288,12 @@ function fixedRouteEmptyState(diagnostics: TripDelayDiagnostics | null) {
 
 export function FixedRouteServiceRisk() {
   const navigate = useNavigate();
+  const {
+    snapshot,
+    error: refreshError,
+    loading,
+    lastCompletedAt,
+  } = useFixedRouteRefresh();
   const [view, setView] = useState<View>("exceptions");
   const [selectedId, setSelectedId] = useState(FIXED_ROUTE_RISKS[0].id);
   const [workflow, setWorkflow] = useState<Record<string, RiskWorkflow>>({});
@@ -286,34 +316,35 @@ export function FixedRouteServiceRisk() {
   );
 
   useEffect(() => {
-    api
-      .getTripDelays()
-      .then(({ delays, diagnostics: feedDiagnostics }) => {
-        const mapped = delays
-          .map(fromTripDelay)
-          .filter(
-            (risk) =>
-              risk.predictedMaxMinutes === null ||
-              risk.predictedMaxMinutes > 15 ||
-              risk.currentDelayMinutes === null ||
-              risk.currentDelayMinutes > 15,
-          );
-        setLiveRisks(mapped);
-        setDiagnostics(feedDiagnostics ?? null);
-        setDataMode("live");
-        setLiveMessage(
-          feedDiagnostics
-            ? fixedRouteFeedMessage(feedDiagnostics)
-            : "Authenticated departure prediction data is connected.",
+    if (snapshot) {
+      const mapped = snapshot.delays
+        .map(fromTripDelay)
+        .filter(
+          (risk) =>
+            risk.predictedMaxMinutes === null ||
+            risk.predictedMaxMinutes > 15 ||
+            risk.currentDelayMinutes === null ||
+            risk.currentDelayMinutes > 15,
         );
-        if (mapped.length > 0) setSelectedId(mapped[0].id);
-      })
-      .catch((err: unknown) => {
-        setDiagnostics(null);
-        setDataMode("preview");
-        setLiveMessage(fixedRouteLoadError(err));
-      });
-  }, []);
+      setLiveRisks(mapped);
+      setDiagnostics(snapshot.diagnostics);
+      setDataMode("live");
+      setLiveMessage(
+        refreshError
+          ? fixedRouteRefreshWarning(refreshError, lastCompletedAt)
+          : snapshot.diagnostics
+            ? fixedRouteFeedMessage(snapshot.diagnostics)
+            : "Authenticated departure prediction data is connected.",
+      );
+      if (mapped.length > 0) setSelectedId(mapped[0].id);
+      return;
+    }
+    if (!loading && refreshError) {
+      setDiagnostics(null);
+      setDataMode("preview");
+      setLiveMessage(fixedRouteLoadError(refreshError));
+    }
+  }, [lastCompletedAt, loading, refreshError, snapshot]);
 
   async function prepareAlert(risk: FixedRouteRisk) {
     setPrepareError(null);
@@ -349,6 +380,7 @@ export function FixedRouteServiceRisk() {
           view={view}
           onView={setView}
         />
+        <FixedRouteRefreshControls />
         <LiveDelays />
       </div>
     );
@@ -367,6 +399,8 @@ export function FixedRouteServiceRisk() {
         view={view}
         onView={setView}
       />
+
+      <FixedRouteRefreshControls />
 
       <div className="concept-banner">
         <span className="concept-badge">
@@ -484,6 +518,41 @@ function RiskModuleHeader({
           Current telemetry
         </button>
       </div>
+    </div>
+  );
+}
+
+function FixedRouteRefreshControls() {
+  const {
+    refreshing,
+    intervalMs,
+    secondsLeft,
+    setRefreshInterval,
+    refreshNow,
+  } = useFixedRouteRefresh();
+
+  return (
+    <div className="risk-refresh-bar" aria-label="Fixed route refresh controls">
+      <label htmlFor="fixed-route-refresh-rate">Refresh rate</label>
+      <select
+        id="fixed-route-refresh-rate"
+        value={intervalMs}
+        onChange={(event) => setRefreshInterval(Number(event.target.value))}
+      >
+        {FIXED_ROUTE_REFRESH_OPTIONS.map((option) => (
+          <option value={option.value} key={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <span className="risk-refresh-countdown">
+        {refreshing
+          ? "Refreshing departure risk…"
+          : `Next refresh in ${formatRefreshCountdown(secondsLeft)}`}
+      </span>
+      <button className="btn-sm" disabled={refreshing} onClick={refreshNow}>
+        ↻ Refresh now
+      </button>
     </div>
   );
 }

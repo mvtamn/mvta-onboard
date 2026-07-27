@@ -1,6 +1,6 @@
 // Daily sync of MVTA's static GTFS schedule into GtfsStops (human-readable
-// stop names, used by gtfsDelaysPoll.ts to build readable rider-facing
-// delay text) and GtfsTripDirections (route direction labels - NB/SB/EB/WB
+// stop names), GtfsRoutes (the authoritative route registry), and
+// GtfsTripDirections (route direction labels - NB/SB/EB/WB
 // - used by the Live Delays console view; neither realtime feed has a
 // direction field at all, so this is the only source for it). Static
 // schedules change infrequently, so this does a full replace rather than an
@@ -18,15 +18,17 @@ app.timer("gtfsStopsSync", {
       return;
     }
 
-    let stops, trips;
+    let stops, trips, routes;
     try {
-      ({ stops, trips } = await fetchAndParseStatic(feedUrl));
+      ({ stops, trips, routes } = await fetchAndParseStatic(feedUrl));
     } catch (err) {
       context.error("Failed to fetch/parse the static GTFS feed:", err);
       return;
     }
-    if (stops.length === 0 && trips.length === 0) {
-      context.warn("Static GTFS feed parsed to zero stops/trips - keeping the existing data.");
+    if (stops.length === 0 && trips.length === 0 && routes.length === 0) {
+      context.warn(
+        "Static GTFS feed parsed to zero stops/trips/routes - keeping the existing data.",
+      );
       return;
     }
 
@@ -66,15 +68,80 @@ app.timer("gtfsStopsSync", {
         `);
       }
 
+      const routeTableCheck = await new sql.Request(tx).query<{
+        table_exists: number;
+      }>(`
+        SELECT CASE WHEN OBJECT_ID('dbo.GtfsRoutes', 'U') IS NULL
+          THEN 0 ELSE 1 END AS table_exists
+      `);
+      const routeTableExists =
+        routeTableCheck.recordset[0]?.table_exists === 1;
+      if (routeTableExists) {
+        await new sql.Request(tx).query("TRUNCATE TABLE GtfsRoutes");
+        for (const route of routes) {
+          const insertReq = new sql.Request(tx);
+          insertReq.input("route_id", sql.NVarChar, route.route_id);
+          insertReq.input("agency_id", sql.NVarChar, route.agency_id);
+          insertReq.input(
+            "route_short_name",
+            sql.NVarChar,
+            route.route_short_name,
+          );
+          insertReq.input(
+            "route_long_name",
+            sql.NVarChar,
+            route.route_long_name,
+          );
+          insertReq.input("route_desc", sql.NVarChar, route.route_desc);
+          insertReq.input("route_type", sql.Int, route.route_type);
+          insertReq.input("route_url", sql.NVarChar, route.route_url);
+          insertReq.input("route_color", sql.NVarChar, route.route_color);
+          insertReq.input(
+            "route_text_color",
+            sql.NVarChar,
+            route.route_text_color,
+          );
+          insertReq.input(
+            "route_sort_order",
+            sql.Int,
+            route.route_sort_order,
+          );
+          await insertReq.query(`
+            INSERT INTO GtfsRoutes (
+              route_id, agency_id, route_short_name, route_long_name,
+              route_desc, route_type, route_url, route_color,
+              route_text_color, route_sort_order
+            )
+            VALUES (
+              @route_id, @agency_id, @route_short_name, @route_long_name,
+              @route_desc, @route_type, @route_url, @route_color,
+              @route_text_color, @route_sort_order
+            )
+          `);
+        }
+      }
+
       await tx.commit();
-      context.log(`GTFS static sync: refreshed ${stops.length} stops, ${resolvedTrips.length} trip directions.`);
+      context.log(
+        `GTFS static sync: refreshed ${stops.length} stops, ` +
+          `${resolvedTrips.length} trip directions, and ` +
+          `${routeTableExists ? routes.length : 0} routes.`,
+      );
+      if (!routeTableExists) {
+        context.warn(
+          "GtfsRoutes does not exist yet; apply migration 010 before the next static sync.",
+        );
+      }
     } catch (err) {
       try {
         await tx.rollback();
       } catch {
         /* already rolled back / not begun */
       }
-      context.error("Failed to refresh GtfsStops/GtfsTripDirections:", err);
+      context.error(
+        "Failed to refresh GtfsStops/GtfsTripDirections/GtfsRoutes:",
+        err,
+      );
     }
   },
 });

@@ -1,7 +1,9 @@
 # MVTA OnBoard — Current State
 
-**Last reviewed:** July 26, 2026  
-**Repository version:** Onboard Console 1.2.2
+**Last reviewed:** July 27, 2026
+
+**Repository version:** Onboard Console 1.3.0
+
 **Environment:** `dev` is the only live Azure environment and is effectively production.
 
 This document is the current repository-level source of truth for what has
@@ -91,6 +93,7 @@ retired-mockups/               Superseded HTML design references
   - Event Monitoring
   - Decision Matrix
   - OTP Compliance
+  - Fixed Route Risk with a persistent, operator-selectable refresh countdown
   - Live Delays
   - Speed Alerts
 
@@ -141,8 +144,10 @@ Authorization is enforced server-side by reading the Easy Auth
   scheduled trip can create a new exception on a later service day.
 - GTFS-Realtime VehiclePosition polling stores latitude, longitude, bearing,
   speed, occupancy, and current vehicle status.
-- Daily static GTFS synchronization stores stop names and trip-direction
-  reference data.
+- Daily static GTFS synchronization stores the MVTA route registry, stop
+  names, and trip-direction reference data.
+- `GtfsRoutes` is initially seeded from the July 27, 2026 MVTA static feed
+  (20 routes) and replaced by the authoritative `routes.txt` on each sync.
 - Direction labels are derived from `trips.txt` headsigns.
 - Previous-stop tracking is derived when a trip's next stop changes.
 
@@ -173,6 +178,7 @@ The database is defined by the base schema plus incremental migrations:
 | `migration-007-trip-directions-and-previous-stop.sql` | Direction reference data and previous stop |
 | `migration-008-departure-risk-predictions.sql` | Future departure predictions, threshold crossing, and confidence |
 | `migration-009-on-demand-wait-risks.sql` | Vendor-neutral on-demand wait-risk monitoring contract |
+| `migration-010-gtfs-routes.sql` | MVTA route registry, initially seeded from static GTFS |
 
 The migration scripts are manual, one-time SQL scripts. There is currently no
 automated migration runner or schema-version table. A new environment must run
