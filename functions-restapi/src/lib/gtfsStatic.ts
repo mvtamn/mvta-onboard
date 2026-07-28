@@ -21,6 +21,7 @@ export interface GtfsStopRow {
 export interface GtfsTripRow {
   trip_id: string;
   route_id: string;
+  service_id: string;
   direction_id: number;
   trip_headsign: string | null;
 }
@@ -109,6 +110,7 @@ export function parseTripsCsv(csv: string): GtfsTripRow[] {
   const header = parseCsvLine(lines[0]).map((h) => h.trim());
   const idIdx = header.indexOf("trip_id");
   const routeIdx = header.indexOf("route_id");
+  const serviceIdx = header.indexOf("service_id");
   const dirIdx = header.indexOf("direction_id");
   const headsignIdx = header.indexOf("trip_headsign");
   if (idIdx === -1 || routeIdx === -1 || dirIdx === -1) {
@@ -120,15 +122,157 @@ export function parseTripsCsv(csv: string): GtfsTripRow[] {
     const cols = parseCsvLine(line);
     const trip_id = cols[idIdx]?.trim();
     const route_id = cols[routeIdx]?.trim();
+    const service_id = serviceIdx !== -1 ? cols[serviceIdx]?.trim() : "";
     const direction_id = parseInt(cols[dirIdx]?.trim(), 10);
     if (!trip_id || !route_id || !Number.isFinite(direction_id)) continue;
     const headsign = headsignIdx !== -1 ? cols[headsignIdx]?.trim() : "";
     rows.push({
       trip_id,
       route_id,
+      service_id: service_id || "",
       direction_id,
       trip_headsign: headsign || null,
     });
+  }
+  return rows;
+}
+
+// GTFS times can exceed 24:00:00 for a trip that starts before midnight and
+// runs past it (e.g. "25:10:00") - that's by design, not an error, so this
+// parses the raw H:MM:SS components directly rather than going through a
+// Date/TIME type that would reject or wrap an out-of-range hour.
+function parseGtfsTimeToSeconds(value: string): number | null {
+  const match = value.trim().match(/^(\d{1,3}):(\d{2}):(\d{2})$/);
+  if (!match) return null;
+  const hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2], 10);
+  const seconds = parseInt(match[3], 10);
+  return hours * 3600 + minutes * 60 + seconds;
+}
+
+export interface GtfsScheduledTripRow {
+  trip_id: string;
+  first_departure_seconds: number;
+}
+
+// Only the earliest stop_sequence's departure_time per trip is needed (the
+// scheduled start time) - not every intermediate stop, so this reduces
+// stop_times.txt (often the largest file in a GTFS feed) down to one row per
+// trip_id as it scans, rather than materializing every row.
+export function parseStopTimesCsv(csv: string): GtfsScheduledTripRow[] {
+  const lines = csv.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (lines.length === 0) return [];
+
+  const header = parseCsvLine(lines[0]).map((h) => h.trim());
+  const tripIdx = header.indexOf("trip_id");
+  const seqIdx = header.indexOf("stop_sequence");
+  const depIdx = header.indexOf("departure_time");
+  if (tripIdx === -1 || seqIdx === -1 || depIdx === -1) {
+    throw new Error("stop_times.txt is missing required trip_id/stop_sequence/departure_time columns");
+  }
+
+  const earliest = new Map<string, { sequence: number; seconds: number }>();
+  for (const line of lines.slice(1)) {
+    const cols = parseCsvLine(line);
+    const trip_id = cols[tripIdx]?.trim();
+    const sequence = parseInt(cols[seqIdx]?.trim(), 10);
+    const seconds = depIdx !== -1 ? parseGtfsTimeToSeconds(cols[depIdx] ?? "") : null;
+    if (!trip_id || !Number.isFinite(sequence) || seconds === null) continue;
+    const current = earliest.get(trip_id);
+    if (!current || sequence < current.sequence) {
+      earliest.set(trip_id, { sequence, seconds });
+    }
+  }
+
+  return Array.from(earliest.entries()).map(([trip_id, v]) => ({
+    trip_id,
+    first_departure_seconds: v.seconds,
+  }));
+}
+
+export interface GtfsCalendarRow {
+  service_id: string;
+  monday: boolean;
+  tuesday: boolean;
+  wednesday: boolean;
+  thursday: boolean;
+  friday: boolean;
+  saturday: boolean;
+  sunday: boolean;
+  start_date: string;
+  end_date: string;
+}
+
+export function parseCalendarCsv(csv: string): GtfsCalendarRow[] {
+  const lines = csv.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (lines.length === 0) return [];
+
+  const header = parseCsvLine(lines[0]).map((h) => h.trim());
+  const idIdx = header.indexOf("service_id");
+  const dayIdx: Record<string, number> = {
+    monday: header.indexOf("monday"),
+    tuesday: header.indexOf("tuesday"),
+    wednesday: header.indexOf("wednesday"),
+    thursday: header.indexOf("thursday"),
+    friday: header.indexOf("friday"),
+    saturday: header.indexOf("saturday"),
+    sunday: header.indexOf("sunday"),
+  };
+  const startIdx = header.indexOf("start_date");
+  const endIdx = header.indexOf("end_date");
+  if (idIdx === -1 || startIdx === -1 || endIdx === -1 || Object.values(dayIdx).some((i) => i === -1)) {
+    throw new Error("calendar.txt is missing required service_id/day/start_date/end_date columns");
+  }
+
+  const rows: GtfsCalendarRow[] = [];
+  for (const line of lines.slice(1)) {
+    const cols = parseCsvLine(line);
+    const service_id = cols[idIdx]?.trim();
+    const start_date = cols[startIdx]?.trim();
+    const end_date = cols[endIdx]?.trim();
+    if (!service_id || !start_date || !end_date) continue;
+    rows.push({
+      service_id,
+      monday: cols[dayIdx.monday]?.trim() === "1",
+      tuesday: cols[dayIdx.tuesday]?.trim() === "1",
+      wednesday: cols[dayIdx.wednesday]?.trim() === "1",
+      thursday: cols[dayIdx.thursday]?.trim() === "1",
+      friday: cols[dayIdx.friday]?.trim() === "1",
+      saturday: cols[dayIdx.saturday]?.trim() === "1",
+      sunday: cols[dayIdx.sunday]?.trim() === "1",
+      start_date,
+      end_date,
+    });
+  }
+  return rows;
+}
+
+export interface GtfsCalendarDateRow {
+  service_id: string;
+  service_date: string;
+  exception_type: 1 | 2;
+}
+
+export function parseCalendarDatesCsv(csv: string): GtfsCalendarDateRow[] {
+  const lines = csv.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (lines.length === 0) return [];
+
+  const header = parseCsvLine(lines[0]).map((h) => h.trim());
+  const idIdx = header.indexOf("service_id");
+  const dateIdx = header.indexOf("date");
+  const exceptionIdx = header.indexOf("exception_type");
+  if (idIdx === -1 || dateIdx === -1 || exceptionIdx === -1) {
+    throw new Error("calendar_dates.txt is missing required service_id/date/exception_type columns");
+  }
+
+  const rows: GtfsCalendarDateRow[] = [];
+  for (const line of lines.slice(1)) {
+    const cols = parseCsvLine(line);
+    const service_id = cols[idIdx]?.trim();
+    const service_date = cols[dateIdx]?.trim();
+    const exception_type = parseInt(cols[exceptionIdx]?.trim(), 10);
+    if (!service_id || !service_date || (exception_type !== 1 && exception_type !== 2)) continue;
+    rows.push({ service_id, service_date, exception_type });
   }
   return rows;
 }
@@ -248,6 +392,9 @@ export interface GtfsStaticData {
   stops: GtfsStopRow[];
   trips: GtfsTripRow[];
   routes: GtfsRouteRow[];
+  scheduledTrips: GtfsScheduledTripRow[];
+  calendar: GtfsCalendarRow[];
+  calendarDates: GtfsCalendarDateRow[];
 }
 
 export async function fetchAndParseStatic(url: string): Promise<GtfsStaticData> {
@@ -270,10 +417,26 @@ export async function fetchAndParseStatic(url: string): Promise<GtfsStaticData> 
   if (!routesEntry) {
     throw new Error("GTFS static feed zip has no routes.txt entry");
   }
+  const stopTimesEntry = zip.getEntry("stop_times.txt");
+  if (!stopTimesEntry) {
+    throw new Error("GTFS static feed zip has no stop_times.txt entry");
+  }
+
+  // calendar.txt and calendar_dates.txt are each individually optional per
+  // the GTFS spec (a producer may express service days with only one of the
+  // two) - so a missing file here just means "no rows from this source",
+  // not a malformed feed.
+  const calendarEntry = zip.getEntry("calendar.txt");
+  const calendarDatesEntry = zip.getEntry("calendar_dates.txt");
 
   return {
     stops: parseStopsCsv(stopsEntry.getData().toString("utf-8")),
     trips: parseTripsCsv(tripsEntry.getData().toString("utf-8")),
     routes: parseRoutesCsv(routesEntry.getData().toString("utf-8")),
+    scheduledTrips: parseStopTimesCsv(stopTimesEntry.getData().toString("utf-8")),
+    calendar: calendarEntry ? parseCalendarCsv(calendarEntry.getData().toString("utf-8")) : [],
+    calendarDates: calendarDatesEntry
+      ? parseCalendarDatesCsv(calendarDatesEntry.getData().toString("utf-8"))
+      : [],
   };
 }

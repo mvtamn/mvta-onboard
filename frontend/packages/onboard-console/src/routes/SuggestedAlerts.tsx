@@ -10,10 +10,24 @@ import {
 import { useAuth } from "../auth/AuthContext.js";
 import { api } from "../config.js";
 
+const SOURCE_PILL: Record<string, string> = {
+  gtfs_rt: "pill-warning",
+  zona: "pill-success",
+  missed_trip: "pill-danger",
+};
+const SOURCE_LABEL: Record<string, string> = {
+  gtfs_rt: "GTFS-RT",
+  zona: "MVTA Connect",
+  missed_trip: "Missed Trip",
+};
+
 // Suggested Alerts - the human-review queue (HANDOFF §2.3). Detection feeds
-// (GTFS-Realtime, MVTA Connect) insert pending rows here; staff approve
-// (which publishes through the normal Messages pipeline) or dismiss. Nothing
-// auto-publishes.
+// (GTFS-Realtime, MVTA Connect, missed-trip detection) insert pending rows
+// here; staff approve (which publishes through the normal Messages pipeline)
+// or dismiss. Nothing auto-publishes. Rows also auto-expire to 'expired'
+// after 2 hours unreviewed (suggestedAlertsExpire.ts) - the status pill below
+// already renders any status it doesn't special-case as muted, so that shows
+// correctly with no changes here.
 export function SuggestedAlerts({ onChanged }: { onChanged?: () => void }) {
   const { roles } = useAuth();
   const [searchParams] = useSearchParams();
@@ -103,8 +117,8 @@ export function SuggestedAlerts({ onChanged }: { onChanged?: () => void }) {
                   className={a.alert_id === focusId ? "review-focus-row" : undefined}
                 >
                   <td>
-                    <span className={`pill-sm ${a.source === "gtfs_rt" ? "pill-warning" : "pill-success"}`}>
-                      {a.source === "gtfs_rt" ? "GTFS-RT" : "MVTA Connect"}
+                    <span className={`pill-sm ${SOURCE_PILL[a.source] ?? "pill-muted"}`}>
+                      {SOURCE_LABEL[a.source] ?? a.source}
                     </span>
                   </td>
                   <td>{a.draft_text}</td>

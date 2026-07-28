@@ -1,10 +1,13 @@
 // Daily sync of MVTA's static GTFS schedule into GtfsStops (human-readable
-// stop names), GtfsRoutes (the authoritative route registry), and
+// stop names), GtfsRoutes (the authoritative route registry),
 // GtfsTripDirections (route direction labels - NB/SB/EB/WB
 // - used by the Live Delays console view; neither realtime feed has a
-// direction field at all, so this is the only source for it). Static
-// schedules change infrequently, so this does a full replace rather than an
-// incremental diff.
+// direction field at all, so this is the only source for it), and (once
+// migration 011 has been applied) GtfsCalendar/GtfsCalendarDates/
+// GtfsScheduledTrips - the schedule reference the missed-trip silent-no-show
+// detector (gtfsMissedTripsPoll.ts) needs to know what SHOULD have run.
+// Static schedules change infrequently, so this does a full replace rather
+// than an incremental diff.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchAndParseStatic, resolveDirectionLabels } from "../lib/gtfsStatic";
@@ -18,9 +21,10 @@ app.timer("gtfsStopsSync", {
       return;
     }
 
-    let stops, trips, routes;
+    let stops, trips, routes, scheduledTrips, calendar, calendarDates;
     try {
-      ({ stops, trips, routes } = await fetchAndParseStatic(feedUrl));
+      ({ stops, trips, routes, scheduledTrips, calendar, calendarDates } =
+        await fetchAndParseStatic(feedUrl));
     } catch (err) {
       context.error("Failed to fetch/parse the static GTFS feed:", err);
       return;
@@ -121,15 +125,88 @@ app.timer("gtfsStopsSync", {
         }
       }
 
+      const scheduleTableCheck = await new sql.Request(tx).query<{
+        table_exists: number;
+      }>(`
+        SELECT CASE WHEN OBJECT_ID('dbo.GtfsScheduledTrips', 'U') IS NULL
+          THEN 0 ELSE 1 END AS table_exists
+      `);
+      const scheduleTablesExist = scheduleTableCheck.recordset[0]?.table_exists === 1;
+      let scheduledTripCount = 0;
+      if (scheduleTablesExist) {
+        const firstDepartureByTrip = new Map(
+          scheduledTrips.map((t) => [t.trip_id, t.first_departure_seconds]),
+        );
+
+        await new sql.Request(tx).query("TRUNCATE TABLE GtfsCalendar");
+        for (const cal of calendar) {
+          const insertReq = new sql.Request(tx);
+          insertReq.input("service_id", sql.NVarChar, cal.service_id);
+          insertReq.input("monday", sql.Bit, cal.monday);
+          insertReq.input("tuesday", sql.Bit, cal.tuesday);
+          insertReq.input("wednesday", sql.Bit, cal.wednesday);
+          insertReq.input("thursday", sql.Bit, cal.thursday);
+          insertReq.input("friday", sql.Bit, cal.friday);
+          insertReq.input("saturday", sql.Bit, cal.saturday);
+          insertReq.input("sunday", sql.Bit, cal.sunday);
+          insertReq.input("start_date", sql.Char(8), cal.start_date);
+          insertReq.input("end_date", sql.Char(8), cal.end_date);
+          await insertReq.query(`
+            INSERT INTO GtfsCalendar (
+              service_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday,
+              start_date, end_date
+            )
+            VALUES (
+              @service_id, @monday, @tuesday, @wednesday, @thursday, @friday, @saturday, @sunday,
+              @start_date, @end_date
+            )
+          `);
+        }
+
+        await new sql.Request(tx).query("TRUNCATE TABLE GtfsCalendarDates");
+        for (const cd of calendarDates) {
+          const insertReq = new sql.Request(tx);
+          insertReq.input("service_id", sql.NVarChar, cd.service_id);
+          insertReq.input("service_date", sql.Char(8), cd.service_date);
+          insertReq.input("exception_type", sql.Int, cd.exception_type);
+          await insertReq.query(`
+            INSERT INTO GtfsCalendarDates (service_id, service_date, exception_type)
+            VALUES (@service_id, @service_date, @exception_type)
+          `);
+        }
+
+        await new sql.Request(tx).query("TRUNCATE TABLE GtfsScheduledTrips");
+        for (const trip of trips) {
+          const firstDeparture = firstDepartureByTrip.get(trip.trip_id);
+          if (firstDeparture === undefined || !trip.service_id) continue;
+          const insertReq = new sql.Request(tx);
+          insertReq.input("trip_id", sql.NVarChar, trip.trip_id);
+          insertReq.input("route_id", sql.NVarChar, trip.route_id);
+          insertReq.input("service_id", sql.NVarChar, trip.service_id);
+          insertReq.input("first_departure_seconds", sql.Int, firstDeparture);
+          await insertReq.query(`
+            INSERT INTO GtfsScheduledTrips (trip_id, route_id, service_id, first_departure_seconds)
+            VALUES (@trip_id, @route_id, @service_id, @first_departure_seconds)
+          `);
+          scheduledTripCount++;
+        }
+      }
+
       await tx.commit();
       context.log(
         `GTFS static sync: refreshed ${stops.length} stops, ` +
-          `${resolvedTrips.length} trip directions, and ` +
-          `${routeTableExists ? routes.length : 0} routes.`,
+          `${resolvedTrips.length} trip directions, ` +
+          `${routeTableExists ? routes.length : 0} routes, and ` +
+          `${scheduleTablesExist ? scheduledTripCount : 0} scheduled trips.`,
       );
       if (!routeTableExists) {
         context.warn(
           "GtfsRoutes does not exist yet; apply migration 010 before the next static sync.",
+        );
+      }
+      if (!scheduleTablesExist) {
+        context.warn(
+          "GtfsCalendar/GtfsCalendarDates/GtfsScheduledTrips do not exist yet; apply migration 011 before the next static sync.",
         );
       }
     } catch (err) {
@@ -139,7 +216,7 @@ app.timer("gtfsStopsSync", {
         /* already rolled back / not begun */
       }
       context.error(
-        "Failed to refresh GtfsStops/GtfsTripDirections/GtfsRoutes:",
+        "Failed to refresh GtfsStops/GtfsTripDirections/GtfsRoutes/GtfsScheduledTrips:",
         err,
       );
     }

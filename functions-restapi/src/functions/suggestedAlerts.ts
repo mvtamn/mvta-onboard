@@ -54,6 +54,18 @@ async function linkPreparedAlertToRisk(
       WHERE trip_id = @trip_id
         AND (@service_date IS NULL OR service_date = @service_date)
     `);
+  } else if (body.source === "missed_trip") {
+    const serviceDate =
+      typeof body.detail.service_date === "string"
+        ? body.detail.service_date
+        : null;
+    linkReq.input("service_date", sql.NVarChar, serviceDate);
+    await linkReq.query(`
+      UPDATE MonitoredMissedTrips
+      SET suggested_alert_id = @alert_id
+      WHERE trip_id = @trip_id
+        AND (@service_date IS NULL OR service_date = @service_date)
+    `);
   } else {
     await linkReq.query(`
       UPDATE MonitoredOnDemandWaits
@@ -190,8 +202,8 @@ app.http("suggestedAlertsList", {
     }
     try {
       const status = request.query.get("status") || "pending";
-      if (!["pending", "approved", "dismissed", "all"].includes(status)) {
-        return { status: 400, jsonBody: { error: "status must be pending, approved, dismissed, or all" } };
+      if (!["pending", "approved", "dismissed", "expired", "all"].includes(status)) {
+        return { status: 400, jsonBody: { error: "status must be pending, approved, dismissed, expired, or all" } };
       }
       const pool = await getPool();
       const sqlRequest = pool.request();

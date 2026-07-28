@@ -3,8 +3,10 @@ import assert from "node:assert";
 import {
   validateCreateMessage,
   validatePrepareSuggestedAlert,
+  validateMissedTripValidation,
   MAX_SUMMARY_LENGTH,
   MAX_CREATED_BY_LENGTH,
+  MAX_MISSED_TRIP_NOTES_LENGTH,
 } from "./validation";
 
 test("valid message passes with no errors", () => {
@@ -173,4 +175,42 @@ test("suggested alert preparation rejects invalid dedup and detail fields", () =
   assert.ok(errors.some((e) => e.includes("draft_text")));
   assert.ok(errors.some((e) => e.includes("routes_affected")));
   assert.ok(errors.some((e) => e.includes("detail")));
+});
+
+test("valid missed-trip validation passes", () => {
+  const errors = validateMissedTripValidation({
+    trip_id: "t65A-b13B-sl2B-v62",
+    service_date: "20260727",
+    validation_status: "confirmed",
+    notes: "Confirmed via dispatch log - vehicle never left the garage.",
+  });
+  assert.deepStrictEqual(errors, []);
+});
+
+test("missed-trip validation rejects missing keys and an invalid status", () => {
+  const errors = validateMissedTripValidation({
+    trip_id: "",
+    service_date: "",
+    validation_status: "unreviewed",
+  });
+  assert.ok(errors.some((e) => e.includes("trip_id")));
+  assert.ok(errors.some((e) => e.includes("service_date")));
+  assert.ok(errors.some((e) => e.includes("validation_status")));
+});
+
+test("missed-trip validation notes is optional but bounded when provided", () => {
+  const withoutNotes = validateMissedTripValidation({
+    trip_id: "t1",
+    service_date: "20260727",
+    validation_status: "false_positive",
+  });
+  assert.deepStrictEqual(withoutNotes, []);
+
+  const withOversizedNotes = validateMissedTripValidation({
+    trip_id: "t1",
+    service_date: "20260727",
+    validation_status: "false_positive",
+    notes: "x".repeat(MAX_MISSED_TRIP_NOTES_LENGTH + 1),
+  });
+  assert.ok(withOversizedNotes.some((e) => e.includes("notes")));
 });

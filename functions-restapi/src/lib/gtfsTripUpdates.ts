@@ -81,6 +81,34 @@ export interface DeparturePrediction {
 
 const DEPARTURE_RISK_THRESHOLD_SECONDS = 15 * 60;
 
+// GTFS-RT TripDescriptor.ScheduleRelationship enum (spec-fixed values, not
+// agency-specific): 0=SCHEDULED, 1=ADDED, 2=UNSCHEDULED, 3=CANCELED.
+export const SCHEDULE_RELATIONSHIP_CANCELED = 3;
+
+export interface CanceledTrip {
+  trip_id: string;
+  route_id: string;
+  service_date: string | null;
+  vehicle_id: string | null;
+}
+
+// Deliberately independent of mapTripUpdateEntity: a CANCELED trip commonly
+// carries zero StopTimeUpdates (there's nothing left to predict), which would
+// make mapTripUpdateEntity return null before ever looking at
+// schedule_relationship. Cancellation detection must not depend on the
+// delay-mapping path finding a next stop.
+export function mapCanceledTrip(entity: GtfsRtTripUpdateEntity): CanceledTrip | null {
+  const tripUpdate = entity.TripUpdate;
+  if (!tripUpdate) return null;
+  if (tripUpdate.Trip.schedule_relationship !== SCHEDULE_RELATIONSHIP_CANCELED) return null;
+  return {
+    trip_id: tripUpdate.Trip.TripId,
+    route_id: tripUpdate.Trip.RouteId,
+    service_date: tripUpdate.Trip.StartDate || null,
+    vehicle_id: tripUpdate.Vehicle?.Id ?? null,
+  };
+}
+
 export function mapTripUpdateEntity(entity: GtfsRtTripUpdateEntity): MappedTripDelay | null {
   const tripUpdate = entity.TripUpdate;
   if (!tripUpdate) return null;
@@ -154,3 +182,4 @@ export function buildDepartureRiskDraftText(
   const stopPhrase = stopName ? ` beginning at ${stopName}` : "";
   return `Route ${routeId} is predicted to depart up to ${delayMinutes} minutes late${stopPhrase}.`;
 }
+

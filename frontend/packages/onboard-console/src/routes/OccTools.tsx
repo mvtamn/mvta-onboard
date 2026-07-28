@@ -5,6 +5,7 @@ import { OtpModule } from "./modules/otp/OtpModule.js";
 import { FixedRouteServiceRisk } from "./modules/FixedRouteServiceRisk.js";
 import { OnDemandServiceQuality } from "./modules/OnDemandServiceQuality.js";
 import { SpeedAlerts } from "./modules/SpeedAlerts.js";
+import { MissedTripAlerts } from "./modules/MissedTripAlerts.js";
 
 const TOOLS = [
   { key: "event-monitoring", label: "Event Monitoring" },
@@ -13,6 +14,7 @@ const TOOLS = [
   { key: "fixed-route-risk", label: "Fixed Route Risk" },
   { key: "on-demand-quality", label: "On-Demand Quality" },
   { key: "speed-alerts", label: "Speed Alerts" },
+  { key: "missed-trips", label: "Missed Trips" },
 ] as const;
 
 type ToolKey = (typeof TOOLS)[number]["key"];
@@ -40,6 +42,7 @@ export function OccTools() {
         {tool === "fixed-route-risk" && <FixedRouteServiceRisk />}
         {tool === "on-demand-quality" && <OnDemandServiceQuality />}
         {tool === "speed-alerts" && <SpeedAlerts />}
+        {tool === "missed-trips" && <MissedTripAlerts />}
       </div>
     </>
   );

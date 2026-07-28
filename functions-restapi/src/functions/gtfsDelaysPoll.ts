@@ -124,6 +124,27 @@ async function upsertDelay(pool: sql.ConnectionPool, delay: MappedTripDelay): Pr
   return result.recordset[0];
 }
 
+// Logs that a trip_id was seen in the feed today, independent of
+// MonitoredTripDelays (which purges rows 15 minutes after a trip goes quiet,
+// including ordinary on-time completions - it can't answer "was this trip
+// ever observed today" on its own). Guarded the same way GtfsScheduledTrips
+// is in gtfsStopsSync.ts, since migration 011 may not be applied yet.
+async function recordObservedTrip(
+  pool: sql.ConnectionPool,
+  tripId: string,
+  serviceDate: string | null,
+): Promise<void> {
+  const request = pool.request();
+  request.input("trip_id", sql.NVarChar, tripId);
+  request.input("service_date", sql.NVarChar, serviceDate ?? "unknown");
+  await request.query(`
+    IF NOT EXISTS (
+      SELECT 1 FROM GtfsObservedTrips WHERE trip_id = @trip_id AND service_date = @service_date
+    )
+    INSERT INTO GtfsObservedTrips (trip_id, service_date) VALUES (@trip_id, @service_date)
+  `);
+}
+
 async function escalateToSuggestedAlert(
   pool: sql.ConnectionPool,
   delay: MappedTripDelay,
@@ -204,6 +225,12 @@ app.timer("gtfsDelaysPoll", {
     const pool = await getPool();
     let escalatedCount = 0;
 
+    const observedTableCheck = await pool.request().query<{ table_exists: number }>(`
+      SELECT CASE WHEN OBJECT_ID('dbo.GtfsObservedTrips', 'U') IS NULL
+        THEN 0 ELSE 1 END AS table_exists
+    `);
+    const observedTableExists = observedTableCheck.recordset[0]?.table_exists === 1;
+
     for (const entity of feed.Entities) {
       let mapped;
       try {
@@ -229,6 +256,14 @@ app.timer("gtfsDelaysPoll", {
       } catch (err) {
         context.error(`Failed to process GTFS-RT trip delay for ${mapped.trip_id}:`, err);
       }
+
+      if (observedTableExists) {
+        try {
+          await recordObservedTrip(pool, mapped.trip_id, mapped.service_date);
+        } catch (err) {
+          context.error(`Failed to record observed trip for ${mapped.trip_id}:`, err);
+        }
+      }
     }
 
     try {
@@ -244,5 +279,10 @@ app.timer("gtfsDelaysPoll", {
     context.log(
       `GTFS-RT TripUpdate poll: ${feed.Entities.length} entities seen, ${escalatedCount} new suggested alerts escalated.`,
     );
+    if (!observedTableExists) {
+      context.warn(
+        "GtfsObservedTrips does not exist yet; apply migration 011 to enable missed-trip detection.",
+      );
+    }
   },
 });

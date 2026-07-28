@@ -44,7 +44,7 @@ export interface CreateMessageBody {
 }
 
 export interface PrepareSuggestedAlertBody {
-  source: "gtfs_rt" | "zona";
+  source: "gtfs_rt" | "zona" | "missed_trip";
   external_id: string;
   draft_text: string;
   category: Category;

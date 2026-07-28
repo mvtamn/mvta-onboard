@@ -78,8 +78,8 @@ export function validateCreateMessage(body: UnknownBody): string[] {
 export function validatePrepareSuggestedAlert(body: UnknownBody): string[] {
   const errors: string[] = [];
 
-  if (body.source !== "gtfs_rt" && body.source !== "zona") {
-    errors.push("source must be gtfs_rt or zona");
+  if (body.source !== "gtfs_rt" && body.source !== "zona" && body.source !== "missed_trip") {
+    errors.push("source must be gtfs_rt, zona, or missed_trip");
   }
   if (
     typeof body.external_id !== "string" ||
@@ -123,6 +123,34 @@ const E164_RE = /^\+[1-9]\d{7,14}$/;
 // Deliberately permissive email shape check - real deliverability is proven by
 // the double opt-in confirmation, not by regex.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const VALID_MISSED_TRIP_VALIDATION_STATUSES = ["confirmed", "false_positive"] as const;
+export const MAX_MISSED_TRIP_NOTES_LENGTH = 1000; // MonitoredMissedTrips.notes NVARCHAR(1000)
+
+export function validateMissedTripValidation(body: UnknownBody): string[] {
+  const errors: string[] = [];
+
+  if (typeof body.trip_id !== "string" || body.trip_id.trim() === "") {
+    errors.push("trip_id is required and must be a non-empty string");
+  }
+  if (typeof body.service_date !== "string" || body.service_date.trim() === "") {
+    errors.push("service_date is required and must be a non-empty string");
+  }
+  if (!includes(VALID_MISSED_TRIP_VALIDATION_STATUSES, body.validation_status)) {
+    errors.push(
+      `validation_status must be one of: ${VALID_MISSED_TRIP_VALIDATION_STATUSES.join(", ")}`,
+    );
+  }
+  if (
+    body.notes !== undefined &&
+    body.notes !== null &&
+    (typeof body.notes !== "string" || body.notes.length > MAX_MISSED_TRIP_NOTES_LENGTH)
+  ) {
+    errors.push(`notes must be a string of at most ${MAX_MISSED_TRIP_NOTES_LENGTH} characters if provided`);
+  }
+
+  return errors;
+}
 
 export function validateSubscribe(body: UnknownBody): string[] {
   const errors: string[] = [];

@@ -22,6 +22,8 @@ import type {
   TripDelay,
   TripDelayDiagnostics,
   OnDemandRiskRecord,
+  MissedTrip,
+  ValidateMissedTripInput,
 } from "./types.js";
 
 export type TokenProvider = () => Promise<string | null>;
@@ -231,6 +233,26 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
 
     getOnDemandRisks() {
       return request<{ risks: OnDemandRiskRecord[] }>("/api/on-demand-risks", {}, true);
+    },
+
+    getMissedTrips() {
+      return request<{
+        missed_trips: MissedTrip[];
+        diagnostics: {
+          configured: boolean;
+          active_count?: number;
+          resolved_count?: number;
+          unreviewed_count?: number;
+        };
+      }>("/api/missed-trips", {}, true);
+    },
+
+    validateMissedTrip(input: ValidateMissedTripInput) {
+      return request<{ trip_id: string; service_date: string; validation_status: string }>(
+        "/api/missed-trips/validate",
+        { method: "POST", body: JSON.stringify(input) },
+        true,
+      );
     },
   };
 }

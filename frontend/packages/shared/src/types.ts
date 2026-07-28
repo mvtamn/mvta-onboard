@@ -112,11 +112,11 @@ export interface MaskedSubscriber {
   opted_in_at: string | null;
 }
 
-export type SuggestedAlertStatus = "pending" | "approved" | "dismissed";
+export type SuggestedAlertStatus = "pending" | "approved" | "dismissed" | "expired";
 
 export interface SuggestedAlert {
   alert_id: string;
-  source: "gtfs_rt" | "zona";
+  source: "gtfs_rt" | "zona" | "missed_trip";
   draft_text: string;
   category: Category;
   severity: Severity;
@@ -131,7 +131,7 @@ export interface SuggestedAlert {
 }
 
 export interface PrepareSuggestedAlertInput {
-  source: "gtfs_rt" | "zona";
+  source: "gtfs_rt" | "zona" | "missed_trip";
   external_id: string;
   draft_text: string;
   category: Category;
@@ -204,6 +204,38 @@ export interface DeparturePrediction {
   stop_id: string | null;
   departure_delay_seconds: number;
   predicted_departure_at: string | null;
+}
+
+export type MissedTripStatus = "watching" | "escalated" | "resolved";
+export type MissedTripValidationStatus = "unreviewed" | "confirmed" | "false_positive";
+
+// Missed Trips is a compliance/investigation tool, not a customer-alert
+// queue - detection only flags a candidate here; a staff member investigates
+// and records the outcome via POST /missed-trips/validate. Preparing a rider
+// notice (if warranted) stays a separate, explicit action through the normal
+// suggested-alerts prepare/focus flow.
+export interface MissedTrip {
+  trip_id: string;
+  service_date: string;
+  route_id: string;
+  scheduled_departure_at: string;
+  grace_deadline_at: string;
+  status: MissedTripStatus;
+  detected_late_arrival_at: string | null;
+  suggested_alert_id: string | null;
+  first_seen_watching_at: string;
+  last_checked_at: string;
+  validation_status: MissedTripValidationStatus;
+  validated_by: string | null;
+  validated_at: string | null;
+  notes: string | null;
+}
+
+export interface ValidateMissedTripInput {
+  trip_id: string;
+  service_date: string;
+  validation_status: "confirmed" | "false_positive";
+  notes?: string;
 }
 
 export interface OnDemandRiskRecord {
