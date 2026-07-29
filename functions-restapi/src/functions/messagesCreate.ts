@@ -1,7 +1,9 @@
 // POST /messages - architecture doc Section 9
-// Called by the Power Automate ingestion flow after Claude has already
-// parsed the staff's free text into structured fields - this endpoint
-// validates and persists, it does not call Claude itself.
+// `summary` (the rider-facing text) may already be Claude-drafted via
+// Compose's own "Draft rider-friendly text" action (messagesDraftSummary.ts)
+// or hand-written by staff - this endpoint just validates and persists
+// whatever it's given, falling back to a raw_text truncation if summary is
+// omitted entirely. It never calls Claude itself.
 // Restricted to OCC Publisher, OCC Admin, or System Ingestion roles.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";

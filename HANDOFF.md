@@ -45,6 +45,11 @@ Front Door endpoint:    endpoint-mvta-onboard-dev-haehgsbbe6esd8cc.z03.azurefd.n
 MVTA OnBoard app reg:    7e5a35b1-dc1b-473d-987d-6942a7b4fae2 (has 4 app roles: OCC.Viewer, OCC.Publisher, OCC.Admin, System.Ingestion)
 Rider app registration:  560667df-caa4-4287-a30c-44672d1ef994
 Entra ID groups:         MVTA OnBoard - Viewers / Publishers / Admins (all exist, currently empty)
+PENDING app role:        OCC.Compliance - the console's new Compliance tab (OTP Compliance +
+                         Missed Trips) expects this role, but it has NOT been added to the
+                         app registration above yet (owner action - Portal or az cli, same as
+                         the original 4 roles). Until it exists, only OCC.Admin holders can
+                         see/use the Compliance tab.
 ```
 
 The SQL admin password is NOT recorded here deliberately — it lives in Key Vault as the secret `sql-connection-string` (full connection string, not just the password) and in the project owner's password manager. Ask before assuming you need it directly; the Function Apps already read it via Key Vault reference.

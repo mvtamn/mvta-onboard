@@ -24,6 +24,9 @@ import type {
   OnDemandRiskRecord,
   MissedTrip,
   ValidateMissedTripInput,
+  GtfsRouteOption,
+  Category,
+  Severity,
 } from "./types.js";
 
 export type TokenProvider = () => Promise<string | null>;
@@ -135,6 +138,17 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
     createMessage(input: CreateMessageInput) {
       return request<CreateMessageResult>(
         "/api/messages",
+        { method: "POST", body: JSON.stringify(input) },
+        true,
+      );
+    },
+
+    // Optional Compose action - turns internal report text into a rider-
+    // friendly draft via Claude. Never persists anything; the result is just
+    // returned for staff to review/edit before createMessage().
+    draftMessageSummary(input: { raw_text: string; category: Category; severity: Severity }) {
+      return request<{ summary: string }>(
+        "/api/messages/draft-summary",
         { method: "POST", body: JSON.stringify(input) },
         true,
       );
@@ -253,6 +267,10 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
         { method: "POST", body: JSON.stringify(input) },
         true,
       );
+    },
+
+    getRoutes() {
+      return request<{ routes: GtfsRouteOption[] }>("/api/routes", {}, true);
     },
   };
 }

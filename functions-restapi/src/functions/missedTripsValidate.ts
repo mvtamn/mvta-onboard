@@ -5,7 +5,8 @@
 // outcome here (confirmed - it really was a missed trip - or false_positive).
 // Preparing a rider notice, if warranted, stays a separate action via the
 // existing /suggested-alerts/prepare flow - this endpoint never touches
-// SuggestedAlerts.
+// SuggestedAlerts. Gated to Publisher/Admin plus the dedicated OCC.Compliance
+// role, so a Compliance-only user can complete the review workflow.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { requireRole, PUBLISH_ROLES } from "../lib/auth";
@@ -16,7 +17,7 @@ app.http("missedTripsValidate", {
   methods: ["POST"],
   authLevel: "anonymous", // authorization enforced via requireRole below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, PUBLISH_ROLES);
+    const authResult = requireRole(request, [...PUBLISH_ROLES, "OCC.Compliance"]);
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

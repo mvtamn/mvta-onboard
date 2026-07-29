@@ -67,3 +67,19 @@
 .dmx .card-foot { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--border-soft); display: flex; justify-content: space-between; align-items: center; }
 .dmx-empty { text-align: center; padding: 60px 20px; color: var(--text-dim); border: 1px dashed var(--border-strong); border-radius: 4px; margin-top: 20px; }
 .dmx .docfoot { margin-top: 36px; border-top: 3px solid var(--brand-green); padding: 12px 0; display: flex; justify-content: space-between; font-size: 11px; color: var(--text-dim); }
+
+/* QRG (Quick Reference Guide) view - mirrors the printed field guide's own
+   section/subsection/table layout. Each subsection renders as its own
+   table.data (see ../../styles.css) so alternating row striping restarts per
+   subsection instead of drifting across group-header rows. The subsection
+   bar reuses --severity-restricting (already the module's orange accent) so
+   it doesn't introduce a new color meaning on top of the severity pills. */
+.dmx .dmx-qrg { margin-top: 20px; display: flex; flex-direction: column; gap: 24px; }
+.dmx .qrg-section { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.dmx .qrg-section-header { background: var(--brand-green); color: #fff; font-weight: bold; font-size: 14px; padding: 12px 18px; }
+.dmx .qrg-subsection + .qrg-subsection { border-top: 1px solid var(--border); }
+.dmx .qrg-subsection-header { background: var(--severity-restricting); color: #fff; font-weight: bold; font-size: 12.5px; padding: 9px 18px; }
+.dmx .qrg-subsection table.data { border-radius: 0; }
+.dmx .qrg-subsection table.data th:first-child, .dmx .qrg-subsection table.data th:last-child { border-radius: 0; }
+.dmx .qrg-subsection table.data td { vertical-align: top; }
+.dmx .qrg-ref-cell { text-align: center; white-space: nowrap; }

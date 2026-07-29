@@ -10,6 +10,8 @@
     "GTFS_RT_TRIPUPDATE_URL": "https://srv.mvta.com/infoPoint/GTFS-realtime.ashx?&Type=TripUpdate&debug=true",
     "GTFS_STATIC_URL": "https://mvta-dispatch.myavail.cloud/opensilvermyavailserver/files/gtfs/google_transit.zip",
     "// note3": "GTFS_RT_VEHICLE_URL feeds live position/occupancy (gtfsVehiclePositionsPoll.ts) - the third and final GTFS-RT feed type.",
-    "GTFS_RT_VEHICLE_URL": "https://srv.mvta.com/infoPoint/GTFS-realtime.ashx?&Type=VehiclePosition&debug=true"
+    "GTFS_RT_VEHICLE_URL": "https://srv.mvta.com/infoPoint/GTFS-realtime.ashx?&Type=VehiclePosition&debug=true",
+    "// note4": "ANTHROPIC_API_KEY powers Compose's rider-friendly summary drafting (messagesDraftSummary.ts / lib/anthropic.ts). Optional locally - drafting just returns a clear 'not configured' response without it.",
+    "ANTHROPIC_API_KEY": "REPLACE_ME"
   }
 }

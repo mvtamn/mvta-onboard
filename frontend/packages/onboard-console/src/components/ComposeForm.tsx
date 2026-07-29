@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CATEGORIES,
   SEVERITIES,
@@ -7,6 +7,7 @@ import {
   type Category,
   type Severity,
   type ExpirationDefault,
+  type GtfsRouteOption,
   ApiError,
 } from "@mvta/shared";
 import { useAuth } from "../auth/AuthContext.js";
@@ -19,9 +20,7 @@ const TEAMS_TARGETS = [
   { value: "Teams: Customer Service", label: "Customer Service" },
 ] as const;
 
-// New Announcement form per the approved dashboard mockup. The "Claude's
-// inferred fields" box is a visual placeholder until the Power Automate +
-// Claude parsing flow is wired in - fields are manual for now.
+// New Announcement form per the approved dashboard mockup.
 // Expiration: explicit datetime wins (expiration_source=explicit); otherwise
 // the category's default TTL is applied (expiration_source=category_default),
 // fetched from /admin/expiration-defaults.
@@ -30,17 +29,39 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
   const canPublish = roles.some((r) => r === "OCC.Publisher" || r === "OCC.Admin");
 
   const [rawText, setRawText] = useState("");
+  const [summary, setSummary] = useState("");
+  const [drafting, setDrafting] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const [draftedByAi, setDraftedByAi] = useState(false);
   const [category, setCategory] = useState<Category>("delay");
   const [severity, setSeverity] = useState<Severity>("minor");
   const [explicitExpires, setExplicitExpires] = useState("");
   const [tags, setTags] = useState("");
-  const [routes, setRoutes] = useState("");
+  const [routesText, setRoutesText] = useState("");
+  const [selectedRoutes, setSelectedRoutes] = useState<Set<string>>(new Set());
+  const [routesList, setRoutesList] = useState<GtfsRouteOption[] | null>(null);
   const [channels, setChannels] = useState<Set<string>>(new Set(DEFAULT_CHANNELS));
   const [teamsEnabled, setTeamsEnabled] = useState(false);
   const [defaults, setDefaults] = useState<ExpirationDefault[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
+
+  async function draftSummary() {
+    setDraftError(null);
+    setDrafting(true);
+    try {
+      const result = await api.draftMessageSummary({ raw_text: rawText, category, severity });
+      setSummary(result.summary);
+      setDraftedByAi(true);
+    } catch (err) {
+      setDraftError(
+        err instanceof ApiError ? err.message : "Could not reach the AI drafting service.",
+      );
+    } finally {
+      setDrafting(false);
+    }
+  }
 
   useEffect(() => {
     let alive = true;
@@ -52,6 +73,39 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
       alive = false;
     };
   }, []);
+
+  useEffect(() => {
+    let alive = true;
+    // Falls back to free-text entry (see routesUseList below) if the route
+    // registry can't be reached or hasn't been populated yet - Compose stays
+    // usable either way.
+    api
+      .getRoutes()
+      .then((d) => alive && setRoutesList(d.routes))
+      .catch(() => alive && setRoutesList([]));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const routesUseList = (routesList?.length ?? 0) > 0;
+  const routeOptions = useMemo(
+    () =>
+      (routesList ?? []).map((r) => ({
+        id: r.route_id,
+        label: r.route_short_name || r.route_long_name || r.route_id,
+        title: r.route_long_name ?? undefined,
+      })),
+    [routesList],
+  );
+
+  function toggleRoute(routeId: string) {
+    setSelectedRoutes((prev) => {
+      const next = new Set(prev);
+      next.has(routeId) ? next.delete(routeId) : next.add(routeId);
+      return next;
+    });
+  }
 
   if (!canPublish) {
     return (
@@ -114,10 +168,13 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
     try {
       const res = await api.createMessage({
         raw_text: rawText,
+        summary: summary.trim() || undefined,
         category,
         severity,
         tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
-        routes_affected: routes.split(",").map((route) => route.trim()).filter(Boolean),
+        routes_affected: routesUseList
+          ? [...selectedRoutes]
+          : routesText.split(",").map((route) => route.trim()).filter(Boolean),
         channels: [...channels],
         // created_by is intentionally omitted - the server derives it from
         // the verified auth principal (see messagesCreate.ts), not the body.
@@ -131,8 +188,12 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
         `Posted. Message ${res.message_id.slice(0, 8)}… expires ${new Date(res.expires_at).toLocaleString()}.${teamsNote}`,
       );
       setRawText("");
+      setSummary("");
+      setDraftedByAi(false);
+      setDraftError(null);
       setTags("");
-      setRoutes("");
+      setRoutesText("");
+      setSelectedRoutes(new Set());
       setExplicitExpires("");
       setChannels(new Set(DEFAULT_CHANNELS));
       setTeamsEnabled(false);
@@ -161,6 +222,29 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
         placeholder="e.g. Elevator at Mall of America Station out of service until end of day…"
         required
       />
+      <div>
+        <p className="field-label">
+          Rider-facing summary <span className="hint">(what riders will actually see)</span>
+        </p>
+        <textarea
+          className="compose"
+          value={summary}
+          onChange={(e) => {
+            setSummary(e.target.value);
+            setDraftedByAi(false);
+          }}
+          placeholder="Leave blank to use the start of the text above, or draft a rider-friendly version…"
+        />
+        <button
+          type="button"
+          className="btn-sm"
+          disabled={drafting || !rawText.trim()}
+          onClick={() => void draftSummary()}
+        >
+          {drafting ? "Drafting…" : "Draft rider-friendly text"}
+        </button>
+        {draftError ? <p className="error-text">{draftError}</p> : null}
+      </div>
       <div className="field-grid">
         <div>
           <p className="field-label">Category</p>
@@ -188,18 +272,36 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
           />
         </div>
       </div>
-      <div className="field-grid two">
-        <div>
-          <p className="field-label">
-            Affected routes <span className="hint">(comma separated)</span>
-          </p>
+      <div>
+        <p className="field-label">
+          Affected routes{" "}
+          <span className="hint">
+            {routesUseList ? "(select all that apply)" : "(comma separated)"}
+          </span>
+        </p>
+        {routesUseList ? (
+          <div className="channels-row route-select">
+            {routeOptions.map((r) => (
+              <label key={r.id} title={r.title}>
+                <input
+                  type="checkbox"
+                  checked={selectedRoutes.has(r.id)}
+                  onChange={() => toggleRoute(r.id)}
+                />
+                {r.label}
+              </label>
+            ))}
+          </div>
+        ) : (
           <input
             className="f"
-            value={routes}
-            onChange={(e) => setRoutes(e.target.value)}
+            value={routesText}
+            onChange={(e) => setRoutesText(e.target.value)}
             placeholder="e.g. 442, 477"
           />
-        </div>
+        )}
+      </div>
+      <div className="field-grid single">
         <div>
           <p className="field-label">
             Tags <span className="hint">(internal only — not shown to riders)</span>
@@ -266,7 +368,13 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
         ) : (
           <span className="chip">Expiration: set explicitly</span>
         )}
-        <span className="chip muted">Auto-parse pending Power Automate + Claude integration</span>
+        {draftedByAi ? (
+          <span className="chip">Rider summary: drafted by Claude</span>
+        ) : summary.trim() ? (
+          <span className="chip muted">Rider summary: written by hand</span>
+        ) : (
+          <span className="chip muted">Rider summary: not yet drafted</span>
+        )}
       </div>
       {error ? <p className="error-text">{error}</p> : null}
       {okMsg ? <p className="ok-text">{okMsg}</p> : null}

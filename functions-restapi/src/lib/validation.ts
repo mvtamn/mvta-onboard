@@ -127,6 +127,28 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const VALID_MISSED_TRIP_VALIDATION_STATUSES = ["confirmed", "false_positive"] as const;
 export const MAX_MISSED_TRIP_NOTES_LENGTH = 1000; // MonitoredMissedTrips.notes NVARCHAR(1000)
 
+export const MAX_DRAFT_RAW_TEXT_LENGTH = 4000; // generous ceiling on what gets sent to the Claude API
+
+export function validateDraftSummary(body: UnknownBody): string[] {
+  const errors: string[] = [];
+
+  if (
+    typeof body.raw_text !== "string" ||
+    body.raw_text.trim() === "" ||
+    body.raw_text.length > MAX_DRAFT_RAW_TEXT_LENGTH
+  ) {
+    errors.push(`raw_text is required and must be at most ${MAX_DRAFT_RAW_TEXT_LENGTH} characters`);
+  }
+  if (!includes(VALID_CATEGORIES, body.category)) {
+    errors.push(`category must be one of: ${VALID_CATEGORIES.join(", ")}`);
+  }
+  if (!includes(VALID_SEVERITIES, body.severity)) {
+    errors.push(`severity must be one of: ${VALID_SEVERITIES.join(", ")}`);
+  }
+
+  return errors;
+}
+
 export function validateMissedTripValidation(body: UnknownBody): string[] {
   const errors: string[] = [];
 

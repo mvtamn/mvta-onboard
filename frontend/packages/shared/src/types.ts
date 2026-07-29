@@ -206,6 +206,15 @@ export interface DeparturePrediction {
   predicted_departure_at: string | null;
 }
 
+// The authoritative route registry (GtfsRoutes) - backs Compose's affected-
+// routes multi-select.
+export interface GtfsRouteOption {
+  route_id: string;
+  route_short_name: string | null;
+  route_long_name: string | null;
+  route_sort_order: number | null;
+}
+
 export type MissedTripStatus = "watching" | "escalated" | "resolved";
 export type MissedTripValidationStatus = "unreviewed" | "confirmed" | "false_positive";
 

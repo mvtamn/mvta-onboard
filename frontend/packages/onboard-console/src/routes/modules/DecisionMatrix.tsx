@@ -6,11 +6,13 @@ import {
   type Severity,
   type DocType,
 } from "./decisionMatrix.data.js";
+import { QRG_SECTIONS, type QrgSection } from "./decisionMatrixQrg.data.js";
 import "./decisionMatrix.css";
 
 const SEVERITIES: Severity[] = ["stop", "restricting", "clear"];
 const DOCTYPES: DocType[] = ["SOP", "REF"];
 const SEV_PILL: Record<Severity, string> = { stop: "pill-danger", restricting: "pill-warning", clear: "pill-success" };
+type View = "list" | "grid" | "qrg";
 
 // OCC Decision Matrix — ported from occ_decision_matrix.html. Search + filter
 // reference over the decision matrix; each entry links to its SOP/REF.
@@ -22,7 +24,7 @@ export function DecisionMatrix() {
   const [severities, setSeverities] = useState<Set<Severity>>(new Set());
   const [docTypes, setDocTypes] = useState<Set<DocType>>(new Set());
   const [tags, setTags] = useState<Set<string>>(new Set());
-  const [view, setView] = useState<"list" | "grid">("list");
+  const [view, setView] = useState<View>("list");
   const [clock, setClock] = useState(() => "--:--:--");
 
   useEffect(() => {
@@ -56,6 +58,31 @@ export function DecisionMatrix() {
     return true;
   });
 
+  const qrgRowCount = useMemo(
+    () => QRG_SECTIONS.reduce((n, s) => n + s.subsections.reduce((m, sub) => m + sub.rows.length, 0), 0),
+    [],
+  );
+
+  const filteredQrgSections = useMemo<QrgSection[]>(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return QRG_SECTIONS;
+    return QRG_SECTIONS.map((section) => ({
+      ...section,
+      subsections: section.subsections
+        .map((sub) => ({
+          ...sub,
+          rows: sub.rows.filter((row) =>
+            `${row.trouble} ${row.cause} ${row.remedy} ${row.ref ?? ""}`.toLowerCase().includes(q),
+          ),
+        }))
+        .filter((sub) => sub.rows.length > 0),
+    })).filter((section) => section.subsections.length > 0);
+  }, [query]);
+  const filteredQrgRowCount = filteredQrgSections.reduce(
+    (n, s) => n + s.subsections.reduce((m, sub) => m + sub.rows.length, 0),
+    0,
+  );
+
   return (
     <div className="dmx">
       <div className="dochead">
@@ -76,59 +103,82 @@ export function DecisionMatrix() {
           <input
             className="search"
             type="text"
-            placeholder="Search conditions, criteria, actions, or tags…"
+            placeholder={
+              view === "qrg"
+                ? "Search trouble, cause, remedy, or reference…"
+                : "Search conditions, criteria, actions, or tags…"
+            }
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
           <div className="viewtoggle">
             <button className={view === "list" ? "active" : ""} onClick={() => setView("list")}>List</button>
             <button className={view === "grid" ? "active" : ""} onClick={() => setView("grid")}>Grid</button>
+            <button className={view === "qrg" ? "active" : ""} onClick={() => setView("qrg")}>QRG</button>
           </div>
         </div>
 
-        <div className="sevfilters">
-          {SEVERITIES.map((sev) => (
-            <button
-              key={sev}
-              className="sevbtn"
-              data-active={severities.has(sev)}
-              onClick={() => toggle(severities, sev, setSeverities)}
-            >
-              <span className={`pill-sm ${SEV_PILL[sev]}`}>{SEV_LABEL[sev]}</span>
-            </button>
-          ))}
-        </div>
-
-        <div className="doctypefilters">
-          {DOCTYPES.map((dt) => (
-            <button
-              key={dt}
-              className="doctypebtn"
-              data-active={docTypes.has(dt)}
-              onClick={() => toggle(docTypes, dt, setDocTypes)}
-            >
-              {dt}
-            </button>
-          ))}
-        </div>
-
-        <div className="tagrow">
-          {allTags.map((tag) => (
-            <div
-              key={tag}
-              className="tag"
-              data-active={tags.has(tag)}
-              onClick={() => toggle(tags, tag, setTags)}
-            >
-              {tag}
+        {view === "qrg" ? null : (
+          <>
+            <div className="sevfilters">
+              {SEVERITIES.map((sev) => (
+                <button
+                  key={sev}
+                  className="sevbtn"
+                  data-active={severities.has(sev)}
+                  onClick={() => toggle(severities, sev, setSeverities)}
+                >
+                  <span className={`pill-sm ${SEV_PILL[sev]}`}>{SEV_LABEL[sev]}</span>
+                </button>
+              ))}
             </div>
-          ))}
-        </div>
 
-        <div className="dmx-meta">{filtered.length} of {MOCK_DATA.length} entries</div>
+            <div className="doctypefilters">
+              {DOCTYPES.map((dt) => (
+                <button
+                  key={dt}
+                  className="doctypebtn"
+                  data-active={docTypes.has(dt)}
+                  onClick={() => toggle(docTypes, dt, setDocTypes)}
+                >
+                  {dt}
+                </button>
+              ))}
+            </div>
+
+            <div className="tagrow">
+              {allTags.map((tag) => (
+                <div
+                  key={tag}
+                  className="tag"
+                  data-active={tags.has(tag)}
+                  onClick={() => toggle(tags, tag, setTags)}
+                >
+                  {tag}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        <div className="dmx-meta">
+          {view === "qrg"
+            ? `${filteredQrgRowCount} of ${qrgRowCount} entries`
+            : `${filtered.length} of ${MOCK_DATA.length} entries`}
+        </div>
       </div>
 
-      {filtered.length === 0 ? (
+      {view === "qrg" ? (
+        filteredQrgSections.length === 0 ? (
+          <div className="dmx-empty">No QRG entries match your search.</div>
+        ) : (
+          <div className="dmx-qrg">
+            {filteredQrgSections.map((section) => (
+              <QrgSectionBlock key={section.label} section={section} />
+            ))}
+          </div>
+        )
+      ) : filtered.length === 0 ? (
         <div className="dmx-empty">No entries match your search or filters.</div>
       ) : view === "list" ? (
         <div className="matrix-list">
@@ -145,6 +195,45 @@ export function DecisionMatrix() {
         <div>{clock}</div>
         <div>REF-2026-[PENDING]</div>
       </div>
+    </div>
+  );
+}
+
+function QrgSectionBlock({ section }: { section: QrgSection }) {
+  return (
+    <div className="qrg-section">
+      <div className="qrg-section-header">{section.label}</div>
+      {section.subsections.map((sub) => (
+        <div className="qrg-subsection" key={sub.title}>
+          <div className="qrg-subsection-header">{sub.title}</div>
+          <table className="data">
+            <thead>
+              <tr>
+                <th>Trouble</th>
+                <th>Probable Cause</th>
+                <th>Remedy</th>
+                <th>Reference</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sub.rows.map((row) => (
+                <tr key={row.trouble}>
+                  <td>{row.trouble}</td>
+                  <td>{row.cause}</td>
+                  <td>{row.remedy}</td>
+                  <td className="qrg-ref-cell">
+                    {row.ref ? (
+                      <a className="btn-sm" href={row.refUrl} target="_blank" rel="noopener noreferrer">
+                        {row.ref}
+                      </a>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
     </div>
   );
 }

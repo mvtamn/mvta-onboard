@@ -18,6 +18,7 @@ const ROLE_PRESETS: { label: string; roles: AppRole[] }[] = [
   { label: "Admin", roles: ["OCC.Admin"] },
   { label: "Publisher", roles: ["OCC.Publisher"] },
   { label: "Viewer", roles: ["OCC.Viewer"] },
+  { label: "Compliance", roles: ["OCC.Compliance"] },
   { label: "No roles", roles: [] },
 ];
 

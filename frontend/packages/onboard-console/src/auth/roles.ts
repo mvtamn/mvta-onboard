@@ -1,6 +1,6 @@
 import type { AccountInfo } from "@azure/msal-browser";
 
-export type AppRole = "OCC.Viewer" | "OCC.Publisher" | "OCC.Admin" | "System.Ingestion";
+export type AppRole = "OCC.Viewer" | "OCC.Publisher" | "OCC.Admin" | "OCC.Compliance" | "System.Ingestion";
 
 // App roles are emitted as a `roles` claim array in the ID token.
 export function rolesOf(account: AccountInfo | null): AppRole[] {

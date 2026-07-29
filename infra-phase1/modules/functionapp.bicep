@@ -109,6 +109,11 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         // Key Vault reference, not a raw value - fixes the same class of
         // "wiped on redeploy" bug for the connection string specifically.
         { name: 'SQL_CONNECTION_STRING', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/sql-connection-string/)' }
+        // Same Key Vault reference pattern - powers Compose's optional
+        // rider-friendly summary drafting (messagesDraftSummary.ts). The
+        // secret itself (anthropic-api-key) must be created in Key Vault
+        // before this resolves; see HANDOFF.md.
+        { name: 'ANTHROPIC_API_KEY', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/anthropic-api-key/)' }
       ]
     }
   }

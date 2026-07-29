@@ -190,6 +190,7 @@ select.f, input.f { width: 100%; padding: 8px 10px; border: 1px solid var(--bord
 .channels-row { display: flex; flex-wrap: wrap; margin-bottom: 14px; }
 .channels-row label { display: flex; align-items: center; font-size: 12px; color: var(--text); margin-right: 16px; margin-bottom: 4px; }
 .channels-row input { margin-right: 5px; }
+.channels-row.route-select { max-height: 130px; overflow-y: auto; border: 1px solid var(--border-soft); border-radius: 8px; padding: 8px 10px; }
 .teams-delivery-card { background: var(--surface-alt-bg); border: 1px solid var(--border); border-radius: 9px; margin-bottom: 14px; padding: 10px 12px; }
 .teams-delivery-card.selected { border-color: var(--pill-accent-fg); box-shadow: inset 3px 0 var(--pill-accent-fg); }
 .teams-delivery-toggle { align-items: center; color: var(--text); cursor: pointer; display: flex; gap: 8px; }

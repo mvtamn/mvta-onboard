@@ -10,6 +10,19 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - Expanded the consolidated manual with application ownership, maintenance
   cadence, change control, database and integration care, incident recovery,
   and safe Claude/Codex collaboration guidance.
+- Incorporated all 11 pre-implementation planning `.docx` files into the
+  manual: resolved vendor decisions (ACS, FCM, SpareLabs, Avail/DoubleMap),
+  the contractor B2B guest-access procedure, and the OTP Compliance /
+  Special Event Vehicle Monitoring module designs (both fully specified, both
+  still unbuilt). Added a document-inventory section (Manual §23) marking
+  every planning document's current status so it's clear which to trust.
+- **Known live-environment risk (unverified, not yet confirmed a bug):** the
+  `dev` environment's Key Vault and SQL Server were originally built with
+  public network access per `MVTA_OnBoard_Portal_Setup_Guide_1.docx`'s
+  simplified no-code setup path, which that same document says must be
+  hardened to private networking "before real rider data is flowing through
+  it" - and `dev` is now effectively production. No one has confirmed in
+  this repository whether that hardening was ever done. See Manual §11.
 - Confirmation + STOP/HELP subscriber endpoints (blocked on Azure
   Communication Services provisioning).
 - **Known live-environment issue:** the Function App's Easy Auth
@@ -17,6 +30,45 @@ badge and footer read this version at build time - see `vite.config.ts`).
   (Bicep has the fix; the live resource doesn't), so real Entra sign-ins
   currently get "Not authenticated" on authenticated reads/writes until an
   infra deploy or a direct `az webapp auth` fix is applied.
+- **Compliance** tab, split out of OCC Tools: hosts OTP Compliance and
+  Missed Trips under their own console tab, gated by a new dedicated
+  `OCC.Compliance` app role (not yet created in the live Entra app
+  registration - pending owner action; `OCC.Admin` retains access in the
+  meantime) instead of the blanket `OCC.Admin` gate the rest of OCC Tools
+  uses.
+- **Decision Matrix QRG grid view**: a third view mode alongside List/Grid
+  presenting the printed Quick Reference Guide's own section/subsection/
+  Trouble-Probable Cause-Remedy-Reference table layout.
+- This in-app **Changelog** page, listing released version history for all
+  signed-in staff.
+- Compose's affected-routes field now pulls a multi-select from the live
+  `GtfsRoutes` registry (`GET /routes`) instead of free-typed text, falling
+  back to the old comma-separated input if the registry can't be reached.
+- **AI-drafted rider-friendly summaries in Compose:** a "Draft rider-friendly
+  text" action calls the Claude API directly (new `ANTHROPIC_API_KEY` Key
+  Vault secret - not yet provisioned, pending owner action) to turn a staff
+  member's internal incident/delay report into a concise, plain-language
+  rider alert for the existing `summary` field - always editable, never
+  auto-posted. Fills the field's originally-documented purpose (`Messages.summary`'s
+  schema comment already called it "Claude's short rider-facing summary,
+  distinct from raw_text"); replaces the old Power-Automate-orchestrated
+  design, which needed Power Platform setup that was never built.
+
+## [1.3.0] - 2026-07-28
+
+### Added
+- Missed-trip detection as a compliance investigation tool: explicit
+  GTFS-RT cancellations and schedule-based silent no-shows (cross-
+  referencing GTFS `calendar`/`calendar_dates`/`stop_times` against a daily
+  log of trips actually observed in the realtime feed) are flagged into a
+  new **Missed Trips** module for staff to investigate and validate
+  (confirmed / false positive) - deliberately decoupled from the Suggested
+  Alerts customer-notification queue, since a flagged trip is a compliance
+  record, not an automatic rider alert. A "Prepare rider alert" action
+  stays available as a separate, explicit step if an investigation
+  determines customers should be notified.
+- Suggested Alerts now auto-expire to `expired` after 2 hours unreviewed,
+  across every detection source, via a new 15-minute timer.
 
 ## [1.2.2] - 2026-07-27
 

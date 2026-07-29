@@ -1,6 +1,7 @@
 // GET /missed-trips - the currently-tracked missed-trip candidates (explicit
 // cancellations and schedule-based silent no-shows), backing the console's
-// Missed Trips view. Any staff role can read; this is visibility only - all
+// Missed Trips view (now under the Compliance tab). Any staff role, plus the
+// dedicated OCC.Compliance role, can read; this is visibility only - all
 // writes come from gtfsMissedTripsPoll.ts. Mirrors tripDelays.ts's shape.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
@@ -28,7 +29,7 @@ app.http("missedTripsList", {
   methods: ["GET"],
   authLevel: "anonymous", // authorization enforced via requireRole below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, STAFF_READ_ROLES);
+    const authResult = requireRole(request, [...STAFF_READ_ROLES, "OCC.Compliance"]);
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

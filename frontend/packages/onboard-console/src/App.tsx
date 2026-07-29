@@ -13,6 +13,8 @@ import {
   IconClock,
   IconGear,
   IconWrench,
+  IconShield,
+  IconHistory,
   IconSun,
   IconMoon,
 } from "./components/NavIcons.js";
@@ -24,6 +26,8 @@ import { Subscribers } from "./routes/Subscribers.js";
 import { AuditLog } from "./routes/AuditLog.js";
 import { Admin } from "./routes/Admin.js";
 import { OccTools } from "./routes/OccTools.js";
+import { Compliance } from "./routes/Compliance.js";
+import { Changelog } from "./routes/Changelog.js";
 import {
   FixedRouteRefreshProvider,
   formatRefreshCountdown,
@@ -31,6 +35,7 @@ import {
 } from "./context/FixedRouteRefreshContext.js";
 
 const ADMIN = ["OCC.Admin"] as const;
+const COMPLIANCE = ["OCC.Compliance", "OCC.Admin"] as const;
 
 const PAGE_META: { match: (path: string) => boolean; title: string; sub: string }[] = [
   { match: (p) => p === "/", title: "Dashboard", sub: "Compose and monitor active rider alerts" },
@@ -43,8 +48,14 @@ const PAGE_META: { match: (path: string) => boolean; title: string; sub: string 
   {
     match: (p) => p.startsWith("/occ"),
     title: "OCC Tools",
-    sub: "Service-risk prediction, procedure guidance, compliance, and vehicle monitoring",
+    sub: "Service-risk prediction, procedure guidance, and vehicle monitoring",
   },
+  {
+    match: (p) => p.startsWith("/compliance"),
+    title: "Compliance",
+    sub: "OTP compliance and missed-trip investigation",
+  },
+  { match: (p) => p === "/changelog", title: "Changelog", sub: "Version history" },
 ];
 
 function currentPageMeta(pathname: string) {
@@ -75,6 +86,7 @@ export function App() {
   const { account, roles, signIn, signOut } = useAuth();
   const { theme, toggle } = useTheme();
   const isAdmin = roles.includes("OCC.Admin");
+  const isCompliance = isAdmin || roles.includes("OCC.Compliance");
   const stats = useLiveStats();
   const location = useLocation();
   const meta = currentPageMeta(location.pathname);
@@ -118,12 +130,14 @@ export function App() {
           <NavLink to="/suggested"><IconBell />Suggested Alerts</NavLink>
           <NavLink to="/subscribers"><IconUsers />Subscribers</NavLink>
           <NavLink to="/audit"><IconClock />Audit Log</NavLink>
+          <NavLink to="/changelog"><IconHistory />Changelog</NavLink>
           {isAdmin && <NavLink to="/admin"><IconGear />Admin</NavLink>}
 
-          {isAdmin && (
+          {(isAdmin || isCompliance) && (
             <>
               <div className="nav-section-label">Tools</div>
-              <NavLink to="/occ"><IconWrench />OCC Tools</NavLink>
+              {isAdmin && <NavLink to="/occ"><IconWrench />OCC Tools</NavLink>}
+              {isCompliance && <NavLink to="/compliance"><IconShield />Compliance</NavLink>}
             </>
           )}
         </nav>
@@ -172,6 +186,7 @@ export function App() {
               <Route path="/suggested" element={<SuggestedAlerts onChanged={stats.refresh} />} />
               <Route path="/subscribers" element={<Subscribers />} />
               <Route path="/audit" element={<AuditLog />} />
+              <Route path="/changelog" element={<Changelog />} />
               <Route
                 path="/admin"
                 element={
@@ -185,6 +200,14 @@ export function App() {
                 element={
                   <RequireRole allowed={[...ADMIN]}>
                     <OccTools />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="/compliance/*"
+                element={
+                  <RequireRole allowed={[...COMPLIANCE]}>
+                    <Compliance />
                   </RequireRole>
                 }
               />

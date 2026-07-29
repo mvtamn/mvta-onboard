@@ -4,9 +4,11 @@ import {
   validateCreateMessage,
   validatePrepareSuggestedAlert,
   validateMissedTripValidation,
+  validateDraftSummary,
   MAX_SUMMARY_LENGTH,
   MAX_CREATED_BY_LENGTH,
   MAX_MISSED_TRIP_NOTES_LENGTH,
+  MAX_DRAFT_RAW_TEXT_LENGTH,
 } from "./validation";
 
 test("valid message passes with no errors", () => {
@@ -213,4 +215,33 @@ test("missed-trip validation notes is optional but bounded when provided", () =>
     notes: "x".repeat(MAX_MISSED_TRIP_NOTES_LENGTH + 1),
   });
   assert.ok(withOversizedNotes.some((e) => e.includes("notes")));
+});
+
+test("valid draft-summary request passes", () => {
+  const errors = validateDraftSummary({
+    raw_text: "440SB @ 4:35PM running 26 minutes down due to traffic",
+    category: "delay",
+    severity: "minor",
+  });
+  assert.deepStrictEqual(errors, []);
+});
+
+test("draft-summary rejects missing raw_text and invalid category/severity", () => {
+  const errors = validateDraftSummary({
+    raw_text: "",
+    category: "not-a-category",
+    severity: "not-a-severity",
+  });
+  assert.ok(errors.some((e) => e.includes("raw_text")));
+  assert.ok(errors.some((e) => e.includes("category")));
+  assert.ok(errors.some((e) => e.includes("severity")));
+});
+
+test("draft-summary rejects raw_text longer than the ceiling", () => {
+  const errors = validateDraftSummary({
+    raw_text: "x".repeat(MAX_DRAFT_RAW_TEXT_LENGTH + 1),
+    category: "delay",
+    severity: "minor",
+  });
+  assert.ok(errors.some((e) => e.includes("raw_text")));
 });

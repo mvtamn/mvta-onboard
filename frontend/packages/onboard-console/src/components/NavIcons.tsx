@@ -85,6 +85,25 @@ export function IconWrench(_: IconProps) {
   );
 }
 
+export function IconShield(_: IconProps) {
+  return (
+    <svg {...base}>
+      <path d="M12 2 4 5v6c0 5 3.4 8.4 8 11 4.6-2.6 8-6 8-11V5Z" />
+      <path d="m9 12 2 2 4-4" />
+    </svg>
+  );
+}
+
+export function IconHistory(_: IconProps) {
+  return (
+    <svg {...base}>
+      <path d="M3 12a9 9 0 1 0 2.6-6.3" />
+      <path d="M3 4v5h5" />
+      <path d="M12 7v5l3.5 2" />
+    </svg>
+  );
+}
+
 export function IconSun(_: IconProps) {
   return (
     <svg {...base}>
