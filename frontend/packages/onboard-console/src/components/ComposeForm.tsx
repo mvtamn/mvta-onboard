@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CATEGORIES,
   SEVERITIES,
@@ -19,6 +19,18 @@ const TEAMS_TARGETS = [
   { value: "Teams: Operations", label: "Operations" },
   { value: "Teams: Customer Service", label: "Customer Service" },
 ] as const;
+// MVTA Connect (on-demand/paratransit) has no GtfsRoutes row - it's a zone-
+// based service, not a fixed route - so it's added as a fixed extra option
+// alongside the DB-pulled route list rather than coming from GET /routes.
+const MVTA_CONNECT_OPTION = {
+  id: "MVTA Connect",
+  label: "MVTA Connect",
+  title: "On-demand/paratransit service (zone-based, not a fixed route)",
+};
+// Auto-draft only fires once the internal report has enough content to be
+// worth translating - avoids spamming the API on the first few keystrokes.
+const AUTO_DRAFT_MIN_LENGTH = 15;
+const AUTO_DRAFT_DEBOUNCE_MS = 1500;
 
 // New Announcement form per the approved dashboard mockup.
 // Expiration: explicit datetime wins (expiration_source=explicit); otherwise
@@ -47,6 +59,18 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
 
+  // Refs (not state) so the debounced auto-draft effect below always reads
+  // the latest value at the moment its timer fires, rather than a stale
+  // closure from whenever the effect last ran.
+  const summaryRef = useRef(summary);
+  useEffect(() => {
+    summaryRef.current = summary;
+  }, [summary]);
+  const draftingRef = useRef(drafting);
+  useEffect(() => {
+    draftingRef.current = drafting;
+  }, [drafting]);
+
   async function draftSummary() {
     setDraftError(null);
     setDrafting(true);
@@ -62,6 +86,20 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
       setDrafting(false);
     }
   }
+
+  // Auto-draft: once staff pause typing the internal report, fill the rider
+  // summary automatically - but only while it's still empty/untouched, so an
+  // auto-draft never clobbers something staff already wrote or edited.
+  useEffect(() => {
+    if (rawText.trim().length < AUTO_DRAFT_MIN_LENGTH) return;
+    const timer = setTimeout(() => {
+      if (!summaryRef.current.trim() && !draftingRef.current) {
+        void draftSummary();
+      }
+    }, AUTO_DRAFT_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawText, category, severity]);
 
   useEffect(() => {
     let alive = true;
@@ -90,12 +128,14 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
 
   const routesUseList = (routesList?.length ?? 0) > 0;
   const routeOptions = useMemo(
-    () =>
-      (routesList ?? []).map((r) => ({
+    () => [
+      ...(routesList ?? []).map((r) => ({
         id: r.route_id,
         label: r.route_short_name || r.route_long_name || r.route_id,
         title: r.route_long_name ?? undefined,
       })),
+      MVTA_CONNECT_OPTION,
+    ],
     [routesList],
   );
 
