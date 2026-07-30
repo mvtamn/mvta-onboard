@@ -320,3 +320,24 @@ export interface AvailAvlVehicle {
   report_timestamp: string;
   updated_at: string;
 }
+
+// Avail's Pullout Reports API - garage-side departure compliance (check-in/
+// login/pullout timing, scheduled vs actual). A growing historical log, not
+// a live-position feed - backs the Fixed Route Departures Compliance module.
+export interface FixedRouteDeparture {
+  service_date: string;
+  block: number;
+  run: number;
+  checkin_scheduled: string | null;
+  checkin_actual: string | null;
+  login_scheduled: string | null;
+  login_actual: string | null;
+  pullout_scheduled: string | null;
+  pullout_actual: string | null;
+  pullout_status: string | null;
+  operator_name: string | null;
+  logon_id: number | null;
+  vehicle_label: string | null;
+  updated_at: string;
+  pullout_delta_seconds: number | null;
+}

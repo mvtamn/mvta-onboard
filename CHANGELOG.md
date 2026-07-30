@@ -71,6 +71,19 @@ badge and footer read this version at build time - see `vite.config.ts`).
   it. A real map overlay of these positions is a planned follow-up. New
   `AVAIL_AVL_REPORTS_API_KEY` Key Vault secret required (pending owner
   action) plus the `AVAIL_AVL_REPORTS_URL` app setting.
+- **Fixed Route Departures**, a new Compliance-tab module tracking whether
+  vehicles leave the garage on schedule using Avail's own dispatch-side
+  Pullout Reports API (check-in/login/pullout timing, scheduled vs actual,
+  plus Avail's own "Late Relief"/"Expired Pullout" classification) - a
+  separate, more authoritative signal for garage-side lateness than anything
+  inferred from GTFS or AVL data. New `fixedRouteDeparturesPoll.ts` timer
+  (reuses the existing `AVAIL_AVL_REPORTS_API_KEY` - no new secret), new
+  `FixedRouteDepartures` table that accumulates permanently (never
+  overwritten) so late/expired pullouts can be trend-analyzed by operator,
+  block, or date, and a new `GET /fixed-route-departures` endpoint with
+  summary stats (late/expired counts, average delta). New `AVAIL_PULLOUT_URL`
+  app setting required (imperative, pending owner action) plus the not-yet-run
+  `migration-013-fixed-route-departures.sql`.
 
 ## [1.3.0] - 2026-07-28
 

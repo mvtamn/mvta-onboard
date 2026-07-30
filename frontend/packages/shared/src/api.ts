@@ -28,6 +28,7 @@ import type {
   Category,
   Severity,
   AvailAvlVehicle,
+  FixedRouteDeparture,
 } from "./types.js";
 
 export type TokenProvider = () => Promise<string | null>;
@@ -279,6 +280,21 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
         vehicles: AvailAvlVehicle[];
         diagnostics: { configured: boolean; table_ready: boolean; vehicle_count: number; last_report_at: string | null };
       }>("/api/avail-avl", {}, true);
+    },
+
+    getFixedRouteDepartures(days?: number) {
+      const suffix = days ? `?days=${days}` : "";
+      return request<{
+        departures: FixedRouteDeparture[];
+        diagnostics: {
+          configured: boolean;
+          table_ready: boolean;
+          record_count: number;
+          late_count: number;
+          expired_count: number;
+          avg_delta_seconds: number | null;
+        };
+      }>(`/api/fixed-route-departures${suffix}`, {}, true);
     },
   };
 }

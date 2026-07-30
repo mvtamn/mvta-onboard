@@ -1,18 +1,21 @@
 import { useState } from "react";
 import { OtpModule } from "./modules/otp/OtpModule.js";
 import { MissedTripAlerts } from "./modules/MissedTripAlerts.js";
+import { FixedRouteDepartures } from "./modules/FixedRouteDepartures.js";
 
 const TOOLS = [
   { key: "otp", label: "OTP Compliance" },
   { key: "missed-trips", label: "Missed Trips" },
+  { key: "fixed-route-departures", label: "Fixed Route Departures" },
 ] as const;
 
 type ToolKey = (typeof TOOLS)[number]["key"];
 
 // Compliance tab (OCC.Compliance or OCC.Admin): hosts the compliance/
-// investigation modules - OTP Compliance and Missed Trips - split out of OCC
-// Tools so Compliance access can be granted independently of full OCC Tools
-// access. Same internal-switcher shell as OccTools.tsx.
+// investigation modules - OTP Compliance, Missed Trips, and Fixed Route
+// Departures - split out of OCC Tools so Compliance access can be granted
+// independently of full OCC Tools access. Same internal-switcher shell as
+// OccTools.tsx.
 export function Compliance() {
   const [tool, setTool] = useState<ToolKey>("otp");
 
@@ -29,6 +32,7 @@ export function Compliance() {
         </div>
         {tool === "otp" && <OtpModule />}
         {tool === "missed-trips" && <MissedTripAlerts />}
+        {tool === "fixed-route-departures" && <FixedRouteDepartures />}
       </div>
     </>
   );

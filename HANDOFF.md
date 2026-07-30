@@ -56,6 +56,13 @@ PENDING secret:          avail-avl-reports-api-key - Event Monitoring's live veh
                          local.settings.json.example) before the feed goes live. Sent as the
                          Ocp-Apim-Subscription-Key header to https://avail360-api.myavail.cloud/
                          AVLReports/v1/MVTA/{date}.
+Fixed Route Departures:  migration-013-fixed-route-departures.sql has been run against the
+                         dev DB (FixedRouteDepartures table + index confirmed present) and the
+                         AVAIL_PULLOUT_URL app setting is live on func-mvta-restapi-dev
+                         (https://avail360-api.myavail.cloud/Pullout/v1/MVTA, reusing the same
+                         avail-avl-reports-api-key secret - no new Key Vault entry). Only
+                         deploying the code (fixedRouteDeparturesPoll.ts / fixedRouteDepartures.ts
+                         / the Compliance tab module) remains.
 ```
 
 The SQL admin password is NOT recorded here deliberately — it lives in Key Vault as the secret `sql-connection-string` (full connection string, not just the password) and in the project owner's password manager. Ask before assuming you need it directly; the Function Apps already read it via Key Vault reference.

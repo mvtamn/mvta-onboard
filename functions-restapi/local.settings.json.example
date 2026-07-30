@@ -15,6 +15,8 @@
     "ANTHROPIC_API_KEY": "REPLACE_ME",
     "// note5": "AVAIL_AVL_REPORTS_URL/_API_KEY feed Event Monitoring's live vehicle positions (availAvlPoll.ts). URL is the agency-level base with no trailing date - the poller appends today's date on every run. The key is sent as the Ocp-Apim-Subscription-Key header.",
     "AVAIL_AVL_REPORTS_URL": "https://avail360-api.myavail.cloud/AVLReports/v1/MVTA",
-    "AVAIL_AVL_REPORTS_API_KEY": "REPLACE_ME"
+    "AVAIL_AVL_REPORTS_API_KEY": "REPLACE_ME",
+    "// note6": "AVAIL_PULLOUT_URL feeds Fixed Route Departures (fixedRouteDeparturesPoll.ts) - a second, distinct Avail360 API reusing the SAME AVAIL_AVL_REPORTS_API_KEY above, just a different path.",
+    "AVAIL_PULLOUT_URL": "https://avail360-api.myavail.cloud/Pullout/v1/MVTA"
   }
 }
