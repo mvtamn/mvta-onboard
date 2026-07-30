@@ -27,6 +27,7 @@ import type {
   GtfsRouteOption,
   Category,
   Severity,
+  AvailAvlVehicle,
 } from "./types.js";
 
 export type TokenProvider = () => Promise<string | null>;
@@ -271,6 +272,13 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
 
     getRoutes() {
       return request<{ routes: GtfsRouteOption[] }>("/api/routes", {}, true);
+    },
+
+    getAvailAvlVehicles() {
+      return request<{
+        vehicles: AvailAvlVehicle[];
+        diagnostics: { configured: boolean; table_ready: boolean; vehicle_count: number; last_report_at: string | null };
+      }>("/api/avail-avl", {}, true);
     },
   };
 }

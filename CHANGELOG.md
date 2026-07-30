@@ -53,6 +53,24 @@ badge and footer read this version at build time - see `vite.config.ts`).
   schema comment already called it "Claude's short rider-facing summary,
   distinct from raw_text"); replaces the old Power-Automate-orchestrated
   design, which needed Power Platform setup that was never built.
+- Compose's affected-routes multi-select now also includes **MVTA Connect**
+  (the on-demand/paratransit service has no `GtfsRoutes` row of its own,
+  since it's zone-based rather than a fixed route).
+- The rider-facing summary in Compose now **auto-drafts** via Claude a
+  moment after staff pause typing the internal report - only while the
+  summary is still empty, so it never overwrites something staff already
+  wrote or edited. The manual "Draft rider-friendly text" button still works
+  for regenerating.
+- **Live AVL vehicle positions** in Event Monitoring: a new `availAvlPoll.ts`
+  timer ingests Avail's own proprietary AVL Reports API (distinct from the
+  GTFS-Realtime feeds already ingested elsewhere - separate vehicle/route/
+  block/run/trip keys, no guaranteed join to a GTFS `trip_id`), new
+  `AvailAvlVehiclePositions` table, new `GET /avail-avl`, and a new table in
+  the console showing every vehicle's latest reported position - added
+  alongside the module's existing mock event-shuttle scenario, not replacing
+  it. A real map overlay of these positions is a planned follow-up. New
+  `AVAIL_AVL_REPORTS_API_KEY` Key Vault secret required (pending owner
+  action) plus the `AVAIL_AVL_REPORTS_URL` app setting.
 
 ## [1.3.0] - 2026-07-28
 

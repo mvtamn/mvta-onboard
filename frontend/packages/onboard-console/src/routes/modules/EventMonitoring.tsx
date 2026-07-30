@@ -1,4 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { ApiError, type AvailAvlVehicle } from "@mvta/shared";
+import { api } from "../../config.js";
 import {
   POOL,
   INITIAL_MONITORED,
@@ -8,6 +10,17 @@ import {
 } from "./eventMonitoring.data.js";
 import "./eventMonitoring.css";
 
+const AVL_REFRESH_MS = 60_000;
+
+function timeAgoLabel(value: string | null): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  const seconds = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
+  if (seconds < 60) return `${seconds}s ago`;
+  return `${Math.round(seconds / 60)} min ago`;
+}
+
 // Event Vehicle Monitoring — ported from event_monitoring_mockup.html.
 // Delay alerts are staff-reviewed: Approve routes through the core Messages
 // pipeline (a suggested alert becomes a published message only on approval),
@@ -16,6 +29,48 @@ export function EventMonitoring() {
   const [monitoredIds, setMonitoredIds] = useState<string[]>(INITIAL_MONITORED);
   const [dismissed, setDismissed] = useState<Record<string, boolean>>({});
   const [swapFor, setSwapFor] = useState<string | null>(null);
+
+  // Live vehicle positions from Avail's own AVL Reports API - a separate
+  // real data source from the mock event-shuttle scenario above (map/swap/
+  // delay-alert workflow), added alongside it rather than replacing it. A
+  // real map overlay of these positions is a planned follow-up; for now
+  // this renders as a table.
+  const [availVehicles, setAvailVehicles] = useState<AvailAvlVehicle[] | null>(null);
+  const [availMessage, setAvailMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    function load() {
+      api
+        .getAvailAvlVehicles()
+        .then(({ vehicles, diagnostics }) => {
+          if (!alive) return;
+          setAvailVehicles(vehicles);
+          setAvailMessage(
+            diagnostics.configured
+              ? vehicles.length === 0
+                ? "Feed configured but no vehicles have reported yet."
+                : null
+              : "Avail AVL Reports feed is not configured yet.",
+          );
+        })
+        .catch((err) => {
+          if (!alive) return;
+          setAvailVehicles(null);
+          setAvailMessage(
+            err instanceof ApiError
+              ? `Could not load live vehicle positions: ${err.message}`
+              : "Could not reach the live vehicle-position service.",
+          );
+        });
+    }
+    load();
+    const intervalId = window.setInterval(load, AVL_REFRESH_MS);
+    return () => {
+      alive = false;
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   const byId = (id: string) => POOL.find((p) => p.id === id) as Vehicle;
   const monitored = monitoredIds.map(byId);
@@ -162,6 +217,48 @@ export function EventMonitoring() {
                   </div>
                 </div>
               ))
+            )}
+          </div>
+
+          <div className="panel-header">
+            <span>Live AVL vehicle positions</span>
+            <span className="td-dim">Avail360 · refreshes every 60s</span>
+          </div>
+          <div className="panel-body" style={{ padding: 0 }}>
+            {availMessage ? (
+              <p className="panel-desc" style={{ padding: "12px 16px", margin: 0 }}>
+                {availMessage}
+                {" "}A real map overlay of these positions is planned as a follow-up.
+              </p>
+            ) : availVehicles === null ? (
+              <p className="panel-desc" style={{ padding: "12px 16px", margin: 0 }}>Loading…</p>
+            ) : (
+              <table className="data">
+                <thead>
+                  <tr>
+                    <th>Vehicle</th>
+                    <th>Route</th>
+                    <th>Block</th>
+                    <th>Run</th>
+                    <th>Direction</th>
+                    <th>Heading</th>
+                    <th>Last report</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {availVehicles.map((v) => (
+                    <tr key={v.vehicle_id}>
+                      <td className="veh-id">{v.vehicle_id}</td>
+                      <td>{v.route ?? "—"}</td>
+                      <td>{v.block ?? "—"}</td>
+                      <td>{v.run ?? "—"}</td>
+                      <td>{v.direction ?? "—"}</td>
+                      <td>{v.heading !== null ? `${v.heading}°` : "—"}</td>
+                      <td className="td-dim">{timeAgoLabel(v.report_timestamp)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </div>
         </div>

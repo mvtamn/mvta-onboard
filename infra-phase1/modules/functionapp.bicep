@@ -114,6 +114,13 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         // secret itself (anthropic-api-key) must be created in Key Vault
         // before this resolves; see HANDOFF.md.
         { name: 'ANTHROPIC_API_KEY', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/anthropic-api-key/)' }
+        // Same Key Vault reference pattern - powers Event Monitoring's live
+        // vehicle positions (availAvlPoll.ts). The secret itself
+        // (avail-avl-reports-api-key) must be created in Key Vault before
+        // this resolves; see HANDOFF.md. AVAIL_AVL_REPORTS_URL is not a
+        // secret, so (like the GTFS feed URLs) it's set imperatively via
+        // `az functionapp config appsettings set`, not here.
+        { name: 'AVAIL_AVL_REPORTS_API_KEY', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/avail-avl-reports-api-key/)' }
       ]
     }
   }

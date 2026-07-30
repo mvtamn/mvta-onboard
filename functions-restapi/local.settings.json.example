@@ -12,6 +12,9 @@
     "// note3": "GTFS_RT_VEHICLE_URL feeds live position/occupancy (gtfsVehiclePositionsPoll.ts) - the third and final GTFS-RT feed type.",
     "GTFS_RT_VEHICLE_URL": "https://srv.mvta.com/infoPoint/GTFS-realtime.ashx?&Type=VehiclePosition&debug=true",
     "// note4": "ANTHROPIC_API_KEY powers Compose's rider-friendly summary drafting (messagesDraftSummary.ts / lib/anthropic.ts). Optional locally - drafting just returns a clear 'not configured' response without it.",
-    "ANTHROPIC_API_KEY": "REPLACE_ME"
+    "ANTHROPIC_API_KEY": "REPLACE_ME",
+    "// note5": "AVAIL_AVL_REPORTS_URL/_API_KEY feed Event Monitoring's live vehicle positions (availAvlPoll.ts). URL is the agency-level base with no trailing date - the poller appends today's date on every run. The key is sent as the Ocp-Apim-Subscription-Key header.",
+    "AVAIL_AVL_REPORTS_URL": "https://avail360-api.myavail.cloud/AVLReports/v1/MVTA",
+    "AVAIL_AVL_REPORTS_API_KEY": "REPLACE_ME"
   }
 }

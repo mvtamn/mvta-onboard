@@ -302,3 +302,21 @@ export const SEVERITY_LABELS: Record<Severity, string> = {
   major: "Major",
   critical: "Critical",
 };
+
+// Avail's own proprietary AVL Reports API - a separate vehicle-location
+// source from the GTFS-Realtime feeds (distinct vehicle_id/route/block/run/
+// trip keys, no guaranteed join to a GTFS trip_id). Backs Event Monitoring's
+// live vehicle positions.
+export interface AvailAvlVehicle {
+  vehicle_id: number;
+  route: number | null;
+  block: number | null;
+  run: number | null;
+  trip: number | null;
+  latitude: number;
+  longitude: number;
+  heading: number | null;
+  direction: string | null;
+  report_timestamp: string;
+  updated_at: string;
+}

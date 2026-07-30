@@ -50,6 +50,12 @@ PENDING app role:        OCC.Compliance - the console's new Compliance tab (OTP 
                          app registration above yet (owner action - Portal or az cli, same as
                          the original 4 roles). Until it exists, only OCC.Admin holders can
                          see/use the Compliance tab.
+PENDING secret:          avail-avl-reports-api-key - Event Monitoring's live vehicle positions
+                         (availAvlPoll.ts, GET /avail-avl) need this Key Vault secret plus the
+                         AVAIL_AVL_REPORTS_URL app setting (imperative, not Bicep - see
+                         local.settings.json.example) before the feed goes live. Sent as the
+                         Ocp-Apim-Subscription-Key header to https://avail360-api.myavail.cloud/
+                         AVLReports/v1/MVTA/{date}.
 ```
 
 The SQL admin password is NOT recorded here deliberately — it lives in Key Vault as the secret `sql-connection-string` (full connection string, not just the password) and in the project owner's password manager. Ask before assuming you need it directly; the Function Apps already read it via Key Vault reference.
