@@ -262,4 +262,282 @@ export function validateExpirationDefault(body: UnknownBody): string[] {
   return errors;
 }
 
+// Detour & Closure module - column-size ceilings from migration-017-detours.sql.
+export const MAX_DETOUR_NUMBER_LENGTH = 50;
+export const MAX_DETOUR_CLOSURE_LENGTH = 500;
+export const MAX_DETOUR_RIDERS_DIRECTED_LENGTH = 500;
+export const MAX_DETOUR_SEGMENT_ROUTES_LENGTH = 200;
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function isValidDetourSegments(value: unknown): string[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) return ["segments must be an array if provided"];
+  const errors: string[] = [];
+  value.forEach((seg, i) => {
+    if (typeof seg !== "object" || seg === null || Array.isArray(seg)) {
+      errors.push(`segments[${i}] must be an object`);
+      return;
+    }
+    const s = seg as Record<string, unknown>;
+    if (typeof s.routes !== "string" || s.routes.trim() === "") {
+      errors.push(`segments[${i}].routes is required and must be a non-empty string`);
+    } else if (s.routes.length > MAX_DETOUR_SEGMENT_ROUTES_LENGTH) {
+      errors.push(`segments[${i}].routes must be at most ${MAX_DETOUR_SEGMENT_ROUTES_LENGTH} characters`);
+    }
+    if (s.directions !== undefined && s.directions !== null && typeof s.directions !== "string") {
+      errors.push(`segments[${i}].directions must be a string if provided`);
+    }
+  });
+  return errors;
+}
+
+// POST /detours - create. `closure` is the only always-required field; a
+// closure can be logged as monitor-only with no dates yet.
+export function validateCreateDetour(body: UnknownBody): string[] {
+  const errors: string[] = [];
+
+  if (typeof body.closure !== "string" || body.closure.trim() === "") {
+    errors.push("closure is required and must be a non-empty string");
+  } else if (body.closure.length > MAX_DETOUR_CLOSURE_LENGTH) {
+    errors.push(`closure must be at most ${MAX_DETOUR_CLOSURE_LENGTH} characters`);
+  }
+  if (body.number !== undefined && body.number !== null) {
+    if (typeof body.number !== "string") {
+      errors.push("number must be a string if provided");
+    } else if (body.number.length > MAX_DETOUR_NUMBER_LENGTH) {
+      errors.push(`number must be at most ${MAX_DETOUR_NUMBER_LENGTH} characters`);
+    }
+  }
+  for (const field of ["start_date", "end_date"]) {
+    const v = body[field];
+    if (v !== undefined && v !== null && (typeof v !== "string" || !DATE_RE.test(v))) {
+      errors.push(`${field} must be a YYYY-MM-DD date string if provided`);
+    }
+  }
+  if (body.is_monitor_only !== undefined && typeof body.is_monitor_only !== "boolean") {
+    errors.push("is_monitor_only must be a boolean if provided");
+  }
+  if (body.riders_directed !== undefined && body.riders_directed !== null) {
+    if (typeof body.riders_directed !== "string") {
+      errors.push("riders_directed must be a string if provided");
+    } else if (body.riders_directed.length > MAX_DETOUR_RIDERS_DIRECTED_LENGTH) {
+      errors.push(`riders_directed must be at most ${MAX_DETOUR_RIDERS_DIRECTED_LENGTH} characters`);
+    }
+  }
+  for (const field of ["email_sent", "expired_email_sent", "spare_emailed"]) {
+    if (body[field] !== undefined && typeof body[field] !== "boolean") {
+      errors.push(`${field} must be a boolean if provided`);
+    }
+  }
+  errors.push(...isValidDetourSegments(body.segments));
+
+  return errors;
+}
+
+// PATCH /detours/{id} - partial edit; every field optional, same shape checks
+// as create for whatever is actually present.
+export function validateUpdateDetour(body: UnknownBody): string[] {
+  const errors: string[] = [];
+  const editableFields = [
+    "number", "closure", "start_date", "end_date", "is_monitor_only",
+    "riders_directed", "email_sent", "expired_email_sent", "spare_emailed", "segments",
+  ];
+  if (!editableFields.some((f) => body[f] !== undefined)) {
+    errors.push(`At least one of ${editableFields.join(", ")} must be provided`);
+  }
+  // Reuse validateCreateDetour's per-field checks, but only for fields that
+  // are actually present - closure isn't required on a partial edit.
+  if (body.closure !== undefined) {
+    if (typeof body.closure !== "string" || body.closure.trim() === "") {
+      errors.push("closure must be a non-empty string if provided");
+    } else if (body.closure.length > MAX_DETOUR_CLOSURE_LENGTH) {
+      errors.push(`closure must be at most ${MAX_DETOUR_CLOSURE_LENGTH} characters`);
+    }
+  }
+  if (body.number !== undefined && body.number !== null) {
+    if (typeof body.number !== "string") {
+      errors.push("number must be a string if provided");
+    } else if (body.number.length > MAX_DETOUR_NUMBER_LENGTH) {
+      errors.push(`number must be at most ${MAX_DETOUR_NUMBER_LENGTH} characters`);
+    }
+  }
+  for (const field of ["start_date", "end_date"]) {
+    const v = body[field];
+    if (v !== undefined && v !== null && (typeof v !== "string" || !DATE_RE.test(v))) {
+      errors.push(`${field} must be a YYYY-MM-DD date string if provided`);
+    }
+  }
+  if (body.is_monitor_only !== undefined && typeof body.is_monitor_only !== "boolean") {
+    errors.push("is_monitor_only must be a boolean if provided");
+  }
+  if (body.riders_directed !== undefined && body.riders_directed !== null) {
+    if (typeof body.riders_directed !== "string") {
+      errors.push("riders_directed must be a string if provided");
+    } else if (body.riders_directed.length > MAX_DETOUR_RIDERS_DIRECTED_LENGTH) {
+      errors.push(`riders_directed must be at most ${MAX_DETOUR_RIDERS_DIRECTED_LENGTH} characters`);
+    }
+  }
+  for (const field of ["email_sent", "expired_email_sent", "spare_emailed"]) {
+    if (body[field] !== undefined && typeof body[field] !== "boolean") {
+      errors.push(`${field} must be a boolean if provided`);
+    }
+  }
+  if (body.segments !== undefined) {
+    errors.push(...isValidDetourSegments(body.segments));
+  }
+
+  return errors;
+}
+
+// PUT /route-classification/{routeId}
+export const VALID_ROUTE_CATEGORIES = ["FixedRoute", "SpecialEvent", "OnDemand"] as const;
+export const MAX_ROUTE_LABEL_LENGTH = 100;
+
+export function validateRouteClassification(body: UnknownBody): string[] {
+  const errors: string[] = [];
+
+  if (!includes(VALID_ROUTE_CATEGORIES, body.route_category)) {
+    errors.push(`route_category must be one of: ${VALID_ROUTE_CATEGORIES.join(", ")}`);
+  }
+  if (body.route_label !== undefined && body.route_label !== null) {
+    if (typeof body.route_label !== "string") {
+      errors.push("route_label must be a string if provided");
+    } else if (body.route_label.length > MAX_ROUTE_LABEL_LENGTH) {
+      errors.push(`route_label must be at most ${MAX_ROUTE_LABEL_LENGTH} characters`);
+    }
+  }
+  for (const field of ["effective_start_date", "effective_end_date"]) {
+    const v = body[field];
+    if (v !== undefined && v !== null && (typeof v !== "string" || !DATE_RE.test(v))) {
+      errors.push(`${field} must be a YYYY-MM-DD date string if provided`);
+    }
+  }
+  if (body.is_active !== undefined && typeof body.is_active !== "boolean") {
+    errors.push("is_active must be a boolean if provided");
+  }
+
+  return errors;
+}
+
+// OTP Compliance completion - persisted exclusions, reason codes, threshold
+// setting. See migration-018-otp-exclusions-and-settings.sql.
+const SERVICE_MONTH_RE = /^\d{6}$/;
+const SERVICE_DATE_RE = /^\d{8}$/;
+export const VALID_STOP_EXCLUSION_STATUSES = ["approved", "rejected"] as const;
+export const VALID_DATE_EXCLUSION_SCOPES = ["Agency", "Route"] as const;
+export const MAX_REASON_CODE_LENGTH = 30;
+export const MAX_REASON_LABEL_LENGTH = 100;
+export const MAX_DATE_EXCLUSION_NOTES_LENGTH = 500;
+
+// PUT /otp-stop-exclusions
+export function validateStopExclusion(body: UnknownBody): string[] {
+  const errors: string[] = [];
+
+  if (typeof body.service_month !== "string" || !SERVICE_MONTH_RE.test(body.service_month)) {
+    errors.push("service_month is required and must be a YYYYMM string");
+  }
+  if (typeof body.route_id !== "number" || !Number.isInteger(body.route_id)) {
+    errors.push("route_id is required and must be an integer");
+  }
+  if (typeof body.stop_id !== "number" || !Number.isInteger(body.stop_id)) {
+    errors.push("stop_id is required and must be an integer");
+  }
+  if (typeof body.day_of_week !== "string" || body.day_of_week.trim() === "") {
+    errors.push("day_of_week is required and must be a non-empty string");
+  }
+  if (!includes(VALID_STOP_EXCLUSION_STATUSES, body.status)) {
+    errors.push(`status must be one of: ${VALID_STOP_EXCLUSION_STATUSES.join(", ")}`);
+  }
+  if (body.reason_code !== undefined && body.reason_code !== null) {
+    if (typeof body.reason_code !== "string" || body.reason_code.length > MAX_REASON_CODE_LENGTH) {
+      errors.push(`reason_code must be a string of at most ${MAX_REASON_CODE_LENGTH} characters if provided`);
+    }
+  }
+
+  return errors;
+}
+
+// POST /otp-date-exclusions
+export function validateDateExclusion(body: UnknownBody): string[] {
+  const errors: string[] = [];
+
+  if (!includes(VALID_DATE_EXCLUSION_SCOPES, body.scope)) {
+    errors.push(`scope must be one of: ${VALID_DATE_EXCLUSION_SCOPES.join(", ")}`);
+  }
+  if (body.scope === "Route" && (typeof body.route_id !== "number" || !Number.isInteger(body.route_id))) {
+    errors.push("route_id is required and must be an integer when scope is Route");
+  }
+  if (typeof body.service_date !== "string" || !SERVICE_DATE_RE.test(body.service_date)) {
+    errors.push("service_date is required and must be a YYYYMMDD string");
+  }
+  if (typeof body.reason_code !== "string" || body.reason_code.trim() === "") {
+    errors.push("reason_code is required and must be a non-empty string");
+  } else if (body.reason_code.length > MAX_REASON_CODE_LENGTH) {
+    errors.push(`reason_code must be at most ${MAX_REASON_CODE_LENGTH} characters`);
+  }
+  if (body.notes !== undefined && body.notes !== null) {
+    if (typeof body.notes !== "string" || body.notes.length > MAX_DATE_EXCLUSION_NOTES_LENGTH) {
+      errors.push(`notes must be a string of at most ${MAX_DATE_EXCLUSION_NOTES_LENGTH} characters if provided`);
+    }
+  }
+
+  return errors;
+}
+
+// POST /otp-reason-codes
+export function validateCreateReasonCode(body: UnknownBody): string[] {
+  const errors: string[] = [];
+
+  if (typeof body.code !== "string" || body.code.trim() === "") {
+    errors.push("code is required and must be a non-empty string");
+  } else if (body.code.length > MAX_REASON_CODE_LENGTH) {
+    errors.push(`code must be at most ${MAX_REASON_CODE_LENGTH} characters`);
+  }
+  if (typeof body.label !== "string" || body.label.trim() === "") {
+    errors.push("label is required and must be a non-empty string");
+  } else if (body.label.length > MAX_REASON_LABEL_LENGTH) {
+    errors.push(`label must be at most ${MAX_REASON_LABEL_LENGTH} characters`);
+  }
+  if (body.applies_to !== "stop" && body.applies_to !== "date") {
+    errors.push("applies_to must be one of: stop, date");
+  }
+
+  return errors;
+}
+
+// PATCH /otp-reason-codes/{id} - code/applies_to are immutable after
+// creation; only presentation/lifecycle fields are editable.
+export function validateUpdateReasonCode(body: UnknownBody): string[] {
+  const errors: string[] = [];
+  const editableFields = ["label", "is_active", "sort_order"];
+  if (!editableFields.some((f) => body[f] !== undefined)) {
+    errors.push(`At least one of ${editableFields.join(", ")} must be provided`);
+  }
+  if (body.label !== undefined) {
+    if (typeof body.label !== "string" || body.label.trim() === "") {
+      errors.push("label must be a non-empty string if provided");
+    } else if (body.label.length > MAX_REASON_LABEL_LENGTH) {
+      errors.push(`label must be at most ${MAX_REASON_LABEL_LENGTH} characters`);
+    }
+  }
+  if (body.is_active !== undefined && typeof body.is_active !== "boolean") {
+    errors.push("is_active must be a boolean if provided");
+  }
+  if (body.sort_order !== undefined && (typeof body.sort_order !== "number" || !Number.isInteger(body.sort_order))) {
+    errors.push("sort_order must be an integer if provided");
+  }
+  return errors;
+}
+
+// PATCH /otp-settings
+export function validateOtpSettings(body: UnknownBody): string[] {
+  const errors: string[] = [];
+  const threshold = body.early_late_bias_threshold;
+  if (typeof threshold !== "number" || threshold <= 0 || threshold >= 1) {
+    errors.push("early_late_bias_threshold is required and must be a number between 0 and 1 (exclusive)");
+  }
+  return errors;
+}
+
 export { VALID_CATEGORIES, VALID_SEVERITIES, VALID_EXPIRATION_SOURCES, VALID_CONSENT_SOURCES };

@@ -4,6 +4,15 @@
 // poller: no alerting concept, nothing here ever escalates into
 // SuggestedAlerts. Upserts one row per vehicle (its latest known position)
 // into AvailAvlVehiclePositions, keyed by Avail's own vehicle_id.
+//
+// ALSO classifies each report against RouteClassification (migration-016)
+// and, for SpecialEvent-classified routes only, writes an additional row
+// into EventVehicleCurrentPosition/EventVehiclePositionHistory - see
+// detour-and-event-module-implementation-plan.md (Part A2) for why this
+// reuses the existing 5-minute fetch rather than a second, separately-
+// shaped poll against the same feed. Gracefully skipped (not an error) if
+// migration-016 hasn't been applied yet - the all-vehicles table above is
+// unaffected either way.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchAvlReports, mapAvlReport } from "../lib/availAvl";
@@ -27,7 +36,20 @@ app.timer("availAvlPoll", {
     }
 
     const pool = await getPool();
+
+    const tableCheck = await pool.request().query<{ table_exists: number }>(`
+      SELECT CASE WHEN OBJECT_ID('dbo.RouteClassification', 'U') IS NULL THEN 0 ELSE 1 END AS table_exists
+    `);
+    let specialEventRouteIds = new Set<number>();
+    if (tableCheck.recordset[0]?.table_exists === 1) {
+      const classResult = await pool.request().query<{ route_id: number }>(`
+        SELECT route_id FROM RouteClassification WHERE route_category = 'SpecialEvent' AND is_active = 1
+      `);
+      specialEventRouteIds = new Set(classResult.recordset.map((r) => r.route_id));
+    }
+
     let upsertedCount = 0;
+    let eventUpsertedCount = 0;
 
     for (const report of reports) {
       let mapped;
@@ -69,8 +91,40 @@ app.timer("availAvlPoll", {
       } catch (err) {
         context.error(`Failed to upsert Avail AVL position for vehicle ${mapped.vehicle_id}:`, err);
       }
+
+      if (mapped.route !== null && specialEventRouteIds.has(mapped.route)) {
+        try {
+          const eventRequest = pool.request();
+          eventRequest.input("vehicle_id", sql.Int, mapped.vehicle_id);
+          eventRequest.input("route", sql.Int, mapped.route);
+          eventRequest.input("latitude", sql.Float, mapped.latitude);
+          eventRequest.input("longitude", sql.Float, mapped.longitude);
+          eventRequest.input("heading", sql.Float, mapped.heading);
+          eventRequest.input("report_timestamp", sql.DateTime2, mapped.report_timestamp);
+          await eventRequest.query(`
+            MERGE EventVehicleCurrentPosition WITH (HOLDLOCK) AS target
+            USING (SELECT @vehicle_id AS vehicle_id) AS src
+            ON target.vehicle_id = src.vehicle_id
+            WHEN MATCHED THEN
+              UPDATE SET route = @route, latitude = @latitude, longitude = @longitude,
+                heading = @heading, report_timestamp = @report_timestamp, updated_at = SYSUTCDATETIME()
+            WHEN NOT MATCHED THEN
+              INSERT (vehicle_id, route, latitude, longitude, heading, report_timestamp)
+              VALUES (@vehicle_id, @route, @latitude, @longitude, @heading, @report_timestamp);
+
+            INSERT INTO EventVehiclePositionHistory (vehicle_id, route, latitude, longitude, heading, report_timestamp)
+            VALUES (@vehicle_id, @route, @latitude, @longitude, @heading, @report_timestamp);
+          `);
+          eventUpsertedCount++;
+        } catch (err) {
+          context.error(`Failed to upsert event-bus position for vehicle ${mapped.vehicle_id}:`, err);
+        }
+      }
     }
 
-    context.log(`Avail AVL Reports poll: ${reports.length} reports seen, ${upsertedCount} vehicles upserted.`);
+    context.log(
+      `Avail AVL Reports poll: ${reports.length} reports seen, ${upsertedCount} vehicles upserted, ` +
+        `${eventUpsertedCount} classified as special-event.`,
+    );
   },
 });

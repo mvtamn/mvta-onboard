@@ -7,6 +7,45 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 ## [Unreleased]
 
+- **OTP Compliance completion**: Audit Stream, Administration, Threshold
+  Tuner, and the Dashboard trend chart are now real, replacing their
+  "coming soon" placeholders. Review Queue approvals/rejections and Weather
+  exclusions are now **persisted** (`OtpStopExclusions`/`OtpDateExclusions`)
+  instead of ephemeral browser state that reset on reload - this is also
+  what makes the Audit Stream real (it queries these records directly, same
+  "the record is the audit trail" approach as the console's top-level Audit
+  Log). Reason codes are now admin-editable (`OtpReasonCodes`, seeded with
+  the previous hardcoded lists) and managed from the new Administration
+  page. The early/late bias detection threshold is now a persisted,
+  admin-editable setting (`OtpSettings`) rather than a hardcoded constant -
+  the new Threshold Tuner page previews a different value against the
+  current month's already-fetched data before applying it. The Dashboard's
+  "Power BI" placeholder is now a real, hand-rolled OTP % trend chart
+  (`GET /otp-monthly-trend`) - percent only, no penalty-dollar figure, since
+  no Attachment G penalty formula exists yet to build one from. Along the
+  way, fixed a real bug where an approved exclusion never actually changed a
+  route's Official OTP % once that route had a `route_label` (the candidate
+  and route-row `route` fields used different conventions and silently
+  never matched). New `migration-018-otp-exclusions-and-settings.sql`.
+- **Detours & Closures module** - a new top-level console page collapsing the
+  hand-tracked mix of Avail (when a detour is actually built there), staff
+  email, and an Excel tracker into one place. Manual create/edit/delete with
+  route-segment directions, and a computed status (Active/Upcoming/Monitor/
+  Recently finished/Expired) shared by the API and UI so they can't drift.
+  Read-only for `OCC.Viewer`, full access for `OCC.Publisher`/`OCC.Admin`.
+  `Source`/`ExternalDetourId` ship now (both unused until the Avail Detours
+  sync is built) so a future sync needs no migration-after-the-fact. Image
+  attachments and the Avail sync itself are not part of this pass - see
+  `detour-and-event-module-implementation-plan.md`.
+- **Route Classification** (Admin page) - no Avail feed (OTP, Missed Trips,
+  AVL Reports) distinguishes a fixed-route RouteID from a special-event one,
+  so this is the one place MVTA OnBoard itself decides. A light, occasional
+  admin step, not a bulk-import workflow.
+- **Event bus positions (live)** in Event Monitoring - a third panel showing
+  only vehicles classified `SpecialEvent` in Route Classification. Reuses
+  the existing 5-minute AVL Reports poll rather than a second fetch against
+  the same feed; correctly shows zero vehicles until a real classification
+  row exists for an active event.
 - Expanded the consolidated manual with application ownership, maintenance
   cadence, change control, database and integration care, incident recovery,
   and safe Claude/Codex collaboration guidance.
@@ -84,6 +123,26 @@ badge and footer read this version at build time - see `vite.config.ts`).
   summary stats (late/expired counts, average delta). New `AVAIL_PULLOUT_URL`
   app setting required (imperative, pending owner action) plus the not-yet-run
   `migration-013-fixed-route-departures.sql`.
+- **Real OTP % and fixed-route missed-trip data in OTP Compliance**, replacing
+  that module's mock data with two new Avail360 feeds per
+  `OTP-Feed-Evaluation-and-Recommendation.md`: the OTP Monthly By Route/Stop/
+  Day of Week feed (real Attachment G departure-adherence numbers) and the
+  Missed Trips By Route/Stop/Day feed (vendor-reported fixed-route missed-
+  trip incidents, distinct from the existing GTFS-based real-time no-show/
+  cancellation detection). Both poll **hourly** rather than only at month
+  close-out, so the current month's numbers stay continuously up to date
+  through the month rather than only appearing as a locked snapshot after it
+  closes. Route Summary and Review Queue now read the live feed when it's
+  configured and has data, falling back to the module's existing sample data
+  otherwise; Monthly Assessments (previously a static placeholder) is now
+  real, showing OTP % and missed-trip counts per route for the selected
+  month. New `AVAIL_OTP_MONTHLY_URL`/`AVAIL_MISSED_TRIPS_URL` app settings
+  required (imperative, pending owner action, reuse the existing Avail key)
+  plus the not-yet-run `migration-014-otp-monthly.sql`/
+  `migration-015-avail-missed-trips.sql`. **Known unconfirmed assumption:**
+  neither feed's full response envelope was available to verify against -
+  see the code comments in `otpMonthlyFeed.ts`/`availMissedTripsFeed.ts` and
+  `HANDOFF.md` for what to check once a real response is available.
 
 ## [1.3.0] - 2026-07-28
 

@@ -94,6 +94,15 @@ export function IconShield(_: IconProps) {
   );
 }
 
+export function IconDetour(_: IconProps) {
+  return (
+    <svg {...base}>
+      <path d="M4 17h4l3-11 3 11h4" />
+      <path d="M17 13l3 4-3 4" />
+    </svg>
+  );
+}
+
 export function IconHistory(_: IconProps) {
   return (
     <svg {...base}>

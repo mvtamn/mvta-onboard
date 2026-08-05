@@ -1,6 +1,151 @@
 import { useEffect, useState } from "react";
-import { type ExpirationDefault, CATEGORY_LABELS, type Category, ApiError } from "@mvta/shared";
+import {
+  type ExpirationDefault,
+  CATEGORY_LABELS,
+  type Category,
+  ApiError,
+  type RouteClassificationRow,
+  type RouteCategory,
+  ROUTE_CATEGORY_LABELS,
+} from "@mvta/shared";
 import { api } from "../config.js";
+
+const ROUTE_CATEGORIES: RouteCategory[] = ["FixedRoute", "SpecialEvent", "OnDemand"];
+
+// Route Classification editor - no Avail feed distinguishes fixed-route
+// from special-event RouteIDs, so this is the one place staff maintain that
+// distinction. A light, occasional admin step (per the design doc), not a
+// bulk-import workflow - someone adds/updates a row before an event runs.
+function RouteClassificationSection() {
+  const [routes, setRoutes] = useState<RouteClassificationRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [okMsg, setOkMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [routeIdInput, setRouteIdInput] = useState("");
+  const [category, setCategory] = useState<RouteCategory>("SpecialEvent");
+  const [label, setLabel] = useState("");
+
+  function load() {
+    api
+      .getRouteClassification()
+      .then((d) => {
+        setRoutes(d.routes);
+        setError(null);
+      })
+      .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load route classifications."));
+  }
+
+  useEffect(load, []);
+
+  function startEdit(r: RouteClassificationRow) {
+    setEditingId(r.route_id);
+    setRouteIdInput(String(r.route_id));
+    setCategory(r.route_category);
+    setLabel(r.route_label ?? "");
+    setOkMsg(null);
+  }
+
+  function startNew() {
+    setEditingId(null);
+    setRouteIdInput("");
+    setCategory("SpecialEvent");
+    setLabel("");
+    setOkMsg(null);
+  }
+
+  async function save() {
+    const routeId = parseInt(routeIdInput, 10);
+    if (!Number.isInteger(routeId)) {
+      setError("Route ID must be a whole number.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setOkMsg(null);
+    try {
+      await api.putRouteClassification(routeId, { route_category: category, route_label: label.trim() || null });
+      setOkMsg(`Route ${routeId} classified as ${ROUTE_CATEGORY_LABELS[category]}.`);
+      startNew();
+      load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Save failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="panel-header" style={{ marginTop: 24 }}>Route Classification</div>
+      <div className="panel-body">
+        <p className="panel-desc">
+          No Avail feed distinguishes a fixed route from a special-event route - classify RouteIDs
+          here so the OTP/Missed Trips/AVL integrations and the event-bus live map know which is
+          which. Unclassified routes are treated as fixed route by default.
+        </p>
+        {error ? <p className="error-text">{error}</p> : null}
+        {okMsg ? <p className="ok-text">{okMsg}</p> : null}
+
+        <div className="subcard" style={{ marginBottom: 16 }}>
+          <div className="field-grid">
+            <div>
+              <p className="field-label">Route ID</p>
+              <input
+                className="f"
+                type="number"
+                value={routeIdInput}
+                disabled={editingId !== null}
+                onChange={(e) => setRouteIdInput(e.target.value)}
+                placeholder="e.g. 90"
+              />
+            </div>
+            <div>
+              <p className="field-label">Category</p>
+              <select className="f" value={category} onChange={(e) => setCategory(e.target.value as RouteCategory)}>
+                {ROUTE_CATEGORIES.map((c) => (
+                  <option value={c} key={c}>{ROUTE_CATEGORY_LABELS[c]}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <p className="field-label">Label <span className="hint">(optional)</span></p>
+              <input className="f" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Vikings Game Shuttle" />
+            </div>
+          </div>
+          <button className="btn-post" disabled={busy || !routeIdInput} onClick={save}>
+            {busy ? "Saving…" : editingId !== null ? "Update" : "Add classification"}
+          </button>
+          {editingId !== null ? <button className="btn-sm" onClick={startNew}>Cancel</button> : null}
+        </div>
+
+        {routes === null && !error ? (
+          <p className="muted">Loading…</p>
+        ) : routes && routes.length > 0 ? (
+          <table className="data">
+            <thead>
+              <tr><th>Route ID</th><th>Category</th><th>Label</th><th>Updated</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+              {routes.map((r) => (
+                <tr key={r.route_id}>
+                  <td>{r.route_id}</td>
+                  <td><span className="pill-sm pill-accent">{ROUTE_CATEGORY_LABELS[r.route_category]}</span></td>
+                  <td>{r.route_label || "—"}</td>
+                  <td className="td-dim">{r.updated_by ? `${r.updated_by} · ` : ""}{new Date(r.updated_at).toLocaleDateString()}</td>
+                  <td><button className="btn-sm" onClick={() => startEdit(r)}>Edit</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="empty-note">No routes classified yet - unclassified routes default to fixed route.</p>
+        )}
+      </div>
+    </>
+  );
+}
 
 // Admin - expiration defaults editor. These TTLs drive expires_at whenever a
 // message is created without an explicit expiration (expiration_source =
@@ -107,6 +252,7 @@ export function Admin() {
           </table>
         ) : null}
       </div>
+      <RouteClassificationSection />
     </>
   );
 }

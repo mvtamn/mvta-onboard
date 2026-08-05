@@ -29,6 +29,28 @@ import type {
   Severity,
   AvailAvlVehicle,
   FixedRouteDeparture,
+  OtpMonthlyStopRow,
+  OtpMonthlyRouteRollup,
+  AvailMissedTripRecord,
+  AvailMissedTripsRouteRollup,
+  Detour,
+  DetourStatus,
+  CreateDetourInput,
+  UpdateDetourInput,
+  RouteClassificationRow,
+  RouteClassificationInput,
+  EventVehiclePosition,
+  OtpStopExclusion,
+  PutStopExclusionInput,
+  OtpDateExclusion,
+  CreateDateExclusionInput,
+  OtpAuditEntry,
+  OtpReasonCode,
+  ReasonCodeAppliesTo,
+  CreateReasonCodeInput,
+  UpdateReasonCodeInput,
+  OtpSettingsRow,
+  OtpMonthlyTrendPoint,
 } from "./types.js";
 
 export type TokenProvider = () => Promise<string | null>;
@@ -295,6 +317,158 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
           avg_delta_seconds: number | null;
         };
       }>(`/api/fixed-route-departures${suffix}`, {}, true);
+    },
+
+    getOtpMonthly(month?: string) {
+      const suffix = month ? `?month=${month}` : "";
+      return request<{
+        stops: OtpMonthlyStopRow[];
+        routes: OtpMonthlyRouteRollup[];
+        diagnostics: {
+          configured: boolean;
+          table_ready: boolean;
+          service_month: string;
+          record_count: number;
+          routes_below_90: number;
+        };
+      }>(`/api/otp-monthly${suffix}`, {}, true);
+    },
+
+    getAvailMissedTrips(month?: string) {
+      const suffix = month ? `?month=${month}` : "";
+      return request<{
+        incidents: AvailMissedTripRecord[];
+        routes: AvailMissedTripsRouteRollup[];
+        diagnostics: {
+          configured: boolean;
+          table_ready: boolean;
+          service_month: string;
+          record_count: number;
+          entire_trip_missed_count: number;
+        };
+      }>(`/api/avail-missed-trips${suffix}`, {}, true);
+    },
+
+    getDetours(status?: DetourStatus) {
+      const suffix = status ? `?status=${status}` : "";
+      return request<{ detours: Detour[] }>(`/api/detours${suffix}`, {}, true);
+    },
+
+    createDetour(input: CreateDetourInput) {
+      return request<{ id: string; created_at: string }>(
+        "/api/detours",
+        { method: "POST", body: JSON.stringify(input) },
+        true,
+      );
+    },
+
+    updateDetour(id: string, input: UpdateDetourInput) {
+      return request<{ id: string; updated_at: string }>(
+        `/api/detours/${id}`,
+        { method: "PATCH", body: JSON.stringify(input) },
+        true,
+      );
+    },
+
+    deleteDetour(id: string) {
+      return request<{ id: string; is_deleted: boolean }>(
+        `/api/detours/${id}`,
+        { method: "DELETE" },
+        true,
+      );
+    },
+
+    getRouteClassification() {
+      return request<{ routes: RouteClassificationRow[] }>("/api/route-classification", {}, true);
+    },
+
+    putRouteClassification(routeId: number, input: RouteClassificationInput) {
+      return request<RouteClassificationRow>(
+        `/api/route-classification/${routeId}`,
+        { method: "PUT", body: JSON.stringify(input) },
+        true,
+      );
+    },
+
+    getEventVehiclePositions() {
+      return request<{
+        vehicles: EventVehiclePosition[];
+        diagnostics: { table_ready: boolean; vehicle_count: number; last_report_at: string | null };
+      }>("/api/event-vehicle-positions", {}, true);
+    },
+
+    getStopExclusions(month?: string) {
+      const suffix = month ? `?month=${month}` : "";
+      return request<{ exclusions: OtpStopExclusion[] }>(`/api/otp-stop-exclusions${suffix}`, {}, true);
+    },
+
+    putStopExclusion(input: PutStopExclusionInput) {
+      return request<OtpStopExclusion>(
+        "/api/otp-stop-exclusions",
+        { method: "PUT", body: JSON.stringify(input) },
+        true,
+      );
+    },
+
+    getDateExclusions() {
+      return request<{ exclusions: OtpDateExclusion[] }>("/api/otp-date-exclusions", {}, true);
+    },
+
+    createDateExclusion(input: CreateDateExclusionInput) {
+      return request<OtpDateExclusion>(
+        "/api/otp-date-exclusions",
+        { method: "POST", body: JSON.stringify(input) },
+        true,
+      );
+    },
+
+    getOtpAuditStream(month?: string, limit?: number) {
+      const qs = new URLSearchParams();
+      if (month) qs.set("month", month);
+      if (limit) qs.set("limit", String(limit));
+      const suffix = qs.toString() ? `?${qs.toString()}` : "";
+      return request<{ entries: OtpAuditEntry[] }>(`/api/otp-audit-stream${suffix}`, {}, true);
+    },
+
+    getReasonCodes(appliesTo?: ReasonCodeAppliesTo, activeOnly?: boolean) {
+      const qs = new URLSearchParams();
+      if (appliesTo) qs.set("applies_to", appliesTo);
+      if (activeOnly) qs.set("active_only", "true");
+      const suffix = qs.toString() ? `?${qs.toString()}` : "";
+      return request<{ reason_codes: OtpReasonCode[] }>(`/api/otp-reason-codes${suffix}`, {}, true);
+    },
+
+    createReasonCode(input: CreateReasonCodeInput) {
+      return request<OtpReasonCode>(
+        "/api/otp-reason-codes",
+        { method: "POST", body: JSON.stringify(input) },
+        true,
+      );
+    },
+
+    updateReasonCode(id: string, input: UpdateReasonCodeInput) {
+      return request<OtpReasonCode>(
+        `/api/otp-reason-codes/${id}`,
+        { method: "PATCH", body: JSON.stringify(input) },
+        true,
+      );
+    },
+
+    getOtpSettings() {
+      return request<OtpSettingsRow>("/api/otp-settings", {}, true);
+    },
+
+    updateOtpSettings(earlyLateBiasThreshold: number) {
+      return request<OtpSettingsRow>(
+        "/api/otp-settings",
+        { method: "PATCH", body: JSON.stringify({ early_late_bias_threshold: earlyLateBiasThreshold }) },
+        true,
+      );
+    },
+
+    getOtpMonthlyTrend(months?: number) {
+      const suffix = months ? `?months=${months}` : "";
+      return request<{ trend: OtpMonthlyTrendPoint[] }>(`/api/otp-monthly-trend${suffix}`, {}, true);
     },
   };
 }

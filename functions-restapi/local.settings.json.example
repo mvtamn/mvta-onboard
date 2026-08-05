@@ -17,6 +17,9 @@
     "AVAIL_AVL_REPORTS_URL": "https://avail360-api.myavail.cloud/AVLReports/v1/MVTA",
     "AVAIL_AVL_REPORTS_API_KEY": "REPLACE_ME",
     "// note6": "AVAIL_PULLOUT_URL feeds Fixed Route Departures (fixedRouteDeparturesPoll.ts) - a second, distinct Avail360 API reusing the SAME AVAIL_AVL_REPORTS_API_KEY above, just a different path.",
-    "AVAIL_PULLOUT_URL": "https://avail360-api.myavail.cloud/Pullout/v1/MVTA"
+    "AVAIL_PULLOUT_URL": "https://avail360-api.myavail.cloud/Pullout/v1/MVTA",
+    "// note7": "AVAIL_OTP_MONTHLY_URL/AVAIL_MISSED_TRIPS_URL feed OTP Compliance's real OTP % and missed-trip incidents (otpMonthlyFeedPoll.ts / availMissedTripsPoll.ts, per OTP-Feed-Evaluation-and-Recommendation.md) - both reuse the SAME AVAIL_AVL_REPORTS_API_KEY above, just different paths.",
+    "AVAIL_OTP_MONTHLY_URL": "https://avail360-api.myavail.cloud/OtpByRouteStopDayAgg/v1/MVTA",
+    "AVAIL_MISSED_TRIPS_URL": "https://avail360-api.myavail.cloud/MissedTripsByRouteStopDay/v1/MVTA"
   }
 }

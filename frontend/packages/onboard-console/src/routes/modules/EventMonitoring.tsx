@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ApiError, type AvailAvlVehicle } from "@mvta/shared";
+import { ApiError, type AvailAvlVehicle, type EventVehiclePosition } from "@mvta/shared";
 import { api } from "../../config.js";
 import {
   POOL,
@@ -61,6 +61,48 @@ export function EventMonitoring() {
             err instanceof ApiError
               ? `Could not load live vehicle positions: ${err.message}`
               : "Could not reach the live vehicle-position service.",
+          );
+        });
+    }
+    load();
+    const intervalId = window.setInterval(load, AVL_REFRESH_MS);
+    return () => {
+      alive = false;
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  // Event bus positions - the same AVL feed as above, filtered server-side
+  // (availAvlPoll.ts) to routes classified SpecialEvent in
+  // RouteClassification (Admin page). Correctly empty until a real
+  // classification row exists for an active event - see
+  // detour-and-event-module-implementation-plan.md (Part A3).
+  const [eventVehicles, setEventVehicles] = useState<EventVehiclePosition[] | null>(null);
+  const [eventMessage, setEventMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    function load() {
+      api
+        .getEventVehiclePositions()
+        .then(({ vehicles, diagnostics }) => {
+          if (!alive) return;
+          setEventVehicles(vehicles);
+          setEventMessage(
+            !diagnostics.table_ready
+              ? "Event-bus tracking has not been set up yet (migration-016 pending)."
+              : vehicles.length === 0
+                ? "No event buses classified yet - add a SpecialEvent route in Admin > Route Classification."
+                : null,
+          );
+        })
+        .catch((err) => {
+          if (!alive) return;
+          setEventVehicles(null);
+          setEventMessage(
+            err instanceof ApiError
+              ? `Could not load event bus positions: ${err.message}`
+              : "Could not reach the event-vehicle-position service.",
           );
         });
     }
@@ -253,6 +295,39 @@ export function EventMonitoring() {
                       <td>{v.block ?? "—"}</td>
                       <td>{v.run ?? "—"}</td>
                       <td>{v.direction ?? "—"}</td>
+                      <td>{v.heading !== null ? `${v.heading}°` : "—"}</td>
+                      <td className="td-dim">{timeAgoLabel(v.report_timestamp)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <div className="panel-header">
+            <span>Event bus positions (live)</span>
+            <span className="td-dim">Filtered by Route Classification · refreshes every 60s</span>
+          </div>
+          <div className="panel-body" style={{ padding: 0 }}>
+            {eventMessage ? (
+              <p className="panel-desc" style={{ padding: "12px 16px", margin: 0 }}>{eventMessage}</p>
+            ) : eventVehicles === null ? (
+              <p className="panel-desc" style={{ padding: "12px 16px", margin: 0 }}>Loading…</p>
+            ) : (
+              <table className="data">
+                <thead>
+                  <tr>
+                    <th>Vehicle</th>
+                    <th>Route</th>
+                    <th>Heading</th>
+                    <th>Last report</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {eventVehicles.map((v) => (
+                    <tr key={v.vehicle_id}>
+                      <td className="veh-id">{v.vehicle_id}</td>
+                      <td>{v.route ?? "—"}</td>
                       <td>{v.heading !== null ? `${v.heading}°` : "—"}</td>
                       <td className="td-dim">{timeAgoLabel(v.report_timestamp)}</td>
                     </tr>

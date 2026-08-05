@@ -83,3 +83,36 @@ export interface ConfirmationRequestedEvent {
   phone_number: string | null;
   email: string | null;
 }
+
+// Detour & Closure module - see detour-and-event-module-implementation-plan.md.
+export interface DetourSegmentBody {
+  routes: string;
+  directions?: string | null;
+  sort_order?: number;
+}
+
+export interface CreateDetourBody {
+  number?: string | null;
+  closure: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  is_monitor_only?: boolean;
+  riders_directed?: string | null;
+  email_sent?: boolean;
+  expired_email_sent?: boolean;
+  spare_emailed?: boolean;
+  segments?: DetourSegmentBody[];
+}
+
+export interface UpdateDetourBody {
+  number?: string | null;
+  closure?: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  is_monitor_only?: boolean;
+  riders_directed?: string | null;
+  email_sent?: boolean;
+  expired_email_sent?: boolean;
+  spare_emailed?: boolean;
+  segments?: DetourSegmentBody[];
+}

@@ -63,6 +63,47 @@ Fixed Route Departures:  migration-013-fixed-route-departures.sql has been run a
                          avail-avl-reports-api-key secret - no new Key Vault entry). Only
                          deploying the code (fixedRouteDeparturesPoll.ts / fixedRouteDepartures.ts
                          / the Compliance tab module) remains.
+PENDING app settings:    AVAIL_OTP_MONTHLY_URL / AVAIL_MISSED_TRIPS_URL - OTP Compliance's real
+                         OTP%/missed-trip data (otpMonthlyFeedPoll.ts, availMissedTripsPoll.ts,
+                         GET /otp-monthly, GET /avail-missed-trips; per
+                         OTP-Feed-Evaluation-and-Recommendation.md) reuse the SAME
+                         avail-avl-reports-api-key secret above - no new Key Vault entry needed,
+                         just two new URLs: https://avail360-api.myavail.cloud/
+                         OtpByRouteStopDayAgg/v1/MVTA and https://avail360-api.myavail.cloud/
+                         MissedTripsByRouteStopDay/v1/MVTA. Also needs
+                         migration-014-otp-monthly.sql and migration-015-avail-missed-trips.sql
+                         run against the dev DB - NOT yet applied.
+KNOWN UNCONFIRMED:       Neither Avail feed's full HTTP response envelope was available to build
+                         against - only a single record's shape was documented. otpMonthlyFeed.ts
+                         guesses the array lives at result.OtpByRouteStopDayAgg and
+                         availMissedTripsFeed.ts guesses result.MissedTripsByRouteStopDay, by the
+                         same "array key matches the Operation ID" pattern already confirmed
+                         twice (AVL Reports: result["AVL Reports"]; Pullout: result.Pullout). If
+                         either poller logs "0 reports mapped" during active service/reporting
+                         hours when real data should exist, the guessed key is very likely wrong
+                         - capture one real raw response and correct the key in the relevant lib
+                         file.
+Detours & Closures:     migration-017-detours.sql (Detours, DetourSegments, DetourImages) has NOT
+                         been run against the dev DB yet - the module falls back to a graceful
+                         "Could not load detours: Request failed (404)" until it is. No new
+                         secret/app setting needed for the manual CRUD (this pass) - the Avail
+                         Detours sync and image-attachment Blob Storage are later, not-yet-built
+                         phases (see detour-and-event-module-implementation-plan.md, Parts B3/B4).
+Route Classification /
+Event bus monitoring:   migration-016-route-classification.sql (RouteClassification,
+                         EventVehicleCurrentPosition, EventVehiclePositionHistory) has NOT been
+                         run against the dev DB yet. availAvlPoll.ts already has the
+                         classification-filtering code (table-exists guard, so it's a no-op until
+                         the migration runs) - no app setting change needed, it reuses
+                         AVAIL_AVL_REPORTS_URL/_API_KEY. See detour-and-event-module-
+                         implementation-plan.md (Part A).
+OTP Compliance
+completion:              migration-018-otp-exclusions-and-settings.sql (OtpReasonCodes - seeded,
+                         OtpStopExclusions, OtpDateExclusions, OtpSettings) has NOT been run
+                         against the dev DB yet. Until it is, Review Queue/Weather/Administration/
+                         Threshold Tuner all fall back gracefully (empty lists, default 15%
+                         threshold) - same "not configured yet" pattern as every other feature in
+                         this app. No new app setting/secret needed.
 ```
 
 The SQL admin password is NOT recorded here deliberately — it lives in Key Vault as the secret `sql-connection-string` (full connection string, not just the password) and in the project owner's password manager. Ask before assuming you need it directly; the Function Apps already read it via Key Vault reference.

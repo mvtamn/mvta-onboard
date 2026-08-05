@@ -1,6 +1,6 @@
 # MVTA OnBoard — Consolidated Manual
 
-**Last updated:** July 26, 2026  
+**Last updated:** July 27, 2026  
 **Audience:** OCC leadership, control center staff, product owners, developers,
 and implementation partners  
 **Status:** Current repository-level source of truth
@@ -8,7 +8,16 @@ and implementation partners
 This manual consolidates the operational, product, technical, deployment, and
 roadmap material previously spread across `README.md`, `HANDOFF.md`,
 `CURRENT_STATE.md`, `FEATURE_IMPLEMENTATION_HANDOFF.md`, `ROADMAP.md`, and
-`SUGGESTED_IMPROVEMENTS.md`. `CHANGELOG.md` remains the release history.
+`SUGGESTED_IMPROVEMENTS.md`, as well as the pre-implementation planning
+documents (`Transit_Notification_Architecture_2/3.docx`,
+`MVTA_OnBoard_Infrastructure_Plan_1/2/3.docx`,
+`MVTA_OnBoard_Portal_Setup_Guide_1.docx`,
+`MVTA_OnBoard_Production_and_Contractor_Access.docx`,
+`MVTA_Status_OnePager.docx`, `OTP/OTP_Module_Architecture.docx`,
+`OTP/OTP_Module_OnePager.docx`, and
+`Special_Event_Vehicle_Monitoring_Module_1.docx`). `CHANGELOG.md` remains the
+release history. Section 23 explains the current status of every one of
+these source documents.
 
 Where older documents conflict with this manual, use this manual and the
 current code.
@@ -124,25 +133,43 @@ Major console areas:
 - Dashboard
 - Compose
 - Active Messages
+- Detours & Closures
 - Suggested Alerts
 - Subscribers
 - Audit Log
 - Administration
 - OCC Tools
+- Compliance
 
 OCC Tools currently includes:
 
 - Event Monitoring
 - Decision Matrix
-- OTP Compliance
 - Fixed Route Risk
 - On-Demand Quality
 - Speed Alerts
 
-Event Monitoring, Decision Matrix, OTP Compliance, and parts of Speed Alerts
-still use static or limited datasets. Fixed Route Risk uses GTFS monitoring
-data when authenticated. On-Demand Quality becomes live when an approved
-vendor adapter populates its monitoring table.
+OTP Compliance, Missed Trips, and Fixed Route Departures were moved out of
+OCC Tools into their own **Compliance** tab, gated by a dedicated
+`OCC.Compliance` role (in addition to `OCC.Admin`) so compliance-investigation
+access can be granted independently of full OCC Tools access.
+
+Event Monitoring and Decision Matrix still use static or limited datasets
+(part of Event Monitoring is now live - see below). OTP Compliance is now
+**partially live**: Route Summary, Review Queue, and Monthly Assessments read
+real Avail OTP Monthly / Missed Trips feed data once configured, falling back
+to sample data otherwise; its Audit Stream, Administration, and Threshold
+Tuner pages, and the Dashboard trend chart, remain "coming soon" placeholders.
+Fixed Route Risk uses GTFS monitoring data when authenticated. On-Demand
+Quality becomes live when an approved vendor adapter populates its monitoring
+table.
+
+Route Classification (Admin page) lets staff mark a RouteID as fixed-route,
+special-event, or on-demand - no Avail feed carries that distinction itself.
+Event Monitoring's "Event bus positions (live)" panel filters Avail AVL
+position data down to SpecialEvent-classified routes only; GTFS-RT-based
+tools (Fixed Route Risk, the GTFS-based Missed Trips queue) are fixed-route
+only by the nature of that feed and don't need the same filter.
 
 ### 4.3 Local preview mode
 
@@ -189,6 +216,13 @@ delay:{service_date}:{trip_id}
 
 This allows recurring scheduled trip IDs to create separate exceptions on
 different service days.
+
+Historical note: the original 2026 architecture and infrastructure planning
+documents (`Transit_Notification_Architecture_2.docx`/`_3.docx`,
+`MVTA_OnBoard_Infrastructure_Plan_1/2/3.docx`) used an illustrative 7-minute
+threshold example. The as-built system uses the 15-minute threshold defined in
+Section 2. Treat the code and this manual as authoritative over that earlier
+illustrative example.
 
 ### 5.2 Information shown to OCC
 
@@ -246,6 +280,17 @@ manifests, accessibility, cancellations, capacity, and source timestamps.
 
 The adapter must exclude names, phone numbers, addresses, and other customer
 PII.
+
+The original architecture planning (`Transit_Notification_Architecture_2.docx`)
+named **SpareLabs** as MVTA's demand-response ("MVTA Connect" / "Zona") vendor
+and specified a SpareLabs-webhook-specific integration, while explicitly
+flagging that this created vendor lock-in risk if MVTA ever changed on-demand
+vendors. The schema and API described above were deliberately generalized
+past that vendor-specific design so the internal logic does not depend on
+SpareLabs' payload format. Confirm with engineering and the vendor
+relationship owner whether SpareLabs is still the intended vendor and whether
+any webhook or API work has actually begun before assuming this integration
+exists.
 
 ## 7. Suggested Alerts and publishing
 
@@ -410,6 +455,50 @@ Front Door:           endpoint-mvta-onboard-dev-haehgsbbe6esd8cc.z03.azurefd.net
 Front Door was originally created manually after the Bicep module failed.
 WAF code exists, but live policy attachment and ingress restrictions should be
 verified before representing them as active controls.
+
+### Critical open risk: dev network security
+
+MVTA's own Portal Setup Guide (`MVTA_OnBoard_Portal_Setup_Guide_1.docx`)
+documents that the `dev` environment's Key Vault and SQL Server were
+deliberately built with public network access and an Azure-services-only
+firewall rule instead of private networking, as a simplified no-code path for
+a non-developer to stand up the environment by hand. That guide explicitly
+states this choice "should be reviewed and tightened by someone with cloud
+security experience before real rider data is flowing through it." This
+manual already states `dev` is the only live environment and must be treated
+as production-like, and `CURRENT_STATE.md` independently confirms `dev` is
+effectively production today.
+
+**It has not been confirmed anywhere in this repository that the
+private-networking hardening was ever completed.** The companion
+`MVTA_OnBoard_Production_and_Contractor_Access.docx` states this hardening is
+not self-serve and requires someone with Azure networking/security
+experience: "a mistake here can silently leave the database exposed rather
+than obviously broken." Treat this as an open, unverified security risk, not
+a resolved item, until someone with Azure networking access confirms the
+actual current firewall/networking configuration on
+`kv-mvta-dev-mvta-jx4471` and `sql-mvta-dev-mvta-jx4471`.
+
+### Vendor and integration decisions
+
+The following decisions were made during architecture planning
+(`Transit_Notification_Architecture_2.docx`/`_3.docx`,
+`MVTA_OnBoard_Infrastructure_Plan_1/2/3.docx`) and should be treated as the
+current intended vendor set unless a maintainer confirms otherwise:
+
+| Capability | Vendor / service | Notes |
+| --- | --- | --- |
+| SMS and email delivery | Azure Communication Services (ACS) | Twilio, Bandwidth/Vonage, and turnkey platforms (SimpleTexting, EZTexting, Attentive) were evaluated and rejected in favor of ACS. Live ACS resource/sender configuration has not been reconfirmed - see Section 10. |
+| Push notifications | Firebase Cloud Messaging (FCM) | Chosen because it bridges to APNs, giving one integration surface for both iOS and Android. Not yet built. |
+| Message parsing | Claude API (Anthropic) | Staff free text is parsed into structured message fields via a Power Automate flow. |
+| Fixed-route GTFS-Realtime feed | Avail / DoubleMap (MVTA's existing AVL/CAD vendor) | Served from MVTA's own InfoPoint endpoint; confirmed in code (`gtfsRealtime.ts` comments) and consistent with the OTP module's CAD/AVL source below. |
+| On-demand (MVTA Connect / "Zona") data source | Originally specified as SpareLabs | See the Section 6 note above - the current implementation is vendor-neutral and no producer is confirmed connected. |
+| OTP compliance source data | Avail CAD/AVL, weekly CSV export | A direct feed integration is explicitly deferred; see the OTP Compliance module note in Section 17. |
+
+Anyone taking over maintenance should confirm each of these against the live
+Azure Key Vault and app settings rather than assuming this table is still
+accurate - vendor relationships and pricing agreements can change independent
+of this document.
 
 Important infrastructure rules:
 
@@ -584,6 +673,47 @@ Contractor scorecards should include raw and adjusted OTP, early/late
 departures, missed and canceled trips, data completeness, exclusion rate,
 route/time breakdowns, target variance, and drill-through evidence.
 
+**A concrete design for this already exists** (`OTP/OTP_Module_Architecture.docx`
+and `OTP/OTP_Module_OnePager.docx`, prepared by Ty Fant, COO) but is **not yet
+fully built** - as of this writing, none of its proposed schema
+(`OtpImportBatch`, `OtpRawRecord`, `StopExclusionReasonCode`/`StopExclusionRule`,
+`DateExclusionReasonCode`/`ServiceDateExclusionRule`, `MonthlyOtpAssessment`,
+and related views/procedures) exists in `functions-restapi/sql/`. A different,
+narrower schema does now exist and feed part of the console (see
+`OTP-Feed-Evaluation-and-Recommendation.md` and `migration-014-otp-monthly.sql`/
+`migration-015-avail-missed-trips.sql`): the "OTP Compliance" tab's Route
+Summary, Review Queue, and Monthly Assessments pages read real Avail OTP
+Monthly/Missed Trips feed data once the feed is configured and has rows,
+falling back to sample data otherwise - its Dashboard trend chart and Audit
+Stream/Administration/Threshold Tuner pages remain mock/"coming soon." Do not
+describe OTP Compliance as fully live, and do not assume the exclusion-
+governance schema above exists, until that gap closes.
+
+Key specifics from that design, useful when it is eventually built:
+
+- Business driver: the O&M contract's Attachment G sets a 90% on-time-
+  performance threshold with financial penalties below it, measured by
+  **departure** adherence. A real example from the July 7-13, 2026 service
+  week showed departure vs. arrival OTP differing by up to 36 points on a
+  single route - the concrete evidence for using departures, consistent with
+  Section 2's departure-based rule.
+- Source data: a weekly CSV export from Avail CAD/AVL (`OTP/OTP_weekOf_Jul-08.csv`
+  is a real sample already in this repository); a direct feed integration is
+  explicitly deferred.
+- Design principle: raw data is never edited. Exclusions (recovery/layover
+  stops, weather/emergency days) live in a separate, human-reviewed, fully
+  audited rules layer. A finalized month locks and can only be reopened with
+  a logged reason - consistent with this manual's exclusion rules above.
+- Candidate exclusion detection threshold proposed as a starting point: stops
+  with 15+ sampled trips and either 90+ seconds average early variance or
+  15%+ "Early" frequency - unvalidated against live data as of this writing.
+- Explicitly proposed to run as a module inside this same application (same
+  Function Apps and Static Web App), not a separate system.
+- Open governance question from the design: who holds approval authority for
+  stop exclusions versus weather-day exclusions (proposed split: Ops
+  Performance & Compliance Manager vs. COO/Transportation Manager) -
+  unresolved as of this writing.
+
 ## 18. Safety and special-event direction
 
 ### Speed monitoring
@@ -613,6 +743,19 @@ and capacity concerns using event-specific thresholds.
 A post-event report should compare planned and operated service and retain
 alerts, incidents, controller actions, and data gaps.
 
+**A concrete design for this already exists**
+(`Special_Event_Vehicle_Monitoring_Module_1.docx`) but is **not yet built** -
+no trace of its proposed tables (`StaffAssignments`, `Events`,
+`VehiclePositions`, `TrafficConditions`, `PredictedDelays`, `MonitoredVehicles`)
+or endpoints exists in the current codebase. The design uses the State Fair
+park-and-ride shuttle service as its worked example, targets a 5-10 second
+live-map refresh (faster than the core rider-facing polling), and is
+phase-gated: monitoring-only first, then an approve/publish workflow reusing
+the core Suggested Alerts path, then signage/rider-facing ETA and historical
+playback later. Its one explicitly unresolved governance question - who at
+OCC has authority to set up staff assignments and events for a given event
+day - has no answer recorded anywhere in this repository.
+
 ## 19. Application maintenance
 
 ### 19.1 Maintenance ownership
@@ -628,6 +771,12 @@ Assign named owners for:
 | Azure platform | Identity, networking, secrets, monitoring, cost, and recovery |
 | Communications | Templates, channels, accessibility, and customer language |
 | Compliance | OTP rules, exclusions, approvals, and contractor scorecards |
+
+As of this writing, the only confirmed named owner in this repository's
+source material is **Ty Fant (COO)**, referenced as the project owner for the
+overall application and as the author of the OTP Compliance module design
+(Section 17). All other rows in the table above remain unassigned - a real
+gap for whoever formalizes this manual's ownership structure.
 
 Do not allow an AI assistant, vendor, or developer to change an operating
 threshold or compliance rule solely because it appears technically convenient.
@@ -736,6 +885,11 @@ For every external source, document:
 
 Missing or stale data must become an explicit unknown or degraded state. It
 must not silently become “on time,” “normal,” or “no issue.”
+
+Section 11's "Vendor and integration decisions" table gives the current
+best-known vendor list to start this documentation from - none of it should
+be treated as complete or currently accurate without confirmation from
+whoever owns each vendor relationship.
 
 ### 19.7 Using Claude and Codex
 
@@ -863,6 +1017,37 @@ If a release causes an operational issue:
 7. Verify API health, authentication, core public alerts, and dispatch.
 8. Document the cause, recovery, and prevention work.
 
+### 19.12 Contractor and guest access
+
+Contract OCC staff who do not have MVTA email accounts should be granted
+access through Microsoft Entra ID **B2B guest access**, per
+`MVTA_OnBoard_Production_and_Contractor_Access.docx`:
+
+1. Review External Identities > External collaboration settings and restrict
+   who can invite guests to Admins or a designated guest-inviter role, not
+   "anyone in the organization" - this creates a deliberate record of who was
+   given access and when.
+2. Invite the contractor via Entra ID > Users > Invite external user, using
+   their own employer email. They accept a standard consent screen and sign
+   in with their own organization's (or personal) Microsoft account.
+3. Add them to the same `OCC.Viewer`/`OCC.Publisher`/`OCC.Admin` groups used
+   for MVTA employees - no separate setup is required beyond this.
+4. Recommended hardening, which may depend on Microsoft/Entra licensing tier -
+   confirm with whoever manages MVTA's licensing agreement:
+   - A Conditional Access policy requiring MFA specifically for guest
+     sign-ins.
+   - Recurring Access Reviews (Entra ID > Identity Governance) scoped to the
+     OnBoard groups, suggested quarterly, to flag contractors who have rolled
+     off engagement.
+
+**If those governance features are not licensed, there is no confirmed
+fallback procedure.** The source document recommends a manual process -
+whoever manages the contractor relationship notifies whoever manages the
+Entra groups when an engagement ends - but states this must be "written down
+as an actual procedure, not left as an assumption." As of this writing, no
+such written procedure exists anywhere else in this repository. This is a
+real, currently open operational gap, not a resolved item.
+
 ## 20. Product roadmap
 
 ### Near term
@@ -940,3 +1125,35 @@ The predictive OCC capability is operationally complete when:
 5. Alert preparation creates one reviewable draft.
 6. Approval and publication are auditable.
 7. Recovery and closure are linked to the originating condition.
+
+## 23. Document inventory and status
+
+This repository accumulated many planning and handoff documents across the
+project's history. Use this table to know which to trust for what, rather
+than reading all of them on every question.
+
+| Document | Status | Use for |
+| --- | --- | --- |
+| `MVTA_ONBOARD_MANUAL.md` (this file) | Current | Everything - the consolidated source of truth |
+| `MVTA_OnBoard_Manual.docx` | Generated export | A Word-format copy of this same file, for readers who prefer Word. Edit the markdown file and regenerate this export - do not edit the `.docx` independently, or the two will drift. |
+| `CHANGELOG.md` | Current | Exact release history and what shipped when |
+| `README.md` | Stale | Quick local-dev setup commands only; its "what's built vs. pending" section predates most 1.2.x work - do not use it to judge current feature scope |
+| `HANDOFF.md` | Historical | Original 2026 project vision and hard-won early Azure/Bicep debugging lessons; division-of-labor language is outdated |
+| `CURRENT_STATE.md` | Historical snapshot (July 26, 2026) | A point-in-time implementation review; superseded by this manual and the code for anything it conflicts with |
+| `FEATURE_IMPLEMENTATION_HANDOFF.md` | Historical, narrow | Implementation detail for the Fixed Route Risk / On-Demand Quality build specifically |
+| `SUGGESTED_IMPROVEMENTS.md` | Proposal, largely absorbed | Detailed rationale behind Sections 17-18 and the roadmap; already incorporated at a summary level here |
+| `ROADMAP.md` | Current, satellite detail | Speed Alerts accuracy improvement detail more specific than Section 18 |
+| `Transit_Notification_Architecture_2.docx` / `_3.docx` (identical) | Historical, foundational | Original end-to-end architecture, schema, and API design rationale; resolved vendor decisions carried into Section 11 above; illustrative thresholds (e.g. a 7-minute example) are superseded by Section 2's as-built values |
+| `MVTA_OnBoard_Infrastructure_Plan_1/2/3.docx` (identical) | Historical | Original staged Bicep/Azure deployment runbook and go-live checklist |
+| `MVTA_OnBoard_Portal_Setup_Guide_1.docx` | Historical, safety-relevant | Documents how `dev` was actually built by hand, including the networking shortcut flagged as a critical open risk in Section 11 |
+| `MVTA_OnBoard_Production_and_Contractor_Access.docx` | Current, operationally load-bearing | Source for Section 19.12's contractor access procedure; also documents the prod-hardening gap in Section 11 |
+| `MVTA_Status_OnePager.docx` | Superseded | An early leadership status snapshot; its "decisions needed" list (e.g., SMS/email vendor still undecided) was resolved by the time of the architecture/infrastructure docs above - do not treat its open items as current |
+| `OTP/OTP_Module_Architecture.docx`, `OTP/OTP_Module_OnePager.docx` | Current proposal, not yet built | Source for Section 17's OTP Compliance module detail |
+| `Special_Event_Vehicle_Monitoring_Module_1.docx` | Proposal, not yet built | Source for Section 18's special-event monitoring detail |
+
+Two .docx files referenced by `HANDOFF.md` under different working titles
+(`Transit_Notification_Architecture.docx`, `MVTA_OnBoard_Infrastructure_Plan.docx`,
+singular/untitled) turned out to already be present in this repository under
+the numbered filenames above - if a future document reference doesn't
+resolve to an obvious file, check for a similarly-named file before assuming
+it's missing.

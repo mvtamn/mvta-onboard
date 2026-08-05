@@ -15,6 +15,7 @@ import {
   IconWrench,
   IconShield,
   IconHistory,
+  IconDetour,
   IconSun,
   IconMoon,
 } from "./components/NavIcons.js";
@@ -27,6 +28,7 @@ import { AuditLog } from "./routes/AuditLog.js";
 import { Admin } from "./routes/Admin.js";
 import { OccTools } from "./routes/OccTools.js";
 import { Compliance } from "./routes/Compliance.js";
+import { Detours } from "./routes/Detours.js";
 import { Changelog } from "./routes/Changelog.js";
 import {
   FixedRouteRefreshProvider,
@@ -36,6 +38,10 @@ import {
 
 const ADMIN = ["OCC.Admin"] as const;
 const COMPLIANCE = ["OCC.Compliance", "OCC.Admin"] as const;
+// Read-only for OCC.Viewer, full create/edit/delete for Publisher/Admin (the
+// component itself hides write controls for Viewer-only; the server is the
+// real boundary, same convention as Compose).
+const DETOURS = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin", "OCC.Compliance"] as const;
 
 const PAGE_META: { match: (path: string) => boolean; title: string; sub: string }[] = [
   { match: (p) => p === "/", title: "Dashboard", sub: "Compose and monitor active rider alerts" },
@@ -44,6 +50,7 @@ const PAGE_META: { match: (path: string) => boolean; title: string; sub: string 
   { match: (p) => p === "/suggested", title: "Suggested Alerts", sub: "Review predictive delay and wait-time candidates" },
   { match: (p) => p === "/subscribers", title: "Subscribers", sub: "Opt-in totals and recent signups" },
   { match: (p) => p === "/audit", title: "Audit Log", sub: "Search every message ever posted" },
+  { match: (p) => p === "/detours", title: "Detours & Closures", sub: "Every detour/closure in one place, Avail-built or not" },
   { match: (p) => p === "/admin", title: "Admin", sub: "Expiration defaults and system configuration" },
   {
     match: (p) => p.startsWith("/occ"),
@@ -127,6 +134,7 @@ export function App() {
           <NavLink to="/" end><IconDashboard />Dashboard</NavLink>
           <NavLink to="/compose"><IconCompose />Compose</NavLink>
           <NavLink to="/active"><IconMessages />Active Messages</NavLink>
+          <NavLink to="/detours"><IconDetour />Detours &amp; Closures</NavLink>
           <NavLink to="/suggested"><IconBell />Suggested Alerts</NavLink>
           <NavLink to="/subscribers"><IconUsers />Subscribers</NavLink>
           <NavLink to="/audit"><IconClock />Audit Log</NavLink>
@@ -183,6 +191,14 @@ export function App() {
               <Route path="/" element={<Dashboard stats={stats} onChanged={stats.refresh} />} />
               <Route path="/compose" element={<Compose onChanged={stats.refresh} />} />
               <Route path="/active" element={<ActiveMessages onChanged={stats.refresh} />} />
+              <Route
+                path="/detours"
+                element={
+                  <RequireRole allowed={[...DETOURS]}>
+                    <Detours />
+                  </RequireRole>
+                }
+              />
               <Route path="/suggested" element={<SuggestedAlerts onChanged={stats.refresh} />} />
               <Route path="/subscribers" element={<Subscribers />} />
               <Route path="/audit" element={<AuditLog />} />

@@ -341,3 +341,270 @@ export interface FixedRouteDeparture {
   updated_at: string;
   pullout_delta_seconds: number | null;
 }
+
+// Avail's OTP Monthly By Route/Stop/Day of Week feed - real Attachment G
+// departure-adherence numbers, backing the OTP Compliance module's Route
+// Summary/Review Queue/Monthly Assessments pages (replacing that module's
+// mock data). See OTP-Feed-Evaluation-and-Recommendation.md.
+export interface OtpMonthlyStopRow {
+  service_month: string;
+  route_id: number;
+  stop_id: number;
+  day_of_week: string;
+  stop_name: string | null;
+  route_label: string | null;
+  pct_early: number | null;
+  pct_ontime: number | null;
+  pct_late: number | null;
+  pct_not_ontime: number | null;
+  pct_missed: number | null;
+  early: number | null;
+  ontime: number | null;
+  late: number | null;
+  missed: number | null;
+  actual_departures: number | null;
+  total: number | null;
+  updated_at: string;
+}
+
+export interface OtpMonthlyRouteRollup {
+  route_id: number;
+  route_label: string | null;
+  total: number;
+  ontime: number;
+  pct_ontime: number | null;
+}
+
+// Avail's Missed Trips By Route/Stop/Day feed - vendor-reported fixed-route
+// missed-trip incidents for Attachment G compliance. Distinct from
+// MissedTrip above (real-time GTFS-based no-show/cancellation detection) -
+// this is Avail's own contractually-scoped compliance data source, surfaced
+// in the OTP Compliance module's Monthly Assessments page.
+export interface AvailMissedTripRecord {
+  service_month: string;
+  calendar_date: string;
+  route_id: number;
+  route_desc: string | null;
+  route_internet_name: string | null;
+  departure_stop_id: number | null;
+  departure_stop_name: string | null;
+  arrival_stop_id: number | null;
+  arrival_stop_name: string | null;
+  departure_missed: boolean;
+  arrival_missed: boolean;
+  entire_trip_missed: boolean;
+  departure_trip_start_time: string | null;
+  ingested_at: string;
+}
+
+export interface AvailMissedTripsRouteRollup {
+  route_id: number;
+  route_desc: string | null;
+  incident_count: number;
+  entire_trip_missed_count: number;
+}
+
+// Detour & Closure module - see detour-and-event-module-implementation-plan.md.
+// Status is computed server-side (functions-restapi/src/lib/detourStatus.ts)
+// and never stored - one shared definition, not duplicated client-side.
+export type DetourStatus = "monitor" | "upcoming" | "active" | "recently_finished" | "expired";
+
+export const DETOUR_STATUS_LABELS: Record<DetourStatus, string> = {
+  monitor: "Monitor",
+  upcoming: "Upcoming",
+  active: "Active",
+  recently_finished: "Recently finished",
+  expired: "Expired",
+};
+
+export interface DetourSegment {
+  id: string;
+  detour_id: string;
+  routes: string;
+  directions: string | null;
+  sort_order: number;
+}
+
+export interface Detour {
+  id: string;
+  number: string | null;
+  closure: string;
+  start_date: string | null;
+  end_date: string | null;
+  is_monitor_only: boolean;
+  riders_directed: string | null;
+  email_sent: boolean;
+  expired_email_sent: boolean;
+  spare_emailed: boolean;
+  source: "manual" | "avail";
+  external_detour_id: string | null;
+  last_edited_manually: boolean;
+  created_by: string;
+  created_at: string;
+  updated_by: string | null;
+  updated_at: string;
+  status: DetourStatus;
+  segments: DetourSegment[];
+}
+
+export interface DetourSegmentInput {
+  routes: string;
+  directions?: string | null;
+  sort_order?: number;
+}
+
+export interface CreateDetourInput {
+  number?: string | null;
+  closure: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  is_monitor_only?: boolean;
+  riders_directed?: string | null;
+  email_sent?: boolean;
+  expired_email_sent?: boolean;
+  spare_emailed?: boolean;
+  segments?: DetourSegmentInput[];
+}
+
+export type UpdateDetourInput = Partial<CreateDetourInput>;
+
+// Route Classification - see detour-and-event-module-implementation-plan.md
+// (Part A). No Avail feed distinguishes fixed-route from special-event
+// RouteIDs, so this is the one place MVTA OnBoard itself decides.
+export type RouteCategory = "FixedRoute" | "SpecialEvent" | "OnDemand";
+
+export interface RouteClassificationRow {
+  route_id: number;
+  route_category: RouteCategory;
+  route_label: string | null;
+  effective_start_date: string | null;
+  effective_end_date: string | null;
+  is_active: boolean;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+export interface RouteClassificationInput {
+  route_category: RouteCategory;
+  route_label?: string | null;
+  effective_start_date?: string | null;
+  effective_end_date?: string | null;
+  is_active?: boolean;
+}
+
+export const ROUTE_CATEGORY_LABELS: Record<RouteCategory, string> = {
+  FixedRoute: "Fixed route",
+  SpecialEvent: "Special event",
+  OnDemand: "On-demand",
+};
+
+// Event-bus live positions - filtered from Avail AVL Reports by
+// RouteClassification (SpecialEvent routes only). Backs Event Monitoring's
+// "Event bus positions (live)" panel. See detour-and-event-module-
+// implementation-plan.md (Part A3).
+export interface EventVehiclePosition {
+  vehicle_id: number;
+  route: number | null;
+  latitude: number;
+  longitude: number;
+  heading: number | null;
+  report_timestamp: string;
+  updated_at: string;
+}
+
+// OTP Compliance completion - persisted exclusions, reason codes, threshold
+// setting. Replaces the module's former ephemeral candidate/date-exclusion
+// state and hardcoded reason-code arrays.
+export type StopExclusionStatus = "approved" | "rejected";
+
+export interface OtpStopExclusion {
+  id: string;
+  service_month: string;
+  route_id: number;
+  stop_id: number;
+  day_of_week: string;
+  status: StopExclusionStatus;
+  reason_code: string | null;
+  reviewed_by: string;
+  reviewed_at: string;
+}
+
+export interface PutStopExclusionInput {
+  service_month: string;
+  route_id: number;
+  stop_id: number;
+  day_of_week: string;
+  status: StopExclusionStatus;
+  reason_code?: string | null;
+}
+
+export type DateExclusionScope = "Agency" | "Route";
+export type DateExclusionStatus = "Proposed" | "Approved";
+
+export interface OtpDateExclusion {
+  id: string;
+  scope: DateExclusionScope;
+  route_id: number | null;
+  service_date: string;
+  reason_code: string;
+  notes: string | null;
+  status: DateExclusionStatus;
+  notified: boolean;
+  notified_at: string | null;
+  acknowledged: boolean;
+  created_by: string;
+  created_at: string;
+}
+
+export interface CreateDateExclusionInput {
+  scope: DateExclusionScope;
+  route_id?: number | null;
+  service_date: string;
+  reason_code: string;
+  notes?: string | null;
+}
+
+export interface OtpAuditEntry {
+  type: "stop_exclusion" | "date_exclusion";
+  title: string;
+  desc: string;
+  timestamp: string;
+}
+
+export type ReasonCodeAppliesTo = "stop" | "date";
+
+export interface OtpReasonCode {
+  id: string;
+  code: string;
+  label: string;
+  applies_to: ReasonCodeAppliesTo;
+  is_active: boolean;
+  sort_order: number;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+export interface CreateReasonCodeInput {
+  code: string;
+  label: string;
+  applies_to: ReasonCodeAppliesTo;
+}
+
+export interface UpdateReasonCodeInput {
+  label?: string;
+  is_active?: boolean;
+  sort_order?: number;
+}
+
+export interface OtpSettingsRow {
+  early_late_bias_threshold: number;
+  updated_by: string | null;
+  updated_at: string | null;
+}
+
+export interface OtpMonthlyTrendPoint {
+  service_month: string;
+  total: number;
+  ontime: number;
+  pct_ontime: number | null;
+}

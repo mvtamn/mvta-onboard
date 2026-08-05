@@ -1,23 +1,53 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  ApiError,
+  type OtpMonthlyStopRow,
+  type OtpMonthlyRouteRollup,
+  type AvailMissedTripRecord,
+  type AvailMissedTripsRouteRollup,
+  type OtpStopExclusion,
+  type OtpDateExclusion,
+  type OtpReasonCode,
+  type OtpAuditEntry,
+  type OtpMonthlyTrendPoint,
+} from "@mvta/shared";
+import { api } from "../../../config.js";
 import {
   DATA,
-  reasonCodes,
-  dateReasonCodes,
   computeOfficialPct,
+  deriveCandidatesFromLive,
+  deriveRouteRowsFromLive,
+  stopExclusionKey,
+  DEFAULT_EARLY_LATE_BIAS_THRESHOLD,
   PAGE_META,
-  INITIAL_DATE_EXCLUSIONS,
+  type Candidate,
+  type RouteRow,
   type CandidateStatus,
-  type DateExclusion,
 } from "./otpData.js";
 import "./otp.css";
 
-interface CandidateState {
-  status: CandidateStatus;
-  reason: string;
+interface OtpMonthlyResponse {
+  stops: OtpMonthlyStopRow[];
+  routes: OtpMonthlyRouteRollup[];
+  diagnostics: {
+    configured: boolean;
+    table_ready: boolean;
+    service_month: string;
+    record_count: number;
+    routes_below_90: number;
+  };
 }
-interface TimelineEntry {
-  title: string;
-  desc: string;
+
+interface AvailMissedTripsResponse {
+  incidents: AvailMissedTripRecord[];
+  routes: AvailMissedTripsRouteRollup[];
+  diagnostics: {
+    configured: boolean;
+    table_ready: boolean;
+    service_month: string;
+    record_count: number;
+    entire_trip_missed_count: number;
+  };
 }
 
 const NAV: { page: string; label: string }[] = [
@@ -31,54 +61,181 @@ const NAV: { page: string; label: string }[] = [
   { page: "tuner", label: "Threshold Tuner" },
 ];
 
-const SEED_TIMELINE: TimelineEntry[] = [
-  { title: "Service week imported", desc: "Jul 7–13, 2026 · 18,036 timepoint events · T. Fant" },
-  { title: "Candidate detection run", desc: `${DATA.candidates.length} stops flagged for early-departure bias` },
-  { title: "Metric confirmed", desc: "Attachment G basis set to Departure adherence" },
-];
-
-const reasonLabel = (code: string) => reasonCodes.find((r) => r[0] === code)?.[1] ?? code;
-const dateReasonLabel = (code: string) => dateReasonCodes.find((r) => r[0] === code)?.[1] ?? code;
-
-// OTP Compliance — ported from otp_app.html. Renders as a section of the OCC
-// Tools tab: no shell of its own (no sidebar, no topbar, no theme toggle) -
-// the console's own chrome is the only chrome, and every page here reuses the
-// console's shared classes (pill-sm, btn-sm, subcard, table.data, stat-card)
-// so it reads as one app rather than an app nested inside an app.
-// Approve/reject are staff actions; nothing is auto-applied.
+// OTP Compliance — ported from otp_app.html. Renders as a section of the
+// Compliance tab: no shell of its own, reuses the console's shared classes
+// throughout. Route Summary / Review Queue / Dashboard's below-90% stat pull
+// from Avail's real OTP Monthly feed (otpMonthlyFeedPoll.ts) once it's
+// configured and has data for the current month; Monthly Assessments also
+// surfaces the real Missed Trips feed (availMissedTripsPoll.ts). Both fall
+// back to this file's mock DATA/candidates when the live feed isn't
+// configured yet or has no rows, so the module is never broken for a
+// signed-in reviewer before the feeds are live.
+//
+// Review Queue approvals/rejections and weather exclusions are now
+// PERSISTED (OtpStopExclusions/OtpDateExclusions) when using live data -
+// they used to be ephemeral browser state that reset on reload. Reason
+// codes and the early/late bias detection threshold are now admin-editable/
+// persisted too (OtpReasonCodes/OtpSettings), replacing what used to be
+// hardcoded arrays/constants. See detour-and-event-module-implementation-
+// plan.md's sibling OTP-completion plan for the full design. Mock-preview
+// mode (feed not configured/no rows) keeps its old ephemeral behavior -
+// there's nothing real to persist in that state.
 export function OtpModule() {
   const [page, setPage] = useState("queue");
-  const [candidates, setCandidates] = useState<CandidateState[]>(
-    DATA.candidates.map(() => ({ status: "pending", reason: "SCHED_RECOVERY" })),
+
+  const [liveOtp, setLiveOtp] = useState<OtpMonthlyResponse | null>(null);
+  const [liveMissedTrips, setLiveMissedTrips] = useState<AvailMissedTripsResponse | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const [threshold, setThreshold] = useState<number>(DEFAULT_EARLY_LATE_BIAS_THRESHOLD);
+  const [stopExclusions, setStopExclusions] = useState<OtpStopExclusion[]>([]);
+  const [dateExclusions, setDateExclusions] = useState<OtpDateExclusion[]>([]);
+  const [stopReasonCodes, setStopReasonCodes] = useState<OtpReasonCode[]>([]);
+  const [dateReasonCodes, setDateReasonCodes] = useState<OtpReasonCode[]>([]);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      api.getOtpMonthly(),
+      api.getAvailMissedTrips(),
+      api.getOtpSettings(),
+      api.getDateExclusions(),
+      api.getReasonCodes("stop", true),
+      api.getReasonCodes("date", true),
+    ])
+      .then(([otp, missed, settings, dates, stopCodes, dateCodes]) => {
+        if (cancelled) return;
+        setLiveOtp(otp);
+        setLiveMissedTrips(missed);
+        setThreshold(settings.early_late_bias_threshold);
+        setDateExclusions(dates.exclusions);
+        setStopReasonCodes(stopCodes.reason_codes);
+        setDateReasonCodes(dateCodes.reason_codes);
+        setLoadError(null);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setLiveOtp(null);
+        setLiveMissedTrips(null);
+        setLoadError(
+          err instanceof ApiError
+            ? `Could not load live OTP compliance data: ${err.message}`
+            : "Could not reach the OTP compliance service.",
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const usingLiveOtp = Boolean(liveOtp?.diagnostics.table_ready && liveOtp.stops.length > 0);
+  const serviceMonth = liveOtp?.diagnostics.service_month ?? null;
+
+  useEffect(() => {
+    if (!usingLiveOtp || !serviceMonth) return;
+    api
+      .getStopExclusions(serviceMonth)
+      .then((d) => setStopExclusions(d.exclusions))
+      .catch(() => {
+        /* graceful - Review Queue simply shows everything as pending */
+      });
+  }, [usingLiveOtp, serviceMonth]);
+
+  const routeRows: RouteRow[] = useMemo(
+    () => (usingLiveOtp ? deriveRouteRowsFromLive(liveOtp!.routes) : DATA.routes),
+    [usingLiveOtp, liveOtp],
   );
-  const [timelineLog, setTimelineLog] = useState<TimelineEntry[]>([]);
-  const [dateExclusions, setDateExclusions] = useState<DateExclusion[]>(INITIAL_DATE_EXCLUSIONS);
+  const candidateSource: Candidate[] = useMemo(
+    () => (usingLiveOtp ? deriveCandidatesFromLive(liveOtp!.stops, threshold) : DATA.candidates),
+    [usingLiveOtp, liveOtp, threshold],
+  );
 
-  const statuses = candidates.map((c) => c.status);
+  const exclusionByKey = useMemo(() => {
+    const map = new Map<string, OtpStopExclusion>();
+    for (const ex of stopExclusions) {
+      map.set(stopExclusionKey(ex.route_id, ex.stop_id, ex.day_of_week), ex);
+    }
+    return map;
+  }, [stopExclusions]);
 
-  function pushTimeline(title: string, desc: string) {
-    setTimelineLog((log) => [{ title, desc }, ...log]);
+  // Mock-mode-only ephemeral fallback (nothing real to persist in preview).
+  const [mockStates, setMockStates] = useState<{ status: CandidateStatus; reason: string }[]>(
+    DATA.candidates.map(() => ({ status: "pending", reason: "" })),
+  );
+  const [draftReason, setDraftReason] = useState<Record<string, string>>({});
+
+  function candidateKey(c: Candidate, i: number): string {
+    return usingLiveOtp ? stopExclusionKey(c.route_id, c.stopId, c.day_of_week) : `mock-${i}`;
   }
 
-  function resolve(i: number, action: "approve" | "reject") {
-    setCandidates((cs) => {
-      const next = cs.slice();
-      next[i] = { ...next[i], status: action === "approve" ? "approved" : "rejected" };
-      return next;
-    });
-    const c = DATA.candidates[i];
-    pushTimeline(
-      action === "approve" ? "Exclusion approved" : "Candidate rejected",
-      `Route ${c.route} · ${c.stopName} · ${action === "approve" ? reasonLabel(candidates[i].reason) : "kept in OTP calc"}`,
-    );
+  function candidateStatus(c: Candidate, i: number): CandidateStatus {
+    if (usingLiveOtp) {
+      return exclusionByKey.get(candidateKey(c, i))?.status ?? "pending";
+    }
+    return mockStates[i]?.status ?? "pending";
   }
 
-  function setReason(i: number, reason: string) {
-    setCandidates((cs) => {
-      const next = cs.slice();
-      next[i] = { ...next[i], reason };
-      return next;
+  function candidateReason(c: Candidate, i: number): string {
+    const persisted = usingLiveOtp ? exclusionByKey.get(candidateKey(c, i))?.reason_code : mockStates[i]?.reason;
+    return draftReason[candidateKey(c, i)] ?? persisted ?? stopReasonCodes[0]?.code ?? "";
+  }
+
+  const statuses = candidateSource.map((c, i) => candidateStatus(c, i));
+
+  const [auditRefreshTick, setAuditRefreshTick] = useState(0);
+
+  async function resolve(i: number, action: "approve" | "reject") {
+    const c = candidateSource[i];
+    const reason = candidateReason(c, i);
+    setActionError(null);
+
+    if (usingLiveOtp && serviceMonth && c.route_id !== null && c.day_of_week !== null) {
+      try {
+        await api.putStopExclusion({
+          service_month: serviceMonth,
+          route_id: c.route_id,
+          stop_id: c.stopId,
+          day_of_week: c.day_of_week,
+          status: action === "approve" ? "approved" : "rejected",
+          reason_code: reason || null,
+        });
+        const refreshed = await api.getStopExclusions(serviceMonth);
+        setStopExclusions(refreshed.exclusions);
+        setAuditRefreshTick((t) => t + 1);
+      } catch (err) {
+        setActionError(err instanceof ApiError ? err.message : "Could not save this review decision.");
+      }
+    } else {
+      setMockStates((cs) => {
+        const next = cs.slice();
+        next[i] = { status: action === "approve" ? "approved" : "rejected", reason };
+        return next;
+      });
+    }
+  }
+
+  function setReason(c: Candidate, i: number, reason: string) {
+    setDraftReason((d) => ({ ...d, [candidateKey(c, i)]: reason }));
+  }
+
+  async function addDateExclusion(input: {
+    scope: "Agency" | "Route";
+    route_id: number | null;
+    service_date: string;
+    reason_code: string;
+    notes: string;
+  }) {
+    await api.createDateExclusion({
+      scope: input.scope,
+      route_id: input.route_id,
+      service_date: input.service_date,
+      reason_code: input.reason_code,
+      notes: input.notes || null,
     });
+    const refreshed = await api.getDateExclusions();
+    setDateExclusions(refreshed.exclusions);
+    setAuditRefreshTick((t) => t + 1);
   }
 
   const meta = PAGE_META[page];
@@ -101,44 +258,91 @@ export function OtpModule() {
         <b>{meta.title}.</b> {meta.sub}
       </p>
 
+      <div className="concept-banner">
+        <span className="concept-badge">{usingLiveOtp ? "Live data" : "Preview data"}</span>
+        <span>
+          {usingLiveOtp
+            ? `Avail OTP Monthly feed - ${liveOtp!.diagnostics.service_month}, ${liveOtp!.diagnostics.record_count} stop/day rows.`
+            : loadError ?? "Avail OTP Monthly feed is not configured yet - showing sample data."}
+        </span>
+      </div>
+      {actionError ? <p className="error-text">{actionError}</p> : null}
+
       <div className="otp-meta">
         <div className="otp-meta-item"><div className="otp-meta-label">Service Week</div><div className="otp-meta-value">Jul 7 – Jul 13, 2026</div></div>
         <div className="otp-meta-item"><div className="otp-meta-label">Metric</div><div className="otp-meta-value">Departure adherence</div></div>
         <div className="otp-meta-item"><div className="otp-meta-label">Imported</div><div className="otp-meta-value">18,036 timepoint events</div></div>
       </div>
 
-      {page === "dashboard" && <DashboardPage statuses={statuses} weatherCount={dateExclusions.length} />}
-      {page === "queue" && (
-        <ReviewQueuePage
-          candidates={candidates}
-          timeline={[...timelineLog, ...SEED_TIMELINE].slice(0, 10)}
-          onResolve={resolve}
-          onReason={setReason}
+      {page === "dashboard" && (
+        <DashboardPage
+          routeRows={routeRows}
+          candidateSource={candidateSource}
+          statuses={statuses}
+          weatherCount={dateExclusions.length}
+          liveRoutesBelow90={usingLiveOtp ? liveOtp!.diagnostics.routes_below_90 : null}
         />
       )}
-      {page === "routes" && <RouteSummaryPage statuses={statuses} />}
+      {page === "queue" && (
+        <ReviewQueuePage
+          candidateSource={candidateSource}
+          statusOf={candidateStatus}
+          reasonOf={candidateReason}
+          reasonCodes={stopReasonCodes}
+          onResolve={resolve}
+          onReason={setReason}
+          serviceMonth={serviceMonth}
+          auditRefreshTick={auditRefreshTick}
+        />
+      )}
+      {page === "routes" && (
+        <RouteSummaryPage routeRows={routeRows} candidateSource={candidateSource} statuses={statuses} />
+      )}
       {page === "weather" && (
-        <WeatherPage
-          dateExclusions={dateExclusions}
-          onAdd={(ex) => {
-            setDateExclusions((list) => [ex, ...list]);
-            pushTimeline(
-              "Weather exclusion logged",
-              `${ex.date} · ${ex.scope === "Agency" ? "All routes" : "Route " + ex.route} · ${dateReasonLabel(ex.reason)}`,
-            );
+        <WeatherPage dateExclusions={dateExclusions} reasonCodes={dateReasonCodes} onAdd={addDateExclusion} />
+      )}
+      {page === "monthly" && <MonthlyAssessmentsPage otp={liveOtp} missedTrips={liveMissedTrips} />}
+      {page === "audit" && <AuditStreamPage serviceMonth={serviceMonth} />}
+      {page === "admin" && (
+        <AdministrationPage
+          stopReasonCodes={stopReasonCodes}
+          dateReasonCodes={dateReasonCodes}
+          threshold={threshold}
+          onReasonCodesChanged={() => {
+            api.getReasonCodes("stop", true).then((d) => setStopReasonCodes(d.reason_codes));
+            api.getReasonCodes("date", true).then((d) => setDateReasonCodes(d.reason_codes));
           }}
         />
       )}
-      {["monthly", "audit", "admin", "tuner"].includes(page) && <PlaceholderPage page={page} />}
+      {page === "tuner" && (
+        <ThresholdTunerPage
+          liveStops={usingLiveOtp ? liveOtp!.stops : null}
+          currentThreshold={threshold}
+          onApplied={(newThreshold) => setThreshold(newThreshold)}
+        />
+      )}
     </div>
   );
 }
 
-function DashboardPage({ statuses, weatherCount }: { statuses: CandidateStatus[]; weatherCount: number }) {
+function DashboardPage({
+  routeRows,
+  candidateSource,
+  statuses,
+  weatherCount,
+  liveRoutesBelow90,
+}: {
+  routeRows: RouteRow[];
+  candidateSource: Candidate[];
+  statuses: CandidateStatus[];
+  weatherCount: number;
+  liveRoutesBelow90: number | null;
+}) {
   const approved = statuses.filter((s) => s === "approved").length;
   const rejected = statuses.filter((s) => s === "rejected").length;
   const pending = statuses.length - approved - rejected;
-  const below = DATA.routes.filter((r) => computeOfficialPct(r, statuses) < 90).length;
+  const below =
+    liveRoutesBelow90 ?? routeRows.filter((r) => computeOfficialPct(r, candidateSource, statuses) < 90).length;
   const cards = [
     { label: "Pending review", value: pending, sub: "Candidate stops", color: "#F78E1E" },
     { label: "Approved", value: approved, sub: "Active exclusion rules", color: "#00553D" },
@@ -156,14 +360,63 @@ function DashboardPage({ statuses, weatherCount }: { statuses: CandidateStatus[]
           </div>
         ))}
       </div>
-      <div className="subcard empty-note" style={{ textAlign: "center", padding: "40px 20px" }}>
-        Route-level OTP trend and penalty exposure charts land here once Power BI is wired in.
-      </div>
+      <OtpTrendChart />
     </>
   );
 }
 
-function AdherenceStrip({ c }: { c: (typeof DATA.candidates)[number] }) {
+function OtpTrendChart() {
+  const [trend, setTrend] = useState<OtpMonthlyTrendPoint[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .getOtpMonthlyTrend(6)
+      .then((d) => setTrend(d.trend))
+      .catch((err) => setError(err instanceof ApiError ? err.message : "Could not load the OTP trend."));
+  }, []);
+
+  if (error) return <div className="subcard empty-note" style={{ textAlign: "center", padding: "40px 20px" }}>{error}</div>;
+  if (trend === null) return <div className="subcard empty-note" style={{ textAlign: "center", padding: "40px 20px" }}>Loading trend…</div>;
+  if (trend.length === 0) {
+    return (
+      <div className="subcard empty-note" style={{ textAlign: "center", padding: "40px 20px" }}>
+        No monthly OTP history yet - the trend chart fills in as the Avail OTP Monthly feed
+        accumulates months.
+      </div>
+    );
+  }
+
+  return (
+    <div className="subcard">
+      <h2 style={{ marginTop: 0 }}>Agency-wide OTP % trend</h2>
+      <div className="otp-trend-chart">
+        {trend.map((t) => {
+          const pct = t.pct_ontime !== null ? Math.round(t.pct_ontime * 1000) / 10 : null;
+          return (
+            <div className="otp-trend-bar-col" key={t.service_month}>
+              <div className="otp-trend-bar-track">
+                <div
+                  className={`otp-trend-bar ${pct !== null && pct < 90 ? "below" : "meets"}`}
+                  style={{ height: `${pct ?? 0}%` }}
+                  title={pct !== null ? `${pct}%` : "no data"}
+                />
+              </div>
+              <div className="otp-trend-bar-label">{pct !== null ? `${pct}%` : "—"}</div>
+              <div className="otp-trend-bar-month td-dim">{t.service_month}</div>
+            </div>
+          );
+        })}
+      </div>
+      <p className="td-dim" style={{ marginTop: 8 }}>
+        Percent only - no penalty-dollar figure is shown until a real Attachment G penalty rate is
+        available.
+      </p>
+    </div>
+  );
+}
+
+function AdherenceStrip({ c }: { c: Candidate }) {
   const other = Math.max(0, 100 - c.early_pct - c.ontime_pct - c.late_pct - c.missed_pct);
   const segs = [
     { cls: "early", v: c.early_pct },
@@ -179,20 +432,38 @@ function AdherenceStrip({ c }: { c: (typeof DATA.candidates)[number] }) {
 }
 
 function ReviewQueuePage({
-  candidates,
-  timeline,
+  candidateSource,
+  statusOf,
+  reasonOf,
+  reasonCodes,
   onResolve,
   onReason,
+  serviceMonth,
+  auditRefreshTick,
 }: {
-  candidates: CandidateState[];
-  timeline: TimelineEntry[];
+  candidateSource: Candidate[];
+  statusOf: (c: Candidate, i: number) => CandidateStatus;
+  reasonOf: (c: Candidate, i: number) => string;
+  reasonCodes: OtpReasonCode[];
   onResolve: (i: number, action: "approve" | "reject") => void;
-  onReason: (i: number, reason: string) => void;
+  onReason: (c: Candidate, i: number, reason: string) => void;
+  serviceMonth: string | null;
+  auditRefreshTick: number;
 }) {
   const [routeFilter, setRouteFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("pending");
   const [search, setSearch] = useState("");
-  const routes = useMemo(() => [...new Set(DATA.candidates.map((c) => c.route))].sort(), []);
+  const routes = useMemo(() => [...new Set(candidateSource.map((c) => c.route))].sort(), [candidateSource]);
+
+  const [timeline, setTimeline] = useState<OtpAuditEntry[]>([]);
+  useEffect(() => {
+    api
+      .getOtpAuditStream(serviceMonth ?? undefined, 6)
+      .then((d) => setTimeline(d.entries))
+      .catch(() => setTimeline([]));
+  }, [serviceMonth, auditRefreshTick]);
+
+  const reasonLabel = (code: string) => reasonCodes.find((r) => r.code === code)?.label ?? code;
 
   return (
     <div className="otp-two">
@@ -210,19 +481,33 @@ function ReviewQueuePage({
           <input placeholder="Search stop name…" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
 
-        {DATA.candidates.map((c, i) => {
-          const st = candidates[i];
+        {candidateSource.length === 0 ? (
+          <div className="subcard empty-note" style={{ textAlign: "center", padding: "30px 20px" }}>
+            No stops currently show an early/late-bias pattern above the review threshold.
+          </div>
+        ) : null}
+
+        {candidateSource.map((c, i) => {
+          const status = statusOf(c, i);
+          const reason = reasonOf(c, i);
           if (routeFilter && c.route !== routeFilter) return null;
-          if (statusFilter === "pending" && st.status !== "pending") return null;
-          if (statusFilter === "resolved" && st.status === "pending") return null;
+          if (statusFilter === "pending" && status !== "pending") return null;
+          if (statusFilter === "resolved" && status === "pending") return null;
           if (search && !c.stopName.toLowerCase().includes(search.toLowerCase())) return null;
 
-          const varLabel = c.avg_var < 0 ? `${Math.abs(c.avg_var)}s early (avg)` : `${c.avg_var}s late (avg, mixed pattern)`;
-          const iconClass = st.status === "approved" ? "ok" : st.status === "rejected" ? "rejected" : "warn";
-          const iconGlyph = st.status === "approved" ? "✓" : st.status === "rejected" ? "✕" : "!";
+          const varLabel =
+            c.avg_var !== null
+              ? c.avg_var < 0
+                ? `${Math.abs(c.avg_var)}s early (avg)`
+                : `${c.avg_var}s late (avg, mixed pattern)`
+              : c.early_pct > c.late_pct
+                ? "Early-biased"
+                : "Late-biased";
+          const iconClass = status === "approved" ? "ok" : status === "rejected" ? "rejected" : "warn";
+          const iconGlyph = status === "approved" ? "✓" : status === "rejected" ? "✕" : "!";
 
           return (
-            <div className={`check-row${st.status === "pending" ? " highlight" : ""}`} key={`${c.route}-${c.stopId}-${i}`}>
+            <div className={`check-row${status === "pending" ? " highlight" : ""}`} key={`${c.route}-${c.stopId}-${i}`}>
               <div className={`status-icon ${iconClass}`}>{iconGlyph}</div>
               <div className="check-body">
                 <div className="check-title"><span className="route-chip">RT {c.route}</span>{c.stopName}</div>
@@ -230,16 +515,16 @@ function ReviewQueuePage({
                 <AdherenceStrip c={c} />
               </div>
               <div className="check-actions">
-                {st.status === "pending" ? (
+                {status === "pending" ? (
                   <>
-                    <select value={st.reason} onChange={(e) => onReason(i, e.target.value)}>
-                      {reasonCodes.map(([code, label]) => <option key={code} value={code}>{label}</option>)}
+                    <select value={reason} onChange={(e) => onReason(c, i, e.target.value)}>
+                      {reasonCodes.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
                     </select>
                     <button className="btn-post" onClick={() => onResolve(i, "approve")}>Approve</button>
                     <button className="btn-sm" onClick={() => onResolve(i, "reject")}>Reject</button>
                   </>
-                ) : st.status === "approved" ? (
-                  <span className="ok-text">Excluded — {reasonLabel(st.reason)}</span>
+                ) : status === "approved" ? (
+                  <span className="ok-text">Excluded — {reasonLabel(reason)}</span>
                 ) : (
                   <span className="muted">Kept in OTP calc</span>
                 )}
@@ -251,6 +536,7 @@ function ReviewQueuePage({
 
       <aside className="subcard otp-timeline">
         <h2>Review Timeline</h2>
+        {timeline.length === 0 ? <p className="muted">No review activity yet.</p> : null}
         {timeline.map((t, i) => (
           <div className="timeline-item" key={i}>
             <div className="t-title">{t.title}</div>
@@ -262,7 +548,15 @@ function ReviewQueuePage({
   );
 }
 
-function RouteSummaryPage({ statuses }: { statuses: CandidateStatus[] }) {
+function RouteSummaryPage({
+  routeRows,
+  candidateSource,
+  statuses,
+}: {
+  routeRows: RouteRow[];
+  candidateSource: Candidate[];
+  statuses: CandidateStatus[];
+}) {
   return (
     <div className="subcard" style={{ overflow: "hidden" }}>
       <table className="data">
@@ -270,8 +564,8 @@ function RouteSummaryPage({ statuses }: { statuses: CandidateStatus[] }) {
           <tr><th>Route</th><th>Departure events</th><th>Raw OTP %</th><th>Official OTP %</th><th>Δ from exclusions</th><th>Status vs. 90%</th></tr>
         </thead>
         <tbody>
-          {DATA.routes.map((r) => {
-            const official = computeOfficialPct(r, statuses);
+          {routeRows.map((r) => {
+            const official = computeOfficialPct(r, candidateSource, statuses);
             const delta = Math.round((official - r.pct_raw) * 10) / 10;
             const below = official < 90;
             return (
@@ -293,41 +587,51 @@ function RouteSummaryPage({ statuses }: { statuses: CandidateStatus[] }) {
 
 function WeatherPage({
   dateExclusions,
+  reasonCodes,
   onAdd,
 }: {
-  dateExclusions: DateExclusion[];
-  onAdd: (ex: DateExclusion) => void;
+  dateExclusions: OtpDateExclusion[];
+  reasonCodes: OtpReasonCode[];
+  onAdd: (input: { scope: "Agency" | "Route"; route_id: number | null; service_date: string; reason_code: string; notes: string }) => Promise<void>;
 }) {
   const [scope, setScope] = useState<"Agency" | "Route">("Agency");
-  const [route, setRoute] = useState("");
+  const [routeIdInput, setRouteIdInput] = useState("");
   const [date, setDate] = useState("");
-  const [reason, setReason] = useState(dateReasonCodes[0][0]);
+  const [reason, setReason] = useState(reasonCodes[0]?.code ?? "");
   const [notes, setNotes] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  function add() {
-    if (!date) { window.alert("Enter a service date."); return; }
-    if (scope === "Route" && !route.trim()) { window.alert("Enter a route for a route-specific exclusion."); return; }
-    onAdd({
-      scope,
-      route: scope === "Route" ? route.trim() : null,
-      date,
-      reason,
-      notes: notes.trim(),
-      status: "Proposed",
-      notified: false,
-      notifiedDate: null,
-      acknowledged: false,
-    });
-    setRoute("");
-    setNotes("");
-    setDate("");
+  async function add() {
+    if (!date) { setError("Enter a service date."); return; }
+    const routeId = scope === "Route" ? parseInt(routeIdInput, 10) : null;
+    if (scope === "Route" && !Number.isInteger(routeId)) { setError("Enter a numeric route ID for a route-specific exclusion."); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      await onAdd({
+        scope,
+        route_id: routeId,
+        service_date: date.replace(/-/g, ""),
+        reason_code: reason || reasonCodes[0]?.code || "OTHER",
+        notes: notes.trim(),
+      });
+      setRouteIdInput("");
+      setNotes("");
+      setDate("");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not save this exclusion.");
+    } finally {
+      setSaving(false);
+    }
   }
 
-  const sorted = [...dateExclusions].sort((a, b) => b.date.localeCompare(a.date));
+  const sorted = [...dateExclusions].sort((a, b) => b.service_date.localeCompare(a.service_date));
 
   return (
     <>
       <div className="subcard" style={{ marginBottom: 16 }}>
+        {error ? <p className="error-text">{error}</p> : null}
         <div className="field-grid">
           <div>
             <p className="field-label">Scope</p>
@@ -338,8 +642,8 @@ function WeatherPage({
           </div>
           {scope === "Route" && (
             <div>
-              <p className="field-label">Route</p>
-              <input className="f" value={route} onChange={(e) => setRoute(e.target.value)} placeholder="e.g. 490" />
+              <p className="field-label">Route ID</p>
+              <input className="f" value={routeIdInput} onChange={(e) => setRouteIdInput(e.target.value)} placeholder="e.g. 490" />
             </div>
           )}
           <div>
@@ -349,7 +653,7 @@ function WeatherPage({
           <div>
             <p className="field-label">Reason</p>
             <select className="f" value={reason} onChange={(e) => setReason(e.target.value)}>
-              {dateReasonCodes.map(([code, label]) => <option key={code} value={code}>{label}</option>)}
+              {reasonCodes.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
             </select>
           </div>
         </div>
@@ -359,7 +663,7 @@ function WeatherPage({
             <input className="f" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. Metro-wide snow emergency" />
           </div>
         </div>
-        <button className="btn-post" onClick={add}>Add exclusion</button>
+        <button className="btn-post" disabled={saving} onClick={add}>{saving ? "Saving…" : "Add exclusion"}</button>
       </div>
       <div className="subcard" style={{ overflow: "hidden" }}>
         <table className="data">
@@ -367,12 +671,12 @@ function WeatherPage({
             <tr><th>Date</th><th>Scope</th><th>Reason</th><th>Status</th><th>Contractor notified</th></tr>
           </thead>
           <tbody>
-            {sorted.map((d, i) => (
-              <tr key={i}>
-                <td>{d.date}</td>
-                <td>{d.scope === "Agency" ? "All routes" : `Route ${d.route}`}</td>
+            {sorted.map((d) => (
+              <tr key={d.id}>
+                <td>{d.service_date}</td>
+                <td>{d.scope === "Agency" ? "All routes" : `Route ${d.route_id}`}</td>
                 <td>
-                  {dateReasonLabel(d.reason)}
+                  {reasonCodes.find((r) => r.code === d.reason_code)?.label ?? d.reason_code}
                   {d.notes ? <div className="td-dim" style={{ marginTop: 2 }}>{d.notes}</div> : null}
                 </td>
                 <td>{d.status === "Approved" ? <span className="pill-sm pill-success">Approved</span> : <span className="pill-sm pill-warning">Proposed</span>}</td>
@@ -380,9 +684,9 @@ function WeatherPage({
                   {!d.notified ? (
                     <span className="pill-sm pill-muted">Not yet notified</span>
                   ) : d.acknowledged ? (
-                    <span className="pill-sm pill-success">Acknowledged {d.notifiedDate}</span>
+                    <span className="pill-sm pill-success">Acknowledged {d.notified_at?.slice(0, 10)}</span>
                   ) : (
-                    <span className="pill-sm pill-accent">Notified {d.notifiedDate}</span>
+                    <span className="pill-sm pill-accent">Notified {d.notified_at?.slice(0, 10)}</span>
                   )}
                 </td>
               </tr>
@@ -394,12 +698,308 @@ function WeatherPage({
   );
 }
 
-function PlaceholderPage({ page }: { page: string }) {
-  const copy: Record<string, string> = {
-    monthly: "No finalized months yet in Dev. Run sp_FinalizeMonthlyOtpAssessment once a service month closes.",
-    audit: "Audit log view — coming once the module is connected to Dev SQL.",
-    admin: "Admin settings — coming soon.",
-    tuner: "Tuning workspace — coming soon.",
-  };
-  return <div className="subcard empty-note" style={{ textAlign: "center", padding: "40px 20px" }}>{copy[page]}</div>;
+// Real "locked OTP snapshot for contractor assessment" page. Shows real OTP
+// % per route (Avail OTP Monthly) alongside real missed-trip incident
+// counts per route (Avail Missed Trips), both for the same service month.
+function MonthlyAssessmentsPage({
+  otp,
+  missedTrips,
+}: {
+  otp: OtpMonthlyResponse | null;
+  missedTrips: AvailMissedTripsResponse | null;
+}) {
+  const otpReady = Boolean(otp?.diagnostics.table_ready && otp.routes.length > 0);
+  const missedReady = Boolean(missedTrips?.diagnostics.table_ready && missedTrips.routes.length > 0);
+  const serviceMonth = otp?.diagnostics.service_month ?? missedTrips?.diagnostics.service_month ?? null;
+
+  return (
+    <>
+      <div className="subcard empty-note" style={{ marginBottom: 16 }}>
+        {serviceMonth ? `Service month: ${serviceMonth}` : "No finalized months yet."}
+      </div>
+
+      <div className="subcard" style={{ overflow: "hidden", marginBottom: 16 }}>
+        <h2 style={{ padding: "12px 16px 0" }}>OTP by route (Avail OTP Monthly)</h2>
+        {otpReady ? (
+          <table className="data">
+            <thead>
+              <tr><th>Route</th><th>Total departures</th><th>On-time</th><th>OTP %</th><th>Status vs. 90%</th></tr>
+            </thead>
+            <tbody>
+              {otp!.routes.map((r) => {
+                const pct = r.pct_ontime !== null ? Math.round(r.pct_ontime * 1000) / 10 : null;
+                return (
+                  <tr key={r.route_id}>
+                    <td><span className="route-chip">RT {r.route_label ?? r.route_id}</span></td>
+                    <td>{r.total}</td>
+                    <td>{r.ontime}</td>
+                    <td>{pct !== null ? `${pct}%` : "—"}</td>
+                    <td>
+                      {pct !== null ? (
+                        pct < 90 ? <span className="pill-sm pill-danger">Below 90%</span> : <span className="pill-sm pill-success">Meets 90%</span>
+                      ) : "—"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        ) : (
+          <div className="empty-note" style={{ textAlign: "center", padding: "30px 20px" }}>
+            The OTP Monthly feed (AVAIL_OTP_MONTHLY_URL) has not been configured or has no rows for
+            this month yet.
+          </div>
+        )}
+      </div>
+
+      <div className="subcard" style={{ overflow: "hidden" }}>
+        <h2 style={{ padding: "12px 16px 0" }}>Missed trips by route (Avail Missed Trips)</h2>
+        {missedReady ? (
+          <table className="data">
+            <thead>
+              <tr><th>Route</th><th>Incidents</th><th>Entire trip missed</th></tr>
+            </thead>
+            <tbody>
+              {missedTrips!.routes.map((r) => (
+                <tr key={r.route_id}>
+                  <td><span className="route-chip">RT {r.route_desc ?? r.route_id}</span></td>
+                  <td>{r.incident_count}</td>
+                  <td>{r.entire_trip_missed_count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div className="empty-note" style={{ textAlign: "center", padding: "30px 20px" }}>
+            The Missed Trips feed (AVAIL_MISSED_TRIPS_URL) has not been configured or has no rows
+            for this month yet.
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+// Real Audit Stream - built the same way the console's top-level Audit Log
+// is: by querying the exclusion records themselves (GET /otp-audit-stream),
+// not a separate generic log table.
+function AuditStreamPage({ serviceMonth }: { serviceMonth: string | null }) {
+  const [entries, setEntries] = useState<OtpAuditEntry[] | null>(null);
+  const [scopeToMonth, setScopeToMonth] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .getOtpAuditStream(scopeToMonth ? serviceMonth ?? undefined : undefined, 100)
+      .then((d) => {
+        setEntries(d.entries);
+        setError(null);
+      })
+      .catch((err) => setError(err instanceof ApiError ? err.message : "Could not load the audit stream."));
+  }, [scopeToMonth, serviceMonth]);
+
+  return (
+    <div className="subcard">
+      <div className="otp-queue-toolbar" style={{ marginBottom: 12 }}>
+        <label>
+          <input type="checkbox" checked={scopeToMonth} onChange={(e) => setScopeToMonth(e.target.checked)} disabled={!serviceMonth} />
+          {" "}Current month only{serviceMonth ? ` (${serviceMonth})` : ""}
+        </label>
+      </div>
+      {error ? <p className="error-text">{error}</p> : null}
+      {entries === null && !error ? <p className="muted">Loading…</p> : null}
+      {entries && entries.length === 0 ? <p className="empty-note">No exclusion actions recorded yet.</p> : null}
+      {entries?.map((t, i) => (
+        <div className="timeline-item" key={i}>
+          <div className="t-title">{t.title}</div>
+          <div className="t-desc">{t.desc}</div>
+          <div className="td-dim" style={{ fontSize: 11 }}>{new Date(t.timestamp).toLocaleString()}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Reason-code management (add/deactivate) for both Review Queue (stop) and
+// Weather (date) exclusions. OCC.Admin-only server-side; the UI hides the
+// write controls for anyone else the same way every other admin surface in
+// this app does.
+function AdministrationPage({
+  stopReasonCodes,
+  dateReasonCodes,
+  threshold,
+  onReasonCodesChanged,
+}: {
+  stopReasonCodes: OtpReasonCode[];
+  dateReasonCodes: OtpReasonCode[];
+  threshold: number;
+  onReasonCodesChanged: () => void;
+}) {
+  const [newCode, setNewCode] = useState("");
+  const [newLabel, setNewLabel] = useState("");
+  const [newAppliesTo, setNewAppliesTo] = useState<"stop" | "date">("stop");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function addCode() {
+    if (!newCode.trim() || !newLabel.trim()) { setError("Code and label are required."); return; }
+    setBusy(true);
+    setError(null);
+    try {
+      await api.createReasonCode({ code: newCode.trim(), label: newLabel.trim(), applies_to: newAppliesTo });
+      setNewCode("");
+      setNewLabel("");
+      onReasonCodesChanged();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not add this reason code.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleActive(code: OtpReasonCode) {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.updateReasonCode(code.id, { is_active: !code.is_active });
+      onReasonCodesChanged();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not update this reason code.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function ReasonCodeTable({ title, codes }: { title: string; codes: OtpReasonCode[] }) {
+    return (
+      <div className="subcard" style={{ marginBottom: 16, overflow: "hidden" }}>
+        <h2 style={{ padding: "12px 16px 0" }}>{title}</h2>
+        <table className="data">
+          <thead><tr><th>Code</th><th>Label</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody>
+            {codes.map((c) => (
+              <tr key={c.id}>
+                <td>{c.code}</td>
+                <td>{c.label}</td>
+                <td>{c.is_active ? <span className="pill-sm pill-success">Active</span> : <span className="pill-sm pill-muted">Inactive</span>}</td>
+                <td><button className="btn-sm" disabled={busy} onClick={() => toggleActive(c)}>{c.is_active ? "Deactivate" : "Reactivate"}</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {error ? <p className="error-text">{error}</p> : null}
+      <div className="subcard" style={{ marginBottom: 16 }}>
+        <h2 style={{ marginTop: 0 }}>Add a reason code</h2>
+        <div className="field-grid">
+          <div>
+            <p className="field-label">Code</p>
+            <input className="f" value={newCode} onChange={(e) => setNewCode(e.target.value.toUpperCase())} placeholder="e.g. CONSTRUCTION" />
+          </div>
+          <div>
+            <p className="field-label">Label</p>
+            <input className="f" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="e.g. Active construction zone" />
+          </div>
+          <div>
+            <p className="field-label">Applies to</p>
+            <select className="f" value={newAppliesTo} onChange={(e) => setNewAppliesTo(e.target.value as "stop" | "date")}>
+              <option value="stop">Stop exclusions (Review Queue)</option>
+              <option value="date">Date exclusions (Weather)</option>
+            </select>
+          </div>
+        </div>
+        <button className="btn-post" disabled={busy} onClick={addCode}>Add</button>
+      </div>
+
+      <ReasonCodeTable title="Stop exclusion reason codes" codes={stopReasonCodes} />
+      <ReasonCodeTable title="Date exclusion reason codes" codes={dateReasonCodes} />
+
+      <div className="subcard empty-note">
+        Early/late bias detection threshold: <b>{Math.round(threshold * 1000) / 10}%</b> - change it
+        from the Threshold Tuner page, which previews the effect before applying.
+      </div>
+    </>
+  );
+}
+
+// Preview-then-apply workspace over the already-fetched current month's
+// stop rows - no new fetch for the preview itself. Applying persists the
+// new threshold (OtpSettings) for every reviewer, not just this session.
+function ThresholdTunerPage({
+  liveStops,
+  currentThreshold,
+  onApplied,
+}: {
+  liveStops: OtpMonthlyStopRow[] | null;
+  currentThreshold: number;
+  onApplied: (newThreshold: number) => void;
+}) {
+  const [previewPct, setPreviewPct] = useState(Math.round(currentThreshold * 1000) / 10);
+  const [error, setError] = useState<string | null>(null);
+  const [applying, setApplying] = useState(false);
+  const [applied, setApplied] = useState<string | null>(null);
+
+  if (!liveStops) {
+    return (
+      <div className="subcard empty-note" style={{ textAlign: "center", padding: "40px 20px" }}>
+        Threshold tuning previews against the current month's live OTP Monthly feed data - not
+        available yet in preview mode.
+      </div>
+    );
+  }
+
+  const previewCount = deriveCandidatesFromLive(liveStops, previewPct / 100).length;
+  const currentCount = deriveCandidatesFromLive(liveStops, currentThreshold).length;
+
+  async function apply() {
+    setApplying(true);
+    setError(null);
+    setApplied(null);
+    try {
+      const result = await api.updateOtpSettings(previewPct / 100);
+      onApplied(result.early_late_bias_threshold);
+      setApplied(`Threshold applied: ${Math.round(result.early_late_bias_threshold * 1000) / 10}%`);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not apply this threshold.");
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  return (
+    <div className="subcard">
+      {error ? <p className="error-text">{error}</p> : null}
+      {applied ? <p className="ok-text">{applied}</p> : null}
+      <p className="field-label">Preview threshold: {previewPct.toFixed(1)}%</p>
+      <input
+        type="range"
+        min={1}
+        max={50}
+        step={0.5}
+        value={previewPct}
+        onChange={(e) => setPreviewPct(Number(e.target.value))}
+        style={{ width: "100%", maxWidth: 400 }}
+      />
+      <div className="stat-grid" style={{ marginTop: 16 }}>
+        <div className="stat-card">
+          <div className="stat-label">Currently applied ({Math.round(currentThreshold * 1000) / 10}%)</div>
+          <div className="stat-value">{currentCount}</div>
+          <div className="stat-sub">candidates flagged</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-label">At preview threshold ({previewPct.toFixed(1)}%)</div>
+          <div className="stat-value">{previewCount}</div>
+          <div className="stat-sub">candidates flagged</div>
+        </div>
+      </div>
+      <button className="btn-post" style={{ marginTop: 16 }} disabled={applying} onClick={apply}>
+        {applying ? "Applying…" : "Apply this threshold"}
+      </button>
+    </div>
+  );
 }

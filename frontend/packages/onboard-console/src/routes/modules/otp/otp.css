@@ -43,3 +43,16 @@
 .timeline-item::before { content: ""; position: absolute; left: -5.5px; top: 2px; width: 9px; height: 9px; border-radius: 50%; background: var(--brand-green); border: 2px solid var(--surface-bg); }
 .timeline-item .t-title { font-size: 13px; font-weight: 700; color: var(--text); }
 .timeline-item .t-desc { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; line-height: 1.5; }
+
+/* Dashboard's OTP % trend chart - hand-rolled bars, same approach as the
+   adherence strip above rather than a charting dependency (none exists
+   anywhere in this repo). Height is the bar's own pct_ontime value, so the
+   track's fixed height (120px) directly maps to a 0-100% scale. */
+.otp-trend-chart { display: flex; align-items: flex-end; gap: 16px; margin-top: 14px; padding-top: 10px; overflow-x: auto; }
+.otp-trend-bar-col { display: flex; flex-direction: column; align-items: center; min-width: 48px; }
+.otp-trend-bar-track { height: 120px; width: 28px; display: flex; align-items: flex-end; background: var(--surface-alt-bg); border-radius: 3px; overflow: hidden; }
+.otp-trend-bar { width: 100%; border-radius: 3px 3px 0 0; min-height: 2px; }
+.otp-trend-bar.meets { background: var(--success-text); }
+.otp-trend-bar.below { background: var(--late-orange); }
+.otp-trend-bar-label { font-size: 11px; font-weight: 700; color: var(--text); margin-top: 6px; }
+.otp-trend-bar-month { font-size: 10px; margin-top: 2px; }

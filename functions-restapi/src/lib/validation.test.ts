@@ -5,10 +5,18 @@ import {
   validatePrepareSuggestedAlert,
   validateMissedTripValidation,
   validateDraftSummary,
+  validateCreateDetour,
+  validateUpdateDetour,
+  validateStopExclusion,
+  validateDateExclusion,
+  validateCreateReasonCode,
+  validateUpdateReasonCode,
+  validateOtpSettings,
   MAX_SUMMARY_LENGTH,
   MAX_CREATED_BY_LENGTH,
   MAX_MISSED_TRIP_NOTES_LENGTH,
   MAX_DRAFT_RAW_TEXT_LENGTH,
+  MAX_DETOUR_CLOSURE_LENGTH,
 } from "./validation";
 
 test("valid message passes with no errors", () => {
@@ -244,4 +252,124 @@ test("draft-summary rejects raw_text longer than the ceiling", () => {
     severity: "minor",
   });
   assert.ok(errors.some((e) => e.includes("raw_text")));
+});
+
+test("valid detour creation passes with no errors", () => {
+  const errors = validateCreateDetour({
+    number: "951",
+    closure: "5th St closed between Main and 3rd",
+    start_date: "2026-08-01",
+    end_date: "2026-08-15",
+    segments: [{ routes: "460 SB, 465 SB", directions: "Turn right onto Main St" }],
+  });
+  assert.deepStrictEqual(errors, []);
+});
+
+test("detour creation requires closure but not dates (monitor-only case)", () => {
+  const errors = validateCreateDetour({ is_monitor_only: true });
+  assert.ok(errors.some((e) => e.includes("closure")));
+});
+
+test("detour creation rejects a closure longer than the column allows", () => {
+  const errors = validateCreateDetour({ closure: "x".repeat(MAX_DETOUR_CLOSURE_LENGTH + 1) });
+  assert.ok(errors.some((e) => e.includes("closure")));
+});
+
+test("detour creation rejects malformed dates and segments", () => {
+  const errors = validateCreateDetour({
+    closure: "Test closure",
+    start_date: "not-a-date",
+    segments: [{ routes: "" }],
+  });
+  assert.ok(errors.some((e) => e.includes("start_date")));
+  assert.ok(errors.some((e) => e.includes("segments[0].routes")));
+});
+
+test("detour update requires at least one editable field", () => {
+  const errors = validateUpdateDetour({});
+  assert.ok(errors.some((e) => e.includes("At least one of")));
+});
+
+test("detour update accepts a single field with no other errors", () => {
+  const errors = validateUpdateDetour({ email_sent: true });
+  assert.deepStrictEqual(errors, []);
+});
+
+test("valid stop exclusion passes with no errors", () => {
+  const errors = validateStopExclusion({
+    service_month: "202608",
+    route_id: 90,
+    stop_id: 3242,
+    day_of_week: "Wed",
+    status: "approved",
+    reason_code: "SCHED_RECOVERY",
+  });
+  assert.deepStrictEqual(errors, []);
+});
+
+test("stop exclusion rejects a bad service_month and invalid status", () => {
+  const errors = validateStopExclusion({
+    service_month: "2026-08",
+    route_id: 90,
+    stop_id: 3242,
+    day_of_week: "Wed",
+    status: "maybe",
+  });
+  assert.ok(errors.some((e) => e.includes("service_month")));
+  assert.ok(errors.some((e) => e.includes("status")));
+});
+
+test("valid Agency-scope date exclusion passes with no errors", () => {
+  const errors = validateDateExclusion({
+    scope: "Agency",
+    service_date: "20260112",
+    reason_code: "WEATHER_SNOW",
+  });
+  assert.deepStrictEqual(errors, []);
+});
+
+test("Route-scope date exclusion requires route_id", () => {
+  const errors = validateDateExclusion({
+    scope: "Route",
+    service_date: "20260203",
+    reason_code: "EMERGENCY_ROAD",
+  });
+  assert.ok(errors.some((e) => e.includes("route_id")));
+});
+
+test("date exclusion rejects missing reason_code and malformed service_date", () => {
+  const errors = validateDateExclusion({ scope: "Agency", service_date: "2026-01-12" });
+  assert.ok(errors.some((e) => e.includes("service_date")));
+  assert.ok(errors.some((e) => e.includes("reason_code")));
+});
+
+test("valid reason code creation passes with no errors", () => {
+  const errors = validateCreateReasonCode({ code: "OTHER", label: "Other", applies_to: "stop" });
+  assert.deepStrictEqual(errors, []);
+});
+
+test("reason code creation rejects invalid applies_to", () => {
+  const errors = validateCreateReasonCode({ code: "X", label: "X", applies_to: "route" });
+  assert.ok(errors.some((e) => e.includes("applies_to")));
+});
+
+test("reason code update requires at least one field", () => {
+  const errors = validateUpdateReasonCode({});
+  assert.ok(errors.some((e) => e.includes("At least one of")));
+});
+
+test("reason code update accepts is_active alone", () => {
+  const errors = validateUpdateReasonCode({ is_active: false });
+  assert.deepStrictEqual(errors, []);
+});
+
+test("valid OTP settings update passes with no errors", () => {
+  const errors = validateOtpSettings({ early_late_bias_threshold: 0.2 });
+  assert.deepStrictEqual(errors, []);
+});
+
+test("OTP settings update rejects out-of-range thresholds", () => {
+  assert.ok(validateOtpSettings({ early_late_bias_threshold: 0 }).length > 0);
+  assert.ok(validateOtpSettings({ early_late_bias_threshold: 1 }).length > 0);
+  assert.ok(validateOtpSettings({ early_late_bias_threshold: "0.2" }).length > 0);
 });
