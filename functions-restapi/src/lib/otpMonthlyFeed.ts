@@ -87,7 +87,21 @@ export async function fetchOtpMonthlyReports(
       `Avail OTP Monthly API returned success=false: ${payload.errors?.join(", ") || "no error detail"}`,
     );
   }
-  return payload.result?.OtpByRouteStopDayAgg ?? [];
+  const rows = payload.result?.OtpByRouteStopDayAgg;
+  if (rows !== undefined) return rows;
+
+  // The guessed envelope key (see the KNOWN UNCONFIRMED ASSUMPTION above)
+  // wasn't found. If result carries any OTHER key, that's almost certainly
+  // the real array key and this is loudly wrong rather than silently
+  // returning zero rows every poll - surface the actual key names (never
+  // the data itself) so the fix is a one-line correction, not a re-guess.
+  const actualKeys = payload.result ? Object.keys(payload.result) : [];
+  if (actualKeys.length > 0) {
+    throw new Error(
+      `Avail OTP Monthly response has no "OtpByRouteStopDayAgg" key under result - found [${actualKeys.join(", ")}] instead. Update the guessed key in otpMonthlyFeed.ts.`,
+    );
+  }
+  return [];
 }
 
 export interface MappedOtpMonthlyReport {
