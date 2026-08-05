@@ -12,6 +12,8 @@ import {
   validateCreateReasonCode,
   validateUpdateReasonCode,
   validateOtpSettings,
+  validateUploadUrlRequest,
+  validateCreateDetourImage,
   MAX_SUMMARY_LENGTH,
   MAX_CREATED_BY_LENGTH,
   MAX_MISSED_TRIP_NOTES_LENGTH,
@@ -372,4 +374,32 @@ test("OTP settings update rejects out-of-range thresholds", () => {
   assert.ok(validateOtpSettings({ early_late_bias_threshold: 0 }).length > 0);
   assert.ok(validateOtpSettings({ early_late_bias_threshold: 1 }).length > 0);
   assert.ok(validateOtpSettings({ early_late_bias_threshold: "0.2" }).length > 0);
+});
+
+test("valid upload-url request passes with no errors", () => {
+  const errors = validateUploadUrlRequest({ file_name: "sign.jpg", content_type: "image/jpeg" });
+  assert.deepStrictEqual(errors, []);
+});
+
+test("upload-url request rejects a missing file_name", () => {
+  const errors = validateUploadUrlRequest({});
+  assert.ok(errors.some((e) => e.includes("file_name")));
+});
+
+test("valid detour image creation passes with no errors", () => {
+  const errors = validateCreateDetourImage({
+    blob_path: "detours/1/abc-sign.jpg",
+    file_name: "sign.jpg",
+    content_type: "image/jpeg",
+    size_bytes: 12345,
+    caption: "Detour sign",
+  });
+  assert.deepStrictEqual(errors, []);
+});
+
+test("detour image creation rejects missing blob_path/file_name and a negative size", () => {
+  const errors = validateCreateDetourImage({ size_bytes: -1 });
+  assert.ok(errors.some((e) => e.includes("blob_path")));
+  assert.ok(errors.some((e) => e.includes("file_name")));
+  assert.ok(errors.some((e) => e.includes("size_bytes")));
 });

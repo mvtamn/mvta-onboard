@@ -6,9 +6,11 @@ import {
   type DetourStatus,
   type CreateDetourInput,
   type DetourSegmentInput,
+  type DetourImage,
 } from "@mvta/shared";
 import { useAuth } from "../auth/AuthContext.js";
 import { api } from "../config.js";
+import { resizeImageFile } from "../lib/imageResize.js";
 
 const STATUS_TABS: { key: DetourStatus | "all"; label: string }[] = [
   { key: "all", label: "All" },
@@ -336,6 +338,7 @@ export function Detours() {
                               Email sent: {d.email_sent ? "Yes" : "No"} · Expired email sent: {d.expired_email_sent ? "Yes" : "No"} · Spare emailed: {d.spare_emailed ? "Yes" : "No"}
                             </p>
                             <p className="td-dim">Created by {d.created_by} · Updated by {d.updated_by ?? "—"}</p>
+                            <DetourImagesSection detourId={d.id} canWrite={canWrite} />
                           </div>
                         </td>
                       </tr>
@@ -348,5 +351,105 @@ export function Detours() {
         )}
       </div>
     </>
+  );
+}
+
+// Images upload directly to Blob Storage via a short-lived SAS URL -
+// nothing ever passes through this API's own request body. Same write
+// access tier as editing the detour itself (per the owner's decision).
+// Client-side resize (imageResize.ts) happens before the SAS request, so a
+// several-MB phone photo never gets uploaded at full size.
+function DetourImagesSection({ detourId, canWrite }: { detourId: string; canWrite: boolean }) {
+  const [images, setImages] = useState<DetourImage[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  function load() {
+    api
+      .getDetourImages(detourId)
+      .then((d) => setImages(d.images))
+      .catch((err) => setError(err instanceof ApiError ? err.message : "Could not load images."));
+  }
+
+  useEffect(load, [detourId]);
+
+  async function handleFiles(fileList: FileList) {
+    setUploading(true);
+    setError(null);
+    try {
+      for (const rawFile of Array.from(fileList)) {
+        const file = await resizeImageFile(rawFile);
+        const { upload_url, blob_path } = await api.getDetourImageUploadUrl(detourId, file.name, file.type);
+        const putRes = await fetch(upload_url, {
+          method: "PUT",
+          headers: { "x-ms-blob-type": "BlockBlob", "Content-Type": file.type },
+          body: file,
+        });
+        if (!putRes.ok) throw new Error(`Upload to storage failed (${putRes.status})`);
+        await api.createDetourImage(detourId, {
+          blob_path,
+          file_name: file.name,
+          content_type: file.type,
+          size_bytes: file.size,
+        });
+      }
+      load();
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Image upload failed.",
+      );
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <p className="field-label">Images</p>
+      {error ? <p className="error-text">{error}</p> : null}
+      {images === null && !error ? <p className="muted">Loading images…</p> : null}
+      {images && images.length === 0 ? <p className="td-dim">No images attached.</p> : null}
+      {images && images.length > 0 ? (
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+          {images.map((img) => (
+            <div key={img.id} style={{ textAlign: "center" }}>
+              {img.read_url ? (
+                <img
+                  src={img.read_url}
+                  alt={img.caption ?? img.file_name}
+                  title={img.caption ?? img.file_name}
+                  style={{ width: 90, height: 90, objectFit: "cover", borderRadius: 6, cursor: "pointer", border: "1px solid var(--border)" }}
+                  onClick={() => window.open(img.read_url!, "_blank", "noopener,noreferrer")}
+                />
+              ) : (
+                <div className="td-dim" style={{ width: 90, height: 90, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--border)", borderRadius: 6 }}>
+                  Not ready
+                </div>
+              )}
+              <div className="td-dim" style={{ fontSize: 11, marginTop: 3, maxWidth: 90, overflow: "hidden", textOverflow: "ellipsis" }}>
+                {img.caption ?? img.file_name}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {canWrite ? (
+        <label className="btn-sm" style={{ display: "inline-block", cursor: uploading ? "default" : "pointer" }}>
+          {uploading ? "Uploading…" : "+ Attach images"}
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            disabled={uploading}
+            style={{ display: "none" }}
+            onChange={(e) => e.target.files && handleFiles(e.target.files)}
+          />
+        </label>
+      ) : null}
+    </div>
   );
 }

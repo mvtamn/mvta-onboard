@@ -120,6 +120,22 @@ module wafPolicy 'modules/wafpolicy.bicep' = {
   }
 }
 
+// Detour & Closure image attachments (Part B3 of detour-and-event-module-
+// implementation-plan.md) - new resource, not deployed until the owner
+// approves (real cost, flagged in HANDOFF.md same as every other new
+// resource this repo has added).
+module detourImagesStorage 'modules/storage-detour-images.bicep' = {
+  name: 'detour-images-storage-deployment'
+  params: {
+    location: location
+    storageAccountName: take('stmvtadetourimg${environment}${cleanSuffix}', 24)
+    functionAppPrincipalId: restApiFunction.outputs.functionAppPrincipalId
+    // Same origins the Function App's own CORS allows - the console needs
+    // to PUT/GET blobs directly from the browser via SAS URLs.
+    allowedCorsOrigins: allowedCorsOrigins
+  }
+}
+
 output wafPolicyId string = wafPolicy.outputs.wafPolicyId
 output restApiFunctionName string = restApiFunction.outputs.functionAppName
 output restApiFunctionHostname string = restApiFunction.outputs.functionAppHostname
@@ -128,3 +144,5 @@ output onboardSwaHostname string = onboardSwa.outputs.staticWebAppHostname
 output riderOptinSwaHostname string = riderOptinSwa.outputs.staticWebAppHostname
 output serviceBusNamespace string = serviceBus.outputs.namespaceName
 output serviceBusQueueName string = serviceBus.outputs.queueName
+output detourImagesStorageAccount string = detourImagesStorage.outputs.storageAccountName
+output detourImagesContainer string = detourImagesStorage.outputs.containerName

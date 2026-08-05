@@ -468,6 +468,23 @@ export interface CreateDetourInput {
 
 export type UpdateDetourInput = Partial<CreateDetourInput>;
 
+// Detour image attachments - Part B3 of detour-and-event-module-
+// implementation-plan.md. Images never pass through the API directly -
+// upload/read both go through short-lived SAS URLs.
+export interface DetourImage {
+  id: string;
+  detour_id: string;
+  blob_path: string;
+  file_name: string;
+  content_type: string | null;
+  size_bytes: number | null;
+  caption: string | null;
+  sort_order: number;
+  uploaded_by: string;
+  uploaded_at: string;
+  read_url: string | null;
+}
+
 // Route Classification - see detour-and-event-module-implementation-plan.md
 // (Part A). No Avail feed distinguishes fixed-route from special-event
 // RouteIDs, so this is the one place MVTA OnBoard itself decides.

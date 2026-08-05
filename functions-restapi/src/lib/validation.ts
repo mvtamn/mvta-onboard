@@ -540,4 +540,52 @@ export function validateOtpSettings(body: UnknownBody): string[] {
   return errors;
 }
 
+// Detour image attachments - Part B3 of detour-and-event-module-
+// implementation-plan.md. Column-size ceilings from migration-017-detours.sql.
+export const MAX_IMAGE_FILE_NAME_LENGTH = 255;
+export const MAX_IMAGE_CAPTION_LENGTH = 500;
+
+// POST /detours/{id}/images/upload-url
+export function validateUploadUrlRequest(body: UnknownBody): string[] {
+  const errors: string[] = [];
+  if (typeof body.file_name !== "string" || body.file_name.trim() === "") {
+    errors.push("file_name is required and must be a non-empty string");
+  } else if (body.file_name.length > MAX_IMAGE_FILE_NAME_LENGTH) {
+    errors.push(`file_name must be at most ${MAX_IMAGE_FILE_NAME_LENGTH} characters`);
+  }
+  if (body.content_type !== undefined && body.content_type !== null && typeof body.content_type !== "string") {
+    errors.push("content_type must be a string if provided");
+  }
+  return errors;
+}
+
+// POST /detours/{id}/images
+export function validateCreateDetourImage(body: UnknownBody): string[] {
+  const errors: string[] = [];
+  if (typeof body.blob_path !== "string" || body.blob_path.trim() === "") {
+    errors.push("blob_path is required and must be a non-empty string");
+  }
+  if (typeof body.file_name !== "string" || body.file_name.trim() === "") {
+    errors.push("file_name is required and must be a non-empty string");
+  } else if (body.file_name.length > MAX_IMAGE_FILE_NAME_LENGTH) {
+    errors.push(`file_name must be at most ${MAX_IMAGE_FILE_NAME_LENGTH} characters`);
+  }
+  if (body.content_type !== undefined && body.content_type !== null && typeof body.content_type !== "string") {
+    errors.push("content_type must be a string if provided");
+  }
+  if (body.size_bytes !== undefined && body.size_bytes !== null) {
+    if (typeof body.size_bytes !== "number" || !Number.isInteger(body.size_bytes) || body.size_bytes < 0) {
+      errors.push("size_bytes must be a non-negative integer if provided");
+    }
+  }
+  if (body.caption !== undefined && body.caption !== null) {
+    if (typeof body.caption !== "string") {
+      errors.push("caption must be a string if provided");
+    } else if (body.caption.length > MAX_IMAGE_CAPTION_LENGTH) {
+      errors.push(`caption must be at most ${MAX_IMAGE_CAPTION_LENGTH} characters`);
+    }
+  }
+  return errors;
+}
+
 export { VALID_CATEGORIES, VALID_SEVERITIES, VALID_EXPIRATION_SOURCES, VALID_CONSENT_SOURCES };

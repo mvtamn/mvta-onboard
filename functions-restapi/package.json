@@ -14,8 +14,9 @@
   },
   "dependencies": {
     "@azure/functions": "^4.5.0",
-    "@azure/identity": "^4.5.0",
+    "@azure/identity": "^4.13.1",
     "@azure/service-bus": "^7.9.5",
+    "@azure/storage-blob": "^12.33.0",
     "adm-zip": "^0.6.0",
     "mssql": "^11.0.1"
   },

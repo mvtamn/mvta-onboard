@@ -51,6 +51,7 @@ import type {
   UpdateReasonCodeInput,
   OtpSettingsRow,
   OtpMonthlyTrendPoint,
+  DetourImage,
 } from "./types.js";
 
 export type TokenProvider = () => Promise<string | null>;
@@ -376,6 +377,29 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
         { method: "DELETE" },
         true,
       );
+    },
+
+    getDetourImageUploadUrl(detourId: string, fileName: string, contentType?: string) {
+      return request<{ upload_url: string; blob_path: string }>(
+        `/api/detours/${detourId}/images/upload-url`,
+        { method: "POST", body: JSON.stringify({ file_name: fileName, content_type: contentType }) },
+        true,
+      );
+    },
+
+    createDetourImage(
+      detourId: string,
+      input: { blob_path: string; file_name: string; content_type?: string; size_bytes?: number; caption?: string },
+    ) {
+      return request<DetourImage>(
+        `/api/detours/${detourId}/images`,
+        { method: "POST", body: JSON.stringify(input) },
+        true,
+      );
+    },
+
+    getDetourImages(detourId: string) {
+      return request<{ images: DetourImage[] }>(`/api/detours/${detourId}/images`, {}, true);
     },
 
     getRouteClassification() {

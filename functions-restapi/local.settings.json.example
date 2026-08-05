@@ -20,6 +20,8 @@
     "AVAIL_PULLOUT_URL": "https://avail360-api.myavail.cloud/Pullout/v1/MVTA",
     "// note7": "AVAIL_OTP_MONTHLY_URL/AVAIL_MISSED_TRIPS_URL feed OTP Compliance's real OTP % and missed-trip incidents (otpMonthlyFeedPoll.ts / availMissedTripsPoll.ts, per OTP-Feed-Evaluation-and-Recommendation.md) - both reuse the SAME AVAIL_AVL_REPORTS_API_KEY above, just different paths.",
     "AVAIL_OTP_MONTHLY_URL": "https://avail360-api.myavail.cloud/OtpByRouteStopDayAgg/v1/MVTA",
-    "AVAIL_MISSED_TRIPS_URL": "https://avail360-api.myavail.cloud/MissedTripsByRouteStopDay/v1/MVTA"
+    "AVAIL_MISSED_TRIPS_URL": "https://avail360-api.myavail.cloud/MissedTripsByRouteStopDay/v1/MVTA",
+    "// note8": "DETOUR_IMAGES_STORAGE_ACCOUNT is the Blob Storage account name (not a connection string/key) for Detour image attachments (blobStorage.ts) - access is via the Function App's managed identity (DefaultAzureCredential), never a storage key. New resource, not yet provisioned - see infra-phase1/modules/storage-detour-images.bicep.",
+    "DETOUR_IMAGES_STORAGE_ACCOUNT": "REPLACE_ME"
   }
 }

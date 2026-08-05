@@ -104,6 +104,19 @@ completion:              migration-018-otp-exclusions-and-settings.sql (OtpReaso
                          Threshold Tuner all fall back gracefully (empty lists, default 15%
                          threshold) - same "not configured yet" pattern as every other feature in
                          this app. No new app setting/secret needed.
+Detour images:           NEW AZURE RESOURCE, NOT YET PROVISIONED - infra-phase1/modules/
+                         storage-detour-images.bicep (Blob Storage account + private
+                         "detour-images" container) has not been deployed. Real cost - flag this
+                         explicitly before deploying, same as the Anthropic API key's cost-surface
+                         flag earlier in this project. Once deployed: set
+                         DETOUR_IMAGES_STORAGE_ACCOUNT (the storage account name, not a
+                         connection string/key - access is via the REST API Function App's own
+                         managed identity) as an app setting on func-mvta-restapi-dev, and grant
+                         that identity Storage Blob Data Contributor on the new account (the
+                         Bicep module does this automatically on deploy via
+                         functionAppPrincipalId). Until both the resource and the app setting
+                         exist, image upload/list endpoints return a clear 503 "not configured"
+                         rather than erroring.
 ```
 
 The SQL admin password is NOT recorded here deliberately — it lives in Key Vault as the secret `sql-connection-string` (full connection string, not just the password) and in the project owner's password manager. Ask before assuming you need it directly; the Function Apps already read it via Key Vault reference.

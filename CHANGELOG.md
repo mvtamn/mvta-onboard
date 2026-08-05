@@ -7,6 +7,18 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 ## [Unreleased]
 
+- **Detour image attachments**: staff can attach photos (signage, hand-
+  marked maps, screenshots) to a detour record - a multi-file upload
+  control in the entry form, resized client-side before upload, with a
+  thumbnail row and click-through to full size in the detail panel. Images
+  upload directly to a new Blob Storage account via short-lived SAS tokens
+  minted by the Function App's own managed identity - never a storage
+  account key, and images never pass through the API's own request body.
+  A new daily timer purges images once their detour has been over for 30+
+  days (privacy default - a phone photo of a road closure can incidentally
+  include plates or bystanders). New `infra-phase1/modules/storage-detour-
+  images.bicep` (private container, no public-read) - **a new Azure
+  resource with real cost, not deployed until explicitly approved.**
 - **OTP Compliance completion**: Audit Stream, Administration, Threshold
   Tuner, and the Dashboard trend chart are now real, replacing their
   "coming soon" placeholders. Review Queue approvals/rejections and Weather
