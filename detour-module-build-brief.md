@@ -155,9 +155,11 @@ remove the need for manual `RidersDirected` entry.
    `result`, which is worth double-checking against a live response rather than assuming
    the doc is accurate).
 5. Expected polling cadence / rate limits Avail is comfortable with.
-6. Confirm whether the production key requires a different subscription/API key than the
-   test environment — Azure APIM (the `Ocp-Apim-Subscription-Key` header is an Azure API
-   Management pattern) commonly issues separate keys per environment, so the test key on
+6. ~~Confirm whether the production key requires a different subscription/API key than
+   the test environment~~ — **confirmed by the owner: no, production does not need its
+   own subscription key.** The Detours sync reuses the same production key already in
+   use for AVL Reports/Pullout/OTP Monthly/Missed Trips
+   (`AVAIL_AVL_REPORTS_API_KEY`).
    hand may not work against `-api`.
 
 ## Suggested build order

@@ -83,12 +83,22 @@ KNOWN UNCONFIRMED:       Neither Avail feed's full HTTP response envelope was av
                          hours when real data should exist, the guessed key is very likely wrong
                          - capture one real raw response and correct the key in the relevant lib
                          file.
-Detours & Closures:     migration-017-detours.sql (Detours, DetourSegments, DetourImages) has NOT
-                         been run against the dev DB yet - the module falls back to a graceful
-                         "Could not load detours: Request failed (404)" until it is. No new
-                         secret/app setting needed for the manual CRUD (this pass) - the Avail
-                         Detours sync and image-attachment Blob Storage are later, not-yet-built
-                         phases (see detour-and-event-module-implementation-plan.md, Parts B3/B4).
+Detours & Closures:     migration-017-detours.sql (Detours, DetourSegments, DetourImages) has been
+                         run against the dev DB; manual CRUD + image attachments (Part B3) are
+                         live. The Avail Detours sync (Part B4-B5) is now built
+                         (availDetoursFeed.ts/availDetoursSync.ts, 15-min timer, upserts by
+                         external_detour_id, never touches source='manual' rows) but NOT yet
+                         live: migration-019-detour-avail-last-seen.sql has been run against the
+                         dev DB, but AVAIL_DETOURS_URL is not yet a real app setting on
+                         func-mvta-restapi-dev, and the new code (availDetoursFeed.ts/
+                         availDetoursSync.ts) has not been committed or deployed yet. Reuses
+                         AVAIL_AVL_REPORTS_API_KEY - confirmed by the owner, production does not
+                         need a separate subscription key, resolving the brief's open question
+                         #6. Still KNOWN UNCONFIRMED: the Detours envelope's array key is
+                         guessed as result.Detours, never verified against a real response.
+                         A follow-up spec (detour-reporting-and-search-spec.md, repo root) drafts
+                         additional internal-ops-reporting fields + a searchable Active/Expired
+                         reporting page - not built, awaiting owner review/approval.
 Route Classification /
 Event bus monitoring:   migration-016-route-classification.sql (RouteClassification,
                          EventVehicleCurrentPosition, EventVehiclePositionHistory) has NOT been

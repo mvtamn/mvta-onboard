@@ -25,6 +25,7 @@ interface DetourRow {
   source: "manual" | "avail";
   external_detour_id: string | null;
   last_edited_manually: boolean;
+  avail_last_seen_at: Date | null;
   created_by: string;
   created_at: Date;
   updated_by: string | null;
@@ -62,7 +63,7 @@ app.http("detoursList", {
       const detoursResult = await pool.request().query<DetourRow>(`
         SELECT id, number, closure, start_date, end_date, is_monitor_only, riders_directed,
                email_sent, expired_email_sent, spare_emailed, source, external_detour_id,
-               last_edited_manually, created_by, created_at, updated_by, updated_at
+               last_edited_manually, avail_last_seen_at, created_by, created_at, updated_by, updated_at
         FROM Detours
         WHERE is_deleted = 0
         ORDER BY start_date DESC, created_at DESC

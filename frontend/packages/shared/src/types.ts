@@ -439,6 +439,7 @@ export interface Detour {
   source: "manual" | "avail";
   external_detour_id: string | null;
   last_edited_manually: boolean;
+  avail_last_seen_at: string | null;
   created_by: string;
   created_at: string;
   updated_by: string | null;

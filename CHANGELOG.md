@@ -7,6 +7,26 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 ## [Unreleased]
 
+- **Avail Detours sync (Part B4-B5)**: a new 15-minute timer
+  (`availDetoursSync.ts`) polls Avail's own Detours feed and keeps
+  `source='avail'` records in sync automatically - one real duplicate-entry
+  elimination for whatever subset of closures is actually built as a formal
+  Avail detour. Avail returns multiple rows per detour (one per direction);
+  `availDetoursFeed.ts` groups them by `DetourID` into one `Detours` row +
+  N `DetourSegments`. Upserts by `external_detour_id`; never touches a
+  `source='manual'` row (operator-message/stop-closure entries that never
+  appear in Avail's feed at all). If a synced row has since been hand-
+  edited in OnBoard (`last_edited_manually`), the sync now skips
+  overwriting it indefinitely but still stamps a new
+  `avail_last_seen_at` (migration-019) so staff can tell the sync hasn't
+  silently lost track of it - both surfaced in the detail panel. Reuses
+  the existing `AVAIL_AVL_REPORTS_API_KEY` - the owner has confirmed
+  production does not need a separate subscription key for Detours.
+  Migration-019 has been run against the dev DB. **Still needs
+  `AVAIL_DETOURS_URL` set on `func-mvta-restapi-dev` and this code
+  committed/deployed** before it goes live; same unconfirmed-envelope-key
+  caveat as every other Avail feed in this project (guessed as
+  `result.Detours`, unverified against a real response).
 - **Detour image attachments**: staff can attach photos (signage, hand-
   marked maps, screenshots) to a detour record - a multi-file upload
   control in the entry form, resized client-side before upload, with a

@@ -338,6 +338,16 @@ export function Detours() {
                               Email sent: {d.email_sent ? "Yes" : "No"} · Expired email sent: {d.expired_email_sent ? "Yes" : "No"} · Spare emailed: {d.spare_emailed ? "Yes" : "No"}
                             </p>
                             <p className="td-dim">Created by {d.created_by} · Updated by {d.updated_by ?? "—"}</p>
+                            {d.source === "avail" ? (
+                              <p className="td-dim">
+                                {d.last_edited_manually
+                                  ? "Manually edited — the Avail sync will not overwrite this record."
+                                  : "Kept in sync with Avail."}
+                                {d.avail_last_seen_at
+                                  ? ` Last seen in Avail: ${new Date(d.avail_last_seen_at).toLocaleString()}.`
+                                  : ""}
+                              </p>
+                            ) : null}
                             <DetourImagesSection detourId={d.id} canWrite={canWrite} />
                           </div>
                         </td>
