@@ -58,7 +58,22 @@ export async function fetchDetours(baseUrl: string, apiKey: string): Promise<Ava
   if (!payload.success) {
     throw new Error(`Avail Detours API returned success=false: ${payload.errors?.join(", ") || "no error detail"}`);
   }
-  return payload.result?.Detours ?? [];
+  const rows = payload.result?.Detours;
+  if (rows !== undefined) return rows;
+
+  // The guessed envelope key wasn't found. If result carries any OTHER key,
+  // that's almost certainly the real array key - surface the actual key
+  // names (never the data itself) rather than silently syncing zero
+  // detours forever. Confirmed live: the sync runs cleanly every 15 minutes
+  // but has reported "0 detours seen" on every run so far - this is the
+  // same class of issue otpMonthlyFeed.ts hit with its own guessed key.
+  const actualKeys = payload.result ? Object.keys(payload.result) : [];
+  if (actualKeys.length > 0) {
+    throw new Error(
+      `Avail Detours response has no "Detours" key under result - found [${actualKeys.join(", ")}] instead. Update the guessed key in availDetoursFeed.ts.`,
+    );
+  }
+  return [];
 }
 
 export interface MappedDetourSegment {
