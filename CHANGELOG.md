@@ -7,6 +7,12 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 ## [Unreleased]
 
+- **Route Classification (Admin)**: the Route ID field is now a selector
+  populated from the live route registry (`GET /routes`, the same one
+  backing Compose's affected-routes picker) instead of a free-text number
+  field - picking a known route beats typing a raw numeric ID blind.
+  Falls back to the original number input if the registry can't be
+  reached or is empty, same graceful-degradation convention as Compose.
 - **Avail Detours sync (Part B4-B5)**: a new 15-minute timer
   (`availDetoursSync.ts`) polls Avail's own Detours feed and keeps
   `source='avail'` records in sync automatically - one real duplicate-entry

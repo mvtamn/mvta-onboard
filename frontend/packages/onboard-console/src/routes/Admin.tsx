@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   type ExpirationDefault,
   CATEGORY_LABELS,
@@ -7,6 +7,7 @@ import {
   type RouteClassificationRow,
   type RouteCategory,
   ROUTE_CATEGORY_LABELS,
+  type GtfsRouteOption,
 } from "@mvta/shared";
 import { api } from "../config.js";
 
@@ -27,6 +28,13 @@ function RouteClassificationSection() {
   const [category, setCategory] = useState<RouteCategory>("SpecialEvent");
   const [label, setLabel] = useState("");
 
+  // Same registry (GtfsRoutes via GET /routes) already backing Compose's
+  // affected-routes selector - picking a known route beats typing a raw
+  // numeric ID blind. Falls back to the free-text input if the registry
+  // can't be reached or is empty, same graceful-degradation convention as
+  // Compose.
+  const [routesList, setRoutesList] = useState<GtfsRouteOption[] | null>(null);
+
   function load() {
     api
       .getRouteClassification()
@@ -38,6 +46,30 @@ function RouteClassificationSection() {
   }
 
   useEffect(load, []);
+
+  useEffect(() => {
+    let alive = true;
+    api
+      .getRoutes()
+      .then((d) => alive && setRoutesList(d.routes))
+      .catch(() => alive && setRoutesList([]));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const routesUseSelector = (routesList?.length ?? 0) > 0;
+  const routeOptions = useMemo(
+    () =>
+      (routesList ?? [])
+        .map((r) => ({
+          id: r.route_id,
+          label: r.route_short_name || r.route_long_name || r.route_id,
+          title: r.route_long_name ?? undefined,
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true })),
+    [routesList],
+  );
 
   function startEdit(r: RouteClassificationRow) {
     setEditingId(r.route_id);
@@ -92,14 +124,23 @@ function RouteClassificationSection() {
           <div className="field-grid">
             <div>
               <p className="field-label">Route ID</p>
-              <input
-                className="f"
-                type="number"
-                value={routeIdInput}
-                disabled={editingId !== null}
-                onChange={(e) => setRouteIdInput(e.target.value)}
-                placeholder="e.g. 90"
-              />
+              {routesUseSelector && editingId === null ? (
+                <select className="f" value={routeIdInput} onChange={(e) => setRouteIdInput(e.target.value)}>
+                  <option value="">Select a route…</option>
+                  {routeOptions.map((r) => (
+                    <option value={r.id} key={r.id} title={r.title}>{r.label}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  className="f"
+                  type="number"
+                  value={routeIdInput}
+                  disabled={editingId !== null}
+                  onChange={(e) => setRouteIdInput(e.target.value)}
+                  placeholder="e.g. 90"
+                />
+              )}
             </div>
             <div>
               <p className="field-label">Category</p>
