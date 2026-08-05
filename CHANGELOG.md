@@ -7,6 +7,15 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 ## [Unreleased]
 
+- **OTP Compliance service-month selector**: the module always defaulted
+  to the current month for its live Avail OTP Monthly/Missed Trips data,
+  with no way to view an earlier month - a brand-new month with no Avail
+  aggregate yet looked identical to "feed not configured." A new month
+  picker in the module's header now drives Route Summary, Review Queue,
+  Monthly Assessments, and Audit Stream's "current month" scope from one
+  selection, so staff can check whether a past month (which should have
+  real accumulated data) loads correctly instead of only ever seeing
+  whatever the current month happens to have.
 - **Route Classification (Admin)**: the Route ID field is now a selector
   populated from the live route registry (`GET /routes`, the same one
   backing Compose's affected-routes picker) instead of a free-text number

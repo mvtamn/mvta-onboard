@@ -50,6 +50,22 @@ interface AvailMissedTripsResponse {
   };
 }
 
+// Client-side mirror of otpMonthlyFeed.ts's serviceMonthOf - only used to
+// seed the month picker's default value before any fetch completes.
+function currentServiceMonth(): string {
+  const now = new Date();
+  return `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+// <input type="month"> uses "YYYY-MM"; the API/DB use "YYYYMM" throughout
+// this module - converters kept local since nothing else needs them.
+function toMonthInputValue(yyyymm: string): string {
+  return `${yyyymm.slice(0, 4)}-${yyyymm.slice(4, 6)}`;
+}
+function fromMonthInputValue(value: string): string {
+  return value.replace("-", "");
+}
+
 const NAV: { page: string; label: string }[] = [
   { page: "dashboard", label: "Dashboard" },
   { page: "queue", label: "Review Queue" },
@@ -83,6 +99,15 @@ const NAV: { page: string; label: string }[] = [
 export function OtpModule() {
   const [page, setPage] = useState("queue");
 
+  // Which service month the whole module is viewing - defaults to the
+  // current month but staff can switch to any past month. Everything below
+  // (Route Summary, Review Queue, Monthly Assessments, Audit Stream's
+  // "current month" scope) reads off this one selection rather than each
+  // page silently defaulting to "whatever the server picks," so a month
+  // with real Avail data can actually be viewed instead of always landing
+  // on a brand-new month before Avail has aggregated anything for it.
+  const [selectedMonth, setSelectedMonth] = useState<string>(currentServiceMonth());
+
   const [liveOtp, setLiveOtp] = useState<OtpMonthlyResponse | null>(null);
   const [liveMissedTrips, setLiveMissedTrips] = useState<AvailMissedTripsResponse | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -94,24 +119,33 @@ export function OtpModule() {
   const [dateReasonCodes, setDateReasonCodes] = useState<OtpReasonCode[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  // Month-independent - fetched once, not tied to selectedMonth.
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      api.getOtpMonthly(),
-      api.getAvailMissedTrips(),
-      api.getOtpSettings(),
-      api.getDateExclusions(),
-      api.getReasonCodes("stop", true),
-      api.getReasonCodes("date", true),
-    ])
-      .then(([otp, missed, settings, dates, stopCodes, dateCodes]) => {
+    Promise.all([api.getOtpSettings(), api.getDateExclusions(), api.getReasonCodes("stop", true), api.getReasonCodes("date", true)])
+      .then(([settings, dates, stopCodes, dateCodes]) => {
         if (cancelled) return;
-        setLiveOtp(otp);
-        setLiveMissedTrips(missed);
         setThreshold(settings.early_late_bias_threshold);
         setDateExclusions(dates.exclusions);
         setStopReasonCodes(stopCodes.reason_codes);
         setDateReasonCodes(dateCodes.reason_codes);
+      })
+      .catch(() => {
+        /* graceful - these each have their own mock/empty fallback already */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Month-dependent - refetches whenever the picker changes.
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([api.getOtpMonthly(selectedMonth), api.getAvailMissedTrips(selectedMonth)])
+      .then(([otp, missed]) => {
+        if (cancelled) return;
+        setLiveOtp(otp);
+        setLiveMissedTrips(missed);
         setLoadError(null);
       })
       .catch((err) => {
@@ -127,7 +161,7 @@ export function OtpModule() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [selectedMonth]);
 
   const usingLiveOtp = Boolean(liveOtp?.diagnostics.table_ready && liveOtp.stops.length > 0);
   const serviceMonth = liveOtp?.diagnostics.service_month ?? null;
@@ -258,13 +292,24 @@ export function OtpModule() {
         <b>{meta.title}.</b> {meta.sub}
       </p>
 
-      <div className="concept-banner">
+      <div className="concept-banner" style={{ flexWrap: "wrap", gap: 10 }}>
         <span className="concept-badge">{usingLiveOtp ? "Live data" : "Preview data"}</span>
         <span>
           {usingLiveOtp
             ? `Avail OTP Monthly feed - ${liveOtp!.diagnostics.service_month}, ${liveOtp!.diagnostics.record_count} stop/day rows.`
-            : loadError ?? "Avail OTP Monthly feed is not configured yet - showing sample data."}
+            : loadError ?? `Avail OTP Monthly feed has no rows for ${selectedMonth} yet - showing sample data.`}
         </span>
+        <label style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+          Service month
+          <input
+            className="f"
+            type="month"
+            style={{ width: 150 }}
+            value={toMonthInputValue(selectedMonth)}
+            max={toMonthInputValue(currentServiceMonth())}
+            onChange={(e) => e.target.value && setSelectedMonth(fromMonthInputValue(e.target.value))}
+          />
+        </label>
       </div>
       {actionError ? <p className="error-text">{actionError}</p> : null}
 
