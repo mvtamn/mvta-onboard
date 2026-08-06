@@ -18,11 +18,31 @@
 // explicit staff action taken after investigation (via the console module's
 // own "Prepare rider alert" button, same prepare/focus flow as everywhere
 // else), not an automatic side effect of detection.
+//
+// Ops definition of a missed trip (2026-08-06): a scheduled run that either
+// never happens, or starts more than 30 minutes after its scheduled time.
+// GRACE_MINUTES below drives both halves of that: the silent-no-show cutoff
+// AND the late-arrival resolve threshold in resolveLateArrivals() - a trip
+// that shows up 45 minutes late is still a missed trip, not a resolved one.
+//
+// Silent-no-show detection runs twice per poll, once for "today" and once
+// for "yesterday" (dayOffset 0 / -1 in detectSilentNoShows). GTFS scheduled
+// times legitimately exceed 24:00:00 for a trip that starts before midnight
+// and runs past it, and a trip's 30-minute grace deadline can itself fall
+// after midnight even for an ordinary same-day trip (e.g. one scheduled at
+// 23:50). A single wall-clock-seconds-since-midnight comparison can never
+// reach those trips - by the time enough real time has passed to declare
+// them missed, "today" has already rolled over and they've fallen out of
+// scope. Re-checking "yesterday" every poll (cheap - NOT EXISTS filters keep
+// it a no-op once a trip is observed or already tracked) closes that gap
+// without needing a separate rollover job.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchTripUpdateFeed, mapCanceledTrip, type CanceledTrip } from "../lib/gtfsTripUpdates";
 
-const GRACE_MINUTES = 15; // matches the existing delay-threshold convention
+const GRACE_MINUTES = 30; // ops definition: never-ran OR started >30 min late = missed
+const GRACE_SECONDS = GRACE_MINUTES * 60;
+const SECONDS_PER_DAY = 24 * 60 * 60;
 
 async function alreadyTracked(pool: sql.ConnectionPool, tripId: string, serviceDate: string): Promise<boolean> {
   const req = pool.request();
@@ -91,13 +111,12 @@ async function flagCanceled(pool: sql.ConnectionPool, trip: CanceledTrip, contex
   return true;
 }
 
-function serviceDateToday(): string {
-  // GTFS service_date convention: YYYYMMDD, local-agency-day. Using UTC date
-  // here is a known simplification (MVTA operates in a single time zone and
-  // this only needs day-level granularity for schedule lookups) - revisit if
-  // trips near local midnight prove to matter.
-  const now = new Date();
-  return `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, "0")}${String(now.getUTCDate()).padStart(2, "0")}`;
+// GTFS service_date convention: YYYYMMDD, local-agency-day. Using UTC date
+// here is a known simplification (MVTA operates in a single time zone and
+// this only needs day-level granularity for schedule lookups) - revisit if
+// trips near local midnight prove to matter.
+function serviceDateFor(date: Date): string {
+  return `${date.getUTCFullYear()}${String(date.getUTCMonth() + 1).padStart(2, "0")}${String(date.getUTCDate()).padStart(2, "0")}`;
 }
 
 function dowColumn(date: Date): string {
@@ -131,7 +150,19 @@ async function activeServiceIdsToday(pool: sql.ConnectionPool, serviceDate: stri
   return result.recordset.map((r) => r.service_id);
 }
 
-async function detectSilentNoShows(pool: sql.ConnectionPool, context: InvocationContext): Promise<number> {
+// dayOffset 0 = "today" (catches trips whose 30-min grace deadline falls
+// before midnight); dayOffset -1 = "yesterday" (catches trips whose deadline
+// falls after midnight - either an ordinary late-evening trip, e.g. one
+// scheduled 23:50, or one using GTFS's >24:00:00 past-midnight time
+// convention). elapsedSeconds is uncapped (can exceed 86400) so it can reach
+// those trips' first_departure_seconds, which are stored on the same
+// uncapped scale. See the module header comment for why both passes run
+// every poll rather than just after midnight.
+async function detectSilentNoShows(
+  pool: sql.ConnectionPool,
+  context: InvocationContext,
+  dayOffset: number,
+): Promise<number> {
   const scheduleTablesExist = await pool.request().query<{ ok: number }>(`
     SELECT CASE WHEN OBJECT_ID('dbo.GtfsScheduledTrips', 'U') IS NULL THEN 0 ELSE 1 END AS ok
   `);
@@ -141,22 +172,25 @@ async function detectSilentNoShows(pool: sql.ConnectionPool, context: Invocation
   }
 
   const now = new Date();
-  const serviceDate = serviceDateToday();
-  const dow = dowColumn(now);
+  const serviceDayStart = new Date(now);
+  serviceDayStart.setUTCDate(serviceDayStart.getUTCDate() + dayOffset);
+  const serviceDate = serviceDateFor(serviceDayStart);
+  const dow = dowColumn(serviceDayStart);
   const secondsSinceMidnightUtc = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
-  const graceSeconds = GRACE_MINUTES * 60;
+  const elapsedSeconds = secondsSinceMidnightUtc - dayOffset * SECONDS_PER_DAY;
 
   const serviceIds = await activeServiceIdsToday(pool, serviceDate, dow);
   if (serviceIds.length === 0) return 0;
 
   const req = pool.request();
   req.input("service_date", sql.NVarChar, serviceDate);
-  req.input("cutoff_seconds", sql.Int, secondsSinceMidnightUtc - graceSeconds);
+  req.input("cutoff_seconds", sql.Int, elapsedSeconds - GRACE_SECONDS);
   const serviceIdParams = serviceIds.map((_, i) => `@sid${i}`).join(", ");
   serviceIds.forEach((id, i) => req.input(`sid${i}`, sql.NVarChar, id));
 
-  // Trips scheduled today, whose grace deadline has passed, that have never
-  // been observed in the realtime feed and aren't already tracked.
+  // Trips scheduled on serviceDate, whose grace deadline has passed, that
+  // have never been observed in the realtime feed and aren't already
+  // tracked.
   const dueTrips = await req.query<ScheduledTripRow>(`
     SELECT st.trip_id, st.route_id, st.first_departure_seconds
     FROM GtfsScheduledTrips st
@@ -174,10 +208,11 @@ async function detectSilentNoShows(pool: sql.ConnectionPool, context: Invocation
 
   let flaggedCount = 0;
   for (const trip of dueTrips.recordset) {
-    const scheduledAt = new Date(0);
-    scheduledAt.setUTCFullYear(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    const scheduledAt = new Date(
+      Date.UTC(serviceDayStart.getUTCFullYear(), serviceDayStart.getUTCMonth(), serviceDayStart.getUTCDate()),
+    );
     scheduledAt.setUTCSeconds(trip.first_departure_seconds);
-    const graceDeadline = new Date(scheduledAt.getTime() + graceSeconds * 1000);
+    const graceDeadline = new Date(scheduledAt.getTime() + GRACE_SECONDS * 1000);
 
     try {
       const trackReq = pool.request();
@@ -201,15 +236,34 @@ async function detectSilentNoShows(pool: sql.ConnectionPool, context: Invocation
   return flaggedCount;
 }
 
+// Per the ops definition, "showed up eventually" only clears a flagged trip
+// when it showed up within the 30-minute grace window - a trip that starts
+// 45+ minutes late is still a missed trip, not a resolved one. So this is
+// two updates, not one: within-grace arrivals resolve normally; beyond-grace
+// arrivals stay flagged (status untouched) but still record
+// detected_late_arrival_at so staff reviewing the queue can see it did
+// eventually run, just too late to count.
 async function resolveLateArrivals(pool: sql.ConnectionPool, context: InvocationContext): Promise<void> {
   try {
-    await pool.request().query(`
+    const req = pool.request();
+    req.input("grace_seconds", sql.Int, GRACE_SECONDS);
+    await req.query(`
       UPDATE mmt
       SET status = 'resolved', detected_late_arrival_at = ot.first_observed_at, last_checked_at = SYSUTCDATETIME()
       FROM MonitoredMissedTrips mmt
       INNER JOIN GtfsObservedTrips ot
         ON ot.trip_id = mmt.trip_id AND ot.service_date = mmt.service_date
       WHERE mmt.status IN ('watching', 'escalated')
+        AND DATEDIFF(SECOND, mmt.scheduled_departure_at, ot.first_observed_at) <= @grace_seconds;
+
+      UPDATE mmt
+      SET detected_late_arrival_at = ot.first_observed_at, last_checked_at = SYSUTCDATETIME()
+      FROM MonitoredMissedTrips mmt
+      INNER JOIN GtfsObservedTrips ot
+        ON ot.trip_id = mmt.trip_id AND ot.service_date = mmt.service_date
+      WHERE mmt.status IN ('watching', 'escalated')
+        AND DATEDIFF(SECOND, mmt.scheduled_departure_at, ot.first_observed_at) > @grace_seconds
+        AND mmt.detected_late_arrival_at IS NULL;
     `);
   } catch (err) {
     context.error("Failed to resolve late-arriving missed trips:", err);
@@ -247,10 +301,15 @@ app.timer("gtfsMissedTripsPoll", {
     }
 
     let noShowCount = 0;
-    try {
-      noShowCount = await detectSilentNoShows(pool, context);
-    } catch (err) {
-      context.error("Failed to run silent no-show detection:", err);
+    // Both offsets run every poll - see the module header comment for why
+    // "yesterday" needs rechecking too (late-evening and past-midnight
+    // trips' grace deadlines fall after the calendar day rolls over).
+    for (const dayOffset of [0, -1]) {
+      try {
+        noShowCount += await detectSilentNoShows(pool, context, dayOffset);
+      } catch (err) {
+        context.error(`Failed to run silent no-show detection (dayOffset=${dayOffset}):`, err);
+      }
     }
 
     await resolveLateArrivals(pool, context);

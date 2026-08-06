@@ -7,6 +7,29 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 ## [Unreleased]
 
+- **Fixed two missed-trip detection logic gaps in `gtfsMissedTripsPoll.ts`.**
+  (1) The silent-no-show grace threshold was 15 minutes; ops' definition of
+  a missed trip is "never ran, or started more than 30 minutes late" - bumped
+  `GRACE_MINUTES` to 30 to match, used consistently for both the no-show
+  cutoff and the late-arrival resolve check below. (2) Confirmed boundary
+  bug: the no-show cutoff compared against wall-clock seconds-since-midnight
+  (always `< 86400`), so any trip scheduled after ~23:45, or using GTFS's
+  standard `>24:00:00` past-midnight time notation, could never satisfy the
+  cutoff on any poll run and silently fell out of detection scope forever
+  once the calendar date rolled over. `detectSilentNoShows` now runs twice
+  per poll - once for "today", once for "yesterday" with elapsed time
+  uncapped past 86400 - closing the gap without a separate rollover job
+  (existing `NOT EXISTS` filters keep the repeat check a no-op once a trip
+  is observed or tracked). Also fixed `resolveLateArrivals`, which
+  previously flipped a flagged trip straight to `resolved` the instant it
+  appeared in `GtfsObservedTrips` at all, with no check on how late - a
+  trip starting 90 minutes late was silently reclassified as a non-event.
+  Now split into two updates: arrivals within the 30-minute grace period
+  resolve normally; arrivals beyond that stay flagged as missed but record
+  `detected_late_arrival_at` so staff can see it eventually ran. See
+  `plans/missed-trip-detection-logic-gaps.md` for the full writeup,
+  including an open, not-yet-root-caused false-positive hypothesis these
+  fixes don't address.
 - **Fixed AVL Reports returning zero vehicles on every poll since launch.**
   Root cause confirmed live: `fetchAvlReports` built its `{Start
   DateTime}/{End DateTime}` URL segments with `encodeURIComponent`, which
