@@ -27,7 +27,7 @@ param mapsAccountName string
 
 resource mapsAccount 'Microsoft.Maps/accounts@2023-06-01' = {
   name: mapsAccountName
-  location: 'global'
+  location: location
   sku: {
     name: 'G2'
   }

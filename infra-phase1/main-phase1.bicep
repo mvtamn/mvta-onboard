@@ -137,14 +137,17 @@ module detourImagesStorage 'modules/storage-detour-images.bicep' = {
 }
 
 // Azure Maps account for Event Monitoring's real map overlay
-// (event-module-implementation-plan.md, Part A3) - new resource, not
-// deployed until the owner approves (real, if small, cost - flagged in
-// HANDOFF.md same as every other new resource this repo has added).
+// (event-module-implementation-plan.md, Part A3). CONFIRMED LIVE 2026-08-06:
+// the owner provisioned this manually (az/Portal), not via this module -
+// same "built outside Bicep first" pattern as Front Door (see this file's
+// own header comment). Name matches the real resource
+// (rg-mvta-onboard-dev/mvta-onboard-maps) so a future deployment manages it
+// in place instead of creating a second, unused account.
 module maps 'modules/maps.bicep' = {
   name: 'maps-deployment'
   params: {
     location: location
-    mapsAccountName: 'map-mvta-onboard-${environment}'
+    mapsAccountName: 'mvta-onboard-maps'
     functionAppPrincipalId: restApiFunction.outputs.functionAppPrincipalId
   }
 }

@@ -33,18 +33,19 @@ badge and footer read this version at build time - see `vite.config.ts`).
   short-lived Azure AD token server-side for the SDK's `anonymous` auth
   mode, same identity-based pattern as Blob Storage SAS minting and
   Service Bus.
-  **Owner actions (blocking, live environment) - new Azure Maps account,
-  real if small cost, not deployed until approved:**
-  1. Register the `Microsoft.Maps` resource provider on the subscription
-     (`NotRegistered` as of 2026-08-06 - `az provider register --namespace
-     Microsoft.Maps`).
-  2. Approve and deploy `infra-phase1/modules/maps.bicep` (wired into
-     `main-phase1.bicep`) - Gen2 pay-as-you-go tier, no committed spend.
-  3. Set `AZURE_MAPS_CLIENT_ID` on `func-mvta-restapi-dev` to the deployed
-     account's `mapsClientId` output (a public identifier, not a secret).
-  4. Deploy the updated code.
-  Until all four land, the map panel shows a graceful "Could not load the
-  map" message instead of the basemap - expected, not a bug.
+  **LIVE as of 2026-08-06**: the owner provisioned the Azure Maps account
+  directly (`rg-mvta-onboard-dev/mvta-onboard-maps`, Gen2, `westus2` - not
+  via `maps.bicep`, same "built outside Bicep first" pattern as Front Door;
+  `main-phase1.bicep`'s `mapsAccountName`/`location` updated to match so a
+  future deploy manages this resource in place instead of creating a
+  second, unused one). `func-mvta-restapi-dev`'s managed identity was
+  granted Azure Maps Data Reader on the account, and `AZURE_MAPS_CLIENT_ID`
+  is set to its `uniqueId`. **Follow-up, not blocking**: the manually-
+  created account still has `disableLocalAuth: false` (subscription-key
+  auth technically still possible, though this code never uses it) -
+  `maps.bicep` sets `disableLocalAuth: true`; running it against the
+  existing resource would tighten this to match every other resource's
+  identity-only posture in this project.
 
 ## [1.5.0] - 2026-08-06
 
