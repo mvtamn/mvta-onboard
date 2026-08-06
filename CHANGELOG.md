@@ -7,19 +7,23 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 ## [Unreleased]
 
-- **AVL Reports feed diagnostics**: confirmed via 14 days of App Insights
-  traces that `availAvlPoll` has never once seen a nonzero vehicle count -
-  every run completes cleanly (`success: true`, no thrown error), so the
-  request itself is well-formed; Avail's own `"AVL Reports"` array is just
-  always empty. `fetchAvlReports` now logs the raw HTTP status, exact
-  request URL/window, and a truncated raw response body on every call
-  (success or failure) so the next live poll's trace confirms whether
-  that's Avail genuinely reporting nothing for this property, or a subtler
-  mismatch we can't see from the parsed result alone. Also made
-  `AVAIL_AVL_REPORTS_URL` tolerant of a trailing `/MVTA` segment (Ty's
-  considering adding it to match the other five Avail feed settings'
-  convention) - `normalizeBaseUrl()` strips it first so Property is never
-  appended twice into `.../MVTA/MVTA/...`.
+- **Fixed AVL Reports returning zero vehicles on every poll since launch.**
+  Root cause confirmed live: `fetchAvlReports` built its `{Start
+  DateTime}/{End DateTime}` URL segments with `encodeURIComponent`, which
+  escapes colons to `%3A` - Avail's API silently no-ops on that (returns a
+  clean `success: true` with an always-empty `"AVL Reports"` array,
+  no error) instead of rejecting it. 14 days of App Insights traces showed
+  every 5-minute poll completing without a single thrown error, which is
+  what made this invisible - the request looked entirely healthy. Ty
+  confirmed by running the same request via curl with colons left literal
+  and got real vehicle data back immediately. Fixed by escaping only the
+  space (`%20`), leaving colons literal, matching the confirmed-working
+  request exactly. Also added: raw HTTP status/URL/body logging on every
+  call (success or failure) for future diagnosis, and tolerance for
+  `AVAIL_AVL_REPORTS_URL` having a trailing `/MVTA` segment already baked
+  in (matching the other five Avail feed settings' convention) -
+  `normalizeBaseUrl()` strips it first so Property is never appended
+  twice into `.../MVTA/MVTA/...`.
 - **Route Classification had no way to remove a classification.** Confirmed
   live - Ty classified a real fixed route as SpecialEvent for testing and
   had no way to undo it. New `DELETE /route-classification/{routeId}` +

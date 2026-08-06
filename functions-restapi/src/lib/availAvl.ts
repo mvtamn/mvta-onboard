@@ -84,12 +84,21 @@ export async function fetchAvlReports(
 ): Promise<AvailAvlReport[]> {
   const startStr = formatDateTimeSql(startDate);
   const endStr = formatDateTimeSql(endDate);
-  // encodeURIComponent - the datetime format's space and colons aren't
-  // valid raw in a URL path segment.
+  // CONFIRMED live 2026-08-06: Ty ran this feed directly via curl with the
+  // space escaped as %20 but colons left LITERAL (not %3A) and got real
+  // vehicle data back - the same request this code was previously sending
+  // (encodeURIComponent, which also escapes colons to %3A) had returned a
+  // clean success=true with an always-empty "AVL Reports" array for the
+  // prior 14 days straight. Avail's API apparently accepts an unescaped
+  // colon in this path segment but silently no-ops (no error) on an
+  // escaped one - encodeURIComponent() is the wrong tool here even though
+  // colons and spaces are both technically reserved in a URL path segment.
+  // encodeDateTimeSegment escapes ONLY the space, to match exactly.
+  const encodeDateTimeSegment = (s: string) => s.replace(/ /g, "%20");
   const url =
     `${normalizeBaseUrl(baseUrl)}/${PROPERTY}` +
-    `/${encodeURIComponent(startStr)}` +
-    `/${encodeURIComponent(endStr)}`;
+    `/${encodeDateTimeSegment(startStr)}` +
+    `/${encodeDateTimeSegment(endStr)}`;
   const res = await fetch(url, {
     headers: { "Ocp-Apim-Subscription-Key": apiKey },
   });

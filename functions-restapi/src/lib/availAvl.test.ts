@@ -58,7 +58,10 @@ test("treats optional fields as null when absent", () => {
 // three the real spec needs (Property, then two full-datetime segments).
 // This test locks in the fixed URL shape - baseUrl carries NO property
 // segment; PROPERTY ("MVTA") is appended explicitly by fetchAvlReports.
-test("fetchAvlReports builds the URL with an explicit Property segment plus two encoded full-datetime segments", async () => {
+// Colons in the datetime segments are LITERAL, not %3A-encoded - see the
+// dedicated test below for why (encodeURIComponent was the actual root
+// cause of 14 days of zero-vehicle polls).
+test("fetchAvlReports builds the URL with an explicit Property segment plus two datetime segments (space escaped, colons literal)", async () => {
   let requestedUrl = "";
   const original = global.fetch;
   global.fetch = (async (url: string) => {
@@ -81,7 +84,43 @@ test("fetchAvlReports builds the URL with an explicit Property segment plus two 
   }
   assert.strictEqual(
     requestedUrl,
-    "https://example.test/AVLReports/v1/MVTA/2026-08-05%2021%3A30%3A00/2026-08-05%2021%3A40%3A00",
+    "https://example.test/AVLReports/v1/MVTA/2026-08-05%2021:30:00/2026-08-05%2021:40:00",
+  );
+});
+
+// ROOT CAUSE, confirmed live 2026-08-06: Ty ran the same request via curl
+// with colons left literal (not %3A-encoded) and got real vehicle data
+// back, where this code's previous encodeURIComponent() call - which also
+// escapes colons - had returned a clean success=true with an always-
+// empty "AVL Reports" array for 14 straight days. Avail's API silently
+// no-ops on an encoded colon in this path segment rather than erroring.
+// This test guards against ever reintroducing %3A here.
+test("fetchAvlReports never percent-encodes the colons in the datetime segments", async () => {
+  let requestedUrl = "";
+  const original = global.fetch;
+  global.fetch = (async (url: string) => {
+    requestedUrl = url;
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ success: true, errors: [], result: { "AVL Reports": [] } }),
+    };
+  }) as unknown as typeof fetch;
+  try {
+    await fetchAvlReports(
+      "https://example.test/AVLReports/v1",
+      "key",
+      new Date("2026-08-06T17:00:00Z"),
+      new Date("2026-08-06T17:15:00Z"),
+    );
+  } finally {
+    global.fetch = original;
+  }
+  assert.ok(!requestedUrl.includes("%3A"), `expected no %3A-encoded colons, got: ${requestedUrl}`);
+  assert.ok(requestedUrl.includes(":"), `expected literal colons, got: ${requestedUrl}`);
+  assert.strictEqual(
+    requestedUrl,
+    "https://example.test/AVLReports/v1/MVTA/2026-08-06%2017:00:00/2026-08-06%2017:15:00",
   );
 });
 
@@ -112,7 +151,7 @@ test("fetchAvlReports does not double up Property when baseUrl already ends in /
   }
   assert.strictEqual(
     requestedUrl,
-    "https://example.test/AVLReports/v1/MVTA/2026-08-05%2021%3A30%3A00/2026-08-05%2021%3A40%3A00",
+    "https://example.test/AVLReports/v1/MVTA/2026-08-05%2021:30:00/2026-08-05%2021:40:00",
   );
 });
 
@@ -137,7 +176,7 @@ test("fetchAvlReports does not double up Property when baseUrl ends in /MVTA/ (t
   for (const requestedUrl of requestedUrls) {
     assert.strictEqual(
       requestedUrl,
-      "https://example.test/AVLReports/v1/MVTA/2026-08-05%2021%3A30%3A00/2026-08-05%2021%3A40%3A00",
+      "https://example.test/AVLReports/v1/MVTA/2026-08-05%2021:30:00/2026-08-05%2021:40:00",
     );
   }
 });
