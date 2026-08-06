@@ -38,6 +38,7 @@ app.http("missedTripsValidate", {
     const serviceDate = body.service_date as string;
     const validationStatus = body.validation_status as string;
     const notes = (body.notes as string | undefined) ?? null;
+    const reasonCode = (body.reason_code as string | undefined) ?? null;
     const validatedBy = authResult.principal.userDetails ?? "onboard-console";
 
     try {
@@ -48,12 +49,14 @@ app.http("missedTripsValidate", {
       req.input("validation_status", sql.NVarChar, validationStatus);
       req.input("validated_by", sql.NVarChar, validatedBy);
       req.input("notes", sql.NVarChar, notes);
+      req.input("reason_code", sql.NVarChar(20), reasonCode);
       const result = await req.query(`
         UPDATE MonitoredMissedTrips
         SET validation_status = @validation_status,
             validated_by = @validated_by,
             validated_at = SYSUTCDATETIME(),
-            notes = @notes
+            notes = @notes,
+            reason_code = @reason_code
         WHERE trip_id = @trip_id AND service_date = @service_date
       `);
       if (result.rowsAffected[0] === 0) {
@@ -61,7 +64,7 @@ app.http("missedTripsValidate", {
       }
       return {
         status: 200,
-        jsonBody: { trip_id: tripId, service_date: serviceDate, validation_status: validationStatus },
+        jsonBody: { trip_id: tripId, service_date: serviceDate, validation_status: validationStatus, reason_code: reasonCode },
       };
     } catch (err) {
       context.error("POST /missed-trips/validate failed:", err);

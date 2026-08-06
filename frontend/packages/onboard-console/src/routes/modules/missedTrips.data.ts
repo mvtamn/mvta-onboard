@@ -1,6 +1,12 @@
 export type MissedTripAlertStatus = "watching" | "escalated" | "resolved";
 export type MissedTripValidationStatus = "unreviewed" | "confirmed" | "false_positive";
 
+// Which of the two independent detection signals fired (gtfsMissedTripsPoll.ts) -
+// added by migration-023 (backend column: detection_type). null means a row
+// flagged before that migration ran; the console shows that honestly rather
+// than guessing which signal it was.
+export type MissedTripDetectionType = "explicit_cancellation" | "silent_no_show" | null;
+
 // Missed Trips is a compliance/investigation tool: detection flags a
 // candidate (status) and a separate staff review records whether it was
 // confirmed or a false positive (validationStatus). The two are independent
@@ -11,7 +17,7 @@ export interface MissedTripAlert {
   tripId: string;
   serviceDate: string;
   route: string;
-  detectionType: "canceled" | "no_show" | "unknown";
+  detectionType: MissedTripDetectionType;
   scheduledDepartureAt: string | null;
   graceDeadlineAt: string | null;
   status: MissedTripAlertStatus;
@@ -19,6 +25,7 @@ export interface MissedTripAlert {
   firstSeenWatchingAt: string;
   suggestedAlertId: string | null;
   validationStatus: MissedTripValidationStatus;
+  reasonCode: string | null;
   validatedBy: string | null;
   validatedAt: string | null;
   notes: string | null;
@@ -33,7 +40,7 @@ export const MISSED_TRIP_ALERTS: MissedTripAlert[] = [
     tripId: "497-0630-SB",
     serviceDate: "20260727",
     route: "497",
-    detectionType: "canceled",
+    detectionType: "explicit_cancellation",
     scheduledDepartureAt: new Date(Date.now() - 25 * 60_000).toISOString(),
     graceDeadlineAt: new Date(Date.now() - 10 * 60_000).toISOString(),
     status: "escalated",
@@ -41,6 +48,7 @@ export const MISSED_TRIP_ALERTS: MissedTripAlert[] = [
     firstSeenWatchingAt: new Date(Date.now() - 25 * 60_000).toISOString(),
     suggestedAlertId: null,
     validationStatus: "unreviewed",
+    reasonCode: null,
     validatedBy: null,
     validatedAt: null,
     notes: null,
@@ -50,7 +58,7 @@ export const MISSED_TRIP_ALERTS: MissedTripAlert[] = [
     tripId: "440-0715-NB",
     serviceDate: "20260727",
     route: "440",
-    detectionType: "no_show",
+    detectionType: "silent_no_show",
     scheduledDepartureAt: new Date(Date.now() - 40 * 60_000).toISOString(),
     graceDeadlineAt: new Date(Date.now() - 25 * 60_000).toISOString(),
     status: "resolved",
@@ -58,6 +66,7 @@ export const MISSED_TRIP_ALERTS: MissedTripAlert[] = [
     firstSeenWatchingAt: new Date(Date.now() - 40 * 60_000).toISOString(),
     suggestedAlertId: null,
     validationStatus: "confirmed",
+    reasonCode: "VEHICLE_BREAKDOWN",
     validatedBy: "Dev User (mock)",
     validatedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
     notes: "Dispatch log confirms the vehicle ran 12 minutes behind and was never flagged internally.",

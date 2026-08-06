@@ -1,7 +1,8 @@
-// Admin-editable reason codes for stop exclusions (Review Queue) and date
-// exclusions (Weather page) - replaces the two hardcoded arrays previously
-// in otpData.ts. Seeded by migration-018 with the exact codes that were
-// hardcoded before, so nothing regresses.
+// Admin-editable reason codes for stop exclusions (OTP Review Queue), date
+// exclusions (OTP Weather page), and - since migration-023 - Missed Trips'
+// investigation-outcome dropdown (applies_to='missed_trip'). Name is a
+// holdover from when this only served OTP; kept as-is rather than renaming
+// the table/route for a third, unrelated consumer.
 //
 //   GET /otp-reason-codes?applies_to=&active_only=  - any staff role, plus OCC.Compliance
 //   POST /otp-reason-codes                           - OCC.Admin only
@@ -15,7 +16,7 @@ interface ReasonCodeRow {
   id: string;
   code: string;
   label: string;
-  applies_to: "stop" | "date";
+  applies_to: "stop" | "date" | "missed_trip";
   is_active: boolean;
   sort_order: number;
   updated_by: string | null;
@@ -39,8 +40,8 @@ app.http("otpReasonCodesList", {
       const pool = await getPool();
       const req = pool.request();
       const conditions: string[] = [];
-      if (appliesTo === "stop" || appliesTo === "date") {
-        req.input("applies_to", sql.NVarChar(10), appliesTo);
+      if (appliesTo === "stop" || appliesTo === "date" || appliesTo === "missed_trip") {
+        req.input("applies_to", sql.NVarChar(20), appliesTo);
         conditions.push("applies_to = @applies_to");
       }
       if (activeOnly) conditions.push("is_active = 1");
@@ -80,14 +81,14 @@ app.http("otpReasonCodesCreate", {
     if (errors.length > 0) {
       return { status: 400, jsonBody: { error: "Validation failed", details: errors } };
     }
-    const body = raw as { code: string; label: string; applies_to: "stop" | "date" };
+    const body = raw as { code: string; label: string; applies_to: "stop" | "date" | "missed_trip" };
 
     try {
       const pool = await getPool();
       const sqlRequest = pool.request();
       sqlRequest.input("code", sql.NVarChar, body.code);
       sqlRequest.input("label", sql.NVarChar, body.label);
-      sqlRequest.input("applies_to", sql.NVarChar(10), body.applies_to);
+      sqlRequest.input("applies_to", sql.NVarChar(20), body.applies_to);
       sqlRequest.input("updated_by", sql.NVarChar, authResult.principal.userDetails || "system");
 
       const result = await sqlRequest.query<ReasonCodeRow>(`

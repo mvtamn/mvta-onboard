@@ -16,6 +16,7 @@
 // lowercase "missed", with a sibling "results" metadata array - same
 // pattern as otpMonthlyFeed.ts ("OtpByRouteStopDayAgg" -> "otp") and
 // Detours ("Detours" -> "detours"). This feed was never actually empty.
+import sql from "mssql";
 import { formatDateMmDdYyyy } from "./otpMonthlyFeed";
 
 export interface AvailMissedTripReport {
@@ -137,4 +138,63 @@ export function mapMissedTripReport(report: AvailMissedTripReport): MappedMissed
     entire_trip_missed: Boolean(report.EntireTripMissed),
     departure_trip_start_time: parseNullableDate(report.DepartureTripStartTime),
   };
+}
+
+// Shared delete+reload, extracted from availMissedTripsPoll.ts so
+// otpHistoricalBackfill.ts (arbitrary past months, admin-triggered) can
+// reuse the identical replace instead of duplicating it. Same
+// no-natural-key situation as the daily poller - safe and idempotent to
+// re-run for months already backfilled.
+export async function replaceMissedTripsForMonths(
+  pool: sql.ConnectionPool,
+  targetMonths: string[],
+  mapped: MappedMissedTrip[],
+): Promise<void> {
+  const tx = new sql.Transaction(pool);
+  await tx.begin();
+  try {
+    for (const serviceMonth of targetMonths) {
+      const deleteReq = new sql.Request(tx);
+      deleteReq.input("service_month", sql.Char(6), serviceMonth);
+      await deleteReq.query("DELETE FROM AvailMissedTripsRouteStopDay WHERE service_month = @service_month");
+    }
+
+    for (const m of mapped) {
+      const insertReq = new sql.Request(tx);
+      insertReq.input("service_month", sql.Char(6), m.service_month);
+      insertReq.input("calendar_date", sql.Char(8), m.calendar_date);
+      insertReq.input("route_id", sql.Int, m.route_id);
+      insertReq.input("route_desc", sql.NVarChar, m.route_desc);
+      insertReq.input("route_internet_name", sql.NVarChar, m.route_internet_name);
+      insertReq.input("departure_stop_id", sql.Int, m.departure_stop_id);
+      insertReq.input("departure_stop_name", sql.NVarChar, m.departure_stop_name);
+      insertReq.input("arrival_stop_id", sql.Int, m.arrival_stop_id);
+      insertReq.input("arrival_stop_name", sql.NVarChar, m.arrival_stop_name);
+      insertReq.input("departure_missed", sql.Bit, m.departure_missed);
+      insertReq.input("arrival_missed", sql.Bit, m.arrival_missed);
+      insertReq.input("entire_trip_missed", sql.Bit, m.entire_trip_missed);
+      insertReq.input("departure_trip_start_time", sql.DateTime2, m.departure_trip_start_time);
+      await insertReq.query(`
+        INSERT INTO AvailMissedTripsRouteStopDay (
+          service_month, calendar_date, route_id, route_desc, route_internet_name,
+          departure_stop_id, departure_stop_name, arrival_stop_id, arrival_stop_name,
+          departure_missed, arrival_missed, entire_trip_missed, departure_trip_start_time
+        )
+        VALUES (
+          @service_month, @calendar_date, @route_id, @route_desc, @route_internet_name,
+          @departure_stop_id, @departure_stop_name, @arrival_stop_id, @arrival_stop_name,
+          @departure_missed, @arrival_missed, @entire_trip_missed, @departure_trip_start_time
+        )
+      `);
+    }
+
+    await tx.commit();
+  } catch (err) {
+    try {
+      await tx.rollback();
+    } catch {
+      /* already rolled back / not begun */
+    }
+    throw err;
+  }
 }

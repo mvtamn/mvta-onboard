@@ -223,6 +223,12 @@ export type MissedTripValidationStatus = "unreviewed" | "confirmed" | "false_pos
 // and records the outcome via POST /missed-trips/validate. Preparing a rider
 // notice (if warranted) stays a separate, explicit action through the normal
 // suggested-alerts prepare/focus flow.
+// detection_type/reason_code added by migration-023 - before that migration
+// runs, existing rows read back as null for both; the console shows an
+// honest "Unknown - flagged before detection tracking was added" rather
+// than guessing.
+export type MissedTripDetectionType = "explicit_cancellation" | "silent_no_show";
+
 export interface MissedTrip {
   trip_id: string;
   service_date: string;
@@ -230,11 +236,13 @@ export interface MissedTrip {
   scheduled_departure_at: string;
   grace_deadline_at: string;
   status: MissedTripStatus;
+  detection_type: MissedTripDetectionType | null;
   detected_late_arrival_at: string | null;
   suggested_alert_id: string | null;
   first_seen_watching_at: string;
   last_checked_at: string;
   validation_status: MissedTripValidationStatus;
+  reason_code: string | null;
   validated_by: string | null;
   validated_at: string | null;
   notes: string | null;
@@ -245,6 +253,21 @@ export interface ValidateMissedTripInput {
   service_date: string;
   validation_status: "confirmed" | "false_positive";
   notes?: string;
+  reason_code?: string | null;
+}
+
+// GET /missed-trips-monthly-summary - one row per (month, route, detection
+// type, outcome) combination; the console pivots this into a table.
+export interface MissedTripsMonthlySummaryRow {
+  service_month: string;
+  route_id: string;
+  detection_type: MissedTripDetectionType | null;
+  validation_status: MissedTripValidationStatus;
+  trip_count: number;
+}
+
+export interface MissedTripsMonthlySummaryResponse {
+  summary: MissedTripsMonthlySummaryRow[];
 }
 
 export interface OnDemandRiskRecord {
@@ -618,7 +641,9 @@ export interface OtpAuditEntry {
   timestamp: string;
 }
 
-export type ReasonCodeAppliesTo = "stop" | "date";
+// "missed_trip" added by migration-023 - the same admin-editable table now
+// also backs Missed Trips' investigation-outcome dropdown.
+export type ReasonCodeAppliesTo = "stop" | "date" | "missed_trip";
 
 export interface OtpReasonCode {
   id: string;
@@ -654,4 +679,26 @@ export interface OtpMonthlyTrendPoint {
   total: number;
   ontime: number;
   pct_ontime: number | null;
+}
+
+// POST /otp-historical-backfill - fills months outside the daily pollers'
+// 3-month trailing window (e.g. Jan-May 2026, before this feed's poller
+// existed). "And beyond" (future months) needs no backfill - the trailing
+// window already rolls forward on its own.
+export interface OtpHistoricalBackfillInput {
+  from: string; // YYYYMM
+  to: string; // YYYYMM
+}
+
+export interface OtpHistoricalBackfillMonthResult {
+  service_month: string;
+  reports_seen: number;
+  upserted: number;
+  error?: string;
+}
+
+export interface OtpHistoricalBackfillResponse {
+  months: string[];
+  otp_monthly: OtpHistoricalBackfillMonthResult[];
+  missed_trips: { reports_seen: number; rows_inserted: number; error?: string };
 }

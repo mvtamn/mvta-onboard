@@ -697,3 +697,12 @@
     align-items: flex-start;
   }
 }
+
+/* Missed Trips detail pane - de-emphasized raw trip_id reference (UX pass:
+   the raw GTFS trip_id is no longer the headline label, just a lookup aid
+   for dispatch/support). */
+.mono-ref {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  color: var(--text-muted);
+}

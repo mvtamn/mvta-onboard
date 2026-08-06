@@ -167,12 +167,32 @@ export function FixedRouteRefreshProvider({ children }: { children: ReactNode })
   );
 }
 
+// Fails soft rather than throwing: FixedRouteRefreshIndicator is a decorative
+// header widget, not critical UI, so a missing provider (its only real-world
+// cause seen so far: a Vite Fast Refresh module reload swapping this file's
+// createContext() identity mid-session while the already-mounted Provider
+// still held the old one) should degrade to a static, harmless display
+// instead of crashing the whole header. Still warns loudly in dev so a
+// genuine "used outside the provider" mistake stays visible.
+const FALLBACK_VALUE: FixedRouteRefreshValue = {
+  snapshot: null,
+  error: null,
+  loading: false,
+  refreshing: false,
+  intervalMs: DEFAULT_INTERVAL_MS,
+  secondsLeft: 0,
+  lastCompletedAt: null,
+  setRefreshInterval: () => {},
+  refreshNow: () => {},
+};
+
 export function useFixedRouteRefresh(): FixedRouteRefreshValue {
   const value = useContext(FixedRouteRefreshContext);
   if (!value) {
-    throw new Error(
-      "useFixedRouteRefresh must be used inside FixedRouteRefreshProvider",
+    console.warn(
+      "useFixedRouteRefresh: no FixedRouteRefreshProvider found in the tree (or its context identity changed, e.g. a dev Fast Refresh reload) - falling back to a static display instead of crashing.",
     );
+    return FALLBACK_VALUE;
   }
   return value;
 }

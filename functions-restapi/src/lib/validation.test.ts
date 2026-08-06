@@ -12,6 +12,7 @@ import {
   validateCreateReasonCode,
   validateUpdateReasonCode,
   validateOtpSettings,
+  validateOtpHistoricalBackfill,
   validateUploadUrlRequest,
   validateCreateDetourImage,
   MAX_SUMMARY_LENGTH,
@@ -227,6 +228,24 @@ test("missed-trip validation notes is optional but bounded when provided", () =>
   assert.ok(withOversizedNotes.some((e) => e.includes("notes")));
 });
 
+test("missed-trip validation accepts an optional reason_code", () => {
+  const withReason = validateMissedTripValidation({
+    trip_id: "t1",
+    service_date: "20260727",
+    validation_status: "confirmed",
+    reason_code: "VEHICLE_BREAKDOWN",
+  });
+  assert.deepStrictEqual(withReason, []);
+
+  const withOversizedReason = validateMissedTripValidation({
+    trip_id: "t1",
+    service_date: "20260727",
+    validation_status: "confirmed",
+    reason_code: "x".repeat(31),
+  });
+  assert.ok(withOversizedReason.some((e) => e.includes("reason_code")));
+});
+
 test("valid draft-summary request passes", () => {
   const errors = validateDraftSummary({
     raw_text: "440SB @ 4:35PM running 26 minutes down due to traffic",
@@ -350,6 +369,11 @@ test("valid reason code creation passes with no errors", () => {
   assert.deepStrictEqual(errors, []);
 });
 
+test("reason code creation accepts missed_trip as applies_to", () => {
+  const errors = validateCreateReasonCode({ code: "WEATHER", label: "Weather", applies_to: "missed_trip" });
+  assert.deepStrictEqual(errors, []);
+});
+
 test("reason code creation rejects invalid applies_to", () => {
   const errors = validateCreateReasonCode({ code: "X", label: "X", applies_to: "route" });
   assert.ok(errors.some((e) => e.includes("applies_to")));
@@ -374,6 +398,17 @@ test("OTP settings update rejects out-of-range thresholds", () => {
   assert.ok(validateOtpSettings({ early_late_bias_threshold: 0 }).length > 0);
   assert.ok(validateOtpSettings({ early_late_bias_threshold: 1 }).length > 0);
   assert.ok(validateOtpSettings({ early_late_bias_threshold: "0.2" }).length > 0);
+});
+
+test("valid historical backfill request passes with no errors", () => {
+  const errors = validateOtpHistoricalBackfill({ from: "202601", to: "202605" });
+  assert.deepStrictEqual(errors, []);
+});
+
+test("historical backfill rejects malformed months and a reversed range", () => {
+  assert.ok(validateOtpHistoricalBackfill({ from: "2026-01", to: "202605" }).length > 0);
+  assert.ok(validateOtpHistoricalBackfill({ from: "202605", to: "202601" }).length > 0);
+  assert.ok(validateOtpHistoricalBackfill({}).length > 0);
 });
 
 test("valid upload-url request passes with no errors", () => {

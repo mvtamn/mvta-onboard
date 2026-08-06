@@ -14,8 +14,8 @@
 // had. Now runs DAILY over a trailing window (current month + prior 2)
 // instead of hourly over the current month alone.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
-import { getPool, sql } from "../lib/db";
-import { fetchMissedTripReports, mapMissedTripReport } from "../lib/availMissedTripsFeed";
+import { getPool } from "../lib/db";
+import { fetchMissedTripReports, mapMissedTripReport, replaceMissedTripsForMonths } from "../lib/availMissedTripsFeed";
 import { serviceMonthOf, subtractMonths } from "../lib/otpMonthlyFeed";
 
 const TRAILING_MONTHS = 3; // current + prior 2
@@ -58,55 +58,12 @@ app.timer("availMissedTripsPoll", {
       .filter((m): m is NonNullable<typeof m> => m !== null);
 
     const pool = await getPool();
-    const tx = new sql.Transaction(pool);
     try {
-      await tx.begin();
-
-      for (const serviceMonth of targetMonths) {
-        const deleteReq = new sql.Request(tx);
-        deleteReq.input("service_month", sql.Char(6), serviceMonth);
-        await deleteReq.query("DELETE FROM AvailMissedTripsRouteStopDay WHERE service_month = @service_month");
-      }
-
-      for (const m of mapped) {
-        const insertReq = new sql.Request(tx);
-        insertReq.input("service_month", sql.Char(6), m.service_month);
-        insertReq.input("calendar_date", sql.Char(8), m.calendar_date);
-        insertReq.input("route_id", sql.Int, m.route_id);
-        insertReq.input("route_desc", sql.NVarChar, m.route_desc);
-        insertReq.input("route_internet_name", sql.NVarChar, m.route_internet_name);
-        insertReq.input("departure_stop_id", sql.Int, m.departure_stop_id);
-        insertReq.input("departure_stop_name", sql.NVarChar, m.departure_stop_name);
-        insertReq.input("arrival_stop_id", sql.Int, m.arrival_stop_id);
-        insertReq.input("arrival_stop_name", sql.NVarChar, m.arrival_stop_name);
-        insertReq.input("departure_missed", sql.Bit, m.departure_missed);
-        insertReq.input("arrival_missed", sql.Bit, m.arrival_missed);
-        insertReq.input("entire_trip_missed", sql.Bit, m.entire_trip_missed);
-        insertReq.input("departure_trip_start_time", sql.DateTime2, m.departure_trip_start_time);
-        await insertReq.query(`
-          INSERT INTO AvailMissedTripsRouteStopDay (
-            service_month, calendar_date, route_id, route_desc, route_internet_name,
-            departure_stop_id, departure_stop_name, arrival_stop_id, arrival_stop_name,
-            departure_missed, arrival_missed, entire_trip_missed, departure_trip_start_time
-          )
-          VALUES (
-            @service_month, @calendar_date, @route_id, @route_desc, @route_internet_name,
-            @departure_stop_id, @departure_stop_name, @arrival_stop_id, @arrival_stop_name,
-            @departure_missed, @arrival_missed, @entire_trip_missed, @departure_trip_start_time
-          )
-        `);
-      }
-
-      await tx.commit();
+      await replaceMissedTripsForMonths(pool, targetMonths, mapped);
       context.log(
         `Avail Missed Trips poll: ${reports.length} reports seen, ${mapped.length} rows reloaded across ${targetMonths.join(", ")}.`,
       );
     } catch (err) {
-      try {
-        await tx.rollback();
-      } catch {
-        /* already rolled back / not begun */
-      }
       context.error(`Failed to refresh AvailMissedTripsRouteStopDay for ${targetMonths.join(", ")}:`, err);
     }
   },

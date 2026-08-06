@@ -83,9 +83,9 @@ async function flagCanceled(pool: sql.ConnectionPool, trip: CanceledTrip, contex
   insertReq.input("grace_deadline_at", sql.DateTime2, now);
   await insertReq.query(`
     INSERT INTO MonitoredMissedTrips (
-      trip_id, service_date, route_id, scheduled_departure_at, grace_deadline_at, status
+      trip_id, service_date, route_id, scheduled_departure_at, grace_deadline_at, status, detection_type
     )
-    VALUES (@trip_id, @service_date, @route_id, @scheduled_departure_at, @grace_deadline_at, 'escalated')
+    VALUES (@trip_id, @service_date, @route_id, @scheduled_departure_at, @grace_deadline_at, 'escalated', 'explicit_cancellation')
   `);
   context.log(`Missed trip flagged for review (canceled): trip ${trip.trip_id} (route ${trip.route_id}, service date ${serviceDate})`);
   return true;
@@ -188,9 +188,9 @@ async function detectSilentNoShows(pool: sql.ConnectionPool, context: Invocation
       trackReq.input("grace_deadline_at", sql.DateTime2, graceDeadline);
       await trackReq.query(`
         INSERT INTO MonitoredMissedTrips (
-          trip_id, service_date, route_id, scheduled_departure_at, grace_deadline_at, status
+          trip_id, service_date, route_id, scheduled_departure_at, grace_deadline_at, status, detection_type
         )
-        VALUES (@trip_id, @service_date, @route_id, @scheduled_departure_at, @grace_deadline_at, 'escalated')
+        VALUES (@trip_id, @service_date, @route_id, @scheduled_departure_at, @grace_deadline_at, 'escalated', 'silent_no_show')
       `);
       flaggedCount++;
       context.log(`Missed trip flagged for review (no-show): trip ${trip.trip_id} (route ${trip.route_id}, scheduled ${scheduledAt.toISOString()})`);

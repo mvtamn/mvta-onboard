@@ -170,6 +170,11 @@ export function validateMissedTripValidation(body: UnknownBody): string[] {
   ) {
     errors.push(`notes must be a string of at most ${MAX_MISSED_TRIP_NOTES_LENGTH} characters if provided`);
   }
+  if (body.reason_code !== undefined && body.reason_code !== null) {
+    if (typeof body.reason_code !== "string" || body.reason_code.length > MAX_REASON_CODE_LENGTH) {
+      errors.push(`reason_code must be a string of at most ${MAX_REASON_CODE_LENGTH} characters if provided`);
+    }
+  }
 
   return errors;
 }
@@ -485,6 +490,11 @@ export function validateDateExclusion(body: UnknownBody): string[] {
   return errors;
 }
 
+// migration-023 added 'missed_trip' as a third applies_to value, reusing
+// this table for Missed Trips' investigation-outcome dropdown instead of
+// standing up a separate reason-code table for one more use case.
+const VALID_REASON_CODE_APPLIES_TO = ["stop", "date", "missed_trip"] as const;
+
 // POST /otp-reason-codes
 export function validateCreateReasonCode(body: UnknownBody): string[] {
   const errors: string[] = [];
@@ -499,8 +509,8 @@ export function validateCreateReasonCode(body: UnknownBody): string[] {
   } else if (body.label.length > MAX_REASON_LABEL_LENGTH) {
     errors.push(`label must be at most ${MAX_REASON_LABEL_LENGTH} characters`);
   }
-  if (body.applies_to !== "stop" && body.applies_to !== "date") {
-    errors.push("applies_to must be one of: stop, date");
+  if (!includes(VALID_REASON_CODE_APPLIES_TO, body.applies_to)) {
+    errors.push(`applies_to must be one of: ${VALID_REASON_CODE_APPLIES_TO.join(", ")}`);
   }
 
   return errors;
@@ -536,6 +546,31 @@ export function validateOtpSettings(body: UnknownBody): string[] {
   const threshold = body.early_late_bias_threshold;
   if (typeof threshold !== "number" || threshold <= 0 || threshold >= 1) {
     errors.push("early_late_bias_threshold is required and must be a number between 0 and 1 (exclusive)");
+  }
+  return errors;
+}
+
+// POST /otp-historical-backfill - one-time admin-triggered fetch of OTP
+// Monthly + Missed Trips for months outside the daily poller's trailing
+// window (see otpHistoricalBackfill.ts). MAX_BACKFILL_MONTHS caps a
+// typo'd range (e.g. wrong year) from spinning through years of empty
+// Avail requests.
+export const MAX_BACKFILL_MONTHS = 24;
+
+export function validateOtpHistoricalBackfill(body: UnknownBody): string[] {
+  const errors: string[] = [];
+  const from = body.from;
+  const to = body.to;
+  if (typeof from !== "string" || !SERVICE_MONTH_RE.test(from)) {
+    errors.push("from is required and must be a YYYYMM string");
+  }
+  if (typeof to !== "string" || !SERVICE_MONTH_RE.test(to)) {
+    errors.push("to is required and must be a YYYYMM string");
+  }
+  if (typeof from === "string" && typeof to === "string" && SERVICE_MONTH_RE.test(from) && SERVICE_MONTH_RE.test(to)) {
+    if (to < from) {
+      errors.push("to must not be earlier than from");
+    }
   }
   return errors;
 }

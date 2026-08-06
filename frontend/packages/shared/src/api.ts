@@ -24,6 +24,7 @@ import type {
   OnDemandRiskRecord,
   MissedTrip,
   ValidateMissedTripInput,
+  MissedTripsMonthlySummaryResponse,
   GtfsRouteOption,
   Category,
   Severity,
@@ -52,6 +53,8 @@ import type {
   UpdateReasonCodeInput,
   OtpSettingsRow,
   OtpMonthlyTrendPoint,
+  OtpHistoricalBackfillInput,
+  OtpHistoricalBackfillResponse,
   DetourImage,
 } from "./types.js";
 
@@ -288,11 +291,15 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
     },
 
     validateMissedTrip(input: ValidateMissedTripInput) {
-      return request<{ trip_id: string; service_date: string; validation_status: string }>(
+      return request<{ trip_id: string; service_date: string; validation_status: string; reason_code: string | null }>(
         "/api/missed-trips/validate",
         { method: "POST", body: JSON.stringify(input) },
         true,
       );
+    },
+
+    getMissedTripsMonthlySummary() {
+      return request<MissedTripsMonthlySummaryResponse>("/api/missed-trips-monthly-summary", {}, true);
     },
 
     getRoutes() {
@@ -506,6 +513,14 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
     getOtpMonthlyTrend(months?: number) {
       const suffix = months ? `?months=${months}` : "";
       return request<{ trend: OtpMonthlyTrendPoint[] }>(`/api/otp-monthly-trend${suffix}`, {}, true);
+    },
+
+    runOtpHistoricalBackfill(input: OtpHistoricalBackfillInput) {
+      return request<OtpHistoricalBackfillResponse>(
+        "/api/otp-historical-backfill",
+        { method: "POST", body: JSON.stringify(input) },
+        true,
+      );
     },
   };
 }

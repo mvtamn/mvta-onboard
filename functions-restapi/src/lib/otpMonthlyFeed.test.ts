@@ -6,6 +6,7 @@ import {
   formatDateMmDdYyyy,
   fetchOtpMonthlyReports,
   subtractMonths,
+  monthsBetween,
   type OtpMonthlyReport,
 } from "./otpMonthlyFeed";
 
@@ -83,6 +84,21 @@ test("subtractMonths rolls back across a year boundary", () => {
 
 test("serviceMonthOf formats as YYYYMM", () => {
   assert.strictEqual(serviceMonthOf(new Date("2026-07-04T00:00:00Z")), "202607");
+});
+
+test("monthsBetween returns an inclusive chronological list within a year", () => {
+  assert.deepStrictEqual(monthsBetween("202601", "202605"), [
+    "202601",
+    "202602",
+    "202603",
+    "202604",
+    "202605",
+  ]);
+});
+
+test("monthsBetween handles a single month and a year boundary", () => {
+  assert.deepStrictEqual(monthsBetween("202608", "202608"), ["202608"]);
+  assert.deepStrictEqual(monthsBetween("202511", "202602"), ["202511", "202512", "202601", "202602"]);
 });
 
 test("fetchOtpMonthlyReports returns the rows under the real (lowercase) envelope key", () =>

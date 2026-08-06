@@ -14,11 +14,13 @@ interface MissedTripRow {
   scheduled_departure_at: Date;
   grace_deadline_at: Date;
   status: string;
+  detection_type: string | null;
   detected_late_arrival_at: Date | null;
   suggested_alert_id: string | null;
   first_seen_watching_at: Date;
   last_checked_at: Date;
   validation_status: string;
+  reason_code: string | null;
   validated_by: string | null;
   validated_at: Date | null;
   notes: string | null;
@@ -52,9 +54,9 @@ app.http("missedTripsList", {
 
       const result = await pool.request().query<MissedTripRow>(`
         SELECT trip_id, service_date, route_id, scheduled_departure_at, grace_deadline_at,
-               status, detected_late_arrival_at, suggested_alert_id,
+               status, detection_type, detected_late_arrival_at, suggested_alert_id,
                first_seen_watching_at, last_checked_at,
-               validation_status, validated_by, validated_at, notes
+               validation_status, reason_code, validated_by, validated_at, notes
         FROM MonitoredMissedTrips
         ORDER BY
           CASE validation_status WHEN 'unreviewed' THEN 0 ELSE 1 END,

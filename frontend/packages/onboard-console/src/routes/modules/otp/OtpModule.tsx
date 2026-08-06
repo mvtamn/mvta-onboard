@@ -8,6 +8,7 @@ import {
   type OtpReasonCode,
   type OtpAuditEntry,
   type OtpMonthlyTrendPoint,
+  type OtpHistoricalBackfillResponse,
 } from "@mvta/shared";
 import { api } from "../../../config.js";
 import {
@@ -121,6 +122,11 @@ export function OtpModule() {
   const [dateExclusions, setDateExclusions] = useState<OtpDateExclusion[]>([]);
   const [stopReasonCodes, setStopReasonCodes] = useState<OtpReasonCode[]>([]);
   const [dateReasonCodes, setDateReasonCodes] = useState<OtpReasonCode[]>([]);
+  // Missed Trips' investigation-outcome dropdown reuses this same table
+  // (migration-023's applies_to='missed_trip') rather than a separate one -
+  // managed here alongside the other two for one consistent Admin CRUD
+  // surface, even though Missed Trips itself is a different console module.
+  const [missedTripReasonCodes, setMissedTripReasonCodes] = useState<OtpReasonCode[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
 
   // Month-independent - fetched once, not tied to selectedMonth. Each call
@@ -155,6 +161,12 @@ export function OtpModule() {
       .then((dateCodes) => !cancelled && setDateReasonCodes(dateCodes.reason_codes))
       .catch(() => {
         /* graceful - Weather page's dropdown falls back to free entry */
+      });
+    api
+      .getReasonCodes("missed_trip", true)
+      .then((codes) => !cancelled && setMissedTripReasonCodes(codes.reason_codes))
+      .catch(() => {
+        /* graceful - Administration just shows an empty table */
       });
     return () => {
       cancelled = true;
@@ -470,10 +482,12 @@ export function OtpModule() {
         <AdministrationPage
           stopReasonCodes={stopReasonCodes}
           dateReasonCodes={dateReasonCodes}
+          missedTripReasonCodes={missedTripReasonCodes}
           threshold={threshold}
           onReasonCodesChanged={() => {
             api.getReasonCodes("stop", true).then((d) => setStopReasonCodes(d.reason_codes));
             api.getReasonCodes("date", true).then((d) => setDateReasonCodes(d.reason_codes));
+            api.getReasonCodes("missed_trip", true).then((d) => setMissedTripReasonCodes(d.reason_codes));
           }}
         />
       )}
@@ -1002,11 +1016,13 @@ function AuditStreamPage({ serviceMonth }: { serviceMonth: string | null }) {
 function AdministrationPage({
   stopReasonCodes,
   dateReasonCodes,
+  missedTripReasonCodes,
   threshold,
   onReasonCodesChanged,
 }: {
   stopReasonCodes: OtpReasonCode[];
   dateReasonCodes: OtpReasonCode[];
+  missedTripReasonCodes: OtpReasonCode[];
   threshold: number;
   onReasonCodesChanged: () => void;
 }) {
@@ -1026,12 +1042,101 @@ function AdministrationPage({
         codes={dateReasonCodes}
         onChanged={onReasonCodesChanged}
       />
+      <ReasonCodeTable
+        title="Missed Trips reason codes"
+        hint="Shown in the Missed Trips module's investigation-outcome dropdown, alongside the free-text notes field."
+        appliesTo="missed_trip"
+        codes={missedTripReasonCodes}
+        onChanged={onReasonCodesChanged}
+      />
 
       <div className="subcard empty-note">
         Early/late bias detection threshold: <b>{Math.round(threshold * 1000) / 10}%</b> - change it
         from the Threshold Tuner page, which previews the effect before applying.
       </div>
+
+      <OtpHistoricalBackfillPanel />
     </>
+  );
+}
+
+// One-time (repeatable) admin action to fill OTP Monthly + Missed Trips
+// months OUTSIDE the daily pollers' 3-month trailing window - added per
+// Ty's "I should be able to see throughout 2026 and beyond." Future months
+// need nothing here; the trailing window already rolls forward on its own.
+// This only backfills the historical gap behind it (e.g. Jan-May 2026,
+// before this feed's poller existed).
+function OtpHistoricalBackfillPanel() {
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<OtpHistoricalBackfillResponse | null>(null);
+
+  async function run() {
+    if (!from || !to) {
+      setError("Enter both a from and to month.");
+      return;
+    }
+    setRunning(true);
+    setError(null);
+    setResult(null);
+    try {
+      const response = await api.runOtpHistoricalBackfill({
+        from: fromMonthInputValue(from),
+        to: fromMonthInputValue(to),
+      });
+      setResult(response);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "The backfill could not be run.");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  const totalUpserted = result?.otp_monthly.reduce((sum, m) => sum + m.upserted, 0) ?? 0;
+  const anyErrors = result ? result.otp_monthly.some((m) => m.error) || Boolean(result.missed_trips.error) : false;
+
+  return (
+    <div className="subcard">
+      <h3 style={{ marginTop: 0 }}>Historical data backfill</h3>
+      <p className="muted" style={{ marginTop: 0 }}>
+        The daily poller only refreshes the current month plus the prior two - months before that
+        window (e.g. earlier in the year, before this feed existed) never get fetched on their own.
+        Run this once per gap; re-running an already-covered month is harmless.
+      </p>
+      <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+          From
+          <input className="f" type="month" value={from} onChange={(e) => setFrom(e.target.value)} />
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+          To
+          <input className="f" type="month" value={to} onChange={(e) => setTo(e.target.value)} />
+        </label>
+        <button className="btn-post" disabled={running} onClick={() => void run()}>
+          {running ? "Running…" : "Run backfill"}
+        </button>
+      </div>
+      {error ? <p className="error-text">{error}</p> : null}
+      {result ? (
+        <div className={anyErrors ? "empty-note" : "ok-text"} style={{ marginTop: 10 }}>
+          <p>
+            {result.months.length} month{result.months.length === 1 ? "" : "s"} processed
+            ({result.months.join(", ")}): {totalUpserted} OTP Monthly rows upserted,{" "}
+            {result.missed_trips.rows_inserted} Missed Trips rows reloaded.
+          </p>
+          {anyErrors ? (
+            <ul>
+              {result.otp_monthly.filter((m) => m.error).map((m) => (
+                <li key={m.service_month}>OTP Monthly {m.service_month}: {m.error}</li>
+              ))}
+              {result.missed_trips.error ? <li>Missed Trips: {result.missed_trips.error}</li> : null}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -1044,7 +1149,7 @@ function ReasonCodeTable({
 }: {
   title: string;
   hint: string;
-  appliesTo: "stop" | "date";
+  appliesTo: "stop" | "date" | "missed_trip";
   codes: OtpReasonCode[];
   onChanged: () => void;
 }) {

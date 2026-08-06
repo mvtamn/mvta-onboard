@@ -18,8 +18,14 @@
 // Avail-side aggregation self-heals within a day instead of requiring a
 // human to notice and manually re-trigger.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
-import { getPool, sql } from "../lib/db";
-import { fetchOtpMonthlyReports, mapOtpMonthlyReport, serviceMonthOf, subtractMonths } from "../lib/otpMonthlyFeed";
+import { getPool } from "../lib/db";
+import {
+  fetchOtpMonthlyReports,
+  mapOtpMonthlyReport,
+  serviceMonthOf,
+  subtractMonths,
+  upsertOtpMonthlyReport,
+} from "../lib/otpMonthlyFeed";
 
 const TRAILING_MONTHS = 3; // current + prior 2
 
@@ -60,54 +66,7 @@ app.timer("otpMonthlyFeedPoll", {
         if (!mapped) continue;
 
         try {
-          const request = pool.request();
-          request.input("service_month", sql.Char(6), mapped.service_month);
-          request.input("route_id", sql.Int, mapped.route_id);
-          request.input("stop_id", sql.Int, mapped.stop_id);
-          // NVarChar(20), not (3) - migration-021: some real Avail values
-          // overflowed the original "Mon"/"Tue"-sized column.
-          request.input("day_of_week", sql.NVarChar(20), mapped.day_of_week);
-          request.input("stop_name", sql.NVarChar, mapped.stop_name);
-          request.input("route_label", sql.NVarChar, mapped.route_label);
-          request.input("pct_early", sql.Float, mapped.pct_early);
-          request.input("pct_ontime", sql.Float, mapped.pct_ontime);
-          request.input("pct_late", sql.Float, mapped.pct_late);
-          request.input("pct_not_ontime", sql.Float, mapped.pct_not_ontime);
-          request.input("pct_missed", sql.Float, mapped.pct_missed);
-          request.input("early", sql.Int, mapped.early);
-          request.input("ontime", sql.Int, mapped.ontime);
-          request.input("late", sql.Int, mapped.late);
-          request.input("missed", sql.Int, mapped.missed);
-          request.input("actual_departures", sql.Int, mapped.actual_departures);
-          request.input("total", sql.Int, mapped.total);
-          await request.query(`
-            MERGE OtpMonthlyRouteStopDay WITH (HOLDLOCK) AS target
-            USING (
-              SELECT @service_month AS service_month, @route_id AS route_id,
-                     @stop_id AS stop_id, @day_of_week AS day_of_week
-            ) AS src
-            ON target.service_month = src.service_month AND target.route_id = src.route_id
-               AND target.stop_id = src.stop_id AND target.day_of_week = src.day_of_week
-            WHEN MATCHED THEN
-              UPDATE SET
-                stop_name = @stop_name, route_label = @route_label,
-                pct_early = @pct_early, pct_ontime = @pct_ontime, pct_late = @pct_late,
-                pct_not_ontime = @pct_not_ontime, pct_missed = @pct_missed,
-                early = @early, ontime = @ontime, late = @late, missed = @missed,
-                actual_departures = @actual_departures, total = @total,
-                updated_at = SYSUTCDATETIME()
-            WHEN NOT MATCHED THEN
-              INSERT (
-                service_month, route_id, stop_id, day_of_week, stop_name, route_label,
-                pct_early, pct_ontime, pct_late, pct_not_ontime, pct_missed,
-                early, ontime, late, missed, actual_departures, total
-              )
-              VALUES (
-                @service_month, @route_id, @stop_id, @day_of_week, @stop_name, @route_label,
-                @pct_early, @pct_ontime, @pct_late, @pct_not_ontime, @pct_missed,
-                @early, @ontime, @late, @missed, @actual_departures, @total
-              );
-          `);
+          await upsertOtpMonthlyReport(pool, mapped);
           upsertedCount++;
         } catch (err) {
           context.error(`Failed to upsert Avail OTP Monthly report for route ${mapped.route_id}/stop ${mapped.stop_id}:`, err);

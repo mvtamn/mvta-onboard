@@ -7,6 +7,59 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-08-06
+
+- **OTP historical backfill** - a new admin-only action (`POST
+  /otp-historical-backfill`, plus a "Historical data backfill" panel in
+  OTP Compliance's Administration page) fills OTP Monthly + Missed Trips
+  months *outside* the daily poller's 3-month trailing window - e.g.
+  January-May 2026, before this feed's poller existed. "And beyond" (future
+  months) needs nothing new - the trailing window already rolls forward on
+  its own; this only backfills the historical gap behind it. Idempotent
+  either direction (OTP Monthly upserts by key; Missed Trips deletes+
+  reloads whole months), capped at 24 months per request. The per-month
+  MERGE and the delete+reload were extracted out of the two daily pollers
+  into shared functions (`upsertOtpMonthlyReport`, `replaceMissedTripsForMonths`)
+  so the backfill endpoint and the daily pollers share one implementation
+  instead of two copies.
+- **Missed Trips UX pass** (route/date filters, "why was this flagged",
+  friendlier trip labels, no more stray rider-notification action, a
+  Monthly Assessments view, and a reason-code dropdown):
+  - **Route + date filters** on the Flagged Trips list - previously no way
+    to narrow it down to one route or one service date.
+  - **"Is there any way to determine why the flag exists?" - not until
+    now.** Neither of `gtfsMissedTripsPoll.ts`'s two detection paths
+    (explicit GTFS-RT cancellation vs. a scheduled trip that never
+    reported at all) ever recorded which one fired - the frontend
+    hardcoded `detectionType: "unknown"` because the field genuinely
+    didn't exist. `migration-023` adds `MonitoredMissedTrips.detection_type`;
+    the detail pane now shows "Explicit cancellation (GTFS-RT)" or
+    "Scheduled no-show (never observed)" - rows flagged before the
+    migration read back "Unknown - flagged before detection tracking was
+    added," shown honestly rather than guessed.
+  - **Friendlier trip labels** - the flagged-trip list used to lead with
+    the raw GTFS `trip_id` (e.g. "Trip t1F4-b5-sI1C-v62"), which is
+    meaningless to a reviewer. It now leads with the route's real name
+    (via the existing `GET /routes` registry) and "Scheduled {time}"; the
+    raw ID moves to a de-emphasized "Ref" line in the detail pane for
+    dispatch/support lookups.
+  - **Removed the "Rider notification (optional)" section** (the
+    "Prepare rider alert" button and its preview-draft UI) - Missed Trips
+    has been an investigation-only tool since the original compliance
+    rework ("this is not a customer notification queue"), and this leftover
+    action contradicted that framing.
+  - **Reason-code dropdown alongside investigation notes** -
+    `MonitoredMissedTrips.reason_code` (also `migration-023`) plus a new
+    `applies_to='missed_trip'` value on the existing `OtpReasonCodes` table
+    (seeded with Vehicle breakdown / Operator no-show / Dispatch error /
+    Weather / Detection error / Other) - reused rather than building a
+    third parallel reason-code table. Admin-editable from OTP Compliance's
+    Administration page alongside the other two reason-code tables.
+  - **New Monthly Assessments view** (`GET /missed-trips-monthly-summary`)
+    - a per-month, per-route breakdown of cancellations vs. no-shows and
+      confirmed vs. false-positive vs. unreviewed counts, mirroring OTP
+      Compliance's own Monthly Assessments for the same "how are we
+      trending" question.
 - **Review Queue: "Copy last month's decisions"** (Option A of
   `plans/otp-exclusion-carryover-enhancement-scope.md`) - a stop/route/
   day-of-week candidate that matches an approved/rejected decision from
