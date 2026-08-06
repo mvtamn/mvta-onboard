@@ -7,6 +7,19 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 ## [Unreleased]
 
+- **AVL Reports feed diagnostics**: confirmed via 14 days of App Insights
+  traces that `availAvlPoll` has never once seen a nonzero vehicle count -
+  every run completes cleanly (`success: true`, no thrown error), so the
+  request itself is well-formed; Avail's own `"AVL Reports"` array is just
+  always empty. `fetchAvlReports` now logs the raw HTTP status, exact
+  request URL/window, and a truncated raw response body on every call
+  (success or failure) so the next live poll's trace confirms whether
+  that's Avail genuinely reporting nothing for this property, or a subtler
+  mismatch we can't see from the parsed result alone. Also made
+  `AVAIL_AVL_REPORTS_URL` tolerant of a trailing `/MVTA` segment (Ty's
+  considering adding it to match the other five Avail feed settings'
+  convention) - `normalizeBaseUrl()` strips it first so Property is never
+  appended twice into `.../MVTA/MVTA/...`.
 - **Route Classification had no way to remove a classification.** Confirmed
   live - Ty classified a real fixed route as SpecialEvent for testing and
   had no way to undo it. New `DELETE /route-classification/{routeId}` +

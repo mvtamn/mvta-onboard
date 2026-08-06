@@ -11,11 +11,14 @@
 // own spec for this feed - GET /{Property}/{Start DateTime}/{End DateTime}
 // - three segments: Property, then two full datetime segments (format
 // "YYYY-MM-DD HH:MI:SS"), not the single date-only segment this originally
-// sent. Per Ty's direction, Property is now an explicit runtime segment
-// (PROPERTY constant below) rather than baked into the configured base
-// URL - AVAIL_AVL_REPORTS_URL must end at ".../AVLReports/v1" (no trailing
-// "/MVTA") for this feed specifically, unlike every other Avail feed in
-// this app, which still bakes Property into their own base URL setting.
+// sent.
+//
+// Property handling (updated 2026-08-06): AVAIL_AVL_REPORTS_URL may be
+// configured either WITH or WITHOUT a trailing "/MVTA" - normalizeBaseUrl()
+// below strips it if present, then PROPERTY is always appended exactly
+// once, so the two conventions can never double up into ".../MVTA/MVTA/...".
+// This matches every other Avail feed in this app, which bakes Property
+// into its own base URL setting.
 export interface AvailAvlReport {
   Vehicle: number;
   Timestamp: string;
@@ -59,41 +62,84 @@ function formatDateTimeSql(date: Date): string {
 // value" precedent as EARLY_THRESHOLD/LATE_THRESHOLD in otpMonthlyFeed.ts.
 const PROPERTY = "MVTA";
 
-// baseUrl is the agency-level URL with NO property segment, e.g.
-// "https://avail360-api.myavail.cloud/AVLReports/v1" - Property is appended
-// fresh below, per the confirmed spec. startDate/endDate must be within a
-// 24-hour window per the feed's own documented max.
+// Strips a trailing slash, then a trailing "/MVTA" segment (case-
+// insensitive) if present - so AVAIL_AVL_REPORTS_URL can be configured
+// either as ".../AVLReports/v1" or ".../AVLReports/v1/MVTA" and PROPERTY
+// is still appended exactly once below. Prevents ".../MVTA/MVTA/..." if
+// the setting is ever changed to match the other feeds' convention.
+function normalizeBaseUrl(rawBaseUrl: string): string {
+  const trimmed = rawBaseUrl.replace(/\/+$/, "");
+  return trimmed.replace(new RegExp(`/${PROPERTY}$`, "i"), "");
+}
+
+// baseUrl is the agency-level URL, with or without a trailing property
+// segment (see normalizeBaseUrl above) - e.g.
+// "https://avail360-api.myavail.cloud/AVLReports/v1". startDate/endDate
+// must be within a 24-hour window per the feed's own documented max.
 export async function fetchAvlReports(
   baseUrl: string,
   apiKey: string,
   startDate: Date,
   endDate: Date,
 ): Promise<AvailAvlReport[]> {
+  const startStr = formatDateTimeSql(startDate);
+  const endStr = formatDateTimeSql(endDate);
   // encodeURIComponent - the datetime format's space and colons aren't
   // valid raw in a URL path segment.
   const url =
-    `${baseUrl.replace(/\/+$/, "")}/${PROPERTY}` +
-    `/${encodeURIComponent(formatDateTimeSql(startDate))}` +
-    `/${encodeURIComponent(formatDateTimeSql(endDate))}`;
+    `${normalizeBaseUrl(baseUrl)}/${PROPERTY}` +
+    `/${encodeURIComponent(startStr)}` +
+    `/${encodeURIComponent(endStr)}`;
   const res = await fetch(url, {
     headers: { "Ocp-Apim-Subscription-Key": apiKey },
   });
+
+  // Read the body once as text, regardless of status - needed for the
+  // diagnostic log below either way, and res.json()/res.text() can each
+  // only be called once per Response.
+  let body = "";
+  try {
+    body = await res.text();
+  } catch {
+    /* body not readable - status code is all we get */
+  }
+
+  // Diagnostic (added 2026-08-06): the feed has reported zero vehicles
+  // system-wide for 24+ consecutive hours despite success=true responses -
+  // this logs the RAW response on every single call, success or failure,
+  // via console.log (captured into Application Insights traces the same
+  // as context.log, since this lib function has no InvocationContext of
+  // its own). Confirms/denies, from one trace line: (1) whether Avail
+  // itself returned an empty "AVL Reports" array vs. us mis-parsing a
+  // populated one, (2) the exact {Start DateTime}/{End DateTime} strings
+  // sent - format and that they're built from UTC components (formatDate-
+  // TimeSql uses getUTC*, so no local-timezone drift on our side; any
+  // remaining drift would be Avail interpreting these as a different
+  // offset than intended), (3) the exact Property casing sent (PROPERTY
+  // is a literal "MVTA" constant, always this same casing). Body truncated
+  // to 2000 chars to bound trace volume if Avail ever returns a large
+  // live payload.
+  console.log(
+    `Avail AVL Reports raw response: status=${res.status} url=${url} ` +
+      `window(UTC)=[${startStr} -> ${endStr}] bodyLength=${body.length} ` +
+      `body=${body.slice(0, 2000)}`,
+  );
+
   if (!res.ok) {
-    // Diagnostic: capture the response body - APIM commonly returns a
-    // routing-diagnostic message on a 404 (e.g. "no matching operation
-    // found") that the previous version of this error discarded. Confirmed
-    // live 2026-08-05: the fix to send Property + two full datetime
-    // segments still 404'd, so the actual cause is still unconfirmed -
-    // this is the next diagnostic step, not a guess at the fix itself.
-    let body = "";
-    try {
-      body = await res.text();
-    } catch {
-      /* body not readable - status code is all we get */
-    }
+    // APIM commonly returns a routing-diagnostic message on a 404 (e.g.
+    // "no matching operation found") - surfaced in the throw, and also
+    // already captured in the raw-response log line above.
     throw new Error(`Avail AVL Reports request failed: ${res.status} - ${body.slice(0, 500)} (url: ${url})`);
   }
-  const payload = (await res.json()) as AvailAvlEnvelope;
+
+  let payload: AvailAvlEnvelope;
+  try {
+    payload = JSON.parse(body) as AvailAvlEnvelope;
+  } catch (err) {
+    throw new Error(
+      `Avail AVL Reports returned unparseable JSON (status ${res.status}): ${body.slice(0, 500)}`,
+    );
+  }
   if (!payload.success) {
     throw new Error(
       `Avail AVL Reports API returned success=false: ${payload.errors?.join(", ") || "no error detail"}`,
