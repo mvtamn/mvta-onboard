@@ -52,6 +52,18 @@ function fromMonthInputValue(value: string): string {
   return value.replace("-", "");
 }
 
+// "YYYYMM" -> the prior month's "YYYYMM". Used by Review Queue's "copy last
+// month's decisions" (Option A of plans/otp-exclusion-carryover-
+// enhancement-scope.md) - deliberately still writes a fresh, real,
+// dated row for the current month via the normal PUT, not a silent
+// carry-forward, so every month keeps its own real reviewed_by/reviewed_at.
+function previousServiceMonth(yyyymm: string): string {
+  const year = parseInt(yyyymm.slice(0, 4), 10);
+  const month = parseInt(yyyymm.slice(4, 6), 10); // 1-indexed
+  const d = new Date(Date.UTC(year, month - 1 - 1, 1)); // -1 for prior month, -1 for 0-indexed Date
+  return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
 // Display-only - "YYYYMM" -> "MM/YYYY" (e.g. "202608" -> "08/2026"), for
 // anywhere a resolved service month is shown as text rather than in the
 // <input type="month"> picker itself.
@@ -191,6 +203,30 @@ export function OtpModule() {
       });
   }, [usingLiveOtp, serviceMonth]);
 
+  // Previous month's decisions, for Review Queue's "copy last month" -
+  // Option A of plans/otp-exclusion-carryover-enhancement-scope.md. Read
+  // only; copying still goes through the normal PUT so this month gets
+  // its own real row.
+  const [previousMonthExclusions, setPreviousMonthExclusions] = useState<OtpStopExclusion[]>([]);
+  useEffect(() => {
+    if (!usingLiveOtp || !serviceMonth) {
+      setPreviousMonthExclusions([]);
+      return;
+    }
+    api
+      .getStopExclusions(previousServiceMonth(serviceMonth))
+      .then((d) => setPreviousMonthExclusions(d.exclusions))
+      .catch(() => setPreviousMonthExclusions([]));
+  }, [usingLiveOtp, serviceMonth]);
+
+  const previousExclusionByKey = useMemo(() => {
+    const map = new Map<string, OtpStopExclusion>();
+    for (const ex of previousMonthExclusions) {
+      map.set(stopExclusionKey(ex.route_id, ex.stop_id, ex.day_of_week), ex);
+    }
+    return map;
+  }, [previousMonthExclusions]);
+
   const routeRows: RouteRow[] = useMemo(
     () => (usingLiveOtp ? deriveRouteRowsFromLive(liveOtp!.routes) : DATA.routes),
     [usingLiveOtp, liveOtp],
@@ -261,6 +297,75 @@ export function OtpModule() {
         next[i] = { status: action === "approve" ? "approved" : "rejected", reason };
         return next;
       });
+    }
+  }
+
+  // "Copy last month's decisions" - Option A of
+  // plans/otp-exclusion-carryover-enhancement-scope.md. Deliberately still
+  // writes a fresh, real, dated row for THIS month via the normal PUT -
+  // not a silent carry-forward. A human still takes an explicit action
+  // (the copy click itself) for every month; it's just one click applying
+  // last month's answer instead of re-deriving it from scratch.
+  function previousDecisionFor(c: Candidate): OtpStopExclusion | undefined {
+    if (!usingLiveOtp || c.route_id === null || c.day_of_week === null) return undefined;
+    return previousExclusionByKey.get(stopExclusionKey(c.route_id, c.stopId, c.day_of_week));
+  }
+
+  async function copyFromPrevious(i: number) {
+    const c = candidateSource[i];
+    const prev = previousDecisionFor(c);
+    if (!prev || !serviceMonth || c.route_id === null || c.day_of_week === null) return;
+    setActionError(null);
+    try {
+      await api.putStopExclusion({
+        service_month: serviceMonth,
+        route_id: c.route_id,
+        stop_id: c.stopId,
+        day_of_week: c.day_of_week,
+        status: prev.status,
+        reason_code: prev.reason_code,
+      });
+      const refreshed = await api.getStopExclusions(serviceMonth);
+      setStopExclusions(refreshed.exclusions);
+      setAuditRefreshTick((t) => t + 1);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Could not copy last month's decision.");
+    }
+  }
+
+  const [copyingAll, setCopyingAll] = useState(false);
+
+  // Bulk version - one explicit click, still N real per-candidate PUTs (one
+  // dated row per stop, same as clicking each one individually) rather than
+  // a single "carry forward" record, so the audit trail stays identical in
+  // shape to doing this one candidate at a time.
+  async function copyAllFromPrevious() {
+    if (!serviceMonth) return;
+    setActionError(null);
+    setCopyingAll(true);
+    try {
+      const targets = candidateSource
+        .map((c, i) => ({ c, i, prev: previousDecisionFor(c) }))
+        .filter(({ c, i, prev }) => prev && candidateStatus(c, i) === "pending");
+
+      for (const { c, prev } of targets) {
+        if (!prev || c.route_id === null || c.day_of_week === null) continue;
+        await api.putStopExclusion({
+          service_month: serviceMonth,
+          route_id: c.route_id,
+          stop_id: c.stopId,
+          day_of_week: c.day_of_week,
+          status: prev.status,
+          reason_code: prev.reason_code,
+        });
+      }
+      const refreshed = await api.getStopExclusions(serviceMonth);
+      setStopExclusions(refreshed.exclusions);
+      setAuditRefreshTick((t) => t + 1);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Could not copy all of last month's decisions.");
+    } finally {
+      setCopyingAll(false);
     }
   }
 
@@ -347,6 +452,10 @@ export function OtpModule() {
           onReason={setReason}
           serviceMonth={serviceMonth}
           auditRefreshTick={auditRefreshTick}
+          previousDecisionFor={previousDecisionFor}
+          onCopy={copyFromPrevious}
+          onCopyAll={copyAllFromPrevious}
+          copyingAll={copyingAll}
         />
       )}
       {page === "routes" && (
@@ -494,6 +603,10 @@ function ReviewQueuePage({
   onReason,
   serviceMonth,
   auditRefreshTick,
+  previousDecisionFor,
+  onCopy,
+  onCopyAll,
+  copyingAll,
 }: {
   candidateSource: Candidate[];
   statusOf: (c: Candidate, i: number) => CandidateStatus;
@@ -503,6 +616,10 @@ function ReviewQueuePage({
   onReason: (c: Candidate, i: number, reason: string) => void;
   serviceMonth: string | null;
   auditRefreshTick: number;
+  previousDecisionFor: (c: Candidate) => OtpStopExclusion | undefined;
+  onCopy: (i: number) => void;
+  onCopyAll: () => void;
+  copyingAll: boolean;
 }) {
   const [routeFilter, setRouteFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("pending");
@@ -519,6 +636,10 @@ function ReviewQueuePage({
 
   const reasonLabel = (code: string) => reasonCodes.find((r) => r.code === code)?.label ?? code;
 
+  const copyableCount = candidateSource.filter(
+    (c, i) => statusOf(c, i) === "pending" && previousDecisionFor(c),
+  ).length;
+
   return (
     <div className="otp-two">
       <div className="subcard otp-queue">
@@ -534,6 +655,17 @@ function ReviewQueuePage({
           </select>
           <input placeholder="Search stop name…" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
+
+        {copyableCount > 0 ? (
+          <div className="subcard otp-copy-banner" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+            <span>
+              {copyableCount} pending stop{copyableCount === 1 ? "" : "s"} matched last month's decision.
+            </span>
+            <button className="btn-post" disabled={copyingAll} onClick={onCopyAll}>
+              {copyingAll ? "Copying…" : `Copy all ${copyableCount} matching last month's decisions`}
+            </button>
+          </div>
+        ) : null}
 
         {candidateSource.length === 0 ? (
           <div className="subcard empty-note" style={{ textAlign: "center", padding: "30px 20px" }}>
@@ -559,6 +691,7 @@ function ReviewQueuePage({
                 : "Late-biased";
           const iconClass = status === "approved" ? "ok" : status === "rejected" ? "rejected" : "warn";
           const iconGlyph = status === "approved" ? "✓" : status === "rejected" ? "✕" : "!";
+          const prevDecision = status === "pending" ? previousDecisionFor(c) : undefined;
 
           return (
             <div className={`check-row${status === "pending" ? " highlight" : ""}`} key={`${c.route}-${c.stopId}-${i}`}>
@@ -567,6 +700,12 @@ function ReviewQueuePage({
                 <div className="check-title"><span className="route-chip">RT {c.route}</span>{c.stopName}</div>
                 <div className="check-desc">Stop {c.stopId} · {c.direction || "—"} · {c.n} trips sampled · {varLabel}</div>
                 <AdherenceStrip c={c} />
+                {prevDecision ? (
+                  <div className="muted" style={{ fontSize: "0.85em", marginTop: 4 }}>
+                    Last month: {prevDecision.status === "approved" ? "Approved" : "Rejected"}
+                    {prevDecision.reason_code ? ` — ${reasonLabel(prevDecision.reason_code)}` : ""}
+                  </div>
+                ) : null}
               </div>
               <div className="check-actions">
                 {status === "pending" ? (
@@ -576,6 +715,9 @@ function ReviewQueuePage({
                     </select>
                     <button className="btn-post" onClick={() => onResolve(i, "approve")}>Approve</button>
                     <button className="btn-sm" onClick={() => onResolve(i, "reject")}>Reject</button>
+                    {prevDecision ? (
+                      <button className="btn-sm" onClick={() => onCopy(i)}>Copy last month</button>
+                    ) : null}
                   </>
                 ) : status === "approved" ? (
                   <span className="ok-text">Excluded — {reasonLabel(reason)}</span>

@@ -7,6 +7,18 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 ## [Unreleased]
 
+- **Review Queue: "Copy last month's decisions"** (Option A of
+  `plans/otp-exclusion-carryover-enhancement-scope.md`) - a stop/route/
+  day-of-week candidate that matches an approved/rejected decision from
+  the prior service month now shows "Last month: Approved/Rejected —
+  &lt;reason&gt;" plus a one-click "Copy last month" button; a bulk banner
+  offers "Copy all N matching last month's decisions" when more than one
+  pending candidate matches. Still writes a fresh, real, dated
+  `OtpStopExclusions` row via the normal PUT for the *current* month - not
+  a silent carry-forward - so compliance semantics (one attributed record
+  per stop per month) are unchanged; it only removes the repeat clicking
+  for stops whose exclusion reason is genuinely a standing fact, not a
+  fresh judgment call.
 - **Fixed the "Internal server error" on Review Queue approve/reject**:
   `OtpStopExclusions.day_of_week` had the exact same too-narrow-column bug
   just fixed for `OtpMonthlyRouteStopDay` (`NVARCHAR(3)` → `NVARCHAR(20)`,
