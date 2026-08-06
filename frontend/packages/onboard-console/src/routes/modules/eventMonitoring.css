@@ -1,38 +1,34 @@
 /* Event Vehicle Monitoring module - scoped under .evmon. Renders inside the
-   console's own panel-body chrome. Reuses global classes (side-label,
-   live-badge, datasource-card, totals-row, panel-header, table.data, pill-sm,
-   btn-sm/btn-post) and the global color tokens (see ../../../styles.css) so
-   this respects the light/dark theme toggle automatically; only the concepts
-   with no shared equivalent (map, monitor list, vehicle swap picker, alert
-   cards) get their own rules here. */
+   console's own panel-body chrome. Reuses global classes (panel-header,
+   panel-body, panel-desc, table.data, td-dim) and the global color tokens
+   (see ../../../styles.css) so this respects the light/dark theme toggle
+   automatically. The mock event-shuttle scenario (schematic map, monitored-
+   vehicle sidebar, swap picker, delay-alert cards) is retired - see
+   EventMonitoring.tsx's header comment - so only the real Azure Maps panel
+   (event-module-implementation-plan.md, Part A3) gets its own rules here. */
 .evmon { font-size: 13px; color: var(--text); }
-.evmon-layout { display: grid; grid-template-columns: 230px 1fr; gap: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
-
-.evmon-side { background: var(--surface-alt-bg); border-right: 1px solid var(--border); padding: 16px 14px; }
-.evmon .monitor-card { background: var(--surface-bg); border-left: 3px solid var(--border-strong); border-radius: 0 4px 4px 0; padding: 6px 10px; font-size: 11.5px; margin-bottom: 6px; border-top: 1px solid var(--border-soft); border-right: 1px solid var(--border-soft); border-bottom: 1px solid var(--border-soft); }
-.evmon .monitor-card .veh { font-weight: 600; }
-
-.evmon-main { padding: 18px; background: var(--surface-bg); }
-.evmon .map-card { position: relative; background: var(--surface-alt-bg); border: 1px solid var(--border); border-radius: 6px; height: 220px; overflow: hidden; margin-bottom: 20px; }
-.evmon .map-label { position: absolute; font-size: 11px; color: var(--text-muted); font-weight: 600; }
-.evmon .marker { position: absolute; width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--surface-bg); box-shadow: 0 0 0 1px rgba(0,0,0,0.08); }
-
 .evmon .veh-id { font-weight: 600; }
-.evmon .status-text { font-weight: 600; }
 
-.evmon .selector-panel { background: var(--surface-alt-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px; margin: -8px 0 20px; }
-.evmon .selector-title { font-size: 12px; font-weight: 600; margin-bottom: 8px; }
-.evmon .selector-option { width: 100%; text-align: left; height: 32px; padding: 0 10px; font-size: 12px; display: flex; justify-content: space-between; align-items: center; background: var(--surface-bg); border: 1px solid var(--border-strong); border-radius: 4px; color: var(--text); cursor: pointer; margin-bottom: 6px; }
-.evmon .selector-option:hover { border-color: var(--brand-green); }
-.evmon .selector-option .avail { color: var(--text-muted); }
-.evmon .selector-empty { font-size: 12px; color: var(--text-muted); }
+/* Event bus positions - map + companion list side by side; stacks on
+   narrow viewports since the map needs real width to be useful. */
+.evmon-event-layout { display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px; margin-bottom: 20px; }
+@media (max-width: 900px) {
+  .evmon-event-layout { grid-template-columns: 1fr; }
+}
 
-.evmon .alerts-wrap { border: 1px solid var(--border); border-top: none; border-radius: 0 0 5px 5px; padding: 12px; margin-bottom: 20px; }
-.evmon .alert-card { background: var(--highlight-bg); border: 1px solid var(--highlight-border); border-radius: 6px; padding: 11px; margin-bottom: 10px; }
-.evmon .alert-card:last-child { margin-bottom: 0; }
-.evmon .alert-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; flex-wrap: wrap; gap: 6px; }
-.evmon .alert-veh { font-size: 12.5px; font-weight: 600; }
-.evmon .alert-reason { font-size: 12.5px; color: var(--text-dim); margin-bottom: 9px; }
-.evmon .alert-draft { font-size: 12.5px; padding: 7px 9px; background: var(--surface-bg); border: 1px solid var(--highlight-border); border-radius: 4px; margin-bottom: 9px; }
-.evmon .alert-actions { display: flex; gap: 8px; }
-.evmon .no-alerts { font-size: 12.5px; color: var(--text-muted); padding: 4px 0; }
+.evmon .map-card { position: relative; background: var(--surface-alt-bg); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.evmon-real-map { height: 360px; }
+.evmon-map-container { position: absolute; inset: 0; }
+.evmon-map-overlay-message {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 12.5px; color: var(--text-muted); background: var(--surface-alt-bg); text-align: center; padding: 0 16px;
+}
+
+/* Marker + popup content render inside the Azure Maps SDK's own DOM, not
+   React's - plain CSS, not the app's component classes. */
+.event-map-marker {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: #01543d; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+.event-map-popup { font-size: 12.5px; line-height: 1.5; color: #1a1a1a; }

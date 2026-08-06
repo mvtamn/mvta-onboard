@@ -7,6 +7,45 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 ## [Unreleased]
 
+- **Fixed the Historical data backfill panel 504ing on any real range**:
+  confirmed live - a 5-month request (Jan-May 2026) hit a gateway timeout,
+  since `otp-historical-backfill` was doing every month's OTP Monthly
+  fetch plus one Missed Trips fetch across the whole range synchronously
+  in a single HTTP request. `POST /otp-historical-backfill` now takes one
+  month per request (`{month: "YYYYMM"}`, not `{from, to}`); the
+  Administration panel loops one request per month client-side instead,
+  showing real per-month progress and staying within any request timeout
+  regardless of how wide a range is entered.
+- **Event Monitoring's real map overlay** (`event-module-implementation-
+  plan.md`, Part A3 - Parts A1/A2, Route Classification and the event-bus
+  filtering itself, already shipped). The mock event-shuttle scenario
+  (POOL vehicles, the static Lot A/Fairgrounds schematic, swap-in picker,
+  Claude-drafted delay-alert cards) is **retired**, not kept alongside real
+  data - it modeled a Phase 2+ alerts/publish workflow explicitly out of
+  scope for this pass (see the plan's redrafted user story, Part A0).
+  "Event bus positions (live)" now renders an actual Azure Maps basemap
+  (new `azure-maps-control` dependency) showing only `RouteClassification`
+  `SpecialEvent` vehicles, with a companion list alongside it; "Live AVL
+  vehicle positions" (every vehicle, unfiltered) stays a table, unchanged.
+  Zero-standing-secret: no Maps subscription key is ever shipped to the
+  browser - a new `GET /maps/token` endpoint uses the REST API Function
+  App's own managed identity (granted Azure Maps Data Reader) to mint a
+  short-lived Azure AD token server-side for the SDK's `anonymous` auth
+  mode, same identity-based pattern as Blob Storage SAS minting and
+  Service Bus.
+  **Owner actions (blocking, live environment) - new Azure Maps account,
+  real if small cost, not deployed until approved:**
+  1. Register the `Microsoft.Maps` resource provider on the subscription
+     (`NotRegistered` as of 2026-08-06 - `az provider register --namespace
+     Microsoft.Maps`).
+  2. Approve and deploy `infra-phase1/modules/maps.bicep` (wired into
+     `main-phase1.bicep`) - Gen2 pay-as-you-go tier, no committed spend.
+  3. Set `AZURE_MAPS_CLIENT_ID` on `func-mvta-restapi-dev` to the deployed
+     account's `mapsClientId` output (a public identifier, not a secret).
+  4. Deploy the updated code.
+  Until all four land, the map panel shows a graceful "Could not load the
+  map" message instead of the basemap - expected, not a bug.
+
 ## [1.5.0] - 2026-08-06
 
 - **OTP historical backfill** - a new admin-only action (`POST

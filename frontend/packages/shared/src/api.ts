@@ -55,6 +55,7 @@ import type {
   OtpMonthlyTrendPoint,
   OtpHistoricalBackfillInput,
   OtpHistoricalBackfillResponse,
+  MapsTokenResponse,
   DetourImage,
 } from "./types.js";
 
@@ -521,6 +522,10 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
         { method: "POST", body: JSON.stringify(input) },
         true,
       );
+    },
+
+    getMapsToken() {
+      return request<MapsTokenResponse>("/api/maps/token", {}, true);
     },
   };
 }

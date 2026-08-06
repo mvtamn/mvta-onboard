@@ -8,22 +8,28 @@
 // the daily trailing window already rolls forward automatically as time
 // passes; this endpoint only fills the historical gap behind it.
 //
+// ONE month per request, not a range - CONFIRMED live 2026-08-06: a 5-month
+// range in a single request hit a 504 gateway timeout. Missed Trips alone
+// has separately been observed to take 15+ minutes for just 3 months (see
+// availMissedTripsPoll.ts's own comment on sequential single-row inserts),
+// so any multi-month synchronous HTTP request is fundamentally unsafe
+// behind a gateway with a real timeout. The console (OtpModule.tsx's
+// OtpHistoricalBackfillPanel) loops one request per month client-side
+// instead, so each request stays bounded and the UI shows real per-month
+// progress rather than one opaque multi-minute spinner that eventually
+// 504s with nothing to show for it.
+//
 // Idempotent either direction: OTP Monthly upserts by (service_month,
-// route_id, stop_id, day_of_week); Missed Trips deletes+reloads whole
-// months. Re-running for a month already covered (including the current
+// route_id, stop_id, day_of_week); Missed Trips deletes+reloads the whole
+// month. Re-running for a month already covered (including the current
 // trailing window) is harmless, just redundant.
 //
-//   POST /otp-historical-backfill  body: {from: "YYYYMM", to: "YYYYMM"} - OCC.Admin only
+//   POST /otp-historical-backfill  body: {month: "YYYYMM"} - OCC.Admin only
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
 import { requireRole, ADMIN_ROLES } from "../lib/auth";
-import { validateOtpHistoricalBackfill, MAX_BACKFILL_MONTHS } from "../lib/validation";
-import {
-  fetchOtpMonthlyReports,
-  mapOtpMonthlyReport,
-  monthsBetween,
-  upsertOtpMonthlyReport,
-} from "../lib/otpMonthlyFeed";
+import { validateOtpHistoricalBackfill } from "../lib/validation";
+import { fetchOtpMonthlyReports, mapOtpMonthlyReport, upsertOtpMonthlyReport } from "../lib/otpMonthlyFeed";
 import { fetchMissedTripReports, mapMissedTripReport, replaceMissedTripsForMonths } from "../lib/availMissedTripsFeed";
 
 function monthToDate(yyyymm: string): Date {
@@ -55,15 +61,7 @@ app.http("otpHistoricalBackfill", {
     if (errors.length > 0) {
       return { status: 400, jsonBody: { error: "Validation failed", details: errors } };
     }
-    const body = raw as { from: string; to: string };
-
-    const months = monthsBetween(body.from, body.to);
-    if (months.length > MAX_BACKFILL_MONTHS) {
-      return {
-        status: 400,
-        jsonBody: { error: `Range spans ${months.length} months, exceeding the ${MAX_BACKFILL_MONTHS}-month cap.` },
-      };
-    }
+    const { month } = raw as { month: string };
 
     const otpBaseUrl = process.env.AVAIL_OTP_MONTHLY_URL;
     const missedBaseUrl = process.env.AVAIL_MISSED_TRIPS_URL;
@@ -76,50 +74,48 @@ app.http("otpHistoricalBackfill", {
     }
 
     const pool = await getPool();
-    const otpResults: { service_month: string; reports_seen: number; upserted: number; error?: string }[] = [];
 
-    for (const serviceMonth of months) {
-      try {
-        const reports = await fetchOtpMonthlyReports(otpBaseUrl, apiKey, monthToDate(serviceMonth));
-        let upserted = 0;
-        for (const report of reports) {
-          const mapped = mapOtpMonthlyReport(report, serviceMonth);
-          if (!mapped) continue;
-          await upsertOtpMonthlyReport(pool, mapped);
-          upserted++;
-        }
-        otpResults.push({ service_month: serviceMonth, reports_seen: reports.length, upserted });
-        context.log(`OTP Monthly backfill: ${reports.length} reports seen, ${upserted} rows upserted for ${serviceMonth}.`);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        otpResults.push({ service_month: serviceMonth, reports_seen: 0, upserted: 0, error: message });
-        context.error(`OTP Monthly backfill failed for ${serviceMonth}:`, err);
+    let otpResult: { reports_seen: number; upserted: number; error?: string };
+    try {
+      const reports = await fetchOtpMonthlyReports(otpBaseUrl, apiKey, monthToDate(month));
+      let upserted = 0;
+      for (const report of reports) {
+        const mapped = mapOtpMonthlyReport(report, month);
+        if (!mapped) continue;
+        await upsertOtpMonthlyReport(pool, mapped);
+        upserted++;
       }
+      otpResult = { reports_seen: reports.length, upserted };
+      context.log(`OTP Monthly backfill: ${reports.length} reports seen, ${upserted} rows upserted for ${month}.`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      otpResult = { reports_seen: 0, upserted: 0, error: message };
+      context.error(`OTP Monthly backfill failed for ${month}:`, err);
     }
 
     let missedTripsResult: { reports_seen: number; rows_inserted: number; error?: string };
     try {
-      const windowStart = monthToDate(months[0]);
+      const windowStart = monthToDate(month);
       const now = new Date();
-      const windowEndCandidate = lastDayOfMonth(months[months.length - 1]);
+      const windowEndCandidate = lastDayOfMonth(month);
       const windowEnd = windowEndCandidate.getTime() < now.getTime() ? windowEndCandidate : now;
 
       const reports = await fetchMissedTripReports(missedBaseUrl, apiKey, windowStart, windowEnd);
       const mapped = reports
         .map((report) => mapMissedTripReport(report))
         .filter((m): m is NonNullable<typeof m> => m !== null);
-      await replaceMissedTripsForMonths(pool, months, mapped);
+      await replaceMissedTripsForMonths(pool, [month], mapped);
       missedTripsResult = { reports_seen: reports.length, rows_inserted: mapped.length };
-      context.log(`Missed Trips backfill: ${reports.length} reports seen, ${mapped.length} rows reloaded across ${months.join(", ")}.`);
+      context.log(`Missed Trips backfill: ${reports.length} reports seen, ${mapped.length} rows reloaded for ${month}.`);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       missedTripsResult = { reports_seen: 0, rows_inserted: 0, error: message };
-      context.error(`Missed Trips backfill failed for ${months.join(", ")}:`, err);
+      context.error(`Missed Trips backfill failed for ${month}:`, err);
     }
 
     return {
       status: 200,
-      jsonBody: { months, otp_monthly: otpResults, missed_trips: missedTripsResult },
+      jsonBody: { service_month: month, otp_monthly: otpResult, missed_trips: missedTripsResult },
     };
   },
 });

@@ -401,13 +401,12 @@ test("OTP settings update rejects out-of-range thresholds", () => {
 });
 
 test("valid historical backfill request passes with no errors", () => {
-  const errors = validateOtpHistoricalBackfill({ from: "202601", to: "202605" });
+  const errors = validateOtpHistoricalBackfill({ month: "202601" });
   assert.deepStrictEqual(errors, []);
 });
 
-test("historical backfill rejects malformed months and a reversed range", () => {
-  assert.ok(validateOtpHistoricalBackfill({ from: "2026-01", to: "202605" }).length > 0);
-  assert.ok(validateOtpHistoricalBackfill({ from: "202605", to: "202601" }).length > 0);
+test("historical backfill rejects a malformed or missing month", () => {
+  assert.ok(validateOtpHistoricalBackfill({ month: "2026-01" }).length > 0);
   assert.ok(validateOtpHistoricalBackfill({}).length > 0);
 });
 

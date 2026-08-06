@@ -136,12 +136,27 @@ module detourImagesStorage 'modules/storage-detour-images.bicep' = {
   }
 }
 
+// Azure Maps account for Event Monitoring's real map overlay
+// (event-module-implementation-plan.md, Part A3) - new resource, not
+// deployed until the owner approves (real, if small, cost - flagged in
+// HANDOFF.md same as every other new resource this repo has added).
+module maps 'modules/maps.bicep' = {
+  name: 'maps-deployment'
+  params: {
+    location: location
+    mapsAccountName: 'map-mvta-onboard-${environment}'
+    functionAppPrincipalId: restApiFunction.outputs.functionAppPrincipalId
+  }
+}
+
 output wafPolicyId string = wafPolicy.outputs.wafPolicyId
 output restApiFunctionName string = restApiFunction.outputs.functionAppName
 output restApiFunctionHostname string = restApiFunction.outputs.functionAppHostname
 output dispatchFunctionName string = dispatchFunction.outputs.functionAppName
 output onboardSwaHostname string = onboardSwa.outputs.staticWebAppHostname
 output riderOptinSwaHostname string = riderOptinSwa.outputs.staticWebAppHostname
+output mapsAccountName string = maps.outputs.mapsAccountName
+output mapsClientId string = maps.outputs.mapsClientId
 output serviceBusNamespace string = serviceBus.outputs.namespaceName
 output serviceBusQueueName string = serviceBus.outputs.queueName
 output detourImagesStorageAccount string = detourImagesStorage.outputs.storageAccountName

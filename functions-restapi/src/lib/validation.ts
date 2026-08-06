@@ -551,26 +551,18 @@ export function validateOtpSettings(body: UnknownBody): string[] {
 }
 
 // POST /otp-historical-backfill - one-time admin-triggered fetch of OTP
-// Monthly + Missed Trips for months outside the daily poller's trailing
-// window (see otpHistoricalBackfill.ts). MAX_BACKFILL_MONTHS caps a
-// typo'd range (e.g. wrong year) from spinning through years of empty
-// Avail requests.
-export const MAX_BACKFILL_MONTHS = 24;
-
+// Monthly + Missed Trips for a single month outside the daily poller's
+// trailing window (see otpHistoricalBackfill.ts). ONE month per request,
+// not a range - CONFIRMED live 2026-08-06: a 5-month range in one request
+// hit a 504 gateway timeout (Missed Trips alone has separately been
+// observed to take 15+ minutes for just 3 months - see
+// availMissedTripsPoll.ts's own comment). The console loops one request
+// per month instead, so each request stays bounded and the UI can show
+// real per-month progress instead of one opaque multi-minute spinner.
 export function validateOtpHistoricalBackfill(body: UnknownBody): string[] {
   const errors: string[] = [];
-  const from = body.from;
-  const to = body.to;
-  if (typeof from !== "string" || !SERVICE_MONTH_RE.test(from)) {
-    errors.push("from is required and must be a YYYYMM string");
-  }
-  if (typeof to !== "string" || !SERVICE_MONTH_RE.test(to)) {
-    errors.push("to is required and must be a YYYYMM string");
-  }
-  if (typeof from === "string" && typeof to === "string" && SERVICE_MONTH_RE.test(from) && SERVICE_MONTH_RE.test(to)) {
-    if (to < from) {
-      errors.push("to must not be earlier than from");
-    }
+  if (typeof body.month !== "string" || !SERVICE_MONTH_RE.test(body.month)) {
+    errors.push("month is required and must be a YYYYMM string");
   }
   return errors;
 }

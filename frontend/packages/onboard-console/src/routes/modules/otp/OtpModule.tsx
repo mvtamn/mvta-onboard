@@ -1066,36 +1066,79 @@ function AdministrationPage({
 // need nothing here; the trailing window already rolls forward on its own.
 // This only backfills the historical gap behind it (e.g. Jan-May 2026,
 // before this feed's poller existed).
+const MAX_BACKFILL_MONTHS_CLIENT = 24; // matches the same cap the backend used to enforce server-side
+
+// Inclusive "YYYYMM" list, chronological - client-side copy of
+// otpMonthlyFeed.ts's monthsBetween(), used to drive the per-month request
+// loop below rather than sending the whole range in one request (see why
+// in otpHistoricalBackfill.ts's header comment - a multi-month range in a
+// single request 504'd against the live gateway).
+function monthsBetweenClient(fromYyyymm: string, toYyyymm: string): string[] {
+  const from = new Date(Date.UTC(Number(fromYyyymm.slice(0, 4)), Number(fromYyyymm.slice(4, 6)) - 1, 1));
+  const to = new Date(Date.UTC(Number(toYyyymm.slice(0, 4)), Number(toYyyymm.slice(4, 6)) - 1, 1));
+  const months: string[] = [];
+  const cursor = new Date(from);
+  while (cursor.getTime() <= to.getTime()) {
+    months.push(`${cursor.getUTCFullYear()}${String(cursor.getUTCMonth() + 1).padStart(2, "0")}`);
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+  }
+  return months;
+}
+
+// One-time (repeatable) admin action - loops one POST per month rather than
+// sending a whole range in one request. CONFIRMED live 2026-08-06: a
+// 5-month range in a single request hit a 504 gateway timeout (Missed
+// Trips alone has separately taken 15+ minutes for just 3 months). Looping
+// client-side keeps each request bounded and shows real per-month progress
+// instead of one opaque spinner that eventually fails with nothing to show.
 function OtpHistoricalBackfillPanel() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<OtpHistoricalBackfillResponse | null>(null);
+  const [results, setResults] = useState<(OtpHistoricalBackfillResponse | null)[]>([]);
+  const [totalMonths, setTotalMonths] = useState(0);
 
   async function run() {
     if (!from || !to) {
       setError("Enter both a from and to month.");
       return;
     }
+    const months = monthsBetweenClient(fromMonthInputValue(from), fromMonthInputValue(to));
+    if (months.length === 0) {
+      setError("To must not be earlier than from.");
+      return;
+    }
+    if (months.length > MAX_BACKFILL_MONTHS_CLIENT) {
+      setError(`Range spans ${months.length} months, exceeding the ${MAX_BACKFILL_MONTHS_CLIENT}-month cap.`);
+      return;
+    }
     setRunning(true);
     setError(null);
-    setResult(null);
-    try {
-      const response = await api.runOtpHistoricalBackfill({
-        from: fromMonthInputValue(from),
-        to: fromMonthInputValue(to),
-      });
-      setResult(response);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "The backfill could not be run.");
-    } finally {
-      setRunning(false);
+    setResults([]);
+    setTotalMonths(months.length);
+    for (const month of months) {
+      try {
+        const response = await api.runOtpHistoricalBackfill({ month });
+        setResults((r) => [...r, response]);
+      } catch (err) {
+        setResults((r) => [
+          ...r,
+          {
+            service_month: month,
+            otp_monthly: { reports_seen: 0, upserted: 0, error: err instanceof ApiError ? err.message : "Request failed" },
+            missed_trips: { reports_seen: 0, rows_inserted: 0 },
+          },
+        ]);
+      }
     }
+    setRunning(false);
   }
 
-  const totalUpserted = result?.otp_monthly.reduce((sum, m) => sum + m.upserted, 0) ?? 0;
-  const anyErrors = result ? result.otp_monthly.some((m) => m.error) || Boolean(result.missed_trips.error) : false;
+  const totalUpserted = results.reduce((sum, r) => sum + (r?.otp_monthly.upserted ?? 0), 0);
+  const totalMissedRows = results.reduce((sum, r) => sum + (r?.missed_trips.rows_inserted ?? 0), 0);
+  const errored = results.filter((r) => r?.otp_monthly.error || r?.missed_trips.error);
+  const done = !running && results.length > 0;
 
   return (
     <div className="subcard">
@@ -1103,7 +1146,8 @@ function OtpHistoricalBackfillPanel() {
       <p className="muted" style={{ marginTop: 0 }}>
         The daily poller only refreshes the current month plus the prior two - months before that
         window (e.g. earlier in the year, before this feed existed) never get fetched on their own.
-        Run this once per gap; re-running an already-covered month is harmless.
+        Run this once per gap; re-running an already-covered month is harmless. Processes one month
+        at a time so a large range can't time out.
       </p>
       <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
         <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
@@ -1115,23 +1159,26 @@ function OtpHistoricalBackfillPanel() {
           <input className="f" type="month" value={to} onChange={(e) => setTo(e.target.value)} />
         </label>
         <button className="btn-post" disabled={running} onClick={() => void run()}>
-          {running ? "Running…" : "Run backfill"}
+          {running ? `Running… (${results.length}/${totalMonths})` : "Run backfill"}
         </button>
       </div>
       {error ? <p className="error-text">{error}</p> : null}
-      {result ? (
-        <div className={anyErrors ? "empty-note" : "ok-text"} style={{ marginTop: 10 }}>
+      {results.length > 0 ? (
+        <div className={done && errored.length === 0 ? "ok-text" : "empty-note"} style={{ marginTop: 10 }}>
           <p>
-            {result.months.length} month{result.months.length === 1 ? "" : "s"} processed
-            ({result.months.join(", ")}): {totalUpserted} OTP Monthly rows upserted,{" "}
-            {result.missed_trips.rows_inserted} Missed Trips rows reloaded.
+            {results.length} of {totalMonths} month{totalMonths === 1 ? "" : "s"} processed
+            {done ? "" : "…"}: {totalUpserted} OTP Monthly rows upserted, {totalMissedRows} Missed
+            Trips rows reloaded so far.
           </p>
-          {anyErrors ? (
+          {errored.length > 0 ? (
             <ul>
-              {result.otp_monthly.filter((m) => m.error).map((m) => (
-                <li key={m.service_month}>OTP Monthly {m.service_month}: {m.error}</li>
+              {errored.map((r) => (
+                <li key={r!.service_month}>
+                  {r!.service_month}: {r!.otp_monthly.error ? `OTP Monthly - ${r!.otp_monthly.error}` : ""}
+                  {r!.otp_monthly.error && r!.missed_trips.error ? "; " : ""}
+                  {r!.missed_trips.error ? `Missed Trips - ${r!.missed_trips.error}` : ""}
+                </li>
               ))}
-              {result.missed_trips.error ? <li>Missed Trips: {result.missed_trips.error}</li> : null}
             </ul>
           ) : null}
         </div>

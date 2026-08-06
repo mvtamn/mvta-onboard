@@ -681,24 +681,28 @@ export interface OtpMonthlyTrendPoint {
   pct_ontime: number | null;
 }
 
-// POST /otp-historical-backfill - fills months outside the daily pollers'
-// 3-month trailing window (e.g. Jan-May 2026, before this feed's poller
-// existed). "And beyond" (future months) needs no backfill - the trailing
-// window already rolls forward on its own.
+// POST /otp-historical-backfill - fills one month outside the daily
+// pollers' 3-month trailing window (e.g. Jan-May 2026, before this feed's
+// poller existed). "And beyond" (future months) needs no backfill - the
+// trailing window already rolls forward on its own. ONE month per
+// request, not a range - CONFIRMED live 2026-08-06: a 5-month range in a
+// single request hit a 504 gateway timeout. The console loops one request
+// per month (see OtpModule.tsx's OtpHistoricalBackfillPanel) instead.
 export interface OtpHistoricalBackfillInput {
-  from: string; // YYYYMM
-  to: string; // YYYYMM
-}
-
-export interface OtpHistoricalBackfillMonthResult {
-  service_month: string;
-  reports_seen: number;
-  upserted: number;
-  error?: string;
+  month: string; // YYYYMM
 }
 
 export interface OtpHistoricalBackfillResponse {
-  months: string[];
-  otp_monthly: OtpHistoricalBackfillMonthResult[];
+  service_month: string;
+  otp_monthly: { reports_seen: number; upserted: number; error?: string };
   missed_trips: { reports_seen: number; rows_inserted: number; error?: string };
+}
+
+// GET /maps/token - short-lived Azure AD token scoped to Azure Maps, for
+// the console's azure-maps-control SDK ('anonymous' auth mode). client_id
+// is a public identifier (Azure Maps account's uniqueId), not a secret.
+export interface MapsTokenResponse {
+  client_id: string;
+  access_token: string;
+  expires_on: number;
 }
