@@ -111,28 +111,52 @@ export function OtpModule() {
   const [dateReasonCodes, setDateReasonCodes] = useState<OtpReasonCode[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  // Month-independent - fetched once, not tied to selectedMonth.
+  // Month-independent - fetched once, not tied to selectedMonth. Each call
+  // gets its OWN catch rather than one shared Promise.all - a Promise.all
+  // rejects (and discards every already-succeeded result) the moment ANY
+  // one of its promises rejects, so one flaky call used to blank out all
+  // four states, including reason codes that had actually loaded fine -
+  // the likely cause of an "empty" reason-code dropdown that had nothing
+  // to do with reason codes themselves.
   useEffect(() => {
     let cancelled = false;
-    Promise.all([api.getOtpSettings(), api.getDateExclusions(), api.getReasonCodes("stop", true), api.getReasonCodes("date", true)])
-      .then(([settings, dates, stopCodes, dateCodes]) => {
-        if (cancelled) return;
-        setThreshold(settings.early_late_bias_threshold);
-        setDateExclusions(dates.exclusions);
-        setStopReasonCodes(stopCodes.reason_codes);
-        setDateReasonCodes(dateCodes.reason_codes);
-      })
+    api
+      .getOtpSettings()
+      .then((settings) => !cancelled && setThreshold(settings.early_late_bias_threshold))
       .catch(() => {
-        /* graceful - these each have their own mock/empty fallback already */
+        /* graceful - Threshold Tuner/Administration show the default */
+      });
+    api
+      .getDateExclusions()
+      .then((dates) => !cancelled && setDateExclusions(dates.exclusions))
+      .catch(() => {
+        /* graceful - Weather page just shows nothing logged yet */
+      });
+    api
+      .getReasonCodes("stop", true)
+      .then((stopCodes) => !cancelled && setStopReasonCodes(stopCodes.reason_codes))
+      .catch(() => {
+        /* graceful - Review Queue's dropdown falls back to free entry */
+      });
+    api
+      .getReasonCodes("date", true)
+      .then((dateCodes) => !cancelled && setDateReasonCodes(dateCodes.reason_codes))
+      .catch(() => {
+        /* graceful - Weather page's dropdown falls back to free entry */
       });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  // Month-dependent - refetches whenever the picker changes.
+  // Month-dependent - refetches whenever the picker changes. Also clears
+  // actionError - it used to persist across a month switch (nothing reset
+  // it), so a failed approve/reject on one month kept showing as a
+  // seemingly-unrelated error banner after switching to a different month
+  // entirely.
   useEffect(() => {
     let cancelled = false;
+    setActionError(null);
     api
       .getOtpMonthly(selectedMonth)
       .then((otp) => {
@@ -824,10 +848,15 @@ function AuditStreamPage({ serviceMonth }: { serviceMonth: string | null }) {
   );
 }
 
-// Reason-code management (add/deactivate) for both Review Queue (stop) and
-// Weather (date) exclusions. OCC.Admin-only server-side; the UI hides the
-// write controls for anyone else the same way every other admin surface in
-// this app does.
+// Reason-code management for both Review Queue (stop) and Weather (date)
+// exclusions - full CRUD (add, inline-rename, reorder, deactivate/
+// reactivate). OCC.Admin-only server-side; the UI hides the write controls
+// for anyone else the same way every other admin surface in this app does.
+// No hard delete - deactivating is the app's standing convention for
+// retiring a value that older records may still reference (same pattern as
+// Detours' soft-delete), so a code used on a past exclusion never goes
+// unexplained. sort_order drives dropdown order everywhere this feeds
+// (Review Queue, Weather) - the up/down controls swap it with a neighbor.
 function AdministrationPage({
   stopReasonCodes,
   dateReasonCodes,
@@ -839,95 +868,212 @@ function AdministrationPage({
   threshold: number;
   onReasonCodesChanged: () => void;
 }) {
-  const [newCode, setNewCode] = useState("");
-  const [newLabel, setNewLabel] = useState("");
-  const [newAppliesTo, setNewAppliesTo] = useState<"stop" | "date">("stop");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  async function addCode() {
-    if (!newCode.trim() || !newLabel.trim()) { setError("Code and label are required."); return; }
-    setBusy(true);
-    setError(null);
-    try {
-      await api.createReasonCode({ code: newCode.trim(), label: newLabel.trim(), applies_to: newAppliesTo });
-      setNewCode("");
-      setNewLabel("");
-      onReasonCodesChanged();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not add this reason code.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function toggleActive(code: OtpReasonCode) {
-    setBusy(true);
-    setError(null);
-    try {
-      await api.updateReasonCode(code.id, { is_active: !code.is_active });
-      onReasonCodesChanged();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not update this reason code.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function ReasonCodeTable({ title, codes }: { title: string; codes: OtpReasonCode[] }) {
-    return (
-      <div className="subcard" style={{ marginBottom: 16, overflow: "hidden" }}>
-        <h2 style={{ padding: "12px 16px 0" }}>{title}</h2>
-        <table className="data">
-          <thead><tr><th>Code</th><th>Label</th><th>Status</th><th>Actions</th></tr></thead>
-          <tbody>
-            {codes.map((c) => (
-              <tr key={c.id}>
-                <td>{c.code}</td>
-                <td>{c.label}</td>
-                <td>{c.is_active ? <span className="pill-sm pill-success">Active</span> : <span className="pill-sm pill-muted">Inactive</span>}</td>
-                <td><button className="btn-sm" disabled={busy} onClick={() => toggleActive(c)}>{c.is_active ? "Deactivate" : "Reactivate"}</button></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
-  }
-
   return (
     <>
-      {error ? <p className="error-text">{error}</p> : null}
-      <div className="subcard" style={{ marginBottom: 16 }}>
-        <h2 style={{ marginTop: 0 }}>Add a reason code</h2>
-        <div className="field-grid">
-          <div>
-            <p className="field-label">Code</p>
-            <input className="f" value={newCode} onChange={(e) => setNewCode(e.target.value.toUpperCase())} placeholder="e.g. CONSTRUCTION" />
-          </div>
-          <div>
-            <p className="field-label">Label</p>
-            <input className="f" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="e.g. Active construction zone" />
-          </div>
-          <div>
-            <p className="field-label">Applies to</p>
-            <select className="f" value={newAppliesTo} onChange={(e) => setNewAppliesTo(e.target.value as "stop" | "date")}>
-              <option value="stop">Stop exclusions (Review Queue)</option>
-              <option value="date">Date exclusions (Weather)</option>
-            </select>
-          </div>
-        </div>
-        <button className="btn-post" disabled={busy} onClick={addCode}>Add</button>
-      </div>
-
-      <ReasonCodeTable title="Stop exclusion reason codes" codes={stopReasonCodes} />
-      <ReasonCodeTable title="Date exclusion reason codes" codes={dateReasonCodes} />
+      <ReasonCodeTable
+        title="Stop exclusion reason codes"
+        hint="Shown in Review Queue's reason dropdown when approving or rejecting a stop."
+        appliesTo="stop"
+        codes={stopReasonCodes}
+        onChanged={onReasonCodesChanged}
+      />
+      <ReasonCodeTable
+        title="Date exclusion reason codes"
+        hint="Shown in the Weather page's reason dropdown when logging an agency- or route-wide exclusion."
+        appliesTo="date"
+        codes={dateReasonCodes}
+        onChanged={onReasonCodesChanged}
+      />
 
       <div className="subcard empty-note">
         Early/late bias detection threshold: <b>{Math.round(threshold * 1000) / 10}%</b> - change it
         from the Threshold Tuner page, which previews the effect before applying.
       </div>
     </>
+  );
+}
+
+function ReasonCodeTable({
+  title,
+  hint,
+  appliesTo,
+  codes,
+  onChanged,
+}: {
+  title: string;
+  hint: string;
+  appliesTo: "stop" | "date";
+  codes: OtpReasonCode[];
+  onChanged: () => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editLabel, setEditLabel] = useState("");
+
+  const [addingNew, setAddingNew] = useState(false);
+  const [newCode, setNewCode] = useState("");
+  const [newLabel, setNewLabel] = useState("");
+  const [addBusy, setAddBusy] = useState(false);
+
+  function startEdit(c: OtpReasonCode) {
+    setEditingId(c.id);
+    setEditLabel(c.label);
+    setError(null);
+  }
+
+  async function saveEdit(c: OtpReasonCode) {
+    if (!editLabel.trim()) {
+      setError("Label can't be empty.");
+      return;
+    }
+    if (editLabel.trim() === c.label) {
+      setEditingId(null);
+      return;
+    }
+    setBusyId(c.id);
+    setError(null);
+    try {
+      await api.updateReasonCode(c.id, { label: editLabel.trim() });
+      setEditingId(null);
+      onChanged();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not rename this reason code.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function toggleActive(c: OtpReasonCode) {
+    setBusyId(c.id);
+    setError(null);
+    try {
+      await api.updateReasonCode(c.id, { is_active: !c.is_active });
+      onChanged();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not update this reason code.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  // Swaps sort_order with the adjacent row (skipping over already-inactive
+  // rows has no special handling - reordering works on the list as shown,
+  // active or not, since inactive codes still occupy a real position).
+  async function move(index: number, direction: -1 | 1) {
+    const other = codes[index + direction];
+    const current = codes[index];
+    if (!other) return;
+    setBusyId(current.id);
+    setError(null);
+    try {
+      await Promise.all([
+        api.updateReasonCode(current.id, { sort_order: other.sort_order }),
+        api.updateReasonCode(other.id, { sort_order: current.sort_order }),
+      ]);
+      onChanged();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not reorder these reason codes.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function addCode() {
+    if (!newCode.trim() || !newLabel.trim()) {
+      setError("Code and label are required.");
+      return;
+    }
+    setAddBusy(true);
+    setError(null);
+    try {
+      await api.createReasonCode({ code: newCode.trim().toUpperCase(), label: newLabel.trim(), applies_to: appliesTo });
+      setNewCode("");
+      setNewLabel("");
+      setAddingNew(false);
+      onChanged();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not add this reason code.");
+    } finally {
+      setAddBusy(false);
+    }
+  }
+
+  return (
+    <div className="subcard" style={{ marginBottom: 16, overflow: "hidden" }}>
+      <h2 style={{ padding: "12px 16px 0" }}>{title}</h2>
+      <p className="panel-desc" style={{ padding: "0 16px" }}>{hint}</p>
+      {error ? <p className="error-text" style={{ padding: "0 16px" }}>{error}</p> : null}
+      <table className="data">
+        <thead><tr><th style={{ width: 70 }}>Order</th><th>Code</th><th>Label</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>
+          {codes.map((c, i) => (
+            <tr key={c.id}>
+              <td>
+                <button className="btn-sm" disabled={busyId === c.id || i === 0} onClick={() => move(i, -1)} title="Move up">↑</button>
+                <button className="btn-sm" disabled={busyId === c.id || i === codes.length - 1} onClick={() => move(i, 1)} title="Move down">↓</button>
+              </td>
+              <td className="td-dim">{c.code}</td>
+              <td>
+                {editingId === c.id ? (
+                  <span style={{ display: "flex", gap: 6 }}>
+                    <input
+                      className="f"
+                      style={{ flex: 1 }}
+                      value={editLabel}
+                      onChange={(e) => setEditLabel(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && saveEdit(c)}
+                      autoFocus
+                    />
+                    <button className="btn-sm" disabled={busyId === c.id} onClick={() => saveEdit(c)}>Save</button>
+                    <button className="btn-sm" disabled={busyId === c.id} onClick={() => setEditingId(null)}>Cancel</button>
+                  </span>
+                ) : (
+                  <span onClick={() => startEdit(c)} style={{ cursor: "pointer" }} title="Click to rename">
+                    {c.label}
+                  </span>
+                )}
+              </td>
+              <td>{c.is_active ? <span className="pill-sm pill-success">Active</span> : <span className="pill-sm pill-muted">Inactive</span>}</td>
+              <td>
+                {editingId !== c.id ? (
+                  <>
+                    <button className="btn-sm" disabled={busyId === c.id} onClick={() => startEdit(c)}>Rename</button>
+                    <button className="btn-sm" disabled={busyId === c.id} onClick={() => toggleActive(c)}>
+                      {c.is_active ? "Deactivate" : "Reactivate"}
+                    </button>
+                  </>
+                ) : null}
+              </td>
+            </tr>
+          ))}
+          {codes.length === 0 ? (
+            <tr><td colSpan={5} className="td-dim">No reason codes yet.</td></tr>
+          ) : null}
+        </tbody>
+      </table>
+      <div style={{ padding: 12 }}>
+        {addingNew ? (
+          <div className="field-grid">
+            <div>
+              <p className="field-label">Code</p>
+              <input className="f" value={newCode} onChange={(e) => setNewCode(e.target.value.toUpperCase())} placeholder="e.g. CONSTRUCTION" autoFocus />
+            </div>
+            <div>
+              <p className="field-label">Label</p>
+              <input className="f" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="e.g. Active construction zone" onKeyDown={(e) => e.key === "Enter" && addCode()} />
+            </div>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 6 }}>
+              <button className="btn-post" disabled={addBusy} onClick={addCode}>Add</button>
+              <button className="btn-sm" disabled={addBusy} onClick={() => { setAddingNew(false); setNewCode(""); setNewLabel(""); }}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <button className="btn-sm" onClick={() => setAddingNew(true)}>+ Add a reason code</button>
+        )}
+      </div>
+    </div>
   );
 }
 

@@ -101,7 +101,10 @@ app.http("otpStopExclusionsUpsert", {
       sqlRequest.input("service_month", sql.Char(6), body.service_month);
       sqlRequest.input("route_id", sql.Int, body.route_id);
       sqlRequest.input("stop_id", sql.Int, body.stop_id);
-      sqlRequest.input("day_of_week", sql.NVarChar(3), body.day_of_week);
+      // NVarChar(20), not (3) - migration-022: some real Avail day_of_week
+      // values overflowed the original "Mon"/"Tue"-sized column, same bug
+      // as OtpMonthlyRouteStopDay (migration-021).
+      sqlRequest.input("day_of_week", sql.NVarChar(20), body.day_of_week);
       sqlRequest.input("status", sql.NVarChar(10), body.status);
       sqlRequest.input("reason_code", sql.NVarChar, body.reason_code ?? null);
       sqlRequest.input("reviewed_by", sql.NVarChar, authResult.principal.userDetails || "system");

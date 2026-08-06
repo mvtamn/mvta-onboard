@@ -7,6 +7,24 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 ## [Unreleased]
 
+- **Fixed the "Internal server error" on Review Queue approve/reject**:
+  `OtpStopExclusions.day_of_week` had the exact same too-narrow-column bug
+  just fixed for `OtpMonthlyRouteStopDay` (`NVARCHAR(3)` → `NVARCHAR(20)`,
+  `migration-022`) - approving/rejecting a candidate with a long
+  day-of-week value hit the same SQL error, surfaced as a raw error banner
+  that then persisted across month switches (nothing cleared it). Also
+  fixed: `actionError` now clears when the service-month picker changes,
+  and the month-independent fetch (settings/date exclusions/reason codes)
+  no longer shares one `Promise.all` - one flaky call used to discard all
+  four results, including reason codes that had actually loaded fine,
+  which looked like "reason codes are missing" but had nothing to do with
+  reason codes themselves.
+- **Administration's reason-code management is now real CRUD**: inline
+  rename (click a label or "Rename"), up/down reordering (drives dropdown
+  order in Review Queue/Weather), and a dedicated "+ Add" per table
+  instead of one shared add-form with an easy-to-miss "applies to"
+  dropdown. No hard delete - deactivating remains the standing convention
+  for retiring a code older records may still reference.
 - **Fixed the real bug behind "OTP Monthly/Missed Trips have no data":
   both had the wrong envelope key, not empty data.** Caught the moment
   tonight's first trailing-window backfill actually ran and the dormant
