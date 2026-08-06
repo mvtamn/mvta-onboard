@@ -7,6 +7,19 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 ## [Unreleased]
 
+- **Route Classification had no way to remove a classification.** Confirmed
+  live - Ty classified a real fixed route as SpecialEvent for testing and
+  had no way to undo it. New `DELETE /route-classification/{routeId}` +
+  a "Remove" button next to each row. Hard delete, not this repo's usual
+  soft-delete/deactivate convention (Detours, OtpReasonCodes) - this table
+  is a pure current-state lookup with no audit-trail history riding on old
+  rows, unlike those two, so there's nothing a hard delete would corrupt.
+  Also replaced the plain `<select>` route picker with a searchable
+  chip-list (matching Compose's existing affected-routes picker) per Ty's
+  preference, and fixed a crash (`Cannot read properties of undefined
+  (reading 'length')`) from assuming a newly-added backend response field
+  was always present - a real risk during any deploy where frontend and
+  backend land at slightly different times.
 - **Fixed the Historical data backfill panel 504ing on any real range**:
   confirmed live - a 5-month request (Jan-May 2026) hit a gateway timeout,
   since `otp-historical-backfill` was doing every month's OTP Monthly

@@ -29,6 +29,7 @@ function RouteClassificationSection() {
   const [routeIdInput, setRouteIdInput] = useState("");
   const [category, setCategory] = useState<RouteCategory>("SpecialEvent");
   const [label, setLabel] = useState("");
+  const [routeSearch, setRouteSearch] = useState("");
 
   // Same registry (GtfsRoutes via GET /routes) already backing Compose's
   // affected-routes selector - picking a known route beats typing a raw
@@ -42,7 +43,10 @@ function RouteClassificationSection() {
       .getRouteClassification()
       .then((d) => {
         setRoutes(d.routes);
-        setUnclassified(d.unclassified);
+        // Defensive against an old-backend/new-frontend deploy transition -
+        // `unclassified` is a newly-added response field; never assume a
+        // backend field is present just because this build expects it.
+        setUnclassified(d.unclassified ?? []);
         setError(null);
       })
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load route classifications."));
@@ -73,6 +77,11 @@ function RouteClassificationSection() {
         .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true })),
     [routesList],
   );
+  const filteredRouteOptions = useMemo(() => {
+    const q = routeSearch.trim().toLowerCase();
+    if (!q) return routeOptions;
+    return routeOptions.filter((r) => r.label.toLowerCase().includes(q) || String(r.id).includes(q));
+  }, [routeOptions, routeSearch]);
 
   function startEdit(r: RouteClassificationRow) {
     setEditingId(r.route_id);
@@ -80,6 +89,7 @@ function RouteClassificationSection() {
     setCategory(r.route_category);
     setLabel(r.route_label ?? "");
     setOkMsg(null);
+    setRouteSearch("");
   }
 
   function startNew() {
@@ -88,6 +98,7 @@ function RouteClassificationSection() {
     setCategory("SpecialEvent");
     setLabel("");
     setOkMsg(null);
+    setRouteSearch("");
   }
 
   // Pre-fills the form from a discovered RouteID rather than an admin
@@ -101,6 +112,7 @@ function RouteClassificationSection() {
     setCategory("SpecialEvent");
     setLabel(u.suggested_label ?? "");
     setOkMsg(null);
+    setRouteSearch("");
   }
 
   async function save() {
@@ -119,6 +131,29 @@ function RouteClassificationSection() {
       load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Save failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Hard delete, not deactivate - see routeClassification.ts's header
+  // comment for why that's the right call for this specific table. Added
+  // per Ty's live report: no way existed to remove a route reclassified
+  // for testing.
+  async function remove(r: RouteClassificationRow) {
+    if (!window.confirm(`Remove the classification for Route ${r.route_id}? It will go back to unclassified (treated as fixed route).`)) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setOkMsg(null);
+    try {
+      await api.deleteRouteClassification(r.route_id);
+      setOkMsg(`Route ${r.route_id}'s classification removed.`);
+      if (editingId === r.route_id) startNew();
+      load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Remove failed.");
     } finally {
       setBusy(false);
     }
@@ -172,12 +207,32 @@ function RouteClassificationSection() {
             <div>
               <p className="field-label">Route ID</p>
               {routesUseSelector && editingId === null ? (
-                <select className="f" value={routeIdInput} onChange={(e) => setRouteIdInput(e.target.value)}>
-                  <option value="">Select a route…</option>
-                  {routeOptions.map((r) => (
-                    <option value={r.id} key={r.id} title={r.title}>{r.label}</option>
-                  ))}
-                </select>
+                <>
+                  <input
+                    className="f"
+                    style={{ marginBottom: 6 }}
+                    value={routeSearch}
+                    onChange={(e) => setRouteSearch(e.target.value)}
+                    placeholder="Search routes…"
+                  />
+                  <div className="channels-row route-select">
+                    {filteredRouteOptions.length === 0 ? (
+                      <span className="muted">No routes match “{routeSearch}”.</span>
+                    ) : (
+                      filteredRouteOptions.map((r) => (
+                        <label key={r.id} title={r.title}>
+                          <input
+                            type="radio"
+                            name="route-classification-picker"
+                            checked={routeIdInput === String(r.id)}
+                            onChange={() => setRouteIdInput(String(r.id))}
+                          />
+                          {r.label}
+                        </label>
+                      ))
+                    )}
+                  </div>
+                </>
               ) : (
                 <input
                   className="f"
@@ -222,7 +277,10 @@ function RouteClassificationSection() {
                   <td><span className="pill-sm pill-accent">{ROUTE_CATEGORY_LABELS[r.route_category]}</span></td>
                   <td>{r.route_label || "—"}</td>
                   <td className="td-dim">{r.updated_by ? `${r.updated_by} · ` : ""}{new Date(r.updated_at).toLocaleDateString()}</td>
-                  <td><button className="btn-sm" onClick={() => startEdit(r)}>Edit</button></td>
+                  <td style={{ display: "flex", gap: 6 }}>
+                    <button className="btn-sm" onClick={() => startEdit(r)}>Edit</button>
+                    <button className="btn-sm danger" disabled={busy} onClick={() => remove(r)}>Remove</button>
+                  </td>
                 </tr>
               ))}
             </tbody>

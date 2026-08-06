@@ -436,6 +436,14 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
       );
     },
 
+    deleteRouteClassification(routeId: number) {
+      return request<{ route_id: number }>(
+        `/api/route-classification/${routeId}`,
+        { method: "DELETE" },
+        true,
+      );
+    },
+
     getEventVehiclePositions() {
       return request<{
         vehicles: EventVehiclePosition[];

@@ -5,8 +5,18 @@
 // availAvlPoll.ts (Part A2). See detour-and-event-module-implementation-
 // plan.md (Part A1).
 //
-//   GET /route-classification            - any staff role, plus OCC.Compliance
-//   PUT /route-classification/{routeId}  - Publisher/Admin (upsert one row)
+//   GET /route-classification              - any staff role, plus OCC.Compliance
+//   PUT /route-classification/{routeId}    - Publisher/Admin (upsert one row)
+//   DELETE /route-classification/{routeId} - Publisher/Admin (hard delete)
+//
+// Hard delete, not the soft-delete/deactivate convention used elsewhere in
+// this repo (Detours, OtpReasonCodes) - this table is a pure current-state
+// lookup (a RouteID either IS or ISN'T special-event right now), nothing
+// else references a row here for audit/compliance history the way
+// OtpStopExclusions rows do, so there's nothing a hard delete would corrupt.
+// Confirmed need live 2026-08-06: Ty added a real fixed route as a
+// SpecialEvent classification for testing and needed to remove it
+// afterward - there was no way to do that at all before this.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { requireRole, STAFF_READ_ROLES, PUBLISH_ROLES } from "../lib/auth";
@@ -182,6 +192,37 @@ app.http("routeClassificationUpsert", {
       };
     } catch (err) {
       context.error("PUT /route-classification/{routeId} failed:", err);
+      return { status: 500, jsonBody: { error: "Internal server error" } };
+    }
+  },
+});
+
+app.http("routeClassificationDelete", {
+  route: "route-classification/{routeId}",
+  methods: ["DELETE"],
+  authLevel: "anonymous", // authorization enforced via requireRole below
+  handler: async (request: HttpRequest, context: InvocationContext) => {
+    const authResult = requireRole(request, PUBLISH_ROLES);
+    if (!authResult.authorized) {
+      return { status: authResult.status, jsonBody: { error: authResult.message } };
+    }
+
+    const routeId = Number(request.params.routeId);
+    if (!Number.isInteger(routeId)) {
+      return { status: 400, jsonBody: { error: "routeId must be an integer" } };
+    }
+
+    try {
+      const pool = await getPool();
+      const sqlRequest = pool.request();
+      sqlRequest.input("route_id", sql.Int, routeId);
+      const result = await sqlRequest.query("DELETE FROM RouteClassification WHERE route_id = @route_id");
+      if (result.rowsAffected[0] === 0) {
+        return { status: 404, jsonBody: { error: "No classification found for this route" } };
+      }
+      return { status: 200, jsonBody: { route_id: routeId } };
+    } catch (err) {
+      context.error("DELETE /route-classification/{routeId} failed:", err);
       return { status: 500, jsonBody: { error: "Internal server error" } };
     }
   },
