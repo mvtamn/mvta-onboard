@@ -30,6 +30,7 @@ import type {
   AvailAvlVehicle,
   FixedRouteDeparture,
   OtpMonthlyStopRow,
+  OtpDailyRow,
   OtpMonthlyRouteRollup,
   AvailMissedTripRecord,
   AvailMissedTripsRouteRollup,
@@ -333,6 +334,18 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
           routes_below_90: number;
         };
       }>(`/api/otp-monthly${suffix}`, {}, true);
+    },
+
+    getOtpDaily(params?: { start?: string; end?: string; route_id?: number }) {
+      const q = new URLSearchParams();
+      if (params?.start) q.set("start", params.start);
+      if (params?.end) q.set("end", params.end);
+      if (params?.route_id !== undefined) q.set("route_id", String(params.route_id));
+      const suffix = q.toString() ? `?${q.toString()}` : "";
+      return request<{
+        rows: OtpDailyRow[];
+        diagnostics: { table_ready: boolean; start: string; end: string; record_count: number };
+      }>(`/api/otp-daily${suffix}`, {}, true);
     },
 
     getAvailMissedTrips(month?: string) {

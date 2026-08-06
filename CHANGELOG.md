@@ -7,6 +7,48 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 ## [Unreleased]
 
+- **Fixed a real live bug: Avail Detours sync's envelope key was wrong.**
+  Guessed as `Detours` (capital D); the real key is lowercase `detours`.
+  Caught by the diagnostic added earlier this session, confirmed against
+  live traffic today. Also added the same diagnostic to
+  `availMissedTripsFeed.ts` (throws naming the real key instead of
+  silently returning zero rows if this guess is ever wrong too - the same
+  fix already applied to `otpMonthlyFeed.ts`/`availDetoursFeed.ts`).
+  **Separately confirmed and fixed:** `availAvlPoll.ts` (Live AVL vehicle
+  positions) had been failing 100% of its runs with HTTP 404 since
+  deployment (~1800 consecutive failures) - `availAvl.ts` was sending a
+  single date-only URL segment instead of the feed's actual documented
+  `/{Property}/{StartDateTime}/{EndDateTime}` shape. Fixed to send all
+  three: an explicit `MVTA` Property segment (`AVAIL_AVL_REPORTS_URL` no
+  longer bakes Property into the base URL, unlike every other Avail feed
+  setting in this app - it must now end at `.../AVLReports/v1`, **update
+  the live app setting to match before this deploys**) plus two full,
+  URL-encoded datetime segments; now polls a rolling 10-minute window each
+  run. **`fixedRouteDeparturesPoll.ts`/Pullout Reports deliberately left
+  broken for now** - same 404 pattern, but its real API spec was never
+  confirmed, so a fix here would be a second guess stacked on the first;
+  needs the actual spec, not another guess.
+- **Trailing-window daily backfill for OTP Monthly + Missed Trips**: both
+  polls changed from hourly/refresh-current-month-only to daily,
+  re-fetching current month + prior 2 every run - a poller that only ever
+  asks about "whatever month is current right now" has no way to notice a
+  month that was empty on day 1 but populated by Avail days later
+  (confirmed live: both August and a fully-closed July came back
+  genuinely empty). Also drops the hourly cadence for OTP Monthly, since
+  it was polling a month-level aggregate that structurally cannot change
+  hour-to-hour.
+- **New: sub-monthly OTP trending feed** (`OtpByRouteStopDayHour`,
+  promoted from secondary/drill-down per the same investigation) - new
+  `OtpDailyRouteStopHour` table (90-day rolling window, not permanent
+  history), new daily timer, new `GET /otp-daily`. **Least-confirmed
+  integration in this project** - zero sample response exists anywhere for
+  this specific feed, unlike every other one built here; the field mapping
+  is a best-guess by analogy to sibling feeds, flagged prominently in code.
+  No UI reads this yet. **Needs `migration-020-otp-daily.sql` run and
+  `AVAIL_OTP_DAILY_URL` set on `func-mvta-restapi-dev` before it goes
+  live.** See `otp-compliance-live-data-rethink.md` for the full writeup
+  and everything still open (Pullout's real spec, whether Avail has any
+  OTP data for MVTA at all, the UI rethink proposal).
 - **OTP Compliance service-month selector**: the module always defaulted
   to the current month for its live Avail OTP Monthly/Missed Trips data,
   with no way to view an earlier month - a brand-new month with no Avail

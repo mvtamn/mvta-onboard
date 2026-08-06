@@ -67,7 +67,21 @@ export async function fetchMissedTripReports(
       `Avail Missed Trips API returned success=false: ${payload.errors?.join(", ") || "no error detail"}`,
     );
   }
-  return payload.result?.MissedTripsByRouteStopDay ?? [];
+  const rows = payload.result?.MissedTripsByRouteStopDay;
+  if (rows !== undefined) return rows;
+
+  // Same diagnostic added to otpMonthlyFeed.ts/availDetoursFeed.ts after
+  // confirming live on 2026-08-05 that availDetoursFeed.ts's own guessed
+  // key ("Detours") was actually wrong (real key: lowercase "detours") -
+  // surface the real key names instead of silently reporting zero rows
+  // forever if this guess is ever wrong too.
+  const actualKeys = payload.result ? Object.keys(payload.result) : [];
+  if (actualKeys.length > 0) {
+    throw new Error(
+      `Avail Missed Trips response has no "MissedTripsByRouteStopDay" key under result - found [${actualKeys.join(", ")}] instead. Update the guessed key in availMissedTripsFeed.ts.`,
+    );
+  }
+  return [];
 }
 
 export interface MappedMissedTrip {

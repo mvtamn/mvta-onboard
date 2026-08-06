@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { mapAvlReport, type AvailAvlReport } from "./availAvl";
+import { mapAvlReport, fetchAvlReports, type AvailAvlReport } from "./availAvl";
 
 // Fixture shaped like the sample Avail360 AVL Reports payload.
 const SAMPLE: AvailAvlReport = {
@@ -51,4 +51,32 @@ test("treats optional fields as null when absent", () => {
   assert.strictEqual(mapped!.route, null);
   assert.strictEqual(mapped!.heading, null);
   assert.strictEqual(mapped!.direction, null);
+});
+
+// CONFIRMED live 2026-08-05: this request 404'd on every run since
+// deployment because it only sent one date-only segment instead of the
+// three the real spec needs (Property, then two full-datetime segments).
+// This test locks in the fixed URL shape - baseUrl carries NO property
+// segment; PROPERTY ("MVTA") is appended explicitly by fetchAvlReports.
+test("fetchAvlReports builds the URL with an explicit Property segment plus two encoded full-datetime segments", async () => {
+  let requestedUrl = "";
+  const original = global.fetch;
+  global.fetch = (async (url: string) => {
+    requestedUrl = url;
+    return { ok: true, status: 200, json: async () => ({ success: true, errors: [], result: { "AVL Reports": [] } }) };
+  }) as unknown as typeof fetch;
+  try {
+    await fetchAvlReports(
+      "https://example.test/AVLReports/v1",
+      "key",
+      new Date("2026-08-05T21:30:00Z"),
+      new Date("2026-08-05T21:40:00Z"),
+    );
+  } finally {
+    global.fetch = original;
+  }
+  assert.strictEqual(
+    requestedUrl,
+    "https://example.test/AVLReports/v1/MVTA/2026-08-05%2021%3A30%3A00/2026-08-05%2021%3A40%3A00",
+  );
 });

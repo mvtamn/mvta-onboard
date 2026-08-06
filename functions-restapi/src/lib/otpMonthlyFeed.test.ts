@@ -1,6 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { mapOtpMonthlyReport, serviceMonthOf, formatDateMmDdYyyy, fetchOtpMonthlyReports, type OtpMonthlyReport } from "./otpMonthlyFeed";
+import {
+  mapOtpMonthlyReport,
+  serviceMonthOf,
+  formatDateMmDdYyyy,
+  fetchOtpMonthlyReports,
+  subtractMonths,
+  type OtpMonthlyReport,
+} from "./otpMonthlyFeed";
 
 // Stubs global.fetch for the duration of one test, restoring it afterward -
 // no existing precedent for this in the repo, but fetchOtpMonthlyReports's
@@ -59,6 +66,19 @@ test("returns null when RouteID/StopID/DayOfWeek is missing or non-numeric", () 
 
 test("formatDateMmDdYyyy formats as MM-DD-YYYY", () => {
   assert.strictEqual(formatDateMmDdYyyy(new Date("2026-07-04T00:00:00Z")), "07-04-2026");
+});
+
+test("subtractMonths returns the 1st of N months before, within a year", () => {
+  const d = subtractMonths(new Date("2026-08-05T12:00:00Z"), 2);
+  assert.strictEqual(d.getUTCFullYear(), 2026);
+  assert.strictEqual(d.getUTCMonth(), 5); // June (0-indexed)
+  assert.strictEqual(d.getUTCDate(), 1);
+});
+
+test("subtractMonths rolls back across a year boundary", () => {
+  const d = subtractMonths(new Date("2026-01-15T00:00:00Z"), 2);
+  assert.strictEqual(d.getUTCFullYear(), 2025);
+  assert.strictEqual(d.getUTCMonth(), 10); // November
 });
 
 test("serviceMonthOf formats as YYYYMM", () => {

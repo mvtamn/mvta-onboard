@@ -56,6 +56,17 @@ export function serviceMonthOf(date: Date): string {
   return `${y}${m}`;
 }
 
+// Returns the 1st of the month `months` before `date`'s month - sufficient
+// for feeds that "auto-aggregate to whichever month contains the passed
+// date," where any date within the target month works. Used by the
+// trailing-window backfill (otpMonthlyFeedPoll.ts/availMissedTripsPoll.ts)
+// added per OTP-Feed-Evaluation-and-Recommendation (3).md's finding that a
+// poll which only ever asks about "the current month" has no way to notice
+// a month that was empty on day 1 but populated by Avail days later.
+export function subtractMonths(date: Date, months: number): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - months, 1));
+}
+
 const EARLY_THRESHOLD = 1; // fixed, enum-constrained per the API schema
 const LATE_THRESHOLD = 5; // fixed, enum-constrained per the API schema
 const EARLY_OUTLIER_MINUTES = 15; // owner decision - separate from the threshold above

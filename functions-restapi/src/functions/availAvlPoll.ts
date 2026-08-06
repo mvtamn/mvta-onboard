@@ -27,9 +27,17 @@ app.timer("availAvlPoll", {
       return;
     }
 
+    // Rolling window slightly wider than the 5-minute poll interval (per
+    // OTP-Feed-Evaluation-and-Recommendation (2).md's own suggestion for
+    // this feed - "now minus 5 minutes to now") so a poll that runs a
+    // little late still doesn't leave a gap. Well under the feed's 24-hour
+    // max window.
+    const now = new Date();
+    const tenMinutesAgo = new Date(now.getTime() - 10 * 60 * 1000);
+
     let reports;
     try {
-      reports = await fetchAvlReports(baseUrl, apiKey);
+      reports = await fetchAvlReports(baseUrl, apiKey, tenMinutesAgo, now);
     } catch (err) {
       context.error("Failed to fetch Avail AVL Reports:", err);
       return;

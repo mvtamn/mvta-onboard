@@ -40,7 +40,14 @@ export interface AvailDetourReport {
 export interface AvailDetoursEnvelope {
   errors: string[];
   result: {
-    Detours: AvailDetourReport[];
+    // CONFIRMED live 2026-08-05: the guessed "Detours" (capital D) key was
+    // wrong - the diagnostic added same-day caught it throwing "found
+    // [detours, results] instead" on every run once Avail actually had a
+    // real detour to return. Real key is lowercase "detours"; "results"
+    // is a sibling metadata array (RefreshTime/Property), the same pattern
+    // already documented for Pullout's envelope.
+    detours: AvailDetourReport[];
+    results?: { RefreshTime: string; Property: string }[];
   };
   success: boolean;
 }
@@ -58,7 +65,7 @@ export async function fetchDetours(baseUrl: string, apiKey: string): Promise<Ava
   if (!payload.success) {
     throw new Error(`Avail Detours API returned success=false: ${payload.errors?.join(", ") || "no error detail"}`);
   }
-  const rows = payload.result?.Detours;
+  const rows = payload.result?.detours;
   if (rows !== undefined) return rows;
 
   // The guessed envelope key wasn't found. If result carries any OTHER key,

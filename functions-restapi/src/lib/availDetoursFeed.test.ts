@@ -84,18 +84,18 @@ test("null/blank StartDate and EndDate map to null, not a malformed string", () 
   assert.strictEqual(grouped[0].end_date, null);
 });
 
-test("fetchDetours returns the rows when the guessed envelope key matches", () =>
-  withFetchStub({ success: true, errors: [], result: { Detours: [DETOUR_30_INBOUND] } }, async () => {
+test("fetchDetours returns the rows under the real (lowercase) envelope key", () =>
+  withFetchStub({ success: true, errors: [], result: { detours: [DETOUR_30_INBOUND] } }, async () => {
     const rows = await fetchDetours("https://example.test/Detours/v1/MVTA", "key");
     assert.strictEqual(rows.length, 1);
     assert.strictEqual(rows[0].DetourID, 30);
   }));
 
 test("fetchDetours throws naming the real key when the guessed key is wrong", () =>
-  withFetchStub({ success: true, errors: [], result: { DetoursByProperty: [DETOUR_30_INBOUND] } }, async () => {
+  withFetchStub({ success: true, errors: [], result: { Detours: [DETOUR_30_INBOUND] } }, async () => {
     await assert.rejects(
       () => fetchDetours("https://example.test/Detours/v1/MVTA", "key"),
-      /DetoursByProperty/,
+      /Detours/,
     );
   }));
 

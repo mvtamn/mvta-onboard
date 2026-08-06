@@ -375,6 +375,35 @@ export interface OtpMonthlyRouteRollup {
   pct_ontime: number | null;
 }
 
+// Sub-monthly OTP trending (OtpDailyRouteStopHour) - added per
+// OTP-Feed-Evaluation-and-Recommendation (3).md's 2026-08-05 live-data
+// investigation update. Never the official Attachment G number - that's
+// OtpMonthlyStopRow above. No UI reads this yet; the field mapping itself
+// is unconfirmed (see functions-restapi/src/lib/otpDailyFeed.ts).
+export interface OtpDailyRow {
+  calendar_date: string;
+  hour_of_day: number;
+  route_id: number;
+  stop_id: number;
+  stop_name: string | null;
+  route_label: string | null;
+  pct_early: number | null;
+  pct_ontime: number | null;
+  pct_late: number | null;
+  pct_not_ontime: number | null;
+  pct_missed: number | null;
+  early: number | null;
+  ontime: number | null;
+  late: number | null;
+  missed: number | null;
+  actual_departures: number | null;
+  total: number | null;
+  latitude: number | null;
+  longitude: number | null;
+  direction: string | null;
+  updated_at: string;
+}
+
 // Avail's Missed Trips By Route/Stop/Day feed - vendor-reported fixed-route
 // missed-trip incidents for Attachment G compliance. Distinct from
 // MissedTrip above (real-time GTFS-based no-show/cancellation detection) -

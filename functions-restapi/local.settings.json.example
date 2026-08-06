@@ -13,8 +13,8 @@
     "GTFS_RT_VEHICLE_URL": "https://srv.mvta.com/infoPoint/GTFS-realtime.ashx?&Type=VehiclePosition&debug=true",
     "// note4": "ANTHROPIC_API_KEY powers Compose's rider-friendly summary drafting (messagesDraftSummary.ts / lib/anthropic.ts). Optional locally - drafting just returns a clear 'not configured' response without it.",
     "ANTHROPIC_API_KEY": "REPLACE_ME",
-    "// note5": "AVAIL_AVL_REPORTS_URL/_API_KEY feed Event Monitoring's live vehicle positions (availAvlPoll.ts). URL is the agency-level base with no trailing date - the poller appends today's date on every run. The key is sent as the Ocp-Apim-Subscription-Key header.",
-    "AVAIL_AVL_REPORTS_URL": "https://avail360-api.myavail.cloud/AVLReports/v1/MVTA",
+    "// note5": "AVAIL_AVL_REPORTS_URL/_API_KEY feed Event Monitoring's live vehicle positions (availAvlPoll.ts). URL has NO property segment (unlike every other AVAIL_*_URL setting below) - availAvl.ts appends /MVTA/{StartDateTime}/{EndDateTime} fresh on every run, per the feed's confirmed real spec. The key is sent as the Ocp-Apim-Subscription-Key header.",
+    "AVAIL_AVL_REPORTS_URL": "https://avail360-api.myavail.cloud/AVLReports/v1",
     "AVAIL_AVL_REPORTS_API_KEY": "REPLACE_ME",
     "// note6": "AVAIL_PULLOUT_URL feeds Fixed Route Departures (fixedRouteDeparturesPoll.ts) - a second, distinct Avail360 API reusing the SAME AVAIL_AVL_REPORTS_API_KEY above, just a different path.",
     "AVAIL_PULLOUT_URL": "https://avail360-api.myavail.cloud/Pullout/v1/MVTA",
@@ -24,6 +24,8 @@
     "// note8": "DETOUR_IMAGES_STORAGE_ACCOUNT is the Blob Storage account name (not a connection string/key) for Detour image attachments (blobStorage.ts) - access is via the Function App's managed identity (DefaultAzureCredential), never a storage key. New resource, not yet provisioned - see infra-phase1/modules/storage-detour-images.bicep.",
     "DETOUR_IMAGES_STORAGE_ACCOUNT": "REPLACE_ME",
     "// note9": "AVAIL_DETOURS_URL feeds the one-way Avail Detours sync (availDetoursSync.ts, Part B4-B5 of detour-and-event-module-implementation-plan.md) - reuses the SAME AVAIL_AVL_REPORTS_API_KEY above (owner-confirmed: production does not need a separate subscription key, resolving open question #6 in detour-module-build-brief.md). No date suffix - this feed returns every current detour in one flat GET.",
-    "AVAIL_DETOURS_URL": "https://avail360-api.myavail.cloud/Detours/v1/MVTA"
+    "AVAIL_DETOURS_URL": "https://avail360-api.myavail.cloud/Detours/v1/MVTA",
+    "// note10": "AVAIL_OTP_DAILY_URL feeds sub-monthly OTP trending (otpDailyFeedPoll.ts, added per OTP-Feed-Evaluation-and-Recommendation (3).md's 2026-08-05 live-data investigation update) - reuses the SAME AVAIL_AVL_REPORTS_API_KEY above. KNOWN UNCONFIRMED more so than any other feed here: no sample response exists for this exact operation anywhere - see otpDailyFeed.ts's own header comment before trusting this URL/field mapping.",
+    "AVAIL_OTP_DAILY_URL": "https://avail360-api.myavail.cloud/OtpByRouteStopDayHour/v1/MVTA"
   }
 }
