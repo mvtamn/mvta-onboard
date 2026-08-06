@@ -23,6 +23,23 @@ interface RouteClassificationRow {
   updated_at: Date;
 }
 
+// The gap this closes: neither AVL Reports nor RouteClassification itself
+// gives an admin any way to discover WHICH RouteIDs actually need
+// classifying - AVL Reports carries only a bare numeric RouteID (confirmed,
+// no name field at all - see availAvl.ts's AvailAvlReport), so the
+// Admin page's route picker (GtfsRoutes, fixed-route-only) never surfaces
+// special-event/non-revenue IDs like Avail's own "Special1111"/"Rescue Bus"
+// naming convention. Best-effort label comes from OTP Monthly/Missed Trips
+// (the only two feeds that carry a route name at all) when a route happens
+// to have generated schedule-adherence data; otherwise null and the admin
+// sees a bare RouteID, same as before - honest, not a guess.
+interface UnclassifiedRouteRow {
+  route_id: number;
+  otp_label: string | null;
+  mt_internet_name: string | null;
+  mt_desc: string | null;
+}
+
 function toYyyymmdd(isoDate: string | null | undefined): string | null {
   if (!isoDate) return null;
   return isoDate.replace(/-/g, "");
@@ -56,7 +73,36 @@ app.http("routeClassificationList", {
         effective_start_date: toIsoDate(r.effective_start_date),
         effective_end_date: toIsoDate(r.effective_end_date),
       }));
-      return { status: 200, jsonBody: { routes: rows } };
+
+      // Best-effort discovery list - see the interface comment above for why
+      // this exists. Table-exists guards since AvailAvlVehiclePositions/
+      // OtpMonthlyRouteStopDay/AvailMissedTripsRouteStopDay are each from
+      // their own separate migration and may not all be present yet.
+      let unclassified: { route_id: number; suggested_label: string | null }[] = [];
+      const tableCheck = await pool.request().query<{ ok: number }>(`
+        SELECT CASE WHEN OBJECT_ID('dbo.AvailAvlVehiclePositions', 'U') IS NULL THEN 0 ELSE 1 END AS ok
+      `);
+      if (tableCheck.recordset[0]?.ok === 1) {
+        const unclassifiedResult = await pool.request().query<UnclassifiedRouteRow>(`
+          SELECT
+            avl.route AS route_id,
+            (SELECT TOP 1 route_label FROM OtpMonthlyRouteStopDay
+              WHERE route_id = avl.route AND route_label IS NOT NULL) AS otp_label,
+            (SELECT TOP 1 route_internet_name FROM AvailMissedTripsRouteStopDay
+              WHERE route_id = avl.route AND route_internet_name IS NOT NULL) AS mt_internet_name,
+            (SELECT TOP 1 route_desc FROM AvailMissedTripsRouteStopDay
+              WHERE route_id = avl.route AND route_desc IS NOT NULL) AS mt_desc
+          FROM (SELECT DISTINCT route FROM AvailAvlVehiclePositions WHERE route IS NOT NULL) avl
+          WHERE NOT EXISTS (SELECT 1 FROM RouteClassification rc WHERE rc.route_id = avl.route)
+          ORDER BY avl.route
+        `);
+        unclassified = unclassifiedResult.recordset.map((r) => ({
+          route_id: r.route_id,
+          suggested_label: r.otp_label ?? r.mt_internet_name ?? r.mt_desc ?? null,
+        }));
+      }
+
+      return { status: 200, jsonBody: { routes: rows, unclassified } };
     } catch (err) {
       context.error("GET /route-classification failed:", err);
       return { status: 500, jsonBody: { error: "Internal server error" } };

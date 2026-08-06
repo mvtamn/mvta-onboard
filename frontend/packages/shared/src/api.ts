@@ -40,6 +40,7 @@ import type {
   CreateDetourInput,
   UpdateDetourInput,
   RouteClassificationRow,
+  RouteClassificationListResponse,
   RouteClassificationInput,
   EventVehiclePosition,
   OtpStopExclusion,
@@ -424,7 +425,7 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
     },
 
     getRouteClassification() {
-      return request<{ routes: RouteClassificationRow[] }>("/api/route-classification", {}, true);
+      return request<RouteClassificationListResponse>("/api/route-classification", {}, true);
     },
 
     putRouteClassification(routeId: number, input: RouteClassificationInput) {

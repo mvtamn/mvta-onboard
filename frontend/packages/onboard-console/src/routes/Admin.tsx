@@ -5,6 +5,7 @@ import {
   type Category,
   ApiError,
   type RouteClassificationRow,
+  type UnclassifiedRoute,
   type RouteCategory,
   ROUTE_CATEGORY_LABELS,
   type GtfsRouteOption,
@@ -19,6 +20,7 @@ const ROUTE_CATEGORIES: RouteCategory[] = ["FixedRoute", "SpecialEvent", "OnDema
 // bulk-import workflow - someone adds/updates a row before an event runs.
 function RouteClassificationSection() {
   const [routes, setRoutes] = useState<RouteClassificationRow[] | null>(null);
+  const [unclassified, setUnclassified] = useState<UnclassifiedRoute[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -40,6 +42,7 @@ function RouteClassificationSection() {
       .getRouteClassification()
       .then((d) => {
         setRoutes(d.routes);
+        setUnclassified(d.unclassified);
         setError(null);
       })
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load route classifications."));
@@ -87,6 +90,19 @@ function RouteClassificationSection() {
     setOkMsg(null);
   }
 
+  // Pre-fills the form from a discovered RouteID rather than an admin
+  // typing one blind - the naming-convention pre-fill this page originally
+  // needed AVL Reports to carry a route name for, which it doesn't (see
+  // routeClassification.ts's UnclassifiedRouteRow comment) - a suggested
+  // label from OTP/Missed Trips when available is the closest substitute.
+  function classifyFromSuggestion(u: UnclassifiedRoute) {
+    setEditingId(null);
+    setRouteIdInput(String(u.route_id));
+    setCategory("SpecialEvent");
+    setLabel(u.suggested_label ?? "");
+    setOkMsg(null);
+  }
+
   async function save() {
     const routeId = parseInt(routeIdInput, 10);
     if (!Number.isInteger(routeId)) {
@@ -119,6 +135,37 @@ function RouteClassificationSection() {
         </p>
         {error ? <p className="error-text">{error}</p> : null}
         {okMsg ? <p className="ok-text">{okMsg}</p> : null}
+
+        {unclassified.length > 0 ? (
+          <div className="subcard" style={{ marginBottom: 16 }}>
+            <p className="field-label" style={{ marginBottom: 8 }}>
+              Seen in live AVL data, not yet classified ({unclassified.length})
+            </p>
+            <p className="panel-desc" style={{ marginTop: 0 }}>
+              AVL Reports carries only a bare RouteID, no name - these are RouteIDs Avail has
+              actually reported vehicle positions for that have no row below yet. Label is a
+              best-effort guess from OTP/Missed Trips data when available, not a guarantee.
+            </p>
+            <table className="data">
+              <thead>
+                <tr><th>Route ID</th><th>Suggested label</th><th>Actions</th></tr>
+              </thead>
+              <tbody>
+                {unclassified.map((u) => (
+                  <tr key={u.route_id}>
+                    <td>{u.route_id}</td>
+                    <td>{u.suggested_label || "—"}</td>
+                    <td>
+                      <button className="btn-sm" onClick={() => classifyFromSuggestion(u)}>
+                        Classify as Special Event
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
 
         <div className="subcard" style={{ marginBottom: 16 }}>
           <div className="field-grid">

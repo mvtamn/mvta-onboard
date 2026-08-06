@@ -46,6 +46,32 @@ badge and footer read this version at build time - see `vite.config.ts`).
   `maps.bicep` sets `disableLocalAuth: true`; running it against the
   existing resource would tighten this to match every other resource's
   identity-only posture in this project.
+- **Fixed the event-bus map hanging forever on "Loading map…"**: confirmed
+  live once the account was actually wired up - the console's own
+  Content-Security-Policy never allowed the Azure Maps domain at all.
+  `img-src`/`connect-src` were `'self'`-only (no `atlas.microsoft.com`),
+  and there was no `worker-src` directive, but `azure-maps-control` loads
+  map tiles from `atlas.microsoft.com` and spins up Web Workers via
+  `blob:` URLs for tile processing - the browser was silently blocking
+  every one of those requests, so the map's `'ready'` event never fired
+  and the loading overlay never cleared. `staticwebapp.config.json` now
+  allows `https://atlas.microsoft.com` in `img-src`/`connect-src` and adds
+  `worker-src 'self' blob:`.
+- **Route Classification had no way to discover what actually needs
+  classifying.** AVL Reports carries only a bare numeric RouteID, never a
+  name (confirmed - see `availAvl.ts`'s `AvailAvlReport`), so the Admin
+  page's route picker (`GtfsRoutes`, fixed-route-only) never surfaced
+  Avail's own special-event/non-revenue naming convention
+  (`Special1111`, `Rescue Bus`, `Pivot`, etc.) at all - there was
+  genuinely nothing to select. `GET /route-classification` now also
+  returns `unclassified`: every RouteID `AvailAvlVehiclePositions` has
+  actually seen with no classification row yet, with a best-effort label
+  pulled from OTP Monthly/Missed Trips when that route happens to have
+  generated schedule-adherence data (null, not a guess, otherwise). Admin
+  page shows this as a new "Seen in live AVL data, not yet classified"
+  list above the classification table, each row with a one-click
+  "Classify as Special Event" action that pre-fills the form instead of
+  requiring the admin to already know the RouteID.
 
 ## [1.5.0] - 2026-08-06
 

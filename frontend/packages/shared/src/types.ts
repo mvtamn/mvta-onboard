@@ -554,6 +554,22 @@ export interface RouteClassificationRow {
   updated_at: string;
 }
 
+// A RouteID seen in live AVL data with no RouteClassification row yet -
+// neither AVL Reports nor RouteClassification itself has any way to
+// discover what needs classifying otherwise (AVL Reports carries only a
+// bare numeric RouteID, no name). suggested_label is best-effort, pulled
+// from OTP Monthly/Missed Trips when that route happens to have generated
+// schedule-adherence data - null (not a guess) otherwise.
+export interface UnclassifiedRoute {
+  route_id: number;
+  suggested_label: string | null;
+}
+
+export interface RouteClassificationListResponse {
+  routes: RouteClassificationRow[];
+  unclassified: UnclassifiedRoute[];
+}
+
 export interface RouteClassificationInput {
   route_category: RouteCategory;
   route_label?: string | null;
