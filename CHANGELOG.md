@@ -25,7 +25,10 @@ badge and footer read this version at build time - see `vite.config.ts`).
   some of Avail's real values - caused 154 of the 414 real rows above to
   fail with a SQL data-length error instead of saving. New
   `migration-021-otp-monthly-day-of-week-width.sql` widens it to
-  `NVARCHAR(20)`.
+  `NVARCHAR(20)`. **Re-verified after the migration ran: 100% success,
+  all three months** - `414/414` rows for August, `908/908` for July,
+  `910/910` for June. **2,232 real OTP records now in the database, zero
+  failures.** OTP Monthly is fully live.
 - **OTP Compliance cleanup**: removed the dead "Service Week / Metric /
   Imported" stat strip that appeared on every OTP page - a leftover from
   the module's original CSV-import design, hardcoded to a fixed date

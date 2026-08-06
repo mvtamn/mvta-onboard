@@ -1,13 +1,15 @@
 # OTP Compliance: live-data rethink + broader Avail-feed findings
 
-**Status: UPDATED 2026-08-05.** `OTP-Feed-Evaluation-and-Recommendation
-(3).md` cross-referenced this document with a concrete implementation plan
-(AVL Reports' real URL spec, the trailing-backfill design, promoting
-`OtpByRouteStopDayHour` to a first-class daily feed) - Ty asked for that
-plan implemented, and it now has been. See "What's been implemented" at the
-bottom for exactly what shipped vs. what's still open. The UI rethink
-section below (Service Week strip removal, splitting the three "no data"
-states) is still just proposal - none of that has been built.
+**Status: RESOLVED 2026-08-06 (OTP Monthly).** What started as "OTP
+Compliance has no data" turned out to be two real, confirmed, fixed bugs -
+a wrong envelope key and a too-narrow column - not a missing-data problem.
+OTP Monthly is now verified end-to-end with 2,232 real rows across three
+months and zero failures. See "What's been implemented" at the bottom for
+the full sequence. Missed Trips is very likely fixed the same way but
+hasn't finished a clean confirmed run yet (see that section). AVL Reports
+is separately fixed and verified. Pullout Reports remains genuinely broken,
+pending its real API spec. The UI rethink section below (splitting the
+three "no data" states) is still just proposal.
 
 ## Why this exists
 
@@ -218,6 +220,12 @@ ambiguous without more context):
   `migration-021-otp-monthly-day-of-week-width.sql` widens it to
   `NVARCHAR(20)`; exact overflowing value never confirmed, widened
   generously rather than guessing the precise format.
+- **Re-verified after migration-021 ran and the fix deployed: 100% success,
+  all three months.** `414/414` rows for 202608, `908/908` for 202607,
+  `910/910` for 202606 - **2,232 real OTP records now in the database,
+  zero failures.** OTP Monthly is fully working end to end. Route
+  Summary/Review Queue/Monthly Assessments/the Dashboard trend chart
+  should all show real data on next load.
 - **Separately observed, not yet a confirmed problem:** the same manual
   re-trigger of `availMissedTripsPoll` was still running with no
   completion log after 7+ minutes (no error either - just slow). Likely
