@@ -79,7 +79,19 @@ export async function fetchAvlReports(
     headers: { "Ocp-Apim-Subscription-Key": apiKey },
   });
   if (!res.ok) {
-    throw new Error(`Avail AVL Reports request failed: ${res.status}`);
+    // Diagnostic: capture the response body - APIM commonly returns a
+    // routing-diagnostic message on a 404 (e.g. "no matching operation
+    // found") that the previous version of this error discarded. Confirmed
+    // live 2026-08-05: the fix to send Property + two full datetime
+    // segments still 404'd, so the actual cause is still unconfirmed -
+    // this is the next diagnostic step, not a guess at the fix itself.
+    let body = "";
+    try {
+      body = await res.text();
+    } catch {
+      /* body not readable - status code is all we get */
+    }
+    throw new Error(`Avail AVL Reports request failed: ${res.status} - ${body.slice(0, 500)} (url: ${url})`);
   }
   const payload = (await res.json()) as AvailAvlEnvelope;
   if (!payload.success) {
