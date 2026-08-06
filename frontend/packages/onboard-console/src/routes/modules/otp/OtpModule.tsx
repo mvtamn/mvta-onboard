@@ -3,8 +3,6 @@ import {
   ApiError,
   type OtpMonthlyStopRow,
   type OtpMonthlyRouteRollup,
-  type AvailMissedTripRecord,
-  type AvailMissedTripsRouteRollup,
   type OtpStopExclusion,
   type OtpDateExclusion,
   type OtpReasonCode,
@@ -38,18 +36,6 @@ interface OtpMonthlyResponse {
   };
 }
 
-interface AvailMissedTripsResponse {
-  incidents: AvailMissedTripRecord[];
-  routes: AvailMissedTripsRouteRollup[];
-  diagnostics: {
-    configured: boolean;
-    table_ready: boolean;
-    service_month: string;
-    record_count: number;
-    entire_trip_missed_count: number;
-  };
-}
-
 // Client-side mirror of otpMonthlyFeed.ts's serviceMonthOf - only used to
 // seed the month picker's default value before any fetch completes.
 function currentServiceMonth(): string {
@@ -64,6 +50,13 @@ function toMonthInputValue(yyyymm: string): string {
 }
 function fromMonthInputValue(value: string): string {
   return value.replace("-", "");
+}
+
+// Display-only - "YYYYMM" -> "MM/YYYY" (e.g. "202608" -> "08/2026"), for
+// anywhere a resolved service month is shown as text rather than in the
+// <input type="month"> picker itself.
+function formatServiceMonth(yyyymm: string): string {
+  return `${yyyymm.slice(4, 6)}/${yyyymm.slice(0, 4)}`;
 }
 
 const NAV: { page: string; label: string }[] = [
@@ -109,7 +102,6 @@ export function OtpModule() {
   const [selectedMonth, setSelectedMonth] = useState<string>(currentServiceMonth());
 
   const [liveOtp, setLiveOtp] = useState<OtpMonthlyResponse | null>(null);
-  const [liveMissedTrips, setLiveMissedTrips] = useState<AvailMissedTripsResponse | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [threshold, setThreshold] = useState<number>(DEFAULT_EARLY_LATE_BIAS_THRESHOLD);
@@ -141,17 +133,16 @@ export function OtpModule() {
   // Month-dependent - refetches whenever the picker changes.
   useEffect(() => {
     let cancelled = false;
-    Promise.all([api.getOtpMonthly(selectedMonth), api.getAvailMissedTrips(selectedMonth)])
-      .then(([otp, missed]) => {
+    api
+      .getOtpMonthly(selectedMonth)
+      .then((otp) => {
         if (cancelled) return;
         setLiveOtp(otp);
-        setLiveMissedTrips(missed);
         setLoadError(null);
       })
       .catch((err) => {
         if (cancelled) return;
         setLiveOtp(null);
-        setLiveMissedTrips(null);
         setLoadError(
           err instanceof ApiError
             ? `Could not load live OTP compliance data: ${err.message}`
@@ -296,7 +287,7 @@ export function OtpModule() {
         <span className="concept-badge">{usingLiveOtp ? "Live data" : "Preview data"}</span>
         <span>
           {usingLiveOtp
-            ? `Avail OTP Monthly feed - ${liveOtp!.diagnostics.service_month}, ${liveOtp!.diagnostics.record_count} stop/day rows.`
+            ? `Avail OTP Monthly feed - ${formatServiceMonth(liveOtp!.diagnostics.service_month)}, ${liveOtp!.diagnostics.record_count} stop/day rows.`
             : loadError ?? `Avail OTP Monthly feed has no rows for ${selectedMonth} yet - showing sample data.`}
         </span>
         <label style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
@@ -312,12 +303,6 @@ export function OtpModule() {
         </label>
       </div>
       {actionError ? <p className="error-text">{actionError}</p> : null}
-
-      <div className="otp-meta">
-        <div className="otp-meta-item"><div className="otp-meta-label">Service Week</div><div className="otp-meta-value">Jul 7 – Jul 13, 2026</div></div>
-        <div className="otp-meta-item"><div className="otp-meta-label">Metric</div><div className="otp-meta-value">Departure adherence</div></div>
-        <div className="otp-meta-item"><div className="otp-meta-label">Imported</div><div className="otp-meta-value">18,036 timepoint events</div></div>
-      </div>
 
       {page === "dashboard" && (
         <DashboardPage
@@ -346,7 +331,7 @@ export function OtpModule() {
       {page === "weather" && (
         <WeatherPage dateExclusions={dateExclusions} reasonCodes={dateReasonCodes} onAdd={addDateExclusion} />
       )}
-      {page === "monthly" && <MonthlyAssessmentsPage otp={liveOtp} missedTrips={liveMissedTrips} />}
+      {page === "monthly" && <MonthlyAssessmentsPage otp={liveOtp} />}
       {page === "audit" && <AuditStreamPage serviceMonth={serviceMonth} />}
       {page === "admin" && (
         <AdministrationPage
@@ -448,7 +433,7 @@ function OtpTrendChart() {
                 />
               </div>
               <div className="otp-trend-bar-label">{pct !== null ? `${pct}%` : "—"}</div>
-              <div className="otp-trend-bar-month td-dim">{t.service_month}</div>
+              <div className="otp-trend-bar-month td-dim">{formatServiceMonth(t.service_month)}</div>
             </div>
           );
         })}
@@ -743,27 +728,26 @@ function WeatherPage({
   );
 }
 
-// Real "locked OTP snapshot for contractor assessment" page. Shows real OTP
-// % per route (Avail OTP Monthly) alongside real missed-trip incident
-// counts per route (Avail Missed Trips), both for the same service month.
-function MonthlyAssessmentsPage({
-  otp,
-  missedTrips,
-}: {
-  otp: OtpMonthlyResponse | null;
-  missedTrips: AvailMissedTripsResponse | null;
-}) {
+// Real "locked OTP snapshot for contractor assessment" page - OTP % per
+// route (Avail OTP Monthly) only, per Ty's direction (2026-08-06). Used to
+// also show Avail Missed Trips incident counts here, but that's been
+// removed - NOTE this is NOT the same data as the standalone "Missed
+// Trips" Compliance tab (MissedTripAlerts.tsx, GTFS-RT-based real-time
+// no-show/cancellation detection - a different data source entirely).
+// Removing this section means GET /avail-missed-trips currently has no UI
+// consumer anywhere in the app - the feed/poller/table still exist and
+// keep collecting data, just nothing renders it right now.
+function MonthlyAssessmentsPage({ otp }: { otp: OtpMonthlyResponse | null }) {
   const otpReady = Boolean(otp?.diagnostics.table_ready && otp.routes.length > 0);
-  const missedReady = Boolean(missedTrips?.diagnostics.table_ready && missedTrips.routes.length > 0);
-  const serviceMonth = otp?.diagnostics.service_month ?? missedTrips?.diagnostics.service_month ?? null;
+  const serviceMonth = otp?.diagnostics.service_month ?? null;
 
   return (
     <>
       <div className="subcard empty-note" style={{ marginBottom: 16 }}>
-        {serviceMonth ? `Service month: ${serviceMonth}` : "No finalized months yet."}
+        {serviceMonth ? `Service month: ${formatServiceMonth(serviceMonth)}` : "No finalized months yet."}
       </div>
 
-      <div className="subcard" style={{ overflow: "hidden", marginBottom: 16 }}>
+      <div className="subcard" style={{ overflow: "hidden" }}>
         <h2 style={{ padding: "12px 16px 0" }}>OTP by route (Avail OTP Monthly)</h2>
         {otpReady ? (
           <table className="data">
@@ -796,31 +780,6 @@ function MonthlyAssessmentsPage({
           </div>
         )}
       </div>
-
-      <div className="subcard" style={{ overflow: "hidden" }}>
-        <h2 style={{ padding: "12px 16px 0" }}>Missed trips by route (Avail Missed Trips)</h2>
-        {missedReady ? (
-          <table className="data">
-            <thead>
-              <tr><th>Route</th><th>Incidents</th><th>Entire trip missed</th></tr>
-            </thead>
-            <tbody>
-              {missedTrips!.routes.map((r) => (
-                <tr key={r.route_id}>
-                  <td><span className="route-chip">RT {r.route_desc ?? r.route_id}</span></td>
-                  <td>{r.incident_count}</td>
-                  <td>{r.entire_trip_missed_count}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <div className="empty-note" style={{ textAlign: "center", padding: "30px 20px" }}>
-            The Missed Trips feed (AVAIL_MISSED_TRIPS_URL) has not been configured or has no rows
-            for this month yet.
-          </div>
-        )}
-      </div>
     </>
   );
 }
@@ -848,7 +807,7 @@ function AuditStreamPage({ serviceMonth }: { serviceMonth: string | null }) {
       <div className="otp-queue-toolbar" style={{ marginBottom: 12 }}>
         <label>
           <input type="checkbox" checked={scopeToMonth} onChange={(e) => setScopeToMonth(e.target.checked)} disabled={!serviceMonth} />
-          {" "}Current month only{serviceMonth ? ` (${serviceMonth})` : ""}
+          {" "}Current month only{serviceMonth ? ` (${formatServiceMonth(serviceMonth)})` : ""}
         </label>
       </div>
       {error ? <p className="error-text">{error}</p> : null}

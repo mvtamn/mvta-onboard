@@ -85,18 +85,18 @@ test("serviceMonthOf formats as YYYYMM", () => {
   assert.strictEqual(serviceMonthOf(new Date("2026-07-04T00:00:00Z")), "202607");
 });
 
-test("fetchOtpMonthlyReports returns the rows when the guessed envelope key matches", () =>
-  withFetchStub({ success: true, errors: [], result: { OtpByRouteStopDayAgg: [MAGIC_CITY] } }, async () => {
+test("fetchOtpMonthlyReports returns the rows under the real (lowercase) envelope key", () =>
+  withFetchStub({ success: true, errors: [], result: { otp: [MAGIC_CITY] } }, async () => {
     const rows = await fetchOtpMonthlyReports("https://example.test/OtpByRouteStopDayAgg/v1/MVTA", "key");
     assert.strictEqual(rows.length, 1);
     assert.strictEqual(rows[0].RouteID, 90);
   }));
 
 test("fetchOtpMonthlyReports throws naming the real key when the guessed key is wrong", () =>
-  withFetchStub({ success: true, errors: [], result: { OtpMonthlyByRouteStopDay: [MAGIC_CITY] } }, async () => {
+  withFetchStub({ success: true, errors: [], result: { OtpByRouteStopDayAgg: [MAGIC_CITY] } }, async () => {
     await assert.rejects(
       () => fetchOtpMonthlyReports("https://example.test/OtpByRouteStopDayAgg/v1/MVTA", "key"),
-      /OtpMonthlyByRouteStopDay/,
+      /OtpByRouteStopDayAgg/,
     );
   }));
 

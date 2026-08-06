@@ -1,106 +1,54 @@
-# OTP Data Feed Evaluation & Recommendation
+# Missed Trips, Route Classification & Live Tracking — Feed Evaluation
 
-**Purpose:** Select the Avail OTP data feed for continuous ingestion into MVTA OnBoard (Azure-hosted) to support monthly OTP compliance checks with stop-level filtering.
-
-**Requirements driving the decision:**
-1. Continuous / recurring ingestion (not a one-off manual export)
-2. Monthly compliance evaluation cadence
-3. Ability to filter/report by specific stops
-4. Ingested and stored via Azure (Function App + SQL)
+Split out from `OTP-Feed-Evaluation-and-Recommendation.md` to keep OTP concerns (compliance scoring, near-real-time/cumulative views) separate from Missed Trips, fixed-route/special-event routing, and live vehicle tracking. Both files share the same Azure/MVTA OnBoard implementation context.
 
 ---
 
----
-
-## Configuration Values (Confirmed)
+## Configuration Values
 
 | Parameter | Value | Applies to |
 |---|---|---|
-| `{Property}` | `MVTA` | All Avail feeds referenced in this document (OTP, Missed Trips, AVL Reports) — replaces the `ACME` placeholder used in the API spec examples |
+| `{Property}` | `MVTA` | All Avail feeds referenced in this document — replaces the `ACME` placeholder used in the API spec examples |
+
+**Worth verifying, not assuming:** this hasn't been confirmed character-for-character against Avail's actual registered value for this account. See `OTP-Feed-Evaluation-and-Recommendation.md`'s diagnostic section (Step 0) — since Missed Trips shows the same "valid envelope, zero rows" symptom as OTP Monthly, a wrong `{Property}` value would explain both at once, and should be ruled out before assuming either feed has a deeper problem.
 
 ---
 
-## Candidate Feeds Reviewed
-
-Five data sources were evaluated: four Avail OTP APIs and one raw CSV export.
-
-| Feed | API Operation ID | Grain | Time Handling | Stop-Level? | Verdict |
-|---|---|---|---|---|---|
-| OTP By Route/Day/Hour | `otp-by-route-day-hour` | Route × DayOfWeek × HourOfDay | Custom Start/End Date range | **No** — no StopID field | Ruled out — cannot filter by stop |
-| OTP By Route/Stop/Hour | (route-stop-hour) | Stop × Route × HourOfDay | Auto-aggregates the whole month containing the service date passed | Yes | Viable but loses DayOfWeek breakdown |
-| OTP By Route/Stop/Day/Hour | `otp-by-route-stop-day-hour` | Stop × Route × Date × Hour (includes lat/long, direction) | Custom Start/End Date range | Yes | Best for drill-down, not for the recurring monthly job (heavy payload, requires app-side monthly rollup) |
-| **OTP Monthly By Route/Stop/Day of Week** | `otp-by-month-route-stop-day-of-week` | Stop × Route × DayOfWeek | **Auto-aggregates the whole month** containing the service date passed | Yes | **Recommended primary feed** |
-| Raw CSV export | n/a | Individual stop-event (one row per depart/arrive) | Manual export | Yes (Depart Stop Id) | Not viable as a continuous feed |
-
 ---
 
-## Recommendation: Primary Feed
+## Endpoint Reference (Exact Path Shapes, Pulled Directly from Avail's OpenAPI Specs)
 
-**`OtpByRouteStopDayAgg` — "OTP Monthly By Route/Stop/Day of Week"**
+Given AVL Reports 404'd for months because of a missing path segment, this table exists so every request can be visually diffed against the actual spec rather than reconstructed from memory. Production host is `avail360-api.myavail.cloud`, test/sandbox host is `avail360-test.myavail.cloud`.
+
+### Missed Trips By Route/Stop/Hour — two valid path shapes
 
 ```
-GET /{Property}/{Service Date}/{Early Threshold}/{Late Threshold}/{Early Outlier}/{Late Outlier}/{Show Missed Stops}/{Include Outliers}/{Show Detours}
+GET https://avail360-api.myavail.cloud/MissedTripsByRouteStopHour/v1/{Property}/{Service Date}
 ```
+Base call, `operationId: missed-trips-by-route-stop-hour`. Returns the month containing `{Service Date}`, no filters.
 
-Base URL (production): `https://avail360-api.myavail.cloud/OtpByRouteStopDayAgg/v1`
-
-*(Note: the API spec document references `https://avail360-test.myavail.cloud/OtpByRouteStopDayAgg/v1` — that's the test/sandbox host. Confirm which environment the Azure Function should point to per deployment stage — `avail360-test` for dev/staging, `avail360-api` for production.)*
-
-### Why this feed fits
-
-- **Auto-aggregates to the month.** Pass any service date (`MM-DD-YYYY`) and the API returns the entire month containing that date — no date-range math required, no risk of pulling a partial month.
-- **Native stop-level fields.** `StopID`, `StopInternetName`, `RouteID`, `RouteReportLabel` are all present, so filtering to specific stops (mapping to the OTP Compliance Module's stop-level exclusion logic) is a direct query/filter rather than a join across feeds.
-- **DayOfWeek is preserved despite being a monthly aggregate.** This matters because Weekday / Saturday / Sunday service levels typically carry different OTP standards — a distinction the plain Route/Stop/Hour feed does not preserve.
-- **Response fields cover the full compliance calculation:** `PercentEarly`, `PercentOntime`, `PercentLate`, `PercentNotOntime`, `PercentMissed`, plus raw counts (`Early`, `Ontime`, `Late`, `Missed`, `ActualDepartures`, `Total`) — everything needed for departure-adherence scoring against Attachment G thresholds.
-
-### Example response shape
-
-```json
-{
-  "DayOfWeek": "Wed",
-  "StopID": 3242,
-  "StopInternetName": "29th Ave S and 18th St S",
-  "RouteReportLabel": "MCC  - Magic Cit",
-  "RouteID": 90,
-  "PercentEarly": 0.0407,
-  "PercentOntime": 0.2733,
-  "PercentLate": 0.1919,
-  "PercentNotOntime": 0.2384,
-  "PercentMissed": 0.4884,
-  "Early": 7,
-  "Ontime": 47,
-  "Late": 33,
-  "Missed": 84,
-  "ActualDepartures": 88,
-  "Total": 172
-}
 ```
+GET https://avail360-api.myavail.cloud/MissedTripsByRouteStopHour/v1/{Property}/{Service Date}/{Full Trip Only}/{Include Deadheads}
+```
+Filtered variant, `operationId: missed-trips-for-the-month-by-route-stop-hour-with-filters`. **Note the enum lock flagged earlier in this doc:** the spec documents `Full Trip Only` as enum-restricted to `1` only and `Include Deadheads` to `0` only — even though this is the "with filters" variant, the schema as written doesn't actually let those two values vary. Worth confirming directly with Avail whether that's a documentation error or a real constraint before assuming this endpoint is configurable.
 
----
+### Missed Trips By Route/Stop/Day — one path shape
 
-## Suggested Azure Ingestion Pattern
+```
+GET https://avail360-api.myavail.cloud/MissedTripsByRouteStopDay/v1/{Property}/{Start_Date}/{End_Date}/{Full Trip Only}/{Include Deadheads}
+```
+`operationId: missed-trips-by-route-stop-day`. This is the recommended primary feed above — both filter params are genuinely `0`/`1` here, not enum-locked. `{Start_Date}`/`{End_Date}` accept either `MM-DD-YYYY` or `YYYY-MM-DD` per the spec description — pick one format and use it consistently in the Function rather than relying on the API to be lenient.
 
-- **Trigger:** Timer-triggered Azure Function, run on a schedule anchored to monthly close-out (e.g., first business day of the month, pulling the prior month via a service date within that month).
-- **Call:** `GET /{Property}/{ServiceDate}/1/5/{EarlyOutlier}/{LateOutlier}/0/1/1`
-  - Early Threshold and Late Threshold are effectively fixed at `1` and `5` per the API schema (enum-constrained).
-  - Early Outlier / Late Outlier — confirm whether these need to be configurable per compliance cycle or can be hardcoded (open question below).
-- **Storage:** Persist to Azure SQL keyed on `(RouteID, StopID, DayOfWeek, ServiceMonth)` so the compliance dashboard/reporting layer queries this table directly rather than re-hitting the Avail API per request.
-- **Auth:** `Ocp-Apim-Subscription-Key` header (or `subscription-key` query param) per the API's security scheme.
+### AVL Reports — one path shape
 
----
+```
+GET https://avail360-api.myavail.cloud/AVLReports/v1/{Property}/{Start DateTime}/{End DateTime}
+```
+This is the exact shape the production 404 bug is missing — confirmed three segments: `{Property}`, `{Start DateTime}`, `{End DateTime}`. **Format is a full datetime, not a date:** `YYYY-MM-DD HH:MI:SS`, e.g. `2026-08-05 14:00:00` — not `2026-08-05`. The current broken code builds `${baseUrl}/${formatDateYyyyMmDd(date)}`, which is missing the `{Property}` segment, missing the second datetime segment entirely, and formats a date-only string where a full datetime is required. All three need fixing, not just the missing segment. 24-hour max window between Start and End.
 
-## Secondary / Supporting Feeds
+### Garage Pull Out / Fixed Route Departures — not documented, spec still needed
 
-Keep these available for on-demand use, not as the primary recurring pull:
-
-- **OTP By Route/Stop/Day/Hour** (`otp-by-route-stop-day-hour`) — date-range, hour-level, includes lat/long and direction. Use this when a route/stop is flagged by the monthly aggregate and you need to identify which specific trips or hours drove the miss, or to visualize detours on a map.
-- **Raw CSV export** — trip-level actual vs. scheduled timestamps down to the second. Retain as the audit-of-last-resort source if a vendor disputes a monthly compliance number. Not suitable as a polled feed (large payload, no API endpoint — manual export only).
-
-## Ruled Out
-
-- **OTP By Route/Day/Hour** — no `StopID` field anywhere in the schema, so it cannot satisfy the stop-level filtering requirement regardless of its other strengths.
-
----
+No OpenAPI spec for this endpoint has been provided to this evaluation. It fails identically to AVL Reports (100% 404, every run), and the same missing-segment hypothesis is the leading candidate — but that's extrapolation from AVL's shape, not a confirmed spec. **Do not rebuild this request from the AVL pattern alone** — get the actual Pullout OpenAPI doc or one confirmed working raw call first, the same way this table was built for every other endpoint here.
 
 ---
 
@@ -177,7 +125,7 @@ Base URL (production): `https://avail360-api.myavail.cloud/MissedTripsByRouteSto
 
 # Fixed Route vs. Special Event Bus Routing
 
-**The problem:** the sample record you pasted confirms the core issue —
+**The problem:** a sample Missed Trips record confirms the core issue —
 
 ```json
 {
@@ -209,10 +157,10 @@ CREATE TABLE dbo.RouteClassification (
 
 ### Pipeline flow
 
-1. **Ingest** — Azure Function pulls the raw feed (Missed Trips or OTP) as already documented above.
+1. **Ingest** — Azure Function pulls the raw feed (Missed Trips or OTP) as already documented.
 2. **Classify** — join each incoming record on `RouteID` against `RouteClassification`.
 3. **Fork:**
-   - `RouteCategory = 'FixedRoute'` → routes into the existing CAD-tracked compliance pipeline (the OTP Compliance Module / Attachment G scoring tables already documented in this file).
+   - `RouteCategory = 'FixedRoute'` → routes into the existing CAD-tracked compliance pipeline (the OTP Compliance Module / Attachment G scoring tables).
    - `RouteCategory = 'SpecialEvent'` → routes into a **separate Event Module schema** (e.g., `dbo.EventMissedTrips`, `dbo.EventOtp`) that's exposed through its own API/UI surface — kept out of Attachment G compliance scoring entirely, since event service isn't part of the fixed-route contractor's regular obligation.
    - Any `RouteID` with **no match** in the table → land it in a `dbo.UnclassifiedRoutes` staging table rather than silently dropping it or silently defaulting it to fixed route. This is your safety net for new event RouteIDs that haven't been registered yet.
 4. **Maintain** — whenever a special event is scheduled, someone (Ty or a User Admin) adds/updates the `RouteClassification` row before the event runs, so the Function classifies it correctly on the next pull. This is a manual/light-touch admin step, not something the Function can infer on its own.
@@ -220,7 +168,7 @@ CREATE TABLE dbo.RouteClassification (
 ### Why the reference table beats trying to pattern-match on `RouteReportLabel`
 
 The OTP feeds do include a `RouteReportLabel` (e.g., "Operator Shuttle", "MCC - Magic Cit") that could theoretically hint at event service via naming convention, but:
-- The Missed Trips feeds you're filtering here **don't include that field at all** — only `RouteID`.
+- The Missed Trips feeds don't include that field at all — only `RouteID`.
 - Relying on string-matching a label is fragile (typos, inconsistent naming, truncation like "MCC - Magic Cit" above) and would need to be re-validated every time someone names a new event route.
 
 A RouteID-keyed lookup table is deterministic and auditable — worth the small admin overhead.
@@ -233,9 +181,9 @@ It's worth a quick check with Avail/your CAD admin console: does Avail already t
 
 # Live Vehicle Tracking Feed Evaluation (AVL Reports) — Event Bus Monitoring
 
-**Purpose:** Ty confirmed this feed's use case — **monitoring special event buses specifically**, for the Event Module. Fixed-route vehicles are already tracked via the existing CAD system, so this pipeline doesn't need to power a fixed-route view at all; its whole job is surfacing live position for event service.
+**Purpose:** Monitoring special event buses specifically, for the Event Module. Fixed-route vehicles are already tracked via the existing CAD system, so this pipeline doesn't need to power a fixed-route view at all; its whole job is surfacing live position for event service.
 
-That simplifies the design from what was drafted before: instead of a two-way fork feeding both a CAD view and an Event Module view, this is a **single-purpose ingestion path that filters to event buses only and discards the rest.**
+This is a **single-purpose ingestion path that filters to event buses only and discards the rest.**
 
 ## Feed characteristics
 
@@ -253,7 +201,7 @@ Base URL (production): `https://avail360-api.myavail.cloud/AVLReports/v1`
 | `Block`, `Run`, `Trip` | Scheduling identifiers — useful for joining back to schedule data if the Event Module ever needs it |
 | `Latitude`, `Longitude`, `Heading`, `Direction` | Raw position/orientation — this is what actually renders a moving vehicle on a map |
 
-**This is a fundamentally different feed shape than everything reviewed so far.** OTP and Missed Trips are batch/aggregate feeds meant for monthly compliance rollups. AVL Reports is raw, high-frequency vehicle telemetry — it has no `StopID` and no performance metrics at all. Its job is live position, not compliance scoring.
+**This is a fundamentally different feed shape than OTP and Missed Trips.** Those are batch/aggregate feeds meant for monthly compliance rollups. AVL Reports is raw, high-frequency vehicle telemetry — it has no `StopID` and no performance metrics at all. Its job is live position, not compliance scoring.
 
 **Critical constraint: 24-hour maximum window per call.** You cannot pull a month at a time here. This feed is built for short, frequent polling, not periodic batch ingestion.
 
@@ -262,24 +210,32 @@ Base URL (production): `https://avail360-api.myavail.cloud/AVLReports/v1`
 This doesn't touch the monthly compliance pipeline at all — it's a standalone, real-time path dedicated to the Event Module:
 
 - **Trigger:** Timer-triggered Azure Function on a short interval (e.g., every 1–2 minutes, matched to however often Avail actually refreshes AVL data), pulling a rolling window (e.g., "now minus 5 minutes" to "now") rather than the full 24-hour max.
-- **Filter on ingest:** join each incoming ping's `Route` against `RouteClassification` (the same table from the Missed Trips/OTP sections) and **keep only `SpecialEvent` matches** — fixed-route pings are discarded at this stage rather than stored, since CAD already owns that view and there's no reason to duplicate it here.
+- **Filter on ingest:** join each incoming ping's `Route` against `RouteClassification` (the same table from above) and **keep only `SpecialEvent` matches** — fixed-route pings are discarded at this stage rather than stored, since CAD already owns that view and there's no reason to duplicate it here.
 - **Storage:** Two tables, scoped to event vehicles only —
   - `dbo.EventVehicleCurrentPosition` — upsert keyed on `Vehicle`, latest ping only, powers the Event Module's live map.
   - `dbo.EventVehiclePositionHistory` — append-only, if you want playback/trail for a given event after the fact (useful for post-event review or a rider complaint about a specific shuttle).
 - **No Service Bus fork needed** for this feed specifically — since fixed-route pings never get published in the first place, there's nothing to route between topics. If the Event Module itself needs to notify other parts of the app of position updates, a single `event-vehicle-positions` topic is enough.
 
-## Classification note carried over from the Missed Trips/OTP sections
+## Classification note
 
 `Route` here has the same problem as `RouteID` elsewhere — just a number, no service-type flag — so this pipeline depends on the same `RouteClassification` table staying current. Since this feed is now the **primary consumer that cares about that table in real time**, it raises the stakes on keeping it accurate: a RouteID added to `RouteClassification` late (after an event has already started running) means that event's buses won't show up in the Event Module until the table is updated. Worth deciding whether route setup for an event includes registering it in `RouteClassification` as a required step in the event-prep checklist, not an afterthought.
 
-As noted before, `Vehicle` (bus number) is available directly on this feed and could serve as a fallback/secondary classifier — useful if event buses ever run under a RouteID that's ambiguous or shared with regular service on the same day.
+`Vehicle` (bus number) is available directly on this feed and could serve as a fallback/secondary classifier — useful if event buses ever run under a RouteID that's ambiguous or shared with regular service on the same day.
+
+---
+
+## AVL Reports 404 — Root Cause (from live-data investigation, 2026-08-05)
+
+`availAvl.ts` builds its request as `${baseUrl}/${formatDateYyyyMmDd(date)}` — a single date-only segment. The real shape documented above is **`GET /{Property}/{Start DateTime}/{End DateTime}`** — three path segments (Property + two full datetimes, format `YYYY-MM-DD HH:MI:SS`, not just a date), 24-hour max window. The production code is missing the `{Property}` segment entirely, missing the second datetime segment, and using date-only formatting instead of full datetime. Any one of those would 404 against Azure API Management's route matching; all three compound it. **This section's spec is the one to rebuild the request against.**
+
+Pullout Reports (Garage Pull Out / Fixed Route Departures) fails identically but its actual spec has not been provided to this evaluation — needs the real OpenAPI doc before a fix is written, not a guess extrapolated from AVL's shape.
 
 ---
 
 ## Open Questions Before Implementation
 
-1. **(OTP feed)** Do Early Outlier / Late Outlier thresholds need to be configurable per compliance cycle (e.g., stored as app config, adjustable by an admin), or can they be hardcoded constants in the Function?
-2. **(Missed Trips feed)** Should `Full Trip Only` be `1` (strict) or `0` (either end missed) per Attachment G's definition of a missed trip? Confirm against contract language.
-3. **(Missed Trips feed — on-demand)** No on-demand/paratransit missed-trip feed was provided in this round. If Avail exposes an equivalent endpoint for demand-response service, it should be evaluated separately — fixed-route and on-demand compliance likely need distinct scoring logic and possibly distinct storage tables.
-4. **(Route classification)** Does Avail/the CAD system already tag RouteIDs by service type internally (even if not exposed in these API responses)? If yes, `RouteClassification` could be populated automatically instead of manually maintained. Also confirm whether event RouteIDs are ever reused across different events over time (which would require the `EffectiveStartDate`/`EffectiveEndDate` columns to disambiguate) or whether each event gets a unique, permanent RouteID.
-5. **(AVL Reports)** What's Avail's actual AVL refresh cadence? That determines the right polling interval for the Timer Function — polling faster than the source data updates just wastes calls. Also confirm the process for registering a new event's RouteID(s) in `RouteClassification` *before* the event starts running, so its buses aren't missing from the Event Module on event day. And confirm whether Route-based filtering alone is reliable, or a Vehicle-based fallback is needed for cases where event buses share a RouteID with regular service.
+1. **(Missed Trips feed)** Should `Full Trip Only` be `1` (strict) or `0` (either end missed) per Attachment G's definition of a missed trip? Confirm against contract language.
+2. **(Missed Trips feed — on-demand)** No on-demand/paratransit missed-trip feed was provided in this round. If Avail exposes an equivalent endpoint for demand-response service, it should be evaluated separately — fixed-route and on-demand compliance likely need distinct scoring logic and possibly distinct storage tables.
+3. **(Route classification)** Does Avail/the CAD system already tag RouteIDs by service type internally (even if not exposed in these API responses)? If yes, `RouteClassification` could be populated automatically instead of manually maintained. Also confirm whether event RouteIDs are ever reused across different events over time (which would require the `EffectiveStartDate`/`EffectiveEndDate` columns to disambiguate) or whether each event gets a unique, permanent RouteID.
+4. **(AVL Reports)** What's Avail's actual AVL refresh cadence? That determines the right polling interval for the Timer Function — polling faster than the source data updates just wastes calls. Also confirm the process for registering a new event's RouteID(s) in `RouteClassification` *before* the event starts running, so its buses aren't missing from the Event Module on event day. And confirm whether Route-based filtering alone is reliable, or a Vehicle-based fallback is needed for cases where event buses share a RouteID with regular service.
+5. **(Pullout / Garage Pull Out)** Real API spec still needed — same missing-segment root cause is the leading hypothesis but unconfirmed. Get the OpenAPI doc or one confirmed working raw call before writing a fix.

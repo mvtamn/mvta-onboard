@@ -11,11 +11,11 @@
 // of a contractor-fault missed trip) and Include Deadheads=0 (excluded,
 // matching the doc's own recommendation).
 //
-// KNOWN UNCONFIRMED ASSUMPTION: same caveat as otpMonthlyFeed.ts - the doc
-// only shows a single record's shape, not the full envelope. This guesses
-// result.MissedTripsByRouteStopDay by the same Operation-ID-matches-array-key
-// pattern observed for AVL Reports/Pullout. Verify against a real response
-// once a key is available.
+// CONFIRMED live 2026-08-06 (see plans/otp-compliance-live-data-rethink.md):
+// the guessed PascalCase key was wrong the whole time. Real key is
+// lowercase "missed", with a sibling "results" metadata array - same
+// pattern as otpMonthlyFeed.ts ("OtpByRouteStopDayAgg" -> "otp") and
+// Detours ("Detours" -> "detours"). This feed was never actually empty.
 import { formatDateMmDdYyyy } from "./otpMonthlyFeed";
 
 export interface AvailMissedTripReport {
@@ -36,7 +36,8 @@ export interface AvailMissedTripReport {
 export interface AvailMissedTripsEnvelope {
   errors: string[];
   result: {
-    MissedTripsByRouteStopDay: AvailMissedTripReport[];
+    missed: AvailMissedTripReport[];
+    results?: { RefreshTime: string; Property: string }[];
   };
   success: boolean;
 }
@@ -67,18 +68,16 @@ export async function fetchMissedTripReports(
       `Avail Missed Trips API returned success=false: ${payload.errors?.join(", ") || "no error detail"}`,
     );
   }
-  const rows = payload.result?.MissedTripsByRouteStopDay;
+  const rows = payload.result?.missed;
   if (rows !== undefined) return rows;
 
-  // Same diagnostic added to otpMonthlyFeed.ts/availDetoursFeed.ts after
-  // confirming live on 2026-08-05 that availDetoursFeed.ts's own guessed
-  // key ("Detours") was actually wrong (real key: lowercase "detours") -
-  // surface the real key names instead of silently reporting zero rows
-  // forever if this guess is ever wrong too.
+  // Kept as a safety net even though the key is now confirmed - if Avail
+  // ever changes it again, this stays loud instead of silently returning
+  // zero rows.
   const actualKeys = payload.result ? Object.keys(payload.result) : [];
   if (actualKeys.length > 0) {
     throw new Error(
-      `Avail Missed Trips response has no "MissedTripsByRouteStopDay" key under result - found [${actualKeys.join(", ")}] instead. Update the guessed key in availMissedTripsFeed.ts.`,
+      `Avail Missed Trips response has no "missed" key under result - found [${actualKeys.join(", ")}] instead. Update the guessed key in availMissedTripsFeed.ts.`,
     );
   }
   return [];

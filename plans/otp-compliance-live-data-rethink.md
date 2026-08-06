@@ -65,42 +65,40 @@ successful example call) for both endpoints before writing a real fix, not
 another guess. Flagging prominently rather than shipping a second unverified
 guess on top of the first one.
 
-## OTP Monthly / Missed Trips - re-examined given the above
+## OTP Monthly / Missed Trips - RESOLVED (2026-08-06)
 
-Unlike Detours, OTP Monthly's diagnostic never threw - the guessed key
-(`OtpByRouteStopDayAgg`) really is present in Avail's response; it's a
-genuinely valid, empty array. Two non-exclusive explanations, in order of
-how much we can act on them:
+**Both feeds were never actually empty - they were misread from day one.**
+Confirmed live once the trailing-window daily backfill (below) actually ran
+at 3:00am UTC on 2026-08-06: the diagnostic that had been sitting dormant
+(matching the guessed key on every prior check) finally fired, because that
+run's requests happened to land on a response shape where `result` carried
+other keys instead of an empty object.
 
-1. **Our own poller has never once asked Avail for a historical month.**
-   `otpMonthlyFeedPoll.ts` always calls `fetchOtpMonthlyReports(..., now)` -
-   never a past date. The *original* design in
-   `OTP-Feed-Evaluation-and-Recommendation.md` was "run once at month
-   close-out, pulling the *prior* (complete) month" - deliberately changed
-   during this project to "poll hourly on the *current, in-progress* month"
-   for real-time trending. That change means we've only ever asked Avail
-   about a month that might not be aggregated yet on Avail's side, and by
-   design **we never go back and check whether a now-completed month
-   eventually populated** - the poller doesn't backfill, it only ever
-   refreshes whatever month is current *right now*. If Avail's own OTP
-   aggregate build process has any lag (nightly batch, not real-time), a
-   brand-new month will always look empty for days, and we'd never notice
-   once it filled in because we stopped asking about it.
-2. **Avail may not have OTP tracking populated/enabled for MVTA's account at
-   all.** Two full months in a row (one fully closed) returning genuinely
-   zero rows, with a confirmed-correct request URL/key, is also consistent
-   with Avail's own backend simply having nothing for this Property on this
-   particular feed - something no code change on our side can fix. This is
-   why checking Avail's own reporting portal directly (already asked of Ty,
-   still pending) is the fastest way to rule this in or out.
+- **OTP Monthly**: guessed `OtpByRouteStopDayAgg` (PascalCase) - real key is
+  lowercase **`otp`**, confirmed across all three months in the trailing
+  window (202608, 202607, 202606).
+- **Missed Trips**: guessed `MissedTripsByRouteStopDay` (PascalCase) - real
+  key is lowercase **`missed`**.
 
-Both are real possibilities and aren't mutually exclusive. Recommended next
-diagnostic step (not yet done): temporarily test-fetch a date from a month
-that's been closed for a *long* time (e.g., several months back, not just
-July) directly against Avail, bypassing our own database entirely - if that
-also comes back empty, it points hard at explanation 2; if it comes back
-with real rows, it confirms explanation 1 and justifies building the backfill
-in "Proposed data-pull changes" below.
+Both have a sibling `results` metadata key, matching Detours' exact pattern
+(`Detours` -> `detours`) and the same `RefreshTime`/`Property` shape already
+documented for Pullout. **Avail's real convention across every one of these
+feeds appears to be a short lowercase key + sibling `results` array - not
+the PascalCase operation-model-name pattern this project guessed for every
+single feed built this session.** Both fixed in `otpMonthlyFeed.ts` /
+`availMissedTripsFeed.ts`, tests updated, deployed.
+
+This also resolves the earlier open question about whether Avail has OTP
+data for MVTA at all - Ty confirmed via Avail's own portal that it does,
+which is consistent with this finding (the data was there; the code just
+couldn't see it under the wrong key).
+
+One thing worth separately verifying per
+`plans/Missed-Trips-and-Supporting-Feeds-Evaluation.md`'s own note: whether
+`{Property}=MVTA` is confirmed character-for-character correct. Ty has since
+confirmed this - Property is `MVTA` and is correctly baked into the URL for
+every feed except AVL Reports (which needs it as an explicit code segment
+instead, already fixed). No further action needed there.
 
 ## UI rethink
 
@@ -169,33 +167,46 @@ ambiguous without more context):
 
 ## Open questions for Ty
 
-1. Confirm via Avail's own portal: does OTP Monthly / Missed Trips data
-   exist for MVTA's account at all, for any month? (Still pending from
-   earlier today - this is the fastest way to rule in/out "Avail has
-   nothing here" vs. "we're not asking the right way.")
-2. Is "daily pulls" the rolling-backfill interpretation above, or something
-   else?
-3. OK to remove the Service Week/Metric/Imported strip entirely (confirmed
-   dead), or should it be replaced with something month-aware instead of
-   just deleted?
+1. ~~Confirm via Avail's own portal: does OTP Monthly / Missed Trips data
+   exist for MVTA's account at all, for any month?~~ **Resolved -
+   confirmed yes**, and now doubly explained: the data was there all
+   along, just misread under the wrong envelope key (see above).
+2. ~~Is "daily pulls" the rolling-backfill interpretation above, or
+   something else?~~ **Resolved** - trailing-window daily backfill,
+   implemented and live.
+3. ~~OK to remove the Service Week/Metric/Imported strip entirely?~~
+   **Resolved - removed entirely**, along with Missed Trips off Monthly
+   Assessments and service-month formatting fixed to `MM/YYYY`.
 4. AVL Reports/Pullout's 404s need the real API spec (or one confirmed
-   working raw call) before a fix gets written and deployed - who has
-   access to get that, and should this become its own priority given it
-   means two "live" console features have shown zero real data since they
-   shipped?
+   working raw call) before a fix gets written and deployed - **AVL
+   Reports resolved** (real spec found, fixed, verified live); **Pullout
+   still open** - who has access to get its real spec?
 5. Should the three conflated "no data" states get split into distinct
    messages now, or bundled with whatever UI rework comes out of this
-   review?
+   review? - **Still open**, though likely lower priority now that OTP
+   Monthly/Missed Trips are expected to actually show data going forward.
 
-## What's been implemented (2026-08-05)
+## What's been implemented
 
-### Fixed while investigating (certain, small)
+### 2026-08-05
 
 - `availDetoursFeed.ts`: fixed the confirmed-wrong `Detours` → `detours`
   envelope key, with tests.
 - `availMissedTripsFeed.ts`: added the same "throw with the real key names"
   diagnostic already built for OTP Monthly/Detours, so a future wrong-key
   guess here is loud instead of another silent zero, with tests.
+
+### 2026-08-06
+
+- `otpMonthlyFeed.ts`: fixed the confirmed-wrong `OtpByRouteStopDayAgg` →
+  `otp` envelope key, caught by tonight's first trailing-window backfill
+  run. Every month this feed has ever polled was never actually empty.
+- `availMissedTripsFeed.ts`: fixed the confirmed-wrong
+  `MissedTripsByRouteStopDay` → `missed` envelope key, caught the same run.
+- Both feeds' data should start actually appearing in Route Summary/Review
+  Queue/Monthly Assessments/the Dashboard trend chart on their next poll
+  now that they're reading the real key. Verify after the next scheduled
+  run (daily, 3:00am UTC) or by manually re-triggering.
 
 ### Implemented per `OTP-Feed-Evaluation-and-Recommendation (3).md`'s plan
 

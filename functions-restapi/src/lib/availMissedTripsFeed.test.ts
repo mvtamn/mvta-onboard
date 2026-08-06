@@ -60,9 +60,9 @@ test("treats a departure-only miss (arrival not missed) correctly", () => {
   assert.strictEqual(mapped!.entire_trip_missed, false);
 });
 
-test("fetchMissedTripReports returns the rows when the guessed envelope key matches", () =>
+test("fetchMissedTripReports returns the rows under the real (lowercase) envelope key", () =>
   withFetchStub(
-    { success: true, errors: [], result: { MissedTripsByRouteStopDay: [BIRMINGHAM_EXPRESS] } },
+    { success: true, errors: [], result: { missed: [BIRMINGHAM_EXPRESS] } },
     async () => {
       const rows = await fetchMissedTripReports("https://example.test/MissedTripsByRouteStopDay/v1/MVTA", "key", new Date(), new Date());
       assert.strictEqual(rows.length, 1);
@@ -71,10 +71,10 @@ test("fetchMissedTripReports returns the rows when the guessed envelope key matc
   ));
 
 test("fetchMissedTripReports throws naming the real key when the guessed key is wrong", () =>
-  withFetchStub({ success: true, errors: [], result: { missedTrips: [BIRMINGHAM_EXPRESS] } }, async () => {
+  withFetchStub({ success: true, errors: [], result: { MissedTripsByRouteStopDay: [BIRMINGHAM_EXPRESS] } }, async () => {
     await assert.rejects(
       () => fetchMissedTripReports("https://example.test/MissedTripsByRouteStopDay/v1/MVTA", "key", new Date(), new Date()),
-      /missedTrips/,
+      /MissedTripsByRouteStopDay/,
     );
   }));
 

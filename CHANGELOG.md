@@ -7,6 +7,28 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 ## [Unreleased]
 
+- **Fixed the real bug behind "OTP Monthly/Missed Trips have no data":
+  both had the wrong envelope key, not empty data.** Caught the moment
+  tonight's first trailing-window backfill actually ran and the dormant
+  diagnostic finally fired. `otpMonthlyFeed.ts` guessed `OtpByRouteStopDayAgg`
+  (real key: lowercase `otp`); `availMissedTripsFeed.ts` guessed
+  `MissedTripsByRouteStopDay` (real key: lowercase `missed`) - both with a
+  sibling `results` metadata key, same pattern as Detours
+  (`Detours` → `detours`). Every month either feed has ever polled was
+  never actually empty. Fixed, tests updated.
+- **OTP Compliance cleanup**: removed the dead "Service Week / Metric /
+  Imported" stat strip that appeared on every OTP page - a leftover from
+  the module's original CSV-import design, hardcoded to a fixed date
+  ("Jul 7 – Jul 13, 2026") and a made-up import count with no live meaning
+  at all. Monthly Assessments no longer shows Avail Missed Trips incident
+  counts alongside OTP % - decluttered to OTP-only per Ty's direction
+  (note: this isn't the same data as the separate "Missed Trips"
+  Compliance tab, which is GTFS-RT-based real-time detection, not Avail's
+  feed - removing this leaves `GET /avail-missed-trips` with no UI
+  consumer for now, though the feed keeps collecting data). Every
+  service-month display (Monthly Assessments, the live-data banner, Audit
+  Stream's "current month" label, the Dashboard trend chart's month
+  labels) now formats as `MM/YYYY` instead of raw `YYYYMM`.
 - **Fixed a real live bug: Avail Detours sync's envelope key was wrong.**
   Guessed as `Detours` (capital D); the real key is lowercase `detours`.
   Caught by the diagnostic added earlier this session, confirmed against

@@ -5,14 +5,14 @@
 // DayOfWeek but no month/date field of their own, so the caller stamps the
 // request's own service_month onto each mapped row.
 //
-// KNOWN UNCONFIRMED ASSUMPTION: the doc only shows a single record's shape,
-// not the full HTTP envelope. The two other Avail360 feeds already
-// integrated this session turned out to wrap their array under a key
-// matching the feed's own Operation ID/model name (AVL Reports:
-// result["AVL Reports"]; Pullout: result.Pullout) - this guesses
-// result.OtpByRouteStopDayAgg by the same pattern. If a real response ever
-// comes back with reports.length === 0 when service data should exist, this
-// key is almost certainly wrong - check a real raw response and correct it.
+// CONFIRMED live 2026-08-06 (see plans/otp-compliance-live-data-rethink.md):
+// the guessed PascalCase key was wrong the whole time - the diagnostic
+// below caught it firing across three real months (202608/07/06) once the
+// trailing-window backfill actually ran. Real key is lowercase "otp", with
+// a sibling "results" metadata array - same pattern as Detours
+// ("Detours" -> "detours") and Missed Trips ("MissedTripsByRouteStopDay"
+// -> "missed"). Every month this feed has ever polled was genuinely never
+// empty - it's been misread since day one, not lacking data.
 export interface OtpMonthlyReport {
   DayOfWeek: string;
   StopID: number;
@@ -35,7 +35,8 @@ export interface OtpMonthlyReport {
 export interface OtpMonthlyEnvelope {
   errors: string[];
   result: {
-    OtpByRouteStopDayAgg: OtpMonthlyReport[];
+    otp: OtpMonthlyReport[];
+    results?: { RefreshTime: string; Property: string }[];
   };
   success: boolean;
 }
@@ -98,18 +99,16 @@ export async function fetchOtpMonthlyReports(
       `Avail OTP Monthly API returned success=false: ${payload.errors?.join(", ") || "no error detail"}`,
     );
   }
-  const rows = payload.result?.OtpByRouteStopDayAgg;
+  const rows = payload.result?.otp;
   if (rows !== undefined) return rows;
 
-  // The guessed envelope key (see the KNOWN UNCONFIRMED ASSUMPTION above)
-  // wasn't found. If result carries any OTHER key, that's almost certainly
-  // the real array key and this is loudly wrong rather than silently
-  // returning zero rows every poll - surface the actual key names (never
-  // the data itself) so the fix is a one-line correction, not a re-guess.
+  // Kept as a safety net even though the key is now confirmed - if Avail
+  // ever changes it again, this stays loud instead of silently returning
+  // zero rows.
   const actualKeys = payload.result ? Object.keys(payload.result) : [];
   if (actualKeys.length > 0) {
     throw new Error(
-      `Avail OTP Monthly response has no "OtpByRouteStopDayAgg" key under result - found [${actualKeys.join(", ")}] instead. Update the guessed key in otpMonthlyFeed.ts.`,
+      `Avail OTP Monthly response has no "otp" key under result - found [${actualKeys.join(", ")}] instead. Update the guessed key in otpMonthlyFeed.ts.`,
     );
   }
   return [];
