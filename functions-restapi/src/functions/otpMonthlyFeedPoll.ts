@@ -64,7 +64,9 @@ app.timer("otpMonthlyFeedPoll", {
           request.input("service_month", sql.Char(6), mapped.service_month);
           request.input("route_id", sql.Int, mapped.route_id);
           request.input("stop_id", sql.Int, mapped.stop_id);
-          request.input("day_of_week", sql.NVarChar(3), mapped.day_of_week);
+          // NVarChar(20), not (3) - migration-021: some real Avail values
+          // overflowed the original "Mon"/"Tue"-sized column.
+          request.input("day_of_week", sql.NVarChar(20), mapped.day_of_week);
           request.input("stop_name", sql.NVarChar, mapped.stop_name);
           request.input("route_label", sql.NVarChar, mapped.route_label);
           request.input("pct_early", sql.Float, mapped.pct_early);

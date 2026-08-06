@@ -15,7 +15,17 @@ badge and footer read this version at build time - see `vite.config.ts`).
   `MissedTripsByRouteStopDay` (real key: lowercase `missed`) - both with a
   sibling `results` metadata key, same pattern as Detours
   (`Detours` → `detours`). Every month either feed has ever polled was
-  never actually empty. Fixed, tests updated.
+  never actually empty. Fixed, tests updated. **Confirmed live** by
+  manually re-triggering after deploy: `otpMonthlyFeedPoll` logged
+  `414 reports seen, 260 rows upserted for 202608` - real OTP data, in
+  the database, for the first time.
+- **Fixed a second real bug found while confirming the above**:
+  `OtpMonthlyRouteStopDay.day_of_week` was `NVARCHAR(3)` (sized for
+  "Mon"/"Tue" per the one sample record ever available), too narrow for
+  some of Avail's real values - caused 154 of the 414 real rows above to
+  fail with a SQL data-length error instead of saving. New
+  `migration-021-otp-monthly-day-of-week-width.sql` widens it to
+  `NVARCHAR(20)`.
 - **OTP Compliance cleanup**: removed the dead "Service Week / Metric /
   Imported" stat strip that appeared on every OTP page - a leftover from
   the module's original CSV-import design, hardcoded to a fixed date

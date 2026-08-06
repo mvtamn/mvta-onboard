@@ -207,6 +207,26 @@ ambiguous without more context):
   Queue/Monthly Assessments/the Dashboard trend chart on their next poll
   now that they're reading the real key. Verify after the next scheduled
   run (daily, 3:00am UTC) or by manually re-triggering.
+- **Confirmed by manually re-triggering after deploy: real data flows.**
+  `otpMonthlyFeedPoll` logged `414 reports seen, 260 rows upserted for
+  202608` - genuine live OTP data, in the database, for the first time.
+  Found one more real bug in the process: 154 of those 414 rows failed on
+  a SQL error (`Data type 0xE7 has an invalid data length`) -
+  `OtpMonthlyRouteStopDay.day_of_week` was `NVARCHAR(3)` (sized for
+  "Mon"/"Tue" per the doc's only sample record), too narrow for at least
+  some of Avail's real values. **Fixed** -
+  `migration-021-otp-monthly-day-of-week-width.sql` widens it to
+  `NVARCHAR(20)`; exact overflowing value never confirmed, widened
+  generously rather than guessing the precise format.
+- **Separately observed, not yet a confirmed problem:** the same manual
+  re-trigger of `availMissedTripsPoll` was still running with no
+  completion log after 7+ minutes (no error either - just slow). Likely
+  explanation: the trailing-window widening (1 month → 3 months) tripled
+  the incident-record volume for a design that inserts one row at a time,
+  sequentially, inside a single transaction - fine for a month, possibly
+  not for three. Worth watching whether this becomes a real timeout risk
+  once it's running on the daily schedule rather than a one-off manual
+  trigger; batching the inserts would be the fix if so.
 
 ### Implemented per `OTP-Feed-Evaluation-and-Recommendation (3).md`'s plan
 
