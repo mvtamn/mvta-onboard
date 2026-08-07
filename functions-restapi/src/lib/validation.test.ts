@@ -15,6 +15,10 @@ import {
   validateOtpHistoricalBackfill,
   validateUploadUrlRequest,
   validateCreateDetourImage,
+  validateDetourReport,
+  validateCreateDetourReasonCode,
+  validateUpdateDetourReasonCode,
+  MAX_DETOUR_RESOLUTION_NOTES_LENGTH,
   MAX_SUMMARY_LENGTH,
   MAX_CREATED_BY_LENGTH,
   MAX_MISSED_TRIP_NOTES_LENGTH,
@@ -314,6 +318,75 @@ test("detour update requires at least one editable field", () => {
 test("detour update accepts a single field with no other errors", () => {
   const errors = validateUpdateDetour({ email_sent: true });
   assert.deepStrictEqual(errors, []);
+});
+
+// Reporting fields - Part B6.
+
+test("detour report fields are all optional", () => {
+  assert.deepStrictEqual(validateDetourReport({}), []);
+});
+
+test("valid detour report fields pass with no errors", () => {
+  const errors = validateDetourReport({
+    reason_code: "special_event",
+    severity: "major",
+    reported_by: "Barbara Derrick",
+    reported_at: "2026-08-07T14:30",
+    approved_by: "Jason Francis",
+    approved_at: "2026-08-07T15:00:00Z",
+    radio_notified: true,
+    dispatch_board_notified: false,
+    social_media_notified: true,
+    resolution_notes: "Corridor reopened ahead of schedule.",
+  });
+  assert.deepStrictEqual(errors, []);
+});
+
+test("detour report rejects a severity outside the three-tier scale", () => {
+  const errors = validateDetourReport({ severity: "catastrophic" });
+  assert.ok(errors.some((e) => e.includes("severity")));
+});
+
+test("detour report accepts an explicitly null severity (not yet assessed)", () => {
+  assert.deepStrictEqual(validateDetourReport({ severity: null }), []);
+});
+
+test("detour report rejects an unparseable reported_at", () => {
+  const errors = validateDetourReport({ reported_at: "last Tuesday" });
+  assert.ok(errors.some((e) => e.includes("reported_at")));
+});
+
+test("detour report rejects resolution notes longer than the column allows", () => {
+  const errors = validateDetourReport({
+    resolution_notes: "x".repeat(MAX_DETOUR_RESOLUTION_NOTES_LENGTH + 1),
+  });
+  assert.ok(errors.some((e) => e.includes("resolution_notes")));
+});
+
+test("detour report rejects a non-boolean channel flag", () => {
+  const errors = validateDetourReport({ radio_notified: "yes" });
+  assert.ok(errors.some((e) => e.includes("radio_notified")));
+});
+
+test("detour create surfaces reporting-field errors alongside its own", () => {
+  const errors = validateCreateDetour({ closure: "", severity: "huge" });
+  assert.ok(errors.some((e) => e.includes("closure")));
+  assert.ok(errors.some((e) => e.includes("severity")));
+});
+
+test("detour update accepts a reporting field as the only change", () => {
+  assert.deepStrictEqual(validateUpdateDetour({ severity: "minor" }), []);
+});
+
+test("detour reason code create requires both code and label", () => {
+  const errors = validateCreateDetourReasonCode({ code: "bridge_lift" });
+  assert.ok(errors.some((e) => e.includes("label")));
+});
+
+test("detour reason code update rejects an empty body and ignores code", () => {
+  assert.ok(validateUpdateDetourReasonCode({}).some((e) => e.includes("At least one of")));
+  // `code` is not editable - passing only it counts as passing nothing.
+  assert.ok(validateUpdateDetourReasonCode({ code: "renamed" }).some((e) => e.includes("At least one of")));
 });
 
 test("valid stop exclusion passes with no errors", () => {

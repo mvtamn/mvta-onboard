@@ -30,6 +30,18 @@ interface DetourRow {
   avail_last_seen_at: Date | null;
   // Absent (not null) on rows read before migration-024 has run.
   internal_number?: string | null;
+  // Reporting fields (Part B6) - likewise absent, not null, until
+  // migration-025 has run.
+  reason_code?: string | null;
+  severity?: "minor" | "moderate" | "major" | null;
+  reported_by?: string | null;
+  reported_at?: Date | null;
+  approved_by?: string | null;
+  approved_at?: Date | null;
+  radio_notified?: boolean;
+  dispatch_board_notified?: boolean;
+  social_media_notified?: boolean;
+  resolution_notes?: string | null;
   created_by: string;
   created_at: Date;
   updated_by: string | null;
@@ -69,17 +81,26 @@ app.http("detoursList", {
       // a missing column fails even inside a CASE. Pre-migration the field
       // comes back undefined and the console falls back to hiding it, same
       // graceful-degradation pattern as every other un-run migration here.
-      const numberingCheck = await pool.request().query<{ has_column: number }>(`
-        SELECT CASE WHEN COL_LENGTH('dbo.Detours', 'internal_number') IS NULL
-               THEN 0 ELSE 1 END AS has_column
+      const schemaCheck = await pool.request().query<{ has_column: number; reporting_ready: number }>(`
+        SELECT
+          CASE WHEN COL_LENGTH('dbo.Detours', 'internal_number') IS NULL
+               THEN 0 ELSE 1 END AS has_column,
+          CASE WHEN COL_LENGTH('dbo.Detours', 'reason_code') IS NULL
+               THEN 0 ELSE 1 END AS reporting_ready
       `);
-      const hasInternalNumber = numberingCheck.recordset[0]?.has_column === 1;
+      const hasInternalNumber = schemaCheck.recordset[0]?.has_column === 1;
+      const hasReportingFields = schemaCheck.recordset[0]?.reporting_ready === 1;
+
+      const REPORTING_COLUMNS = `
+        reason_code, severity, reported_by, reported_at, approved_by, approved_at,
+        radio_notified, dispatch_board_notified, social_media_notified, resolution_notes`;
 
       const detoursResult = await pool.request().query<DetourRow>(`
         SELECT id, number, closure, start_date, end_date, is_monitor_only, riders_directed,
                email_sent, expired_email_sent, spare_emailed, source, external_detour_id,
                last_edited_manually, avail_last_seen_at, created_by, created_at, updated_by, updated_at
                ${hasInternalNumber ? ", internal_number" : ""}
+               ${hasReportingFields ? `, ${REPORTING_COLUMNS}` : ""}
         FROM Detours
         WHERE is_deleted = 0
         ORDER BY start_date DESC, created_at DESC

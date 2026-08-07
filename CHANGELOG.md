@@ -9,6 +9,69 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 _Nothing unreleased._
 
+## [1.5.3] - 2026-08-07
+
+Not yet deployed. The deployed console is still on 1.5.0 — 1.5.1, 1.5.2 and
+1.5.3 are all awaiting a deploy.
+
+**`migration-025-detour-reporting-fields.sql` has been run against the dev
+DB (2026-08-07); the code is not yet deployed.** Unlike migration-024 there
+is no backfill gap — every new column is optional, so detours created
+through the currently-deployed build are simply uncategorized and can be
+filled in afterwards. Every surface below degrades gracefully anyway: the API
+guards on `COL_LENGTH('dbo.Detours', 'reason_code')` and drops the new
+fields rather than failing, `GET /detour-reason-codes` returns an empty list
+rather than 500ing, and the console hides the whole reporting section rather
+than letting staff type into fields whose data would be silently discarded.
+
+- **Detour reporting fields (Part B6).**
+  `migration-025-detour-reporting-fields.sql` adds a `DetourReasonCodes`
+  table (mirroring `OtpReasonCodes`, minus `applies_to` — it has only one
+  consumer) plus ten columns on `Detours`: `reason_code`, `severity`,
+  `reported_by`/`reported_at`, `approved_by`/`approved_at`, three more
+  notification-channel flags (`radio_notified`, `dispatch_board_notified`,
+  `social_media_notified`) and `resolution_notes`. **Every field is a draft
+  built from standard transit-ops practice, not from MVTA's real internal
+  detour-reporting form, which no document in this repo describes.** They
+  were approved as-drafted with that caveat explicit; expect to correct them
+  against the real form. Nothing requires any of them, so a wrong column can
+  be dropped without breaking existing rows. `reason_code` is a soft
+  (non-FK) reference to `DetourReasonCodes.code`, same convention as
+  `OtpStopExclusions.reason_code`, so retiring a code can't orphan the
+  history citing it — which is also why `code` is deliberately not editable
+  via `PATCH /detour-reason-codes/{id}`.
+- **New endpoints**: `GET /detour-reason-codes` (any detour-reading role,
+  including `OCC.Compliance` and `OCC.Detour`, neither of which is in
+  `STAFF_READ_ROLES`), `POST`/`PATCH` (admin only — this is a controlled
+  vocabulary, not day-to-day entry).
+- **"Clone as new detour"** on the Detours list. A single real notice
+  routinely bundles two separately-dated sub-closures — the Aug 2026 ramp
+  notice covered the Cliff Rd and Diffley Rd ramps on different dates —
+  which is two `Detours` rows sharing everything but their dates. Clone
+  copies the shared context and deliberately drops what must not be
+  inherited: dates, every notification flag, the approval, and resolution
+  notes.
+- **New read-only "Detour Reports" page (Part B7)** for compliance and ops
+  leadership: free-text search, filters (status, reason category, severity,
+  source, start-date range), and a client-side CSV export of whatever is
+  currently on screen. It reads the same `GET /detours` payload and the same
+  server-computed status as the entry page, so the two can't disagree about
+  whether a detour is Active. There are no edit controls anywhere on it,
+  even for users who have those rights on the entry page. Search and
+  filtering are **client-side** — `GET /detours` returns every non-deleted
+  row and there is no pagination; `lib/detourSearch.ts` is the single seam to
+  move server-side if real volume ever makes a full scan slow.
+- **A plain search box on Detours & Closures**, using that same matcher.
+  Terms are ANDed across number, internal reference, closure text, riders
+  directed, segment routes and directions, staff names, and the reason
+  code's human *label* — so typing "special event" finds rows stored as
+  `special_event`.
+- **Sidebar: "Detours & Closures" moved into the existing "Tools" group**,
+  alongside the new "Detour Reports", OCC Tools and Compliance, rather than
+  sitting flat among the rider-message primaries. The group header now
+  renders if any child does, so an `OCC.Detour`-only user sees a labelled
+  group instead of two orphaned links.
+
 ## [1.5.2] - 2026-08-07
 
 Not yet deployed. The deployed console is still on 1.5.0 — both 1.5.1 and

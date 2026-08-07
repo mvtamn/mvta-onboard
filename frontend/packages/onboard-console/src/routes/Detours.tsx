@@ -2,8 +2,11 @@ import { Fragment, useEffect, useState } from "react";
 import {
   ApiError,
   DETOUR_STATUS_LABELS,
+  DETOUR_SEVERITY_LABELS,
   type Detour,
   type DetourStatus,
+  type DetourSeverity,
+  type DetourReasonCode,
   type CreateDetourInput,
   type DetourSegmentInput,
   type DetourImage,
@@ -11,6 +14,7 @@ import {
 import { useAuth } from "../auth/AuthContext.js";
 import { api } from "../config.js";
 import { resizeImageFile } from "../lib/imageResize.js";
+import { detourMatchesSearch } from "../lib/detourSearch.js";
 
 const STATUS_TABS: { key: DetourStatus | "all"; label: string }[] = [
   { key: "all", label: "All" },
@@ -48,6 +52,24 @@ function numberYearMismatch(internalNumber: string | null | undefined, startDate
   return issued[1] !== startDate.slice(0, 4);
 }
 
+// <input type="datetime-local"> speaks local wall-clock with no zone, while
+// reported_at/approved_at come back as UTC ISO strings. These two convert
+// in both directions through local time so a value round-trips to the same
+// wall-clock reading it was entered as.
+function toDateTimeLocalInput(value: string | null | undefined): string {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function dateTimeLabel(value: string | null | undefined): string {
+  if (!value) return "—";
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? value : d.toLocaleString();
+}
+
 const EMPTY_SEGMENT: DetourSegmentInput = { routes: "", directions: "" };
 
 interface DetourFormState {
@@ -61,6 +83,17 @@ interface DetourFormState {
   expired_email_sent: boolean;
   spare_emailed: boolean;
   segments: DetourSegmentInput[];
+  // Reporting fields - Part B6.
+  reason_code: string;
+  severity: string;
+  reported_by: string;
+  reported_at: string;
+  approved_by: string;
+  approved_at: string;
+  radio_notified: boolean;
+  dispatch_board_notified: boolean;
+  social_media_notified: boolean;
+  resolution_notes: string;
 }
 
 const BLANK_FORM: DetourFormState = {
@@ -74,6 +107,16 @@ const BLANK_FORM: DetourFormState = {
   expired_email_sent: false,
   spare_emailed: false,
   segments: [{ ...EMPTY_SEGMENT }],
+  reason_code: "",
+  severity: "",
+  reported_by: "",
+  reported_at: "",
+  approved_by: "",
+  approved_at: "",
+  radio_notified: false,
+  dispatch_board_notified: false,
+  social_media_notified: false,
+  resolution_notes: "",
 };
 
 function formToInput(f: DetourFormState): CreateDetourInput {
@@ -88,6 +131,16 @@ function formToInput(f: DetourFormState): CreateDetourInput {
     expired_email_sent: f.expired_email_sent,
     spare_emailed: f.spare_emailed,
     segments: f.segments.filter((s) => s.routes.trim() !== ""),
+    reason_code: f.reason_code || null,
+    severity: (f.severity as DetourSeverity) || null,
+    reported_by: f.reported_by.trim() || null,
+    reported_at: f.reported_at || null,
+    approved_by: f.approved_by.trim() || null,
+    approved_at: f.approved_at || null,
+    radio_notified: f.radio_notified,
+    dispatch_board_notified: f.dispatch_board_notified,
+    social_media_notified: f.social_media_notified,
+    resolution_notes: f.resolution_notes.trim() || null,
   };
 }
 
@@ -105,6 +158,40 @@ function detourToForm(d: Detour): DetourFormState {
     segments: d.segments.length > 0
       ? d.segments.map((s) => ({ routes: s.routes, directions: s.directions ?? "" }))
       : [{ ...EMPTY_SEGMENT }],
+    reason_code: d.reason_code ?? "",
+    severity: d.severity ?? "",
+    reported_by: d.reported_by ?? "",
+    reported_at: toDateTimeLocalInput(d.reported_at),
+    approved_by: d.approved_by ?? "",
+    approved_at: toDateTimeLocalInput(d.approved_at),
+    radio_notified: d.radio_notified ?? false,
+    dispatch_board_notified: d.dispatch_board_notified ?? false,
+    social_media_notified: d.social_media_notified ?? false,
+    resolution_notes: d.resolution_notes ?? "",
+  };
+}
+
+// "Clone as new detour" (Part B6). A single real notice routinely bundles
+// two separately-dated sub-closures - the Aug 2026 ramp notice covered the
+// Cliff Rd and Diffley Rd ramps on different dates - which is two Detours
+// rows sharing everything except their dates. This copies the shared
+// context and deliberately drops what must not be inherited: dates (the
+// whole point of the clone), the notification flags and approval (nothing
+// has been sent or signed off for the new one), and resolution notes.
+function detourToCloneForm(d: Detour): DetourFormState {
+  return {
+    ...detourToForm(d),
+    start_date: "",
+    end_date: "",
+    email_sent: false,
+    expired_email_sent: false,
+    spare_emailed: false,
+    radio_notified: false,
+    dispatch_board_notified: false,
+    social_media_notified: false,
+    approved_by: "",
+    approved_at: "",
+    resolution_notes: "",
   };
 }
 
@@ -123,8 +210,10 @@ export function Detours() {
   const canDelete = roles.some((r) => r === "OCC.Publisher" || r === "OCC.Admin");
 
   const [detours, setDetours] = useState<Detour[] | null>(null);
+  const [reasonCodes, setReasonCodes] = useState<DetourReasonCode[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [statusTab, setStatusTab] = useState<DetourStatus | "all">("active");
+  const [search, setSearch] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const [showForm, setShowForm] = useState(false);
@@ -150,6 +239,26 @@ export function Detours() {
 
   useEffect(load, []);
 
+  // Reason codes come back empty (not an error) until migration-025 has run,
+  // which is exactly the signal reportingReady below keys off. A failure
+  // here is deliberately not surfaced as a page-level error - the detour
+  // list itself still works without the category vocabulary.
+  useEffect(() => {
+    api
+      .getDetourReasonCodes(true)
+      .then((r) => setReasonCodes(r.reason_codes))
+      .catch(() => setReasonCodes([]));
+  }, []);
+
+  // Whether the B6 columns actually exist in this environment's database.
+  // Two independent signals, because either can be absent on its own: a
+  // seeded reason-code list, or a detour row carrying the reason_code key
+  // (GET /detours omits the key entirely pre-migration rather than nulling
+  // it). Showing the fields when the columns are missing would silently
+  // discard whatever staff typed into them.
+  const reportingReady =
+    reasonCodes.length > 0 || (detours?.some((d) => "reason_code" in d) ?? false);
+
   function openNewForm() {
     setEditingId(null);
     setForm(BLANK_FORM);
@@ -162,6 +271,16 @@ export function Detours() {
     setForm(detourToForm(d));
     setFormError(null);
     setShowForm(true);
+  }
+
+  // Opens the new-detour form pre-filled from an existing row. editingId
+  // stays null, so Save creates rather than overwriting the original.
+  function openCloneForm(d: Detour) {
+    setEditingId(null);
+    setForm(detourToCloneForm(d));
+    setFormError(null);
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function save() {
@@ -213,7 +332,12 @@ export function Detours() {
     setForm((f) => ({ ...f, segments: f.segments.filter((_, idx) => idx !== i) }));
   }
 
-  const visible = detours?.filter((d) => statusTab === "all" || d.status === statusTab) ?? [];
+  const visible =
+    detours?.filter(
+      (d) =>
+        (statusTab === "all" || d.status === statusTab) &&
+        detourMatchesSearch(d, search, reasonCodes),
+    ) ?? [];
 
   return (
     <>
@@ -235,6 +359,17 @@ export function Detours() {
               + New Detour
             </button>
           )}
+        </div>
+
+        <div style={{ margin: "10px 0" }}>
+          <input
+            className="f"
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search closure, routes, number, riders directed…"
+            style={{ maxWidth: 420 }}
+          />
         </div>
 
         {loadError ? <p className="error-text">{loadError}</p> : null}
@@ -284,11 +419,71 @@ export function Detours() {
             ))}
             <button className="btn-sm" onClick={addSegmentRow}>+ Add segment</button>
 
-            <div style={{ marginTop: 14, display: "flex", gap: 16, flexWrap: "wrap" }}>
+            {reportingReady && (
+              <>
+                <p className="field-label" style={{ marginTop: 14 }}>Reporting</p>
+                <div className="field-grid">
+                  <div>
+                    <p className="field-label">Reason category</p>
+                    <select className="f" value={form.reason_code} onChange={(e) => setForm((f) => ({ ...f, reason_code: e.target.value }))}>
+                      <option value="">— Not categorized —</option>
+                      {reasonCodes.map((rc) => (
+                        <option key={rc.id} value={rc.code}>{rc.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <p className="field-label">Severity</p>
+                    <select className="f" value={form.severity} onChange={(e) => setForm((f) => ({ ...f, severity: e.target.value }))}>
+                      <option value="">— Not assessed —</option>
+                      {(Object.keys(DETOUR_SEVERITY_LABELS) as DetourSeverity[]).map((s) => (
+                        <option key={s} value={s}>{DETOUR_SEVERITY_LABELS[s]}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="field-grid">
+                  <div>
+                    <p className="field-label">Reported by</p>
+                    <input className="f" value={form.reported_by} onChange={(e) => setForm((f) => ({ ...f, reported_by: e.target.value }))} placeholder="Who first reported it" />
+                  </div>
+                  <div>
+                    <p className="field-label">Reported at</p>
+                    <input className="f" type="datetime-local" value={form.reported_at} onChange={(e) => setForm((f) => ({ ...f, reported_at: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="field-grid">
+                  <div>
+                    <p className="field-label">Approved by</p>
+                    <input className="f" value={form.approved_by} onChange={(e) => setForm((f) => ({ ...f, approved_by: e.target.value }))} placeholder="Sign-off, if applicable" />
+                  </div>
+                  <div>
+                    <p className="field-label">Approved at</p>
+                    <input className="f" type="datetime-local" value={form.approved_at} onChange={(e) => setForm((f) => ({ ...f, approved_at: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="field-grid single">
+                  <div>
+                    <p className="field-label">Resolution notes <span className="hint">(filled in around expiry)</span></p>
+                    <textarea className="f" rows={2} value={form.resolution_notes} onChange={(e) => setForm((f) => ({ ...f, resolution_notes: e.target.value }))} placeholder="How it wrapped up, anything worth knowing next time" />
+                  </div>
+                </div>
+              </>
+            )}
+
+            <p className="field-label" style={{ marginTop: 14 }}>Notified</p>
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
               <label><input type="checkbox" checked={form.is_monitor_only} onChange={(e) => setForm((f) => ({ ...f, is_monitor_only: e.target.checked }))} /> Monitor only (no confirmed closure yet)</label>
               <label><input type="checkbox" checked={form.email_sent} onChange={(e) => setForm((f) => ({ ...f, email_sent: e.target.checked }))} /> Email sent</label>
               <label><input type="checkbox" checked={form.expired_email_sent} onChange={(e) => setForm((f) => ({ ...f, expired_email_sent: e.target.checked }))} /> Expired email sent</label>
               <label><input type="checkbox" checked={form.spare_emailed} onChange={(e) => setForm((f) => ({ ...f, spare_emailed: e.target.checked }))} /> Spare emailed</label>
+              {reportingReady && (
+                <>
+                  <label><input type="checkbox" checked={form.radio_notified} onChange={(e) => setForm((f) => ({ ...f, radio_notified: e.target.checked }))} /> Radio notified</label>
+                  <label><input type="checkbox" checked={form.dispatch_board_notified} onChange={(e) => setForm((f) => ({ ...f, dispatch_board_notified: e.target.checked }))} /> Dispatch board notified</label>
+                  <label><input type="checkbox" checked={form.social_media_notified} onChange={(e) => setForm((f) => ({ ...f, social_media_notified: e.target.checked }))} /> Social media notified</label>
+                </>
+              )}
             </div>
 
             <div style={{ marginTop: 14 }}>
@@ -335,6 +530,13 @@ export function Detours() {
                       {canWrite ? (
                         <td onClick={(e) => e.stopPropagation()}>
                           <button className="btn-sm" onClick={() => openEditForm(d)}>Edit</button>
+                          <button
+                            className="btn-sm"
+                            title="Start a new detour pre-filled from this one, with blank dates"
+                            onClick={() => openCloneForm(d)}
+                          >
+                            Clone
+                          </button>
                           {canDelete ? (
                             <button className="btn-sm danger" onClick={() => remove(d)}>Delete</button>
                           ) : null}
@@ -369,8 +571,32 @@ export function Detours() {
                                 </tbody>
                               </table>
                             )}
+                            {reportingReady ? (
+                              <>
+                                <p className="td-dim" style={{ marginTop: 8 }}>
+                                  <b>Reason:</b>{" "}
+                                  {d.reason_code
+                                    ? reasonCodes.find((rc) => rc.code === d.reason_code)?.label ?? d.reason_code
+                                    : "—"}
+                                  {" · "}
+                                  <b>Severity:</b> {d.severity ? DETOUR_SEVERITY_LABELS[d.severity] : "—"}
+                                </p>
+                                <p className="td-dim">
+                                  Reported by {d.reported_by || "—"} ({dateTimeLabel(d.reported_at)}) · Approved by{" "}
+                                  {d.approved_by || "—"} ({dateTimeLabel(d.approved_at)})
+                                </p>
+                                {d.resolution_notes ? <p><b>Resolution:</b> {d.resolution_notes}</p> : null}
+                              </>
+                            ) : null}
                             <p className="td-dim" style={{ marginTop: 8 }}>
                               Email sent: {d.email_sent ? "Yes" : "No"} · Expired email sent: {d.expired_email_sent ? "Yes" : "No"} · Spare emailed: {d.spare_emailed ? "Yes" : "No"}
+                              {reportingReady ? (
+                                <>
+                                  {" · "}Radio: {d.radio_notified ? "Yes" : "No"} · Dispatch board:{" "}
+                                  {d.dispatch_board_notified ? "Yes" : "No"} · Social media:{" "}
+                                  {d.social_media_notified ? "Yes" : "No"}
+                                </>
+                              ) : null}
                             </p>
                             <p className="td-dim">Created by {d.created_by} · Updated by {d.updated_by ?? "—"}</p>
                             {d.source === "avail" ? (

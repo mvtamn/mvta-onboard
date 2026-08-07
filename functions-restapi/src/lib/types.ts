@@ -91,7 +91,24 @@ export interface DetourSegmentBody {
   sort_order?: number;
 }
 
-export interface CreateDetourBody {
+export type DetourSeverity = "minor" | "moderate" | "major";
+
+// Reporting fields (Part B6, migration-025). All optional on both create and
+// update - a detour logged mid-incident gets these filled in later.
+export interface DetourReportBody {
+  reason_code?: string | null;
+  severity?: DetourSeverity | null;
+  reported_by?: string | null;
+  reported_at?: string | null;
+  approved_by?: string | null;
+  approved_at?: string | null;
+  radio_notified?: boolean;
+  dispatch_board_notified?: boolean;
+  social_media_notified?: boolean;
+  resolution_notes?: string | null;
+}
+
+export interface CreateDetourBody extends DetourReportBody {
   number?: string | null;
   closure: string;
   start_date?: string | null;
@@ -104,7 +121,7 @@ export interface CreateDetourBody {
   segments?: DetourSegmentBody[];
 }
 
-export interface UpdateDetourBody {
+export interface UpdateDetourBody extends DetourReportBody {
   number?: string | null;
   closure?: string;
   start_date?: string | null;

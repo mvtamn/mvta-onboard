@@ -77,16 +77,30 @@ app.http("detoursCreate", {
     // rather than failing the whole create - same table-exists guard pattern
     // used by detourImagesPurge.ts and availAvlPoll.ts for un-run migrations.
     // Both objects are checked because the migration adds both.
-    const schemaCheck = await pool.request().query<{ numbering_ready: number }>(`
-      SELECT CASE
-        WHEN OBJECT_ID('dbo.DetourNumberSequences', 'U') IS NOT NULL
-         AND COL_LENGTH('dbo.Detours', 'internal_number') IS NOT NULL
-        THEN 1 ELSE 0 END AS numbering_ready
+    // Reporting fields (Part B6, migration-025) get the same treatment -
+    // pre-migration they are silently dropped rather than failing the create,
+    // so the console keeps working through the deploy gap between the code
+    // shipping and the migration being run.
+    const schemaCheck = await pool.request().query<{ numbering_ready: number; reporting_ready: number }>(`
+      SELECT
+        CASE
+          WHEN OBJECT_ID('dbo.DetourNumberSequences', 'U') IS NOT NULL
+           AND COL_LENGTH('dbo.Detours', 'internal_number') IS NOT NULL
+          THEN 1 ELSE 0 END AS numbering_ready,
+        CASE
+          WHEN COL_LENGTH('dbo.Detours', 'reason_code') IS NOT NULL
+          THEN 1 ELSE 0 END AS reporting_ready
     `);
     const numberingReady = schemaCheck.recordset[0]?.numbering_ready === 1;
+    const reportingReady = schemaCheck.recordset[0]?.reporting_ready === 1;
     if (!numberingReady) {
       context.warn(
         "DetourNumberSequences/Detours.internal_number not present (migration-024 not run) - creating this detour without an internal number.",
+      );
+    }
+    if (!reportingReady) {
+      context.warn(
+        "Detours reporting columns not present (migration-025 not run) - creating this detour without reason code, severity, or reporting detail.",
       );
     }
 
@@ -112,17 +126,37 @@ app.http("detoursCreate", {
       if (internalNumber !== null) {
         insertReq.input("internal_number", sql.NVarChar, internalNumber);
       }
+      if (reportingReady) {
+        insertReq.input("reason_code", sql.NVarChar(30), body.reason_code ?? null);
+        insertReq.input("severity", sql.NVarChar(10), body.severity ?? null);
+        insertReq.input("reported_by", sql.NVarChar, body.reported_by ?? null);
+        insertReq.input("reported_at", sql.DateTime2, body.reported_at ? new Date(body.reported_at) : null);
+        insertReq.input("approved_by", sql.NVarChar, body.approved_by ?? null);
+        insertReq.input("approved_at", sql.DateTime2, body.approved_at ? new Date(body.approved_at) : null);
+        insertReq.input("radio_notified", sql.Bit, body.radio_notified ?? false);
+        insertReq.input("dispatch_board_notified", sql.Bit, body.dispatch_board_notified ?? false);
+        insertReq.input("social_media_notified", sql.Bit, body.social_media_notified ?? false);
+        insertReq.input("resolution_notes", sql.NVarChar(1000), body.resolution_notes ?? null);
+      }
+      const REPORTING_COLUMNS = `
+        reason_code, severity, reported_by, reported_at, approved_by, approved_at,
+        radio_notified, dispatch_board_notified, social_media_notified, resolution_notes`;
+      const REPORTING_VALUES = `
+        @reason_code, @severity, @reported_by, @reported_at, @approved_by, @approved_at,
+        @radio_notified, @dispatch_board_notified, @social_media_notified, @resolution_notes`;
       const result = await insertReq.query<InsertedDetour>(`
         INSERT INTO Detours (
           number, closure, start_date, end_date, is_monitor_only, riders_directed,
           email_sent, expired_email_sent, spare_emailed, source, created_by
           ${internalNumber !== null ? ", internal_number" : ""}
+          ${reportingReady ? `, ${REPORTING_COLUMNS}` : ""}
         )
         OUTPUT INSERTED.id, INSERTED.created_at
         VALUES (
           @number, @closure, @start_date, @end_date, @is_monitor_only, @riders_directed,
           @email_sent, @expired_email_sent, @spare_emailed, 'manual', @created_by
           ${internalNumber !== null ? ", @internal_number" : ""}
+          ${reportingReady ? `, ${REPORTING_VALUES}` : ""}
         )
       `);
       const inserted = result.recordset[0];

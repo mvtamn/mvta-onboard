@@ -272,6 +272,17 @@ export const MAX_DETOUR_NUMBER_LENGTH = 50;
 export const MAX_DETOUR_CLOSURE_LENGTH = 500;
 export const MAX_DETOUR_RIDERS_DIRECTED_LENGTH = 500;
 export const MAX_DETOUR_SEGMENT_ROUTES_LENGTH = 200;
+// Reporting fields - column-size ceilings from
+// migration-025-detour-reporting-fields.sql (Part B6).
+export const MAX_DETOUR_REASON_CODE_LENGTH = 30;
+export const MAX_DETOUR_PERSON_LENGTH = 200;
+export const MAX_DETOUR_RESOLUTION_NOTES_LENGTH = 1000;
+export const VALID_DETOUR_SEVERITIES = ["minor", "moderate", "major"] as const;
+export const DETOUR_REPORT_FLAG_FIELDS = [
+  "radio_notified",
+  "dispatch_board_notified",
+  "social_media_notified",
+] as const;
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -294,6 +305,77 @@ function isValidDetourSegments(value: unknown): string[] {
       errors.push(`segments[${i}].directions must be a string if provided`);
     }
   });
+  return errors;
+}
+
+// Reporting fields (Part B6) - shared by create and update, since every one
+// of them is optional in both. Kept as one function rather than inlined
+// twice so the two endpoints cannot drift, which the pre-B6 fields above
+// already did (they are duplicated line-for-line between the two).
+//
+// None of these is ever required: a detour logged at 5am during an incident
+// gets a closure and dates, and the reason/severity/approval detail is
+// filled in afterwards. Requiring any of them would push staff into
+// entering placeholder data, which is worse than a null.
+export function validateDetourReport(body: UnknownBody): string[] {
+  const errors: string[] = [];
+
+  if (body.reason_code !== undefined && body.reason_code !== null) {
+    if (typeof body.reason_code !== "string" || body.reason_code.trim() === "") {
+      errors.push("reason_code must be a non-empty string if provided");
+    } else if (body.reason_code.length > MAX_DETOUR_REASON_CODE_LENGTH) {
+      errors.push(`reason_code must be at most ${MAX_DETOUR_REASON_CODE_LENGTH} characters`);
+    }
+    // Deliberately NOT checked against DetourReasonCodes here - validation
+    // is pure/synchronous and does no I/O. A retired or mistyped code stores
+    // fine and renders as its raw value; the console only ever offers active
+    // codes from the dropdown.
+  }
+
+  if (body.severity !== undefined && body.severity !== null) {
+    if (!VALID_DETOUR_SEVERITIES.includes(body.severity as (typeof VALID_DETOUR_SEVERITIES)[number])) {
+      errors.push(`severity must be one of ${VALID_DETOUR_SEVERITIES.join(", ")} if provided`);
+    }
+  }
+
+  for (const field of ["reported_by", "approved_by"]) {
+    const v = body[field];
+    if (v !== undefined && v !== null) {
+      if (typeof v !== "string") {
+        errors.push(`${field} must be a string if provided`);
+      } else if (v.length > MAX_DETOUR_PERSON_LENGTH) {
+        errors.push(`${field} must be at most ${MAX_DETOUR_PERSON_LENGTH} characters`);
+      }
+    }
+  }
+
+  // These are DATETIME2, not DATE - a report/approval carries a time of day,
+  // unlike start_date/end_date. Any string Date can parse is accepted rather
+  // than pinning an exact ISO shape, since the console sends what
+  // <input type="datetime-local"> produces ("2026-08-07T14:30", no zone).
+  for (const field of ["reported_at", "approved_at"]) {
+    const v = body[field];
+    if (v !== undefined && v !== null) {
+      if (typeof v !== "string" || Number.isNaN(new Date(v).getTime())) {
+        errors.push(`${field} must be a parseable date-time string if provided`);
+      }
+    }
+  }
+
+  for (const field of DETOUR_REPORT_FLAG_FIELDS) {
+    if (body[field] !== undefined && typeof body[field] !== "boolean") {
+      errors.push(`${field} must be a boolean if provided`);
+    }
+  }
+
+  if (body.resolution_notes !== undefined && body.resolution_notes !== null) {
+    if (typeof body.resolution_notes !== "string") {
+      errors.push("resolution_notes must be a string if provided");
+    } else if (body.resolution_notes.length > MAX_DETOUR_RESOLUTION_NOTES_LENGTH) {
+      errors.push(`resolution_notes must be at most ${MAX_DETOUR_RESOLUTION_NOTES_LENGTH} characters`);
+    }
+  }
+
   return errors;
 }
 
@@ -336,18 +418,25 @@ export function validateCreateDetour(body: UnknownBody): string[] {
     }
   }
   errors.push(...isValidDetourSegments(body.segments));
+  errors.push(...validateDetourReport(body));
 
   return errors;
 }
+
+// Every field a PATCH is allowed to change. Reporting fields (Part B6) are
+// included, so "set only a severity" is a valid edit.
+export const DETOUR_EDITABLE_FIELDS = [
+  "number", "closure", "start_date", "end_date", "is_monitor_only",
+  "riders_directed", "email_sent", "expired_email_sent", "spare_emailed", "segments",
+  "reason_code", "severity", "reported_by", "reported_at", "approved_by", "approved_at",
+  ...DETOUR_REPORT_FLAG_FIELDS, "resolution_notes",
+];
 
 // PATCH /detours/{id} - partial edit; every field optional, same shape checks
 // as create for whatever is actually present.
 export function validateUpdateDetour(body: UnknownBody): string[] {
   const errors: string[] = [];
-  const editableFields = [
-    "number", "closure", "start_date", "end_date", "is_monitor_only",
-    "riders_directed", "email_sent", "expired_email_sent", "spare_emailed", "segments",
-  ];
+  const editableFields = DETOUR_EDITABLE_FIELDS;
   if (!editableFields.some((f) => body[f] !== undefined)) {
     errors.push(`At least one of ${editableFields.join(", ")} must be provided`);
   }
@@ -391,7 +480,52 @@ export function validateUpdateDetour(body: UnknownBody): string[] {
   if (body.segments !== undefined) {
     errors.push(...isValidDetourSegments(body.segments));
   }
+  errors.push(...validateDetourReport(body));
 
+  return errors;
+}
+
+// POST /detour-reason-codes. Separate from validateCreateReasonCode (which
+// serves OtpReasonCodes) because DetourReasonCodes has no `applies_to` -
+// sharing the validator would mean requiring a field this table lacks.
+export function validateCreateDetourReasonCode(body: UnknownBody): string[] {
+  const errors: string[] = [];
+  if (typeof body.code !== "string" || body.code.trim() === "") {
+    errors.push("code is required and must be a non-empty string");
+  } else if (body.code.length > MAX_DETOUR_REASON_CODE_LENGTH) {
+    errors.push(`code must be at most ${MAX_DETOUR_REASON_CODE_LENGTH} characters`);
+  }
+  if (typeof body.label !== "string" || body.label.trim() === "") {
+    errors.push("label is required and must be a non-empty string");
+  } else if (body.label.length > 100) {
+    errors.push("label must be at most 100 characters");
+  }
+  return errors;
+}
+
+// PATCH /detour-reason-codes/{id}. `code` is intentionally not editable -
+// Detours.reason_code is a soft (non-FK) reference to it, so renaming a code
+// would silently orphan every historical detour citing it. Retire it with
+// is_active = 0 and add a new one instead.
+export function validateUpdateDetourReasonCode(body: UnknownBody): string[] {
+  const errors: string[] = [];
+  const editable = ["label", "is_active", "sort_order"];
+  if (!editable.some((f) => body[f] !== undefined)) {
+    errors.push(`At least one of ${editable.join(", ")} must be provided`);
+  }
+  if (body.label !== undefined) {
+    if (typeof body.label !== "string" || body.label.trim() === "") {
+      errors.push("label must be a non-empty string if provided");
+    } else if (body.label.length > 100) {
+      errors.push("label must be at most 100 characters");
+    }
+  }
+  if (body.is_active !== undefined && typeof body.is_active !== "boolean") {
+    errors.push("is_active must be a boolean if provided");
+  }
+  if (body.sort_order !== undefined && !Number.isInteger(body.sort_order)) {
+    errors.push("sort_order must be an integer if provided");
+  }
   return errors;
 }
 

@@ -21,14 +21,16 @@ All prior detour-related instructions to Claude Code should be read through this
 | B3 | Image attachments (Blob Storage) | Code **shipped**, but **NOT functional** — the Blob Storage account has never been provisioned |
 | B4 | Avail Detours sync | **Shipped** (committed `aa04b9d`); `AVAIL_DETOURS_URL` set 2026-08-06 — confirm it returns non-zero detours against live data |
 | B5 | Sync-overwrite behavior | **Shipped** (migration-019, run against dev) |
-| B6 | Reporting fields (reason code, severity, approvals, notification-channel flags) | **Draft — pending approval**, not built |
-| B7 | Active/Expired reporting page + search | **Draft — pending approval**, not built |
+| B6 | Reporting fields (reason code, severity, approvals, notification-channel flags) | **Built**, migration-025 **run against dev** 2026-08-07 — **field list approved as-drafted, still unconfirmed against MVTA's real form** |
+| B7 | Active/Expired reporting page + search | **Built** 2026-08-07 — `DetourReports.tsx`, client-side search/filter/CSV |
 | B8 | Notification distribution lists | **New, this pass — pending approval**, not built |
 | B9 | Notification drafting + send (email/Teams) | **New, this pass — pending approval**, not built |
 | B10 | Internal detour numbering (`MVTA-DET-YYYY-####`) | **Built**, migration-024 **run against dev** 2026-08-06 — code not yet deployed, so run `backfill-detour-numbers-gap.sql` after deploying |
 | B11 | Document attachments (generalized beyond images) + console preview | **New, this pass — pending approval**, not built |
 
 Per the standing instruction carried over from the reporting spec: **nothing in B6 onward ships until explicitly approved, section by section or all at once.** B1–B5 are built and are not to be reworked by this document — they're included below only as context for what B6+ builds on top of.
+
+**Approvals granted so far:** B6 (field list as-drafted) and B7, both on 2026-08-07, and both now built. B8, B9 and B11 remain unapproved and unbuilt. Migration head is now **025**, so the next new migration is **026** — re-confirm at build time rather than trusting this number.
 
 **Two corrections to how "shipped" reads above, both verified against the repo:**
 - **B1/B2/B5's migrations were run against the DEV database.** Production status is not recorded anywhere in `HANDOFF.md` and should not be assumed — confirm before describing any of this as live in prod.
@@ -143,7 +145,7 @@ This page **is** the "communicate to internal teams via website" piece of this p
 
 Mirrors the `RouteClassification`/`OtpReasonCodes` admin-editable-list pattern rather than hardcoding MVTA's real distribution (Jason Francis / Barbara Derrick / Steven Frich, etc., as seen in the reviewed emails) into code or a migration seed.
 
-**`functions-restapi/sql/migration-0XX-detour-notifications.sql`** (new — exact number assigned at build time. **The current migration head is 023** (`migration-023-missed-trips-detection-and-reasons.sql`); 019 was claimed by B5's `avail_last_seen_at` and 020–023 by OTP/missed-trips work. Every `0XX` placeholder in this document therefore starts at **024** — re-confirm the head at build time rather than trusting this number, since other workstreams add migrations concurrently):
+**`functions-restapi/sql/migration-0XX-detour-notifications.sql`** (new — exact number assigned at build time. **The current migration head is 025** (`migration-025-detour-reporting-fields.sql`, B6); 019 was claimed by B5's `avail_last_seen_at`, 020–023 by OTP/missed-trips work, and 024 by B10's numbering. Every remaining `0XX` placeholder in this document therefore starts at **026** — re-confirm the head at build time rather than trusting this number, since other workstreams add migrations concurrently):
 ```sql
 CREATE TABLE DetourNotificationGroups (
     id          UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
@@ -265,7 +267,7 @@ Extends B3 rather than replacing it - same private-container, SAS-gated, managed
 
 ## Files to touch/add (B6 onward — B1–B5 already shipped)
 
-Every `0XX` below starts at **024** (head is 023 — re-confirm at build time).
+Every remaining `0XX` below starts at **026** (head is 025 — re-confirm at build time).
 
 - ~~**B4/B5**~~: already shipped — `functions-restapi/src/lib/availDetoursFeed.ts`, `src/functions/availDetoursSync.ts`, `sql/migration-019-detour-avail-last-seen.sql`. No new files.
 - **B6/B7**: `functions-restapi/sql/migration-0XX-detour-reporting-fields.sql` (new), `src/functions/detoursList.ts` (extend — add `OCC.Compliance` to the read role, fixing the shipped 403), `src/functions/detourReasonCodes.ts` (new), `detoursCreate.ts`/`detoursUpdate.ts`/`detoursList.ts` (extend), `src/lib/validation.ts` (extend), `frontend/packages/onboard-console/src/routes/Detours.tsx` (extend — new fields, search box, Clone action), `frontend/packages/onboard-console/src/routes/DetourReports.tsx` (new), `App.tsx` (extend — sidebar "Tools" grouping)
@@ -292,7 +294,7 @@ Every `0XX` below starts at **024** (head is 023 — re-confirm at build time).
 - Browser pass per part: reason-code dropdown + Clone action (B6); Detour Reports search/filter/export against real data (B7); Admin.tsx group editor (B8); Notify action producing a correct auto-draft from a real detour's segments, editable, and a mocked send recorded in `DetourNotifications` (B9); a new detour receiving the correct `MVTA-DET-YYYY-####` number, and a rescheduled detour correctly showing the year-mismatch warning (B10); a PDF attachment uploading past the higher document ceiling and previewing inline in the detail panel (B11).
 - **Owner actions (blocking, live environment):**
   1. **Approve and deploy `storage-detour-images.bicep`** (new billable resource — Standard_LRS StorageV2, realistically under a dollar or two a month at this volume) and set `DETOUR_IMAGES_STORAGE_ACCOUNT`. This unblocks B3 for the first time and is a hard prerequisite for B11. Full runbook in `HANDOFF.md`.
-  2. Run each part's migration against the dev DB in sequence, confirming the actual current migration head first (**head is 023 as of 2026-08-06**; B6/B8-B9/B10/B11 all add new migrations — do not assume sequential numbers without checking, other workstreams add them concurrently).
+  2. Run each part's migration against the dev DB in sequence, confirming the actual current migration head first (**head is 025 as of 2026-08-07**; B10's 024 and B6's 025 are both run, and B8-B9/B11 still add new migrations — do not assume sequential numbers without checking, other workstreams add them concurrently).
   3. Confirm the email-sending mechanism (Graph shared mailbox vs. existing relay/SendGrid) before B9 is built — currently unresolved.
   4. If Graph is confirmed: approve the new `Mail.Send` application permission on the existing Entra app registration (a real permission-scope change, not just code).
   5. Verify `AVAIL_DETOURS_URL` is set on `func-mvta-restapi-dev` (B4 is built and committed; only this setting and a live-data sanity check remain).

@@ -111,9 +111,34 @@ Detours & Closures:     migration-017-detours.sql (Detours, DetourSegments, Deto
                          the code but does nothing until it is registered as an appRole on the
                          Entra app registration (7e5a35b1-dc1b-473d-987d-6942a7b4fae2) and
                          assigned per user. It is additive - existing roles are unaffected.
-                         A follow-up spec (detour-reporting-and-search-spec.md, repo root) drafts
-                         additional internal-ops-reporting fields + a searchable Active/Expired
-                         reporting page - not built, awaiting owner review/approval.
+                         Reporting fields + reports page (Parts B6/B7): built, and
+                         migration-025-detour-reporting-fields.sql HAS BEEN RUN against the dev DB
+                         (2026-08-07). The code is NOT YET DEPLOYED. Unlike migration-024, there
+                         is no backfill gap to chase - every B6 column is optional and defaults to
+                         NULL/0, so detours created through the currently-deployed build are
+                         simply uncategorized and can be edited afterwards. It adds DetourReasonCodes
+                         (seeded with eight DRAFT categories) plus ten columns on Detours
+                         (reason_code, severity, reported_by/at, approved_by/at, radio_notified,
+                         dispatch_board_notified, social_media_notified, resolution_notes).
+                         Everything degrades gracefully pre-migration - detoursCreate/Update/List
+                         guard on COL_LENGTH('dbo.Detours','reason_code') and simply drop the new
+                         fields, GET /detour-reason-codes returns an empty list instead of 500ing,
+                         and the console hides the whole reporting section (it keys off "reason
+                         codes came back non-empty OR a detour row carries the reason_code key")
+                         rather than letting staff type into fields whose data would be discarded.
+                         THE FIELD LIST IS STILL A DRAFT: no document describes MVTA's real
+                         internal detour-reporting form, and these columns were built from
+                         standard transit-ops practice with the owner's explicit as-drafted
+                         approval on 2026-08-07. Confirm against the real form and expect to
+                         correct them; nothing requires any field, so a wrong column can be
+                         dropped without breaking rows. New read-only page DetourReports.tsx
+                         (/detour-reports, same roles as /detours) does search/filter/CSV entirely
+                         CLIENT-SIDE over the full GET /detours payload - lib/detourSearch.ts is
+                         the single seam to move server-side if volume ever demands it.
+                         Still not built from the consolidated plan: B8 (distribution lists),
+                         B9 (notification drafting/send - blocked on the unresolved Graph vs.
+                         SMTP-relay decision), B11 (document attachments - blocked on Blob
+                         Storage never having been provisioned).
 Route Classification /
 Event bus monitoring:   migration-016-route-classification.sql (RouteClassification,
                          EventVehicleCurrentPosition, EventVehiclePositionHistory) has NOT been

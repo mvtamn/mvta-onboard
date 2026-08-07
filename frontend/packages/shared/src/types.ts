@@ -477,7 +477,45 @@ export interface DetourSegment {
   sort_order: number;
 }
 
-export interface Detour {
+// Draft 3-tier scale (Part B6) - confirm against MVTA's real practice.
+export type DetourSeverity = "minor" | "moderate" | "major";
+
+export const DETOUR_SEVERITY_LABELS: Record<DetourSeverity, string> = {
+  minor: "Minor",
+  moderate: "Moderate",
+  major: "Major",
+};
+
+// Admin-editable reason categories - Part B6. Mirrors OtpReasonCode minus
+// `applies_to`; this vocabulary only ever serves the detour module.
+export interface DetourReasonCode {
+  id: string;
+  code: string;
+  label: string;
+  is_active: boolean;
+  sort_order: number;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+// Reporting fields (Part B6). Every one is optional on the wire and
+// undefined - not null - on rows read before migration-025 has run, so the
+// console can tell "not recorded" from "migration not applied" and hide the
+// whole section in the latter case.
+export interface DetourReportFields {
+  reason_code?: string | null;
+  severity?: DetourSeverity | null;
+  reported_by?: string | null;
+  reported_at?: string | null;
+  approved_by?: string | null;
+  approved_at?: string | null;
+  radio_notified?: boolean;
+  dispatch_board_notified?: boolean;
+  social_media_notified?: boolean;
+  resolution_notes?: string | null;
+}
+
+export interface Detour extends DetourReportFields {
   id: string;
   number: string | null;
   // System-generated internal reference (MVTA-DET-YYYY-####, Part B10).
@@ -511,7 +549,7 @@ export interface DetourSegmentInput {
   sort_order?: number;
 }
 
-export interface CreateDetourInput {
+export interface CreateDetourInput extends DetourReportFields {
   number?: string | null;
   closure: string;
   start_date?: string | null;

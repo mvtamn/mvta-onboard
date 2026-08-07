@@ -39,6 +39,7 @@ import type {
   DetourStatus,
   CreateDetourInput,
   UpdateDetourInput,
+  DetourReasonCode,
   RouteClassificationRow,
   RouteClassificationListResponse,
   RouteClassificationInput,
@@ -397,6 +398,29 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
       return request<{ id: string; is_deleted: boolean }>(
         `/api/detours/${id}`,
         { method: "DELETE" },
+        true,
+      );
+    },
+
+    // Detour reason categories - Part B6. Returns an empty list (not an
+    // error) until migration-025 has run.
+    getDetourReasonCodes(activeOnly = false) {
+      const suffix = activeOnly ? "?active_only=true" : "";
+      return request<{ reason_codes: DetourReasonCode[] }>(`/api/detour-reason-codes${suffix}`, {}, true);
+    },
+
+    createDetourReasonCode(input: { code: string; label: string; sort_order?: number }) {
+      return request<DetourReasonCode>(
+        "/api/detour-reason-codes",
+        { method: "POST", body: JSON.stringify(input) },
+        true,
+      );
+    },
+
+    updateDetourReasonCode(id: string, input: { label?: string; is_active?: boolean; sort_order?: number }) {
+      return request<DetourReasonCode>(
+        `/api/detour-reason-codes/${id}`,
+        { method: "PATCH", body: JSON.stringify(input) },
         true,
       );
     },

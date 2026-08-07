@@ -47,6 +47,23 @@ app.http("detoursUpdate", {
     const updatedBy = authResult.principal.userDetails || "system";
 
     const pool = await getPool();
+
+    // Reporting fields (Part B6, migration-025) are skipped rather than
+    // 500ing if the migration has not run - SQL Server parses the whole
+    // batch up front, so naming a missing column fails the entire UPDATE,
+    // including the pre-B6 fields the user actually meant to change. Same
+    // guard detoursList.ts uses for internal_number.
+    const schemaCheck = await pool.request().query<{ reporting_ready: number }>(`
+      SELECT CASE WHEN COL_LENGTH('dbo.Detours', 'reason_code') IS NULL
+             THEN 0 ELSE 1 END AS reporting_ready
+    `);
+    const reportingReady = schemaCheck.recordset[0]?.reporting_ready === 1;
+    if (!reportingReady) {
+      context.warn(
+        "Detours reporting columns not present (migration-025 not run) - any reason code, severity or reporting detail in this PATCH is being ignored.",
+      );
+    }
+
     const tx = new sql.Transaction(pool);
     try {
       await tx.begin();
@@ -95,6 +112,36 @@ app.http("detoursUpdate", {
       if (body.spare_emailed !== undefined) {
         sets.push("spare_emailed = @spare_emailed");
         updateReq.input("spare_emailed", sql.Bit, body.spare_emailed);
+      }
+
+      if (reportingReady) {
+        // Nullable text/enum fields - an explicit null clears them, which is
+        // why these check `!== undefined` rather than truthiness.
+        const nullableText: [keyof UpdateDetourBody, sql.ISqlType][] = [
+          ["reason_code", sql.NVarChar(30)],
+          ["severity", sql.NVarChar(10)],
+          ["reported_by", sql.NVarChar(200)],
+          ["approved_by", sql.NVarChar(200)],
+          ["resolution_notes", sql.NVarChar(1000)],
+        ];
+        for (const [field, type] of nullableText) {
+          if (body[field] !== undefined) {
+            sets.push(`${field} = @${field}`);
+            updateReq.input(field, type, (body[field] as string | null) ?? null);
+          }
+        }
+        for (const field of ["reported_at", "approved_at"] as const) {
+          if (body[field] !== undefined) {
+            sets.push(`${field} = @${field}`);
+            updateReq.input(field, sql.DateTime2, body[field] ? new Date(body[field] as string) : null);
+          }
+        }
+        for (const field of ["radio_notified", "dispatch_board_notified", "social_media_notified"] as const) {
+          if (body[field] !== undefined) {
+            sets.push(`${field} = @${field}`);
+            updateReq.input(field, sql.Bit, body[field]);
+          }
+        }
       }
 
       const result = await updateReq.query<UpdatedDetour>(`

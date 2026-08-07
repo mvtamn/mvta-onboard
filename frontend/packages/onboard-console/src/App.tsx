@@ -29,6 +29,7 @@ import { Admin } from "./routes/Admin.js";
 import { OccTools } from "./routes/OccTools.js";
 import { Compliance } from "./routes/Compliance.js";
 import { Detours } from "./routes/Detours.js";
+import { DetourReports } from "./routes/DetourReports.js";
 import { Changelog } from "./routes/Changelog.js";
 import {
   FixedRouteRefreshProvider,
@@ -54,6 +55,7 @@ const PAGE_META: { match: (path: string) => boolean; title: string; sub: string 
   { match: (p) => p === "/subscribers", title: "Subscribers", sub: "Opt-in totals and recent signups" },
   { match: (p) => p === "/audit", title: "Audit Log", sub: "Search every message ever posted" },
   { match: (p) => p === "/detours", title: "Detours & Closures", sub: "Every detour/closure in one place, Avail-built or not" },
+  { match: (p) => p === "/detour-reports", title: "Detour Reports", sub: "Search and export detour history — read-only" },
   { match: (p) => p === "/admin", title: "Admin", sub: "Expiration defaults and system configuration" },
   {
     match: (p) => p.startsWith("/occ"),
@@ -97,6 +99,7 @@ export function App() {
   const { theme, toggle } = useTheme();
   const isAdmin = roles.includes("OCC.Admin");
   const isCompliance = isAdmin || roles.includes("OCC.Compliance");
+  const canSeeDetours = roles.some((r) => (DETOURS as readonly string[]).includes(r));
   const stats = useLiveStats();
   const location = useLocation();
   const meta = currentPageMeta(location.pathname);
@@ -137,16 +140,22 @@ export function App() {
           <NavLink to="/" end><IconDashboard />Dashboard</NavLink>
           <NavLink to="/compose"><IconCompose />Compose</NavLink>
           <NavLink to="/active"><IconMessages />Active Messages</NavLink>
-          <NavLink to="/detours"><IconDetour />Detours &amp; Closures</NavLink>
           <NavLink to="/suggested"><IconBell />Suggested Alerts</NavLink>
           <NavLink to="/subscribers"><IconUsers />Subscribers</NavLink>
           <NavLink to="/audit"><IconClock />Audit Log</NavLink>
           <NavLink to="/changelog"><IconHistory />Changelog</NavLink>
           {isAdmin && <NavLink to="/admin"><IconGear />Admin</NavLink>}
 
-          {(isAdmin || isCompliance) && (
+          {/* The detour pages live in this grouped section rather than the
+              flat primary nav above - they are an ops workspace, not one of
+              the rider-message primaries. The group header renders if ANY
+              child does, so a Detour-only user still sees a labelled group
+              rather than two orphaned links. */}
+          {(isAdmin || isCompliance || canSeeDetours) && (
             <>
               <div className="nav-section-label">Tools</div>
+              {canSeeDetours && <NavLink to="/detours"><IconDetour />Detours &amp; Closures</NavLink>}
+              {canSeeDetours && <NavLink to="/detour-reports"><IconClock />Detour Reports</NavLink>}
               {isAdmin && <NavLink to="/occ"><IconWrench />OCC Tools</NavLink>}
               {isCompliance && <NavLink to="/compliance"><IconShield />Compliance</NavLink>}
             </>
@@ -199,6 +208,17 @@ export function App() {
                 element={
                   <RequireRole allowed={[...DETOURS]}>
                     <Detours />
+                  </RequireRole>
+                }
+              />
+              {/* Same role set as /detours - the reports page reads the very
+                  same GET /detours endpoint, so anything narrower would be a
+                  nav link that 403s. */}
+              <Route
+                path="/detour-reports"
+                element={
+                  <RequireRole allowed={[...DETOURS]}>
+                    <DetourReports />
                   </RequireRole>
                 }
               />
