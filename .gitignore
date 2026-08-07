@@ -44,5 +44,15 @@ mvta-functions-prod-source.zip
 *.png
 *.jpg
 *.csv
+# THIS REPOSITORY IS PUBLIC. *.docx already covered Word contract exhibits,
+# but nothing covered spreadsheets - which is how Compliance/'s contractor
+# performance standards came within one `git add .` of being published.
+# Excluded by extension AND by directory, since the sources of record for
+# the contractor assessment work (Attachment G and MVTA's internal standards
+# workbook) live there and are contractual material, not app code. The
+# design doc built from them is tracked in plans/ instead.
+*.xlsx
+~$*.xlsx
+Compliance/
 MVTA_Alerts_Optin_Widget.html
 MVTA_OnBoard_Phase1_Infrastructure_1.zip
