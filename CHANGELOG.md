@@ -7,6 +7,22 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 ## [Unreleased]
 
+- **New `OCC.Detour` role, and a fix for a live 403.** Detour access now has
+  four explicit tiers in `auth.ts` (`DETOUR_READ_ROLES`,
+  `DETOUR_WRITE_ROLES`, `DETOUR_DELETE_ROLES`,
+  `DETOUR_ATTACHMENT_WRITE_ROLES`) instead of inline role spreads, because
+  that drift is what caused the bug: `OCC.Compliance` sat in `App.tsx`'s
+  detour nav constant but in none of the API's read roles, so Compliance
+  users could open the Detours page and then get a 403 from `GET /detours`.
+  Compliance now has read access (it needs detour history for reporting) and
+  no longer has attachment writes, which it previously had *without* detour
+  edit access - contradicting B3's rule that attachments sit at the edit
+  tier. The new `OCC.Detour` role can read, create, edit and attach, but
+  deliberately **cannot delete**; soft-delete stays at the publisher tier.
+  The role is **additive** - existing roles keep the access they had, so
+  nothing goes dark at deploy. **`OCC.Detour` does nothing until it is
+  registered as an `appRole` on the Entra app registration and assigned per
+  user** - the code only teaches both sides to recognize the claim.
 - **Internal detour numbering (Part B10)**: every detour created through
   `POST /detours` now gets a system-generated `MVTA-DET-YYYY-####` reference
   (`migration-024-detour-numbering.sql`), separate from the existing

@@ -41,7 +41,10 @@ const COMPLIANCE = ["OCC.Compliance", "OCC.Admin"] as const;
 // Read-only for OCC.Viewer, full create/edit/delete for Publisher/Admin (the
 // component itself hides write controls for Viewer-only; the server is the
 // real boundary, same convention as Compose).
-const DETOURS = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin", "OCC.Compliance"] as const;
+// Must stay in sync with DETOUR_READ_ROLES in functions-restapi/src/lib/auth.ts.
+// These two drifting apart is what previously let OCC.Compliance reach this
+// page and then get a 403 from GET /detours.
+const DETOURS = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin", "OCC.Compliance", "OCC.Detour"] as const;
 
 const PAGE_META: { match: (path: string) => boolean; title: string; sub: string }[] = [
   { match: (p) => p === "/", title: "Dashboard", sub: "Compose and monitor active rider alerts" },

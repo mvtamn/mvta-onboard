@@ -1,6 +1,16 @@
 import type { AccountInfo } from "@azure/msal-browser";
 
-export type AppRole = "OCC.Viewer" | "OCC.Publisher" | "OCC.Admin" | "OCC.Compliance" | "System.Ingestion";
+// OCC.Detour is a dedicated Detour & Closure role (read + create/edit, no
+// delete). It must also be registered as an appRole on the Entra app
+// registration and assigned per user before anyone actually holds it - adding
+// it here only teaches the console to recognize the claim.
+export type AppRole =
+  | "OCC.Viewer"
+  | "OCC.Publisher"
+  | "OCC.Admin"
+  | "OCC.Compliance"
+  | "OCC.Detour"
+  | "System.Ingestion";
 
 // App roles are emitted as a `roles` claim array in the ID token.
 export function rolesOf(account: AccountInfo | null): AppRole[] {

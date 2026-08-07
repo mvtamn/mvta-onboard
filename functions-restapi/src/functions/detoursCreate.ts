@@ -1,11 +1,13 @@
 // POST /detours - create a detour/closure record (manual entry).
 // `source` is never accepted from the request body - every detour created
 // through this endpoint is `source='manual'`; only the future Avail sync
-// (Part B4) ever writes `source='avail'` rows. Publisher/Admin only, same
-// tier as posting a rider message.
+// (Part B4) ever writes `source='avail'` rows. Publisher/Admin (same tier as
+// posting a rider message) plus the dedicated OCC.Detour role - see
+// DETOUR_WRITE_ROLES in auth.ts. OCC.Detour can create and edit but NOT
+// delete; deletion stays at the publisher tier.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, PUBLISH_ROLES } from "../lib/auth";
+import { requireRole, DETOUR_WRITE_ROLES } from "../lib/auth";
 import { validateCreateDetour } from "../lib/validation";
 import { formatDetourNumber, detourNumberYear } from "../lib/detourNumbering";
 import type { CreateDetourBody } from "../lib/types";
@@ -50,7 +52,7 @@ app.http("detoursCreate", {
   methods: ["POST"],
   authLevel: "anonymous", // authorization enforced via requireRole below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, PUBLISH_ROLES);
+    const authResult = requireRole(request, DETOUR_WRITE_ROLES);
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

@@ -2,13 +2,15 @@
 // (Active/Upcoming/Monitor/Recently finished/Expired - see detourStatus.ts,
 // the single shared definition). Any staff role can read, including
 // OCC.Viewer (read-only per the owner's decision - Detours is a day-to-day
-// operational view, not compliance-audit or admin-only). Accepts an
+// operational view, not compliance-audit or admin-only), plus OCC.Compliance
+// (which needs detour history for reporting but no edit rights) and the
+// dedicated OCC.Detour role - see DETOUR_READ_ROLES in auth.ts. Accepts an
 // optional ?status= filter using the same status keys DETOUR_STATUS_LABELS
 // exposes; an unrecognized value is ignored rather than erroring, so a
 // stale/typo'd query param degrades to "show everything" instead of 400ing.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { requireRole, DETOUR_READ_ROLES } from "../lib/auth";
 import { computeDetourStatus, type DetourStatus } from "../lib/detourStatus";
 
 interface DetourRow {
@@ -49,7 +51,7 @@ app.http("detoursList", {
   methods: ["GET"],
   authLevel: "anonymous", // authorization enforced via requireRole below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, STAFF_READ_ROLES);
+    const authResult = requireRole(request, DETOUR_READ_ROLES);
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

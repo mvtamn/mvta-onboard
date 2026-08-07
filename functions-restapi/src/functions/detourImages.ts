@@ -5,11 +5,15 @@
 // Storage, then tells this API the upload succeeded so a DetourImages row
 // can be created. Reads work the same way in reverse - this endpoint hands
 // back a fresh short-lived SAS read URL per image, never a permanent or
-// public URL. Same access tier as editing the detour itself (Publisher/
-// Admin, plus OCC.Compliance), per the owner's decision.
+// public URL. Writes sit at the same tier as editing the detour itself
+// (Publisher/Admin plus OCC.Detour - DETOUR_ATTACHMENT_WRITE_ROLES), per the
+// owner's original B3 decision. OCC.Compliance is deliberately NOT a writer:
+// it previously had attachment writes without detour edit access, which
+// contradicted that rule. Reads follow DETOUR_READ_ROLES, which does include
+// OCC.Compliance.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, STAFF_READ_ROLES, PUBLISH_ROLES } from "../lib/auth";
+import { requireRole, DETOUR_READ_ROLES, DETOUR_ATTACHMENT_WRITE_ROLES } from "../lib/auth";
 import { validateUploadUrlRequest, validateCreateDetourImage, isGuid } from "../lib/validation";
 import { getUploadSasUrl, getReadSasUrl, buildDetourImageBlobPath, BlobStorageNotConfiguredError } from "../lib/blobStorage";
 
@@ -31,7 +35,7 @@ app.http("detourImagesUploadUrl", {
   methods: ["POST"],
   authLevel: "anonymous", // authorization enforced via requireRole below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, [...PUBLISH_ROLES, "OCC.Compliance"]);
+    const authResult = requireRole(request, DETOUR_ATTACHMENT_WRITE_ROLES);
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }
@@ -71,7 +75,7 @@ app.http("detourImagesCreate", {
   methods: ["POST"],
   authLevel: "anonymous", // authorization enforced via requireRole below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, [...PUBLISH_ROLES, "OCC.Compliance"]);
+    const authResult = requireRole(request, DETOUR_ATTACHMENT_WRITE_ROLES);
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }
@@ -129,7 +133,7 @@ app.http("detourImagesList", {
   methods: ["GET"],
   authLevel: "anonymous", // authorization enforced via requireRole below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, STAFF_READ_ROLES);
+    const authResult = requireRole(request, DETOUR_READ_ROLES);
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

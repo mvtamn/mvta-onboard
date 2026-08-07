@@ -116,7 +116,11 @@ function detourToForm(d: Detour): DetourFormState {
 // detour-and-event-module-implementation-plan.md (Part B).
 export function Detours() {
   const { roles } = useAuth();
-  const canWrite = roles.some((r) => r === "OCC.Publisher" || r === "OCC.Admin");
+  // Mirrors DETOUR_WRITE_ROLES / DETOUR_DELETE_ROLES in auth.ts. OCC.Detour
+  // can create, edit and attach, but not delete - the server enforces the
+  // real boundary; this only decides which controls are worth showing.
+  const canWrite = roles.some((r) => r === "OCC.Publisher" || r === "OCC.Admin" || r === "OCC.Detour");
+  const canDelete = roles.some((r) => r === "OCC.Publisher" || r === "OCC.Admin");
 
   const [detours, setDetours] = useState<Detour[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -331,7 +335,9 @@ export function Detours() {
                       {canWrite ? (
                         <td onClick={(e) => e.stopPropagation()}>
                           <button className="btn-sm" onClick={() => openEditForm(d)}>Edit</button>
-                          <button className="btn-sm danger" onClick={() => remove(d)}>Delete</button>
+                          {canDelete ? (
+                            <button className="btn-sm danger" onClick={() => remove(d)}>Delete</button>
+                          ) : null}
                         </td>
                       ) : null}
                     </tr>
