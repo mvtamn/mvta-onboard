@@ -87,7 +87,14 @@ function detectionTypeLabel(type: MissedTripAlert["detectionType"]): string {
 
 function routeLabel(routeId: string, routesById: Map<string, GtfsRouteOption>): string {
   const r = routesById.get(routeId);
-  const name = r?.route_short_name || r?.route_long_name;
+  const shortName = r?.route_short_name?.trim();
+  const longName = r?.route_long_name?.trim();
+  // route_short_name is the same string as route_id for MVTA's numbered
+  // routes (e.g. both "420") - appending it back on would just read as
+  // "Route 420 · 420". Fall through to route_long_name (the actual
+  // descriptive name) whenever short_name doesn't add anything beyond the
+  // number already shown.
+  const name = shortName && shortName !== routeId ? shortName : longName;
   return name ? `Route ${routeId} · ${name}` : `Route ${routeId}`;
 }
 
