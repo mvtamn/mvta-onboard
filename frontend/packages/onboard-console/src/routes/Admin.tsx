@@ -66,17 +66,33 @@ function RouteClassificationSection() {
   }, []);
 
   const routesUseSelector = (routesList?.length ?? 0) > 0;
-  const routeOptions = useMemo(
-    () =>
-      (routesList ?? [])
-        .map((r) => ({
-          id: r.route_id,
-          label: r.route_short_name || r.route_long_name || r.route_id,
-          title: r.route_long_name ?? undefined,
-        }))
-        .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true })),
-    [routesList],
-  );
+  // GTFS routes UNION the RouteIDs AVL Reports has actually reported - a
+  // GTFS-only picker is exactly wrong for this page. Special service is not
+  // published in the GTFS static schedule (and so is absent from GTFS-RT
+  // too), so the very RouteIDs this editor exists to classify could never
+  // appear in a GtfsRoutes-derived list. AVL Reports is the one feed where a
+  // vehicle logged into a special route shows up at all, which is why the
+  // `unclassified` half of GET /route-classification is merged in here.
+  const routeOptions = useMemo(() => {
+    const gtfs = (routesList ?? []).map((r) => ({
+      id: r.route_id,
+      label: r.route_short_name || r.route_long_name || r.route_id,
+      title: r.route_long_name ?? undefined,
+      avlOnly: false,
+    }));
+    const gtfsIds = new Set(gtfs.map((o) => String(o.id)));
+    const avlOnly = unclassified
+      .filter((u) => !gtfsIds.has(String(u.route_id)))
+      .map((u) => ({
+        id: String(u.route_id),
+        label: u.suggested_label ? `${u.route_id} · ${u.suggested_label}` : String(u.route_id),
+        title: "Seen in live AVL data, not in the GTFS schedule - likely special service",
+        avlOnly: true,
+      }));
+    return [...gtfs, ...avlOnly].sort((a, b) =>
+      a.label.localeCompare(b.label, undefined, { numeric: true }),
+    );
+  }, [routesList, unclassified]);
   const filteredRouteOptions = useMemo(() => {
     const q = routeSearch.trim().toLowerCase();
     if (!q) return routeOptions;
@@ -168,6 +184,12 @@ function RouteClassificationSection() {
           here so the OTP/Missed Trips/AVL integrations and the event-bus live map know which is
           which. Unclassified routes are treated as fixed route by default.
         </p>
+        <p className="panel-desc" style={{ marginTop: 0 }}>
+          The Route ID list below covers both the GTFS schedule and RouteIDs seen in live AVL data
+          (marked <span className="hint">(AVL)</span>) - special service never appears in GTFS, so
+          the schedule alone would not list the routes most worth classifying. A RouteID in neither
+          can be typed in directly.
+        </p>
         {error ? <p className="error-text">{error}</p> : null}
         {okMsg ? <p className="ok-text">{okMsg}</p> : null}
 
@@ -228,10 +250,24 @@ function RouteClassificationSection() {
                             onChange={() => setRouteIdInput(String(r.id))}
                           />
                           {r.label}
+                          {r.avlOnly ? <span className="hint"> (AVL)</span> : null}
                         </label>
                       ))
                     )}
                   </div>
+                  {/* Always reachable, not a fallback: a brand-new event
+                      RouteID that has not run yet is in neither GTFS nor AVL
+                      data, so neither list above can offer it. Before this,
+                      routesUseSelector being true made the free-text input
+                      below unreachable and such an ID simply un-enterable. */}
+                  <input
+                    className="f"
+                    type="number"
+                    style={{ marginTop: 6 }}
+                    value={routeOptions.some((r) => String(r.id) === routeIdInput) ? "" : routeIdInput}
+                    onChange={(e) => setRouteIdInput(e.target.value)}
+                    placeholder="Or type a RouteID not listed - e.g. 1111"
+                  />
                 </>
               ) : (
                 <input

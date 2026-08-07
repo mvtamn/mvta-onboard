@@ -9,6 +9,21 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 _Nothing unreleased._
 
+## [1.5.8] - 2026-08-07
+
+- **Admin > Route Classification's Route ID picker no longer lists only GTFS
+  routes.** The picker was built solely from the GTFS schedule, which by
+  definition cannot contain a special-service RouteID — so the routes this
+  editor exists to classify were the exact ones it would not offer. The list
+  now merges in RouteIDs seen in live AVL data, marked `(AVL)` and carrying
+  their best-effort label (e.g. "1111 · Vikings Game Shuttle"); a RouteID
+  appearing in both lists is shown once.
+- **A RouteID in neither list can now be entered at all.** The free-text
+  RouteID input was only reachable when the GTFS route registry came back
+  empty, so in practice it never appeared — making a brand-new event RouteID
+  that has not run yet (in neither GTFS nor AVL data) impossible to classify.
+  It is now always available alongside the picker.
+
 ## [1.5.7] - 2026-08-07
 
 Not yet deployed — stacked on 1.5.1-1.5.6, all still awaiting a deploy.
