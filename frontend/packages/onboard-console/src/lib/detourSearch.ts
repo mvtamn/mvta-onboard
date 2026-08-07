@@ -14,6 +14,7 @@ import {
   type DetourStatus,
   type DetourReasonCode,
 } from "@mvta/shared";
+import { toDateOnly } from "./detourDates.js";
 
 export interface DetourFilters {
   search: string;
@@ -88,8 +89,17 @@ export function filterDetours(
     // Date range is on start_date. Open-ended/undated rows have no
     // start_date at all and are excluded once a range is set, rather than
     // being silently swept into every range.
-    if (filters.startFrom && (!d.start_date || d.start_date < filters.startFrom)) return false;
-    if (filters.startTo && (!d.start_date || d.start_date > filters.startTo)) return false;
+    //
+    // Compared date-only. The filter inputs produce YYYY-MM-DD, so an
+    // un-normalized ISO start_date would compare as
+    // "2026-08-08T00:00:00.000Z" > "2026-08-08" and drop every row landing
+    // exactly on the upper bound.
+    if (filters.startFrom || filters.startTo) {
+      const start = toDateOnly(d.start_date);
+      if (!start) return false;
+      if (filters.startFrom && start < filters.startFrom) return false;
+      if (filters.startTo && start > filters.startTo) return false;
+    }
     return detourMatchesSearch(d, filters.search, reasonCodes);
   });
 }
@@ -118,8 +128,10 @@ export function detoursToCsv(detours: Detour[], reasonCodes: DetourReasonCode[] 
       d.number ?? "",
       d.closure,
       DETOUR_STATUS_LABELS[d.status],
-      d.start_date ?? "",
-      d.end_date ?? "",
+      // Date-only, so Excel reads these as dates rather than as opaque
+      // timestamp text.
+      toDateOnly(d.start_date) ?? "",
+      toDateOnly(d.end_date) ?? "",
       reasonLabel(d.reason_code, reasonCodes),
       d.severity ? DETOUR_SEVERITY_LABELS[d.severity] : "",
       // Segments collapse into one cell - a CSV row is one detour, and

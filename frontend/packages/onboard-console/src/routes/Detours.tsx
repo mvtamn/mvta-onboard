@@ -15,6 +15,7 @@ import { useAuth } from "../auth/AuthContext.js";
 import { api } from "../config.js";
 import { resizeImageFile } from "../lib/imageResize.js";
 import { detourMatchesSearch } from "../lib/detourSearch.js";
+import { dateLabel, dateTimeLabel, toDateInputValue } from "../lib/detourDates.js";
 
 const STATUS_TABS: { key: DetourStatus | "all"; label: string }[] = [
   { key: "all", label: "All" },
@@ -32,12 +33,6 @@ const STATUS_PILL: Record<DetourStatus, string> = {
   recently_finished: "pill-muted",
   expired: "pill-muted",
 };
-
-function dateLabel(value: string | null): string {
-  if (!value) return "Open-ended";
-  const d = new Date(`${value}T00:00:00`);
-  return Number.isNaN(d.getTime()) ? value : d.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
-}
 
 // An internal number is issued once and never reassigned - it may already be
 // sitting in a sent notification email - so a detour rescheduled into another
@@ -62,12 +57,6 @@ function toDateTimeLocalInput(value: string | null | undefined): string {
   if (Number.isNaN(d.getTime())) return "";
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function dateTimeLabel(value: string | null | undefined): string {
-  if (!value) return "—";
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? value : d.toLocaleString();
 }
 
 const EMPTY_SEGMENT: DetourSegmentInput = { routes: "", directions: "" };
@@ -148,8 +137,11 @@ function detourToForm(d: Detour): DetourFormState {
   return {
     number: d.number ?? "",
     closure: d.closure,
-    start_date: d.start_date ?? "",
-    end_date: d.end_date ?? "",
+    // <input type="date"> accepts YYYY-MM-DD and nothing else - handed an
+    // ISO timestamp it renders BLANK, and saving would then clear the
+    // dates on a detour that had them.
+    start_date: toDateInputValue(d.start_date),
+    end_date: toDateInputValue(d.end_date),
     is_monitor_only: d.is_monitor_only,
     riders_directed: d.riders_directed ?? "",
     email_sent: d.email_sent,
@@ -581,10 +573,22 @@ export function Detours() {
                                   {" · "}
                                   <b>Severity:</b> {d.severity ? DETOUR_SEVERITY_LABELS[d.severity] : "—"}
                                 </p>
-                                <p className="td-dim">
-                                  Reported by {d.reported_by || "—"} ({dateTimeLabel(d.reported_at)}) · Approved by{" "}
-                                  {d.approved_by || "—"} ({dateTimeLabel(d.approved_at)})
-                                </p>
+                                {/* Only rendered once something is actually
+                                    recorded - a row of bare dashes told the
+                                    reader nothing and buried the created-by
+                                    line under it. */}
+                                {d.reported_by || d.reported_at ? (
+                                  <p className="td-dim">
+                                    Reported by {d.reported_by || "—"}
+                                    {d.reported_at ? ` · ${dateTimeLabel(d.reported_at)}` : ""}
+                                  </p>
+                                ) : null}
+                                {d.approved_by || d.approved_at ? (
+                                  <p className="td-dim">
+                                    Approved by {d.approved_by || "—"}
+                                    {d.approved_at ? ` · ${dateTimeLabel(d.approved_at)}` : ""}
+                                  </p>
+                                ) : null}
                                 {d.resolution_notes ? <p><b>Resolution:</b> {d.resolution_notes}</p> : null}
                               </>
                             ) : null}
@@ -598,7 +602,15 @@ export function Detours() {
                                 </>
                               ) : null}
                             </p>
-                            <p className="td-dim">Created by {d.created_by} · Updated by {d.updated_by ?? "—"}</p>
+                            {/* Avail-synced detours are created by the sync,
+                                not a person - saying so is more useful than
+                                showing staff a service identity and letting
+                                them wonder who that is. */}
+                            <p className="td-dim">
+                              Created by {d.source === "avail" ? "Avail sync" : d.created_by} on{" "}
+                              {dateTimeLabel(d.created_at)}
+                              {d.updated_by ? ` · Last edited by ${d.updated_by} on ${dateTimeLabel(d.updated_at)}` : ""}
+                            </p>
                             {d.source === "avail" ? (
                               <p className="td-dim">
                                 {d.last_edited_manually

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { computeDetourStatus } from "./detourStatus";
+import { computeDetourStatus, toDateOnly } from "./detourStatus";
 
 const TODAY = "2026-08-10";
 
@@ -60,4 +60,66 @@ test("today well past the grace window is expired", () => {
     computeDetourStatus({ start_date: "2026-07-01", end_date: "2026-07-15", is_monitor_only: false }, TODAY),
     "expired",
   );
+});
+
+// The tests above all pass plain YYYY-MM-DD strings - which is exactly how
+// this file's real bug survived. What the mssql driver ACTUALLY hands back
+// for a DATE column is a JS Date, and comparing a string against a Date
+// coerces to NaN, which is false in both directions: every detour fell
+// through to "recently_finished" no matter its dates, so the console showed
+// no Active detours at all. These cases pin the driver's real shapes.
+
+test("Date objects (what the mssql driver really returns) classify identically to strings", () => {
+  const asDates = {
+    start_date: new Date("2026-08-01T00:00:00.000Z"),
+    end_date: new Date("2026-08-10T00:00:00.000Z"),
+    is_monitor_only: false,
+  };
+  assert.strictEqual(computeDetourStatus(asDates, TODAY), "active");
+
+  // The exact regression from live data: a detour still months from ending
+  // was being reported as recently_finished.
+  assert.strictEqual(
+    computeDetourStatus(
+      { start_date: new Date("2026-07-06T00:00:00.000Z"), end_date: new Date("2026-10-31T00:00:00.000Z"), is_monitor_only: false },
+      "2026-08-07",
+    ),
+    "active",
+  );
+
+  assert.strictEqual(
+    computeDetourStatus(
+      { start_date: new Date("2026-09-01T00:00:00.000Z"), end_date: null, is_monitor_only: false },
+      TODAY,
+    ),
+    "upcoming",
+  );
+  assert.strictEqual(
+    computeDetourStatus(
+      { start_date: new Date("2026-07-01T00:00:00.000Z"), end_date: new Date("2026-07-15T00:00:00.000Z"), is_monitor_only: false },
+      TODAY,
+    ),
+    "expired",
+  );
+});
+
+test("full ISO timestamp strings classify identically to date-only strings", () => {
+  assert.strictEqual(
+    computeDetourStatus(
+      { start_date: "2026-08-01T00:00:00.000Z", end_date: "2026-08-10T00:00:00.000Z", is_monitor_only: false },
+      TODAY,
+    ),
+    "active",
+  );
+});
+
+test("toDateOnly reduces every shape the driver can produce, and rejects junk", () => {
+  assert.strictEqual(toDateOnly(new Date("2026-08-08T00:00:00.000Z")), "2026-08-08");
+  assert.strictEqual(toDateOnly("2026-08-08T00:00:00.000Z"), "2026-08-08");
+  assert.strictEqual(toDateOnly("2026-08-08"), "2026-08-08");
+  assert.strictEqual(toDateOnly(null), null);
+  assert.strictEqual(toDateOnly(undefined), null);
+  assert.strictEqual(toDateOnly(""), null);
+  assert.strictEqual(toDateOnly("not a date"), null);
+  assert.strictEqual(toDateOnly(new Date("nonsense")), null);
 });

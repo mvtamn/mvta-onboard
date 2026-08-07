@@ -22,6 +22,17 @@ function minutesAgo(value: string | null): number | null {
     : Math.max(0, Math.round((Date.now() - date.getTime()) / 60_000));
 }
 
+// "250 min ago" doesn't read at a glance - once it's been over an hour,
+// switch to "4h 10m ago" (or "4h ago" on the hour) instead of letting the
+// raw minute count grow unbounded.
+function agoLabel(minutes: number | null): string {
+  if (minutes === null) return "—";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return mins === 0 ? `${hours}h ago` : `${hours}h ${mins}m ago`;
+}
+
 // "YYYYMM" -> "MM/YYYY" - a small local duplicate of the same helper OTP's
 // module keeps for itself (otp/OtpModule.tsx's formatServiceMonth); this
 // module isn't otherwise coupled to OTP's code, so it gets its own copy
@@ -52,16 +63,21 @@ function fromMissedTrip(trip: MissedTrip): MissedTripAlert {
   };
 }
 
-function statusClass(status: MissedTripAlert["status"]): string {
-  if (status === "escalated") return "pill-danger";
+// A detection hit isn't a confirmed missed trip yet - only a human review
+// (validationStatus === "confirmed") should earn the alarming "Missed"
+// wording/color. Until then it's a candidate under investigation, so an
+// escalated-but-unreviewed row reads as "Potential missed" in amber rather
+// than a flat, unearned "Missed" in red.
+function statusClass(status: MissedTripAlert["status"], validationStatus: MissedTripAlert["validationStatus"]): string {
   if (status === "watching") return "pill-warning";
-  return "pill-success";
+  if (status === "resolved") return "pill-success";
+  return validationStatus === "confirmed" ? "pill-danger" : "pill-warning";
 }
 
-function statusLabel(status: MissedTripAlert["status"]): string {
-  if (status === "escalated") return "Missed";
+function statusLabel(status: MissedTripAlert["status"], validationStatus: MissedTripAlert["validationStatus"]): string {
   if (status === "watching") return "Watching";
-  return "Resolved late";
+  if (status === "resolved") return "Resolved late";
+  return validationStatus === "confirmed" ? "Missed" : "Potential missed";
 }
 
 function validationClass(status: MissedTripAlert["validationStatus"]): string {
@@ -199,21 +215,28 @@ function MissedTripsInvestigationPage({ routesById }: { routesById: Map<string, 
       MISSED_TRIP_ALERTS.map((a) => (previewValidations[a.id] ? { ...a, ...previewValidations[a.id] } : a)),
     [liveAlerts, previewValidations],
   );
+  // "resolved" means the trip did eventually depart within the grace
+  // window - the detector self-corrected, there's nothing left to
+  // investigate. Leaving those in this list buried the small number of
+  // rows actually needing staff attention under a growing pile of
+  // already-settled history; the Monthly Assessments tab is where that
+  // history belongs.
+  const activeAlerts = useMemo(() => alerts.filter((a) => a.status !== "resolved"), [alerts]);
   const selected = useMemo(
-    () => alerts.find((a) => a.id === selectedId) ?? alerts[0] ?? MISSED_TRIP_ALERTS[0],
-    [alerts, selectedId],
+    () => activeAlerts.find((a) => a.id === selectedId) ?? activeAlerts[0] ?? MISSED_TRIP_ALERTS[0],
+    [activeAlerts, selectedId],
   );
 
   const routeOptions = useMemo(
-    () => [...new Set(alerts.map((a) => a.route))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
-    [alerts],
+    () => [...new Set(activeAlerts.map((a) => a.route))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+    [activeAlerts],
   );
   const filteredAlerts = useMemo(
     () =>
-      alerts.filter(
+      activeAlerts.filter(
         (a) => (!routeFilter || a.route === routeFilter) && (!dateFilter || a.serviceDate === dateFilter),
       ),
-    [alerts, routeFilter, dateFilter],
+    [activeAlerts, routeFilter, dateFilter],
   );
 
   useEffect(() => {
@@ -245,7 +268,10 @@ function MissedTripsInvestigationPage({ routesById }: { routesById: Map<string, 
             ? null
             : "Missed-trip schedule detection is not fully configured yet (migration pending); showing cancellation-only data.",
         );
-        if (mapped.length > 0) setSelectedId((current) => (mapped.some((m) => m.id === current) ? current : mapped[0].id));
+        const mappedActive = mapped.filter((m) => m.status !== "resolved");
+        if (mappedActive.length > 0) {
+          setSelectedId((current) => (mappedActive.some((m) => m.id === current) ? current : mappedActive[0].id));
+        }
       })
       .catch((err) => {
         setLiveAlerts(null);
@@ -291,10 +317,10 @@ function MissedTripsInvestigationPage({ routesById }: { routesById: Map<string, 
     }
   }
 
-  const unreviewed = alerts.filter((a) => a.validationStatus === "unreviewed").length;
-  const confirmed = alerts.filter((a) => a.validationStatus === "confirmed").length;
-  const falsePositives = alerts.filter((a) => a.validationStatus === "false_positive").length;
-  const routesAffected = new Set(alerts.map((a) => a.route)).size;
+  const unreviewed = activeAlerts.filter((a) => a.validationStatus === "unreviewed").length;
+  const confirmed = activeAlerts.filter((a) => a.validationStatus === "confirmed").length;
+  const falsePositives = activeAlerts.filter((a) => a.validationStatus === "false_positive").length;
+  const routesAffected = new Set(activeAlerts.map((a) => a.route)).size;
 
   return (
     <>
@@ -312,7 +338,7 @@ function MissedTripsInvestigationPage({ routesById }: { routesById: Map<string, 
         <RiskStat value={routesAffected} label="Routes affected" tone="accent" />
       </div>
 
-      {alerts.length === 0 ? (
+      {activeAlerts.length === 0 ? (
         <div className="risk-empty-state">
           <strong>No missed trips</strong>
           <span>No canceled or no-show trips are currently flagged for review.</span>
@@ -325,7 +351,7 @@ function MissedTripsInvestigationPage({ routesById }: { routesById: Map<string, 
                 <span className="risk-eyebrow">Needs investigation</span>
                 <h3>Flagged trips</h3>
               </div>
-              <span className="risk-count">{filteredAlerts.length} of {alerts.length} trips</span>
+              <span className="risk-count">{filteredAlerts.length} of {activeAlerts.length} trips</span>
             </div>
 
             <div className="risk-list-toolbar" style={{ display: "flex", gap: 10, padding: "0 4px 10px" }}>
@@ -373,8 +399,10 @@ function MissedTripsInvestigationPage({ routesById }: { routesById: Map<string, 
                     <small>Scheduled {timeLabel(alert.scheduledDepartureAt)}</small>
                   </span>
                   <span className="risk-departure">
-                    <span className={`pill-sm ${statusClass(alert.status)}`}>{statusLabel(alert.status)}</span>
-                    <small>{timeLabel(alert.graceDeadlineAt)} · {minutesAgo(alert.graceDeadlineAt) ?? "—"} min ago</small>
+                    <span className={`pill-sm ${statusClass(alert.status, alert.validationStatus)}`}>
+                      {statusLabel(alert.status, alert.validationStatus)}
+                    </span>
+                    <small>{timeLabel(alert.graceDeadlineAt)} · {agoLabel(minutesAgo(alert.graceDeadlineAt))}</small>
                   </span>
                   <span className="risk-threshold">
                     <span className={`pill-sm ${validationClass(alert.validationStatus)}`}>
@@ -456,7 +484,9 @@ function MissedTripDetail({
             Service date {alert.serviceDate} · <span className="mono-ref">Ref {alert.tripId}</span>
           </p>
         </div>
-        <span className={`pill-sm ${statusClass(alert.status)}`}>{statusLabel(alert.status)}</span>
+        <span className={`pill-sm ${statusClass(alert.status, alert.validationStatus)}`}>
+          {statusLabel(alert.status, alert.validationStatus)}
+        </span>
       </div>
 
       <div className="risk-hero-metric">
@@ -466,7 +496,7 @@ function MissedTripDetail({
       </div>
 
       <dl className="risk-facts">
-        <div><dt>Detection status</dt><dd>{statusLabel(alert.status)}</dd></div>
+        <div><dt>Detection status</dt><dd>{statusLabel(alert.status, alert.validationStatus)}</dd></div>
         <div><dt>Detection type</dt><dd>{detectionTypeLabel(alert.detectionType)}</dd></div>
         <div><dt>First flagged</dt><dd>{timeLabel(alert.firstSeenWatchingAt)}</dd></div>
         <div>

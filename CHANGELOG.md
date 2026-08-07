@@ -9,6 +9,76 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 _Nothing unreleased._
 
+## [1.5.4] - 2026-08-07
+
+Not yet deployed — stacked on 1.5.1-1.5.3, all still awaiting a deploy.
+
+- **Missed Trips investigation queue no longer shows resolved trips.**
+  Rows where the vehicle eventually departed within the grace window
+  (`status: "resolved"`) were piling up in "Flagged trips" alongside the
+  small number of rows actually needing staff attention — nothing about a
+  resolved row needs investigation, so it's noise. The list, its route/date
+  filters, and the summary counts (Unreviewed/Confirmed/False
+  positives/Routes affected) now all read from the non-resolved subset;
+  resolved history remains visible on the Monthly Assessments tab.
+- **"Missed" badge renamed to "Potential missed" until a reviewer
+  confirms it.** A detection hit is a candidate, not a certainty — showing
+  a flat red "Missed" badge before any human review overstated confidence.
+  The badge now reads "Potential missed" (amber) while `validation_status`
+  is `unreviewed`, and only escalates to "Missed" (red) once a reviewer
+  records it as `confirmed`.
+- **Relative-time labels now switch to hours once past 60 minutes** (e.g.
+  "4h 10m ago" instead of "250 min ago") in the Missed Trips list.
+
+### Detour date handling — three bugs, one root cause
+
+Surfaced immediately by real Avail-synced detour data.
+`Detours.start_date`/`end_date` are SQL `DATE` columns, and the mssql driver
+returns those as JS `Date` objects — which JSON-serialize to a full ISO
+timestamp (`2026-08-08T00:00:00.000Z`), not the plain `YYYY-MM-DD` string
+every consumer assumed. `detourStatus.ts`'s own header comment asserted the
+opposite ("SQL DATE columns serialize this way"), which is how it went
+unnoticed, and every existing test fed it hand-written `YYYY-MM-DD` strings,
+so none of them could catch it.
+
+- **No detour ever showed as Active.** `computeDetourStatus` compared a
+  `YYYY-MM-DD` string against a `Date`, which coerces to `NaN` — false in
+  *both* directions, so `today < start_date` and `today <= end_date` were
+  both false for every row, and every detour fell through to "Recently
+  finished" regardless of its dates. A closure running Jul 6 → Oct 31 was
+  reported as finished on Aug 7. The status tabs, the reports page and any
+  future "active detours only" query were all wrong together — exactly the
+  single-source-of-truth property that function exists to provide.
+- **Editing a detour would have silently wiped its dates.** `<input
+  type="date">` accepts `YYYY-MM-DD` and nothing else; handed an ISO
+  timestamp it reads back as the empty string and renders blank. Opening
+  Edit on a detour with dates and pressing Save wrote `null` over both.
+  This one predates the reporting work — it has been live since B2.
+- **Date columns rendered raw ISO timestamps** in both detour tables.
+- Fixed at the boundary: `toDateOnly()` in `detourStatus.ts` normalizes
+  whatever the driver produced, `computeDetourStatus` normalizes before
+  comparing, and `GET /detours` now emits `start_date`/`end_date` as plain
+  `YYYY-MM-DD` so the contract the rest of the app assumed is finally true.
+  The console keeps its own defensive parsing (`lib/detourDates.ts`) rather
+  than trusting that. New tests pin the shapes the driver actually returns —
+  `Date` objects and ISO strings — instead of only the hand-written strings
+  that hid this.
+- Detour dates are now formatted in **UTC**. They are service days, not
+  instants; building them at local midnight shifted them a day earlier for
+  anyone west of Greenwich.
+
+### Detour reporting polish
+
+- **The reporting line no longer renders as a row of dashes.** "Reported by
+  — (—) · Approved by — (—)" appeared on every detour with no reporting
+  detail recorded — which is all of them so far — and pushed the useful
+  provenance down the panel. Reported and Approved now each render only when
+  something was actually recorded.
+- **Who created a detour is now visible**: a "Created by" column on Detour
+  Reports, and a clearer created/last-edited line in both detail panels.
+  Avail-synced rows read "Avail sync" rather than showing staff a service
+  identity they'd have to decode.
+
 ## [1.5.3] - 2026-08-07
 
 Not yet deployed. The deployed console is still on 1.5.0 — 1.5.1, 1.5.2 and

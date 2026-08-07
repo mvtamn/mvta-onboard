@@ -170,3 +170,75 @@ with the other pollers in this codebase — no test harness exists for any of th
 against a live database or live GTFS-RT feed; that would need a deploy or a local SQL Server
 instance with migration 011/023 applied and seeded `GtfsScheduledTrips`/`GtfsCalendar` data,
 neither of which exists in this dev environment.
+
+## Real-data findings (2026-08-07) — false-positive hypothesis rejected; deploy gap found instead
+
+User exported the live `GET /missed-trips` response (~1,500 rows spanning 2026-07-28 through
+2026-08-07, active + resolved) and pasted it in for analysis. Two findings:
+
+### 1. The fix above has not actually reached production
+
+Every row in the export — including rows from today, `last_checked_at` as late as 17:25 UTC on
+2026-08-07 — shows a **15-minute** gap between `scheduled_departure_at` and `grace_deadline_at`
+(e.g. `t52C-b2E-sl2B-v62`: sched 13:24 → grace 13:39; `t519-bF-sl2B-v62`: sched 13:05 → grace
+13:20). If `GRACE_MINUTES = 30` were live, every gap would be 30 minutes. It isn't, anywhere in
+the sample. (Correction: an earlier draft of this note misattributed the fix to commit `a3f4295`
+— that's the unrelated "Route 420 · 420" label fix from 2026-08-07. The actual fix is commit
+`baad35f`, "Fix missed-trip detection: 30-min grace, midnight boundary, late-arrival resolve",
+committed 2026-08-06 15:51 local / 20:51 UTC. See the deploy-pipeline finding below — verified
+2026-08-07 against GitHub Actions run history and confirmed this really is a stuck deploy, not a
+misattribution.)
+
+### 1a. Deploy-pipeline root cause, confirmed via `gh run list` + `gh run view` (2026-08-07)
+
+- `baad35f` sits on `main` (`git branch --contains` and `git log --oneline main` both confirm),
+  between `78a383d` and `ffa3c2c`.
+- The push that should have shipped it triggered `api.yml` run `31124674775` — but that run has
+  sat in GitHub Actions' `queued` state for 24+ hours and never executed. Its `headSha` is
+  `ffa3c2c3...`, one commit past `baad35f`, so it would have carried the fix if it had ever run.
+- Someone (or something) then triggered three manual `workflow_dispatch` runs on 2026-08-07 at
+  05:31, 05:55, and 06:00 UTC — all three completed successfully, and all three also built
+  `headSha` `ffa3c2c3...`, i.e. they deployed code that includes `baad35f`'s fix.
+- **The discrepancy**: the pasted data export has rows scheduled as late as 13:24 UTC on
+  2026-08-07 — more than 7 hours after that 06:00 UTC "successful" deploy — still showing the old
+  15-minute grace window. A deploy the pipeline reports as successful, containing the fix,
+  followed hours later by behavior consistent with the *unfixed* code. That's not "deploy hasn't
+  happened yet," which was the original theory; it's "the deploy pipeline says it shipped, but the
+  running Function App doesn't reflect it." Candidates: a second/stale Function App slot, a worker
+  process that didn't recycle after the zip deploy, or the deploy landing in a location other than
+  where the timer trigger actually runs. Kudu deployment-log and running-file-content checks were
+  attempted to pin this down further but were blocked by this session's tool-use policy (raw
+  publishing-credential curl calls); **someone with portal/CLI access outside this restriction
+  should check `func-mvta-restapi-dev`'s actual running `dist/functions/gtfsMissedTripsPoll.js` for
+  the `GRACE_MINUTES` value directly, and check whether the app needs a manual restart to pick up
+  code that a zip deploy already placed on disk.**
+
+### 2. Hypothesis #1 (RT feed latency racing the grace window) is not supported by the data
+
+Looked for `resolved` rows where `detected_late_arrival_at` landed 5-10 minutes after
+`first_seen_watching_at`/`grace_deadline_at` (one or two poll cycles) — the signature that would
+indicate a real trip getting falsely flagged and then quickly self-resolving. Found none. Every
+resolved row sampled shows the vehicle first observed **60-120+ minutes** after its scheduled
+time:
+
+```
+t52C-b2E-sl2B-v62   scheduled 13:24 → resolved 14:40   (76 min late)
+t516-b2A-sl2B-v62   scheduled 13:02 → resolved 15:00   (118 min late)
+t4EA-b36-sl2B-v62   scheduled 12:58 → resolved 15:00   (122 min late)
+```
+
+A 5-minute poll cadence doesn't produce 2-hour lag on its own — these read as genuinely late
+vehicles that eventually started running and were picked up by `gtfsDelaysPoll.ts` once they
+appeared in the RT feed, not false flags. The false-positive hypothesis this investigation set out
+to confirm does not hold up against real data; deprioritize it pending contrary evidence.
+
+### The actual live-system problem this exposes
+
+Because the deployed code still runs the *old* `resolveLateArrivals` logic (any arrival at all,
+however late, → `status='resolved'`), and finding #2 shows arrivals routinely land 60-120+ minutes
+late, the live system is marking trips **resolved that are missed trips by the ops definition**
+("any trip that starts more than 30 minutes after its scheduled time"). This is the **opposite**
+of the false-positive problem this doc was investigating: it's undercounting genuine missed trips,
+which is worse for compliance reporting than over-flagging would be. It should resolve itself once
+the already-written fix (`resolveLateArrivals` two-statement version, section above) actually
+deploys — but that deploy needs to be confirmed, not assumed, given finding #1.

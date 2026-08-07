@@ -16,6 +16,7 @@ import {
   downloadCsv,
   type DetourFilters,
 } from "../lib/detourSearch.js";
+import { dateLabel, dateTimeLabel } from "../lib/detourDates.js";
 
 // Detour Reports - Part B7 of detour-module-consolidated-plan.md.
 //
@@ -41,20 +42,6 @@ const STATUS_PILL: Record<DetourStatus, string> = {
   recently_finished: "pill-muted",
   expired: "pill-muted",
 };
-
-function dateLabel(value: string | null): string {
-  if (!value) return "Open-ended";
-  const d = new Date(`${value}T00:00:00`);
-  return Number.isNaN(d.getTime())
-    ? value
-    : d.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
-}
-
-function dateTimeLabel(value: string | null | undefined): string {
-  if (!value) return "—";
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? value : d.toLocaleString();
-}
 
 export function DetourReports() {
   const [detours, setDetours] = useState<Detour[] | null>(null);
@@ -213,6 +200,7 @@ export function DetourReports() {
                   <th>Status</th>
                   {reportingReady ? <th>Reason</th> : null}
                   {reportingReady ? <th>Severity</th> : null}
+                  <th>Created by</th>
                   <th>Source</th>
                 </tr>
               </thead>
@@ -230,11 +218,12 @@ export function DetourReports() {
                       {reportingReady ? (
                         <td className="td-dim">{d.severity ? DETOUR_SEVERITY_LABELS[d.severity] : "—"}</td>
                       ) : null}
+                      <td className="td-dim">{d.source === "avail" ? "Avail sync" : d.created_by}</td>
                       <td className="td-dim">{d.source === "avail" ? "Avail sync" : "Manual"}</td>
                     </tr>
                     {expandedId === d.id ? (
                       <tr>
-                        <td colSpan={reportingReady ? 9 : 7}>
+                        <td colSpan={reportingReady ? 10 : 8}>
                           <div className="subcard" style={{ margin: "4px 0" }}>
                             {d.riders_directed ? <p><b>Riders directed:</b> {d.riders_directed}</p> : null}
                             {d.segments.length === 0 ? (
@@ -249,15 +238,23 @@ export function DetourReports() {
                                 </tbody>
                               </table>
                             )}
-                            {reportingReady ? (
-                              <>
-                                <p className="td-dim" style={{ marginTop: 8 }}>
-                                  Reported by {d.reported_by || "—"} ({dateTimeLabel(d.reported_at)}) · Approved by{" "}
-                                  {d.approved_by || "—"} ({dateTimeLabel(d.approved_at)})
-                                </p>
-                                {d.resolution_notes ? <p><b>Resolution:</b> {d.resolution_notes}</p> : null}
-                              </>
+                            {/* Rendered only when something was actually
+                                recorded - a line of bare dashes was noise
+                                that pushed the useful provenance down the
+                                panel. */}
+                            {d.reported_by || d.reported_at ? (
+                              <p className="td-dim" style={{ marginTop: 8 }}>
+                                Reported by {d.reported_by || "—"}
+                                {d.reported_at ? ` · ${dateTimeLabel(d.reported_at)}` : ""}
+                              </p>
                             ) : null}
+                            {d.approved_by || d.approved_at ? (
+                              <p className="td-dim">
+                                Approved by {d.approved_by || "—"}
+                                {d.approved_at ? ` · ${dateTimeLabel(d.approved_at)}` : ""}
+                              </p>
+                            ) : null}
+                            {d.resolution_notes ? <p><b>Resolution:</b> {d.resolution_notes}</p> : null}
                             <p className="td-dim" style={{ marginTop: 8 }}>
                               Notified — Email: {d.email_sent ? "Yes" : "No"} · Expired email:{" "}
                               {d.expired_email_sent ? "Yes" : "No"} · Spare: {d.spare_emailed ? "Yes" : "No"}
@@ -270,8 +267,9 @@ export function DetourReports() {
                               ) : null}
                             </p>
                             <p className="td-dim">
-                              Created by {d.created_by} on {new Date(d.created_at).toLocaleString()} · Last updated by{" "}
-                              {d.updated_by ?? "—"} on {new Date(d.updated_at).toLocaleString()}
+                              Created by {d.source === "avail" ? "Avail sync" : d.created_by} on{" "}
+                              {dateTimeLabel(d.created_at)}
+                              {d.updated_by ? ` · Last edited by ${d.updated_by} on ${dateTimeLabel(d.updated_at)}` : ""}
                             </p>
                           </div>
                         </td>

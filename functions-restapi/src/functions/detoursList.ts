@@ -11,14 +11,17 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { requireRole, DETOUR_READ_ROLES } from "../lib/auth";
-import { computeDetourStatus, type DetourStatus } from "../lib/detourStatus";
+import { computeDetourStatus, toDateOnly, type DetourStatus } from "../lib/detourStatus";
 
 interface DetourRow {
   id: string;
   number: string | null;
   closure: string;
-  start_date: string | null;
-  end_date: string | null;
+  // The mssql driver returns a JS Date for a DATE column, NOT a string -
+  // typed honestly here so the normalization below can't be dropped by
+  // someone reading this interface and assuming it's already a string.
+  start_date: Date | string | null;
+  end_date: Date | string | null;
   is_monitor_only: boolean;
   riders_directed: string | null;
   email_sent: boolean;
@@ -121,8 +124,17 @@ app.http("detoursList", {
         segmentsByDetour.set(seg.detour_id, list);
       }
 
+      // start_date/end_date are emitted as plain YYYY-MM-DD, not as the
+      // driver's Date objects (which JSON-serialize to a full ISO
+      // timestamp). Every consumer treats a detour date as a service day:
+      // the console renders it, feeds it straight into <input type="date">
+      // on the edit form, and range-filters on it - and an ISO timestamp
+      // breaks all three (a date input silently rejects the value and
+      // renders BLANK, so saving an edit would have wiped the dates).
       const withStatus = detours.map((d) => ({
         ...d,
+        start_date: toDateOnly(d.start_date),
+        end_date: toDateOnly(d.end_date),
         status: computeDetourStatus(d),
         segments: segmentsByDetour.get(d.id) ?? [],
       }));
