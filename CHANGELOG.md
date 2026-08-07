@@ -7,6 +7,52 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 ## [Unreleased]
 
+- **Internal detour numbering (Part B10)**: every detour created through
+  `POST /detours` now gets a system-generated `MVTA-DET-YYYY-####` reference
+  (`migration-024-detour-numbering.sql`), separate from the existing
+  staff-entered free-text `number` field, which is unchanged. `####` resets
+  each year, taken from the detour's `start_date` (falling back to the
+  current year for open-ended detours). Allocation is a single atomic
+  `MERGE ... WITH (HOLDLOCK)` against a new `DetourNumberSequences` table, so
+  bootstrapping a new year and incrementing an existing one are the same
+  statement - a `SELECT`-then-`INSERT` bootstrap would have raced on Jan 1,
+  and a naive `MAX()+1` would have collided on any concurrent create.
+  `internal_number` ships **nullable** with an in-migration backfill of
+  existing rows (in `created_at` order per year), seeding the sequence table
+  from what the backfill consumed so the first new detour doesn't collide
+  with a backfilled number; tightening to `NOT NULL` is deliberately left to
+  a later migration. Numbers are never reused or reassigned, including for
+  soft-deleted rows. A detour rescheduled into a different year keeps its
+  original number - it may already be quoted in a sent email - and the
+  console shows an inline warning rather than letting the year read wrong.
+  Both `detoursCreate.ts` and `detoursList.ts` guard on the column existing,
+  so nothing breaks before migration-024 runs.
+- **Fixed a latent 403 that would have broken the first-ever detour image
+  upload.** `blobStorage.ts` requested a user-delegation key valid for
+  exactly `SAS_EXPIRY_MINUTES`, then minted a SAS for the same duration
+  measured from a `now` captured *after* that network round-trip returned -
+  so the token always expired slightly after the key that signed it, which
+  Azure rejects outright. The key window now deliberately outlives the SAS
+  (`DELEGATION_KEY_EXTRA_MINUTES`), and both windows are back-dated
+  (`CLOCK_SKEW_MINUTES`) so a few seconds of clock skew can't produce a
+  not-yet-valid token either. Both failure modes are invisible until Blob
+  Storage is actually provisioned, so the window math is now unit-tested
+  (`sasWindow`). `getUploadSasUrl`/`getReadSasUrl` were near-identical and
+  now share one `buildSasUrl` helper.
+- **Detour image uploads would also have failed CORS.** The upload/read SAS
+  URLs point straight at Blob Storage, bypassing the Function App, so the
+  storage account needs its own CORS rules - `storage-detour-images.bicep`
+  takes `allowedCorsOrigins` for exactly that, but
+  `phase1-dev.parameters.json` never set the parameter, leaving it `[]` (no
+  cross-origin browser access at all). Now set to the dev Front Door
+  endpoint. Note this parameter also feeds the Function App's own CORS.
+- **Corrected stale detour documentation.** `HANDOFF.md` still described the
+  Avail Detours envelope key as an unverified guess (`result.Detours`) and
+  the sync as uncommitted/undeployed; the key was confirmed live as lowercase
+  `result.detours` on 2026-08-05 and the sync is committed. It also called
+  image attachments "live" when they can't be until Blob Storage exists.
+  `availDetoursFeed.ts`'s own fallback diagnostic still named the wrong
+  (capital-D) key in its error text.
 - **Fixed two missed-trip detection logic gaps in `gtfsMissedTripsPoll.ts`.**
   (1) The silent-no-show grace threshold was 15 minutes; ops' definition of
   a missed trip is "never ran, or started more than 30 minutes late" - bumped

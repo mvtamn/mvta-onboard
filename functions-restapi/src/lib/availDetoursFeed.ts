@@ -18,12 +18,12 @@
 // simplest way to honor that is to not store them as this project's
 // created_by/updated_by at all; revisit only if a real need shows up).
 //
-// KNOWN UNCONFIRMED ASSUMPTION (flagging prominently, same as every other
-// Avail feed built this session): the envelope's array key is guessed as
-// result.Detours, following the Operation-ID-matches-array-key pattern
-// observed for AVL Reports/Pullout/OTP Monthly/Missed Trips. The brief
-// itself (open question #4) flags this same-key-name risk for the sibling
-// DetourStops feed. Verify against a real response before relying on this.
+// ENVELOPE KEY CONFIRMED live 2026-08-05: originally guessed as
+// result.Detours (the Operation-ID-matches-array-key pattern observed for
+// AVL Reports/Pullout/OTP Monthly/Missed Trips), which was wrong - the real
+// key is lowercase result.detours. See the note on AvailDetoursEnvelope
+// below. The brief's open question #4 flagged this same-key-name risk, and
+// it was justified; the sibling DetourStops feed is still unverified.
 export interface AvailDetourReport {
   DetourID: number;
   DetourName: string | null;
@@ -68,16 +68,16 @@ export async function fetchDetours(baseUrl: string, apiKey: string): Promise<Ava
   const rows = payload.result?.detours;
   if (rows !== undefined) return rows;
 
-  // The guessed envelope key wasn't found. If result carries any OTHER key,
+  // The expected envelope key wasn't found. If result carries any OTHER key,
   // that's almost certainly the real array key - surface the actual key
-  // names (never the data itself) rather than silently syncing zero
-  // detours forever. Confirmed live: the sync runs cleanly every 15 minutes
-  // but has reported "0 detours seen" on every run so far - this is the
-  // same class of issue otpMonthlyFeed.ts hit with its own guessed key.
+  // names (never the data itself) rather than silently syncing zero detours
+  // forever. This diagnostic is what caught the original capital-D "Detours"
+  // guess being wrong on 2026-08-05; keep it in place in case Avail renames
+  // the key again.
   const actualKeys = payload.result ? Object.keys(payload.result) : [];
   if (actualKeys.length > 0) {
     throw new Error(
-      `Avail Detours response has no "Detours" key under result - found [${actualKeys.join(", ")}] instead. Update the guessed key in availDetoursFeed.ts.`,
+      `Avail Detours response has no "detours" key under result - found [${actualKeys.join(", ")}] instead. Update the expected key in availDetoursFeed.ts.`,
     );
   }
   return [];

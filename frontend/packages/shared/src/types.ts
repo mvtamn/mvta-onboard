@@ -480,6 +480,11 @@ export interface DetourSegment {
 export interface Detour {
   id: string;
   number: string | null;
+  // System-generated internal reference (MVTA-DET-YYYY-####, Part B10).
+  // Distinct from `number`, which is staff-entered free text. Optional
+  // because it is absent until migration-024 has run, and null on rows
+  // created before that point.
+  internal_number?: string | null;
   closure: string;
   start_date: string | null;
   end_date: string | null;

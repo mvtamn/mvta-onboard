@@ -26,6 +26,8 @@ interface DetourRow {
   external_detour_id: string | null;
   last_edited_manually: boolean;
   avail_last_seen_at: Date | null;
+  // Absent (not null) on rows read before migration-024 has run.
+  internal_number?: string | null;
   created_by: string;
   created_at: Date;
   updated_by: string | null;
@@ -60,10 +62,22 @@ app.http("detoursList", {
     try {
       const pool = await getPool();
 
+      // internal_number (Part B10, migration-024) is selected only once the
+      // column exists - SQL Server parses the whole batch up front, so naming
+      // a missing column fails even inside a CASE. Pre-migration the field
+      // comes back undefined and the console falls back to hiding it, same
+      // graceful-degradation pattern as every other un-run migration here.
+      const numberingCheck = await pool.request().query<{ has_column: number }>(`
+        SELECT CASE WHEN COL_LENGTH('dbo.Detours', 'internal_number') IS NULL
+               THEN 0 ELSE 1 END AS has_column
+      `);
+      const hasInternalNumber = numberingCheck.recordset[0]?.has_column === 1;
+
       const detoursResult = await pool.request().query<DetourRow>(`
         SELECT id, number, closure, start_date, end_date, is_monitor_only, riders_directed,
                email_sent, expired_email_sent, spare_emailed, source, external_detour_id,
                last_edited_manually, avail_last_seen_at, created_by, created_at, updated_by, updated_at
+               ${hasInternalNumber ? ", internal_number" : ""}
         FROM Detours
         WHERE is_deleted = 0
         ORDER BY start_date DESC, created_at DESC

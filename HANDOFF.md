@@ -84,18 +84,19 @@ KNOWN UNCONFIRMED:       Neither Avail feed's full HTTP response envelope was av
                          - capture one real raw response and correct the key in the relevant lib
                          file.
 Detours & Closures:     migration-017-detours.sql (Detours, DetourSegments, DetourImages) has been
-                         run against the dev DB; manual CRUD + image attachments (Part B3) are
-                         live. The Avail Detours sync (Part B4-B5) is now built
-                         (availDetoursFeed.ts/availDetoursSync.ts, 15-min timer, upserts by
-                         external_detour_id, never touches source='manual' rows) but NOT yet
-                         live: migration-019-detour-avail-last-seen.sql has been run against the
-                         dev DB, but AVAIL_DETOURS_URL is not yet a real app setting on
-                         func-mvta-restapi-dev, and the new code (availDetoursFeed.ts/
-                         availDetoursSync.ts) has not been committed or deployed yet. Reuses
-                         AVAIL_AVL_REPORTS_API_KEY - confirmed by the owner, production does not
-                         need a separate subscription key, resolving the brief's open question
-                         #6. Still KNOWN UNCONFIRMED: the Detours envelope's array key is
-                         guessed as result.Detours, never verified against a real response.
+                         run against the dev DB; manual CRUD is live. Image attachments (Part B3)
+                         are BUILT BUT NOT LIVE - they need the Blob Storage account that has not
+                         been provisioned yet (see "Detour images" below). The Avail Detours sync
+                         (Part B4-B5) is built and committed (availDetoursFeed.ts/
+                         availDetoursSync.ts, 15-min timer, upserts by external_detour_id, never
+                         touches source='manual' rows), and migration-019-detour-avail-last-seen.sql
+                         has been run against the dev DB. Reuses AVAIL_AVL_REPORTS_API_KEY -
+                         confirmed by the owner, production does not need a separate subscription
+                         key, resolving the brief's open question #6. CONFIRMED live 2026-08-05:
+                         the Detours envelope's array key is lowercase result.detours (the original
+                         capital-D result.Detours guess was wrong and has been fixed); "results" is
+                         a sibling metadata array. Verify AVAIL_DETOURS_URL is set on
+                         func-mvta-restapi-dev before treating the sync as running.
                          A follow-up spec (detour-reporting-and-search-spec.md, repo root) drafts
                          additional internal-ops-reporting fields + a searchable Active/Expired
                          reporting page - not built, awaiting owner review/approval.
@@ -126,7 +127,16 @@ Detour images:           NEW AZURE RESOURCE, NOT YET PROVISIONED - infra-phase1/
                          Bicep module does this automatically on deploy via
                          functionAppPrincipalId). Until both the resource and the app setting
                          exist, image upload/list endpoints return a clear 503 "not configured"
-                         rather than erroring.
+                         rather than erroring. Deploy the MODULE alone, not main-phase1.bicep -
+                         a full-stack deploy also re-runs the Function App and WAF, and Front
+                         Door was hand-built in the portal (see main-phase1.bicep's header).
+                         Dev account name resolves to stmvtadetourimgdevmvtajx. Creating the
+                         role assignment needs Owner or User Access Administrator on the RG,
+                         and RBAC takes a few minutes to propagate - a 403 on the first upload
+                         right after deploy may just be propagation. The SAS URLs point
+                         straight at Blob Storage, bypassing the Function App, so the storage
+                         account needs its own CORS: pass allowedCorsOrigins (now set in
+                         phase1-dev.parameters.json) or browser uploads fail regardless.
 ```
 
 The SQL admin password is NOT recorded here deliberately — it lives in Key Vault as the secret `sql-connection-string` (full connection string, not just the password) and in the project owner's password manager. Ask before assuming you need it directly; the Function Apps already read it via Key Vault reference.

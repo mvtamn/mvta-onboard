@@ -19,6 +19,22 @@ export class BlobStorageNotConfiguredError extends Error {
 const CONTAINER_NAME = "detour-images";
 const SAS_EXPIRY_MINUTES = 15;
 
+// Azure rejects (403) any SAS whose expiry runs past the user-delegation
+// key's own expiry, so the key must outlive the token it signs - not match
+// it. Getting the key is a network round-trip, so a key requested for
+// exactly SAS_EXPIRY_MINUTES would already be expiring slightly BEFORE a
+// token minted after that call returns.
+const DELEGATION_KEY_EXTRA_MINUTES = 15;
+
+// Both the key and the SAS start slightly in the past: Azure validates
+// startsOn against ITS clock, and a token stamped "valid from now" fails as
+// not-yet-valid under even a few seconds of clock skew.
+const CLOCK_SKEW_MINUTES = 5;
+
+function minutesFrom(base: Date, minutes: number): Date {
+  return new Date(base.getTime() + minutes * 60 * 1000);
+}
+
 let cachedClient: BlobServiceClient | null = null;
 
 function getBlobServiceClient(): BlobServiceClient {
@@ -42,56 +58,50 @@ export function buildDetourImageBlobPath(detourId: string, fileName: string): st
   return `detours/${detourId}/${crypto.randomUUID()}-${safeName}`;
 }
 
-async function getUserDelegationKey(client: BlobServiceClient) {
-  const now = new Date();
-  const expiresOn = new Date(now.getTime() + SAS_EXPIRY_MINUTES * 60 * 1000);
-  return client.getUserDelegationKey(now, expiresOn);
+// Exported for unit testing the expiry math without a live storage account:
+// the key window must fully contain the SAS window, or Azure 403s.
+export function sasWindow(now: Date) {
+  const startsOn = minutesFrom(now, -CLOCK_SKEW_MINUTES);
+  return {
+    startsOn,
+    // SAS expiry is measured from `now`, not from the back-dated start, so
+    // back-dating never eats into the usable 15 minutes.
+    expiresOn: minutesFrom(now, SAS_EXPIRY_MINUTES),
+    keyStartsOn: startsOn,
+    keyExpiresOn: minutesFrom(now, SAS_EXPIRY_MINUTES + DELEGATION_KEY_EXTRA_MINUTES),
+  };
+}
+
+async function buildSasUrl(blobPath: string, permissions: string): Promise<string> {
+  const client = getBlobServiceClient();
+  const { startsOn, expiresOn, keyStartsOn, keyExpiresOn } = sasWindow(new Date());
+  const delegationKey = await client.getUserDelegationKey(keyStartsOn, keyExpiresOn);
+
+  const sas = generateBlobSASQueryParameters(
+    {
+      containerName: CONTAINER_NAME,
+      blobName: blobPath,
+      permissions: BlobSASPermissions.parse(permissions),
+      startsOn,
+      expiresOn,
+    },
+    delegationKey,
+    client.accountName,
+  ).toString();
+
+  return `${client.url}${CONTAINER_NAME}/${blobPath}?${sas}`;
 }
 
 // Write-only SAS - staff upload directly to Blob Storage with this,
 // nothing ever passes through the Function App itself.
-export async function getUploadSasUrl(blobPath: string): Promise<string> {
-  const client = getBlobServiceClient();
-  const delegationKey = await getUserDelegationKey(client);
-  const now = new Date();
-  const expiresOn = new Date(now.getTime() + SAS_EXPIRY_MINUTES * 60 * 1000);
-
-  const sas = generateBlobSASQueryParameters(
-    {
-      containerName: CONTAINER_NAME,
-      blobName: blobPath,
-      permissions: BlobSASPermissions.parse("cw"), // create + write
-      startsOn: now,
-      expiresOn,
-    },
-    delegationKey,
-    client.accountName,
-  ).toString();
-
-  return `${client.url}${CONTAINER_NAME}/${blobPath}?${sas}`;
+export function getUploadSasUrl(blobPath: string): Promise<string> {
+  return buildSasUrl(blobPath, "cw"); // create + write
 }
 
 // Read-only SAS - minted fresh on every GET /detours/{id}/images call so a
 // leaked link goes stale quickly; never a permanent/public URL.
-export async function getReadSasUrl(blobPath: string): Promise<string> {
-  const client = getBlobServiceClient();
-  const delegationKey = await getUserDelegationKey(client);
-  const now = new Date();
-  const expiresOn = new Date(now.getTime() + SAS_EXPIRY_MINUTES * 60 * 1000);
-
-  const sas = generateBlobSASQueryParameters(
-    {
-      containerName: CONTAINER_NAME,
-      blobName: blobPath,
-      permissions: BlobSASPermissions.parse("r"),
-      startsOn: now,
-      expiresOn,
-    },
-    delegationKey,
-    client.accountName,
-  ).toString();
-
-  return `${client.url}${CONTAINER_NAME}/${blobPath}?${sas}`;
+export function getReadSasUrl(blobPath: string): Promise<string> {
+  return buildSasUrl(blobPath, "r");
 }
 
 export async function deleteBlob(blobPath: string): Promise<void> {

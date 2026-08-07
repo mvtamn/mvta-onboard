@@ -35,6 +35,19 @@ function dateLabel(value: string | null): string {
   return Number.isNaN(d.getTime()) ? value : d.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
 }
 
+// An internal number is issued once and never reassigned - it may already be
+// sitting in a sent notification email - so a detour rescheduled into another
+// year keeps its original number and gets flagged here instead of silently
+// reading as the wrong year. Mirrors hasDetourNumberYearMismatch() in
+// functions-restapi/src/lib/detourNumbering.ts; kept as a small local copy
+// rather than a shared module since it is four lines and needs no refetch.
+function numberYearMismatch(internalNumber: string | null | undefined, startDate: string | null): boolean {
+  if (!internalNumber || !startDate) return false;
+  const issued = /^MVTA-DET-(\d{4})-\d{4,}$/.exec(internalNumber);
+  if (!issued) return false;
+  return issued[1] !== startDate.slice(0, 4);
+}
+
 const EMPTY_SEGMENT: DetourSegmentInput = { routes: "", directions: "" };
 
 interface DetourFormState {
@@ -305,7 +318,12 @@ export function Detours() {
                 {visible.map((d) => (
                   <Fragment key={d.id}>
                     <tr style={{ cursor: "pointer" }} onClick={() => setExpandedId(expandedId === d.id ? null : d.id)}>
-                      <td>{d.number || "—"}</td>
+                      <td>
+                        {d.number || "—"}
+                        {d.internal_number ? (
+                          <div className="td-dim" style={{ fontSize: "0.85em" }}>{d.internal_number}</div>
+                        ) : null}
+                      </td>
                       <td>{d.closure}</td>
                       <td className="td-dim">{dateLabel(d.start_date)} – {dateLabel(d.end_date)}</td>
                       <td><span className={`pill-sm ${STATUS_PILL[d.status]}`}>{DETOUR_STATUS_LABELS[d.status]}</span></td>
@@ -321,6 +339,17 @@ export function Detours() {
                       <tr key={`${d.id}-detail`}>
                         <td colSpan={canWrite ? 6 : 5}>
                           <div className="subcard" style={{ margin: "4px 0" }}>
+                            {d.internal_number ? (
+                              <p><b>Internal ref:</b> {d.internal_number}</p>
+                            ) : null}
+                            {numberYearMismatch(d.internal_number, d.start_date) ? (
+                              <p className="warn-note">
+                                This detour's internal reference was issued for{" "}
+                                {d.internal_number?.slice(9, 13)}, but its start date is now in{" "}
+                                {d.start_date?.slice(0, 4)}. The reference is kept as issued — it may
+                                already appear in a sent notification — so quote it as-is.
+                              </p>
+                            ) : null}
                             {d.riders_directed ? <p><b>Riders directed:</b> {d.riders_directed}</p> : null}
                             {d.segments.length === 0 ? (
                               <p className="muted">No route segments recorded.</p>

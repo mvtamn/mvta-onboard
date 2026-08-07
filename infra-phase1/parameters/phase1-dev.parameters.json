@@ -5,6 +5,9 @@
     "environment": { "value": "dev" },
     "location": { "value": "westus2" },
     "uniqueSuffix": { "value": "mvta-jx4471" },
-    "aadClientId": { "value": "7e5a35b1-dc1b-473d-987d-6942a7b4fae2" }
+    "aadClientId": { "value": "7e5a35b1-dc1b-473d-987d-6942a7b4fae2" },
+    "allowedCorsOrigins": {
+      "value": ["https://endpoint-mvta-onboard-dev-haehgsbbe6esd8cc.z03.azurefd.net"]
+    }
   }
 }

@@ -245,6 +245,17 @@ table.data tr.route-group-header td { background: var(--surface-alt-bg); color: 
 /* ---------- states / misc ---------- */
 .muted { color: var(--text-muted); }
 .error-text { color: var(--danger-text); font-size: 12.5px; }
+/* Inline advisory note - something staff should notice but that isn't an
+   error or a failed action. Reuses the existing pill-warning palette, so it
+   theme-switches with everything else. */
+.warn-note {
+  background: var(--pill-warning-bg);
+  color: var(--pill-warning-fg);
+  font-size: 12.5px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  margin: 0 0 8px;
+}
 .ok-text { color: var(--success-text); font-size: 12.5px; font-weight: bold; }
 .review-focus-note {
   background: var(--pill-accent-bg);
