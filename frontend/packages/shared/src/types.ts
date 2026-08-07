@@ -246,6 +246,9 @@ export interface MissedTrip {
   validated_by: string | null;
   validated_at: string | null;
   notes: string | null;
+  // NB/SB/EB/WB from GtfsTripDirections, same convention as TripDelay.direction_label -
+  // null when the trip isn't in that reference table or no direction could be determined.
+  direction_label: string | null;
 }
 
 export interface ValidateMissedTripInput {
@@ -631,9 +634,15 @@ export const ROUTE_CATEGORY_LABELS: Record<RouteCategory, string> = {
 // RouteClassification (SpecialEvent routes only). Backs Event Monitoring's
 // "Event bus positions (live)" panel. See detour-and-event-module-
 // implementation-plan.md (Part A3).
+// route_label/route_category are joined from RouteClassification server-side:
+// an event RouteID is absent from GTFS static (and so from GTFS-RT), so
+// getRoutes()/GtfsRouteOption can never name one - the classification row is
+// the only source of a friendly name for a special-service route.
 export interface EventVehiclePosition {
   vehicle_id: number;
   route: number | null;
+  route_label: string | null;
+  route_category: string | null;
   latitude: number;
   longitude: number;
   heading: number | null;

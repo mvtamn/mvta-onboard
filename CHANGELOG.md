@@ -9,6 +9,55 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 _Nothing unreleased._
 
+## [1.5.7] - 2026-08-07
+
+Not yet deployed — stacked on 1.5.1-1.5.6, all still awaiting a deploy.
+
+- **Missed Trips' new Trip/Route/Direction table (1.5.5) is now an addition
+  to the flagged-trip list, not a replacement of it.** 1.5.5 converted the
+  whole list to a table; that took away the original card-row list (Service/
+  Detection/Review) some staff were already using. There's now a "List /
+  Table" toggle next to "Flagged trips" — List is the original card layout,
+  unchanged, driving the detail pane beside it; Table is the new full-width
+  Trip/Route/Direction/Detection/Review view from 1.5.5, for scanning many
+  rows at once. Picking a row in Table mode switches to List mode with that
+  trip already selected, so it's a shortcut into investigation, not a dead end.
+
+## [1.5.6] - 2026-08-07
+
+Not yet deployed — stacked on 1.5.1-1.5.5, all still awaiting a deploy.
+
+- **Event Monitoring now names event buses instead of showing a bare route
+  number.** The map popups and the event-bus table resolved route names from
+  the GTFS static schedule, which by definition cannot contain a special-event
+  RouteID — so every event bus read "Route 1111" even when an admin had
+  entered a name like "Vikings Game Shuttle" under Admin > Route
+  Classification. Route identity now comes from Route Classification (the
+  `route_label` an admin actually typed), with GTFS kept only as a fallback
+  for a regular fixed route temporarily classified as SpecialEvent.
+  `GET /event-vehicle-positions` returns `route_label`/`route_category`
+  alongside the position fields to make this possible.
+- `plans/route-classification-explained.md` documents the full
+  AVL Reports → classification filter → position tables → map chain, and why
+  position alone is insufficient: an event map of unlabeled dots can't tell
+  an operator which shuttle is which.
+
+## [1.5.5] - 2026-08-07
+
+Not yet deployed — stacked on 1.5.1-1.5.4, all still awaiting a deploy.
+
+- **Missed Trips' flagged-trip list is now a real table, led by a
+  Trip/Route/Direction identifier instead of the raw GTFS trip_id.** Staff
+  read Avail's own reports by scheduled-time + direction (e.g. "1245-SB"),
+  not by an opaque static-feed key like `t52C-b2E-sl2B-v62` — the list (and
+  the detail panel's header) now show that same time+direction code, with a
+  new Direction column (NB/SB/EB/WB, sourced from `GtfsTripDirections` via
+  a join added to `GET /missed-trips`) alongside Trip/Route/Detection/Review.
+  The raw trip_id is still shown as a de-emphasized "Ref" in the detail
+  panel for support/debugging. A Block column is deferred — `trips.txt`'s
+  `block_id` isn't parsed or stored anywhere in this system yet, which needs
+  its own migration and static-sync change before it can show up here.
+
 ## [1.5.4] - 2026-08-07
 
 Not yet deployed — stacked on 1.5.1-1.5.3, all still awaiting a deploy.

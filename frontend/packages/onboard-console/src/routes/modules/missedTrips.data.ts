@@ -17,6 +17,7 @@ export interface MissedTripAlert {
   tripId: string;
   serviceDate: string;
   route: string;
+  direction: string | null;
   detectionType: MissedTripDetectionType;
   scheduledDepartureAt: string | null;
   graceDeadlineAt: string | null;
@@ -40,6 +41,7 @@ export const MISSED_TRIP_ALERTS: MissedTripAlert[] = [
     tripId: "497-0630-SB",
     serviceDate: "20260727",
     route: "497",
+    direction: "SB",
     detectionType: "explicit_cancellation",
     scheduledDepartureAt: new Date(Date.now() - 25 * 60_000).toISOString(),
     graceDeadlineAt: new Date(Date.now() - 10 * 60_000).toISOString(),
@@ -58,6 +60,7 @@ export const MISSED_TRIP_ALERTS: MissedTripAlert[] = [
     tripId: "440-0715-NB",
     serviceDate: "20260727",
     route: "440",
+    direction: "NB",
     detectionType: "silent_no_show",
     scheduledDepartureAt: new Date(Date.now() - 40 * 60_000).toISOString(),
     graceDeadlineAt: new Date(Date.now() - 25 * 60_000).toISOString(),

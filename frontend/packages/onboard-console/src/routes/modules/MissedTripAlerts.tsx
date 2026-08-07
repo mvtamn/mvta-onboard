@@ -33,6 +33,23 @@ function agoLabel(minutes: number | null): string {
   return mins === 0 ? `${hours}h ago` : `${hours}h ${mins}m ago`;
 }
 
+// Trip identifier the way staff actually recognize it - scheduled departure
+// time + direction (e.g. "1245-SB"), the same time+direction convention
+// Avail's own reports use for their "Trip" column - not the raw GTFS
+// trip_id (e.g. "t52C-b2E-sl2B-v62"), which is an opaque static-feed key
+// that means nothing to a reviewer scanning a list. Falls back to whichever
+// half is available if the other is missing (direction_label can be null -
+// see GtfsTripDirections' migration-007 comment).
+function tripCode(scheduledDepartureAt: string | null, direction: string | null): string {
+  const time = scheduledDepartureAt ? new Date(scheduledDepartureAt) : null;
+  const timePart =
+    time && !Number.isNaN(time.getTime())
+      ? `${String(time.getHours()).padStart(2, "0")}${String(time.getMinutes()).padStart(2, "0")}`
+      : null;
+  if (timePart && direction) return `${timePart}-${direction}`;
+  return timePart ?? direction ?? "—";
+}
+
 // "YYYYMM" -> "MM/YYYY" - a small local duplicate of the same helper OTP's
 // module keeps for itself (otp/OtpModule.tsx's formatServiceMonth); this
 // module isn't otherwise coupled to OTP's code, so it gets its own copy
@@ -48,6 +65,7 @@ function fromMissedTrip(trip: MissedTrip): MissedTripAlert {
     tripId: trip.trip_id,
     serviceDate: trip.service_date,
     route: trip.route_id,
+    direction: trip.direction_label,
     detectionType: trip.detection_type,
     scheduledDepartureAt: trip.scheduled_departure_at,
     graceDeadlineAt: trip.grace_deadline_at,
@@ -208,6 +226,14 @@ function MissedTripsInvestigationPage({ routesById }: { routesById: Map<string, 
   const [routeFilter, setRouteFilter] = useState("");
   const [dateFilter, setDateFilter] = useState("");
 
+  // "List" is the original card-row layout (Service/Detection/Review,
+  // drives the detail pane beside it) - "Table" is an addition, not a
+  // replacement: a Trip/Route/Direction/Detection/Review table for
+  // scanning many rows at once, the way Avail's own reports read. Picking
+  // a row in Table mode jumps back to List mode with that trip selected,
+  // so it's a shortcut into investigation rather than a dead end.
+  const [layout, setLayout] = useState<"list" | "table">("list");
+
   const isPreview = liveAlerts === null;
   const alerts = useMemo(
     () =>
@@ -322,6 +348,18 @@ function MissedTripsInvestigationPage({ routesById }: { routesById: Map<string, 
   const falsePositives = activeAlerts.filter((a) => a.validationStatus === "false_positive").length;
   const routesAffected = new Set(activeAlerts.map((a) => a.route)).size;
 
+  // Computed once, outside the list-vs-table branches below - referencing
+  // `layout` from inside a branch that already narrowed it to one literal
+  // makes the other comparison look tautologically false to TS (TS2367),
+  // even though both buttons need to render in both branches.
+  const currentLayout: "list" | "table" = layout;
+  const layoutToggle = (
+    <div className="risk-view-toggle risk-view-toggle-sm" aria-label="Flagged trips layout">
+      <button className={currentLayout === "list" ? "active" : ""} onClick={() => setLayout("list")}>List</button>
+      <button className={currentLayout === "table" ? "active" : ""} onClick={() => setLayout("table")}>Table</button>
+    </div>
+  );
+
   return (
     <>
       <div className="concept-banner">
@@ -343,6 +381,99 @@ function MissedTripsInvestigationPage({ routesById }: { routesById: Map<string, 
           <strong>No missed trips</strong>
           <span>No canceled or no-show trips are currently flagged for review.</span>
         </div>
+      ) : layout === "table" ? (
+        <section className="risk-list-panel missed-trips-table-panel" aria-label="Missed trips">
+          <div className="risk-section-head">
+            <div>
+              <span className="risk-eyebrow">Needs investigation</span>
+              <h3>Flagged trips</h3>
+            </div>
+            <div className="risk-section-head-actions">
+              <span className="risk-count">{filteredAlerts.length} of {activeAlerts.length} trips</span>
+              {layoutToggle}
+            </div>
+          </div>
+
+          <div className="risk-list-toolbar" style={{ display: "flex", gap: 10, padding: "0 4px 10px" }}>
+            <select className="f" value={routeFilter} onChange={(e) => setRouteFilter(e.target.value)}>
+              <option value="">All routes</option>
+              {routeOptions.map((r) => (
+                <option key={r} value={r}>{routeLabel(r, routesById)}</option>
+              ))}
+            </select>
+            <input
+              className="f"
+              type="date"
+              value={dateFilter ? `${dateFilter.slice(0, 4)}-${dateFilter.slice(4, 6)}-${dateFilter.slice(6, 8)}` : ""}
+              onChange={(e) => setDateFilter(e.target.value ? e.target.value.replace(/-/g, "") : "")}
+              aria-label="Filter by service date"
+            />
+            {routeFilter || dateFilter ? (
+              <button className="btn-sm" onClick={() => { setRouteFilter(""); setDateFilter(""); }}>
+                Clear filters
+              </button>
+            ) : null}
+          </div>
+
+          <div className="missed-trips-table-scroll">
+            <table className="data missed-trips-table">
+              <thead>
+                <tr>
+                  <th>Trip</th>
+                  <th>Route</th>
+                  <th>Direction</th>
+                  <th>Detection</th>
+                  <th>Review</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredAlerts.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="empty-note">No trips match these filters.</td>
+                  </tr>
+                ) : (
+                  filteredAlerts.map((alert) => {
+                    const goToDetail = () => {
+                      setSelectedId(alert.id);
+                      setLayout("list");
+                    };
+                    return (
+                      <tr
+                        key={alert.id}
+                        className="missed-trip-row"
+                        onClick={goToDetail}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            goToDetail();
+                          }
+                        }}
+                        tabIndex={0}
+                      >
+                        <td><strong>{tripCode(alert.scheduledDepartureAt, alert.direction)}</strong></td>
+                        <td>{routeLabel(alert.route, routesById)}</td>
+                        <td className="td-dim">{alert.direction ?? "—"}</td>
+                        <td>
+                          <span className={`pill-sm ${statusClass(alert.status, alert.validationStatus)}`}>
+                            {statusLabel(alert.status, alert.validationStatus)}
+                          </span>
+                          <div className="td-dim" style={{ marginTop: 4 }}>
+                            {timeLabel(alert.graceDeadlineAt)} · {agoLabel(minutesAgo(alert.graceDeadlineAt))}
+                          </div>
+                        </td>
+                        <td>
+                          <span className={`pill-sm ${validationClass(alert.validationStatus)}`}>
+                            {validationLabel(alert.validationStatus)}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
       ) : (
         <div className="risk-workspace">
           <section className="risk-list-panel" aria-label="Missed trips">
@@ -351,7 +482,10 @@ function MissedTripsInvestigationPage({ routesById }: { routesById: Map<string, 
                 <span className="risk-eyebrow">Needs investigation</span>
                 <h3>Flagged trips</h3>
               </div>
-              <span className="risk-count">{filteredAlerts.length} of {activeAlerts.length} trips</span>
+              <div className="risk-section-head-actions">
+                <span className="risk-count">{filteredAlerts.length} of {activeAlerts.length} trips</span>
+                {layoutToggle}
+              </div>
             </div>
 
             <div className="risk-list-toolbar" style={{ display: "flex", gap: 10, padding: "0 4px 10px" }}>
@@ -479,7 +613,7 @@ function MissedTripDetail({
       <div className="risk-detail-head">
         <div>
           <span className="risk-eyebrow">Selected trip</span>
-          <h3>{routeLabel(alert.route, routesById)}</h3>
+          <h3>Trip {tripCode(alert.scheduledDepartureAt, alert.direction)} · {routeLabel(alert.route, routesById)}</h3>
           <p>
             Service date {alert.serviceDate} · <span className="mono-ref">Ref {alert.tripId}</span>
           </p>

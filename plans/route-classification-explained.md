@@ -70,7 +70,37 @@ testing with no way to undo it.
 
 ## Who consumes it
 
-The main consumer is
+### Event Monitoring is the primary consumer
+
+Route Classification is what makes Event Monitoring possible at all, and it
+supplies **route identity in addition to lat/long**. The full chain:
+
+```
+AVL Reports (operator logged into a special route)
+  → availAvlPoll.ts, filtered by RouteClassification.route_category='SpecialEvent'
+  → EventVehicleCurrentPosition / EventVehiclePositionHistory
+  → GET /event-vehicle-positions
+  → Event Monitoring map + table
+```
+
+Special routes surface **from AVL Reports** — that is the only feed where a
+vehicle logged into special service appears — and Route Classification is what
+turns a bare RouteID from that feed into something nameable and filterable.
+Position alone is not enough: an event map showing unlabeled dots cannot tell an
+operator which shuttle is which.
+
+Concretely, `GET /event-vehicle-positions` `LEFT JOIN`s `RouteClassification`
+and returns `route_label` / `route_category` alongside
+`latitude`/`longitude`/`heading`, and the console's `eventRouteLabel()` resolves
+**classification first, GTFS second**. The prior order was wrong for exactly the
+reason documented in the caveat below — it resolved names from
+`getRoutes()`/`GtfsRoutes`, which by definition cannot contain a special-event
+RouteID, so every event bus rendered as a bare "Route 1111" even when an admin
+had typed "Vikings Game Shuttle" into the classification row. GTFS remains the
+fallback only for a *fixed* route temporarily classified `SpecialEvent`, where
+`route_label` may be blank.
+
+The other consumer is
 [`availAvlPoll.ts:48-57`](../functions-restapi/src/functions/availAvlPoll.ts#L48).
 On each 5-minute AVL Reports poll it loads `route_id` where
 `route_category = 'SpecialEvent' AND is_active = 1` into a `Set`, and for
@@ -106,11 +136,63 @@ Practical implications:
 - Event monitoring must stay AVL-driven end to end. Adding a GTFS-RT path for
   event vehicles would silently return nothing.
 
-Other Avail360 feeds have not been surveyed for special-service coverage beyond
-OTP Monthly and Missed Trips (name fields only). If broader coverage would
-help — e.g. a feed that exposes operator login / run assignment directly, which
-would let special service be detected rather than hand-classified — that is
-available to investigate.
+## AVL Reports first — what it actually carries
+
+Checked before reaching for any other feed. Per `AvailAvlReport` in
+[`availAvl.ts`](../functions-restapi/src/lib/availAvl.ts), each report is:
+
+| Field | Stored as | Useful for classification? |
+| --- | --- | --- |
+| `Vehicle` | `vehicle_id` (PK) | Yes — identifies the bus logged into the route |
+| `Route` | `route` | Yes — the bare RouteID being classified |
+| `Block` | `block` | Signal — see below |
+| `Run` | `run` | Signal — the operator's run assignment |
+| `Trip` | `trip` | Signal — see below |
+| `Direction` | `direction` | No (`'O'` / `'I'` code only) |
+| `Timestamp`, `Latitude`, `Longitude`, `Heading` | as named | No |
+
+Two conclusions:
+
+**1. AVL Reports has no name field at all.** There is nothing to prefer over
+OTP Monthly / Missed Trips for `suggested_label` — the existing fallback chain
+is already the best available, and for a brand-new event RouteID with no
+schedule-adherence history the label genuinely has to be typed by a human.
+
+**2. AVL Reports *can* auto-detect special service, without needing a name.**
+The operator login is the signal, and it already lands in
+`AvailAvlVehiclePositions` on every 5-minute poll. Two usable heuristics, both
+answerable from data already in the DB:
+
+- **Not in the static schedule.** A `route` present in
+  `AvailAvlVehiclePositions` with no matching row in `GtfsRoutes` is, by
+  definition, a RouteID no GTFS consumer can see — a strong special-service /
+  non-revenue candidate. This turns the GTFS blind spot above into the
+  detection mechanism rather than a limitation. Note `GtfsRoutes.route_id` is
+  `NVARCHAR(50)` while `AvailAvlVehiclePositions.route` is `INT`, so the join
+  needs an explicit cast.
+- **Logged in with no scheduled work.** `trip IS NULL` (and often
+  `block IS NULL`) on a vehicle that is otherwise reporting position means an
+  operator is logged into a route with no scheduled trip behind it — the normal
+  shape for event and rescue service.
+
+Neither is proof, so the right use is to **pre-fill the category in the Admin
+editor as a suggestion** — surface `unclassified` routes already marked
+"likely SpecialEvent (not in GTFS)" — while keeping the human confirmation step.
+That is a strict improvement on today's bare-RouteID-with-no-hint list, and it
+needs no new feed integration: only a `LEFT JOIN GtfsRoutes` added to the
+existing discovery query in
+`GET /route-classification` ([:96](../functions-restapi/src/functions/routeClassification.ts#L96)).
+
+**Caveat on relying on it.** AVL Reports is the newest and least stable of the
+integrations — 1800+ consecutive 404s from deployment through 2026-08-05 (wrong
+URL shape), then 14 days of `success=true` with an always-empty array (colons
+escaped as `%3A`), both fixed 2026-08-06. Detection quality is therefore capped
+by how completely this feed is reporting; an AVL-first design should treat an
+empty or sparse poll as "unknown", never as "no special service running."
+
+Only if that proves insufficient is it worth surveying other Avail360 feeds —
+e.g. one exposing operator login / run assignment more directly than the
+`Run` / `Block` / `Trip` values above.
 
 ## Known gap
 

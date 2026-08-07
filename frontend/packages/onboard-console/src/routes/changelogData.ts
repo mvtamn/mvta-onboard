@@ -18,6 +18,42 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.7",
+    date: "2026-08-07",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Missed Trips: the new Trip/Route/Direction table is now an option rather than a replacement. Use the \"List / Table\" toggle next to Flagged trips - List is the original card layout you were already using, Table is the wider view for scanning many rows. Picking a row in Table mode jumps you into List mode with that trip selected.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.6",
+    date: "2026-08-07",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "Event Monitoring: event buses showed as a bare \"Route 1111\" even when the route had been given a name in Route Classification. The map and table now use that name - e.g. \"Route 1111 · Vikings Game Shuttle\" - so you can tell which shuttle is which at a glance.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.5",
+    date: "2026-08-07",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Missed Trips: the flagged-trip list is now a proper table, and identifies each trip the way Avail's own reports do - by scheduled time and direction, like \"1245-SB\" - instead of an opaque internal key like \"t52C-b2E-sl2B-v62\". There's a new Direction column (NB/SB/EB/WB), and the raw reference is still in the detail panel if support needs it.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.4",
     date: "2026-08-07",
     sections: [

@@ -24,6 +24,11 @@ interface MissedTripRow {
   validated_by: string | null;
   validated_at: Date | null;
   notes: string | null;
+  // NB/SB/EB/WB from the static schedule (GtfsTripDirections, migration-007) -
+  // same join tripDelays.ts already does for Live Delays. Null whenever the
+  // trip isn't in that reference table yet, or the static feed couldn't
+  // determine a direction for it.
+  direction_label: string | null;
 }
 
 app.http("missedTripsList", {
@@ -53,15 +58,17 @@ app.http("missedTripsList", {
       }
 
       const result = await pool.request().query<MissedTripRow>(`
-        SELECT trip_id, service_date, route_id, scheduled_departure_at, grace_deadline_at,
-               status, detection_type, detected_late_arrival_at, suggested_alert_id,
-               first_seen_watching_at, last_checked_at,
-               validation_status, reason_code, validated_by, validated_at, notes
-        FROM MonitoredMissedTrips
+        SELECT mmt.trip_id, mmt.service_date, mmt.route_id, mmt.scheduled_departure_at,
+               mmt.grace_deadline_at, mmt.status, mmt.detection_type, mmt.detected_late_arrival_at,
+               mmt.suggested_alert_id, mmt.first_seen_watching_at, mmt.last_checked_at,
+               mmt.validation_status, mmt.reason_code, mmt.validated_by, mmt.validated_at, mmt.notes,
+               td.direction_label
+        FROM MonitoredMissedTrips mmt
+        LEFT JOIN GtfsTripDirections td ON td.trip_id = mmt.trip_id
         ORDER BY
-          CASE validation_status WHEN 'unreviewed' THEN 0 ELSE 1 END,
-          CASE status WHEN 'escalated' THEN 0 WHEN 'watching' THEN 1 ELSE 2 END,
-          scheduled_departure_at DESC
+          CASE mmt.validation_status WHEN 'unreviewed' THEN 0 ELSE 1 END,
+          CASE mmt.status WHEN 'escalated' THEN 0 WHEN 'watching' THEN 1 ELSE 2 END,
+          mmt.scheduled_departure_at DESC
       `);
       const missedTrips = result.recordset;
       const configured = Boolean(

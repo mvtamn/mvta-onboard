@@ -18,11 +18,20 @@ function timeAgoLabel(value: string | null): string {
   return `${Math.round(seconds / 60)} min ago`;
 }
 
-function routeLabel(routeId: number | null, routesById: Map<string, GtfsRouteOption>): string {
-  if (routeId === null) return "Unclassified route";
-  const r = routesById.get(String(routeId));
-  const name = r?.route_short_name || r?.route_long_name;
-  return name ? `Route ${routeId} · ${name}` : `Route ${routeId}`;
+// RouteClassification first, GTFS second - deliberately that order, not the
+// other way round. A SpecialEvent RouteID is absent from the GTFS static
+// schedule (and therefore from GTFS-RT), so routesById can never name one;
+// route_label from the classification row is the ONLY source of a friendly
+// name for special service, and it surfaces here via AVL Reports, the one
+// feed where a vehicle logged into a special route appears at all. GTFS
+// remains the fallback for the case of a fixed route temporarily classified
+// SpecialEvent (e.g. a regular route running event service), where the
+// admin may have left route_label blank.
+function eventRouteLabel(v: EventVehiclePosition, routesById: Map<string, GtfsRouteOption>): string {
+  if (v.route === null) return "Unclassified route";
+  const gtfs = routesById.get(String(v.route));
+  const name = v.route_label || gtfs?.route_short_name || gtfs?.route_long_name;
+  return name ? `Route ${v.route} · ${name}` : `Route ${v.route}`;
 }
 
 // Event Vehicle Monitoring — the mock event-shuttle scenario (POOL/monitored/
@@ -201,7 +210,7 @@ export function EventMonitoring() {
                   {eventVehicles.map((v) => (
                     <tr key={v.vehicle_id}>
                       <td className="veh-id">{v.vehicle_id}</td>
-                      <td>{routeLabel(v.route, routesById)}</td>
+                      <td>{eventRouteLabel(v, routesById)}</td>
                       <td>{v.heading !== null ? `${v.heading}°` : "—"}</td>
                       <td className="td-dim">{timeAgoLabel(v.report_timestamp)}</td>
                     </tr>
@@ -298,7 +307,7 @@ function EventVehicleMap({
         if (!popup) return;
         popup.setOptions({
           position: [v.longitude, v.latitude],
-          content: `<div class="event-map-popup"><strong>Vehicle ${v.vehicle_id}</strong><br/>${routeLabel(v.route, routesById)}<br/>${timeAgoLabel(v.report_timestamp)}</div>`,
+          content: `<div class="event-map-popup"><strong>Vehicle ${v.vehicle_id}</strong><br/>${eventRouteLabel(v, routesById)}<br/>${timeAgoLabel(v.report_timestamp)}</div>`,
         });
         popup.open(map);
       });

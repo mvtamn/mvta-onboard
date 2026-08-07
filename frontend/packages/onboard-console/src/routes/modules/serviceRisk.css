@@ -323,6 +323,63 @@
   color: var(--danger-text) !important;
 }
 
+/* Missed Trips "List / Table" toggle - an addition alongside the original
+   card-row list, not a replacement of it (see MissedTripAlerts.tsx). Reuses
+   .risk-view-toggle's look at a smaller size since it sits inside a section
+   head next to the trip count, not at the page's top-level view switch. */
+.risk-section-head-actions {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.risk-view-toggle-sm button {
+  font-size: 10.5px;
+  padding: 5px 9px;
+}
+
+/* Table mode renders full-width (outside the list+detail .risk-workspace
+   grid) since a 5-column table needs the room a ~400px list column can't
+   give it - .risk-list-panel's border/background styles still apply since
+   it's reused standalone here. */
+.missed-trips-table-panel {
+  width: 100%;
+}
+
+/* Missed Trips flagged-list table - a real <table class="data"> (Trip/Route/
+   Direction/Detection/Review columns) rather than the risk-list-row grid
+   other risk modules use, so it can show Trip as a scheduled-time+direction
+   code (e.g. "1245-SB", see MissedTripAlerts.tsx's tripCode()) the way
+   staff already read Avail's own reports, instead of the raw opaque GTFS
+   trip_id. Rows are click-to-select (jumps to List mode with that trip
+   open), so they need the same keyboard affordances a <button> got for
+   free - tabIndex + Enter/Space handling in the component, focus-visible
+   outline here. */
+.missed-trips-table-scroll {
+  overflow-x: auto;
+}
+
+.missed-trips-table tbody tr.missed-trip-row {
+  cursor: pointer;
+}
+
+.missed-trips-table tbody tr.missed-trip-row:hover td {
+  background: var(--surface-alt-bg);
+}
+
+.missed-trips-table tbody tr.missed-trip-row.selected td {
+  background: color-mix(in srgb, var(--chip-bg) 62%, var(--surface-bg));
+}
+
+.missed-trips-table tbody tr.missed-trip-row.selected td:first-child {
+  box-shadow: inset 3px 0 var(--brand-green);
+}
+
+.missed-trips-table tbody tr.missed-trip-row:focus-visible {
+  outline: 2px solid var(--brand-green);
+  outline-offset: -2px;
+}
+
 .risk-trend.recovering {
   color: var(--success-text) !important;
 }
