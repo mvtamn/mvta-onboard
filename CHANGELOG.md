@@ -7,6 +7,13 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 ## [Unreleased]
 
+_Nothing unreleased._
+
+## [1.5.2] - 2026-08-07
+
+Not yet deployed. The deployed console is still on 1.5.0 — both 1.5.1 and
+1.5.2 are awaiting a deploy.
+
 - **New `OCC.Detour` role, and a fix for a live 403.** Detour access now has
   four explicit tiers in `auth.ts` (`DETOUR_READ_ROLES`,
   `DETOUR_WRITE_ROLES`, `DETOUR_DELETE_ROLES`,
@@ -69,6 +76,10 @@ badge and footer read this version at build time - see `vite.config.ts`).
   image attachments "live" when they can't be until Blob Storage exists.
   `availDetoursFeed.ts`'s own fallback diagnostic still named the wrong
   (capital-D) key in its error text.
+## [1.5.1] - 2026-08-07
+
+Not yet deployed.
+
 - **Fixed two missed-trip detection logic gaps in `gtfsMissedTripsPoll.ts`.**
   (1) The silent-no-show grace threshold was 15 minutes; ops' definition of
   a missed trip is "never ran, or started more than 30 minutes late" - bumped

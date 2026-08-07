@@ -19,6 +19,10 @@ const ROLE_PRESETS: { label: string; roles: AppRole[] }[] = [
   { label: "Publisher", roles: ["OCC.Publisher"] },
   { label: "Viewer", roles: ["OCC.Viewer"] },
   { label: "Compliance", roles: ["OCC.Compliance"] },
+  // Detour Maintainer: read + create/edit + attachments, no delete. Worth a
+  // preset of its own precisely because its boundary is the narrow one - it
+  // is the only role where Edit shows but Delete does not.
+  { label: "Detour", roles: ["OCC.Detour"] },
   { label: "No roles", roles: [] },
 ];
 

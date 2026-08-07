@@ -131,7 +131,9 @@ New, separate, read-only page — **"Detour Reports"** — for compliance/ops le
 - Export: client-side "Download CSV," no new backend endpoint.
 - Optional stretch: an "Activity" timeline merging reported→approved→created→updated→resolved events off the existing timestamp columns (same merge-by-timestamp approach as `otpAuditStream.ts`).
 
-**Also this pass, small and independent of the rest of B7:** move `Detours.tsx`'s sidebar entry (shipped in B2 as a plain top-level `NavLink`) into a grouped "Tools" section of the sidebar nav, rather than sitting flat alongside primary nav items - Claude Code should check `App.tsx`'s current sidebar structure first to confirm whether a grouped-section pattern already exists elsewhere to follow (a labeled heading with indented links underneath), or whether this introduces that pattern for the first time, in which case it should be built generically enough that other utility-style pages could join the same "Tools" group later rather than being Detours-specific. `DetourReports.tsx` (new, this part) goes into the same group from the start.
+**Also this pass, small and independent of the rest of B7:** move `Detours.tsx`'s sidebar entry (shipped in B2 as a plain top-level `NavLink`) into a grouped "Tools" section of the sidebar nav, rather than sitting flat alongside primary nav items. `DetourReports.tsx` (new, this part) goes into the same group from the start.
+
+**Answered — the pattern already exists, do not re-investigate.** `App.tsx` renders a `nav-section-label` "Tools" heading with `OCC Tools` and `Compliance` beneath it (confirmed against the deployed console, 2026-08-07). "Detours & Closures" currently sits in the flat primary nav above that group. So this is a move into an established pattern, not the introduction of a new one - no generic-enough-for-later design work needed, just add the two links to the existing group.
 
 This page **is** the "communicate to internal teams via website" piece of this pass's ask — internal staff who need to reference active/expired detours get this page rather than a copy of the Excel tracker.
 
