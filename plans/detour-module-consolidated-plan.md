@@ -19,13 +19,13 @@ All prior detour-related instructions to Claude Code should be read through this
 | B1 | `Detours`/`DetourSegments` schema | **Shipped** (migration-017) |
 | B2 | Manual CRUD API + console module | **Shipped** |
 | B3 | Image attachments (Blob Storage) | Code **shipped**, but **NOT functional** — the Blob Storage account has never been provisioned |
-| B4 | Avail Detours sync | **Shipped** (committed `aa04b9d`); needs `AVAIL_DETOURS_URL` verified on the Function App |
+| B4 | Avail Detours sync | **Shipped** (committed `aa04b9d`); `AVAIL_DETOURS_URL` set 2026-08-06 — confirm it returns non-zero detours against live data |
 | B5 | Sync-overwrite behavior | **Shipped** (migration-019, run against dev) |
 | B6 | Reporting fields (reason code, severity, approvals, notification-channel flags) | **Draft — pending approval**, not built |
 | B7 | Active/Expired reporting page + search | **Draft — pending approval**, not built |
 | B8 | Notification distribution lists | **New, this pass — pending approval**, not built |
 | B9 | Notification drafting + send (email/Teams) | **New, this pass — pending approval**, not built |
-| B10 | Internal detour numbering (`MVTA-DET-YYYY-####`) | **Built** (approved 2026-08-06) — `migration-024-detour-numbering.sql` **not yet run against dev** |
+| B10 | Internal detour numbering (`MVTA-DET-YYYY-####`) | **Built**, migration-024 **run against dev** 2026-08-06 — code not yet deployed, so run `backfill-detour-numbers-gap.sql` after deploying |
 | B11 | Document attachments (generalized beyond images) + console preview | **New, this pass — pending approval**, not built |
 
 Per the standing instruction carried over from the reporting spec: **nothing in B6 onward ships until explicitly approved, section by section or all at once.** B1–B5 are built and are not to be reworked by this document — they're included below only as context for what B6+ builds on top of.

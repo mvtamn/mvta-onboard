@@ -95,8 +95,22 @@ Detours & Closures:     migration-017-detours.sql (Detours, DetourSegments, Deto
                          key, resolving the brief's open question #6. CONFIRMED live 2026-08-05:
                          the Detours envelope's array key is lowercase result.detours (the original
                          capital-D result.Detours guess was wrong and has been fixed); "results" is
-                         a sibling metadata array. Verify AVAIL_DETOURS_URL is set on
-                         func-mvta-restapi-dev before treating the sync as running.
+                         a sibling metadata array. AVAIL_DETOURS_URL is SET on
+                         func-mvta-restapi-dev as of 2026-08-06 - the sync should be polling every
+                         15 minutes; confirm it is returning non-zero detours against live data.
+                         Internal numbering (Part B10, MVTA-DET-YYYY-####):
+                         migration-024-detour-numbering.sql HAS BEEN RUN against the dev DB
+                         (2026-08-06), but the code that assigns numbers is NOT YET DEPLOYED.
+                         Until it is, any detour created through the currently-deployed build gets
+                         a NULL internal_number and is NOT caught by the migration's one-time
+                         backfill, which already ran. Deploy promptly, or re-run the gap backfill
+                         in sql/backfill-detour-numbers-gap.sql afterwards. Numbering degrades
+                         gracefully either way (both detoursCreate.ts and detoursList.ts guard on
+                         the column existing), so nothing errors - numbers are just missing.
+                         New role OCC.Detour (read + create/edit + attachments, no delete) is in
+                         the code but does nothing until it is registered as an appRole on the
+                         Entra app registration (7e5a35b1-dc1b-473d-987d-6942a7b4fae2) and
+                         assigned per user. It is additive - existing roles are unaffected.
                          A follow-up spec (detour-reporting-and-search-spec.md, repo root) drafts
                          additional internal-ops-reporting fields + a searchable Active/Expired
                          reporting page - not built, awaiting owner review/approval.
