@@ -44,17 +44,37 @@ export interface AvailAvlEnvelope {
   success: boolean;
 }
 
+// CONFIRMED live 2026-08-07: Avail360 interprets these two datetime segments
+// in AGENCY LOCAL time, not UTC. Proof from the feed's own response body -
+// a poll that sent window [2026-08-07 20:45:00 -> 2026-08-07 20:55:00]
+// (built from getUTC* components, as this function previously did) came back
+// status=200 success=true with an empty "AVL Reports" array and
+// RefreshTime "2026-08-07T15:55:00.820" - Avail's own notion of "now",
+// exactly five hours (UTC-5, CDT) behind the window we asked for. Every
+// poll was therefore requesting a window five hours in the FUTURE, which
+// this API reports as an empty result rather than an error - which is why
+// vehicles demonstrably logged into runs produced "0 reports seen" on every
+// single poll. Formatting in America/Chicago fixes it, and handles the
+// CDT/CST transition on its own rather than hardcoding an offset.
+const AGENCY_TIME_ZONE = "America/Chicago";
+
 // Full "YYYY-MM-DD HH:MI:SS" per the confirmed spec - AVL Reports is the
 // only feed in this file needing datetime (not date-only) precision, since
-// its window is a rolling few minutes, not a whole day/month.
+// its window is a rolling few minutes, not a whole day/month. hourCycle
+// "h23" (not hour12: false) so midnight formats as 00, not 24.
 function formatDateTimeSql(date: Date): string {
-  const y = date.getUTCFullYear();
-  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const d = String(date.getUTCDate()).padStart(2, "0");
-  const hh = String(date.getUTCHours()).padStart(2, "0");
-  const mi = String(date.getUTCMinutes()).padStart(2, "0");
-  const ss = String(date.getUTCSeconds()).padStart(2, "0");
-  return `${y}-${m}-${d} ${hh}:${mi}:${ss}`;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: AGENCY_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
+  return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}:${get("second")}`;
 }
 
 // MVTA is the only property this app will ever query - hardcoded here
@@ -121,16 +141,17 @@ export async function fetchAvlReports(
   // its own). Confirms/denies, from one trace line: (1) whether Avail
   // itself returned an empty "AVL Reports" array vs. us mis-parsing a
   // populated one, (2) the exact {Start DateTime}/{End DateTime} strings
-  // sent - format and that they're built from UTC components (formatDate-
-  // TimeSql uses getUTC*, so no local-timezone drift on our side; any
-  // remaining drift would be Avail interpreting these as a different
-  // offset than intended), (3) the exact Property casing sent (PROPERTY
+  // sent - format, and that they're built in agency-local time. This is the
+  // log line that ACTUALLY diagnosed the empty-result bug: comparing the
+  // window sent against the RefreshTime Avail echoed back is what showed
+  // the five-hour offset (see AGENCY_TIME_ZONE above), so keep logging
+  // both. (3) the exact Property casing sent (PROPERTY
   // is a literal "MVTA" constant, always this same casing). Body truncated
   // to 2000 chars to bound trace volume if Avail ever returns a large
   // live payload.
   console.log(
     `Avail AVL Reports raw response: status=${res.status} url=${url} ` +
-      `window(UTC)=[${startStr} -> ${endStr}] bodyLength=${body.length} ` +
+      `window(${AGENCY_TIME_ZONE})=[${startStr} -> ${endStr}] bodyLength=${body.length} ` +
       `body=${body.slice(0, 2000)}`,
   );
 

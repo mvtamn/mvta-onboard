@@ -84,9 +84,45 @@ test("fetchAvlReports builds the URL with an explicit Property segment plus two 
   }
   assert.strictEqual(
     requestedUrl,
-    "https://example.test/AVLReports/v1/MVTA/2026-08-05%2021:30:00/2026-08-05%2021:40:00",
+    "https://example.test/AVLReports/v1/MVTA/2026-08-05%2016:30:00/2026-08-05%2016:40:00",
   );
 });
+
+// THIRD root cause, confirmed live 2026-08-07: Avail interprets the two
+// datetime segments in AGENCY LOCAL time, not UTC. The poller had been
+// sending UTC ("0 reports seen" on every run despite vehicles demonstrably
+// logged into runs) - proven by Avail's own RefreshTime in the response body
+// running exactly 5 hours behind the window sent. Both cases below are the
+// SAME UTC instant expressed in the two US Central offsets, so this fails if
+// anyone reverts to getUTC* OR hardcodes a fixed -5/-6 offset instead of the
+// America/Chicago zone.
+for (const c of [
+  { label: "CDT (summer, UTC-5)", utc: "2026-08-05T21:30:00Z", local: "2026-08-05%2016:30:00" },
+  { label: "CST (winter, UTC-6)", utc: "2026-01-15T21:30:00Z", local: "2026-01-15%2015:30:00" },
+]) {
+  test(`fetchAvlReports builds its window in agency-local time - ${c.label}`, async () => {
+    let requestedUrl = "";
+    const original = global.fetch;
+    global.fetch = (async (url: string) => {
+      requestedUrl = url;
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ success: true, errors: [], result: { "AVL Reports": [] } }),
+      };
+    }) as unknown as typeof fetch;
+    try {
+      const start = new Date(c.utc);
+      await fetchAvlReports("https://example.test/AVLReports/v1", "key", start, start);
+    } finally {
+      global.fetch = original;
+    }
+    assert.strictEqual(
+      requestedUrl,
+      `https://example.test/AVLReports/v1/MVTA/${c.local}/${c.local}`,
+    );
+  });
+}
 
 // ROOT CAUSE, confirmed live 2026-08-06: Ty ran the same request via curl
 // with colons left literal (not %3A-encoded) and got real vehicle data
@@ -120,7 +156,7 @@ test("fetchAvlReports never percent-encodes the colons in the datetime segments"
   assert.ok(requestedUrl.includes(":"), `expected literal colons, got: ${requestedUrl}`);
   assert.strictEqual(
     requestedUrl,
-    "https://example.test/AVLReports/v1/MVTA/2026-08-06%2017:00:00/2026-08-06%2017:15:00",
+    "https://example.test/AVLReports/v1/MVTA/2026-08-06%2012:00:00/2026-08-06%2012:15:00",
   );
 });
 
@@ -151,7 +187,7 @@ test("fetchAvlReports does not double up Property when baseUrl already ends in /
   }
   assert.strictEqual(
     requestedUrl,
-    "https://example.test/AVLReports/v1/MVTA/2026-08-05%2021:30:00/2026-08-05%2021:40:00",
+    "https://example.test/AVLReports/v1/MVTA/2026-08-05%2016:30:00/2026-08-05%2016:40:00",
   );
 });
 
@@ -176,7 +212,7 @@ test("fetchAvlReports does not double up Property when baseUrl ends in /MVTA/ (t
   for (const requestedUrl of requestedUrls) {
     assert.strictEqual(
       requestedUrl,
-      "https://example.test/AVLReports/v1/MVTA/2026-08-05%2021:30:00/2026-08-05%2021:40:00",
+      "https://example.test/AVLReports/v1/MVTA/2026-08-05%2016:30:00/2026-08-05%2016:40:00",
     );
   }
 });
@@ -213,7 +249,7 @@ test("fetchAvlReports logs the raw status and body, and still returns the parsed
   assert.strictEqual(reports.length, 1);
   assert.strictEqual(reports[0].Vehicle, 302);
   assert.match(loggedLine, /status=200/);
-  assert.match(loggedLine, /window\(UTC\)=\[2026-08-05 21:30:00 -> 2026-08-05 21:40:00\]/);
+  assert.match(loggedLine, /window\(America\/Chicago\)=\[2026-08-05 16:30:00 -> 2026-08-05 16:40:00\]/);
   assert.match(loggedLine, /"AVL Reports":\[\{"Vehicle":302/);
 });
 

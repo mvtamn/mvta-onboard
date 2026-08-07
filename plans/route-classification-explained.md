@@ -184,11 +184,36 @@ existing discovery query in
 `GET /route-classification` ([:96](../functions-restapi/src/functions/routeClassification.ts#L96)).
 
 **Caveat on relying on it.** AVL Reports is the newest and least stable of the
-integrations — 1800+ consecutive 404s from deployment through 2026-08-05 (wrong
-URL shape), then 14 days of `success=true` with an always-empty array (colons
-escaped as `%3A`), both fixed 2026-08-06. Detection quality is therefore capped
-by how completely this feed is reporting; an AVL-first design should treat an
-empty or sparse poll as "unknown", never as "no special service running."
+integrations — three separate root causes for returning nothing, all now fixed:
+
+1. 1800+ consecutive 404s from deployment through 2026-08-05 — wrong URL shape
+   (one date-only segment instead of Property + two datetime segments).
+2. 14 days of `success=true` with an always-empty array — `encodeURIComponent`
+   escaped the colons to `%3A`, which Avail silently no-ops on. Fixed
+   2026-08-06.
+3. `0 reports seen` on every poll through 2026-08-07 — **the window was built
+   in UTC, but Avail interprets these datetime segments in agency-local time**,
+   so every poll requested a window five hours in the future. Proven from
+   Avail's own response: a request for `[2026-08-07 20:45:00 -> 20:55:00]` came
+   back with `RefreshTime: 2026-08-07T15:55:00`, its own "now", exactly UTC-5
+   behind. An out-of-range window returns an empty array with `success: true`,
+   not an error, which is why this survived two prior fixes. Now formatted in
+   `America/Chicago`, so CDT/CST is handled without a hardcoded offset.
+
+The pattern across all three: this feed reports *nothing* rather than
+complaining. An AVL-first design must therefore treat an empty or sparse poll as
+"unknown", never as "no special service running."
+
+**Second limitation on discovery specifically.** `AvailAvlVehiclePositions` is
+latest-only — `availAvlPoll.ts` MERGEs on `vehicle_id`, keeping one row per
+vehicle. A special-service RouteID therefore disappears from the discovery list
+as soon as that vehicle's next report shows a different route, so the
+`unclassified` list reflects *what is running right now*, not what ran today.
+An event that finished this morning leaves no trace to classify by afternoon.
+`EventVehiclePositionHistory` is append-only but is written only for routes
+*already* classified `SpecialEvent`, so it cannot close this gap — that is a
+chicken-and-egg. Classifying while service is actually running is the current
+workaround.
 
 Only if that proves insufficient is it worth surveying other Avail360 feeds —
 e.g. one exposing operator login / run assignment more directly than the

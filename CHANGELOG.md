@@ -9,6 +9,28 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 _Nothing unreleased._
 
+## [1.5.9] - 2026-08-07
+
+- **AVL Reports was querying a window five hours in the future, so it returned
+  no vehicles at all — the third and final root cause of this feed reporting
+  nothing.** The poller built its `{Start DateTime}`/`{End DateTime}` segments
+  from UTC components, but Avail360 interprets them in agency-local time.
+  Proven from the feed's own response body: a poll sending
+  `[2026-08-07 20:45:00 -> 20:55:00]` came back `success: true` with an empty
+  array and `RefreshTime: 2026-08-07T15:55:00` — Avail's own "now", exactly
+  UTC-5 (CDT) behind what we asked for. An out-of-range window is reported as
+  an empty result rather than an error, which is how this survived the two
+  earlier fixes (the 404 URL shape in 1.4.x and the `%3A`-escaped colons on
+  2026-08-06). The window is now formatted in `America/Chicago`, which handles
+  the CDT/CST switch without a hardcoded offset; new tests pin both offsets
+  against the same UTC instant so neither a UTC revert nor a fixed `-5` passes.
+- Consequence for the console: **Event Monitoring and Admin > Route
+  Classification's `(AVL)` list should start populating** once the next poll
+  runs — both were empty for want of vehicle data, not because of a bug in
+  either page. Note the discovery list still reflects only what is running at
+  that moment (positions are stored latest-only per vehicle), so classify
+  special service while it is actually out.
+
 ## [1.5.8] - 2026-08-07
 
 - **Admin > Route Classification's Route ID picker no longer lists only GTFS
