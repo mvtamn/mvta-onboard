@@ -7,6 +7,18 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 ## [Unreleased]
 
+## [1.5.11] - 2026-08-08
+
+- **Missed Trips review queue pagination.** The queue now shows 10 trips by
+  default instead of rendering the entire fetched set. Reviewers can choose 10,
+  25, 50, or 100 trips per page and move through the results with Previous and
+  Next controls in either List or Table layout.
+- **Selected-trip context stays usable while reviewing.** The investigation
+  panel remains within the viewport, scrolls independently when its evidence is
+  taller than the screen, and returns to the top when a different trip is
+  selected. Aging and overdue candidates remain visible without automatically
+  becoming compliance findings.
+
 ## [1.5.10] - 2026-08-08
 
 - **Missed Trips false-positive containment and evidence rebuild.** Schedule-based

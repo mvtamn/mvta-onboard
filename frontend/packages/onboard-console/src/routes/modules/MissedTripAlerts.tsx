@@ -281,6 +281,8 @@ function MissedTripsInvestigationPage({
   const [configured, setConfigured] = useState(true);
   const [diagnostics, setDiagnostics] = useState<MissedTripsDiagnostics | null>(null);
   const [pageLimit, setPageLimit] = useState(200);
+  const [displayPageSize, setDisplayPageSize] = useState(10);
+  const [displayPage, setDisplayPage] = useState(0);
   const [selectedId, setSelectedId] = useState(MISSED_TRIP_ALERTS[0].id);
   const [notesDraft, setNotesDraft] = useState("");
   const [reasonDraft, setReasonDraft] = useState("");
@@ -342,10 +344,36 @@ function MissedTripsInvestigationPage({
       ),
     [activeAlerts, routeFilter, dateFilter],
   );
+  const displayPageCount = Math.max(1, Math.ceil(filteredAlerts.length / displayPageSize));
+  const effectiveDisplayPage = Math.min(displayPage, displayPageCount - 1);
+  const visibleAlerts = useMemo(
+    () => filteredAlerts.slice(
+      effectiveDisplayPage * displayPageSize,
+      (effectiveDisplayPage + 1) * displayPageSize,
+    ),
+    [effectiveDisplayPage, displayPageSize, filteredAlerts],
+  );
+  const displayStart = filteredAlerts.length === 0 ? 0 : effectiveDisplayPage * displayPageSize + 1;
+  const displayEnd = Math.min(filteredAlerts.length, (effectiveDisplayPage + 1) * displayPageSize);
 
   useEffect(() => {
     setPageLimit(200);
+    setDisplayPage(0);
   }, [mode]);
+
+  useEffect(() => {
+    setDisplayPage(0);
+  }, [routeFilter, dateFilter, displayPageSize]);
+
+  useEffect(() => {
+    if (displayPage !== effectiveDisplayPage) setDisplayPage(effectiveDisplayPage);
+  }, [displayPage, effectiveDisplayPage]);
+
+  useEffect(() => {
+    if (visibleAlerts.length > 0 && !visibleAlerts.some((alert) => alert.id === selectedId)) {
+      setSelectedId(visibleAlerts[0].id);
+    }
+  }, [selectedId, visibleAlerts]);
 
   useEffect(() => {
     setNotesDraft(selected.notes ?? "");
@@ -468,6 +496,7 @@ function MissedTripsInvestigationPage({
   );
   const detailPane = (
     <MissedTripDetail
+      key={selected.id}
       alert={selected}
       routesById={routesById}
       reasonCodes={reasonCodes}
@@ -481,6 +510,38 @@ function MissedTripsInvestigationPage({
       onValidate={(status) => void validate(selected, status)}
     />
   );
+  const pageSizeControl = (
+    <label className="risk-page-size">
+      <span>Show</span>
+      <select
+        className="f"
+        value={displayPageSize}
+        onChange={(event) => setDisplayPageSize(Number(event.target.value))}
+        aria-label="Trips displayed per page"
+      >
+        {[10, 25, 50, 100].map((size) => <option key={size} value={size}>{size} trips</option>)}
+      </select>
+    </label>
+  );
+  const paginationControls = filteredAlerts.length > 0 ? (
+    <nav className="risk-pagination" aria-label="Missed trips pages">
+      <button
+        className="btn-sm"
+        disabled={effectiveDisplayPage === 0}
+        onClick={() => setDisplayPage((current) => Math.max(0, current - 1))}
+      >
+        Previous
+      </button>
+      <span>Page {effectiveDisplayPage + 1} of {displayPageCount}</span>
+      <button
+        className="btn-sm"
+        disabled={effectiveDisplayPage >= displayPageCount - 1}
+        onClick={() => setDisplayPage((current) => Math.min(displayPageCount - 1, current + 1))}
+      >
+        Next
+      </button>
+    </nav>
+  ) : null;
 
   return (
     <>
@@ -538,12 +599,12 @@ function MissedTripsInvestigationPage({
               <h3>{mode === "queue" ? "Candidate trips" : "Reviewed and resolved trips"}</h3>
             </div>
             <div className="risk-section-head-actions">
-              <span className="risk-count">{filteredAlerts.length} of {activeAlerts.length} trips</span>
+              <span className="risk-count">{displayStart}–{displayEnd} of {filteredAlerts.length} trips</span>
               {layoutToggle}
             </div>
           </div>
 
-          <div className="risk-list-toolbar" style={{ display: "flex", gap: 10, padding: "0 4px 10px" }}>
+          <div className="risk-list-toolbar">
             <select className="f" value={routeFilter} onChange={(e) => setRouteFilter(e.target.value)}>
               <option value="">All routes</option>
               {routeOptions.map((r) => (
@@ -562,6 +623,7 @@ function MissedTripsInvestigationPage({
                 Clear filters
               </button>
             ) : null}
+            {pageSizeControl}
           </div>
 
           <div className="missed-trips-table-scroll">
@@ -581,7 +643,7 @@ function MissedTripsInvestigationPage({
                     <td colSpan={5} className="empty-note">No trips match these filters.</td>
                   </tr>
                 ) : (
-                  filteredAlerts.map((alert) => {
+                  visibleAlerts.map((alert) => {
                     const age = agingBadge(alert);
                     const goToDetail = () => {
                       setSelectedId(alert.id);
@@ -623,6 +685,7 @@ function MissedTripsInvestigationPage({
               </tbody>
             </table>
           </div>
+          {paginationControls}
         </section>
         {detailPane}
         </div>
@@ -635,12 +698,12 @@ function MissedTripsInvestigationPage({
                 <h3>{mode === "queue" ? "Candidate trips" : "Reviewed and resolved trips"}</h3>
               </div>
               <div className="risk-section-head-actions">
-                <span className="risk-count">{filteredAlerts.length} of {activeAlerts.length} trips</span>
+                <span className="risk-count">{displayStart}–{displayEnd} of {filteredAlerts.length} trips</span>
                 {layoutToggle}
               </div>
             </div>
 
-            <div className="risk-list-toolbar" style={{ display: "flex", gap: 10, padding: "0 4px 10px" }}>
+            <div className="risk-list-toolbar">
               <select className="f" value={routeFilter} onChange={(e) => setRouteFilter(e.target.value)}>
                 <option value="">All routes</option>
                 {routeOptions.map((r) => (
@@ -659,6 +722,7 @@ function MissedTripsInvestigationPage({
                   Clear filters
                 </button>
               ) : null}
+              {pageSizeControl}
             </div>
 
             <div className="risk-list-head" aria-hidden="true">
@@ -671,7 +735,7 @@ function MissedTripsInvestigationPage({
               <div className="empty-note" style={{ padding: "16px 4px" }}>No trips match these filters.</div>
             ) : null}
 
-            {filteredAlerts.map((alert) => {
+            {visibleAlerts.map((alert) => {
               const active = alert.id === selected.id;
               const age = agingBadge(alert);
               return (
@@ -700,6 +764,7 @@ function MissedTripsInvestigationPage({
                 </button>
               );
             })}
+            {paginationControls}
           </section>
 
           {detailPane}
@@ -761,7 +826,7 @@ function MissedTripDetail({
   const reviewed = alert.validationStatus !== "unreviewed";
 
   return (
-    <aside className="risk-detail" aria-label={`${routeLabel(alert.route, routesById, alert.sourceSystem)} missed trip detail`}>
+    <aside className="risk-detail missed-trip-detail" aria-label={`${routeLabel(alert.route, routesById, alert.sourceSystem)} missed trip detail`}>
       <div className="risk-detail-head">
         <div>
           <span className="risk-eyebrow">Selected trip</span>

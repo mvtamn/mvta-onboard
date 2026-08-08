@@ -333,6 +333,48 @@
   gap: 10px;
 }
 
+.risk-list-toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 0 10px 10px;
+}
+
+.risk-page-size {
+  align-items: center;
+  color: var(--text-muted);
+  display: flex;
+  font-size: 10.5px;
+  font-weight: 700;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.risk-page-size .f {
+  min-width: 92px;
+}
+
+.risk-pagination {
+  align-items: center;
+  border-top: 1px solid var(--border-soft);
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  padding: 10px 12px;
+}
+
+.risk-pagination span {
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.risk-pagination button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .risk-view-toggle-sm button {
   font-size: 10.5px;
   padding: 5px 9px;
@@ -393,6 +435,14 @@
 .risk-detail {
   position: sticky;
   top: 0;
+}
+
+.missed-trip-detail {
+  max-height: calc(100vh - 110px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  top: 12px;
 }
 
 .risk-detail-head {
@@ -708,6 +758,11 @@
 
   .risk-detail {
     position: static;
+  }
+
+  .missed-trip-detail {
+    max-height: none;
+    overflow: hidden;
   }
 }
 
