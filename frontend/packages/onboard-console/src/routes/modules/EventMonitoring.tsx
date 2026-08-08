@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as atlas from "azure-maps-control";
 import "azure-maps-control/dist/atlas.min.css";
-import { ApiError, type AvailAvlVehicle, type GtfsRouteOption } from "@mvta/shared";
+import { ApiError, type EventVehiclePosition } from "@mvta/shared";
 import { api } from "../../config.js";
 import "./eventMonitoring.css";
 
 const AVL_REFRESH_MS = 30_000;
 const MAP_CENTER: atlas.data.Position = [-93.25, 44.83];
 const MAP_ZOOM = 10;
+type MapStyle = "road" | "grayscale_light" | "night" | "satellite_road_labels";
 
 function minutesAgo(value: string | null): string {
   if (!value) return "—";
@@ -45,38 +46,34 @@ function escapeHtml(value: string): string {
   })[char] ?? char);
 }
 
-function routeLabel(vehicle: AvailAvlVehicle, routes: Map<string, GtfsRouteOption>): string {
+function routeLabel(vehicle: EventVehiclePosition): string {
   if (vehicle.route === null) return "Unassigned";
-  const route = routes.get(String(vehicle.route));
-  const name = route?.route_short_name || route?.route_long_name;
-  return name && name !== String(vehicle.route) ? `${vehicle.route} · ${name}` : String(vehicle.route);
+  return vehicle.route_label ? `${vehicle.route} · ${vehicle.route_label}` : String(vehicle.route);
 }
 
 export function EventMonitoring() {
-  const [routes, setRoutes] = useState<GtfsRouteOption[]>([]);
-  const [vehicles, setVehicles] = useState<AvailAvlVehicle[] | null>(null);
+  const [vehicles, setVehicles] = useState<EventVehiclePosition[] | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [minimized, setMinimized] = useState(false);
-  const routesById = useMemo(() => new Map(routes.map((route) => [route.route_id, route])), [routes]);
-
-  useEffect(() => {
-    let alive = true;
-    api.getRoutes().then((data) => alive && setRoutes(data.routes)).catch(() => undefined);
-    return () => { alive = false; };
-  }, []);
+  const [routeFilter, setRouteFilter] = useState("all");
+  const [headingFilter, setHeadingFilter] = useState("all");
+  const [motionFilter, setMotionFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const [mapStyle, setMapStyle] = useState<MapStyle>("road");
+  const [traffic, setTraffic] = useState(false);
 
   const load = useCallback(async () => {
     setRefreshing(true);
     try {
-      const { vehicles: current, diagnostics } = await api.getAvailAvlVehicles();
+      const { vehicles: current, diagnostics } = await api.getEventVehiclePositions();
       setVehicles(current);
       setLastUpdated(new Date());
       setMessage(
-        diagnostics.configured
-          ? current.length === 0 ? "No vehicles are actively reporting right now." : null
-          : "Avail AVL Reports feed is not configured yet.",
+        diagnostics.table_ready
+          ? current.length === 0 ? "No active vehicles match the current SpecialEvent route classifications." : null
+          : "Event vehicle monitoring has not been configured yet.",
       );
     } catch (error) {
       setMessage(error instanceof ApiError
@@ -93,9 +90,27 @@ export function EventMonitoring() {
     return () => window.clearInterval(interval);
   }, [load]);
 
-  const activeVehicles = vehicles ?? [];
-  const routesActive = new Set(activeVehicles.map((v) => v.route).filter((v) => v !== null)).size;
-  const reportingNow = activeVehicles.filter((v) => Date.now() - new Date(v.report_timestamp).getTime() < 60_000).length;
+  const classifiedVehicles = vehicles ?? [];
+  const routeOptions = useMemo(() => Array.from(new Map(classifiedVehicles
+    .filter((vehicle) => vehicle.route !== null)
+    .map((vehicle) => [String(vehicle.route), routeLabel(vehicle)])).entries()), [classifiedVehicles]);
+  const activeVehicles = useMemo(() => classifiedVehicles.filter((vehicle) => {
+    const heading = cardinalHeading(vehicle.heading, vehicle.direction);
+    const query = search.trim().toLowerCase();
+    const matchesSearch = !query || String(vehicle.vehicle_id).includes(query)
+      || displayOperator(vehicle.operator_name).toLowerCase().includes(query)
+      || routeLabel(vehicle).toLowerCase().includes(query);
+    const matchesMotion = motionFilter === "all"
+      || (motionFilter === "moving"
+        ? vehicle.speed_mph !== null && vehicle.speed_mph >= 1
+        : vehicle.speed_mph !== null && vehicle.speed_mph < 1);
+    return (routeFilter === "all" || String(vehicle.route) === routeFilter)
+      && (headingFilter === "all" || heading === headingFilter)
+      && matchesMotion && matchesSearch;
+  }), [classifiedVehicles, headingFilter, motionFilter, routeFilter, search]);
+  const routesActive = new Set(classifiedVehicles.map((v) => v.route).filter((v) => v !== null)).size;
+  const reportingNow = classifiedVehicles.filter((v) => Date.now() - new Date(v.report_timestamp).getTime() < 60_000).length;
+  const hasFilters = routeFilter !== "all" || headingFilter !== "all" || motionFilter !== "all" || search !== "";
 
   return (
     <section className="evmon" aria-label="Live vehicle monitoring">
@@ -106,7 +121,7 @@ export function EventMonitoring() {
           <p>Active vehicles are removed automatically when reports stop.</p>
         </div>
         <div className="evmon-metrics" aria-label="Live monitoring summary">
-          <div><strong>{activeVehicles.length}</strong><span>Vehicles</span></div>
+          <div><strong>{classifiedVehicles.length}</strong><span>Vehicles</span></div>
           <div><strong>{routesActive}</strong><span>Routes</span></div>
           <div><strong>{reportingNow}</strong><span>Reporting now</span></div>
         </div>
@@ -125,17 +140,26 @@ export function EventMonitoring() {
             </button>
           </div>
         </div>
+        {!minimized && <div className="evmon-controls">
+          <label><span>Find</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Vehicle or operator" /></label>
+          <label><span>Route</span><select value={routeFilter} onChange={(event) => setRouteFilter(event.target.value)}><option value="all">All event routes</option>{routeOptions.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
+          <label><span>Heading</span><select value={headingFilter} onChange={(event) => setHeadingFilter(event.target.value)}><option value="all">All headings</option>{["NB", "SB", "EB", "WB"].map((value) => <option key={value}>{value}</option>)}</select></label>
+          <label><span>Motion</span><select value={motionFilter} onChange={(event) => setMotionFilter(event.target.value)}><option value="all">Moving + stopped</option><option value="moving">Moving</option><option value="stopped">Stopped</option></select></label>
+          <label><span>Map layer</span><select value={mapStyle} onChange={(event) => setMapStyle(event.target.value as MapStyle)}><option value="road">Road</option><option value="grayscale_light">Light</option><option value="night">Night</option><option value="satellite_road_labels">Satellite + labels</option></select></label>
+          <label className="evmon-traffic"><input type="checkbox" checked={traffic} onChange={(event) => setTraffic(event.target.checked)} /><span>Traffic</span></label>
+          {hasFilters && <button type="button" className="evmon-clear" onClick={() => { setSearch(""); setRouteFilter("all"); setHeadingFilter("all"); setMotionFilter("all"); }}>Clear filters</button>}
+        </div>}
         {!minimized && (
           <div className="evmon-map-wrap">
-            <VehicleMap vehicles={activeVehicles} routesById={routesById} />
-            <div className="evmon-map-hint">Select the map to open a larger view</div>
+            <VehicleMap vehicles={activeVehicles} mapStyle={mapStyle} traffic={traffic} />
+            <div className="evmon-map-hint">Select the map background to open a larger view</div>
           </div>
         )}
       </div>
 
       <div className="evmon-list-header">
         <div><h3>Monitored vehicles</h3><span>Only actively reporting vehicles are shown</span></div>
-        <span className="evmon-count">{activeVehicles.length} active</span>
+        <span className="evmon-count">{activeVehicles.length}{hasFilters ? ` of ${classifiedVehicles.length}` : ""} active</span>
       </div>
       <div className="evmon-table-wrap">
         {message ? <div className="evmon-empty">{message}</div> : vehicles === null ? <div className="evmon-empty">Loading live positions…</div> : (
@@ -145,7 +169,7 @@ export function EventMonitoring() {
               <tr key={vehicle.vehicle_id}>
                 <td><span className="evmon-bus-chip">▣</span><strong>{vehicle.vehicle_id}</strong></td>
                 <td>{displayOperator(vehicle.operator_name)}</td>
-                <td>{routeLabel(vehicle, routesById)}</td>
+                <td>{routeLabel(vehicle)}</td>
                 <td>{vehicle.block ?? "—"} / {vehicle.run ?? "—"}</td>
                 <td><span className="evmon-heading">{cardinalHeading(vehicle.heading, vehicle.direction)}</span></td>
                 <td>{vehicle.speed_mph === null ? "—" : `${vehicle.speed_mph.toFixed(1)} mph`}</td>
@@ -159,10 +183,12 @@ export function EventMonitoring() {
   );
 }
 
-function VehicleMap({ vehicles, routesById }: { vehicles: AvailAvlVehicle[]; routesById: Map<string, GtfsRouteOption> }) {
+function VehicleMap({ vehicles, mapStyle, traffic }: { vehicles: EventVehiclePosition[]; mapStyle: MapStyle; traffic: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<atlas.Map | null>(null);
   const popupRef = useRef<atlas.Popup | null>(null);
+  const fittedRef = useRef(false);
+  const markerClickRef = useRef(false);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -184,6 +210,10 @@ function VehicleMap({ vehicles, routesById }: { vehicles: AvailAvlVehicle[]; rou
       popupRef.current = new atlas.Popup({ pixelOffset: [0, -24], closeButton: false });
       map.events.addOnce("ready", () => !cancelled && setReady(true));
       map.events.add("click", () => {
+        if (markerClickRef.current) {
+          markerClickRef.current = false;
+          return;
+        }
         if (!window.confirm("Open this live map in a new browser window?")) return;
         const camera = map?.getCamera();
         const center = camera?.center ?? MAP_CENTER;
@@ -192,6 +222,16 @@ function VehicleMap({ vehicles, routesById }: { vehicles: AvailAvlVehicle[]; rou
     }).catch((err) => setError(err instanceof ApiError ? `Could not load the map: ${err.message}` : "Could not reach the map service."));
     return () => { cancelled = true; popupRef.current = null; map?.dispose(); mapRef.current = null; };
   }, []);
+
+  useEffect(() => {
+    if (!ready || !mapRef.current) return;
+    mapRef.current.setStyle({ style: mapStyle });
+  }, [mapStyle, ready]);
+
+  useEffect(() => {
+    if (!ready || !mapRef.current) return;
+    mapRef.current.setTraffic({ flow: traffic ? "relative" : "none", incidents: traffic });
+  }, [traffic, ready]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -205,20 +245,30 @@ function VehicleMap({ vehicles, routesById }: { vehicles: AvailAvlVehicle[]; rou
         htmlContent: `<div class="event-map-bus" style="--bus-heading:${heading}deg" role="img" aria-label="Bus ${vehicle.vehicle_id}"><span>▰</span></div>`,
       });
       map.markers.add(marker);
-      map.events.add("mouseover", marker, () => {
+      const showPopup = () => {
         popup?.setOptions({
           position: [vehicle.longitude, vehicle.latitude],
-          content: `<div class="event-map-popup"><strong>${escapeHtml(displayOperator(vehicle.operator_name))}</strong><span>Vehicle ${vehicle.vehicle_id} · Route ${escapeHtml(routeLabel(vehicle, routesById))}</span><span>${cardinalHeading(vehicle.heading, vehicle.direction)} · ${vehicle.speed_mph === null ? "Speed unavailable" : `${vehicle.speed_mph.toFixed(1)} mph`}</span><span>Last report ${minutesAgo(vehicle.report_timestamp)}</span></div>`,
+          content: `<div class="event-map-popup"><strong>${escapeHtml(displayOperator(vehicle.operator_name))}</strong><span>Vehicle ${vehicle.vehicle_id} · Route ${escapeHtml(routeLabel(vehicle))}</span><span>${cardinalHeading(vehicle.heading, vehicle.direction)} · ${vehicle.speed_mph === null ? "Speed unavailable" : `${vehicle.speed_mph.toFixed(1)} mph`}</span><span>Last report ${minutesAgo(vehicle.report_timestamp)}</span></div>`,
         });
         popup?.open(map);
+      };
+      map.events.add("mouseover", marker, showPopup);
+      map.events.add("click", marker, () => {
+        markerClickRef.current = true;
+        showPopup();
+        window.setTimeout(() => { markerClickRef.current = false; }, 0);
       });
       map.events.add("mouseout", marker, () => popup?.close());
     });
-    if (vehicles.length > 0) {
+    // Fit once when the first valid classified set arrives. Subsequent
+    // 30-second refreshes update markers without overriding the operator's
+    // current pan/zoom or flashing out to world view.
+    if (vehicles.length > 0 && !fittedRef.current) {
       const positions = vehicles.map((vehicle) => [vehicle.longitude, vehicle.latitude] as atlas.data.Position);
       map.setCamera({ bounds: atlas.data.BoundingBox.fromPositions(positions), padding: 70, maxZoom: 14 });
+      fittedRef.current = true;
     }
-  }, [vehicles, routesById, ready]);
+  }, [vehicles, ready]);
 
   return <div className="evmon-real-map"><div ref={containerRef} className="evmon-map-container" />{error && <div className="evmon-map-message">{error}</div>}{!error && !ready && <div className="evmon-map-message">Loading live map…</div>}</div>;
 }

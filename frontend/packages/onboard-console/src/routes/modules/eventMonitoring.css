@@ -20,6 +20,14 @@
 .evmon-toolbar button { border: 1px solid rgba(255,255,255,.4); border-radius: 6px; padding: 6px 10px; color: #fff; background: rgba(255,255,255,.08); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
 .evmon-toolbar button:hover { background: rgba(255,255,255,.18); }
 .evmon-toolbar button:disabled { opacity: .6; cursor: wait; }
+.evmon-controls { display: flex; align-items: flex-end; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--surface-bg); overflow-x: auto; }
+.evmon-controls label { flex: 0 0 auto; }
+.evmon-controls label > span { display: block; margin-bottom: 4px; color: var(--text-muted); font-size: 9.5px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; }
+.evmon-controls input:not([type="checkbox"]), .evmon-controls select { height: 32px; min-width: 125px; padding: 0 9px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface-alt-bg); font: inherit; font-size: 11px; }
+.evmon-controls input:not([type="checkbox"]) { width: 160px; }
+.evmon-controls .evmon-traffic { height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 9px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface-alt-bg); }
+.evmon-controls .evmon-traffic span { display: inline; margin: 0; color: inherit; font-size: 10.5px; }
+.evmon-clear { height: 32px; border: 0; color: var(--brand-green); background: transparent; font: inherit; font-size: 10.5px; font-weight: 800; cursor: pointer; white-space: nowrap; }
 .evmon-map-wrap { position: relative; }
 .evmon-real-map { height: min(58vh, 610px); min-height: 430px; position: relative; }
 .evmon-map-container { position: absolute; inset: 0; }

@@ -702,6 +702,11 @@ export interface EventVehiclePosition {
   latitude: number;
   longitude: number;
   heading: number | null;
+  direction: string | null;
+  block: number | null;
+  run: number | null;
+  operator_name: string | null;
+  speed_mph: number | null;
   report_timestamp: string;
   updated_at: string;
 }
