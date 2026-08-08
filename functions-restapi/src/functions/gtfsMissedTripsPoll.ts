@@ -154,10 +154,17 @@ async function detectSilentNoShows(
   dayOffset: number,
 ): Promise<number> {
   const scheduleTablesExist = await pool.request().query<{ ok: number }>(`
-    SELECT CASE WHEN OBJECT_ID('dbo.GtfsScheduledTrips', 'U') IS NULL THEN 0 ELSE 1 END AS ok
+    SELECT CASE
+      WHEN OBJECT_ID('dbo.GtfsCalendar', 'U') IS NOT NULL
+       AND OBJECT_ID('dbo.GtfsCalendarDates', 'U') IS NOT NULL
+       AND OBJECT_ID('dbo.GtfsScheduledTrips', 'U') IS NOT NULL
+       AND COL_LENGTH('dbo.GtfsScheduledTrips', 'first_stop_id') IS NOT NULL
+       AND COL_LENGTH('dbo.GtfsScheduledTrips', 'first_stop_sequence') IS NOT NULL
+       AND COL_LENGTH('dbo.GtfsScheduledTrips', 'block_id') IS NOT NULL
+      THEN 1 ELSE 0 END AS ok
   `);
   if (scheduleTablesExist.recordset[0]?.ok !== 1) {
-    context.warn("GtfsScheduledTrips does not exist yet - apply migration 011 before schedule-based detection can run.");
+    context.warn("The complete GTFS schedule schema is unavailable - apply migration 027 before schedule-based detection can run.");
     return 0;
   }
   const evidenceTableCheck = await pool.request().query<{ ok: number }>(`

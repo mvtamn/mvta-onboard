@@ -128,8 +128,14 @@ app.timer("gtfsStopsSync", {
       const scheduleTableCheck = await new sql.Request(tx).query<{
         table_exists: number;
       }>(`
-        SELECT CASE WHEN OBJECT_ID('dbo.GtfsScheduledTrips', 'U') IS NULL
-          THEN 0 ELSE 1 END AS table_exists
+        SELECT CASE
+          WHEN OBJECT_ID('dbo.GtfsCalendar', 'U') IS NOT NULL
+           AND OBJECT_ID('dbo.GtfsCalendarDates', 'U') IS NOT NULL
+           AND OBJECT_ID('dbo.GtfsScheduledTrips', 'U') IS NOT NULL
+           AND COL_LENGTH('dbo.GtfsScheduledTrips', 'first_stop_id') IS NOT NULL
+           AND COL_LENGTH('dbo.GtfsScheduledTrips', 'first_stop_sequence') IS NOT NULL
+           AND COL_LENGTH('dbo.GtfsScheduledTrips', 'block_id') IS NOT NULL
+          THEN 1 ELSE 0 END AS table_exists
       `);
       const scheduleTablesExist = scheduleTableCheck.recordset[0]?.table_exists === 1;
       let scheduledTripCount = 0;
@@ -213,7 +219,7 @@ app.timer("gtfsStopsSync", {
       }
       if (!scheduleTablesExist) {
         context.warn(
-          "GtfsCalendar/GtfsCalendarDates/GtfsScheduledTrips do not exist yet; apply migration 011 before the next static sync.",
+          "The complete GTFS schedule schema is not available; apply migration 027 before the next static sync.",
         );
       }
     } catch (err) {
