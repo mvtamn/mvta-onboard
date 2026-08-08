@@ -18,6 +18,7 @@ import {
   IconDetour,
   IconSun,
   IconMoon,
+  IconAssessment,
 } from "./components/NavIcons.js";
 import { Dashboard } from "./routes/Dashboard.js";
 import { Compose } from "./routes/Compose.js";
@@ -28,6 +29,7 @@ import { AuditLog } from "./routes/AuditLog.js";
 import { Admin } from "./routes/Admin.js";
 import { OccTools } from "./routes/OccTools.js";
 import { Compliance } from "./routes/Compliance.js";
+import { PerformanceAssessment } from "./routes/PerformanceAssessment.js";
 import { Detours } from "./routes/Detours.js";
 import { DetourReports } from "./routes/DetourReports.js";
 import { Changelog } from "./routes/Changelog.js";
@@ -66,6 +68,11 @@ const PAGE_META: { match: (path: string) => boolean; title: string; sub: string 
     match: (p) => p.startsWith("/compliance"),
     title: "Compliance",
     sub: "OTP compliance and missed-trip investigation",
+  },
+  {
+    match: (p) => p.startsWith("/performance-assessment"),
+    title: "Performance Assessment",
+    sub: "Monthly performance standards scoring, evidence, review, and issuance",
   },
   { match: (p) => p === "/changelog", title: "Changelog", sub: "Version history" },
 ];
@@ -158,6 +165,7 @@ export function App() {
               {canSeeDetours && <NavLink to="/detour-reports"><IconClock />Detour Reports</NavLink>}
               {isAdmin && <NavLink to="/occ"><IconWrench />OCC Tools</NavLink>}
               {isCompliance && <NavLink to="/compliance"><IconShield />Compliance</NavLink>}
+              {isCompliance && <NavLink to="/performance-assessment"><IconAssessment />Performance Assessment</NavLink>}
             </>
           )}
         </nav>
@@ -247,6 +255,14 @@ export function App() {
                 element={
                   <RequireRole allowed={[...COMPLIANCE]}>
                     <Compliance />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="/performance-assessment/*"
+                element={
+                  <RequireRole allowed={[...COMPLIANCE]}>
+                    <PerformanceAssessment />
                   </RequireRole>
                 }
               />

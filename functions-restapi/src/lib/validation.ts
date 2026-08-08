@@ -230,6 +230,46 @@ export function isGuid(value: unknown): value is string {
   return typeof value === "string" && GUID_RE.test(value);
 }
 
+const ASSESSMENT_MONTH_RE = /^\d{4}(0[1-9]|1[0-2])$/;
+const ASSESSMENT_DATE_RE = /^\d{4}(0[1-9]|1[0-2])([0-2]\d|3[01])$/;
+
+export function isServiceMonth(value: unknown): value is string {
+  return typeof value === "string" && ASSESSMENT_MONTH_RE.test(value);
+}
+
+export function isServiceDate(value: unknown): value is string {
+  return typeof value === "string" && ASSESSMENT_DATE_RE.test(value);
+}
+
+export function validateManagerAssessmentAction(body: UnknownBody): string[] {
+  const errors: string[] = [];
+  if (!["confirmed", "adjusted", "waived"].includes(String(body.manager_action ?? ""))) {
+    errors.push("manager_action must be confirmed, adjusted, or waived");
+  }
+  if (body.manager_action === "adjusted" && (typeof body.final_amount !== "number" || body.final_amount < 0)) {
+    errors.push("final_amount must be a non-negative number for an adjustment");
+  }
+  if (
+    (body.manager_action === "adjusted" || body.manager_action === "waived") &&
+    (typeof body.manager_reason !== "string" || body.manager_reason.trim() === "" || body.manager_reason.length > 1000)
+  ) errors.push("manager_reason is required and must be at most 1000 characters for an adjustment or waiver");
+  return errors;
+}
+
+export function validateComplianceOccurrence(body: UnknownBody): string[] {
+  const errors: string[] = [];
+  if (!isGuid(body.standard_id)) errors.push("standard_id must be a GUID");
+  if (!isGuid(body.contractor_id)) errors.push("contractor_id must be a GUID");
+  if (!isServiceDate(body.service_date)) errors.push("service_date must be YYYYMMDD");
+  if (typeof body.description !== "string" || body.description.trim() === "" || body.description.length > 2000) {
+    errors.push("description is required and must be at most 2000 characters");
+  }
+  if (body.quantity !== undefined && (!Number.isInteger(body.quantity) || Number(body.quantity) < 1)) {
+    errors.push("quantity must be a positive integer");
+  }
+  return errors;
+}
+
 // PATCH /messages/{id} - partial edit; at least one editable field required.
 export function validateUpdateMessage(body: UnknownBody): string[] {
   const errors: string[] = [];

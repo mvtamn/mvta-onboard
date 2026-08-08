@@ -109,3 +109,14 @@ export async function deleteBlob(blobPath: string): Promise<void> {
   const containerClient = client.getContainerClient(CONTAINER_NAME);
   await containerClient.deleteBlob(blobPath, { deleteSnapshots: "include" });
 }
+
+let cachedReportClient: BlobServiceClient | null = null;
+function getReportBlobServiceClient(): BlobServiceClient {
+  const accountName=process.env.COMPLIANCE_REPORTS_STORAGE_ACCOUNT;
+  if(!accountName) throw new Error("COMPLIANCE_REPORTS_STORAGE_ACCOUNT is not configured.");
+  cachedReportClient ??= new BlobServiceClient(`https://${accountName}.blob.core.windows.net`,new DefaultAzureCredential());
+  return cachedReportClient;
+}
+export function buildComplianceReportBlobPath(periodId:string,reportId:string):string{return `periods/${periodId}/${reportId}.html`;}
+export async function uploadComplianceReport(blobPath:string,html:string):Promise<void>{const container=getReportBlobServiceClient().getContainerClient("compliance-reports");await container.createIfNotExists();await container.getBlockBlobClient(blobPath).upload(html,Buffer.byteLength(html),{blobHTTPHeaders:{blobContentType:"text/html; charset=utf-8"},conditions:{ifNoneMatch:"*"}});}
+export async function downloadComplianceReport(blobPath:string):Promise<Buffer>{const response=await getReportBlobServiceClient().getContainerClient("compliance-reports").getBlobClient(blobPath).download();const chunks:Buffer[]=[];for await(const chunk of response.readableStreamBody??[]){chunks.push(Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk));}return Buffer.concat(chunks);}

@@ -23,11 +23,11 @@ Attachment G v2 now supplies that formula. This design defines a **compliance as
 
 | Decision | Choice |
 |---|---|
-| KPI catalog scope | Seed **all 25** Attachment G standards; only the **9 High/Medium** priority ones are scored in v1 (`is_scored` flag). Low/N-A rows sit dormant — no migration needed when Nexus lands. |
+| KPI catalog scope | Seed **all 26** Attachment G standards (18 occurrence-based + 8 threshold-based); only the **9 High/Medium** priority ones are scored in v1 (`is_scored` flag). The other 17 Low/N-A rows sit dormant — no migration needed when Nexus lands. |
 | Penalty dollars | Engine computes a **proposed** penalty per Attachment G tiers. Nothing is final until a manager reviews, may adjust or waive with a reason, and signs off — satisfying Attachment G's "penalties will not be assessed based solely on raw system output without a management-level review." |
 | OTP standard | **≥85% with tiers** (80–84.9% warning, 75–79.9% = $1,500, <75% = $3,500) per Attachment G v2. The hardcoded 90% in existing code is a defect to correct (§11). |
 | KPIs without a feed | **Manual occurrence entry + evidence attachment** from day one, behind the same tables the future Nexus/M5 feeds will write to. |
-| Report format | **Server-rendered self-contained HTML**, previewed in the console and printed to PDF by the browser. No new dependency, and the preview and the delivered document are the same artifact — they cannot drift (§9). |
+| Report format | **Server-rendered self-contained HTML is the official artifact of record.** The console previews and downloads the exact archived bytes; the manager attaches that `.html` file in Outlook. Browser Print-to-PDF remains a convenience copy and is explicitly marked non-authoritative because browser PDF output is not byte-stable (§9). |
 | Report delivery | **Generate, archive, and stamp an `issued_at`; the manager sends it from Outlook.** The recorded issuance — not the email — is what starts Attachment G's 10-business-day dispute clock (§9). |
 | Report stages | **Preliminary then final.** A preliminary report goes out after computation for contractor review; the final issuance starts the dispute clock. Data errors get caught before they become formal disputes (§9). |
 | Power BI access | **Read-only reporting views + a `mvta_reporting_ro` login, reached through an on-prem data gateway on a VNet-joined VM; Import mode.** SQL stays private; Import mode also removes the serverless auto-pause problem (§10). |
@@ -42,7 +42,7 @@ Priority from `ContractorPerformanceStandards_v3.xlsx`.
 
 | Standard | Pri | Penalty | Data path in v1 |
 |---|---|---|---|
-| Missed Trips Fixed Route / Microtransit | High | $1,000 ea; **$2,000** if last trip of service day | **Auto-candidate** from `MonitoredMissedTrips` (`validation_status='confirmed'`) + `AvailMissedTripsRouteStopDay`; promoted by reviewer |
+| Missed Trips Fixed Route / Microtransit | High | $1,000 ea; **$2,000** if last trip of service day | **Auto-candidate** from the shared `MonitoredMissedTrips` review queue (`validation_status='confirmed'`): fixed-route evidence originates in `AvailMissedTripsRouteStopDay`; microtransit evidence originates in `SpareMissedTripSource` / `SpareMissedTripSlots` / `SpareMissedTripEvaluations` (migrations 028–029). Promoted by reviewer. |
 | Shutdown Vehicle | High | $1,000 / vehicle / day | Manual (M5 not integrated; source "Unknown" per xlsx) |
 | Preventable Collisions | High | $500 ea; $1,000 if unreported in time; CAP if >5 in rolling 30 days; damage reimbursement $2,500–$10,000 | Manual (Nexus) |
 | Garage Departure Compliance | Medium | $500 ea | **Auto-candidate** from `FixedRouteDepartures.pullout_status` |
@@ -57,7 +57,7 @@ Priority from `ContractorPerformanceStandards_v3.xlsx`.
 | Operator Conduct Complaints | High | ≤10/mo | 11–12 | 13–15 = $250/occurrence | 16+ = per occurrence + CAP | Manual monthly metric (Nexus) |
 | Avg Miles Between Road Calls | Medium | ≥12,000 mi | 11,000–11,999 (CAP warning) | 10,000–10,999 = $2,000 flat | <10,000 = $3,500 flat | Manual monthly metric (M5 report exists; confirm it matches these thresholds) |
 
-Dormant (seeded, `is_scored = 0`): the 16 remaining standards — including all rows the xlsx marks "not a scorecard item" (Uniform Compliance, Road Supervisor Presence, Operator Staffing, Training Records, Roster Submission, Pre/Post Trip, Mechanic Staffing/Training) and the four Fleet/Cleaning threshold KPIs the xlsx marks Status = Completed with Priority N/A.
+Dormant (seeded, `is_scored = 0`): the 17 remaining standards — including all rows the xlsx marks "not a scorecard item" (Uniform Compliance, Road Supervisor Presence, Operator Staffing, Training Records, Roster Submission, Pre/Post Trip, Mechanic Staffing/Training) and the four Fleet/Cleaning threshold KPIs the xlsx marks Status = Completed with Priority N/A.
 
 ---
 
@@ -65,7 +65,7 @@ Dormant (seeded, `is_scored = 0`): the 16 remaining standards — including all 
 
 ```
   ┌─ CONFIG (admin, versioned) ──────────────────────────────┐
-  │ ContractorPerformanceStandards  ← the 25 Attachment G    │
+  │ ContractorPerformanceStandards  ← the 26 Attachment G    │
   │ ContractorStandardTiers         ← target/warning/tiers   │
   │ Contractors                     ← contract dates, ramp-up│
   └──────────────────────────────────────────────────────────┘
@@ -103,9 +103,9 @@ Dormant (seeded, `is_scored = 0`): the 16 remaining standards — including all 
 
 ---
 
-## 5. Data model — `migration-019-contractor-performance-assessment.sql`
+## 5. Data model — `migration-030-contractor-performance-assessment.sql`
 
-Follows every convention in `functions-restapi/sql/`: numbered file (highest existing is 018), `GO`-separated batches, long "why" comment headers, `NVARCHAR(200)` for `*_by` actor columns populated from `authResult.principal.userDetails`, single-row config guarded by `CHECK (id = 1)`, and history tables that are never deleted from.
+Follows every convention in `functions-restapi/sql/`: numbered after the current 029 baseline, `GO`-separated batches, long "why" comment headers, `NVARCHAR(200)` for `*_by` actor columns populated from `authResult.principal.userDetails`, single-row config guarded by `CHECK (id = 1)`, and history tables that are never deleted from. Migration numbers 019–029 are already occupied and must not be reused.
 
 ### Configuration
 
@@ -115,7 +115,7 @@ Follows every convention in `functions-restapi/sql/`: numbered file (highest exi
 **`ContractorPerformanceStandards`** — the KPI catalog; one row per Attachment G standard.
 `id`, `code NVARCHAR(50) UNIQUE` (e.g. `MISSED_TRIPS_FR`, `OTP_FIXED_ROUTE`, `GARAGE_DEPARTURE`), `name`, `description`, `standard_type` CHECK(`occurrence`|`threshold`), `priority` CHECK(`High`|`Medium`|`Low`|`NA`), `is_scored BIT`, `is_safety_critical BIT` (ADA, preventable collisions, unattended riders, unqualified operators — exempt from ramp-up suspension per Attachment G), `direction` CHECK(`higher_is_better`|`lower_is_better`), `unit_label` (`%`, `miles`, `occurrences`, `vehicles`), `measurement_source` CHECK(`auto`|`manual`), `resolver_key NVARCHAR(50) NULL` (names the engine resolver for `auto` rows), `data_source_note`, `responsible_team`, `assigned_to`, `cap_rule_note`, `sort_order`, `effective_start_date/effective_end_date CHAR(8)`, `updated_by/at`.
 
-Seeded from the xlsx: all 25 rows, `is_scored = 1` for the 9 in §3.
+Seeded from the xlsx: all 26 rows, `is_scored = 1` for the 9 in §3.
 
 **`ContractorStandardTiers`** — the target/threshold/tier bands, so a contract amendment is a data edit, not a code change (Attachment G reserves the right to modify thresholds by amendment).
 `id`, `standard_id FK`, `tier_order INT`, `tier_label` CHECK(`meets`|`warning`|`tier1`|`tier2`), `bound_low FLOAT NULL`, `bound_high FLOAT NULL` (half-open `[low, high)`, either side nullable for unbounded), `qualifier_code NVARCHAR(50) NULL`, `penalty_basis` CHECK(`none`|`flat`|`per_unit`|`per_unit_per_day`|`per_day`|`per_week`), `penalty_amount DECIMAL(10,2)`, `triggers_cap BIT`, `notes`, `effective_start_date/end_date`, `updated_by/at`. Unique on `(standard_id, tier_order, effective_start_date)`.
@@ -160,10 +160,12 @@ OTP relief already has its own governed mechanism — `OtpStopExclusions` and `O
 ### Assessment output & governance
 
 **`AssessmentPeriods`** — one row per contractor-month.
-`id`, `contractor_id FK`, `service_month CHAR(6)`, `status` CHECK(`open`|`in_review`|`finalized`|`reopened`), `ramp_up_stage` CHECK(`suspended`|`half`|`full`) (computed at open from `contract_start_date`, then frozen), `computed_at`, `proposed_total DECIMAL(12,2)`, `final_total DECIMAL(12,2) NULL`, `finalized_by/at`, `notes`. Unique on `(contractor_id, service_month)`.
+`id`, `contractor_id FK`, `service_month CHAR(6)`, `status` CHECK(`open`|`in_review`|`stale`|`finalized`|`reopened`), `ramp_up_stage` CHECK(`suspended`|`half`|`full`) (computed at open from `contract_start_date`, then frozen), `input_revision INT DEFAULT 0`, `computed_revision INT NULL`, `computed_at`, `proposed_total DECIMAL(12,2)`, `final_total DECIMAL(12,2) NULL`, `finalized_by/at`, `notes`. Unique on `(contractor_id, service_month)`.
+
+Every mutation that can affect a result — occurrence confirmation/attribution, manual metric correction, exclusion, outage or relief decision, tier/config effective for the month, or contractor date change — increments `input_revision` and changes an already-computed non-finalized period to `stale`. A finalized period rejects such mutation until a manager explicitly reopens it. Reopening preserves the prior audit/report history, increments the revision, and requires a new assessment and final report version.
 
 **`PeriodKpiAssessments`** — the assessment function's output: one row per KPI per period. The heart of the scorecard.
-`id`, `period_id FK`, `standard_id FK`, `metric_value FLOAT NULL`, `metric_display NVARCHAR(50)`, `occurrence_count INT`, `unit_quantity FLOAT`, `tier_label`, `target_display`, `variance_pct FLOAT NULL` (signed deviation from target; drives the >10% CAP rule), `base_amount DECIMAL(12,2)`, `ramp_up_multiplier DECIMAL(4,2)`, `escalation_multiplier DECIMAL(4,2)`, `relief_amount DECIMAL(12,2)`, `proposed_amount DECIMAL(12,2)`, `final_amount DECIMAL(12,2) NULL`, `manager_action` CHECK(`pending`|`confirmed`|`adjusted`|`waived`) `DEFAULT 'pending'`, `manager_reason NVARCHAR(1000) NULL`, `cap_required BIT`, `cap_reason NVARCHAR(500) NULL`, `consecutive_months_below INT`, `data_completeness_pct FLOAT NULL`, `computation_json NVARCHAR(MAX)` (the engine's full input snapshot — reproducibility for a dispute), `reviewed_by/at`. Unique on `(period_id, standard_id)`.
+`id`, `period_id FK`, `standard_id FK`, `metric_value FLOAT NULL`, `metric_display NVARCHAR(50)`, `occurrence_count INT`, `unit_quantity FLOAT`, `tier_label`, `target_display`, `variance_pct FLOAT NULL` (signed deviation from target; drives the >10% CAP rule), `base_amount DECIMAL(12,2)`, `ramp_up_multiplier DECIMAL(4,2)`, `escalation_multiplier DECIMAL(4,2)`, `relief_amount DECIMAL(12,2)`, `proposed_amount DECIMAL(12,2)`, `input_sha256 CHAR(64)`, `final_amount DECIMAL(12,2) NULL`, `manager_action` CHECK(`pending`|`confirmed`|`adjusted`|`waived`) `DEFAULT 'pending'`, `manager_reason NVARCHAR(1000) NULL`, `reviewed_input_sha256 CHAR(64) NULL`, `cap_required BIT`, `cap_reason NVARCHAR(500) NULL`, `consecutive_months_below INT`, `data_completeness_pct FLOAT NULL`, `computation_json NVARCHAR(MAX)` (the engine's canonical full input snapshot — reproducibility for a dispute and source of `input_sha256`), `reviewed_by/at`. Unique on `(period_id, standard_id)`.
 
 `manager_reason` is **required** whenever `manager_action IN ('adjusted','waived')` — enforced in the validator, not just the CHECK, so the message is legible.
 
@@ -176,7 +178,7 @@ OTP relief already has its own governed mechanism — `OtpStopExclusions` and `O
 **`ComplianceAssessmentAudit`** — append-only. Every recompute, promotion, dismissal, manual entry, manager action, CAP transition, and dispute decision.
 `id BIGINT IDENTITY`, `entity_type`, `entity_id`, `action`, `actor NVARCHAR(200)`, `before_json NVARCHAR(MAX) NULL`, `after_json NVARCHAR(MAX) NULL`, `note`, `created_at`. Indexed on `(entity_type, entity_id)` and `created_at`. This is what makes an assessment defensible in a dispute; it complements, not replaces, `otpAuditStream`.
 
-**Business-day helper:** Attachment G's 5/10/15-business-day clocks need a holiday-aware calculation. v1 computes weekdays only and stores the resulting date; a `MvtaHolidays` table is deferred to Phase 3 and noted as a known approximation.
+**Business-day helper:** Attachment G's 5/10/15-business-day clocks are compliance output, so holiday-aware calculation is a Phase 2 prerequisite to final issuance. `MvtaHolidays` stores the observed MVTA closure dates and effective description; `addBusinessDays(start, count, holidays)` skips weekends and configured holidays and stores the resulting date. Phase 2 cannot enable final report issuance until the holiday calendar covers the entire possible deadline horizon. Missing calendar coverage fails closed with a legible validation error; it never silently falls back to weekdays only.
 
 ---
 
@@ -190,9 +192,9 @@ New directory `functions-restapi/src/lib/assessment/`, with colocated `*.test.ts
 | `penalty.ts` | `computePenalty(tier, quantity, durationDays)` → base amount by `penalty_basis`. Pure. |
 | `rampUp.ts` | `rampUpStage(contractStartDate, serviceMonth)` → `suspended` (months 1–3) \| `half` (4–6) \| `full` (7+); multiplier `0 / 0.5 / 1.0`, forced to `1.0` when `is_safety_critical`. Pure. |
 | `escalation.ts` | `consecutiveMonthsBelow(history, standardId)` and `escalationMultiplier(n)` → `1.5` at n ≥ 3. `capTriggers(assessment)` → the >10%-deviation rule, the tier `triggers_cap` flag, and rolling-window rules (>5 preventable collisions / 30 days; 3+ reporting violations / 30 days). Pure. |
-| `resolvers.ts` | One resolver per `resolver_key`, each returning `{ metricValue, quantity, occurrenceCount, dataCompletenessPct, drillThrough[] }`. v1: `OTP_FIXED_ROUTE`, `MISSED_TRIPS_FR`, `GARAGE_DEPARTURE`. Each is a parameterized SQL read; the only DB-touching layer. |
+| `resolvers.ts` | One resolver per `resolver_key`, each returning `{ metricValue, quantity, occurrenceCount, dataCompletenessPct, drillThrough[] }`. v1: `OTP_FIXED_ROUTE`, `MISSED_TRIPS_FR`, `GARAGE_DEPARTURE`. `MISSED_TRIPS_FR` reads the shared confirmed `MonitoredMissedTrips` queue and retains `source_system` (`gtfs` or `spare`) in drill-through; it does not independently re-evaluate Spare. Each resolver is a parameterized SQL read; the only DB-touching layer. |
 | `candidates.ts` | Detection → `ComplianceOccurrences(source='auto_candidate', review_status='candidate')`, idempotent via `source_ref`. Invoked by a timer poller. |
-| `assess.ts` | Orchestrator: `assessPeriod(contractorId, serviceMonth)` → resolve inputs → apply outage/relief exclusions → `matchTier` → `computePenalty` → ramp-up → escalation → CAP triggers → upsert `PeriodKpiAssessments` + period `proposed_total`. Idempotent: recompute overwrites `proposed_*` but **never** touches `final_amount`, `manager_action`, or `manager_reason` for a row already acted on, and refuses to recompute a `finalized` period unless it is explicitly reopened. |
+| `assess.ts` | Orchestrator: `assessPeriod(contractorId, serviceMonth)` → resolve inputs → apply outage/relief exclusions → canonicalize and hash the full input snapshot → `matchTier` → `computePenalty` → ramp-up → escalation → CAP triggers → upsert `PeriodKpiAssessments` + period `proposed_total`. Idempotent when the hash is unchanged. When a KPI's `input_sha256` changes, recompute audits the previous review, resets `manager_action='pending'`, clears `final_amount`, `manager_reason`, `reviewed_by/at`, and `reviewed_input_sha256`, and requires manager re-review. Finalization requires `computed_revision = input_revision`, no `pending` row, and `reviewed_input_sha256 = input_sha256` for every scored KPI. A finalized period still refuses recompute unless explicitly reopened. |
 | `otpOfficial.ts` | Adjusted ("official") OTP for a month — the API-side counterpart of the existing frontend `computeOfficialPct` in `otpData.ts`. |
 
 ### Ordering (fixed, and asserted by tests)
@@ -242,7 +244,7 @@ New files in `functions-restapi/src/functions/`, one per resource, registered by
 | `/api/corrective-action-plans` | `GET`, `POST`, `PATCH` | CAP lifecycle. |
 | `/api/penalty-disputes` | `GET`, `POST`, `PATCH` | Dispute lifecycle. |
 | `/api/compliance-assessment-audit` | `GET` | Filterable audit trail. |
-| `/api/assessment-reports` (+ `/{id}`, `/{id}/html`, `/{id}/issue`) | `GET`, `POST` | Monthly report generation, preview, and issuance — detailed in §9. |
+| `/api/assessment-reports` (+ `/{id}`, `/{id}/html`, `/{id}/download`, `/{id}/issue`) | `GET`, `POST` | Monthly report generation, verified preview/download, and issuance — detailed in §9. |
 
 **Timer poller** `complianceCandidatesPoll.ts` — daily, following `availMissedTripsPoll.ts`: env-var bail with `context.warn`, per-record try/catch, idempotent `MERGE` on `source_ref`.
 
@@ -264,7 +266,7 @@ Conventions carried over verbatim: `useEffect` + `api.*()` with a `cancelled` fl
 | **Monthly Metrics** | Manual metric entry for the no-feed threshold KPIs, with source note and evidence. |
 | **Manager Review** | The assessment function's decision surface: per-KPI confirm / adjust / waive with required reason, running total, then **Finalize period** (blocked until nothing is `pending`). |
 | **CAPs** | Auto-required CAPs from triggers + manual ones; the six submission fields; due-date and overdue flags. |
-| **Report** | Preliminary/final/history selector, `<iframe srcdoc>` preview of the exact delivered HTML, Print button, and a manager-gated **Issue** action. Detailed in §9. |
+| **Report** | Preliminary/final/history selector, sandboxed iframe streaming the archived HTML, official HTML download, convenience Print button, and a manager-gated **Issue** action. Detailed in §9. |
 | **Disputes** | Submission intake, completeness check, 10/15-business-day clocks, determination (upheld / reduced / waived) with credit note. |
 | **Standards Admin** | Catalog + tier editor (admin only), `is_scored` toggles, effective dates. Read-only for non-admins so anyone can see the governing numbers. |
 
@@ -274,7 +276,7 @@ Also: a `PAGE_META` entry and `NavLink` + icon in `App.tsx` / `components/NavIco
 
 ## 9. Monthly compliance report
 
-One artifact does three jobs: the in-console preview, the document delivered to the contractor, and the evidence of record if that assessment is later disputed. Making them the same bytes is the whole design point — a preview that renders differently from the delivered PDF is a liability in a dispute.
+One canonical HTML artifact does three jobs: the in-console preview, the `.html` file delivered to the contractor, and the evidence of record if that assessment is later disputed. The preview endpoint streams the archived blob bytes, and Download returns those same bytes with `Content-Disposition: attachment`; both are verified against the stored SHA-256. A browser-created PDF is only a convenience copy and prints **“Convenience PDF — official record is the archived HTML identified on the cover”** in its footer. It is neither archived nor represented as the delivered record.
 
 ### Renderer
 
@@ -316,32 +318,33 @@ Ordered to follow Attachment G's own structure, so the contractor can read the t
 
 ### Storage and immutability
 
-**`ComplianceReports`** (add to `migration-019`): `id`, `period_id FK`, `contractor_id FK`, `service_month CHAR(6)`, `issuance_type` CHECK(`preliminary`|`final`), `version INT`, `supersedes_id NULL FK`, `blob_path`, `content_sha256 CHAR(64)`, `assessed_total DECIMAL(12,2)`, `issued_at NULL`, `issued_by NULL`, `dispute_deadline_at NULL`, `supersede_reason NVARCHAR(500) NULL`, `generated_by/at`.
+**`ComplianceReports`** (add to `migration-030`): `id`, `period_id FK`, `contractor_id FK`, `service_month CHAR(6)`, `issuance_type` CHECK(`preliminary`|`final`), `version INT`, `supersedes_id NULL FK`, `blob_path`, `content_type NVARCHAR(100) DEFAULT 'text/html; charset=utf-8'`, `content_sha256 CHAR(64)`, `assessed_total DECIMAL(12,2)`, `issued_at NULL`, `issued_by NULL`, `dispute_deadline_at NULL`, `supersede_reason NVARCHAR(500) NULL`, `generated_by/at`.
 
 - Blob container `compliance-reports`, reusing `functions-restapi/src/lib/blobStorage.ts` **exactly** — user-delegation SAS via `DefaultAzureCredential`, no account key, 15-minute expiry. New bicep module cloned from `infra-phase1/modules/storage-detour-images.bicep`.
 - New env var `COMPLIANCE_REPORTS_STORAGE_ACCOUNT`. **Declare it in `infra-phase1/modules/functionapp.bicep` appSettings** — `DETOUR_IMAGES_STORAGE_ACCOUNT` was not, and per HANDOFF.md pitfall #1 bicep appSettings are full desired state, so a hand-set portal value gets wiped on the next deploy. Do not repeat that.
 - `content_sha256` makes "what exactly did we send them?" answerable a year later.
-- A final report is written once. Regenerating one for the same period creates a **new version row** with `supersedes_id` and a required `supersede_reason`, and must be explicitly re-issued — a superseded assessment restarts the dispute clock, which is a manager decision, not a side effect of clicking Generate.
+- A final report is written once. Regenerating one for the same period creates a **new version row** with `supersedes_id` and a required `supersede_reason`, and must be explicitly re-issued — a superseded assessment restarts the dispute clock, which is a manager decision, not a side effect of clicking Generate. The API rejects a second final when either field is absent, when `supersedes_id` is not the latest issued final for that period, or when the period was not reopened, recomputed, re-reviewed, and finalized.
 
 ### Delivery
 
-Manager clicks **Issue** → the API renders, stores, stamps `issued_at` / `issued_by`, computes `dispute_deadline_at`, writes a `ComplianceAssessmentAudit` row, and returns a read SAS. The manager downloads or prints it and emails it from Outlook. The console shows the issuance history with timestamps.
+Manager clicks **Issue** → the API renders and stores the canonical HTML, verifies its hash, stamps `issued_at` / `issued_by`, computes the holiday-aware `dispute_deadline_at`, writes a `ComplianceAssessmentAudit` row, and returns a same-origin download URL. The manager downloads that `.html` artifact and emails it from Outlook. The console shows issuance history, timestamps, and hashes. Print-to-PDF is offered only as a labeled convenience action.
 
 Automatic ACS email is deliberately out of scope: `functions-dispatch/src/lib/acs.ts` has no attachment support, there is no HTML email template layer, and the dispatch layer only knows opt-in rider `Subscribers` — it has no concept of a contractor distribution list. All three are real work with no compliance benefit, since the recorded `issued_at` is what governs the dispute clock regardless of transport.
 
 ### Console page
 
-A **Report** page in the assessment module: issuance selector (preliminary / final / history), the exact HTML in an `<iframe srcdoc>` preview, a Print button calling `iframe.contentWindow.print()`, and an **Issue** action gated to the manager role. A period with nothing computed shows the module's `.risk-empty-state`, not a half-rendered report.
+A **Report** page in the assessment module: issuance selector (preliminary / final / history), the archived HTML in a sandboxed same-origin iframe, a **Download official HTML** action, a Print convenience button calling `iframe.contentWindow.print()`, and an **Issue** action gated to the manager role. The preview response and download response must have the stored `content_sha256`; the UI displays that hash. A period with nothing computed shows the module's `.risk-empty-state`, not a half-rendered report.
 
 ### API
 
 | Route | Methods | Notes |
 |---|---|---|
 | `/api/assessment-reports?period_id=` | `GET` | Issuance history + metadata |
-| `/api/assessment-reports` | `POST` | `{period_id, issuance_type}` → render + store. `preliminary` for publisher/compliance; `final` manager-only and rejected unless the period is `finalized`. |
-| `/api/assessment-reports/{id}` | `GET` | Metadata + 15-minute read SAS |
-| `/api/assessment-reports/{id}/html` | `GET` | HTML inline for the iframe — avoids a SAS round-trip and cross-origin friction in the preview |
-| `/api/assessment-reports/{id}/issue` | `POST` | Manager-only. Stamps issuance, computes the dispute deadline, audits. |
+| `/api/assessment-reports` | `POST` | Initial: `{period_id, issuance_type}`. Replacement final: `{period_id, issuance_type:'final', supersedes_id, supersede_reason}`. Renders + stores canonical HTML. `preliminary` is available to publisher/compliance; `final` is manager-only and rejected unless the period is finalized and revision/hash checks pass. A second final requires both supersession fields and the lifecycle checks in Storage and immutability above. |
+| `/api/assessment-reports/{id}` | `GET` | Metadata, issuance state, and stored SHA-256; blob access remains behind the verified same-origin endpoints. |
+| `/api/assessment-reports/{id}/html` | `GET` | Streams the archived HTML inline for the sandboxed iframe after verifying `content_sha256`; it does not rerender. |
+| `/api/assessment-reports/{id}/download` | `GET` | Streams those same verified bytes as `attachment; filename=...html`; this is the official deliverable. |
+| `/api/assessment-reports/{id}/issue` | `POST` | Manager-only. Stamps issuance, computes the holiday-aware dispute deadline, audits; fails closed if holiday coverage is incomplete. |
 
 ### Month-boundary timer
 
@@ -359,9 +362,9 @@ A **Report** page in the assessment module: issuance selector (preliminary / fin
 
 **Upgrade path.** If MVTA moves to Fabric or Premium capacity, replace the gateway VM with a managed VNet data gateway. Same views, same login, no redesign.
 
-### Reporting views — `migration-020-reporting-views.sql`
+### Reporting views — `migration-031-reporting-views.sql`
 
-These are the **first views in the repo** (`grep` finds zero `CREATE VIEW` across `phase1-schema.sql` and migrations 002–019), so the conventions below are worth setting deliberately. Shaped as a small star so Power BI modeling is trivial.
+These are the **first views in the repo** (`grep` finds zero `CREATE VIEW` across `phase1-schema.sql` and migrations 002–030), so the conventions below are worth setting deliberately. Shaped as a small star so Power BI modeling is trivial.
 
 | View | Grain | Contents |
 |---|---|---|
@@ -431,7 +434,7 @@ Frontend gating stays visibility-only — `RequireRole.tsx` is explicit that "th
 5. **Approval authority split** — the manual records this as unresolved for OTP exclusions (Ops Performance & Compliance Manager vs COO/Transportation Manager). `OCC.ComplianceManager` presumes one tier; a two-tier sign-off would need a second role.
 6. **Shutdown Vehicle data source** — the xlsx says "Unknown"; confirm whether M5 tracks it or it belongs in Nexus.
 7. **Avg Miles Between Road Calls** — the xlsx says the M5 report already exists; confirm it conforms to the ≥12,000 / 11,000 / 10,000 bands before wiring it.
-8. **Microtransit** — `MISSED_TRIPS_FR` covers "Fixed Route / Microtransit," but OnBoard integrates Avail only. Microtransit (Spare) missed trips are manual-entry in v1.
+8. **Microtransit last-trip qualifier** — migrations 028–029 now integrate Spare Requests/Slots, evaluate microtransit candidates, and publish them to the shared `MonitoredMissedTrips` review queue with `source_system='spare'`. Confirm how Attachment G's doubled **last trip of service day** qualifier applies to demand-response service before enabling `LAST_TRIP_OF_DAY` for Spare; until confirmed, Spare candidates use the default $1,000 tier and are never silently classified as last-trip.
 9. **Report recipients and Contract Manager contact** — the report's dispute-rights section must print a named MVTA Contract Manager and address. Confirm who, and whether the contractor's receiving distribution list is a single contract contact or a group.
 10. **Preliminary report comment window** — how many days does the contractor get to flag data errors on the preliminary report before MVTA issues the final? Attachment G is silent; the design leaves it as a manager judgment unless MVTA sets a standard interval.
 11. **Power BI licensing** — does MVTA have Pro only, or Premium/Fabric capacity? Pro confirms the gateway-VM approach; Fabric would let the VM be swapped for a managed VNet data gateway (§10).
@@ -439,7 +442,7 @@ Frontend gating stays visibility-only — `RequireRole.tsx` is explicit that "th
 
 ## Not in scope
 
-Nexus/Trackit and Asset Works M5 API integrations; automatic report email via ACS (no attachment support in `lib/acs.ts`, no email template layer, no contractor distribution list — and the recorded `issued_at` governs the dispute clock regardless of transport); a contractor-facing portal (Attachment G expects the contractor to monitor its own performance — v1 is MVTA-internal, with contractor access via the existing Entra B2B guest procedure in manual §19.12); row-level security on the reporting views (one contractor today); DirectQuery, Power BI Private Link, and Fabric mirroring (all gated on capacity licensing); invoice/payment withholding; the recognition/incentive program; holiday-aware business-day math (Phase 3).
+Nexus/Trackit and Asset Works M5 API integrations; broader Spare ridership/wait-time/garage integration beyond the existing bounded missed-trip Requests/Slots pipeline; automatic report email via ACS (no attachment support in `lib/acs.ts`, no email template layer, no contractor distribution list — and the recorded `issued_at` governs the dispute clock regardless of transport); a contractor-facing portal (Attachment G expects the contractor to monitor its own performance — v1 is MVTA-internal, with contractor access via the existing Entra B2B guest procedure in manual §19.12); row-level security on the reporting views (one contractor today); DirectQuery, Power BI Private Link, and Fabric mirroring (all gated on capacity licensing); invoice/payment withholding; and the recognition/incentive program.
 
 ---
 
@@ -447,9 +450,9 @@ Nexus/Trackit and Asset Works M5 API integrations; automatic report email via AC
 
 | Phase | Content |
 |---|---|
-| **1 — Foundation** | `migration-019` config + measurement + `PeriodKpiAssessments` + audit tables; seed all 25 standards and the 9 scored tier sets; `lib/assessment/` with `tiers`/`penalty`/`rampUp`/`escalation` + unit tests; the 3 auto resolvers; `otpOfficial.ts` shared port; `/api/performance-standards`, `/api/assessment-periods`, `/api/period-assessments`, `/api/compliance-occurrences`, `/api/manual-metrics`; Scorecard + KPI Detail + Occurrence Log + Monthly Metrics pages. Correct the 90% → target-driven threshold. |
-| **2 — Governance & the monthly report** | Manager Review + finalize; `ComplianceEvidence` blob upload; `SystemOutageWindows`; `ExcusableDelayClaims`; `CorrectiveActionPlans` + auto-triggers; `complianceCandidatesPoll`; `OCC.ComplianceManager` role provisioning. **Report:** `lib/report/` renderer + golden-file tests, `ComplianceReports` table, `compliance-reports` blob container and bicep module (with `COMPLIANCE_REPORTS_STORAGE_ACCOUNT` declared in `functionapp.bicep`), the five `/api/assessment-reports*` routes, the console Report page, and the `assessmentPeriodOpen` month-boundary timer. The report depends on finalize, so it belongs here rather than Phase 1. |
-| **3 — Power BI, dispute & polish** | `PenaltyDisputes` with business-day clocks; `MvtaHolidays`; Standards Admin editor; month-over-month trend + data-completeness reporting. **Power BI:** `migration-020-reporting-views.sql` (8 views), the `mvta_reporting_ro` login + Key Vault secret, `reporting-gateway.bicep` VM (owner cost approval required), and the Power BI dataset + report pages built by MVTA. Views depend on finalized periods existing, so Phase 3 is the earliest sensible point. |
+| **1 — Foundation** | `migration-030` config + measurement + `PeriodKpiAssessments` + audit tables; revision/hash invalidation and stale-period behavior; seed all 26 standards and the 9 scored tier sets; `lib/assessment/` with `tiers`/`penalty`/`rampUp`/`escalation` + unit tests; the 3 auto resolvers (including both `gtfs` and `spare` records through the shared missed-trip queue); `otpOfficial.ts` shared port; `/api/performance-standards`, `/api/assessment-periods`, `/api/period-assessments`, `/api/compliance-occurrences`, `/api/manual-metrics`; Scorecard + KPI Detail + Occurrence Log + Monthly Metrics pages. Correct the 90% → target-driven threshold. |
+| **2 — Governance & the monthly report** | Manager Review + finalize; `ComplianceEvidence` blob upload; `SystemOutageWindows`; `ExcusableDelayClaims`; `CorrectiveActionPlans` + auto-triggers; `MvtaHolidays` + fail-closed holiday-aware business-day helper; `complianceCandidatesPoll`; `OCC.ComplianceManager` role provisioning. **Report:** `lib/report/` renderer + golden-file tests, `ComplianceReports` table, `compliance-reports` blob container and bicep module (with `COMPLIANCE_REPORTS_STORAGE_ACCOUNT` declared in `functionapp.bicep`), the six `/api/assessment-reports*` routes including official HTML download, the console Report page, and the `assessmentPeriodOpen` month-boundary timer. The report depends on finalize and correct deadline calculation, so it belongs here rather than Phase 1. |
+| **3 — Power BI, dispute & polish** | `PenaltyDisputes` using the Phase 2 business-day helper; Standards Admin editor; month-over-month trend + data-completeness reporting. **Power BI:** `migration-031-reporting-views.sql` (8 views), the `mvta_reporting_ro` login + Key Vault secret, `reporting-gateway.bicep` VM (owner cost approval required), and the Power BI dataset + report pages built by MVTA. Views depend on finalized periods existing, so Phase 3 is the earliest sensible point. |
 
 ---
 
@@ -457,19 +460,20 @@ Nexus/Trackit and Asset Works M5 API integrations; automatic report email via AC
 
 This plan produces a **document**, so verification is review-based:
 
-1. **Coverage check** — every one of the 25 Attachment G standards appears in the design's seed table with the correct priority from the xlsx; the 9 High/Medium ones have complete target/threshold/tier-1/tier-2 mappings. Cross-read the design against `attachG` §Occurrence-Based Penalties and §Threshold-Based Penalties line by line.
+1. **Coverage check** — every one of the 26 Attachment G standards (18 occurrence + 8 threshold) appears in the design's seed table with the correct priority from the xlsx; the 9 High/Medium ones have complete target/threshold/tier-1/tier-2 mappings. Cross-read the design against `attachG` §Occurrence-Based Penalties and §Threshold-Based Penalties line by line.
 2. **Provision coverage** — confirm the design accounts for each narrative provision: assessment frequency, escalation (3 months / >10% deviation), CAP submission requirements and 5-day clock, ramp-up 3 stages with the safety-critical carve-out, excusable delay with 24-hour notice, data validation & outage protocol, dispute process with 10/15-day clocks and three outcomes, complaint aggregation, and criteria definitions.
 3. **Reuse check** — confirm no proposed table or function duplicates something that exists: `OtpStopExclusions`/`OtpDateExclusions`/`OtpReasonCodes` (relief), `MonitoredMissedTrips.validation_status` (missed-trip validation), `FixedRouteDepartures.pullout_status` (pullout compliance), `RouteClassification` (fixed-route filter), `DetourImages` (evidence blobs), `computeOfficialPct` (adjusted OTP).
 4. **Walkthrough with the KPI owners** named in the xlsx (Rob, Corrina, Cody, Maurice, Michael/Alex) — each in-scope KPI has an owner who should confirm the data path and the manual-entry burden.
 5. **Sign-off on the 12 open questions** in §12 and on the 90% → 85% correction before Phase 1 implementation begins.
 6. **Report walkthrough** — render one month against real data and read the output as if you were the contractor: is every charged dollar traceable to a listed occurrence, is every waiver justified, is the dispute deadline correct and prominent, and does the completeness statement admit what is manually entered?
 
-Once implementation starts, Phase 1 is verifiable end-to-end by: applying `migration-019` per `HANDOFF.md` §5.7, running `npm test` in `functions-restapi` (the engine is pure and fully unit-testable — tier boundary cases, ramp-up stage edges, escalation at exactly 3 months, each `penalty_basis`), then `VITE_AUTH_MODE=mock` in the console to compute a real month against live `OtpMonthlyRouteStopDay` / `FixedRouteDepartures` data and confirm the Scorecard's OTP figure equals the OTP module's existing Official OTP % for the same month — a cross-check that immediately catches formula drift.
+Once implementation starts, Phase 1 is verifiable end-to-end by: applying `migration-030` per `HANDOFF.md` §5.7, running `npm test` in `functions-restapi` (the engine is pure and fully unit-testable — tier boundary cases, ramp-up stage edges, escalation at exactly 3 months, each `penalty_basis`, and hash-driven re-review), then `VITE_AUTH_MODE=mock` in the console to compute a real month against live `OtpMonthlyRouteStopDay` / `FixedRouteDepartures` data and confirm the Scorecard's OTP figure equals the OTP module's existing Official OTP % for the same month — a cross-check that immediately catches formula drift. Confirm both `source_system='gtfs'` and `source_system='spare'` confirmed missed trips reach drill-through exactly once.
 
 **Phase 2 (report) acceptance:**
-- `npm test` — golden-file snapshot of `renderAssessmentReport` against a fixed `ReportModel`; assert the preliminary watermark is present on `preliminary` and absent on `final`, and that the printed dispute deadline equals `ComplianceReports.dispute_deadline_at`.
-- In the console: preview a computed month, print to PDF, and check pagination at Letter portrait — no KPI block split across pages, table headers repeating.
-- Issue a final report, then attempt to regenerate it: confirm a new version row with `supersedes_id` is created, the original blob is untouched, and re-issuing requires an explicit reason.
+- `npm test` — golden-file snapshot of `renderAssessmentReport` against a fixed `ReportModel`; assert the preliminary watermark is present on `preliminary` and absent on `final`, and that the printed dispute deadline equals `ComplianceReports.dispute_deadline_at`. Test weekend, observed-holiday, year-boundary, and incomplete-calendar cases; incomplete coverage must block final issuance.
+- In the console: preview and download a computed month, hash both byte streams, and confirm both equal `ComplianceReports.content_sha256`. Print a convenience PDF and check its non-authoritative footer and Letter pagination — no KPI block split across pages, table headers repeating.
+- Issue a final report, then attempt to regenerate it without supersession fields and with a non-latest `supersedes_id`: both must fail. Reopen, recompute, re-review, and finalize; then confirm a new version with the latest `supersedes_id` and explicit `supersede_reason` succeeds, while the original blob remains untouched.
+- After manager review, change a counted occurrence or approved exclusion: confirm the period becomes `stale`; recompute must reset affected KPI review to `pending`, and finalization must fail until its `reviewed_input_sha256` matches the new `input_sha256`.
 - Recompute the source period after issuance and confirm the issued report's `content_sha256` and totals are unchanged — an issued assessment must not silently move.
 
 **Phase 3 (Power BI) acceptance:**

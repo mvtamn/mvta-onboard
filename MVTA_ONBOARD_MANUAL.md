@@ -691,7 +691,7 @@ governance schema above exists, until that gap closes.
 
 Key specifics from that design, useful when it is eventually built:
 
-- Business driver: the O&M contract's Attachment G sets a 90% on-time-
+- Business driver: the O&M contract's Attachment G v2 sets an 85% on-time-
   performance threshold with financial penalties below it, measured by
   **departure** adherence. A real example from the July 7-13, 2026 service
   week showed departure vs. arrival OTP differing by up to 36 points on a

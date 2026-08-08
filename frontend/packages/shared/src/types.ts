@@ -828,3 +828,20 @@ export interface MapsTokenResponse {
   access_token: string;
   expires_on: number;
 }
+
+export type AssessmentPeriodStatus = "open" | "in_review" | "stale" | "finalized" | "reopened";
+export type AssessmentTierLabel = "meets" | "warning" | "tier1" | "tier2";
+export type ManagerAssessmentAction = "pending" | "confirmed" | "adjusted" | "waived";
+
+export interface ContractorPerformanceStandard {
+  id: string; code: string; name: string; standard_type: "occurrence" | "threshold";
+  priority: "High" | "Medium" | "Low" | "NA"; is_scored: boolean; unit_label: string;
+  measurement_source?: "auto" | "manual"; responsible_team?: string | null; assigned_to?: string | null;
+}
+
+export interface ContractorRecord { id: string; name: string; contract_start_date: string; contract_end_date: string | null; is_active: boolean }
+export interface AssessmentPeriod { id: string; contractor_id: string; contractor_name: string; service_month: string; status: AssessmentPeriodStatus; ramp_up_stage: "suspended" | "half" | "full"; input_revision: number; computed_revision: number | null; proposed_total: number; final_total: number | null }
+export interface PeriodKpiAssessment { id: string; period_id: string; standard_id: string; code: string; name: string; standard_type: string; priority: string; metric_display: string; target_display?: string; variance_pct?: number | null; tier_label: AssessmentTierLabel; occurrence_count: number; base_amount?: number; relief_amount?: number; ramp_up_multiplier?: number; escalation_multiplier?: number; proposed_amount: number; final_amount: number | null; manager_action: ManagerAssessmentAction; manager_reason: string | null; cap_required?: boolean; cap_reason?: string | null; consecutive_months_below?: number; data_completeness_pct: number | null }
+export interface ComplianceOccurrence { id: string; standard_id: string; standard_code: string; standard_name: string; contractor_id: string; contractor_name: string; service_date: string; quantity: number; description: string; source: string; review_status: string; attribution: string }
+export interface ManualMetricEntry { id: string; standard_id: string; standard_code: string; standard_name: string; contractor_id: string; contractor_name: string; service_month: string; metric_value: number; source_note: string; entered_by: string; entered_at: string }
+export interface ContractorStandardTier { id: string; standard_id: string; tier_order: number; tier_label: AssessmentTierLabel; bound_low: number | null; bound_high: number | null; penalty_basis: string; penalty_amount: number; triggers_cap: boolean; notes: string | null }

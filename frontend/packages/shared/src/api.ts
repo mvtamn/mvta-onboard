@@ -61,6 +61,14 @@ import type {
   OtpHistoricalBackfillResponse,
   MapsTokenResponse,
   DetourImage,
+  ContractorPerformanceStandard,
+  ContractorRecord,
+  AssessmentPeriod,
+  PeriodKpiAssessment,
+  ComplianceOccurrence,
+  ContractorStandardTier,
+  ManualMetricEntry,
+  ManagerAssessmentAction,
 } from "./types.js";
 
 export type TokenProvider = () => Promise<string | null>;
@@ -561,6 +569,46 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
 
     getMapsToken() {
       return request<MapsTokenResponse>("/api/maps/token", {}, true);
+    },
+
+    getPerformanceStandards() {
+      return request<{ standards: ContractorPerformanceStandard[]; tiers: ContractorStandardTier[]; diagnostics: { table_ready: boolean } }>("/api/performance-standards", {}, true);
+    },
+    getContractors() {
+      return request<{ contractors: ContractorRecord[]; diagnostics: { table_ready: boolean } }>("/api/contractors", {}, true);
+    },
+    putContractor(id: string, input: { name: string; contract_start_date: string; contract_end_date: string | null; is_active: boolean }) {
+      return request<{ id: string }>(`/api/contractors/${id}`, { method: "PUT", body: JSON.stringify(input) }, true);
+    },
+    getAssessmentPeriods() {
+      return request<{ periods: AssessmentPeriod[]; diagnostics: { table_ready: boolean } }>("/api/assessment-periods", {}, true);
+    },
+    openAssessmentPeriod(contractor_id: string, service_month: string) {
+      return request<{ id: string }>("/api/assessment-periods", { method: "POST", body: JSON.stringify({ contractor_id, service_month }) }, true);
+    },
+    computeAssessmentPeriod(id: string) {
+      return request<{ id: string; status: string }>(`/api/assessment-periods/${id}/compute`, { method: "POST" }, true);
+    },
+    finalizeAssessmentPeriod(id: string) {
+      return request<{ id: string; status: string }>(`/api/assessment-periods/${id}/finalize`, { method: "POST" }, true);
+    },
+    getPeriodAssessments(periodId: string) {
+      return request<{ assessments: PeriodKpiAssessment[] }>(`/api/period-assessments?period_id=${encodeURIComponent(periodId)}`, {}, true);
+    },
+    reviewPeriodAssessment(id: string, manager_action: Exclude<ManagerAssessmentAction, "pending">, final_amount?: number, manager_reason?: string) {
+      return request<{ id: string }>(`/api/period-assessments/${id}`, { method: "PATCH", body: JSON.stringify({ manager_action, final_amount, manager_reason }) }, true);
+    },
+    getComplianceOccurrences() {
+      return request<{ occurrences: ComplianceOccurrence[]; diagnostics: { table_ready: boolean } }>("/api/compliance-occurrences", {}, true);
+    },
+    reviewComplianceOccurrence(id: string, review_status: "candidate" | "confirmed" | "dismissed", attribution: "contractor_error" | "excusable" | "mvta_directed" | "undetermined", dismiss_reason?: string) {
+      return request<{ id: string }>(`/api/compliance-occurrences/${id}`, { method: "PATCH", body: JSON.stringify({ review_status, attribution, dismiss_reason }) }, true);
+    },
+    getManualMetrics() {
+      return request<{ metrics: ManualMetricEntry[]; diagnostics: { table_ready: boolean } }>("/api/manual-metrics", {}, true);
+    },
+    putManualMetric(input: { standard_id: string; contractor_id: string; service_month: string; metric_value: number; source_note: string }) {
+      return request<{ id: string }>("/api/manual-metrics", { method: "PUT", body: JSON.stringify(input) }, true);
     },
   };
 }

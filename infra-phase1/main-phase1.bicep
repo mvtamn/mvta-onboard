@@ -67,6 +67,7 @@ module restApiFunction 'modules/functionapp.bicep' = {
     frontDoorId: frontDoorId
     allowedCorsOrigins: allowedCorsOrigins
     includeSpareApiKey: true
+    complianceReportsStorageAccountName: take('stmvtacompreport${environment}${cleanSuffix}', 24)
     spareMissedTripsEnabled: spareMissedTripsEnabled
     spareMissedTripServiceIds: spareMissedTripServiceIds
     spareContractorFaultValues: spareContractorFaultValues
@@ -146,6 +147,15 @@ module detourImagesStorage 'modules/storage-detour-images.bicep' = {
     // Same origins the Function App's own CORS allows - the console needs
     // to PUT/GET blobs directly from the browser via SAS URLs.
     allowedCorsOrigins: allowedCorsOrigins
+  }
+}
+
+module complianceReportsStorage 'modules/storage-compliance-reports.bicep' = {
+  name: 'compliance-reports-storage-deployment'
+  params: {
+    location: location
+    storageAccountName: take('stmvtacompreport${environment}${cleanSuffix}', 24)
+    functionAppPrincipalId: restApiFunction.outputs.functionAppPrincipalId
   }
 }
 

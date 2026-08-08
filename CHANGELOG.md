@@ -7,6 +7,26 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 ## [Unreleased]
 
+## [1.5.12] - 2026-08-08
+
+- **Contractor Performance Assessment foundation.** A new top-level Performance
+  Assessment workspace provides contractor/month setup, Attachment G standards,
+  scorecards, KPI detail, manual metrics, governed occurrence review, manager
+  review, recomputation, and finalization. CAP and dispute tabs identify the
+  future governed workflows without representing placeholder data as live.
+- **Verified missed-trip assessment bridge.** The daily candidate poll copies
+  confirmed GTFS and Spare missed trips into the assessment occurrence log
+  exactly once. They remain candidates until assessment staff explicitly assign
+  contractor-error, excusable, or MVTA-directed attribution; only confirmed
+  contractor-error occurrences enter a monthly calculation.
+- **Auditable assessment engine and reports.** Assessment inputs are revisioned
+  and hashed, changed inputs require manager re-review, finalized reports use
+  archived hash-verified HTML, and final issuance uses fail-closed MVTA holiday
+  coverage for its dispute deadline. Power BI receives read-only scorecard views.
+- **Assessment infrastructure.** The REST Function App is configured for a
+  private managed-identity-backed compliance-report container. Database objects
+  are defined by rerunnable migrations 030 and 031.
+
 ## [1.5.11] - 2026-08-08
 
 - **Missed Trips review queue pagination.** The queue now shows 10 trips by

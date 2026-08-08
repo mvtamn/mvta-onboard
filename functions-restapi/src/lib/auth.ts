@@ -65,6 +65,9 @@ export function getCallerPrincipal(request: HttpRequest): CallerPrincipal | null
 export const STAFF_READ_ROLES = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin"];
 export const PUBLISH_ROLES = ["OCC.Publisher", "OCC.Admin", "System.Ingestion"];
 export const ADMIN_ROLES = ["OCC.Admin"];
+export const COMPLIANCE_READ_ROLES = [...STAFF_READ_ROLES, "OCC.Compliance", "OCC.ComplianceManager"];
+export const COMPLIANCE_WRITE_ROLES = [...PUBLISH_ROLES, "OCC.Compliance", "OCC.ComplianceManager"];
+export const COMPLIANCE_MANAGER_ROLES = ["OCC.ComplianceManager", ...ADMIN_ROLES];
 
 // Detour & Closure module role sets (owner decision, 2026-08-06).
 //

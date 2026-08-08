@@ -94,6 +94,16 @@ export function IconShield(_: IconProps) {
   );
 }
 
+export function IconAssessment(_: IconProps) {
+  return (
+    <svg {...base}>
+      <path d="M9 4h6" />
+      <path d="M9 2h6a2 2 0 0 1 2 2v1h2a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2V4a2 2 0 0 1 2-2Z" />
+      <path d="m7 12 2 2 4-4M7 18h10" />
+    </svg>
+  );
+}
+
 export function IconDetour(_: IconProps) {
   return (
     <svg {...base}>
