@@ -13,7 +13,17 @@ import sql from "mssql";
 
 let poolPromise: Promise<sql.ConnectionPool> | null = null;
 
-function parseConnectionString(connectionString: string): sql.config {
+function unwrapConnectionStringValue(value: string): string {
+  if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
+    return value.slice(1, -1).replace(/""/g, '"');
+  }
+  if (value.length >= 2 && value.startsWith("{") && value.endsWith("}")) {
+    return value.slice(1, -1).replace(/}}/g, "}");
+  }
+  return value;
+}
+
+export function parseConnectionString(connectionString: string): sql.config {
   const parts: Record<string, string> = {};
   connectionString.split(";").forEach((segment) => {
     const idx = segment.indexOf("=");
@@ -23,6 +33,17 @@ function parseConnectionString(connectionString: string): sql.config {
     if (key) parts[key] = value;
   });
 
+  // Passwords commonly contain semicolons. The generic split above cannot
+  // preserve them, so recover the complete password using the next known
+  // connection-string property as the delimiter. Quoted and ADO.NET-style
+  // braced values are supported as well.
+  const passwordMatch = connectionString.match(
+    /(?:^|;)\s*(?:password|pwd)\s*=\s*(.*?)(?=;\s*(?:server|data source|database|initial catalog|user id|uid|encrypt|trustservercertificate|connection timeout)\s*=|;?\s*$)/i,
+  );
+  const password = passwordMatch
+    ? unwrapConnectionStringValue(passwordMatch[1].trim())
+    : parts["password"] || parts["pwd"];
+
   const serverRaw = (parts["server"] || "").replace(/^tcp:/i, "");
   const [server, portStr] = serverRaw.split(",");
 
@@ -31,7 +52,7 @@ function parseConnectionString(connectionString: string): sql.config {
     port: portStr ? parseInt(portStr, 10) : 1433,
     database: parts["database"],
     user: parts["user id"] || parts["uid"],
-    password: parts["password"] || parts["pwd"],
+    password,
     options: {
       encrypt: (parts["encrypt"] || "true").toLowerCase() === "true",
       trustServerCertificate: (parts["trustservercertificate"] || "false").toLowerCase() === "true",
