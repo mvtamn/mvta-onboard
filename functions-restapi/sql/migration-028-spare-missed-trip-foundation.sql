@@ -1,7 +1,9 @@
 -- Migration 028: Spare fields required only for Missed Trips. This is not
 -- the broader ridership/wait-time/garage integration.
 
-CREATE TABLE SpareMissedTripSource (
+IF OBJECT_ID(N'dbo.SpareMissedTripSource', N'U') IS NULL
+BEGIN
+CREATE TABLE dbo.SpareMissedTripSource (
     request_id                    NVARCHAR(64)  NOT NULL PRIMARY KEY,
     duty_id                       NVARCHAR(64)  NULL,
     service_id                    NVARCHAR(64)  NULL,
@@ -22,13 +24,21 @@ CREATE TABLE SpareMissedTripSource (
     ingested_at                   DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME(),
     raw_payload                   NVARCHAR(MAX) NULL
 );
+END;
 GO
 
-CREATE INDEX IX_SpareMissedTripSource_DutyPickup
-    ON SpareMissedTripSource (duty_id, scheduled_pickup_at);
+IF NOT EXISTS (
+    SELECT 1 FROM sys.indexes
+    WHERE object_id = OBJECT_ID(N'dbo.SpareMissedTripSource')
+      AND name = N'IX_SpareMissedTripSource_DutyPickup'
+)
+    CREATE INDEX IX_SpareMissedTripSource_DutyPickup
+        ON dbo.SpareMissedTripSource (duty_id, scheduled_pickup_at);
 GO
 
-CREATE TABLE SpareMissedTripSlots (
+IF OBJECT_ID(N'dbo.SpareMissedTripSlots', N'U') IS NULL
+BEGIN
+CREATE TABLE dbo.SpareMissedTripSlots (
     slot_id       NVARCHAR(64) NOT NULL PRIMARY KEY,
     duty_id       NVARCHAR(64) NOT NULL,
     request_id    NVARCHAR(64) NULL,
@@ -40,13 +50,21 @@ CREATE TABLE SpareMissedTripSlots (
     ingested_at   DATETIME2    NOT NULL DEFAULT SYSUTCDATETIME(),
     raw_payload   NVARCHAR(MAX) NULL
 );
+END;
 GO
 
-CREATE INDEX IX_SpareMissedTripSlots_DutyTypeScheduled
-    ON SpareMissedTripSlots (duty_id, slot_type, scheduled_at);
+IF NOT EXISTS (
+    SELECT 1 FROM sys.indexes
+    WHERE object_id = OBJECT_ID(N'dbo.SpareMissedTripSlots')
+      AND name = N'IX_SpareMissedTripSlots_DutyTypeScheduled'
+)
+    CREATE INDEX IX_SpareMissedTripSlots_DutyTypeScheduled
+        ON dbo.SpareMissedTripSlots (duty_id, slot_type, scheduled_at);
 GO
 
-CREATE TABLE SpareMissedTripEvaluations (
+IF OBJECT_ID(N'dbo.SpareMissedTripEvaluations', N'U') IS NULL
+BEGIN
+CREATE TABLE dbo.SpareMissedTripEvaluations (
     request_id               NVARCHAR(64) NOT NULL PRIMARY KEY
         REFERENCES SpareMissedTripSource(request_id),
     decision_state           NVARCHAR(30) NOT NULL,
@@ -64,6 +82,7 @@ CREATE TABLE SpareMissedTripEvaluations (
     CONSTRAINT CK_SpareMissedTripEvaluations_State
       CHECK (decision_state IN ('candidate', 'not_missed', 'unknown_data_gap'))
 );
+END;
 GO
 
-PRINT 'Migration 028 applied: Spare Missed Trips source, Slots, and evaluation tables added.';
+PRINT 'Migration 028 verified: Spare Missed Trips source, Slots, and evaluation tables are present.';
