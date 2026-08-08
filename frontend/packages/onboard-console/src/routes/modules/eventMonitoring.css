@@ -1,34 +1,44 @@
-/* Event Vehicle Monitoring module - scoped under .evmon. Renders inside the
-   console's own panel-body chrome. Reuses global classes (panel-header,
-   panel-body, panel-desc, table.data, td-dim) and the global color tokens
-   (see ../../../styles.css) so this respects the light/dark theme toggle
-   automatically. The mock event-shuttle scenario (schematic map, monitored-
-   vehicle sidebar, swap picker, delay-alert cards) is retired - see
-   EventMonitoring.tsx's header comment - so only the real Azure Maps panel
-   (event-module-implementation-plan.md, Part A3) gets its own rules here. */
-.evmon { font-size: 13px; color: var(--text); }
-.evmon .veh-id { font-weight: 600; }
-
-/* Event bus positions - map + companion list side by side; stacks on
-   narrow viewports since the map needs real width to be useful. */
-.evmon-event-layout { display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px; margin-bottom: 20px; }
-@media (max-width: 900px) {
-  .evmon-event-layout { grid-template-columns: 1fr; }
-}
-
-.evmon .map-card { position: relative; background: var(--surface-alt-bg); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
-.evmon-real-map { height: 360px; }
+.evmon { color: var(--text); max-width: 1500px; margin: 0 auto; }
+.evmon-summary { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 18px; }
+.evmon-summary h2 { margin: 5px 0 4px; font-size: 25px; letter-spacing: -.3px; }
+.evmon-summary p { margin: 0; color: var(--text-muted); font-size: 13px; }
+.evmon-eyebrow { color: var(--success-text); font-size: 11px; font-weight: 800; letter-spacing: .7px; text-transform: uppercase; }
+.evmon-live-dot { display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: #27ae60; box-shadow: 0 0 0 4px rgba(39,174,96,.12); }
+.evmon-metrics { display: flex; background: var(--surface-bg); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,.04); }
+.evmon-metrics div { min-width: 105px; padding: 10px 16px; border-right: 1px solid var(--border); }
+.evmon-metrics div:last-child { border-right: 0; }
+.evmon-metrics strong, .evmon-metrics span { display: block; }
+.evmon-metrics strong { font-size: 20px; color: var(--brand-green); }
+.evmon-metrics span { color: var(--text-muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
+.evmon-workspace { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--surface-bg); box-shadow: 0 4px 16px rgba(0,0,0,.07); margin-bottom: 22px; }
+.evmon-workspace.is-minimized { box-shadow: none; }
+.evmon-toolbar { min-height: 48px; padding: 0 14px 0 17px; background: var(--brand-green); color: #fff; display: flex; align-items: center; justify-content: space-between; }
+.evmon-toolbar strong, .evmon-toolbar span { display: block; }
+.evmon-toolbar strong { font-size: 14px; }
+.evmon-toolbar span { margin-top: 2px; color: rgba(255,255,255,.72); font-size: 10.5px; }
+.evmon-toolbar-actions { display: flex; gap: 7px; }
+.evmon-toolbar button { border: 1px solid rgba(255,255,255,.4); border-radius: 6px; padding: 6px 10px; color: #fff; background: rgba(255,255,255,.08); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
+.evmon-toolbar button:hover { background: rgba(255,255,255,.18); }
+.evmon-toolbar button:disabled { opacity: .6; cursor: wait; }
+.evmon-map-wrap { position: relative; }
+.evmon-real-map { height: min(58vh, 610px); min-height: 430px; position: relative; }
 .evmon-map-container { position: absolute; inset: 0; }
-.evmon-map-overlay-message {
-  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  font-size: 12.5px; color: var(--text-muted); background: var(--surface-alt-bg); text-align: center; padding: 0 16px;
-}
-
-/* Marker + popup content render inside the Azure Maps SDK's own DOM, not
-   React's - plain CSS, not the app's component classes. */
-.event-map-marker {
-  width: 14px; height: 14px; border-radius: 50%;
-  background: #01543d; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
-  cursor: pointer;
-}
-.event-map-popup { font-size: 12.5px; line-height: 1.5; color: #1a1a1a; }
+.evmon-map-message { position: absolute; inset: 0; display: grid; place-items: center; background: var(--surface-alt-bg); color: var(--text-muted); }
+.evmon-map-hint { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 2; padding: 6px 11px; color: #fff; background: rgba(17,35,29,.78); border-radius: 20px; font-size: 10.5px; pointer-events: none; }
+.event-map-bus { width: 28px; height: 28px; display: grid; place-items: center; border: 2px solid #fff; border-radius: 8px; background: #006341; color: #fff; box-shadow: 0 2px 7px rgba(0,0,0,.4); cursor: help; transform: rotate(var(--bus-heading)); }
+.event-map-bus span { font-size: 15px; line-height: 1; transform: rotate(calc(-1 * var(--bus-heading))); }
+.event-map-popup { min-width: 190px; padding: 3px; color: #17221e; font-size: 12px; line-height: 1.5; }
+.event-map-popup strong, .event-map-popup span { display: block; }
+.event-map-popup strong { color: #006341; font-size: 13px; margin-bottom: 2px; }
+.evmon-list-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 9px; }
+.evmon-list-header h3 { margin: 0 0 2px; font-size: 16px; }
+.evmon-list-header div > span { color: var(--text-muted); font-size: 11px; }
+.evmon-count { padding: 5px 9px; border-radius: 20px; color: var(--success-text); background: var(--success-bg); font-size: 11px; font-weight: 700; }
+.evmon-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-bg); margin-bottom: 10px; }
+.evmon-table th:first-child, .evmon-table th:last-child { border-radius: 0 !important; }
+.evmon-table td { white-space: nowrap; }
+.evmon-bus-chip { display: inline-grid; place-items: center; width: 22px; height: 22px; margin-right: 7px; border-radius: 6px; color: #fff; background: var(--brand-green); font-size: 10px; }
+.evmon-heading { display: inline-block; min-width: 27px; padding: 3px 6px; text-align: center; border: 1px solid var(--border); border-radius: 5px; background: var(--surface-alt-bg); font-size: 10.5px; font-weight: 800; }
+.evmon-empty { padding: 28px; text-align: center; color: var(--text-muted); }
+@media (max-width: 850px) { .evmon-summary { align-items: stretch; flex-direction: column; } .evmon-metrics div { flex: 1; min-width: 0; } .evmon-real-map { min-height: 360px; } }
+@media (max-width: 600px) { .evmon-toolbar { gap: 8px; padding: 9px 10px; } .evmon-toolbar-actions button:first-child { display: none; } .evmon-metrics strong { font-size: 17px; } .evmon-metrics div { padding: 8px 10px; } }

@@ -18,7 +18,7 @@ import { getPool, sql } from "../lib/db";
 import { fetchAvlReports, mapAvlReport } from "../lib/availAvl";
 
 app.timer("availAvlPoll", {
-  schedule: "0 */5 * * * *",
+  schedule: "*/30 * * * * *",
   handler: async (_timer: Timer, context: InvocationContext) => {
     const baseUrl = process.env.AVAIL_AVL_REPORTS_URL;
     const apiKey = process.env.AVAIL_AVL_REPORTS_API_KEY;
@@ -27,17 +27,15 @@ app.timer("availAvlPoll", {
       return;
     }
 
-    // Rolling window slightly wider than the 5-minute poll interval (per
-    // OTP-Feed-Evaluation-and-Recommendation (2).md's own suggestion for
-    // this feed - "now minus 5 minutes to now") so a poll that runs a
-    // little late still doesn't leave a gap. Well under the feed's 24-hour
-    // max window.
+    // Keep a two-minute overlap so delayed reports are not lost while the
+    // monitoring UI and this ingestion job both refresh every 30 seconds.
+    // This remains well under the feed's 24-hour maximum window.
     const now = new Date();
-    const tenMinutesAgo = new Date(now.getTime() - 10 * 60 * 1000);
+    const twoMinutesAgo = new Date(now.getTime() - 2 * 60 * 1000);
 
     let reports;
     try {
-      reports = await fetchAvlReports(baseUrl, apiKey, tenMinutesAgo, now);
+      reports = await fetchAvlReports(baseUrl, apiKey, twoMinutesAgo, now);
     } catch (err) {
       context.error("Failed to fetch Avail AVL Reports:", err);
       return;
@@ -129,6 +127,24 @@ app.timer("availAvlPoll", {
         }
       }
     }
+
+    // Current-position tables are operational state, not history. Removing
+    // stale rows prevents buses that signed off (or left event service) from
+    // lingering indefinitely in the monitoring list and map.
+    await pool.request().query(`
+      DELETE FROM AvailAvlVehiclePositions
+      WHERE report_timestamp < DATEADD(MINUTE, -3, SYSUTCDATETIME());
+
+      IF OBJECT_ID('dbo.EventVehicleCurrentPosition', 'U') IS NOT NULL
+        DELETE p
+        FROM EventVehicleCurrentPosition p
+        LEFT JOIN RouteClassification rc
+          ON rc.route_id = p.route
+          AND rc.route_category = 'SpecialEvent'
+          AND rc.is_active = 1
+        WHERE p.report_timestamp < DATEADD(MINUTE, -3, SYSUTCDATETIME())
+           OR rc.route_id IS NULL;
+    `);
 
     context.log(
       `Avail AVL Reports poll: ${reports.length} reports seen, ${upsertedCount} vehicles upserted, ` +

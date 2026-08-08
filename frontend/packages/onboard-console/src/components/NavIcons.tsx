@@ -85,6 +85,15 @@ export function IconWrench(_: IconProps) {
   );
 }
 
+export function IconBus(_: IconProps) {
+  return (
+    <svg {...base}>
+      <rect x="4" y="3" width="16" height="16" rx="3" />
+      <path d="M4 9h16M8 19v2M16 19v2M8 15h.01M16 15h.01" />
+    </svg>
+  );
+}
+
 export function IconShield(_: IconProps) {
   return (
     <svg {...base}>

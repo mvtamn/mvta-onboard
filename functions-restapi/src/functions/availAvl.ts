@@ -16,6 +16,8 @@ interface AvailAvlRow {
   longitude: number;
   heading: number | null;
   direction: string | null;
+  operator_name: string | null;
+  speed_mph: number | null;
   report_timestamp: Date;
   updated_at: Date;
 }
@@ -47,9 +49,27 @@ app.http("availAvlList", {
       }
 
       const result = await pool.request().query<AvailAvlRow>(`
-        SELECT vehicle_id, route, block, run, trip, latitude, longitude, heading, direction,
-               report_timestamp, updated_at
-        FROM AvailAvlVehiclePositions
+        SELECT avl.vehicle_id, avl.route, avl.block, avl.run, avl.trip,
+               avl.latitude, avl.longitude, avl.heading, avl.direction,
+               assignment.operator_name,
+               CAST(position.speed_mps * 2.236936 AS DECIMAL(7,1)) AS speed_mph,
+               avl.report_timestamp, avl.updated_at
+        FROM AvailAvlVehiclePositions avl
+        OUTER APPLY (
+          SELECT TOP (1) d.operator_name
+          FROM FixedRouteDepartures d
+          WHERE d.block = avl.block AND d.run = avl.run
+            AND d.service_date = CONVERT(CHAR(8), GETDATE(), 112)
+          ORDER BY d.updated_at DESC
+        ) assignment
+        OUTER APPLY (
+          SELECT TOP (1) m.speed_mps
+          FROM MonitoredTripDelays m
+          WHERE m.vehicle_id = CONVERT(NVARCHAR(50), avl.vehicle_id)
+            AND m.position_updated_at >= DATEADD(MINUTE, -3, SYSUTCDATETIME())
+          ORDER BY m.position_updated_at DESC
+        ) position
+        WHERE avl.report_timestamp >= DATEADD(MINUTE, -3, SYSUTCDATETIME())
         ORDER BY route, vehicle_id
       `);
       const vehicles = result.recordset;

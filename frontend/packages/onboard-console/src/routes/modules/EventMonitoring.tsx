@@ -1,294 +1,196 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as atlas from "azure-maps-control";
 import "azure-maps-control/dist/atlas.min.css";
-import { ApiError, type AvailAvlVehicle, type EventVehiclePosition, type GtfsRouteOption } from "@mvta/shared";
+import { ApiError, type AvailAvlVehicle, type GtfsRouteOption } from "@mvta/shared";
 import { api } from "../../config.js";
 import "./eventMonitoring.css";
 
-const AVL_REFRESH_MS = 60_000;
-const MAP_CENTER: atlas.data.Position = [-93.25, 44.83]; // MVTA's south-metro service area + downtown Minneapolis
+const AVL_REFRESH_MS = 30_000;
+const MAP_CENTER: atlas.data.Position = [-93.25, 44.83];
 const MAP_ZOOM = 10;
 
-function timeAgoLabel(value: string | null): string {
+function minutesAgo(value: string | null): string {
   if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  const seconds = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
-  if (seconds < 60) return `${seconds}s ago`;
-  return `${Math.round(seconds / 60)} min ago`;
+  const time = new Date(value).getTime();
+  if (Number.isNaN(time)) return "—";
+  return `${Math.max(0, Math.floor((Date.now() - time) / 60_000))} min ago`;
 }
 
-// RouteClassification first, GTFS second - deliberately that order, not the
-// other way round. A SpecialEvent RouteID is absent from the GTFS static
-// schedule (and therefore from GTFS-RT), so routesById can never name one;
-// route_label from the classification row is the ONLY source of a friendly
-// name for special service, and it surfaces here via AVL Reports, the one
-// feed where a vehicle logged into a special route appears at all. GTFS
-// remains the fallback for the case of a fixed route temporarily classified
-// SpecialEvent (e.g. a regular route running event service), where the
-// admin may have left route_label blank.
-function eventRouteLabel(v: EventVehiclePosition, routesById: Map<string, GtfsRouteOption>): string {
-  if (v.route === null) return "Unclassified route";
-  const gtfs = routesById.get(String(v.route));
-  const name = v.route_label || gtfs?.route_short_name || gtfs?.route_long_name;
-  return name ? `Route ${v.route} · ${name}` : `Route ${v.route}`;
+function cardinalHeading(heading: number | null, direction: string | null): string {
+  if (heading !== null) {
+    const normalized = ((heading % 360) + 360) % 360;
+    if (normalized >= 315 || normalized < 45) return "NB";
+    if (normalized < 135) return "EB";
+    if (normalized < 225) return "SB";
+    return "WB";
+  }
+  const raw = direction?.trim().toUpperCase();
+  if (raw === "N" || raw === "NB") return "NB";
+  if (raw === "S" || raw === "SB") return "SB";
+  if (raw === "E" || raw === "EB" || raw === "O") return "EB";
+  if (raw === "W" || raw === "WB" || raw === "I") return "WB";
+  return "—";
 }
 
-// Event Vehicle Monitoring — the mock event-shuttle scenario (POOL/monitored/
-// swap/delay-alert workflow, ported from event_monitoring_mockup.html) is
-// retired per event-module-implementation-plan.md's redrafted user story
-// (Part A0): that scenario modeled a Phase 2+ alerts/publishing workflow
-// (Claude delay inference, staff review-and-approve) explicitly out of
-// scope for this pass. This module is now visibility/reference only - two
-// real Avail AVL Reports panels: every vehicle (table), and just the
-// RouteClassification-classified 'SpecialEvent' vehicles (real map, Part
-// A3) - nothing here auto-publishes.
+function displayOperator(value: string | null): string {
+  if (!value) return "Operator unavailable";
+  const withoutId = value.replace(/\s+-\d+\s*$/, "").trim();
+  const [last, first] = withoutId.split(",").map((part) => part.trim());
+  return first ? `${first} ${last}` : withoutId;
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>'"]/g, (char) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",
+  })[char] ?? char);
+}
+
+function routeLabel(vehicle: AvailAvlVehicle, routes: Map<string, GtfsRouteOption>): string {
+  if (vehicle.route === null) return "Unassigned";
+  const route = routes.get(String(vehicle.route));
+  const name = route?.route_short_name || route?.route_long_name;
+  return name && name !== String(vehicle.route) ? `${vehicle.route} · ${name}` : String(vehicle.route);
+}
+
 export function EventMonitoring() {
-  const [routesList, setRoutesList] = useState<GtfsRouteOption[]>([]);
+  const [routes, setRoutes] = useState<GtfsRouteOption[]>([]);
+  const [vehicles, setVehicles] = useState<AvailAvlVehicle[] | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [minimized, setMinimized] = useState(false);
+  const routesById = useMemo(() => new Map(routes.map((route) => [route.route_id, route])), [routes]);
+
   useEffect(() => {
     let alive = true;
-    api
-      .getRoutes()
-      .then((d) => alive && setRoutesList(d.routes))
-      .catch(() => alive && setRoutesList([]));
-    return () => {
-      alive = false;
-    };
+    api.getRoutes().then((data) => alive && setRoutes(data.routes)).catch(() => undefined);
+    return () => { alive = false; };
   }, []);
-  const routesById = useMemo(() => new Map(routesList.map((r) => [r.route_id, r])), [routesList]);
 
-  // Live vehicle positions from Avail's own AVL Reports API - every vehicle,
-  // unfiltered.
-  const [availVehicles, setAvailVehicles] = useState<AvailAvlVehicle[] | null>(null);
-  const [availMessage, setAvailMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    function load() {
-      api
-        .getAvailAvlVehicles()
-        .then(({ vehicles, diagnostics }) => {
-          if (!alive) return;
-          setAvailVehicles(vehicles);
-          setAvailMessage(
-            diagnostics.configured
-              ? vehicles.length === 0
-                ? "Feed configured but no vehicles have reported yet."
-                : null
-              : "Avail AVL Reports feed is not configured yet.",
-          );
-        })
-        .catch((err) => {
-          if (!alive) return;
-          setAvailVehicles(null);
-          setAvailMessage(
-            err instanceof ApiError
-              ? `Could not load live vehicle positions: ${err.message}`
-              : "Could not reach the live vehicle-position service.",
-          );
-        });
+  const load = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const { vehicles: current, diagnostics } = await api.getAvailAvlVehicles();
+      setVehicles(current);
+      setLastUpdated(new Date());
+      setMessage(
+        diagnostics.configured
+          ? current.length === 0 ? "No vehicles are actively reporting right now." : null
+          : "Avail AVL Reports feed is not configured yet.",
+      );
+    } catch (error) {
+      setMessage(error instanceof ApiError
+        ? `Could not load live vehicle positions: ${error.message}`
+        : "Could not reach the live vehicle-position service.");
+    } finally {
+      setRefreshing(false);
     }
-    load();
-    const intervalId = window.setInterval(load, AVL_REFRESH_MS);
-    return () => {
-      alive = false;
-      window.clearInterval(intervalId);
-    };
   }, []);
-
-  // Event bus positions - the same AVL feed as above, filtered server-side
-  // (availAvlPoll.ts) to routes classified SpecialEvent in
-  // RouteClassification (Admin page). eventFatalMessage covers "not set up
-  // yet" and fetch errors - genuinely nothing to show. An empty
-  // vehicles array once the table IS ready is NOT fatal - the map still
-  // renders (with zero markers), matching the plan's own framing that this
-  // is the expected state before any SpecialEvent route is classified, not
-  // a bug to hide behind a text message.
-  const [eventVehicles, setEventVehicles] = useState<EventVehiclePosition[] | null>(null);
-  const [eventFatalMessage, setEventFatalMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    let alive = true;
-    function load() {
-      api
-        .getEventVehiclePositions()
-        .then(({ vehicles, diagnostics }) => {
-          if (!alive) return;
-          setEventVehicles(vehicles);
-          setEventFatalMessage(
-            !diagnostics.table_ready
-              ? "Event-bus tracking has not been set up yet (migration-016 pending)."
-              : null,
-          );
-        })
-        .catch((err) => {
-          if (!alive) return;
-          setEventVehicles(null);
-          setEventFatalMessage(
-            err instanceof ApiError
-              ? `Could not load event bus positions: ${err.message}`
-              : "Could not reach the event-vehicle-position service.",
-          );
-        });
-    }
-    load();
-    const intervalId = window.setInterval(load, AVL_REFRESH_MS);
-    return () => {
-      alive = false;
-      window.clearInterval(intervalId);
-    };
-  }, []);
+    void load();
+    const interval = window.setInterval(() => void load(), AVL_REFRESH_MS);
+    return () => window.clearInterval(interval);
+  }, [load]);
+
+  const activeVehicles = vehicles ?? [];
+  const routesActive = new Set(activeVehicles.map((v) => v.route).filter((v) => v !== null)).size;
+  const reportingNow = activeVehicles.filter((v) => Date.now() - new Date(v.report_timestamp).getTime() < 60_000).length;
 
   return (
-    <div className="evmon">
-      <div className="panel-header">
-        <span>Live AVL vehicle positions</span>
-        <span className="td-dim">Avail360 · refreshes every 60s</span>
+    <section className="evmon" aria-label="Live vehicle monitoring">
+      <div className="evmon-summary">
+        <div>
+          <span className="evmon-eyebrow"><span className="evmon-live-dot" /> Live operations</span>
+          <h2>Live vehicle positions</h2>
+          <p>Active vehicles are removed automatically when reports stop.</p>
+        </div>
+        <div className="evmon-metrics" aria-label="Live monitoring summary">
+          <div><strong>{activeVehicles.length}</strong><span>Vehicles</span></div>
+          <div><strong>{routesActive}</strong><span>Routes</span></div>
+          <div><strong>{reportingNow}</strong><span>Reporting now</span></div>
+        </div>
       </div>
-      <div className="panel-body" style={{ padding: 0, marginBottom: 20 }}>
-        {availMessage ? (
-          <p className="panel-desc" style={{ padding: "12px 16px", margin: 0 }}>{availMessage}</p>
-        ) : availVehicles === null ? (
-          <p className="panel-desc" style={{ padding: "12px 16px", margin: 0 }}>Loading…</p>
-        ) : (
-          <table className="data">
-            <thead>
-              <tr>
-                <th>Vehicle</th>
-                <th>Route</th>
-                <th>Block</th>
-                <th>Run</th>
-                <th>Direction</th>
-                <th>Heading</th>
-                <th>Last report</th>
-              </tr>
-            </thead>
-            <tbody>
-              {availVehicles.map((v) => (
-                <tr key={v.vehicle_id}>
-                  <td className="veh-id">{v.vehicle_id}</td>
-                  <td>{v.route ?? "—"}</td>
-                  <td>{v.block ?? "—"}</td>
-                  <td>{v.run ?? "—"}</td>
-                  <td>{v.direction ?? "—"}</td>
-                  <td>{v.heading !== null ? `${v.heading}°` : "—"}</td>
-                  <td className="td-dim">{timeAgoLabel(v.report_timestamp)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+
+      <div className={`evmon-workspace${minimized ? " is-minimized" : ""}`}>
+        <div className="evmon-toolbar">
+          <div>
+            <strong>Live map</strong>
+            <span>{lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}` : "Connecting…"} · every 30 sec</span>
+          </div>
+          <div className="evmon-toolbar-actions">
+            <button type="button" onClick={() => void load()} disabled={refreshing}>{refreshing ? "Refreshing…" : "Refresh now"}</button>
+            <button type="button" onClick={() => setMinimized((value) => !value)} aria-expanded={!minimized}>
+              {minimized ? "Restore map" : "Minimize map"}
+            </button>
+          </div>
+        </div>
+        {!minimized && (
+          <div className="evmon-map-wrap">
+            <VehicleMap vehicles={activeVehicles} routesById={routesById} />
+            <div className="evmon-map-hint">Select the map to open a larger view</div>
+          </div>
         )}
       </div>
 
-      <div className="panel-header">
-        <span>Event bus positions (live)</span>
-        <span className="td-dim">Filtered by Route Classification · refreshes every 60s</span>
+      <div className="evmon-list-header">
+        <div><h3>Monitored vehicles</h3><span>Only actively reporting vehicles are shown</span></div>
+        <span className="evmon-count">{activeVehicles.length} active</span>
       </div>
-      {eventFatalMessage ? (
-        <p className="panel-desc" style={{ padding: "12px 4px" }}>{eventFatalMessage}</p>
-      ) : eventVehicles === null ? (
-        <p className="panel-desc" style={{ padding: "12px 4px" }}>Loading…</p>
-      ) : (
-        <div className="evmon-event-layout">
-          <EventVehicleMap vehicles={eventVehicles} routesById={routesById} />
-          <div className="panel-body" style={{ padding: 0 }}>
-            {eventVehicles.length === 0 ? (
-              <p className="panel-desc" style={{ padding: "12px 16px", margin: 0 }}>
-                No event buses classified yet - add a SpecialEvent route in Admin &gt; Route Classification.
-              </p>
-            ) : (
-              <table className="data">
-                <thead>
-                  <tr>
-                    <th>Vehicle</th>
-                    <th>Route</th>
-                    <th>Heading</th>
-                    <th>Last report</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {eventVehicles.map((v) => (
-                    <tr key={v.vehicle_id}>
-                      <td className="veh-id">{v.vehicle_id}</td>
-                      <td>{eventRouteLabel(v, routesById)}</td>
-                      <td>{v.heading !== null ? `${v.heading}°` : "—"}</td>
-                      <td className="td-dim">{timeAgoLabel(v.report_timestamp)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+      <div className="evmon-table-wrap">
+        {message ? <div className="evmon-empty">{message}</div> : vehicles === null ? <div className="evmon-empty">Loading live positions…</div> : (
+          <table className="data evmon-table">
+            <thead><tr><th>Vehicle</th><th>Operator</th><th>Route</th><th>Block / Run</th><th>Heading</th><th>Speed</th><th>Last report</th></tr></thead>
+            <tbody>{activeVehicles.map((vehicle) => (
+              <tr key={vehicle.vehicle_id}>
+                <td><span className="evmon-bus-chip">▣</span><strong>{vehicle.vehicle_id}</strong></td>
+                <td>{displayOperator(vehicle.operator_name)}</td>
+                <td>{routeLabel(vehicle, routesById)}</td>
+                <td>{vehicle.block ?? "—"} / {vehicle.run ?? "—"}</td>
+                <td><span className="evmon-heading">{cardinalHeading(vehicle.heading, vehicle.direction)}</span></td>
+                <td>{vehicle.speed_mph === null ? "—" : `${vehicle.speed_mph.toFixed(1)} mph`}</td>
+                <td>{minutesAgo(vehicle.report_timestamp)}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        )}
+      </div>
+    </section>
   );
 }
 
-// Real Azure Maps basemap (event-module-implementation-plan.md, Part A3),
-// replacing the retired static Lot A/Fairgrounds schematic. Zero-standing-
-// secret: authenticates via 'anonymous' mode, calling GET /maps/token for
-// both the account's public clientId (needed once, synchronously, at map
-// construction) and each short-lived bearer token the SDK requests
-// thereafter - no Maps subscription key is ever present in this bundle.
-function EventVehicleMap({
-  vehicles,
-  routesById,
-}: {
-  vehicles: EventVehiclePosition[];
-  routesById: Map<string, GtfsRouteOption>;
-}) {
+function VehicleMap({ vehicles, routesById }: { vehicles: AvailAvlVehicle[]; routesById: Map<string, GtfsRouteOption> }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<atlas.Map | null>(null);
   const popupRef = useRef<atlas.Popup | null>(null);
   const [ready, setReady] = useState(false);
-  const [mapError, setMapError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
     let cancelled = false;
     let map: atlas.Map | null = null;
-
-    api
-      .getMapsToken()
-      .then((initial) => {
-        if (cancelled || !containerRef.current) return;
-        map = new atlas.Map(containerRef.current, {
-          center: MAP_CENTER,
-          zoom: MAP_ZOOM,
-          style: "road",
-          authOptions: {
-            authType: atlas.AuthenticationType.anonymous,
-            clientId: initial.client_id,
-            getToken: (resolve, reject) => {
-              api
-                .getMapsToken()
-                .then((d) => resolve(d.access_token))
-                .catch(reject);
-            },
-          },
-        });
-        mapRef.current = map;
-        popupRef.current = new atlas.Popup({ pixelOffset: [0, -30] });
-        map.events.addOnce("ready", () => {
-          if (!cancelled) setReady(true);
-        });
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setMapError(
-          err instanceof ApiError
-            ? `Could not load the map: ${err.message}`
-            : "Could not reach the map service.",
-        );
+    api.getMapsToken().then((initial) => {
+      if (cancelled || !containerRef.current) return;
+      map = new atlas.Map(containerRef.current, {
+        center: MAP_CENTER, zoom: MAP_ZOOM, style: "road",
+        authOptions: {
+          authType: atlas.AuthenticationType.anonymous,
+          clientId: initial.client_id,
+          getToken: (resolve, reject) => api.getMapsToken().then((data) => resolve(data.access_token)).catch(reject),
+        },
       });
-
-    return () => {
-      cancelled = true;
-      popupRef.current = null;
-      map?.dispose();
-      mapRef.current = null;
-    };
+      mapRef.current = map;
+      popupRef.current = new atlas.Popup({ pixelOffset: [0, -24], closeButton: false });
+      map.events.addOnce("ready", () => !cancelled && setReady(true));
+      map.events.add("click", () => {
+        if (!window.confirm("Open this live map in a new browser window?")) return;
+        const camera = map?.getCamera();
+        const center = camera?.center ?? MAP_CENTER;
+        window.open(`https://www.bing.com/maps?cp=${center[1]}~${center[0]}&lvl=${Math.round(camera?.zoom ?? MAP_ZOOM)}`, "_blank", "noopener,noreferrer");
+      });
+    }).catch((err) => setError(err instanceof ApiError ? `Could not load the map: ${err.message}` : "Could not reach the map service."));
+    return () => { cancelled = true; popupRef.current = null; map?.dispose(); mapRef.current = null; };
   }, []);
 
   useEffect(() => {
@@ -296,29 +198,27 @@ function EventVehicleMap({
     const popup = popupRef.current;
     if (!map || !ready) return;
     map.markers.clear();
-    vehicles.forEach((v) => {
+    vehicles.forEach((vehicle) => {
+      const heading = vehicle.heading ?? 0;
       const marker = new atlas.HtmlMarker({
-        position: [v.longitude, v.latitude],
-        color: "#01543d",
-        htmlContent: '<div class="event-map-marker" role="img"></div>',
+        position: [vehicle.longitude, vehicle.latitude],
+        htmlContent: `<div class="event-map-bus" style="--bus-heading:${heading}deg" role="img" aria-label="Bus ${vehicle.vehicle_id}"><span>▰</span></div>`,
       });
       map.markers.add(marker);
-      map.events.add("click", marker, () => {
-        if (!popup) return;
-        popup.setOptions({
-          position: [v.longitude, v.latitude],
-          content: `<div class="event-map-popup"><strong>Vehicle ${v.vehicle_id}</strong><br/>${eventRouteLabel(v, routesById)}<br/>${timeAgoLabel(v.report_timestamp)}</div>`,
+      map.events.add("mouseover", marker, () => {
+        popup?.setOptions({
+          position: [vehicle.longitude, vehicle.latitude],
+          content: `<div class="event-map-popup"><strong>${escapeHtml(displayOperator(vehicle.operator_name))}</strong><span>Vehicle ${vehicle.vehicle_id} · Route ${escapeHtml(routeLabel(vehicle, routesById))}</span><span>${cardinalHeading(vehicle.heading, vehicle.direction)} · ${vehicle.speed_mph === null ? "Speed unavailable" : `${vehicle.speed_mph.toFixed(1)} mph`}</span><span>Last report ${minutesAgo(vehicle.report_timestamp)}</span></div>`,
         });
-        popup.open(map);
+        popup?.open(map);
       });
+      map.events.add("mouseout", marker, () => popup?.close());
     });
+    if (vehicles.length > 0) {
+      const positions = vehicles.map((vehicle) => [vehicle.longitude, vehicle.latitude] as atlas.data.Position);
+      map.setCamera({ bounds: atlas.data.BoundingBox.fromPositions(positions), padding: 70, maxZoom: 14 });
+    }
   }, [vehicles, routesById, ready]);
 
-  return (
-    <div className="map-card evmon-real-map">
-      <div ref={containerRef} className="evmon-map-container" />
-      {mapError ? <div className="evmon-map-overlay-message">{mapError}</div> : null}
-      {!mapError && !ready ? <div className="evmon-map-overlay-message">Loading map…</div> : null}
-    </div>
-  );
+  return <div className="evmon-real-map"><div ref={containerRef} className="evmon-map-container" />{error && <div className="evmon-map-message">{error}</div>}{!error && !ready && <div className="evmon-map-message">Loading live map…</div>}</div>;
 }
