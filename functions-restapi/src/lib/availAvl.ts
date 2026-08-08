@@ -19,6 +19,8 @@
 // once, so the two conventions can never double up into ".../MVTA/MVTA/...".
 // This matches every other Avail feed in this app, which bakes Property
 // into its own base URL setting.
+import { agencyLocalDateTimeToUtc } from "./missedTripTime";
+
 export interface AvailAvlReport {
   Vehicle: number;
   Timestamp: string;
@@ -191,6 +193,28 @@ export interface MappedAvlVehicle {
   report_timestamp: Date;
 }
 
+// Avail returns live Timestamp values as agency-local wall-clock ISO strings
+// without a zone suffix. Node runs in UTC in Azure, so new Date(value) alone
+// makes a current CDT report appear five hours old (six in CST). Preserve
+// explicitly zoned values, but interpret zone-less values in America/Chicago.
+function parseAvailTimestamp(value: string): Date | null {
+  if (/[zZ]$|[+-]\d{2}:?\d{2}$/.test(value)) {
+    const zoned = new Date(value);
+    return Number.isNaN(zoned.getTime()) ? null : zoned;
+  }
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?$/);
+  if (!match) return null;
+  const timestamp = agencyLocalDateTimeToUtc({
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3]),
+    hour: Number(match[4]),
+    minute: Number(match[5]),
+    second: Number(match[6] ?? "0"),
+  });
+  return Number.isNaN(timestamp.getTime()) ? null : timestamp;
+}
+
 // Guard clause, not a throw - a single malformed report shouldn't abort the
 // whole poll (same convention as mapVehiclePositionEntity/mapAlertEntity
 // elsewhere in this repo).
@@ -202,8 +226,8 @@ export function mapAvlReport(report: AvailAvlReport): MappedAvlVehicle | null {
   ) {
     return null;
   }
-  const timestamp = new Date(report.Timestamp);
-  if (Number.isNaN(timestamp.getTime())) return null;
+  const timestamp = parseAvailTimestamp(report.Timestamp);
+  if (!timestamp) return null;
 
   return {
     vehicle_id: report.Vehicle,

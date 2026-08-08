@@ -31,6 +31,16 @@ test("maps a well-formed AVL report", () => {
   assert.strictEqual(mapped!.report_timestamp.toISOString(), "2024-08-21T08:00:00.000Z");
 });
 
+test("interprets a zone-less summer Avail timestamp in agency local time", () => {
+  const mapped = mapAvlReport({ ...SAMPLE, Timestamp: "2026-08-08T13:30:00.123" });
+  assert.strictEqual(mapped?.report_timestamp.toISOString(), "2026-08-08T18:30:00.000Z");
+});
+
+test("interprets a zone-less winter Avail timestamp in agency local time", () => {
+  const mapped = mapAvlReport({ ...SAMPLE, Timestamp: "2026-01-15T13:30:00" });
+  assert.strictEqual(mapped?.report_timestamp.toISOString(), "2026-01-15T19:30:00.000Z");
+});
+
 test("returns null when Vehicle is missing or non-numeric", () => {
   const report = { ...SAMPLE, Vehicle: undefined as unknown as number };
   assert.strictEqual(mapAvlReport(report), null);
