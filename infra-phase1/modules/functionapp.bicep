@@ -10,6 +10,9 @@ param keyVaultName string
 param planSku string = 'B1'
 param planTier string = 'Basic'
 param includeSpareApiKey bool = false
+param spareMissedTripsEnabled bool = false
+param spareMissedTripServiceIds string = ''
+param spareContractorFaultValues string = ''
 
 @description('Client ID of the MVTA OnBoard Entra ID app registration - wires up Easy Auth so the caller principal and app roles are available via x-ms-client-principal')
 param aadClientId string
@@ -126,6 +129,12 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         // Spare missed-trip ingestion runs only in the REST app. Keep this
         // reference in Bicep so a redeploy does not remove the setting.
         { name: 'SPARE_API_KEY', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/spare-api-key/)' }
+        { name: 'SPARE_API_BASE_URL', value: 'https://api.us.sparelabs.com' }
+        { name: 'SPARE_MISSED_TRIPS_ENABLED', value: string(spareMissedTripsEnabled) }
+        { name: 'SPARE_MISSED_TRIP_SERVICE_IDS', value: spareMissedTripServiceIds }
+        { name: 'SPARE_CONTRACTOR_FAULT_VALUES', value: spareContractorFaultValues }
+        { name: 'SPARE_MISSED_TRIP_LOOKBACK_MINUTES', value: '120' }
+        { name: 'SPARE_MISSED_TRIP_MAX_ROWS', value: '10000' }
       ] : [])
     }
   }

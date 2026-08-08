@@ -3,6 +3,14 @@
 
 **Context:** Spare's API has no single endpoint/field for any of these three metrics as originally scoped. Endpoint responses have since been confirmed directly against the live API, which changed the approach for the better — Spare's **Ridership Export** endpoint is a pre-joined, flattened dataset that covers most of what we need in one pull, cutting down significantly on manual joins.
 
+> **Missed Trips implementation update (2026-08-08):** the live Requests endpoint is now
+> confirmed and is the primary Missed Trips source. It supports bounded incremental filters
+> (`fromUpdatedAt` / `toUpdatedAt`), returns scheduled/actual pickup and dropoff timestamps,
+> measured lateness, and structured `cancellationDetails`. Slots supplies the same-duty pickup
+> ordering for condition 2. The Ridership Export returned HTTP 503 for a bounded one-day probe,
+> so Missed Trips does not depend on it. This substitution applies only to Missed Trips; the
+> broader ridership/wait-time work remains deferred and may still require the export.
+
 **Sources:** Spare support thread with Michelle Hong (Spare), Aug 6–7, 2026; live API response samples confirmed Aug 7, 2026.
 
 > **Implementation scope note (2026-08-07):** the current delivery focus is Missed Trips only.
@@ -35,7 +43,7 @@ An API key is also available (confirmed in hand) — **do not commit it or paste
 
 | # | Endpoint | Method | Confirmed URL | Role in this build |
 |---|---|---|---|---|
-| 1 | Requests | GET | `https://api.us.sparelabs.com/v1/requests` *(path assumed — not yet pasted, confirm)* | Trip-level raw data (superseded as primary source by Ridership Export, see §3) |
+| 1 | Requests | GET | `https://api.us.sparelabs.com/v1/requests` ✅ | Primary Missed Trips source: lifecycle timestamps, measured lateness, duty/service IDs, and structured cancellation attribution |
 | 2 | Duties | GET | `https://api.us.sparelabs.com/v1/duties` ✅ | Driver/vehicle shift records; fallback source for garage departure |
 | 3 | Slots | GET | `https://api.us.sparelabs.com/v1/slots` ✅ | Per-leg schedule records within a duty (start location, pickup, dropoff, etc.) — **primary source for garage departure and Missed Trip condition 2** |
 | 4 | Driver Operations | — | **Not found / not confirmed to exist as a separate endpoint.** Not pursuing further — Slots (`type: startLocation`) covers this need instead. | — |
@@ -46,6 +54,10 @@ An API key is also available (confirmed in hand) — **do not commit it or paste
 ---
 
 ## 3. Key Finding: Use the Ridership Export as the Primary Source
+
+For the still-deferred broader Spare dashboard, retain this as a hypothesis pending a reliable
+export response. For the implemented Missed Trips scope, use Requests + Slots as documented in
+the update above; it provides the required evidence with a confirmed bounded query contract.
 
 The Ridership Export returns one flattened row per trip with Requests + Duties + OTP fields already joined, including:
 
@@ -297,7 +309,8 @@ variance_min = DATEDIFF(MINUTE, scheduled_departure_ts, actual_departure_ts)
 | `ingestSpareSlots` | Timer (daily + intraday refresh) | Slots endpoint | `spare_slots` |
 | `ingestSpareDuties` | Timer (daily) | Duties endpoint | `spare_duties` |
 | `ingestSpareStops` | Timer (weekly — reference data, rarely changes) | Stops endpoint | `spare_stops` |
-| `evaluateMissedTrips` | Timer, runs after `ingestSpareRidershipExport` + `ingestSpareSlots` complete | `spare_ridership_export` + `spare_slots` | `missed_trips` |
+| `ingestSpareMissedTrips` | Timer, every 15 min | Requests incremental window + Slots incremental/requested-time pickup window | `SpareMissedTripSource` + `SpareMissedTripSlots` |
+| `evaluateMissedTrips` | Timer, offset after ingestion | `SpareMissedTripSource` + `SpareMissedTripSlots` | `SpareMissedTripEvaluations` + source-qualified shared review queue |
 | `evaluateWaitTime` | Timer, runs after `ingestSpareRidershipExport` | `spare_ridership_export` | `wait_time_metrics` |
 | `evaluateGarageDeparture` | Timer, runs after `ingestSpareSlots` + `ingestSpareDuties` | `spare_slots` + `spare_duties` | `garage_departure_metrics` |
 
@@ -419,9 +432,9 @@ New "Spare Service Metrics" section/tab alongside the existing OTP Compliance Mo
 ## 10. Open Items / Decisions Needed Before Build
 
 1. **OAuth scopes** — not yet captured; paste when available to confirm coverage of all read scopes needed.
-2. **Requests endpoint URL** — assumed `/v1/requests` on the confirmed `api.us.sparelabs.com` host, not yet directly verified (may be moot if Ridership Export fully replaces it as primary source — confirm during build whether raw Requests is still needed for anything Ridership Export doesn't cover).
-3. **Ridership Export query params** — confirm date range filtering, pagination (`limit`/`skip`), and whether it supports incremental/delta sync or only full pulls.
-4. **Slots `type` enum** — only `startLocation` confirmed from sample data; get the full enum list (likely includes `pickup`, `dropoff`, `endLocation`, `break`) before finalizing condition 2 and garage departure logic.
+2. **Requests endpoint URL — resolved for Missed Trips.** `/v1/requests` is live and supports bounded updated-time, requested-pickup-time, status, duty, service, sorting, and pagination filters.
+3. **Ridership Export query params — still open for deferred metrics.** It is no longer a Missed Trips blocker because the bounded one-day export returned 503 while Requests supplied the required fields reliably.
+4. **Slots `type` enum — resolved for Missed Trips.** The documented values include `startLocation`, `endLocation`, `pickup`, `dropoff`, `routeStop`, and `driverBreak`; condition 2 queries only non-cancelled pickup slots.
 5. **Duties `scheduleLegs[]`** — empty in sample; confirm whether populated data here duplicates Slots (would let us drop one of the two sources).
 6. **Spare's OTP window fields** — check whether `pickupOTPWindowStart/End` and `dropoffOTPWindowStart/End` already encode a 30-minute-equivalent window that could simplify or replace manual condition 1/3 logic.
 7. **Missed Trip condition 2 scope** — confirmed as `duty_id`-scoped (matches your "same duty" definition) rather than `route_id`-scoped; flagging once more for final sign-off since it materially changes which trips get flagged.

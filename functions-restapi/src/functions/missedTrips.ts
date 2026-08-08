@@ -26,6 +26,13 @@ interface MissedTripRow {
   notes: string | null;
   detector_version: string | null;
   data_quality_status: string;
+  source_system: string;
+  source_record_id: string | null;
+  condition_late_start: boolean | null;
+  condition_superseded: boolean | null;
+  condition_late_arrival: boolean | null;
+  start_delay_seconds: number | null;
+  arrival_delay_seconds: number | null;
   // NB/SB/EB/WB from the static schedule (GtfsTripDirections, migration-007) -
   // same join tripDelays.ts already does for Live Delays. Null whenever the
   // trip isn't in that reference table yet, or the static feed couldn't
@@ -80,9 +87,14 @@ app.http("missedTripsList", {
                mmt.suggested_alert_id, mmt.first_seen_watching_at, mmt.last_checked_at,
                mmt.validation_status, mmt.reason_code, mmt.validated_by, mmt.validated_at, mmt.notes,
                mmt.detector_version, mmt.data_quality_status,
+               mmt.source_system, mmt.source_record_id,
+               sme.condition_late_start, sme.condition_superseded, sme.condition_late_arrival,
+               sme.start_delay_seconds, sme.arrival_delay_seconds,
                td.direction_label
         FROM MonitoredMissedTrips mmt
         LEFT JOIN GtfsTripDirections td ON td.trip_id = mmt.trip_id
+        LEFT JOIN SpareMissedTripEvaluations sme
+          ON mmt.source_system = 'spare' AND sme.request_id = mmt.source_record_id
         ${whereClause}
         ORDER BY
           CASE mmt.validation_status WHEN 'unreviewed' THEN 0 ELSE 1 END,
@@ -133,19 +145,21 @@ app.http("missedTripsList", {
           SELECT feed_name, last_success_at, last_entity_count, source_timestamp_at
           FROM MissedTripFeedHealth ORDER BY feed_name
         `);
-        const staleBefore = Date.now() - 15 * 60 * 1000;
         feedHealth = health.recordset.map((row) => ({
           feed_name: row.feed_name,
           last_success_at: row.last_success_at?.toISOString() ?? null,
           last_entity_count: row.last_entity_count,
           source_timestamp_at: row.source_timestamp_at?.toISOString() ?? null,
-          status: row.last_success_at && row.last_success_at.getTime() >= staleBefore ? "current" : "stale",
+          status: row.last_success_at && row.last_success_at.getTime() >=
+            Date.now() - (row.feed_name.startsWith("spare_") ? 35 : 15) * 60 * 1000
+            ? "current" : "stale",
         }));
       }
       const configured = Boolean(
         process.env.GTFS_RT_TRIPUPDATE_URL?.trim() && process.env.GTFS_STATIC_URL?.trim(),
       );
       const silentNoShowEnabled = process.env.GTFS_SILENT_NO_SHOW_ENABLED?.trim().toLowerCase() === "true";
+      const spareEnabled = process.env.SPARE_MISSED_TRIPS_ENABLED?.trim().toLowerCase() === "true";
       return {
         status: 200,
         jsonBody: {
@@ -165,6 +179,8 @@ app.http("missedTripsList", {
             last_checked_at: total?.last_checked_at?.toISOString() ?? null,
             silent_no_show_enabled: silentNoShowEnabled,
             schedule_detection_status: silentNoShowEnabled ? "experimental" : "paused",
+            spare_enabled: spareEnabled,
+            spare_service_scope_configured: Boolean(process.env.SPARE_MISSED_TRIP_SERVICE_IDS?.trim()),
             feed_health: feedHealth,
           },
         },

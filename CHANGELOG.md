@@ -7,6 +7,8 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 ## [Unreleased]
 
+## [1.5.10] - 2026-08-08
+
 - **Missed Trips false-positive containment and evidence rebuild.** Schedule-based
   GTFS no-show escalation now defaults paused behind
   `GTFS_SILENT_NO_SHOW_ENABLED`; explicit cancellations remain active. Static
@@ -28,6 +30,12 @@ badge and footer read this version at build time - see `vite.config.ts`).
   Export + Slots; unattributed cancellations and missing supersession evidence
   remain unknown instead of becoming false candidates. Broader Spare metrics
   are intentionally out of scope.
+- **Spare Missed Trips is now a real source pipeline.** A bounded incremental
+  job ingests only recently updated Spare Requests and Slots, strips rider PII,
+  evaluates completed/cancelled requests with versioned evidence, and projects
+  qualified candidates into the shared review queue with a visible Spare source
+  and condition breakdown. Rider/no-fault or otherwise unapproved cancellations
+  remain data-gap evaluations and never become automatic contractor findings.
 
 ## [1.5.9] - 2026-08-07
 

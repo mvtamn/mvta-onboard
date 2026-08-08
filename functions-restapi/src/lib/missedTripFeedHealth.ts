@@ -2,7 +2,7 @@ import { sql } from "./db";
 
 export async function recordMissedTripFeedSuccess(
   pool: sql.ConnectionPool,
-  feedName: "gtfs_trip_update" | "gtfs_vehicle_position",
+  feedName: "gtfs_trip_update" | "gtfs_vehicle_position" | "spare_requests" | "spare_slots",
   entityCount: number,
   sourceTimestampSeconds: number | null,
 ): Promise<void> {

@@ -14,6 +14,7 @@ import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
 interface MissedTripsSummaryRow {
   service_month: string;
   route_id: string;
+  source_system: string;
   detection_type: string | null;
   validation_status: string;
   trip_count: number;
@@ -41,12 +42,13 @@ app.http("missedTripsMonthlySummary", {
         SELECT
           LEFT(service_date, 6) AS service_month,
           route_id,
+          source_system,
           detection_type,
           validation_status,
           COUNT(*) AS trip_count
         FROM MonitoredMissedTrips
         WHERE data_quality_status = 'source_verified'
-        GROUP BY LEFT(service_date, 6), route_id, detection_type, validation_status
+        GROUP BY LEFT(service_date, 6), route_id, source_system, detection_type, validation_status
         ORDER BY service_month DESC, route_id
       `);
       return { status: 200, jsonBody: { summary: result.recordset } };

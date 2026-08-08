@@ -117,6 +117,13 @@ function fromMissedTrip(trip: MissedTrip): MissedTripAlert {
     notes: trip.notes,
     detectorVersion: trip.detector_version,
     dataQualityStatus: trip.data_quality_status,
+    sourceSystem: trip.source_system,
+    sourceRecordId: trip.source_record_id,
+    conditionLateStart: trip.condition_late_start,
+    conditionSuperseded: trip.condition_superseded,
+    conditionLateArrival: trip.condition_late_arrival,
+    startDelaySeconds: trip.start_delay_seconds,
+    arrivalDelaySeconds: trip.arrival_delay_seconds,
   };
 }
 
@@ -155,6 +162,10 @@ function validationLabel(status: MissedTripAlert["validationStatus"]): string {
 function detectionTypeLabel(type: MissedTripAlert["detectionType"]): string {
   if (type === "explicit_cancellation") return "Explicit cancellation (GTFS-RT)";
   if (type === "silent_no_show") return "Scheduled no-show (never observed)";
+  if (type === "spare_late_start") return "Spare pickup started over 30 minutes late";
+  if (type === "spare_superseded") return "Spare request superseded by the next same-duty pickup";
+  if (type === "spare_late_arrival") return "Spare dropoff arrived at least 30 minutes late";
+  if (type === "spare_multiple") return "Multiple Spare missed-trip conditions";
   return "Unknown — flagged before detection tracking was added";
 }
 
@@ -164,7 +175,8 @@ function dataQualityLabel(status: MissedTripAlert["dataQualityStatus"]): string 
   return "Legacy — unverified";
 }
 
-function routeLabel(routeId: string, routesById: Map<string, GtfsRouteOption>): string {
+function routeLabel(routeId: string, routesById: Map<string, GtfsRouteOption>, sourceSystem: "gtfs" | "spare" = "gtfs"): string {
+  if (sourceSystem === "spare") return `Spare · ${routeId}`;
   const r = routesById.get(routeId);
   const shortName = r?.route_short_name?.trim();
   const longName = r?.route_long_name?.trim();
@@ -588,7 +600,7 @@ function MissedTripsInvestigationPage({
                         tabIndex={0}
                       >
                         <td><strong>{tripCode(alert.scheduledDepartureAt, alert.direction)}</strong></td>
-                        <td>{routeLabel(alert.route, routesById)}</td>
+                        <td>{routeLabel(alert.route, routesById, alert.sourceSystem)}</td>
                         <td className="td-dim">{alert.direction ?? "—"}</td>
                         <td>
                           <span className={`pill-sm ${statusClass(alert.status, alert.validationStatus)}`}>
@@ -670,7 +682,7 @@ function MissedTripsInvestigationPage({
                   aria-pressed={active}
                 >
                   <span className="risk-service">
-                    <strong>{routeLabel(alert.route, routesById)}</strong>
+                    <strong>{routeLabel(alert.route, routesById, alert.sourceSystem)}</strong>
                     <small>Scheduled {timeLabel(alert.scheduledDepartureAt)}</small>
                   </span>
                   <span className="risk-departure">
@@ -749,11 +761,11 @@ function MissedTripDetail({
   const reviewed = alert.validationStatus !== "unreviewed";
 
   return (
-    <aside className="risk-detail" aria-label={`${routeLabel(alert.route, routesById)} missed trip detail`}>
+    <aside className="risk-detail" aria-label={`${routeLabel(alert.route, routesById, alert.sourceSystem)} missed trip detail`}>
       <div className="risk-detail-head">
         <div>
           <span className="risk-eyebrow">Selected trip</span>
-          <h3>Trip {tripCode(alert.scheduledDepartureAt, alert.direction)} · {routeLabel(alert.route, routesById)}</h3>
+          <h3>{alert.sourceSystem === "spare" ? "Request" : "Trip"} {tripCode(alert.scheduledDepartureAt, alert.direction)} · {routeLabel(alert.route, routesById, alert.sourceSystem)}</h3>
           <p>
             Service date {formatServiceDate(alert.serviceDate)} · <span className="mono-ref">Ref {alert.tripId}</span>
           </p>
@@ -770,16 +782,30 @@ function MissedTripDetail({
       </div>
 
       <dl className="risk-facts">
+        <div><dt>Source</dt><dd>{alert.sourceSystem === "spare" ? "Spare Requests + Slots" : "GTFS / GTFS-RT"}</dd></div>
         <div><dt>Detection status</dt><dd>{statusLabel(alert.status, alert.validationStatus)}</dd></div>
         <div><dt>Detection type</dt><dd>{detectionTypeLabel(alert.detectionType)}</dd></div>
         <div><dt>Evidence quality</dt><dd>{dataQualityLabel(alert.dataQualityStatus)}</dd></div>
         <div><dt>Detector version</dt><dd>{alert.detectorVersion ?? "Legacy — not recorded"}</dd></div>
         <div><dt>First flagged</dt><dd>{timeLabel(alert.firstSeenWatchingAt)}</dd></div>
         <div>
-          <dt>First underway evidence</dt>
+          <dt>{alert.sourceSystem === "spare" ? "Pickup arrival evidence" : "First underway evidence"}</dt>
           <dd>{alert.detectedLateArrivalAt ? timeLabel(alert.detectedLateArrivalAt) : "Not observed"}</dd>
         </div>
       </dl>
+
+      {alert.sourceSystem === "spare" ? (
+        <div className="risk-detail-section">
+          <h4>Spare evidence</h4>
+          <dl className="risk-facts">
+            <div><dt>Late start</dt><dd>{alert.conditionLateStart ? "Triggered" : "No"}</dd></div>
+            <div><dt>Same-duty supersession</dt><dd>{alert.conditionSuperseded ? "Triggered" : "No"}</dd></div>
+            <div><dt>Late arrival</dt><dd>{alert.conditionLateArrival ? "Triggered" : "No"}</dd></div>
+            <div><dt>Pickup lateness</dt><dd>{alert.startDelaySeconds === null ? "—" : `${Math.round(alert.startDelaySeconds / 60)} min`}</dd></div>
+            <div><dt>Dropoff lateness</dt><dd>{alert.arrivalDelaySeconds === null ? "—" : `${Math.round(alert.arrivalDelaySeconds / 60)} min`}</dd></div>
+          </dl>
+        </div>
+      ) : null}
 
       <div className="risk-detail-section">
         <div className="risk-section-title-row">
@@ -846,8 +872,10 @@ function MissedTripDetail({
 interface MonthlyRow {
   service_month: string;
   route_id: string;
+  source_system: "gtfs" | "spare";
   cancellations: number;
   noShows: number;
+  spareCandidates: number;
   confirmed: number;
   falsePositive: number;
   unreviewed: number;
@@ -857,12 +885,14 @@ interface MonthlyRow {
 function pivotMonthlySummary(summary: MissedTripsMonthlySummaryRow[]): MonthlyRow[] {
   const byKey = new Map<string, MonthlyRow>();
   for (const r of summary) {
-    const key = `${r.service_month}-${r.route_id}`;
+    const key = `${r.service_month}-${r.source_system}-${r.route_id}`;
     const row = byKey.get(key) ?? {
       service_month: r.service_month,
       route_id: r.route_id,
+      source_system: r.source_system,
       cancellations: 0,
       noShows: 0,
+      spareCandidates: 0,
       confirmed: 0,
       falsePositive: 0,
       unreviewed: 0,
@@ -870,6 +900,7 @@ function pivotMonthlySummary(summary: MissedTripsMonthlySummaryRow[]): MonthlyRo
     };
     if (r.detection_type === "explicit_cancellation") row.cancellations += r.trip_count;
     if (r.detection_type === "silent_no_show") row.noShows += r.trip_count;
+    if (r.detection_type?.startsWith("spare_")) row.spareCandidates += r.trip_count;
     if (r.validation_status === "confirmed") row.confirmed += r.trip_count;
     if (r.validation_status === "false_positive") row.falsePositive += r.trip_count;
     if (r.validation_status === "unreviewed") row.unreviewed += r.trip_count;
@@ -923,6 +954,7 @@ function MissedTripsMonthlyPage({ routesById }: { routesById: Map<string, GtfsRo
             <th>Route</th>
             <th>Cancellations</th>
             <th>No-shows</th>
+            <th>Spare candidates</th>
             <th>Confirmed</th>
             <th>False positives</th>
             <th>Unreviewed</th>
@@ -931,11 +963,12 @@ function MissedTripsMonthlyPage({ routesById }: { routesById: Map<string, GtfsRo
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={`${r.service_month}-${r.route_id}`}>
+            <tr key={`${r.service_month}-${r.source_system}-${r.route_id}`}>
               <td>{formatServiceMonth(r.service_month)}</td>
-              <td>{routeLabel(r.route_id, routesById)}</td>
+              <td>{routeLabel(r.route_id, routesById, r.source_system)}</td>
               <td>{r.cancellations}</td>
               <td>{r.noShows}</td>
+              <td>{r.spareCandidates}</td>
               <td>{r.confirmed}</td>
               <td>{r.falsePositive}</td>
               <td>{r.unreviewed}</td>

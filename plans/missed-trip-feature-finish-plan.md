@@ -346,23 +346,24 @@ Implemented in the current worktree:
   and load-more behavior.
 - Monthly summary uses agency `service_date` and source-verified rows; confirmation promotes a
   manually verified row into that reporting set.
-- Spare-only Missed Trips source/Slots/evaluation schema and a versioned three-condition evaluator
-  are implemented. Evaluation is disabled by default pending live export ingestion confirmation;
-  unattributed cancellations and missing supersession evidence become `unknown_data_gap`, not
-  false candidates.
+- Spare-only Requests/Slots ingestion, evaluation, and shared-queue projection are implemented.
+  Live contracts were confirmed for bounded updated/requested-time filters; Missed Trips no longer
+  depends on the unreliable Ridership Export. Rider/no-fault and unattributed cancellations become
+  `unknown_data_gap`, not false candidates, and rider PII is not stored.
 
 Required deployment order:
 
-1. Apply migrations 026, 027, and 028.
+1. Apply migrations 026, 027, 028, and 029.
 2. Deploy backend and frontend together.
 3. Set `GTFS_SILENT_NO_SHOW_ENABLED=false` explicitly in the Function App.
-4. Leave `SPARE_MISSED_TRIPS_ENABLED=false` until Ridership Export/Slots ingestion is populated and
-   `SPARE_CONTRACTOR_FAULT_VALUES` is approved.
+4. Leave `SPARE_CONTRACTOR_FAULT_VALUES` empty until contractor-attributable values are approved.
+   After migration 029, enable `SPARE_MISSED_TRIPS_ENABLED` for the bounded Requests + Slots path;
+   optionally set `SPARE_MISSED_TRIP_SERVICE_IDS` if only selected Spare services are in scope.
 5. Run the daily static GTFS sync once after migration 027 so first-stop/block fields are populated.
 6. Verify TripUpdate and VehiclePosition feed-health rows and operational evidence in shadow mode.
 
 Verification completed locally:
 
 - backend TypeScript build passes;
-- all 209 backend tests pass;
+- all 216 backend tests pass;
 - full frontend production build passes.

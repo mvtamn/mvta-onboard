@@ -5,7 +5,7 @@ export type MissedTripValidationStatus = "unreviewed" | "confirmed" | "false_pos
 // added by migration-023 (backend column: detection_type). null means a row
 // flagged before that migration ran; the console shows that honestly rather
 // than guessing which signal it was.
-export type MissedTripDetectionType = "explicit_cancellation" | "silent_no_show" | null;
+export type MissedTripDetectionType = "explicit_cancellation" | "silent_no_show" | "spare_late_start" | "spare_superseded" | "spare_late_arrival" | "spare_multiple" | null;
 export type MissedTripDataQualityStatus = "legacy_unverified" | "source_verified" | "experimental";
 
 // Missed Trips is a compliance/investigation tool: detection flags a
@@ -33,6 +33,13 @@ export interface MissedTripAlert {
   notes: string | null;
   detectorVersion: string | null;
   dataQualityStatus: MissedTripDataQualityStatus;
+  sourceSystem: "gtfs" | "spare";
+  sourceRecordId: string | null;
+  conditionLateStart: boolean | null;
+  conditionSuperseded: boolean | null;
+  conditionLateArrival: boolean | null;
+  startDelaySeconds: number | null;
+  arrivalDelaySeconds: number | null;
 }
 
 // Preview-only fallback shown when the console can't reach the authenticated
@@ -59,6 +66,13 @@ export const MISSED_TRIP_ALERTS: MissedTripAlert[] = [
     notes: null,
     detectorVersion: "preview",
     dataQualityStatus: "experimental",
+    sourceSystem: "gtfs",
+    sourceRecordId: null,
+    conditionLateStart: null,
+    conditionSuperseded: null,
+    conditionLateArrival: null,
+    startDelaySeconds: null,
+    arrivalDelaySeconds: null,
   },
   {
     id: "preview-440-1",
@@ -80,5 +94,12 @@ export const MISSED_TRIP_ALERTS: MissedTripAlert[] = [
     notes: "Dispatch log confirms the vehicle ran 12 minutes behind and was never flagged internally.",
     detectorVersion: "preview",
     dataQualityStatus: "experimental",
+    sourceSystem: "gtfs",
+    sourceRecordId: null,
+    conditionLateStart: null,
+    conditionSuperseded: null,
+    conditionLateArrival: null,
+    startDelaySeconds: null,
+    arrivalDelaySeconds: null,
   },
 ];

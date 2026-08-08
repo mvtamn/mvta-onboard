@@ -1,4 +1,4 @@
-export const SPARE_MISSED_TRIP_CALC_VERSION = "spare-missed-v1";
+export const SPARE_MISSED_TRIP_CALC_VERSION = "spare-missed-v2";
 const THIRTY_MINUTES_SECONDS = 30 * 60;
 
 export interface SpareMissedTripInput {
@@ -18,6 +18,7 @@ export interface SparePickupSlot {
   dutyId: string;
   requestId: string | null;
   type: string;
+  status?: string | null;
   scheduledAt: Date | null;
 }
 
@@ -71,6 +72,7 @@ export function evaluateSpareMissedTrip(
         .filter((slot) =>
           slot.dutyId === input.dutyId &&
           normalized(slot.type) === "pickup" &&
+          normalized(slot.status ?? null) !== "cancelled" &&
           slot.requestId !== input.requestId &&
           slot.scheduledAt !== null &&
           slot.scheduledAt.getTime() > input.scheduledPickupAt!.getTime(),

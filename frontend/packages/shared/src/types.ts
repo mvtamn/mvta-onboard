@@ -218,6 +218,7 @@ export interface GtfsRouteOption {
 export type MissedTripStatus = "watching" | "escalated" | "resolved";
 export type MissedTripValidationStatus = "unreviewed" | "confirmed" | "false_positive";
 export type MissedTripDataQualityStatus = "legacy_unverified" | "source_verified" | "experimental";
+export type MissedTripSourceSystem = "gtfs" | "spare";
 
 // Missed Trips is a compliance/investigation tool, not a customer-alert
 // queue - detection only flags a candidate here; a staff member investigates
@@ -228,7 +229,13 @@ export type MissedTripDataQualityStatus = "legacy_unverified" | "source_verified
 // runs, existing rows read back as null for both; the console shows an
 // honest "Unknown - flagged before detection tracking was added" rather
 // than guessing.
-export type MissedTripDetectionType = "explicit_cancellation" | "silent_no_show";
+export type MissedTripDetectionType =
+  | "explicit_cancellation"
+  | "silent_no_show"
+  | "spare_late_start"
+  | "spare_superseded"
+  | "spare_late_arrival"
+  | "spare_multiple";
 
 export interface MissedTrip {
   trip_id: string;
@@ -249,6 +256,13 @@ export interface MissedTrip {
   notes: string | null;
   detector_version: string | null;
   data_quality_status: MissedTripDataQualityStatus;
+  source_system: MissedTripSourceSystem;
+  source_record_id: string | null;
+  condition_late_start: boolean | null;
+  condition_superseded: boolean | null;
+  condition_late_arrival: boolean | null;
+  start_delay_seconds: number | null;
+  arrival_delay_seconds: number | null;
   // NB/SB/EB/WB from GtfsTripDirections, same convention as TripDelay.direction_label -
   // null when the trip isn't in that reference table or no direction could be determined.
   direction_label: string | null;
@@ -287,6 +301,8 @@ export interface MissedTripsDiagnostics {
   last_checked_at: string | null;
   silent_no_show_enabled: boolean;
   schedule_detection_status: "paused" | "experimental";
+  spare_enabled: boolean;
+  spare_service_scope_configured: boolean;
   feed_health: Array<{
     feed_name: string;
     last_success_at: string | null;
@@ -301,6 +317,7 @@ export interface MissedTripsDiagnostics {
 export interface MissedTripsMonthlySummaryRow {
   service_month: string;
   route_id: string;
+  source_system: MissedTripSourceSystem;
   detection_type: MissedTripDetectionType | null;
   validation_status: MissedTripValidationStatus;
   trip_count: number;

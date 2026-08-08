@@ -84,3 +84,20 @@ test("keeps missing pickup evidence unknown when a superseding slot exists", () 
   assert.strictEqual(result.decisionState, "unknown_data_gap");
   assert.strictEqual(result.conditionSuperseded, false);
 });
+
+test("ignores a cancelled next pickup when checking same-duty supersession", () => {
+  const result = evaluateSpareMissedTrip(
+    { ...BASE, pickupArrivedAt: new Date("2026-08-08T15:25:00Z") },
+    [{
+      slotId: "cancelled-next",
+      dutyId: BASE.dutyId!,
+      requestId: "other-request",
+      type: "pickup",
+      status: "cancelled",
+      scheduledAt: new Date("2026-08-08T15:20:00Z"),
+    }],
+    RULES,
+  );
+  assert.equal(result.conditionSuperseded, false);
+  assert.equal(result.decisionState, "not_missed");
+});

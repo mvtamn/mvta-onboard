@@ -24,6 +24,15 @@ param frontDoorId string = ''
 @description('CORS origins allowed to call the API from a browser - the SWA / Front Door hostnames. Empty leaves Azure default.')
 param allowedCorsOrigins array = []
 
+@description('Enables bounded Spare Requests + Slots ingestion and missed-trip evaluation for the REST API.')
+param spareMissedTripsEnabled bool = false
+
+@description('Optional comma-separated Spare service IDs in scope. Empty ingests all services.')
+param spareMissedTripServiceIds string = ''
+
+@description('Comma-separated Spare cancellation fault values approved as contractor-attributable.')
+param spareContractorFaultValues string = ''
+
 @description('Front Door tier for the WAF policy. The live Front Door is Standard; managed rule sets require Premium (see wafpolicy.bicep).')
 @allowed(['Standard_AzureFrontDoor', 'Premium_AzureFrontDoor'])
 param wafSku string = 'Standard_AzureFrontDoor'
@@ -58,6 +67,9 @@ module restApiFunction 'modules/functionapp.bicep' = {
     frontDoorId: frontDoorId
     allowedCorsOrigins: allowedCorsOrigins
     includeSpareApiKey: true
+    spareMissedTripsEnabled: spareMissedTripsEnabled
+    spareMissedTripServiceIds: spareMissedTripServiceIds
+    spareContractorFaultValues: spareContractorFaultValues
   }
 }
 
