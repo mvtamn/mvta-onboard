@@ -32,6 +32,7 @@ interface EventVehiclePositionRow {
   block: number | null;
   run: number | null;
   operator_name: string | null;
+  operator_source: string | null;
   speed_mph: number | null;
   report_timestamp: Date;
   updated_at: Date;
@@ -65,6 +66,7 @@ app.http("eventVehiclePositionsList", {
                p.latitude, p.longitude, p.heading, avl.direction,
                NULLIF(avl.block, 0) AS block, NULLIF(avl.run, 0) AS run,
                assignment.operator_name,
+               CASE WHEN assignment.operator_name IS NOT NULL THEN 'Avail Pullout Reports' END AS operator_source,
                CAST(COALESCE(
                  position.speed_mps * 2.236936,
                  CASE WHEN previous.report_timestamp IS NOT NULL

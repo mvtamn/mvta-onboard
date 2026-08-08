@@ -398,6 +398,7 @@ export interface AvailAvlVehicle {
   heading: number | null;
   direction: string | null;
   operator_name: string | null;
+  operator_source: string | null;
   speed_mph: number | null;
   report_timestamp: string;
   updated_at: string;

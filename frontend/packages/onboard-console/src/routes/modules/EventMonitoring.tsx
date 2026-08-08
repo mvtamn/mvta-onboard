@@ -152,7 +152,6 @@ export function EventMonitoring() {
         {!minimized && (
           <div className="evmon-map-wrap">
             <VehicleMap vehicles={activeVehicles} mapStyle={mapStyle} traffic={traffic} />
-            <div className="evmon-map-hint">Select the map background to open a larger view</div>
           </div>
         )}
       </div>
@@ -188,7 +187,6 @@ function VehicleMap({ vehicles, mapStyle, traffic }: { vehicles: EventVehiclePos
   const mapRef = useRef<atlas.Map | null>(null);
   const popupRef = useRef<atlas.Popup | null>(null);
   const fittedRef = useRef(false);
-  const markerClickRef = useRef(false);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -209,16 +207,6 @@ function VehicleMap({ vehicles, mapStyle, traffic }: { vehicles: EventVehiclePos
       mapRef.current = map;
       popupRef.current = new atlas.Popup({ pixelOffset: [0, -24], closeButton: false });
       map.events.addOnce("ready", () => !cancelled && setReady(true));
-      map.events.add("click", () => {
-        if (markerClickRef.current) {
-          markerClickRef.current = false;
-          return;
-        }
-        if (!window.confirm("Open this live map in a new browser window?")) return;
-        const camera = map?.getCamera();
-        const center = camera?.center ?? MAP_CENTER;
-        window.open(`https://www.bing.com/maps?cp=${center[1]}~${center[0]}&lvl=${Math.round(camera?.zoom ?? MAP_ZOOM)}`, "_blank", "noopener,noreferrer");
-      });
     }).catch((err) => setError(err instanceof ApiError ? `Could not load the map: ${err.message}` : "Could not reach the map service."));
     return () => { cancelled = true; popupRef.current = null; map?.dispose(); mapRef.current = null; };
   }, []);
@@ -254,9 +242,7 @@ function VehicleMap({ vehicles, mapStyle, traffic }: { vehicles: EventVehiclePos
       };
       map.events.add("mouseover", marker, showPopup);
       map.events.add("click", marker, () => {
-        markerClickRef.current = true;
         showPopup();
-        window.setTimeout(() => { markerClickRef.current = false; }, 0);
       });
       map.events.add("mouseout", marker, () => popup?.close());
     });
@@ -270,5 +256,16 @@ function VehicleMap({ vehicles, mapStyle, traffic }: { vehicles: EventVehiclePos
     }
   }, [vehicles, ready]);
 
-  return <div className="evmon-real-map"><div ref={containerRef} className="evmon-map-container" />{error && <div className="evmon-map-message">{error}</div>}{!error && !ready && <div className="evmon-map-message">Loading live map…</div>}</div>;
+  function openLargerMap() {
+    const camera = mapRef.current?.getCamera();
+    const center = camera?.center ?? MAP_CENTER;
+    window.open(`https://www.bing.com/maps?cp=${center[1]}~${center[0]}&lvl=${Math.round(camera?.zoom ?? MAP_ZOOM)}`, "_blank", "noopener,noreferrer");
+  }
+
+  return <div className="evmon-real-map">
+    <div ref={containerRef} className="evmon-map-container" />
+    <button type="button" className="evmon-open-map" onClick={openLargerMap}>Open larger map ↗</button>
+    {error && <div className="evmon-map-message">{error}</div>}
+    {!error && !ready && <div className="evmon-map-message">Loading live map…</div>}
+  </div>;
 }
