@@ -6,6 +6,7 @@ export type MissedTripValidationStatus = "unreviewed" | "confirmed" | "false_pos
 // flagged before that migration ran; the console shows that honestly rather
 // than guessing which signal it was.
 export type MissedTripDetectionType = "explicit_cancellation" | "silent_no_show" | null;
+export type MissedTripDataQualityStatus = "legacy_unverified" | "source_verified" | "experimental";
 
 // Missed Trips is a compliance/investigation tool: detection flags a
 // candidate (status) and a separate staff review records whether it was
@@ -30,6 +31,8 @@ export interface MissedTripAlert {
   validatedBy: string | null;
   validatedAt: string | null;
   notes: string | null;
+  detectorVersion: string | null;
+  dataQualityStatus: MissedTripDataQualityStatus;
 }
 
 // Preview-only fallback shown when the console can't reach the authenticated
@@ -54,6 +57,8 @@ export const MISSED_TRIP_ALERTS: MissedTripAlert[] = [
     validatedBy: null,
     validatedAt: null,
     notes: null,
+    detectorVersion: "preview",
+    dataQualityStatus: "experimental",
   },
   {
     id: "preview-440-1",
@@ -73,5 +78,7 @@ export const MISSED_TRIP_ALERTS: MissedTripAlert[] = [
     validatedBy: "Dev User (mock)",
     validatedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
     notes: "Dispatch log confirms the vehicle ran 12 minutes behind and was never flagged internally.",
+    detectorVersion: "preview",
+    dataQualityStatus: "experimental",
   },
 ];

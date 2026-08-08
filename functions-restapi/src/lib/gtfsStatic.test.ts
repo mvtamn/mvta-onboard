@@ -35,6 +35,7 @@ test("parseTripsCsv parses a basic trips.txt", () => {
       service_id: "43-v62",
       direction_id: 0,
       trip_headsign: "North to Walmart/Blackhawk P&R",
+      block_id: "315-v62",
     },
   ]);
 });
@@ -119,17 +120,27 @@ test("parseStopTimesCsv reduces to the earliest stop_sequence's departure per tr
     "t1,07:55:00,07:55:00,99,1\n" +
     "t1,08:10:00,08:10:00,101,3\n";
   const rows = parseStopTimesCsv(csv);
-  assert.deepStrictEqual(rows, [{ trip_id: "t1", first_departure_seconds: 7 * 3600 + 55 * 60 }]);
+  assert.deepStrictEqual(rows, [{
+    trip_id: "t1",
+    first_departure_seconds: 7 * 3600 + 55 * 60,
+    first_stop_id: "99",
+    first_stop_sequence: 1,
+  }]);
 });
 
 test("parseStopTimesCsv handles GTFS past-midnight times over 24:00:00", () => {
   const csv = "trip_id,departure_time,stop_id,stop_sequence\nt2,25:10:00,50,1\n";
   const rows = parseStopTimesCsv(csv);
-  assert.deepStrictEqual(rows, [{ trip_id: "t2", first_departure_seconds: 25 * 3600 + 10 * 60 }]);
+  assert.deepStrictEqual(rows, [{
+    trip_id: "t2",
+    first_departure_seconds: 25 * 3600 + 10 * 60,
+    first_stop_id: "50",
+    first_stop_sequence: 1,
+  }]);
 });
 
-test("parseStopTimesCsv skips rows missing required columns", () => {
-  const csv = "trip_id,departure_time,stop_sequence\n,,\n";
+test("parseStopTimesCsv skips rows missing required values", () => {
+  const csv = "trip_id,departure_time,stop_id,stop_sequence\n,,,\n";
   assert.deepStrictEqual(parseStopTimesCsv(csv), []);
 });
 

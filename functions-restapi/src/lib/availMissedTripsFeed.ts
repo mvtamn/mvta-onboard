@@ -18,6 +18,7 @@
 // Detours ("Detours" -> "detours"). This feed was never actually empty.
 import sql from "mssql";
 import { formatDateMmDdYyyy } from "./otpMonthlyFeed";
+import { calendarDateAndTimeToUtc } from "./missedTripTime";
 
 export interface AvailMissedTripReport {
   DepartureStopID: number | null;
@@ -109,12 +110,6 @@ function parseCalendarDate(value: string): { calendar_date: string; service_mont
   return { calendar_date: `${y}${m}${day}`, service_month: `${y}${m}` };
 }
 
-function parseNullableDate(value: string | null): Date | null {
-  if (!value) return null;
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
 // Guard clause, not a throw - a single malformed report shouldn't abort the
 // whole poll (same convention as mapAvlReport/mapPulloutReport).
 export function mapMissedTripReport(report: AvailMissedTripReport): MappedMissedTrip | null {
@@ -136,7 +131,14 @@ export function mapMissedTripReport(report: AvailMissedTripReport): MappedMissed
     departure_missed: Boolean(report.DepartureMissed),
     arrival_missed: Boolean(report.ArrivalMissed),
     entire_trip_missed: Boolean(report.EntireTripMissed),
-    departure_trip_start_time: parseNullableDate(report.DepartureTripStartTime),
+    // Live Avail data sends a time-only agency-local value such as "14:31",
+    // not an ISO timestamp. Combine it with CalendarDate in America/Chicago;
+    // new Date("14:31") is Invalid Date and previously discarded every
+    // populated start time as NULL.
+    departure_trip_start_time: calendarDateAndTimeToUtc(
+      report.CalendarDate,
+      report.DepartureTripStartTime,
+    ),
   };
 }
 

@@ -7,7 +7,27 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 ## [Unreleased]
 
-_Nothing unreleased._
+- **Missed Trips false-positive containment and evidence rebuild.** Schedule-based
+  GTFS no-show escalation now defaults paused behind
+  `GTFS_SILENT_NO_SHOW_ENABLED`; explicit cancellations remain active. Static
+  GTFS service times are converted from `America/Chicago` correctly, including
+  past-midnight times, and TripUpdate presence is no longer treated as a trip
+  start. TripUpdate/VehiclePosition evidence is retained independently and only
+  progress beyond the first scheduled stop establishes underway evidence.
+- **Safer Missed Trips review workflow.** Existing detector rows are retained as
+  legacy/unverified, reviews require a reason and write append-only history, and
+  monthly summaries use agency service date plus source-verified rows. The API
+  now separates queue/history, paginates, and reports detector/feed health.
+- **Missed Trips console cleanup.** Production API failures no longer fall back
+  to plausible sample trips. Review Queue, History, and Monthly views now show
+  paused/stale-feed warnings, evidence quality/version, readable dates, review
+  history, and load-more controls.
+- **Avail/Spare Missed Trips foundations.** Avail time-only start values are
+  parsed with their CalendarDate in agency time. A disabled-by-default Spare
+  evaluator implements only the three missed-trip conditions from Ridership
+  Export + Slots; unattributed cancellations and missing supersession evidence
+  remain unknown instead of becoming false candidates. Broader Spare metrics
+  are intentionally out of scope.
 
 ## [1.5.9] - 2026-08-07
 

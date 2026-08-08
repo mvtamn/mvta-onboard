@@ -12,6 +12,8 @@
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchVehiclePositionFeed, mapVehiclePositionEntity } from "../lib/gtfsVehiclePositions";
+import { agencyServiceDate } from "../lib/missedTripTime";
+import { recordMissedTripFeedSuccess } from "../lib/missedTripFeedHealth";
 
 app.timer("gtfsVehiclePositionsPoll", {
   schedule: "0 */5 * * * *",
@@ -31,7 +33,22 @@ app.timer("gtfsVehiclePositionsPoll", {
     }
 
     const pool = await getPool();
+    try {
+      await recordMissedTripFeedSuccess(
+        pool,
+        "gtfs_vehicle_position",
+        feed.Entities.length,
+        feed.Header?.Timestamp ?? null,
+      );
+    } catch (err) {
+      context.error("Failed to update VehiclePosition feed health:", err);
+    }
+    const evidenceCheck = await pool.request().query<{ table_exists: number }>(`
+      SELECT CASE WHEN OBJECT_ID('dbo.GtfsTripOperationalEvidence', 'U') IS NULL THEN 0 ELSE 1 END AS table_exists
+    `);
+    const evidenceTableExists = evidenceCheck.recordset[0]?.table_exists === 1;
     let updatedCount = 0;
+    let evidenceCount = 0;
 
     for (const entity of feed.Entities) {
       let mapped;
@@ -42,6 +59,61 @@ app.timer("gtfsVehiclePositionsPoll", {
         continue;
       }
       if (!mapped) continue;
+
+      if (evidenceTableExists) {
+        try {
+          const observedAt = mapped.source_timestamp_at ?? new Date();
+          const serviceDate = mapped.service_date ?? agencyServiceDate(observedAt).serviceDate;
+          const evidenceReq = pool.request();
+          evidenceReq.input("trip_id", sql.NVarChar, mapped.trip_id);
+          evidenceReq.input("service_date", sql.NVarChar, serviceDate);
+          evidenceReq.input("route_id", sql.NVarChar, mapped.route_id);
+          evidenceReq.input("vehicle_id", sql.NVarChar, mapped.vehicle_id);
+          evidenceReq.input("observed_at", sql.DateTime2, observedAt);
+          evidenceReq.input("current_stop_sequence", sql.Int, mapped.current_stop_sequence);
+          evidenceReq.input("current_stop_id", sql.NVarChar, mapped.current_stop_id);
+          evidenceReq.input("current_status", sql.Int, mapped.current_status);
+          await evidenceReq.query(`
+            DECLARE @first_stop_sequence INT = (
+              SELECT first_stop_sequence FROM GtfsScheduledTrips WHERE trip_id = @trip_id
+            );
+            DECLARE @is_underway BIT = CASE
+              WHEN @first_stop_sequence IS NOT NULL
+                AND @current_stop_sequence IS NOT NULL
+                AND @current_stop_sequence > @first_stop_sequence
+              THEN 1 ELSE 0 END;
+
+            MERGE GtfsTripOperationalEvidence WITH (HOLDLOCK) AS target
+            USING (SELECT @trip_id AS trip_id, @service_date AS service_date) AS src
+            ON target.trip_id = src.trip_id AND target.service_date = src.service_date
+            WHEN MATCHED THEN UPDATE SET
+              route_id = @route_id,
+              vehicle_id = COALESCE(@vehicle_id, target.vehicle_id),
+              last_vehicle_position_at = @observed_at,
+              first_underway_at = CASE
+                WHEN target.first_underway_at IS NOT NULL THEN target.first_underway_at
+                WHEN @is_underway = 1 THEN @observed_at
+                ELSE NULL END,
+              current_stop_sequence = @current_stop_sequence,
+              current_stop_id = @current_stop_id,
+              current_status = @current_status,
+              source_timestamp_at = @observed_at,
+              updated_at = SYSUTCDATETIME()
+            WHEN NOT MATCHED THEN INSERT (
+              trip_id, service_date, route_id, vehicle_id,
+              first_vehicle_position_at, last_vehicle_position_at, first_underway_at,
+              current_stop_sequence, current_stop_id, current_status, source_timestamp_at
+            ) VALUES (
+              @trip_id, @service_date, @route_id, @vehicle_id,
+              @observed_at, @observed_at, CASE WHEN @is_underway = 1 THEN @observed_at ELSE NULL END,
+              @current_stop_sequence, @current_stop_id, @current_status, @observed_at
+            );
+          `);
+          evidenceCount++;
+        } catch (err) {
+          context.error(`Failed to record vehicle-position evidence for trip ${mapped.trip_id}:`, err);
+        }
+      }
 
       try {
         const request = pool.request();
@@ -70,7 +142,11 @@ app.timer("gtfsVehiclePositionsPoll", {
     }
 
     context.log(
-      `GTFS-RT VehiclePosition poll: ${feed.Entities.length} entities seen, ${updatedCount} trips updated.`,
+      `GTFS-RT VehiclePosition poll: ${feed.Entities.length} entities seen, ${updatedCount} delay rows updated, ` +
+        `${evidenceCount} operational-evidence rows recorded.`,
     );
+    if (!evidenceTableExists) {
+      context.warn("GtfsTripOperationalEvidence does not exist; apply migration 027 to capture missed-trip start evidence.");
+    }
   },
 });

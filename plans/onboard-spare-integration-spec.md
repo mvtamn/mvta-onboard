@@ -5,6 +5,12 @@
 
 **Sources:** Spare support thread with Michelle Hong (Spare), Aug 6–7, 2026; live API response samples confirmed Aug 7, 2026.
 
+> **Implementation scope note (2026-08-07):** the current delivery focus is Missed Trips only.
+> For that work, use Ridership Export plus the Slots fields required by the three missed-trip
+> conditions, following `plans/missed-trip-feature-finish-plan.md`. Ridership counters, mean wait
+> time, garage-departure metrics/UI, and the remaining dashboard work in this broader integration
+> spec are deferred until those features are taken up separately.
+
 ---
 
 ## 1. Authentication
@@ -18,6 +24,8 @@
 | Scopes | *(not yet captured — paste when available; needed to confirm coverage of requests/duties/slots/routes/stops/exports read scopes)* |
 
 An API key is also available (confirmed in hand) — **do not commit it or paste it into any doc/chat.** Store as an Azure Function App setting / Key Vault secret, e.g. `SPARE_API_KEY`, and reference by name in code (`process.env.SPARE_API_KEY`).
+
+**Authentication confirmed Aug 7, 2026:** send the API key on each Spare request as `Authorization: Bearer <key>`. The development Function App setting is a Key Vault reference to the `spare-api-key` secret; the raw value remains outside source control.
 
 **Confirmed API host:** `https://api.us.sparelabs.com/v1` — use this consistently across all ingestion Functions. (Earlier draft endpoints were shown at `api.sparelabs.com`; that was the wrong host for MVTA's account — swap to the `api.us.` subdomain below.)
 

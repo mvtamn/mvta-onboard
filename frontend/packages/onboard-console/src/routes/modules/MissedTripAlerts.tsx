@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ApiError, type GtfsRouteOption, type MissedTrip, type MissedTripsMonthlySummaryRow, type OtpReasonCode } from "@mvta/shared";
+import { ApiError, type GtfsRouteOption, type MissedTrip, type MissedTripReview, type MissedTripsDiagnostics, type MissedTripsMonthlySummaryRow, type OtpReasonCode } from "@mvta/shared";
 import { api } from "../../config.js";
 import { MISSED_TRIP_ALERTS, type MissedTripAlert } from "./missedTrips.data.js";
 import "./serviceRisk.css";
 
 const AUTO_REFRESH_MS = 60_000;
+const DEV_MOCK_PREVIEW = import.meta.env.DEV && String(import.meta.env.VITE_AUTH_MODE).toLowerCase() === "mock";
 
 function timeLabel(value: string | null): string {
   if (!value) return "—";
@@ -33,6 +34,36 @@ function agoLabel(minutes: number | null): string {
   return mins === 0 ? `${hours}h ago` : `${hours}h ${mins}m ago`;
 }
 
+// Missed Trips feeds the Contractor Performance Assessment's MISSED_TRIPS_FR
+// KPI once a reviewer confirms a row (plans/ContractorPerformanceAssessment_
+// Design.md SS3/SS6 - "Auto-candidate from MonitoredMissedTrips
+// (validation_status='confirmed')") - and that assessment computes on a
+// monthly, per-contractor-month cadence. An unreviewed trip sitting for days
+// isn't just clutter in this queue: if it slips past its service month's
+// assessment period before anyone reviews it, catching it later means
+// reopening an already-finalized period, which the design treats as a
+// deliberate manager decision, not a side effect. Age is measured from
+// firstSeenWatchingAt (when the row was first flagged), not from now vs.
+// scheduled time, since that's when the review clock actually starts.
+const AGING_HOURS = 24;
+const OVERDUE_HOURS = 72;
+
+function reviewAgeHours(firstSeenWatchingAt: string): number | null {
+  const date = new Date(firstSeenWatchingAt);
+  return Number.isNaN(date.getTime()) ? null : (Date.now() - date.getTime()) / 3_600_000;
+}
+
+// Only unreviewed rows carry review urgency - once a reviewer has acted
+// there's nothing left pending, however old the row is.
+function agingBadge(alert: MissedTripAlert): { label: string; className: string } | null {
+  if (alert.validationStatus !== "unreviewed") return null;
+  const hours = reviewAgeHours(alert.firstSeenWatchingAt);
+  if (hours === null) return null;
+  if (hours >= OVERDUE_HOURS) return { label: "Overdue", className: "pill-danger" };
+  if (hours >= AGING_HOURS) return { label: "Aging", className: "pill-warning" };
+  return null;
+}
+
 // Trip identifier the way staff actually recognize it - scheduled departure
 // time + direction (e.g. "1245-SB"), the same time+direction convention
 // Avail's own reports use for their "Trip" column - not the raw GTFS
@@ -59,6 +90,12 @@ function formatServiceMonth(yyyymm: string): string {
   return `${yyyymm.slice(4, 6)}/${yyyymm.slice(0, 4)}`;
 }
 
+function formatServiceDate(yyyymmdd: string): string {
+  if (!/^\d{8}$/.test(yyyymmdd)) return yyyymmdd;
+  const date = new Date(`${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}T12:00:00`);
+  return date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+}
+
 function fromMissedTrip(trip: MissedTrip): MissedTripAlert {
   return {
     id: `${trip.trip_id}-${trip.service_date}`,
@@ -78,6 +115,8 @@ function fromMissedTrip(trip: MissedTrip): MissedTripAlert {
     validatedBy: trip.validated_by,
     validatedAt: trip.validated_at,
     notes: trip.notes,
+    detectorVersion: trip.detector_version,
+    dataQualityStatus: trip.data_quality_status,
   };
 }
 
@@ -94,7 +133,7 @@ function statusClass(status: MissedTripAlert["status"], validationStatus: Missed
 
 function statusLabel(status: MissedTripAlert["status"], validationStatus: MissedTripAlert["validationStatus"]): string {
   if (status === "watching") return "Watching";
-  if (status === "resolved") return "Resolved late";
+  if (status === "resolved") return "Operated within window";
   return validationStatus === "confirmed" ? "Missed" : "Potential missed";
 }
 
@@ -117,6 +156,12 @@ function detectionTypeLabel(type: MissedTripAlert["detectionType"]): string {
   if (type === "explicit_cancellation") return "Explicit cancellation (GTFS-RT)";
   if (type === "silent_no_show") return "Scheduled no-show (never observed)";
   return "Unknown — flagged before detection tracking was added";
+}
+
+function dataQualityLabel(status: MissedTripAlert["dataQualityStatus"]): string {
+  if (status === "source_verified") return "Source verified";
+  if (status === "experimental") return "Experimental detector";
+  return "Legacy — unverified";
 }
 
 function routeLabel(routeId: string, routesById: Map<string, GtfsRouteOption>): string {
@@ -145,21 +190,21 @@ function missedTripLoadError(err: unknown): string {
   }
   if (err instanceof ApiError) {
     if (err.status === 401) {
-      return "Preview mode — your sign-in session was not accepted. Sign in again to restore live data.";
+      return "Your sign-in session was not accepted. Sign in again to restore live data.";
     }
     if (err.status === 403) {
-      return "Preview mode — your account does not have a Missed Trips staff role.";
+      return "Your account does not have a Missed Trips staff role.";
     }
     if (err.status >= 500) {
-      return "Preview mode — the missed-trip service or database is temporarily unavailable.";
+      return "The missed-trip service or database is temporarily unavailable.";
     }
-    return `Preview mode — missed-trip data could not be loaded: ${err.message}`;
+    return `Missed-trip data could not be loaded: ${err.message}`;
   }
-  return "Preview mode — the console could not reach the missed-trip service.";
+  return "The console could not reach the missed-trip service.";
 }
 
 export function MissedTripAlerts() {
-  const [view, setView] = useState<"investigation" | "monthly">("investigation");
+  const [view, setView] = useState<"investigation" | "history" | "monthly">("investigation");
   const [routesList, setRoutesList] = useState<GtfsRouteOption[]>([]);
 
   useEffect(() => {
@@ -182,14 +227,16 @@ export function MissedTripAlerts() {
           <span className="risk-eyebrow">Compliance investigation</span>
           <h2>Missed Trips</h2>
           <p>
-            Trips flagged by detection criteria (explicit cancellations and scheduled trips that never
-            departed) are saved here for staff to investigate and validate — this is not a customer
-            notification queue.
+            Source-backed missed-trip candidates are saved here for staff to investigate and validate.
+            Machine detection is evidence, not a final compliance finding or customer notification.
           </p>
         </div>
         <div className="risk-view-toggle" aria-label="Missed Trips view">
           <button className={view === "investigation" ? "active" : ""} onClick={() => setView("investigation")}>
-            Investigation
+            Review queue
+          </button>
+          <button className={view === "history" ? "active" : ""} onClick={() => setView("history")}>
+            History
           </button>
           <button className={view === "monthly" ? "active" : ""} onClick={() => setView("monthly")}>
             Monthly Assessments
@@ -197,8 +244,11 @@ export function MissedTripAlerts() {
         </div>
       </div>
 
-      {view === "investigation" ? (
-        <MissedTripsInvestigationPage routesById={routesById} />
+      {view === "investigation" || view === "history" ? (
+        <MissedTripsInvestigationPage
+          routesById={routesById}
+          mode={view === "history" ? "history" : "queue"}
+        />
       ) : (
         <MissedTripsMonthlyPage routesById={routesById} />
       )}
@@ -206,10 +256,19 @@ export function MissedTripAlerts() {
   );
 }
 
-function MissedTripsInvestigationPage({ routesById }: { routesById: Map<string, GtfsRouteOption> }) {
-  const [liveAlerts, setLiveAlerts] = useState<MissedTripAlert[] | null>(null);
+function MissedTripsInvestigationPage({
+  routesById,
+  mode,
+}: {
+  routesById: Map<string, GtfsRouteOption>;
+  mode: "queue" | "history";
+}) {
+  const [liveAlerts, setLiveAlerts] = useState<MissedTripAlert[]>([]);
+  const [dataMode, setDataMode] = useState<"loading" | "live" | "preview" | "error">("loading");
   const [liveMessage, setLiveMessage] = useState<string | null>(null);
   const [configured, setConfigured] = useState(true);
+  const [diagnostics, setDiagnostics] = useState<MissedTripsDiagnostics | null>(null);
+  const [pageLimit, setPageLimit] = useState(200);
   const [selectedId, setSelectedId] = useState(MISSED_TRIP_ALERTS[0].id);
   const [notesDraft, setNotesDraft] = useState("");
   const [reasonDraft, setReasonDraft] = useState("");
@@ -219,6 +278,7 @@ function MissedTripsInvestigationPage({ routesById }: { routesById: Map<string, 
     Record<string, Pick<MissedTripAlert, "validationStatus" | "reasonCode" | "validatedBy" | "validatedAt" | "notes">>
   >({});
   const [reasonCodes, setReasonCodes] = useState<OtpReasonCode[]>([]);
+  const [reviews, setReviews] = useState<MissedTripReview[]>([]);
 
   // Route + date filters, requested alongside the rest of this pass -
   // Missed Trips had no way to narrow the (potentially large) flagged-trip
@@ -230,16 +290,17 @@ function MissedTripsInvestigationPage({ routesById }: { routesById: Map<string, 
   // drives the detail pane beside it) - "Table" is an addition, not a
   // replacement: a Trip/Route/Direction/Detection/Review table for
   // scanning many rows at once, the way Avail's own reports read. Picking
-  // a row in Table mode jumps back to List mode with that trip selected,
-  // so it's a shortcut into investigation rather than a dead end.
+  // a row in Table mode selects the same detail record without changing the
+  // reviewer's chosen layout.
   const [layout, setLayout] = useState<"list" | "table">("list");
 
-  const isPreview = liveAlerts === null;
+  const isPreview = dataMode === "preview";
   const alerts = useMemo(
     () =>
-      liveAlerts ??
-      MISSED_TRIP_ALERTS.map((a) => (previewValidations[a.id] ? { ...a, ...previewValidations[a.id] } : a)),
-    [liveAlerts, previewValidations],
+      isPreview
+        ? MISSED_TRIP_ALERTS.map((a) => (previewValidations[a.id] ? { ...a, ...previewValidations[a.id] } : a))
+        : liveAlerts,
+    [isPreview, liveAlerts, previewValidations],
   );
   // "resolved" means the trip did eventually depart within the grace
   // window - the detector self-corrected, there's nothing left to
@@ -247,7 +308,12 @@ function MissedTripsInvestigationPage({ routesById }: { routesById: Map<string, 
   // rows actually needing staff attention under a growing pile of
   // already-settled history; the Monthly Assessments tab is where that
   // history belongs.
-  const activeAlerts = useMemo(() => alerts.filter((a) => a.status !== "resolved"), [alerts]);
+  const activeAlerts = useMemo(
+    () => alerts.filter((a) => mode === "queue"
+      ? a.status !== "resolved" && a.validationStatus === "unreviewed"
+      : a.status === "resolved" || a.validationStatus !== "unreviewed"),
+    [alerts, mode],
+  );
   const selected = useMemo(
     () => activeAlerts.find((a) => a.id === selectedId) ?? activeAlerts[0] ?? MISSED_TRIP_ALERTS[0],
     [activeAlerts, selectedId],
@@ -266,10 +332,27 @@ function MissedTripsInvestigationPage({ routesById }: { routesById: Map<string, 
   );
 
   useEffect(() => {
+    setPageLimit(200);
+  }, [mode]);
+
+  useEffect(() => {
     setNotesDraft(selected.notes ?? "");
     setReasonDraft(selected.reasonCode ?? "");
     setValidateError(null);
   }, [selected.id, selected.notes, selected.reasonCode]);
+
+  useEffect(() => {
+    let alive = true;
+    if (isPreview || dataMode !== "live") {
+      setReviews([]);
+      return () => { alive = false; };
+    }
+    api
+      .getMissedTripReviews(selected.tripId, selected.serviceDate)
+      .then((result) => alive && setReviews(result.reviews))
+      .catch(() => alive && setReviews([]));
+    return () => { alive = false; };
+  }, [dataMode, isPreview, selected.tripId, selected.serviceDate]);
 
   useEffect(() => {
     let alive = true;
@@ -284,26 +367,34 @@ function MissedTripsInvestigationPage({ routesById }: { routesById: Map<string, 
 
   const load = useCallback(() => {
     api
-      .getMissedTrips()
+      .getMissedTrips(mode, pageLimit)
       .then(({ missed_trips, diagnostics }) => {
         const mapped = missed_trips.map(fromMissedTrip);
         setLiveAlerts(mapped);
+        setDataMode("live");
         setConfigured(diagnostics.configured);
+        setDiagnostics(diagnostics);
         setLiveMessage(
-          diagnostics.configured
-            ? null
-            : "Missed-trip schedule detection is not fully configured yet (migration pending); showing cancellation-only data.",
+          !diagnostics.configured
+            ? "Missed-trip feeds are not fully configured; results may be incomplete."
+            : diagnostics.schedule_detection_status === "paused"
+              ? "Schedule-based no-show detection is paused while start-evidence validation is completed. Explicit cancellations remain active."
+              : null,
         );
-        const mappedActive = mapped.filter((m) => m.status !== "resolved");
+        const mappedActive = mapped.filter((m) => mode === "queue"
+          ? m.status !== "resolved" && m.validationStatus === "unreviewed"
+          : m.status === "resolved" || m.validationStatus !== "unreviewed");
         if (mappedActive.length > 0) {
           setSelectedId((current) => (mappedActive.some((m) => m.id === current) ? current : mappedActive[0].id));
         }
       })
       .catch((err) => {
-        setLiveAlerts(null);
+        setLiveAlerts([]);
+        setDiagnostics(null);
+        setDataMode(DEV_MOCK_PREVIEW ? "preview" : "error");
         setLiveMessage(missedTripLoadError(err));
       });
-  }, []);
+  }, [mode, pageLimit]);
 
   useEffect(() => {
     load();
@@ -313,6 +404,10 @@ function MissedTripsInvestigationPage({ routesById }: { routesById: Map<string, 
 
   async function validate(alert: MissedTripAlert, validationStatus: "confirmed" | "false_positive") {
     setValidateError(null);
+    if (!reasonDraft) {
+      setValidateError("Select a reason before saving the review.");
+      return;
+    }
     if (isPreview) {
       setPreviewValidations((current) => ({
         ...current,
@@ -333,7 +428,7 @@ function MissedTripsInvestigationPage({ routesById }: { routesById: Map<string, 
         service_date: alert.serviceDate,
         validation_status: validationStatus,
         notes: notesDraft || undefined,
-        reason_code: reasonDraft || null,
+        reason_code: reasonDraft,
       });
       load();
     } catch (err) {
@@ -359,15 +454,48 @@ function MissedTripsInvestigationPage({ routesById }: { routesById: Map<string, 
       <button className={currentLayout === "table" ? "active" : ""} onClick={() => setLayout("table")}>Table</button>
     </div>
   );
+  const detailPane = (
+    <MissedTripDetail
+      alert={selected}
+      routesById={routesById}
+      reasonCodes={reasonCodes}
+      reasonDraft={reasonDraft}
+      onReasonChange={setReasonDraft}
+      notesDraft={notesDraft}
+      onNotesChange={setNotesDraft}
+      validating={validating}
+      validateError={validateError}
+      reviews={reviews}
+      onValidate={(status) => void validate(selected, status)}
+    />
+  );
 
   return (
     <>
       <div className="concept-banner">
         <span className="concept-badge">
-          {isPreview ? "Preview data" : configured ? "Live data" : "Partial data"}
+          {dataMode === "loading"
+            ? "Loading"
+            : isPreview
+              ? "Development preview"
+              : dataMode === "error"
+                ? "Data unavailable"
+                : configured
+                  ? diagnostics?.schedule_detection_status === "paused" ? "Cancellation-only" : "Live data"
+                  : "Partial data"}
         </span>
-        <span>{liveMessage ?? "Authenticated missed-trip detection is connected."}</span>
+        <span>
+          {liveMessage ?? `Authenticated missed-trip data loaded${diagnostics?.last_checked_at ? ` · last detector check ${agoLabel(minutesAgo(diagnostics.last_checked_at))}` : ""}.`}
+        </span>
       </div>
+      {diagnostics?.feed_health.some((feed) => feed.status === "stale") ? (
+        <div className="concept-banner" role="status">
+          <span className="concept-badge">Feed warning</span>
+          <span>
+            {diagnostics.feed_health.filter((feed) => feed.status === "stale").map((feed) => feed.feed_name).join(", ")} has not succeeded within 15 minutes. Absence must not be treated as a no-show.
+          </span>
+        </div>
+      ) : null}
 
       <div className="risk-stat-grid" aria-label="Missed trip review summary">
         <RiskStat value={unreviewed} label="Unreviewed" tone="warning" />
@@ -376,17 +504,26 @@ function MissedTripsInvestigationPage({ routesById }: { routesById: Map<string, 
         <RiskStat value={routesAffected} label="Routes affected" tone="accent" />
       </div>
 
-      {activeAlerts.length === 0 ? (
+      {dataMode === "loading" ? (
+        <div className="risk-empty-state"><strong>Loading missed trips…</strong></div>
+      ) : dataMode === "error" ? (
         <div className="risk-empty-state">
-          <strong>No missed trips</strong>
-          <span>No canceled or no-show trips are currently flagged for review.</span>
+          <strong>Missed-trip data is unavailable</strong>
+          <span>{liveMessage}</span>
+          <button className="btn-sm" onClick={load}>Try again</button>
+        </div>
+      ) : activeAlerts.length === 0 ? (
+        <div className="risk-empty-state">
+          <strong>{mode === "queue" ? "Review queue is clear" : "No reviewed history"}</strong>
+          <span>{mode === "queue" ? "No unreviewed missed-trip candidates are currently waiting." : "Reviewed and resolved trips will appear here."}</span>
         </div>
       ) : layout === "table" ? (
+        <div className="risk-workspace risk-workspace-table">
         <section className="risk-list-panel missed-trips-table-panel" aria-label="Missed trips">
           <div className="risk-section-head">
             <div>
-              <span className="risk-eyebrow">Needs investigation</span>
-              <h3>Flagged trips</h3>
+              <span className="risk-eyebrow">{mode === "queue" ? "Needs investigation" : "Review history"}</span>
+              <h3>{mode === "queue" ? "Candidate trips" : "Reviewed and resolved trips"}</h3>
             </div>
             <div className="risk-section-head-actions">
               <span className="risk-count">{filteredAlerts.length} of {activeAlerts.length} trips</span>
@@ -433,14 +570,14 @@ function MissedTripsInvestigationPage({ routesById }: { routesById: Map<string, 
                   </tr>
                 ) : (
                   filteredAlerts.map((alert) => {
+                    const age = agingBadge(alert);
                     const goToDetail = () => {
                       setSelectedId(alert.id);
-                      setLayout("list");
                     };
                     return (
                       <tr
                         key={alert.id}
-                        className="missed-trip-row"
+                        className={`missed-trip-row ${alert.id === selected.id ? "selected" : ""}`}
                         onClick={goToDetail}
                         onKeyDown={(event) => {
                           if (event.key === "Enter" || event.key === " ") {
@@ -465,6 +602,7 @@ function MissedTripsInvestigationPage({ routesById }: { routesById: Map<string, 
                           <span className={`pill-sm ${validationClass(alert.validationStatus)}`}>
                             {validationLabel(alert.validationStatus)}
                           </span>
+                          {age ? <div style={{ marginTop: 4 }}><span className={`pill-sm ${age.className}`}>{age.label}</span></div> : null}
                         </td>
                       </tr>
                     );
@@ -474,13 +612,15 @@ function MissedTripsInvestigationPage({ routesById }: { routesById: Map<string, 
             </table>
           </div>
         </section>
+        {detailPane}
+        </div>
       ) : (
         <div className="risk-workspace">
           <section className="risk-list-panel" aria-label="Missed trips">
             <div className="risk-section-head">
               <div>
-                <span className="risk-eyebrow">Needs investigation</span>
-                <h3>Flagged trips</h3>
+                <span className="risk-eyebrow">{mode === "queue" ? "Needs investigation" : "Review history"}</span>
+                <h3>{mode === "queue" ? "Candidate trips" : "Reviewed and resolved trips"}</h3>
               </div>
               <div className="risk-section-head-actions">
                 <span className="risk-count">{filteredAlerts.length} of {activeAlerts.length} trips</span>
@@ -521,6 +661,7 @@ function MissedTripsInvestigationPage({ routesById }: { routesById: Map<string, 
 
             {filteredAlerts.map((alert) => {
               const active = alert.id === selected.id;
+              const age = agingBadge(alert);
               return (
                 <button
                   className={`risk-list-row ${active ? "selected" : ""}`}
@@ -542,26 +683,23 @@ function MissedTripsInvestigationPage({ routesById }: { routesById: Map<string, 
                     <span className={`pill-sm ${validationClass(alert.validationStatus)}`}>
                       {validationLabel(alert.validationStatus)}
                     </span>
+                    {age ? <small><span className={`pill-sm ${age.className}`}>{age.label}</span></small> : null}
                   </span>
                 </button>
               );
             })}
           </section>
 
-          <MissedTripDetail
-            alert={selected}
-            routesById={routesById}
-            reasonCodes={reasonCodes}
-            reasonDraft={reasonDraft}
-            onReasonChange={setReasonDraft}
-            notesDraft={notesDraft}
-            onNotesChange={setNotesDraft}
-            validating={validating}
-            validateError={validateError}
-            onValidate={(status) => void validate(selected, status)}
-          />
+          {detailPane}
         </div>
       )}
+      {dataMode === "live" && diagnostics && diagnostics.returned_count < diagnostics.view_count ? (
+        <div style={{ display: "flex", justifyContent: "center", padding: 12 }}>
+          <button className="btn-sm" onClick={() => setPageLimit((current) => Math.min(2000, current + 200))}>
+            Load more ({diagnostics.returned_count} of {diagnostics.view_count})
+          </button>
+        </div>
+      ) : null}
     </>
   );
 }
@@ -593,6 +731,7 @@ function MissedTripDetail({
   onNotesChange,
   validating,
   validateError,
+  reviews,
   onValidate,
 }: {
   alert: MissedTripAlert;
@@ -604,6 +743,7 @@ function MissedTripDetail({
   onNotesChange: (value: string) => void;
   validating: boolean;
   validateError: string | null;
+  reviews: MissedTripReview[];
   onValidate: (status: "confirmed" | "false_positive") => void;
 }) {
   const reviewed = alert.validationStatus !== "unreviewed";
@@ -615,7 +755,7 @@ function MissedTripDetail({
           <span className="risk-eyebrow">Selected trip</span>
           <h3>Trip {tripCode(alert.scheduledDepartureAt, alert.direction)} · {routeLabel(alert.route, routesById)}</h3>
           <p>
-            Service date {alert.serviceDate} · <span className="mono-ref">Ref {alert.tripId}</span>
+            Service date {formatServiceDate(alert.serviceDate)} · <span className="mono-ref">Ref {alert.tripId}</span>
           </p>
         </div>
         <span className={`pill-sm ${statusClass(alert.status, alert.validationStatus)}`}>
@@ -632,9 +772,11 @@ function MissedTripDetail({
       <dl className="risk-facts">
         <div><dt>Detection status</dt><dd>{statusLabel(alert.status, alert.validationStatus)}</dd></div>
         <div><dt>Detection type</dt><dd>{detectionTypeLabel(alert.detectionType)}</dd></div>
+        <div><dt>Evidence quality</dt><dd>{dataQualityLabel(alert.dataQualityStatus)}</dd></div>
+        <div><dt>Detector version</dt><dd>{alert.detectorVersion ?? "Legacy — not recorded"}</dd></div>
         <div><dt>First flagged</dt><dd>{timeLabel(alert.firstSeenWatchingAt)}</dd></div>
         <div>
-          <dt>Detected late arrival</dt>
+          <dt>First underway evidence</dt>
           <dd>{alert.detectedLateArrivalAt ? timeLabel(alert.detectedLateArrivalAt) : "Not observed"}</dd>
         </div>
       </dl>
@@ -663,6 +805,7 @@ function MissedTripDetail({
           <option value="">Select a reason…</option>
           {reasonCodes.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
         </select>
+        {!reasonDraft ? <p className="risk-unknown">A reason is required for either review outcome.</p> : null}
 
         <label htmlFor="missed-trip-notes" className="field-label">Investigation notes</label>
         <textarea
@@ -675,14 +818,27 @@ function MissedTripDetail({
         />
         {validateError ? <p className="risk-action-error">{validateError}</p> : null}
         <div className="risk-actions">
-          <button className="btn-primary" disabled={validating} onClick={() => onValidate("confirmed")}>
+          <button className="btn-primary" disabled={validating || !reasonDraft} onClick={() => onValidate("confirmed")}>
             {validating ? "Saving…" : "Confirm missed trip"}
           </button>
-          <button className="btn-sm" disabled={validating} onClick={() => onValidate("false_positive")}>
+          <button className="btn-sm" disabled={validating || !reasonDraft} onClick={() => onValidate("false_positive")}>
             Mark false positive
           </button>
         </div>
       </div>
+
+      {reviews.length > 0 ? (
+        <div className="risk-detail-section">
+          <h4>Review history</h4>
+          {reviews.map((review) => (
+            <p className="risk-unknown" key={review.review_id}>
+              <strong>{validationLabel(review.validation_status)}</strong> · {review.reason_code} · {review.reviewed_by}
+              {review.reviewed_at ? ` at ${timeLabel(review.reviewed_at)}` : ""}
+              {review.notes ? <><br />{review.notes}</> : null}
+            </p>
+          ))}
+        </div>
+      ) : null}
     </aside>
   );
 }
@@ -757,6 +913,9 @@ function MissedTripsMonthlyPage({ routesById }: { routesById: Map<string, GtfsRo
 
   return (
     <div className="subcard" style={{ overflow: "hidden" }}>
+      <p className="empty-note" style={{ padding: "12px 16px 0" }}>
+        Source-verified rows only. Confirmed is the compliance count; unreviewed rows remain candidates and false positives are shown for detector QA.
+      </p>
       <table className="data">
         <thead>
           <tr>

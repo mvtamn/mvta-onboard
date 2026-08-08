@@ -57,6 +57,7 @@ module restApiFunction 'modules/functionapp.bicep' = {
     aadClientId: aadClientId
     frontDoorId: frontDoorId
     allowedCorsOrigins: allowedCorsOrigins
+    includeSpareApiKey: true
   }
 }
 

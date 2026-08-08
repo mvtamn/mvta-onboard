@@ -17,7 +17,9 @@ import {
   severityForDelayMinutes,
   buildDepartureRiskDraftText,
   type MappedTripDelay,
+  type GtfsRtTripUpdateEntity,
 } from "../lib/gtfsTripUpdates";
+import { agencyServiceDate } from "../lib/missedTripTime";
 
 const DELAY_THRESHOLD_SECONDS = 15 * 60;
 const ESCALATION_POLL_COUNT = 2;
@@ -145,6 +147,44 @@ async function recordObservedTrip(
   `);
 }
 
+async function recordTripUpdateEvidence(
+  pool: sql.ConnectionPool,
+  entity: GtfsRtTripUpdateEntity,
+): Promise<boolean> {
+  const update = entity.TripUpdate;
+  if (!update?.Trip?.TripId) return false;
+  const observedAt =
+    Number.isFinite(update.Timestamp) && update.Timestamp > 0
+      ? new Date(update.Timestamp * 1000)
+      : new Date();
+  const serviceDate = update.Trip.StartDate || agencyServiceDate(observedAt).serviceDate;
+  const req = pool.request();
+  req.input("trip_id", sql.NVarChar, update.Trip.TripId);
+  req.input("service_date", sql.NVarChar, serviceDate);
+  req.input("route_id", sql.NVarChar, update.Trip.RouteId);
+  req.input("vehicle_id", sql.NVarChar, update.Vehicle?.Id ?? null);
+  req.input("observed_at", sql.DateTime2, observedAt);
+  await req.query(`
+    MERGE GtfsTripOperationalEvidence WITH (HOLDLOCK) AS target
+    USING (SELECT @trip_id AS trip_id, @service_date AS service_date) AS src
+    ON target.trip_id = src.trip_id AND target.service_date = src.service_date
+    WHEN MATCHED THEN UPDATE SET
+      route_id = @route_id,
+      vehicle_id = COALESCE(@vehicle_id, target.vehicle_id),
+      last_trip_update_at = @observed_at,
+      source_timestamp_at = @observed_at,
+      updated_at = SYSUTCDATETIME()
+    WHEN NOT MATCHED THEN INSERT (
+      trip_id, service_date, route_id, vehicle_id,
+      first_trip_update_at, last_trip_update_at, source_timestamp_at
+    ) VALUES (
+      @trip_id, @service_date, @route_id, @vehicle_id,
+      @observed_at, @observed_at, @observed_at
+    );
+  `);
+  return true;
+}
+
 async function escalateToSuggestedAlert(
   pool: sql.ConnectionPool,
   delay: MappedTripDelay,
@@ -230,8 +270,21 @@ app.timer("gtfsDelaysPoll", {
         THEN 0 ELSE 1 END AS table_exists
     `);
     const observedTableExists = observedTableCheck.recordset[0]?.table_exists === 1;
+    const evidenceTableCheck = await pool.request().query<{ table_exists: number }>(`
+      SELECT CASE WHEN OBJECT_ID('dbo.GtfsTripOperationalEvidence', 'U') IS NULL
+        THEN 0 ELSE 1 END AS table_exists
+    `);
+    const evidenceTableExists = evidenceTableCheck.recordset[0]?.table_exists === 1;
+    let evidenceCount = 0;
 
     for (const entity of feed.Entities) {
+      if (evidenceTableExists) {
+        try {
+          if (await recordTripUpdateEvidence(pool, entity)) evidenceCount++;
+        } catch (err) {
+          context.error(`Failed to record TripUpdate evidence for entity ${entity.Id}:`, err);
+        }
+      }
       let mapped;
       try {
         mapped = mapTripUpdateEntity(entity);
@@ -277,11 +330,17 @@ app.timer("gtfsDelaysPoll", {
     }
 
     context.log(
-      `GTFS-RT TripUpdate poll: ${feed.Entities.length} entities seen, ${escalatedCount} new suggested alerts escalated.`,
+      `GTFS-RT TripUpdate poll: ${feed.Entities.length} entities seen, ${evidenceCount} evidence rows recorded, ` +
+        `${escalatedCount} new suggested alerts escalated.`,
     );
     if (!observedTableExists) {
       context.warn(
         "GtfsObservedTrips does not exist yet; apply migration 011 to enable missed-trip detection.",
+      );
+    }
+    if (!evidenceTableExists) {
+      context.warn(
+        "GtfsTripOperationalEvidence does not exist; apply migration 027 to capture raw missed-trip evidence.",
       );
     }
   },

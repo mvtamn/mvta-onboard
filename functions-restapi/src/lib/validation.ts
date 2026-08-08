@@ -170,10 +170,12 @@ export function validateMissedTripValidation(body: UnknownBody): string[] {
   ) {
     errors.push(`notes must be a string of at most ${MAX_MISSED_TRIP_NOTES_LENGTH} characters if provided`);
   }
-  if (body.reason_code !== undefined && body.reason_code !== null) {
-    if (typeof body.reason_code !== "string" || body.reason_code.length > MAX_REASON_CODE_LENGTH) {
-      errors.push(`reason_code must be a string of at most ${MAX_REASON_CODE_LENGTH} characters if provided`);
-    }
+  if (
+    typeof body.reason_code !== "string" ||
+    body.reason_code.trim() === "" ||
+    body.reason_code.length > MAX_REASON_CODE_LENGTH
+  ) {
+    errors.push(`reason_code is required and must be at most ${MAX_REASON_CODE_LENGTH} characters`);
   }
 
   return errors;

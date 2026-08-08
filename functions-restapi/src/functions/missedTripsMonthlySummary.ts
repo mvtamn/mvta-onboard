@@ -1,8 +1,9 @@
 // GET /missed-trips-monthly-summary - the aggregate view behind Missed
-// Trips' new Monthly Assessments page (mirrors OTP Compliance's own Monthly
-// Assessments, requested by Ty alongside the rest of the Missed Trips UX
-// pass). Buckets MonitoredMissedTrips by the month of scheduled_departure_at
-// x route x detection_type x validation_status - the console pivots this
+// Trips' Monthly Assessments page. Buckets source-verified rows by the
+// agency-local service_date month x route x detection_type x review outcome.
+// Legacy rows are deliberately excluded: they were produced before the
+// timezone/evidence correction and cannot be presented as compliance facts.
+// The console pivots this
 // into a per-route/month table client-side rather than the backend
 // pre-shaping one specific table layout, same "return the facts, let the
 // UI decide presentation" approach as otpMonthlyTrend.ts.
@@ -38,13 +39,14 @@ app.http("missedTripsMonthlySummary", {
 
       const result = await pool.request().query<MissedTripsSummaryRow>(`
         SELECT
-          LEFT(CONVERT(CHAR(8), scheduled_departure_at, 112), 6) AS service_month,
+          LEFT(service_date, 6) AS service_month,
           route_id,
           detection_type,
           validation_status,
           COUNT(*) AS trip_count
         FROM MonitoredMissedTrips
-        GROUP BY LEFT(CONVERT(CHAR(8), scheduled_departure_at, 112), 6), route_id, detection_type, validation_status
+        WHERE data_quality_status = 'source_verified'
+        GROUP BY LEFT(service_date, 6), route_id, detection_type, validation_status
         ORDER BY service_month DESC, route_id
       `);
       return { status: 200, jsonBody: { summary: result.recordset } };

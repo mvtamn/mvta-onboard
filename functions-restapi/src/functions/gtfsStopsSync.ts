@@ -134,9 +134,7 @@ app.timer("gtfsStopsSync", {
       const scheduleTablesExist = scheduleTableCheck.recordset[0]?.table_exists === 1;
       let scheduledTripCount = 0;
       if (scheduleTablesExist) {
-        const firstDepartureByTrip = new Map(
-          scheduledTrips.map((t) => [t.trip_id, t.first_departure_seconds]),
-        );
+        const scheduleByTrip = new Map(scheduledTrips.map((t) => [t.trip_id, t]));
 
         await new sql.Request(tx).query("TRUNCATE TABLE GtfsCalendar");
         for (const cal of calendar) {
@@ -177,16 +175,25 @@ app.timer("gtfsStopsSync", {
 
         await new sql.Request(tx).query("TRUNCATE TABLE GtfsScheduledTrips");
         for (const trip of trips) {
-          const firstDeparture = firstDepartureByTrip.get(trip.trip_id);
-          if (firstDeparture === undefined || !trip.service_id) continue;
+          const schedule = scheduleByTrip.get(trip.trip_id);
+          if (!schedule || !trip.service_id) continue;
           const insertReq = new sql.Request(tx);
           insertReq.input("trip_id", sql.NVarChar, trip.trip_id);
           insertReq.input("route_id", sql.NVarChar, trip.route_id);
           insertReq.input("service_id", sql.NVarChar, trip.service_id);
-          insertReq.input("first_departure_seconds", sql.Int, firstDeparture);
+          insertReq.input("first_departure_seconds", sql.Int, schedule.first_departure_seconds);
+          insertReq.input("first_stop_id", sql.NVarChar, schedule.first_stop_id);
+          insertReq.input("first_stop_sequence", sql.Int, schedule.first_stop_sequence);
+          insertReq.input("block_id", sql.NVarChar, trip.block_id);
           await insertReq.query(`
-            INSERT INTO GtfsScheduledTrips (trip_id, route_id, service_id, first_departure_seconds)
-            VALUES (@trip_id, @route_id, @service_id, @first_departure_seconds)
+            INSERT INTO GtfsScheduledTrips (
+              trip_id, route_id, service_id, first_departure_seconds,
+              first_stop_id, first_stop_sequence, block_id
+            )
+            VALUES (
+              @trip_id, @route_id, @service_id, @first_departure_seconds,
+              @first_stop_id, @first_stop_sequence, @block_id
+            )
           `);
           scheduledTripCount++;
         }

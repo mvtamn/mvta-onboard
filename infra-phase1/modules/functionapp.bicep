@@ -9,6 +9,7 @@ param subnetId string
 param keyVaultName string
 param planSku string = 'B1'
 param planTier string = 'Basic'
+param includeSpareApiKey bool = false
 
 @description('Client ID of the MVTA OnBoard Entra ID app registration - wires up Easy Auth so the caller principal and app roles are available via x-ms-client-principal')
 param aadClientId string
@@ -83,7 +84,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
           }
         }
       ]
-      appSettings: [
+      appSettings: concat([
         // Identity-based access to the host storage account - no account key
         // in app settings. Backed by the Blob/Queue/Table data-plane role
         // assignments below (they reference this app's identity, so they are
@@ -121,7 +122,11 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         // secret, so (like the GTFS feed URLs) it's set imperatively via
         // `az functionapp config appsettings set`, not here.
         { name: 'AVAIL_AVL_REPORTS_API_KEY', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/avail-avl-reports-api-key/)' }
-      ]
+      ], includeSpareApiKey ? [
+        // Spare missed-trip ingestion runs only in the REST app. Keep this
+        // reference in Bicep so a redeploy does not remove the setting.
+        { name: 'SPARE_API_KEY', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/spare-api-key/)' }
+      ] : [])
     }
   }
 }

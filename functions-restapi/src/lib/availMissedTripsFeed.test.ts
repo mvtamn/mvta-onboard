@@ -60,6 +60,15 @@ test("treats a departure-only miss (arrival not missed) correctly", () => {
   assert.strictEqual(mapped!.entire_trip_missed, false);
 });
 
+test("combines Avail's HH:mm start time with CalendarDate in agency-local time", () => {
+  const mapped = mapMissedTripReport({
+    ...BIRMINGHAM_EXPRESS,
+    CalendarDate: "2026-07-29T00:00:00.000",
+    DepartureTripStartTime: "14:31",
+  });
+  assert.strictEqual(mapped?.departure_trip_start_time?.toISOString(), "2026-07-29T19:31:00.000Z");
+});
+
 test("fetchMissedTripReports returns the rows under the real (lowercase) envelope key", () =>
   withFetchStub(
     { success: true, errors: [], result: { missed: [BIRMINGHAM_EXPRESS] } },

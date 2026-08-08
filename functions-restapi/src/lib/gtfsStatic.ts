@@ -24,6 +24,7 @@ export interface GtfsTripRow {
   service_id: string;
   direction_id: number;
   trip_headsign: string | null;
+  block_id?: string | null;
 }
 
 export interface GtfsRouteRow {
@@ -113,6 +114,7 @@ export function parseTripsCsv(csv: string): GtfsTripRow[] {
   const serviceIdx = header.indexOf("service_id");
   const dirIdx = header.indexOf("direction_id");
   const headsignIdx = header.indexOf("trip_headsign");
+  const blockIdx = header.indexOf("block_id");
   if (idIdx === -1 || routeIdx === -1 || dirIdx === -1) {
     throw new Error("trips.txt is missing required trip_id/route_id/direction_id columns");
   }
@@ -132,6 +134,7 @@ export function parseTripsCsv(csv: string): GtfsTripRow[] {
       service_id: service_id || "",
       direction_id,
       trip_headsign: headsign || null,
+      block_id: blockIdx !== -1 ? cols[blockIdx]?.trim() || null : null,
     });
   }
   return rows;
@@ -153,6 +156,8 @@ function parseGtfsTimeToSeconds(value: string): number | null {
 export interface GtfsScheduledTripRow {
   trip_id: string;
   first_departure_seconds: number;
+  first_stop_id: string | null;
+  first_stop_sequence: number;
 }
 
 // Only the earliest stop_sequence's departure_time per trip is needed (the
@@ -167,11 +172,12 @@ export function parseStopTimesCsv(csv: string): GtfsScheduledTripRow[] {
   const tripIdx = header.indexOf("trip_id");
   const seqIdx = header.indexOf("stop_sequence");
   const depIdx = header.indexOf("departure_time");
-  if (tripIdx === -1 || seqIdx === -1 || depIdx === -1) {
-    throw new Error("stop_times.txt is missing required trip_id/stop_sequence/departure_time columns");
+  const stopIdx = header.indexOf("stop_id");
+  if (tripIdx === -1 || seqIdx === -1 || depIdx === -1 || stopIdx === -1) {
+    throw new Error("stop_times.txt is missing required trip_id/stop_sequence/departure_time/stop_id columns");
   }
 
-  const earliest = new Map<string, { sequence: number; seconds: number }>();
+  const earliest = new Map<string, { sequence: number; seconds: number; stopId: string | null }>();
   for (const line of lines.slice(1)) {
     const cols = parseCsvLine(line);
     const trip_id = cols[tripIdx]?.trim();
@@ -180,13 +186,15 @@ export function parseStopTimesCsv(csv: string): GtfsScheduledTripRow[] {
     if (!trip_id || !Number.isFinite(sequence) || seconds === null) continue;
     const current = earliest.get(trip_id);
     if (!current || sequence < current.sequence) {
-      earliest.set(trip_id, { sequence, seconds });
+      earliest.set(trip_id, { sequence, seconds, stopId: cols[stopIdx]?.trim() || null });
     }
   }
 
   return Array.from(earliest.entries()).map(([trip_id, v]) => ({
     trip_id,
     first_departure_seconds: v.seconds,
+    first_stop_id: v.stopId,
+    first_stop_sequence: v.sequence,
   }));
 }
 

@@ -23,6 +23,8 @@ import type {
   TripDelayDiagnostics,
   OnDemandRiskRecord,
   MissedTrip,
+  MissedTripsDiagnostics,
+  MissedTripReview,
   ValidateMissedTripInput,
   MissedTripsMonthlySummaryResponse,
   GtfsRouteOption,
@@ -281,16 +283,11 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
       return request<{ risks: OnDemandRiskRecord[] }>("/api/on-demand-risks", {}, true);
     },
 
-    getMissedTrips() {
+    getMissedTrips(view: "queue" | "history" | "all" = "queue", limit = 200, offset = 0) {
       return request<{
         missed_trips: MissedTrip[];
-        diagnostics: {
-          configured: boolean;
-          active_count?: number;
-          resolved_count?: number;
-          unreviewed_count?: number;
-        };
-      }>("/api/missed-trips", {}, true);
+        diagnostics: MissedTripsDiagnostics;
+      }>(`/api/missed-trips?view=${view}&limit=${limit}&offset=${offset}`, {}, true);
     },
 
     validateMissedTrip(input: ValidateMissedTripInput) {
@@ -299,6 +296,11 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
         { method: "POST", body: JSON.stringify(input) },
         true,
       );
+    },
+
+    getMissedTripReviews(tripId: string, serviceDate: string) {
+      const query = new URLSearchParams({ trip_id: tripId, service_date: serviceDate });
+      return request<{ reviews: MissedTripReview[] }>(`/api/missed-trips/reviews?${query}`, {}, true);
     },
 
     getMissedTripsMonthlySummary() {

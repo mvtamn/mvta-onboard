@@ -217,6 +217,7 @@ export interface GtfsRouteOption {
 
 export type MissedTripStatus = "watching" | "escalated" | "resolved";
 export type MissedTripValidationStatus = "unreviewed" | "confirmed" | "false_positive";
+export type MissedTripDataQualityStatus = "legacy_unverified" | "source_verified" | "experimental";
 
 // Missed Trips is a compliance/investigation tool, not a customer-alert
 // queue - detection only flags a candidate here; a staff member investigates
@@ -246,6 +247,8 @@ export interface MissedTrip {
   validated_by: string | null;
   validated_at: string | null;
   notes: string | null;
+  detector_version: string | null;
+  data_quality_status: MissedTripDataQualityStatus;
   // NB/SB/EB/WB from GtfsTripDirections, same convention as TripDelay.direction_label -
   // null when the trip isn't in that reference table or no direction could be determined.
   direction_label: string | null;
@@ -256,7 +259,41 @@ export interface ValidateMissedTripInput {
   service_date: string;
   validation_status: "confirmed" | "false_positive";
   notes?: string;
-  reason_code?: string | null;
+  reason_code: string;
+}
+
+export interface MissedTripReview {
+  review_id: number;
+  previous_validation_status: MissedTripValidationStatus;
+  validation_status: Exclude<MissedTripValidationStatus, "unreviewed">;
+  reason_code: string;
+  notes: string | null;
+  reviewed_by: string;
+  reviewed_at: string;
+}
+
+export interface MissedTripsDiagnostics {
+  configured: boolean;
+  view: "queue" | "history" | "all";
+  limit: number;
+  offset: number;
+  returned_count: number;
+  view_count: number;
+  total_count: number;
+  active_count: number;
+  resolved_count: number;
+  unreviewed_count: number;
+  legacy_unverified_count: number;
+  last_checked_at: string | null;
+  silent_no_show_enabled: boolean;
+  schedule_detection_status: "paused" | "experimental";
+  feed_health: Array<{
+    feed_name: string;
+    last_success_at: string | null;
+    last_entity_count: number | null;
+    source_timestamp_at: string | null;
+    status: "current" | "stale";
+  }>;
 }
 
 // GET /missed-trips-monthly-summary - one row per (month, route, detection

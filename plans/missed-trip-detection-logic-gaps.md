@@ -4,10 +4,24 @@ Scope: the real-time GTFS-based detector only (`functions-restapi/src/functions/
 timer every 5 min). Not the Avail360 vendor-feed system (`availMissedTripsPoll.ts`) — that's a
 separate, unrelated ingestion path for contractual reporting.
 
-**Status (2026-08-06): the midnight-boundary bug and the 15-vs-30-minute/late-arrival-resolve gaps
-below are now fixed** in `gtfsMissedTripsPoll.ts` — see "Implemented fixes" at the bottom. The
-false-positive hypothesis section is still open and unconfirmed; that part still needs the
-suggested next step (sampling `resolved` rows) run against real data.
+For the prioritized feature-completion plan spanning GTFS, Avail, Spare, API, and UI/UX, see
+`plans/missed-trip-feature-finish-plan.md`.
+
+**Status (reassessed 2026-08-07): do not treat the current GTFS-derived rows as reliable evidence
+of actual missed trips yet.** The midnight-boundary and 15-vs-30-minute fixes are written, but a
+more fundamental agency-local-vs-UTC error remains, and `first_observed_at` measures when a trip
+first appeared in a prediction feed, not when it actually started. See "Feed/clock reassessment"
+at the bottom. The Avail Missed Trips feed is a promising retrospective compliance source, but a
+direct sample now shows unresolved filter/field semantics and a broken time parser; it is not yet
+safe to treat as authoritative. A reworked multi-signal detector is needed for live operational
+candidates.
+
+**Implementation update:** the detector is now contained and rebuilt behind safety gates in the
+current worktree. Silent no-shows default paused; agency-local schedule conversion, raw feed
+evidence, positive VehiclePosition underway evidence, feed health, detector versioning, legacy-row
+exclusion, and review audit history are implemented in migrations 026–028 and the associated
+pollers/API/UI. Existing legacy rows remain unverified by design. See the finish plan's
+implementation-status section for deployment order.
 
 ## How detection currently works
 
@@ -242,3 +256,206 @@ of the false-positive problem this doc was investigating: it's undercounting gen
 which is worse for compliance reporting than over-flagging would be. It should resolve itself once
 the already-written fix (`resolveLateArrivals` two-statement version, section above) actually
 deploys — but that deploy needs to be confirmed, not assumed, given finding #1.
+
+## Feed/clock reassessment (2026-08-07) — earlier live-data conclusion is not supportable
+
+The earlier interpretation above — that a row whose stored timestamps differ by 60–120 minutes
+represents a vehicle that really started 60–120 minutes late — assumes two things the code and
+feeds do not establish:
+
+1. `scheduled_departure_at` is a real UTC instant.
+2. `GtfsObservedTrips.first_observed_at` is the trip's actual start time.
+
+Both assumptions are false in the current implementation.
+
+### 1. Static GTFS schedule times are agency-local, but this detector treats them as UTC
+
+`first_departure_seconds` comes from GTFS `stop_times.txt`. It is seconds on the agency's local
+service-day clock (MVTA: `America/Chicago`), not seconds after UTC midnight. The detector compares
+it with `now.getUTCHours()` and constructs display/comparison timestamps with `Date.UTC(...)` plus
+`setUTCSeconds(...)`.
+
+During daylight time this moves the effective threshold five hours early. For example, a static
+GTFS start time of 13:24 means 13:24 Central (18:24 UTC), but the detector stores and evaluates it
+as 13:24 UTC. At 13:54 UTC — only 08:54 Central and still 4.5 hours before the scheduled trip —
+the detector can already call it a 30-minute no-show.
+
+This also changes how the pasted samples must be read. A stored `scheduled_departure_at` of 13:24
+and `first_observed_at` of 14:40 does **not** prove a 76-minute-late start. If 13:24 is the original
+GTFS wall time, the real scheduled instant that August day was 18:24 UTC; a 14:40 UTC feed
+observation was 3 hours 44 minutes *before* the scheduled start. That is consistent with a
+prediction feed publishing a future trip, not a vehicle departing late.
+
+The previous midnight fix corrected the `>24:00:00` scale mismatch but did not correct the time
+zone. The correct calculation must anchor each service date in `America/Chicago`, then add the
+uncapped GTFS seconds. This must use a real time-zone conversion so CST/CDT and DST transition
+days are handled correctly; a hardcoded five- or six-hour offset is not sufficient.
+
+### 2. "Observed in TripUpdate" does not mean "started service"
+
+`GtfsObservedTrips` is written by `gtfsDelaysPoll.ts` at ingestion time (`SYSUTCDATETIME()`). The
+row is written only after `mapTripUpdateEntity()` finds at least one StopTimeUpdate with a delay,
+but none of those checks establish that the vehicle has departed the first stop. GTFS-RT
+TripUpdates are predictions and may legitimately contain future scheduled trips before they
+begin. Their entity `Timestamp` is the update time, not an actual-departure timestamp.
+
+Consequences:
+
+- A future trip can be marked "observed" hours before its scheduled start.
+- A present TripUpdate with no usable StopTimeUpdate/delay is ignored and looks unobserved.
+- `first_observed_at - scheduled_departure_at` is neither a measured start delay nor a valid OTP
+  observation.
+- The two-statement `resolveLateArrivals` fix still compares the wrong quantities. Correcting the
+  threshold to 30 minutes is necessary, but insufficient.
+
+### Feeds currently available and what each can actually prove
+
+| Feed | Useful signal | Cannot safely prove | Recommended role |
+|---|---|---|---|
+| Static GTFS (`GTFS_STATIC_URL`) | What trips/stops/times are scheduled; service calendar | Whether a trip operated | Expected-service baseline, converted from agency-local time correctly |
+| GTFS-RT TripUpdate (`GTFS_RT_TRIPUPDATE_URL`) | Explicit `CANCELED`; assignment/predictions; progress through stop sequence | Actual start merely from entity presence or entity timestamp | Cancellation signal and one input to live start/progress evidence |
+| GTFS-RT VehiclePosition (`GTFS_RT_VEHICLE_URL`) | Vehicle tied to `trip_id`, GPS, current stop sequence/status, source timestamp | Definitive start if only a pre-trip/layover position is seen | Stronger live evidence when stop-sequence/status or movement shows the trip is underway |
+| Avail AVL Reports (`AVAIL_AVL_REPORTS_URL`) | Vehicle movement plus Avail route/block/run/trip IDs | Direct join to GTFS `trip_id` with the current schema | Corroboration after a GTFS-to-Avail run/block/trip crosswalk exists |
+| Avail Pullout (`AVAIL_PULLOUT_URL`) | Garage check-in/login/pullout scheduled vs actual; operational risk | Passenger-service trip start; currently also blocked by unconfirmed endpoint/spec | Early warning/supporting reason only, not the final missed-trip decision |
+| Avail Missed Trips By Route/Stop/Day (`AVAIL_MISSED_TRIPS_URL`) | Vendor's incident-level missed-departure/arrival/entire-trip result | Five-minute live detection; guaranteed GTFS `trip_id`; complete start time on every row | Candidate retrospective compliance feed; validate semantics, then use for nightly reconciliation |
+
+The proprietary Avail feeds and MVTA's GTFS-RT may ultimately be generated from the same Avail
+platform, so they should not automatically be described as statistically independent sources.
+They are still distinct products with different grains and failure modes.
+
+## Recommended alternative: live candidates plus retrospective reconciliation
+
+Do not make one feed serve both the operational and compliance use cases.
+
+### A. Live operational candidate detector
+
+Keep static GTFS as the expected-trip baseline and explicit GTFS-RT `CANCELED` as an immediate
+flag. Replace `GtfsObservedTrips`' binary "ever appeared in TripUpdate" test with a per-trip
+evidence model:
+
+- Store raw first/last observations from **both** TripUpdate and VehiclePosition independently of
+  the delay mapper. Do not discard VehiclePositions just because `MonitoredTripDelays` has no row.
+- Store source/entity timestamps, vehicle ID, current stop sequence/status, and the earliest
+  evidence that the trip progressed beyond its first stop.
+- Extend the static ingest to retain the first stop ID/sequence (and preferably `block_id`) so a
+  VehiclePosition or TripUpdate can be evaluated against the actual beginning of the trip.
+- Define `actual_start_at` from positive underway evidence — for example, progression past the
+  first stop, or a position/status transition consistent with departure — not feed presence.
+- At scheduled start + 30 minutes, classify:
+  - explicit canceled → missed candidate;
+  - positive underway evidence at/before deadline → operated within window;
+  - first positive underway evidence after deadline → missed/started late;
+  - no positive evidence, but feeds healthy → silent no-show candidate;
+  - feeds stale/unhealthy → unknown/data outage, **not** a missed trip.
+
+This last state is important: absence is only evidence when the observation systems were healthy
+throughout the decision window. Feed-level freshness/coverage should therefore be persisted per
+poll and included in every decision.
+
+Avail AVL can strengthen this live path once a reliable crosswalk is built. The likely join is
+service date + route + scheduled start + `block_id`/run/trip, not vehicle number alone. Until that
+crosswalk is verified against real records, AVL should remain corroborating evidence rather than
+silently resolving a GTFS trip.
+
+### B. Retrospective compliance truth
+
+Evaluate `MissedTripsByRouteStopDay` as the primary retrospective classification, since it is
+designed to report missed departures/arrivals/trips and is now confirmed to return live MVTA data.
+Do not promote it to contractual source of truth until the filter and flag contradictions in the
+direct sample below are resolved. Once validated, poll it daily for a short trailing window, then
+reconcile its incidents to live candidates using route, service date, departure start time when
+present, and terminal stops. Because the feed has no guaranteed unique key and
+`DepartureTripStartTime` can be null, store an explicit match quality (`exact`, `probable`,
+`unmatched`) and preserve manual validation rather than forcing a join.
+
+This yields two honest outputs:
+
+- **Operational candidates:** fast, explainable, and allowed to be pending/unknown.
+- **Compliance incidents:** vendor-reported and reconciled after the fact, with an audit trail.
+
+### Immediate priority order
+
+1. Stop treating the existing `scheduled_departure_at`/`first_observed_at` delta as lateness.
+2. Correct service-day and timestamp construction to `America/Chicago` before evaluating another
+   export or deploying the 30-minute resolution comparison.
+3. Capture raw TripUpdate and VehiclePosition observations independently of the delay UI mapper.
+4. Measure Avail Missed Trips publication lag by comparing `CalendarDate`/start time with first
+   ingestion time; if it is acceptably short, consider a more frequent current-day poll in
+   addition to the existing daily three-month compliance backfill.
+5. Build and validate a GTFS-to-Avail crosswalk before using AVL/Pullout to resolve individual
+   GTFS trips.
+
+## Direct Avail feed sample (2026-08-07) — useful, but not yet authoritative
+
+Analyzed the successful response for:
+
+```text
+MissedTripsByRouteStopDay/v1/MVTA/
+2026-07-29 00:00:00/2026-07-29 23:59:59/true/false
+```
+
+The response metadata confirms property `MVTA`, the requested one-day window, and refresh time
+`2026-08-07T20:20:49.243`. It contains 171 rows for 2026-07-29 across 15 RouteIDs.
+
+### What the response actually contains
+
+| Flag combination (`Departure`, `Arrival`, `Entire`) | Rows | Start time present? |
+|---|---:|---|
+| `0, 1, 0` | 91 | Yes, all 91 (`HH:mm`) |
+| `1, 0, 1` | 20 | No, all null |
+| `1, 1, 1` | 60 | No, all null |
+
+In this sample, `EntireTripMissed` is identical to `DepartureMissed` on every row; it does not act
+like an independent "both ends missed" flag. A vendor definition/data-dictionary check is needed
+before deriving business rules from these three columns.
+
+### The requested filters do not match the returned rows
+
+- The path requested `Full Trip Only=true`, yet 91/171 rows have
+  `EntireTripMissed=0` and only `ArrivalMissed=1`.
+- The path requested `Include Deadheads=false`, yet 32/171 rows are RouteID `999`, explicitly
+  labeled `Deadhead` in both route-description fields.
+
+Possible explanations include boolean-vs-numeric path values (`true/false` vs `1/0`), misleading
+parameter names, inverted vendor semantics, or ignored filters. The app currently sends `/0/0`,
+so a controlled four-call matrix (`0/0`, `0/1`, `1/0`, `1/1`) against the same date is the fastest
+way to determine the real behavior. Compare total rows, RouteID 999 rows, and all three flag
+combinations. Do not assume the current comments describing the two parameters are correct until
+that matrix is run.
+
+### The current parser discards every populated start time
+
+The response sends `DepartureTripStartTime` as a time-only string such as `"14:31"`, not a full
+ISO datetime. All 91 non-null values match `HH:mm`. `availMissedTripsFeed.ts` currently evaluates
+`new Date(value)`; in Node, `new Date("14:31")` is invalid, so `parseNullableDate()` returns null.
+As a result, the current ingestion loses every usable start time from this sample.
+
+The parser must combine `CalendarDate` + `DepartureTripStartTime` in `America/Chicago` (or store
+the raw `HH:mm`/minutes-since-midnight separately). It must not append `Z` or treat the time as UTC.
+
+### Duplicate rows appear to carry multiplicity, not accidental duplication
+
+There are 171 rows but only 127 distinct rows under every available field — 44 repeated copies
+beyond the first. All 91 rows with a start time are distinct; the repeats are concentrated among
+the 80 null-time departure/entire-trip misses, which collapse to only 36 distinct field
+combinations. One route/stop/direction combination appears 12 times with every exposed field
+identical.
+
+Because the feed exposes no incident ID and omits start time precisely on these rows, those copies
+may represent multiple separately scheduled misses that cannot be distinguished in the response.
+The existing delete-and-reinsert ingestion correctly preserves multiplicity. A dedupe/upsert on
+the visible fields would undercount unless Avail confirms the duplicates are erroneous.
+
+### Revised role for this feed
+
+This feed is valuable for daily aggregate counts and retrospective route/terminal patterns, but
+the sample cannot reliably identify every individual scheduled trip:
+
+- 80/171 rows have no start time;
+- no GTFS `trip_id`, block, run, vehicle, or incident ID is present;
+- filter behavior contradicts the request;
+- the flag meanings are not self-consistent under the assumed definitions.
+
+Use it for vendor reconciliation and aggregate compliance only after the filter/field semantics
+are confirmed. It cannot replace the GTFS/vehicle-evidence path for individual live candidates,
+and many null-time rows will remain `unmatched` by design.

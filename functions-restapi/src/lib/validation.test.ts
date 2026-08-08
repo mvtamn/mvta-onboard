@@ -199,6 +199,7 @@ test("valid missed-trip validation passes", () => {
     trip_id: "t65A-b13B-sl2B-v62",
     service_date: "20260727",
     validation_status: "confirmed",
+    reason_code: "OPERATOR_NO_SHOW",
     notes: "Confirmed via dispatch log - vehicle never left the garage.",
   });
   assert.deepStrictEqual(errors, []);
@@ -220,6 +221,7 @@ test("missed-trip validation notes is optional but bounded when provided", () =>
     trip_id: "t1",
     service_date: "20260727",
     validation_status: "false_positive",
+    reason_code: "DETECTION_ERROR",
   });
   assert.deepStrictEqual(withoutNotes, []);
 
@@ -227,12 +229,13 @@ test("missed-trip validation notes is optional but bounded when provided", () =>
     trip_id: "t1",
     service_date: "20260727",
     validation_status: "false_positive",
+    reason_code: "DETECTION_ERROR",
     notes: "x".repeat(MAX_MISSED_TRIP_NOTES_LENGTH + 1),
   });
   assert.ok(withOversizedNotes.some((e) => e.includes("notes")));
 });
 
-test("missed-trip validation accepts an optional reason_code", () => {
+test("missed-trip validation requires a bounded reason_code", () => {
   const withReason = validateMissedTripValidation({
     trip_id: "t1",
     service_date: "20260727",
@@ -240,6 +243,13 @@ test("missed-trip validation accepts an optional reason_code", () => {
     reason_code: "VEHICLE_BREAKDOWN",
   });
   assert.deepStrictEqual(withReason, []);
+
+  const withoutReason = validateMissedTripValidation({
+    trip_id: "t1",
+    service_date: "20260727",
+    validation_status: "confirmed",
+  });
+  assert.ok(withoutReason.some((e) => e.includes("reason_code")));
 
   const withOversizedReason = validateMissedTripValidation({
     trip_id: "t1",

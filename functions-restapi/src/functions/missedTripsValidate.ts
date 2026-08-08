@@ -38,29 +38,64 @@ app.http("missedTripsValidate", {
     const serviceDate = body.service_date as string;
     const validationStatus = body.validation_status as string;
     const notes = (body.notes as string | undefined) ?? null;
-    const reasonCode = (body.reason_code as string | undefined) ?? null;
+    const reasonCode = body.reason_code as string;
     const validatedBy = authResult.principal.userDetails ?? "onboard-console";
 
     try {
       const pool = await getPool();
-      const req = pool.request();
-      req.input("trip_id", sql.NVarChar, tripId);
-      req.input("service_date", sql.NVarChar, serviceDate);
-      req.input("validation_status", sql.NVarChar, validationStatus);
-      req.input("validated_by", sql.NVarChar, validatedBy);
-      req.input("notes", sql.NVarChar, notes);
-      req.input("reason_code", sql.NVarChar(20), reasonCode);
-      const result = await req.query(`
-        UPDATE MonitoredMissedTrips
-        SET validation_status = @validation_status,
-            validated_by = @validated_by,
-            validated_at = SYSUTCDATETIME(),
-            notes = @notes,
-            reason_code = @reason_code
-        WHERE trip_id = @trip_id AND service_date = @service_date
-      `);
-      if (result.rowsAffected[0] === 0) {
-        return { status: 404, jsonBody: { error: "Missed trip not found" } };
+      const tx = new sql.Transaction(pool);
+      await tx.begin();
+      try {
+        const currentReq = new sql.Request(tx);
+        currentReq.input("trip_id", sql.NVarChar, tripId);
+        currentReq.input("service_date", sql.NVarChar, serviceDate);
+        const current = await currentReq.query<{ validation_status: string }>(`
+          SELECT validation_status
+          FROM MonitoredMissedTrips WITH (UPDLOCK, HOLDLOCK)
+          WHERE trip_id = @trip_id AND service_date = @service_date
+        `);
+        const previousStatus = current.recordset[0]?.validation_status;
+        if (!previousStatus) {
+          await tx.rollback();
+          return { status: 404, jsonBody: { error: "Missed trip not found" } };
+        }
+        const writeReq = new sql.Request(tx);
+        writeReq.input("trip_id", sql.NVarChar, tripId);
+        writeReq.input("service_date", sql.NVarChar, serviceDate);
+        writeReq.input("validation_status", sql.NVarChar, validationStatus);
+        writeReq.input("validated_by", sql.NVarChar, validatedBy);
+        writeReq.input("notes", sql.NVarChar, notes);
+        writeReq.input("reason_code", sql.NVarChar(30), reasonCode);
+        writeReq.input("previous_validation_status", sql.NVarChar, previousStatus);
+        await writeReq.query(`
+          UPDATE MonitoredMissedTrips
+          SET validation_status = @validation_status,
+              validated_by = @validated_by,
+              validated_at = SYSUTCDATETIME(),
+              notes = @notes,
+              reason_code = @reason_code,
+              data_quality_status = CASE
+                WHEN @validation_status = 'confirmed' THEN 'source_verified'
+                ELSE data_quality_status END
+          WHERE trip_id = @trip_id AND service_date = @service_date;
+
+          INSERT INTO MissedTripReviewHistory (
+            trip_id, service_date, previous_validation_status, validation_status,
+            reason_code, notes, reviewed_by
+          )
+          VALUES (
+            @trip_id, @service_date, @previous_validation_status, @validation_status,
+            @reason_code, @notes, @validated_by
+          );
+        `);
+        await tx.commit();
+      } catch (err) {
+        try {
+          await tx.rollback();
+        } catch {
+          /* transaction already completed */
+        }
+        throw err;
       }
       return {
         status: 200,
