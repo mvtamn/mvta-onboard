@@ -14,6 +14,7 @@ param spareMissedTripsEnabled bool = false
 param spareMissedTripServiceIds string = ''
 param spareContractorFaultValues string = ''
 param complianceReportsStorageAccountName string = ''
+param manageRoleAssignments bool = false
 
 @description('Client ID of the MVTA OnBoard Entra ID app registration - wires up Easy Auth so the caller principal and app roles are available via x-ms-client-principal')
 param aadClientId string
@@ -155,7 +156,7 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
   name: keyVaultName
 }
 
-resource kvRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource kvRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (manageRoleAssignments) {
   name: guid(functionApp.id, keyVaultSecretsUserRole.id, keyVaultName)
   scope: keyVault
   properties: {
@@ -177,7 +178,7 @@ resource queueDataContributorRole 'Microsoft.Authorization/roleDefinitions@2022-
   name: '974c5e8b-45b9-4653-ba55-5f855dd0fb88'
 }
 
-resource storageBlobRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource storageBlobRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (manageRoleAssignments) {
   name: guid(functionApp.id, blobDataOwnerRole.id, storageAccount.id)
   scope: storageAccount
   properties: {
@@ -187,7 +188,7 @@ resource storageBlobRoleAssignment 'Microsoft.Authorization/roleAssignments@2022
   }
 }
 
-resource storageQueueRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource storageQueueRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (manageRoleAssignments) {
   name: guid(functionApp.id, queueDataContributorRole.id, storageAccount.id)
   scope: storageAccount
   properties: {

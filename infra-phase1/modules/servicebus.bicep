@@ -18,6 +18,7 @@ param senderPrincipalId string = ''
 
 @description('System-assigned principal ID of the dispatch Function App (consumes). Empty to skip.')
 param receiverPrincipalId string = ''
+param manageRoleAssignments bool = false
 
 resource serviceBusNamespace 'Microsoft.ServiceBus/namespaces@2022-10-01-preview' = {
   name: 'sb-mvta-onboard-${environment}'
@@ -56,7 +57,7 @@ resource sbReceiverRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' exi
   name: '4f6d3b9b-027b-4f4c-9142-0e5a2a2247e0'
 }
 
-resource senderAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(senderPrincipalId)) {
+resource senderAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(senderPrincipalId) && manageRoleAssignments) {
   name: guid(serviceBusNamespace.id, senderPrincipalId, sbSenderRole.id)
   scope: serviceBusNamespace
   properties: {
@@ -66,7 +67,7 @@ resource senderAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' =
   }
 }
 
-resource receiverAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(receiverPrincipalId)) {
+resource receiverAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(receiverPrincipalId) && manageRoleAssignments) {
   name: guid(serviceBusNamespace.id, receiverPrincipalId, sbReceiverRole.id)
   scope: serviceBusNamespace
   properties: {

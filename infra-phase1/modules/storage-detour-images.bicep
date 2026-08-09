@@ -14,6 +14,7 @@ param location string
 
 @description('System-assigned principal ID of the REST API Function App (mints SAS tokens + purges expired images). Empty to skip the role assignment.')
 param functionAppPrincipalId string = ''
+param manageRoleAssignments bool = false
 
 @description('Globally-unique storage account name, max 24 chars, lowercase alphanumeric only.')
 param storageAccountName string
@@ -71,7 +72,7 @@ resource blobDataContributorRole 'Microsoft.Authorization/roleDefinitions@2022-0
   name: 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
 }
 
-resource functionAppAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(functionAppPrincipalId)) {
+resource functionAppAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(functionAppPrincipalId) && manageRoleAssignments) {
   name: guid(storageAccount.id, functionAppPrincipalId, blobDataContributorRole.id)
   scope: storageAccount
   properties: {

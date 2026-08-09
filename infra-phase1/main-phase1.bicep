@@ -37,6 +37,9 @@ param spareContractorFaultValues string = ''
 @allowed(['Standard_AzureFrontDoor', 'Premium_AzureFrontDoor'])
 param wafSku string = 'Standard_AzureFrontDoor'
 
+@description('Create RBAC assignments during first-time provisioning. Keep false for routine deployments when the deployment identity lacks roleAssignments/write.')
+param manageRoleAssignments bool = false
+
 var cleanSuffix = replace(uniqueSuffix, '-', '')
 
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
@@ -71,6 +74,7 @@ module restApiFunction 'modules/functionapp.bicep' = {
     spareMissedTripsEnabled: spareMissedTripsEnabled
     spareMissedTripServiceIds: spareMissedTripServiceIds
     spareContractorFaultValues: spareContractorFaultValues
+    manageRoleAssignments: manageRoleAssignments
   }
 }
 
@@ -121,6 +125,7 @@ module serviceBus 'modules/servicebus.bicep' = {
     // API publishes (Sender), the dispatch app consumes (Receiver).
     senderPrincipalId: restApiFunction.outputs.functionAppPrincipalId
     receiverPrincipalId: dispatchFunction.outputs.functionAppPrincipalId
+    manageRoleAssignments: manageRoleAssignments
   }
 }
 
@@ -144,6 +149,7 @@ module detourImagesStorage 'modules/storage-detour-images.bicep' = {
     location: location
     storageAccountName: take('stmvtadetourimg${environment}${cleanSuffix}', 24)
     functionAppPrincipalId: restApiFunction.outputs.functionAppPrincipalId
+    manageRoleAssignments: manageRoleAssignments
     // Same origins the Function App's own CORS allows - the console needs
     // to PUT/GET blobs directly from the browser via SAS URLs.
     allowedCorsOrigins: allowedCorsOrigins
@@ -156,6 +162,7 @@ module complianceReportsStorage 'modules/storage-compliance-reports.bicep' = {
     location: location
     storageAccountName: take('stmvtacompreport${environment}${cleanSuffix}', 24)
     functionAppPrincipalId: restApiFunction.outputs.functionAppPrincipalId
+    manageRoleAssignments: manageRoleAssignments
   }
 }
 

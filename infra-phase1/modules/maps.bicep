@@ -21,6 +21,7 @@ param location string
 
 @description('System-assigned principal ID of the REST API Function App (mints Azure Maps tokens server-side via its own identity). Empty to skip the role assignment.')
 param functionAppPrincipalId string = ''
+param manageRoleAssignments bool = false
 
 @description('Azure Maps account name.')
 param mapsAccountName string
@@ -45,7 +46,7 @@ resource mapsDataReaderRole 'Microsoft.Authorization/roleDefinitions@2022-04-01'
   name: '423170ca-a8f6-4b0f-8487-9e4eb8f49bfa'
 }
 
-resource functionAppAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(functionAppPrincipalId)) {
+resource functionAppAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(functionAppPrincipalId) && manageRoleAssignments) {
   name: guid(mapsAccount.id, functionAppPrincipalId, mapsDataReaderRole.id)
   scope: mapsAccount
   properties: {
