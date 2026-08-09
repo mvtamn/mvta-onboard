@@ -81,6 +81,21 @@ jobs:
               --parameters infra-phase1/parameters/phase1-dev.parameters.json \
               --parameters frontDoorId="${{ vars.FRONT_DOOR_ID }}"
 
+      - name: Configure Azure Maps client identifier on REST API
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            maps_client_id=$(az resource show \
+              --resource-group "$RESOURCE_GROUP" \
+              --resource-type Microsoft.Maps/accounts \
+              --name mvta-onboard-maps \
+              --query properties.uniqueId -o tsv)
+            test -n "$maps_client_id"
+            az functionapp config appsettings set \
+              --resource-group "$RESOURCE_GROUP" \
+              --name func-mvta-restapi-dev \
+              --settings AZURE_MAPS_CLIENT_ID="$maps_client_id"
+
       - name: Smoke-test the live API after infra changes
         uses: azure/cli@v2
         with:
