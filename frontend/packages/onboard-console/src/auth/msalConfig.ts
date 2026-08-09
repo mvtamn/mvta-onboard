@@ -21,9 +21,10 @@ function buildConfig(): Configuration {
       postLogoutRedirectUri: window.location.origin + "/console/",
     },
     cache: {
-      // sessionStorage keeps tokens out of long-lived localStorage; they clear
-      // when the tab closes. Better default for a shared ops workstation.
-      cacheLocation: "sessionStorage",
+      // Keep the MSAL session across tab/browser restarts. Access tokens are
+      // still short-lived and acquireTokenSilent renews them as needed; the
+      // Entra tenant's session policy remains the upper limit.
+      cacheLocation: "localStorage",
       storeAuthStateInCookie: false,
     },
   };
