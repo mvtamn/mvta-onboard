@@ -5,7 +5,11 @@ import { requireRole, ADMIN_ROLES, STAFF_READ_ROLES } from "../lib/auth";
 app.http("eventGeofences", { route: "event-geofences", methods: ["GET", "POST"], authLevel: "anonymous", handler: async (req: HttpRequest) => {
   const auth = requireRole(req, req.method === "GET" ? [...STAFF_READ_ROLES, "OCC.Compliance"] : ADMIN_ROLES); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   const pool = await getPool();
-  if (req.method === "GET") return { status: 200, jsonBody: { geofences: (await pool.request().query("SELECT g.*, (SELECT * FROM EventGeofenceDirectionRules r WHERE r.geofence_id=g.id ORDER BY sort_order FOR JSON PATH) rules FROM EventGeofences g WHERE g.is_active=1 ORDER BY g.name")).recordset } };
+  if (req.method === "GET") {
+    const rows = (await pool.request().query("SELECT g.* FROM EventGeofences g WHERE g.is_active=1 ORDER BY g.name")).recordset;
+    const rules = (await pool.request().query("SELECT * FROM EventGeofenceDirectionRules ORDER BY geofence_id, sort_order")).recordset;
+    return { status: 200, jsonBody: { geofences: rows.map((g) => ({ ...g, rules: rules.filter((r) => r.geofence_id === g.id) })) } };
+  }
   const b = await req.json() as Record<string, unknown>; if (typeof b.name !== "string" || typeof b.polygon !== "string") return { status: 400, jsonBody: { error: "name and GeoJSON polygon are required" } };
   try { JSON.parse(b.polygon); } catch { return { status: 400, jsonBody: { error: "polygon must be valid GeoJSON" } }
   }

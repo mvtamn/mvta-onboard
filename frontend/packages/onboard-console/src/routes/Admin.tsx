@@ -12,6 +12,7 @@ import {
   type AppSettingRow,
 } from "@mvta/shared";
 import { api } from "../config.js";
+import { EventResourceMapEditor } from "./EventResourceMapEditor.js";
 
 const ROUTE_CATEGORIES: RouteCategory[] = ["FixedRoute", "SpecialEvent", "OnDemand"];
 
@@ -70,23 +71,6 @@ function EventMonitoringSettingsSection() {
         </tr></tbody>
       </table>}
       <p className="muted">Allowed range: 15 seconds to 5 minutes. Faster polling increases Avail API usage.</p>
-    </div>
-  </>;
-}
-
-function EventResourcesSection() {
-  const [locations, setLocations] = useState<{ id: string; name: string; category: string; latitude: number; longitude: number }[]>([]);
-  const [geofences, setGeofences] = useState<{ id: string; name: string }[]>([]);
-  const [plans, setPlans] = useState<{ id: string; name: string; status: string }[]>([]);
-  const [name, setName] = useState(""); const [polygon, setPolygon] = useState(""); const [message, setMessage] = useState<string | null>(null);
-  const load = () => Promise.all([api.getEventLocations(), api.getEventGeofences(), api.getEventServicePlans()]).then(([l, g, p]) => { setLocations(l.locations); setGeofences(g.geofences); setPlans(p.plans); }).catch(() => setMessage("Event resources are unavailable until migrations 033 and 034 are applied."));
-  useEffect(() => { void load(); }, []);
-  async function addGeofence() { try { await api.createEventGeofence({ name, polygon }); setName(""); setPolygon(""); setMessage("Geofence saved."); void load(); } catch (err) { setMessage(err instanceof ApiError ? err.message : "Could not save geofence."); } }
-  async function addPlan() { if (!name.trim()) return; try { await api.createEventServicePlan(name); setName(""); setMessage("Service plan created. Link routes and geofences through the plan API before activating it."); void load(); } catch (err) { setMessage(err instanceof ApiError ? err.message : "Could not create service plan."); } }
-  return <>
-    <div className="panel-header" style={{ marginTop: 24 }}>Event Resources</div><div className="panel-body"><p className="panel-desc">Manage reusable event locations, geofences, and explicit service plans. GeoJSON uses a Polygon coordinate ring: [[longitude, latitude], …].</p>{message && <p className="muted">{message}</p>}
-      <div style={{ display: "grid", gap: 8, maxWidth: 700 }}><input className="f" value={name} onChange={(e) => setName(e.target.value)} placeholder="Geofence or service-plan name" /><textarea className="f" value={polygon} onChange={(e) => setPolygon(e.target.value)} placeholder='{"type":"Polygon","coordinates":[[[-93.3,44.8],[-93.2,44.8],[-93.2,44.9],[-93.3,44.8]]]} ' rows={3} /><div><button className="btn-sm" disabled={!name || !polygon} onClick={() => void addGeofence()}>Save geofence</button>{" "}<button className="btn-sm" disabled={!name || !!polygon} onClick={() => void addPlan()}>Create service plan</button></div></div>
-      <p className="muted">{locations.length} active locations · {geofences.length} active geofences · {plans.length} service plans</p><table className="data"><thead><tr><th>Service plan</th><th>Status</th><th>Action</th></tr></thead><tbody>{plans.map((plan) => <tr key={plan.id}><td>{plan.name}</td><td>{plan.status}</td><td>{plan.status === "draft" && <button className="btn-sm" onClick={() => void api.advanceEventServicePlan(plan.id).then(load)}>Advance to Active</button>}</td></tr>)}</tbody></table>
     </div>
   </>;
 }
@@ -513,7 +497,7 @@ export function Admin() {
       </div>
       <EventMonitoringSettingsSection />
       <RouteClassificationSection />
-      <EventResourcesSection />
+      <EventResourceMapEditor />
     </>
   );
 }
