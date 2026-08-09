@@ -19,7 +19,7 @@ export function Sidebar({ stats }: { stats: LiveStats }) {
       </div>
       <div className="datasource-card">
         <div>
-          {stats.ok ? <span className="ok">✓ Live from Azure SQL</span> : <span className="err">✕ API unreachable</span>}
+          {stats.ok ? <span className="ok">✓ Live data connected</span> : <span className="err">✕ Live data unavailable</span>}
         </div>
         Active messages: {dash(stats.activeCount)}
         <br />
@@ -39,14 +39,14 @@ export function Sidebar({ stats }: { stats: LiveStats }) {
         ↻ Refresh
       </button>
 
-      <div className="side-label">Pending by source</div>
+      <div className="side-label">Pending alerts by feed</div>
       <div className="stat-card" style={{ borderLeftColor: "#F78E1E" }}>
-        <div className="stat-label" style={{ color: "#B5620C" }}>GTFS-REALTIME</div>
+        <div className="stat-label" style={{ color: "#B5620C" }}>FIXED-ROUTE DELAYS</div>
         <div className="stat-value">{dash(gtfsPending)}</div>
         <div className="stat-sub">Fixed-route delay candidates</div>
       </div>
       <div className="stat-card" style={{ borderLeftColor: "#417B68" }}>
-        <div className="stat-label" style={{ color: "#2C5A47" }}>MVTA CONNECT</div>
+        <div className="stat-label" style={{ color: "#2C5A47" }}>ON-DEMAND WAIT TIMES</div>
         <div className="stat-value">{dash(zonaPending)}</div>
         <div className="stat-sub">Wait-time candidates</div>
       </div>

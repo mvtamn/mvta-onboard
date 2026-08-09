@@ -49,17 +49,21 @@ export function OptIn() {
       setStatus("done");
     } catch (err) {
       setStatus("error");
-      setErrorMsg(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
+      setErrorMsg(
+        err instanceof ApiError
+          ? "We couldn’t start your subscription. Check your contact information and try again."
+          : "We couldn’t start your subscription. Please try again.",
+      );
     }
   }
 
   if (status === "done") {
     return (
       <>
-        <h1 className="title">Almost there</h1>
+        <h1 className="title">Check your phone or email</h1>
         <p className="subtitle">
-          We&rsquo;ve sent a confirmation to the contact info you provided. Reply or click
-          the link to confirm &mdash; you won&rsquo;t receive alerts until you do.
+          We&rsquo;ve sent a confirmation to the contact information you provided. Reply or click
+          the link to confirm. You won&rsquo;t receive alerts until you do.
         </p>
       </>
     );
@@ -121,7 +125,7 @@ export function OptIn() {
           </span>
         </label>
 
-        {status === "error" ? <p className="error inline">{errorMsg}</p> : null}
+        {status === "error" ? <p className="error inline" role="alert">{errorMsg}</p> : null}
 
         <button type="submit" className="btn-primary" disabled={status === "submitting"}>
           {status === "submitting" ? "Submitting…" : "Subscribe"}

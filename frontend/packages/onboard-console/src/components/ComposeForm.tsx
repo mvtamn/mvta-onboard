@@ -200,7 +200,7 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
       expiresAt = new Date(Date.now() + categoryTtl * 60_000).toISOString();
       source = "category_default";
     } else {
-      setError("Set an explicit expiration (category defaults are unavailable right now).");
+      setError("Add an expiration time. The default for this category is unavailable right now.");
       return;
     }
 
@@ -225,7 +225,7 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
         ? " Teams routing was recorded; the Teams connector is not active yet."
         : "";
       setOkMsg(
-        `Posted. Message ${res.message_id.slice(0, 8)}… expires ${new Date(res.expires_at).toLocaleString()}.${teamsNote}`,
+        `Announcement posted. ID ${res.message_id.slice(0, 8)}… Expires ${new Date(res.expires_at).toLocaleString()}.${teamsNote}`,
       );
       setRawText("");
       setSummary("");
@@ -239,10 +239,10 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
       setTeamsEnabled(false);
       onPosted?.();
     } catch (err) {
-      if (err instanceof ApiError && err.details) {
-        setError(`${err.message}: ${JSON.stringify(err.details)}`);
+      if (err instanceof ApiError) {
+        setError("The announcement could not be posted. Check the required fields and try again.");
       } else {
-        setError(err instanceof Error ? err.message : "Failed to post.");
+        setError("The announcement could not be posted. Please try again.");
       }
     } finally {
       setBusy(false);
@@ -252,10 +252,12 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
   return (
     <form onSubmit={onSubmit}>
       <p className="panel-desc">
-        Compose a rider-facing announcement. Claude parses category, severity, and expiration
-        automatically — review before posting.
+        Compose a rider-facing announcement. OnBoard can suggest the category, severity, and
+        expiration from your notes. Review every suggestion before posting.
       </p>
+      <label className="field-label" htmlFor="announcement-notes">Internal incident notes</label>
       <textarea
+        id="announcement-notes"
         className="compose"
         value={rawText}
         onChange={(e) => setRawText(e.target.value)}
@@ -263,10 +265,11 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
         required
       />
       <div>
-        <p className="field-label">
+        <label className="field-label" htmlFor="rider-summary">
           Rider-facing summary <span className="hint">(what riders will actually see)</span>
-        </p>
+        </label>
         <textarea
+          id="rider-summary"
           className="compose"
           value={summary}
           onChange={(e) => {
@@ -281,30 +284,31 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
           disabled={drafting || !rawText.trim()}
           onClick={() => void draftSummary()}
         >
-          {drafting ? "Drafting…" : "Draft rider-friendly text"}
+          {drafting ? "Suggesting rider summary…" : "Suggest rider-facing summary"}
         </button>
-        {draftError ? <p className="error-text">{draftError}</p> : null}
+        {draftError ? <p className="error-text" role="alert">{draftError}</p> : null}
       </div>
       <div className="field-grid">
         <div>
-          <p className="field-label">Category</p>
-          <select className="f" value={category} onChange={(e) => setCategory(e.target.value as Category)}>
+          <label className="field-label" htmlFor="announcement-category">Category</label>
+          <select id="announcement-category" className="f" value={category} onChange={(e) => setCategory(e.target.value as Category)}>
             {CATEGORIES.map((c) => (
               <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
             ))}
           </select>
         </div>
         <div>
-          <p className="field-label">Severity</p>
-          <select className="f" value={severity} onChange={(e) => setSeverity(e.target.value as Severity)}>
+          <label className="field-label" htmlFor="announcement-severity">Severity</label>
+          <select id="announcement-severity" className="f" value={severity} onChange={(e) => setSeverity(e.target.value as Severity)}>
             {SEVERITIES.map((s) => (
               <option key={s} value={s}>{SEVERITY_LABELS[s]}</option>
             ))}
           </select>
         </div>
         <div>
-          <p className="field-label">Explicit expiration</p>
+          <label className="field-label" htmlFor="announcement-expiration">Expiration time</label>
           <input
+            id="announcement-expiration"
             className="f"
             type="datetime-local"
             value={explicitExpires}
@@ -313,7 +317,7 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
         </div>
       </div>
       <div>
-        <p className="field-label">
+        <p className="field-label" id="affected-routes-label">
           Affected routes{" "}
           <span className="hint">
             {routesUseList ? "(select all that apply)" : "(comma separated)"}
@@ -325,6 +329,7 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
               <label key={r.id} title={r.title}>
                 <input
                   type="checkbox"
+                  aria-label={`Affected route ${r.label}`}
                   checked={selectedRoutes.has(r.id)}
                   onChange={() => toggleRoute(r.id)}
                 />
@@ -335,6 +340,7 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
         ) : (
           <input
             className="f"
+            aria-label="Affected routes"
             value={routesText}
             onChange={(e) => setRoutesText(e.target.value)}
             placeholder="e.g. 442, 477"
@@ -343,10 +349,11 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
       </div>
       <div className="field-grid single">
         <div>
-          <p className="field-label">
-            Tags <span className="hint">(internal only — not shown to riders)</span>
-          </p>
+          <label className="field-label" htmlFor="internal-tags">
+            Internal tags <span className="hint">(not shown to riders)</span>
+          </label>
           <input
+            id="internal-tags"
             className="f"
             value={tags}
             onChange={(e) => setTags(e.target.value)}
@@ -370,18 +377,19 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
             onChange={(e) => toggleTeams(e.target.checked)}
           />
           <span>
-            <strong>Alert via Teams</strong>
+            <strong>Notify Teams</strong>
             <small>Internal route-impact notification</small>
           </span>
         </label>
         {teamsEnabled ? (
           <div className="teams-delivery-options">
-            <p className="field-label">Teams audiences</p>
+            <p className="field-label" id="teams-audiences-label">Teams audiences</p>
             <div className="channels-row">
               {TEAMS_TARGETS.map((target) => (
                 <label key={target.value}>
                   <input
                     type="checkbox"
+                    aria-label={`Teams audience ${target.label}`}
                     checked={channels.has(target.value)}
                     onChange={() => toggleChannel(target.value)}
                   />
@@ -390,15 +398,14 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
               ))}
             </div>
             <p className="teams-connector-note">
-              The audience and affected routes will be saved now. A future
-              connector will post an Adaptive Card and optional approved image
-              to the mapped Teams channels; no Teams post is sent yet.
+              The Teams audience and affected routes will be saved with this announcement.
+              No Teams post is sent yet.
             </p>
           </div>
         ) : null}
       </div>
       <div className="infer-box">
-        <p className="infer-label">Claude's inferred fields</p>
+        <p className="infer-label">OnBoard suggestions</p>
         {explicitExpires ? (
           <span className="chip">Expiration: explicit</span>
         ) : categoryTtl !== null ? (
@@ -409,17 +416,17 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
           <span className="chip">Expiration: set explicitly</span>
         )}
         {draftedByAi ? (
-          <span className="chip">Rider summary: drafted by Claude</span>
+          <span className="chip">Rider summary: suggested by OnBoard</span>
         ) : summary.trim() ? (
           <span className="chip muted">Rider summary: written by hand</span>
         ) : (
           <span className="chip muted">Rider summary: not yet drafted</span>
         )}
       </div>
-      {error ? <p className="error-text">{error}</p> : null}
-      {okMsg ? <p className="ok-text">{okMsg}</p> : null}
+      {error ? <p className="error-text" role="alert">{error}</p> : null}
+      {okMsg ? <p className="ok-text" role="status" aria-live="polite">{okMsg}</p> : null}
       <button type="submit" className="btn-post" disabled={busy}>
-        {busy ? "Posting…" : "Post Announcement"}
+        {busy ? "Posting announcement…" : "Post announcement"}
       </button>
     </form>
   );

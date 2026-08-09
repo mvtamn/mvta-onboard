@@ -20,7 +20,7 @@ export function ServiceAlerts() {
       setMessages(data.messages ?? []);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
+      setError("We couldn’t load current service alerts.");
     } finally {
       setLoading(false);
     }
@@ -70,10 +70,12 @@ export function ServiceAlerts() {
       </div>
 
       {loading ? (
-        <div className="loading">Loading active alerts&hellip;</div>
+        <div className="loading" role="status" aria-live="polite">Loading current service alerts&hellip;</div>
       ) : error ? (
-        <div className="error">
-          Couldn&rsquo;t load alerts right now ({error}).
+        <div className="error" role="alert">
+          <strong>{error}</strong>
+          <br />
+          Try again now. If the problem continues, check MVTA&rsquo;s official service channels.
           <button className="retry-btn" onClick={load}>
             Retry
           </button>

@@ -27,10 +27,10 @@ export class ErrorBoundary extends Component<Props, State> {
     if (this.state.error) {
       return (
         <div className="role-denied">
-          <h1>Something went wrong on this page</h1>
-          <p>{this.state.error.message}</p>
+          <h1>This view needs to be tried again</h1>
+          <p>Refresh this page and try again. If the problem continues, contact your MVTA administrator.</p>
           <button className="btn-sm" onClick={() => this.setState({ error: null })}>
-            Try again
+            Try this view again
           </button>
         </div>
       );

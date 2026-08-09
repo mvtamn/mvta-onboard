@@ -184,9 +184,6 @@ export function App() {
             <span className="live-dot" />
             {stats.ok ? "Console live" : "Console offline"}
           </div>
-          <span className="nav-version">
-            {stats.activeCount ?? "—"} active · Synced {stats.syncedAt ? stats.syncedAt.toLocaleTimeString() : "—"}
-          </span>
         </div>
         </aside>
 
@@ -203,7 +200,12 @@ export function App() {
               <span className="avatar">{initialsOf(account.name ?? account.username)}</span>
               {account.name ?? account.username} · {roles.join(", ") || "no roles"}
             </span>
-            <button className="theme-toggle-btn" title="Toggle theme" onClick={toggle}>
+            <button
+              className="theme-toggle-btn"
+              title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+              aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+              onClick={toggle}
+            >
               {theme === "dark" ? <IconSun /> : <IconMoon />}
             </button>
             <button className="btn-signout" onClick={signOut}>Sign out</button>
@@ -287,11 +289,8 @@ export function App() {
         </main>
 
         <div className="footer">
-          <span>MVTA OnBoard · v{__APP_VERSION__} · Azure SQL + Service Bus + Entra ID · Internal Use Only</span>
-          <span>
-            {stats.activeCount ?? "—"} active · {stats.pending?.length ?? "—"} pending alerts · Synced{" "}
-            {stats.syncedAt ? stats.syncedAt.toLocaleTimeString() : "—"}
-          </span>
+          <span>MVTA OnBoard · v{__APP_VERSION__} · Internal Use Only</span>
+          <span>Internal MVTA operations console</span>
         </div>
         </div>
       </div>
