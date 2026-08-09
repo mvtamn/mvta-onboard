@@ -511,6 +511,8 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
     createEventGeofence(input: Pick<EventGeofence, "name" | "polygon">) { return request<EventGeofence>("/api/event-geofences", { method: "POST", body: JSON.stringify(input) }, true); },
     updateEventGeofence(id: string, input: Pick<EventGeofence, "name" | "polygon"> & { is_active?: boolean }) { return request<EventGeofence>(`/api/event-geofences/${id}`, { method: "PATCH", body: JSON.stringify(input) }, true); },
     addEventGeofenceRule(id: string, input: Omit<EventGeofenceRule, "id" | "geofence_id">) { return request<EventGeofenceRule>(`/api/event-geofences/${id}/rules`, { method: "POST", body: JSON.stringify(input) }, true); },
+    updateEventGeofenceRule(geofenceId: string, ruleId: string, input: Omit<EventGeofenceRule, "id" | "geofence_id">) { return request<EventGeofenceRule>(`/api/event-geofences/${geofenceId}/rules/${ruleId}`, { method: "PATCH", body: JSON.stringify(input) }, true); },
+    deleteEventGeofenceRule(geofenceId: string, ruleId: string) { return request<void>(`/api/event-geofences/${geofenceId}/rules/${ruleId}`, { method: "DELETE" }, true); },
     getEventGeofenceCrossings() { return request<{ crossings: EventGeofenceCrossing[] }>("/api/event-geofence-crossings", {}, true); },
     getEventGeofenceNotifications(status = "pending") { return request<{ notifications: EventGeofenceNotification[] }>(`/api/event-geofence-notifications?status=${status}`, {}, true); },
     sendEventGeofenceNotification(id: string) { return request<{ ok: boolean }>(`/api/event-geofence-notifications/${id}/send`, { method: "POST" }, true); },
