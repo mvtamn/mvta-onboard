@@ -20,7 +20,7 @@ function geometryOf(shape: atlas.Shape): string | null {
 function MapEditor({ geofences, locations, onChanged }: { geofences: StoredFence[]; locations: EventLocation[]; onChanged: () => void }) {
   const { account, signIn } = useAuth();
   const host = useRef<HTMLDivElement>(null); const mapRef = useRef<atlas.Map | null>(null); const drawingRef = useRef<drawing.drawing.DrawingManager | null>(null); const syncTimer = useRef<number | null>(null); const geofencesRef = useRef(geofences); geofencesRef.current = geofences;
-  const [ready, setReady] = useState(false); const [draft, setDraft] = useState<Draft | null>(null); const [name, setName] = useState(""); const [category, setCategory] = useState<EventLocationCategory>("transit_station"); const [error, setError] = useState<string | null>(null);
+  const [ready, setReady] = useState(false); const [draft, setDraft] = useState<Draft | null>(null); const [name, setName] = useState(""); const [category, setCategory] = useState<EventLocationCategory>("transit_station"); const [error, setError] = useState<string | null>(null); const [activeMode, setActiveMode] = useState<drawing.drawing.DrawingMode>(drawing.drawing.DrawingMode.idle); const [showGeofences, setShowGeofences] = useState(true); const [showLocations, setShowLocations] = useState(true); const [cursor, setCursor] = useState<atlas.data.Position | null>(null);
 
   useEffect(() => {
     if (!account) return;
@@ -34,6 +34,7 @@ function MapEditor({ geofences, locations, onChanged }: { geofences: StoredFence
         const toolbar = new drawing.control.DrawingToolbar({ buttons: ["draw-polygon", "draw-point", "edit-geometry", "erase-geometry"], position: atlas.ControlPosition.TopRight });
         const manager = new drawing.drawing.DrawingManager(map, { mode: drawing.drawing.DrawingMode.idle, interactionType: drawing.drawing.DrawingInteractionType.click, toolbar });
         drawingRef.current = manager; setReady(true);
+        map.events.add("click", (event) => setCursor(event.position as atlas.data.Position));
         map.events.add("drawingcomplete", manager, (shape) => {
           const geo = shape.toJson() as GeoFeature;
           if (geo.geometry?.type === "Polygon") setDraft({ shape, kind: "geofence" });
@@ -60,12 +61,12 @@ function MapEditor({ geofences, locations, onChanged }: { geofences: StoredFence
   useEffect(() => {
     const manager = drawingRef.current; const map = mapRef.current; if (!ready || !manager || !map) return;
     const source = manager.getSource(); source.clear();
-    for (const fence of geofences) {
+    for (const fence of showGeofences ? geofences : []) {
       try { const geometry = JSON.parse(fence.polygon) as atlas.data.Geometry; source.add(new atlas.Shape({ type: "Feature", geometry, properties: { id: fence.id, kind: "geofence" } })); } catch { /* invalid legacy geometry stays visible in the table */ }
     }
     map.markers.clear();
-    locations.forEach((location) => map.markers.add(new atlas.HtmlMarker({ position: [location.longitude, location.latitude], htmlContent: `<div class="event-location-marker" title="${location.name}">●</div>` })));
-  }, [geofences, locations, ready]);
+    if (showLocations) locations.forEach((location) => map.markers.add(new atlas.HtmlMarker({ position: [location.longitude, location.latitude], htmlContent: `<div class="event-location-marker" title="${location.name}">●</div>` })));
+  }, [geofences, locations, ready, showGeofences, showLocations]);
 
   async function saveDraft() {
     if (!draft || !name.trim()) return;
@@ -77,7 +78,8 @@ function MapEditor({ geofences, locations, onChanged }: { geofences: StoredFence
   }
 
   if (!account) return <div className="evmon-map-message"><p>Sign in with your MVTA Microsoft 365 account to use map authoring.</p><button className="btn-primary" onClick={signIn}>Sign in with Microsoft</button></div>;
-  return <div><div style={{ height: 420, borderRadius: 8, overflow: "hidden", border: "1px solid #ccd6d1", position: "relative" }}><div ref={host} style={{ width: "100%", height: "100%" }} />{!ready && !error && <div className="evmon-map-message">Loading map…</div>}{error && <div className="evmon-map-message"><p>{error}</p>{error.includes("session") && <button className="btn-primary" onClick={signIn}>Sign in again</button>}</div>}</div>{draft && <div className="panel-body" style={{ marginTop: 10, border: "1px solid #ccd6d1" }}><strong>Save new {draft.kind === "geofence" ? "geofence" : "map location"}</strong><div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}><input className="f" value={name} onChange={(e) => setName(e.target.value)} placeholder={draft.kind === "geofence" ? "Geofence name" : "Location name"} />{draft.kind === "location" && <select className="f" value={category} onChange={(e) => setCategory(e.target.value as EventLocationCategory)}><option value="transit_station">Transit station</option><option value="park_and_ride">Park & ride</option><option value="venue">Venue</option><option value="other">Other</option></select>}<button className="btn-sm" disabled={!name.trim()} onClick={() => void saveDraft()}>Save</button><button className="btn-sm" onClick={() => { drawingRef.current?.getSource().remove(draft.shape); setDraft(null); }}>Cancel</button></div></div>}<LocationManager locations={locations} onChanged={onChanged} /></div>;
+  const selectMode = (mode: drawing.drawing.DrawingMode) => { drawingRef.current?.setOptions({ mode }); setActiveMode(mode); };
+  return <div><div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}><button className="btn-sm" onClick={() => selectMode(drawing.drawing.DrawingMode.drawPolygon)}>Draw geofence</button><button className="btn-sm" onClick={() => selectMode(drawing.drawing.DrawingMode.drawPoint)}>Place location</button><button className="btn-sm" onClick={() => selectMode(drawing.drawing.DrawingMode.editGeometry)}>Edit boundary</button><button className="btn-sm" onClick={() => selectMode(drawing.drawing.DrawingMode.eraseGeometry)}>Deactivate boundary</button><button className="btn-sm" onClick={() => selectMode(drawing.drawing.DrawingMode.idle)}>Select</button><span className="muted">Mode: {activeMode}</span><label className="muted"><input type="checkbox" checked={showGeofences} onChange={(e) => setShowGeofences(e.target.checked)} /> Geofences</label><label className="muted"><input type="checkbox" checked={showLocations} onChange={(e) => setShowLocations(e.target.checked)} /> Locations</label></div><div style={{ height: 420, borderRadius: 8, overflow: "hidden", border: "1px solid #ccd6d1", position: "relative" }}><div ref={host} style={{ width: "100%", height: "100%" }} />{!ready && !error && <div className="evmon-map-message">Loading map…</div>}{error && <div className="evmon-map-message"><p>{error}</p>{error.includes("session") && <button className="btn-primary" onClick={signIn}>Sign in again</button>}</div>}</div>{cursor && <p className="muted">Map coordinate: {cursor[1].toFixed(6)}, {cursor[0].toFixed(6)} — use “Place location” to save a point here.</p>}{draft && <div className="panel-body" style={{ marginTop: 10, border: "1px solid #ccd6d1" }}><strong>Save new {draft.kind === "geofence" ? "geofence" : "map location"}</strong><div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}><input className="f" value={name} onChange={(e) => setName(e.target.value)} placeholder={draft.kind === "geofence" ? "Geofence name" : "Location name"} />{draft.kind === "location" && <select className="f" value={category} onChange={(e) => setCategory(e.target.value as EventLocationCategory)}><option value="transit_station">Transit station</option><option value="park_and_ride">Park & ride</option><option value="venue">Venue</option><option value="other">Other</option></select>}<button className="btn-sm" disabled={!name.trim()} onClick={() => void saveDraft()}>Save</button><button className="btn-sm" onClick={() => { drawingRef.current?.getSource().remove(draft.shape); setDraft(null); }}>Cancel</button></div></div>}<LocationManager locations={locations} onChanged={onChanged} /></div>;
 }
 
 function LocationManager({ locations, onChanged }: { locations: EventLocation[]; onChanged: () => void }) {
