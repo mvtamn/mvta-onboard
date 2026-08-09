@@ -1,0 +1,11 @@
+import { app, type InvocationContext } from "@azure/functions";
+import { getPool, sql } from "../lib/db";
+
+interface CrossingMessage { crossing_id: number }
+app.serviceBusQueue("eventGeofenceNotify", { connection: "ServiceBusConnection", queueName: "event-geofence-notifications", handler: async (message: unknown, context: InvocationContext) => {
+  const id = (message as CrossingMessage).crossing_id; const pool = await getPool(); const r = pool.request(); r.input("id", sql.BigInt, id);
+  const row = (await r.query(`SELECT c.*, g.name geofence_name, r.send_mode FROM EventGeofenceCrossings c JOIN EventGeofences g ON g.id=c.geofence_id LEFT JOIN EventGeofenceDirectionRules r ON r.geofence_id=c.geofence_id AND r.transition=c.transition AND (r.heading_min <= r.heading_max AND c.heading_at_crossing BETWEEN r.heading_min AND r.heading_max OR r.heading_min > r.heading_max AND (c.heading_at_crossing >= r.heading_min OR c.heading_at_crossing <= r.heading_max)) WHERE c.id=@id`)).recordset[0] as { vehicle_id:number; transition:string; geofence_name:string; destination_label:string|null; send_mode:string } | undefined;
+  if (!row) return; const body = `Event vehicle ${row.vehicle_id} ${row.transition}ed ${row.geofence_name}${row.destination_label ? `; ${row.destination_label}` : ""}.`; const insert = pool.request(); insert.input("crossing", sql.BigInt, id); insert.input("mode", sql.NVarChar, row.send_mode === "auto" && process.env.TEAMS_EVENT_WEBHOOK_URL ? "auto" : "manual"); insert.input("body", sql.NVarChar, body); const notification = (await insert.query("INSERT INTO EventGeofenceNotifications(crossing_id,send_mode,message_body,status,sent_at) OUTPUT INSERTED.id VALUES(@crossing,@mode,@body,CASE WHEN @mode='auto' THEN 'sent' ELSE 'pending' END,CASE WHEN @mode='auto' THEN SYSUTCDATETIME() ELSE NULL END)")).recordset[0];
+  if (row.send_mode === "auto" && process.env.TEAMS_EVENT_WEBHOOK_URL) { try { const response = await fetch(process.env.TEAMS_EVENT_WEBHOOK_URL, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: body }) }); if (!response.ok) context.error(`Teams webhook returned ${response.status}`); } catch (err) { context.error("Teams event notification failed", err); } }
+  context.log(`Event geofence notification ${notification.id} created.`);
+} });

@@ -126,6 +126,9 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         // secret, so (like the GTFS feed URLs) it's set imperatively via
         // `az functionapp config appsettings set`, not here.
         { name: 'AVAIL_AVL_REPORTS_API_KEY', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/avail-avl-reports-api-key/)' }
+        // Optional until MVTA provisions the Teams incoming webhook. Keep it
+        // as a Key Vault reference so Bicep redeploys cannot expose or wipe it.
+        { name: 'TEAMS_EVENT_WEBHOOK_URL', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/teams-event-webhook-url/)' }
       ], !empty(complianceReportsStorageAccountName) ? [
         { name: 'COMPLIANCE_REPORTS_STORAGE_ACCOUNT', value: complianceReportsStorageAccountName }
       ] : [], includeSpareApiKey ? [

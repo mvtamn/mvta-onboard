@@ -74,3 +74,13 @@ export function publishConfirmationRequested(
   const queueName = process.env.SERVICE_BUS_CONFIRM_QUEUE || "confirmation-requested-events";
   return publish(queueName, "confirmation-requested", event, event.confirmation_id, context);
 }
+
+export function publishEventGeofenceNotification(crossingId: number, context?: InvocationContext): Promise<boolean> {
+  return publish(
+    process.env.SERVICE_BUS_EVENT_GEOFENCE_QUEUE || "event-geofence-notifications",
+    "event-geofence-crossing",
+    { crossing_id: crossingId },
+    `event-crossing-${crossingId}`,
+    context,
+  );
+}

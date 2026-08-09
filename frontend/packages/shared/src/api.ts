@@ -47,6 +47,7 @@ import type {
   RouteClassificationInput,
   EventVehiclePosition,
   AppSettingRow,
+  EventLocation, EventGeofence, EventGeofenceRule, EventGeofenceCrossing, EventGeofenceNotification, EventServicePlan, EventAuditEntry,
   OtpStopExclusion,
   PutStopExclusionInput,
   OtpDateExclusion,
@@ -502,6 +503,20 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
         true,
       );
     },
+
+    getEventLocations() { return request<{ locations: EventLocation[] }>("/api/event-locations", {}, true); },
+    createEventLocation(input: Omit<EventLocation, "id" | "is_active">) { return request<EventLocation>("/api/event-locations", { method: "POST", body: JSON.stringify(input) }, true); },
+    getEventGeofences() { return request<{ geofences: EventGeofence[] }>("/api/event-geofences", {}, true); },
+    createEventGeofence(input: Pick<EventGeofence, "name" | "polygon">) { return request<EventGeofence>("/api/event-geofences", { method: "POST", body: JSON.stringify(input) }, true); },
+    addEventGeofenceRule(id: string, input: Omit<EventGeofenceRule, "id" | "geofence_id">) { return request<EventGeofenceRule>(`/api/event-geofences/${id}/rules`, { method: "POST", body: JSON.stringify(input) }, true); },
+    getEventGeofenceCrossings() { return request<{ crossings: EventGeofenceCrossing[] }>("/api/event-geofence-crossings", {}, true); },
+    getEventGeofenceNotifications(status = "pending") { return request<{ notifications: EventGeofenceNotification[] }>(`/api/event-geofence-notifications?status=${status}`, {}, true); },
+    sendEventGeofenceNotification(id: string) { return request<{ ok: boolean }>(`/api/event-geofence-notifications/${id}/send`, { method: "POST" }, true); },
+    dismissEventGeofenceNotification(id: string) { return request<{ ok: boolean }>(`/api/event-geofence-notifications/${id}/dismiss`, { method: "POST" }, true); },
+    getEventServicePlans() { return request<{ plans: EventServicePlan[] }>("/api/event-service-plans", {}, true); },
+    createEventServicePlan(name: string) { return request<EventServicePlan>("/api/event-service-plans", { method: "POST", body: JSON.stringify({ name }) }, true); },
+    advanceEventServicePlan(id: string) { return request<EventServicePlan>(`/api/event-service-plans/${id}/advance`, { method: "POST" }, true); },
+    getEventAuditStream(from?: string, to?: string) { const qs = new URLSearchParams(); if (from) qs.set("from", from); if (to) qs.set("to", to); return request<{ entries: EventAuditEntry[] }>(`/api/event-module-audit-stream?${qs}`, {}, true); },
 
     getStopExclusions(month?: string) {
       const suffix = month ? `?month=${month}` : "";

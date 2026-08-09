@@ -9,6 +9,9 @@ param sqlAdminLogin string = 'mvtaonboardadmin'
 @secure()
 param sqlAdminPassword string
 
+@description('Create/update the SQL connection-string secret during initial provisioning only. Keep false for normal infrastructure redeployments so they cannot rotate the app credential.')
+param manageSqlConnectionStringSecret bool = false
+
 var sqlServerName = 'sql-mvta-${environment}-${uniqueSuffix}'
 var sqlDatabaseName = 'sqldb-mvta-onboard-${environment}'
 
@@ -67,7 +70,7 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
   name: keyVaultName
 }
 
-resource sqlConnectionStringSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+resource sqlConnectionStringSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (manageSqlConnectionStringSecret) {
   parent: keyVault
   name: 'sql-connection-string'
   properties: {

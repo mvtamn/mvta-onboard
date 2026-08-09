@@ -7,6 +7,17 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 ## [Unreleased]
 
+## [1.5.13] - 2026-08-09
+
+- **Event monitoring resources.** Added admin-managed event locations,
+  geofences, direction-aware crossings, notification review, audit history,
+  and explicit Service Plans with active-plan gating.
+- **Event monitoring UI.** Added geofence crossings, notification review,
+  audit history, and service-plan/resource controls to the staff console.
+- **Database reliability.** Normal infrastructure redeployments no longer
+  rewrite the Key Vault SQL connection secret; intentional SQL credential
+  rotation is handled as one coordinated operation.
+
 ## [1.5.12] - 2026-08-08
 
 - **Contractor Performance Assessment foundation.** A new top-level Performance

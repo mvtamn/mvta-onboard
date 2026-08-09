@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as atlas from "azure-maps-control";
 import "azure-maps-control/dist/atlas.min.css";
-import { ApiError, type EventVehiclePosition } from "@mvta/shared";
+import { ApiError, type EventVehiclePosition, type EventGeofenceCrossing, type EventGeofenceNotification, type EventAuditEntry } from "@mvta/shared";
 import { api } from "../../config.js";
 import "./eventMonitoring.css";
 
@@ -63,6 +63,9 @@ export function EventMonitoring() {
   const [search, setSearch] = useState("");
   const [mapStyle, setMapStyle] = useState<MapStyle>("road");
   const [traffic, setTraffic] = useState(false);
+  const [crossings, setCrossings] = useState<EventGeofenceCrossing[]>([]);
+  const [notifications, setNotifications] = useState<EventGeofenceNotification[]>([]);
+  const [audit, setAudit] = useState<EventAuditEntry[]>([]);
 
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -89,6 +92,18 @@ export function EventMonitoring() {
     const interval = window.setInterval(() => void load(), AVL_REFRESH_MS);
     return () => window.clearInterval(interval);
   }, [load]);
+
+  useEffect(() => {
+    Promise.all([api.getEventGeofenceCrossings(), api.getEventGeofenceNotifications(), api.getEventAuditStream()])
+      .then(([c, n, a]) => { setCrossings(c.crossings); setNotifications(n.notifications); setAudit(a.entries); })
+      .catch(() => undefined);
+  }, [lastUpdated]);
+
+  async function reviewNotification(id: string, action: "send" | "dismiss") {
+    if (action === "send") await api.sendEventGeofenceNotification(id);
+    else await api.dismissEventGeofenceNotification(id);
+    setNotifications((rows) => rows.filter((row) => row.id !== id));
+  }
 
   const classifiedVehicles = vehicles ?? [];
   const routeOptions = useMemo(() => Array.from(new Map(classifiedVehicles
@@ -178,6 +193,13 @@ export function EventMonitoring() {
           </table>
         )}
       </div>
+      <div className="evmon-list-header"><div><h3>Geofence crossings</h3><span>Recent movement across active event boundaries</span></div></div>
+      <div className="evmon-table-wrap">
+        {notifications.map((notification) => <div key={notification.id} className="panel-body"><strong>Review notification</strong><p>{notification.message_body}</p><button className="btn-sm" onClick={() => void reviewNotification(notification.id, "send")}>Approve and send</button>{" "}<button className="btn-sm" onClick={() => void reviewNotification(notification.id, "dismiss")}>Dismiss</button></div>)}
+        <table className="data evmon-table"><thead><tr><th>Time</th><th>Vehicle</th><th>Geofence</th><th>Transition</th><th>Destination</th></tr></thead><tbody>{crossings.map((crossing) => <tr key={crossing.id}><td>{new Date(crossing.crossed_at).toLocaleString()}</td><td>{crossing.vehicle_id}</td><td>{crossing.geofence_name}</td><td>{crossing.transition}</td><td>{crossing.destination_label ?? "—"}</td></tr>)}</tbody></table>
+      </div>
+      <div className="evmon-list-header"><div><h3>Event audit history</h3><span>Route changes, crossings, and notification actions</span></div></div>
+      <div className="evmon-table-wrap"><table className="data evmon-table"><thead><tr><th>Time</th><th>Type</th><th>Entity</th><th>Detail</th><th>Actor</th></tr></thead><tbody>{audit.map((entry, index) => <tr key={`${entry.event_at}-${index}`}><td>{new Date(entry.event_at).toLocaleString()}</td><td>{entry.event_type}</td><td>{entry.entity_id}</td><td>{entry.detail}</td><td>{entry.actor ?? "system"}</td></tr>)}</tbody></table></div>
     </section>
   );
 }

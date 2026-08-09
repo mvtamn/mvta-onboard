@@ -28,7 +28,8 @@ az deployment sub create \
   --parameters environment="$ENVIRONMENT" location="$LOCATION"
 
 echo ""
-echo "Step 2: Enter the SQL admin password for this environment."
+echo "Step 2: Enter the existing SQL admin password for this environment."
+echo "Do not enter a new password here. Use scripts/rotate-sql-credentials.sh for intentional rotation."
 read -rs -p "SQL admin password: " SQL_ADMIN_PASSWORD
 echo ""
 
@@ -38,7 +39,8 @@ az deployment group create \
   --resource-group "$RESOURCE_GROUP" \
   --template-file main.bicep \
   --parameters "parameters/${ENVIRONMENT}.parameters.json" \
-  --parameters sqlAdminPassword="$SQL_ADMIN_PASSWORD"
+  --parameters sqlAdminPassword="$SQL_ADMIN_PASSWORD" \
+  --parameters manageSqlConnectionStringSecret=false
 
 echo ""
 echo "== Stage 0 deployment for ${ENVIRONMENT} complete =="

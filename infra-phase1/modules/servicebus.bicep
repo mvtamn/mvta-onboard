@@ -90,7 +90,19 @@ resource confirmationQueue 'Microsoft.ServiceBus/namespaces/queues@2022-10-01-pr
   }
 }
 
+resource eventGeofenceQueue 'Microsoft.ServiceBus/namespaces/queues@2022-10-01-preview' = {
+  parent: serviceBusNamespace
+  name: 'event-geofence-notifications'
+  properties: {
+    maxDeliveryCount: 5
+    lockDuration: 'PT1M'
+    defaultMessageTimeToLive: 'P1D'
+    deadLetteringOnMessageExpiration: true
+  }
+}
+
 output namespaceName string = serviceBusNamespace.name
 output namespaceId string = serviceBusNamespace.id
 output queueName string = messageCreatedQueue.name
 output confirmationQueueName string = confirmationQueue.name
+output eventGeofenceQueueName string = eventGeofenceQueue.name

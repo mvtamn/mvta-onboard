@@ -14,6 +14,9 @@ param sqlAdminLogin string = 'mvtaonboardadmin'
 @secure()
 param sqlAdminPassword string
 
+@description('Set true only when initially provisioning an environment. Normal redeployments must leave the existing Key Vault SQL secret untouched.')
+param manageSqlConnectionStringSecret bool = false
+
 module network 'modules/network.bicep' = {
   name: 'network-deployment'
   params: {
@@ -51,6 +54,7 @@ module sql 'modules/sql.bicep' = {
     keyVaultName: keyvault.outputs.keyVaultName
     sqlAdminLogin: sqlAdminLogin
     sqlAdminPassword: sqlAdminPassword
+    manageSqlConnectionStringSecret: manageSqlConnectionStringSecret
   }
 }
 

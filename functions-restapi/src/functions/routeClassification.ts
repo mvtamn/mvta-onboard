@@ -93,7 +93,13 @@ app.http("routeClassificationList", {
         SELECT CASE WHEN OBJECT_ID('dbo.AvailAvlVehiclePositions', 'U') IS NULL THEN 0 ELSE 1 END AS ok
       `);
       if (tableCheck.recordset[0]?.ok === 1) {
-        const unclassifiedResult = await pool.request().query<UnclassifiedRouteRow>(`
+        const optionalTables = await pool.request().query<{ otp: number; missed: number }>(`
+          SELECT
+            CASE WHEN OBJECT_ID('dbo.OtpMonthlyRouteStopDay', 'U') IS NULL THEN 0 ELSE 1 END AS otp,
+            CASE WHEN OBJECT_ID('dbo.AvailMissedTripsRouteStopDay', 'U') IS NULL THEN 0 ELSE 1 END AS missed
+        `);
+        const labelsReady = optionalTables.recordset[0]?.otp === 1 && optionalTables.recordset[0]?.missed === 1;
+        const unclassifiedResult = await pool.request().query<UnclassifiedRouteRow>(labelsReady ? `
           SELECT
             avl.route AS route_id,
             (SELECT TOP 1 route_label FROM OtpMonthlyRouteStopDay
@@ -102,6 +108,13 @@ app.http("routeClassificationList", {
               WHERE route_id = avl.route AND route_internet_name IS NOT NULL) AS mt_internet_name,
             (SELECT TOP 1 route_desc FROM AvailMissedTripsRouteStopDay
               WHERE route_id = avl.route AND route_desc IS NOT NULL) AS mt_desc
+          FROM (SELECT DISTINCT route FROM AvailAvlVehiclePositions WHERE route IS NOT NULL) avl
+          WHERE NOT EXISTS (SELECT 1 FROM RouteClassification rc WHERE rc.route_id = avl.route)
+          ORDER BY avl.route
+        ` : `
+          SELECT avl.route AS route_id, CAST(NULL AS NVARCHAR(200)) AS otp_label,
+                 CAST(NULL AS NVARCHAR(200)) AS mt_internet_name,
+                 CAST(NULL AS NVARCHAR(200)) AS mt_desc
           FROM (SELECT DISTINCT route FROM AvailAvlVehiclePositions WHERE route IS NOT NULL) avl
           WHERE NOT EXISTS (SELECT 1 FROM RouteClassification rc WHERE rc.route_id = avl.route)
           ORDER BY avl.route

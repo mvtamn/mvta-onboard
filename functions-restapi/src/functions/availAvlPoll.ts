@@ -17,6 +17,7 @@
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchAvlReports, mapAvlReport } from "../lib/availAvl";
+import { detectEventGeofenceCrossings } from "../lib/eventGeofenceDetection";
 
 app.timer("availAvlPoll", {
   // Fixed floor cadence; the Admin-managed effective interval is checked
@@ -71,9 +72,10 @@ app.timer("availAvlPoll", {
     `);
     let specialEventRouteIds = new Set<number>();
     if (tableCheck.recordset[0]?.table_exists === 1) {
-      const classResult = await pool.request().query<{ route_id: number }>(`
-        SELECT route_id FROM RouteClassification WHERE route_category = 'SpecialEvent' AND is_active = 1
-      `);
+      const plans = await pool.request().query<{ ready: number }>(`SELECT CASE WHEN OBJECT_ID('dbo.EventServicePlanRoutes','U') IS NOT NULL AND OBJECT_ID('dbo.EventServicePlans','U') IS NOT NULL THEN 1 ELSE 0 END ready`);
+      const classResult = await pool.request().query<{ route_id: number }>(plans.recordset[0]?.ready === 1
+        ? `SELECT route_id FROM RouteClassification WHERE route_category = 'SpecialEvent' AND is_active = 1 AND EXISTS (SELECT 1 FROM EventServicePlanRoutes spr JOIN EventServicePlans sp ON sp.id=spr.service_plan_id WHERE sp.status='active' AND spr.route_id=RouteClassification.route_id)`
+        : `SELECT route_id FROM RouteClassification WHERE route_category = 'SpecialEvent' AND is_active = 1`);
       specialEventRouteIds = new Set(classResult.recordset.map((r) => r.route_id));
     }
 
@@ -168,6 +170,9 @@ app.timer("availAvlPoll", {
         WHERE p.report_timestamp < DATEADD(MINUTE, -3, SYSUTCDATETIME())
            OR rc.route_id IS NULL;
     `);
+    if (tableCheck.recordset[0]?.table_exists === 1) {
+      try { await detectEventGeofenceCrossings(context); } catch (err) { context.error("Event geofence detection skipped:", err); }
+    }
 
     context.log(
       `Avail AVL Reports poll: ${reports.length} reports seen, ${upsertedCount} vehicles upserted, ` +
