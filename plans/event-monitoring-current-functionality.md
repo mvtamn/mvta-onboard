@@ -15,7 +15,7 @@ A vehicle appears only when all of the following are true:
 3. The vehicle has reported within the last three minutes.
 4. Its coordinates fall within the configured MVTA operating-region bounds (latitude 43.0–46.0 and longitude -95.5–-92.0).
 
-The Avail AVL poll runs every 30 seconds. Stale current-position rows are removed, while `EventVehiclePositionHistory` remains available for history and speed calculation.
+The Avail AVL timer wakes every 15 seconds and uses an Admin-managed effective polling interval. The interval defaults to 30 seconds and can be changed from 15 through 300 seconds in Admin > Event Monitoring Settings without redeploying. A database-backed poll cursor prevents duplicate polling when the Function App has multiple instances. Stale current-position rows are removed, while `EventVehiclePositionHistory` remains available for history and speed calculation.
 
 ## Live map
 
@@ -61,7 +61,7 @@ The active count reports the filtered count and total classified count. Clear fi
 
 ## Refresh and error behavior
 
-- The browser requests updated event positions every 30 seconds and supports manual refresh.
+- The browser requests updated event positions every 30 seconds and supports manual refresh. This UI refresh interval is independent of the Admin-managed server ingestion interval.
 - The latest successful UI refresh time is displayed.
 - Feed, authentication, map-token, and API failures are shown as explicit status messages.
 - When no vehicle matches current classifications, freshness, and geographic validation, the page states that no active vehicle matches the current SpecialEvent classifications.

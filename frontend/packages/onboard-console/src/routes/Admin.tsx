@@ -9,10 +9,70 @@ import {
   type RouteCategory,
   ROUTE_CATEGORY_LABELS,
   type GtfsRouteOption,
+  type AppSettingRow,
 } from "@mvta/shared";
 import { api } from "../config.js";
 
 const ROUTE_CATEGORIES: RouteCategory[] = ["FixedRoute", "SpecialEvent", "OnDemand"];
+
+function EventMonitoringSettingsSection() {
+  const [setting, setSetting] = useState<AppSettingRow | null>(null);
+  const [value, setValue] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api.getAppSettings("event")
+      .then(({ settings }) => {
+        const row = settings.find((item) => item.setting_key === "poll_interval_seconds") ?? null;
+        setSetting(row);
+        setValue(row?.setting_value ?? "");
+      })
+      .catch((err) => setError(err instanceof ApiError ? err.message : "Failed to load Event Monitoring settings."));
+  }, []);
+
+  async function save() {
+    const seconds = Number(value);
+    if (!Number.isInteger(seconds) || seconds < 15 || seconds > 300) {
+      setError("Polling interval must be a whole number from 15 through 300 seconds.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const updated = await api.updateAppSetting("event", "poll_interval_seconds", String(seconds));
+      setSetting(updated);
+      setValue(updated.setting_value);
+      setMessage(`Event AVL polling interval updated to ${updated.setting_value} seconds.`);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to update Event Monitoring settings.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return <>
+    <div className="panel-header">Admin — Event Monitoring Settings</div>
+    <div className="panel-body">
+      <p className="panel-desc">Control how often the server retrieves live Avail AVL positions. Changes take effect without a redeploy.</p>
+      {error && <p className="error-text">{error}</p>}
+      {message && <p className="ok-text">{message}</p>}
+      {!setting && !error ? <p className="muted">Loading…</p> : setting && <table className="data">
+        <thead><tr><th>Setting</th><th>Current value</th><th>New value</th><th>Last updated</th><th>Actions</th></tr></thead>
+        <tbody><tr>
+          <td>AVL polling interval</td>
+          <td><b>{setting.setting_value} seconds</b></td>
+          <td><input className="f" style={{ width: 110 }} type="number" min={15} max={300} step={1} value={value} onChange={(event) => setValue(event.target.value)} /></td>
+          <td className="td-dim">{setting.updated_by ? `${setting.updated_by} · ` : ""}{new Date(setting.updated_at).toLocaleDateString()}</td>
+          <td><button className="btn-sm" disabled={saving || value === setting.setting_value} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</button></td>
+        </tr></tbody>
+      </table>}
+      <p className="muted">Allowed range: 15 seconds to 5 minutes. Faster polling increases Avail API usage.</p>
+    </div>
+  </>;
+}
 
 // Route Classification editor - no Avail feed distinguishes fixed-route
 // from special-event RouteIDs, so this is the one place staff maintain that
@@ -434,6 +494,7 @@ export function Admin() {
           </table>
         ) : null}
       </div>
+      <EventMonitoringSettingsSection />
       <RouteClassificationSection />
     </>
   );

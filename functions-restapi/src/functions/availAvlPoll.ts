@@ -9,8 +9,9 @@
 // and, for SpecialEvent-classified routes only, writes an additional row
 // into EventVehicleCurrentPosition/EventVehiclePositionHistory - see
 // detour-and-event-module-implementation-plan.md (Part A2) for why this
-// reuses the existing 5-minute fetch rather than a second, separately-
-// shaped poll against the same feed. Gracefully skipped (not an error) if
+// reuses the shared fetch rather than a second, separately-shaped poll.
+// The timer wakes every 15 seconds and an Admin-managed setting controls
+// the effective 15-300 second interval. Gracefully skipped (not an error) if
 // migration-016 hasn't been applied yet - the all-vehicles table above is
 // unaffected either way.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
@@ -18,7 +19,9 @@ import { getPool, sql } from "../lib/db";
 import { fetchAvlReports, mapAvlReport } from "../lib/availAvl";
 
 app.timer("availAvlPoll", {
-  schedule: "*/30 * * * * *",
+  // Fixed floor cadence; the Admin-managed effective interval is checked
+  // atomically below. Azure timer CRON cannot be changed without redeploying.
+  schedule: "*/15 * * * * *",
   handler: async (_timer: Timer, context: InvocationContext) => {
     const baseUrl = process.env.AVAIL_AVL_REPORTS_URL;
     const apiKey = process.env.AVAIL_AVL_REPORTS_API_KEY;
@@ -27,8 +30,30 @@ app.timer("availAvlPoll", {
       return;
     }
 
+    const pool = await getPool();
+    const settingsReady = await pool.request().query<{ ready: number }>(`
+      SELECT CASE WHEN OBJECT_ID('dbo.AppSettings', 'U') IS NOT NULL
+                    AND OBJECT_ID('dbo.AppPollState', 'U') IS NOT NULL THEN 1 ELSE 0 END AS ready
+    `);
+    if (settingsReady.recordset[0]?.ready === 1) {
+      const lease = await pool.request().query<{ last_run_at: Date }>(`
+        DECLARE @interval INT = COALESCE((
+          SELECT TRY_CONVERT(INT, setting_value) FROM AppSettings
+          WHERE module = 'event' AND setting_key = 'poll_interval_seconds'
+        ), 30);
+        SET @interval = CASE WHEN @interval < 15 THEN 15 WHEN @interval > 300 THEN 300 ELSE @interval END;
+
+        UPDATE AppPollState WITH (UPDLOCK, HOLDLOCK)
+        SET last_run_at = SYSUTCDATETIME(), updated_at = SYSUTCDATETIME()
+        OUTPUT INSERTED.last_run_at
+        WHERE module = 'event'
+          AND (last_run_at IS NULL OR last_run_at <= DATEADD(SECOND, -@interval, SYSUTCDATETIME()));
+      `);
+      if (lease.recordset.length === 0) return;
+    }
+
     // Keep a two-minute overlap so delayed reports are not lost while the
-    // monitoring UI and this ingestion job both refresh every 30 seconds.
+    // monitoring UI refreshes every 30 seconds.
     // This remains well under the feed's 24-hour maximum window.
     const now = new Date();
     const twoMinutesAgo = new Date(now.getTime() - 2 * 60 * 1000);
@@ -40,8 +65,6 @@ app.timer("availAvlPoll", {
       context.error("Failed to fetch Avail AVL Reports:", err);
       return;
     }
-
-    const pool = await getPool();
 
     const tableCheck = await pool.request().query<{ table_exists: number }>(`
       SELECT CASE WHEN OBJECT_ID('dbo.RouteClassification', 'U') IS NULL THEN 0 ELSE 1 END AS table_exists

@@ -46,6 +46,7 @@ import type {
   RouteClassificationListResponse,
   RouteClassificationInput,
   EventVehiclePosition,
+  AppSettingRow,
   OtpStopExclusion,
   PutStopExclusionInput,
   OtpDateExclusion,
@@ -351,7 +352,8 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
           table_ready: boolean;
           service_month: string;
           record_count: number;
-          routes_below_90: number;
+          routes_below_target: number;
+          target: number;
         };
       }>(`/api/otp-monthly${suffix}`, {}, true);
     },
@@ -483,6 +485,22 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
         vehicles: EventVehiclePosition[];
         diagnostics: { table_ready: boolean; vehicle_count: number; last_report_at: string | null };
       }>("/api/event-vehicle-positions", {}, true);
+    },
+
+    getAppSettings(module: string) {
+      return request<{ settings: AppSettingRow[] }>(
+        `/api/app-settings?module=${encodeURIComponent(module)}`,
+        {},
+        true,
+      );
+    },
+
+    updateAppSetting(module: string, setting_key: string, setting_value: string) {
+      return request<AppSettingRow>(
+        `/api/app-settings?module=${encodeURIComponent(module)}`,
+        { method: "PATCH", body: JSON.stringify({ setting_key, setting_value }) },
+        true,
+      );
     },
 
     getStopExclusions(month?: string) {

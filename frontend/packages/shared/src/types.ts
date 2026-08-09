@@ -687,6 +687,18 @@ export const ROUTE_CATEGORY_LABELS: Record<RouteCategory, string> = {
   OnDemand: "On-demand",
 };
 
+export interface AppSettingRow {
+  module: string;
+  setting_key: string;
+  setting_value: string;
+  value_type: "int" | "string" | "bool" | "decimal";
+  min_value: string | null;
+  max_value: string | null;
+  description: string | null;
+  updated_by: string | null;
+  updated_at: string;
+}
+
 // Event-bus live positions - filtered from Avail AVL Reports by
 // RouteClassification (SpecialEvent routes only). Backs Event Monitoring's
 // "Event bus positions (live)" panel. See detour-and-event-module-

@@ -79,7 +79,7 @@ export type CandidateStatus = "pending" | "approved" | "rejected";
 export const PAGE_META: Record<string, { title: string; sub: string }> = {
   dashboard: { title: "Dashboard", sub: "Portfolio view across all routes and open review items" },
   queue: { title: "Review Queue", sub: "Approve or reject stops flagged for chronic early-departure bias" },
-  routes: { title: "Route Summary", sub: "Official departure OTP vs. raw, compared to the 90% threshold" },
+  routes: { title: "Route Summary", sub: "Official departure OTP vs. raw, compared to the Attachment G target" },
   weather: { title: "Weather Exclusions", sub: "Log and track weather/emergency service day exclusions" },
   monthly: { title: "Monthly Assessments", sub: "Locked OTP snapshots used for contractor assessment" },
   audit: { title: "Audit Stream", sub: "Full history of exclusion rule and finalization actions" },

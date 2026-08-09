@@ -195,7 +195,7 @@ export function App() {
           </div>
           <div className="topbar-actions">
             <FixedRouteRefreshIndicator />
-            <span className="tr-text">Session: {new Date().toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}</span>
+            <span className="tr-text">Session: {new Date().toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" })}</span>
             <span className="pill-user">
               <span className="avatar">{initialsOf(account.name ?? account.username)}</span>
               {account.name ?? account.username} · {roles.join(", ") || "no roles"}

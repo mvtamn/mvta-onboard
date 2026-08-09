@@ -8,7 +8,7 @@ import { getPool, sql } from "../lib/db";
 import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
 import { serviceMonthOf } from "../lib/otpMonthlyFeed";
 
-const OFFICIAL_OTP_THRESHOLD = 0.9; // Attachment G's 90% departure-adherence standard
+const FALLBACK_OFFICIAL_OTP_THRESHOLD = 0.85;
 
 interface OtpMonthlyStopRow {
   service_month: string;
@@ -77,7 +77,8 @@ app.http("otpMonthlyList", {
               table_ready: false,
               service_month: serviceMonth,
               record_count: 0,
-              routes_below_90: 0,
+              routes_below_target: 0,
+              target: FALLBACK_OFFICIAL_OTP_THRESHOLD,
             },
           },
         };
@@ -109,8 +110,17 @@ app.http("otpMonthlyList", {
       `);
 
       const routes = routesResult.recordset;
-      const routesBelow90 = routes.filter(
-        (r) => r.pct_ontime !== null && r.pct_ontime < OFFICIAL_OTP_THRESHOLD,
+      const targetResult = await pool.request().query<{ bound_low: number }>(`
+        SELECT TOP 1 tier.bound_low FROM ContractorStandardTiers tier
+        JOIN ContractorPerformanceStandards standard ON standard.id=tier.standard_id
+        WHERE standard.code='OTP_FIXED_ROUTE' AND tier.tier_label='meets'
+          AND tier.effective_start_date<=CONCAT('${serviceMonth}','01')
+          AND (tier.effective_end_date IS NULL OR tier.effective_end_date>=CONCAT('${serviceMonth}','01'))
+        ORDER BY tier.effective_start_date DESC
+      `).catch(() => ({ recordset: [] as { bound_low: number }[] }));
+      const target = Number(targetResult.recordset[0]?.bound_low ?? FALLBACK_OFFICIAL_OTP_THRESHOLD);
+      const routesBelowTarget = routes.filter(
+        (r) => r.pct_ontime !== null && r.pct_ontime < target,
       ).length;
 
       return {
@@ -123,7 +133,8 @@ app.http("otpMonthlyList", {
             table_ready: true,
             service_month: serviceMonth,
             record_count: stopsResult.recordset.length,
-            routes_below_90: routesBelow90,
+            routes_below_target: routesBelowTarget,
+            target,
           },
         },
       };

@@ -3,14 +3,14 @@
 // console's Event Monitoring view's new "Event bus positions (live)" panel.
 // Distinct from GET /avail-avl (every vehicle, unfiltered) - this is the
 // subset that matters for the still-unbuilt Special Event Vehicle
-// Monitoring module (MVTA_ONBOARD_MANUAL.md §18). Any staff role can read;
+// Monitoring module (MVTA_ONBOARD_MANUAL.md §18). OCC.Admin can read;
 // this is visibility only - all writes come from availAvlPoll.ts's
 // classification step (Part A2). Correctly returns zero vehicles until a
 // real RouteClassification row exists for an active event - expected, not
 // a bug.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
-import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { requireRole, ADMIN_ROLES } from "../lib/auth";
 
 // route_label/route_category come from RouteClassification, NOT GtfsRoutes -
 // a SpecialEvent RouteID is by definition absent from the GTFS static
@@ -43,7 +43,7 @@ app.http("eventVehiclePositionsList", {
   methods: ["GET"],
   authLevel: "anonymous", // authorization enforced via requireRole below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, STAFF_READ_ROLES);
+    const authResult = requireRole(request, ADMIN_ROLES);
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

@@ -33,7 +33,8 @@ interface OtpMonthlyResponse {
     table_ready: boolean;
     service_month: string;
     record_count: number;
-    routes_below_90: number;
+    routes_below_target: number;
+    target: number;
   };
 }
 
@@ -85,7 +86,7 @@ const NAV: { page: string; label: string }[] = [
 
 // OTP Compliance — ported from otp_app.html. Renders as a section of the
 // Compliance tab: no shell of its own, reuses the console's shared classes
-// throughout. Route Summary / Review Queue / Dashboard's below-90% stat pull
+// throughout. Route Summary / Review Queue / Dashboard's below-target stat pull
 // from Avail's real OTP Monthly feed (otpMonthlyFeedPoll.ts) once it's
 // configured and has data for the current month; Monthly Assessments also
 // surfaces the real Missed Trips feed (availMissedTripsPoll.ts). Both fall
@@ -451,7 +452,8 @@ export function OtpModule() {
           candidateSource={candidateSource}
           statuses={statuses}
           weatherCount={dateExclusions.length}
-          liveRoutesBelow90={usingLiveOtp ? liveOtp!.diagnostics.routes_below_90 : null}
+          liveRoutesBelowTarget={usingLiveOtp ? liveOtp!.diagnostics.routes_below_target : null}
+          targetPct={(usingLiveOtp ? liveOtp!.diagnostics.target : 0.85) * 100}
         />
       )}
       {page === "queue" && (
@@ -507,23 +509,25 @@ function DashboardPage({
   candidateSource,
   statuses,
   weatherCount,
-  liveRoutesBelow90,
+  liveRoutesBelowTarget,
+  targetPct,
 }: {
   routeRows: RouteRow[];
   candidateSource: Candidate[];
   statuses: CandidateStatus[];
   weatherCount: number;
-  liveRoutesBelow90: number | null;
+  liveRoutesBelowTarget: number | null;
+  targetPct: number;
 }) {
   const approved = statuses.filter((s) => s === "approved").length;
   const rejected = statuses.filter((s) => s === "rejected").length;
   const pending = statuses.length - approved - rejected;
   const below =
-    liveRoutesBelow90 ?? routeRows.filter((r) => computeOfficialPct(r, candidateSource, statuses) < 90).length;
+    liveRoutesBelowTarget ?? routeRows.filter((r) => computeOfficialPct(r, candidateSource, statuses) < targetPct).length;
   const cards = [
     { label: "Pending review", value: pending, sub: "Candidate stops", color: "#F78E1E" },
     { label: "Approved", value: approved, sub: "Active exclusion rules", color: "#00553D" },
-    { label: "Routes below 90%", value: below, sub: "Official departure OTP", color: "#8A1F1F" },
+    { label: `Routes below ${targetPct}%`, value: below, sub: "Official departure OTP", color: "#8A1F1F" },
     { label: "Weather exclusions", value: weatherCount, sub: "Logged this year", color: "#417B68" },
   ];
   return (
@@ -574,7 +578,7 @@ function OtpTrendChart() {
             <div className="otp-trend-bar-col" key={t.service_month}>
               <div className="otp-trend-bar-track">
                 <div
-                  className={`otp-trend-bar ${pct !== null && pct < 90 ? "below" : "meets"}`}
+                  className={`otp-trend-bar ${pct !== null && pct < 85 ? "below" : "meets"}`}
                   style={{ height: `${pct ?? 0}%` }}
                   title={pct !== null ? `${pct}%` : "no data"}
                 />
@@ -771,13 +775,13 @@ function RouteSummaryPage({
     <div className="subcard" style={{ overflow: "hidden" }}>
       <table className="data">
         <thead>
-          <tr><th>Route</th><th>Departure events</th><th>Raw OTP %</th><th>Official OTP %</th><th>Δ from exclusions</th><th>Status vs. 90%</th></tr>
+          <tr><th>Route</th><th>Departure events</th><th>Raw OTP %</th><th>Official OTP %</th><th>Δ from exclusions</th><th>Status vs. 85%</th></tr>
         </thead>
         <tbody>
           {routeRows.map((r) => {
             const official = computeOfficialPct(r, candidateSource, statuses);
             const delta = Math.round((official - r.pct_raw) * 10) / 10;
-            const below = official < 90;
+            const below = official < 85;
             return (
               <tr key={r.route}>
                 <td><span className="route-chip">RT {r.route}</span></td>
@@ -785,7 +789,7 @@ function RouteSummaryPage({
                 <td>{r.pct_raw}%</td>
                 <td><b>{official}%</b></td>
                 <td className={delta > 0 ? "ok-text" : "muted"}>{delta > 0 ? "+" : ""}{delta} pts</td>
-                <td>{below ? <span className="pill-sm pill-danger">Below 90%</span> : <span className="pill-sm pill-success">Meets 90%</span>}</td>
+                <td>{below ? <span className="pill-sm pill-danger">Below 85%</span> : <span className="pill-sm pill-success">Meets 85%</span>}</td>
               </tr>
             );
           })}
@@ -932,7 +936,7 @@ function MonthlyAssessmentsPage({ otp }: { otp: OtpMonthlyResponse | null }) {
         {otpReady ? (
           <table className="data">
             <thead>
-              <tr><th>Route</th><th>Total departures</th><th>On-time</th><th>OTP %</th><th>Status vs. 90%</th></tr>
+              <tr><th>Route</th><th>Total departures</th><th>On-time</th><th>OTP %</th><th>Status vs. 85%</th></tr>
             </thead>
             <tbody>
               {otp!.routes.map((r) => {
@@ -945,7 +949,7 @@ function MonthlyAssessmentsPage({ otp }: { otp: OtpMonthlyResponse | null }) {
                     <td>{pct !== null ? `${pct}%` : "—"}</td>
                     <td>
                       {pct !== null ? (
-                        pct < 90 ? <span className="pill-sm pill-danger">Below 90%</span> : <span className="pill-sm pill-success">Meets 90%</span>
+                        pct < 85 ? <span className="pill-sm pill-danger">Below 85%</span> : <span className="pill-sm pill-success">Meets 85%</span>
                       ) : "—"}
                     </td>
                   </tr>
