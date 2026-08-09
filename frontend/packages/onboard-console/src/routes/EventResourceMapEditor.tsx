@@ -5,6 +5,7 @@ import "azure-maps-control/dist/atlas.min.css";
 import "azure-maps-drawing-tools/dist/atlas-drawing.min.css";
 import { ApiError, type EventGeofence, type EventGeofenceRule, type EventLocation, type EventServicePlan, type EventLocationCategory } from "@mvta/shared";
 import { api } from "../config.js";
+import { useAuth } from "../auth/AuthContext.js";
 
 const CENTER: atlas.data.Position = [-93.25, 44.83];
 type Draft = { shape: atlas.Shape; kind: "geofence" | "location"; position?: atlas.data.Position };
@@ -17,10 +18,12 @@ function geometryOf(shape: atlas.Shape): string | null {
 }
 
 function MapEditor({ geofences, locations, onChanged }: { geofences: StoredFence[]; locations: EventLocation[]; onChanged: () => void }) {
+  const { account, signIn } = useAuth();
   const host = useRef<HTMLDivElement>(null); const mapRef = useRef<atlas.Map | null>(null); const drawingRef = useRef<drawing.drawing.DrawingManager | null>(null); const syncTimer = useRef<number | null>(null); const geofencesRef = useRef(geofences); geofencesRef.current = geofences;
   const [ready, setReady] = useState(false); const [draft, setDraft] = useState<Draft | null>(null); const [name, setName] = useState(""); const [category, setCategory] = useState<EventLocationCategory>("transit_station"); const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!account) return;
     let cancelled = false;
     api.getMapsToken().then((token) => {
       if (cancelled || !host.current) return;
@@ -50,7 +53,7 @@ function MapEditor({ geofences, locations, onChanged }: { geofences: StoredFence
           if (props?.id && props.kind === "geofence") void api.updateEventGeofence(props.id, { name: geofencesRef.current.find((f) => f.id === props.id)?.name ?? "Geofence", polygon: geometryOf(shape) ?? "", is_active: false }).then(onChanged).catch(() => undefined);
         });
       });
-    }).catch((err) => setError(err instanceof ApiError ? err.message : "Map unavailable."));
+    }).catch((err) => setError(err instanceof ApiError && err.status === 401 ? "Your Microsoft session is not connected to the API. Sign in again to use map authoring." : err instanceof ApiError ? err.message : "Map unavailable."));
     return () => { cancelled = true; drawingRef.current?.dispose(); mapRef.current?.dispose(); drawingRef.current = null; mapRef.current = null; };
   }, []);
 
@@ -73,7 +76,8 @@ function MapEditor({ geofences, locations, onChanged }: { geofences: StoredFence
     } catch (err) { setError(err instanceof ApiError ? err.message : "Could not save map item."); }
   }
 
-  return <div><div style={{ height: 420, borderRadius: 8, overflow: "hidden", border: "1px solid #ccd6d1", position: "relative" }}><div ref={host} style={{ width: "100%", height: "100%" }} />{!ready && !error && <div className="evmon-map-message">Loading map…</div>}{error && <div className="evmon-map-message">{error}</div>}</div>{draft && <div className="panel-body" style={{ marginTop: 10, border: "1px solid #ccd6d1" }}><strong>Save new {draft.kind === "geofence" ? "geofence" : "map location"}</strong><div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}><input className="f" value={name} onChange={(e) => setName(e.target.value)} placeholder={draft.kind === "geofence" ? "Geofence name" : "Location name"} />{draft.kind === "location" && <select className="f" value={category} onChange={(e) => setCategory(e.target.value as EventLocationCategory)}><option value="transit_station">Transit station</option><option value="park_and_ride">Park & ride</option><option value="venue">Venue</option><option value="other">Other</option></select>}<button className="btn-sm" disabled={!name.trim()} onClick={() => void saveDraft()}>Save</button><button className="btn-sm" onClick={() => { drawingRef.current?.getSource().remove(draft.shape); setDraft(null); }}>Cancel</button></div></div>}</div>;
+  if (!account) return <div className="evmon-map-message"><p>Sign in with your MVTA Microsoft 365 account to use map authoring.</p><button className="btn-primary" onClick={signIn}>Sign in with Microsoft</button></div>;
+  return <div><div style={{ height: 420, borderRadius: 8, overflow: "hidden", border: "1px solid #ccd6d1", position: "relative" }}><div ref={host} style={{ width: "100%", height: "100%" }} />{!ready && !error && <div className="evmon-map-message">Loading map…</div>}{error && <div className="evmon-map-message"><p>{error}</p>{error.includes("session") && <button className="btn-primary" onClick={signIn}>Sign in again</button>}</div>}</div>{draft && <div className="panel-body" style={{ marginTop: 10, border: "1px solid #ccd6d1" }}><strong>Save new {draft.kind === "geofence" ? "geofence" : "map location"}</strong><div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}><input className="f" value={name} onChange={(e) => setName(e.target.value)} placeholder={draft.kind === "geofence" ? "Geofence name" : "Location name"} />{draft.kind === "location" && <select className="f" value={category} onChange={(e) => setCategory(e.target.value as EventLocationCategory)}><option value="transit_station">Transit station</option><option value="park_and_ride">Park & ride</option><option value="venue">Venue</option><option value="other">Other</option></select>}<button className="btn-sm" disabled={!name.trim()} onClick={() => void saveDraft()}>Save</button><button className="btn-sm" onClick={() => { drawingRef.current?.getSource().remove(draft.shape); setDraft(null); }}>Cancel</button></div></div>}</div>;
 }
 
 export function EventResourceMapEditor() {
