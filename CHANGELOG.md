@@ -5,7 +5,17 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [Unreleased]
+## [1.5.14] - 2026-08-10
+
+- **Event Monitoring reliability.** Added 90-day telemetry retention, diagnostic
+  records, component health reporting, and visible operational status for AVL
+  ingestion, event projection, crossing detection, and cleanup.
+- **Event Monitoring operations.** Live vehicles now expose their active Service
+  Plan scope, while crossing, notification, and audit feeds retain their last
+  successful data and surface feed failures.
+- **Safer event administration.** Route classifications validate local effective
+  date ranges, preserve prior versions, and reject stale edits; geofence updates
+  validate geometry and reject conflicting edits.
 
 ## [1.5.13] - 2026-08-09
 
