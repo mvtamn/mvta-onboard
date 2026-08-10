@@ -23,8 +23,22 @@ app.http("eventServicePlans", { route: "event-service-plans", methods: ["GET", "
     return { status: 200, jsonBody: { plans: plans.map((plan) => ({ ...plan, links: links.filter((link) => link.service_plan_id === plan.id), revisions: revisions.filter((revision) => revision.service_plan_id === plan.id) })) } };
   }
   const body = await req.json() as Record<string, unknown>; if (typeof body.name !== "string" || !body.name.trim()) return { status: 400, jsonBody: { error: "name is required" } };
-  const r = pool.request(); r.input("name", sql.NVarChar, body.name.trim()); r.input("by", sql.NVarChar, auth.principal.userDetails ?? "system");
-  return { status: 201, jsonBody: (await r.query("INSERT INTO EventServicePlans(name,created_by,updated_by) OUTPUT INSERTED.* VALUES(@name,@by,@by)")).recordset[0] };
+  const actor = auth.principal.userDetails ?? "system";
+  const transaction = pool.transaction(); await transaction.begin();
+  try {
+    const r = transaction.request(); r.input("name", sql.NVarChar, body.name.trim()); r.input("by", sql.NVarChar, actor);
+    let eventId = typeof body.event_id === "string" ? body.event_id : null;
+    if (eventId) {
+      r.input("event", sql.UniqueIdentifier, eventId);
+      if (!(await r.query("SELECT id FROM Events WHERE id=@event")).recordset.length) { await transaction.rollback(); return { status: 404, jsonBody: { error: "Event not found" } }; }
+    } else {
+      eventId = (await r.query("INSERT INTO Events(name,created_by,updated_by) OUTPUT INSERTED.id VALUES(@name,@by,@by)")).recordset[0].id;
+    }
+    r.input("event", sql.UniqueIdentifier, eventId);
+    const plan = (await r.query("INSERT INTO EventServicePlans(event_id,name,created_by,updated_by) OUTPUT INSERTED.* VALUES(@event,@name,@by,@by)")).recordset[0];
+    await transaction.commit();
+    return { status: 201, jsonBody: plan };
+  } catch (error) { await transaction.rollback(); throw error; }
 } });
 
 app.http("eventServicePlanAction", { route: "event-service-plans/{id}/{action}", methods: ["PATCH", "POST"], authLevel: "anonymous", handler: async (req: HttpRequest) => {
@@ -42,7 +56,22 @@ app.http("eventServicePlanAction", { route: "event-service-plans/{id}/{action}",
   if (["submit-review", "approve", "advance", "complete", "suspend"].includes(action)) {
     const transitions: Record<string, { from: string; to: string }> = { "submit-review": { from: "draft", to: "review" }, approve: { from: "review", to: "approved" }, advance: { from: "approved", to: "active" }, complete: { from: "active", to: "completed" }, suspend: { from: "active", to: "suspended" } };
     const transition = transitions[action]; const r = pool.request(); r.input("id", sql.UniqueIdentifier, id); r.input("by", sql.NVarChar, auth.principal.userDetails ?? "system");
-    if (action === "advance") { const counts = (await r.query("SELECT (SELECT COUNT(*) FROM EventServicePlanRoutes WHERE service_plan_id=@id) routes,(SELECT COUNT(*) FROM EventServicePlanGeofences WHERE service_plan_id=@id) geofences")).recordset[0] as { routes: number; geofences: number }; if (!counts || counts.routes < 1 || counts.geofences < 1) return { status: 409, jsonBody: { error: "An active plan must include at least one route and one geofence" } }; }
+    if (action === "advance") {
+      const counts = (await r.query(`
+        SELECT
+          (SELECT COUNT(*) FROM EventServicePlanRoutes spr JOIN RouteClassification rc ON rc.route_id=spr.route_id WHERE spr.service_plan_id=@id AND rc.route_category='SpecialEvent' AND rc.is_active=1) routes,
+          (SELECT COUNT(*) FROM EventServicePlanGeofences spg JOIN EventGeofences g ON g.id=spg.geofence_id AND g.is_active=1 JOIN EventGeofenceDirectionRules dr ON dr.geofence_id=g.id WHERE spg.service_plan_id=@id) geofences,
+          CASE WHEN EXISTS (SELECT 1 FROM EventServicePlans WHERE id=@id AND (start_date IS NULL OR end_date IS NULL OR start_date <= end_date)) THEN 1 ELSE 0 END valid_dates,
+          CASE WHEN EXISTS (
+            SELECT 1 FROM EventServicePlanRoutes candidate
+            JOIN EventServicePlans candidate_plan ON candidate_plan.id=candidate.service_plan_id
+            JOIN EventServicePlanRoutes active_route ON active_route.route_id=candidate.route_id AND active_route.service_plan_id<>@id
+            JOIN EventServicePlans active_plan ON active_plan.id=active_route.service_plan_id AND active_plan.status='active' AND active_plan.event_id<>candidate_plan.event_id
+            WHERE candidate.service_plan_id=@id
+          ) THEN 1 ELSE 0 END route_conflict
+      `)).recordset[0] as { routes: number; geofences: number; valid_dates: number; route_conflict: number };
+      if (!counts || counts.routes < 1 || counts.geofences < 1 || counts.valid_dates !== 1 || counts.route_conflict === 1) return { status: 409, jsonBody: { error: counts?.route_conflict === 1 ? "A route is already covered by another active Event" : "An active plan must include an active SpecialEvent route, an active geofence with a direction rule, and valid dates" } };
+    }
     const out = await r.query("UPDATE EventServicePlans SET status='" + transition.to + "',updated_by=@by,updated_at=SYSUTCDATETIME() OUTPUT INSERTED.* WHERE id=@id AND status='" + transition.from + "'"); return out.recordset.length ? { status: 200, jsonBody: out.recordset[0] } : { status: 409, jsonBody: { error: `Plan must be ${transition.from} before it can be ${transition.to}` } };
   }
   const kind = action === "routes" || action === "geofences" || action === "locations" ? action : null; const table = kind && tableFor(kind); if (!table) return { status: 404, jsonBody: { error: "Unknown service-plan action" } };

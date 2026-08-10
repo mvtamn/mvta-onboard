@@ -107,7 +107,7 @@ app.http("eventVehiclePositionsList", {
           FROM EventServicePlanRoutes spr
           INNER JOIN EventServicePlans sp ON sp.id = spr.service_plan_id
           WHERE spr.route_id = p.route
-            AND sp.status IN ('draft', 'review', 'approved', 'active')
+            AND sp.status = 'active'
             AND (sp.start_date IS NULL OR sp.start_date <= CONVERT(CHAR(8), SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time', 112))
             AND (sp.end_date IS NULL OR sp.end_date >= CONVERT(CHAR(8), SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time', 112))
         ) plans
@@ -129,6 +129,22 @@ app.http("eventVehiclePositionsList", {
         WHERE p.report_timestamp >= DATEADD(MINUTE, -15, SYSUTCDATETIME())
           AND p.latitude BETWEEN 43.0 AND 46.0
           AND p.longitude BETWEEN -95.5 AND -92.0
+          AND EXISTS (
+            SELECT 1
+            FROM EventServicePlanRoutes active_route
+            INNER JOIN EventServicePlans active_plan ON active_plan.id = active_route.service_plan_id
+            WHERE active_route.route_id = p.route
+              AND active_plan.status = 'active'
+              AND (active_plan.start_date IS NULL OR active_plan.start_date <= CONVERT(DATE, SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time'))
+              AND (active_plan.end_date IS NULL OR active_plan.end_date >= CONVERT(DATE, SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time'))
+              AND EXISTS (
+                SELECT 1
+                FROM EventServicePlanGeofences active_geofence
+                INNER JOIN EventGeofences operational_geofence ON operational_geofence.id = active_geofence.geofence_id AND operational_geofence.is_active = 1
+                INNER JOIN EventGeofenceDirectionRules operational_rule ON operational_rule.geofence_id = operational_geofence.id
+                WHERE active_geofence.service_plan_id = active_plan.id
+              )
+          )
         ORDER BY p.route, p.vehicle_id
       `);
       const vehicles = result.recordset.map((row) => ({

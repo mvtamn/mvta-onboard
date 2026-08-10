@@ -83,7 +83,23 @@ async function projectEventPositions(pool: Awaited<ReturnType<typeof getPool>>):
       AND rc.route_category = 'SpecialEvent' AND rc.is_active = 1
       AND (rc.effective_start_date IS NULL OR rc.effective_start_date <= CONVERT(CHAR(8), SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time', 112))
       AND (rc.effective_end_date IS NULL OR rc.effective_end_date >= CONVERT(CHAR(8), SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time', 112))
-    WHERE avl.report_timestamp >= DATEADD(SECOND, -@windowSeconds, SYSUTCDATETIME())
+    WHERE EXISTS (
+      SELECT 1
+      FROM EventServicePlanRoutes spr
+      INNER JOIN EventServicePlans sp ON sp.id = spr.service_plan_id
+      WHERE spr.route_id = avl.route
+        AND sp.status = 'active'
+        AND (sp.start_date IS NULL OR sp.start_date <= CONVERT(DATE, SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time'))
+        AND (sp.end_date IS NULL OR sp.end_date >= CONVERT(DATE, SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time'))
+        AND EXISTS (
+          SELECT 1
+          FROM EventServicePlanGeofences spg
+          INNER JOIN EventGeofences g ON g.id = spg.geofence_id AND g.is_active = 1
+          INNER JOIN EventGeofenceDirectionRules dr ON dr.geofence_id = g.id
+          WHERE spg.service_plan_id = sp.id
+        )
+    )
+      AND avl.report_timestamp >= DATEADD(SECOND, -@windowSeconds, SYSUTCDATETIME())
   `)).recordset;
   for (const row of rows) {
     const current = (await pool.request().input("vehicle", sql.Int, row.vehicle_id).query<{ report_timestamp: Date }>(

@@ -4,17 +4,17 @@ import { polygonContains, headingInRange } from "./geofence";
 import { publishEventGeofenceNotification } from "./events";
 import { detectionWindowSeconds, isStableTransition, nextTransitionConfirmations } from "./eventProcessing";
 
-interface Position { vehicle_id: number; route: number | null; latitude: number; longitude: number; heading: number | null; report_timestamp: Date }
-interface Fence { id: string; polygon: string; name: string }
+interface Position { vehicle_id: number; route: number | null; service_plan_id: string; latitude: number; longitude: number; heading: number | null; report_timestamp: Date }
+interface Fence { id: string; service_plan_id: string; polygon: string; name: string }
 
 export async function detectEventGeofenceCrossings(context: InvocationContext): Promise<void> {
   const pool = await getPool();
   const configuredInterval = (await pool.request().query<{ seconds: number }>(`SELECT COALESCE(TRY_CONVERT(INT, setting_value), 30) seconds FROM AppSettings WHERE module='event' AND setting_key='poll_interval_seconds'`)).recordset[0]?.seconds ?? 30;
   const windowSeconds = detectionWindowSeconds(configuredInterval);
   const positionRequest = pool.request(); positionRequest.input("windowSeconds", sql.Int, windowSeconds);
-  const positions = (await positionRequest.query<Position>(`SELECT p.vehicle_id,p.route,p.latitude,p.longitude,p.heading,p.report_timestamp FROM EventVehicleCurrentPosition p WHERE EXISTS (SELECT 1 FROM EventServicePlanRoutes spr JOIN EventServicePlans sp ON sp.id=spr.service_plan_id WHERE sp.status='active' AND spr.route_id=p.route) AND p.report_timestamp >= DATEADD(SECOND,-@windowSeconds,SYSUTCDATETIME())`)).recordset;
-  const fences = (await pool.request().query<Fence>(`SELECT g.id,g.polygon,g.name FROM EventGeofences g WHERE g.is_active=1 AND EXISTS (SELECT 1 FROM EventServicePlanGeofences spg JOIN EventServicePlans sp ON sp.id=spg.service_plan_id WHERE sp.status='active' AND spg.geofence_id=g.id)`)).recordset;
-  for (const position of positions) for (const fence of fences) {
+  const positions = (await positionRequest.query<Position>(`SELECT DISTINCT p.vehicle_id,p.route,sp.id service_plan_id,p.latitude,p.longitude,p.heading,p.report_timestamp FROM EventVehicleCurrentPosition p JOIN EventServicePlanRoutes spr ON spr.route_id=p.route JOIN EventServicePlans sp ON sp.id=spr.service_plan_id AND sp.status='active' AND (sp.start_date IS NULL OR sp.start_date <= CONVERT(DATE, SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time')) AND (sp.end_date IS NULL OR sp.end_date >= CONVERT(DATE, SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time')) WHERE p.report_timestamp >= DATEADD(SECOND,-@windowSeconds,SYSUTCDATETIME())`)).recordset;
+  const fences = (await pool.request().query<Fence>(`SELECT sp.id service_plan_id,g.id,g.polygon,g.name FROM EventServicePlanGeofences spg JOIN EventServicePlans sp ON sp.id=spg.service_plan_id AND sp.status='active' AND (sp.start_date IS NULL OR sp.start_date <= CONVERT(DATE, SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time')) AND (sp.end_date IS NULL OR sp.end_date >= CONVERT(DATE, SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time')) JOIN EventGeofences g ON g.id=spg.geofence_id AND g.is_active=1`)).recordset;
+  for (const position of positions) for (const fence of fences.filter((candidate) => candidate.service_plan_id === position.service_plan_id)) {
     let inside = false; try { inside = polygonContains(fence.polygon, [position.longitude, position.latitude]); } catch { continue; }
     const state = pool.request(); state.input("vehicle", sql.Int, position.vehicle_id); state.input("fence", sql.UniqueIdentifier, fence.id);
     const prior = (await state.query<{ is_inside: boolean; pending_is_inside: boolean | null; pending_confirmations: number; last_report_timestamp: Date | null }>("SELECT is_inside,pending_is_inside,pending_confirmations,last_report_timestamp FROM EventGeofenceVehicleState WHERE vehicle_id=@vehicle AND geofence_id=@fence")).recordset[0];

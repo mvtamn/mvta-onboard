@@ -5,6 +5,17 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.15] - 2026-08-10
+
+- **Unified Event operating model.** Added durable Events with generated-event
+  migration compatibility, one active Service Plan per Event, and lifecycle
+  validation for route, geofence, direction-rule, and date coverage.
+- **Shared operational scope.** Event projection, AVL visibility, and crossing
+  detection now require the same active-plan operating period instead of route
+  classification alone.
+- **Clear authoring ownership.** Map Authoring manages reusable resources;
+  Event Planning owns Service Plan creation, activation, and revisions.
+
 ## [1.5.14] - 2026-08-10
 
 - **Event Monitoring reliability.** Added 90-day telemetry retention, diagnostic
