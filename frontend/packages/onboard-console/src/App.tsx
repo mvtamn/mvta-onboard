@@ -35,6 +35,7 @@ import { Compliance } from "./routes/Compliance.js";
 import { PerformanceAssessment } from "./routes/PerformanceAssessment.js";
 import { Detours } from "./routes/Detours.js";
 import { DetourReports } from "./routes/DetourReports.js";
+import { DetourIntake } from "./routes/DetourIntake.js";
 import { Changelog } from "./routes/Changelog.js";
 import {
   FixedRouteRefreshProvider,
@@ -60,6 +61,7 @@ const PAGE_META: { match: (path: string) => boolean; title: string; sub: string 
   { match: (p) => p === "/subscribers", title: "Subscribers", sub: "Opt-in totals and recent signups" },
   { match: (p) => p === "/audit", title: "Audit Log", sub: "Search every message ever posted" },
   { match: (p) => p === "/detours", title: "Detours & Closures", sub: "Every detour/closure in one place, Avail-built or not" },
+  { match: (p) => p === "/detour-intake", title: "Detour Intake", sub: "Capture and review preliminary closure reports" },
   { match: (p) => p === "/detour-reports", title: "Detour Reports", sub: "Search and export detour history — read-only" },
   { match: (p) => p === "/admin", title: "Admin", sub: "Expiration defaults and system configuration" },
   {
@@ -171,6 +173,7 @@ export function App() {
             <>
               <div className="nav-section-label">Tools</div>
               {canSeeDetours && <NavLink to="/detours"><IconDetour />Detours &amp; Closures</NavLink>}
+              {canSeeDetours && <NavLink to="/detour-intake"><IconDetour />Detour Intake</NavLink>}
               {canSeeDetours && <NavLink to="/detour-reports"><IconClock />Detour Reports</NavLink>}
               {isAdmin && <NavLink to="/event-monitoring"><IconBus />Event AVL</NavLink>}
               {isAdmin && <NavLink to="/event-planning"><IconBus />Event Planning</NavLink>}
@@ -242,6 +245,10 @@ export function App() {
                     <DetourReports />
                   </RequireRole>
                 }
+              />
+              <Route
+                path="/detour-intake"
+                element={<RequireRole allowed={[...DETOURS]}><DetourIntake /></RequireRole>}
               />
               <Route path="/suggested" element={<SuggestedAlerts onChanged={stats.refresh} />} />
               <Route path="/subscribers" element={<Subscribers />} />

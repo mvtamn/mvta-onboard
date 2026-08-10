@@ -9,42 +9,13 @@ import { app, type HttpRequest, type InvocationContext } from "@azure/functions"
 import { getPool, sql } from "../lib/db";
 import { requireRole, DETOUR_WRITE_ROLES } from "../lib/auth";
 import { validateCreateDetour } from "../lib/validation";
-import { formatDetourNumber, detourNumberYear } from "../lib/detourNumbering";
+import { detourNumberYear } from "../lib/detourNumbering";
+import { allocateDetourNumber } from "../lib/detourNumberAllocator";
 import type { CreateDetourBody } from "../lib/types";
 
 interface InsertedDetour {
   id: string;
   created_at: Date;
-}
-
-interface AllocatedSequence {
-  assigned: number;
-}
-
-// Allocates this year's next internal detour number (Part B10). One atomic
-// MERGE, so bootstrapping a brand-new year and incrementing an existing one
-// are the same statement - there is no read-then-write gap for two concurrent
-// creates to slip through, which a SELECT-then-INSERT bootstrap would have on
-// Jan 1. HOLDLOCK is what makes the not-matched branch safe under contention.
-// On the insert branch DELETED.next_value is NULL, hence the COALESCE to 1.
-async function allocateDetourNumber(tx: sql.Transaction, year: number): Promise<string> {
-  const req = new sql.Request(tx);
-  req.input("year", sql.Int, year);
-  const result = await req.query<AllocatedSequence>(`
-    MERGE DetourNumberSequences WITH (HOLDLOCK) AS target
-    USING (SELECT @year AS year) AS source
-      ON target.year = source.year
-    WHEN MATCHED THEN
-      UPDATE SET next_value = target.next_value + 1
-    WHEN NOT MATCHED THEN
-      INSERT (year, next_value) VALUES (source.year, 2)
-    OUTPUT COALESCE(DELETED.next_value, 1) AS assigned;
-  `);
-  const assigned = result.recordset[0]?.assigned;
-  if (assigned === undefined) {
-    throw new Error(`Failed to allocate an internal detour number for ${year}`);
-  }
-  return formatDetourNumber(year, assigned);
 }
 
 app.http("detoursCreate", {
@@ -81,7 +52,7 @@ app.http("detoursCreate", {
     // pre-migration they are silently dropped rather than failing the create,
     // so the console keeps working through the deploy gap between the code
     // shipping and the migration being run.
-    const schemaCheck = await pool.request().query<{ numbering_ready: number; reporting_ready: number }>(`
+    const schemaCheck = await pool.request().query<{ numbering_ready: number; reporting_ready: number; workflow_ready: number }>(`
       SELECT
         CASE
           WHEN OBJECT_ID('dbo.DetourNumberSequences', 'U') IS NOT NULL
@@ -89,10 +60,15 @@ app.http("detoursCreate", {
           THEN 1 ELSE 0 END AS numbering_ready,
         CASE
           WHEN COL_LENGTH('dbo.Detours', 'reason_code') IS NOT NULL
-          THEN 1 ELSE 0 END AS reporting_ready
+          THEN 1 ELSE 0 END AS reporting_ready,
+        CASE
+          WHEN COL_LENGTH('dbo.Detours', 'fulfillment_mode') IS NOT NULL
+           AND COL_LENGTH('dbo.Detours', 'lifecycle_state') IS NOT NULL
+          THEN 1 ELSE 0 END AS workflow_ready
     `);
     const numberingReady = schemaCheck.recordset[0]?.numbering_ready === 1;
     const reportingReady = schemaCheck.recordset[0]?.reporting_ready === 1;
+    const workflowReady = schemaCheck.recordset[0]?.workflow_ready === 1;
     if (!numberingReady) {
       context.warn(
         "DetourNumberSequences/Detours.internal_number not present (migration-024 not run) - creating this detour without an internal number.",
@@ -123,6 +99,10 @@ app.http("detoursCreate", {
       insertReq.input("expired_email_sent", sql.Bit, body.expired_email_sent ?? false);
       insertReq.input("spare_emailed", sql.Bit, body.spare_emailed ?? false);
       insertReq.input("created_by", sql.NVarChar, createdBy);
+      if (workflowReady) {
+        insertReq.input("fulfillment_mode", sql.NVarChar(30), body.fulfillment_mode ?? "fixed_route_manual");
+        insertReq.input("lifecycle_state", sql.NVarChar(30), body.lifecycle_state ?? "active");
+      }
       if (internalNumber !== null) {
         insertReq.input("internal_number", sql.NVarChar, internalNumber);
       }
@@ -148,6 +128,7 @@ app.http("detoursCreate", {
         INSERT INTO Detours (
           number, closure, start_date, end_date, is_monitor_only, riders_directed,
           email_sent, expired_email_sent, spare_emailed, source, created_by
+          ${workflowReady ? ", fulfillment_mode, lifecycle_state" : ""}
           ${internalNumber !== null ? ", internal_number" : ""}
           ${reportingReady ? `, ${REPORTING_COLUMNS}` : ""}
         )
@@ -155,6 +136,7 @@ app.http("detoursCreate", {
         VALUES (
           @number, @closure, @start_date, @end_date, @is_monitor_only, @riders_directed,
           @email_sent, @expired_email_sent, @spare_emailed, 'manual', @created_by
+          ${workflowReady ? ", @fulfillment_mode, @lifecycle_state" : ""}
           ${internalNumber !== null ? ", @internal_number" : ""}
           ${reportingReady ? `, ${REPORTING_VALUES}` : ""}
         )

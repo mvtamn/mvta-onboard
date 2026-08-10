@@ -320,6 +320,11 @@ export const MAX_DETOUR_REASON_CODE_LENGTH = 30;
 export const MAX_DETOUR_PERSON_LENGTH = 200;
 export const MAX_DETOUR_RESOLUTION_NOTES_LENGTH = 1000;
 export const VALID_DETOUR_SEVERITIES = ["minor", "moderate", "major"] as const;
+export const VALID_DETOUR_FULFILLMENT_MODES = ["avail", "fixed_route_manual", "mobility_manual"] as const;
+export const VALID_DETOUR_LIFECYCLE_STATES = [
+  "approved", "pending_avail_build", "built_in_avail", "build_failed",
+  "active", "expired", "rejected", "duplicate",
+] as const;
 export const DETOUR_REPORT_FLAG_FIELDS = [
   "radio_notified",
   "dispatch_board_notified",
@@ -460,8 +465,54 @@ export function validateCreateDetour(body: UnknownBody): string[] {
     }
   }
   errors.push(...isValidDetourSegments(body.segments));
+  if (body.fulfillment_mode !== undefined && !VALID_DETOUR_FULFILLMENT_MODES.includes(body.fulfillment_mode as (typeof VALID_DETOUR_FULFILLMENT_MODES)[number])) {
+    errors.push(`fulfillment_mode must be one of: ${VALID_DETOUR_FULFILLMENT_MODES.join(", ")}`);
+  }
+  if (body.lifecycle_state !== undefined && !VALID_DETOUR_LIFECYCLE_STATES.includes(body.lifecycle_state as (typeof VALID_DETOUR_LIFECYCLE_STATES)[number])) {
+    errors.push(`lifecycle_state must be one of: ${VALID_DETOUR_LIFECYCLE_STATES.join(", ")}`);
+  }
   errors.push(...validateDetourReport(body));
 
+  return errors;
+}
+
+export function validateCreateDetourIntake(body: UnknownBody): string[] {
+  const errors: string[] = [];
+  if (typeof body.detection_source !== "string" || body.detection_source.trim() === "") {
+    errors.push("detection_source is required and must be a non-empty string");
+  } else if (body.detection_source.length > 100) {
+    errors.push("detection_source must be at most 100 characters");
+  }
+  if (typeof body.description !== "string" || body.description.trim() === "") {
+    errors.push("description is required and must be a non-empty string");
+  } else if (body.description.length > 1000) {
+    errors.push("description must be at most 1000 characters");
+  }
+  for (const field of ["location", "decision_notes"] as const) {
+    if (body[field] !== undefined && body[field] !== null && typeof body[field] !== "string") {
+      errors.push(`${field} must be a string if provided`);
+    }
+  }
+  for (const field of ["proposed_start_date", "proposed_end_date"] as const) {
+    if (body[field] !== undefined && body[field] !== null && (typeof body[field] !== "string" || !DATE_RE.test(body[field]))) {
+      errors.push(`${field} must be a YYYY-MM-DD date string if provided`);
+    }
+  }
+  errors.push(...isValidDetourSegments(body.segments));
+  return errors;
+}
+
+export function validatePromoteDetourIntake(body: UnknownBody): string[] {
+  const errors: string[] = [];
+  if (!VALID_DETOUR_FULFILLMENT_MODES.includes(body.fulfillment_mode as (typeof VALID_DETOUR_FULFILLMENT_MODES)[number])) {
+    errors.push(`fulfillment_mode must be one of: ${VALID_DETOUR_FULFILLMENT_MODES.join(", ")}`);
+  }
+  if (body.start_date !== undefined && body.start_date !== null && (typeof body.start_date !== "string" || !DATE_RE.test(body.start_date))) {
+    errors.push("start_date must be a YYYY-MM-DD date string if provided");
+  }
+  if (body.end_date !== undefined && body.end_date !== null && (typeof body.end_date !== "string" || !DATE_RE.test(body.end_date))) {
+    errors.push("end_date must be a YYYY-MM-DD date string if provided");
+  }
   return errors;
 }
 
@@ -523,6 +574,12 @@ export function validateUpdateDetour(body: UnknownBody): string[] {
     errors.push(...isValidDetourSegments(body.segments));
   }
   errors.push(...validateDetourReport(body));
+  if (body.fulfillment_mode !== undefined && !VALID_DETOUR_FULFILLMENT_MODES.includes(body.fulfillment_mode as (typeof VALID_DETOUR_FULFILLMENT_MODES)[number])) {
+    errors.push(`fulfillment_mode must be one of: ${VALID_DETOUR_FULFILLMENT_MODES.join(", ")}`);
+  }
+  if (body.lifecycle_state !== undefined && !VALID_DETOUR_LIFECYCLE_STATES.includes(body.lifecycle_state as (typeof VALID_DETOUR_LIFECYCLE_STATES)[number])) {
+    errors.push(`lifecycle_state must be one of: ${VALID_DETOUR_LIFECYCLE_STATES.join(", ")}`);
+  }
 
   return errors;
 }

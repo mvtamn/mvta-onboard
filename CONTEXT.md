@@ -98,6 +98,30 @@ The delivery behavior attached to a direction rule: manual review or automatic
 send. It affects what happens after an eligible crossing and does not define
 whether the crossing is in scope.
 
+## Direction-rule precedence
+
+The explicit priority that determines which matching direction rule is
+authoritative when multiple rules cover the same geofence, transition, and
+heading. The lowest priority wins; matching must be deterministic across
+detection, notification, and audit.
+
+Priorities are unique within a geofence and transition; equal-priority rules
+are invalid rather than resolved by insertion order.
+
+## Matched rule snapshot
+
+The immutable rule meaning captured when a direction rule matches a crossing,
+including its destination and notification mode. Later edits or deactivation
+of the reusable rule do not rewrite the crossing's history or delivery
+decision.
+
+## Valid direction rule
+
+A reusable direction rule that satisfies the transition, heading, destination,
+priority, and notification-mode constraints required for operational use. An
+invalid rule is rejected during authoring rather than stored for runtime code
+to ignore.
+
 ## Event resource authoring
 
 The maintenance of reusable geofences, locations, and direction rules. It is
@@ -246,3 +270,75 @@ The authenticated staff-facing view of authoritative Detours, including manual
 and Avail-sourced records. It is distinct from rider-facing publication through
 Avail/GTFS.
 _Avoid_: public detour page, rider detour feed
+
+## Fulfillment mode
+
+The operational path by which an authoritative Detour is carried out and
+communicated: Avail-backed, fixed-route manual, or mobility manual.
+_Avoid_: source, publication status
+
+## Fixed-route manual Detour
+
+A Detour affecting scheduled fixed-route service that is managed and
+communicated manually because it is not represented in Avail.
+_Avoid_: non-Avail detour
+
+## Mobility manual Detour
+
+A Detour affecting mobility/on-demand service that is managed and communicated
+through the mobility operation's manual workflow.
+_Avoid_: on-demand detour, Connect detour
+
+## Conflict override
+
+An explicit, reasoned authorization to proceed with a Detour despite an
+overlapping active Detour at a stop or segment. The warning and reason are
+retained in the operational audit.
+_Avoid_: bypass, silent override
+
+## Dissemination draft
+
+A generated internal or contractor notification that has not yet been
+explicitly reviewed and published by staff.
+_Avoid_: sent notification, automatic alert
+
+## Detour re-establishment
+
+Creation of a new Detour identity from an existing Detour's configuration. The
+original record remains unchanged and the new record enters the selected
+workflow afresh.
+_Avoid_: reopen, extend in place
+
+## Temporal Detour status
+
+The date-derived presentation status of an authoritative Detour, such as
+Upcoming, Active, Recently Finished, or Expired. It is independent of the
+workflow state and is never a substitute for operational approval.
+_Avoid_: lifecycle state
+
+## Workflow state
+
+The operational progress of an authoritative Detour, including review,
+Avail-build confirmation, rejection, duplication, and publication readiness.
+_Avoid_: temporal status
+
+## Likely duplicate
+
+An intake whose route or location and operating window overlap an existing
+record enough to require human review. A likely duplicate is not automatically
+merged or rejected.
+_Avoid_: duplicate match, auto-duplicate
+
+## Avail last-seen record
+
+The preserved OnBoard record of an Avail-backed Detour, including the latest
+known feed observation. Its absence from one feed response does not delete or
+automatically expire the record.
+_Avoid_: stale detour, deleted feed row
+
+## Attachment retention window
+
+The period that Detour images and PDFs remain available after temporal expiry.
+The agreed initial window is one year, after which the files and attachment
+metadata are purged while the Detour audit remains.
+_Avoid_: indefinite retention

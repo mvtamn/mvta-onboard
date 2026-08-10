@@ -520,6 +520,10 @@ export interface AvailMissedTripsRouteRollup {
 // Status is computed server-side (functions-restapi/src/lib/detourStatus.ts)
 // and never stored - one shared definition, not duplicated client-side.
 export type DetourStatus = "monitor" | "upcoming" | "active" | "recently_finished" | "expired";
+export type DetourFulfillmentMode = "avail" | "fixed_route_manual" | "mobility_manual";
+export type DetourLifecycleState =
+  | "approved" | "pending_avail_build" | "built_in_avail" | "build_failed"
+  | "active" | "expired" | "rejected" | "duplicate";
 
 export const DETOUR_STATUS_LABELS: Record<DetourStatus, string> = {
   monitor: "Monitor",
@@ -600,6 +604,12 @@ export interface Detour extends DetourReportFields {
   updated_by: string | null;
   updated_at: string;
   status: DetourStatus;
+  fulfillment_mode?: DetourFulfillmentMode;
+  lifecycle_state?: DetourLifecycleState;
+  workflow_owner?: string | null;
+  workflow_updated_by?: string | null;
+  workflow_updated_at?: string | null;
+  avail_build_confirmed_at?: string | null;
   segments: DetourSegment[];
 }
 
@@ -619,6 +629,36 @@ export interface CreateDetourInput extends DetourReportFields {
   email_sent?: boolean;
   expired_email_sent?: boolean;
   spare_emailed?: boolean;
+  segments?: DetourSegmentInput[];
+  fulfillment_mode?: DetourFulfillmentMode;
+  lifecycle_state?: DetourLifecycleState;
+}
+
+export type DetourIntakeStatus = "pending_review" | "accepted" | "rejected" | "duplicate";
+export interface DetourIntake {
+  id: string;
+  detection_source: string;
+  description: string;
+  location: string | null;
+  proposed_start_date: string | null;
+  proposed_end_date: string | null;
+  status: DetourIntakeStatus;
+  decision_notes: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  promoted_detour_id: string | null;
+  created_by: string;
+  created_at: string;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+export interface CreateDetourIntakeInput {
+  detection_source: string;
+  description: string;
+  location?: string | null;
+  proposed_start_date?: string | null;
+  proposed_end_date?: string | null;
   segments?: DetourSegmentInput[];
 }
 

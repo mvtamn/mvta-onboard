@@ -49,6 +49,12 @@ interface DetourRow {
   created_at: Date;
   updated_by: string | null;
   updated_at: Date;
+  fulfillment_mode?: "avail" | "fixed_route_manual" | "mobility_manual";
+  lifecycle_state?: string;
+  workflow_owner?: string | null;
+  workflow_updated_by?: string | null;
+  workflow_updated_at?: Date | null;
+  avail_build_confirmed_at?: Date | null;
 }
 
 interface SegmentRow {
@@ -84,15 +90,19 @@ app.http("detoursList", {
       // a missing column fails even inside a CASE. Pre-migration the field
       // comes back undefined and the console falls back to hiding it, same
       // graceful-degradation pattern as every other un-run migration here.
-      const schemaCheck = await pool.request().query<{ has_column: number; reporting_ready: number }>(`
+      const schemaCheck = await pool.request().query<{ has_column: number; reporting_ready: number; workflow_ready: number }>(`
         SELECT
           CASE WHEN COL_LENGTH('dbo.Detours', 'internal_number') IS NULL
                THEN 0 ELSE 1 END AS has_column,
           CASE WHEN COL_LENGTH('dbo.Detours', 'reason_code') IS NULL
-               THEN 0 ELSE 1 END AS reporting_ready
+               THEN 0 ELSE 1 END AS reporting_ready,
+          CASE WHEN COL_LENGTH('dbo.Detours', 'fulfillment_mode') IS NULL
+                    OR COL_LENGTH('dbo.Detours', 'lifecycle_state') IS NULL
+               THEN 0 ELSE 1 END AS workflow_ready
       `);
       const hasInternalNumber = schemaCheck.recordset[0]?.has_column === 1;
       const hasReportingFields = schemaCheck.recordset[0]?.reporting_ready === 1;
+      const hasWorkflowFields = schemaCheck.recordset[0]?.workflow_ready === 1;
 
       const REPORTING_COLUMNS = `
         reason_code, severity, reported_by, reported_at, approved_by, approved_at,
@@ -104,6 +114,7 @@ app.http("detoursList", {
                last_edited_manually, avail_last_seen_at, created_by, created_at, updated_by, updated_at
                ${hasInternalNumber ? ", internal_number" : ""}
                ${hasReportingFields ? `, ${REPORTING_COLUMNS}` : ""}
+               ${hasWorkflowFields ? ", fulfillment_mode, lifecycle_state, workflow_owner, workflow_updated_by, workflow_updated_at, avail_build_confirmed_at" : ""}
         FROM Detours
         WHERE is_deleted = 0
         ORDER BY start_date DESC, created_at DESC
@@ -136,6 +147,7 @@ app.http("detoursList", {
         start_date: toDateOnly(d.start_date),
         end_date: toDateOnly(d.end_date),
         status: computeDetourStatus(d),
+        ...(hasWorkflowFields ? { fulfillment_mode: d.fulfillment_mode, lifecycle_state: d.lifecycle_state, workflow_owner: d.workflow_owner, workflow_updated_by: d.workflow_updated_by, workflow_updated_at: d.workflow_updated_at, avail_build_confirmed_at: d.avail_build_confirmed_at } : {}),
         segments: segmentsByDetour.get(d.id) ?? [],
       }));
 

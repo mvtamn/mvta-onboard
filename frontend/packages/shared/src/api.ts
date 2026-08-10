@@ -64,6 +64,10 @@ import type {
   OtpHistoricalBackfillResponse,
   MapsTokenResponse,
   DetourImage,
+  DetourIntake,
+  CreateDetourIntakeInput,
+  DetourFulfillmentMode,
+  DetourLifecycleState,
   ContractorPerformanceStandard,
   ContractorRecord,
   AssessmentPeriod,
@@ -460,6 +464,43 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
 
     getDetourImages(detourId: string) {
       return request<{ images: DetourImage[] }>(`/api/detours/${detourId}/images`, {}, true);
+    },
+
+    getDetourIntake(status?: string) {
+      const suffix = status ? `?status=${encodeURIComponent(status)}` : "";
+      return request<{ intake: DetourIntake[] }>(`/api/detour-intake${suffix}`, {}, true);
+    },
+
+    createDetourIntake(input: CreateDetourIntakeInput) {
+      return request<{ id: string; created_at: string }>(
+        "/api/detour-intake",
+        { method: "POST", body: JSON.stringify(input) },
+        true,
+      );
+    },
+
+    reviewDetourIntake(id: string, status: "rejected" | "duplicate", decision_notes?: string) {
+      return request<{ id: string; status: string }>(
+        `/api/detour-intake/${id}`,
+        { method: "PATCH", body: JSON.stringify({ status, decision_notes }) },
+        true,
+      );
+    },
+
+    promoteDetourIntake(id: string, fulfillment_mode: DetourFulfillmentMode, dates?: { start_date?: string | null; end_date?: string | null }) {
+      return request<{ id: string; created_at: string; lifecycle_state: string }>(
+        `/api/detour-intake/${id}/promote`,
+        { method: "POST", body: JSON.stringify({ fulfillment_mode, ...dates }) },
+        true,
+      );
+    },
+
+    updateDetourWorkflow(id: string, lifecycle_state: DetourLifecycleState) {
+      return request<{ id: string; lifecycle_state: DetourLifecycleState }>(
+        `/api/detours/${id}/workflow`,
+        { method: "PATCH", body: JSON.stringify({ lifecycle_state }) },
+        true,
+      );
     },
 
     getRouteClassification() {

@@ -1,5 +1,5 @@
 // Daily purge of detour images for detours that have been over for a
-// while - the owner's decision was "purge on expiry" as a privacy default
+// while - the owner's decision was "purge one year after expiry" as a privacy default
 // (phone photos of a road closure can incidentally include license plates
 // or bystanders), with a grace window long enough for a dispute/QA look-
 // back. Only detours with a real end_date are ever purged - open-ended/
@@ -14,7 +14,7 @@ import { deleteBlob, BlobStorageNotConfiguredError } from "../lib/blobStorage";
 
 // Long enough for a dispute/QA look-back after a detour ends, short enough
 // to satisfy the privacy concern that motivated purging at all. Tunable.
-const IMAGE_RETENTION_GRACE_DAYS = 30;
+const IMAGE_RETENTION_GRACE_DAYS = 365;
 
 interface PurgeCandidate {
   id: string;

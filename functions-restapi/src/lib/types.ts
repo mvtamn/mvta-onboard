@@ -92,6 +92,16 @@ export interface DetourSegmentBody {
 }
 
 export type DetourSeverity = "minor" | "moderate" | "major";
+export type DetourFulfillmentMode = "avail" | "fixed_route_manual" | "mobility_manual";
+export type DetourLifecycleState =
+  | "approved"
+  | "pending_avail_build"
+  | "built_in_avail"
+  | "build_failed"
+  | "active"
+  | "expired"
+  | "rejected"
+  | "duplicate";
 
 // Reporting fields (Part B6, migration-025). All optional on both create and
 // update - a detour logged mid-incident gets these filled in later.
@@ -119,6 +129,8 @@ export interface CreateDetourBody extends DetourReportBody {
   expired_email_sent?: boolean;
   spare_emailed?: boolean;
   segments?: DetourSegmentBody[];
+  fulfillment_mode?: DetourFulfillmentMode;
+  lifecycle_state?: DetourLifecycleState;
 }
 
 export interface UpdateDetourBody extends DetourReportBody {
@@ -132,4 +144,6 @@ export interface UpdateDetourBody extends DetourReportBody {
   expired_email_sent?: boolean;
   spare_emailed?: boolean;
   segments?: DetourSegmentBody[];
+  fulfillment_mode?: DetourFulfillmentMode;
+  lifecycle_state?: DetourLifecycleState;
 }

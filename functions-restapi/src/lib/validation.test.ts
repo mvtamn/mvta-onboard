@@ -18,6 +18,8 @@ import {
   validateDetourReport,
   validateCreateDetourReasonCode,
   validateUpdateDetourReasonCode,
+  validateCreateDetourIntake,
+  validatePromoteDetourIntake,
   MAX_DETOUR_RESOLUTION_NOTES_LENGTH,
   MAX_SUMMARY_LENGTH,
   MAX_CREATED_BY_LENGTH,
@@ -535,4 +537,24 @@ test("detour image creation rejects missing blob_path/file_name and a negative s
   assert.ok(errors.some((e) => e.includes("blob_path")));
   assert.ok(errors.some((e) => e.includes("file_name")));
   assert.ok(errors.some((e) => e.includes("size_bytes")));
+});
+
+test("detour intake accepts a preliminary report with a proposed window", () => {
+  assert.deepStrictEqual(validateCreateDetourIntake({
+    detection_source: "Contractor notice",
+    description: "Closure at Cedar Avenue",
+    proposed_start_date: "2026-08-10",
+    proposed_end_date: "2026-08-12",
+  }), []);
+});
+
+test("detour intake rejects missing source and malformed dates", () => {
+  const errors = validateCreateDetourIntake({ description: "Closure", proposed_start_date: "tomorrow" });
+  assert.ok(errors.some((e) => e.includes("detection_source")));
+  assert.ok(errors.some((e) => e.includes("proposed_start_date")));
+});
+
+test("detour intake promotion requires a supported fulfillment mode", () => {
+  assert.deepStrictEqual(validatePromoteDetourIntake({ fulfillment_mode: "mobility_manual" }), []);
+  assert.ok(validatePromoteDetourIntake({ fulfillment_mode: "unknown" }).some((e) => e.includes("fulfillment_mode")));
 });
