@@ -33,6 +33,8 @@ interface EventVehiclePositionRow {
   run: number | null;
   operator_name: string | null;
   operator_source: string | null;
+  service_plan_names: string;
+  service_plan_ids: string;
   speed_mph: number | null;
   report_timestamp: Date;
   updated_at: Date;
@@ -69,6 +71,8 @@ app.http("eventVehiclePositionsList", {
                NULLIF(avl.block, 0) AS block, NULLIF(avl.run, 0) AS run,
                assignment.operator_name,
                CASE WHEN assignment.operator_name IS NOT NULL THEN 'Avail Pullout Reports' END AS operator_source,
+               COALESCE(plans.service_plan_names, '') AS service_plan_names,
+               COALESCE(plans.service_plan_ids, '') AS service_plan_ids,
                CAST(COALESCE(
                  position.speed_mps * 2.236936,
                  CASE WHEN previous.report_timestamp IS NOT NULL
@@ -98,6 +102,16 @@ app.http("eventVehiclePositionsList", {
           ORDER BY d.service_date DESC, d.updated_at DESC
         ) assignment
         OUTER APPLY (
+          SELECT STRING_AGG(CONVERT(NVARCHAR(MAX), sp.name), ' | ') AS service_plan_names,
+                 STRING_AGG(CONVERT(NVARCHAR(MAX), CONVERT(NVARCHAR(36), sp.id)), ',') AS service_plan_ids
+          FROM EventServicePlanRoutes spr
+          INNER JOIN EventServicePlans sp ON sp.id = spr.service_plan_id
+          WHERE spr.route_id = p.route
+            AND sp.status IN ('draft', 'review', 'approved', 'active')
+            AND (sp.start_date IS NULL OR sp.start_date <= CONVERT(CHAR(8), SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time', 112))
+            AND (sp.end_date IS NULL OR sp.end_date >= CONVERT(CHAR(8), SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time', 112))
+        ) plans
+        OUTER APPLY (
           SELECT TOP (1) m.speed_mps
           FROM MonitoredTripDelays m
           WHERE m.vehicle_id = CONVERT(NVARCHAR(50), p.vehicle_id)
@@ -117,7 +131,11 @@ app.http("eventVehiclePositionsList", {
           AND p.longitude BETWEEN -95.5 AND -92.0
         ORDER BY p.route, p.vehicle_id
       `);
-      const vehicles = result.recordset;
+      const vehicles = result.recordset.map((row) => ({
+        ...row,
+        service_plan_names: row.service_plan_names ? row.service_plan_names.split(" | ") : [],
+        service_plan_ids: row.service_plan_ids ? row.service_plan_ids.split(",") : [],
+      }));
       const lastReportAt = vehicles.reduce<Date | null>(
         (latest, row) => (!latest || row.report_timestamp > latest ? row.report_timestamp : latest),
         null,

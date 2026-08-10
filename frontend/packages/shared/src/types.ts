@@ -679,6 +679,7 @@ export interface RouteClassificationInput {
   effective_start_date?: string | null;
   effective_end_date?: string | null;
   is_active?: boolean;
+  expected_updated_at?: string;
 }
 
 export const ROUTE_CATEGORY_LABELS: Record<RouteCategory, string> = {
@@ -719,11 +720,29 @@ export interface EventVehiclePosition {
   block: number | null;
   run: number | null;
   operator_name: string | null;
+  service_plan_names: string[];
+  service_plan_ids: string[];
   speed_mph: number | null;
   report_timestamp: string;
   updated_at: string;
   report_age_seconds: number;
   is_stale: boolean;
+}
+
+export type EventHealthStatus = "healthy" | "degraded" | "failed" | "unknown";
+export interface EventHealthComponent {
+  component: string;
+  status: EventHealthStatus;
+  last_attempt_at: string | null;
+  last_success_at: string | null;
+  last_error: string | null;
+  detail: string | null;
+  updated_at: string;
+}
+export interface EventMonitoringHealth {
+  components: EventHealthComponent[];
+  maintenance: { last_started_at: string | null; last_success_at: string | null; last_error: string | null; last_positions_deleted: number; last_diagnostics_deleted: number } | null;
+  counts: { history_count: number; diagnostic_count: number; pending_notifications: number };
 }
 
 export type EventLocationCategory = "transit_station" | "venue" | "park_and_ride" | "other";

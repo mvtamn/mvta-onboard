@@ -12,6 +12,38 @@ import { getPool, sql } from "../lib/db";
 import { fetchAvlReports, mapAvlReport } from "../lib/availAvl";
 import { detectEventGeofenceCrossings } from "../lib/eventGeofenceDetection";
 import { detectionWindowSeconds, shouldAcceptObservation } from "../lib/eventProcessing";
+import { recordEventHealth, recordTelemetryDiagnostic } from "../lib/eventHealth";
+
+type PollPool = Awaited<ReturnType<typeof getPool>>;
+
+async function safeHealth(
+  pool: PollPool,
+  component: Parameters<typeof recordEventHealth>[1],
+  status: Parameters<typeof recordEventHealth>[2],
+  detail?: string,
+  error?: unknown,
+): Promise<void> {
+  try {
+    await recordEventHealth(pool, component, status, detail, error);
+  } catch (healthError) {
+    // Telemetry must never take down the ingestion path it describes.
+    console.warn(`Unable to record ${component} health`, healthError);
+  }
+}
+
+async function safeDiagnostic(
+  pool: PollPool,
+  component: Parameters<typeof recordTelemetryDiagnostic>[1],
+  reason: string,
+  detail: string,
+  vehicleId?: number,
+): Promise<void> {
+  try {
+    await recordTelemetryDiagnostic(pool, component, reason, detail, vehicleId);
+  } catch (diagnosticError) {
+    console.warn(`Unable to record ${component} diagnostic`, diagnosticError);
+  }
+}
 
 async function claimPollLease(pool: Awaited<ReturnType<typeof getPool>>, moduleName: string, settingKey: string, fallbackSeconds: number): Promise<boolean> {
   const request = pool.request();
@@ -111,8 +143,10 @@ app.timer("availAvlPoll", {
     if (sharedDue) {
       try {
         reports = await fetchAvlReports(baseUrl, apiKey, twoMinutesAgo, now);
+        await safeHealth(pool, "shared_avl_ingestion", "healthy", `Fetched ${reports.length} reports.`);
       } catch (err) {
         context.error("Failed to fetch Avail AVL Reports:", err);
+        await safeHealth(pool, "shared_avl_ingestion", "failed", "Avail AVL fetch failed.", err);
         return;
       }
     }
@@ -129,9 +163,16 @@ app.timer("availAvlPoll", {
         mapped = mapAvlReport(report);
       } catch (err) {
         context.error(`Failed to map Avail AVL report for vehicle ${report.Vehicle}:`, err);
+        await safeDiagnostic(pool, "shared_avl_ingestion", "invalid_report", "Avail AVL report could not be mapped.", Number(report.Vehicle));
         continue;
       }
-      if (!mapped) continue;
+      if (!mapped) {
+        await safeDiagnostic(pool, "shared_avl_ingestion", "invalid_report", "Avail AVL report was missing usable position data.", Number(report.Vehicle));
+        continue;
+      }
+      if (mapped.latitude < 43 || mapped.latitude > 46 || mapped.longitude < -95.5 || mapped.longitude > -92) {
+        await safeDiagnostic(pool, "shared_avl_ingestion", "out_of_bounds", "Avail AVL report coordinates were outside the MVTA operating bounds.", mapped.vehicle_id);
+      }
 
       try {
         const current = (await pool.request().input("vehicle_id", sql.Int, mapped.vehicle_id).query<{ report_timestamp: Date }>(
@@ -188,8 +229,20 @@ app.timer("availAvlPoll", {
            OR rc.route_id IS NULL;
     `);
     if (eventDue && tableCheck.recordset[0]?.table_exists === 1) {
-      try { await projectEventPositions(pool); } catch (err) { context.error("Event position projection skipped:", err); }
-      try { await detectEventGeofenceCrossings(context); } catch (err) { context.error("Event geofence detection skipped:", err); }
+      try {
+        await projectEventPositions(pool);
+        await safeHealth(pool, "event_projection", "healthy", "Event projection completed.");
+      } catch (err) {
+        context.error("Event position projection skipped:", err);
+        await safeHealth(pool, "event_projection", "failed", "Event projection failed.", err);
+      }
+      try {
+        await detectEventGeofenceCrossings(context);
+        await safeHealth(pool, "crossing_detection", "healthy", "Crossing detection completed.");
+      } catch (err) {
+        context.error("Event geofence detection skipped:", err);
+        await safeHealth(pool, "crossing_detection", "failed", "Crossing detection failed.", err);
+      }
     }
 
     context.log(

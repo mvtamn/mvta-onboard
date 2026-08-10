@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as atlas from "azure-maps-control";
 import "azure-maps-control/dist/atlas.min.css";
-import { ApiError, type EventVehiclePosition, type EventGeofenceCrossing, type EventGeofenceNotification, type EventAuditEntry } from "@mvta/shared";
+import { ApiError, type EventVehiclePosition, type EventGeofenceCrossing, type EventGeofenceNotification, type EventAuditEntry, type EventMonitoringHealth } from "@mvta/shared";
 import { api } from "../../config.js";
 import "./eventMonitoring.css";
 
@@ -51,6 +51,10 @@ function routeLabel(vehicle: EventVehiclePosition): string {
   return vehicle.route_label ? `${vehicle.route} · ${vehicle.route_label}` : String(vehicle.route);
 }
 
+function healthLabel(status: string | undefined): string {
+  return status ? status[0].toUpperCase() + status.slice(1) : "Unavailable";
+}
+
 export function EventMonitoring() {
   const [vehicles, setVehicles] = useState<EventVehiclePosition[] | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -66,6 +70,9 @@ export function EventMonitoring() {
   const [crossings, setCrossings] = useState<EventGeofenceCrossing[]>([]);
   const [notifications, setNotifications] = useState<EventGeofenceNotification[]>([]);
   const [audit, setAudit] = useState<EventAuditEntry[]>([]);
+  const [health, setHealth] = useState<EventMonitoringHealth | null>(null);
+  const [feedStatus, setFeedStatus] = useState<Record<string, { state: "ready" | "error"; loadedAt: Date | null }>>({});
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -85,6 +92,7 @@ export function EventMonitoring() {
     } finally {
       setRefreshing(false);
     }
+    void api.getEventMonitoringHealth().then(setHealth).catch(() => setHealth(null));
   }, []);
 
   useEffect(() => {
@@ -94,15 +102,27 @@ export function EventMonitoring() {
   }, [load]);
 
   useEffect(() => {
-    Promise.all([api.getEventGeofenceCrossings(), api.getEventGeofenceNotifications(), api.getEventAuditStream()])
-      .then(([c, n, a]) => { setCrossings(c.crossings); setNotifications(n.notifications); setAudit(a.entries); })
-      .catch(() => undefined);
+    Promise.allSettled([api.getEventGeofenceCrossings(), api.getEventGeofenceNotifications(), api.getEventAuditStream()])
+      .then(([c, n, a]) => {
+        const now = new Date();
+        if (c.status === "fulfilled") { setCrossings(c.value.crossings); setFeedStatus((s) => ({ ...s, crossings: { state: "ready", loadedAt: now } })); }
+        else setFeedStatus((s) => ({ ...s, crossings: { state: "error", loadedAt: s.crossings?.loadedAt ?? null } }));
+        if (n.status === "fulfilled") { setNotifications(n.value.notifications); setFeedStatus((s) => ({ ...s, notifications: { state: "ready", loadedAt: now } })); }
+        else setFeedStatus((s) => ({ ...s, notifications: { state: "error", loadedAt: s.notifications?.loadedAt ?? null } }));
+        if (a.status === "fulfilled") { setAudit(a.value.entries); setFeedStatus((s) => ({ ...s, audit: { state: "ready", loadedAt: now } })); }
+        else setFeedStatus((s) => ({ ...s, audit: { state: "error", loadedAt: s.audit?.loadedAt ?? null } }));
+      });
   }, [lastUpdated]);
 
   async function reviewNotification(id: string, action: "send" | "dismiss") {
-    if (action === "send") await api.sendEventGeofenceNotification(id);
-    else await api.dismissEventGeofenceNotification(id);
-    setNotifications((rows) => rows.filter((row) => row.id !== id));
+    setActionError(null);
+    try {
+      if (action === "send") await api.sendEventGeofenceNotification(id);
+      else await api.dismissEventGeofenceNotification(id);
+      setNotifications((rows) => rows.filter((row) => row.id !== id));
+    } catch (error) {
+      setActionError(error instanceof ApiError ? error.message : "Notification action failed; the item was retained.");
+    }
   }
 
   const classifiedVehicles = vehicles ?? [];
@@ -142,6 +162,15 @@ export function EventMonitoring() {
         </div>
       </div>
 
+      <div className="evmon-health" aria-label="Event monitoring data health">
+        <strong>Data health</strong>
+        {(["shared_avl_ingestion", "event_projection", "crossing_detection"] as const).map((name) => {
+          const component = health?.components.find((item) => item.component === name);
+          return <span key={name}>{name.replaceAll("_", " ")}: <b>{healthLabel(component?.status)}</b></span>;
+        })}
+        <span>retention: <b>{health?.maintenance?.last_success_at ? `OK · ${minutesAgo(health.maintenance.last_success_at)}` : "Unavailable"}</b></span>
+      </div>
+
       <div className={`evmon-workspace${minimized ? " is-minimized" : ""}`}>
         <div className="evmon-toolbar">
           <div>
@@ -178,12 +207,13 @@ export function EventMonitoring() {
       <div className="evmon-table-wrap">
         {message ? <div className="evmon-empty">{message}</div> : vehicles === null ? <div className="evmon-empty">Loading live positions…</div> : (
           <table className="data evmon-table">
-            <thead><tr><th>Vehicle</th><th>Operator</th><th>Route</th><th>Block / Run</th><th>Heading</th><th>Speed</th><th>Last report</th></tr></thead>
+            <thead><tr><th>Vehicle</th><th>Operator</th><th>Route</th><th>Service plan</th><th>Block / Run</th><th>Heading</th><th>Speed</th><th>Last report</th></tr></thead>
             <tbody>{activeVehicles.map((vehicle) => (
               <tr key={vehicle.vehicle_id}>
                 <td><span className="evmon-bus-chip">▣</span><strong>{vehicle.vehicle_id}</strong></td>
                 <td>{displayOperator(vehicle.operator_name)}</td>
                 <td>{routeLabel(vehicle)}</td>
+                <td>{vehicle.service_plan_names?.join(", ") || "—"}</td>
                 <td>{vehicle.block ?? "—"} / {vehicle.run ?? "—"}</td>
                 <td><span className="evmon-heading">{cardinalHeading(vehicle.heading, vehicle.direction)}</span></td>
                 <td>{vehicle.speed_mph === null ? "—" : `${vehicle.speed_mph.toFixed(1)} mph`}</td>
@@ -193,12 +223,13 @@ export function EventMonitoring() {
           </table>
         )}
       </div>
-      <div className="evmon-list-header"><div><h3>Geofence crossings</h3><span>Recent movement across active event boundaries</span></div></div>
+      <div className="evmon-list-header"><div><h3>Geofence crossings</h3><span>Recent movement across active event boundaries · {feedStatus.crossings?.state === "error" ? "feed unavailable; showing last successful data" : feedStatus.crossings?.loadedAt ? `loaded ${feedStatus.crossings.loadedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "loading"}</span></div></div>
       <div className="evmon-table-wrap">
+        {actionError && <div className="evmon-empty">{actionError}</div>}
         {notifications.map((notification) => <div key={notification.id} className="panel-body"><strong>Review notification</strong><p>{notification.message_body}</p><button className="btn-sm" onClick={() => void reviewNotification(notification.id, "send")}>Approve and send</button>{" "}<button className="btn-sm" onClick={() => void reviewNotification(notification.id, "dismiss")}>Dismiss</button></div>)}
         <table className="data evmon-table"><thead><tr><th>Time</th><th>Vehicle</th><th>Geofence</th><th>Transition</th><th>Destination</th></tr></thead><tbody>{crossings.map((crossing) => <tr key={crossing.id}><td>{new Date(crossing.crossed_at).toLocaleString()}</td><td>{crossing.vehicle_id}</td><td>{crossing.geofence_name}</td><td>{crossing.transition}</td><td>{crossing.destination_label ?? "—"}</td></tr>)}</tbody></table>
       </div>
-      <div className="evmon-list-header"><div><h3>Event audit history</h3><span>Route changes, crossings, and notification actions</span></div></div>
+      <div className="evmon-list-header"><div><h3>Event audit history</h3><span>Route changes, crossings, and notification actions · {feedStatus.audit?.state === "error" ? "feed unavailable; showing last successful data" : feedStatus.audit?.loadedAt ? `loaded ${feedStatus.audit.loadedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "loading"}</span></div></div>
       <div className="evmon-table-wrap"><table className="data evmon-table"><thead><tr><th>Time</th><th>Type</th><th>Entity</th><th>Detail</th><th>Actor</th></tr></thead><tbody>{audit.map((entry, index) => <tr key={`${entry.event_at}-${index}`}><td>{new Date(entry.event_at).toLocaleString()}</td><td>{entry.event_type}</td><td>{entry.entity_id}</td><td>{entry.detail}</td><td>{entry.actor ?? "system"}</td></tr>)}</tbody></table></div>
     </section>
   );

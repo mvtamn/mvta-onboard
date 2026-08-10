@@ -50,5 +50,8 @@
 .evmon-bus-chip { display: inline-grid; place-items: center; width: 22px; height: 22px; margin-right: 7px; border-radius: 6px; color: #fff; background: var(--brand-green); font-size: 10px; }
 .evmon-heading { display: inline-block; min-width: 27px; padding: 3px 6px; text-align: center; border: 1px solid var(--border); border-radius: 5px; background: var(--surface-alt-bg); font-size: 10.5px; font-weight: 800; }
 .evmon-empty { padding: 28px; text-align: center; color: var(--text-muted); }
+.evmon-health { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 9px 12px; margin-bottom: 18px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-bg); color: var(--text-muted); font-size: 11px; }
+.evmon-health strong { color: var(--text); }
+.evmon-health b { color: var(--success-text); }
 @media (max-width: 850px) { .evmon-summary { align-items: stretch; flex-direction: column; } .evmon-metrics div { flex: 1; min-width: 0; } .evmon-real-map { min-height: 360px; } }
 @media (max-width: 600px) { .evmon-toolbar { gap: 8px; padding: 9px 10px; } .evmon-toolbar-actions button:first-child { display: none; } .evmon-metrics strong { font-size: 17px; } .evmon-metrics div { padding: 8px 10px; } }

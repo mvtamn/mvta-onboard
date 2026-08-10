@@ -24,6 +24,7 @@ import {
   MAX_MISSED_TRIP_NOTES_LENGTH,
   MAX_DRAFT_RAW_TEXT_LENGTH,
   MAX_DETOUR_CLOSURE_LENGTH,
+  validateRouteClassification,
 } from "./validation";
 
 test("valid message passes with no errors", () => {
@@ -59,6 +60,21 @@ test("rejects invalid category", () => {
     created_by: "j.alvarez",
   });
   assert.ok(errors.some((e) => e.includes("category")));
+});
+
+test("route classification requires ordered local calendar dates", () => {
+  assert.deepStrictEqual(validateRouteClassification({
+    route_category: "SpecialEvent",
+    effective_start_date: "2026-08-10",
+    effective_end_date: "2026-08-09",
+  }), ["effective_start_date must be on or before effective_end_date"]);
+});
+
+test("route classification accepts an optimistic concurrency timestamp", () => {
+  assert.deepStrictEqual(validateRouteClassification({
+    route_category: "SpecialEvent",
+    expected_updated_at: "2026-08-10T15:00:00.000Z",
+  }), []);
 });
 
 test("rejects invalid severity", () => {

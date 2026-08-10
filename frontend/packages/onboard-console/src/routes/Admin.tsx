@@ -202,7 +202,12 @@ function RouteClassificationSection() {
     setError(null);
     setOkMsg(null);
     try {
-      await api.putRouteClassification(routeId, { route_category: category, route_label: label.trim() || null });
+      const existing = routes?.find((row) => row.route_id === routeId);
+      await api.putRouteClassification(routeId, {
+        route_category: category,
+        route_label: label.trim() || null,
+        expected_updated_at: existing?.updated_at,
+      });
       setOkMsg(`Route ${routeId} classified as ${ROUTE_CATEGORY_LABELS[category]}.`);
       startNew();
       load();

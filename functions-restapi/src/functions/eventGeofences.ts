@@ -29,7 +29,12 @@ app.http("eventGeofenceUpdate", { route: "event-geofences/{id}", methods: ["PATC
   const auth = requireRole(req, ADMIN_ROLES); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } }; const b = await req.json() as Record<string, unknown>; const r = (await getPool()).request();
   if (typeof b.polygon !== "string") return { status: 400, jsonBody: { error: "polygon is required" } };
   const polygonError = validatePolygon(b.polygon); if (polygonError) return { status: 400, jsonBody: { error: polygonError } };
-  r.input("id", sql.UniqueIdentifier, req.params.id); r.input("name", sql.NVarChar, b.name); r.input("polygon", sql.NVarChar, b.polygon); r.input("is_active", sql.Bit, b.is_active ?? true); r.input("by", sql.NVarChar, auth.principal.userDetails ?? "system"); const out = await r.query("UPDATE EventGeofences SET name=@name,polygon=@polygon,is_active=@is_active,updated_by=@by,updated_at=SYSUTCDATETIME() OUTPUT INSERTED.* WHERE id=@id"); return out.recordset.length ? { status: 200, jsonBody: out.recordset[0] } : { status: 404, jsonBody: { error: "Geofence not found" } };
+  if (b.expected_updated_at !== undefined && (typeof b.expected_updated_at !== "string" || Number.isNaN(Date.parse(b.expected_updated_at)))) return { status: 400, jsonBody: { error: "expected_updated_at must be a valid timestamp" } };
+  r.input("id", sql.UniqueIdentifier, req.params.id); r.input("name", sql.NVarChar, b.name); r.input("polygon", sql.NVarChar, b.polygon); r.input("is_active", sql.Bit, b.is_active ?? true); r.input("by", sql.NVarChar, auth.principal.userDetails ?? "system"); r.input("expected", sql.DateTime2, typeof b.expected_updated_at === "string" ? new Date(b.expected_updated_at) : null);
+  const out = await r.query("UPDATE EventGeofences SET name=@name,polygon=@polygon,is_active=@is_active,updated_by=@by,updated_at=SYSUTCDATETIME() OUTPUT INSERTED.* WHERE id=@id AND (@expected IS NULL OR updated_at=@expected)");
+  if (out.recordset.length) return { status: 200, jsonBody: out.recordset[0] };
+  const exists = await r.query("SELECT TOP 1 id FROM EventGeofences WHERE id=@id");
+  return exists.recordset.length ? { status: 409, jsonBody: { error: "Geofence changed since it was loaded. Reload before saving." } } : { status: 404, jsonBody: { error: "Geofence not found" } };
 } });
 
 app.http("eventGeofenceRules", { route: "event-geofences/{id}/rules", methods: ["POST"], authLevel: "anonymous", handler: async (req) => {

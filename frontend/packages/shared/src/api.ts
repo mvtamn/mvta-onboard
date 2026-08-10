@@ -46,6 +46,7 @@ import type {
   RouteClassificationListResponse,
   RouteClassificationInput,
   EventVehiclePosition,
+  EventMonitoringHealth,
   AppSettingRow,
   EventLocation, EventGeofence, EventGeofenceRule, EventGeofenceCrossing, EventGeofenceNotification, EventServicePlan, EventServicePlanRevision, EventAuditEntry,
   OtpStopExclusion,
@@ -486,6 +487,10 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
         vehicles: EventVehiclePosition[];
         diagnostics: { table_ready: boolean; vehicle_count: number; last_report_at: string | null; source?: string; stale_vehicle_count?: number };
       }>("/api/event-vehicle-positions", {}, true);
+    },
+
+    getEventMonitoringHealth() {
+      return request<EventMonitoringHealth>("/api/event-monitoring-health", {}, true);
     },
 
     getAppSettings(module: string) {

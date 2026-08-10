@@ -164,6 +164,7 @@ app.http("routeClassificationUpsert", {
       effective_start_date?: string | null;
       effective_end_date?: string | null;
       is_active?: boolean;
+      expected_updated_at?: string;
     };
 
     try {
@@ -176,8 +177,19 @@ app.http("routeClassificationUpsert", {
       sqlRequest.input("effective_end_date", sql.Char(8), toYyyymmdd(body.effective_end_date));
       sqlRequest.input("is_active", sql.Bit, body.is_active ?? true);
       sqlRequest.input("updated_by", sql.NVarChar, authResult.principal.userDetails || "system");
+      sqlRequest.input("expected_updated_at", sql.DateTime2, body.expected_updated_at ? new Date(body.expected_updated_at) : null);
+
+      const current = await pool.request().input("route_id", sql.Int, routeId)
+        .query<{ updated_at: Date }>("SELECT updated_at FROM RouteClassification WHERE route_id=@route_id");
+      if (body.expected_updated_at && (!current.recordset[0] || current.recordset[0].updated_at.getTime() !== new Date(body.expected_updated_at).getTime())) {
+        return { status: 409, jsonBody: { error: "Classification changed since it was loaded. Reload before saving." } };
+      }
 
       const result = await sqlRequest.query<RouteClassificationRow>(`
+        IF OBJECT_ID('dbo.RouteClassificationHistory', 'U') IS NOT NULL
+          INSERT INTO RouteClassificationHistory(route_id,route_category,route_label,effective_start_date,effective_end_date,is_active,updated_by,changed_at)
+          SELECT route_id,route_category,route_label,effective_start_date,effective_end_date,is_active,updated_by,SYSUTCDATETIME()
+          FROM RouteClassification WHERE route_id=@route_id;
         MERGE RouteClassification WITH (HOLDLOCK) AS target
         USING (SELECT @route_id AS route_id) AS src
         ON target.route_id = src.route_id

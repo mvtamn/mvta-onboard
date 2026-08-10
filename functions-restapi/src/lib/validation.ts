@@ -594,6 +594,15 @@ export function validateRouteClassification(body: UnknownBody): string[] {
       errors.push(`${field} must be a YYYY-MM-DD date string if provided`);
     }
   }
+  if (body.effective_start_date && body.effective_end_date
+      && typeof body.effective_start_date === "string" && typeof body.effective_end_date === "string"
+      && body.effective_start_date > body.effective_end_date) {
+    errors.push("effective_start_date must be on or before effective_end_date");
+  }
+  if (body.expected_updated_at !== undefined
+      && (typeof body.expected_updated_at !== "string" || Number.isNaN(Date.parse(body.expected_updated_at)))) {
+    errors.push("expected_updated_at must be a valid timestamp if provided");
+  }
   if (body.is_active !== undefined && typeof body.is_active !== "boolean") {
     errors.push("is_active must be a boolean if provided");
   }
