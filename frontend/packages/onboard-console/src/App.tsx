@@ -30,6 +30,7 @@ import { AuditLog } from "./routes/AuditLog.js";
 import { Admin } from "./routes/Admin.js";
 import { OccTools } from "./routes/OccTools.js";
 import { EventMonitoring } from "./routes/modules/EventMonitoring.js";
+import { EventPlanning } from "./routes/EventPlanning.js";
 import { Compliance } from "./routes/Compliance.js";
 import { PerformanceAssessment } from "./routes/PerformanceAssessment.js";
 import { Detours } from "./routes/Detours.js";
@@ -66,6 +67,7 @@ const PAGE_META: { match: (path: string) => boolean; title: string; sub: string 
     title: "Event Monitoring",
     sub: "Monitor active vehicles and event service in real time",
   },
+  { match: (p) => p === "/event-planning", title: "Event Planning", sub: "Prepare and approve event service plans" },
   {
     match: (p) => p.startsWith("/occ"),
     title: "OCC Tools",
@@ -171,6 +173,7 @@ export function App() {
               {canSeeDetours && <NavLink to="/detours"><IconDetour />Detours &amp; Closures</NavLink>}
               {canSeeDetours && <NavLink to="/detour-reports"><IconClock />Detour Reports</NavLink>}
               {isAdmin && <NavLink to="/event-monitoring"><IconBus />Event Monitoring</NavLink>}
+              {isAdmin && <NavLink to="/event-planning"><IconBus />Event Planning</NavLink>}
               {isAdmin && <NavLink to="/occ"><IconWrench />OCC Tools</NavLink>}
               {isCompliance && <NavLink to="/compliance"><IconShield />Compliance</NavLink>}
               {isCompliance && <NavLink to="/performance-assessment"><IconAssessment />Performance Assessment</NavLink>}
@@ -259,6 +262,10 @@ export function App() {
                     <EventMonitoring />
                   </RequireRole>
                 }
+              />
+              <Route
+                path="/event-planning"
+                element={<RequireRole allowed={[...ADMIN]}><EventPlanning /></RequireRole>}
               />
               <Route
                 path="/occ/*"

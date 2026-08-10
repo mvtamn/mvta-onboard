@@ -520,6 +520,7 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
     getEventServicePlans() { return request<{ plans: EventServicePlan[] }>("/api/event-service-plans", {}, true); },
     createEventServicePlan(name: string) { return request<EventServicePlan>("/api/event-service-plans", { method: "POST", body: JSON.stringify({ name }) }, true); },
     advanceEventServicePlan(id: string) { return request<EventServicePlan>(`/api/event-service-plans/${id}/advance`, { method: "POST" }, true); },
+    transitionEventServicePlan(id: string, action: "submit-review" | "approve" | "advance" | "complete" | "suspend") { return request<EventServicePlan>(`/api/event-service-plans/${id}/${action}`, { method: "POST" }, true); },
     linkEventServicePlan(id: string, kind: "routes" | "geofences" | "locations", value: string | number) { return request<{ ok: boolean }>(`/api/event-service-plans/${id}/${kind}`, { method: "POST", body: JSON.stringify({ [`${kind === "routes" ? "route_id" : kind === "geofences" ? "geofence_id" : "location_id"}`]: value }) }, true); },
     getEventAuditStream(from?: string, to?: string) { const qs = new URLSearchParams(); if (from) qs.set("from", from); if (to) qs.set("to", to); return request<{ entries: EventAuditEntry[] }>(`/api/event-module-audit-stream?${qs}`, {}, true); },
 
