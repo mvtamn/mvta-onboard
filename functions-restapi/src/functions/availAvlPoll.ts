@@ -5,19 +5,76 @@
 // SuggestedAlerts. Upserts one row per vehicle (its latest known position)
 // into AvailAvlVehiclePositions, keyed by Avail's own vehicle_id.
 //
-// ALSO classifies each report against RouteClassification (migration-016)
-// and, for SpecialEvent-classified routes only, writes an additional row
-// into EventVehicleCurrentPosition/EventVehiclePositionHistory - see
-// detour-and-event-module-implementation-plan.md (Part A2) for why this
-// reuses the shared fetch rather than a second, separately-shaped poll.
-// The timer wakes every 15 seconds and an Admin-managed setting controls
-// the effective 15-300 second interval. Gracefully skipped (not an error) if
-// migration-016 hasn't been applied yet - the all-vehicles table above is
-// unaffected either way.
+// The same shared fetch can feed event projection when its independent lease
+// is due. The event path never creates a second Avail polling stream.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchAvlReports, mapAvlReport } from "../lib/availAvl";
 import { detectEventGeofenceCrossings } from "../lib/eventGeofenceDetection";
+import { detectionWindowSeconds, shouldAcceptObservation } from "../lib/eventProcessing";
+
+async function claimPollLease(pool: Awaited<ReturnType<typeof getPool>>, moduleName: string, settingKey: string, fallbackSeconds: number): Promise<boolean> {
+  const request = pool.request();
+  request.input("module", sql.NVarChar, moduleName);
+  request.input("settingKey", sql.NVarChar, settingKey);
+  request.input("fallback", sql.Int, fallbackSeconds);
+  const lease = await request.query<{ claimed: number }>(`
+    DECLARE @interval INT = COALESCE((
+      SELECT TRY_CONVERT(INT, setting_value) FROM AppSettings
+      WHERE module = @module AND setting_key = @settingKey
+    ), @fallback);
+    SET @interval = CASE WHEN @interval < 15 THEN 15 WHEN @interval > 300 THEN 300 ELSE @interval END;
+    UPDATE AppPollState WITH (UPDLOCK, HOLDLOCK)
+    SET last_run_at = SYSUTCDATETIME(), updated_at = SYSUTCDATETIME()
+    OUTPUT 1 AS claimed
+    WHERE module = @module
+      AND (last_run_at IS NULL OR last_run_at <= DATEADD(SECOND, -@interval, SYSUTCDATETIME()));
+  `);
+  return lease.recordset.length > 0;
+}
+
+async function projectEventPositions(pool: Awaited<ReturnType<typeof getPool>>): Promise<void> {
+  const interval = (await pool.request().query<{ seconds: number }>(`
+    SELECT COALESCE(TRY_CONVERT(INT, setting_value), 30) seconds
+    FROM AppSettings WHERE module = 'event' AND setting_key = 'poll_interval_seconds'
+  `)).recordset[0]?.seconds ?? 30;
+  const windowSeconds = detectionWindowSeconds(interval);
+  const query = pool.request();
+  query.input("windowSeconds", sql.Int, windowSeconds);
+  const rows = (await query.query<{
+    vehicle_id: number; route: number | null; latitude: number; longitude: number;
+    heading: number | null; report_timestamp: Date;
+  }>(`
+    SELECT avl.vehicle_id, avl.route, avl.latitude, avl.longitude, avl.heading, avl.report_timestamp
+    FROM AvailAvlVehiclePositions avl
+    INNER JOIN RouteClassification rc ON rc.route_id = avl.route
+      AND rc.route_category = 'SpecialEvent' AND rc.is_active = 1
+      AND (rc.effective_start_date IS NULL OR rc.effective_start_date <= CONVERT(CHAR(8), SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time', 112))
+      AND (rc.effective_end_date IS NULL OR rc.effective_end_date >= CONVERT(CHAR(8), SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time', 112))
+    WHERE avl.report_timestamp >= DATEADD(SECOND, -@windowSeconds, SYSUTCDATETIME())
+  `)).recordset;
+  for (const row of rows) {
+    const current = (await pool.request().input("vehicle", sql.Int, row.vehicle_id).query<{ report_timestamp: Date }>(
+      "SELECT report_timestamp FROM EventVehicleCurrentPosition WHERE vehicle_id=@vehicle",
+    )).recordset[0];
+    if (!shouldAcceptObservation(current, row)) continue;
+    const request = pool.request();
+    request.input("vehicle_id", sql.Int, row.vehicle_id); request.input("route", sql.Int, row.route);
+    request.input("latitude", sql.Float, row.latitude); request.input("longitude", sql.Float, row.longitude);
+    request.input("heading", sql.Float, row.heading); request.input("report_timestamp", sql.DateTime2, row.report_timestamp);
+    await request.query(`
+      MERGE EventVehicleCurrentPosition WITH (HOLDLOCK) AS target
+      USING (SELECT @vehicle_id AS vehicle_id) AS src ON target.vehicle_id = src.vehicle_id
+      WHEN MATCHED THEN UPDATE SET route=@route, latitude=@latitude, longitude=@longitude,
+        heading=@heading, report_timestamp=@report_timestamp, updated_at=SYSUTCDATETIME()
+      WHEN NOT MATCHED THEN INSERT(vehicle_id,route,latitude,longitude,heading,report_timestamp)
+        VALUES(@vehicle_id,@route,@latitude,@longitude,@heading,@report_timestamp);
+      IF NOT EXISTS (SELECT 1 FROM EventVehiclePositionHistory WHERE vehicle_id=@vehicle_id AND report_timestamp=@report_timestamp)
+        INSERT INTO EventVehiclePositionHistory(vehicle_id,route,latitude,longitude,heading,report_timestamp)
+        VALUES(@vehicle_id,@route,@latitude,@longitude,@heading,@report_timestamp);
+    `);
+  }
+}
 
 app.timer("availAvlPoll", {
   // Fixed floor cadence; the Admin-managed effective interval is checked
@@ -36,22 +93,13 @@ app.timer("availAvlPoll", {
       SELECT CASE WHEN OBJECT_ID('dbo.AppSettings', 'U') IS NOT NULL
                     AND OBJECT_ID('dbo.AppPollState', 'U') IS NOT NULL THEN 1 ELSE 0 END AS ready
     `);
+    let sharedDue = true;
+    let eventDue = true;
     if (settingsReady.recordset[0]?.ready === 1) {
-      const lease = await pool.request().query<{ last_run_at: Date }>(`
-        DECLARE @interval INT = COALESCE((
-          SELECT TRY_CONVERT(INT, setting_value) FROM AppSettings
-          WHERE module = 'event' AND setting_key = 'poll_interval_seconds'
-        ), 30);
-        SET @interval = CASE WHEN @interval < 15 THEN 15 WHEN @interval > 300 THEN 300 ELSE @interval END;
-
-        UPDATE AppPollState WITH (UPDLOCK, HOLDLOCK)
-        SET last_run_at = SYSUTCDATETIME(), updated_at = SYSUTCDATETIME()
-        OUTPUT INSERTED.last_run_at
-        WHERE module = 'event'
-          AND (last_run_at IS NULL OR last_run_at <= DATEADD(SECOND, -@interval, SYSUTCDATETIME()));
-      `);
-      if (lease.recordset.length === 0) return;
+      sharedDue = await claimPollLease(pool, "avail", "poll_interval_seconds", 30);
+      eventDue = await claimPollLease(pool, "event", "poll_interval_seconds", 30);
     }
+    if (!sharedDue && !eventDue) return;
 
     // Keep a two-minute overlap so delayed reports are not lost while the
     // monitoring UI refreshes every 30 seconds.
@@ -59,30 +107,23 @@ app.timer("availAvlPoll", {
     const now = new Date();
     const twoMinutesAgo = new Date(now.getTime() - 2 * 60 * 1000);
 
-    let reports;
-    try {
-      reports = await fetchAvlReports(baseUrl, apiKey, twoMinutesAgo, now);
-    } catch (err) {
-      context.error("Failed to fetch Avail AVL Reports:", err);
-      return;
+    let reports: Awaited<ReturnType<typeof fetchAvlReports>> = [];
+    if (sharedDue) {
+      try {
+        reports = await fetchAvlReports(baseUrl, apiKey, twoMinutesAgo, now);
+      } catch (err) {
+        context.error("Failed to fetch Avail AVL Reports:", err);
+        return;
+      }
     }
 
     const tableCheck = await pool.request().query<{ table_exists: number }>(`
       SELECT CASE WHEN OBJECT_ID('dbo.RouteClassification', 'U') IS NULL THEN 0 ELSE 1 END AS table_exists
     `);
-    let specialEventRouteIds = new Set<number>();
-    if (tableCheck.recordset[0]?.table_exists === 1) {
-      const plans = await pool.request().query<{ ready: number }>(`SELECT CASE WHEN OBJECT_ID('dbo.EventServicePlanRoutes','U') IS NOT NULL AND OBJECT_ID('dbo.EventServicePlans','U') IS NOT NULL THEN 1 ELSE 0 END ready`);
-      const classResult = await pool.request().query<{ route_id: number }>(plans.recordset[0]?.ready === 1
-        ? `SELECT route_id FROM RouteClassification WHERE route_category = 'SpecialEvent' AND is_active = 1 AND EXISTS (SELECT 1 FROM EventServicePlanRoutes spr JOIN EventServicePlans sp ON sp.id=spr.service_plan_id WHERE sp.status='active' AND spr.route_id=RouteClassification.route_id)`
-        : `SELECT route_id FROM RouteClassification WHERE route_category = 'SpecialEvent' AND is_active = 1`);
-      specialEventRouteIds = new Set(classResult.recordset.map((r) => r.route_id));
-    }
 
     let upsertedCount = 0;
-    let eventUpsertedCount = 0;
 
-    for (const report of reports) {
+    for (const report of sharedDue ? reports : []) {
       let mapped;
       try {
         mapped = mapAvlReport(report);
@@ -93,6 +134,10 @@ app.timer("availAvlPoll", {
       if (!mapped) continue;
 
       try {
+        const current = (await pool.request().input("vehicle_id", sql.Int, mapped.vehicle_id).query<{ report_timestamp: Date }>(
+          "SELECT report_timestamp FROM AvailAvlVehiclePositions WHERE vehicle_id=@vehicle_id",
+        )).recordset[0];
+        if (!shouldAcceptObservation(current, mapped)) continue;
         const request = pool.request();
         request.input("vehicle_id", sql.Int, mapped.vehicle_id);
         request.input("route", sql.Int, mapped.route);
@@ -123,34 +168,6 @@ app.timer("availAvlPoll", {
         context.error(`Failed to upsert Avail AVL position for vehicle ${mapped.vehicle_id}:`, err);
       }
 
-      if (mapped.route !== null && specialEventRouteIds.has(mapped.route)) {
-        try {
-          const eventRequest = pool.request();
-          eventRequest.input("vehicle_id", sql.Int, mapped.vehicle_id);
-          eventRequest.input("route", sql.Int, mapped.route);
-          eventRequest.input("latitude", sql.Float, mapped.latitude);
-          eventRequest.input("longitude", sql.Float, mapped.longitude);
-          eventRequest.input("heading", sql.Float, mapped.heading);
-          eventRequest.input("report_timestamp", sql.DateTime2, mapped.report_timestamp);
-          await eventRequest.query(`
-            MERGE EventVehicleCurrentPosition WITH (HOLDLOCK) AS target
-            USING (SELECT @vehicle_id AS vehicle_id) AS src
-            ON target.vehicle_id = src.vehicle_id
-            WHEN MATCHED THEN
-              UPDATE SET route = @route, latitude = @latitude, longitude = @longitude,
-                heading = @heading, report_timestamp = @report_timestamp, updated_at = SYSUTCDATETIME()
-            WHEN NOT MATCHED THEN
-              INSERT (vehicle_id, route, latitude, longitude, heading, report_timestamp)
-              VALUES (@vehicle_id, @route, @latitude, @longitude, @heading, @report_timestamp);
-
-            INSERT INTO EventVehiclePositionHistory (vehicle_id, route, latitude, longitude, heading, report_timestamp)
-            VALUES (@vehicle_id, @route, @latitude, @longitude, @heading, @report_timestamp);
-          `);
-          eventUpsertedCount++;
-        } catch (err) {
-          context.error(`Failed to upsert event-bus position for vehicle ${mapped.vehicle_id}:`, err);
-        }
-      }
     }
 
     // Current-position tables are operational state, not history. Removing
@@ -167,16 +184,17 @@ app.timer("availAvlPoll", {
           ON rc.route_id = p.route
           AND rc.route_category = 'SpecialEvent'
           AND rc.is_active = 1
-        WHERE p.report_timestamp < DATEADD(MINUTE, -3, SYSUTCDATETIME())
+        WHERE p.report_timestamp < DATEADD(MINUTE, -15, SYSUTCDATETIME())
            OR rc.route_id IS NULL;
     `);
-    if (tableCheck.recordset[0]?.table_exists === 1) {
+    if (eventDue && tableCheck.recordset[0]?.table_exists === 1) {
+      try { await projectEventPositions(pool); } catch (err) { context.error("Event position projection skipped:", err); }
       try { await detectEventGeofenceCrossings(context); } catch (err) { context.error("Event geofence detection skipped:", err); }
     }
 
     context.log(
       `Avail AVL Reports poll: ${reports.length} reports seen, ${upsertedCount} vehicles upserted, ` +
-        `${eventUpsertedCount} classified as special-event.`,
+      `${eventDue ? "event projection due" : "event projection deferred"}.`,
     );
   },
 });

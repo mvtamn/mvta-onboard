@@ -1,6 +1,7 @@
 import { app, type HttpRequest } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { requireRole, ADMIN_ROLES, STAFF_READ_ROLES } from "../lib/auth";
+import { validatePolygon } from "../lib/geofence";
 
 app.http("eventGeofences", { route: "event-geofences", methods: ["GET", "POST"], authLevel: "anonymous", handler: async (req: HttpRequest) => {
   const auth = requireRole(req, req.method === "GET" ? [...STAFF_READ_ROLES, "OCC.Compliance"] : ADMIN_ROLES); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
@@ -11,8 +12,8 @@ app.http("eventGeofences", { route: "event-geofences", methods: ["GET", "POST"],
     return { status: 200, jsonBody: { geofences: rows.map((g) => ({ ...g, rules: rules.filter((r) => r.geofence_id === g.id) })) } };
   }
   const b = await req.json() as Record<string, unknown>; if (typeof b.name !== "string" || typeof b.polygon !== "string") return { status: 400, jsonBody: { error: "name and GeoJSON polygon are required" } };
-  try { JSON.parse(b.polygon); } catch { return { status: 400, jsonBody: { error: "polygon must be valid GeoJSON" } }
-  }
+  const polygonError = validatePolygon(b.polygon);
+  if (polygonError) return { status: 400, jsonBody: { error: polygonError } };
   const r = pool.request(); r.input("name", sql.NVarChar, b.name); r.input("polygon", sql.NVarChar, b.polygon); r.input("by", sql.NVarChar, auth.principal.userDetails ?? "system"); return { status: 201, jsonBody: (await r.query("INSERT INTO EventGeofences(name,polygon,updated_by) OUTPUT INSERTED.* VALUES(@name,@polygon,@by)")).recordset[0] };
 } });
 
@@ -26,6 +27,8 @@ app.http("eventGeofenceRuleUpdate", { route: "event-geofences/{id}/rules/{ruleId
 
 app.http("eventGeofenceUpdate", { route: "event-geofences/{id}", methods: ["PATCH"], authLevel: "anonymous", handler: async (req) => {
   const auth = requireRole(req, ADMIN_ROLES); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } }; const b = await req.json() as Record<string, unknown>; const r = (await getPool()).request();
+  if (typeof b.polygon !== "string") return { status: 400, jsonBody: { error: "polygon is required" } };
+  const polygonError = validatePolygon(b.polygon); if (polygonError) return { status: 400, jsonBody: { error: polygonError } };
   r.input("id", sql.UniqueIdentifier, req.params.id); r.input("name", sql.NVarChar, b.name); r.input("polygon", sql.NVarChar, b.polygon); r.input("is_active", sql.Bit, b.is_active ?? true); r.input("by", sql.NVarChar, auth.principal.userDetails ?? "system"); const out = await r.query("UPDATE EventGeofences SET name=@name,polygon=@polygon,is_active=@is_active,updated_by=@by,updated_at=SYSUTCDATETIME() OUTPUT INSERTED.* WHERE id=@id"); return out.recordset.length ? { status: 200, jsonBody: out.recordset[0] } : { status: 404, jsonBody: { error: "Geofence not found" } };
 } });
 

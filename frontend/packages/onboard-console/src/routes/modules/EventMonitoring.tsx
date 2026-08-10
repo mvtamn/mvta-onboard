@@ -133,7 +133,7 @@ export function EventMonitoring() {
         <div>
           <span className="evmon-eyebrow"><span className="evmon-live-dot" /> Live operations</span>
           <h2>Live vehicle positions</h2>
-          <p>Active vehicles are removed automatically when reports stop.</p>
+        <p>Vehicles remain visible as stale briefly when reports stop.</p>
         </div>
         <div className="evmon-metrics" aria-label="Live monitoring summary">
           <div><strong>{classifiedVehicles.length}</strong><span>Vehicles</span></div>
@@ -172,7 +172,7 @@ export function EventMonitoring() {
       </div>
 
       <div className="evmon-list-header">
-        <div><h3>Monitored vehicles</h3><span>Only actively reporting vehicles are shown</span></div>
+        <div><h3>Monitored vehicles</h3><span>Fresh and recently stale classified vehicles from shared AVL</span></div>
         <span className="evmon-count">{activeVehicles.length}{hasFilters ? ` of ${classifiedVehicles.length}` : ""} active</span>
       </div>
       <div className="evmon-table-wrap">
@@ -187,7 +187,7 @@ export function EventMonitoring() {
                 <td>{vehicle.block ?? "—"} / {vehicle.run ?? "—"}</td>
                 <td><span className="evmon-heading">{cardinalHeading(vehicle.heading, vehicle.direction)}</span></td>
                 <td>{vehicle.speed_mph === null ? "—" : `${vehicle.speed_mph.toFixed(1)} mph`}</td>
-                <td>{minutesAgo(vehicle.report_timestamp)}</td>
+                <td className={vehicle.is_stale ? "evmon-stale" : undefined}>{vehicle.is_stale ? "Stale · " : ""}{minutesAgo(vehicle.report_timestamp)}</td>
               </tr>
             ))}</tbody>
           </table>

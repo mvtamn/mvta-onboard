@@ -47,7 +47,7 @@ import type {
   RouteClassificationInput,
   EventVehiclePosition,
   AppSettingRow,
-  EventLocation, EventGeofence, EventGeofenceRule, EventGeofenceCrossing, EventGeofenceNotification, EventServicePlan, EventAuditEntry,
+  EventLocation, EventGeofence, EventGeofenceRule, EventGeofenceCrossing, EventGeofenceNotification, EventServicePlan, EventServicePlanRevision, EventAuditEntry,
   OtpStopExclusion,
   PutStopExclusionInput,
   OtpDateExclusion,
@@ -484,7 +484,7 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
     getEventVehiclePositions() {
       return request<{
         vehicles: EventVehiclePosition[];
-        diagnostics: { table_ready: boolean; vehicle_count: number; last_report_at: string | null };
+        diagnostics: { table_ready: boolean; vehicle_count: number; last_report_at: string | null; source?: string; stale_vehicle_count?: number };
       }>("/api/event-vehicle-positions", {}, true);
     },
 
@@ -521,7 +521,10 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
     createEventServicePlan(name: string) { return request<EventServicePlan>("/api/event-service-plans", { method: "POST", body: JSON.stringify({ name }) }, true); },
     advanceEventServicePlan(id: string) { return request<EventServicePlan>(`/api/event-service-plans/${id}/advance`, { method: "POST" }, true); },
     transitionEventServicePlan(id: string, action: "submit-review" | "approve" | "advance" | "complete" | "suspend") { return request<EventServicePlan>(`/api/event-service-plans/${id}/${action}`, { method: "POST" }, true); },
-    linkEventServicePlan(id: string, kind: "routes" | "geofences" | "locations", value: string | number) { return request<{ ok: boolean }>(`/api/event-service-plans/${id}/${kind}`, { method: "POST", body: JSON.stringify({ [`${kind === "routes" ? "route_id" : kind === "geofences" ? "geofence_id" : "location_id"}`]: value }) }, true); },
+    modifyEventServicePlan(id: string) { return request<EventServicePlanRevision>(`/api/event-service-plans/${id}/modify`, { method: "POST" }, true); },
+    linkEventServicePlan(id: string, kind: "routes" | "geofences" | "locations", value: string | number, revisionId?: string) { const query = revisionId ? `?revision_id=${encodeURIComponent(revisionId)}` : ""; return request<{ ok: boolean }>(`/api/event-service-plans/${id}/${kind}${query}`, { method: "POST", body: JSON.stringify({ [`${kind === "routes" ? "route_id" : kind === "geofences" ? "geofence_id" : "location_id"}`]: value }) }, true); },
+    unlinkEventServicePlan(id: string, kind: "routes" | "geofences" | "locations", value: string | number, revisionId?: string) { const query = revisionId ? `?revision_id=${encodeURIComponent(revisionId)}` : ""; return request<void>(`/api/event-service-plans/${id}/${kind}/${encodeURIComponent(String(value))}${query}`, { method: "DELETE" }, true); },
+    transitionEventServicePlanRevision(id: string, revisionId: string, action: "submit-review" | "approve" | "apply" | "reject") { return request<{ ok: boolean; status: string }>(`/api/event-service-plans/${id}/revisions/${revisionId}/${action}`, { method: "POST" }, true); },
     getEventAuditStream(from?: string, to?: string) { const qs = new URLSearchParams(); if (from) qs.set("from", from); if (to) qs.set("to", to); return request<{ entries: EventAuditEntry[] }>(`/api/event-module-audit-stream?${qs}`, {}, true); },
 
     getStopExclusions(month?: string) {

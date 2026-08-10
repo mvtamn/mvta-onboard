@@ -36,6 +36,8 @@ interface EventVehiclePositionRow {
   speed_mph: number | null;
   report_timestamp: Date;
   updated_at: Date;
+  report_age_seconds: number;
+  is_stale: boolean;
 }
 
 app.http("eventVehiclePositionsList", {
@@ -76,15 +78,15 @@ app.http("eventVehiclePositionsList", {
                    / DATEDIFF(SECOND, previous.report_timestamp, p.report_timestamp) * 2.236936
                  END
                ) AS DECIMAL(7,1)) AS speed_mph,
-               p.report_timestamp, p.updated_at
+               p.report_timestamp, p.updated_at,
+               age.report_age_seconds,
+               CAST(CASE WHEN age.report_age_seconds >= 180 THEN 1 ELSE 0 END AS bit) AS is_stale
         FROM EventVehicleCurrentPosition p
         INNER JOIN RouteClassification rc ON rc.route_id = p.route
           AND rc.route_category = 'SpecialEvent'
           AND rc.is_active = 1
-          AND (rc.effective_start_date IS NULL OR rc.effective_start_date <= CONVERT(CHAR(8), GETDATE(), 112))
-          AND (rc.effective_end_date IS NULL OR rc.effective_end_date >= CONVERT(CHAR(8), GETDATE(), 112))
-        INNER JOIN EventServicePlanRoutes spr ON spr.route_id = p.route
-        INNER JOIN EventServicePlans esp ON esp.id = spr.service_plan_id AND esp.status = 'active'
+          AND (rc.effective_start_date IS NULL OR rc.effective_start_date <= CONVERT(CHAR(8), SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time', 112))
+          AND (rc.effective_end_date IS NULL OR rc.effective_end_date >= CONVERT(CHAR(8), SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time', 112))
         LEFT JOIN AvailAvlVehiclePositions avl
           ON avl.vehicle_id = p.vehicle_id AND avl.route = p.route
         OUTER APPLY (
@@ -109,7 +111,8 @@ app.http("eventVehiclePositionsList", {
             AND h.report_timestamp < p.report_timestamp
           ORDER BY h.report_timestamp DESC
         ) previous
-        WHERE p.report_timestamp >= DATEADD(MINUTE, -3, SYSUTCDATETIME())
+        CROSS APPLY (SELECT DATEDIFF(SECOND, p.report_timestamp, SYSUTCDATETIME()) AS report_age_seconds) age
+        WHERE p.report_timestamp >= DATEADD(MINUTE, -15, SYSUTCDATETIME())
           AND p.latitude BETWEEN 43.0 AND 46.0
           AND p.longitude BETWEEN -95.5 AND -92.0
         ORDER BY p.route, p.vehicle_id
@@ -128,6 +131,8 @@ app.http("eventVehiclePositionsList", {
             table_ready: true,
             vehicle_count: vehicles.length,
             last_report_at: lastReportAt?.toISOString() ?? null,
+            source: "shared_avl_projection",
+            stale_vehicle_count: vehicles.filter((row) => row.is_stale).length,
           },
         },
       };
