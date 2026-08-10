@@ -64,7 +64,7 @@ const PAGE_META: { match: (path: string) => boolean; title: string; sub: string 
   { match: (p) => p === "/admin", title: "Admin", sub: "Expiration defaults and system configuration" },
   {
     match: (p) => p === "/event-monitoring",
-    title: "Event Monitoring",
+    title: "Event AVL",
     sub: "Monitor active vehicles and event service in real time",
   },
   { match: (p) => p === "/event-planning", title: "Event Planning", sub: "Prepare and approve event service plans" },
@@ -172,7 +172,7 @@ export function App() {
               <div className="nav-section-label">Tools</div>
               {canSeeDetours && <NavLink to="/detours"><IconDetour />Detours &amp; Closures</NavLink>}
               {canSeeDetours && <NavLink to="/detour-reports"><IconClock />Detour Reports</NavLink>}
-              {isAdmin && <NavLink to="/event-monitoring"><IconBus />Event Monitoring</NavLink>}
+              {isAdmin && <NavLink to="/event-monitoring"><IconBus />Event AVL</NavLink>}
               {isAdmin && <NavLink to="/event-planning"><IconBus />Event Planning</NavLink>}
               {isAdmin && <NavLink to="/occ"><IconWrench />OCC Tools</NavLink>}
               {isCompliance && <NavLink to="/compliance"><IconShield />Compliance</NavLink>}

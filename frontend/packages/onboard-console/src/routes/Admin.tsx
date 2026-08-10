@@ -30,7 +30,7 @@ function EventMonitoringSettingsSection() {
         setSetting(row);
         setValue(row?.setting_value ?? "");
       })
-      .catch((err) => setError(err instanceof ApiError ? err.message : "Failed to load Event Monitoring settings."));
+      .catch((err) => setError(err instanceof ApiError ? err.message : "Failed to load Event AVL settings."));
   }, []);
 
   async function save() {
@@ -48,14 +48,14 @@ function EventMonitoringSettingsSection() {
       setValue(updated.setting_value);
       setMessage(`Event AVL polling interval updated to ${updated.setting_value} seconds.`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to update Event Monitoring settings.");
+      setError(err instanceof ApiError ? err.message : "Failed to update Event AVL settings.");
     } finally {
       setSaving(false);
     }
   }
 
   return <>
-    <div className="panel-header">Admin — Event Monitoring Settings</div>
+    <div className="panel-header">Admin — Event AVL Settings</div>
     <div className="panel-body">
       <p className="panel-desc">Control how often the server retrieves live Avail AVL positions. Changes take effect without a redeploy.</p>
       {error && <p className="error-text">{error}</p>}
