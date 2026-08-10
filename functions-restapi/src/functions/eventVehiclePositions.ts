@@ -83,6 +83,8 @@ app.http("eventVehiclePositionsList", {
           AND rc.is_active = 1
           AND (rc.effective_start_date IS NULL OR rc.effective_start_date <= CONVERT(CHAR(8), GETDATE(), 112))
           AND (rc.effective_end_date IS NULL OR rc.effective_end_date >= CONVERT(CHAR(8), GETDATE(), 112))
+        INNER JOIN EventServicePlanRoutes spr ON spr.route_id = p.route
+        INNER JOIN EventServicePlans esp ON esp.id = spr.service_plan_id AND esp.status = 'active'
         LEFT JOIN AvailAvlVehiclePositions avl
           ON avl.vehicle_id = p.vehicle_id AND avl.route = p.route
         OUTER APPLY (

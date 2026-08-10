@@ -17,7 +17,19 @@ app.http("eventLocations", { route: "event-locations", methods: ["GET", "POST"],
 
 app.http("eventLocationUpdate", { route: "event-locations/{id}", methods: ["PATCH"], authLevel: "anonymous", handler: async (req, context) => {
   const auth = requireRole(req, ADMIN_ROLES); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
-  const body = await req.json() as Record<string, unknown>; const r = (await getPool()).request();
-  r.input("id", sql.UniqueIdentifier, req.params.id); r.input("name", sql.NVarChar, body.name); r.input("category", sql.NVarChar, body.category); r.input("latitude", sql.Float, Number(body.latitude)); r.input("longitude", sql.Float, Number(body.longitude)); r.input("notes", sql.NVarChar, body.notes ?? null); r.input("by", sql.NVarChar, auth.principal.userDetails ?? "system");
-  try { const out = await r.query("UPDATE EventLocations SET name=@name,category=@category,latitude=@latitude,longitude=@longitude,notes=@notes,updated_by=@by,updated_at=SYSUTCDATETIME() OUTPUT INSERTED.* WHERE id=@id"); return out.recordset.length ? { status: 200, jsonBody: out.recordset[0] } : { status: 404, jsonBody: { error: "Location not found" } }; } catch (err) { context.error("event-location update failed", err); return { status: 500, jsonBody: { error: "Internal server error" } }; }
+  try {
+    const body = await req.json() as Record<string, unknown>; const pool = await getPool();
+    const current = (await pool.request().input("id", sql.UniqueIdentifier, req.params.id).query("SELECT TOP 1 * FROM EventLocations WHERE id=@id")).recordset[0] as Record<string, unknown> | undefined;
+    if (!current) return { status: 404, jsonBody: { error: "Location not found" } };
+    const name = body.name === undefined ? current.name : body.name;
+    const category = body.category === undefined ? current.category : body.category;
+    const latitude = body.latitude === undefined ? current.latitude : Number(body.latitude);
+    const longitude = body.longitude === undefined ? current.longitude : Number(body.longitude);
+    const notes = body.notes === undefined ? current.notes : body.notes;
+    const isActive = body.is_active === undefined ? current.is_active : body.is_active;
+    if (typeof name !== "string" || !name.trim() || typeof category !== "string" || !Number.isFinite(latitude) || !Number.isFinite(longitude) || typeof isActive !== "boolean") return { status: 400, jsonBody: { error: "Invalid location update" } };
+    const r = pool.request(); r.input("id", sql.UniqueIdentifier, req.params.id); r.input("name", sql.NVarChar, name.trim()); r.input("category", sql.NVarChar, category); r.input("latitude", sql.Float, latitude); r.input("longitude", sql.Float, longitude); r.input("notes", sql.NVarChar, notes ?? null); r.input("is_active", sql.Bit, isActive); r.input("by", sql.NVarChar, auth.principal.userDetails ?? "system");
+    const out = await r.query("UPDATE EventLocations SET name=@name,category=@category,latitude=@latitude,longitude=@longitude,notes=@notes,is_active=@is_active,updated_by=@by,updated_at=SYSUTCDATETIME() OUTPUT INSERTED.* WHERE id=@id");
+    return { status: 200, jsonBody: out.recordset[0] };
+  } catch (err) { context.error("event-location update failed", err); return { status: 500, jsonBody: { error: "Internal server error" } }; }
 } });

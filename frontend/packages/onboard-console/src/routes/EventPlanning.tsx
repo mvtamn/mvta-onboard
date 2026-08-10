@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ApiError, type EventGeofence, type EventLocation, type EventServicePlan } from "@mvta/shared";
 import { api } from "../config.js";
 
-const steps: EventServicePlan["status"][] = ["draft", "review", "approved", "active", "completed"];
+const steps: EventServicePlan["status"][] = ["draft", "review", "approved", "active", "suspended", "completed"];
 type ResourceOption = { id: string; label: string };
 
 export function EventPlanning() {

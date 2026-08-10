@@ -229,6 +229,8 @@ app.http("routeClassificationDelete", {
       const pool = await getPool();
       const sqlRequest = pool.request();
       sqlRequest.input("route_id", sql.Int, routeId);
+      const linked = await pool.request().input("route_id", sql.Int, routeId).query("SELECT TOP 1 1 AS linked FROM EventServicePlanRoutes WHERE route_id=@route_id");
+      if (linked.recordset.length) return { status: 409, jsonBody: { error: "Route is linked to an event service plan. Remove the route from the plan before deleting its classification." } };
       const result = await sqlRequest.query("DELETE FROM RouteClassification WHERE route_id = @route_id");
       if (result.rowsAffected[0] === 0) {
         return { status: 404, jsonBody: { error: "No classification found for this route" } };
