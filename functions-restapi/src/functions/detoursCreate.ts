@@ -101,7 +101,7 @@ app.http("detoursCreate", {
       insertReq.input("created_by", sql.NVarChar, createdBy);
       if (workflowReady) {
         insertReq.input("fulfillment_mode", sql.NVarChar(30), body.fulfillment_mode ?? "fixed_route_manual");
-        insertReq.input("lifecycle_state", sql.NVarChar(30), body.lifecycle_state ?? "active");
+        insertReq.input("lifecycle_state", sql.NVarChar(30), body.lifecycle_state ?? "fulfilled");
       }
       if (internalNumber !== null) {
         insertReq.input("internal_number", sql.NVarChar, internalNumber);
@@ -152,6 +152,20 @@ app.http("detoursCreate", {
         await segReq.query(`
           INSERT INTO DetourSegments (detour_id, routes, directions, sort_order)
           VALUES (@detour_id, @routes, @directions, @sort_order)
+        `);
+      }
+
+      if (workflowReady) {
+        const historyReq = new sql.Request(tx);
+        historyReq.input("detour_id", sql.UniqueIdentifier, inserted.id);
+        historyReq.input("event_type", sql.NVarChar(30), "created");
+        historyReq.input("to_state", sql.NVarChar(30), body.lifecycle_state ?? "fulfilled");
+        historyReq.input("source", sql.NVarChar(20), "manual");
+        historyReq.input("changed_by", sql.NVarChar(200), createdBy);
+        await historyReq.query(`
+          INSERT INTO DetourWorkflowHistory
+            (detour_id, event_type, to_state, source, changed_by)
+          VALUES (@detour_id, @event_type, @to_state, @source, @changed_by)
         `);
       }
 

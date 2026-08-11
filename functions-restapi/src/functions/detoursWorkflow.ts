@@ -19,6 +19,7 @@ app.http("detoursWorkflow", {
     if (!DETOUR_LIFECYCLE_STATES.includes(next as DetourLifecycleState)) {
       return { status: 400, jsonBody: { error: `lifecycle_state must be one of: ${DETOUR_LIFECYCLE_STATES.join(", ")}` } };
     }
+    let tx: sql.Transaction | undefined;
     try {
       const pool = await getPool();
       const currentReq = pool.request();
@@ -31,7 +32,9 @@ app.http("detoursWorkflow", {
       if (!canTransition(current.lifecycle_state, next as DetourLifecycleState, current.fulfillment_mode)) {
         return { status: 409, jsonBody: { error: `Cannot transition ${current.lifecycle_state} to ${next} for ${current.fulfillment_mode}` } };
       }
-      const updateReq = pool.request();
+      tx = new sql.Transaction(pool);
+      await tx.begin();
+      const updateReq = new sql.Request(tx);
       updateReq.input("id", sql.UniqueIdentifier, id);
       updateReq.input("lifecycle_state", sql.NVarChar(30), next);
       updateReq.input("updated_by", sql.NVarChar(200), auth.principal.userDetails || "system");
@@ -40,14 +43,36 @@ app.http("detoursWorkflow", {
         SET lifecycle_state = @lifecycle_state,
             workflow_updated_by = @updated_by,
             workflow_updated_at = SYSUTCDATETIME(),
-            avail_build_confirmed_at = CASE WHEN @lifecycle_state = 'built_in_avail'
+            avail_build_confirmed_at = CASE WHEN @lifecycle_state = 'fulfilled'
+              AND fulfillment_mode = 'avail'
               THEN SYSUTCDATETIME() ELSE avail_build_confirmed_at END,
             updated_by = @updated_by, updated_at = SYSUTCDATETIME()
         WHERE id = @id AND is_deleted = 0
       `);
-      if (!result.rowsAffected[0]) return { status: 404, jsonBody: { error: "Detour not found" } };
+      if (!result.rowsAffected[0]) {
+        await tx.rollback();
+        return { status: 404, jsonBody: { error: "Detour not found" } };
+      }
+      const historyReq = new sql.Request(tx);
+      historyReq.input("detour_id", sql.UniqueIdentifier, id);
+      historyReq.input("event_type", sql.NVarChar(30), next === "fulfilled" ? "fulfillment_confirmation" : "state_transition");
+      historyReq.input("from_state", sql.NVarChar(30), current.lifecycle_state);
+      historyReq.input("to_state", sql.NVarChar(30), next);
+      historyReq.input("source", sql.NVarChar(20), current.fulfillment_mode === "avail" ? "avail" : "manual");
+      historyReq.input("changed_by", sql.NVarChar(200), auth.principal.userDetails || "system");
+      await historyReq.query(`
+        INSERT INTO DetourWorkflowHistory
+          (detour_id, event_type, from_state, to_state, source, changed_by)
+        VALUES (@detour_id, @event_type, @from_state, @to_state, @source, @changed_by)
+      `);
+      await tx.commit();
       return { status: 200, jsonBody: { id, lifecycle_state: next } };
     } catch (err) {
+      try {
+        await tx?.rollback();
+      } catch {
+        // The transaction may already have committed or rolled back.
+      }
       context.error("PATCH /detours/{id}/workflow failed:", err);
       return { status: 500, jsonBody: { error: "Internal server error" } };
     }

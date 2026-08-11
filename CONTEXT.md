@@ -396,9 +396,20 @@ _Avoid_: lifecycle state
 
 ## Workflow state
 
-The operational progress of an authoritative Detour, including review,
-Avail-build confirmation, rejection, duplication, and publication readiness.
-_Avoid_: temporal status
+The operational progress of an authoritative Detour, such as approval,
+fulfillment readiness or confirmation, fulfillment failure, and closure. It is
+separate from temporal status, fulfillment mode, and communication eligibility.
+Intake decisions such as rejection and duplication belong to Detour intake, not
+to the authoritative Detour workflow.
+_Avoid_: temporal status, communication readiness
+
+## Detour communication eligibility
+
+A derived determination that an authoritative Detour has reviewed operational
+facts, an accountable reviewer, and the fulfillment prerequisites needed for a
+specific audience's communication. It is not a lifecycle state and does not
+publish anything by itself.
+_Avoid_: active state, published state, automatic notification
 
 ## Likely duplicate
 

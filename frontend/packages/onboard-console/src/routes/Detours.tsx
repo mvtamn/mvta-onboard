@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from "react";
 import {
   ApiError,
   DETOUR_STATUS_LABELS,
+  DETOUR_LIFECYCLE_LABELS,
   DETOUR_SEVERITY_LABELS,
   type Detour,
   type DetourStatus,
@@ -541,6 +542,9 @@ export function Detours() {
                           <div className="subcard" style={{ margin: "4px 0" }}>
                             {d.internal_number ? (
                               <p><b>Internal ref:</b> {d.internal_number}</p>
+                            ) : null}
+                            {d.lifecycle_state ? (
+                              <p><b>Workflow:</b> {DETOUR_LIFECYCLE_LABELS[d.lifecycle_state]}</p>
                             ) : null}
                             {numberYearMismatch(d.internal_number, d.start_date) ? (
                               <p className="warn-note">

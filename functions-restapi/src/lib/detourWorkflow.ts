@@ -7,13 +7,10 @@ export type DetourFulfillmentMode = (typeof DETOUR_FULFILLMENT_MODES)[number];
 
 export const DETOUR_LIFECYCLE_STATES = [
   "approved",
-  "pending_avail_build",
-  "built_in_avail",
-  "build_failed",
-  "active",
-  "expired",
-  "rejected",
-  "duplicate",
+  "awaiting_fulfillment",
+  "fulfilled",
+  "fulfillment_failed",
+  "closed",
 ] as const;
 export type DetourLifecycleState = (typeof DETOUR_LIFECYCLE_STATES)[number];
 
@@ -23,14 +20,11 @@ export interface DetourWorkflowInput {
 }
 
 const TRANSITIONS: Record<DetourLifecycleState, readonly DetourLifecycleState[]> = {
-  approved: ["pending_avail_build", "active", "rejected", "duplicate"],
-  pending_avail_build: ["built_in_avail", "build_failed", "rejected"],
-  built_in_avail: ["active", "pending_avail_build"],
-  build_failed: ["pending_avail_build", "rejected"],
-  active: ["expired", "pending_avail_build"],
-  expired: ["active"],
-  rejected: [],
-  duplicate: [],
+  approved: ["awaiting_fulfillment", "fulfilled", "closed"],
+  awaiting_fulfillment: ["fulfilled", "fulfillment_failed", "closed"],
+  fulfilled: ["closed"],
+  fulfillment_failed: ["awaiting_fulfillment", "closed"],
+  closed: [],
 };
 
 export function canTransition(
@@ -38,10 +32,10 @@ export function canTransition(
   to: DetourLifecycleState,
   fulfillmentMode: DetourFulfillmentMode,
 ): boolean {
-  if (fulfillmentMode !== "avail" && (to === "pending_avail_build" || to === "built_in_avail" || to === "build_failed")) {
+  if (fulfillmentMode !== "avail" && (to === "awaiting_fulfillment" || to === "fulfillment_failed")) {
     return false;
   }
-  if (fulfillmentMode === "avail" && to === "active" && from !== "built_in_avail") {
+  if (fulfillmentMode === "avail" && to === "fulfilled" && from !== "awaiting_fulfillment") {
     return false;
   }
   return TRANSITIONS[from].includes(to);

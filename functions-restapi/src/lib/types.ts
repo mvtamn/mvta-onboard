@@ -95,13 +95,10 @@ export type DetourSeverity = "minor" | "moderate" | "major";
 export type DetourFulfillmentMode = "avail" | "fixed_route_manual" | "mobility_manual";
 export type DetourLifecycleState =
   | "approved"
-  | "pending_avail_build"
-  | "built_in_avail"
-  | "build_failed"
-  | "active"
-  | "expired"
-  | "rejected"
-  | "duplicate";
+  | "awaiting_fulfillment"
+  | "fulfilled"
+  | "fulfillment_failed"
+  | "closed";
 
 // Reporting fields (Part B6, migration-025). All optional on both create and
 // update - a detour logged mid-incident gets these filled in later.

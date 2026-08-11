@@ -6,15 +6,25 @@ import {
   dateWindowsOverlap,
 } from "./detourWorkflow.js";
 
-test("Avail fulfillment requires build confirmation before activation", () => {
-  assert.equal(canTransition("approved", "active", "avail"), false);
-  assert.equal(canTransition("built_in_avail", "active", "avail"), true);
-  assert.equal(canTransition("build_failed", "pending_avail_build", "avail"), true);
+test("Avail fulfillment moves through fulfillment states before closure", () => {
+  assert.equal(canTransition("approved", "awaiting_fulfillment", "avail"), true);
+  assert.equal(canTransition("approved", "fulfilled", "avail"), false);
+  assert.equal(canTransition("awaiting_fulfillment", "fulfilled", "avail"), true);
+  assert.equal(canTransition("awaiting_fulfillment", "fulfillment_failed", "avail"), true);
+  assert.equal(canTransition("fulfillment_failed", "awaiting_fulfillment", "avail"), true);
+  assert.equal(canTransition("fulfilled", "closed", "avail"), true);
 });
 
-test("manual fulfillment can activate without Avail states", () => {
-  assert.equal(canTransition("approved", "active", "fixed_route_manual"), true);
-  assert.equal(canTransition("approved", "pending_avail_build", "mobility_manual"), false);
+test("manual fulfillment can complete without Avail states", () => {
+  assert.equal(canTransition("approved", "fulfilled", "fixed_route_manual"), true);
+  assert.equal(canTransition("approved", "fulfilled", "mobility_manual"), true);
+  assert.equal(canTransition("approved", "awaiting_fulfillment", "mobility_manual"), false);
+  assert.equal(canTransition("fulfilled", "closed", "fixed_route_manual"), true);
+});
+
+test("temporal status labels are not workflow states", () => {
+  assert.equal(canTransition("approved", "active" as never, "fixed_route_manual"), false);
+  assert.equal(canTransition("fulfilled", "expired" as never, "fixed_route_manual"), false);
 });
 
 test("date windows overlap inclusively and support open-ended ranges", () => {

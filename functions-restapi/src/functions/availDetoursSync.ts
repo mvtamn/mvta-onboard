@@ -107,7 +107,19 @@ app.timer("availDetoursSync", {
               @created_by, SYSUTCDATETIME()
             )
           `);
-          await insertSegments(tx, insertResult.recordset[0].id, detour.segments);
+          const detourId = insertResult.recordset[0].id;
+          await insertSegments(tx, detourId, detour.segments);
+          const historyReq = new sql.Request(tx);
+          historyReq.input("detour_id", sql.UniqueIdentifier, detourId);
+          historyReq.input("event_type", sql.NVarChar(30), "source_observation");
+          historyReq.input("source", sql.NVarChar(20), "avail");
+          historyReq.input("detail", sql.NVarChar(1000), `Observed Avail detour ${detour.external_detour_id}`);
+          historyReq.input("changed_by", sql.NVarChar(200), "avail-sync");
+          await historyReq.query(`
+            INSERT INTO DetourWorkflowHistory
+              (detour_id, event_type, source, detail, changed_by)
+            VALUES (@detour_id, @event_type, @source, @detail, @changed_by)
+          `);
           await tx.commit();
           inserted += 1;
           continue;
@@ -118,6 +130,17 @@ app.timer("availDetoursSync", {
           const touchReq = new sql.Request(tx);
           touchReq.input("id", sql.UniqueIdentifier, existing.id);
           await touchReq.query("UPDATE Detours SET avail_last_seen_at = SYSUTCDATETIME() WHERE id = @id");
+          const historyReq = new sql.Request(tx);
+          historyReq.input("detour_id", sql.UniqueIdentifier, existing.id);
+          historyReq.input("event_type", sql.NVarChar(30), "source_observation");
+          historyReq.input("source", sql.NVarChar(20), "avail");
+          historyReq.input("detail", sql.NVarChar(1000), `Observed Avail detour ${detour.external_detour_id}; preserved manual correction`);
+          historyReq.input("changed_by", sql.NVarChar(200), "avail-sync");
+          await historyReq.query(`
+            INSERT INTO DetourWorkflowHistory
+              (detour_id, event_type, source, detail, changed_by)
+            VALUES (@detour_id, @event_type, @source, @detail, @changed_by)
+          `);
           await tx.commit();
           skipped += 1;
           continue;
@@ -139,6 +162,17 @@ app.timer("availDetoursSync", {
         deleteSegReq.input("detour_id", sql.UniqueIdentifier, existing.id);
         await deleteSegReq.query("DELETE FROM DetourSegments WHERE detour_id = @detour_id");
         await insertSegments(tx, existing.id, detour.segments);
+        const historyReq = new sql.Request(tx);
+        historyReq.input("detour_id", sql.UniqueIdentifier, existing.id);
+        historyReq.input("event_type", sql.NVarChar(30), "source_observation");
+        historyReq.input("source", sql.NVarChar(20), "avail");
+        historyReq.input("detail", sql.NVarChar(1000), `Observed Avail detour ${detour.external_detour_id}`);
+        historyReq.input("changed_by", sql.NVarChar(200), "avail-sync");
+        await historyReq.query(`
+          INSERT INTO DetourWorkflowHistory
+            (detour_id, event_type, source, detail, changed_by)
+          VALUES (@detour_id, @event_type, @source, @detail, @changed_by)
+        `);
 
         await tx.commit();
         updated += 1;

@@ -68,6 +68,7 @@ import type {
   CreateDetourIntakeInput,
   DetourFulfillmentMode,
   DetourLifecycleState,
+  DetourWorkflowHistoryEntry,
   ContractorPerformanceStandard,
   ContractorRecord,
   AssessmentPeriod,
@@ -499,6 +500,14 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
       return request<{ id: string; lifecycle_state: DetourLifecycleState }>(
         `/api/detours/${id}/workflow`,
         { method: "PATCH", body: JSON.stringify({ lifecycle_state }) },
+        true,
+      );
+    },
+
+    getDetourWorkflowHistory(id: string) {
+      return request<{ history: DetourWorkflowHistoryEntry[] }>(
+        `/api/detours/${id}/workflow-history`,
+        {},
         true,
       );
     },

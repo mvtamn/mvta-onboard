@@ -318,6 +318,17 @@ test("valid detour creation passes with no errors", () => {
   assert.deepStrictEqual(errors, []);
 });
 
+test("detour creation accepts orthogonal workflow states and rejects temporal states", () => {
+  assert.deepStrictEqual(
+    validateCreateDetour({ closure: "Manual closure", lifecycle_state: "fulfilled" }),
+    [],
+  );
+  assert.ok(
+    validateCreateDetour({ closure: "Manual closure", lifecycle_state: "active" })
+      .some((e) => e.includes("lifecycle_state")),
+  );
+});
+
 test("detour creation requires closure but not dates (monitor-only case)", () => {
   const errors = validateCreateDetour({ is_monitor_only: true });
   assert.ok(errors.some((e) => e.includes("closure")));

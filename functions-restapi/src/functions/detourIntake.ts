@@ -155,7 +155,7 @@ app.http("detourIntakePromote", {
     const errors = validatePromoteDetourIntake(body);
     if (errors.length) return { status: 400, jsonBody: { error: "Validation failed", details: errors } };
     const fulfillmentMode = body.fulfillment_mode as DetourFulfillmentMode;
-    const lifecycleState = fulfillmentMode === "avail" ? "pending_avail_build" : "active";
+    const lifecycleState = fulfillmentMode === "avail" ? "awaiting_fulfillment" : "fulfilled";
     try {
       const pool = await getPool();
       const tx = new sql.Transaction(pool);
@@ -201,6 +201,18 @@ app.http("detourIntakePromote", {
           await segmentReq.query(`INSERT INTO DetourSegments (detour_id, routes, directions, sort_order)
             VALUES (@detour_id, @routes, @directions, @sort_order)`);
         }
+        const historyReq = new sql.Request(tx);
+        historyReq.input("detour_id", sql.UniqueIdentifier, detour.id);
+        historyReq.input("event_type", sql.NVarChar(30), "state_transition");
+        historyReq.input("to_state", sql.NVarChar(30), lifecycleState);
+        historyReq.input("source", sql.NVarChar(20), "manual");
+        historyReq.input("detail", sql.NVarChar(1000), "Promoted from Detour Intake");
+        historyReq.input("changed_by", sql.NVarChar(200), auth.principal.userDetails || "system");
+        await historyReq.query(`
+          INSERT INTO DetourWorkflowHistory
+            (detour_id, event_type, to_state, source, detail, changed_by)
+          VALUES (@detour_id, @event_type, @to_state, @source, @detail, @changed_by)
+        `);
         const promoteReq = new sql.Request(tx);
         promoteReq.input("id", sql.UniqueIdentifier, id);
         promoteReq.input("detour_id", sql.UniqueIdentifier, detour.id);

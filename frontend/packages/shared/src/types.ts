@@ -522,8 +522,15 @@ export interface AvailMissedTripsRouteRollup {
 export type DetourStatus = "monitor" | "upcoming" | "active" | "recently_finished" | "expired";
 export type DetourFulfillmentMode = "avail" | "fixed_route_manual" | "mobility_manual";
 export type DetourLifecycleState =
-  | "approved" | "pending_avail_build" | "built_in_avail" | "build_failed"
-  | "active" | "expired" | "rejected" | "duplicate";
+  | "approved" | "awaiting_fulfillment" | "fulfilled" | "fulfillment_failed" | "closed";
+
+export const DETOUR_LIFECYCLE_LABELS: Record<DetourLifecycleState, string> = {
+  approved: "Approved",
+  awaiting_fulfillment: "Awaiting fulfillment",
+  fulfilled: "Fulfilled",
+  fulfillment_failed: "Fulfillment failed",
+  closed: "Closed",
+};
 
 export const DETOUR_STATUS_LABELS: Record<DetourStatus, string> = {
   monitor: "Monitor",
@@ -679,6 +686,25 @@ export interface DetourImage {
   uploaded_by: string;
   uploaded_at: string;
   read_url: string | null;
+}
+
+export type DetourWorkflowHistoryEventType =
+  | "created"
+  | "state_transition"
+  | "source_observation"
+  | "manual_correction"
+  | "fulfillment_confirmation";
+
+export interface DetourWorkflowHistoryEntry {
+  id: string;
+  detour_id: string;
+  event_type: DetourWorkflowHistoryEventType;
+  from_state: DetourLifecycleState | null;
+  to_state: DetourLifecycleState | null;
+  source: "manual" | "avail" | null;
+  detail: string | null;
+  changed_by: string;
+  changed_at: string;
 }
 
 // Route Classification - see detour-and-event-module-implementation-plan.md

@@ -174,6 +174,29 @@ app.http("detoursUpdate", {
         }
       }
 
+      const historyReady = await new sql.Request(tx).query<{ ready: number }>(
+        "SELECT CASE WHEN OBJECT_ID('dbo.DetourWorkflowHistory', 'U') IS NULL THEN 0 ELSE 1 END AS ready",
+      );
+      if (historyReady.recordset[0]?.ready === 1) {
+        const currentReq = new sql.Request(tx);
+        currentReq.input("id", sql.UniqueIdentifier, id);
+        const current = (await currentReq.query<{ source: "manual" | "avail"; lifecycle_state: string }>(
+          "SELECT source, lifecycle_state FROM Detours WHERE id = @id",
+        )).recordset[0];
+        const historyReq = new sql.Request(tx);
+        historyReq.input("detour_id", sql.UniqueIdentifier, id);
+        historyReq.input("event_type", sql.NVarChar(30), "manual_correction");
+        historyReq.input("to_state", sql.NVarChar(30), current?.lifecycle_state ?? null);
+        historyReq.input("source", sql.NVarChar(20), current?.source ?? "manual");
+        historyReq.input("detail", sql.NVarChar(1000), "Manual correction to authoritative Detour fields");
+        historyReq.input("changed_by", sql.NVarChar(200), updatedBy);
+        await historyReq.query(`
+          INSERT INTO DetourWorkflowHistory
+            (detour_id, event_type, to_state, source, detail, changed_by)
+          VALUES (@detour_id, @event_type, @to_state, @source, @detail, @changed_by)
+        `);
+      }
+
       await tx.commit();
       return { status: 200, jsonBody: result.recordset[0] };
     } catch (err) {
