@@ -47,7 +47,14 @@ app.http("eventGeofenceNotifications", { route: "event-geofence-notifications", 
   const pool = await getPool();
   await pool.request().query("UPDATE EventGeofenceNotifications SET status='expired',last_error='Manual review window expired' WHERE status='pending' AND created_at <= DATEADD(HOUR,-24,SYSUTCDATETIME())");
   const r = pool.request(); r.input("status", sql.NVarChar, req.query.get("status") ?? "pending");
-  return { status: 200, jsonBody: { notifications: (await r.query("SELECT * FROM EventGeofenceNotifications WHERE status=@status ORDER BY created_at DESC")).recordset } };
+  const eventId = req.query.get("event_id");
+  if (eventId) r.input("event", sql.UniqueIdentifier, eventId);
+  return { status: 200, jsonBody: { notifications: (await r.query(`
+    SELECT n.*
+    FROM EventGeofenceNotifications n
+    JOIN EventGeofenceCrossings c ON c.id=n.crossing_id
+    WHERE n.status=@status ${eventId ? "AND EXISTS (SELECT 1 FROM EventServicePlanGeofences pg JOIN EventServicePlans p ON p.id=pg.service_plan_id WHERE pg.geofence_id=c.geofence_id AND p.event_id=@event)" : ""}
+    ORDER BY n.created_at DESC`)).recordset } };
 } });
 app.http("eventGeofenceNotificationSend", { route: "event-geofence-notifications/{id}/send", methods: ["POST"], authLevel: "anonymous", handler: send });
 app.http("eventGeofenceNotificationDismiss", { route: "event-geofence-notifications/{id}/dismiss", methods: ["POST"], authLevel: "anonymous", handler: dismiss });

@@ -783,19 +783,21 @@ export interface EventHealthComponent {
 export interface EventMonitoringHealth {
   components: EventHealthComponent[];
   maintenance: { last_started_at: string | null; last_success_at: string | null; last_error: string | null; last_positions_deleted: number; last_diagnostics_deleted: number } | null;
-  counts: { history_count: number; diagnostic_count: number; pending_notifications: number };
+  event_id?: string;
+  counts: { history_count: number; diagnostic_count: number; pending_notifications: number; active_vehicle_count: number; diagnostic_vehicle_count: number; pending_assignment_count: number; crossing_count: number };
 }
 
 export type EventLocationCategory = "transit_station" | "venue" | "park_and_ride" | "other";
 export interface EventLocation { id: string; name: string; category: EventLocationCategory; latitude: number; longitude: number; notes: string | null; is_active: boolean; }
 export interface EventGeofence { id: string; name: string; polygon: string; is_active: boolean; updated_by: string | null; updated_at: string; rules?: EventGeofenceRule[]; }
 export interface EventGeofenceRule { id: string; geofence_id: string; transition: "enter" | "exit"; heading_min: number; heading_max: number; destination_label: string; destination_location_id: string | null; send_mode: "manual" | "auto"; sort_order: number; }
-export interface EventGeofenceCrossing { id: number; vehicle_id: number; geofence_id: string; geofence_name: string; transition: "enter" | "exit"; heading_at_crossing: number | null; destination_label: string | null; matched_rule_id?: string | null; matched_rule_priority?: number | null; matched_destination_location_id?: string | null; matched_send_mode?: "manual" | "auto" | null; crossed_at: string; }
+export interface EventGeofenceCrossing { id: number; vehicle_id: number; geofence_id: string; geofence_name: string; event_id?: string | null; service_plan_id?: string | null; transition: "enter" | "exit"; heading_at_crossing: number | null; destination_label: string | null; matched_rule_id?: string | null; matched_rule_priority?: number | null; matched_destination_location_id?: string | null; matched_send_mode?: "manual" | "auto" | null; crossed_at: string; }
 export interface EventGeofenceNotification { id: string; crossing_id: number; send_mode: "manual" | "auto"; message_body: string; status: "pending" | "acknowledged" | "sent" | "dismissed" | "failed" | "expired"; sent_by: string | null; sent_at: string | null; acknowledged_by?: string | null; acknowledged_at?: string | null; created_at: string; attempt_count: number; last_error: string | null; next_attempt_at: string | null; }
 export interface EventServicePlanRevision { id: string; service_plan_id: string; status: "draft" | "review" | "approved" | "applied" | "rejected"; created_by?: string; created_at?: string; }
 export interface Event { id: string; name: string; description: string | null; owning_team: string | null; created_by: string; created_at: string; updated_by: string | null; updated_at: string; }
 export interface EventServicePlan { id: string; event_id: string; name: string; status: "draft" | "review" | "approved" | "active" | "completed" | "suspended"; start_date: string | null; end_date: string | null; start_at: string | null; end_at: string | null; created_by: string; created_at: string; updated_by: string | null; updated_at: string; links?: { kind: "routes" | "geofences" | "locations"; service_plan_id: string; value: string | number; label: string }[]; revisions?: EventServicePlanRevision[]; }
 export interface EventAuditEntry { event_type: string; entity_id: string; detail: string; actor: string | null; event_at: string; }
+export interface EventVehicleAssignment { id: string; event_id: string; service_plan_id: string; revision_id: string | null; vehicle_id: number; route_id: number; status: "proposed" | "accepted" | "applied" | "rejected"; reason: string | null; requested_by: string; requested_at: string; reviewed_by: string | null; reviewed_at: string | null; event_name?: string; service_plan_name?: string; }
 
 // OTP Compliance completion - persisted exclusions, reason codes, threshold
 // setting. Replaces the module's former ephemeral candidate/date-exclusion

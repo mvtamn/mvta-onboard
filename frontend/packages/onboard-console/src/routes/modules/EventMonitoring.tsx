@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as atlas from "azure-maps-control";
 import "azure-maps-control/dist/atlas.min.css";
-import { ApiError, type Event, type EventGeofence, type EventLocation, type EventServicePlan, type EventVehiclePosition, type EventGeofenceCrossing, type EventGeofenceNotification, type EventAuditEntry, type EventMonitoringHealth } from "@mvta/shared";
+import { ApiError, type Event, type EventGeofence, type EventLocation, type EventServicePlan, type EventVehicleAssignment, type EventVehiclePosition, type EventGeofenceCrossing, type EventGeofenceNotification, type EventAuditEntry, type EventMonitoringHealth } from "@mvta/shared";
 import { api } from "../../config.js";
 import "./eventMonitoring.css";
 
@@ -66,6 +66,8 @@ export function EventMonitoring() {
   const [showLocations, setShowLocations] = useState(true);
   const [geofences, setGeofences] = useState<EventGeofence[]>([]);
   const [locations, setLocations] = useState<EventLocation[]>([]);
+  const [assignments, setAssignments] = useState<EventVehicleAssignment[]>([]);
+  const [assignmentMessage, setAssignmentMessage] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -102,7 +104,7 @@ export function EventMonitoring() {
     } finally {
       setRefreshing(false);
     }
-    void api.getEventMonitoringHealth().then(setHealth).catch(() => setHealth(null));
+    void api.getEventMonitoringHealth(selectedEventId || undefined).then(setHealth).catch(() => setHealth(null));
   }, [selectedEventId]);
 
   useEffect(() => {
@@ -121,13 +123,18 @@ export function EventMonitoring() {
   }, []);
 
   useEffect(() => {
+    if (!selectedEventId) { setAssignments([]); return; }
+    void api.getEventVehicleAssignments(selectedEventId).then((result) => setAssignments(result.assignments)).catch(() => setAssignments([]));
+  }, [selectedEventId]);
+
+  useEffect(() => {
     void load();
     const interval = window.setInterval(() => void load(), AVL_REFRESH_MS);
     return () => window.clearInterval(interval);
   }, [load]);
 
   useEffect(() => {
-    Promise.allSettled([api.getEventGeofenceCrossings(), api.getEventGeofenceNotifications(), api.getEventAuditStream()])
+    Promise.allSettled([api.getEventGeofenceCrossings(selectedEventId || undefined), api.getEventGeofenceNotifications("pending", selectedEventId || undefined), api.getEventAuditStream(undefined, undefined, selectedEventId || undefined)])
       .then(([c, n, a]) => {
         const now = new Date();
         if (c.status === "fulfilled") { setCrossings(c.value.crossings); setFeedStatus((s) => ({ ...s, crossings: { state: "ready", loadedAt: now } })); }
@@ -137,7 +144,7 @@ export function EventMonitoring() {
         if (a.status === "fulfilled") { setAudit(a.value.entries); setFeedStatus((s) => ({ ...s, audit: { state: "ready", loadedAt: now } })); }
         else setFeedStatus((s) => ({ ...s, audit: { state: "error", loadedAt: s.audit?.loadedAt ?? null } }));
       });
-  }, [lastUpdated]);
+  }, [lastUpdated, selectedEventId]);
 
   async function reviewNotification(id: string, action: "acknowledge" | "send" | "dismiss") {
     setActionError(null);
@@ -149,6 +156,24 @@ export function EventMonitoring() {
     } catch (error) {
       setActionError(error instanceof ApiError ? error.message : "Notification action failed; the item was retained.");
     }
+  }
+
+  async function proposeAssignment(vehicle: EventVehiclePosition) {
+    const targetPlan = activePlan ?? selectedPlans.find((plan) => plan.status === "draft" || plan.status === "review");
+    if (!selectedEventId || !targetPlan || vehicle.route === null) { setAssignmentMessage("Select an Event with a draft, review, or active operating period before proposing an assignment."); return; }
+    try {
+      const assignment = await api.createEventVehicleAssignment({ event_id: selectedEventId, service_plan_id: targetPlan.id, vehicle_id: vehicle.vehicle_id, route_id: vehicle.route, reason: "Proposed from Event AVL diagnostic view" });
+      setAssignments((rows) => [assignment, ...rows]);
+      setAssignmentMessage(activePlan ? "Assignment proposed as an active-plan revision; it is not live until the revision is approved and applied." : "Assignment proposed for the operating period.");
+    } catch (error) { setAssignmentMessage(error instanceof ApiError ? error.message : "Could not propose vehicle assignment."); }
+  }
+
+  async function reviewAssignment(id: string, action: "approve" | "reject") {
+    try {
+      const result = await api.transitionEventVehicleAssignment(id, action);
+      setAssignments((rows) => rows.map((row) => row.id === id ? { ...row, status: result.status as EventVehicleAssignment["status"], revision_id: result.revision_id ?? row.revision_id } : row));
+      setAssignmentMessage(action === "approve" && result.target === "revision" ? "Assignment accepted into a new revision. Review and apply that revision before it becomes operational." : `Assignment ${action}d.`);
+    } catch (error) { setAssignmentMessage(error instanceof ApiError ? error.message : "Could not update the assignment proposal."); }
   }
 
   const classifiedVehicles = vehicles ?? [];
@@ -247,7 +272,9 @@ export function EventMonitoring() {
       </div>
       {showDiagnostics && <>
         <div className="evmon-list-header"><div><h3>Unplanned diagnostic vehicles</h3><span>SpecialEvent vehicles visible for diagnosis; they are not in operational scope.</span></div><span className="evmon-count">{diagnosticVehicles.length}</span></div>
-        <div className="evmon-table-wrap"><table className="data evmon-table"><thead><tr><th>Vehicle</th><th>Route</th><th>Heading</th><th>Last report</th></tr></thead><tbody>{diagnosticVehicles.map((vehicle) => <tr key={`diagnostic-${vehicle.vehicle_id}`}><td><strong>{vehicle.vehicle_id}</strong></td><td>{routeLabel(vehicle)}</td><td><span className="evmon-heading">{cardinalHeading(vehicle.heading, vehicle.direction)}</span></td><td className={vehicle.is_stale ? "evmon-stale" : undefined}>{vehicle.is_stale ? "Stale · " : ""}{minutesAgo(vehicle.report_timestamp)}</td></tr>)}</tbody></table>{diagnosticVehicles.length === 0 && <div className="evmon-empty">No unplanned SpecialEvent vehicles are reporting in this context.</div>}</div>
+        <div className="evmon-table-wrap"><table className="data evmon-table"><thead><tr><th>Vehicle</th><th>Route</th><th>Heading</th><th>Last report</th><th>Planning action</th></tr></thead><tbody>{diagnosticVehicles.map((vehicle) => <tr key={`diagnostic-${vehicle.vehicle_id}`}><td><strong>{vehicle.vehicle_id}</strong></td><td>{routeLabel(vehicle)}</td><td><span className="evmon-heading">{cardinalHeading(vehicle.heading, vehicle.direction)}</span></td><td className={vehicle.is_stale ? "evmon-stale" : undefined}>{vehicle.is_stale ? "Stale · " : ""}{minutesAgo(vehicle.report_timestamp)}</td><td><button className="btn-sm" onClick={() => void proposeAssignment(vehicle)}>Propose assignment</button></td></tr>)}</tbody></table>{diagnosticVehicles.length === 0 && <div className="evmon-empty">No unplanned SpecialEvent vehicles are reporting in this context.</div>}</div>
+        {assignmentMessage && <div className="evmon-empty" role="status">{assignmentMessage}</div>}
+        {assignments.length > 0 && <div className="evmon-table-wrap"><table className="data evmon-table"><thead><tr><th>Assignment</th><th>Vehicle</th><th>Route</th><th>Plan</th><th>Status</th><th>Review</th></tr></thead><tbody>{assignments.map((assignment) => <tr key={assignment.id}><td>{new Date(assignment.requested_at).toLocaleString()}</td><td>{assignment.vehicle_id}</td><td>{assignment.route_id}</td><td>{assignment.service_plan_name ?? "—"}</td><td>{assignment.status}{assignment.revision_id ? ` · revision ${assignment.revision_id.slice(0, 8)}` : ""}</td><td>{assignment.status === "proposed" ? <><button className="btn-sm" onClick={() => void reviewAssignment(assignment.id, "approve")}>Approve</button> <button className="btn-sm" onClick={() => void reviewAssignment(assignment.id, "reject")}>Reject</button></> : "—"}</td></tr>)}</tbody></table></div>}
       </>}
       <div className="evmon-table-wrap">
         {message ? <div className="evmon-empty">{message}</div> : vehicles === null ? <div className="evmon-empty">Loading live positions…</div> : (
