@@ -31,6 +31,7 @@ import { Admin } from "./routes/Admin.js";
 import { OccTools } from "./routes/OccTools.js";
 import { EventMonitoring } from "./routes/modules/EventMonitoring.js";
 import { EventPlanning } from "./routes/EventPlanning.js";
+import { EventWorkspaceProvider } from "./context/EventWorkspaceContext.js";
 import { Compliance } from "./routes/Compliance.js";
 import { PerformanceAssessment } from "./routes/PerformanceAssessment.js";
 import { Detours } from "./routes/Detours.js";
@@ -144,6 +145,7 @@ export function App() {
 
   return (
     <FixedRouteRefreshProvider>
+      <EventWorkspaceProvider>
       <div className="frame">
         <aside className="nav-sidebar">
         <div className="nav-brand">
@@ -175,8 +177,9 @@ export function App() {
               {canSeeDetours && <NavLink to="/detours"><IconDetour />Detours &amp; Closures</NavLink>}
               {canSeeDetours && <NavLink to="/detour-intake"><IconDetour />Detour Intake</NavLink>}
               {canSeeDetours && <NavLink to="/detour-reports"><IconClock />Detour Reports</NavLink>}
-              {isAdmin && <NavLink to="/event-monitoring"><IconBus />Event AVL</NavLink>}
+              {isAdmin && <div className="nav-section-label">Event Workspace</div>}
               {isAdmin && <NavLink to="/event-planning"><IconBus />Event Planning</NavLink>}
+              {isAdmin && <NavLink to="/event-monitoring"><IconBus />Event AVL</NavLink>}
               {isAdmin && <NavLink to="/occ"><IconWrench />OCC Tools</NavLink>}
               {isCompliance && <NavLink to="/compliance"><IconShield />Compliance</NavLink>}
               {isCompliance && <NavLink to="/performance-assessment"><IconAssessment />Performance Assessment</NavLink>}
@@ -308,6 +311,7 @@ export function App() {
         </div>
         </div>
       </div>
+      </EventWorkspaceProvider>
     </FixedRouteRefreshProvider>
   );
 }

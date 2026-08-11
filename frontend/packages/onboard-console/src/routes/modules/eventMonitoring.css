@@ -57,5 +57,12 @@
 .evmon-context label { display: flex; align-items: center; gap: 6px; }
 .evmon-context label > span { color: var(--text); font-weight: 800; }
 .evmon-context select { min-width: 230px; height: 31px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface-alt-bg); font: inherit; }
+.evmon-data-state { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; padding: 10px 12px; margin: -8px 0 18px; border: 1px solid var(--border); border-radius: 9px; font-size: 12px; }
+.evmon-data-state span { color: var(--text-muted); }
+.evmon-data-state a { margin-left: auto; color: inherit; font-weight: 800; }
+.evmon-data-state-success { color: var(--success-text); background: var(--success-bg); }
+.evmon-data-state-warning { color: #765b00; background: #fff8d9; }
+.evmon-data-state-error { color: #8a2e2e; background: #fff0f0; }
+.evmon-data-state-info { color: var(--text-muted); background: var(--surface-alt-bg); }
 @media (max-width: 850px) { .evmon-summary { align-items: stretch; flex-direction: column; } .evmon-metrics div { flex: 1; min-width: 0; } .evmon-real-map { min-height: 360px; } }
 @media (max-width: 600px) { .evmon-toolbar { gap: 8px; padding: 9px 10px; } .evmon-toolbar-actions button:first-child { display: none; } .evmon-metrics strong { font-size: 17px; } .evmon-metrics div { padding: 8px 10px; } }

@@ -55,6 +55,7 @@ app.http("eventVehiclePositionsList", {
     try {
       const pool = await getPool();
       const eventId = request.query.get("event_id");
+      const servicePlanId = request.query.get("service_plan_id");
 
       const tableCheck = await pool.request().query<{ table_exists: number }>(`
         SELECT CASE WHEN OBJECT_ID('dbo.EventVehicleCurrentPosition', 'U') IS NULL
@@ -69,6 +70,7 @@ app.http("eventVehiclePositionsList", {
 
       const positionRequest = pool.request();
       positionRequest.input("eventId", sql.UniqueIdentifier, eventId || null);
+      positionRequest.input("servicePlanId", sql.UniqueIdentifier, servicePlanId || null);
       const result = await positionRequest.query<EventVehiclePositionRow>(`
         SELECT p.vehicle_id, p.route, rc.route_label, rc.route_category,
                p.latitude, p.longitude, p.heading, avl.direction,
@@ -85,6 +87,7 @@ app.http("eventVehiclePositionsList", {
                  WHERE scope_route.route_id = p.route
                    AND scope_plan.status = 'active'
                    AND (@eventId IS NULL OR scope_plan.event_id = @eventId)
+                   AND (@servicePlanId IS NULL OR scope_plan.id = @servicePlanId)
                    AND ((scope_plan.start_at IS NOT NULL AND scope_plan.end_at IS NOT NULL AND SYSUTCDATETIME() >= scope_plan.start_at AND SYSUTCDATETIME() <= scope_plan.end_at)
                      OR (scope_plan.start_at IS NULL AND scope_plan.end_at IS NULL AND (scope_plan.start_date IS NULL OR scope_plan.start_date <= CONVERT(DATE, SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time')) AND (scope_plan.end_date IS NULL OR scope_plan.end_date >= CONVERT(DATE, SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time'))))
                    AND EXISTS (
@@ -130,6 +133,7 @@ app.http("eventVehiclePositionsList", {
           WHERE spr.route_id = p.route
             AND sp.status = 'active'
             AND (@eventId IS NULL OR sp.event_id = @eventId)
+            AND (@servicePlanId IS NULL OR sp.id = @servicePlanId)
             AND (sp.start_date IS NULL OR sp.start_date <= CONVERT(CHAR(8), SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time', 112))
             AND (sp.end_date IS NULL OR sp.end_date >= CONVERT(CHAR(8), SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time', 112))
         ) plans
@@ -151,10 +155,12 @@ app.http("eventVehiclePositionsList", {
           WHERE p.report_timestamp >= DATEADD(MINUTE, -15, SYSUTCDATETIME())
           AND p.latitude BETWEEN 43.0 AND 46.0
           AND p.longitude BETWEEN -95.5 AND -92.0
-          AND (@eventId IS NULL OR EXISTS (
+          AND ((@eventId IS NULL AND @servicePlanId IS NULL) OR EXISTS (
             SELECT 1 FROM EventServicePlanRoutes selected_route
             INNER JOIN EventServicePlans selected_plan ON selected_plan.id = selected_route.service_plan_id
-            WHERE selected_route.route_id = p.route AND selected_plan.event_id = @eventId
+            WHERE selected_route.route_id = p.route
+              AND (@eventId IS NULL OR selected_plan.event_id = @eventId)
+              AND (@servicePlanId IS NULL OR selected_plan.id = @servicePlanId)
           ))
         ORDER BY p.route, p.vehicle_id
       `);

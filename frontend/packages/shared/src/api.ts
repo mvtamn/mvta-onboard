@@ -523,8 +523,9 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
       );
     },
 
-    getEventVehiclePositions(eventId?: string) {
-      const suffix = eventId ? `?event_id=${encodeURIComponent(eventId)}` : "";
+    getEventVehiclePositions(eventId?: string, servicePlanId?: string) {
+      const query = new URLSearchParams(); if (eventId) query.set("event_id", eventId); if (servicePlanId) query.set("service_plan_id", servicePlanId);
+      const suffix = query.toString() ? `?${query}` : "";
       return request<{
         vehicles: EventVehiclePosition[];
         diagnostic_vehicles: EventVehiclePosition[];

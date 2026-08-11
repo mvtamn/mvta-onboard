@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ApiError, type Event, type EventGeofence, type EventLocation, type EventServicePlan } from "@mvta/shared";
 import { api } from "../config.js";
+import { useEventWorkspace } from "../context/EventWorkspaceContext.js";
 
 const steps: EventServicePlan["status"][] = ["draft", "review", "approved", "active", "suspended", "completed"];
 type ResourceOption = { id: string; label: string };
@@ -20,8 +21,8 @@ function toUtc(value: string): string | undefined {
 export function EventPlanning() {
   const [events, setEvents] = useState<Event[]>([]);
   const [plans, setPlans] = useState<EventServicePlan[]>([]);
-  const [selectedEventId, setSelectedEventId] = useState("");
-  const [selectedPlanId, setSelectedPlanId] = useState("");
+  const { selection, selectEvent, selectServicePlan, selectRevision } = useEventWorkspace();
+  const { eventId: selectedEventId, servicePlanId: selectedPlanId, revisionId } = selection;
   const [eventName, setEventName] = useState("");
   const [eventDescription, setEventDescription] = useState("");
   const [owningTeam, setOwningTeam] = useState("");
@@ -34,7 +35,6 @@ export function EventPlanning() {
   const [routeId, setRouteId] = useState("");
   const [geofenceId, setGeofenceId] = useState("");
   const [locationId, setLocationId] = useState("");
-  const [revisionId, setRevisionId] = useState("");
   const [message, setMessage] = useState<string | null>(null);
 
   const load = async () => {
@@ -47,8 +47,6 @@ export function EventPlanning() {
       setRoutes(routeRows.routes.filter((row) => row.route_category === "SpecialEvent" && row.is_active).map((row) => ({ id: String(row.route_id), label: `Route ${row.route_id}${row.route_label ? ` · ${row.route_label}` : ""}` })));
       setGeofences(geofenceRows.geofences.filter((row: EventGeofence) => row.is_active).map((row: EventGeofence) => ({ id: row.id, label: row.name })));
       setLocations(locationRows.locations.filter((row: EventLocation) => row.is_active).map((row: EventLocation) => ({ id: row.id, label: `${row.name} · ${row.category}` })));
-      if (!selectedEventId && eventRows.events[0]) setSelectedEventId(eventRows.events[0].id);
-      if (!selectedPlanId && planRows.plans[0]) setSelectedPlanId(planRows.plans[0].id);
     } catch (err) {
       setMessage(err instanceof ApiError ? err.message : "Could not load Event Planning resources.");
     }
@@ -56,8 +54,8 @@ export function EventPlanning() {
 
   useEffect(() => { void load(); }, []);
 
-  const eventPlans = useMemo(() => plans.filter((row) => !selectedEventId || row.event_id === selectedEventId), [plans, selectedEventId]);
-  const plan = plans.find((row) => row.id === selectedPlanId) ?? eventPlans[0];
+  const eventPlans = useMemo(() => selectedEventId ? plans.filter((row) => row.event_id === selectedEventId) : [], [plans, selectedEventId]);
+  const plan = plans.find((row) => row.id === selectedPlanId && (!selectedEventId || row.event_id === selectedEventId));
   const event = events.find((row) => row.id === (plan?.event_id ?? selectedEventId));
   const links = plan?.links ?? [];
   const revision = plan?.revisions?.find((row) => row.id === revisionId) ?? plan?.revisions?.find((row) => ["draft", "review", "approved"].includes(row.status));
@@ -79,7 +77,7 @@ export function EventPlanning() {
     if (!eventName.trim()) return;
     try {
       const created = await api.createEvent({ name: eventName.trim(), description: eventDescription.trim() || null, owning_team: owningTeam.trim() || null });
-      setEventName(""); setEventDescription(""); setOwningTeam(""); setSelectedEventId(created.id); setMessage("Event created. Add an operating period to begin planning."); await load();
+      setEventName(""); setEventDescription(""); setOwningTeam(""); selectEvent(created.id); setMessage("Event created. Add an operating period to begin planning."); await load();
     } catch (err) { setMessage(err instanceof ApiError ? err.message : "Could not create Event."); }
   }
 
@@ -87,7 +85,7 @@ export function EventPlanning() {
     if (!selectedEventId || !planName.trim() || !startAt || !endAt) return;
     try {
       const created = await api.createEventServicePlan({ name: planName.trim(), event_id: selectedEventId, start_at: toUtc(startAt), end_at: toUtc(endAt) });
-      setPlanName(""); setSelectedPlanId(created.id); setMessage("Draft operating period created."); await load();
+      setPlanName(""); selectServicePlan(created.id); setMessage("Draft operating period created."); await load();
     } catch (err) { setMessage(err instanceof ApiError ? err.message : "Could not create operating period."); }
   }
 
@@ -112,7 +110,7 @@ export function EventPlanning() {
 
   async function prepareRevision() {
     if (!plan) return;
-    try { const next = await api.modifyEventServicePlan(plan.id); setRevisionId(next.id); setMessage("Revision created; the active scope remains unchanged."); await load(); }
+    try { const next = await api.modifyEventServicePlan(plan.id); selectRevision(next.id); setMessage("Revision created; the active scope remains unchanged."); await load(); }
     catch (err) { setMessage(err instanceof ApiError ? err.message : "Could not create revision."); }
   }
 
@@ -131,7 +129,7 @@ export function EventPlanning() {
       {message && <p className="muted" role="status">{message}</p>}
       <h3>Event identity</h3>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <select className="f" value={selectedEventId} onChange={(e) => { setSelectedEventId(e.target.value); setSelectedPlanId(""); }}><option value="">Select Event</option>{events.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select>
+        <select className="f" value={selectedEventId} onChange={(e) => selectEvent(e.target.value)}><option value="">Select Event</option>{events.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select>
         <input className="f" value={eventName} onChange={(e) => setEventName(e.target.value)} placeholder="New Event name" />
         <input className="f" value={owningTeam} onChange={(e) => setOwningTeam(e.target.value)} placeholder="Owning team" />
         <input className="f" value={eventDescription} onChange={(e) => setEventDescription(e.target.value)} placeholder="Event description" />
@@ -144,7 +142,7 @@ export function EventPlanning() {
     <div className="panel-body">
       <p className="panel-desc">An operating period is the timestamped Service Plan that controls one Event scope. Overnight periods are supported using MVTA-local browser time.</p>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <select className="f" value={selectedPlanId} onChange={(e) => { setSelectedPlanId(e.target.value); setRevisionId(""); }}><option value="">Select operating period</option>{eventPlans.map((row) => <option key={row.id} value={row.id}>{row.name} · {row.status}</option>)}</select>
+        <select className="f" value={selectedPlanId} onChange={(e) => selectServicePlan(e.target.value)}><option value="">Select operating period</option>{eventPlans.map((row) => <option key={row.id} value={row.id}>{row.name} · {row.status}</option>)}</select>
         <input className="f" value={planName} onChange={(e) => setPlanName(e.target.value)} placeholder="Operating period name" />
         <label className="f">Starts <input type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} /></label>
         <label className="f">Ends <input type="datetime-local" value={endAt} onChange={(e) => setEndAt(e.target.value)} /></label>
@@ -163,7 +161,7 @@ export function EventPlanning() {
         <p className="muted">Current state: <strong>{plan.status}</strong></p>
         {nextAction && <button className="btn-sm" disabled={nextAction === "advance" && (counts.routes === 0 || counts.geofences === 0)} onClick={() => void transition(nextAction)}>{nextAction === "submit-review" ? "Submit for review" : nextAction === "approve" ? "Approve operating period" : nextAction === "advance" ? "Activate operating period" : "Complete operating period"}</button>}
         {plan.status === "active" && <><button className="btn-sm" onClick={() => void prepareRevision()}>Prepare revision</button> <button className="btn-sm" onClick={() => void transition("suspend")}>Suspend operations</button></>}
-        {revision && <div><p className="muted">Revision: <strong>{revision.status}</strong> · active scope remains unchanged until applied.</p>{revision.status === "draft" && <button className="btn-sm" onClick={() => void revise("submit-review")}>Submit revision</button>}{revision.status === "review" && <button className="btn-sm" onClick={() => void revise("approve")}>Approve revision</button>}{revision.status === "approved" && <button className="btn-sm" onClick={() => void revise("apply")}>Apply revision</button>}</div>}
+        {revision && <div><p className="muted">Revision: <strong>{revision.status}</strong> · active scope remains unchanged until applied.</p>{revision.status === "draft" && <button className="btn-sm" onClick={() => void revise("submit-review")}>Submit revision</button>}{revision.status === "review" && <button className="btn-sm" onClick={() => void revise("approve")}>Approve revision</button>}{revision.status === "approved" && <button className="btn-sm" onClick={() => void revise("apply")}>Apply revision</button>}<button className="btn-sm" onClick={() => selectRevision("")}>Clear revision</button></div>}
         {nextAction === "advance" && (counts.routes === 0 || counts.geofences === 0) && <p className="muted">Activation requires at least one linked SpecialEvent route and geofence with a direction rule.</p>}
       </div>
 

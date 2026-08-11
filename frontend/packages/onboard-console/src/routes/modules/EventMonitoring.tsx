@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import * as atlas from "azure-maps-control";
 import "azure-maps-control/dist/atlas.min.css";
 import { ApiError, type Event, type EventGeofence, type EventLocation, type EventServicePlan, type EventVehicleAssignment, type EventVehiclePosition, type EventGeofenceCrossing, type EventGeofenceNotification, type EventAuditEntry, type EventMonitoringHealth } from "@mvta/shared";
 import { api } from "../../config.js";
+import { useEventWorkspace } from "../../context/EventWorkspaceContext.js";
 import "./eventMonitoring.css";
 
 const AVL_REFRESH_MS = 30_000;
@@ -60,7 +62,8 @@ export function EventMonitoring() {
   const [diagnosticVehicles, setDiagnosticVehicles] = useState<EventVehiclePosition[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [plans, setPlans] = useState<EventServicePlan[]>([]);
-  const [selectedEventId, setSelectedEventId] = useState("");
+  const { selection, selectEvent, selectServicePlan } = useEventWorkspace();
+  const { eventId: selectedEventId, servicePlanId: selectedPlanId } = selection;
   const [showDiagnostics, setShowDiagnostics] = useState(true);
   const [showGeofences, setShowGeofences] = useState(true);
   const [showLocations, setShowLocations] = useState(true);
@@ -87,8 +90,12 @@ export function EventMonitoring() {
 
   const load = useCallback(async () => {
     setRefreshing(true);
+    if (!selectedEventId || !selectedPlanId) {
+      setVehicles([]); setDiagnosticVehicles([]); setHealth(null); setLastUpdated(null); setRefreshing(false);
+      return;
+    }
     try {
-      const { vehicles: current, diagnostic_vehicles: diagnosticsVehicles, diagnostics } = await api.getEventVehiclePositions(selectedEventId || undefined);
+      const { vehicles: current, diagnostic_vehicles: diagnosticsVehicles, diagnostics } = await api.getEventVehiclePositions(selectedEventId || undefined, selectedPlanId || undefined);
       setVehicles(current);
       setDiagnosticVehicles(diagnosticsVehicles);
       setLastUpdated(new Date());
@@ -105,13 +112,12 @@ export function EventMonitoring() {
       setRefreshing(false);
     }
     void api.getEventMonitoringHealth(selectedEventId || undefined).then(setHealth).catch(() => setHealth(null));
-  }, [selectedEventId]);
+  }, [selectedEventId, selectedPlanId]);
 
   useEffect(() => {
     void Promise.all([api.getEvents(), api.getEventServicePlans()]).then(([eventRows, planRows]) => {
       setEvents(eventRows.events);
       setPlans(planRows.plans);
-      if (!selectedEventId && eventRows.events[0]) setSelectedEventId(eventRows.events[0].id);
     }).catch(() => { setEvents([]); setPlans([]); });
   }, []);
 
@@ -134,6 +140,7 @@ export function EventMonitoring() {
   }, [load]);
 
   useEffect(() => {
+    if (!selectedEventId || !selectedPlanId) { setCrossings([]); setNotifications([]); setAudit([]); return; }
     Promise.allSettled([api.getEventGeofenceCrossings(selectedEventId || undefined), api.getEventGeofenceNotifications("pending", selectedEventId || undefined), api.getEventAuditStream(undefined, undefined, selectedEventId || undefined)])
       .then(([c, n, a]) => {
         const now = new Date();
@@ -159,12 +166,12 @@ export function EventMonitoring() {
   }
 
   async function proposeAssignment(vehicle: EventVehiclePosition) {
-    const targetPlan = activePlan ?? selectedPlans.find((plan) => plan.status === "draft" || plan.status === "review");
+    const targetPlan = selectedPlan ?? selectedPlans.find((plan) => plan.status === "draft" || plan.status === "review");
     if (!selectedEventId || !targetPlan || vehicle.route === null) { setAssignmentMessage("Select an Event with a draft, review, or active operating period before proposing an assignment."); return; }
     try {
       const assignment = await api.createEventVehicleAssignment({ event_id: selectedEventId, service_plan_id: targetPlan.id, vehicle_id: vehicle.vehicle_id, route_id: vehicle.route, reason: "Proposed from Event AVL diagnostic view" });
       setAssignments((rows) => [assignment, ...rows]);
-      setAssignmentMessage(activePlan ? "Assignment proposed as an active-plan revision; it is not live until the revision is approved and applied." : "Assignment proposed for the operating period.");
+      setAssignmentMessage(selectedPlan?.status === "active" ? "Assignment proposed as an active-plan revision; it is not live until the revision is approved and applied." : "Assignment proposed for the operating period.");
     } catch (error) { setAssignmentMessage(error instanceof ApiError ? error.message : "Could not propose vehicle assignment."); }
   }
 
@@ -179,14 +186,12 @@ export function EventMonitoring() {
   const classifiedVehicles = vehicles ?? [];
   const selectedEvent = events.find((event) => event.id === selectedEventId);
   const selectedPlans = plans.filter((plan) => plan.event_id === selectedEventId);
-  const activePlan = selectedPlans.find((plan) => plan.status === "active");
-  const activeGeofenceIds = new Set(activePlan?.links?.filter((link) => link.kind === "geofences").map((link) => String(link.value)) ?? []);
-  const activeLocationIds = new Set(activePlan?.links?.filter((link) => link.kind === "locations").map((link) => String(link.value)) ?? []);
+  const selectedPlan = selectedPlans.find((plan) => plan.id === selectedPlanId && plan.status === "active");
+  const activeGeofenceIds = new Set(selectedPlan?.links?.filter((link) => link.kind === "geofences").map((link) => String(link.value)) ?? []);
+  const activeLocationIds = new Set(selectedPlan?.links?.filter((link) => link.kind === "locations").map((link) => String(link.value)) ?? []);
   const visibleGeofences = geofences.filter((fence) => activeGeofenceIds.has(fence.id));
   const visibleLocations = locations.filter((location) => activeLocationIds.has(location.id));
-  const routeOptions = useMemo(() => Array.from(new Map(classifiedVehicles
-    .filter((vehicle) => vehicle.route !== null)
-    .map((vehicle) => [String(vehicle.route), routeLabel(vehicle)])).entries()), [classifiedVehicles]);
+  const routeOptions = useMemo(() => selectedPlan?.links?.filter((link) => link.kind === "routes").map((link) => [String(link.value), link.label] as [string, string]) ?? [], [selectedPlan]);
   const activeVehicles = useMemo(() => classifiedVehicles.filter((vehicle) => {
     const heading = cardinalHeading(vehicle.heading, vehicle.direction);
     const query = search.trim().toLowerCase();
@@ -201,9 +206,20 @@ export function EventMonitoring() {
       && (headingFilter === "all" || heading === headingFilter)
       && matchesMotion && matchesSearch;
   }), [classifiedVehicles, headingFilter, motionFilter, routeFilter, search]);
-  const routesActive = new Set(classifiedVehicles.map((v) => v.route).filter((v) => v !== null)).size;
+  const routesActive = selectedPlan?.links?.filter((link) => link.kind === "routes").length ?? 0;
   const reportingNow = classifiedVehicles.filter((v) => Date.now() - new Date(v.report_timestamp).getTime() < 60_000).length;
   const hasFilters = routeFilter !== "all" || headingFilter !== "all" || motionFilter !== "all" || search !== "";
+  const dataState = !selectedEventId
+    ? { tone: "info", title: "Select an Event to begin monitoring.", action: null }
+    : !selectedPlans.some((plan) => plan.status === "active")
+      ? { tone: "warning", title: "This Event has no active operating period.", action: "Create or activate an operating period in Event Planning." }
+      : !selectedPlan
+        ? { tone: "warning", title: "Select an active operating period to scope AVL data.", action: null }
+        : health === null && vehicles === null
+          ? { tone: "error", title: "Event AVL data is unavailable.", action: "The API health or vehicle-position feed could not be reached." }
+          : vehicles === null
+            ? { tone: "info", title: "Connecting to Event AVL data…", action: null }
+            : { tone: "success", title: vehicles.length ? "Event AVL data is flowing." : "The feed is healthy, but no managed vehicles are reporting.", action: null };
 
   return (
     <section className="evmon" aria-label="Live vehicle monitoring">
@@ -211,7 +227,7 @@ export function EventMonitoring() {
         <div>
           <span className="evmon-eyebrow"><span className="evmon-live-dot" /> Live operations</span>
           <h2>Event AVL</h2>
-          <p>{selectedEvent ? `${selectedEvent.name} · ${selectedPlans.find((plan) => plan.status === "active")?.name ?? "No active operating period"}` : "Select an Event operating context to monitor."}</p>
+          <p>{selectedEvent ? `${selectedEvent.name} · ${selectedPlan?.name ?? "Select an operating period"}` : "Select an Event operating context to monitor."}</p>
         </div>
         <div className="evmon-metrics" aria-label="Live monitoring summary">
           <div><strong>{classifiedVehicles.length}</strong><span>Vehicles</span></div>
@@ -221,9 +237,17 @@ export function EventMonitoring() {
       </div>
 
       <div className="evmon-context" aria-label="Event operating context">
-        <label><span>Event context</span><select value={selectedEventId} onChange={(event) => { setSelectedEventId(event.target.value); setVehicles(null); }}><option value="">Select Event</option>{events.map((event) => <option key={event.id} value={event.id}>{event.name}</option>)}</select></label>
+        <label><span>Event context</span><select value={selectedEventId} onChange={(event) => { selectEvent(event.target.value); setRouteFilter("all"); setVehicles(null); }}><option value="">Select Event</option>{events.map((event) => <option key={event.id} value={event.id}>{event.name}</option>)}</select></label>
+        <label><span>Operating period</span><select value={selectedPlanId} onChange={(event) => { selectServicePlan(event.target.value); setRouteFilter("all"); setVehicles(null); }} disabled={!selectedEventId}><option value="">Select active period</option>{selectedPlans.filter((plan) => plan.status === "active").map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}</select></label>
         <span>{selectedEvent ? `${selectedPlans.length} operating period${selectedPlans.length === 1 ? "" : "s"}` : "No Event selected"}</span>
         <label><input type="checkbox" checked={showDiagnostics} onChange={(event) => setShowDiagnostics(event.target.checked)} /> Show unplanned diagnostic vehicles</label>
+      </div>
+
+      <div className={`evmon-data-state evmon-data-state-${dataState.tone}`} role="status">
+        <strong>{dataState.title}</strong>
+        {dataState.action && <span>{dataState.action}</span>}
+        {!selectedEventId && <Link to="/event-planning">Open Event Planning</Link>}
+        {selectedEventId && !selectedPlans.some((plan) => plan.status === "active") && <Link to={`/event-planning?event=${encodeURIComponent(selectedEventId)}`}>Open Event Planning</Link>}
       </div>
 
       <div className="evmon-health" aria-label="Event monitoring data health">
@@ -250,7 +274,7 @@ export function EventMonitoring() {
         </div>
         {!minimized && <div className="evmon-controls">
           <label><span>Find</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Vehicle or operator" /></label>
-          <label><span>Route</span><select value={routeFilter} onChange={(event) => setRouteFilter(event.target.value)}><option value="all">All event routes</option>{routeOptions.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
+          <label><span>Managed service</span><select value={routeFilter} onChange={(event) => setRouteFilter(event.target.value)}><option value="all">All managed services</option>{routeOptions.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
           <label><span>Heading</span><select value={headingFilter} onChange={(event) => setHeadingFilter(event.target.value)}><option value="all">All headings</option>{["NB", "SB", "EB", "WB"].map((value) => <option key={value}>{value}</option>)}</select></label>
           <label><span>Motion</span><select value={motionFilter} onChange={(event) => setMotionFilter(event.target.value)}><option value="all">Moving + stopped</option><option value="moving">Moving</option><option value="stopped">Stopped</option></select></label>
           <label><span>Map layer</span><select value={mapStyle} onChange={(event) => setMapStyle(event.target.value as MapStyle)}><option value="road">Road</option><option value="grayscale_light">Light</option><option value="night">Night</option><option value="satellite_road_labels">Satellite + labels</option></select></label>
