@@ -18,6 +18,7 @@
   --nav-bg: var(--brand-green);
   --danger-text: #8a1f1f;
   --success-text: #1f7a4c;
+  --success-bg: #e3f0d4;
   --live-dot: #2fae66;
   --table-stripe: #fafaf8;
 
@@ -56,6 +57,7 @@
 
   --danger-text: #e08585;
   --success-text: #5fbf8f;
+  --success-bg: #193b2c;
   --table-stripe: #1a2a22;
 
   --pill-warning-bg: #3a2a15; --pill-warning-fg: #f0b070;
@@ -93,6 +95,28 @@ body {
 
 /* ---------- left nav sidebar ---------- */
 .nav-sidebar { width: 232px; flex-shrink: 0; background: var(--nav-bg); display: flex; flex-direction: column; padding: 18px 14px; }
+/* Below 860px there's no room for a fixed 232px rail beside real content
+   (this is what previously made Event Planning unusable on a phone
+   regardless of its own responsive CSS - the shell never offered a way to
+   collapse it). Off-canvas + backdrop instead of just shrinking it, since
+   shrinking a nav rail with text labels just clips the labels. */
+.nav-toggle-btn { display: none; width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--surface-bg); color: var(--text); cursor: pointer; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+@media (max-width: 860px) {
+  .nav-toggle-btn { display: inline-flex; }
+  .nav-sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 40;
+    width: 260px;
+    max-width: 82vw;
+    height: 100vh;
+    transform: translateX(-100%);
+    transition: transform .22s ease;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, .3);
+  }
+  .nav-sidebar.is-open { transform: translateX(0); }
+  .nav-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, .35); z-index: 39; border: none; padding: 0; cursor: pointer; }
+}
 .nav-brand { display: flex; align-items: center; gap: 10px; padding: 6px 8px 22px; }
 .nav-brand .logo-badge { background: rgba(255, 255, 255, 0.15); color: #fff; font-weight: bold; font-size: 12px; padding: 5px 9px; border-radius: 6px; letter-spacing: 0.5px; }
 .nav-brand-text { color: #fff; font-weight: bold; font-size: 15px; line-height: 1.2; }
@@ -117,7 +141,7 @@ body {
 .content-topbar { background: var(--surface-bg); border-bottom: 1px solid var(--border); padding: 14px 22px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .content-topbar h1 { font-size: 22px; font-weight: 800; color: var(--text); margin: 0; letter-spacing: -0.01em; }
 .content-topbar .subtitle { color: var(--text-muted); font-size: 12.5px; margin-top: 3px; }
-.topbar-actions { display: flex; align-items: center; gap: 10px; }
+.topbar-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 .tr-text { color: var(--text-muted); font-size: 12px; }
 .fixed-route-refresh-indicator {
   align-items: center;
@@ -144,6 +168,20 @@ body {
 }
 @keyframes refresh-pulse {
   50% { opacity: 0.35; transform: scale(0.8); }
+}
+/* .topbar-actions had no wrap of its own and no responsive collapse, so
+   below ~860px its five children (refresh indicator, session date, user
+   pill, theme toggle, sign out) stayed in one un-wrapping row wider than the
+   viewport - clipped by .frame's overflow:hidden rather than scrollable,
+   making Sign Out physically unreachable on a phone. Hiding the two least
+   essential items frees enough width that what remains (user pill, theme
+   toggle, sign out) fits or wraps onto its own line instead of clipping.
+   Placed after the base .fixed-route-refresh-indicator rule (not before it,
+   as this was mistakenly placed the first time) - equal-specificity rules
+   resolve by source order, so an override earlier in the file loses to a
+   plain rule later in the file regardless of the media condition. */
+@media (max-width: 860px) {
+  .fixed-route-refresh-indicator, .tr-text { display: none; }
 }
 .pill-user { display: flex; align-items: center; gap: 8px; background: var(--surface-alt-bg); border: 1px solid var(--border); color: var(--text); font-size: 12px; padding: 4px 12px 4px 4px; border-radius: 999px; }
 .avatar { width: 24px; height: 24px; border-radius: 50%; background: var(--brand-green); color: #fff; font-size: 10.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
@@ -180,17 +218,22 @@ body {
 .event-workspace-context { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
 .event-workspace-nav strong { color: var(--text); }
 .event-workspace-context > span:not(.event-workspace-kicker) { color: var(--text-muted); font-size: 12px; }
-.event-workspace-kicker { color: var(--brand-green); font-size: 10px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; }
+.event-workspace-kicker { color: var(--brand-green); font-size: 11px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; }
 .event-workspace-stages { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 0; padding: 0; list-style: none; }
 .event-workspace-stages li { min-width: 0; }
-.event-workspace-stages a { display: flex; align-items: center; gap: 7px; min-height: 38px; padding: 4px 7px; border-radius: 7px; color: var(--text-muted); text-decoration: none; }
-.event-workspace-stages a:hover, .event-workspace-stages li.is-active a { background: var(--success-bg); color: var(--brand-green); }
+.event-workspace-stages a { display: flex; align-items: center; gap: 7px; min-height: 38px; padding: 5px 8px; border-radius: 7px; color: var(--text-muted); text-decoration: none; }
+.event-workspace-stages a:hover, .event-workspace-stages li.is-active a { background: var(--success-bg); color: var(--success-text); }
 .event-workspace-stages li.is-complete a { color: var(--success-text); }
 .event-workspace-stage-marker { display: grid; flex: 0 0 21px; place-items: center; width: 21px; height: 21px; border: 1px solid currentColor; border-radius: 50%; font-size: 10px; font-weight: 800; }
 .event-workspace-stages a > span:last-child { min-width: 0; }
 .event-workspace-stages strong, .event-workspace-stages small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .event-workspace-stages strong { font-size: 11px; }
-.event-workspace-stages small { color: var(--text-muted); font-size: 9px; }
+/* color: inherit, not a hardcoded muted tone - `small`'s own explicit color
+   otherwise wins specificity over the parent link's hover/active
+   `--success-text`, leaving this sub-label at 4.4:1 (needs 4.5:1) on the
+   tinted background. Inheriting lets it track whatever state the parent
+   link is actually in. */
+.event-workspace-stages small { color: inherit; font-size: 11px; }
 .event-workspace-next { margin: 0 0 14px; color: var(--text-muted); font-size: 12px; }
 .event-inline-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; padding: 10px 12px; border: 1px solid #d9aaaa; border-radius: 8px; color: #8a2e2e; background: #fff0f0; font-size: 12px; }
 .event-planning-start { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 16px; padding: 14px 16px; border: 1px solid var(--highlight-border); border-radius: 10px; background: var(--highlight-bg); }
@@ -217,11 +260,43 @@ body {
 .event-planning-empty p { margin: 0; color: var(--text-muted); }
 .event-planning-empty-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .event-readiness { display: grid; gap: 5px; margin-top: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-alt-bg); font-size: 12px; }
-.event-readiness span { color: #8a2e2e; }
+.event-readiness span { color: var(--danger-text); }
 .event-readiness span.ready { color: var(--success-text); }
+/* Per-panel action feedback - rendered next to the control that triggered
+   it (not a single top-of-page banner), with success/error visibly
+   distinct instead of sharing one muted style. */
+.event-feedback { margin: 0 0 10px; padding: 8px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+.event-feedback.success { background: var(--pill-success-bg); color: var(--pill-success-fg); }
+.event-feedback.error { background: var(--pill-danger-bg); color: var(--pill-danger-fg); }
+/* In-page operating-period lifecycle stepper - mirrors EventWorkspaceNav's
+   aria-current pattern instead of reinventing ad hoc inline styles, and
+   distinguishes past/current/future steps instead of one flat row. */
+.event-plan-steps { display: flex; gap: 6px; flex-wrap: wrap; margin: 0; padding: 0; list-style: none; }
+.event-plan-steps li { padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: 6px; font-size: 12px; color: var(--text-muted); }
+.event-plan-steps li.is-past { color: var(--success-text); border-color: var(--success-text); }
+.event-plan-steps li[aria-current="step"] { background: var(--brand-green); border-color: var(--brand-green); color: #fff; font-weight: 700; }
 @media (max-width: 1050px) { .event-workspace-nav { grid-template-columns: 1fr auto; } .event-workspace-stages { grid-column: 1 / -1; grid-row: 2; } }
-@media (max-width: 760px) { .event-planning-setup { grid-template-columns: 1fr; } .event-period-form { grid-template-columns: 1fr; } .event-planning-empty, .event-planning-start { align-items: flex-start; flex-direction: column; } }
-@media (max-width: 700px) { .event-workspace-nav { display: flex; align-items: stretch; flex-direction: column; } .event-workspace-stages { width: 100%; } }
+/* 768px, not 760px - 760px left the common 768px tablet width one row
+   short of the stacking breakpoint, clipping the "Ends" datetime input
+   against the still-two-column .event-period-form. */
+@media (max-width: 768px) { .event-planning-setup { grid-template-columns: 1fr; } .event-period-form { grid-template-columns: 1fr; } .event-planning-empty, .event-planning-start { align-items: flex-start; flex-direction: column; } }
+/* Below 700px the fixed 4-column grid squeezes each stage into ~1/4 of the
+   viewport width - not enough room for "Reusable resources" etc. at any
+   font size, so labels were rendering as 1-2 visible characters. Scrolling
+   horizontally at each stage's natural width keeps the text legible
+   instead of shrinking it into illegibility; EventWorkspaceNav scrolls the
+   active stage into view on mount so it doesn't have to be discovered. */
+@media (max-width: 700px) {
+  .event-workspace-nav { display: flex; align-items: stretch; flex-direction: column; }
+  .event-workspace-stages {
+    width: 100%;
+    display: flex;
+    grid-template-columns: none;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+  }
+  .event-workspace-stages li { flex: 0 0 auto; min-width: 150px; scroll-snap-align: start; }
+}
 .panel-body { border: 1px solid var(--border); border-top: none; border-radius: 0 0 10px 10px; padding: 16px 18px; margin-bottom: 22px; background: var(--surface-bg); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04); }
 .panel-desc { font-size: 12px; color: var(--text-dim); margin: 0 0 14px; line-height: 1.5; }
 
@@ -279,7 +354,10 @@ table.data tr.route-group-header td { background: var(--surface-alt-bg); color: 
    instead of inheriting the browser's default link underline/blue. */
 .btn-sm { font-size: 11px; padding: 5px 11px; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--surface-bg); margin-right: 4px; cursor: pointer; color: var(--text); text-decoration: none; display: inline-block; }
 .btn-sm:hover { border-color: var(--brand-green); color: var(--brand-green); }
-.btn-sm.danger:hover { border-color: var(--danger-text); color: var(--danger-text); }
+/* Distinct at rest, not just on hover - a suspend/pause action shouldn't
+   look identical to a neutral action until the pointer happens to be over it. */
+.btn-sm.danger { border-color: var(--danger-text); color: var(--danger-text); }
+.btn-sm.danger:hover { background: var(--pill-danger-bg); }
 /* Toggle-style buttons (e.g. auto-refresh) - amber highlight for the "on"
    state, distinct from a plain .btn-sm even when sitting on the green
    panel-header bar (a brand-green "on" state would blend into that). */

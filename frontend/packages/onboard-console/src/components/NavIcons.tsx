@@ -94,6 +94,14 @@ export function IconBus(_: IconProps) {
   );
 }
 
+export function IconMenu(_: IconProps) {
+  return (
+    <svg {...base}>
+      <path d="M4 6h16M4 12h16M4 18h16" />
+    </svg>
+  );
+}
+
 export function IconShield(_: IconProps) {
   return (
     <svg {...base}>

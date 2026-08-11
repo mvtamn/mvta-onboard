@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { NavLink } from "react-router-dom";
 import { useEventWorkspace } from "../context/EventWorkspaceContext.js";
 
@@ -23,6 +24,13 @@ export function EventWorkspaceNav({ eventName, planName, planStatus, activeStage
   if (selection.revisionId) query.set("revision", selection.revisionId);
   const suffix = query.toString() ? `?${query}` : "";
 
+  // Below 700px the stage list scrolls horizontally instead of squeezing
+  // labels into an unreadable quarter-width column (see .event-workspace-stages
+  // in styles.css) - this keeps whichever stage is active in view on mount
+  // instead of leaving the user to discover it by swiping.
+  const activeRef = useRef<HTMLLIElement>(null);
+  useEffect(() => { activeRef.current?.scrollIntoView({ inline: "center", block: "nearest" }); }, [activeStage]);
+
   return (
     <nav className="event-workspace-nav" aria-label="Event workspace">
       <div className="event-workspace-context">
@@ -35,7 +43,7 @@ export function EventWorkspaceNav({ eventName, planName, planStatus, activeStage
           const isActive = stage.id === activeStage;
           const isComplete = index < stages.findIndex((item) => item.id === activeStage);
           const stageSuffix = stage.id === "configure" ? `${suffix}#event-configuration` : `${stage.href}${suffix}`;
-          return <li key={stage.id} className={isActive ? "is-active" : isComplete ? "is-complete" : undefined}>
+          return <li key={stage.id} ref={isActive ? activeRef : undefined} className={isActive ? "is-active" : isComplete ? "is-complete" : undefined}>
             <NavLink to={stageSuffix} aria-current={isActive ? "step" : undefined}>
               <span className="event-workspace-stage-marker">{isComplete ? "✓" : index + 1}</span>
               <span><strong>{stage.label}</strong><small>{stage.description}</small></span>

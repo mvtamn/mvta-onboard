@@ -5,6 +5,47 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.17] - 2026-08-11
+
+- **Mobile Event Workspace nav is legible again.** The Plan/Configure/Activate/
+  Monitor stage labels were rendering as 1-2 truncated characters on phones;
+  the stage list now scrolls horizontally at each stage's natural width, and
+  scrolls the active stage into view automatically.
+- **Sign Out is reachable on mobile.** The top bar's action row had no wrap
+  and no responsive collapse, leaving Sign Out entirely outside the phone
+  viewport with no way to scroll to it. It now wraps, and the two least
+  essential items (refresh countdown, session date) hide below 860px.
+- **No more silent data loss switching operating periods.** Switching the
+  operating-period dropdown mid-edit now confirms before discarding unsaved
+  name/date changes instead of silently overwriting them.
+- **Session-expired is no longer a dead end.** A lapsed session now shows
+  "Your session has expired" with a real sign-in action, instead of a
+  "Try again" that re-fires the same request and fails identically.
+- **Fixed a contrast near-miss** on the Event Workspace stage sub-labels
+  (4.4:1 → back above 4.5:1) introduced by an incomplete fix in 1.5.16.
+
+## [1.5.16] - 2026-08-11
+
+- **Safer Event Planning actions.** Activating an operating period for Event
+  AVL, suspending it, and applying a revision to the active scope now require
+  confirmation; linking a resource already on the plan is blocked with an
+  explicit message instead of silently duplicating it.
+- **Clearer Event Planning feedback.** Action feedback now renders next to the
+  panel that triggered it, styled distinctly for success vs. error, instead of
+  one shared banner at the top of the page. The operating-period form only
+  appears once an Event is selected.
+- **Fixed dark-mode contrast bug.** The active Event Workspace stage (and two
+  Event Monitoring success states sharing the same token) referenced an
+  undefined `--success-bg` CSS variable, leaving text nearly invisible in dark
+  mode; the variable is now defined in both themes and paired with the
+  correct foreground color.
+- **Mobile-usable console shell.** The left nav sidebar now collapses behind a
+  toggle below 860px instead of staying permanently expanded and pushing page
+  content off-screen on phones.
+- **Tablet layout fix.** The Event Planning setup panels now stack at 768px
+  (previously 760px), so the operating-period "Ends" field no longer clips at
+  common tablet widths.
+
 ## [1.5.15] - 2026-08-10
 
 - **Unified Event operating model.** Added durable Events with generated-event

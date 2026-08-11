@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./auth/AuthContext.js";
 import { RequireRole } from "./auth/RequireRole.js";
@@ -20,6 +21,7 @@ import {
   IconMoon,
   IconAssessment,
   IconBus,
+  IconMenu,
 } from "./components/NavIcons.js";
 import { Dashboard } from "./routes/Dashboard.js";
 import { Compose } from "./routes/Compose.js";
@@ -124,6 +126,11 @@ export function App() {
   const stats = useLiveStats();
   const location = useLocation();
   const meta = currentPageMeta(location.pathname);
+  // Below 860px the sidebar goes off-canvas (see .nav-sidebar in styles.css)
+  // - this just tracks whether it's pulled into view, and closes it on every
+  // navigation so it never stays open covering the next page.
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  useEffect(() => { setMobileNavOpen(false); }, [location.pathname]);
 
   if (!account) {
     return (
@@ -149,7 +156,7 @@ export function App() {
     <FixedRouteRefreshProvider>
       <EventWorkspaceProvider>
       <div className="frame">
-        <aside className="nav-sidebar">
+        <aside className={`nav-sidebar${mobileNavOpen ? " is-open" : ""}`}>
         <div className="nav-brand">
           <span className="logo-badge">MVTA</span>
           <div>
@@ -197,12 +204,29 @@ export function App() {
           </div>
         </div>
         </aside>
+        {mobileNavOpen && (
+          <button
+            className="nav-backdrop"
+            aria-label="Close navigation"
+            onClick={() => setMobileNavOpen(false)}
+          />
+        )}
 
         <div className="content-col">
         <header className="content-topbar">
-          <div>
-            <h1>{meta.title}</h1>
-            <div className="subtitle">{meta.sub}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button
+              className="nav-toggle-btn"
+              aria-label={mobileNavOpen ? "Close navigation" : "Open navigation"}
+              aria-expanded={mobileNavOpen}
+              onClick={() => setMobileNavOpen((open) => !open)}
+            >
+              <IconMenu />
+            </button>
+            <div>
+              <h1>{meta.title}</h1>
+              <div className="subtitle">{meta.sub}</div>
+            </div>
           </div>
           <div className="topbar-actions">
             <FixedRouteRefreshIndicator />
