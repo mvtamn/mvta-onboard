@@ -11,8 +11,12 @@ import {
   ROUTE_CATEGORY_LABELS,
   type GtfsRouteOption,
   type AppSettingRow,
+  type Event,
+  type EventServicePlan,
 } from "@mvta/shared";
 import { api } from "../config.js";
+import { useEventWorkspace } from "../context/EventWorkspaceContext.js";
+import { EventWorkspaceNav } from "../components/EventWorkspaceNav.js";
 import { EventResourceMapEditor } from "./EventResourceMapEditor.js";
 
 const ROUTE_CATEGORIES: RouteCategory[] = ["FixedRoute", "SpecialEvent", "OnDemand"];
@@ -401,11 +405,28 @@ function RouteClassificationSection() {
 // category_default). PATCH is OCC.Admin-only, enforced server-side.
 export function Admin() {
   const location = useLocation();
+  const { selection } = useEventWorkspace();
+  const [workspaceEvents, setWorkspaceEvents] = useState<Event[]>([]);
+  const [workspacePlans, setWorkspacePlans] = useState<EventServicePlan[]>([]);
   const [defaults, setDefaults] = useState<ExpirationDefault[] | null>(null);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selection.eventId) {
+      setWorkspaceEvents([]);
+      setWorkspacePlans([]);
+      return;
+    }
+    void Promise.all([api.getEvents(), api.getEventServicePlans()])
+      .then(([eventRows, planRows]) => { setWorkspaceEvents(eventRows.events); setWorkspacePlans(planRows.plans); })
+      .catch(() => { setWorkspaceEvents([]); setWorkspacePlans([]); });
+  }, [selection.eventId, selection.servicePlanId]);
+
+  const selectedWorkspaceEvent = workspaceEvents.find((row) => row.id === selection.eventId);
+  const selectedWorkspacePlan = workspacePlans.find((row) => row.id === selection.servicePlanId && row.event_id === selection.eventId);
 
   useEffect(() => {
     let alive = true;
@@ -514,6 +535,7 @@ export function Admin() {
         ) : null}
       </div>
       <section id="event-configuration" className="event-configuration-section" tabIndex={-1} aria-labelledby="event-configuration-title">
+        {selection.eventId && <EventWorkspaceNav eventName={selectedWorkspaceEvent?.name} planName={selectedWorkspacePlan?.name} planStatus={selectedWorkspacePlan?.status} activeStage="configure" />}
         <div className="event-configuration-intro">
           <strong id="event-configuration-title">Reusable Event resources</strong>
           <span>Maintain routes, map resources, and Event AVL settings here. Active service plans use pinned revisions, so changes do not alter live operations until reviewed and applied.</span>

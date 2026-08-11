@@ -1,0 +1,3 @@
+# Centralize assessment calculation and rounding
+
+The assessment calculation treats Warning, Tier 1, and Tier 2 as Below-standard Outcomes, begins escalation with the third qualifying outcome, and pauses rather than resets the streak for Not Assessable or unissued months. It calculates at full precision, rounds each final KPI amount to cents using half-up rounding, and totals the stored rounded KPI amounts; reports and scorecards never recalculate. Review may recommend a reasoned Monetary Adjustment or Penalty Waiver but cannot rewrite source measurements or tiers, and CAP Determinations remain independent of monetary treatment. This creates one reproducible calculation even though it constrains convenient edits during review.

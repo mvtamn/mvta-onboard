@@ -1,0 +1,3 @@
+# Preserve evidence and issued-assessment boundaries
+
+Evidence used by a Shared Validation Draft or Final Assessment is immutable and content-hashed, with corrections stored as linked Assessment Evidence Versions. Disputes identify specific Assessment Items and use the canonical outcomes Upheld, Adjusted, Rescinded, or Superseded; unchallenged items remain final. The Assessment Lifecycle distinguishes internal finalization from contractual issuance, anchors ordinary CAP deadlines to issuance, and never moves an issued assessment backward. This favors a defensible evidence and decision chain over in-place editing or whole-report ambiguity.

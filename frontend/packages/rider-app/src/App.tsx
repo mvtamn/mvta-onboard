@@ -6,7 +6,7 @@ export function App() {
   return (
     <div className="frame">
       <div className="alertbar">
-        &#9888; Service alerts &nbsp;|&nbsp; Real-time updates from MVTA OnBoard
+        &#9888; Service alerts &nbsp;|&nbsp; Real-time updates from MVTA
       </div>
       <nav className="nav">
         <div className="logo">

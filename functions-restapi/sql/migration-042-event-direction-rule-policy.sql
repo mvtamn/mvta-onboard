@@ -15,6 +15,7 @@ ALTER TABLE EventGeofenceCrossings
       matched_rule_priority INT NULL,
       matched_destination_location_id UNIQUEIDENTIFIER NULL,
       matched_send_mode NVARCHAR(10) NULL;
+GO
 
 ALTER TABLE EventGeofenceCrossings
   ADD CONSTRAINT CK_EventGeofenceCrossings_MatchedSendMode CHECK (matched_send_mode IS NULL OR matched_send_mode IN ('manual','auto'));

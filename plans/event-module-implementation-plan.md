@@ -1,5 +1,43 @@
 # Implementation Plan — Route Classification + Event Bus Monitoring
 
+## Build status (as of August 9, 2026)
+
+**All six parts are built.** Much of A4–A6 was developed in Codex, which is why
+its file style differs from the rest of the repo.
+
+| Part | Status | Landed as |
+|---|---|---|
+| A1 RouteClassification + Admin editor | Built, with deltas (no `avail_route_name` column — see A1 note) | `migration-016`, `routeClassification.ts` |
+| A2 Event-bus filtering + configurable interval | Built, **not as specified** — see the as-built note in A2 | `migration-032`, `availAvlPoll.ts` |
+| A3 Azure Maps panel + `/maps/token` | Built | `mapsToken.ts`, `maps.bicep`, `EventMonitoring.tsx` |
+| A4 Geofencing + locations + notifications | Built | `migration-033`, `eventGeofences.ts`, `eventLocations.ts`, `eventGeofenceCrossings.ts`, `eventGeofenceNotify.ts`, `eventGeofenceNotifications.ts`, `lib/geofence.ts`, `lib/eventGeofenceDetection.ts`, `EventResourceMapEditor.tsx` |
+| A5 Audit trail integration | Built, as its own stream rather than extending `otpAuditStream.ts` | `eventModuleAuditStream.ts` |
+| A6 Service Plans | Built, with an expanded lifecycle beyond this plan's three states | `migration-034`, `migration-035`, `eventServicePlans.ts`, `EventPlanning.tsx` |
+
+Migration head is **035**. A6's lifecycle grew from `draft|active|completed` to
+`draft|review|approved|active|completed|suspended` (migration-035) — the plan's
+single "Advance to Active" action is now a five-step approval chain.
+
+This plan is now a record of intent, not a work list. What the module actually
+does is documented in `event-monitoring-current-functionality.md`, which is
+authoritative wherever the two disagree.
+
+**Open issue carried forward.** A2 shipped with the event poll interval gating
+the *entire* shared AVL poll, so `event.poll_interval_seconds` paces
+`AvailAvlVehiclePositions` for every consumer, not just event vehicles. A4's
+crossing-detection latency is bounded by that same interval, so tightening it for
+geofence precision multiplies Avail API volume for all AVL ingestion, around the
+clock. Still unresolved: either split the gate so the event cadence is
+event-scoped again, or accept and document that geofence precision sets
+system-wide poll cost.
+
+**Gating inconsistency to resolve.** A6's gate was applied to crossing detection
+(`lib/eventGeofenceDetection.ts`) but **not** to A2's poller or the live-map read
+(`availAvlPoll.ts`, `eventVehiclePositions.ts`), which still act on any active
+`SpecialEvent` classification. The Admin and Event Planning copy tells staff the
+gate covers polling too. See the same note in
+`event-monitoring-current-functionality.md`.
+
 ## Context
 
 Driven by **`OTP-Feed-Evaluation-and-Recommendation (2).md`** — a superset of the doc already implemented (see `CHANGELOG.md`'s OTP Compliance entry). Its OTP Monthly / Missed Trips feed content is unchanged from the original - that work stands as-is, no rework needed. It adds three new sections: confirmed `{Property}=MVTA` (already used everywhere), a **route classification problem** (`RouteID` in every Avail feed is a bare number with no fixed-route-vs-special-event flag), and a **new use for AVL Reports**: real-time tracking of *special event* buses specifically for the still-unbuilt Event Module (`MVTA_ONBOARD_MANUAL.md` §18, `Special_Event_Vehicle_Monitoring_Module_1.docx` - "fully specified, still unbuilt").
@@ -27,6 +65,9 @@ This intentionally narrows the module's Phase 1 scope to visibility/reference on
 ```sql
 CREATE TABLE RouteClassification (
     route_id             INT           NOT NULL PRIMARY KEY,
+    -- [AS BUILT: this column was NOT created. migration-016 has no
+    -- avail_route_name; the Admin editor derives its naming-convention
+    -- suggestions from unclassified route ids seen in the AVL feed instead.]
     avail_route_name     NVARCHAR(100) NULL,      -- as named in Avail (e.g. "Special1111", "Rescue Bus") - used to pre-fill/suggest route_category below
     route_category       NVARCHAR(20)  NOT NULL, -- 'FixedRoute' | 'SpecialEvent' | 'OnDemand'
     route_label          NVARCHAR(100) NULL,      -- friendly name, e.g. "Vikings Game Shuttle"
@@ -45,6 +86,8 @@ CREATE TABLE RouteClassification (
 ## A2. Event-bus filtering runs on a new poller, interval configurable from the Admin UI (not the shared 5-minute AVL poll)
 
 **[REVISED]** The original A2 reused the existing 5-minute `availAvlPoll.ts` cadence for event-bus positions. That's too coarse for A4's geofence crossing detection - a bus can cross a boundary and be well past it before the next 5-minute poll even runs, making a direction/heading-based crossing call wrong or missed entirely. Confirmed the Avail AVL feed itself refreshes at least every 15-30 seconds, so a faster poll is meaningful rather than just re-asking a stale answer more often.
+
+**[AS BUILT — this section describes an intent that was not followed.]** No separate `eventAvlPoll.ts` exists. The event filtering was folded into `availAvlPoll.ts` instead, whose CRON is now `*/15 * * * * *`, and the `AppSettings`/`AppPollState` gate wraps the whole invocation — so the general all-vehicle AVL poll runs on the event module's interval rather than the 5-minute cadence this section promised to preserve. Everywhere below that says `eventAvlPoll.ts`, read `availAvlPoll.ts`. The A2 schema, settings table, and interval semantics below are accurate as built; only the file separation is not.
 
 **New, separate poller**: `eventAvlPoll.ts` (new Azure Function, own timer trigger, not an edit to `availAvlPoll.ts`, which stays at 5 min for the general fixed-route AVL feed other parts of the system depend on staying at that cadence). It hits the same Avail AVL endpoint independently, joins each mapped report's `route` against `RouteClassification`, and for `route_category = 'SpecialEvent'` matches only, upserts into `EventVehicleCurrentPosition` (latest-only) and inserts into `EventVehiclePositionHistory` (append-only). Fixed-route/unclassified pings are discarded at this stage, same as before, but remain fully available in `AvailAvlVehiclePositions` via the unchanged 5-min poller.
 
@@ -98,7 +141,7 @@ CREATE TABLE EventVehiclePositionHistory (
 CREATE INDEX IX_EventVehiclePositionHistory_Vehicle ON EventVehiclePositionHistory (vehicle_id, report_timestamp);
 ```
 - **`functions-restapi/src/functions/eventVehiclePositions.ts`** (new): `GET /event-vehicle-positions` - current positions + diagnostics (mirrors `availAvl.ts` endpoint's shape exactly).
-- **`functions-restapi/src/functions/eventAvlPoll.ts`** (new): the 15s-floor timer-triggered poller itself, structurally mirroring `availAvlPoll.ts`'s upsert pattern, but on its own schedule, gated by the `AppSettings` row for `module='event', setting_key='poll_interval_seconds'` plus its own run cursor, and writing only to the `Event*` tables above.
+- **`functions-restapi/src/functions/eventAvlPoll.ts`** (new) — **[AS BUILT: this file was never created; `availAvlPoll.ts` was modified instead]**: the 15s-floor timer-triggered poller itself, structurally mirroring `availAvlPoll.ts`'s upsert pattern, but on its own schedule, gated by the `AppSettings` row for `module='event', setting_key='poll_interval_seconds'` plus its own run cursor, and writing only to the `Event*` tables above.
 - **`functions-restapi/src/functions/appSettings.ts`** (new): `GET/PATCH /app-settings?module=event` (`ADMIN_ROLES`) - generic key-value read/update across any module, with `min_value`/`max_value` bounds enforced server-side (not just in the UI control). Designed to be extended by other modules later without new endpoints.
 
 ## A3. Frontend: real map, mock scenario retired
@@ -112,9 +155,9 @@ In its place, **`EventMonitoring.tsx`**'s live panel - "Event bus positions" - r
 
 ## A4. Geofencing (admin-managed, direction-aware alerts)
 
-**Before writing any of this, Claude Code should check the repo for existing geofencing-related code/tables.** Ty has done related exploratory work using Codex that may partially overlap this - reconcile against whatever's already there rather than building a parallel/duplicate implementation. **Note: the Teams-alerting/notification-sending piece does not exist yet** (corrected from an earlier assumption in this doc) - it's designed fresh below, not integrated against something already built.
+**[RESOLVED — A4 is built, in Codex.]** The Codex work referenced here did land in this repo: `lib/geofence.ts`, `lib/eventGeofenceDetection.ts`, `eventGeofences.ts`, `eventLocations.ts`, `eventGeofenceCrossings.ts`, `eventGeofenceNotify.ts`, `eventGeofenceNotifications.ts`, `migration-033`, and `EventResourceMapEditor.tsx`. There is nothing left to reconcile — read those files rather than this section for current behavior. **Note: the Teams-alerting/notification-sending piece did not exist when this was written** (corrected from an earlier assumption in this doc) - it's designed fresh below, not integrated against something already built.
 
-**Approach chosen: plain point-in-polygon math, not Azure Maps' managed Spatial Geofencing service.** The deciding factor is that the direction-to-destination inference below (e.g., "exiting southbound = likely headed to a transit station") isn't something the managed service does either way - that logic has to be custom regardless of backend, which removes most of the managed service's advantage. This approach also avoids a second paid Azure Maps API tier/surface beyond the free-tier map rendering already planned in A3, and runs on the same configurable-interval `eventAvlPoll.ts` poller from A2 rather than adding a further separate polling path.
+**Approach chosen: plain point-in-polygon math, not Azure Maps' managed Spatial Geofencing service.** The deciding factor is that the direction-to-destination inference below (e.g., "exiting southbound = likely headed to a transit station") isn't something the managed service does either way - that logic has to be custom regardless of backend, which removes most of the managed service's advantage. This approach also avoids a second paid Azure Maps API tier/surface beyond the free-tier map rendering already planned in A3, and runs on the same configurable-interval poller from A2 — **as built that is `availAvlPoll.ts`, not `eventAvlPoll.ts`** — rather than adding a further separate polling path.
 
 **Not limited to lot boundaries**: `EventGeofences` is a generic table with no assumption baked in that a geofence sits only at an endpoint (a park-and-ride lot, the fairgrounds). Staff can draw as many geofences as useful along the actual travel corridor - a checkpoint partway along the route, a highway on/off-ramp, an intersection - each with its own direction rules. More geofences along the path means more granular movement alerting (not just "left the lot" / "arrived at the fairgrounds," but tracking progress along the way) - this is a deliberate design point, not an incidental side effect of the schema being generic.
 
@@ -281,7 +324,7 @@ CREATE TABLE EventServicePlanLocations (
 
 - **`functions-restapi/src/functions/eventServicePlans.ts`** (new) - `GET/POST/PATCH /event-service-plans` (`ADMIN_ROLES`), plus link/unlink endpoints for routes/geofences/locations, and the `POST /event-service-plans/{id}/advance` action (separate from a generic PATCH, since activating is a deliberate, audited moment - not just another field edit).
 - **Frontend**: a new Service Plans section in `Admin.tsx` - plan list (draft/active/completed), a plan detail view for linking existing routes/geofences/locations or creating new ones inline, and the explicit Advance action.
-- A2/A4's functions above get the additional `EXISTS (...active plan link...)` condition added to their existing queries - flagged here as an addition to those already-specified queries, not a rewrite of their core logic.
+- A2/A4's functions above get the additional `EXISTS (...active plan link...)` condition added to their existing queries - flagged here as an addition to those already-specified queries, not a rewrite of their core logic. **[AS BUILT: only `lib/eventGeofenceDetection.ts` received this condition. `availAvlPoll.ts`'s event write and `eventVehiclePositions.ts`'s live-map read do not check for an active plan, so positions are still collected and displayed for any active `SpecialEvent` classification — while the Admin and Event Planning UI copy tells staff otherwise.]**
 
 
 
@@ -295,29 +338,36 @@ CREATE TABLE EventServicePlanLocations (
 ---
 
 ## Files to touch/add
-`functions-restapi/sql/migration-016-route-classification.sql` (new), `functions-restapi/sql/migration-0XX-app-settings.sql` (new - standalone, generic table not tied to this module's numbering, confirm current head first), `src/functions/routeClassification.ts` (new), `src/functions/eventVehiclePositions.ts` (new), `src/functions/eventAvlPoll.ts` (new - 15s-floor poller, effective interval UI-configurable, `availAvlPoll.ts` itself is untouched), `src/functions/appSettings.ts` (new - generic key-value read/update, this pass only populates the `event` module's poll-interval row), `src/functions/mapsToken.ts` (new), `infra-phase1/modules/maps.bicep` (new), `infra-phase1/main-phase1.bicep` (wire the new module), `frontend/packages/onboard-console/src/routes/Admin.tsx` (extend - includes poll interval control, ideally under a generic Settings section reusable by other modules later), `frontend/packages/onboard-console/src/routes/modules/EventMonitoring.tsx` (rewrite live panel - real map, mock scenario removed), `frontend/packages/onboard-console/package.json` (new dependency: `azure-maps-control`), `frontend/packages/shared/src/types.ts`/`api.ts`, `CHANGELOG.md`, `HANDOFF.md`
 
-**A4 (geofencing + reference locations + notification pipeline)**: `functions-restapi/sql/migration-0XX-event-geofences.sql` (new - exact number assigned at build time, confirm current head first), `src/functions/eventGeofences.ts` (new), `src/functions/eventGeofenceCrossings.ts` (new), `src/functions/eventLocations.ts` (new), `src/functions/eventGeofenceNotify.ts` (new - queue-triggered), `src/functions/eventGeofenceNotifications.ts` (new - send/dismiss endpoints), `src/functions/eventAvlPoll.ts` (extend further - crossing detection + queue enqueue, added on top of A2's own additions to this same new file), `infra-phase1/modules/servicebus.bicep` or equivalent (extend - new queue), `frontend/packages/onboard-console/package.json` (new dependency: `@turf/boolean-point-in-polygon`, if used), `Admin.tsx` (extend - geofence editor + send_mode toggle + EventLocations editor), `EventMonitoring.tsx` (extend - crossings feed with approve/dismiss cards + location legend/marker layer)
+**A1–A3 are done — the list below is retained as a record of intent.** As built:
+`migration-016-route-classification.sql`, `migration-032-app-settings.sql`,
+`routeClassification.ts`, `eventVehiclePositions.ts`, `appSettings.ts`,
+`mapsToken.ts`, `maps.bicep`, `Admin.tsx`, `EventMonitoring.tsx` +
+`eventMonitoring.css`, and **`availAvlPoll.ts` (modified)** — no `eventAvlPoll.ts`.
 
-**A5 (audit trail)**: `functions-restapi/src/functions/otpAuditStream.ts` (check first - extend if generic enough) or `src/functions/eventModuleAuditStream.ts` (new, if not), `EventMonitoring.tsx` (extend further - history/audit view)
+`functions-restapi/sql/migration-016-route-classification.sql` (new), `functions-restapi/sql/migration-0XX-app-settings.sql` (new - standalone, generic table not tied to this module's numbering, confirm current head first — *landed as 032*), `src/functions/routeClassification.ts` (new), `src/functions/eventVehiclePositions.ts` (new), `src/functions/eventAvlPoll.ts` (new - 15s-floor poller, effective interval UI-configurable, `availAvlPoll.ts` itself is untouched — *not what happened*), `src/functions/appSettings.ts` (new - generic key-value read/update, this pass only populates the `event` module's poll-interval row), `src/functions/mapsToken.ts` (new), `infra-phase1/modules/maps.bicep` (new), `infra-phase1/main-phase1.bicep` (wire the new module), `frontend/packages/onboard-console/src/routes/Admin.tsx` (extend - includes poll interval control, ideally under a generic Settings section reusable by other modules later), `frontend/packages/onboard-console/src/routes/modules/EventMonitoring.tsx` (rewrite live panel - real map, mock scenario removed), `frontend/packages/onboard-console/package.json` (new dependency: `azure-maps-control`), `frontend/packages/shared/src/types.ts`/`api.ts`, `CHANGELOG.md`, `HANDOFF.md`
 
-**A6 (Service Plans)**: `functions-restapi/sql/migration-0XX-event-service-plans.sql` (new), `src/functions/eventServicePlans.ts` (new), `src/functions/eventAvlPoll.ts`/`eventGeofences.ts`/`eventGeofenceCrossings.ts`/`eventGeofenceNotify.ts` (extend - active-plan gating condition added to existing queries), `Admin.tsx` (extend - Service Plans section)
+**A4 (geofencing + reference locations + notification pipeline)** — *all built; the polygon math and crossing detection landed in `src/lib/geofence.ts` and `src/lib/eventGeofenceDetection.ts`, which this list did not anticipate, and no `@turf` dependency was added*: `functions-restapi/sql/migration-033-event-geofences.sql`, `src/functions/eventGeofences.ts` (new), `src/functions/eventGeofenceCrossings.ts` (new), `src/functions/eventLocations.ts` (new), `src/functions/eventGeofenceNotify.ts` (new - queue-triggered), `src/functions/eventGeofenceNotifications.ts` (new - send/dismiss endpoints), `src/functions/availAvlPoll.ts` (extend - crossing detection + queue enqueue, added on top of A2's existing event-write step in this same shared poller; **not** a new `eventAvlPoll.ts`), `infra-phase1/modules/servicebus.bicep` or equivalent (extend - new queue), `frontend/packages/onboard-console/package.json` (new dependency: `@turf/boolean-point-in-polygon`, if used), `Admin.tsx` (extend - geofence editor + send_mode toggle + EventLocations editor), `EventMonitoring.tsx` (extend - crossings feed with approve/dismiss cards + location legend/marker layer)
+
+**A5 (audit trail)** — *built as its own stream; `otpAuditStream.ts` was not extended*: `src/functions/eventModuleAuditStream.ts`, `EventMonitoring.tsx` (audit view added)
+
+**A6 (Service Plans)** — *built, plus `migration-035-event-plan-lifecycle.sql` and a dedicated `EventPlanning.tsx` page (not an `Admin.tsx` section); the active-plan gate reached `eventGeofenceDetection.ts` only, **not** `availAvlPoll.ts` or `eventVehiclePositions.ts`*: `functions-restapi/sql/migration-034-event-service-plans.sql`, `src/functions/eventServicePlans.ts`, `src/functions/availAvlPoll.ts`/`eventGeofences.ts`/`eventGeofenceCrossings.ts`/`eventGeofenceNotify.ts` (extend - active-plan gating condition added to existing queries), `Admin.tsx` (extend - Service Plans section)
 
 ---
 
 ## Recommended build sequence
-1. **A1** (`RouteClassification` table + Admin.tsx section) - cheap, unblocks A2, useful on its own for future Avail feed work even before A2/A3 land.
-2. **A2** (event-bus filtering in the existing AVL poller) - small once A1 exists.
-3. **A3** (`EventMonitoring.tsx`'s Azure Maps panel) - needs the Azure Maps Bicep module approved and deployed first; natural pause point for sign-off before provisioning.
-4. **A4** (geofencing + reference locations + notification pipeline) - builds on A2's position data and A3's map/drawing tools. The Teams webhook provisioning (an MVTA-side Teams-admin action) is a natural pause point before the notification-sending half goes live, same pattern as every other new external integration in this project.
-5. **A6** (Service Plans) - after A1 and A4 exist (it links their rows), but its gating condition should be added to A2's and A4's queries as part of this step, before A5's audit stream is built on top of the final shape of those tables.
-6. **A5** (audit trail integration) - last, since it reads off A1/A4/A6's tables once their final query shape (including A6's gating) is settled.
+1. ~~**A1** (`RouteClassification` table + Admin.tsx section)~~ — **done**.
+2. ~~**A2** (event-bus filtering in the existing AVL poller)~~ — **done**, in `availAvlPoll.ts`. Also delivered `AppSettings`/`AppPollState` (migration-032) with a DB-backed lease for multi-instance safety, which this plan did not specify.
+3. ~~**A3** (`EventMonitoring.tsx`'s Azure Maps panel)~~ — **done**; Maps Bicep module approved and deployed.
+4. ~~**A4** (geofencing + reference locations + notification pipeline)~~ — **done**, using the Azure Maps drawing toolbar in a dedicated `EventResourceMapEditor.tsx` and hand-written point-in-polygon math in `lib/geofence.ts` (no `@turf` dependency). Teams webhook provisioning remains an MVTA-side action: both send paths read `TEAMS_EVENT_WEBHOOK_URL`, and until it is set, manual approval returns 503 and `auto` rules are silently recorded as `manual`.
+5. ~~**A6** (Service Plans)~~ — **done**, in `EventPlanning.tsx`, with a five-state approval lifecycle (migration-035). Its gating condition reached crossing detection only — see the gating note in Build status.
+6. ~~**A5** (audit trail integration)~~ — **done**, as `eventModuleAuditStream.ts` over `RouteClassification`, `EventGeofenceCrossings`, and `EventGeofenceNotifications`.
 
 ## Verification (per part, as each is implemented)
 - `npm run build && npm test` in `functions-restapi`.
 - `npm run build` in `frontend`.
-- Browser pass: RouteClassification editor in Admin.tsx (including the naming-convention pre-fill); EventMonitoring's event-bus panel showing its correct empty state before any classification rows exist, then correct filtering + map rendering once a mocked `SpecialEvent` row is added; the Admin.tsx poll interval control correctly rejecting a value outside 15-300s both client-side and server-side, and a changed value taking effect on the next `eventAvlPoll.ts` invocation without a redeploy; a geofence drawn in Admin.tsx correctly firing an enter/exit event with the right destination label once a mocked vehicle position crosses it, including a heading range that wraps past 360°; an `EventLocations` entry showing correctly on the map's legend/marker layer and selectable as a direction rule's `destination_location_id`; a `manual`-mode rule producing a reviewable pending card that only sends on explicit approval, and an `auto`-mode rule sending immediately with no card - both correctly logged in `EventGeofenceNotifications`; a route/geofence/location linked only to a `draft` Service Plan correctly staying inert (no poller filtering, no crossing detection, not selectable as a notification destination) until the plan is explicitly advanced to `active`.
+- Browser pass: RouteClassification editor in Admin.tsx (including the naming-convention pre-fill); EventMonitoring's event-bus panel showing its correct empty state before any classification rows exist, then correct filtering + map rendering once a mocked `SpecialEvent` row is added; the Admin.tsx poll interval control correctly rejecting a value outside 15-300s both client-side and server-side, and a changed value taking effect on the next `availAvlPoll.ts` invocation without a redeploy; a geofence drawn in Admin.tsx correctly firing an enter/exit event with the right destination label once a mocked vehicle position crosses it, including a heading range that wraps past 360°; an `EventLocations` entry showing correctly on the map's legend/marker layer and selectable as a direction rule's `destination_location_id`; a `manual`-mode rule producing a reviewable pending card that only sends on explicit approval, and an `auto`-mode rule sending immediately with no card - both correctly logged in `EventGeofenceNotifications`; a route/geofence/location linked only to a `draft` Service Plan correctly staying inert (no poller filtering, no crossing detection, not selectable as a notification destination) until the plan is explicitly advanced to `active`.
 - **Owner actions (blocking, live environment, sequenced per the build order above):**
-  1. Run migration-016 against the dev DB.
+  1. ~~Run migration-016 against the dev DB.~~ **Done.** Migrations 032–035 have also been authored; confirm each has been applied to the dev DB, since the code paths above fail closed (or return 503) when their tables are absent.
   2. Approve and deploy the new Azure Maps Bicep module before A3's map goes live (new resource; expected to stay within the S0 free-tier transaction allotment at this module's usage volume, but flagging as a real resource before provisioning, same convention as every other infra addition here).
   3. Deploy code per part.

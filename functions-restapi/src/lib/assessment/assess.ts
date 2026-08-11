@@ -7,7 +7,7 @@ import { rampUpMultiplier } from "./rampUp";
 import { matchTier } from "./tiers";
 import type { StandardDirection, StandardTier, TierLabel } from "./types";
 
-interface PeriodRow { id: string; service_month: string; ramp_up_stage: "suspended" | "half" | "full"; input_revision: number; status: string }
+interface PeriodRow { id: string; contractor_id: string; service_month: string; ramp_up_stage: "suspended" | "half" | "full"; input_revision: number; status: string }
 interface StandardRow { id: string; code: string; standard_type: "occurrence" | "threshold"; direction: StandardDirection; is_safety_critical: boolean; measurement_source: string }
 interface TierRow { tier_order: number; tier_label: TierLabel; bound_low: number | null; bound_high: number | null; qualifier_code: string | null; penalty_basis: StandardTier["penaltyBasis"]; penalty_amount: number; triggers_cap: boolean }
 
@@ -19,7 +19,7 @@ function severity(label: TierLabel): number {
   return { meets: 0, warning: 1, tier1: 2, tier2: 3 }[label];
 }
 
-async function resolveThreshold(tx: Transaction, standard: StandardRow, month: string) {
+async function resolveThreshold(tx: Transaction, standard: StandardRow, contractorId: string, month: string) {
   if (standard.code === "OTP_FIXED_ROUTE") {
     const request = new sql.Request(tx);
     request.input("month", sql.Char(6), month);
@@ -40,10 +40,11 @@ async function resolveThreshold(tx: Transaction, standard: StandardRow, month: s
   }
   const request = new sql.Request(tx);
   request.input("standard_id", sql.UniqueIdentifier, standard.id);
+  request.input("contractor", sql.UniqueIdentifier, contractorId);
   request.input("month", sql.Char(6), month);
   const result = await request.query<{ metric_value: number; unit_count: number | null; id: string }>(`
     SELECT TOP 1 metric_value, unit_count, id FROM ManualMetricEntries
-    WHERE standard_id=@standard_id AND service_month=@month AND superseded_by IS NULL
+    WHERE standard_id=@standard_id AND contractor_id=@contractor AND service_month=@month AND superseded_by IS NULL
     ORDER BY entered_at DESC
   `);
   const row = result.recordset[0];
@@ -76,10 +77,11 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
     if (standard.standard_type === "occurrence") {
       const occurrencesReq = new sql.Request(tx);
       occurrencesReq.input("standard_id", sql.UniqueIdentifier, standard.id);
+      occurrencesReq.input("contractor", sql.UniqueIdentifier, period.contractor_id);
       occurrencesReq.input("month", sql.Char(6), period.service_month);
       const occurrences = await occurrencesReq.query<{ id: string; quantity: number; duration_days: number | null; qualifier_code: string | null }>(`
         SELECT id,quantity,duration_days,qualifier_code FROM ComplianceOccurrences
-        WHERE standard_id=@standard_id AND service_month=@month AND review_status='confirmed' AND attribution='contractor_error'
+        WHERE standard_id=@standard_id AND contractor_id=@contractor AND service_month=@month AND review_status='confirmed' AND attribution='contractor_error'
       `);
       occurrenceCount = occurrences.recordset.length;
       quantity = occurrences.recordset.reduce((sum, row) => sum + row.quantity, 0);
@@ -93,7 +95,7 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
       }
       if (occurrenceCount > 0 && tierLabel === "meets") tierLabel = "tier1";
     } else {
-      const resolved = await resolveThreshold(tx, standard, period.service_month);
+      const resolved = await resolveThreshold(tx, standard, period.contractor_id, period.service_month);
       metricValue = resolved.metricValue; quantity = resolved.quantity; occurrenceCount = resolved.occurrenceCount;
       completeness = resolved.completeness; sourceRefs = resolved.sourceRefs;
       if (metricValue !== null) {
@@ -104,11 +106,12 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
 
     const historyReq = new sql.Request(tx);
     historyReq.input("standard_id", sql.UniqueIdentifier, standard.id);
+    historyReq.input("contractor", sql.UniqueIdentifier, period.contractor_id);
     historyReq.input("month", sql.Char(6), period.service_month);
     const history = await historyReq.query<{ tier_label: TierLabel }>(`
         SELECT TOP 2 pka.tier_label FROM PeriodKpiAssessments pka
         JOIN AssessmentPeriods p ON p.id=pka.period_id
-        WHERE pka.standard_id=@standard_id AND p.service_month<@month AND p.status='finalized'
+        WHERE pka.standard_id=@standard_id AND p.contractor_id=@contractor AND p.service_month<@month AND p.status='finalized'
         ORDER BY p.service_month DESC
     `);
     let priorConsecutive = 0;

@@ -9,6 +9,7 @@
 param environment string
 param location string = 'global'
 param onboardSwaHostname string
+param riderSwaHostname string
 param restApiHostname string
 
 resource wafPolicy 'Microsoft.Network/frontdoorWebApplicationFirewallPolicies@2022-05-01' = {
@@ -78,12 +79,56 @@ resource route 'Microsoft.Cdn/profiles/afdEndpoints/routes@2023-05-01' = {
   properties: {
     originGroup: { id: originGroup.id }
     supportedProtocols: ['Https']
-    patternsToMatch: ['/*']
+    patternsToMatch: ['/console/*']
     forwardingProtocol: 'HttpsOnly'
     httpsRedirect: 'Enabled'
     linkToDefaultDomain: 'Enabled'
   }
   dependsOn: [onboardOrigin]
+}
+
+resource riderOriginGroup 'Microsoft.Cdn/profiles/originGroups@2023-05-01' = {
+  parent: frontDoorProfile
+  name: 'og-riderapp'
+  properties: {
+    loadBalancingSettings: {
+      sampleSize: 4
+      successfulSamplesRequired: 3
+    }
+    healthProbeSettings: {
+      probePath: '/'
+      probeRequestType: 'HEAD'
+      probeProtocol: 'Https'
+      probeIntervalInSeconds: 60
+    }
+  }
+}
+
+resource riderOrigin 'Microsoft.Cdn/profiles/originGroups/origins@2023-05-01' = {
+  parent: riderOriginGroup
+  name: 'origin-riderapp-swa'
+  properties: {
+    hostName: riderSwaHostname
+    httpPort: 80
+    httpsPort: 443
+    originHostHeader: riderSwaHostname
+    priority: 1
+    weight: 1000
+  }
+}
+
+resource riderRoute 'Microsoft.Cdn/profiles/afdEndpoints/routes@2023-05-01' = {
+  parent: frontDoorEndpoint
+  name: 'route-riderapp'
+  properties: {
+    originGroup: { id: riderOriginGroup.id }
+    supportedProtocols: ['Https']
+    patternsToMatch: ['/*']
+    forwardingProtocol: 'HttpsOnly'
+    httpsRedirect: 'Enabled'
+    linkToDefaultDomain: 'Enabled'
+  }
+  dependsOn: [riderOrigin]
 }
 
 resource apiOriginGroup 'Microsoft.Cdn/profiles/originGroups@2023-05-01' = {

@@ -1,0 +1,3 @@
+# Preserve source-first and historical assessment causality
+
+Contractual relief changes the Assessable Input before tiering, with raw and excluded inputs both preserved; post-tier monetary changes require a recommended adjustment and a separate Binding Adjustment by the Issuing Authority. A correction to an earlier outcome identifies its Escalation Impact across later periods instead of silently leaving incorrect history. Assessment amounts never become negative, and dispute remedies are separate Assessment Credits rather than values netted into another month. This preserves the causal explanation of each assessment even though corrections can require explicit work across multiple issued periods.
