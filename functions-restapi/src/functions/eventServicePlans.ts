@@ -58,9 +58,12 @@ app.http("eventServicePlans", { route: "event-service-plans", methods: ["GET", "
       r.input("event", sql.UniqueIdentifier, eventId);
       if (!(await r.query("SELECT id FROM Events WHERE id=@event")).recordset.length) { await transaction.rollback(); return { status: 404, jsonBody: { error: "Event not found" } }; }
     } else {
-      eventId = (await r.query("INSERT INTO Events(name,created_by,updated_by) OUTPUT INSERTED.id VALUES(@name,@by,@by)")).recordset[0].id;
+      const eventRequest = transaction.request();
+      eventRequest.input("name", sql.NVarChar, body.name.trim());
+      eventRequest.input("by", sql.NVarChar, actor);
+      eventId = (await eventRequest.query("INSERT INTO Events(name,created_by,updated_by) OUTPUT INSERTED.id VALUES(@name,@by,@by)")).recordset[0].id;
     }
-    r.input("event", sql.UniqueIdentifier, eventId);
+    if (!r.parameters.event) r.input("event", sql.UniqueIdentifier, eventId);
     const plan = (await r.query("INSERT INTO EventServicePlans(event_id,name,start_at,end_at,created_by,updated_by) OUTPUT INSERTED.* VALUES(@event,@name,@start,@end,@by,@by)")).recordset[0];
     await transaction.commit();
     return { status: 201, jsonBody: plan };
