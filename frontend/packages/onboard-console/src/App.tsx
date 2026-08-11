@@ -45,6 +45,7 @@ import {
 } from "./context/FixedRouteRefreshContext.js";
 
 const ADMIN = ["OCC.Admin"] as const;
+const EVENT_AVL = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin"] as const;
 const COMPLIANCE = ["OCC.Compliance", "OCC.Admin"] as const;
 // Read-only for OCC.Viewer, full create/edit/delete for Publisher/Admin (the
 // component itself hides write controls for Viewer-only; the server is the
@@ -119,6 +120,7 @@ export function App() {
   const isAdmin = roles.includes("OCC.Admin");
   const isCompliance = isAdmin || roles.includes("OCC.Compliance");
   const canSeeDetours = roles.some((r) => (DETOURS as readonly string[]).includes(r));
+  const canSeeEventAvl = roles.some((r) => (EVENT_AVL as readonly string[]).includes(r));
   const stats = useLiveStats();
   const location = useLocation();
   const meta = currentPageMeta(location.pathname);
@@ -171,15 +173,15 @@ export function App() {
               the rider-message primaries. The group header renders if ANY
               child does, so a Detour-only user still sees a labelled group
               rather than two orphaned links. */}
-          {(isAdmin || isCompliance || canSeeDetours) && (
+          {(isAdmin || isCompliance || canSeeDetours || canSeeEventAvl) && (
             <>
               <div className="nav-section-label">Tools</div>
               {canSeeDetours && <NavLink to="/detours"><IconDetour />Detours &amp; Closures</NavLink>}
               {canSeeDetours && <NavLink to="/detour-intake"><IconDetour />Detour Intake</NavLink>}
               {canSeeDetours && <NavLink to="/detour-reports"><IconClock />Detour Reports</NavLink>}
-              {isAdmin && <div className="nav-section-label">Event Workspace</div>}
+              {canSeeEventAvl && <div className="nav-section-label">Event Workspace</div>}
               {isAdmin && <NavLink to="/event-planning"><IconBus />Event Planning</NavLink>}
-              {isAdmin && <NavLink to="/event-monitoring"><IconBus />Event AVL</NavLink>}
+              {canSeeEventAvl && <NavLink to="/event-monitoring"><IconBus />Event AVL</NavLink>}
               {isAdmin && <NavLink to="/occ"><IconWrench />OCC Tools</NavLink>}
               {isCompliance && <NavLink to="/compliance"><IconShield />Compliance</NavLink>}
               {isCompliance && <NavLink to="/performance-assessment"><IconAssessment />Performance Assessment</NavLink>}
@@ -268,7 +270,7 @@ export function App() {
               <Route
                 path="/event-monitoring"
                 element={
-                  <RequireRole allowed={[...ADMIN]}>
+                  <RequireRole allowed={[...EVENT_AVL]}>
                     <EventMonitoring />
                   </RequireRole>
                 }

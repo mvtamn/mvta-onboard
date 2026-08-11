@@ -10,7 +10,7 @@
 // a bug.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, ADMIN_ROLES } from "../lib/auth";
+import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
 
 // route_label/route_category come from RouteClassification, NOT GtfsRoutes -
 // a SpecialEvent RouteID is by definition absent from the GTFS static
@@ -48,7 +48,7 @@ app.http("eventVehiclePositionsList", {
   methods: ["GET"],
   authLevel: "anonymous", // authorization enforced via requireRole below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, ADMIN_ROLES);
+    const authResult = requireRole(request, STAFF_READ_ROLES);
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

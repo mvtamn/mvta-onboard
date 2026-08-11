@@ -55,7 +55,7 @@ function EventMonitoringSettingsSection() {
   }
 
   return <>
-    <div className="panel-header">Admin — Event AVL Settings</div>
+    <div className="panel-header" id="event-configuration">Admin — Event Configuration</div>
     <div className="panel-body">
       <p className="panel-desc">Control how often the server retrieves live Avail AVL positions. Changes take effect without a redeploy.</p>
       {error && <p className="error-text">{error}</p>}
