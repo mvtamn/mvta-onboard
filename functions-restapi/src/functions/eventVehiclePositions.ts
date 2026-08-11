@@ -9,7 +9,7 @@
 // real RouteClassification row exists for an active event - expected, not
 // a bug.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
-import { getPool } from "../lib/db";
+import { getPool, sql } from "../lib/db";
 import { requireRole, ADMIN_ROLES } from "../lib/auth";
 
 // route_label/route_category come from RouteClassification, NOT GtfsRoutes -
@@ -40,6 +40,7 @@ interface EventVehiclePositionRow {
   updated_at: Date;
   report_age_seconds: number;
   is_stale: boolean;
+  is_in_active_scope: boolean;
 }
 
 app.http("eventVehiclePositionsList", {
@@ -53,6 +54,7 @@ app.http("eventVehiclePositionsList", {
     }
     try {
       const pool = await getPool();
+      const eventId = request.query.get("event_id");
 
       const tableCheck = await pool.request().query<{ table_exists: number }>(`
         SELECT CASE WHEN OBJECT_ID('dbo.EventVehicleCurrentPosition', 'U') IS NULL
@@ -65,7 +67,9 @@ app.http("eventVehiclePositionsList", {
         };
       }
 
-      const result = await pool.request().query<EventVehiclePositionRow>(`
+      const positionRequest = pool.request();
+      positionRequest.input("eventId", sql.UniqueIdentifier, eventId || null);
+      const result = await positionRequest.query<EventVehiclePositionRow>(`
         SELECT p.vehicle_id, p.route, rc.route_label, rc.route_category,
                p.latitude, p.longitude, p.heading, avl.direction,
                NULLIF(avl.block, 0) AS block, NULLIF(avl.run, 0) AS run,
@@ -73,6 +77,23 @@ app.http("eventVehiclePositionsList", {
                CASE WHEN assignment.operator_name IS NOT NULL THEN 'Avail Pullout Reports' END AS operator_source,
                COALESCE(plans.service_plan_names, '') AS service_plan_names,
                COALESCE(plans.service_plan_ids, '') AS service_plan_ids,
+               CAST(CASE WHEN EXISTS (
+                 SELECT 1
+                 FROM EventServicePlans scope_plan
+                 CROSS APPLY (SELECT TOP (1) routes_json,geofences_json FROM EventServicePlanScopeSnapshots snapshot WHERE snapshot.service_plan_id=scope_plan.id ORDER BY snapshot.captured_at DESC) scope
+                 CROSS APPLY OPENJSON(scope.routes_json) WITH (route_id INT '$.route_id') scope_route
+                 WHERE scope_route.route_id = p.route
+                   AND scope_plan.status = 'active'
+                   AND (@eventId IS NULL OR scope_plan.event_id = @eventId)
+                   AND ((scope_plan.start_at IS NOT NULL AND scope_plan.end_at IS NOT NULL AND SYSUTCDATETIME() >= scope_plan.start_at AND SYSUTCDATETIME() <= scope_plan.end_at)
+                     OR (scope_plan.start_at IS NULL AND scope_plan.end_at IS NULL AND (scope_plan.start_date IS NULL OR scope_plan.start_date <= CONVERT(DATE, SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time')) AND (scope_plan.end_date IS NULL OR scope_plan.end_date >= CONVERT(DATE, SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time'))))
+                   AND EXISTS (
+                     SELECT 1
+                     FROM OPENJSON(scope.geofences_json) WITH (geofence_id UNIQUEIDENTIFIER '$.geofence_id',is_active BIT '$.is_active') scope_geofence
+                     CROSS APPLY (SELECT TOP (1) 1 has_rule FROM (SELECT TOP (1) rules_json FROM EventServicePlanScopeSnapshots snapshot WHERE snapshot.service_plan_id=scope_plan.id ORDER BY snapshot.captured_at DESC) rule_scope CROSS APPLY OPENJSON(rule_scope.rules_json) WITH (geofence_id UNIQUEIDENTIFIER '$.geofence_id') scope_rule WHERE scope_rule.geofence_id=scope_geofence.geofence_id) scope_rule
+                     WHERE scope_geofence.is_active = 1
+                   )
+               ) THEN 1 ELSE 0 END AS bit) AS is_in_active_scope,
                CAST(COALESCE(
                  position.speed_mps * 2.236936,
                  CASE WHEN previous.report_timestamp IS NOT NULL
@@ -108,6 +129,7 @@ app.http("eventVehiclePositionsList", {
           INNER JOIN EventServicePlans sp ON sp.id = spr.service_plan_id
           WHERE spr.route_id = p.route
             AND sp.status = 'active'
+            AND (@eventId IS NULL OR sp.event_id = @eventId)
             AND (sp.start_date IS NULL OR sp.start_date <= CONVERT(CHAR(8), SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time', 112))
             AND (sp.end_date IS NULL OR sp.end_date >= CONVERT(CHAR(8), SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time', 112))
         ) plans
@@ -126,32 +148,23 @@ app.http("eventVehiclePositionsList", {
           ORDER BY h.report_timestamp DESC
         ) previous
         CROSS APPLY (SELECT DATEDIFF(SECOND, p.report_timestamp, SYSUTCDATETIME()) AS report_age_seconds) age
-        WHERE p.report_timestamp >= DATEADD(MINUTE, -15, SYSUTCDATETIME())
+          WHERE p.report_timestamp >= DATEADD(MINUTE, -15, SYSUTCDATETIME())
           AND p.latitude BETWEEN 43.0 AND 46.0
           AND p.longitude BETWEEN -95.5 AND -92.0
-          AND EXISTS (
-            SELECT 1
-            FROM EventServicePlanRoutes active_route
-            INNER JOIN EventServicePlans active_plan ON active_plan.id = active_route.service_plan_id
-            WHERE active_route.route_id = p.route
-              AND active_plan.status = 'active'
-              AND (active_plan.start_date IS NULL OR active_plan.start_date <= CONVERT(DATE, SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time'))
-              AND (active_plan.end_date IS NULL OR active_plan.end_date >= CONVERT(DATE, SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time'))
-              AND EXISTS (
-                SELECT 1
-                FROM EventServicePlanGeofences active_geofence
-                INNER JOIN EventGeofences operational_geofence ON operational_geofence.id = active_geofence.geofence_id AND operational_geofence.is_active = 1
-                INNER JOIN EventGeofenceDirectionRules operational_rule ON operational_rule.geofence_id = operational_geofence.id
-                WHERE active_geofence.service_plan_id = active_plan.id
-              )
-          )
+          AND (@eventId IS NULL OR EXISTS (
+            SELECT 1 FROM EventServicePlanRoutes selected_route
+            INNER JOIN EventServicePlans selected_plan ON selected_plan.id = selected_route.service_plan_id
+            WHERE selected_route.route_id = p.route AND selected_plan.event_id = @eventId
+          ))
         ORDER BY p.route, p.vehicle_id
       `);
-      const vehicles = result.recordset.map((row) => ({
+      const allVehicles = result.recordset.map((row) => ({
         ...row,
         service_plan_names: row.service_plan_names ? row.service_plan_names.split(" | ") : [],
         service_plan_ids: row.service_plan_ids ? row.service_plan_ids.split(",") : [],
       }));
+      const vehicles = allVehicles.filter((row) => row.is_in_active_scope);
+      const diagnosticVehicles = allVehicles.filter((row) => !row.is_in_active_scope);
       const lastReportAt = vehicles.reduce<Date | null>(
         (latest, row) => (!latest || row.report_timestamp > latest ? row.report_timestamp : latest),
         null,
@@ -161,12 +174,14 @@ app.http("eventVehiclePositionsList", {
         status: 200,
         jsonBody: {
           vehicles,
+          diagnostic_vehicles: diagnosticVehicles,
           diagnostics: {
             table_ready: true,
             vehicle_count: vehicles.length,
+            diagnostic_vehicle_count: diagnosticVehicles.length,
             last_report_at: lastReportAt?.toISOString() ?? null,
             source: "shared_avl_projection",
-            stale_vehicle_count: vehicles.filter((row) => row.is_stale).length,
+            stale_vehicle_count: allVehicles.filter((row) => row.is_stale).length,
           },
         },
       };

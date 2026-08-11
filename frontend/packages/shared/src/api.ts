@@ -523,11 +523,13 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
       );
     },
 
-    getEventVehiclePositions() {
+    getEventVehiclePositions(eventId?: string) {
+      const suffix = eventId ? `?event_id=${encodeURIComponent(eventId)}` : "";
       return request<{
         vehicles: EventVehiclePosition[];
-        diagnostics: { table_ready: boolean; vehicle_count: number; last_report_at: string | null; source?: string; stale_vehicle_count?: number };
-      }>("/api/event-vehicle-positions", {}, true);
+        diagnostic_vehicles: EventVehiclePosition[];
+        diagnostics: { table_ready: boolean; vehicle_count: number; diagnostic_vehicle_count?: number; last_report_at: string | null; source?: string; stale_vehicle_count?: number };
+      }>(`/api/event-vehicle-positions${suffix}`, {}, true);
     },
 
     getEventMonitoringHealth() {
@@ -562,11 +564,14 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
     getEventGeofenceCrossings() { return request<{ crossings: EventGeofenceCrossing[] }>("/api/event-geofence-crossings", {}, true); },
     getEventGeofenceNotifications(status = "pending") { return request<{ notifications: EventGeofenceNotification[] }>(`/api/event-geofence-notifications?status=${status}`, {}, true); },
     sendEventGeofenceNotification(id: string) { return request<{ ok: boolean }>(`/api/event-geofence-notifications/${id}/send`, { method: "POST" }, true); },
+    acknowledgeEventGeofenceNotification(id: string) { return request<{ ok: boolean }>(`/api/event-geofence-notifications/${id}/acknowledge`, { method: "POST" }, true); },
     dismissEventGeofenceNotification(id: string) { return request<{ ok: boolean }>(`/api/event-geofence-notifications/${id}/dismiss`, { method: "POST" }, true); },
     getEvents() { return request<{ events: Event[] }>("/api/events", {}, true); },
     createEvent(input: Pick<Event, "name" | "description" | "owning_team">) { return request<Event>("/api/events", { method: "POST", body: JSON.stringify(input) }, true); },
+    updateEvent(id: string, input: Partial<Pick<Event, "name" | "description" | "owning_team">>) { return request<Event>(`/api/events/${id}`, { method: "PATCH", body: JSON.stringify(input) }, true); },
     getEventServicePlans() { return request<{ plans: EventServicePlan[] }>("/api/event-service-plans", {}, true); },
-    createEventServicePlan(name: string, eventId?: string) { return request<EventServicePlan>("/api/event-service-plans", { method: "POST", body: JSON.stringify({ name, event_id: eventId }) }, true); },
+    createEventServicePlan(input: { name: string; event_id: string; start_at?: string; end_at?: string }) { return request<EventServicePlan>("/api/event-service-plans", { method: "POST", body: JSON.stringify(input) }, true); },
+    updateEventServicePlan(id: string, input: { name?: string; start_at?: string; end_at?: string }) { return request<EventServicePlan>(`/api/event-service-plans/${id}/details`, { method: "PATCH", body: JSON.stringify(input) }, true); },
     advanceEventServicePlan(id: string) { return request<EventServicePlan>(`/api/event-service-plans/${id}/advance`, { method: "POST" }, true); },
     transitionEventServicePlan(id: string, action: "submit-review" | "approve" | "advance" | "complete" | "suspend") { return request<EventServicePlan>(`/api/event-service-plans/${id}/${action}`, { method: "POST" }, true); },
     modifyEventServicePlan(id: string) { return request<EventServicePlanRevision>(`/api/event-service-plans/${id}/modify`, { method: "POST" }, true); },

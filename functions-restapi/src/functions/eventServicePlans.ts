@@ -1,6 +1,7 @@
 import { app, type HttpRequest } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { requireRole, ADMIN_ROLES } from "../lib/auth";
+import { validateOperatingPeriod } from "../lib/eventOperatingPeriods";
 
 const tableFor = (kind: string, revision = false) => ({
   routes: revision ? "EventServicePlanRevisionRoutes" : "EventServicePlanRoutes",
@@ -8,6 +9,22 @@ const tableFor = (kind: string, revision = false) => ({
   locations: revision ? "EventServicePlanRevisionLocations" : "EventServicePlanLocations",
 } as Record<string, string>)[kind];
 const keyFor = (kind: string) => kind === "routes" ? "route_id" : kind === "geofences" ? "geofence_id" : "location_id";
+
+async function captureScopeSnapshot(pool: Awaited<ReturnType<typeof getPool>>, planId: string, actor: string, revisionId: string | null = null) {
+  const routes = (await pool.request().input("plan", sql.UniqueIdentifier, planId).query("SELECT rc.route_id,rc.route_label,rc.route_category,rc.is_active FROM EventServicePlanRoutes link JOIN RouteClassification rc ON rc.route_id=link.route_id WHERE link.service_plan_id=@plan ORDER BY rc.route_id")).recordset;
+  const geofences = (await pool.request().input("plan", sql.UniqueIdentifier, planId).query("SELECT g.id geofence_id,g.name,g.polygon,g.is_active FROM EventServicePlanGeofences link JOIN EventGeofences g ON g.id=link.geofence_id WHERE link.service_plan_id=@plan ORDER BY g.id")).recordset;
+  const locations = (await pool.request().input("plan", sql.UniqueIdentifier, planId).query("SELECT l.id location_id,l.name,l.category,l.latitude,l.longitude,l.notes,l.is_active FROM EventServicePlanLocations link JOIN EventLocations l ON l.id=link.location_id WHERE link.service_plan_id=@plan ORDER BY l.id")).recordset;
+  const rules = (await pool.request().input("plan", sql.UniqueIdentifier, planId).query("SELECT r.* FROM EventServicePlanGeofences link JOIN EventGeofenceDirectionRules r ON r.geofence_id=link.geofence_id WHERE link.service_plan_id=@plan ORDER BY r.geofence_id,r.transition,r.sort_order,r.id")).recordset;
+  const request = pool.request();
+  request.input("plan", sql.UniqueIdentifier, planId);
+  request.input("revision", sql.UniqueIdentifier, revisionId);
+  request.input("by", sql.NVarChar, actor);
+  request.input("routes", sql.NVarChar(sql.MAX), JSON.stringify(routes));
+  request.input("geofences", sql.NVarChar(sql.MAX), JSON.stringify(geofences));
+  request.input("locations", sql.NVarChar(sql.MAX), JSON.stringify(locations));
+  request.input("rules", sql.NVarChar(sql.MAX), JSON.stringify(rules));
+  return (await request.query("INSERT INTO EventServicePlanScopeSnapshots(service_plan_id,revision_id,captured_by,routes_json,geofences_json,locations_json,rules_json) OUTPUT INSERTED.* VALUES(@plan,@revision,@by,@routes,@geofences,@locations,@rules)")).recordset[0];
+}
 
 async function authorized(req: HttpRequest) {
   return requireRole(req, ADMIN_ROLES);
@@ -23,10 +40,19 @@ app.http("eventServicePlans", { route: "event-service-plans", methods: ["GET", "
     return { status: 200, jsonBody: { plans: plans.map((plan) => ({ ...plan, links: links.filter((link) => link.service_plan_id === plan.id), revisions: revisions.filter((revision) => revision.service_plan_id === plan.id) })) } };
   }
   const body = await req.json() as Record<string, unknown>; if (typeof body.name !== "string" || !body.name.trim()) return { status: 400, jsonBody: { error: "name is required" } };
+  const hasStart = body.start_at !== undefined && body.start_at !== null;
+  const hasEnd = body.end_at !== undefined && body.end_at !== null;
+  if (hasStart !== hasEnd) return { status: 400, jsonBody: { error: "start_at and end_at must be provided together" } };
+  if (hasStart) {
+    const period = validateOperatingPeriod({ start_at: String(body.start_at), end_at: String(body.end_at) });
+    if (!period.valid) return { status: 400, jsonBody: { error: period.error } };
+  }
   const actor = auth.principal.userDetails ?? "system";
   const transaction = pool.transaction(); await transaction.begin();
   try {
     const r = transaction.request(); r.input("name", sql.NVarChar, body.name.trim()); r.input("by", sql.NVarChar, actor);
+    r.input("start", sql.DateTime2, hasStart ? new Date(String(body.start_at)) : null);
+    r.input("end", sql.DateTime2, hasEnd ? new Date(String(body.end_at)) : null);
     let eventId = typeof body.event_id === "string" ? body.event_id : null;
     if (eventId) {
       r.input("event", sql.UniqueIdentifier, eventId);
@@ -35,7 +61,7 @@ app.http("eventServicePlans", { route: "event-service-plans", methods: ["GET", "
       eventId = (await r.query("INSERT INTO Events(name,created_by,updated_by) OUTPUT INSERTED.id VALUES(@name,@by,@by)")).recordset[0].id;
     }
     r.input("event", sql.UniqueIdentifier, eventId);
-    const plan = (await r.query("INSERT INTO EventServicePlans(event_id,name,created_by,updated_by) OUTPUT INSERTED.* VALUES(@event,@name,@by,@by)")).recordset[0];
+    const plan = (await r.query("INSERT INTO EventServicePlans(event_id,name,start_at,end_at,created_by,updated_by) OUTPUT INSERTED.* VALUES(@event,@name,@start,@end,@by,@by)")).recordset[0];
     await transaction.commit();
     return { status: 201, jsonBody: plan };
   } catch (error) { await transaction.rollback(); throw error; }
@@ -44,12 +70,40 @@ app.http("eventServicePlans", { route: "event-service-plans", methods: ["GET", "
 app.http("eventServicePlanAction", { route: "event-service-plans/{id}/{action}", methods: ["PATCH", "POST"], authLevel: "anonymous", handler: async (req: HttpRequest) => {
   const auth = await authorized(req); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   const action = req.params.action; const pool = await getPool(); const id = req.params.id;
+  if (action === "details") {
+    const body = await req.json() as Record<string, unknown>;
+    const current = (await pool.request().input("id", sql.UniqueIdentifier, id).query<{ status: string }>("SELECT status FROM EventServicePlans WHERE id=@id")).recordset[0];
+    if (!current) return { status: 404, jsonBody: { error: "Service plan not found" } };
+    if (!["draft", "review"].includes(current.status)) return { status: 409, jsonBody: { error: "Only draft or review plans can be edited" } };
+    const hasStart = body.start_at !== undefined && body.start_at !== null;
+    const hasEnd = body.end_at !== undefined && body.end_at !== null;
+    if (hasStart !== hasEnd) return { status: 400, jsonBody: { error: "start_at and end_at must be provided together" } };
+    if (hasStart) {
+      const period = validateOperatingPeriod({ start_at: String(body.start_at), end_at: String(body.end_at) });
+      if (!period.valid) return { status: 400, jsonBody: { error: period.error } };
+    }
+    const request = pool.request().input("id", sql.UniqueIdentifier, id).input("by", sql.NVarChar, auth.principal.userDetails ?? "system");
+    const fields: string[] = [];
+    if (body.name !== undefined) {
+      if (typeof body.name !== "string" || !body.name.trim()) return { status: 400, jsonBody: { error: "name must not be empty" } };
+      request.input("name", sql.NVarChar, body.name.trim()); fields.push("name=@name");
+    }
+    if (hasStart) {
+      request.input("start", sql.DateTime2, new Date(String(body.start_at)));
+      request.input("end", sql.DateTime2, new Date(String(body.end_at)));
+      fields.push("start_at=@start", "end_at=@end");
+    }
+    if (!fields.length) return { status: 400, jsonBody: { error: "At least one plan field is required" } };
+    fields.push("updated_by=@by", "updated_at=SYSUTCDATETIME()");
+    const updated = (await request.query(`UPDATE EventServicePlans SET ${fields.join(",")} OUTPUT INSERTED.* WHERE id=@id`)).recordset[0];
+    return updated ? { status: 200, jsonBody: updated } : { status: 404, jsonBody: { error: "Service plan not found" } };
+  }
   if (action === "modify") {
     const r = pool.request(); r.input("id", sql.UniqueIdentifier, id); r.input("by", sql.NVarChar, auth.principal.userDetails ?? "system");
     const plan = (await r.query<{ status: string }>("SELECT status FROM EventServicePlans WHERE id=@id")).recordset[0];
     if (!plan) return { status: 404, jsonBody: { error: "Service plan not found" } };
     if (plan.status !== "active") return { status: 409, jsonBody: { error: "Only an active service plan can be modified" } };
-    const revision = (await r.query<{ id: string }>("INSERT INTO EventServicePlanRevisions(service_plan_id,created_by,updated_by) OUTPUT INSERTED.id VALUES(@id,@by,@by)")).recordset[0];
+    const revision = (await r.query<{ id: string }>("INSERT INTO EventServicePlanRevisions(service_plan_id,start_at,end_at,created_by,updated_by) OUTPUT INSERTED.id SELECT id,start_at,end_at,@by,@by FROM EventServicePlans WHERE id=@id")).recordset[0];
     await pool.request().input("revision", sql.UniqueIdentifier, revision.id).input("plan", sql.UniqueIdentifier, id).query("INSERT INTO EventServicePlanRevisionRoutes(revision_id,route_id) SELECT @revision,route_id FROM EventServicePlanRoutes WHERE service_plan_id=@plan; INSERT INTO EventServicePlanRevisionGeofences(revision_id,geofence_id) SELECT @revision,geofence_id FROM EventServicePlanGeofences WHERE service_plan_id=@plan; INSERT INTO EventServicePlanRevisionLocations(revision_id,location_id) SELECT @revision,location_id FROM EventServicePlanLocations WHERE service_plan_id=@plan;");
     return { status: 201, jsonBody: { id: revision.id, service_plan_id: id, status: "draft" } };
   }
@@ -61,7 +115,7 @@ app.http("eventServicePlanAction", { route: "event-service-plans/{id}/{action}",
         SELECT
           (SELECT COUNT(*) FROM EventServicePlanRoutes spr JOIN RouteClassification rc ON rc.route_id=spr.route_id WHERE spr.service_plan_id=@id AND rc.route_category='SpecialEvent' AND rc.is_active=1) routes,
           (SELECT COUNT(*) FROM EventServicePlanGeofences spg JOIN EventGeofences g ON g.id=spg.geofence_id AND g.is_active=1 JOIN EventGeofenceDirectionRules dr ON dr.geofence_id=g.id WHERE spg.service_plan_id=@id) geofences,
-          CASE WHEN EXISTS (SELECT 1 FROM EventServicePlans WHERE id=@id AND (start_date IS NULL OR end_date IS NULL OR start_date <= end_date)) THEN 1 ELSE 0 END valid_dates,
+          CASE WHEN EXISTS (SELECT 1 FROM EventServicePlans WHERE id=@id AND ((start_at IS NOT NULL AND end_at IS NOT NULL AND start_at < end_at) OR (start_at IS NULL AND end_at IS NULL AND (start_date IS NULL OR end_date IS NULL OR start_date <= end_date)))) THEN 1 ELSE 0 END valid_dates,
           CASE WHEN EXISTS (
             SELECT 1 FROM EventServicePlanRoutes candidate
             JOIN EventServicePlans candidate_plan ON candidate_plan.id=candidate.service_plan_id
@@ -71,6 +125,7 @@ app.http("eventServicePlanAction", { route: "event-service-plans/{id}/{action}",
           ) THEN 1 ELSE 0 END route_conflict
       `)).recordset[0] as { routes: number; geofences: number; valid_dates: number; route_conflict: number };
       if (!counts || counts.routes < 1 || counts.geofences < 1 || counts.valid_dates !== 1 || counts.route_conflict === 1) return { status: 409, jsonBody: { error: counts?.route_conflict === 1 ? "A route is already covered by another active Event" : "An active plan must include an active SpecialEvent route, an active geofence with a direction rule, and valid dates" } };
+      await captureScopeSnapshot(pool, id, auth.principal.userDetails ?? "system");
     }
     const out = await r.query("UPDATE EventServicePlans SET status='" + transition.to + "',updated_by=@by,updated_at=SYSUTCDATETIME() OUTPUT INSERTED.* WHERE id=@id AND status='" + transition.from + "'"); return out.recordset.length ? { status: 200, jsonBody: out.recordset[0] } : { status: 409, jsonBody: { error: `Plan must be ${transition.from} before it can be ${transition.to}` } };
   }
@@ -96,9 +151,10 @@ app.http("eventServicePlanRevisionAction", { route: "event-service-plans/{id}/re
     if (!current || current.status !== "approved" || current.plan_status !== "active") return { status: 409, jsonBody: { error: "An approved revision can only be applied to an active plan" } };
     const transaction = pool.transaction(); await transaction.begin();
     try {
-      await transaction.request().input("revision", sql.UniqueIdentifier, revisionId).input("plan", sql.UniqueIdentifier, planId).input("by", sql.NVarChar, auth.principal.userDetails ?? "system").query("DELETE FROM EventServicePlanRoutes WHERE service_plan_id=@plan; INSERT INTO EventServicePlanRoutes SELECT @plan,route_id FROM EventServicePlanRevisionRoutes WHERE revision_id=@revision; DELETE FROM EventServicePlanGeofences WHERE service_plan_id=@plan; INSERT INTO EventServicePlanGeofences SELECT @plan,geofence_id FROM EventServicePlanRevisionGeofences WHERE revision_id=@revision; DELETE FROM EventServicePlanLocations WHERE service_plan_id=@plan; INSERT INTO EventServicePlanLocations SELECT @plan,location_id FROM EventServicePlanRevisionLocations WHERE revision_id=@revision; UPDATE EventServicePlanRevisions SET status='applied',updated_by=@by,updated_at=SYSUTCDATETIME() WHERE id=@revision;");
+      await transaction.request().input("revision", sql.UniqueIdentifier, revisionId).input("plan", sql.UniqueIdentifier, planId).input("by", sql.NVarChar, auth.principal.userDetails ?? "system").query("DELETE FROM EventServicePlanRoutes WHERE service_plan_id=@plan; INSERT INTO EventServicePlanRoutes SELECT @plan,route_id FROM EventServicePlanRevisionRoutes WHERE revision_id=@revision; DELETE FROM EventServicePlanGeofences WHERE service_plan_id=@plan; INSERT INTO EventServicePlanGeofences SELECT @plan,geofence_id FROM EventServicePlanRevisionGeofences WHERE revision_id=@revision; DELETE FROM EventServicePlanLocations WHERE service_plan_id=@plan; INSERT INTO EventServicePlanLocations SELECT @plan,location_id FROM EventServicePlanRevisionLocations WHERE revision_id=@revision; UPDATE EventServicePlans SET start_at=(SELECT start_at FROM EventServicePlanRevisions WHERE id=@revision),end_at=(SELECT end_at FROM EventServicePlanRevisions WHERE id=@revision),updated_by=@by,updated_at=SYSUTCDATETIME() WHERE id=@plan; UPDATE EventServicePlanRevisions SET status='applied',updated_by=@by,updated_at=SYSUTCDATETIME() WHERE id=@revision;");
       await transaction.commit();
     } catch (error) { await transaction.rollback(); throw error; }
+    await captureScopeSnapshot(pool, planId, auth.principal.userDetails ?? "system", revisionId);
     return { status: 200, jsonBody: { ok: true, status: "applied" } };
   }
   if (!transition[action]) return { status: 404, jsonBody: { error: "Unknown revision action" } };

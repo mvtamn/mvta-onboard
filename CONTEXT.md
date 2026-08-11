@@ -195,6 +195,84 @@ resources and propose scope, authorized publishers review and approve, and
 operations/admin roles activate, suspend, or complete plans. Readers can view
 the resulting audit without changing it.
 
+## Event Planning workflow
+
+The operator-facing workflow that creates an Event, defines its operating
+period, assembles and validates a Service Plan, submits it for review, and
+activates or changes its operational scope. Event Planning owns the workflow;
+it does not replace reusable resource authoring.
+
+## Operational observation
+
+An observed runtime fact, such as a vehicle entering or leaving a geofence.
+An observation is retained for monitoring and audit before any notification or
+other operational action is selected.
+
+## Operational rule
+
+A configured decision applied to an operational observation. It determines
+whether the observation requires no action, manual review, automatic delivery,
+or another supported operational response. A rule is not the observation and
+does not determine whether the underlying vehicle is in operational scope.
+
+## Resource authoring boundary
+
+Reusable geofences, locations, and direction rules are maintained in the
+administrative authoring surface. Event Planning selects, previews, and links
+those resources into a Service Plan, with a path to author a missing resource,
+but does not duplicate the reusable-resource editor.
+
+## Event AVL operating context
+
+The selected Event and its selected operating period that define the scope for
+an operator's live map, vehicle list, crossings, notifications, and operational
+actions. Event AVL may provide a cross-event summary, but an operational action
+must identify one Event operating context.
+
+## Reviewed scope change
+
+A change to an active Event operating period that is proposed as a plan
+revision, reviewed, and explicitly applied. Direct mutation of active scope is
+not allowed.
+
+## Operational action
+
+The result selected by an operational rule after an observation is evaluated.
+The initial action vocabulary is no action, manual review, or automatic Teams
+delivery. An operational action is distinct from the observation and from the
+reusable rule that selected it.
+
+## Sequential operating period
+
+One bounded Service Plan under an Event. An Event may have multiple sequential
+periods for different days or phases, while only one period can govern a route
+at a time.
+
+## Event operating scope snapshot
+
+The immutable routes, classifications, geofences, locations, direction rules,
+and operational actions captured when a Service Plan or reviewed revision is
+activated. Reusable resource edits do not alter an existing snapshot.
+
+## Proposed vehicle assignment
+
+An operator's proposal to add an out-of-scope SpecialEvent vehicle or route to
+a draft Service Plan or active-plan revision. It requires the normal review
+and activation path and never changes live scope immediately.
+
+## Notification lifecycle
+
+The auditable progression of an operational notification from pending review
+through acknowledgement and successful delivery, or to dismissed, failed, or
+expired. Delivery success is the only condition that makes a notification
+sent.
+
+## Event AVL layer
+
+A separately toggleable operational view associated with one Event operating
+context, such as active-plan vehicles, diagnostic vehicles, geofences,
+locations, route overlays, crossings, or notification state.
+
 ## Runtime date
 
 The Service Plan's MVTA-local operating-period date is authoritative for live
@@ -342,3 +420,153 @@ The period that Detour images and PDFs remain available after temporal expiry.
 The agreed initial window is one year, after which the files and attachment
 metadata are purged while the Detour audit remains.
 _Avoid_: indefinite retention
+
+## Contractor performance assessment language
+
+**Agreement**:
+The governing contractual term under which one Contractor's performance is assessed. One Agreement has exactly one Contractor throughout its term.
+_Avoid_: account, multi-contractor program
+
+**Assessment Contractor**:
+The sole Contractor subject to a particular Agreement and its performance assessments.
+_Avoid_: active contractor, selected contractor
+
+**Assessment Period**:
+A calendar month of service, determined in the `America/Chicago` timezone, for which the Assessment Contractor's performance is evaluated.
+_Avoid_: contractor-month, reporting month
+
+**Assessment Rule Set**:
+The immutable collection of performance standards and tiers governing one Assessment Period. Amendments normally govern a later Assessment Period unless the Agreement expressly makes them retroactive.
+_Avoid_: current standards, live tiers
+
+**Assessment Reviewer**:
+A person authorized to confirm evidence and recommend confirmation, adjustment, or waiver of a proposed assessment.
+_Avoid_: Issuing Authority, investigator
+
+**Issuing Authority**:
+The Contract Manager or formally delegated authority who may finalize and issue an assessment.
+_Avoid_: reviewer, administrator
+
+**Validation Draft**:
+An immutable, non-binding assessment artifact shared to identify data errors before final issuance. It creates no dispute deadline.
+_Avoid_: preliminary issuance, preliminary penalty
+
+**Shared Validation Draft**:
+A Validation Draft whose sharing has been explicitly recorded. Its recorded sharing time, rather than generation, preview, download, or email transport, begins the Validation Window.
+_Avoid_: generated draft, downloaded draft
+
+**Draft Sharing Record**:
+The recipient, delivery method, sender attestation, and sharing time for a Shared Validation Draft. A transport identifier may supplement the record but is not required.
+_Avoid_: email receipt, download event
+
+**Validation Window**:
+The standard five-business-day opportunity for the Assessment Contractor to identify data errors in a Validation Draft. A different duration requires a reason recorded by the Issuing Authority.
+_Avoid_: dispute period, informal waiting period
+
+**Final Assessment**:
+The immutable assessment formally issued by the Issuing Authority. Its issuance begins the Agreement's dispute period.
+_Avoid_: generated report, current assessment
+
+**Finalized Assessment**:
+An internally approved assessment ready for issuance. Finalization alone creates no contractor deadline or contractual issuance effect.
+_Avoid_: Final Assessment, issued assessment
+
+**Superseding Final Assessment**:
+A newly reviewed and issued Final Assessment that corrects an earlier Final Assessment while preserving the earlier artifact and restarting the dispute period.
+_Avoid_: edited final, overwritten report
+
+**Not Assessable**:
+The explicit outcome for a required standard whose evidence or measurement is insufficient. It is neither compliance nor noncompliance and cannot silently be treated as meeting the standard.
+_Avoid_: meets, zero penalty, missing
+
+**Below-standard Outcome**:
+A Warning, Tier 1, or Tier 2 result. It advances an Escalation Streak even when the result carries no immediate monetary penalty.
+_Avoid_: penalty month, failed month
+
+**Escalation Streak**:
+The sequence of assessed Below-standard Outcomes for the same performance standard. Meets resets the streak, while Not Assessable or an unissued month pauses it without advancing or resetting it; escalation begins with the third qualifying outcome.
+_Avoid_: calendar-month count, penalty count
+
+**Assessment Exception**:
+The Issuing Authority's explicit authorization to issue a Final Assessment containing a Not Assessable standard. It identifies the reason, missing-data owner, remediation action, and expected correction date.
+_Avoid_: waiver, ignored data
+
+**Partial Assessed Total**:
+The sum of assessed standards when one or more required standards are Not Assessable. It is explicitly incomplete and must not be presented as the complete monthly assessment total.
+_Avoid_: total assessed, zero for missing data
+
+**Material Assessment Change**:
+A post-sharing change to assessment status, evidence, tier, penalty, exception, or total. It requires a replacement Validation Draft and a new Validation Window; formatting-only changes are not material.
+_Avoid_: edit, correction
+
+**Material Late Information**:
+Information received after final issuance that changes a tier, monetary amount, CAP requirement, Not Assessable outcome, or dispute right. The Issuing Authority may classify other late information as material only with a recorded rationale.
+_Avoid_: correction, note
+
+**Source Correction**:
+A correction to assessment evidence or measurement made at its authoritative source. It requires recomputation and is not a review adjustment.
+_Avoid_: manager adjustment, report edit
+
+**Assessable Input**:
+The source measurement or occurrence set remaining after contractually approved exclusions are applied. Performance tiering uses the Assessable Input while preserving the raw input for explanation.
+_Avoid_: adjusted penalty, reviewed value
+
+**Monetary Adjustment**:
+An Assessment Reviewer's reasoned recommendation to change a computed monetary amount without rewriting its source measurement or tier.
+_Avoid_: source correction, waiver
+
+**Binding Adjustment**:
+The Issuing Authority's acceptance of a recommended Monetary Adjustment or Penalty Waiver. An adjustment may increase or decrease an amount only on a stated contractual basis and may never reduce it below zero.
+_Avoid_: reviewer decision, source correction
+
+**Penalty Waiver**:
+An Assessment Reviewer's reasoned recommendation not to collect a computed penalty. It does not change the underlying performance outcome or automatically remove a CAP requirement.
+_Avoid_: Meets, source correction
+
+**CAP Determination**:
+The decision that a Corrective Action Plan is required because of the underlying performance or safety outcome. It remains independent of a Monetary Adjustment or Penalty Waiver and requires a separate reasoned decision to remove.
+_Avoid_: penalty add-on, automatic waiver
+
+**Assessment Credit**:
+A non-negative financial remedy resulting from a dispute against an issued Final Assessment. It remains linked to that assessment and is handled outside another Assessment Period's calculation.
+_Avoid_: negative penalty, next-month adjustment
+
+**Escalation Impact**:
+The set of later Assessment Periods whose Escalation Streak changes after an earlier Source Correction or supersession. Unissued affected periods become stale; issued affected periods require an explicit supersession decision.
+_Avoid_: silent recalculation, isolated correction
+
+**Assessment Evidence Version**:
+An immutable, content-hashed artifact or structured source reference supporting an assessment input or decision. A correction creates a linked version rather than replacing evidence already used by a Shared Validation Draft or Final Assessment.
+_Avoid_: attachment, current file
+
+**Assessment Item**:
+A specific standard, occurrence, adjustment, waiver, exception, or CAP Determination within a Final Assessment that may be identified in a dispute.
+_Avoid_: whole report, generic penalty
+
+**Assessment Dispute**:
+A contractor challenge to one or more identified Assessment Items in a Final Assessment. Items outside the stated scope remain final.
+_Avoid_: report rejection, informal comment
+
+**Dispute Outcome**:
+The final disposition of an Assessment Dispute: Upheld, Adjusted, Rescinded, or Superseded.
+_Avoid_: closed, resolved
+
+**Assessment Lifecycle**:
+The progression of an Assessment Period through Open, Under Review, In Validation, Finalized, and Issued. Stale identifies material input change; an issued assessment is never moved backward and corrections proceed through supersession.
+_Avoid_: computation status, report status
+
+**Unassigned Candidate**:
+An automated observation that cannot be placed unambiguously within the Assessment Contractor's Agreement term. It cannot contribute to an Assessment Period.
+_Avoid_: contractor occurrence, ignored candidate
+
+**Candidate Resolution**:
+The explicit confirmation, dismissal, deferral, or reassignment of an automated candidate. An unresolved in-term candidate prevents finalization of its Assessment Period.
+_Avoid_: ignored candidate, assumed dismissal
+
+**Emergency Separation Override**:
+Authorization for one person to review and issue the same assessment during an emergency. A different administrator or executive authority must record the authorization and reason; self-authorization is prohibited.
+_Avoid_: admin bypass, self-approval
+
+**Superseded Dispute**:
+A preserved dispute closed because a Superseding Final Assessment replaced the assessment it challenged. The superseding assessment creates a new dispute period rather than carrying the former dispute forward.
+_Avoid_: deleted dispute, transferred dispute

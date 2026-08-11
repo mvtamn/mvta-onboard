@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as atlas from "azure-maps-control";
 import "azure-maps-control/dist/atlas.min.css";
-import { ApiError, type EventVehiclePosition, type EventGeofenceCrossing, type EventGeofenceNotification, type EventAuditEntry, type EventMonitoringHealth } from "@mvta/shared";
+import { ApiError, type Event, type EventGeofence, type EventLocation, type EventServicePlan, type EventVehiclePosition, type EventGeofenceCrossing, type EventGeofenceNotification, type EventAuditEntry, type EventMonitoringHealth } from "@mvta/shared";
 import { api } from "../../config.js";
 import "./eventMonitoring.css";
 
@@ -57,6 +57,15 @@ function healthLabel(status: string | undefined): string {
 
 export function EventMonitoring() {
   const [vehicles, setVehicles] = useState<EventVehiclePosition[] | null>(null);
+  const [diagnosticVehicles, setDiagnosticVehicles] = useState<EventVehiclePosition[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
+  const [plans, setPlans] = useState<EventServicePlan[]>([]);
+  const [selectedEventId, setSelectedEventId] = useState("");
+  const [showDiagnostics, setShowDiagnostics] = useState(true);
+  const [showGeofences, setShowGeofences] = useState(true);
+  const [showLocations, setShowLocations] = useState(true);
+  const [geofences, setGeofences] = useState<EventGeofence[]>([]);
+  const [locations, setLocations] = useState<EventLocation[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -77,8 +86,9 @@ export function EventMonitoring() {
   const load = useCallback(async () => {
     setRefreshing(true);
     try {
-      const { vehicles: current, diagnostics } = await api.getEventVehiclePositions();
+      const { vehicles: current, diagnostic_vehicles: diagnosticsVehicles, diagnostics } = await api.getEventVehiclePositions(selectedEventId || undefined);
       setVehicles(current);
+      setDiagnosticVehicles(diagnosticsVehicles);
       setLastUpdated(new Date());
       setMessage(
         diagnostics.table_ready
@@ -93,6 +103,21 @@ export function EventMonitoring() {
       setRefreshing(false);
     }
     void api.getEventMonitoringHealth().then(setHealth).catch(() => setHealth(null));
+  }, [selectedEventId]);
+
+  useEffect(() => {
+    void Promise.all([api.getEvents(), api.getEventServicePlans()]).then(([eventRows, planRows]) => {
+      setEvents(eventRows.events);
+      setPlans(planRows.plans);
+      if (!selectedEventId && eventRows.events[0]) setSelectedEventId(eventRows.events[0].id);
+    }).catch(() => { setEvents([]); setPlans([]); });
+  }, []);
+
+  useEffect(() => {
+    void Promise.all([api.getEventGeofences(), api.getEventLocations()]).then(([fences, points]) => {
+      setGeofences(fences.geofences);
+      setLocations(points.locations);
+    }).catch(() => { setGeofences([]); setLocations([]); });
   }, []);
 
   useEffect(() => {
@@ -114,18 +139,26 @@ export function EventMonitoring() {
       });
   }, [lastUpdated]);
 
-  async function reviewNotification(id: string, action: "send" | "dismiss") {
+  async function reviewNotification(id: string, action: "acknowledge" | "send" | "dismiss") {
     setActionError(null);
     try {
       if (action === "send") await api.sendEventGeofenceNotification(id);
+      else if (action === "acknowledge") await api.acknowledgeEventGeofenceNotification(id);
       else await api.dismissEventGeofenceNotification(id);
-      setNotifications((rows) => rows.filter((row) => row.id !== id));
+      setNotifications((rows) => action === "acknowledge" ? rows.map((row) => row.id === id ? { ...row, status: "acknowledged" as const } : row) : rows.filter((row) => row.id !== id));
     } catch (error) {
       setActionError(error instanceof ApiError ? error.message : "Notification action failed; the item was retained.");
     }
   }
 
   const classifiedVehicles = vehicles ?? [];
+  const selectedEvent = events.find((event) => event.id === selectedEventId);
+  const selectedPlans = plans.filter((plan) => plan.event_id === selectedEventId);
+  const activePlan = selectedPlans.find((plan) => plan.status === "active");
+  const activeGeofenceIds = new Set(activePlan?.links?.filter((link) => link.kind === "geofences").map((link) => String(link.value)) ?? []);
+  const activeLocationIds = new Set(activePlan?.links?.filter((link) => link.kind === "locations").map((link) => String(link.value)) ?? []);
+  const visibleGeofences = geofences.filter((fence) => activeGeofenceIds.has(fence.id));
+  const visibleLocations = locations.filter((location) => activeLocationIds.has(location.id));
   const routeOptions = useMemo(() => Array.from(new Map(classifiedVehicles
     .filter((vehicle) => vehicle.route !== null)
     .map((vehicle) => [String(vehicle.route), routeLabel(vehicle)])).entries()), [classifiedVehicles]);
@@ -152,14 +185,20 @@ export function EventMonitoring() {
       <div className="evmon-summary">
         <div>
           <span className="evmon-eyebrow"><span className="evmon-live-dot" /> Live operations</span>
-          <h2>Live vehicle positions</h2>
-        <p>Vehicles remain visible as stale briefly when reports stop.</p>
+          <h2>Event AVL</h2>
+          <p>{selectedEvent ? `${selectedEvent.name} · ${selectedPlans.find((plan) => plan.status === "active")?.name ?? "No active operating period"}` : "Select an Event operating context to monitor."}</p>
         </div>
         <div className="evmon-metrics" aria-label="Live monitoring summary">
           <div><strong>{classifiedVehicles.length}</strong><span>Vehicles</span></div>
           <div><strong>{routesActive}</strong><span>Routes</span></div>
           <div><strong>{reportingNow}</strong><span>Reporting now</span></div>
         </div>
+      </div>
+
+      <div className="evmon-context" aria-label="Event operating context">
+        <label><span>Event context</span><select value={selectedEventId} onChange={(event) => { setSelectedEventId(event.target.value); setVehicles(null); }}><option value="">Select Event</option>{events.map((event) => <option key={event.id} value={event.id}>{event.name}</option>)}</select></label>
+        <span>{selectedEvent ? `${selectedPlans.length} operating period${selectedPlans.length === 1 ? "" : "s"}` : "No Event selected"}</span>
+        <label><input type="checkbox" checked={showDiagnostics} onChange={(event) => setShowDiagnostics(event.target.checked)} /> Show unplanned diagnostic vehicles</label>
       </div>
 
       <div className="evmon-health" aria-label="Event monitoring data health">
@@ -191,11 +230,13 @@ export function EventMonitoring() {
           <label><span>Motion</span><select value={motionFilter} onChange={(event) => setMotionFilter(event.target.value)}><option value="all">Moving + stopped</option><option value="moving">Moving</option><option value="stopped">Stopped</option></select></label>
           <label><span>Map layer</span><select value={mapStyle} onChange={(event) => setMapStyle(event.target.value as MapStyle)}><option value="road">Road</option><option value="grayscale_light">Light</option><option value="night">Night</option><option value="satellite_road_labels">Satellite + labels</option></select></label>
           <label className="evmon-traffic"><input type="checkbox" checked={traffic} onChange={(event) => setTraffic(event.target.checked)} /><span>Traffic</span></label>
+          <label className="evmon-traffic"><input type="checkbox" checked={showGeofences} onChange={(event) => setShowGeofences(event.target.checked)} /><span>Geofences</span></label>
+          <label className="evmon-traffic"><input type="checkbox" checked={showLocations} onChange={(event) => setShowLocations(event.target.checked)} /><span>Transit locations</span></label>
           {hasFilters && <button type="button" className="evmon-clear" onClick={() => { setSearch(""); setRouteFilter("all"); setHeadingFilter("all"); setMotionFilter("all"); }}>Clear filters</button>}
         </div>}
         {!minimized && (
           <div className="evmon-map-wrap">
-            <VehicleMap vehicles={activeVehicles} mapStyle={mapStyle} traffic={traffic} />
+            <VehicleMap vehicles={activeVehicles} geofences={visibleGeofences} locations={visibleLocations} showGeofences={showGeofences} showLocations={showLocations} mapStyle={mapStyle} traffic={traffic} />
           </div>
         )}
       </div>
@@ -204,6 +245,10 @@ export function EventMonitoring() {
         <div><h3>Monitored vehicles</h3><span>Fresh and recently stale classified vehicles from shared AVL</span></div>
         <span className="evmon-count">{activeVehicles.length}{hasFilters ? ` of ${classifiedVehicles.length}` : ""} active</span>
       </div>
+      {showDiagnostics && <>
+        <div className="evmon-list-header"><div><h3>Unplanned diagnostic vehicles</h3><span>SpecialEvent vehicles visible for diagnosis; they are not in operational scope.</span></div><span className="evmon-count">{diagnosticVehicles.length}</span></div>
+        <div className="evmon-table-wrap"><table className="data evmon-table"><thead><tr><th>Vehicle</th><th>Route</th><th>Heading</th><th>Last report</th></tr></thead><tbody>{diagnosticVehicles.map((vehicle) => <tr key={`diagnostic-${vehicle.vehicle_id}`}><td><strong>{vehicle.vehicle_id}</strong></td><td>{routeLabel(vehicle)}</td><td><span className="evmon-heading">{cardinalHeading(vehicle.heading, vehicle.direction)}</span></td><td className={vehicle.is_stale ? "evmon-stale" : undefined}>{vehicle.is_stale ? "Stale · " : ""}{minutesAgo(vehicle.report_timestamp)}</td></tr>)}</tbody></table>{diagnosticVehicles.length === 0 && <div className="evmon-empty">No unplanned SpecialEvent vehicles are reporting in this context.</div>}</div>
+      </>}
       <div className="evmon-table-wrap">
         {message ? <div className="evmon-empty">{message}</div> : vehicles === null ? <div className="evmon-empty">Loading live positions…</div> : (
           <table className="data evmon-table">
@@ -226,7 +271,7 @@ export function EventMonitoring() {
       <div className="evmon-list-header"><div><h3>Geofence crossings</h3><span>Recent movement across active event boundaries · {feedStatus.crossings?.state === "error" ? "feed unavailable; showing last successful data" : feedStatus.crossings?.loadedAt ? `loaded ${feedStatus.crossings.loadedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "loading"}</span></div></div>
       <div className="evmon-table-wrap">
         {actionError && <div className="evmon-empty">{actionError}</div>}
-        {notifications.map((notification) => <div key={notification.id} className="panel-body"><strong>Review notification</strong><p>{notification.message_body}</p><button className="btn-sm" onClick={() => void reviewNotification(notification.id, "send")}>Approve and send</button>{" "}<button className="btn-sm" onClick={() => void reviewNotification(notification.id, "dismiss")}>Dismiss</button></div>)}
+        {notifications.map((notification) => <div key={notification.id} className="panel-body"><strong>{notification.status === "acknowledged" ? "Acknowledged notification" : "Review notification"}</strong><p>{notification.message_body}</p>{notification.status === "pending" && <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "acknowledge")}>Acknowledge</button>} {notification.status === "acknowledged" && <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "send")}>Approve and send</button>} {notification.status === "pending" && <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "send")}>Approve and send</button>} {" "}<button className="btn-sm" onClick={() => void reviewNotification(notification.id, "dismiss")}>Dismiss</button></div>)}
         <table className="data evmon-table"><thead><tr><th>Time</th><th>Vehicle</th><th>Geofence</th><th>Transition</th><th>Destination</th></tr></thead><tbody>{crossings.map((crossing) => <tr key={crossing.id}><td>{new Date(crossing.crossed_at).toLocaleString()}</td><td>{crossing.vehicle_id}</td><td>{crossing.geofence_name}</td><td>{crossing.transition}</td><td>{crossing.destination_label ?? "—"}</td></tr>)}</tbody></table>
       </div>
       <div className="evmon-list-header"><div><h3>Event audit history</h3><span>Route changes, crossings, and notification actions · {feedStatus.audit?.state === "error" ? "feed unavailable; showing last successful data" : feedStatus.audit?.loadedAt ? `loaded ${feedStatus.audit.loadedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "loading"}</span></div></div>
@@ -235,10 +280,12 @@ export function EventMonitoring() {
   );
 }
 
-function VehicleMap({ vehicles, mapStyle, traffic }: { vehicles: EventVehiclePosition[]; mapStyle: MapStyle; traffic: boolean }) {
+function VehicleMap({ vehicles, geofences, locations, showGeofences, showLocations, mapStyle, traffic }: { vehicles: EventVehiclePosition[]; geofences: EventGeofence[]; locations: EventLocation[]; showGeofences: boolean; showLocations: boolean; mapStyle: MapStyle; traffic: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<atlas.Map | null>(null);
   const popupRef = useRef<atlas.Popup | null>(null);
+  const resourceSourceRef = useRef<atlas.source.DataSource | null>(null);
+  const resourceLayersRef = useRef<atlas.layer.Layer[]>([]);
   const fittedRef = useRef(false);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -263,6 +310,42 @@ function VehicleMap({ vehicles, mapStyle, traffic }: { vehicles: EventVehiclePos
     }).catch((err) => setError(err instanceof ApiError ? `Could not load the map: ${err.message}` : "Could not reach the map service."));
     return () => { cancelled = true; popupRef.current = null; map?.dispose(); mapRef.current = null; };
   }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    let source = resourceSourceRef.current;
+    if (!source) {
+      source = new atlas.source.DataSource("event-resources");
+      map.sources.add(source);
+      resourceSourceRef.current = source;
+    }
+    resourceLayersRef.current.forEach((layer) => map.layers.remove(layer));
+    resourceLayersRef.current = [];
+    source.clear();
+    if (showGeofences) {
+      geofences.forEach((fence) => {
+        try {
+          const polygon = JSON.parse(fence.polygon) as { coordinates: atlas.data.Position[][] };
+          source?.add(new atlas.data.Feature(new atlas.data.Polygon(polygon.coordinates), { kind: "geofence", name: fence.name }));
+        } catch { /* invalid authoring data is reported by the authoring surface */ }
+      });
+      const layer = new atlas.layer.PolygonLayer(source, "event-geofences", { fillColor: "#007f5f", fillOpacity: 0.18 });
+      const outline = new atlas.layer.LineLayer(source, "event-geofence-outlines", { strokeColor: "#005c45", strokeWidth: 2 });
+      map.layers.add([layer, outline]);
+      resourceLayersRef.current.push(layer, outline);
+    }
+    if (showLocations) {
+      locations.forEach((location) => source?.add(new atlas.data.Feature(new atlas.data.Point([location.longitude, location.latitude]), { kind: "location", name: location.name, category: location.category })));
+      const layer = new atlas.layer.SymbolLayer(source, "event-locations", { iconOptions: { image: "pin-round-blue", allowOverlap: true }, textOptions: { textField: ["get", "name"], offset: [0, 1.2], color: "#123" } });
+      map.layers.add(layer);
+      resourceLayersRef.current.push(layer);
+    }
+    return () => {
+      resourceLayersRef.current.forEach((layer) => map.layers.remove(layer));
+      resourceLayersRef.current = [];
+    };
+  }, [geofences, locations, ready, showGeofences, showLocations]);
 
   useEffect(() => {
     if (!ready || !mapRef.current) return;

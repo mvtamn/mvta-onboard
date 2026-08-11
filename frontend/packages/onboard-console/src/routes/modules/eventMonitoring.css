@@ -53,5 +53,9 @@
 .evmon-health { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 9px 12px; margin-bottom: 18px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-bg); color: var(--text-muted); font-size: 11px; }
 .evmon-health strong { color: var(--text); }
 .evmon-health b { color: var(--success-text); }
+.evmon-context { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px 18px; padding: 10px 12px; margin-bottom: 18px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-bg); color: var(--text-muted); font-size: 11px; }
+.evmon-context label { display: flex; align-items: center; gap: 6px; }
+.evmon-context label > span { color: var(--text); font-weight: 800; }
+.evmon-context select { min-width: 230px; height: 31px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface-alt-bg); font: inherit; }
 @media (max-width: 850px) { .evmon-summary { align-items: stretch; flex-direction: column; } .evmon-metrics div { flex: 1; min-width: 0; } .evmon-real-map { min-height: 360px; } }
 @media (max-width: 600px) { .evmon-toolbar { gap: 8px; padding: 9px 10px; } .evmon-toolbar-actions button:first-child { display: none; } .evmon-metrics strong { font-size: 17px; } .evmon-metrics div { padding: 8px 10px; } }
