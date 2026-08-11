@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 import {
   type ExpirationDefault,
   CATEGORY_LABELS,
@@ -55,7 +56,7 @@ function EventMonitoringSettingsSection() {
   }
 
   return <>
-    <div className="panel-header" id="event-configuration">Admin — Event Configuration</div>
+    <div className="panel-header">Admin — Event Configuration</div>
     <div className="panel-body">
       <p className="panel-desc">Control how often the server retrieves live Avail AVL positions. Changes take effect without a redeploy.</p>
       {error && <p className="error-text">{error}</p>}
@@ -399,6 +400,7 @@ function RouteClassificationSection() {
 // message is created without an explicit expiration (expiration_source =
 // category_default). PATCH is OCC.Admin-only, enforced server-side.
 export function Admin() {
+  const location = useLocation();
   const [defaults, setDefaults] = useState<ExpirationDefault[] | null>(null);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -415,6 +417,17 @@ export function Admin() {
       alive = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (location.hash !== "#event-configuration") return;
+    const frame = window.requestAnimationFrame(() => {
+      const target = document.getElementById("event-configuration");
+      if (!target) return;
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      target.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [location.hash]);
 
   async function save(category: Category) {
     const value = parseInt(edits[category] ?? "", 10);
@@ -500,9 +513,15 @@ export function Admin() {
           </table>
         ) : null}
       </div>
-      <EventMonitoringSettingsSection />
-      <RouteClassificationSection />
-      <EventResourceMapEditor />
+      <section id="event-configuration" className="event-configuration-section" tabIndex={-1} aria-labelledby="event-configuration-title">
+        <div className="event-configuration-intro">
+          <strong id="event-configuration-title">Reusable Event resources</strong>
+          <span>Maintain routes, map resources, and Event AVL settings here. Active service plans use pinned revisions, so changes do not alter live operations until reviewed and applied.</span>
+        </div>
+        <EventMonitoringSettingsSection />
+        <RouteClassificationSection />
+        <EventResourceMapEditor />
+      </section>
     </>
   );
 }

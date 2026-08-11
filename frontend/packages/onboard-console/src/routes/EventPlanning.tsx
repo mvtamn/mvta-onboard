@@ -37,8 +37,12 @@ export function EventPlanning() {
   const [geofenceId, setGeofenceId] = useState("");
   const [locationId, setLocationId] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = async () => {
+    setLoading(true);
+    setLoadError(null);
     try {
       const [eventRows, planRows, routeRows, geofenceRows, locationRows] = await Promise.all([
         api.getEvents(), api.getEventServicePlans(), api.getRouteClassification(), api.getEventGeofences(), api.getEventLocations(),
@@ -49,7 +53,9 @@ export function EventPlanning() {
       setGeofences(geofenceRows.geofences.filter((row: EventGeofence) => row.is_active));
       setLocations(locationRows.locations.filter((row: EventLocation) => row.is_active).map((row: EventLocation) => ({ id: row.id, label: `${row.name} · ${row.category}` })));
     } catch (err) {
-      setMessage(err instanceof ApiError ? err.message : "Could not load Event Planning resources.");
+      setLoadError(err instanceof ApiError ? err.message : "Could not load Event Planning resources.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -132,24 +138,31 @@ export function EventPlanning() {
 
   const nextAction = plan?.status === "draft" ? "submit-review" : plan?.status === "review" ? "approve" : plan?.status === "approved" ? "advance" : plan?.status === "active" ? "complete" : null;
 
-  return <>
-    <EventWorkspaceNav eventName={event?.name} planName={plan?.name} planStatus={plan?.status} />
-    <div className="panel-header">Event Planning</div>
+  return <div className="event-planning">
+    <EventWorkspaceNav eventName={event?.name} planName={plan?.name} planStatus={plan?.status} activeStage={plan?.status === "approved" || plan?.status === "active" ? "activate" : "plan"} />
+    <p className="event-workspace-next" role="status">{plan?.status === "active" ? "This operating scope is active. Monitor it in Event AVL." : "Build the operating scope, validate it, then activate it for Event AVL."}</p>
+    {loadError && <div className="event-inline-error" role="alert"><span>{loadError}</span><button className="btn-sm" onClick={() => void load()}>Try again</button></div>}
+    {loading && <p className="muted" role="status">Loading Events, operating periods, and reusable resources…</p>}
+    <div className="event-planning-setup">
+    <div className="event-planning-setup-block">
+    <div className="panel-header">Event setup</div>
     <div className="panel-body">
       <p className="panel-desc">Create an Event, define its operating period, assemble the complete operating scope, and activate it for Event AVL. Admin maintains reusable map resources; Planning selects them.</p>
       {message && <p className="muted" role="status">{message}</p>}
       <h3>Event identity</h3>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <select className="f" value={selectedEventId} onChange={(e) => selectEvent(e.target.value)}><option value="">Select Event</option>{events.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select>
-        <input className="f" value={eventName} onChange={(e) => setEventName(e.target.value)} placeholder="New Event name" />
-        <input className="f" value={owningTeam} onChange={(e) => setOwningTeam(e.target.value)} placeholder="Owning team" />
-        <input className="f" value={eventDescription} onChange={(e) => setEventDescription(e.target.value)} placeholder="Event description" />
+        <input className="f" value={eventName} maxLength={120} onChange={(e) => setEventName(e.target.value)} aria-label="New Event name" placeholder="New Event name" />
+        <input className="f" value={owningTeam} maxLength={120} onChange={(e) => setOwningTeam(e.target.value)} aria-label="Owning team" placeholder="Owning team" />
+        <input className="f" value={eventDescription} maxLength={500} onChange={(e) => setEventDescription(e.target.value)} aria-label="Event description" placeholder="Event description" />
         <button className="btn-sm" disabled={!eventName.trim()} onClick={() => void createEvent()}>Create Event</button>
       </div>
       {event && <p className="muted"><strong>{event.name}</strong>{event.owning_team ? ` · ${event.owning_team}` : ""}{event.description ? ` · ${event.description}` : ""}</p>}
     </div>
+    </div>
 
-    <div className="panel-header" style={{ marginTop: 24 }}>Event operating periods</div>
+    <div className="event-planning-setup-block">
+    <div className="panel-header" style={{ marginTop: 24 }}>Operating period</div>
     <div className="panel-body">
       <p className="panel-desc">An operating period is the timestamped Service Plan that controls one Event scope. Overnight periods are supported using MVTA-local browser time.</p>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -164,7 +177,9 @@ export function EventPlanning() {
         {editable && <button className="btn-sm" onClick={() => void savePlanDetails()}>Save period details</button>}
       </>}
     </div>
+    </div>
 
+    </div>
     {plan && <>
       <div className="panel-header" style={{ marginTop: 24 }}>Operating period lifecycle</div>
       <div className="panel-body">
@@ -180,13 +195,13 @@ export function EventPlanning() {
       <div className="panel-body">
         <p className="panel-desc">Link multiple routes, geofences, and transit locations. Resource edits in Admin do not change this active scope until a reviewed revision is applied.</p>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <select className="f" value={routeId} onChange={(e) => setRouteId(e.target.value)}><option value="">Select SpecialEvent route</option>{routes.map((row) => <option key={row.id} value={row.id}>{row.label}</option>)}</select><button className="btn-sm" disabled={!routeId || (!editable && !revision)} onClick={() => void link("routes")}>Add route</button>
-          <select className="f" value={geofenceId} onChange={(e) => setGeofenceId(e.target.value)}><option value="">Select geofence</option>{geofences.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select><button className="btn-sm" disabled={!geofenceId || (!editable && !revision)} onClick={() => void link("geofences")}>Add geofence</button>
-          <select className="f" value={locationId} onChange={(e) => setLocationId(e.target.value)}><option value="">Select transit location</option>{locations.map((row) => <option key={row.id} value={row.id}>{row.label}</option>)}</select><button className="btn-sm" disabled={!locationId || (!editable && !revision)} onClick={() => void link("locations")}>Add location</button>
+          <select className="f" value={routeId} onChange={(e) => setRouteId(e.target.value)} aria-label="Event service route"><option value="">Select event service route</option>{routes.map((row) => <option key={row.id} value={row.id}>{row.label}</option>)}</select><button className="btn-sm" disabled={!routeId || (!editable && !revision)} onClick={() => void link("routes")}>Add route to plan</button>
+          <select className="f" value={geofenceId} onChange={(e) => setGeofenceId(e.target.value)} aria-label="Geofence"><option value="">Select geofence</option>{geofences.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select><button className="btn-sm" disabled={!geofenceId || (!editable && !revision)} onClick={() => void link("geofences")}>Add geofence to plan</button>
+          <select className="f" value={locationId} onChange={(e) => setLocationId(e.target.value)} aria-label="Transit location"><option value="">Select transit location</option>{locations.map((row) => <option key={row.id} value={row.id}>{row.label}</option>)}</select><button className="btn-sm" disabled={!locationId || (!editable && !revision)} onClick={() => void link("locations")}>Add location to plan</button>
         </div>
         <p className="muted">{counts.routes} routes · {counts.geofences} geofences · {counts.locations} locations linked.</p>
         <table className="data"><thead><tr><th>Type</th><th>Resource</th></tr></thead><tbody>{links.map((link, index) => <tr key={`${link.kind}-${link.value}-${index}`}><td>{link.kind.slice(0, -1)}</td><td>{link.label}</td></tr>)}</tbody></table>
       </div>
     </>}
-  </>;
+  </div>;
 }

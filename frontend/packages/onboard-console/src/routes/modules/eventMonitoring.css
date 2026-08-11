@@ -64,5 +64,9 @@
 .evmon-data-state-warning { color: #765b00; background: #fff8d9; }
 .evmon-data-state-error { color: #8a2e2e; background: #fff0f0; }
 .evmon-data-state-info { color: var(--text-muted); background: var(--surface-alt-bg); }
+.evmon-scope { display: flex; align-items: center; flex-wrap: wrap; gap: 7px 15px; padding: 9px 12px; margin: -8px 0 18px; border-bottom: 1px solid var(--border); color: var(--text-muted); font-size: 11px; }
+.evmon-scope strong { color: var(--text); }
+.evmon-scope b { color: var(--brand-green); }
+.evmon-scope a { margin-left: auto; color: var(--brand-green); font-weight: 800; }
 @media (max-width: 850px) { .evmon-summary { align-items: stretch; flex-direction: column; } .evmon-metrics div { flex: 1; min-width: 0; } .evmon-real-map { min-height: 360px; } }
 @media (max-width: 600px) { .evmon-toolbar { gap: 8px; padding: 9px 10px; } .evmon-toolbar-actions button:first-child { display: none; } .evmon-metrics strong { font-size: 17px; } .evmon-metrics div { padding: 8px 10px; } }

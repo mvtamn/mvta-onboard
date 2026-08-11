@@ -213,6 +213,9 @@ export function EventMonitoring() {
       && matchesMotion && matchesSearch;
   }), [classifiedVehicles, headingFilter, motionFilter, routeFilter, search]);
   const routesActive = selectedPlan?.links?.filter((link) => link.kind === "routes").length ?? 0;
+  const routeNames = routeOptions.map(([, label]) => label);
+  const routeSummary = routeNames.length > 2 ? `${routeNames.slice(0, 2).join(", ")} +${routeNames.length - 2} more` : routeNames.join(", ");
+  const geofencesWithRules = visibleGeofences.filter((fence) => (fence.rules?.length ?? 0) > 0).length;
   const reportingNow = classifiedVehicles.filter((v) => Date.now() - new Date(v.report_timestamp).getTime() < 60_000).length;
   const hasFilters = routeFilter !== "all" || headingFilter !== "all" || motionFilter !== "all" || search !== "";
   const dataState = !selectedEventId
@@ -237,12 +240,11 @@ export function EventMonitoring() {
         </div>
         <div className="evmon-metrics" aria-label="Live monitoring summary">
           <div><strong>{classifiedVehicles.length}</strong><span>Vehicles</span></div>
-          <div><strong>{routesActive}</strong><span>Routes</span></div>
           <div><strong>{reportingNow}</strong><span>Reporting now</span></div>
         </div>
       </div>
 
-      <EventWorkspaceNav eventName={selectedEvent?.name} planName={selectedPlan?.name} planStatus={selectedPlan?.status} />
+      <EventWorkspaceNav eventName={selectedEvent?.name} planName={selectedPlan?.name} planStatus={selectedPlan?.status} activeStage="monitor" />
 
       <div className="evmon-context" aria-label="Event operating context">
         <label><span>Event context</span><select value={selectedEventId} onChange={(event) => { selectEvent(event.target.value); setRouteFilter("all"); setVehicles(null); }}><option value="">Select Event</option>{events.map((event) => <option key={event.id} value={event.id}>{event.name}</option>)}</select></label>
@@ -254,8 +256,19 @@ export function EventMonitoring() {
       <div className={`evmon-data-state evmon-data-state-${dataState.tone}`} role="status">
         <strong>{dataState.title}</strong>
         {dataState.action && <span>{dataState.action}</span>}
+        {dataState.tone === "error" && <button className="btn-sm" onClick={() => void load()}>Try again</button>}
         {!selectedEventId && <Link to="/event-planning">Open Event Planning</Link>}
         {selectedEventId && !selectedPlans.some((plan) => plan.status === "active") && <Link to={`/event-planning?event=${encodeURIComponent(selectedEventId)}`}>Open Event Planning</Link>}
+      </div>
+
+      <div className="evmon-scope" aria-label="Live operating scope">
+        <strong>Live operating scope</strong>
+        {selectedPlan ? <>
+          <span><b>{routesActive}</b> routes{routeSummary ? ` · ${routeSummary}` : ""}</span>
+          <span><b>{visibleGeofences.length}</b> geofences · <b>{geofencesWithRules}</b> with rules</span>
+          <span><b>{visibleLocations.length}</b> locations</span>
+          <Link to={`/event-planning?event=${encodeURIComponent(selectedEventId)}&plan=${encodeURIComponent(selectedPlan.id)}`}>Review scope</Link>
+        </> : <span>Select an active operating period to see the managed scope.</span>}
       </div>
 
       <div className="evmon-health" aria-label="Event monitoring data health">
