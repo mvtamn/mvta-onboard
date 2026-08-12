@@ -5,6 +5,18 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.20] - 2026-08-12
+
+- **Connected Event Planning workflow.** Planned routes, geofences, and
+  transit locations now appear before the review and activation controls, and
+  the lifecycle copy makes the draft → review → approval → activation →
+  monitoring path explicit. Activation is identified as the point that
+  publishes the validated scope to Event AVL.
+- **Reliable Event AVL navigation.** Azure Maps resource-layer cleanup now
+  tolerates layers that were already removed or a map that has already been
+  disposed, preventing navigation away from Event AVL from blanking the
+  console. Added regression coverage for both teardown cases.
+
 ## [1.5.19] - 2026-08-11
 
 Closes [#18](https://github.com/mvtamn/mvta-onboard/issues/18).
