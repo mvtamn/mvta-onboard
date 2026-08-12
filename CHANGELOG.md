@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.25] - 2026-08-12
+
+- **Align Event Map Authoring with Event AVL.** Authoring now uses prominent,
+  labeled active/inactive location markers and independent visibility toggles,
+  matching the live-map resource experience.
+
 ## [1.5.24] - 2026-08-12
 
 - **Keep active vehicles visible before plan assignment.** Event AVL now shows
