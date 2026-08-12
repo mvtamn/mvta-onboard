@@ -8,6 +8,7 @@ import { useEventWorkspace } from "../../context/EventWorkspaceContext.js";
 import { EventWorkspaceNav } from "../../components/EventWorkspaceNav.js";
 import { useAuth } from "../../auth/AuthContext.js";
 import "./eventMonitoring.css";
+import { removeMapLayersIfPresent } from "./mapLayerCleanup.js";
 
 const AVL_REFRESH_MS = 30_000;
 const MAP_CENTER: atlas.data.Position = [-93.25, 44.83];
@@ -383,7 +384,7 @@ function VehicleMap({ vehicles, geofences, locations, showGeofences, showLocatio
       map.sources.add(source);
       resourceSourceRef.current = source;
     }
-    resourceLayersRef.current.forEach((layer) => map.layers.remove(layer));
+    removeMapLayersIfPresent(map, resourceLayersRef.current);
     resourceLayersRef.current = [];
     source.clear();
     if (showGeofences) {
@@ -405,7 +406,7 @@ function VehicleMap({ vehicles, geofences, locations, showGeofences, showLocatio
       resourceLayersRef.current.push(layer);
     }
     return () => {
-      resourceLayersRef.current.forEach((layer) => map.layers.remove(layer));
+      removeMapLayersIfPresent(map, resourceLayersRef.current);
       resourceLayersRef.current = [];
     };
   }, [geofences, locations, ready, showGeofences, showLocations]);
