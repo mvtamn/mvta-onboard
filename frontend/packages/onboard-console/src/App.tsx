@@ -15,7 +15,6 @@ import {
   IconGear,
   IconWrench,
   IconShield,
-  IconHistory,
   IconDetour,
   IconSun,
   IconMoon,
@@ -27,7 +26,6 @@ import { Dashboard } from "./routes/Dashboard.js";
 import { ServiceOperations } from "./routes/ServiceOperations.js";
 import { ServiceOperationsOverview } from "./routes/ServiceOperationsOverview.js";
 import { ServiceRiskQuality } from "./routes/ServiceRiskQuality.js";
-import { ServiceOperationsNavPrototype } from "./routes/ServiceOperationsNavPrototype.js";
 import { Compose } from "./routes/Compose.js";
 import { ActiveMessages } from "./routes/ActiveMessages.js";
 import { SuggestedAlerts } from "./routes/SuggestedAlerts.js";
@@ -44,6 +42,7 @@ import { Detours } from "./routes/Detours.js";
 import { DetourReports } from "./routes/DetourReports.js";
 import { DetourIntake } from "./routes/DetourIntake.js";
 import { Changelog } from "./routes/Changelog.js";
+import { CHANGELOG_ENTRIES } from "./routes/changelogData.js";
 import {
   FixedRouteRefreshProvider,
   formatRefreshCountdown,
@@ -122,6 +121,32 @@ function FixedRouteRefreshIndicator() {
   );
 }
 
+function ChangelogPopover({ onClose }: { onClose: () => void }) {
+  const latest = CHANGELOG_ENTRIES[0];
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className="changelog-overlay" role="presentation" onClick={onClose}>
+      <section className="changelog-popover" role="dialog" aria-modal="true" aria-labelledby="changelog-popover-title" onClick={(event) => event.stopPropagation()}>
+        <button className="changelog-close" onClick={onClose} aria-label="Close release notes">×</button>
+        <span className="changelog-popover-kicker">OnBoard release notes</span>
+        <h2 id="changelog-popover-title">What’s new in v{__APP_VERSION__}</h2>
+        <p className="changelog-popover-date">{latest?.date ?? "Latest release"}</p>
+        <ul>
+          {(latest?.sections.flatMap((section) => section.items) ?? []).slice(0, 3).map((item) => <li key={item}>{item}</li>)}
+        </ul>
+        <NavLink className="changelog-full-link" to="/changelog" onClick={onClose}>View full changelog →</NavLink>
+      </section>
+    </div>
+  );
+}
+
 export function App() {
   const { account, roles, signIn, signOut } = useAuth();
   const { theme, toggle } = useTheme();
@@ -136,6 +161,9 @@ export function App() {
   // - this just tracks whether it's pulled into view, and closes it on every
   // navigation so it never stays open covering the next page.
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [specialistOpen, setSpecialistOpen] = useState(true);
+  const [complianceOpen, setComplianceOpen] = useState(true);
+  const [changelogOpen, setChangelogOpen] = useState(false);
   useEffect(() => { setMobileNavOpen(false); }, [location.pathname]);
 
   if (!account) {
@@ -167,7 +195,9 @@ export function App() {
           <span className="logo-badge">MVTA</span>
           <div>
             <div className="nav-brand-text">OnBoard</div>
-            <div className="nav-brand-sub">v{__APP_VERSION__}</div>
+            <button className="nav-brand-sub nav-version-button" onClick={() => setChangelogOpen(true)}>
+              v{__APP_VERSION__} · View updates
+            </button>
           </div>
         </div>
 
@@ -179,30 +209,36 @@ export function App() {
           <NavLink to="/service-operations/active"><IconMessages />Active Service Alerts</NavLink>
           <NavLink to="/service-operations/suggested"><IconBell />Suggested Alerts</NavLink>
           {isAdmin && <NavLink to="/service-operations/risk"><IconWrench />Service Risk &amp; Quality</NavLink>}
-          <NavLink to="/subscribers"><IconUsers />Subscribers</NavLink>
-          <NavLink to="/audit"><IconClock />Audit Log</NavLink>
-          <NavLink to="/changelog"><IconHistory />Changelog</NavLink>
-          {isAdmin && <NavLink to="/admin"><IconGear />Admin</NavLink>}
-
-          {/* The detour pages live in this grouped section rather than the
-              flat primary nav above - they are an ops workspace, not one of
-              the rider-message primaries. The group header renders if ANY
-              child does, so a Detour-only user still sees a labelled group
-              rather than two orphaned links. */}
           {(isAdmin || isCompliance || canSeeDetours || canSeeEventAvl) && (
-            <>
-              <div className="nav-section-label">Tools</div>
-              {canSeeDetours && <NavLink to="/detours"><IconDetour />Detours &amp; Closures</NavLink>}
-              {canSeeDetours && <NavLink to="/detour-intake"><IconDetour />Detour Intake</NavLink>}
-              {canSeeDetours && <NavLink to="/detour-reports"><IconClock />Detour Reports</NavLink>}
-              {canSeeEventAvl && <div className="nav-section-label">Event Workspace</div>}
-              {isAdmin && <NavLink to="/event-planning"><IconBus />Event Planning</NavLink>}
-              {canSeeEventAvl && <NavLink to="/event-monitoring"><IconBus />Event AVL</NavLink>}
-              {isAdmin && <NavLink to="/occ"><IconWrench />OCC Tools</NavLink>}
-              {isCompliance && <NavLink to="/compliance"><IconShield />Compliance</NavLink>}
-              {isCompliance && <NavLink to="/performance-assessment"><IconAssessment />Performance Assessment</NavLink>}
-            </>
+            <section className="nav-group">
+              <button className="nav-group-toggle" aria-expanded={specialistOpen} onClick={() => setSpecialistOpen((open) => !open)}>
+                <span>Specialist Operations</span><span aria-hidden="true">{specialistOpen ? "⌃" : "›"}</span>
+              </button>
+              {specialistOpen ? <div className="nav-group-links">
+                {canSeeDetours && <NavLink to="/detours"><IconDetour />Detours &amp; Closures</NavLink>}
+                {canSeeDetours && <NavLink to="/detour-intake"><IconDetour />Detour Intake</NavLink>}
+                {canSeeDetours && <NavLink to="/detour-reports"><IconClock />Detour Reports</NavLink>}
+                {canSeeEventAvl && <NavLink to="/event-planning"><IconBus />Event Planning</NavLink>}
+                {canSeeEventAvl && <NavLink to="/event-monitoring"><IconBus />Event AVL</NavLink>}
+                {isAdmin && <NavLink to="/occ"><IconWrench />OCC Tools</NavLink>}
+              </div> : null}
+            </section>
           )}
+          {isCompliance && <section className="nav-group">
+            <button className="nav-group-toggle" aria-expanded={complianceOpen} onClick={() => setComplianceOpen((open) => !open)}>
+              <span>Compliance &amp; Assessment</span><span aria-hidden="true">{complianceOpen ? "⌃" : "›"}</span>
+            </button>
+            {complianceOpen ? <div className="nav-group-links">
+              <NavLink to="/compliance"><IconShield />Compliance</NavLink>
+              <NavLink to="/performance-assessment"><IconAssessment />Performance Assessment</NavLink>
+            </div> : null}
+          </section>}
+          <section className="nav-group nav-group-administration">
+            <div className="nav-section-label">Administration</div>
+            <NavLink to="/subscribers"><IconUsers />Subscribers</NavLink>
+            <NavLink to="/audit"><IconClock />Audit Log</NavLink>
+            {isAdmin && <NavLink to="/admin"><IconGear />Admin</NavLink>}
+          </section>
         </nav>
 
         <div className="nav-spacer" />
@@ -213,6 +249,7 @@ export function App() {
           </div>
         </div>
         </aside>
+        {changelogOpen ? <ChangelogPopover onClose={() => setChangelogOpen(false)} /> : null}
         {mobileNavOpen && (
           <button
             className="nav-backdrop"
@@ -263,7 +300,6 @@ export function App() {
           <ErrorBoundary key={location.pathname}>
             <Routes>
               <Route path="/" element={<Dashboard stats={stats} onChanged={stats.refresh} />} />
-              {import.meta.env.DEV ? <Route path="/prototype/service-operations-nav" element={<ServiceOperationsNavPrototype />} /> : null}
               <Route path="/service-operations" element={<ServiceOperations />}>
                 <Route index element={<ServiceOperationsOverview stats={stats} />} />
                 <Route path="compose" element={<Compose onChanged={stats.refresh} />} />
