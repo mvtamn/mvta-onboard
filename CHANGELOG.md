@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.26] - 2026-08-12
+
+- **Show all active vehicles in Event AVL.** The shared AVL projection no longer
+  discards vehicles that are not yet assigned to an Event operating plan.
+  Plans still control managed classification and geofence alert processing.
+
 ## [1.5.25] - 2026-08-12
 
 - **Align Event Map Authoring with Event AVL.** Authoring now uses prominent,

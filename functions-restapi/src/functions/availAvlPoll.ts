@@ -79,10 +79,6 @@ async function projectEventPositions(pool: Awaited<ReturnType<typeof getPool>>):
   }>(`
     SELECT avl.vehicle_id, avl.route, avl.latitude, avl.longitude, avl.heading, avl.report_timestamp
     FROM AvailAvlVehiclePositions avl
-    INNER JOIN RouteClassification rc ON rc.route_id = avl.route
-      AND rc.route_category = 'SpecialEvent' AND rc.is_active = 1
-      AND (rc.effective_start_date IS NULL OR rc.effective_start_date <= CONVERT(CHAR(8), SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time', 112))
-      AND (rc.effective_end_date IS NULL OR rc.effective_end_date >= CONVERT(CHAR(8), SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time', 112))
     WHERE EXISTS (
       SELECT 1
       FROM EventServicePlanRoutes spr
@@ -168,7 +164,7 @@ app.timer("availAvlPoll", {
     }
 
     const tableCheck = await pool.request().query<{ table_exists: number }>(`
-      SELECT CASE WHEN OBJECT_ID('dbo.RouteClassification', 'U') IS NULL THEN 0 ELSE 1 END AS table_exists
+      SELECT CASE WHEN OBJECT_ID('dbo.EventVehicleCurrentPosition', 'U') IS NULL THEN 0 ELSE 1 END AS table_exists
     `);
 
     let upsertedCount = 0;
@@ -235,14 +231,8 @@ app.timer("availAvlPoll", {
       WHERE report_timestamp < DATEADD(MINUTE, -3, SYSUTCDATETIME());
 
       IF OBJECT_ID('dbo.EventVehicleCurrentPosition', 'U') IS NOT NULL
-        DELETE p
-        FROM EventVehicleCurrentPosition p
-        LEFT JOIN RouteClassification rc
-          ON rc.route_id = p.route
-          AND rc.route_category = 'SpecialEvent'
-          AND rc.is_active = 1
-        WHERE p.report_timestamp < DATEADD(MINUTE, -15, SYSUTCDATETIME())
-           OR rc.route_id IS NULL;
+      DELETE FROM EventVehicleCurrentPosition
+      WHERE report_timestamp < DATEADD(MINUTE, -15, SYSUTCDATETIME());
     `);
     if (eventDue && tableCheck.recordset[0]?.table_exists === 1) {
       try {

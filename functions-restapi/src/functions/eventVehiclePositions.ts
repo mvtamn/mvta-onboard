@@ -1,7 +1,6 @@
 // GET /event-vehicle-positions - the latest known position for every
-// vehicle classified as SpecialEvent in RouteClassification, backing the
-// console's Event Monitoring view's new "Event bus positions (live)" panel.
-// This is the current SpecialEvent vehicle view. OCC.Admin can read it;
+// vehicle position from the shared AVL projection, backing the console's
+// Event AVL view. OCC.Admin can read it;
 // plan membership classifies vehicles for the selected Event or operating
 // period, but does not hide active vehicles from the shared AVL feed.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
@@ -106,7 +105,7 @@ app.http("eventVehiclePositionsList", {
                age.report_age_seconds,
                CAST(CASE WHEN age.report_age_seconds >= 180 THEN 1 ELSE 0 END AS bit) AS is_stale
         FROM EventVehicleCurrentPosition p
-        INNER JOIN RouteClassification rc ON rc.route_id = p.route
+        LEFT JOIN RouteClassification rc ON rc.route_id = p.route
           AND rc.route_category = 'SpecialEvent'
           AND rc.is_active = 1
           AND (rc.effective_start_date IS NULL OR rc.effective_start_date <= CONVERT(CHAR(8), SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time', 112))
