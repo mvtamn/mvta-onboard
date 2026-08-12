@@ -236,9 +236,14 @@ body {
 .event-workspace-stages small { color: inherit; font-size: 11px; }
 .event-workspace-next { margin: 0 0 14px; color: var(--text-muted); font-size: 12px; }
 .event-inline-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; padding: 10px 12px; border: 1px solid #d9aaaa; border-radius: 8px; color: #8a2e2e; background: #fff0f0; font-size: 12px; }
-.event-planning-start { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 16px; padding: 14px 16px; border: 1px solid var(--highlight-border); border-radius: 10px; background: var(--highlight-bg); }
-.event-planning-start strong { display: block; color: var(--text); font-size: 14px; }
-.event-planning-start p { margin: 4px 0 0; color: var(--text-dim); line-height: 1.45; }
+/* One pattern for both "not started yet" states (no Event chosen yet, or an
+   Event chosen but no operating period) - they never render at once, so
+   there's no need for two near-identical bordered boxes with their own
+   class each. */
+.event-empty-state { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 16px; padding: 14px 16px; border: 1px solid var(--highlight-border); border-radius: 10px; background: var(--highlight-bg); }
+.event-empty-state strong { display: block; color: var(--text); font-size: 14px; }
+.event-empty-state p { margin: 4px 0 0; color: var(--text-dim); line-height: 1.45; }
+.event-planning-empty-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .event-configuration-section { scroll-margin-top: 20px; }
 .event-configuration-section:focus { outline: 3px solid rgba(0, 85, 61, .2); outline-offset: 5px; }
 .event-configuration-intro { display: flex; align-items: baseline; gap: 10px; margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-alt-bg); font-size: 12px; }
@@ -255,10 +260,6 @@ body {
 .event-period-form > select, .event-period-form > input { grid-column: 1 / -1; }
 .event-period-form > button { justify-self: start; }
 .event-field-error { margin: 6px 0 0; color: var(--danger-text); font-size: 11px; }
-.event-planning-empty { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 16px; padding: 16px 18px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-alt-bg); }
-.event-planning-empty h3 { margin: 0 0 4px; font-size: 14px; }
-.event-planning-empty p { margin: 0; color: var(--text-muted); }
-.event-planning-empty-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .event-readiness { display: grid; gap: 5px; margin-top: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-alt-bg); font-size: 12px; }
 .event-readiness span { color: var(--danger-text); }
 .event-readiness span.ready { color: var(--success-text); }
@@ -275,11 +276,24 @@ body {
 .event-plan-steps li { padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: 6px; font-size: 12px; color: var(--text-muted); }
 .event-plan-steps li.is-past { color: var(--success-text); border-color: var(--success-text); }
 .event-plan-steps li[aria-current="step"] { background: var(--brand-green); border-color: var(--brand-green); color: #fff; font-weight: 700; }
+/* Secondary lifecycle actions (Prepare revision, Suspend) sat at the same
+   .btn-sm weight as the primary next-step button and the revision
+   sub-workflow's own buttons, all in one flat list - nothing signaled which
+   click actually advances the plan. A border-top + label separates "the one
+   thing to do next" from the less-common actions below it. */
+.event-lifecycle-secondary { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-soft); flex-wrap: wrap; }
+.event-lifecycle-secondary-label { font-size: 11px; color: var(--text-muted); font-weight: bold; text-transform: uppercase; letter-spacing: 0.4px; }
+/* The pending-revision workflow is a distinct nested process (its own
+   draft/review/approved/apply sequence), not more items in the plan's own
+   action list - .subcard gives it a visible boundary instead of blending
+   into the surrounding panel-body. */
+.event-revision-card { margin-top: 16px; }
+.event-revision-card-header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
 @media (max-width: 1050px) { .event-workspace-nav { grid-template-columns: 1fr auto; } .event-workspace-stages { grid-column: 1 / -1; grid-row: 2; } }
 /* 768px, not 760px - 760px left the common 768px tablet width one row
    short of the stacking breakpoint, clipping the "Ends" datetime input
    against the still-two-column .event-period-form. */
-@media (max-width: 768px) { .event-planning-setup { grid-template-columns: 1fr; } .event-period-form { grid-template-columns: 1fr; } .event-planning-empty, .event-planning-start { align-items: flex-start; flex-direction: column; } }
+@media (max-width: 768px) { .event-planning-setup { grid-template-columns: 1fr; } .event-period-form { grid-template-columns: 1fr; } .event-empty-state { align-items: flex-start; flex-direction: column; } }
 /* Below 700px the fixed 4-column grid squeezes each stage into ~1/4 of the
    viewport width - not enough room for "Reusable resources" etc. at any
    font size, so labels were rendering as 1-2 visible characters. Scrolling
@@ -401,6 +415,7 @@ table.data tr.review-focus-row td:first-child {
 .empty-note { color: var(--text-muted); font-size: 12.5px; padding: 12px 0; }
 
 .btn-primary { background: var(--brand-green); color: #fff; border: none; border-radius: 8px; padding: 10px 18px; font-weight: bold; cursor: pointer; font-size: 13px; }
+.btn-primary:disabled { opacity: 0.6; cursor: default; }
 
 @media (max-width: 760px) {
   .field-grid,
@@ -447,6 +462,122 @@ table.data tr.review-focus-row td:first-child {
 .occ-switch button.active { background: var(--brand-green); border-color: var(--brand-green); color: #fff; }
 .occ-switch.small { gap: 6px; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border-soft); }
 .occ-switch.small button { font-size: 11px; font-weight: bold; padding: 5px 12px; border-radius: 999px; }
+
+/* Service Operations groups the shared communications and monitoring workflow
+   without merging the underlying feature screens. */
+.service-operations-header {
+  align-items: flex-start;
+  background: linear-gradient(135deg, var(--surface-alt-bg), var(--surface-bg));
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding: 16px;
+}
+.service-operations-header h2 { font-size: 21px; margin: 3px 0 5px; }
+.service-operations-header p { color: var(--text-muted); line-height: 1.5; margin: 0; max-width: 760px; }
+.service-operations-cta { flex-shrink: 0; white-space: nowrap; }
+.service-operations-tabs,
+.service-risk-quality-tabs {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.service-operations-tabs {
+  border-bottom: 1px solid var(--border);
+  gap: 2px;
+}
+.service-operations-tabs a,
+.service-risk-quality-tabs button {
+  background: transparent;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 9px 11px 8px;
+  text-decoration: none;
+}
+.service-operations-tabs a:hover,
+.service-operations-tabs a.active,
+.service-risk-quality-tabs button:hover,
+.service-risk-quality-tabs button.active {
+  border-bottom-color: var(--brand-green);
+  color: var(--brand-green);
+}
+.service-operations-overview,
+.service-risk-quality {
+  min-width: 0;
+}
+.service-operations-overview-head,
+.service-risk-quality-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.service-operations-overview-head h3,
+.service-risk-quality-head h3 { font-size: 17px; margin: 3px 0 4px; }
+.service-operations-overview-head p,
+.service-risk-quality-head p { color: var(--text-muted); margin: 0; }
+.service-operations-card-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.service-operations-card {
+  background: var(--surface-bg);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  display: flex;
+  flex-direction: column;
+  min-height: 126px;
+  padding: 13px;
+  text-decoration: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+}
+.service-operations-card:hover,
+.service-operations-card:focus-visible {
+  border-color: var(--brand-green);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+.service-operations-card > span:first-child { color: var(--text-muted); font-size: 11px; font-weight: 800; }
+.service-operations-card strong { color: var(--text); font-size: 25px; letter-spacing: -0.04em; margin: 8px 0 2px; }
+.service-operations-card small { color: var(--text-muted); font-size: 10.5px; line-height: 1.4; }
+.service-operations-card-link { color: var(--brand-green); font-size: 10.5px; font-weight: 800; margin-top: auto; }
+.service-operations-guidance {
+  background: var(--pill-accent-bg);
+  border: 1px solid color-mix(in srgb, var(--pill-accent-fg) 25%, transparent);
+  border-radius: 8px;
+  color: var(--pill-accent-fg);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 12px;
+  padding: 10px 12px;
+}
+.service-operations-guidance span { color: var(--text-dim); }
+.service-risk-quality-tabs { margin-bottom: 12px; }
+.service-risk-quality-tabs button { border: 1px solid var(--border-strong); border-radius: 999px; padding: 6px 12px; }
+.service-risk-quality-tabs button.active { background: var(--brand-green); border-color: var(--brand-green); color: #fff; }
+
+@media (max-width: 760px) {
+  .service-operations-header,
+  .service-operations-overview-head,
+  .service-risk-quality-head { flex-direction: column; }
+  .service-operations-cta { align-self: flex-start; }
+  .service-operations-card-grid { grid-template-columns: 1fr; }
+  .service-operations-tabs { overflow-x: auto; flex-wrap: nowrap; }
+  .service-operations-tabs a { white-space: nowrap; }
+}
 
 /* Generic bordered content box, reused by OCC Tools modules instead of each
    one defining its own "card" class for the same white-box-with-border look. */

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import * as atlas from "azure-maps-control";
 import * as drawing from "azure-maps-drawing-tools";
 import "azure-maps-control/dist/atlas.min.css";
@@ -94,7 +95,12 @@ function LocationManager({ locations, onChanged }: { locations: EventLocation[];
 }
 
 export function EventResourceMapEditor() {
-  const [geofences, setGeofences] = useState<StoredFence[]>([]); const [locations, setLocations] = useState<EventLocation[]>([]); const [selectedFence, setSelectedFence] = useState(""); const [editingRuleId, setEditingRuleId] = useState<string | null>(null); const [saving, setSaving] = useState(false); const [rule, setRule] = useState<Partial<EventGeofenceRule>>({ transition: "exit", heading_min: 0, heading_max: 360, send_mode: "manual", destination_label: "", sort_order: 0 }); const [directionPreset, setDirectionPreset] = useState<CompassDirection>("any"); const [message, setMessage] = useState<string | null>(null);
+  // Lets Event Planning's "Every linked geofence has a direction rule"
+  // readiness item deep-link straight to the relevant geofence instead of
+  // landing here with nothing selected - resolves once `geofences` loads
+  // even though the id is read before that request resolves.
+  const [searchParams] = useSearchParams();
+  const [geofences, setGeofences] = useState<StoredFence[]>([]); const [locations, setLocations] = useState<EventLocation[]>([]); const [selectedFence, setSelectedFence] = useState(() => searchParams.get("geofence") ?? ""); const [editingRuleId, setEditingRuleId] = useState<string | null>(null); const [saving, setSaving] = useState(false); const [rule, setRule] = useState<Partial<EventGeofenceRule>>({ transition: "exit", heading_min: 0, heading_max: 360, send_mode: "manual", destination_label: "", sort_order: 0 }); const [directionPreset, setDirectionPreset] = useState<CompassDirection>("any"); const [message, setMessage] = useState<string | null>(null);
   const load = () => Promise.all([api.getEventGeofences(), api.getEventLocations()]).then(([g, l]) => { setGeofences(g.geofences); setLocations(l.locations); }).catch((err) => setMessage(err instanceof ApiError ? err.message : "Event resources are unavailable until migrations 033 and 034 are applied."));
   useEffect(() => { void load(); }, []);
   const selected = geofences.find((f) => f.id === selectedFence);

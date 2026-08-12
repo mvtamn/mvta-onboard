@@ -55,6 +55,16 @@ The approved and activated operational scope for an Event. Event AVL,
 crossing detection, and notifications use this scope; draft, review, and
 approved-but-not-active plans do not drive operations.
 
+## Approved Service Plan
+
+A reviewed Service Plan whose operational scope is complete and valid for
+activation: it has the required route, active geofence, direction rule, valid
+dates, and conflict checks. It may be previewed, but it does not drive live
+operations until activated.
+
+An Approved Service Plan is frozen; corrections are made through a draft or
+reviewed revision rather than by mutating the approved record.
+
 ## Unplanned vehicle
 
 A vehicle on a SpecialEvent-classified route that is not covered by an active
@@ -78,6 +88,12 @@ on this predicate.
 A geofence, location, or direction rule maintained independently of an Event
 and linked into an Event's Service Plan when needed. Reuse does not make the
 resource operational by itself.
+
+## Canonical transit location
+
+The single active reusable location record representing a named transit,
+garage, venue, or staff checkpoint. Duplicate records for the same location
+are merged or retired rather than presented as separate operational choices.
 
 ## Operational conflict
 
@@ -182,6 +198,9 @@ The append-only explanation of Event configuration and runtime decisions,
 including resource changes, lifecycle transitions, assignments, conflicts,
 crossings, and notification outcomes.
 
+Every planned resource add or removal records the Event, operating period,
+resource identity and type, actor, timestamp, and plan or revision context.
+
 ## Generated Event
 
 An Event created during migration to provide a durable parent for an existing
@@ -215,6 +234,16 @@ whether the observation requires no action, manual review, automatic delivery,
 or another supported operational response. A rule is not the observation and
 does not determine whether the underlying vehicle is in operational scope.
 
+## Operational proximity alert
+
+An operational notification caused by a vehicle entering a configured
+geofence around a transit location, venue, garage, or checkpoint. The
+geofence defines “near”; the alert is associated with the Event, operating
+period, vehicle, and matched direction rule.
+
+Entry and exit are independent transitions and may have different rules,
+destinations, messages, and delivery modes.
+
 ## Resource authoring boundary
 
 Reusable geofences, locations, and direction rules are maintained in the
@@ -229,6 +258,15 @@ an operator's live map, vehicle list, crossings, notifications, and operational
 actions. Event AVL may provide a cross-event summary, but an operational action
 must identify one Event operating context.
 
+Event AVL may aggregate all active operating periods for the selected Event in
+one operational view. Geofence movement, crossings, and notifications are the
+primary workflow; vehicle positions provide supporting live context. Every
+crossing, notification, and action still identifies its operating period.
+
+If the published scope is missing or invalid, Event AVL fails closed and shows
+a data-health error; it never falls back to mutable planning links or draws
+unverified operational resources.
+
 ## Reviewed scope change
 
 A change to an active Event operating period that is proposed as a plan
@@ -242,6 +280,22 @@ The initial action vocabulary is no action, manual review, or automatic Teams
 delivery. An operational action is distinct from the observation and from the
 reusable rule that selected it.
 
+Routine proximity alerts may use automatic Teams delivery; exceptional
+customer-impacting actions may require manual review.
+
+## Teams notification destination
+
+The configured Teams channel or operational group that receives a matched
+operational notification. It is selected through resource or direction-rule
+configuration and is not hardcoded in Event AVL.
+
+## Notification cooldown
+
+The per-rule interval during which repeated observations for the same vehicle,
+geofence, transition, and operating period do not create another delivered
+notification. An Event-level default supplies the value when a rule does not
+override it.
+
 ## Sequential operating period
 
 One bounded Service Plan under an Event. An Event may have multiple sequential
@@ -253,6 +307,24 @@ at a time.
 The immutable routes, classifications, geofences, locations, direction rules,
 and operational actions captured when a Service Plan or reviewed revision is
 activated. Reusable resource edits do not alter an existing snapshot.
+
+Activation is atomic: an invalid scope is not partially published.
+
+## Planned scope preview
+
+The read-only view of an approved but not active Service Plan's resources. It
+can show planned geofences and locations for review, but it has no live
+vehicles, crossings, notifications, or operational actions.
+
+## Operating-period repair
+
+A correction to an incomplete or incorrect non-active Service Plan made by
+creating or editing a draft or reviewed revision and taking it through the
+normal approval and activation workflow. Approved or active scope is not
+repaired by direct mutation.
+
+The operator may invoke this as “modify plan,” but the approved plan remains
+unchanged while its draft repair is prepared.
 
 ## Proposed vehicle assignment
 
@@ -267,11 +339,27 @@ through acknowledgement and successful delivery, or to dismissed, failed, or
 expired. Delivery success is the only condition that makes a notification
 sent.
 
+Repeated observations for the same vehicle, geofence, transition, and
+operating period may be retained in audit while notification delivery is
+deduplicated within the configured cooldown window.
+
+Automatic delivery does not close the operational case. Staff may acknowledge
+or escalate the notification, but acknowledgement does not prove that the
+vehicle arrived safely.
+
+## Operational notification message
+
+The factual payload sent to a Teams destination: Event, operating period,
+vehicle, route, heading, geofence or location, transition, observation time,
+and matched rule or destination. It does not include an ETA unless a reliable
+ETA source is available.
+
 ## Event AVL layer
 
 A separately toggleable operational view associated with one Event operating
-context, such as active-plan vehicles, diagnostic vehicles, geofences,
-locations, route overlays, crossings, or notification state.
+context, optionally aggregating its active operating periods, such as
+active-plan vehicles, diagnostic vehicles, geofences, locations, route
+overlays, crossings, or notification state.
 
 ## Runtime date
 
@@ -314,6 +402,49 @@ valid MVTA-local dates before it can become active.
 
 Event configuration, lifecycle, crossing, and notification history retained for
 operational accountability even after telemetry and diagnostic records age out.
+
+## Service Operations language
+
+## Service Operations
+
+The staff-facing operational area that groups service-alert communications and
+service-risk monitoring. It includes the shared overview, Compose, Suggested
+Alerts, Active Service Alerts, and Service Risk & Quality workflows; restricted
+specialist areas remain separate and role-gated.
+_Avoid_: OCC Tools, operations dashboard
+
+## Service Alert
+
+A customer-facing communication about a current or expected transit service
+condition. A Service Alert may be suggested, active, or expired; its delivery
+channels describe how it is distributed.
+_Avoid_: message, notification, automatic alert
+
+## Suggested Alert
+
+A detected or drafted Service Alert that requires authorized staff review before
+it can become an Active Service Alert.
+_Avoid_: automatic alert, published alert
+
+## Active Service Alert
+
+An approved Service Alert currently eligible for display or delivery through its
+configured rider-facing channels.
+_Avoid_: active message, sent notification
+
+## Delivery channel
+
+A configured destination or audience for a Service Alert, such as the website,
+SMS, email, mobile app, or an internal Teams audience. A selected channel does
+not by itself prove that delivery occurred.
+_Avoid_: notification, target system
+
+## Service Risk & Quality
+
+The combined monitoring workflow for fixed-route departure risk and on-demand
+customer wait quality. Fixed Route and On-Demand are service-type views within
+the workflow, not separate primary navigation areas.
+_Avoid_: Live Delays, Fixed Route Risk module, On-Demand Quality module
 
 ## Detour and closure language
 

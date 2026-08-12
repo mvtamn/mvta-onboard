@@ -71,8 +71,6 @@ export function EventMonitoring() {
   const [showDiagnostics, setShowDiagnostics] = useState(true);
   const [showGeofences, setShowGeofences] = useState(true);
   const [showLocations, setShowLocations] = useState(true);
-  const [geofences, setGeofences] = useState<EventGeofence[]>([]);
-  const [locations, setLocations] = useState<EventLocation[]>([]);
   const [assignments, setAssignments] = useState<EventVehicleAssignment[]>([]);
   const [assignmentMessage, setAssignmentMessage] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -94,7 +92,7 @@ export function EventMonitoring() {
 
   const load = useCallback(async () => {
     setRefreshing(true);
-    if (!selectedEventId || !selectedPlanId) {
+    if (!selectedEventId) {
       setVehicles([]); setDiagnosticVehicles([]); setHealth(null); setLastUpdated(null); setRefreshing(false);
       return;
     }
@@ -126,13 +124,6 @@ export function EventMonitoring() {
   }, []);
 
   useEffect(() => {
-    void Promise.all([api.getEventGeofences(), api.getEventLocations()]).then(([fences, points]) => {
-      setGeofences(fences.geofences);
-      setLocations(points.locations);
-    }).catch(() => { setGeofences([]); setLocations([]); });
-  }, []);
-
-  useEffect(() => {
     if (!selectedEventId) { setAssignments([]); return; }
     if (!canManageAssignments) { setAssignments([]); return; }
     void api.getEventVehicleAssignments(selectedEventId).then((result) => setAssignments(result.assignments)).catch(() => setAssignments([]));
@@ -145,7 +136,7 @@ export function EventMonitoring() {
   }, [load]);
 
   useEffect(() => {
-    if (!selectedEventId || !selectedPlanId) { setCrossings([]); setNotifications([]); setAudit([]); return; }
+    if (!selectedEventId) { setCrossings([]); setNotifications([]); setAudit([]); return; }
     Promise.allSettled([api.getEventGeofenceCrossings(selectedEventId, selectedPlanId), api.getEventGeofenceNotifications("pending", selectedEventId, selectedPlanId), api.getEventAuditStream(undefined, undefined, selectedEventId, selectedPlanId)])
       .then(([c, n, a]) => {
         const now = new Date();
@@ -192,12 +183,14 @@ export function EventMonitoring() {
   const classifiedVehicles = vehicles ?? [];
   const selectedEvent = events.find((event) => event.id === selectedEventId);
   const selectedPlans = plans.filter((plan) => plan.event_id === selectedEventId);
-  const selectedPlan = selectedPlans.find((plan) => plan.id === selectedPlanId && plan.status === "active");
-  const activeGeofenceIds = new Set(selectedPlan?.links?.filter((link) => link.kind === "geofences").map((link) => String(link.value)) ?? []);
-  const activeLocationIds = new Set(selectedPlan?.links?.filter((link) => link.kind === "locations").map((link) => String(link.value)) ?? []);
-  const visibleGeofences = geofences.filter((fence) => activeGeofenceIds.has(fence.id));
-  const visibleLocations = locations.filter((location) => activeLocationIds.has(location.id));
-  const routeOptions = useMemo(() => selectedPlan?.links?.filter((link) => link.kind === "routes").map((link) => [String(link.value), link.label] as [string, string]) ?? [], [selectedPlan]);
+  const activePlans = selectedPlans.filter((plan) => plan.status === "active");
+  const selectedPlan = activePlans.find((plan) => plan.id === selectedPlanId);
+  const scopedPlans = selectedPlan ? [selectedPlan] : activePlans;
+  const publishedGeofences = scopedPlans.flatMap((plan) => plan.published_scope?.geofences ?? []);
+  const publishedLocations = scopedPlans.flatMap((plan) => plan.published_scope?.locations ?? []);
+  const visibleGeofences = Array.from(new Map(publishedGeofences.map((fence) => [fence.id, fence])).values());
+  const visibleLocations = Array.from(new Map(publishedLocations.map((location) => [location.id, location])).values());
+  const routeOptions = useMemo(() => Array.from(new Map(scopedPlans.flatMap((plan) => plan.links?.filter((link) => link.kind === "routes").map((link) => [String(link.value), link.label] as [string, string]) ?? [])).entries()), [scopedPlans]);
   const activeVehicles = useMemo(() => classifiedVehicles.filter((vehicle) => {
     const heading = cardinalHeading(vehicle.heading, vehicle.direction);
     const query = search.trim().toLowerCase();
@@ -212,7 +205,7 @@ export function EventMonitoring() {
       && (headingFilter === "all" || heading === headingFilter)
       && matchesMotion && matchesSearch;
   }), [classifiedVehicles, headingFilter, motionFilter, routeFilter, search]);
-  const routesActive = selectedPlan?.links?.filter((link) => link.kind === "routes").length ?? 0;
+  const routesActive = new Set(scopedPlans.flatMap((plan) => plan.links?.filter((link) => link.kind === "routes").map((link) => String(link.value)) ?? [])).size;
   const routeNames = routeOptions.map(([, label]) => label);
   const routeSummary = routeNames.length > 2 ? `${routeNames.slice(0, 2).join(", ")} +${routeNames.length - 2} more` : routeNames.join(", ");
   const geofencesWithRules = visibleGeofences.filter((fence) => (fence.rules?.length ?? 0) > 0).length;
@@ -220,11 +213,9 @@ export function EventMonitoring() {
   const hasFilters = routeFilter !== "all" || headingFilter !== "all" || motionFilter !== "all" || search !== "";
   const dataState = !selectedEventId
     ? { tone: "info", title: "Select an Event to begin monitoring.", action: null }
-    : !selectedPlans.some((plan) => plan.status === "active")
+    : activePlans.length === 0
       ? { tone: "warning", title: "This Event has no active operating period.", action: "Create or activate an operating period in Event Planning." }
-      : !selectedPlan
-        ? { tone: "warning", title: "Select an active operating period to scope AVL data.", action: null }
-        : health === null && vehicles === null
+      : health === null && vehicles === null
           ? { tone: "error", title: "Event AVL data is unavailable.", action: "The API health or vehicle-position feed could not be reached." }
           : vehicles === null
             ? { tone: "info", title: "Connecting to Event AVL data…", action: null }
@@ -248,7 +239,7 @@ export function EventMonitoring() {
 
       <div className="evmon-context" aria-label="Event operating context">
         <label><span>Event context</span><select value={selectedEventId} onChange={(event) => { selectEvent(event.target.value); setRouteFilter("all"); setVehicles(null); }}><option value="">Select Event</option>{events.map((event) => <option key={event.id} value={event.id}>{event.name}</option>)}</select></label>
-        <label><span>Operating period</span><select value={selectedPlanId} onChange={(event) => { selectServicePlan(event.target.value); setRouteFilter("all"); setVehicles(null); }} disabled={!selectedEventId}><option value="">Select active period</option>{selectedPlans.filter((plan) => plan.status === "active").map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}</select></label>
+        <label><span>Operating period</span><select value={selectedPlanId} onChange={(event) => { selectServicePlan(event.target.value); setRouteFilter("all"); setVehicles(null); }} disabled={!selectedEventId}><option value="">All active periods</option>{activePlans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}</select></label>
         <span>{selectedEvent ? `${selectedPlans.length} operating period${selectedPlans.length === 1 ? "" : "s"}` : "No Event selected"}</span>
         <label><input type="checkbox" checked={showDiagnostics} onChange={(event) => setShowDiagnostics(event.target.checked)} /> Show unplanned diagnostic vehicles</label>
       </div>
@@ -263,11 +254,11 @@ export function EventMonitoring() {
 
       <div className="evmon-scope" aria-label="Live operating scope">
         <strong>Live operating scope</strong>
-        {selectedPlan ? <>
+        {activePlans.length > 0 ? <>
           <span><b>{routesActive}</b> routes{routeSummary ? ` · ${routeSummary}` : ""}</span>
           <span><b>{visibleGeofences.length}</b> geofences · <b>{geofencesWithRules}</b> with rules</span>
           <span><b>{visibleLocations.length}</b> locations</span>
-          <Link to={`/event-planning?event=${encodeURIComponent(selectedEventId)}&plan=${encodeURIComponent(selectedPlan.id)}`}>Review scope</Link>
+          <Link to={`/event-planning?event=${encodeURIComponent(selectedEventId)}${selectedPlan ? `&plan=${encodeURIComponent(selectedPlan.id)}` : ""}`}>Review scope</Link>
         </> : <span>Select an active operating period to see the managed scope.</span>}
       </div>
 

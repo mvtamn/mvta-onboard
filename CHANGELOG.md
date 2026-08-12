@@ -5,6 +5,49 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.19] - 2026-08-11
+
+Closes [#18](https://github.com/mvtamn/mvta-onboard/issues/18).
+
+- **Safer Event switching.** The Event selector now confirms before
+  discarding unsaved operating-period edits, matching the period selector;
+  fixed the underlying reset so switching Events actually clears stale
+  fields instead of leaving them displayed against the wrong Event.
+- **Accessible status, not just color.** The activation readiness checklist
+  and lifecycle stepper now expose a text-based accessible name per state.
+- **Remove a linked resource.** Added a "Remove" action per row in Planned
+  operating resources, wired to the `unlinkEventServicePlan` API and backend
+  endpoint that already existed but nothing in the UI called.
+- **Direction-rule deep link.** The "geofence needs a direction rule"
+  readiness item now links to Admin's Configure section with that geofence
+  pre-selected.
+- **Bulk resource linking.** Route/geofence/location pickers are multi-select;
+  adding reports per-kind success/failure/already-linked counts.
+- **Duplicate this Event.** Pre-fills the create-Event form from the
+  currently selected Event, for recurring events.
+- **Searchable Event picker**, sorting still-open Events ahead of fully
+  completed ones.
+- **One empty-state pattern** instead of two near-duplicate banners; all four
+  operating-period panels now number consistently (1.–4.).
+- Introduced Vitest + React Testing Library for `onboard-console` (no
+  frontend test infrastructure existed before this).
+
+## [1.5.18] - 2026-08-11
+
+- **Clearer Operating period lifecycle panel.** The status stepper, the
+  primary next action, the revision sub-workflow, and secondary actions
+  (Prepare revision, Suspend) previously read as one flat list of
+  same-weight buttons with no signal for which one actually advances the
+  plan. The primary action is now visually dominant, secondary actions are
+  set apart under an "Other actions" label, and a pending revision now
+  renders in its own bordered card instead of blending into the plan's own
+  action list.
+- **"Suspended" is no longer a fake forward step.** There is no backend
+  transition back from suspended to active or completed, so it no longer
+  appears as a 6th pill in the linear Draft→Completed stepper (which implied
+  a path forward that doesn't exist); it now shows as a distinct paused-state
+  callout instead.
+
 ## [1.5.17] - 2026-08-11
 
 - **Mobile Event Workspace nav is legible again.** The Plan/Configure/Activate/

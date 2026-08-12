@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { ApiError, type Event, type EventGeofence, type EventLocation, type EventServicePlan } from "@mvta/shared";
 import { api } from "../config.js";
 import { useAuth } from "../auth/AuthContext.js";
 import { useEventWorkspace } from "../context/EventWorkspaceContext.js";
 import { EventWorkspaceNav } from "../components/EventWorkspaceNav.js";
 
-const steps: EventServicePlan["status"][] = ["draft", "review", "approved", "active", "suspended", "completed"];
+// "suspended" is deliberately not in this list: there is no backend
+// transition back from suspended to active or completed (checked against
+// eventServicePlans.ts), so it isn't a forward step in the sequence - it's
+// a paused exception layered on top of "active", shown as its own callout
+// instead of a 6th pill that implies a path forward that doesn't exist.
+const steps: EventServicePlan["status"][] = ["draft", "review", "approved", "active", "completed"];
 const statusLabels: Record<EventServicePlan["status"], string> = {
   draft: "Draft",
   review: "In review",
@@ -66,9 +72,9 @@ export function EventPlanning() {
   const [routes, setRoutes] = useState<ResourceOption[]>([]);
   const [geofences, setGeofences] = useState<EventGeofence[]>([]);
   const [locations, setLocations] = useState<ResourceOption[]>([]);
-  const [routeId, setRouteId] = useState("");
-  const [geofenceId, setGeofenceId] = useState("");
-  const [locationId, setLocationId] = useState("");
+  const [routeIds, setRouteIds] = useState<string[]>([]);
+  const [geofenceIds, setGeofenceIds] = useState<string[]>([]);
+  const [locationIds, setLocationIds] = useState<string[]>([]);
   const [feedback, setFeedback] = useState<Record<FeedbackScope, Feedback | null>>({ event: null, period: null, lifecycle: null, resources: null });
   const setFeedbackFor = (scope: FeedbackScope, text: string, kind: Feedback["kind"] = "success") =>
     setFeedback((prev) => ({ ...prev, [scope]: { text, kind } }));
@@ -80,6 +86,7 @@ export function EventPlanning() {
   // action instead of a dead-end retry.
   const [sessionExpired, setSessionExpired] = useState(false);
   const [showCreateEvent, setShowCreateEvent] = useState(false);
+  const [eventSearch, setEventSearch] = useState("");
 
   const load = async () => {
     setLoading(true);
@@ -109,6 +116,21 @@ export function EventPlanning() {
   useEffect(() => { void load(); }, []);
 
   const eventPlans = useMemo(() => selectedEventId ? plans.filter((row) => row.event_id === selectedEventId) : [], [plans, selectedEventId]);
+  // An Event has no status of its own - "completed" is derived from its
+  // plans: a season's worth of past Events would otherwise sit in the
+  // picker at the same weight as the one still being planned.
+  const isEventCompleted = (candidate: Event) => {
+    const eventPlansFor = plans.filter((row) => row.event_id === candidate.id);
+    return eventPlansFor.length > 0 && eventPlansFor.every((row) => row.status === "completed");
+  };
+  const sortedEvents = useMemo(
+    () => [...events].sort((a, b) => Number(isEventCompleted(a)) - Number(isEventCompleted(b))),
+    [events, plans],
+  );
+  const visibleEvents = useMemo(() => {
+    const term = eventSearch.trim().toLowerCase();
+    return term ? sortedEvents.filter((row) => row.name.toLowerCase().includes(term)) : sortedEvents;
+  }, [sortedEvents, eventSearch]);
   const plan = plans.find((row) => row.id === selectedPlanId && (!selectedEventId || row.event_id === selectedEventId));
   const event = events.find((row) => row.id === (plan?.event_id ?? selectedEventId));
   const links = plan?.links ?? [];
@@ -119,12 +141,20 @@ export function EventPlanning() {
     locations: links.filter((link) => link.kind === "locations").length,
   };
   const linkedGeofences = geofences.filter((fence) => links.some((link) => link.kind === "geofences" && String(link.value) === fence.id));
+  // Point at the specific geofence missing a rule (not just "somewhere in
+  // Admin") so following the readiness item lands with it already selected,
+  // instead of leaving the user to re-find it in a second dropdown.
+  const geofenceMissingDirectionRule = linkedGeofences.find((fence) => (fence.rules?.length ?? 0) === 0);
   const readiness = [
     { label: "Event selected", ready: Boolean(event) },
     { label: "Operating dates are valid", ready: Boolean(startAt && endAt && new Date(startAt).getTime() < new Date(endAt).getTime()) },
     { label: "SpecialEvent route linked", ready: counts.routes > 0 },
     { label: "Geofence linked", ready: counts.geofences > 0 },
-    { label: "Every linked geofence has a direction rule", ready: linkedGeofences.length > 0 && linkedGeofences.every((fence) => (fence.rules?.length ?? 0) > 0) },
+    {
+      label: "Every linked geofence has a direction rule",
+      ready: linkedGeofences.length > 0 && linkedGeofences.every((fence) => (fence.rules?.length ?? 0) > 0),
+      href: geofenceMissingDirectionRule ? `/admin?geofence=${geofenceMissingDirectionRule.id}#event-configuration` : undefined,
+    },
   ];
   const readyToActivate = readiness.every((item) => item.ready);
   const editable = Boolean(plan && ["draft", "review"].includes(plan.status));
@@ -142,10 +172,12 @@ export function EventPlanning() {
   ));
 
   useEffect(() => {
-    if (!plan) return;
-    setPlanName(plan.name);
-    setStartAt(localInput(plan.start_at));
-    setEndAt(localInput(plan.end_at));
+    // Reset even when there's no plan (e.g. after switching Events) -
+    // otherwise these fields keep showing the previous plan's data
+    // displayed against a new, unrelated Event.
+    setPlanName(plan?.name ?? "");
+    setStartAt(localInput(plan?.start_at));
+    setEndAt(localInput(plan?.end_at));
   }, [plan?.id]);
 
   async function createEvent() {
@@ -170,16 +202,35 @@ export function EventPlanning() {
     catch (err) { setFeedbackFor("period", err instanceof ApiError ? err.message : "Could not save operating period.", "error"); }
   }
 
-  async function link(kind: "routes" | "geofences" | "locations") {
-    const value = kind === "routes" ? routeId : kind === "geofences" ? geofenceId : locationId;
-    if (!plan || !value) return;
+  async function linkMany(kind: "routes" | "geofences" | "locations", values: string[], clearSelection: () => void) {
+    if (!plan || values.length === 0) return;
     const singular = kind.slice(0, -1);
-    if (links.some((existing) => existing.kind === kind && String(existing.value) === value)) {
-      setFeedbackFor("resources", `That ${singular} is already linked to ${plan.name}.`, "error");
+    const alreadyLinked = new Set(links.filter((existing) => existing.kind === kind).map((existing) => String(existing.value)));
+    const toAdd = values.filter((value) => !alreadyLinked.has(value));
+    const skipped = values.length - toAdd.length;
+    clearSelection();
+    if (toAdd.length === 0) {
+      setFeedbackFor("resources", `Those ${kind} are already linked to ${plan.name}.`, "error");
       return;
     }
-    try { await api.linkEventServicePlan(plan.id, kind, kind === "routes" ? Number(value) : value, revision?.id); setFeedbackFor("resources", `${singular} added to ${plan.name}.`); await load(); }
-    catch (err) { setFeedbackFor("resources", err instanceof ApiError ? err.message : `Could not add ${kind}.`, "error"); }
+    const results = await Promise.allSettled(toAdd.map((value) => api.linkEventServicePlan(plan.id, kind, kind === "routes" ? Number(value) : value, revision?.id)));
+    const succeeded = results.filter((result) => result.status === "fulfilled").length;
+    const failed = results.length - succeeded;
+    const parts = [
+      succeeded > 0 ? `${succeeded} ${succeeded === 1 ? singular : kind} added` : null,
+      failed > 0 ? `${failed} failed` : null,
+      skipped > 0 ? `${skipped} already linked` : null,
+    ].filter(Boolean);
+    setFeedbackFor("resources", `${parts.join(", ")} to ${plan.name}.`, failed > 0 ? "error" : "success");
+    if (succeeded > 0) await load();
+  }
+
+  async function unlink(kind: "routes" | "geofences" | "locations", value: string | number, label: string) {
+    if (!plan) return;
+    const singular = kind.slice(0, -1);
+    if (!window.confirm(`Remove ${singular} "${label}" from ${plan.name}?`)) return;
+    try { await api.unlinkEventServicePlan(plan.id, kind, value, revision?.id); setFeedbackFor("resources", `${singular} removed from ${plan.name}.`); await load(); }
+    catch (err) { setFeedbackFor("resources", err instanceof ApiError ? err.message : `Could not remove ${kind}.`, "error"); }
   }
 
   async function transition(action: "submit-review" | "approve" | "advance" | "complete" | "suspend") {
@@ -194,6 +245,12 @@ export function EventPlanning() {
     if (!plan) return;
     try { const next = await api.modifyEventServicePlan(plan.id); selectRevision(next.id); setFeedbackFor("lifecycle", "Revision created; the active scope remains unchanged."); await load(); }
     catch (err) { setFeedbackFor("lifecycle", err instanceof ApiError ? err.message : "Could not create revision.", "error"); }
+  }
+
+  async function prepareRepair() {
+    if (!plan) return;
+    try { const repaired = await api.repairEventServicePlan(plan.id); selectServicePlan(repaired.id); setFeedbackFor("lifecycle", "Draft repair created from the approved operating period. Add or correct resources, then submit it for review."); await load(); }
+    catch (err) { setFeedbackFor("lifecycle", err instanceof ApiError ? err.message : "Could not create a repair plan.", "error"); }
   }
 
   async function revise(action: "submit-review" | "approve" | "apply" | "reject") {
@@ -215,9 +272,18 @@ export function EventPlanning() {
         : <button className="btn-sm" onClick={() => void load()}>Try again</button>}
     </div>}
     {loading && <p className="muted" role="status">Loading Events, operating periods, and reusable resources…</p>}
-    {!loading && !loadError && !selectedEventId && <div className="event-planning-start" role="status">
-      <div><strong>Start by selecting an Event</strong><p>Everything else on this page belongs to the selected Event. Choose an existing Event, or create one if this is a new service operation.</p></div>
-      <button className="btn-sm" onClick={() => { if (events.length > 0) document.getElementById("event-select")?.focus(); else { setShowCreateEvent(true); window.requestAnimationFrame(() => document.getElementById("new-event-name")?.focus()); } }}>{events.length > 0 ? "Select an Event" : "Create an Event"}</button>
+    {/* One banner pattern for both "not started yet" states (never both true
+        at once), positioned once ahead of the panels it's guiding the user
+        through, instead of a second near-identical block appearing lower
+        on the page once the first goal is met. */}
+    {!loading && !loadError && !plan && <div className="event-empty-state" role="status" aria-label="Get started">
+      {!selectedEventId ? <>
+        <div><strong>Start by selecting an Event</strong><p>Everything else on this page belongs to the selected Event. Choose an existing Event, or create one if this is a new service operation.</p></div>
+        <button className="btn-sm" onClick={() => { if (events.length > 0) document.getElementById("event-select")?.focus(); else { setShowCreateEvent(true); window.requestAnimationFrame(() => document.getElementById("new-event-name")?.focus()); } }}>{events.length > 0 ? "Select an Event" : "Create an Event"}</button>
+      </> : <>
+        <div><strong>Choose an operating period</strong><p>{event?.name ?? "This Event"} is selected. Create a new operating period or select an existing one to continue.</p></div>
+        <div className="event-planning-empty-actions"><button className="btn-sm" onClick={() => document.getElementById("operating-period-name")?.focus()}>Start operating period</button><button className="btn-sm" onClick={() => document.getElementById("operating-period-select")?.focus()}>Select existing period</button></div>
+      </>}
     </div>}
     <div className="event-planning-setup">
     <div className="event-planning-setup-block">
@@ -226,9 +292,19 @@ export function EventPlanning() {
       <p className="panel-desc">Choose the Event you are preparing. Then select or create its time-bounded operating period. Admin maintains reusable resources; Planning assembles them into this Event’s scope.</p>
       <FeedbackNote feedback={feedback.event} />
       <h3>Selected Event</h3>
-      <select id="event-select" className="f" value={selectedEventId} onChange={(e) => selectEvent(e.target.value)} aria-label="Selected Event"><option value="">Select Event</option>{events.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select>
+      <input type="search" className="f" value={eventSearch} onChange={(e) => setEventSearch(e.target.value)} aria-label="Search Events" placeholder="Search Events…" style={{ marginBottom: 6 }} />
+      <select id="event-select" className="f" value={selectedEventId} onChange={(e) => {
+        if (periodDirty && !window.confirm(`Discard unsaved changes to "${plan?.name}" and switch Events?`)) return;
+        selectEvent(e.target.value);
+      }} aria-label="Selected Event"><option value="">Select Event</option>{visibleEvents.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select>
       {event && <p className="muted"><strong>{event.name}</strong>{event.owning_team ? ` · ${event.owning_team}` : ""}{event.description ? ` · ${event.description}` : ""}</p>}
       <button className="btn-sm event-create-toggle" type="button" onClick={() => setShowCreateEvent((visible) => !visible)}>{showCreateEvent ? "Cancel new Event" : event ? "Create another Event" : "Create an Event"}</button>
+      {event && !showCreateEvent && <button className="btn-sm" type="button" onClick={() => {
+        setEventName(event.name);
+        setEventDescription(event.description ?? "");
+        setOwningTeam(event.owning_team ?? "");
+        setShowCreateEvent(true);
+      }}>Duplicate this Event</button>}
       {showCreateEvent && <div className="event-create-form">
         <input id="new-event-name" className="f" value={eventName} maxLength={120} onChange={(e) => setEventName(e.target.value)} aria-label="New Event name" placeholder="New Event name" />
         <input className="f" value={owningTeam} maxLength={120} onChange={(e) => setOwningTeam(e.target.value)} aria-label="Owning team" placeholder="Owning team" />
@@ -265,40 +341,57 @@ export function EventPlanning() {
     </div>
 
     </div>
-    {selectedEventId && !plan && <div className="event-planning-empty">
-      <div><h3>Choose an operating period</h3><p>{event?.name ?? "This Event"} is selected. Create a new operating period or select an existing one to continue.</p></div>
-      <div className="event-planning-empty-actions"><button className="btn-sm" onClick={() => document.getElementById("operating-period-name")?.focus()}>Start operating period</button><button className="btn-sm" onClick={() => document.getElementById("operating-period-select")?.focus()}>Select existing period</button></div>
-    </div>}
     {plan && <>
-      <div className="panel-header" style={{ marginTop: 24 }}>Operating period lifecycle</div>
+      <div className="panel-header" style={{ marginTop: 24 }}>3. Operating period lifecycle</div>
       <div className="panel-body">
         <p className="panel-desc">Move the operating period through review before activating it for Event AVL. Changes to an active period require a reviewed revision.</p>
         <ol className="event-plan-steps" aria-label="Operating period lifecycle">
           {steps.map((step) => {
-            const currentIndex = steps.indexOf(plan.status);
-            const isCurrent = step === plan.status;
-            return <li key={step} className={!isCurrent && steps.indexOf(step) < currentIndex ? "is-past" : undefined} aria-current={isCurrent ? "step" : undefined}>{statusLabels[step]}</li>;
+            // A suspended plan has passed through "active" (there's no
+            // transition back), so it renders as the last completed step
+            // here; the callout right below is what actually communicates
+            // the paused state.
+            const currentIndex = plan.status === "suspended" ? steps.indexOf("active") : steps.indexOf(plan.status);
+            const isCurrent = plan.status !== "suspended" && step === plan.status;
+            const isPast = !isCurrent && steps.indexOf(step) <= currentIndex;
+            return <li key={step} className={isPast ? "is-past" : undefined} aria-current={isCurrent ? "step" : undefined} aria-label={isPast ? `Completed step: ${statusLabels[step]}` : undefined}>{statusLabels[step]}</li>;
           })}
         </ol>
-        <p className="muted">Current state: <strong>{statusLabels[plan.status]}</strong></p>
+        {plan.status === "suspended" && <p className="warn-note">Suspended — Event AVL monitoring is paused for this operating period.</p>}
         <FeedbackNote feedback={feedback.lifecycle} />
-        {nextAction && <button className="btn-sm" disabled={nextAction === "advance" && !readyToActivate} onClick={() => void transition(nextAction)}>{nextAction === "submit-review" ? "Submit for review" : nextAction === "approve" ? "Approve operating period" : nextAction === "advance" ? "Activate for Event AVL" : "Complete operating period"}</button>}
-        {plan.status === "active" && <><button className="btn-sm" onClick={() => void prepareRevision()}>Prepare revision</button> <button className="btn-sm danger" onClick={() => void transition("suspend")}>Suspend operations</button></>}
-        {revision && <div><p className="muted">Pending revision: <strong>{displayStatus(revision.status)}</strong> · the active scope remains unchanged until this revision is applied.</p>{revision.status === "draft" && <button className="btn-sm" onClick={() => void revise("submit-review")}>Submit revision for review</button>}{revision.status === "review" && <button className="btn-sm" onClick={() => void revise("approve")}>Approve revision</button>}{revision.status === "approved" && <button className="btn-sm" onClick={() => void revise("apply")}>Apply revision to active scope</button>}<button className="btn-sm" onClick={() => selectRevision("")}>Clear revision</button></div>}
-        {nextAction === "advance" && <div className="event-readiness" aria-label="Activation readiness"><strong>{readyToActivate ? "Ready to activate" : "Activation checklist"}</strong>{readiness.map((item) => <span key={item.label} className={item.ready ? "ready" : "missing"}>{item.ready ? "✓" : "!"} {item.label}</span>)}</div>}
+        {nextAction === "advance" && <div className="event-readiness" role="group" aria-label="Activation readiness"><strong>{readyToActivate ? "Ready to activate" : "Activation checklist"}</strong>{readiness.map((item) => <span key={item.label} className={item.ready ? "ready" : "missing"} aria-label={`${item.ready ? "Complete" : "Missing"}: ${item.label}`}>{item.ready ? "✓" : "!"} {!item.ready && item.href ? <Link to={item.href}>{item.label}</Link> : item.label}</span>)}</div>}
+        {nextAction && <button className="btn-primary" disabled={nextAction === "advance" && !readyToActivate} onClick={() => void transition(nextAction)}>{nextAction === "submit-review" ? "Submit for review" : nextAction === "approve" ? "Approve operating period" : nextAction === "advance" ? "Activate for Event AVL" : "Complete operating period"}</button>}
+        {plan.status === "active" && <div className="event-lifecycle-secondary">
+          <span className="event-lifecycle-secondary-label">Other actions:</span>
+          <button className="btn-sm" onClick={() => void prepareRevision()}>Prepare revision</button>
+          <button className="btn-sm danger" onClick={() => void transition("suspend")}>Suspend operations</button>
+        </div>}
+        {plan.status === "approved" && <div className="event-lifecycle-secondary">
+          <span className="event-lifecycle-secondary-label">Need to correct the approved scope?</span>
+          <button className="btn-sm" onClick={() => void prepareRepair()}>Modify plan</button>
+        </div>}
+        {revision && <div className="subcard event-revision-card">
+          <div className="event-revision-card-header"><strong>Pending revision</strong><span className="pill-sm pill-accent">{displayStatus(revision.status)}</span></div>
+          <p className="muted">The active scope remains unchanged until this revision is applied.</p>
+          {revision.status === "draft" && <button className="btn-primary" onClick={() => void revise("submit-review")}>Submit revision for review</button>}
+          {revision.status === "review" && <button className="btn-primary" onClick={() => void revise("approve")}>Approve revision</button>}
+          {revision.status === "approved" && <button className="btn-primary" onClick={() => void revise("apply")}>Apply revision to active scope</button>}
+          <button className="btn-sm" onClick={() => selectRevision("")}>Clear revision</button>
+        </div>}
       </div>
 
-      <div className="panel-header" style={{ marginTop: 24 }}>Planned operating resources</div>
+      <div className="panel-header" style={{ marginTop: 24 }}>4. Planned operating resources</div>
       <div className="panel-body">
         <p className="panel-desc">Add the routes, geofences, and transit locations this operating period will manage. These are reusable Admin resources; edits do not change the active scope until a reviewed revision is applied.</p>
         <FeedbackNote feedback={feedback.resources} />
+        <p className="muted">Ctrl/Cmd-click (or shift-click for a range) to select more than one before adding.</p>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <select className="f" value={routeId} onChange={(e) => setRouteId(e.target.value)} aria-label="Event service route"><option value="">Select event service route</option>{routes.map((row) => <option key={row.id} value={row.id}>{row.label}</option>)}</select><button className="btn-sm" disabled={!routeId || (!editable && !revision)} onClick={() => void link("routes")}>Add route to plan</button>
-          <select className="f" value={geofenceId} onChange={(e) => setGeofenceId(e.target.value)} aria-label="Geofence"><option value="">Select geofence</option>{geofences.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select><button className="btn-sm" disabled={!geofenceId || (!editable && !revision)} onClick={() => void link("geofences")}>Add geofence to plan</button>
-          <select className="f" value={locationId} onChange={(e) => setLocationId(e.target.value)} aria-label="Transit location"><option value="">Select transit location</option>{locations.map((row) => <option key={row.id} value={row.id}>{row.label}</option>)}</select><button className="btn-sm" disabled={!locationId || (!editable && !revision)} onClick={() => void link("locations")}>Add location to plan</button>
+          <select multiple className="f" value={routeIds} onChange={(e) => setRouteIds(Array.from(e.target.selectedOptions, (option) => option.value))} aria-label="Event service route">{routes.map((row) => <option key={row.id} value={row.id}>{row.label}</option>)}</select><button className="btn-sm" disabled={routeIds.length === 0 || (!editable && !revision)} onClick={() => void linkMany("routes", routeIds, () => setRouteIds([]))}>Add routes to plan</button>
+          <select multiple className="f" value={geofenceIds} onChange={(e) => setGeofenceIds(Array.from(e.target.selectedOptions, (option) => option.value))} aria-label="Geofence">{geofences.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select><button className="btn-sm" disabled={geofenceIds.length === 0 || (!editable && !revision)} onClick={() => void linkMany("geofences", geofenceIds, () => setGeofenceIds([]))}>Add geofences to plan</button>
+          <select multiple className="f" value={locationIds} onChange={(e) => setLocationIds(Array.from(e.target.selectedOptions, (option) => option.value))} aria-label="Transit location">{locations.map((row) => <option key={row.id} value={row.id}>{row.label}</option>)}</select><button className="btn-sm" disabled={locationIds.length === 0 || (!editable && !revision)} onClick={() => void linkMany("locations", locationIds, () => setLocationIds([]))}>Add locations to plan</button>
         </div>
         <p className="muted">{counts.routes} routes · {counts.geofences} geofences · {counts.locations} locations linked.</p>
-        <table className="data"><thead><tr><th>Type</th><th>Resource</th></tr></thead><tbody>{links.length > 0 ? links.map((link, index) => <tr key={`${link.kind}-${link.value}-${index}`}><td>{link.kind.slice(0, -1)}</td><td>{link.label}</td></tr>) : <tr><td colSpan={2} className="empty-note">No resources linked yet. Add at least one route and geofence before submitting for review.</td></tr>}</tbody></table>
+        <table className="data"><thead><tr><th>Type</th><th>Resource</th><th>Action</th></tr></thead><tbody>{links.length > 0 ? links.map((link, index) => <tr key={`${link.kind}-${link.value}-${index}`}><td>{link.kind.slice(0, -1)}</td><td>{link.label}</td><td><button className="btn-sm danger" disabled={!editable && !revision} onClick={() => void unlink(link.kind, link.value, link.label)}>Remove</button></td></tr>) : <tr><td colSpan={3} className="empty-note">No resources linked yet. Add at least one route and geofence before submitting for review.</td></tr>}</tbody></table>
       </div>
     </>}
   </div>;
