@@ -5,6 +5,22 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.18] - 2026-08-11
+
+- **Clearer Operating period lifecycle panel.** The status stepper, the
+  primary next action, the revision sub-workflow, and secondary actions
+  (Prepare revision, Suspend) previously read as one flat list of
+  same-weight buttons with no signal for which one actually advances the
+  plan. The primary action is now visually dominant, secondary actions are
+  set apart under an "Other actions" label, and a pending revision now
+  renders in its own bordered card instead of blending into the plan's own
+  action list.
+- **"Suspended" is no longer a fake forward step.** There is no backend
+  transition back from suspended to active or completed, so it no longer
+  appears as a 6th pill in the linear Draft→Completed stepper (which implied
+  a path forward that doesn't exist); it now shows as a distinct paused-state
+  callout instead.
+
 ## [1.5.17] - 2026-08-11
 
 - **Mobile Event Workspace nav is legible again.** The Plan/Configure/Activate/

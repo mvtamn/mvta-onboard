@@ -275,6 +275,19 @@ body {
 .event-plan-steps li { padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: 6px; font-size: 12px; color: var(--text-muted); }
 .event-plan-steps li.is-past { color: var(--success-text); border-color: var(--success-text); }
 .event-plan-steps li[aria-current="step"] { background: var(--brand-green); border-color: var(--brand-green); color: #fff; font-weight: 700; }
+/* Secondary lifecycle actions (Prepare revision, Suspend) sat at the same
+   .btn-sm weight as the primary next-step button and the revision
+   sub-workflow's own buttons, all in one flat list - nothing signaled which
+   click actually advances the plan. A border-top + label separates "the one
+   thing to do next" from the less-common actions below it. */
+.event-lifecycle-secondary { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-soft); flex-wrap: wrap; }
+.event-lifecycle-secondary-label { font-size: 11px; color: var(--text-muted); font-weight: bold; text-transform: uppercase; letter-spacing: 0.4px; }
+/* The pending-revision workflow is a distinct nested process (its own
+   draft/review/approved/apply sequence), not more items in the plan's own
+   action list - .subcard gives it a visible boundary instead of blending
+   into the surrounding panel-body. */
+.event-revision-card { margin-top: 16px; }
+.event-revision-card-header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
 @media (max-width: 1050px) { .event-workspace-nav { grid-template-columns: 1fr auto; } .event-workspace-stages { grid-column: 1 / -1; grid-row: 2; } }
 /* 768px, not 760px - 760px left the common 768px tablet width one row
    short of the stacking breakpoint, clipping the "Ends" datetime input
@@ -401,6 +414,7 @@ table.data tr.review-focus-row td:first-child {
 .empty-note { color: var(--text-muted); font-size: 12.5px; padding: 12px 0; }
 
 .btn-primary { background: var(--brand-green); color: #fff; border: none; border-radius: 8px; padding: 10px 18px; font-weight: bold; cursor: pointer; font-size: 13px; }
+.btn-primary:disabled { opacity: 0.6; cursor: default; }
 
 @media (max-width: 760px) {
   .field-grid,

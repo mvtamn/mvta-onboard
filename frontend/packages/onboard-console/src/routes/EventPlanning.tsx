@@ -5,7 +5,12 @@ import { useAuth } from "../auth/AuthContext.js";
 import { useEventWorkspace } from "../context/EventWorkspaceContext.js";
 import { EventWorkspaceNav } from "../components/EventWorkspaceNav.js";
 
-const steps: EventServicePlan["status"][] = ["draft", "review", "approved", "active", "suspended", "completed"];
+// "suspended" is deliberately not in this list: there is no backend
+// transition back from suspended to active or completed (checked against
+// eventServicePlans.ts), so it isn't a forward step in the sequence - it's
+// a paused exception layered on top of "active", shown as its own callout
+// instead of a 6th pill that implies a path forward that doesn't exist.
+const steps: EventServicePlan["status"][] = ["draft", "review", "approved", "active", "completed"];
 const statusLabels: Record<EventServicePlan["status"], string> = {
   draft: "Draft",
   review: "In review",
@@ -275,17 +280,32 @@ export function EventPlanning() {
         <p className="panel-desc">Move the operating period through review before activating it for Event AVL. Changes to an active period require a reviewed revision.</p>
         <ol className="event-plan-steps" aria-label="Operating period lifecycle">
           {steps.map((step) => {
-            const currentIndex = steps.indexOf(plan.status);
-            const isCurrent = step === plan.status;
-            return <li key={step} className={!isCurrent && steps.indexOf(step) < currentIndex ? "is-past" : undefined} aria-current={isCurrent ? "step" : undefined}>{statusLabels[step]}</li>;
+            // A suspended plan has passed through "active" (there's no
+            // transition back), so it renders as the last completed step
+            // here; the callout right below is what actually communicates
+            // the paused state.
+            const currentIndex = plan.status === "suspended" ? steps.indexOf("active") : steps.indexOf(plan.status);
+            const isCurrent = plan.status !== "suspended" && step === plan.status;
+            return <li key={step} className={!isCurrent && steps.indexOf(step) <= currentIndex ? "is-past" : undefined} aria-current={isCurrent ? "step" : undefined}>{statusLabels[step]}</li>;
           })}
         </ol>
-        <p className="muted">Current state: <strong>{statusLabels[plan.status]}</strong></p>
+        {plan.status === "suspended" && <p className="warn-note">Suspended — Event AVL monitoring is paused for this operating period.</p>}
         <FeedbackNote feedback={feedback.lifecycle} />
-        {nextAction && <button className="btn-sm" disabled={nextAction === "advance" && !readyToActivate} onClick={() => void transition(nextAction)}>{nextAction === "submit-review" ? "Submit for review" : nextAction === "approve" ? "Approve operating period" : nextAction === "advance" ? "Activate for Event AVL" : "Complete operating period"}</button>}
-        {plan.status === "active" && <><button className="btn-sm" onClick={() => void prepareRevision()}>Prepare revision</button> <button className="btn-sm danger" onClick={() => void transition("suspend")}>Suspend operations</button></>}
-        {revision && <div><p className="muted">Pending revision: <strong>{displayStatus(revision.status)}</strong> · the active scope remains unchanged until this revision is applied.</p>{revision.status === "draft" && <button className="btn-sm" onClick={() => void revise("submit-review")}>Submit revision for review</button>}{revision.status === "review" && <button className="btn-sm" onClick={() => void revise("approve")}>Approve revision</button>}{revision.status === "approved" && <button className="btn-sm" onClick={() => void revise("apply")}>Apply revision to active scope</button>}<button className="btn-sm" onClick={() => selectRevision("")}>Clear revision</button></div>}
         {nextAction === "advance" && <div className="event-readiness" aria-label="Activation readiness"><strong>{readyToActivate ? "Ready to activate" : "Activation checklist"}</strong>{readiness.map((item) => <span key={item.label} className={item.ready ? "ready" : "missing"}>{item.ready ? "✓" : "!"} {item.label}</span>)}</div>}
+        {nextAction && <button className="btn-primary" disabled={nextAction === "advance" && !readyToActivate} onClick={() => void transition(nextAction)}>{nextAction === "submit-review" ? "Submit for review" : nextAction === "approve" ? "Approve operating period" : nextAction === "advance" ? "Activate for Event AVL" : "Complete operating period"}</button>}
+        {plan.status === "active" && <div className="event-lifecycle-secondary">
+          <span className="event-lifecycle-secondary-label">Other actions:</span>
+          <button className="btn-sm" onClick={() => void prepareRevision()}>Prepare revision</button>
+          <button className="btn-sm danger" onClick={() => void transition("suspend")}>Suspend operations</button>
+        </div>}
+        {revision && <div className="subcard event-revision-card">
+          <div className="event-revision-card-header"><strong>Pending revision</strong><span className="pill-sm pill-accent">{displayStatus(revision.status)}</span></div>
+          <p className="muted">The active scope remains unchanged until this revision is applied.</p>
+          {revision.status === "draft" && <button className="btn-primary" onClick={() => void revise("submit-review")}>Submit revision for review</button>}
+          {revision.status === "review" && <button className="btn-primary" onClick={() => void revise("approve")}>Approve revision</button>}
+          {revision.status === "approved" && <button className="btn-primary" onClick={() => void revise("apply")}>Apply revision to active scope</button>}
+          <button className="btn-sm" onClick={() => selectRevision("")}>Clear revision</button>
+        </div>}
       </div>
 
       <div className="panel-header" style={{ marginTop: 24 }}>Planned operating resources</div>
