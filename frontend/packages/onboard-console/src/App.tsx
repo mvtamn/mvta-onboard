@@ -24,6 +24,9 @@ import {
   IconMenu,
 } from "./components/NavIcons.js";
 import { Dashboard } from "./routes/Dashboard.js";
+import { ServiceOperations } from "./routes/ServiceOperations.js";
+import { ServiceOperationsOverview } from "./routes/ServiceOperationsOverview.js";
+import { ServiceRiskQuality } from "./routes/ServiceRiskQuality.js";
 import { Compose } from "./routes/Compose.js";
 import { ActiveMessages } from "./routes/ActiveMessages.js";
 import { SuggestedAlerts } from "./routes/SuggestedAlerts.js";
@@ -59,9 +62,11 @@ const DETOURS = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin", "OCC.Compliance", "
 
 const PAGE_META: { match: (path: string) => boolean; title: string; sub: string }[] = [
   { match: (p) => p === "/", title: "Dashboard", sub: "Compose and monitor active rider alerts" },
-  { match: (p) => p === "/compose", title: "Compose", sub: "Draft a new rider-facing announcement" },
-  { match: (p) => p === "/active", title: "Active Messages", sub: "Edit or retract currently active alerts" },
-  { match: (p) => p === "/suggested", title: "Suggested Alerts", sub: "Review predictive delay and wait-time candidates" },
+  { match: (p) => p.startsWith("/service-operations/compose") || p === "/compose", title: "Compose", sub: "Draft a new Service Alert" },
+  { match: (p) => p.startsWith("/service-operations/active") || p === "/active", title: "Active Service Alerts", sub: "Edit or retract currently active alerts" },
+  { match: (p) => p.startsWith("/service-operations/suggested") || p === "/suggested", title: "Suggested Alerts", sub: "Review predictive delay and wait-time candidates" },
+  { match: (p) => p.startsWith("/service-operations/risk"), title: "Service Risk & Quality", sub: "Investigate fixed-route and on-demand service risk" },
+  { match: (p) => p === "/service-operations", title: "Service Operations", sub: "Service-alert communications and operational monitoring" },
   { match: (p) => p === "/subscribers", title: "Subscribers", sub: "Opt-in totals and recent signups" },
   { match: (p) => p === "/audit", title: "Audit Log", sub: "Search every message ever posted" },
   { match: (p) => p === "/detours", title: "Detours & Closures", sub: "Every detour/closure in one place, Avail-built or not" },
@@ -108,10 +113,10 @@ function FixedRouteRefreshIndicator() {
   return (
     <span
       className="fixed-route-refresh-indicator"
-      title="Fixed Route Risk continues refreshing while you navigate the console"
+      title="Service Risk & Quality continues refreshing while you navigate the console"
     >
       <span className={refreshing ? "refresh-pulse" : ""} />
-      Fixed route {refreshing ? "refreshing…" : `refresh ${formatRefreshCountdown(secondsLeft)}`}
+      Service risk {refreshing ? "refreshing…" : `refresh ${formatRefreshCountdown(secondsLeft)}`}
     </span>
   );
 }
@@ -167,9 +172,12 @@ export function App() {
 
         <nav className="nav-list">
           <NavLink to="/" end><IconDashboard />Dashboard</NavLink>
-          <NavLink to="/compose"><IconCompose />Compose</NavLink>
-          <NavLink to="/active"><IconMessages />Active Messages</NavLink>
-          <NavLink to="/suggested"><IconBell />Suggested Alerts</NavLink>
+          <div className="nav-section-label">Service Operations</div>
+          <NavLink to="/service-operations" end><IconDashboard />Overview</NavLink>
+          <NavLink to="/service-operations/compose"><IconCompose />Compose</NavLink>
+          <NavLink to="/service-operations/active"><IconMessages />Active Service Alerts</NavLink>
+          <NavLink to="/service-operations/suggested"><IconBell />Suggested Alerts</NavLink>
+          {isAdmin && <NavLink to="/service-operations/risk"><IconWrench />Service Risk &amp; Quality</NavLink>}
           <NavLink to="/subscribers"><IconUsers />Subscribers</NavLink>
           <NavLink to="/audit"><IconClock />Audit Log</NavLink>
           <NavLink to="/changelog"><IconHistory />Changelog</NavLink>
@@ -254,6 +262,16 @@ export function App() {
           <ErrorBoundary key={location.pathname}>
             <Routes>
               <Route path="/" element={<Dashboard stats={stats} onChanged={stats.refresh} />} />
+              <Route path="/service-operations" element={<ServiceOperations />}>
+                <Route index element={<ServiceOperationsOverview stats={stats} />} />
+                <Route path="compose" element={<Compose onChanged={stats.refresh} />} />
+                <Route path="active" element={<ActiveMessages onChanged={stats.refresh} />} />
+                <Route path="suggested" element={<SuggestedAlerts onChanged={stats.refresh} />} />
+                <Route
+                  path="risk"
+                  element={<RequireRole allowed={[...ADMIN]}><ServiceRiskQuality /></RequireRole>}
+                />
+              </Route>
               <Route path="/compose" element={<Compose onChanged={stats.refresh} />} />
               <Route path="/active" element={<ActiveMessages onChanged={stats.refresh} />} />
               <Route
