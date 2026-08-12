@@ -11,7 +11,7 @@ interface Props {
 
 const stages = [
   { id: "plan", label: "Plan", description: "Event and operating period", href: "/event-planning" },
-  { id: "configure", label: "Configure", description: "Reusable resources", href: "/admin#event-configuration" },
+  { id: "configure", label: "Configure", description: "Reusable resources", href: "/admin" },
   { id: "activate", label: "Activate", description: "Validate and publish scope", href: "/event-planning" },
   { id: "monitor", label: "Monitor", description: "Live Event AVL", href: "/event-monitoring" },
 ] as const;
@@ -42,7 +42,7 @@ export function EventWorkspaceNav({ eventName, planName, planStatus, activeStage
         {stages.map((stage, index) => {
           const isActive = stage.id === activeStage;
           const isComplete = index < stages.findIndex((item) => item.id === activeStage);
-          const stageSuffix = stage.id === "configure" ? `${suffix}#event-configuration` : `${stage.href}${suffix}`;
+          const stageSuffix = `${stage.href}${suffix}${stage.id === "configure" ? "#event-configuration" : ""}`;
           return <li key={stage.id} ref={isActive ? activeRef : undefined} className={isActive ? "is-active" : isComplete ? "is-complete" : undefined}>
             <NavLink to={stageSuffix} aria-current={isActive ? "step" : undefined}>
               <span className="event-workspace-stage-marker">{isComplete ? "✓" : index + 1}</span>

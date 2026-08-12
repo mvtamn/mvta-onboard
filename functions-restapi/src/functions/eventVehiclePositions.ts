@@ -1,13 +1,9 @@
 // GET /event-vehicle-positions - the latest known position for every
 // vehicle classified as SpecialEvent in RouteClassification, backing the
 // console's Event Monitoring view's new "Event bus positions (live)" panel.
-// Distinct from GET /avail-avl (every vehicle, unfiltered) - this is the
-// subset that matters for the still-unbuilt Special Event Vehicle
-// Monitoring module (MVTA_ONBOARD_MANUAL.md §18). OCC.Admin can read;
-// this is visibility only - all writes come from availAvlPoll.ts's
-// classification step (Part A2). Correctly returns zero vehicles until a
-// real RouteClassification row exists for an active event - expected, not
-// a bug.
+// This is the current SpecialEvent vehicle view. OCC.Admin can read it;
+// plan membership classifies vehicles for the selected Event or operating
+// period, but does not hide active vehicles from the shared AVL feed.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
@@ -64,7 +60,7 @@ app.http("eventVehiclePositionsList", {
       if (tableCheck.recordset[0]?.table_exists !== 1) {
         return {
           status: 200,
-          jsonBody: { vehicles: [], diagnostics: { table_ready: false, vehicle_count: 0, last_report_at: null } },
+          jsonBody: { vehicles: [], unassigned_vehicles: [], diagnostics: { table_ready: false, vehicle_count: 0, last_report_at: null } },
         };
       }
 
@@ -155,13 +151,6 @@ app.http("eventVehiclePositionsList", {
           WHERE p.report_timestamp >= DATEADD(MINUTE, -15, SYSUTCDATETIME())
           AND p.latitude BETWEEN 43.0 AND 46.0
           AND p.longitude BETWEEN -95.5 AND -92.0
-          AND ((@eventId IS NULL AND @servicePlanId IS NULL) OR EXISTS (
-            SELECT 1 FROM EventServicePlanRoutes selected_route
-            INNER JOIN EventServicePlans selected_plan ON selected_plan.id = selected_route.service_plan_id
-            WHERE selected_route.route_id = p.route
-              AND (@eventId IS NULL OR selected_plan.event_id = @eventId)
-              AND (@servicePlanId IS NULL OR selected_plan.id = @servicePlanId)
-          ))
         ORDER BY p.route, p.vehicle_id
       `);
       const allVehicles = result.recordset.map((row) => ({
@@ -169,9 +158,8 @@ app.http("eventVehiclePositionsList", {
         service_plan_names: row.service_plan_names ? row.service_plan_names.split(" | ") : [],
         service_plan_ids: row.service_plan_ids ? row.service_plan_ids.split(",") : [],
       }));
-      const vehicles = allVehicles.filter((row) => row.is_in_active_scope);
-      const diagnosticVehicles = allVehicles.filter((row) => !row.is_in_active_scope);
-      const lastReportAt = vehicles.reduce<Date | null>(
+      const unassignedVehicles = allVehicles.filter((row) => row.service_plan_ids.length === 0);
+      const lastReportAt = allVehicles.reduce<Date | null>(
         (latest, row) => (!latest || row.report_timestamp > latest ? row.report_timestamp : latest),
         null,
       );
@@ -179,12 +167,13 @@ app.http("eventVehiclePositionsList", {
       return {
         status: 200,
         jsonBody: {
-          vehicles,
-          diagnostic_vehicles: diagnosticVehicles,
+          vehicles: allVehicles,
+          unassigned_vehicles: unassignedVehicles,
           diagnostics: {
             table_ready: true,
-            vehicle_count: vehicles.length,
-            diagnostic_vehicle_count: diagnosticVehicles.length,
+            vehicle_count: allVehicles.length,
+            managed_vehicle_count: allVehicles.length - unassignedVehicles.length,
+            unassigned_vehicle_count: unassignedVehicles.length,
             last_report_at: lastReportAt?.toISOString() ?? null,
             source: "shared_avl_projection",
             stale_vehicle_count: allVehicles.filter((row) => row.is_stale).length,

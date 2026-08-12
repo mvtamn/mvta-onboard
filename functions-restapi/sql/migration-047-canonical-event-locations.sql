@@ -54,9 +54,9 @@ WITH ranked AS (
   FROM EventLocations
   WHERE is_active = 1
 )
-UPDATE rule SET destination_location_id = ranked.canonical_id
-FROM EventGeofenceDirectionRules rule
-JOIN ranked ON ranked.id = rule.destination_location_id
+UPDATE direction_rule SET destination_location_id = ranked.canonical_id
+FROM EventGeofenceDirectionRules direction_rule
+JOIN ranked ON ranked.id = direction_rule.destination_location_id
 WHERE ranked.row_number > 1;
 
 WITH ranked AS (
@@ -64,9 +64,9 @@ WITH ranked AS (
   FROM EventLocations
   WHERE is_active = 1
 )
-UPDATE location SET is_active = 0, updated_at = SYSUTCDATETIME(), updated_by = 'migration-047'
-FROM EventLocations location
-JOIN ranked ON ranked.id = location.id
+UPDATE location_row SET is_active = 0, updated_at = SYSUTCDATETIME(), updated_by = 'migration-047'
+FROM EventLocations location_row
+JOIN ranked ON ranked.id = location_row.id
 WHERE ranked.row_number > 1;
 GO
 PRINT 'Migration 047 applied: canonical active Event locations enforced.';

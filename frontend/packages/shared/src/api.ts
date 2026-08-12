@@ -537,8 +537,8 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
       const suffix = query.toString() ? `?${query}` : "";
       return request<{
         vehicles: EventVehiclePosition[];
-        diagnostic_vehicles: EventVehiclePosition[];
-        diagnostics: { table_ready: boolean; vehicle_count: number; diagnostic_vehicle_count?: number; last_report_at: string | null; source?: string; stale_vehicle_count?: number };
+        unassigned_vehicles: EventVehiclePosition[];
+        diagnostics: { table_ready: boolean; vehicle_count: number; managed_vehicle_count?: number; unassigned_vehicle_count?: number; last_report_at: string | null; source?: string; stale_vehicle_count?: number };
       }>(`/api/event-vehicle-positions${suffix}`, {}, true);
     },
     getEventVehicleAssignments(eventId?: string) {

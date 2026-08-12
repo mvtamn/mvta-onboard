@@ -5,6 +5,46 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.24] - 2026-08-12
+
+- **Keep active vehicles visible before plan assignment.** Event AVL now shows
+  all current SpecialEvent vehicles from shared AVL, while identifying vehicles
+  assigned to the selected operating plan and separating unassigned vehicles
+  for follow-up.
+
+## [1.5.23] - 2026-08-12
+
+- **Clarify Event AVL locations.** Location points now use prominent haloed
+  markers, persistent labels, active/inactive colors, and an on-map legend.
+
+## [1.5.22] - 2026-08-12
+
+- **Show the full Event resource catalog on Event AVL.** Active and inactive
+  geofences and transit locations are now available as independent map layers,
+  while operational vehicle and alert scope remains limited to the active
+  published operating period.
+
+## [1.5.21] - 2026-08-12
+
+- **Make Event AVL scope explicit.** Event AVL now defaults to the most relevant
+  Event context and clearly directs operators to repair or activate an operating
+  period when its published scope is unavailable.
+- **Keep Event workspace navigation coherent.** The Configure stage now opens
+  Event Configuration in Admin, and readiness text explicitly requires an active
+  SpecialEvent route.
+
+## [1.5.20] - 2026-08-12
+
+- **Connected Event Planning workflow.** Planned routes, geofences, and
+  transit locations now appear before the review and activation controls, and
+  the lifecycle copy makes the draft → review → approval → activation →
+  monitoring path explicit. Activation is identified as the point that
+  publishes the validated scope to Event AVL.
+- **Reliable Event AVL navigation.** Azure Maps resource-layer cleanup now
+  tolerates layers that were already removed or a map that has already been
+  disposed, preventing navigation away from Event AVL from blanking the
+  console. Added regression coverage for both teardown cases.
+
 ## [1.5.19] - 2026-08-11
 
 Closes [#18](https://github.com/mvtamn/mvta-onboard/issues/18).

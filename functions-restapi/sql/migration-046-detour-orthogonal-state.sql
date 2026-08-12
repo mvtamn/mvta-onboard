@@ -1,4 +1,13 @@
 -- Detour workflow state is operational progress only. Temporal status remains
+-- Migration 017 creates Detours and migration 041 adds lifecycle_state. Fail
+-- clearly if this migration is run before those prerequisites; otherwise SQL
+-- Server can report the later PRINT as success after the FK creation failed.
+IF OBJECT_ID('dbo.Detours', 'U') IS NULL
+  THROW 50046, 'Migration 046 requires migration 017 (Detours) first.', 1;
+IF COL_LENGTH('dbo.Detours', 'lifecycle_state') IS NULL
+  THROW 50046, 'Migration 046 requires migration 041 (detour workflow) first.', 1;
+GO
+
 IF OBJECT_ID('dbo.DetourWorkflowHistory', 'U') IS NULL
 BEGIN
   CREATE TABLE DetourWorkflowHistory (

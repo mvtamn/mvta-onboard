@@ -121,6 +121,8 @@ body {
 .nav-brand .logo-badge { background: rgba(255, 255, 255, 0.15); color: #fff; font-weight: bold; font-size: 12px; padding: 5px 9px; border-radius: 6px; letter-spacing: 0.5px; }
 .nav-brand-text { color: #fff; font-weight: bold; font-size: 15px; line-height: 1.2; }
 .nav-brand-sub { color: var(--nav-item-fg-dim); font-size: 11px; margin-top: 1px; }
+.nav-version-button { background: none; border: 0; cursor: pointer; font: inherit; padding: 2px 0 0; text-align: left; }
+.nav-version-button:hover { color: var(--nav-item-fg); text-decoration: underline; }
 
 .nav-list { display: flex; flex-direction: column; gap: 2px; }
 .nav-section-label { color: var(--nav-item-fg-dim); font-size: 10.5px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; padding: 16px 12px 6px; }
@@ -129,6 +131,24 @@ body {
 .nav-list a:hover { background: var(--nav-item-hover-bg); }
 .nav-list a.active { background: var(--nav-item-active-bg); color: #fff; font-weight: 600; }
 .nav-list a.active svg { opacity: 1; }
+.nav-group { border-top: 1px solid color-mix(in srgb, var(--nav-item-fg-dim) 26%, transparent); margin-top: 8px; padding-top: 6px; }
+.nav-group-toggle { align-items: center; background: transparent; border: 0; color: var(--nav-item-fg-dim); cursor: pointer; display: flex; font: inherit; font-size: 10.5px; font-weight: 800; justify-content: space-between; letter-spacing: 0.07em; padding: 8px 12px 6px; text-align: left; text-transform: uppercase; width: 100%; }
+.nav-group-toggle:hover { color: var(--nav-item-fg); }
+.nav-group-toggle > span:last-child { font-size: 16px; line-height: 10px; }
+.nav-group-links { display: flex; flex-direction: column; gap: 2px; }
+.nav-group-administration { border-top: 0; margin-top: 5px; padding-top: 0; }
+.nav-group-administration .nav-section-label { padding-top: 8px; }
+.changelog-overlay { align-items: flex-start; background: rgba(10, 22, 16, 0.58); display: flex; inset: 0; justify-content: center; padding-top: 96px; position: fixed; z-index: 100; }
+.changelog-popover { background: var(--surface-bg); border: 1px solid var(--border); border-radius: 13px; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28); color: var(--text); max-width: 460px; padding: 24px 28px 22px; position: relative; width: calc(100% - 40px); }
+.changelog-popover-kicker { color: var(--brand-green); font-size: 10px; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase; }
+.changelog-popover h2 { font-size: 22px; margin: 7px 0 2px; }
+.changelog-popover-date { color: var(--text-muted); font-size: 11px; margin: 0 0 15px; }
+.changelog-popover ul { color: var(--text-dim); font-size: 12px; line-height: 1.5; margin: 0 0 18px; padding-left: 18px; }
+.changelog-popover li { margin-bottom: 5px; }
+.changelog-close { background: var(--surface-alt-bg); border: 0; border-radius: 50%; color: var(--text-muted); cursor: pointer; font-size: 20px; height: 29px; line-height: 20px; position: absolute; right: 15px; top: 15px; width: 29px; }
+.changelog-close:hover { color: var(--text); }
+.changelog-full-link { color: var(--brand-green); font-size: 12px; font-weight: 900; text-decoration: none; }
+.changelog-full-link:hover { text-decoration: underline; }
 
 .nav-spacer { flex: 1; }
 .nav-footer { border-top: 1px solid var(--nav-border); padding-top: 14px; margin-top: 10px; }
