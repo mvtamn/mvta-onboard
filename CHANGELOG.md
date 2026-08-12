@@ -5,6 +5,11 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.23] - 2026-08-12
+
+- **Clarify Event AVL locations.** Location points now use prominent haloed
+  markers, persistent labels, active/inactive colors, and an on-map legend.
+
 ## [1.5.22] - 2026-08-12
 
 - **Show the full Event resource catalog on Event AVL.** Active and inactive

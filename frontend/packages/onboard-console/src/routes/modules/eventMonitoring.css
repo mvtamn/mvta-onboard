@@ -29,6 +29,12 @@
 .evmon-controls .evmon-traffic span { display: inline; margin: 0; color: inherit; font-size: 10.5px; }
 .evmon-clear { height: 32px; border: 0; color: var(--brand-green); background: transparent; font: inherit; font-size: 10.5px; font-weight: 800; cursor: pointer; white-space: nowrap; }
 .evmon-map-wrap { position: relative; }
+.evmon-map-legend { position: absolute; z-index: 2; left: 12px; top: 12px; display: flex; flex-wrap: wrap; gap: 6px 10px; max-width: min(520px, calc(100% - 24px)); padding: 7px 9px; border: 1px solid rgba(0,0,0,.14); border-radius: 7px; color: #173d31; background: rgba(255,255,255,.94); box-shadow: 0 2px 7px rgba(0,0,0,.16); font-size: 10.5px; font-weight: 700; }
+.evmon-map-legend span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.evmon-legend-dot { display: inline-block; width: 12px; height: 12px; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 0 1px rgba(0,0,0,.28); }
+.evmon-legend-dot-active { background: #007f5f; }
+.evmon-legend-dot-inactive { background: #6b7280; }
+.evmon-legend-bus { display: inline-block; width: 12px; height: 12px; border: 1px solid #fff; border-radius: 3px; background: #006341; box-shadow: 0 0 0 1px rgba(0,0,0,.28); }
 .evmon-real-map { height: min(58vh, 610px); min-height: 430px; position: relative; }
 .evmon-map-container { position: absolute; inset: 0; }
 .evmon-map-message { position: absolute; inset: 0; display: grid; place-items: center; background: var(--surface-alt-bg); color: var(--text-muted); }

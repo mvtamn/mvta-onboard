@@ -326,6 +326,11 @@ export function EventMonitoring() {
         {!minimized && (
           <div className="evmon-map-wrap">
             <VehicleMap vehicles={activeVehicles} geofences={mapGeofences} locations={mapLocations} showGeofences={mapGeofences.length > 0} showLocations={mapLocations.length > 0} mapStyle={mapStyle} traffic={traffic} />
+            <div className="evmon-map-legend" aria-label="Map legend">
+              <span><i className="evmon-legend-dot evmon-legend-dot-active" /> Active location</span>
+              <span><i className="evmon-legend-dot evmon-legend-dot-inactive" /> Inactive location</span>
+              <span><i className="evmon-legend-bus" /> Managed vehicle</span>
+            </div>
           </div>
         )}
       </div>
@@ -427,10 +432,22 @@ function VehicleMap({ vehicles, geofences, locations, showGeofences, showLocatio
       resourceLayersRef.current.push(layer, outline);
     }
     if (showLocations) {
-      locations.forEach((location) => source?.add(new atlas.data.Feature(new atlas.data.Point([location.longitude, location.latitude]), { kind: "location", name: location.name, category: location.category })));
-      const layer = new atlas.layer.SymbolLayer(source, "event-locations", { iconOptions: { image: "pin-round-blue", allowOverlap: true }, textOptions: { textField: ["get", "name"], offset: [0, 1.2], color: "#123" } });
-      map.layers.add(layer);
-      resourceLayersRef.current.push(layer);
+      locations.forEach((location) => source?.add(new atlas.data.Feature(new atlas.data.Point([location.longitude, location.latitude]), { kind: "location", name: location.name, category: location.category, active: location.is_active })));
+      const activePoints = new atlas.layer.BubbleLayer(source, "event-active-location-points", {
+        color: "#007f5f", radius: 10, strokeColor: "#ffffff", strokeWidth: 3,
+        filter: ["all", ["==", ["get", "kind"], "location"], ["==", ["get", "active"], true]],
+      });
+      const inactivePoints = new atlas.layer.BubbleLayer(source, "event-inactive-location-points", {
+        color: "#6b7280", radius: 9, strokeColor: "#ffffff", strokeWidth: 3,
+        filter: ["all", ["==", ["get", "kind"], "location"], ["==", ["get", "active"], false]],
+      });
+      const labels = new atlas.layer.SymbolLayer(source, "event-location-labels", {
+        iconOptions: { image: "none", allowOverlap: true },
+        textOptions: { textField: ["get", "name"], offset: [0, 1.5], color: "#123", haloColor: "#fff", haloWidth: 2, allowOverlap: true },
+        filter: ["==", ["get", "kind"], "location"],
+      });
+      map.layers.add([activePoints, inactivePoints, labels]);
+      resourceLayersRef.current.push(activePoints, inactivePoints, labels);
     }
     return () => {
       removeMapLayersIfPresent(map, resourceLayersRef.current);
