@@ -9,7 +9,7 @@
 **PR https://github.com/mvtamn/mvta-onboard/pull/19 is merged**. The branch
 continued with follow-up commits `c2c7866` and `4916afe`, and the frontend
 deployment workflow has published the current console build. The current
-console version is `1.5.20`.
+console version is `1.5.21`.
 
 The follow-up work corrected the Event Planning order so planned resources
 precede review and activation, then hardened Azure Maps layer teardown so
@@ -42,7 +42,7 @@ Read the PR description and issue #18 for the itemized "what" — not reproduced
 
 - `tsc -b --noEmit` at the workspace root fails on a pre-existing, unrelated composite-project error. Use `npx tsc --noEmit -p .` from inside `frontend/packages/onboard-console` instead.
 - `npm run test` (from `frontend/`) runs the Vitest suite across workspaces; `npm run test --workspace @mvta/onboard-console` for just this package.
-- Saved project-owner convention: bump `frontend/packages/onboard-console/package.json`'s version + add a `CHANGELOG.md` entry with every user-facing change to that package. Current version: `1.5.20`.
+- Saved project-owner convention: bump `frontend/packages/onboard-console/package.json`'s version + add a `CHANGELOG.md` entry with every user-facing change to that package. Current version: `1.5.21`.
 - Domain vocabulary for anything in this workflow ("Operating period," "Service Plan," "Event operating context," "plan revision," etc.) is canonical in root `CONTEXT.md` — don't improvise synonyms. Relevant ADRs: `docs/adr/0002-unify-event-operating-scope.md` (lifecycle model, why revisions exist) and `docs/adr/0004-version-active-event-resources.md` (why active-plan resources are pinned/versioned).
 
 ## Suggested skills for whoever picks this up

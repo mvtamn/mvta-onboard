@@ -5,6 +5,15 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.21] - 2026-08-12
+
+- **Make Event AVL scope explicit.** Event AVL now defaults to the most relevant
+  Event context and clearly directs operators to repair or activate an operating
+  period when its published scope is unavailable.
+- **Keep Event workspace navigation coherent.** The Configure stage now opens
+  Event Configuration in Admin, and readiness text explicitly requires an active
+  SpecialEvent route.
+
 ## [1.5.20] - 2026-08-12
 
 - **Connected Event Planning workflow.** Planned routes, geofences, and

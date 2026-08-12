@@ -8,6 +8,7 @@ import { useEventWorkspace } from "../../context/EventWorkspaceContext.js";
 import { EventWorkspaceNav } from "../../components/EventWorkspaceNav.js";
 import { useAuth } from "../../auth/AuthContext.js";
 import "./eventMonitoring.css";
+import { activePlansMissingPublishedScope, defaultMonitoringEventId } from "./eventMonitoringState.js";
 import { removeMapLayersIfPresent } from "./mapLayerCleanup.js";
 
 const AVL_REFRESH_MS = 30_000;
@@ -90,6 +91,7 @@ export function EventMonitoring() {
   const [health, setHealth] = useState<EventMonitoringHealth | null>(null);
   const [feedStatus, setFeedStatus] = useState<Record<string, { state: "ready" | "error"; loadedAt: Date | null }>>({});
   const [actionError, setActionError] = useState<string | null>(null);
+  const defaultedEventRef = useRef(false);
 
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -123,6 +125,14 @@ export function EventMonitoring() {
       setPlans(planRows.plans);
     }).catch(() => { setEvents([]); setPlans([]); });
   }, []);
+
+  useEffect(() => {
+    if (defaultedEventRef.current || selectedEventId || events.length === 0) return;
+    const eventId = defaultMonitoringEventId(events, plans);
+    if (!eventId) return;
+    defaultedEventRef.current = true;
+    selectEvent(eventId);
+  }, [events, plans, selectedEventId, selectEvent]);
 
   useEffect(() => {
     if (!selectedEventId) { setAssignments([]); return; }
@@ -187,6 +197,7 @@ export function EventMonitoring() {
   const activePlans = selectedPlans.filter((plan) => plan.status === "active");
   const selectedPlan = activePlans.find((plan) => plan.id === selectedPlanId);
   const scopedPlans = selectedPlan ? [selectedPlan] : activePlans;
+  const plansMissingPublishedScope = activePlansMissingPublishedScope(scopedPlans);
   const publishedGeofences = scopedPlans.flatMap((plan) => plan.published_scope?.geofences ?? []);
   const publishedLocations = scopedPlans.flatMap((plan) => plan.published_scope?.locations ?? []);
   const visibleGeofences = Array.from(new Map(publishedGeofences.map((fence) => [fence.id, fence])).values());
@@ -216,6 +227,8 @@ export function EventMonitoring() {
     ? { tone: "info", title: "Select an Event to begin monitoring.", action: null }
     : activePlans.length === 0
       ? { tone: "warning", title: "This Event has no active operating period.", action: "Create or activate an operating period in Event Planning." }
+      : plansMissingPublishedScope.length > 0
+        ? { tone: "error", title: "Published Event AVL scope is unavailable.", action: "Repair or reactivate this operating period in Event Planning before monitoring." }
       : health === null && vehicles === null
           ? { tone: "error", title: "Event AVL data is unavailable.", action: "The API health or vehicle-position feed could not be reached." }
           : vehicles === null
@@ -250,16 +263,15 @@ export function EventMonitoring() {
         {dataState.action && <span>{dataState.action}</span>}
         {dataState.tone === "error" && <button className="btn-sm" onClick={() => void load()}>Try again</button>}
         {!selectedEventId && <Link to="/event-planning">Open Event Planning</Link>}
-        {selectedEventId && !selectedPlans.some((plan) => plan.status === "active") && <Link to={`/event-planning?event=${encodeURIComponent(selectedEventId)}`}>Open Event Planning</Link>}
+        {selectedEventId && (activePlans.length === 0 || plansMissingPublishedScope.length > 0) && <Link to={`/event-planning?event=${encodeURIComponent(selectedEventId)}${selectedPlan ? `&plan=${encodeURIComponent(selectedPlan.id)}` : ""}`}>Open Event Planning</Link>}
       </div>
 
       <div className="evmon-scope" aria-label="Live operating scope">
         <strong>Live operating scope</strong>
         {activePlans.length > 0 ? <>
-          <span><b>{routesActive}</b> routes{routeSummary ? ` · ${routeSummary}` : ""}</span>
-          <span><b>{visibleGeofences.length}</b> geofences · <b>{geofencesWithRules}</b> with rules</span>
-          <span><b>{visibleLocations.length}</b> locations</span>
-          <Link to={`/event-planning?event=${encodeURIComponent(selectedEventId)}${selectedPlan ? `&plan=${encodeURIComponent(selectedPlan.id)}` : ""}`}>Review scope</Link>
+          {plansMissingPublishedScope.length > 0
+            ? <><span>Published scope unavailable for {plansMissingPublishedScope.map((plan) => plan.name).join(", ")}.</span><Link to={`/event-planning?event=${encodeURIComponent(selectedEventId)}${selectedPlan ? `&plan=${encodeURIComponent(selectedPlan.id)}` : ""}`}>Repair scope</Link></>
+            : <><span><b>{routesActive}</b> routes{routeSummary ? ` · ${routeSummary}` : ""}</span><span><b>{visibleGeofences.length}</b> geofences · <b>{geofencesWithRules}</b> with rules</span><span><b>{visibleLocations.length}</b> locations</span><Link to={`/event-planning?event=${encodeURIComponent(selectedEventId)}${selectedPlan ? `&plan=${encodeURIComponent(selectedPlan.id)}` : ""}`}>Review scope</Link></>}
         </> : <span>Select an active operating period to see the managed scope.</span>}
       </div>
 

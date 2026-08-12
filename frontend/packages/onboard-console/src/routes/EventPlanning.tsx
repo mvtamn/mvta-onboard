@@ -148,7 +148,7 @@ export function EventPlanning() {
   const readiness = [
     { label: "Event selected", ready: Boolean(event) },
     { label: "Operating dates are valid", ready: Boolean(startAt && endAt && new Date(startAt).getTime() < new Date(endAt).getTime()) },
-    { label: "SpecialEvent route linked", ready: counts.routes > 0 },
+    { label: "Active SpecialEvent route linked", ready: counts.routes > 0 },
     { label: "Geofence linked", ready: counts.geofences > 0 },
     {
       label: "Every linked geofence has a direction rule",

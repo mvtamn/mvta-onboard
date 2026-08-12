@@ -154,7 +154,7 @@ describe("EventPlanning", () => {
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
       const checklist = await screen.findByRole("group", { name: "Activation readiness" });
       expect(checklist.querySelector('[aria-label="Complete: Event selected"]')).not.toBeNull();
-      expect(checklist.querySelector('[aria-label="Missing: SpecialEvent route linked"]')).not.toBeNull();
+      expect(checklist.querySelector('[aria-label="Missing: Active SpecialEvent route linked"]')).not.toBeNull();
     });
 
     it("gives completed lifecycle steps a text-based accessible name, not just color", async () => {
