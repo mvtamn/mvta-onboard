@@ -27,6 +27,7 @@ import { Dashboard } from "./routes/Dashboard.js";
 import { ServiceOperations } from "./routes/ServiceOperations.js";
 import { ServiceOperationsOverview } from "./routes/ServiceOperationsOverview.js";
 import { ServiceRiskQuality } from "./routes/ServiceRiskQuality.js";
+import { ServiceOperationsNavPrototype } from "./routes/ServiceOperationsNavPrototype.js";
 import { Compose } from "./routes/Compose.js";
 import { ActiveMessages } from "./routes/ActiveMessages.js";
 import { SuggestedAlerts } from "./routes/SuggestedAlerts.js";
@@ -262,6 +263,7 @@ export function App() {
           <ErrorBoundary key={location.pathname}>
             <Routes>
               <Route path="/" element={<Dashboard stats={stats} onChanged={stats.refresh} />} />
+              {import.meta.env.DEV ? <Route path="/prototype/service-operations-nav" element={<ServiceOperationsNavPrototype />} /> : null}
               <Route path="/service-operations" element={<ServiceOperations />}>
                 <Route index element={<ServiceOperationsOverview stats={stats} />} />
                 <Route path="compose" element={<Compose onChanged={stats.refresh} />} />
