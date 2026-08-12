@@ -35,4 +35,11 @@ export default defineConfig({
       },
     },
   },
+  // No globals: tests import describe/it/expect/vi explicitly from "vitest"
+  // rather than relying on injected globals, so no tsconfig "types" changes
+  // are needed just to make test files compile.
+  test: {
+    environment: "jsdom",
+    setupFiles: ["./src/setupTests.ts"],
+  },
 });

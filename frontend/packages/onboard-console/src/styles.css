@@ -236,9 +236,14 @@ body {
 .event-workspace-stages small { color: inherit; font-size: 11px; }
 .event-workspace-next { margin: 0 0 14px; color: var(--text-muted); font-size: 12px; }
 .event-inline-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; padding: 10px 12px; border: 1px solid #d9aaaa; border-radius: 8px; color: #8a2e2e; background: #fff0f0; font-size: 12px; }
-.event-planning-start { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 16px; padding: 14px 16px; border: 1px solid var(--highlight-border); border-radius: 10px; background: var(--highlight-bg); }
-.event-planning-start strong { display: block; color: var(--text); font-size: 14px; }
-.event-planning-start p { margin: 4px 0 0; color: var(--text-dim); line-height: 1.45; }
+/* One pattern for both "not started yet" states (no Event chosen yet, or an
+   Event chosen but no operating period) - they never render at once, so
+   there's no need for two near-identical bordered boxes with their own
+   class each. */
+.event-empty-state { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 16px; padding: 14px 16px; border: 1px solid var(--highlight-border); border-radius: 10px; background: var(--highlight-bg); }
+.event-empty-state strong { display: block; color: var(--text); font-size: 14px; }
+.event-empty-state p { margin: 4px 0 0; color: var(--text-dim); line-height: 1.45; }
+.event-planning-empty-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .event-configuration-section { scroll-margin-top: 20px; }
 .event-configuration-section:focus { outline: 3px solid rgba(0, 85, 61, .2); outline-offset: 5px; }
 .event-configuration-intro { display: flex; align-items: baseline; gap: 10px; margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-alt-bg); font-size: 12px; }
@@ -255,10 +260,6 @@ body {
 .event-period-form > select, .event-period-form > input { grid-column: 1 / -1; }
 .event-period-form > button { justify-self: start; }
 .event-field-error { margin: 6px 0 0; color: var(--danger-text); font-size: 11px; }
-.event-planning-empty { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 16px; padding: 16px 18px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-alt-bg); }
-.event-planning-empty h3 { margin: 0 0 4px; font-size: 14px; }
-.event-planning-empty p { margin: 0; color: var(--text-muted); }
-.event-planning-empty-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .event-readiness { display: grid; gap: 5px; margin-top: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-alt-bg); font-size: 12px; }
 .event-readiness span { color: var(--danger-text); }
 .event-readiness span.ready { color: var(--success-text); }
@@ -292,7 +293,7 @@ body {
 /* 768px, not 760px - 760px left the common 768px tablet width one row
    short of the stacking breakpoint, clipping the "Ends" datetime input
    against the still-two-column .event-period-form. */
-@media (max-width: 768px) { .event-planning-setup { grid-template-columns: 1fr; } .event-period-form { grid-template-columns: 1fr; } .event-planning-empty, .event-planning-start { align-items: flex-start; flex-direction: column; } }
+@media (max-width: 768px) { .event-planning-setup { grid-template-columns: 1fr; } .event-period-form { grid-template-columns: 1fr; } .event-empty-state { align-items: flex-start; flex-direction: column; } }
 /* Below 700px the fixed 4-column grid squeezes each stage into ~1/4 of the
    viewport width - not enough room for "Reusable resources" etc. at any
    font size, so labels were rendering as 1-2 visible characters. Scrolling

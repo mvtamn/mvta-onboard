@@ -16,6 +16,7 @@
     "build:shared": "npm run build --workspace @mvta/shared",
     "dev:rider": "npm run dev --workspace @mvta/rider-app",
     "dev:console": "npm run dev --workspace @mvta/onboard-console",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
   }
 }
