@@ -5,6 +5,13 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.22] - 2026-08-12
+
+- **Show the full Event resource catalog on Event AVL.** Active and inactive
+  geofences and transit locations are now available as independent map layers,
+  while operational vehicle and alert scope remains limited to the active
+  published operating period.
+
 ## [1.5.21] - 2026-08-12
 
 - **Make Event AVL scope explicit.** Event AVL now defaults to the most relevant

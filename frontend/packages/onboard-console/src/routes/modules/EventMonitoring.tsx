@@ -68,11 +68,15 @@ export function EventMonitoring() {
   const [diagnosticVehicles, setDiagnosticVehicles] = useState<EventVehiclePosition[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [plans, setPlans] = useState<EventServicePlan[]>([]);
+  const [resourceGeofences, setResourceGeofences] = useState<EventGeofence[]>([]);
+  const [resourceLocations, setResourceLocations] = useState<EventLocation[]>([]);
   const { selection, selectEvent, selectServicePlan, selectRevision } = useEventWorkspace();
   const { eventId: selectedEventId, servicePlanId: selectedPlanId } = selection;
   const [showDiagnostics, setShowDiagnostics] = useState(true);
   const [showGeofences, setShowGeofences] = useState(true);
   const [showLocations, setShowLocations] = useState(true);
+  const [showInactiveGeofences, setShowInactiveGeofences] = useState(true);
+  const [showInactiveLocations, setShowInactiveLocations] = useState(true);
   const [assignments, setAssignments] = useState<EventVehicleAssignment[]>([]);
   const [assignmentMessage, setAssignmentMessage] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -124,6 +128,13 @@ export function EventMonitoring() {
       setEvents(eventRows.events);
       setPlans(planRows.plans);
     }).catch(() => { setEvents([]); setPlans([]); });
+  }, []);
+
+  useEffect(() => {
+    void Promise.all([api.getEventGeofences(), api.getEventLocations()]).then(([geofenceRows, locationRows]) => {
+      setResourceGeofences(geofenceRows.geofences);
+      setResourceLocations(locationRows.locations);
+    }).catch(() => { setResourceGeofences([]); setResourceLocations([]); });
   }, []);
 
   useEffect(() => {
@@ -202,6 +213,8 @@ export function EventMonitoring() {
   const publishedLocations = scopedPlans.flatMap((plan) => plan.published_scope?.locations ?? []);
   const visibleGeofences = Array.from(new Map(publishedGeofences.map((fence) => [fence.id, fence])).values());
   const visibleLocations = Array.from(new Map(publishedLocations.map((location) => [location.id, location])).values());
+  const mapGeofences = resourceGeofences.filter((fence) => fence.is_active ? showGeofences : showInactiveGeofences);
+  const mapLocations = resourceLocations.filter((location) => location.is_active ? showLocations : showInactiveLocations);
   const routeOptions = useMemo(() => Array.from(new Map(scopedPlans.flatMap((plan) => plan.links?.filter((link) => link.kind === "routes").map((link) => [String(link.value), link.label] as [string, string]) ?? [])).entries()), [scopedPlans]);
   const activeVehicles = useMemo(() => classifiedVehicles.filter((vehicle) => {
     const heading = cardinalHeading(vehicle.heading, vehicle.direction);
@@ -304,13 +317,15 @@ export function EventMonitoring() {
           <label><span>Motion</span><select value={motionFilter} onChange={(event) => setMotionFilter(event.target.value)}><option value="all">Moving + stopped</option><option value="moving">Moving</option><option value="stopped">Stopped</option></select></label>
           <label><span>Map layer</span><select value={mapStyle} onChange={(event) => setMapStyle(event.target.value as MapStyle)}><option value="road">Road</option><option value="grayscale_light">Light</option><option value="night">Night</option><option value="satellite_road_labels">Satellite + labels</option></select></label>
           <label className="evmon-traffic"><input type="checkbox" checked={traffic} onChange={(event) => setTraffic(event.target.checked)} /><span>Traffic</span></label>
-          <label className="evmon-traffic"><input type="checkbox" checked={showGeofences} onChange={(event) => setShowGeofences(event.target.checked)} /><span>Geofences</span></label>
-          <label className="evmon-traffic"><input type="checkbox" checked={showLocations} onChange={(event) => setShowLocations(event.target.checked)} /><span>Transit locations</span></label>
+          <label className="evmon-traffic"><input type="checkbox" checked={showGeofences} onChange={(event) => setShowGeofences(event.target.checked)} /><span>Active geofences</span></label>
+          <label className="evmon-traffic"><input type="checkbox" checked={showInactiveGeofences} onChange={(event) => setShowInactiveGeofences(event.target.checked)} /><span>Inactive geofences</span></label>
+          <label className="evmon-traffic"><input type="checkbox" checked={showLocations} onChange={(event) => setShowLocations(event.target.checked)} /><span>Active locations</span></label>
+          <label className="evmon-traffic"><input type="checkbox" checked={showInactiveLocations} onChange={(event) => setShowInactiveLocations(event.target.checked)} /><span>Inactive locations</span></label>
           {hasFilters && <button type="button" className="evmon-clear" onClick={() => { setSearch(""); setRouteFilter("all"); setHeadingFilter("all"); setMotionFilter("all"); }}>Clear filters</button>}
         </div>}
         {!minimized && (
           <div className="evmon-map-wrap">
-            <VehicleMap vehicles={activeVehicles} geofences={visibleGeofences} locations={visibleLocations} showGeofences={showGeofences} showLocations={showLocations} mapStyle={mapStyle} traffic={traffic} />
+            <VehicleMap vehicles={activeVehicles} geofences={mapGeofences} locations={mapLocations} showGeofences={mapGeofences.length > 0} showLocations={mapLocations.length > 0} mapStyle={mapStyle} traffic={traffic} />
           </div>
         )}
       </div>
