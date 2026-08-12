@@ -65,14 +65,14 @@ export function EventMonitoring() {
   const { roles } = useAuth();
   const canManageAssignments = roles.includes("OCC.Admin");
   const [vehicles, setVehicles] = useState<EventVehiclePosition[] | null>(null);
-  const [diagnosticVehicles, setDiagnosticVehicles] = useState<EventVehiclePosition[]>([]);
+  const [unassignedVehicles, setUnassignedVehicles] = useState<EventVehiclePosition[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [plans, setPlans] = useState<EventServicePlan[]>([]);
   const [resourceGeofences, setResourceGeofences] = useState<EventGeofence[]>([]);
   const [resourceLocations, setResourceLocations] = useState<EventLocation[]>([]);
   const { selection, selectEvent, selectServicePlan, selectRevision } = useEventWorkspace();
   const { eventId: selectedEventId, servicePlanId: selectedPlanId } = selection;
-  const [showDiagnostics, setShowDiagnostics] = useState(true);
+  const [showUnassigned, setShowUnassigned] = useState(true);
   const [showGeofences, setShowGeofences] = useState(true);
   const [showLocations, setShowLocations] = useState(true);
   const [showInactiveGeofences, setShowInactiveGeofences] = useState(true);
@@ -100,13 +100,13 @@ export function EventMonitoring() {
   const load = useCallback(async () => {
     setRefreshing(true);
     if (!selectedEventId) {
-      setVehicles([]); setDiagnosticVehicles([]); setHealth(null); setLastUpdated(null); setRefreshing(false);
+      setVehicles([]); setUnassignedVehicles([]); setHealth(null); setLastUpdated(null); setRefreshing(false);
       return;
     }
     try {
-      const { vehicles: current, diagnostic_vehicles: diagnosticsVehicles, diagnostics } = await api.getEventVehiclePositions(selectedEventId || undefined, selectedPlanId || undefined);
+      const { vehicles: current, unassigned_vehicles: currentUnassigned, diagnostics } = await api.getEventVehiclePositions(selectedEventId || undefined, selectedPlanId || undefined);
       setVehicles(current);
-      setDiagnosticVehicles(diagnosticsVehicles);
+      setUnassignedVehicles(currentUnassigned ?? []);
       setLastUpdated(new Date());
       setMessage(
         diagnostics.table_ready
@@ -187,7 +187,7 @@ export function EventMonitoring() {
     const targetPlan = selectedPlan ?? selectedPlans.find((plan) => plan.status === "draft" || plan.status === "review");
     if (!selectedEventId || !targetPlan || vehicle.route === null) { setAssignmentMessage("Select an Event with a draft, review, or active operating period before proposing an assignment."); return; }
     try {
-      const assignment = await api.createEventVehicleAssignment({ event_id: selectedEventId, service_plan_id: targetPlan.id, vehicle_id: vehicle.vehicle_id, route_id: vehicle.route, reason: "Proposed from Event AVL diagnostic view" });
+      const assignment = await api.createEventVehicleAssignment({ event_id: selectedEventId, service_plan_id: targetPlan.id, vehicle_id: vehicle.vehicle_id, route_id: vehicle.route, reason: "Proposed from Event AVL unassigned vehicle view" });
       setAssignments((rows) => [assignment, ...rows]);
       setAssignmentMessage(selectedPlan?.status === "active" ? "Assignment proposed as an active-plan revision; it is not live until the revision is approved and applied." : "Assignment proposed for the operating period.");
     } catch (error) { setAssignmentMessage(error instanceof ApiError ? error.message : "Could not propose vehicle assignment."); }
@@ -268,7 +268,7 @@ export function EventMonitoring() {
         <label><span>Event context</span><select value={selectedEventId} onChange={(event) => { selectEvent(event.target.value); setRouteFilter("all"); setVehicles(null); }}><option value="">Select Event</option>{events.map((event) => <option key={event.id} value={event.id}>{event.name}</option>)}</select></label>
         <label><span>Operating period</span><select value={selectedPlanId} onChange={(event) => { selectServicePlan(event.target.value); setRouteFilter("all"); setVehicles(null); }} disabled={!selectedEventId}><option value="">All active periods</option>{activePlans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}</select></label>
         <span>{selectedEvent ? `${selectedPlans.length} operating period${selectedPlans.length === 1 ? "" : "s"}` : "No Event selected"}</span>
-        <label><input type="checkbox" checked={showDiagnostics} onChange={(event) => setShowDiagnostics(event.target.checked)} /> Show unplanned diagnostic vehicles</label>
+          <label><input type="checkbox" checked={showUnassigned} onChange={(event) => setShowUnassigned(event.target.checked)} /> Show unassigned vehicles</label>
       </div>
 
       <div className={`evmon-data-state evmon-data-state-${dataState.tone}`} role="status">
@@ -336,12 +336,12 @@ export function EventMonitoring() {
       </div>
 
       <div className="evmon-list-header">
-        <div><h3>Monitored vehicles</h3><span>Fresh and recently stale classified vehicles from shared AVL</span></div>
+        <div><h3>All active Event vehicles</h3><span>Fresh and recently stale SpecialEvent vehicles from shared AVL; plan membership is shown below.</span></div>
         <span className="evmon-count">{activeVehicles.length}{hasFilters ? ` of ${classifiedVehicles.length}` : ""} active</span>
       </div>
-      {showDiagnostics && <>
-        <div className="evmon-list-header"><div><h3>Unplanned diagnostic vehicles</h3><span>SpecialEvent vehicles visible for diagnosis; they are not in operational scope.</span></div><span className="evmon-count">{diagnosticVehicles.length}</span></div>
-        <div className="evmon-table-wrap"><table className="data evmon-table"><thead><tr><th>Vehicle</th><th>Route</th><th>Heading</th><th>Last report</th>{canManageAssignments && <th>Planning action</th>}</tr></thead><tbody>{diagnosticVehicles.map((vehicle) => <tr key={`diagnostic-${vehicle.vehicle_id}`}><td><strong>{vehicle.vehicle_id}</strong></td><td>{routeLabel(vehicle)}</td><td><span className="evmon-heading">{cardinalHeading(vehicle.heading, vehicle.direction)}</span></td><td className={vehicle.is_stale ? "evmon-stale" : undefined}>{vehicle.is_stale ? "Stale · " : ""}{minutesAgo(vehicle.report_timestamp)}</td>{canManageAssignments && <td><button className="btn-sm" onClick={() => void proposeAssignment(vehicle)}>Propose assignment</button></td>}</tr>)}</tbody></table>{diagnosticVehicles.length === 0 && <div className="evmon-empty">No unplanned SpecialEvent vehicles are reporting in this context.</div>}</div>
+      {showUnassigned && <>
+        <div className="evmon-list-header"><div><h3>Unassigned vehicles</h3><span>Active SpecialEvent vehicles not currently assigned to the selected operating plan.</span></div><span className="evmon-count">{unassignedVehicles.length}</span></div>
+        <div className="evmon-table-wrap"><table className="data evmon-table"><thead><tr><th>Vehicle</th><th>Route</th><th>Heading</th><th>Last report</th>{canManageAssignments && <th>Planning action</th>}</tr></thead><tbody>{unassignedVehicles.map((vehicle) => <tr key={`unassigned-${vehicle.vehicle_id}`}><td><strong>{vehicle.vehicle_id}</strong></td><td>{routeLabel(vehicle)}</td><td><span className="evmon-heading">{cardinalHeading(vehicle.heading, vehicle.direction)}</span></td><td className={vehicle.is_stale ? "evmon-stale" : undefined}>{vehicle.is_stale ? "Stale · " : ""}{minutesAgo(vehicle.report_timestamp)}</td>{canManageAssignments && <td><button className="btn-sm" onClick={() => void proposeAssignment(vehicle)}>Propose assignment</button></td>}</tr>)}</tbody></table>{unassignedVehicles.length === 0 && <div className="evmon-empty">All active SpecialEvent vehicles are assigned to the selected context.</div>}</div>
         {assignmentMessage && <div className="evmon-empty" role="status">{assignmentMessage}</div>}
         {canManageAssignments && assignments.length > 0 && <div className="evmon-table-wrap"><table className="data evmon-table"><thead><tr><th>Assignment</th><th>Vehicle</th><th>Route</th><th>Plan</th><th>Status</th><th>Review</th></tr></thead><tbody>{assignments.map((assignment) => <tr key={assignment.id}><td>{new Date(assignment.requested_at).toLocaleString()}</td><td>{assignment.vehicle_id}</td><td>{assignment.route_id}</td><td>{assignment.service_plan_name ?? "—"}</td><td>{assignment.status}{assignment.revision_id ? ` · revision ${assignment.revision_id.slice(0, 8)}` : ""}</td><td>{assignment.status === "proposed" ? <><button className="btn-sm" onClick={() => void reviewAssignment(assignment.id, "approve")}>Approve</button> <button className="btn-sm" onClick={() => void reviewAssignment(assignment.id, "reject")}>Reject</button></> : "—"}</td></tr>)}</tbody></table></div>}
       </>}
