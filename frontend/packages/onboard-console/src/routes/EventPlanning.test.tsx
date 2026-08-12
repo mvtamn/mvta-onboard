@@ -375,14 +375,18 @@ describe("EventPlanning", () => {
     });
   });
 
-  describe("consistent panel numbering", () => {
-    it("numbers all four operating-period panels in sequence", async () => {
+  describe("operating-period workflow order", () => {
+    it("places planned resources before review and activation", async () => {
       mockApiData({ events: [makeEvent()], plans: [makePlan()] });
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
-      expect(await screen.findByText("1. Choose an Event")).toBeInTheDocument();
-      expect(screen.getByText("2. Define operating period")).toBeInTheDocument();
-      expect(screen.getByText("3. Operating period lifecycle")).toBeInTheDocument();
-      expect(screen.getByText("4. Planned operating resources")).toBeInTheDocument();
+      const page = await screen.findByText("1. Choose an Event");
+      const headings = Array.from(page.closest(".event-planning")!.querySelectorAll(".panel-header"), (heading) => heading.textContent);
+      expect(headings).toEqual([
+        "1. Choose an Event",
+        "2. Define operating period",
+        "3. Planned operating resources",
+        "4. Review and activate operating period",
+      ]);
     });
   });
 });

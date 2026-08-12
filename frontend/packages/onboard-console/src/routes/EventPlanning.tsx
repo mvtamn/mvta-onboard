@@ -342,9 +342,23 @@ export function EventPlanning() {
 
     </div>
     {plan && <>
-      <div className="panel-header" style={{ marginTop: 24 }}>3. Operating period lifecycle</div>
+      <div className="panel-header" style={{ marginTop: 24 }}>3. Planned operating resources</div>
       <div className="panel-body">
-        <p className="panel-desc">Move the operating period through review before activating it for Event AVL. Changes to an active period require a reviewed revision.</p>
+        <p className="panel-desc">Add the routes, geofences, and transit locations this operating period will manage. These reusable Admin resources become the scope reviewed below; edits do not change the active scope until a reviewed revision is applied.</p>
+        <FeedbackNote feedback={feedback.resources} />
+        <p className="muted">Ctrl/Cmd-click (or shift-click for a range) to select more than one before adding.</p>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <select multiple className="f" value={routeIds} onChange={(e) => setRouteIds(Array.from(e.target.selectedOptions, (option) => option.value))} aria-label="Event service route">{routes.map((row) => <option key={row.id} value={row.id}>{row.label}</option>)}</select><button className="btn-sm" disabled={routeIds.length === 0 || (!editable && !revision)} onClick={() => void linkMany("routes", routeIds, () => setRouteIds([]))}>Add routes to plan</button>
+          <select multiple className="f" value={geofenceIds} onChange={(e) => setGeofenceIds(Array.from(e.target.selectedOptions, (option) => option.value))} aria-label="Geofence">{geofences.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select><button className="btn-sm" disabled={geofenceIds.length === 0 || (!editable && !revision)} onClick={() => void linkMany("geofences", geofenceIds, () => setGeofenceIds([]))}>Add geofences to plan</button>
+          <select multiple className="f" value={locationIds} onChange={(e) => setLocationIds(Array.from(e.target.selectedOptions, (option) => option.value))} aria-label="Transit location">{locations.map((row) => <option key={row.id} value={row.id}>{row.label}</option>)}</select><button className="btn-sm" disabled={locationIds.length === 0 || (!editable && !revision)} onClick={() => void linkMany("locations", locationIds, () => setLocationIds([]))}>Add locations to plan</button>
+        </div>
+        <p className="muted">{counts.routes} routes · {counts.geofences} geofences · {counts.locations} locations linked.</p>
+        <table className="data"><thead><tr><th>Type</th><th>Resource</th><th>Action</th></tr></thead><tbody>{links.length > 0 ? links.map((link, index) => <tr key={`${link.kind}-${link.value}-${index}`}><td>{link.kind.slice(0, -1)}</td><td>{link.label}</td><td><button className="btn-sm danger" disabled={!editable && !revision} onClick={() => void unlink(link.kind, link.value, link.label)}>Remove</button></td></tr>) : <tr><td colSpan={3} className="empty-note">No resources linked yet. Add at least one route and geofence before submitting for review.</td></tr>}</tbody></table>
+      </div>
+
+      <div className="panel-header" style={{ marginTop: 24 }}>4. Review and activate operating period</div>
+      <div className="panel-body">
+        <p className="panel-desc">Move this operating period from draft through review and approval. Activation publishes its validated scope for Event AVL; completion ends monitoring. Changes to an active period require a reviewed revision.</p>
         <ol className="event-plan-steps" aria-label="Operating period lifecycle">
           {steps.map((step) => {
             // A suspended plan has passed through "active" (there's no
@@ -378,20 +392,6 @@ export function EventPlanning() {
           {revision.status === "approved" && <button className="btn-primary" onClick={() => void revise("apply")}>Apply revision to active scope</button>}
           <button className="btn-sm" onClick={() => selectRevision("")}>Clear revision</button>
         </div>}
-      </div>
-
-      <div className="panel-header" style={{ marginTop: 24 }}>4. Planned operating resources</div>
-      <div className="panel-body">
-        <p className="panel-desc">Add the routes, geofences, and transit locations this operating period will manage. These are reusable Admin resources; edits do not change the active scope until a reviewed revision is applied.</p>
-        <FeedbackNote feedback={feedback.resources} />
-        <p className="muted">Ctrl/Cmd-click (or shift-click for a range) to select more than one before adding.</p>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <select multiple className="f" value={routeIds} onChange={(e) => setRouteIds(Array.from(e.target.selectedOptions, (option) => option.value))} aria-label="Event service route">{routes.map((row) => <option key={row.id} value={row.id}>{row.label}</option>)}</select><button className="btn-sm" disabled={routeIds.length === 0 || (!editable && !revision)} onClick={() => void linkMany("routes", routeIds, () => setRouteIds([]))}>Add routes to plan</button>
-          <select multiple className="f" value={geofenceIds} onChange={(e) => setGeofenceIds(Array.from(e.target.selectedOptions, (option) => option.value))} aria-label="Geofence">{geofences.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select><button className="btn-sm" disabled={geofenceIds.length === 0 || (!editable && !revision)} onClick={() => void linkMany("geofences", geofenceIds, () => setGeofenceIds([]))}>Add geofences to plan</button>
-          <select multiple className="f" value={locationIds} onChange={(e) => setLocationIds(Array.from(e.target.selectedOptions, (option) => option.value))} aria-label="Transit location">{locations.map((row) => <option key={row.id} value={row.id}>{row.label}</option>)}</select><button className="btn-sm" disabled={locationIds.length === 0 || (!editable && !revision)} onClick={() => void linkMany("locations", locationIds, () => setLocationIds([]))}>Add locations to plan</button>
-        </div>
-        <p className="muted">{counts.routes} routes · {counts.geofences} geofences · {counts.locations} locations linked.</p>
-        <table className="data"><thead><tr><th>Type</th><th>Resource</th><th>Action</th></tr></thead><tbody>{links.length > 0 ? links.map((link, index) => <tr key={`${link.kind}-${link.value}-${index}`}><td>{link.kind.slice(0, -1)}</td><td>{link.label}</td><td><button className="btn-sm danger" disabled={!editable && !revision} onClick={() => void unlink(link.kind, link.value, link.label)}>Remove</button></td></tr>) : <tr><td colSpan={3} className="empty-note">No resources linked yet. Add at least one route and geofence before submitting for review.</td></tr>}</tbody></table>
       </div>
     </>}
   </div>;
