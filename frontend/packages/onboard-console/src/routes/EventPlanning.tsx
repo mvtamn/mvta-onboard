@@ -247,6 +247,12 @@ export function EventPlanning() {
     catch (err) { setFeedbackFor("lifecycle", err instanceof ApiError ? err.message : "Could not create revision.", "error"); }
   }
 
+  async function prepareRepair() {
+    if (!plan) return;
+    try { const repaired = await api.repairEventServicePlan(plan.id); selectServicePlan(repaired.id); setFeedbackFor("lifecycle", "Draft repair created from the approved operating period. Add or correct resources, then submit it for review."); await load(); }
+    catch (err) { setFeedbackFor("lifecycle", err instanceof ApiError ? err.message : "Could not create a repair plan.", "error"); }
+  }
+
   async function revise(action: "submit-review" | "approve" | "apply" | "reject") {
     if (!plan || !revision) return;
     if (action === "apply" && !window.confirm("Apply this revision to the active scope? This changes what's live in Event AVL immediately.")) return;
@@ -359,6 +365,10 @@ export function EventPlanning() {
           <span className="event-lifecycle-secondary-label">Other actions:</span>
           <button className="btn-sm" onClick={() => void prepareRevision()}>Prepare revision</button>
           <button className="btn-sm danger" onClick={() => void transition("suspend")}>Suspend operations</button>
+        </div>}
+        {plan.status === "approved" && <div className="event-lifecycle-secondary">
+          <span className="event-lifecycle-secondary-label">Need to correct the approved scope?</span>
+          <button className="btn-sm" onClick={() => void prepareRepair()}>Modify plan</button>
         </div>}
         {revision && <div className="subcard event-revision-card">
           <div className="event-revision-card-header"><strong>Pending revision</strong><span className="pill-sm pill-accent">{displayStatus(revision.status)}</span></div>

@@ -2,6 +2,7 @@ import { app, type HttpRequest } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { requireRole, ADMIN_ROLES } from "../lib/auth";
 import { validateOperatingPeriod } from "../lib/eventOperatingPeriods";
+import { validateEventPlanReadiness, type EventPlanReadiness } from "../lib/eventPlanValidation";
 
 const tableFor = (kind: string, revision = false) => ({
   routes: revision ? "EventServicePlanRevisionRoutes" : "EventServicePlanRoutes",
@@ -26,6 +27,24 @@ async function captureScopeSnapshot(pool: Awaited<ReturnType<typeof getPool>>, p
   return (await request.query("INSERT INTO EventServicePlanScopeSnapshots(service_plan_id,revision_id,captured_by,routes_json,geofences_json,locations_json,rules_json) OUTPUT INSERTED.* VALUES(@plan,@revision,@by,@routes,@geofences,@locations,@rules)")).recordset[0];
 }
 
+async function readPlanReadiness(pool: Awaited<ReturnType<typeof getPool>>, planId: string): Promise<EventPlanReadiness> {
+  const request = pool.request().input("id", sql.UniqueIdentifier, planId);
+  const result = await request.query<EventPlanReadiness>(`
+    SELECT
+      (SELECT COUNT(DISTINCT spr.route_id) FROM EventServicePlanRoutes spr JOIN RouteClassification rc ON rc.route_id=spr.route_id WHERE spr.service_plan_id=@id AND rc.route_category='SpecialEvent' AND rc.is_active=1) AS routeCount,
+      (SELECT COUNT(DISTINCT spg.geofence_id) FROM EventServicePlanGeofences spg JOIN EventGeofences g ON g.id=spg.geofence_id WHERE spg.service_plan_id=@id AND g.is_active=1) AS geofenceCount,
+      (SELECT COUNT(DISTINCT spg.geofence_id) FROM EventServicePlanGeofences spg JOIN EventGeofences g ON g.id=spg.geofence_id JOIN EventGeofenceDirectionRules dr ON dr.geofence_id=spg.geofence_id WHERE spg.service_plan_id=@id AND g.is_active=1) AS geofencesWithRules,
+      CASE WHEN EXISTS (SELECT 1 FROM EventServicePlans WHERE id=@id AND ((start_at IS NOT NULL AND end_at IS NOT NULL AND start_at < end_at) OR (start_at IS NULL AND end_at IS NULL AND (start_date IS NULL OR end_date IS NULL OR start_date <= end_date)))) THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END AS validDates,
+      CASE WHEN EXISTS (
+        SELECT 1 FROM EventServicePlanRoutes candidate
+        JOIN EventServicePlanRoutes activeRoute ON activeRoute.route_id=candidate.route_id AND activeRoute.service_plan_id<>@id
+        JOIN EventServicePlans activePlan ON activePlan.id=activeRoute.service_plan_id AND activePlan.status='active'
+        WHERE candidate.service_plan_id=@id
+      ) THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END AS routeConflict
+  `);
+  return result.recordset[0] ?? { routeCount: 0, geofenceCount: 0, geofencesWithRules: 0, validDates: false, routeConflict: false };
+}
+
 async function authorized(req: HttpRequest) {
   return requireRole(req, ADMIN_ROLES);
 }
@@ -37,7 +56,23 @@ app.http("eventServicePlans", { route: "event-service-plans", methods: ["GET", "
     const plans = (await pool.request().query("SELECT * FROM EventServicePlans ORDER BY created_at DESC")).recordset;
     const links = (await pool.request().query("SELECT 'routes' kind,spr.service_plan_id,CONVERT(nvarchar(36),spr.route_id) value,CONCAT('Route ',spr.route_id,CASE WHEN rc.route_label IS NULL THEN '' ELSE CONCAT(' · ',rc.route_label) END) label FROM EventServicePlanRoutes spr LEFT JOIN RouteClassification rc ON rc.route_id=spr.route_id UNION ALL SELECT 'geofences',spg.service_plan_id,CONVERT(nvarchar(36),spg.geofence_id),g.name FROM EventServicePlanGeofences spg JOIN EventGeofences g ON g.id=spg.geofence_id UNION ALL SELECT 'locations',spl.service_plan_id,CONVERT(nvarchar(36),spl.location_id),l.name FROM EventServicePlanLocations spl JOIN EventLocations l ON l.id=spl.location_id")).recordset;
     const revisions = (await pool.request().query("SELECT * FROM EventServicePlanRevisions ORDER BY created_at DESC")).recordset;
-    return { status: 200, jsonBody: { plans: plans.map((plan) => ({ ...plan, links: links.filter((link) => link.service_plan_id === plan.id), revisions: revisions.filter((revision) => revision.service_plan_id === plan.id) })) } };
+    const snapshots = (await pool.request().query("SELECT service_plan_id,routes_json,geofences_json,locations_json,rules_json FROM (SELECT s.*,ROW_NUMBER() OVER (PARTITION BY service_plan_id ORDER BY captured_at DESC) snapshot_rank FROM EventServicePlanScopeSnapshots s) latest WHERE snapshot_rank=1")).recordset;
+    const snapshotFor = new Map(snapshots.map((snapshot) => [String(snapshot.service_plan_id), snapshot]));
+    const parse = (value: unknown): unknown[] => { try { return typeof value === "string" ? JSON.parse(value) as unknown[] : []; } catch { return []; } };
+    const publishedScope = (plan: typeof plans[number]) => {
+      if (plan.status !== "active") return null;
+      const snapshot = snapshotFor.get(String(plan.id));
+      if (!snapshot) return null;
+      const geofences = parse(snapshot.geofences_json) as Record<string, unknown>[];
+      const locations = parse(snapshot.locations_json) as Record<string, unknown>[];
+      const rules = parse(snapshot.rules_json) as Record<string, unknown>[];
+      return {
+        routes: parse(snapshot.routes_json) as Record<string, unknown>[],
+        geofences: geofences.map((row) => ({ ...row, id: row.geofence_id, rules: rules.filter((rule) => rule.geofence_id === row.geofence_id) })),
+        locations: locations.map((row) => ({ ...row, id: row.location_id })),
+      };
+    };
+    return { status: 200, jsonBody: { plans: plans.map((plan) => ({ ...plan, links: links.filter((link) => link.service_plan_id === plan.id), revisions: revisions.filter((revision) => revision.service_plan_id === plan.id), published_scope: publishedScope(plan) })) } };
   }
   const body = await req.json() as Record<string, unknown>; if (typeof body.name !== "string" || !body.name.trim()) return { status: 400, jsonBody: { error: "name is required" } };
   const hasStart = body.start_at !== undefined && body.start_at !== null;
@@ -110,24 +145,26 @@ app.http("eventServicePlanAction", { route: "event-service-plans/{id}/{action}",
     await pool.request().input("revision", sql.UniqueIdentifier, revision.id).input("plan", sql.UniqueIdentifier, id).query("INSERT INTO EventServicePlanRevisionRoutes(revision_id,route_id) SELECT @revision,route_id FROM EventServicePlanRoutes WHERE service_plan_id=@plan; INSERT INTO EventServicePlanRevisionGeofences(revision_id,geofence_id) SELECT @revision,geofence_id FROM EventServicePlanGeofences WHERE service_plan_id=@plan; INSERT INTO EventServicePlanRevisionLocations(revision_id,location_id) SELECT @revision,location_id FROM EventServicePlanLocations WHERE service_plan_id=@plan;");
     return { status: 201, jsonBody: { id: revision.id, service_plan_id: id, status: "draft" } };
   }
+  if (action === "repair") {
+    const transaction = pool.transaction(); await transaction.begin();
+    try {
+      const source = (await transaction.request().input("id", sql.UniqueIdentifier, id).query<{ event_id: string; name: string; start_at: Date | null; end_at: Date | null }>("SELECT event_id,name,start_at,end_at FROM EventServicePlans WHERE id=@id AND status='approved'")).recordset[0];
+      if (!source) { await transaction.rollback(); return { status: 409, jsonBody: { error: "Only an approved operating period can be repaired" } }; }
+      const created = (await transaction.request().input("event", sql.UniqueIdentifier, source.event_id).input("name", sql.NVarChar, `${source.name} · Repair`).input("start", sql.DateTime2, source.start_at).input("end", sql.DateTime2, source.end_at).input("by", sql.NVarChar, auth.principal.userDetails ?? "system").query("INSERT INTO EventServicePlans(event_id,name,status,start_at,end_at,created_by,updated_by) OUTPUT INSERTED.* VALUES(@event,@name,'draft',@start,@end,@by,@by)")).recordset[0];
+      await transaction.request().input("source", sql.UniqueIdentifier, id).input("target", sql.UniqueIdentifier, created.id).query("INSERT INTO EventServicePlanRoutes SELECT @target,route_id FROM EventServicePlanRoutes WHERE service_plan_id=@source; INSERT INTO EventServicePlanGeofences SELECT @target,geofence_id FROM EventServicePlanGeofences WHERE service_plan_id=@source; INSERT INTO EventServicePlanLocations SELECT @target,location_id FROM EventServicePlanLocations WHERE service_plan_id=@source");
+      await transaction.commit();
+      return { status: 201, jsonBody: created };
+    } catch (error) { await transaction.rollback(); throw error; }
+  }
   if (["submit-review", "approve", "advance", "complete", "suspend"].includes(action)) {
     const transitions: Record<string, { from: string; to: string }> = { "submit-review": { from: "draft", to: "review" }, approve: { from: "review", to: "approved" }, advance: { from: "approved", to: "active" }, complete: { from: "active", to: "completed" }, suspend: { from: "active", to: "suspended" } };
     const transition = transitions[action]; const r = pool.request(); r.input("id", sql.UniqueIdentifier, id); r.input("by", sql.NVarChar, auth.principal.userDetails ?? "system");
+    if (action === "approve" || action === "advance") {
+      const readiness = await readPlanReadiness(pool, id);
+      const validation = validateEventPlanReadiness(readiness);
+      if (!validation.valid) return { status: 409, jsonBody: { error: validation.error } };
+    }
     if (action === "advance") {
-      const counts = (await r.query(`
-        SELECT
-          (SELECT COUNT(*) FROM EventServicePlanRoutes spr JOIN RouteClassification rc ON rc.route_id=spr.route_id WHERE spr.service_plan_id=@id AND rc.route_category='SpecialEvent' AND rc.is_active=1) routes,
-          (SELECT COUNT(*) FROM EventServicePlanGeofences spg JOIN EventGeofences g ON g.id=spg.geofence_id AND g.is_active=1 JOIN EventGeofenceDirectionRules dr ON dr.geofence_id=g.id WHERE spg.service_plan_id=@id) geofences,
-          CASE WHEN EXISTS (SELECT 1 FROM EventServicePlans WHERE id=@id AND ((start_at IS NOT NULL AND end_at IS NOT NULL AND start_at < end_at) OR (start_at IS NULL AND end_at IS NULL AND (start_date IS NULL OR end_date IS NULL OR start_date <= end_date)))) THEN 1 ELSE 0 END valid_dates,
-          CASE WHEN EXISTS (
-            SELECT 1 FROM EventServicePlanRoutes candidate
-            JOIN EventServicePlans candidate_plan ON candidate_plan.id=candidate.service_plan_id
-            JOIN EventServicePlanRoutes active_route ON active_route.route_id=candidate.route_id AND active_route.service_plan_id<>@id
-            JOIN EventServicePlans active_plan ON active_plan.id=active_route.service_plan_id AND active_plan.status='active' AND active_plan.event_id<>candidate_plan.event_id
-            WHERE candidate.service_plan_id=@id
-          ) THEN 1 ELSE 0 END route_conflict
-      `)).recordset[0] as { routes: number; geofences: number; valid_dates: number; route_conflict: number };
-      if (!counts || counts.routes < 1 || counts.geofences < 1 || counts.valid_dates !== 1 || counts.route_conflict === 1) return { status: 409, jsonBody: { error: counts?.route_conflict === 1 ? "A route is already covered by another active Event" : "An active plan must include an active SpecialEvent route, an active geofence with a direction rule, and valid dates" } };
       await captureScopeSnapshot(pool, id, auth.principal.userDetails ?? "system");
     }
     const out = await r.query("UPDATE EventServicePlans SET status='" + transition.to + "',updated_by=@by,updated_at=SYSUTCDATETIME() OUTPUT INSERTED.* WHERE id=@id AND status='" + transition.from + "'"); return out.recordset.length ? { status: 200, jsonBody: out.recordset[0] } : { status: 409, jsonBody: { error: `Plan must be ${transition.from} before it can be ${transition.to}` } };
