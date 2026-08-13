@@ -271,6 +271,39 @@ body {
 .event-empty-state strong { display: block; color: var(--text); font-size: 14px; }
 .event-empty-state p { margin: 4px 0 0; color: var(--text-dim); line-height: 1.45; }
 .event-planning-empty-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.event-scope-builder { margin-top: 2px; padding: 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-bg); box-shadow: 0 3px 14px rgba(23,61,49,.07); }
+.event-scope-builder-heading { display: flex; align-items: end; justify-content: space-between; gap: 18px; padding-bottom: 14px; border-bottom: 1px solid var(--border-soft); }
+.event-scope-builder-heading h2 { margin: 4px 0 0; color: var(--text); font-size: 18px; }
+.event-scope-builder-heading p { max-width: 430px; margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.45; }
+.event-scope-builder-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; padding-top: 18px; }
+.event-scope-column { min-width: 0; }
+.event-scope-column h3 { margin: 0 0 8px; color: var(--text); font-size: 15px; }
+.event-scope-divider { margin: 18px 0; border-top: 1px solid var(--border-soft); }
+.event-scope-actions { margin-top: 10px; }
+.event-resource-list { display: grid; gap: 7px; }
+.event-resource-card { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-bg); }
+.event-resource-card.selected { border-color: var(--brand-green); background: var(--success-bg); }
+.event-resource-card:not(.selected) { grid-template-columns: minmax(0, 1fr) auto; }
+.event-resource-card strong, .event-resource-card small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.event-resource-card strong { color: var(--text); font-size: 12px; }
+.event-resource-card small { margin-top: 3px; color: var(--text-muted); font-size: 11px; }
+.event-resource-status { padding: 4px 7px; border-radius: 12px; background: var(--pill-success-bg); color: var(--pill-success-fg); font-size: 10px; font-weight: 800; }
+.event-resource-status.reference { background: var(--surface-alt-bg); color: var(--text-muted); }
+.event-resource-empty { margin: 0; padding: 11px; border: 1px dashed var(--border-strong); border-radius: 8px; color: var(--text-muted); font-size: 12px; }
+.event-resource-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; margin-top: 12px; }
+.event-resource-controls select { min-height: 62px; }
+.event-resource-counts { margin: 10px 0 0; }
+.event-resource-canvas { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 12px; }
+.event-selected-resource { display: grid; gap: 6px; margin: 0; padding: 12px; }
+.event-selected-resource > strong { font-size: 13px; }
+.event-selected-resource > .muted { margin: 0; }
+.event-selected-resource select { min-height: 70px; }
+.event-linked-resource-list { display: grid; gap: 5px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-soft); }
+.event-linked-resource-list > strong { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
+.event-linked-resource { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; color: var(--text); font-size: 12px; }
+.event-activation-gate { display: flex; align-items: baseline; gap: 10px; margin-top: 16px; padding: 11px 12px; border-left: 3px solid var(--brand-green); border-radius: 7px; background: var(--success-bg); font-size: 12px; }
+.event-activation-gate strong { color: var(--text); white-space: nowrap; }
+.event-activation-gate span { color: var(--text-muted); }
 .event-configuration-section { scroll-margin-top: 20px; }
 .event-configuration-section:focus { outline: 3px solid rgba(0, 85, 61, .2); outline-offset: 5px; }
 .event-configuration-intro { display: flex; align-items: baseline; gap: 10px; margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-alt-bg); font-size: 12px; }
@@ -320,7 +353,7 @@ body {
 /* 768px, not 760px - 760px left the common 768px tablet width one row
    short of the stacking breakpoint, clipping the "Ends" datetime input
    against the still-two-column .event-period-form. */
-@media (max-width: 768px) { .event-planning-setup { grid-template-columns: 1fr; } .event-period-form { grid-template-columns: 1fr; } .event-empty-state, .event-next-action { align-items: flex-start; flex-direction: column; } }
+@media (max-width: 768px) { .event-planning-setup, .event-scope-builder-grid, .event-resource-canvas { grid-template-columns: 1fr; } .event-period-form { grid-template-columns: 1fr; } .event-empty-state, .event-next-action { align-items: flex-start; flex-direction: column; } .event-scope-builder-heading, .event-activation-gate { align-items: flex-start; flex-direction: column; gap: 6px; } }
 /* Below 700px the fixed 4-column grid squeezes each stage into ~1/4 of the
    viewport width - not enough room for "Reusable resources" etc. at any
    font size, so labels were rendering as 1-2 visible characters. Scrolling

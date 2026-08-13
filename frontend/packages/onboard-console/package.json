@@ -1,6 +1,6 @@
 {
   "name": "@mvta/onboard-console",
-  "version": "1.5.29",
+  "version": "1.5.31",
   "private": true,
   "type": "module",
   "scripts": {

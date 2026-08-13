@@ -18,6 +18,19 @@ badge and footer read this version at build time - see `vite.config.ts`).
   with the progress rail and next action reflecting the selected operating
   period's lifecycle and no duplicate empty-state prompt.
 
+## [1.5.30] - 2026-08-13
+
+- **Adopt Event Planning Variant B's scope builder.** Plan details and
+  resources now share one workspace with resource cards, add/remove controls,
+  readiness counts, and a visible activation gate before lifecycle actions.
+
+## [1.5.31] - 2026-08-13
+
+- **Adopt Event Planning Variant E's guided scope canvas.** Operators now
+  choose Routes, Geofences, or Transit locations as the primary resource
+  workflow, edit one selected resource type at a time, and see the resulting
+  Event AVL handoff scope before activation.
+
 ## [1.5.27] - 2026-08-12
 
 - **Adopt the Event AVL command-center layout.** The live map now keeps the

@@ -175,7 +175,7 @@ describe("EventPlanning", () => {
       vi.mocked(window.confirm).mockReturnValue(true);
       mockApiData({ events: [makeEvent()], plans: [makePlan({ status: "draft", links: [linkedRoute] })] });
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
-      const row = (await screen.findByText("Route 12")).closest("tr")!;
+      const row = (await screen.findByText("Route 12")).closest<HTMLElement>(".event-linked-resource")!;
       const removeButton = within(row).getByRole("button", { name: "Remove" });
       expect(removeButton).toBeEnabled();
       await userEvent.click(removeButton);
@@ -187,7 +187,7 @@ describe("EventPlanning", () => {
       vi.mocked(window.confirm).mockReturnValue(false);
       mockApiData({ events: [makeEvent()], plans: [makePlan({ status: "draft", links: [linkedRoute] })] });
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
-      const row = (await screen.findByText("Route 12")).closest("tr")!;
+      const row = (await screen.findByText("Route 12")).closest<HTMLElement>(".event-linked-resource")!;
       await userEvent.click(within(row).getByRole("button", { name: "Remove" }));
       expect(api.unlinkEventServicePlan).not.toHaveBeenCalled();
     });
@@ -195,7 +195,7 @@ describe("EventPlanning", () => {
     it("disables Remove for an active plan with no open revision", async () => {
       mockApiData({ events: [makeEvent()], plans: [makePlan({ status: "active", links: [linkedRoute] })] });
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
-      const row = (await screen.findByText("Route 12")).closest("tr")!;
+      const row = (await screen.findByText("Route 12")).closest<HTMLElement>(".event-linked-resource")!;
       expect(within(row).getByRole("button", { name: "Remove" })).toBeDisabled();
     });
 
@@ -209,7 +209,7 @@ describe("EventPlanning", () => {
         })],
       });
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
-      const row = (await screen.findByText("Route 12")).closest("tr")!;
+      const row = (await screen.findByText("Route 12")).closest<HTMLElement>(".event-linked-resource")!;
       const removeButton = within(row).getByRole("button", { name: "Remove" });
       expect(removeButton).toBeEnabled();
       await userEvent.click(removeButton);
@@ -267,7 +267,7 @@ describe("EventPlanning", () => {
       vi.mocked(api.linkEventServicePlan).mockResolvedValue({ ok: true });
       const routeSelect = await setUpEditablePlanWithRoutes();
       await userEvent.selectOptions(routeSelect, ["12", "13"]);
-      await userEvent.click(screen.getByRole("button", { name: "Add routes to plan" }));
+      await userEvent.click(screen.getByRole("button", { name: "Add selected routes" }));
       expect(api.linkEventServicePlan).toHaveBeenCalledWith("plan1", "routes", 12, undefined);
       expect(api.linkEventServicePlan).toHaveBeenCalledWith("plan1", "routes", 13, undefined);
       expect(api.linkEventServicePlan).toHaveBeenCalledTimes(2);
@@ -279,7 +279,7 @@ describe("EventPlanning", () => {
         value === 13 ? Promise.reject(new ApiError(409, "Route already covered by another active Event")) : Promise.resolve({ ok: true }));
       const routeSelect = await setUpEditablePlanWithRoutes();
       await userEvent.selectOptions(routeSelect, ["12", "13"]);
-      await userEvent.click(screen.getByRole("button", { name: "Add routes to plan" }));
+      await userEvent.click(screen.getByRole("button", { name: "Add selected routes" }));
       const feedback = await screen.findByText(/1 failed/);
       expect(feedback).toHaveTextContent(/1 route added/);
     });
@@ -293,9 +293,22 @@ describe("EventPlanning", () => {
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
       const routeSelect = await screen.findByRole("listbox", { name: "Event service route" });
       await userEvent.selectOptions(routeSelect, ["12"]);
-      await userEvent.click(screen.getByRole("button", { name: "Add routes to plan" }));
+      await userEvent.click(screen.getByRole("button", { name: "Add selected routes" }));
       expect(api.linkEventServicePlan).not.toHaveBeenCalled();
       expect(await screen.findByText(/already linked/)).toBeInTheDocument();
+    });
+
+    it("switches the guided resource canvas to the selected resource type", async () => {
+      mockApiData({
+        events: [makeEvent()],
+        plans: [makePlan({ status: "draft" })],
+        geofences: [makeGeofence()],
+      });
+      renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
+      await userEvent.click(await screen.findByRole("button", { name: "Add geofence" }));
+      expect(screen.getByRole("listbox", { name: "Geofence" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Add selected geofences" })).toBeDisabled();
+      expect(screen.getByText("Fairgrounds Gate")).toBeInTheDocument();
     });
   });
 
@@ -376,17 +389,16 @@ describe("EventPlanning", () => {
   });
 
   describe("operating-period workflow order", () => {
-    it("places planned resources before review and activation", async () => {
+    it("places the scope builder before review and activation", async () => {
       mockApiData({ events: [makeEvent()], plans: [makePlan()] });
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
-      const page = await screen.findByText("1. Choose an Event");
-      const headings = Array.from(page.closest(".event-planning")!.querySelectorAll(".panel-header"), (heading) => heading.textContent);
-      expect(headings).toEqual([
-        "1. Choose an Event",
-        "2. Define operating period",
-        "3. Planned operating resources",
-        "4. Review and activate operating period",
-      ]);
+      const page = await screen.findByText("Operating scope builder");
+      const workspace = page.closest(".event-planning")!;
+      expect(workspace.querySelector("#planned-operating-resources")).not.toBeNull();
+      expect(workspace.querySelector("#operating-period-lifecycle")).not.toBeNull();
+      expect(workspace.querySelector("#planned-operating-resources")!.compareDocumentPosition(workspace.querySelector("#operating-period-lifecycle")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(screen.getByText("Scope resources")).toBeInTheDocument();
+      expect(screen.getByText("Activation gate")).toBeInTheDocument();
     });
   });
 });
