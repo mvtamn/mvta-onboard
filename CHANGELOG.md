@@ -11,6 +11,13 @@ badge and footer read this version at build time - see `vite.config.ts`).
   guides the operator to the exact Event, operating period, resource, review,
   approval, activation, or Event AVL step required next.
 
+## [1.5.29] - 2026-08-12
+
+- **Connect the Event workspace workflow.** Event Planning now presents one
+  continuous four-step path from Plan through Configure and Activate to Monitor,
+  with the progress rail and next action reflecting the selected operating
+  period's lifecycle and no duplicate empty-state prompt.
+
 ## [1.5.27] - 2026-08-12
 
 - **Adopt the Event AVL command-center layout.** The live map now keeps the

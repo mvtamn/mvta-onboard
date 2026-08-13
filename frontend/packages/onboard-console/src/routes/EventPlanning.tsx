@@ -261,6 +261,13 @@ export function EventPlanning() {
   }
 
   const nextAction = plan?.status === "draft" ? "submit-review" : plan?.status === "review" ? "approve" : plan?.status === "approved" ? "advance" : plan?.status === "active" ? "complete" : null;
+  const activeStage = !selectedEventId || !plan
+    ? "plan"
+    : plan.status === "draft"
+      ? "configure"
+      : plan.status === "review" || plan.status === "approved"
+        ? "activate"
+        : "monitor";
   const nextPlanningAction = !selectedEventId
     ? { title: "Select an Event", detail: "Choose the Event this operating period belongs to.", target: "event-select" }
     : !plan
@@ -284,7 +291,7 @@ export function EventPlanning() {
   };
 
   return <div className="event-planning">
-    <EventWorkspaceNav eventName={event?.name} planName={plan?.name} planStatus={plan?.status} activeStage={plan?.status === "approved" || plan?.status === "active" ? "activate" : "plan"} />
+    <EventWorkspaceNav eventName={event?.name} planName={plan?.name} planStatus={plan?.status} activeStage={activeStage} />
     <p className="event-workspace-next" role="status">{plan?.status === "active" ? "This operating scope is active. Monitor it in Event AVL." : selectedEventId ? "Define the operating period, add its resources, then activate it for Event AVL." : "Start by choosing an Event, then define its operating period."}</p>
     <div className="event-next-action" role="status" aria-label="Next planning action">
       <div><span className="event-next-action-label">Next action</span><strong>{nextPlanningAction.title}</strong><p>{nextPlanningAction.detail}</p></div>
@@ -297,19 +304,6 @@ export function EventPlanning() {
         : <button className="btn-sm" onClick={() => void load()}>Try again</button>}
     </div>}
     {loading && <p className="muted" role="status">Loading Events, operating periods, and reusable resources…</p>}
-    {/* One banner pattern for both "not started yet" states (never both true
-        at once), positioned once ahead of the panels it's guiding the user
-        through, instead of a second near-identical block appearing lower
-        on the page once the first goal is met. */}
-    {!loading && !loadError && !plan && <div className="event-empty-state" role="status" aria-label="Get started">
-      {!selectedEventId ? <>
-        <div><strong>Start by selecting an Event</strong><p>Everything else on this page belongs to the selected Event. Choose an existing Event, or create one if this is a new service operation.</p></div>
-        <button className="btn-sm" onClick={() => { if (events.length > 0) document.getElementById("event-select")?.focus(); else { setShowCreateEvent(true); window.requestAnimationFrame(() => document.getElementById("new-event-name")?.focus()); } }}>{events.length > 0 ? "Select an Event" : "Create an Event"}</button>
-      </> : <>
-        <div><strong>Choose an operating period</strong><p>{event?.name ?? "This Event"} is selected. Create a new operating period or select an existing one to continue.</p></div>
-        <div className="event-planning-empty-actions"><button className="btn-sm" onClick={() => document.getElementById("operating-period-name")?.focus()}>Start operating period</button><button className="btn-sm" onClick={() => document.getElementById("operating-period-select")?.focus()}>Select existing period</button></div>
-      </>}
-    </div>}
     <div className="event-planning-setup">
     <div className="event-planning-setup-block">
     <div className="panel-header">1. Choose an Event</div>

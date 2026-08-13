@@ -360,18 +360,18 @@ describe("EventPlanning", () => {
     });
   });
 
-  describe("one consolidated empty-state banner", () => {
-    it("uses the same banner pattern before an Event is chosen and before a period is chosen", async () => {
+  describe("continuous planning workflow", () => {
+    it("uses one next-action panel before an Event is chosen and before a period is chosen", async () => {
       mockApiData({ events: [makeEvent()] });
       renderEventPlanning();
-      const noEventBanner = await screen.findByRole("status", { name: "Get started" });
-      expect(noEventBanner).toHaveTextContent(/selecting an Event/i);
-      expect(noEventBanner.className).toContain("event-empty-state");
+      const noEventBanner = await screen.findByText("Select an Event", { selector: "strong" });
+      expect(noEventBanner.closest(".event-next-action")).toHaveTextContent(/choose the Event/i);
+      expect(noEventBanner.closest(".event-next-action")).not.toBeNull();
 
       await userEvent.selectOptions(screen.getByRole("combobox", { name: "Selected Event" }), "evt1");
-      const noPeriodBanner = await screen.findByRole("status", { name: "Get started" });
-      expect(noPeriodBanner).toHaveTextContent(/operating period/i);
-      expect(noPeriodBanner.className).toContain("event-empty-state");
+      const noPeriodBanner = await screen.findByText("Create an operating period", { selector: "strong" });
+      expect(noPeriodBanner.closest(".event-next-action")).toHaveTextContent(/operating period/i);
+      expect(noPeriodBanner.closest(".event-next-action")).not.toBeNull();
     });
   });
 
