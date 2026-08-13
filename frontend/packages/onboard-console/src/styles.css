@@ -255,6 +255,10 @@ body {
    link is actually in. */
 .event-workspace-stages small { color: inherit; font-size: 11px; }
 .event-workspace-next { margin: 0 0 14px; color: var(--text-muted); font-size: 12px; }
+.event-next-action { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 16px; padding: 14px 16px; border-left: 4px solid var(--brand-green); border-radius: 9px; background: var(--success-bg); }
+.event-next-action-label { display: block; margin-bottom: 3px; color: var(--success-text); font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.event-next-action strong { display: block; color: var(--text); font-size: 15px; }
+.event-next-action p { margin: 4px 0 0; color: var(--text-muted); line-height: 1.4; }
 .event-inline-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; padding: 10px 12px; border: 1px solid #d9aaaa; border-radius: 8px; color: #8a2e2e; background: #fff0f0; font-size: 12px; }
 /* One pattern for both "not started yet" states (no Event chosen yet, or an
    Event chosen but no operating period) - they never render at once, so
@@ -313,7 +317,7 @@ body {
 /* 768px, not 760px - 760px left the common 768px tablet width one row
    short of the stacking breakpoint, clipping the "Ends" datetime input
    against the still-two-column .event-period-form. */
-@media (max-width: 768px) { .event-planning-setup { grid-template-columns: 1fr; } .event-period-form { grid-template-columns: 1fr; } .event-empty-state { align-items: flex-start; flex-direction: column; } }
+@media (max-width: 768px) { .event-planning-setup { grid-template-columns: 1fr; } .event-period-form { grid-template-columns: 1fr; } .event-empty-state, .event-next-action { align-items: flex-start; flex-direction: column; } }
 /* Below 700px the fixed 4-column grid squeezes each stage into ~1/4 of the
    viewport width - not enough room for "Reusable resources" etc. at any
    font size, so labels were rendering as 1-2 visible characters. Scrolling

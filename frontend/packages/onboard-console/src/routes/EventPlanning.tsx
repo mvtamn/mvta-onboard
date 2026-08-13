@@ -261,10 +261,35 @@ export function EventPlanning() {
   }
 
   const nextAction = plan?.status === "draft" ? "submit-review" : plan?.status === "review" ? "approve" : plan?.status === "approved" ? "advance" : plan?.status === "active" ? "complete" : null;
+  const nextPlanningAction = !selectedEventId
+    ? { title: "Select an Event", detail: "Choose the Event this operating period belongs to.", target: "event-select" }
+    : !plan
+      ? { title: "Create an operating period", detail: "Set the dates that define when this Event service will run.", target: "operating-period-name" }
+      : plan.status === "draft" && !readyToActivate
+        ? { title: `Complete activation checklist${readiness.find((item) => !item.ready) ? `: ${readiness.find((item) => !item.ready)?.label}` : ""}`, detail: "Add the missing operational resource or rule before submitting this period for review.", target: "planned-operating-resources" }
+        : plan.status === "draft"
+          ? { title: "Submit for review", detail: "The operating scope is complete and ready for review.", target: "operating-period-lifecycle" }
+          : plan.status === "review"
+            ? { title: "Approve operating period", detail: "Review the completed scope, then approve it for activation.", target: "operating-period-lifecycle" }
+            : plan.status === "approved"
+              ? { title: "Activate for Event AVL", detail: "Publish this validated scope so Event AVL and geofence alerts can use it.", target: "operating-period-lifecycle" }
+              : plan.status === "active"
+                ? { title: "Monitor in Event AVL", detail: "This operating period is live and ready for vehicle monitoring.", target: "event-avl-link" }
+                : { title: "Operating period completed", detail: "This period is no longer active.", target: "operating-period-lifecycle" };
+  const focusNextPlanningAction = () => {
+    if (nextPlanningAction.target === "event-avl-link") return;
+    const target = document.getElementById(nextPlanningAction.target);
+    target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (target instanceof HTMLElement && target.matches("input, select, button")) target.focus();
+  };
 
   return <div className="event-planning">
     <EventWorkspaceNav eventName={event?.name} planName={plan?.name} planStatus={plan?.status} activeStage={plan?.status === "approved" || plan?.status === "active" ? "activate" : "plan"} />
     <p className="event-workspace-next" role="status">{plan?.status === "active" ? "This operating scope is active. Monitor it in Event AVL." : selectedEventId ? "Define the operating period, add its resources, then activate it for Event AVL." : "Start by choosing an Event, then define its operating period."}</p>
+    <div className="event-next-action" role="status" aria-label="Next planning action">
+      <div><span className="event-next-action-label">Next action</span><strong>{nextPlanningAction.title}</strong><p>{nextPlanningAction.detail}</p></div>
+      {nextPlanningAction.target === "event-avl-link" ? <Link id="event-avl-link" className="btn-primary" to={`/event-monitoring?event=${encodeURIComponent(selectedEventId)}${plan ? `&plan=${encodeURIComponent(plan.id)}` : ""}`}>Open Event AVL</Link> : <button className="btn-primary" onClick={focusNextPlanningAction}>{nextPlanningAction.title}</button>}
+    </div>
     {loadError && <div className="event-inline-error" role="alert">
       <span>{loadError}{sessionExpired ? " Sign in again to continue." : ""}</span>
       {sessionExpired
@@ -342,7 +367,7 @@ export function EventPlanning() {
 
     </div>
     {plan && <>
-      <div className="panel-header" style={{ marginTop: 24 }}>3. Planned operating resources</div>
+      <div id="planned-operating-resources" className="panel-header" style={{ marginTop: 24 }}>3. Planned operating resources</div>
       <div className="panel-body">
         <p className="panel-desc">Add the routes, geofences, and transit locations this operating period will manage. These reusable Admin resources become the scope reviewed below; edits do not change the active scope until a reviewed revision is applied.</p>
         <FeedbackNote feedback={feedback.resources} />
@@ -356,7 +381,7 @@ export function EventPlanning() {
         <table className="data"><thead><tr><th>Type</th><th>Resource</th><th>Action</th></tr></thead><tbody>{links.length > 0 ? links.map((link, index) => <tr key={`${link.kind}-${link.value}-${index}`}><td>{link.kind.slice(0, -1)}</td><td>{link.label}</td><td><button className="btn-sm danger" disabled={!editable && !revision} onClick={() => void unlink(link.kind, link.value, link.label)}>Remove</button></td></tr>) : <tr><td colSpan={3} className="empty-note">No resources linked yet. Add at least one route and geofence before submitting for review.</td></tr>}</tbody></table>
       </div>
 
-      <div className="panel-header" style={{ marginTop: 24 }}>4. Review and activate operating period</div>
+      <div id="operating-period-lifecycle" className="panel-header" style={{ marginTop: 24 }}>4. Review and activate operating period</div>
       <div className="panel-body">
         <p className="panel-desc">Move this operating period from draft through review and approval. Activation publishes its validated scope for Event AVL; completion ends monitoring. Changes to an active period require a reviewed revision.</p>
         <ol className="event-plan-steps" aria-label="Operating period lifecycle">

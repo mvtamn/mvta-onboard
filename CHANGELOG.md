@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.28] - 2026-08-12
+
+- **Make Event Planning action-oriented.** A prominent next-action panel now
+  guides the operator to the exact Event, operating period, resource, review,
+  approval, activation, or Event AVL step required next.
+
 ## [1.5.27] - 2026-08-12
 
 - **Adopt the Event AVL command-center layout.** The live map now keeps the
