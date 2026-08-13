@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   type SuggestedAlert,
   CATEGORY_LABELS,
@@ -34,6 +34,7 @@ export function SuggestedAlerts({ onChanged }: { onChanged?: () => void }) {
   const focusId = searchParams.get("focus");
   const focusRow = useRef<HTMLTableRowElement | null>(null);
   const canReview = roles.some((r) => r === "OCC.Publisher" || r === "OCC.Admin");
+  const canSeeProcedure = roles.some((r) => r === "OCC.Viewer" || r === "OCC.Publisher" || r === "OCC.Admin");
 
   const [alerts, setAlerts] = useState<SuggestedAlert[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -106,6 +107,7 @@ export function SuggestedAlerts({ onChanged }: { onChanged?: () => void }) {
                 <th>Severity</th>
                 <th>Status</th>
                 <th>Detected</th>
+                {canSeeProcedure ? <th>Procedure</th> : null}
                 {canReview ? <th>Actions</th> : null}
               </tr>
             </thead>
@@ -130,6 +132,11 @@ export function SuggestedAlerts({ onChanged }: { onChanged?: () => void }) {
                     </span>
                   </td>
                   <td className="td-dim">{timeAgo(a.created_at)}</td>
+                  {canSeeProcedure ? <td>
+                    <Link className="btn-sm" to={`/occ?source=Suggested%20Alert&source_id=${encodeURIComponent(a.alert_id)}&q=${encodeURIComponent(a.category)}`}>
+                      Find Procedure
+                    </Link>
+                  </td> : null}
                   {canReview ? (
                     <td>
                       {a.status === "pending" ? (

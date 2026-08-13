@@ -50,6 +50,7 @@ import {
 } from "./context/FixedRouteRefreshContext.js";
 
 const ADMIN = ["OCC.Admin"] as const;
+const OCC_TOOLS = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin"] as const;
 const EVENT_AVL = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin"] as const;
 const COMPLIANCE = ["OCC.Compliance", "OCC.Admin"] as const;
 // Read-only for OCC.Viewer, full create/edit/delete for Publisher/Admin (the
@@ -151,6 +152,7 @@ export function App() {
   const { account, roles, signIn, signOut } = useAuth();
   const { theme, toggle } = useTheme();
   const isAdmin = roles.includes("OCC.Admin");
+  const canSeeOccTools = roles.some((role) => (OCC_TOOLS as readonly string[]).includes(role));
   const isCompliance = isAdmin || roles.includes("OCC.Compliance");
   const canSeeDetours = roles.some((r) => (DETOURS as readonly string[]).includes(r));
   const canSeeEventAvl = roles.some((r) => (EVENT_AVL as readonly string[]).includes(r));
@@ -220,7 +222,7 @@ export function App() {
                 {canSeeDetours && <NavLink to="/detour-reports"><IconClock />Detour Reports</NavLink>}
                 {canSeeEventAvl && <NavLink to="/event-planning"><IconBus />Event Planning</NavLink>}
                 {canSeeEventAvl && <NavLink to="/event-monitoring"><IconBus />Event AVL</NavLink>}
-                {isAdmin && <NavLink to="/occ"><IconWrench />OCC Tools</NavLink>}
+              {canSeeOccTools && <NavLink to="/occ"><IconWrench />OCC Tools</NavLink>}
               </div> : null}
             </section>
           )}
@@ -362,7 +364,7 @@ export function App() {
               <Route
                 path="/occ/*"
                 element={
-                  <RequireRole allowed={[...ADMIN]}>
+                  <RequireRole allowed={[...OCC_TOOLS]}>
                     <OccTools />
                   </RequireRole>
                 }

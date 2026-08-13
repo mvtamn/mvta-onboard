@@ -83,3 +83,29 @@
 .dmx .qrg-subsection table.data th:first-child, .dmx .qrg-subsection table.data th:last-child { border-radius: 0; }
 .dmx .qrg-subsection table.data td { vertical-align: top; }
 .dmx .qrg-ref-cell { text-align: center; white-space: nowrap; }
+
+.dmx-eyebrow { display: block; color: var(--brand-green); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 6px; }
+.dmx-context { border-left: 4px solid var(--brand-green); padding: 8px 12px; background: var(--surface-alt-bg); }
+.dmx-matches { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-top: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-alt-bg); color: var(--text-dim); font-size: 12px; }
+.dmx-matches strong { color: var(--text); }
+.dmx-matches span { padding-left: 12px; border-left: 1px solid var(--border); }
+.dmx-filter-group { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; }
+.dmx-filter-label { color: var(--text-dim); font-size: 11px; font-weight: 700; margin-right: 3px; }
+.dmx-filter { border: 1px solid var(--border-strong); border-radius: 999px; background: var(--surface-bg); color: var(--text-dim); cursor: pointer; font: inherit; font-size: 11px; padding: 5px 10px; }
+.dmx-filter[data-active="true"] { background: var(--brand-green); border-color: var(--brand-green); color: #fff; }
+.dmx-active-filters { display: flex; align-items: center; gap: 8px; color: var(--text-dim); font-size: 12px; }
+.dmx-state { border-radius: 6px; margin-top: 16px; padding: 11px 14px; font-size: 13px; }
+.dmx-state-warning { background: var(--pill-warning-bg); color: var(--text); }
+.dmx-state-error { background: var(--pill-danger-bg); color: var(--danger-text); }
+.dmx-state-info { margin: 0 0 14px; background: var(--surface-alt-bg); color: var(--text-dim); }
+.dmx-unavailable { color: var(--text-dim); font-size: 11px; }
+.action-list { margin: 0; padding-left: 20px; line-height: 1.5; }
+.dmx .row.preview, .dmx .row.needs-review, .dmx .row.stale, .dmx .row.partial { border-left-color: var(--severity-restricting); }
+.dmx .row.unavailable, .dmx .row.retired { border-left-color: var(--border-strong); opacity: .82; }
+
+@media (max-width: 760px) {
+  .dmx .row { grid-template-columns: 1fr; }
+  .dmx .rowaction { align-items: flex-start; text-align: left; }
+  .dmx .qrg-section { overflow-x: auto; }
+  .dmx .qrg-section table.data { min-width: 680px; }
+}

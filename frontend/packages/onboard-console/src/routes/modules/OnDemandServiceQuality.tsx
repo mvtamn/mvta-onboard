@@ -4,7 +4,7 @@ import {
   type OnDemandRiskRecord,
   type PrepareSuggestedAlertInput,
 } from "@mvta/shared";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "../../config.js";
 import {
   ON_DEMAND_RISKS,
@@ -370,6 +370,12 @@ function OnDemandDetail({
                 ? "Review customer update"
                 : "Prepare customer update"}
         </button>
+        <Link
+          className="btn-sm"
+          to={`/occ?source=Service%20Risk&source_id=${encodeURIComponent(risk.id)}&q=wait`}
+        >
+          Find Procedure
+        </Link>
         <button className="btn-sm" onClick={() => onWorkflow("Acknowledged")}>Acknowledge</button>
         <button className="btn-sm" onClick={() => onWorkflow("Monitoring")}>Monitor</button>
       </div>

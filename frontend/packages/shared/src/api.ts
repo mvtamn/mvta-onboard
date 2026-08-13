@@ -77,6 +77,9 @@ import type {
   ContractorStandardTier,
   ManualMetricEntry,
   ManagerAssessmentAction,
+  DecisionMatrixProcedure,
+  DecisionMatrixDiagnostics,
+  DecisionMatrixCandidate,
 } from "./types.js";
 
 export type TokenProvider = () => Promise<string | null>;
@@ -261,6 +264,43 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
 
     getSuggestedAlerts(status: SuggestedAlertStatus | "all" = "pending") {
       return request<{ alerts: SuggestedAlert[] }>(`/api/suggested-alerts?status=${status}`, {}, true);
+    },
+
+    getDecisionMatrix(filters?: { q?: string; includeHistory?: boolean }) {
+      const query = new URLSearchParams();
+      if (filters?.q) query.set("q", filters.q);
+      if (filters?.includeHistory) query.set("include_history", "true");
+      const suffix = query.toString() ? `?${query.toString()}` : "";
+      return request<{ procedures: DecisionMatrixProcedure[]; diagnostics: DecisionMatrixDiagnostics }>(
+        `/api/decision-matrix${suffix}`,
+        {},
+        true,
+      );
+    },
+
+    getDecisionMatrixMatches(input: { conditionKey?: string; q?: string; source?: string; sourceId?: string }) {
+      const query = new URLSearchParams();
+      if (input.conditionKey) query.set("condition_key", input.conditionKey);
+      if (input.q) query.set("q", input.q);
+      if (input.source) query.set("source", input.source);
+      if (input.sourceId) query.set("source_id", input.sourceId);
+      return request<{ candidates: DecisionMatrixCandidate[]; context: { source: string | null; source_id: string | null } }>(`/api/decision-matrix/matches?${query}`, {}, true);
+    },
+
+    syncDecisionMatrix() {
+      return request<{ status: string; count: number; reason?: string }>(
+        "/api/admin/decision-matrix/sync",
+        { method: "POST" },
+        true,
+      );
+    },
+
+    governDecisionMatrix(procedureId: string, revision: number, action: "approve" | "retire", reason?: string) {
+      return request<{ procedure_id: string; revision: number; approval_state: string; trust_state: string }>(
+        `/api/admin/decision-matrix/${encodeURIComponent(procedureId)}/${revision}`,
+        { method: "PATCH", body: JSON.stringify({ action, reason }) },
+        true,
+      );
     },
 
     prepareSuggestedAlert(input: PrepareSuggestedAlertInput) {

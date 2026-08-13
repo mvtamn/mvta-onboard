@@ -5,7 +5,7 @@ import {
   type TripDelay,
   type TripDelayDiagnostics,
 } from "@mvta/shared";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "../../config.js";
 import {
   FIXED_ROUTE_REFRESH_OPTIONS,
@@ -675,6 +675,12 @@ function DepartureRiskDetail({
         <button className="btn-primary" disabled={preparing} onClick={onPrepare}>
           {preparing ? "Preparing…" : isPreview ? "Preview alert draft" : risk.suggestedAlertId ? "Review alert" : "Prepare alert"}
         </button>
+        <Link
+          className="btn-sm"
+          to={`/occ?source=Service%20Risk&source_id=${encodeURIComponent(risk.id)}&q=delay`}
+        >
+          Find Procedure
+        </Link>
         <button className="btn-sm" onClick={() => onWorkflow("Acknowledged")}>Acknowledge</button>
         <button className="btn-sm" onClick={() => onWorkflow("Monitoring")}>Monitor</button>
       </div>

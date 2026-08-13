@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useAuth } from "../auth/AuthContext.js";
 import { DecisionMatrix } from "./modules/DecisionMatrix.js";
 import { SpeedAlerts } from "./modules/SpeedAlerts.js";
 
@@ -9,10 +10,12 @@ const TOOLS = [
 
 type ToolKey = (typeof TOOLS)[number]["key"];
 
-// OCC Tools remains the admin-only home for specialist procedure and speed
-// monitoring tools. Fixed Route and On-Demand monitoring now live under the
-// role-aware Service Operations workspace (see ServiceOperations.tsx).
+// OCC Tools is the governed Procedure workspace for OCC staff. Fixed Route
+// and On-Demand monitoring live under Service Operations (see
+// ServiceOperations.tsx), with links back here carrying operational context.
 export function OccTools() {
+  const { roles } = useAuth();
+  const isAdmin = roles.includes("OCC.Admin");
   const [tool, setTool] = useState<ToolKey>("decision-matrix");
 
   return (
@@ -20,14 +23,14 @@ export function OccTools() {
       <div className="panel-header">OCC Tools</div>
       <div className="panel-body occ-embed">
         <div className="occ-switch">
-          {TOOLS.map((t) => (
+          {TOOLS.filter((toolOption) => toolOption.key !== "speed-alerts" || isAdmin).map((t) => (
             <button key={t.key} className={tool === t.key ? "active" : ""} onClick={() => setTool(t.key)}>
               {t.label}
             </button>
           ))}
         </div>
         {tool === "decision-matrix" && <DecisionMatrix />}
-        {tool === "speed-alerts" && <SpeedAlerts />}
+        {tool === "speed-alerts" && isAdmin && <SpeedAlerts />}
       </div>
     </>
   );

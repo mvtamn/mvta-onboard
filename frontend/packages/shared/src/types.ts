@@ -147,6 +147,58 @@ export interface PrepareSuggestedAlertResult {
   created: boolean;
 }
 
+export type ProcedureTrustState =
+  | "Approved"
+  | "Preview"
+  | "Needs review"
+  | "Stale"
+  | "Partial"
+  | "Unavailable"
+  | "Retired";
+
+export interface DecisionMatrixProcedure {
+  procedure_id: string;
+  revision: number;
+  condition_key: string;
+  condition: string;
+  criteria: string;
+  severity: string;
+  severity_meaning: string | null;
+  immediate_actions: string[];
+  escalation_triggers: string[];
+  notifications: string[];
+  communication_guidance: string | null;
+  required_documentation: string | null;
+  tags: string[];
+  service_mode: string | null;
+  affected_workflow: string | null;
+  urgency: string | null;
+  document_type: "SOP" | "REF";
+  document_code: string;
+  source_url: string | null;
+  source_revision: string | null;
+  owner: string | null;
+  approver: string | null;
+  approval_state: "Preview" | "Approved" | "Retired";
+  trust_state: ProcedureTrustState;
+  effective_at: string | null;
+  next_review_at: string | null;
+  retired_at: string | null;
+  source_status: "available" | "partial" | "unavailable";
+  last_synced_at: string | null;
+  updated_at: string;
+}
+
+export interface DecisionMatrixDiagnostics {
+  table_ready: boolean;
+  source: string;
+  include_history?: boolean;
+}
+
+export interface DecisionMatrixCandidate extends Pick<DecisionMatrixProcedure, "procedure_id" | "revision" | "condition" | "condition_key" | "criteria" | "severity" | "severity_meaning" | "immediate_actions" | "tags" | "document_type" | "document_code" | "source_url" | "trust_state"> {
+  match_reason: string;
+}
+
 export interface TripDelay {
   trip_id: string;
   route_id: string;
