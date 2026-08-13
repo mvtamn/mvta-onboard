@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.27] - 2026-08-12
+
+- **Adopt the Event AVL command-center layout.** The live map now keeps the
+  operating brief beside the map, showing visible vehicles, plan membership,
+  unassigned vehicles, alert readiness, and a direct Event Planning link.
+
 ## [1.5.26] - 2026-08-12
 
 - **Show all active vehicles in Event AVL.** The shared AVL projection no longer

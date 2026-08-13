@@ -324,13 +324,27 @@ export function EventMonitoring() {
           {hasFilters && <button type="button" className="evmon-clear" onClick={() => { setSearch(""); setRouteFilter("all"); setHeadingFilter("all"); setMotionFilter("all"); }}>Clear filters</button>}
         </div>}
         {!minimized && (
-          <div className="evmon-map-wrap">
-            <VehicleMap vehicles={activeVehicles} geofences={mapGeofences} locations={mapLocations} showGeofences={mapGeofences.length > 0} showLocations={mapLocations.length > 0} mapStyle={mapStyle} traffic={traffic} />
-            <div className="evmon-map-legend" aria-label="Map legend">
-              <span><i className="evmon-legend-dot evmon-legend-dot-active" /> Active location</span>
-              <span><i className="evmon-legend-dot evmon-legend-dot-inactive" /> Inactive location</span>
-              <span><i className="evmon-legend-bus" /> Managed vehicle</span>
+          <div className="evmon-command-center">
+            <div className="evmon-map-wrap">
+              <VehicleMap vehicles={activeVehicles} geofences={mapGeofences} locations={mapLocations} showGeofences={mapGeofences.length > 0} showLocations={mapLocations.length > 0} mapStyle={mapStyle} traffic={traffic} />
+              <div className="evmon-map-legend" aria-label="Map legend">
+                <span><i className="evmon-legend-dot evmon-legend-dot-active" /> Active location</span>
+                <span><i className="evmon-legend-dot evmon-legend-dot-inactive" /> Inactive location</span>
+                <span><i className="evmon-legend-bus" /> Managed vehicle</span>
+              </div>
             </div>
+            <aside className="evmon-command-summary" aria-label="Operational brief">
+              <span className="evmon-eyebrow">Operational brief</span>
+              <h3>{selectedEvent?.name ?? "No Event selected"}</h3>
+              <p>{selectedPlan?.name ?? "Select an active operating period"}</p>
+              <dl>
+                <dt>Vehicles visible</dt><dd>{classifiedVehicles.length}</dd>
+                <dt>Managed by plan</dt><dd>{classifiedVehicles.filter((vehicle) => vehicle.is_in_active_scope).length}</dd>
+                <dt>Unassigned</dt><dd>{unassignedVehicles.length}</dd>
+                <dt>Geofence alerts</dt><dd className={health?.components.find((item) => item.component === "crossing_detection")?.status === "healthy" ? "ok" : "muted"}>{health?.components.find((item) => item.component === "crossing_detection")?.status === "healthy" ? "Active" : "Plan-scoped"}</dd>
+              </dl>
+              <Link className="evmon-command-link" to={selectedEventId ? `/event-planning?event=${encodeURIComponent(selectedEventId)}${selectedPlan ? `&plan=${encodeURIComponent(selectedPlan.id)}` : ""}` : "/event-planning"}>Review Event Planning</Link>
+            </aside>
           </div>
         )}
       </div>

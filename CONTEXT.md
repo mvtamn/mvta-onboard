@@ -65,11 +65,11 @@ operations until activated.
 An Approved Service Plan is frozen; corrections are made through a draft or
 reviewed revision rather than by mutating the approved record.
 
-## Unplanned vehicle
+## Unassigned vehicle
 
-A vehicle on a SpecialEvent-classified route that is not covered by an active
-Service Plan. It belongs in a separate diagnostic/preview view and is not an
-operational event participant.
+A visible vehicle that is not currently assigned to the selected active
+Service Plan. It remains visible in Event AVL, but it is not an operational
+event participant for that plan and does not trigger its geofence alerts.
 
 ## Plan revision
 
@@ -712,3 +712,25 @@ _Avoid_: admin bypass, self-approval
 **Superseded Dispute**:
 A preserved dispute closed because a Superseding Final Assessment replaced the assessment it challenged. The superseding assessment creates a new dispute period rather than carrying the former dispute forward.
 _Avoid_: deleted dispute, transferred dispute
+
+**Procedure**:
+Governed operational guidance for responding to a service condition or
+incident. A Procedure has a structured Decision Matrix entry for discovery
+and a source document, initially maintained in SharePoint, for the complete
+approved guidance.
+_Avoid_: static help article, unapproved note
+
+**Decision Matrix Entry**:
+The searchable, structured summary of a Procedure: its condition, observable
+criteria, severity meaning, immediate actions, references, and governance
+metadata. It is not a separate procedure version and must identify the exact
+Procedure revision it summarizes.
+_Avoid_: incident record, free-form tip
+
+**Operational Exception**:
+A future operational record representing a detected or manually created
+service condition that requires a controller's review against a Procedure.
+It may later capture acknowledgement, ownership, actions, escalation,
+communication, notes, and resolution, but it is not an Event, Service Plan,
+or Event operating context.
+_Avoid_: alert, Event, Service Plan
