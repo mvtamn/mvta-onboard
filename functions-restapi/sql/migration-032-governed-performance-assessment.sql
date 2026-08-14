@@ -43,6 +43,10 @@ IF COL_LENGTH('dbo.AssessmentPeriods','validation_shared_by') IS NULL ALTER TABL
 IF COL_LENGTH('dbo.AssessmentPeriods','validation_recipient') IS NULL ALTER TABLE dbo.AssessmentPeriods ADD validation_recipient NVARCHAR(320) NULL;
 IF COL_LENGTH('dbo.AssessmentPeriods','validation_method') IS NULL ALTER TABLE dbo.AssessmentPeriods ADD validation_method NVARCHAR(50) NULL;
 IF COL_LENGTH('dbo.AssessmentPeriods','validation_attestation') IS NULL ALTER TABLE dbo.AssessmentPeriods ADD validation_attestation NVARCHAR(1000) NULL;
+IF COL_LENGTH('dbo.AssessmentPeriods','assessment_revision') IS NULL ALTER TABLE dbo.AssessmentPeriods ADD assessment_revision INT NOT NULL CONSTRAINT DF_AP_Revision DEFAULT 1;
+IF COL_LENGTH('dbo.AssessmentPeriods','supersedes_period_id') IS NULL ALTER TABLE dbo.AssessmentPeriods ADD supersedes_period_id UNIQUEIDENTIFIER NULL REFERENCES dbo.AssessmentPeriods(id);
+IF EXISTS(SELECT 1 FROM sys.key_constraints WHERE parent_object_id=OBJECT_ID('dbo.AssessmentPeriods') AND name='UQ_AP_ContractorMonth') ALTER TABLE dbo.AssessmentPeriods DROP CONSTRAINT UQ_AP_ContractorMonth;
+IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID('dbo.AssessmentPeriods') AND name='UX_AP_ContractorMonthRevision') CREATE UNIQUE INDEX UX_AP_ContractorMonthRevision ON dbo.AssessmentPeriods(contractor_id,service_month,assessment_revision);
 GO
 
 UPDATE p SET agreement_id=a.id
@@ -73,6 +77,17 @@ GO
 
 IF COL_LENGTH('dbo.AssessmentPeriodStandards','name') IS NULL ALTER TABLE dbo.AssessmentPeriodStandards ADD name NVARCHAR(200) NULL;
 IF COL_LENGTH('dbo.AssessmentPeriodStandards','priority') IS NULL ALTER TABLE dbo.AssessmentPeriodStandards ADD priority NVARCHAR(20) NULL;
+GO
+
+INSERT dbo.AssessmentPeriodStandards(period_id,standard_id,code,name,standard_type,priority,direction,is_safety_critical,measurement_source,sort_order)
+SELECT p.id,s.id,s.code,s.name,s.standard_type,s.priority,s.direction,s.is_safety_critical,s.measurement_source,s.sort_order
+FROM dbo.AssessmentPeriods p CROSS JOIN dbo.ContractorPerformanceStandards s
+WHERE s.is_scored=1 AND NOT EXISTS(SELECT 1 FROM dbo.AssessmentPeriodStandards x WHERE x.period_id=p.id AND x.standard_id=s.id);
+INSERT dbo.AssessmentPeriodTiers(period_id,standard_id,tier_order,tier_label,bound_low,bound_high,qualifier_code,penalty_basis,penalty_amount,triggers_cap)
+SELECT s.period_id,t.standard_id,t.tier_order,t.tier_label,t.bound_low,t.bound_high,t.qualifier_code,t.penalty_basis,t.penalty_amount,t.triggers_cap
+FROM dbo.AssessmentPeriodStandards s JOIN dbo.AssessmentPeriods p ON p.id=s.period_id JOIN dbo.ContractorStandardTiers t ON t.standard_id=s.standard_id
+WHERE t.effective_start_date<=CONCAT(p.service_month,'01') AND (t.effective_end_date IS NULL OR t.effective_end_date>=CONCAT(p.service_month,'01'))
+AND NOT EXISTS(SELECT 1 FROM dbo.AssessmentPeriodTiers x WHERE x.period_id=s.period_id AND x.standard_id=t.standard_id AND x.tier_order=t.tier_order);
 GO
 
 IF COL_LENGTH('dbo.ComplianceEvidence','content_sha256') IS NULL ALTER TABLE dbo.ComplianceEvidence ADD content_sha256 CHAR(64) NULL;

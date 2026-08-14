@@ -72,6 +72,7 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
     let completeness = 100;
     let sourceRefs: string[] = [];
     let baseAmount = 0;
+    let capRequired = false;
     let tierLabel: TierLabel = "meets";
 
     if (standard.standard_type === "occurrence") {
@@ -91,6 +92,7 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
         const tier = matchTier(tiers, row.quantity, standard.direction, row.qualifier_code);
         if (!tier) continue;
         baseAmount += computePenalty(tier, { quantity: row.quantity, durationDays: row.duration_days ?? 1 });
+        capRequired ||= Boolean(tier.triggersCap);
         if (severity(tier.tierLabel) > severity(tierLabel)) tierLabel = tier.tierLabel;
       }
       if (occurrenceCount > 0 && tierLabel === "meets") tierLabel = "tier1";
@@ -100,7 +102,7 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
       completeness = resolved.completeness; sourceRefs = resolved.sourceRefs;
       if (metricValue !== null) {
         const tier = matchTier(tiers, metricValue, standard.direction);
-        if (tier) { tierLabel = tier.tierLabel; baseAmount = computePenalty(tier, { quantity }); }
+        if (tier) { tierLabel = tier.tierLabel; baseAmount = computePenalty(tier, { quantity }); capRequired = Boolean(tier.triggersCap); }
       }
     }
 
@@ -132,6 +134,7 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
     upsert.input("proposed", sql.Decimal(12,2), proposed); upsert.input("hash", sql.Char(64), inputHash); upsert.input("json", sql.NVarChar(sql.MAX), computationJson);
     upsert.input("consecutive", sql.Int, consecutive); upsert.input("completeness", sql.Float, completeness);
     upsert.input("outcome", sql.NVarChar(30), outcome);
+    upsert.input("cap", sql.Bit, capRequired);
     await upsert.query(`
       MERGE PeriodKpiAssessments WITH (HOLDLOCK) target USING (SELECT @period_id period_id,@standard_id standard_id) source
       ON target.period_id=source.period_id AND target.standard_id=source.standard_id
@@ -142,10 +145,10 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
        manager_reason=CASE WHEN target.input_sha256=@hash THEN target.manager_reason ELSE NULL END,
        reviewed_input_sha256=CASE WHEN target.input_sha256=@hash THEN target.reviewed_input_sha256 ELSE NULL END,
        reviewed_by=CASE WHEN target.input_sha256=@hash THEN target.reviewed_by ELSE NULL END,
-       reviewed_at=CASE WHEN target.input_sha256=@hash THEN target.reviewed_at ELSE NULL END,
+       reviewed_at=CASE WHEN target.input_sha256=@hash THEN target.reviewed_at ELSE NULL END,cap_required=@cap,
        input_sha256=@hash,consecutive_months_below=@consecutive,data_completeness_pct=@completeness,computation_json=@json,assessment_outcome=@outcome
-      WHEN NOT MATCHED THEN INSERT(period_id,standard_id,metric_value,metric_display,occurrence_count,unit_quantity,tier_label,target_display,base_amount,escalation_multiplier,proposed_amount,input_sha256,consecutive_months_below,data_completeness_pct,computation_json,assessment_outcome)
-       VALUES(@period_id,@standard_id,@metric,@display,@count,@quantity,@tier,N'Configured tiers',@base,@escalation,@proposed,@hash,@consecutive,@completeness,@json,@outcome);
+      WHEN NOT MATCHED THEN INSERT(period_id,standard_id,metric_value,metric_display,occurrence_count,unit_quantity,tier_label,target_display,base_amount,escalation_multiplier,proposed_amount,input_sha256,consecutive_months_below,data_completeness_pct,computation_json,assessment_outcome,cap_required)
+       VALUES(@period_id,@standard_id,@metric,@display,@count,@quantity,@tier,N'Configured tiers',@base,@escalation,@proposed,@hash,@consecutive,@completeness,@json,@outcome,@cap);
     `);
   }
   const finish = new sql.Request(tx);

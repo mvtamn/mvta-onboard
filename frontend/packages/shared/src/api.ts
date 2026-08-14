@@ -786,7 +786,7 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
     getAssessmentEvidenceUploadUrl(assessment_id: string, file_name: string) {
       return request<{ upload_url: string; blob_path: string }>("/api/assessment-evidence/upload-url", { method: "POST", body: JSON.stringify({ assessment_id, file_name }) }, true);
     },
-    createAssessmentEvidence(input: { assessment_id: string; blob_path: string; content_type: string; file_size_bytes: number; content_sha256: string; visibility: "internal" | "contractor"; caption?: string }) {
+    createAssessmentEvidence(input: { assessment_id: string; blob_path: string; content_type: string; file_size_bytes: number; content_sha256: string; visibility: "internal" | "contractor"; caption?: string; supersedes_id?: string }) {
       return request<{ id: string }>("/api/assessment-evidence", { method: "POST", body: JSON.stringify(input) }, true);
     },
     getComplianceOccurrences() {

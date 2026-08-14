@@ -37,7 +37,7 @@ app.http("assessmentPeriodsOpen", {
       const result = await write.query<{ id: string }>(`
         IF NOT EXISTS(SELECT 1 FROM AssessmentPeriods WHERE contractor_id=@contractor AND service_month=@month)
           INSERT AssessmentPeriods(contractor_id,agreement_id,service_month) VALUES(@contractor,@agreement,@month);
-        DECLARE @period UNIQUEIDENTIFIER=(SELECT id FROM AssessmentPeriods WHERE contractor_id=@contractor AND service_month=@month);
+        DECLARE @period UNIQUEIDENTIFIER=(SELECT TOP 1 id FROM AssessmentPeriods WHERE contractor_id=@contractor AND service_month=@month ORDER BY assessment_revision DESC);
         IF NOT EXISTS(SELECT 1 FROM AssessmentPeriodStandards WHERE period_id=@period)
         BEGIN
           INSERT AssessmentPeriodStandards(period_id,standard_id,code,name,standard_type,priority,direction,is_safety_critical,measurement_source,sort_order) SELECT @period,id,code,name,standard_type,priority,direction,is_safety_critical,measurement_source,sort_order FROM ContractorPerformanceStandards WHERE is_scored=1;
@@ -73,7 +73,7 @@ app.http("assessmentPeriodFinalize", {
     try {
       const pool = await getPool(); const req = pool.request(); req.input("id", sql.UniqueIdentifier, request.params.id); req.input("actor", sql.NVarChar(200), auth.principal.userDetails ?? "onboard-console");
       const result = await req.query<{ changed: number }>(`
-        UPDATE AssessmentPeriods SET status='finalized',final_total=(SELECT SUM(final_amount) FROM PeriodKpiAssessments WHERE period_id=@id),finalized_by=@actor,finalized_at=SYSUTCDATETIME()
+        UPDATE AssessmentPeriods SET status='finalized',final_total=(SELECT SUM(recommended_amount) FROM PeriodKpiAssessments WHERE period_id=@id),finalized_by=@actor,finalized_at=SYSUTCDATETIME()
         WHERE id=@id AND status='in_validation' AND validation_ends_on<=CONVERT(date,SYSUTCDATETIME()) AND computed_revision=input_revision
           AND EXISTS(SELECT 1 FROM PeriodKpiAssessments WHERE period_id=@id)
           AND NOT EXISTS(SELECT 1 FROM PeriodKpiAssessments WHERE period_id=@id AND (recommended_action IS NULL OR reviewed_input_sha256<>input_sha256 OR (ISNULL(data_completeness_pct,0)<=0 AND assessment_outcome<>'not_assessable')))
@@ -100,13 +100,20 @@ app.http("assessmentPeriodReopen", {
     if (typeof body.reason !== "string" || !body.reason.trim()) return { status: 400, jsonBody: { error: "reason is required" } };
     try {
       const pool = await getPool(); const req = pool.request(); req.input("id", sql.UniqueIdentifier, request.params.id); req.input("reason", sql.NVarChar(1000), body.reason); req.input("actor", sql.NVarChar(200), auth.principal.userDetails ?? "onboard-console");
-      const result = await req.query<{ changed: number }>(`
-        DECLARE @agreement UNIQUEIDENTIFIER,@month CHAR(6);
-        SELECT @agreement=agreement_id,@month=service_month FROM AssessmentPeriods WHERE id=@id;
-        UPDATE AssessmentPeriods SET status='reopened',input_revision=input_revision+1,final_total=NULL,finalized_by=NULL,finalized_at=NULL,notes=@reason WHERE id=@id AND status IN('finalized','issued');
-        DECLARE @changed INT=@@ROWCOUNT;
+      const result = await req.query<{ changed: number; id: string }>(`
+        DECLARE @agreement UNIQUEIDENTIFIER,@month CHAR(6),@status NVARCHAR(20),@new_id UNIQUEIDENTIFIER=@id,@changed INT=0;
+        SELECT @agreement=agreement_id,@month=service_month,@status=status FROM AssessmentPeriods WHERE id=@id;
+        IF @status='finalized' BEGIN UPDATE AssessmentPeriods SET status='reopened',input_revision=input_revision+1,final_total=NULL,finalized_by=NULL,finalized_at=NULL,notes=@reason WHERE id=@id;SET @changed=1;END
+        ELSE IF @status='issued' BEGIN
+          SET @new_id=NEWID();
+          INSERT AssessmentPeriods(id,contractor_id,agreement_id,service_month,status,input_revision,notes,rule_set_sha256,rule_set_json,assessment_revision,supersedes_period_id)
+          SELECT @new_id,contractor_id,agreement_id,service_month,'reopened',input_revision+1,@reason,rule_set_sha256,rule_set_json,assessment_revision+1,id FROM AssessmentPeriods WHERE id=@id;
+          INSERT AssessmentPeriodStandards(period_id,standard_id,code,name,standard_type,priority,direction,is_safety_critical,measurement_source,sort_order) SELECT @new_id,standard_id,code,name,standard_type,priority,direction,is_safety_critical,measurement_source,sort_order FROM AssessmentPeriodStandards WHERE period_id=@id;
+          INSERT AssessmentPeriodTiers(period_id,standard_id,tier_order,tier_label,bound_low,bound_high,qualifier_code,penalty_basis,penalty_amount,triggers_cap) SELECT @new_id,standard_id,tier_order,tier_label,bound_low,bound_high,qualifier_code,penalty_basis,penalty_amount,triggers_cap FROM AssessmentPeriodTiers WHERE period_id=@id;
+          SET @changed=1;
+        END
         IF @changed=1 BEGIN
-          INSERT ComplianceAssessmentAudit(entity_type,entity_id,action,actor,note) VALUES('period',@id,'reopened',@actor,@reason);
+          INSERT ComplianceAssessmentAudit(entity_type,entity_id,action,actor,note) VALUES('period',@new_id,CASE WHEN @new_id=@id THEN 'reopened' ELSE 'correction_started' END,@actor,@reason);
           DECLARE @staled TABLE(id UNIQUEIDENTIFIER);
           UPDATE AssessmentPeriods SET status='stale',input_revision=input_revision+1
           OUTPUT inserted.id INTO @staled(id)
@@ -115,10 +122,10 @@ app.http("assessmentPeriodReopen", {
           SELECT 'period',id,'stale_due_to_prior_period_reopen',@actor,CONCAT('Earlier period ',@month,' was reopened')
           FROM @staled;
         END
-        SELECT @changed changed;
+        SELECT @changed changed,@new_id id;
       `);
       if (!result.recordset[0]?.changed) return { status: 409, jsonBody: { error: "Only finalized or issued periods can be reopened" } };
-      return { status: 200, jsonBody: { id: request.params.id, status: "reopened" } };
+      return { status: 200, jsonBody: { id: result.recordset[0].id, status: "reopened" } };
     } catch (error) { context.error("POST assessment reopen failed", error); return { status: 500, jsonBody: { error: "Internal server error" } }; }
   },
 });
