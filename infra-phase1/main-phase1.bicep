@@ -105,6 +105,7 @@ module restApiFunction 'modules/functionapp.bicep' = {
     aadClientId: aadClientId
     frontDoorId: frontDoorId
     allowedCorsOrigins: allowedCorsOrigins
+    serviceBusNamespace: 'sb-mvta-onboard-${environment}'
     includeSpareApiKey: true
     complianceReportsStorageAccountName: take('stmvtacompreport${environment}${cleanSuffix}', 24)
     spareMissedTripsEnabled: spareMissedTripsEnabled
@@ -171,9 +172,11 @@ module serviceBus 'modules/servicebus.bicep' = {
     environment: environment
     location: location
     // Identity-based access (local auth is disabled in the module): the REST
-    // API publishes (Sender), the dispatch app consumes (Receiver).
+    // API publishes (Sender) and receives Event AVL notifications; the
+    // dispatch app receives message-delivery work.
     senderPrincipalId: restApiFunction.outputs.functionAppPrincipalId
     receiverPrincipalId: dispatchFunction.outputs.functionAppPrincipalId
+    additionalReceiverPrincipalId: restApiFunction.outputs.functionAppPrincipalId
     manageRoleAssignments: manageRoleAssignments
   }
 }

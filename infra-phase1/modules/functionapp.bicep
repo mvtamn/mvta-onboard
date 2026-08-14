@@ -29,6 +29,9 @@ param availOtpDailyUrl string = ''
 param availMissedTripsUrl string = ''
 param availPulloutUrl string = ''
 
+@description('Service Bus namespace used by the Event AVL notification trigger. Empty disables its identity-based connection setting.')
+param serviceBusNamespace string = ''
+
 @description('Client ID of the MVTA OnBoard Entra ID app registration - wires up Easy Auth so the caller principal and app roles are available via x-ms-client-principal')
 param aadClientId string
 
@@ -151,7 +154,11 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         // Optional until MVTA provisions the Teams incoming webhook. Keep it
         // as a Key Vault reference so Bicep redeploys cannot expose or wipe it.
         { name: 'TEAMS_EVENT_WEBHOOK_URL', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/teams-event-webhook-url/)' }
-      ], enableAccessManagement ? [
+      ], !empty(serviceBusNamespace) ? [
+        // Azure Functions resolves this identity-based connection using the
+        // app's system-assigned managed identity; no SAS secret is used.
+        { name: 'ServiceBusConnection__fullyQualifiedNamespace', value: '${serviceBusNamespace}.servicebus.windows.net' }
+      ] : [], enableAccessManagement ? [
         { name: 'AZURE_TENANT_ID', value: subscription().tenantId }
         { name: 'ONBOARD_API_CLIENT_ID', value: aadClientId }
         { name: 'ONBOARD_API_CLIENT_SECRET', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/onboard-api-client-secret/)' }

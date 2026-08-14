@@ -18,6 +18,9 @@ param senderPrincipalId string = ''
 
 @description('System-assigned principal ID of the dispatch Function App (consumes). Empty to skip.')
 param receiverPrincipalId string = ''
+
+@description('System-assigned principal ID of the REST Function App Event AVL consumer. Empty to skip.')
+param additionalReceiverPrincipalId string = ''
 param manageRoleAssignments bool = false
 
 resource serviceBusNamespace 'Microsoft.ServiceBus/namespaces@2022-10-01-preview' = {
@@ -73,6 +76,16 @@ resource receiverAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01'
   properties: {
     roleDefinitionId: sbReceiverRole.id
     principalId: receiverPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource additionalReceiverAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(additionalReceiverPrincipalId) && manageRoleAssignments) {
+  name: guid(serviceBusNamespace.id, additionalReceiverPrincipalId, sbReceiverRole.id)
+  scope: serviceBusNamespace
+  properties: {
+    roleDefinitionId: sbReceiverRole.id
+    principalId: additionalReceiverPrincipalId
     principalType: 'ServicePrincipal'
   }
 }
