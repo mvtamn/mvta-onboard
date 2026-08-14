@@ -52,6 +52,9 @@ param privilegedAuthContext string = 'c1'
 @description('GTFS-Realtime TripUpdate feed used by fixed-route risk monitoring.')
 param gtfsRtTripUpdateUrl string = 'https://srv.mvta.com/infoPoint/GTFS-realtime.ashx?&Type=TripUpdate&debug=true'
 
+@description('Avail AVL Reports endpoint used for live vehicle monitoring.')
+param availAvlReportsUrl string = 'https://avail360-api.myavail.cloud/AVLReports/v1'
+
 var cleanSuffix = replace(uniqueSuffix, '-', '')
 
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
@@ -92,6 +95,7 @@ module restApiFunction 'modules/functionapp.bicep' = {
     accessAdminFallback: accessAdminFallback
     privilegedAuthContext: privilegedAuthContext
     gtfsRtTripUpdateUrl: gtfsRtTripUpdateUrl
+    availAvlReportsUrl: availAvlReportsUrl
   }
 }
 

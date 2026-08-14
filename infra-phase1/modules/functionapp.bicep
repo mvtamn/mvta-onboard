@@ -20,6 +20,7 @@ param accessManagementConfigJson string = ''
 param accessAdminFallback bool = false
 param privilegedAuthContext string = 'c1'
 param gtfsRtTripUpdateUrl string = ''
+param availAvlReportsUrl string = ''
 
 @description('Client ID of the MVTA OnBoard Entra ID app registration - wires up Easy Auth so the caller principal and app roles are available via x-ms-client-principal')
 param aadClientId string
@@ -118,6 +119,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         // recover even after other fixes were in place.
         { name: 'WEBSITE_RUN_FROM_PACKAGE', value: '1' }
         { name: 'GTFS_RT_TRIPUPDATE_URL', value: gtfsRtTripUpdateUrl }
+        { name: 'AVAIL_AVL_REPORTS_URL', value: availAvlReportsUrl }
         // Key Vault reference, not a raw value - fixes the same class of
         // "wiped on redeploy" bug for the connection string specifically.
         { name: 'SQL_CONNECTION_STRING', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/sql-connection-string/)' }
@@ -129,9 +131,8 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         // Same Key Vault reference pattern - powers Event Monitoring's live
         // vehicle positions (availAvlPoll.ts). The secret itself
         // (avail-avl-reports-api-key) must be created in Key Vault before
-        // this resolves; see HANDOFF.md. AVAIL_AVL_REPORTS_URL is not a
-        // secret, so it is still set imperatively via
-        // `az functionapp config appsettings set`, not here.
+        // this resolves; see HANDOFF.md. The non-secret endpoint is declared
+        // above so routine infrastructure deployments preserve it.
         { name: 'AVAIL_AVL_REPORTS_API_KEY', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/avail-avl-reports-api-key/)' }
         // Optional until MVTA provisions the Teams incoming webhook. Keep it
         // as a Key Vault reference so Bicep redeploys cannot expose or wipe it.
