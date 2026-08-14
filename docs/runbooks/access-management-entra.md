@@ -101,3 +101,31 @@ Run this checklist separately in development, test, and production:
 - An accepted change may remain `pending_verification` while Graph converges. Do not treat that as failure or issue a compensating removal of pre-existing access.
 - To disable the in-app control plane, remove `accessManagementConfigJson` and redeploy. Existing Entra assignments remain authoritative and unchanged.
 - Use the approved Entra/Portal path for emergency recovery. Reconcile afterward so OnBoard reflects the restored assignment and audit the incident through the organization's security process.
+
+## Deployment and troubleshooting notes
+
+- The REST API includes the Event AVL Service Bus trigger. Its Function App
+  needs the identity-based `ServiceBusConnection__fullyQualifiedNamespace`
+  setting and the **Azure Service Bus Data Receiver** role on the MVTA Service
+  Bus namespace. Missing either can prevent the Functions host from starting
+  reliably and make Access Management appear unavailable.
+- A Phase 1 Bicep deployment updates Function App configuration but does not
+  restore the deployed Function package after the restart. Run the **Deploy
+  Function Apps (REST API + dispatch)** workflow immediately after a Phase 1
+  deployment, then verify `/api/health` through Front Door before treating the
+  deployment as complete.
+- The generic Access Management unavailable banner should be diagnosed as a
+  request-path symptom, not assumed to be an Access Management configuration
+  failure. Check these boundaries in order:
+
+  1. `GET /api/health` through Front Door must return `200`.
+  2. An unsigned `GET /api/access-management/principals` should return `401`;
+     this confirms the route and handler are live without disclosing data.
+  3. A public endpoint such as `GET /api/messages/active` should return `200`
+     through both the Function App and Front Door.
+  4. Confirm `SQL_CONNECTION_STRING` and `ONBOARD_API_CLIENT_SECRET` Key
+     Vault references are resolved in the Function App configuration.
+  5. If those checks pass but the signed-in console still loads indefinitely,
+     inspect browser request telemetry and the MSAL token-acquisition path.
+     Do not rotate secrets, change Graph permissions, or alter group
+     assignments without an error from that signed-in request.
