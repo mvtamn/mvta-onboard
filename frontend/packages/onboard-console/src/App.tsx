@@ -178,6 +178,7 @@ export function App() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [specialistOpen, setSpecialistOpen] = useState(true);
   const [complianceOpen, setComplianceOpen] = useState(true);
+  const [adminOpen, setAdminOpen] = useState(true);
   const [changelogOpen, setChangelogOpen] = useState(false);
   useEffect(() => { setMobileNavOpen(false); }, [location.pathname]);
 
@@ -253,8 +254,16 @@ export function App() {
             <div className="nav-section-label">Administration</div>
             <NavLink to="/subscribers"><IconUsers />Subscribers</NavLink>
             <NavLink to="/audit"><IconClock />Audit Log</NavLink>
-            {isAdmin && <NavLink to="/admin"><IconGear />Admin</NavLink>}
-            {canManageAccess && <NavLink to="/admin/access-management"><IconShield />Access Management</NavLink>}
+            {(isAdmin || canManageAccess) && <>
+              <button className="nav-group-toggle" aria-expanded={adminOpen} onClick={() => setAdminOpen((open) => !open)}>
+                <span>Admin tools</span><span aria-hidden="true">{adminOpen ? "⌃" : "›"}</span>
+              </button>
+              {adminOpen ? <div className="nav-group-links">
+                {isAdmin && <NavLink to="/admin"><IconGear />General settings</NavLink>}
+                {canManageAccess && <NavLink to="/admin/access-management"><IconShield />Access Management</NavLink>}
+                {isAdmin && <NavLink to="/admin#event-configuration"><IconBus />Event administration</NavLink>}
+              </div> : null}
+            </>}
           </section>
         </nav>
 
