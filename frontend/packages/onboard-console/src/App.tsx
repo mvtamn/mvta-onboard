@@ -259,9 +259,9 @@ export function App() {
                 <span>Admin tools</span><span aria-hidden="true">{adminOpen ? "⌃" : "›"}</span>
               </button>
               {adminOpen ? <div className="nav-group-links">
-                {isAdmin && <NavLink to="/admin"><IconGear />General settings</NavLink>}
+                {isAdmin && <NavLink to="/admin"><IconGear />General Settings</NavLink>}
                 {canManageAccess && <NavLink to="/admin/access-management"><IconShield />Access Management</NavLink>}
-                {isAdmin && <NavLink to="/admin#event-configuration"><IconBus />Event administration</NavLink>}
+                {isAdmin && <NavLink to="/admin#event-configuration"><IconBus />Event Administration</NavLink>}
               </div> : null}
             </>}
           </section>
