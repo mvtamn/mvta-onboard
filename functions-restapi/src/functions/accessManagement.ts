@@ -48,13 +48,7 @@ function getProductionHandler() {
   return productionHandler;
 }
 
-app.http("accessManagement", {
-  // `admin` is reserved by the Functions host, so this must not be nested
-  // below the `/api/admin` prefix used by the console UI.
-  route: "access-management/{*operation}",
-  methods: ["GET", "POST"],
-  authLevel: "anonymous",
-  handler: async (request: HttpRequest, context: InvocationContext) => {
+const accessManagementHandler = async (request: HttpRequest, context: InvocationContext) => {
     try {
       return await getProductionHandler()(request);
     } catch (error) {
@@ -74,5 +68,25 @@ app.http("accessManagement", {
       }
       return { status: 500, jsonBody: { error: "Access Management is unavailable." } };
     }
-  },
-});
+};
+
+// Use ordinary Functions routes rather than a catch-all. The Node v4 host on
+// this App Service plan registers catch-all routes but does not dispatch them.
+const accessManagementRoutes = [
+  ["accessManagementPrincipals", "access-management/principals", ["GET"]],
+  ["accessManagementDirectorySearch", "access-management/directory/search", ["GET"]],
+  ["accessManagementChanges", "access-management/changes", ["GET", "POST"]],
+  ["accessManagementPreview", "access-management/changes/preview", ["POST"]],
+  ["accessManagementDecision", "access-management/changes/{id}/decision", ["POST"]],
+  ["accessManagementCancellation", "access-management/changes/{id}/cancel", ["POST"]],
+  ["accessManagementSignIns", "access-management/principals/{id}/sign-ins", ["GET"]],
+  ["accessManagementAudit", "access-management/audit", ["GET"]],
+  ["accessManagementExpirations", "access-management/expirations", ["GET"]],
+  ["accessManagementApplyExpirations", "access-management/expirations/apply", ["POST"]],
+  ["accessManagementReconciliation", "access-management/reconciliation", ["GET"]],
+  ["accessManagementExport", "access-management/export", ["POST"]],
+] as const;
+
+for (const [name, route, methods] of accessManagementRoutes) {
+  app.http(name, { route, methods: [...methods], authLevel: "anonymous", handler: accessManagementHandler });
+}
