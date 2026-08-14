@@ -78,7 +78,7 @@ const PAGE_META: { match: (path: string) => boolean; title: string; sub: string 
   { match: (p) => p === "/detours", title: "Detours & Closures", sub: "Every detour/closure in one place, Avail-built or not" },
   { match: (p) => p === "/detour-intake", title: "Detour Intake", sub: "Capture and review preliminary closure reports" },
   { match: (p) => p === "/detour-reports", title: "Detour Reports", sub: "Search and export detour history — read-only" },
-  { match: (p) => p === "/admin", title: "Admin", sub: "Expiration defaults and system configuration" },
+  { match: (p) => p === "/admin", title: "Configuration", sub: "System settings, feed diagnostics, and event resources" },
   { match: (p) => p === "/admin/access-management", title: "Access Management", sub: "Manage OnBoard access, approvals, and sign-in activity" },
   {
     match: (p) => p === "/event-monitoring",
@@ -259,9 +259,8 @@ export function App() {
                 <span>Admin tools</span><span aria-hidden="true">{adminOpen ? "⌃" : "›"}</span>
               </button>
               {adminOpen ? <div className="nav-group-links">
-                {isAdmin && <NavLink to="/admin"><IconGear />General Settings</NavLink>}
+                {isAdmin && <NavLink to="/admin"><IconGear />Configuration</NavLink>}
                 {canManageAccess && <NavLink to="/admin/access-management"><IconShield />Access Management</NavLink>}
-                {isAdmin && <NavLink to="/admin#event-configuration"><IconBus />Event Administration</NavLink>}
               </div> : null}
             </>}
           </section>
@@ -271,7 +270,7 @@ export function App() {
         <div className="nav-footer">
           <div className="nav-status">
             <span className="live-dot" />
-            {stats.ok ? "Console live" : "Console Offline"}
+            {stats.ok ? "Console Live" : "Console Offline"}
           </div>
         </div>
         </aside>

@@ -61,7 +61,7 @@ function EventMonitoringSettingsSection() {
   }
 
   return <>
-    <div id="event-configuration" className="panel-header">Event administration</div>
+    <div className="panel-header">Event resources</div>
     <div className="panel-body">
       <p className="panel-desc">Control how often the server retrieves live Avail AVL positions. Changes take effect without a redeploy.</p>
       {error && <p className="error-text">{error}</p>}
@@ -475,7 +475,7 @@ export function Admin() {
 
   return (
     <>
-      <div className="panel-header">Admin — Expiration Defaults</div>
+      <div className="panel-header">Configuration — Service Alert Defaults</div>
       <div className="panel-body">
         <p className="panel-desc">
           Default time-to-live per category, applied when an announcement is posted without an
