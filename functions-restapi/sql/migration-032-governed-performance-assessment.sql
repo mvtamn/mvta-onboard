@@ -153,6 +153,12 @@ BEGIN
 END;
 GO
 
+IF OBJECT_ID(N'dbo.AssessmentCorrectionImpacts',N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.AssessmentCorrectionImpacts(id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),source_period_id UNIQUEIDENTIFIER NOT NULL REFERENCES dbo.AssessmentPeriods(id),affected_period_id UNIQUEIDENTIFIER NOT NULL REFERENCES dbo.AssessmentPeriods(id),decision NVARCHAR(30) NOT NULL DEFAULT N'pending',decision_note NVARCHAR(1000) NULL,decided_by NVARCHAR(200) NULL,decided_at DATETIME2 NULL,created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),CONSTRAINT UQ_ACI_SourceAffected UNIQUE(source_period_id,affected_period_id),CONSTRAINT CK_ACI_Decision CHECK(decision IN('pending','supersede','no_change')));
+END;
+GO
+
 IF COL_LENGTH('dbo.PenaltyDisputes','report_id') IS NULL ALTER TABLE dbo.PenaltyDisputes ADD report_id UNIQUEIDENTIFIER NULL REFERENCES dbo.ComplianceReports(id);
 IF COL_LENGTH('dbo.PenaltyDisputes','outcome') IS NULL ALTER TABLE dbo.PenaltyDisputes ADD outcome NVARCHAR(30) NULL;
 IF EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID('dbo.PenaltyDisputes') AND name='CK_PD_Status')
@@ -192,8 +198,10 @@ GO
 IF EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID('dbo.AssessmentPeriods') AND name='CK_AP_Ramp')
     ALTER TABLE dbo.AssessmentPeriods DROP CONSTRAINT CK_AP_Ramp;
 ALTER TABLE dbo.AssessmentPeriods ALTER COLUMN ramp_up_stage NVARCHAR(20) NULL;
-UPDATE dbo.AssessmentPeriods SET ramp_up_stage=NULL;
-UPDATE dbo.PeriodKpiAssessments SET ramp_up_multiplier=1;
+DECLARE @rampDefault sysname=(SELECT dc.name FROM sys.default_constraints dc JOIN sys.columns c ON c.default_object_id=dc.object_id WHERE dc.parent_object_id=OBJECT_ID('dbo.PeriodKpiAssessments') AND c.name='ramp_up_multiplier');
+IF @rampDefault IS NOT NULL EXEC(N'ALTER TABLE dbo.PeriodKpiAssessments DROP CONSTRAINT '+QUOTENAME(@rampDefault));
+ALTER TABLE dbo.AssessmentPeriods DROP COLUMN ramp_up_stage;
+ALTER TABLE dbo.PeriodKpiAssessments DROP COLUMN ramp_up_multiplier;
 GO
 
 PRINT 'Migration 032 verified: governed Performance Assessment workflow is ready and ramp-up is excluded.';

@@ -121,6 +121,9 @@ app.http("assessmentPeriodReopen", {
           INSERT ComplianceAssessmentAudit(entity_type,entity_id,action,actor,note)
           SELECT 'period',id,'stale_due_to_prior_period_reopen',@actor,CONCAT('Earlier period ',@month,' was reopened')
           FROM @staled;
+          INSERT AssessmentCorrectionImpacts(source_period_id,affected_period_id)
+          SELECT @new_id,id FROM AssessmentPeriods WHERE agreement_id=@agreement AND service_month>@month AND status='issued'
+          AND NOT EXISTS(SELECT 1 FROM AssessmentCorrectionImpacts i WHERE i.source_period_id=@new_id AND i.affected_period_id=AssessmentPeriods.id);
         END
         SELECT @changed changed,@new_id id;
       `);
