@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { FixedRouteServiceRisk } from "./modules/FixedRouteServiceRisk.js";
 import { OnDemandServiceQuality } from "./modules/OnDemandServiceQuality.js";
-import { FeedHealth } from "./modules/FeedHealth.js";
 
 type RiskView = "fixed-route" | "on-demand";
 
@@ -38,7 +37,6 @@ export function ServiceRiskQuality() {
       <div role="tabpanel" aria-label={view === "fixed-route" ? "Fixed Route service risk" : "On-Demand service quality"}>
         {view === "fixed-route" ? <FixedRouteServiceRisk /> : <OnDemandServiceQuality />}
       </div>
-      <FeedHealth />
     </section>
   );
 }

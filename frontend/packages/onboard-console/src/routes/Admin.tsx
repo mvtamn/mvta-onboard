@@ -18,6 +18,7 @@ import { api } from "../config.js";
 import { useEventWorkspace } from "../context/EventWorkspaceContext.js";
 import { EventWorkspaceNav } from "../components/EventWorkspaceNav.js";
 import { EventResourceMapEditor } from "./EventResourceMapEditor.js";
+import { FeedHealth } from "./modules/FeedHealth.js";
 
 const ROUTE_CATEGORIES: RouteCategory[] = ["FixedRoute", "SpecialEvent", "OnDemand"];
 
@@ -534,6 +535,7 @@ export function Admin() {
           </table>
         ) : null}
       </div>
+      <FeedHealth />
       <section id="event-configuration" className="event-configuration-section" tabIndex={-1} aria-labelledby="event-configuration-title">
         {selection.eventId && <EventWorkspaceNav eventName={selectedWorkspaceEvent?.name} planName={selectedWorkspacePlan?.name} planStatus={selectedWorkspacePlan?.status} activeStage="configure" />}
         <div className="event-configuration-intro">
