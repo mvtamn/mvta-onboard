@@ -213,4 +213,6 @@ BEGIN
 END;
 GO
 
+IF COL_LENGTH('dbo.AssessmentPeriods','ramp_up_stage') IS NOT NULL OR COL_LENGTH('dbo.PeriodKpiAssessments','ramp_up_multiplier') IS NOT NULL
+    THROW 51033, 'Migration 032 incomplete: legacy ramp-up columns remain.', 1;
 PRINT 'Migration 032 verified: governed Performance Assessment workflow is ready and ramp-up is excluded.';
