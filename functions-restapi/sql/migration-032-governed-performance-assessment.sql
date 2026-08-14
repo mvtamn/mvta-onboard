@@ -195,13 +195,22 @@ JOIN dbo.PeriodKpiAssessments a ON a.period_id=p.id JOIN dbo.ContractorPerforman
 WHERE p.status IN('finalized','issued');
 GO
 
-IF EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID('dbo.AssessmentPeriods') AND name='CK_AP_Ramp')
-    ALTER TABLE dbo.AssessmentPeriods DROP CONSTRAINT CK_AP_Ramp;
-ALTER TABLE dbo.AssessmentPeriods ALTER COLUMN ramp_up_stage NVARCHAR(20) NULL;
-DECLARE @rampDefault sysname=(SELECT dc.name FROM sys.default_constraints dc JOIN sys.columns c ON c.default_object_id=dc.object_id WHERE dc.parent_object_id=OBJECT_ID('dbo.PeriodKpiAssessments') AND c.name='ramp_up_multiplier');
-IF @rampDefault IS NOT NULL EXEC(N'ALTER TABLE dbo.PeriodKpiAssessments DROP CONSTRAINT '+QUOTENAME(@rampDefault));
-ALTER TABLE dbo.AssessmentPeriods DROP COLUMN ramp_up_stage;
-ALTER TABLE dbo.PeriodKpiAssessments DROP COLUMN ramp_up_multiplier;
+IF COL_LENGTH('dbo.AssessmentPeriods','ramp_up_stage') IS NOT NULL
+BEGIN
+    IF EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID('dbo.AssessmentPeriods') AND name='CK_AP_Ramp')
+        ALTER TABLE dbo.AssessmentPeriods DROP CONSTRAINT CK_AP_Ramp;
+    ALTER TABLE dbo.AssessmentPeriods DROP COLUMN ramp_up_stage;
+END;
+IF COL_LENGTH('dbo.PeriodKpiAssessments','ramp_up_multiplier') IS NOT NULL
+BEGIN
+    DECLARE @rampDefault sysname=(SELECT dc.name FROM sys.default_constraints dc JOIN sys.columns c ON c.default_object_id=dc.object_id WHERE dc.parent_object_id=OBJECT_ID('dbo.PeriodKpiAssessments') AND c.name='ramp_up_multiplier');
+    IF @rampDefault IS NOT NULL
+    BEGIN
+        DECLARE @dropRampDefault nvarchar(1000)=N'ALTER TABLE dbo.PeriodKpiAssessments DROP CONSTRAINT '+QUOTENAME(@rampDefault);
+        EXEC sys.sp_executesql @dropRampDefault;
+    END;
+    ALTER TABLE dbo.PeriodKpiAssessments DROP COLUMN ramp_up_multiplier;
+END;
 GO
 
 PRINT 'Migration 032 verified: governed Performance Assessment workflow is ready and ramp-up is excluded.';
