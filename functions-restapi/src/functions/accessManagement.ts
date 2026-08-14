@@ -49,7 +49,10 @@ function getProductionHandler() {
 }
 
 app.http("accessManagement", {
-  route: "admin/access-management/{*operation}",
+  // Azure Functions v4 does not reliably dispatch the catch-all form
+  // `{*operation}` for Node HTTP triggers. All supported Access Management
+  // operations fit within these three optional path segments.
+  route: "admin/access-management/{operation?}/{id?}/{action?}",
   methods: ["GET", "POST"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
