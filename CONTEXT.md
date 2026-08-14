@@ -734,3 +734,47 @@ It may later capture acknowledgement, ownership, actions, escalation,
 communication, notes, and resolution, but it is not an Event, Service Plan,
 or Event operating context.
 _Avoid_: alert, Event, Service Plan
+
+## Access management language
+
+**Access Principal**:
+A human user, Entra group, or workload identity that may receive access to
+MVTA OnBoard. An Access Principal is not a locally managed login account.
+_Avoid_: imported user, local user
+
+**Directory Onboarding**:
+The selection of an existing Entra user or group and the granting of OnBoard
+access. It does not copy credentials or mirror the directory into OnBoard.
+_Avoid_: AD import, user import, account creation
+
+**Effective Access**:
+The complete set of OnBoard capabilities a human receives from direct app-role
+assignments and direct membership in assigned Entra groups.
+_Avoid_: primary role, imported permissions
+
+**OnBoard Access Management**:
+The administration of access specifically to MVTA OnBoard, including grants,
+revocations, Directory Onboarding, and access review. It does not include
+tenant-wide Entra account administration.
+_Avoid_: Entra administration, login database
+
+**Access Administrator**:
+A human authorized to manage OnBoard access through the dedicated
+`OCC.AccessAdmin` authority. Operational administration alone does not make a
+person an Access Administrator.
+_Avoid_: OCC Admin, Entra admin, user manager
+
+**Privileged Access Change**:
+A grant or revocation of `OCC.Admin` or `OCC.AccessAdmin` authority. It requires
+approval by a second, distinct authorized person.
+_Avoid_: ordinary role change, self-approval
+
+**Guest Sponsorship**:
+The accountable relationship linking a B2B guest's OnBoard access to an MVTA
+sponsor, employer, justification, and expiry.
+_Avoid_: guest import, permanent contractor account
+
+**OnBoard Break-glass Path**:
+The IT-controlled Entra/Portal recovery path used to restore privileged OnBoard
+access when the in-app approval path cannot operate.
+_Avoid_: admin bypass, shared emergency login
