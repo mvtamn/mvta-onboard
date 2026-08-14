@@ -181,9 +181,14 @@ export function OnDemandServiceQuality() {
 
       <div className="concept-banner">
         <span className="concept-badge">{liveRisks === null ? "Preview data" : "Live data"}</span>
-        {liveRisks === null
-          ? liveMessage ?? "Loading on-demand wait risks; review scenarios are shown meanwhile."
-          : "Current wait-risk records are provided by the vendor-neutral on-demand monitoring contract."}
+        {liveRisks === null && (
+          <span>
+            {liveMessage ?? "Loading on-demand wait risks; review scenarios are shown meanwhile."}
+          </span>
+        )}
+        <span>
+          Current wait-risk records are provided by the vendor-neutral on-demand monitoring contract.
+        </span>
       </div>
 
       <div className="risk-stat-grid" aria-label="On-demand service quality summary">

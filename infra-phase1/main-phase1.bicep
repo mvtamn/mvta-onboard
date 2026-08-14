@@ -49,6 +49,9 @@ param accessAdminFallback bool = false
 @description('Conditional Access authentication-context value required for privileged role requests and approvals.')
 param privilegedAuthContext string = 'c1'
 
+@description('GTFS-Realtime TripUpdate feed used by fixed-route risk monitoring.')
+param gtfsRtTripUpdateUrl string = 'https://srv.mvta.com/infoPoint/GTFS-realtime.ashx?&Type=TripUpdate&debug=true'
+
 var cleanSuffix = replace(uniqueSuffix, '-', '')
 
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
@@ -88,6 +91,7 @@ module restApiFunction 'modules/functionapp.bicep' = {
     accessManagementConfigJson: accessManagementConfigJson
     accessAdminFallback: accessAdminFallback
     privilegedAuthContext: privilegedAuthContext
+    gtfsRtTripUpdateUrl: gtfsRtTripUpdateUrl
   }
 }
 
