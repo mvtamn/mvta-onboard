@@ -4,7 +4,6 @@ import { capTriggers, consecutiveMonthsBelow, escalationMultiplier } from "./ass
 import { assessmentInputHash, canonicalJson } from "./assessment/hash";
 import { addBusinessDays, assertHolidayCoverage } from "./assessment/businessDays";
 import { computePenalty } from "./assessment/penalty";
-import { rampUpMultiplier, rampUpStage } from "./assessment/rampUp";
 import { matchTier } from "./assessment/tiers";
 import type { StandardTier } from "./assessment/types";
 
@@ -37,14 +36,6 @@ test("penalty bases calculate quantity and duration", () => {
   assert.equal(computePenalty({ ...base, penaltyBasis: "per_unit" }, { quantity: 3 }), 300);
   assert.equal(computePenalty({ ...base, penaltyBasis: "per_unit_per_day" }, { quantity: 3, durationDays: 2 }), 600);
   assert.equal(computePenalty({ ...base, penaltyBasis: "per_week" }, { quantity: 2, durationDays: 8 }), 400);
-});
-
-test("ramp-up stage edges and safety carve-out", () => {
-  assert.equal(rampUpStage("20260115", "202603"), "suspended");
-  assert.equal(rampUpStage("20260115", "202604"), "half");
-  assert.equal(rampUpStage("20260115", "202607"), "full");
-  assert.equal(rampUpMultiplier("suspended", true), 1);
-  assert.equal(rampUpMultiplier("half", false), 0.5);
 });
 
 test("escalation begins at exactly three consecutive months", () => {

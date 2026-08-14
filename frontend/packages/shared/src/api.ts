@@ -756,6 +756,39 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
     reviewPeriodAssessment(id: string, manager_action: Exclude<ManagerAssessmentAction, "pending">, final_amount?: number, manager_reason?: string) {
       return request<{ id: string }>(`/api/period-assessments/${id}`, { method: "PATCH", body: JSON.stringify({ manager_action, final_amount, manager_reason }) }, true);
     },
+    getAssessmentReports(periodId: string) {
+      return request<{ reports: import("./types.js").AssessmentReport[] }>(`/api/assessment-reports?period_id=${encodeURIComponent(periodId)}`, {}, true);
+    },
+    createAssessmentReport(period_id: string, issuance_type: "preliminary" | "final") {
+      return request<{ id: string; version: number; content_sha256: string }>("/api/assessment-reports", { method: "POST", body: JSON.stringify({ period_id, issuance_type }) }, true);
+    },
+    shareValidationDraft(periodId: string, report_id: string, recipient: string, sender_attestation: string) {
+      return request<{ status: string; validation_ends_on: string }>(`/api/assessment-periods/${periodId}/validation-share`, { method: "POST", body: JSON.stringify({ report_id, recipient, delivery_method: "email", sender_attestation }) }, true);
+    },
+    issueAssessmentReport(id: string, recipient: string, sender_attestation: string) {
+      return request<{ id: string; status: string; content_sha256: string; dispute_deadline_at: string }>(`/api/assessment-reports/${id}/issue`, { method: "POST", body: JSON.stringify({ recipient, delivery_method: "email", sender_attestation }) }, true);
+    },
+    getAssessmentCaps(periodId: string) {
+      return request<{ caps: import("./types.js").AssessmentCap[] }>(`/api/assessment-caps?period_id=${encodeURIComponent(periodId)}`, {}, true);
+    },
+    getAssessmentDisputes(periodId: string) {
+      return request<{ disputes: import("./types.js").AssessmentDispute[] }>(`/api/assessment-disputes?period_id=${encodeURIComponent(periodId)}`, {}, true);
+    },
+    createAssessmentDispute(report_id: string, assessment_ids: string[], basis: string) {
+      return request<{ id: string }>("/api/assessment-disputes", { method: "POST", body: JSON.stringify({ report_id, assessment_ids, basis }) }, true);
+    },
+    decideAssessmentDispute(id: string, outcome: "upheld" | "adjusted" | "rescinded" | "superseded", note: string, credit_amount?: number) {
+      return request<{ id: string; status: string }>(`/api/assessment-disputes/${id}/decision`, { method: "POST", body: JSON.stringify({ outcome, note, credit_amount }) }, true);
+    },
+    getAssessmentEvidence(assessmentId: string) {
+      return request<{ evidence: import("./types.js").AssessmentEvidence[] }>(`/api/assessment-evidence?assessment_id=${encodeURIComponent(assessmentId)}`, {}, true);
+    },
+    getAssessmentEvidenceUploadUrl(assessment_id: string, file_name: string) {
+      return request<{ upload_url: string; blob_path: string }>("/api/assessment-evidence/upload-url", { method: "POST", body: JSON.stringify({ assessment_id, file_name }) }, true);
+    },
+    createAssessmentEvidence(input: { assessment_id: string; blob_path: string; content_type: string; file_size_bytes: number; content_sha256: string; visibility: "internal" | "contractor"; caption?: string }) {
+      return request<{ id: string }>("/api/assessment-evidence", { method: "POST", body: JSON.stringify(input) }, true);
+    },
     getComplianceOccurrences() {
       return request<{ occurrences: ComplianceOccurrence[]; diagnostics: { table_ready: boolean } }>("/api/compliance-occurrences", {}, true);
     },
