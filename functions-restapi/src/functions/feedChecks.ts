@@ -1,6 +1,7 @@
 // GET /feed-checks - staff-only, PII-free upstream feed diagnostics.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { summarizeFeedResponse } from "../lib/feedCheckResponse";
 
 type FeedCheck = {
   name: string;
@@ -31,11 +32,8 @@ async function checkJson(name: string, url: string, auth?: Record<string, string
       signal: AbortSignal.timeout(30_000),
     });
     if (!response.ok) return { name, configured: true, status: response.status };
-    const body = await response.json() as { Entities?: unknown[]; result?: Record<string, unknown> };
-    if (Array.isArray(body.Entities)) return { name, configured: true, status: response.status, records: body.Entities.length };
-    const result = body.result ?? {};
-    const array = Object.values(result).find(Array.isArray);
-    return { name, configured: true, status: response.status, records: Array.isArray(array) ? array.length : 0, keys: Object.keys(result) };
+    const summary = summarizeFeedResponse(await response.json());
+    return { name, configured: true, status: response.status, ...summary };
   } catch (error) {
     return { name, configured: true, error: error instanceof Error ? error.message : "Request failed" };
   }
