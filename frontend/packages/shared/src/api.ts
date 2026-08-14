@@ -113,6 +113,15 @@ export class ApiError extends Error {
   }
 }
 
+export interface FeedCheck {
+  name: string;
+  configured: boolean;
+  status?: number;
+  records?: number;
+  keys?: string[];
+  error?: string;
+}
+
 // The live API has been observed returning a bare scalar (e.g. a route number)
 // for these fields instead of a JSON array - likely a not-yet-redeployed
 // backend predating the current contract. Every consumer in both frontends
@@ -357,6 +366,10 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
 
     getOnDemandRisks() {
       return request<{ risks: OnDemandRiskRecord[] }>("/api/on-demand-risks", {}, true);
+    },
+
+    getFeedChecks() {
+      return request<{ checked_at: string; checks: FeedCheck[] }>("/api/feed-checks", {}, true);
     },
 
     getMissedTrips(view: "queue" | "history" | "all" = "queue", limit = 200, offset = 0) {
