@@ -81,7 +81,7 @@ app.http("tripDelaysList", {
           ? JSON.parse(row.prediction_reasons)
           : [],
       }));
-      const [stopCountResult, directionCountResult, routeCountResult] =
+      const [stopCountResult, directionCountResult, routeCountResult, stopNamesResult] =
         await Promise.all([
         pool.request().query<{ count: number }>(
           "SELECT COUNT_BIG(*) AS count FROM GtfsStops",
@@ -95,7 +95,19 @@ app.http("tripDelaysList", {
           ELSE
             SELECT COUNT_BIG(*) AS count FROM GtfsRoutes
         `),
+        pool.request().query<{ stop_id: string; stop_name: string }>(
+          "SELECT stop_id, stop_name FROM GtfsStops",
+        ),
       ]);
+      const stopNames = new Map(
+        stopNamesResult.recordset.map((stop) => [stop.stop_id, stop.stop_name]),
+      );
+      for (const delay of delays) {
+        delay.departure_predictions = delay.departure_predictions.map((prediction: { stop_id: string | null }) => ({
+          ...prediction,
+          stop_name: prediction.stop_id ? stopNames.get(prediction.stop_id) ?? null : null,
+        }));
+      }
       const lastTripUpdateAt = result.recordset.reduce<Date | null>(
         (latest, row) =>
           !latest || row.last_polled_at > latest ? row.last_polled_at : latest,

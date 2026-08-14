@@ -103,7 +103,9 @@ function fromTripDelay(delay: TripDelay): FixedRouteRisk {
       const stopName =
         prediction.stop_id === delay.first_threshold_stop_id &&
         delay.first_threshold_stop_name
-          ? delay.first_threshold_stop_name
+          ? `${delay.first_threshold_stop_name} (#${prediction.stop_id})`
+          : prediction.stop_name && prediction.stop_id
+            ? `${prediction.stop_name} (#${prediction.stop_id})`
           : prediction.stop_id
             ? `Stop ${prediction.stop_id}`
             : `Stop sequence ${prediction.stop_sequence}`;

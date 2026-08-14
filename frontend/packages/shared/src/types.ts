@@ -254,6 +254,7 @@ export interface TripDelayDiagnostics {
 export interface DeparturePrediction {
   stop_sequence: number;
   stop_id: string | null;
+  stop_name?: string | null;
   departure_delay_seconds: number;
   predicted_departure_at: string | null;
 }
