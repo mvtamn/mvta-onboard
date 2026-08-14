@@ -11,6 +11,7 @@ import {
   ApiError,
 } from "@mvta/shared";
 import { useAuth } from "../auth/AuthContext.js";
+import { roleLabel } from "../auth/roles.js";
 import { api } from "../config.js";
 
 const ALL_CHANNELS = ["Website", "Mobile app", "Digital signage", "Social media", "SMS", "Push", "Email"];
@@ -150,7 +151,7 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
   if (!canPublish) {
     return (
       <p className="error-text">
-        You need the OCC.Publisher or OCC.Admin role to publish alerts. Ask an administrator to add
+        You need the {roleLabel("OCC.Publisher")} or {roleLabel("OCC.Admin")} access level to publish alerts. Ask an administrator to add
         you to the appropriate group.
       </p>
     );

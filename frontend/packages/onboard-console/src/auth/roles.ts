@@ -24,3 +24,20 @@ export function hasAnyRole(account: AccountInfo | null, allowed: AppRole[]): boo
   const roles = rolesOf(account);
   return roles.some((r) => allowed.includes(r));
 }
+
+/** Human-readable names for Entra app-role values. Keep the values themselves
+ * in APIs and authorization checks; these labels are only for the console. */
+export function roleLabel(role: string): string {
+  return ({
+    "OCC.Viewer": "Viewer",
+    "OCC.Publisher": "Alert Publisher",
+    "OCC.Admin": "Operations Administrator",
+    "OCC.Compliance": "Compliance Reviewer",
+    "OCC.ComplianceManager": "Compliance Manager",
+    "OCC.Detour": "Detour Manager",
+    "OCC.AccessAdmin": "Access Administrator",
+    "OCC.EventAVL": "Event AVL Manager",
+    "OCC.DecisionMatrix": "Decision Matrix Viewer",
+    "System.Ingestion": "Automated System Ingestion",
+  } as Record<string, string>)[role] ?? role;
+}

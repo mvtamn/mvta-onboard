@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./auth/AuthContext.js";
+import { roleLabel } from "./auth/roles.js";
 import { RequireRole } from "./auth/RequireRole.js";
 import { ErrorBoundary } from "./components/ErrorBoundary.js";
 import { useTheme } from "./theme/ThemeContext.js";
@@ -78,7 +79,7 @@ const PAGE_META: { match: (path: string) => boolean; title: string; sub: string 
   { match: (p) => p === "/detour-intake", title: "Detour Intake", sub: "Capture and review preliminary closure reports" },
   { match: (p) => p === "/detour-reports", title: "Detour Reports", sub: "Search and export detour history — read-only" },
   { match: (p) => p === "/admin", title: "Admin", sub: "Expiration defaults and system configuration" },
-  { match: (p) => p === "/admin/access-management", title: "Access Management", sub: "OnBoard access, Directory Onboarding, approvals, and sign-in evidence" },
+  { match: (p) => p === "/admin/access-management", title: "Access Management", sub: "Manage OnBoard access, approvals, and sign-in activity" },
   {
     match: (p) => p === "/event-monitoring",
     title: "Event AVL",
@@ -292,10 +293,10 @@ export function App() {
           </div>
           <div className="topbar-actions">
             <FixedRouteRefreshIndicator />
-            <span className="tr-text" title="Best-effort managed-device target. Conditional Access, risk, revocation, or browser state may require earlier sign-in.">Session: 12-hour shift target</span>
+            <span className="tr-text" title="On managed devices, this is the target sign-in duration. Conditional Access, risk, revocation, or browser state may require you to sign in sooner.">Sign-in target: 12 hours</span>
             <span className="pill-user">
               <span className="avatar">{initialsOf(account.name ?? account.username)}</span>
-              {account.name ?? account.username} · {roles.join(", ") || "no roles"}
+              {account.name ?? account.username} · {roles.map(roleLabel).join(", ") || "No assigned access"}
             </span>
             <button
               className="theme-toggle-btn"

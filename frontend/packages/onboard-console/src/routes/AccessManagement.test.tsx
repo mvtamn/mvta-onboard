@@ -82,7 +82,7 @@ describe("AccessManagement", () => {
 
     render(<AccessManagement />);
     const row = (await screen.findByText("Taylor Operator")).closest("tr")!;
-    expect(within(row).getByText("OCC.Viewer")).toBeInTheDocument();
+    expect(within(row).getByText("Viewer")).toBeInTheDocument();
     expect(within(row).getByText("via OnBoard Viewers")).toBeInTheDocument();
 
     await userEvent.click(within(row).getByRole("button", { name: "View sign-ins" }));
@@ -102,7 +102,7 @@ describe("AccessManagement", () => {
 
     render(<AccessManagement />);
     const row = (await screen.findByText("Taylor Operator")).closest("tr")!;
-    await userEvent.click(within(row).getByRole("button", { name: "Revoke OCC.Viewer access" }));
+    await userEvent.click(within(row).getByRole("button", { name: "Remove Viewer access" }));
     await userEvent.type(screen.getByRole("textbox", { name: "Revocation reason" }), "Moved to another team");
     await userEvent.click(screen.getByRole("button", { name: "Preview revocation" }));
 

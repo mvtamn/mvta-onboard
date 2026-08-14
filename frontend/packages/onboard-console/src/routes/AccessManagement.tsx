@@ -14,6 +14,7 @@ import {
 } from "@mvta/shared";
 import { api } from "../config.js";
 import { useAuth } from "../auth/AuthContext.js";
+import { roleLabel } from "../auth/roles.js";
 
 const HUMAN_ROLES: OnBoardAccessRole[] = [
   "OCC.Viewer",
@@ -33,7 +34,11 @@ function displayTime(value: string | null): string {
 }
 
 function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof ApiError || error instanceof Error ? error.message : fallback;
+  const message = error instanceof ApiError || error instanceof Error ? error.message : fallback;
+  if (/request failed \(404\)/i.test(message)) {
+    return `We could not reach this Access Management service. Please try again; if it continues, contact an administrator. (${message})`;
+  }
+  return message;
 }
 
 function idempotencyKey(prefix: string): string {
@@ -224,11 +229,11 @@ export function AccessManagement() {
     try {
       const submitted = await api.submitAccessChanges(plannedChanges(), idempotencyKey("onboard"));
       setResults(submitted);
-      setNotice("Directory Onboarding submitted. Review each item outcome below.");
+      setNotice("Access request submitted. Review each item outcome below.");
       setPreview(null);
       await load();
     } catch (submitError) {
-      setError(errorMessage(submitError, "Directory Onboarding failed."));
+      setError(errorMessage(submitError, "The access request could not be submitted."));
     } finally {
       setBusy(false);
     }
@@ -400,21 +405,21 @@ export function AccessManagement() {
 
   return <section className="access-management">
     <div className="panel-header access-management-header">
-      <span>Admin — Access Management</span>
-      <span className="env-badge">{environment || "Loading environment"}</span>
+      <span>Access Management</span>
+      <span className="env-badge">{environment ? `${environment} environment` : "Loading environment"}</span>
     </div>
     <div className="panel-body">
       <p className="panel-desc">
-        Manage access specifically to MVTA OnBoard. Microsoft Entra ID remains the identity source of truth; this module never stores passwords or disables tenant accounts.
+        Give people and groups access to MVTA OnBoard, review approval requests, and check sign-in activity. Microsoft Entra ID remains the source of truth: this page never stores passwords or disables accounts.
       </p>
-      {accessAdminFallback ? <p className="warning-text" role="status">Temporary bootstrap mode is active: `OCC.Admin` can operate Access Management until `OCC.AccessAdmin` is provisioned. Remove this fallback after verification.</p> : null}
+      {accessAdminFallback ? <p className="warning-text" role="status">Temporary setup mode is active: Operations Administrators can manage access until Access Administrators are assigned. Remove this setting after verification.</p> : null}
       <div className="access-tabs" role="tablist" aria-label="Access Management sections">
         {([
-          ["access", "Effective access"],
-          ["onboarding", "Directory Onboarding"],
-          ["approvals", `Approvals (${pending.length})`],
-          ["reconciliation", "Reconciliation"],
-          ["audit", "Administrative audit"],
+          ["access", "People & access"],
+          ["onboarding", "Add access"],
+          ["approvals", `Approval requests (${pending.length})`],
+          ["reconciliation", "Access health"],
+          ["audit", "Admin activity"],
         ] as Array<[Tab, string]>).map(([value, label]) => <button
           key={value}
           role="tab"
@@ -433,7 +438,7 @@ export function AccessManagement() {
           <select className="f" aria-label="Filter principal type" value={principalType} onChange={(event) => setPrincipalType(event.target.value)}>
             <option value="all">All principal types</option><option value="user">People</option><option value="group">Groups</option><option value="service_principal">Workloads</option>
           </select>
-          <select className="f" aria-label="Filter role" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}><option value="all">All roles</option>{[...HUMAN_ROLES, "System.Ingestion" as const].map((role) => <option key={role} value={role}>{role}</option>)}</select>
+          <select className="f" aria-label="Filter role" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}><option value="all">All access levels</option>{[...HUMAN_ROLES, "System.Ingestion" as const].map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}</select>
           <select className="f" aria-label="Filter assignment source" value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}><option value="all">All sources</option><option value="group">Group-derived</option><option value="direct">Direct</option></select>
           <select className="f" aria-label="Filter guest status" value={guestFilter} onChange={(event) => setGuestFilter(event.target.value)}><option value="all">Members and guests</option><option value="guest">Guests</option><option value="member">Members</option></select>
           <select className="f" aria-label="Filter expiry" value={expiryFilter} onChange={(event) => setExpiryFilter(event.target.value)}><option value="all">Any expiry</option><option value="expiring">Has expiry</option><option value="permanent">No expiry</option></select>
@@ -446,8 +451,8 @@ export function AccessManagement() {
             <td><b>{principal.display_name}</b><br /><span className="td-dim">{principal.sign_in_name || principal.id}</span></td>
             <td>{principal.principal_type === "service_principal" ? "Workload" : principal.principal_type === "group" ? "Group" : principal.guest_state ? "Guest" : "Member"}</td>
             <td>{principal.assignments.length ? principal.assignments.map((assignment) => <div key={`${assignment.role}-${assignment.source}-${assignment.source_id}`} className="access-source">
-              <b>{assignment.role}</b> <span className="td-dim">{assignment.source === "group" ? `via ${assignment.source_name}` : assignment.is_exception ? "direct exception" : "direct assignment"}</span>{" "}
-              <button className="btn-link" aria-label={`Revoke ${assignment.role} access`} onClick={() => { setRevokeDraft({ principal, assignment, reason: "", preview: null }); setError(null); }}>Revoke</button>
+              <b title={assignment.role}>{roleLabel(assignment.role)}</b> <span className="td-dim">{assignment.source === "group" ? `via ${assignment.source_name}` : assignment.is_exception ? "direct exception" : "direct assignment"}</span>{" "}
+              <button className="btn-link" aria-label={`Remove ${roleLabel(assignment.role)} access`} onClick={() => { setRevokeDraft({ principal, assignment, reason: "", preview: null }); setError(null); }}>Remove</button>
             </div>) : "No effective roles"}</td>
             <td>{principal.directory_status === "missing" ? "Missing directory object" : principal.account_enabled === false ? "Disabled in Entra" : principal.guest_state || "Enabled"}</td>
             <td>{principal.assignments.map((assignment) => assignment.expires_at ? displayTime(assignment.expires_at) : null).filter(Boolean).join(", ") || "No recorded expiry"}</td>
@@ -457,7 +462,7 @@ export function AccessManagement() {
         {revokeDraft ? <section className="access-preview" aria-label={`Revoke ${revokeDraft.assignment.role} from ${revokeDraft.principal.display_name}`}>
           <button className="btn-sm access-close" onClick={() => setRevokeDraft(null)}>Cancel</button>
           <h3>Preview access revocation</h3>
-          <p><b>{revokeDraft.principal.display_name}</b> · {revokeDraft.assignment.role} · {revokeDraft.assignment.source === "group" ? `remove from ${revokeDraft.assignment.source_name}` : "remove direct assignment"}</p>
+          <p><b>{revokeDraft.principal.display_name}</b> · <span title={revokeDraft.assignment.role}>{roleLabel(revokeDraft.assignment.role)}</span> · {revokeDraft.assignment.source === "group" ? `remove from ${revokeDraft.assignment.source_name}` : "remove direct assignment"}</p>
           <p className="muted">Other assignment sources remain effective. Revoking a group principal affects that group’s direct members.</p>
           <p className="muted">Authorization may continue until the caller’s current token is refreshed or revalidated. OnBoard does not perform tenant-wide session revocation.</p>
           <label>Revocation reason<textarea className="f" aria-label="Revocation reason" value={revokeDraft.reason} onChange={(event) => setRevokeDraft((draft) => draft ? { ...draft, reason: event.target.value, preview: null } : null)} /></label>
@@ -503,25 +508,25 @@ export function AccessManagement() {
           <label>MVTA sponsor<input className="f" value={sponsor} onChange={(event) => { setSponsor(event.target.value); setPreview(null); }} /></label>
           <label>Employer / organization<input className="f" value={organization} onChange={(event) => { setOrganization(event.target.value); setPreview(null); }} /></label>
         </div>}
-        <fieldset><legend>OnBoard roles</legend><div className="access-role-grid">{roleChoices.map((role) => <label key={role}><input type="checkbox" checked={selectedRoles.includes(role)} onChange={(event) => { setSelectedRoles((roles) => event.target.checked ? [...roles, role] : roles.filter((item) => item !== role)); setPreview(null); }} /> {role}</label>)}</div></fieldset>
-        {onboardingMode === "directory" ? <label className="access-inline">Assignment source <select className="f" value={source} onChange={(event) => { setSource(event.target.value as AccessAssignmentSource); setPreview(null); }}><option value="group">Configured role group (recommended)</option><option value="direct">Audited direct exception</option></select></label> : null}
+        <fieldset><legend>Access levels to grant</legend><p className="muted">Choose the minimum access needed. The Entra role value is shown in parentheses for administrators.</p><div className="access-role-grid">{roleChoices.map((role) => <label key={role}><input type="checkbox" checked={selectedRoles.includes(role)} onChange={(event) => { setSelectedRoles((roles) => event.target.checked ? [...roles, role] : roles.filter((item) => item !== role)); setPreview(null); }} /> <span title={role}>{roleLabel(role)} <span className="td-dim">({role})</span></span></label>)}</div></fieldset>
+        {onboardingMode === "directory" ? <label className="access-inline">How should access be granted? <select className="f" value={source} onChange={(event) => { setSource(event.target.value as AccessAssignmentSource); setPreview(null); }}><option value="group">Through the configured security group (recommended)</option><option value="direct">Direct assignment (audited exception)</option></select></label> : null}
         <div className="field-grid">
           <label>Business reason<textarea className="f" value={reason} onChange={(event) => { setReason(event.target.value); setPreview(null); }} /></label>
           <label>Expiry {onboardingMode === "guest" ? "(required)" : "(optional)"}<input className="f" type="datetime-local" value={expiresAt} onChange={(event) => { setExpiresAt(event.target.value); setPreview(null); }} /></label>
         </div>
-        <button className="btn-sm" disabled={busy} onClick={() => void previewChanges()}>Preview Directory Onboarding</button>
-        {preview ? <section className="access-preview" aria-label="Directory Onboarding preview">
-          <h3>Dry-run result</h3>
+        <button className="btn-sm" disabled={busy} onClick={() => void previewChanges()}>Review changes</button>
+        {preview ? <section className="access-preview" aria-label="Access request preview">
+          <h3>Review results</h3>
           <ul>{preview.items.map((item) => <li key={item.index}>Item {item.index + 1}: {item.disposition}{item.errors.length ? ` — ${item.errors.join(" ")}` : ""}</li>)}</ul>
           <button className="btn-primary" disabled={busy || !preview.valid} onClick={() => void submitChanges()}>Confirm changes</button>
         </section> : null}
-        {results ? <section aria-label="Directory Onboarding outcomes"><h3>Per-item outcomes</h3><ul>{results.results.map((result) => <li key={result.index}>Item {result.index + 1}: {result.disposition}{result.message ? ` — ${result.message}` : ""}</li>)}</ul></section> : null}
+        {results ? <section aria-label="Access request outcomes"><h3>Request results</h3><ul>{results.results.map((result) => <li key={result.index}>Item {result.index + 1}: {result.disposition}{result.message ? ` — ${result.message}` : ""}</li>)}</ul></section> : null}
       </section> : null}
 
       {!loading && tab === "approvals" ? <section>
-        <p className="panel-desc">`OCC.Admin` and `OCC.AccessAdmin` grants and revocations require a different, freshly authenticated Access Administrator.</p>
+        <p className="panel-desc"><span title="OCC.Admin">Operations Administrator</span> and <span title="OCC.AccessAdmin">Access Administrator</span> changes require approval from a different, recently signed-in Access Administrator.</p>
         {pending.length ? <div className="table-scroll"><table className="data"><thead><tr><th>Requested change</th><th>Requester</th><th>Reason</th><th>Actions</th></tr></thead><tbody>{pending.map((change) => <tr key={change.id}>
-          <td>{change.change.action} {change.change.role} · {change.change.principal_id}<br /><span className="td-dim">{change.environment} · requested {displayTime(change.requested_at)} · expires {displayTime(change.approval_expires_at ?? null)}</span></td>
+          <td>{change.change.action} <span title={change.change.role}>{roleLabel(change.change.role)}</span> · {change.change.principal_id}<br /><span className="td-dim">{change.environment} · requested {displayTime(change.requested_at)} · expires {displayTime(change.approval_expires_at ?? null)}</span></td>
           <td>{change.requested_by_name}</td><td>{change.change.reason}</td>
           <td><button className="btn-sm" disabled={busy} onClick={() => void decide(change, "approved")}>Approve</button> <button className="btn-sm" disabled={busy} onClick={() => void decide(change, "rejected")}>Reject</button>{change.requested_by_name.toLowerCase() === account?.username.toLowerCase() ? <> <button className="btn-sm" disabled={busy} onClick={() => void cancelChange(change)}>Cancel request</button></> : null}</td>
         </tr>)}</tbody></table></div> : <p>No privileged changes await approval.</p>}
