@@ -366,7 +366,7 @@ function effectiveRoles(assignments: AccessAssignment[]): AccessRole[] {
 
 function operationPath(request: HttpRequest): string {
   const pathname = new URL(request.url).pathname;
-  const marker = "/admin/access-management";
+  const marker = "/access-management";
   const index = pathname.indexOf(marker);
   return index < 0 ? "" : pathname.slice(index + marker.length).replace(/^\/+|\/+$/g, "");
 }

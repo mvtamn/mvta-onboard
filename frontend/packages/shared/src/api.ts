@@ -824,12 +824,12 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
 
     getAccessPrincipals() {
       return request<{ environment: string; access_admin_fallback: boolean; principals: OnBoardAccessPrincipal[] }>(
-        "/api/admin/access-management/principals", {}, true,
+        "/api/access-management/principals", {}, true,
       );
     },
     searchAccessDirectory(query: string) {
       return request<{ candidates: OnBoardAccessPrincipal[] }>(
-        `/api/admin/access-management/directory/search?q=${encodeURIComponent(query)}`, {}, true,
+        `/api/access-management/directory/search?q=${encodeURIComponent(query)}`, {}, true,
       );
     },
     previewAccessChanges(changes: OnBoardDirectoryChange[]) {
@@ -838,7 +838,7 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
         valid: boolean;
         items: Array<{ index: number; disposition: "invalid" | "already_satisfied" | "immediate" | "approval_required"; errors: string[] }>;
       }>(
-        "/api/admin/access-management/changes/preview",
+        "/api/access-management/changes/preview",
         { method: "POST", body: JSON.stringify({ changes }) },
         true,
       );
@@ -849,55 +849,55 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
         environment: string;
         results: Array<{ index: number; disposition: string; correlation_id?: string | null; change_id?: string; errors?: string[]; message?: string }>;
       }>(
-        "/api/admin/access-management/changes",
+        "/api/access-management/changes",
         { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ changes }) },
         privileged ? { authenticationContext: privilegedAuthenticationContext } : true,
       );
     },
     getPendingAccessChanges() {
       return request<{ changes: OnBoardAccessChangeRecord[] }>(
-        "/api/admin/access-management/changes", {}, true,
+        "/api/access-management/changes", {}, true,
       );
     },
     decideAccessChange(id: string, decision: "approved" | "rejected", idempotencyKey: string) {
       return request<{ change_id: string; status: string; result: { status: string; correlation_id: string | null } | null }>(
-        `/api/admin/access-management/changes/${encodeURIComponent(id)}/decision`,
+        `/api/access-management/changes/${encodeURIComponent(id)}/decision`,
         { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ decision }) },
         { authenticationContext: privilegedAuthenticationContext },
       );
     },
     cancelAccessChange(id: string, reason: string) {
       return request<{ change_id: string; status: "cancelled" }>(
-        `/api/admin/access-management/changes/${encodeURIComponent(id)}/cancel`,
+        `/api/access-management/changes/${encodeURIComponent(id)}/cancel`,
         { method: "POST", body: JSON.stringify({ reason }) },
         true,
       );
     },
     getAccessSignIns(principalId: string) {
       return request<OnBoardSignInInformation>(
-        `/api/admin/access-management/principals/${encodeURIComponent(principalId)}/sign-ins`, {}, true,
+        `/api/access-management/principals/${encodeURIComponent(principalId)}/sign-ins`, {}, true,
       );
     },
     getAccessAudit() {
       return request<{ audit: OnBoardAccessAuditEntry[] }>(
-        "/api/admin/access-management/audit", {}, true,
+        "/api/access-management/audit", {}, true,
       );
     },
     getAccessExpirations() {
       return request<{ expirations: OnBoardAccessMetadata[] }>(
-        "/api/admin/access-management/expirations", {}, true,
+        "/api/access-management/expirations", {}, true,
       );
     },
     applyAccessExpirations(idempotencyKey: string) {
       return request<{ environment: string; results: Array<{ metadata_id: string; disposition: string; message?: string }> }>(
-        "/api/admin/access-management/expirations/apply",
+        "/api/access-management/expirations/apply",
         { method: "POST", headers: { "Idempotency-Key": idempotencyKey } },
         true,
       );
     },
     getAccessReconciliation() {
       return request<OnBoardAccessReconciliationReport>(
-        "/api/admin/access-management/reconciliation", {}, true,
+        "/api/access-management/reconciliation", {}, true,
       );
     },
     exportAccessInventory() {
@@ -911,7 +911,7 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
           source: string; source_name: string; expires_at: string | null;
           sponsor: string | null; organization: string | null;
         }>;
-      }>("/api/admin/access-management/export", { method: "POST" }, true);
+      }>("/api/access-management/export", { method: "POST" }, true);
     },
   };
 }
