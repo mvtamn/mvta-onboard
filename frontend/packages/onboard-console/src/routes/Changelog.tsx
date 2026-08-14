@@ -7,33 +7,35 @@ import { CHANGELOG_ENTRIES } from "./changelogData.js";
 export function Changelog() {
   return (
     <>
-      <div className="panel-header">Changelog</div>
-      <div className="panel-body">
+      <div className="panel-header">Release notes</div>
+      <div className="panel-body changelog-page">
         <p className="panel-desc">
-          Version history for the MVTA OnBoard staff console and API, newest first.
+          What changed in the MVTA OnBoard staff console and API, newest first. You’re using v{__APP_VERSION__}.
         </p>
-        {CHANGELOG_ENTRIES.map((entry) => (
-          <div className="subcard" key={entry.version} style={{ marginBottom: 16 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-              <span className="pill-sm pill-success">v{entry.version}</span>
-              <span className="td-dim">{entry.date}</span>
-            </div>
-            {entry.sections.map((section) => (
-              <div key={section.heading || "notes"} style={{ marginBottom: 8 }}>
-                {section.heading ? (
-                  <div className="field-label">{section.heading}</div>
-                ) : null}
-                <ul style={{ margin: "4px 0 0", paddingLeft: 20 }}>
-                  {section.items.map((item) => (
-                    <li key={item} style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 4 }}>
-                      {item}
-                    </li>
+        <div className="changelog-list">
+          {CHANGELOG_ENTRIES.map((entry, index) => {
+            const isCurrent = entry.version === __APP_VERSION__;
+            return (
+              <details className={`changelog-entry${isCurrent ? " is-current" : ""}`} key={entry.version} open={isCurrent || index === 0}>
+                <summary>
+                  <span className="pill-sm pill-success">v{entry.version}</span>
+                  <time dateTime={entry.date}>{entry.date}</time>
+                  {isCurrent ? <span className="changelog-current-label">Current version</span> : null}
+                </summary>
+                <div className="changelog-entry-body">
+                  {entry.sections.map((section) => (
+                    <section key={section.heading || "notes"}>
+                      {section.heading ? <h3>{section.heading}</h3> : null}
+                      <ul>
+                        {section.items.map((item) => <li key={item}>{item}</li>)}
+                      </ul>
+                    </section>
                   ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        ))}
+                </div>
+              </details>
+            );
+          })}
+        </div>
       </div>
     </>
   );

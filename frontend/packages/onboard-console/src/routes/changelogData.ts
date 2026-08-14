@@ -18,6 +18,103 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.32",
+    date: "2026-08-13",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "The sidebar now presents the running version as a distinct badge with a clearer What’s new action.",
+          "Release notes now open the exact running build, restore missing releases 1.5.8 through 1.5.31, and make the full history easier to scan with expandable releases.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.31",
+    date: "2026-08-13",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Event Planning now uses a guided scope canvas for choosing and editing Routes, Geofences, or Transit locations before activation.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.30",
+    date: "2026-08-13",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Plan details and resources now share one workspace with resource cards, readiness counts, and a visible activation gate.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.29",
+    date: "2026-08-12",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Event Planning now presents one continuous Plan, Configure, Activate, and Monitor workflow for the selected operating period.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.28",
+    date: "2026-08-12",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "A prominent next-action panel now guides Event Planning operators to the exact step required next.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.27",
+    date: "2026-08-12",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Event AVL now keeps an operating brief beside the live map with vehicle, plan membership, assignment, and alert-readiness totals.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.26",
+    date: "2026-08-12",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Event AVL now shows active SpecialEvent vehicles before plan assignment while keeping managed classification and alerts plan-scoped.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.25",
+    date: "2026-08-12",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Event Map Authoring now uses prominent labeled location markers and visibility controls that match Event AVL.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.24",
     date: "2026-08-12",
     sections: [
@@ -28,6 +125,51 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
         ],
       },
     ],
+  },
+  {
+    version: "1.5.23",
+    date: "2026-08-12",
+    sections: [{ heading: "Changed", items: ["Event AVL locations now use prominent haloed markers, persistent labels, active/inactive colors, and an on-map legend."] }],
+  },
+  {
+    version: "1.5.22",
+    date: "2026-08-12",
+    sections: [{ heading: "Changed", items: ["Event AVL can now show the full active and inactive geofence and transit-location catalog without expanding the live operating scope."] }],
+  },
+  {
+    version: "1.5.21",
+    date: "2026-08-12",
+    sections: [{ heading: "Changed", items: ["Event AVL now defaults to the most relevant Event context and clearly identifies missing or inactive operating scope.", "Event Workspace navigation now links Configure to Event Configuration and states the route-readiness requirement explicitly."] }],
+  },
+  {
+    version: "1.5.20",
+    date: "2026-08-12",
+    sections: [{ heading: "Changed", items: ["Event Planning now shows planned resources before review and activation controls and explains when validated scope reaches Event AVL.", "Event AVL map cleanup now tolerates already-removed resources so navigation cannot blank the console."] }],
+  },
+  {
+    version: "1.5.19",
+    date: "2026-08-11",
+    sections: [{ heading: "Changed", items: ["Event switching now protects unsaved edits; Event Planning adds resource removal, bulk linking, Event duplication, search, and clearer accessible readiness states."] }],
+  },
+  {
+    version: "1.5.18",
+    date: "2026-08-11",
+    sections: [{ heading: "Changed", items: ["The operating-period lifecycle now distinguishes the primary next action, revision work, secondary actions, and the separate suspended state."] }],
+  },
+  {
+    version: "1.5.17",
+    date: "2026-08-11",
+    sections: [{ heading: "Fixed", items: ["Mobile Event Workspace navigation and Sign Out are usable again; event-period edits are protected and expired sessions offer a real sign-in action."] }],
+  },
+  {
+    version: "1.5.16",
+    date: "2026-08-11",
+    sections: [{ heading: "Changed", items: ["Event Planning adds confirmation and clearer feedback for lifecycle actions, fixes dark-mode status contrast, and makes the console shell usable on mobile and tablet."] }],
+  },
+  {
+    version: "1.5.15",
+    date: "2026-08-10",
+    sections: [{ heading: "Added", items: ["Events, Service Plans, operating periods, and reusable map resources now share one validated operating model and active operational scope."] }],
   },
   {
     version: "1.5.14",
@@ -97,6 +239,16 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
         ],
       },
     ],
+  },
+  {
+    version: "1.5.9",
+    date: "2026-08-07",
+    sections: [{ heading: "Fixed", items: ["AVL Reports now requests its feed window in agency-local time, allowing Event AVL and Route Classification to receive current vehicles."] }],
+  },
+  {
+    version: "1.5.8",
+    date: "2026-08-07",
+    sections: [{ heading: "Changed", items: ["Route Classification now includes routes seen in live AVL data and always allows manual Route ID entry for new special service."] }],
   },
   {
     version: "1.5.7",

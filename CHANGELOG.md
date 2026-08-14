@@ -5,11 +5,28 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.28] - 2026-08-12
+## [1.5.32] - 2026-08-13
 
-- **Make Event Planning action-oriented.** A prominent next-action panel now
-  guides the operator to the exact Event, operating period, resource, review,
-  approval, activation, or Event AVL step required next.
+- **Make the running version easy to find.** The sidebar now presents the
+  version as a distinct badge with a clearer “What’s new” action.
+- **Keep release notes honest and scannable.** The quick view now selects the
+  exact running build instead of assuming the first data entry matches it, and
+  the full changelog uses expandable releases with the current build open.
+- **Bring the in-app history current.** Missing releases 1.5.8 through 1.5.31
+  are now included in the staff-facing changelog.
+
+## [1.5.31] - 2026-08-13
+
+- **Adopt Event Planning Variant E's guided scope canvas.** Operators now
+  choose Routes, Geofences, or Transit locations as the primary resource
+  workflow, edit one selected resource type at a time, and see the resulting
+  Event AVL handoff scope before activation.
+
+## [1.5.30] - 2026-08-13
+
+- **Adopt Event Planning Variant B's scope builder.** Plan details and
+  resources now share one workspace with resource cards, add/remove controls,
+  readiness counts, and a visible activation gate before lifecycle actions.
 
 ## [1.5.29] - 2026-08-12
 
@@ -18,18 +35,11 @@ badge and footer read this version at build time - see `vite.config.ts`).
   with the progress rail and next action reflecting the selected operating
   period's lifecycle and no duplicate empty-state prompt.
 
-## [1.5.30] - 2026-08-13
+## [1.5.28] - 2026-08-12
 
-- **Adopt Event Planning Variant B's scope builder.** Plan details and
-  resources now share one workspace with resource cards, add/remove controls,
-  readiness counts, and a visible activation gate before lifecycle actions.
-
-## [1.5.31] - 2026-08-13
-
-- **Adopt Event Planning Variant E's guided scope canvas.** Operators now
-  choose Routes, Geofences, or Transit locations as the primary resource
-  workflow, edit one selected resource type at a time, and see the resulting
-  Event AVL handoff scope before activation.
+- **Make Event Planning action-oriented.** A prominent next-action panel now
+  guides the operator to the exact Event, operating period, resource, review,
+  approval, activation, or Event AVL step required next.
 
 ## [1.5.27] - 2026-08-12
 

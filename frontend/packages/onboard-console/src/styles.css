@@ -121,8 +121,11 @@ body {
 .nav-brand .logo-badge { background: rgba(255, 255, 255, 0.15); color: #fff; font-weight: bold; font-size: 12px; padding: 5px 9px; border-radius: 6px; letter-spacing: 0.5px; }
 .nav-brand-text { color: #fff; font-weight: bold; font-size: 15px; line-height: 1.2; }
 .nav-brand-sub { color: var(--nav-item-fg-dim); font-size: 11px; margin-top: 1px; }
-.nav-version-button { background: none; border: 0; cursor: pointer; font: inherit; padding: 2px 0 0; text-align: left; }
-.nav-version-button:hover { color: var(--nav-item-fg); text-decoration: underline; }
+.nav-version-button { align-items: center; background: none; border: 0; color: var(--nav-item-fg); cursor: pointer; display: flex; font: inherit; font-size: 11px; gap: 6px; margin-top: 4px; padding: 0; text-align: left; }
+.nav-version-number { background: rgba(255, 255, 255, .14); border-radius: 999px; color: #fff; font-size: 10px; font-weight: 800; padding: 2px 6px; }
+.nav-version-button > span:last-child { color: var(--nav-item-fg-dim); text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 2px; transition: color .15s ease, text-decoration-color .15s ease; }
+.nav-version-button:hover > span:last-child, .nav-version-button:focus-visible > span:last-child { color: #fff; text-decoration-color: currentColor; }
+.nav-version-button:focus-visible { border-radius: 4px; outline: 2px solid #fff; outline-offset: 3px; }
 
 .nav-list { display: flex; flex-direction: column; gap: 2px; }
 .nav-section-label { color: var(--nav-item-fg-dim); font-size: 10.5px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; padding: 16px 12px 6px; }
@@ -142,13 +145,30 @@ body {
 .changelog-popover { background: var(--surface-bg); border: 1px solid var(--border); border-radius: 13px; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28); color: var(--text); max-width: 460px; padding: 24px 28px 22px; position: relative; width: calc(100% - 40px); }
 .changelog-popover-kicker { color: var(--brand-green); font-size: 10px; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase; }
 .changelog-popover h2 { font-size: 22px; margin: 7px 0 2px; }
-.changelog-popover-date { color: var(--text-muted); font-size: 11px; margin: 0 0 15px; }
+.changelog-popover-date { color: var(--text-muted); display: block; font-size: 11px; margin: 0 0 15px; }
 .changelog-popover ul { color: var(--text-dim); font-size: 12px; line-height: 1.5; margin: 0 0 18px; padding-left: 18px; }
 .changelog-popover li { margin-bottom: 5px; }
+.changelog-popover-empty { color: var(--text-dim); font-size: 12px; margin: 15px 0 18px; }
 .changelog-close { background: var(--surface-alt-bg); border: 0; border-radius: 50%; color: var(--text-muted); cursor: pointer; font-size: 20px; height: 29px; line-height: 20px; position: absolute; right: 15px; top: 15px; width: 29px; }
 .changelog-close:hover { color: var(--text); }
 .changelog-full-link { color: var(--brand-green); font-size: 12px; font-weight: 900; text-decoration: none; }
 .changelog-full-link:hover { text-decoration: underline; }
+.changelog-list { display: grid; gap: 10px; }
+.changelog-entry { background: var(--surface-bg); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 2px 8px rgba(0, 0, 0, .04); }
+.changelog-entry.is-current { border-color: var(--brand-green); }
+.changelog-entry summary { align-items: center; cursor: pointer; display: flex; gap: 10px; list-style: none; padding: 13px 15px; }
+.changelog-entry summary::-webkit-details-marker { display: none; }
+.changelog-entry summary::after { color: var(--text-muted); content: "+"; font-size: 18px; margin-left: auto; }
+.changelog-entry[open] summary::after { content: "−"; }
+.changelog-entry summary:hover { background: var(--surface-alt-bg); border-radius: 10px; }
+.changelog-entry summary:focus-visible { border-radius: 9px; outline: 2px solid var(--brand-green); outline-offset: 2px; }
+.changelog-entry summary time { color: var(--text-muted); font-size: 11px; }
+.changelog-current-label { background: var(--success-bg); border-radius: 999px; color: var(--success-text); font-size: 10px; font-weight: 800; padding: 3px 7px; }
+.changelog-entry-body { border-top: 1px solid var(--border-soft); padding: 13px 18px 14px; }
+.changelog-entry-body section + section { margin-top: 12px; }
+.changelog-entry-body h3 { color: var(--text-dim); font-size: 11px; letter-spacing: .04em; margin: 0 0 5px; text-transform: uppercase; }
+.changelog-entry-body ul { margin: 0; padding-left: 19px; }
+.changelog-entry-body li { color: var(--text-dim); font-size: 13px; line-height: 1.5; margin-bottom: 5px; }
 
 .nav-spacer { flex: 1; }
 .nav-footer { border-top: 1px solid var(--nav-border); padding-top: 14px; margin-top: 10px; }

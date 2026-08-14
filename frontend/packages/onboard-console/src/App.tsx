@@ -123,7 +123,7 @@ function FixedRouteRefreshIndicator() {
 }
 
 function ChangelogPopover({ onClose }: { onClose: () => void }) {
-  const latest = CHANGELOG_ENTRIES[0];
+  const currentRelease = CHANGELOG_ENTRIES.find((entry) => entry.version === __APP_VERSION__);
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") onClose();
@@ -135,13 +135,19 @@ function ChangelogPopover({ onClose }: { onClose: () => void }) {
   return (
     <div className="changelog-overlay" role="presentation" onClick={onClose}>
       <section className="changelog-popover" role="dialog" aria-modal="true" aria-labelledby="changelog-popover-title" onClick={(event) => event.stopPropagation()}>
-        <button className="changelog-close" onClick={onClose} aria-label="Close release notes">×</button>
+        <button className="changelog-close" onClick={onClose} aria-label="Close release notes" autoFocus>×</button>
         <span className="changelog-popover-kicker">OnBoard release notes</span>
         <h2 id="changelog-popover-title">What’s new in v{__APP_VERSION__}</h2>
-        <p className="changelog-popover-date">{latest?.date ?? "Latest release"}</p>
-        <ul>
-          {(latest?.sections.flatMap((section) => section.items) ?? []).slice(0, 3).map((item) => <li key={item}>{item}</li>)}
-        </ul>
+        {currentRelease ? (
+          <>
+            <time className="changelog-popover-date" dateTime={currentRelease.date}>{currentRelease.date}</time>
+            <ul>
+              {currentRelease.sections.flatMap((section) => section.items).map((item) => <li key={item}>{item}</li>)}
+            </ul>
+          </>
+        ) : (
+          <p className="changelog-popover-empty">Release notes for this build are not available yet.</p>
+        )}
         <NavLink className="changelog-full-link" to="/changelog" onClick={onClose}>View full changelog →</NavLink>
       </section>
     </div>
@@ -197,8 +203,9 @@ export function App() {
           <span className="logo-badge">MVTA</span>
           <div>
             <div className="nav-brand-text">OnBoard</div>
-            <button className="nav-brand-sub nav-version-button" onClick={() => setChangelogOpen(true)}>
-              v{__APP_VERSION__} · View updates
+            <button className="nav-version-button" onClick={() => setChangelogOpen(true)} aria-haspopup="dialog">
+              <span className="nav-version-number">v{__APP_VERSION__}</span>
+              <span>What’s new</span>
             </button>
           </div>
         </div>
@@ -247,7 +254,7 @@ export function App() {
         <div className="nav-footer">
           <div className="nav-status">
             <span className="live-dot" />
-            {stats.ok ? "Console live" : "Console offline"}
+            {stats.ok ? "Console live" : "Console Offline"}
           </div>
         </div>
         </aside>
@@ -390,8 +397,8 @@ export function App() {
         </main>
 
         <div className="footer">
-          <span>MVTA OnBoard · v{__APP_VERSION__} · Internal Use Only</span>
-          <span>Internal MVTA operations console</span>
+          <span>MVTA OnBoard · v{__APP_VERSION__} · Authorized Use Only</span>
+          <span>Internal MVTA Operations Console</span>
         </div>
         </div>
       </div>
