@@ -52,8 +52,26 @@ param privilegedAuthContext string = 'c1'
 @description('GTFS-Realtime TripUpdate feed used by fixed-route risk monitoring.')
 param gtfsRtTripUpdateUrl string = 'https://srv.mvta.com/infoPoint/GTFS-realtime.ashx?&Type=TripUpdate&debug=true'
 
+@description('GTFS static schedule archive used for stop reference and silent no-show detection.')
+param gtfsStaticUrl string = 'https://mvta-dispatch.myavail.cloud/opensilvermyavailserver/files/gtfs/google_transit.zip'
+
+@description('GTFS-Realtime VehiclePosition feed used for fixed-route vehicle monitoring.')
+param gtfsRtVehicleUrl string = 'https://srv.mvta.com/infoPoint/GTFS-realtime.ashx?&Type=VehiclePosition&debug=true'
+
+@description('GTFS-Realtime Alert feed used for service alerts.')
+param gtfsRtAlertUrl string = 'https://srv.mvta.com/infoPoint/GTFS-realtime.ashx?&Type=Alert&debug=true'
+
 @description('Avail AVL Reports endpoint used for live vehicle monitoring.')
 param availAvlReportsUrl string = 'https://avail360-api.myavail.cloud/AVLReports/v1'
+
+@description('Avail monthly OTP endpoint used for contractual compliance reporting.')
+param availOtpMonthlyUrl string = 'https://avail360-api.myavail.cloud/OtpByRouteStopDayAgg/v1/MVTA'
+
+@description('Avail daily OTP endpoint used for sub-monthly trend monitoring.')
+param availOtpDailyUrl string = 'https://avail360-api.myavail.cloud/OtpByRouteStopDayHour/v1/MVTA'
+
+@description('Avail fixed-route missed-trip endpoint.')
+param availMissedTripsUrl string = 'https://avail360-api.myavail.cloud/MissedTripsByRouteStopDay/v1/MVTA'
 
 var cleanSuffix = replace(uniqueSuffix, '-', '')
 
@@ -95,7 +113,13 @@ module restApiFunction 'modules/functionapp.bicep' = {
     accessAdminFallback: accessAdminFallback
     privilegedAuthContext: privilegedAuthContext
     gtfsRtTripUpdateUrl: gtfsRtTripUpdateUrl
+    gtfsStaticUrl: gtfsStaticUrl
+    gtfsRtVehicleUrl: gtfsRtVehicleUrl
+    gtfsRtAlertUrl: gtfsRtAlertUrl
     availAvlReportsUrl: availAvlReportsUrl
+    availOtpMonthlyUrl: availOtpMonthlyUrl
+    availOtpDailyUrl: availOtpDailyUrl
+    availMissedTripsUrl: availMissedTripsUrl
   }
 }
 

@@ -20,7 +20,13 @@ param accessManagementConfigJson string = ''
 param accessAdminFallback bool = false
 param privilegedAuthContext string = 'c1'
 param gtfsRtTripUpdateUrl string = ''
+param gtfsStaticUrl string = ''
+param gtfsRtVehicleUrl string = ''
+param gtfsRtAlertUrl string = ''
 param availAvlReportsUrl string = ''
+param availOtpMonthlyUrl string = ''
+param availOtpDailyUrl string = ''
+param availMissedTripsUrl string = ''
 
 @description('Client ID of the MVTA OnBoard Entra ID app registration - wires up Easy Auth so the caller principal and app roles are available via x-ms-client-principal')
 param aadClientId string
@@ -119,7 +125,13 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         // recover even after other fixes were in place.
         { name: 'WEBSITE_RUN_FROM_PACKAGE', value: '1' }
         { name: 'GTFS_RT_TRIPUPDATE_URL', value: gtfsRtTripUpdateUrl }
+        { name: 'GTFS_STATIC_URL', value: gtfsStaticUrl }
+        { name: 'GTFS_RT_VEHICLE_URL', value: gtfsRtVehicleUrl }
+        { name: 'GTFS_RT_ALERT_URL', value: gtfsRtAlertUrl }
         { name: 'AVAIL_AVL_REPORTS_URL', value: availAvlReportsUrl }
+        { name: 'AVAIL_OTP_MONTHLY_URL', value: availOtpMonthlyUrl }
+        { name: 'AVAIL_OTP_DAILY_URL', value: availOtpDailyUrl }
+        { name: 'AVAIL_MISSED_TRIPS_URL', value: availMissedTripsUrl }
         // Key Vault reference, not a raw value - fixes the same class of
         // "wiped on redeploy" bug for the connection string specifically.
         { name: 'SQL_CONNECTION_STRING', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/sql-connection-string/)' }
