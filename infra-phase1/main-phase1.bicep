@@ -141,6 +141,7 @@ module dispatchFunction 'modules/functionapp.bicep' = {
     planSku: 'B1'
     planTier: 'Basic'
     aadClientId: aadClientId
+    enableEasyAuth: false
     frontDoorId: frontDoorId
     allowedCorsOrigins: allowedCorsOrigins
   }

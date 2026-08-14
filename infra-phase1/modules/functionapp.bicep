@@ -32,6 +32,9 @@ param availPulloutUrl string = ''
 @description('Service Bus namespace used by the Event AVL notification trigger. Empty disables its identity-based connection setting.')
 param serviceBusNamespace string = ''
 
+@description('Configure Easy Auth for this app. Disable for background-only Function Apps with no HTTP surface.')
+param enableEasyAuth bool = true
+
 @description('Client ID of the MVTA OnBoard Entra ID app registration - wires up Easy Auth so the caller principal and app roles are available via x-ms-client-principal')
 param aadClientId string
 
@@ -245,7 +248,7 @@ resource storageQueueRoleAssignment 'Microsoft.Authorization/roleAssignments@202
 // managing it) - use `az webapp auth update --enabled false` explicitly,
 // and expect to need a fresh `func azure functionapp publish --force`
 // after re-enabling it too.
-resource authSettings 'Microsoft.Web/sites/config@2022-03-01' = {
+resource authSettings 'Microsoft.Web/sites/config@2022-03-01' = if (enableEasyAuth) {
   parent: functionApp
   name: 'authsettingsV2'
   properties: {
