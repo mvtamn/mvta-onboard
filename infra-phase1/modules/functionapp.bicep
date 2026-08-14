@@ -239,7 +239,8 @@ resource authSettings 'Microsoft.Web/sites/config@2022-03-01' = {
         enabled: true
         registration: {
           clientId: aadClientId
-          openIdIssuer: 'https://login.microsoftonline.com/${subscription().tenantId}/v2.0'
+          // The app registration's null requestedAccessTokenVersion means v1 tokens.
+          openIdIssuer: 'https://sts.windows.net/${subscription().tenantId}/'
         }
         validation: {
           // The console requests a token for the API's own Application ID URI
