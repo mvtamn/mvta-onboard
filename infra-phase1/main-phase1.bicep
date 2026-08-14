@@ -73,6 +73,9 @@ param availOtpDailyUrl string = 'https://avail360-api.myavail.cloud/OtpByRouteSt
 @description('Avail fixed-route missed-trip endpoint.')
 param availMissedTripsUrl string = 'https://avail360-api.myavail.cloud/MissedTripsByRouteStopDay/v1/MVTA'
 
+@description('Avail Pullout endpoint used for fixed-route garage departure monitoring.')
+param availPulloutUrl string = 'https://avail360-api.myavail.cloud/Pullout/v1/MVTA'
+
 var cleanSuffix = replace(uniqueSuffix, '-', '')
 
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
@@ -120,6 +123,7 @@ module restApiFunction 'modules/functionapp.bicep' = {
     availOtpMonthlyUrl: availOtpMonthlyUrl
     availOtpDailyUrl: availOtpDailyUrl
     availMissedTripsUrl: availMissedTripsUrl
+    availPulloutUrl: availPulloutUrl
   }
 }
 

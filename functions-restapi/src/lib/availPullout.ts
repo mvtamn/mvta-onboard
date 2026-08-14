@@ -30,25 +30,13 @@ export interface AvailPulloutEnvelope {
   success: boolean;
 }
 
-function formatDateYyyyMmDd(date: Date): string {
-  // UTC-based, same known simplification already used by availAvl.ts and
-  // gtfsMissedTripsPoll.ts - MVTA operates in a single time zone and this
-  // only needs day-level granularity.
-  const y = date.getUTCFullYear();
-  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const d = String(date.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
-// baseUrl is the agency-level URL with no trailing date segment, e.g.
-// "https://avail360-api.myavail.cloud/Pullout/v1/MVTA" - same date-suffixed
-// convention as fetchAvlReports.
+// The confirmed OpenAPI path is exactly /Pullout/v1/{Property}; unlike AVL
+// Reports, Pullout does not accept a date segment.
 export async function fetchPulloutReports(
   baseUrl: string,
   apiKey: string,
-  date: Date = new Date(),
 ): Promise<AvailPulloutReport[]> {
-  const url = `${baseUrl.replace(/\/+$/, "")}/${formatDateYyyyMmDd(date)}`;
+  const url = baseUrl.replace(/\/+$/, "");
   const res = await fetch(url, {
     headers: { "Ocp-Apim-Subscription-Key": apiKey },
   });

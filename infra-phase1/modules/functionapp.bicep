@@ -27,6 +27,7 @@ param availAvlReportsUrl string = ''
 param availOtpMonthlyUrl string = ''
 param availOtpDailyUrl string = ''
 param availMissedTripsUrl string = ''
+param availPulloutUrl string = ''
 
 @description('Client ID of the MVTA OnBoard Entra ID app registration - wires up Easy Auth so the caller principal and app roles are available via x-ms-client-principal')
 param aadClientId string
@@ -132,6 +133,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'AVAIL_OTP_MONTHLY_URL', value: availOtpMonthlyUrl }
         { name: 'AVAIL_OTP_DAILY_URL', value: availOtpDailyUrl }
         { name: 'AVAIL_MISSED_TRIPS_URL', value: availMissedTripsUrl }
+        { name: 'AVAIL_PULLOUT_URL', value: availPulloutUrl }
         // Key Vault reference, not a raw value - fixes the same class of
         // "wiped on redeploy" bug for the connection string specifically.
         { name: 'SQL_CONNECTION_STRING', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/sql-connection-string/)' }
