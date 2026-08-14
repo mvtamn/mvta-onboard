@@ -58,12 +58,13 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
   if (!period) throw new Error("Assessment period not found");
   if (period.status === "finalized") throw new Error("Finalized periods must be reopened before recompute");
 
-  const standards = await new sql.Request(tx).query<StandardRow>(`SELECT id,code,standard_type,direction,is_safety_critical,measurement_source FROM ContractorPerformanceStandards WHERE is_scored=1 ORDER BY sort_order`);
+  const standardsReq = new sql.Request(tx); standardsReq.input("period_id",sql.UniqueIdentifier,period.id);
+  const standards = await standardsReq.query<StandardRow>(`SELECT standard_id id,code,standard_type,direction,is_safety_critical,measurement_source FROM AssessmentPeriodStandards WHERE period_id=@period_id ORDER BY sort_order`);
   for (const standard of standards.recordset) {
     const tierReq = new sql.Request(tx);
     tierReq.input("standard_id", sql.UniqueIdentifier, standard.id);
-    tierReq.input("month", sql.Char(6), period.service_month);
-    const tierRows = await tierReq.query<TierRow>(`SELECT tier_order,tier_label,bound_low,bound_high,qualifier_code,penalty_basis,penalty_amount,triggers_cap FROM ContractorStandardTiers WHERE standard_id=@standard_id AND effective_start_date<=CONCAT(@month,'01') AND (effective_end_date IS NULL OR effective_end_date>=CONCAT(@month,'01')) ORDER BY tier_order`);
+    tierReq.input("period_id", sql.UniqueIdentifier, period.id);
+    const tierRows = await tierReq.query<TierRow>(`SELECT tier_order,tier_label,bound_low,bound_high,qualifier_code,penalty_basis,penalty_amount,triggers_cap FROM AssessmentPeriodTiers WHERE period_id=@period_id AND standard_id=@standard_id ORDER BY tier_order`);
     const tiers = tierRows.recordset.map(mapTier);
     let metricValue: number | null = null;
     let quantity = 0;
@@ -108,16 +109,15 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
     historyReq.input("contractor", sql.UniqueIdentifier, period.contractor_id);
     historyReq.input("month", sql.Char(6), period.service_month);
     const history = await historyReq.query<{ tier_label: TierLabel; assessment_outcome: string | null }>(`
-        SELECT TOP 2 pka.tier_label,pka.assessment_outcome FROM PeriodKpiAssessments pka
+        SELECT pka.tier_label,pka.assessment_outcome FROM PeriodKpiAssessments pka
         JOIN AssessmentPeriods p ON p.id=pka.period_id
-        WHERE pka.standard_id=@standard_id AND p.contractor_id=@contractor AND p.service_month<@month AND p.status='finalized'
+        WHERE pka.standard_id=@standard_id AND p.contractor_id=@contractor AND p.service_month<@month AND p.status IN('finalized','issued')
         ORDER BY p.service_month DESC
     `);
     let priorConsecutive = 0;
-    for (const row of history.recordset) { if ((row.assessment_outcome??row.tier_label) === "meets") break; if (row.assessment_outcome!=="not_assessable") priorConsecutive += 1; }
+    for (const row of history.recordset) { if ((row.assessment_outcome??row.tier_label) === "meets") break; if (row.assessment_outcome!=="not_assessable"&&priorConsecutive<2) priorConsecutive += 1; }
     const notAssessable = completeness <= 0;
     const consecutive = notAssessable ? priorConsecutive : tierLabel === "meets" ? 0 : priorConsecutive + 1;
-    const ramp = 1;
     const escalation = escalationMultiplier(consecutive);
     const proposed = notAssessable ? 0 : Math.max(0, baseAmount) * escalation;
     const outcome = notAssessable ? "not_assessable" : tierLabel;
@@ -128,7 +128,7 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
     upsert.input("period_id", sql.UniqueIdentifier, period.id); upsert.input("standard_id", sql.UniqueIdentifier, standard.id);
     upsert.input("metric", sql.Float, metricValue); upsert.input("display", sql.NVarChar(50), metricValue === null ? "No data" : String(metricValue));
     upsert.input("count", sql.Int, occurrenceCount); upsert.input("quantity", sql.Float, quantity); upsert.input("tier", sql.NVarChar(20), tierLabel);
-    upsert.input("base", sql.Decimal(12,2), baseAmount); upsert.input("ramp", sql.Decimal(4,2), ramp); upsert.input("escalation", sql.Decimal(4,2), escalation);
+    upsert.input("base", sql.Decimal(12,2), baseAmount); upsert.input("escalation", sql.Decimal(4,2), escalation);
     upsert.input("proposed", sql.Decimal(12,2), proposed); upsert.input("hash", sql.Char(64), inputHash); upsert.input("json", sql.NVarChar(sql.MAX), computationJson);
     upsert.input("consecutive", sql.Int, consecutive); upsert.input("completeness", sql.Float, completeness);
     upsert.input("outcome", sql.NVarChar(30), outcome);
@@ -136,7 +136,7 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
       MERGE PeriodKpiAssessments WITH (HOLDLOCK) target USING (SELECT @period_id period_id,@standard_id standard_id) source
       ON target.period_id=source.period_id AND target.standard_id=source.standard_id
       WHEN MATCHED THEN UPDATE SET metric_value=@metric,metric_display=@display,occurrence_count=@count,unit_quantity=@quantity,tier_label=@tier,
-       target_display=N'Configured tiers',base_amount=@base,ramp_up_multiplier=@ramp,escalation_multiplier=@escalation,relief_amount=0,proposed_amount=@proposed,
+       target_display=N'Configured tiers',base_amount=@base,escalation_multiplier=@escalation,relief_amount=0,proposed_amount=@proposed,
        manager_action=CASE WHEN target.input_sha256=@hash THEN target.manager_action ELSE 'pending' END,
        final_amount=CASE WHEN target.input_sha256=@hash THEN target.final_amount ELSE NULL END,
        manager_reason=CASE WHEN target.input_sha256=@hash THEN target.manager_reason ELSE NULL END,
@@ -144,11 +144,11 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
        reviewed_by=CASE WHEN target.input_sha256=@hash THEN target.reviewed_by ELSE NULL END,
        reviewed_at=CASE WHEN target.input_sha256=@hash THEN target.reviewed_at ELSE NULL END,
        input_sha256=@hash,consecutive_months_below=@consecutive,data_completeness_pct=@completeness,computation_json=@json,assessment_outcome=@outcome
-      WHEN NOT MATCHED THEN INSERT(period_id,standard_id,metric_value,metric_display,occurrence_count,unit_quantity,tier_label,target_display,base_amount,ramp_up_multiplier,escalation_multiplier,proposed_amount,input_sha256,consecutive_months_below,data_completeness_pct,computation_json,assessment_outcome)
-       VALUES(@period_id,@standard_id,@metric,@display,@count,@quantity,@tier,N'Configured tiers',@base,@ramp,@escalation,@proposed,@hash,@consecutive,@completeness,@json,@outcome);
+      WHEN NOT MATCHED THEN INSERT(period_id,standard_id,metric_value,metric_display,occurrence_count,unit_quantity,tier_label,target_display,base_amount,escalation_multiplier,proposed_amount,input_sha256,consecutive_months_below,data_completeness_pct,computation_json,assessment_outcome)
+       VALUES(@period_id,@standard_id,@metric,@display,@count,@quantity,@tier,N'Configured tiers',@base,@escalation,@proposed,@hash,@consecutive,@completeness,@json,@outcome);
     `);
   }
   const finish = new sql.Request(tx);
   finish.input("period_id", sql.UniqueIdentifier, period.id);
-  await finish.query(`UPDATE AssessmentPeriods SET computed_revision=input_revision,computed_at=SYSUTCDATETIME(),status='in_review',proposed_total=(SELECT ISNULL(SUM(proposed_amount),0) FROM PeriodKpiAssessments WHERE period_id=@period_id),is_partial=CASE WHEN EXISTS(SELECT 1 FROM PeriodKpiAssessments WHERE period_id=@period_id AND assessment_outcome='not_assessable') THEN 1 ELSE 0 END WHERE id=@period_id`);
+  await finish.query(`UPDATE ValidationDraftShares SET superseded_at=SYSUTCDATETIME() WHERE period_id=@period_id AND superseded_at IS NULL;UPDATE AssessmentPeriods SET computed_revision=input_revision,computed_at=SYSUTCDATETIME(),status='in_review',validation_shared_at=NULL,validation_ends_on=NULL,validation_shared_by=NULL,validation_recipient=NULL,validation_method=NULL,validation_attestation=NULL,proposed_total=(SELECT ISNULL(SUM(proposed_amount),0) FROM PeriodKpiAssessments WHERE period_id=@period_id),is_partial=CASE WHEN EXISTS(SELECT 1 FROM PeriodKpiAssessments WHERE period_id=@period_id AND assessment_outcome='not_assessable') THEN 1 ELSE 0 END WHERE id=@period_id`);
 }

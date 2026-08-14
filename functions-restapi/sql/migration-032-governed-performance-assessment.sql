@@ -64,6 +64,17 @@ IF COL_LENGTH('dbo.PeriodKpiAssessments','recommendation_by') IS NULL ALTER TABL
 IF COL_LENGTH('dbo.PeriodKpiAssessments','binding_decision_by') IS NULL ALTER TABLE dbo.PeriodKpiAssessments ADD binding_decision_by NVARCHAR(200) NULL;
 GO
 
+IF OBJECT_ID(N'dbo.AssessmentPeriodStandards',N'U') IS NULL
+BEGIN
+ CREATE TABLE dbo.AssessmentPeriodStandards(period_id UNIQUEIDENTIFIER NOT NULL REFERENCES dbo.AssessmentPeriods(id),standard_id UNIQUEIDENTIFIER NOT NULL,code NVARCHAR(50) NOT NULL,name NVARCHAR(200) NOT NULL,standard_type NVARCHAR(20) NOT NULL,priority NVARCHAR(20) NULL,direction NVARCHAR(30) NOT NULL,is_safety_critical BIT NOT NULL,measurement_source NVARCHAR(20) NOT NULL,sort_order INT NOT NULL,PRIMARY KEY(period_id,standard_id));
+ CREATE TABLE dbo.AssessmentPeriodTiers(period_id UNIQUEIDENTIFIER NOT NULL,standard_id UNIQUEIDENTIFIER NOT NULL,tier_order INT NOT NULL,tier_label NVARCHAR(20) NOT NULL,bound_low FLOAT NULL,bound_high FLOAT NULL,qualifier_code NVARCHAR(50) NULL,penalty_basis NVARCHAR(30) NOT NULL,penalty_amount DECIMAL(10,2) NOT NULL,triggers_cap BIT NOT NULL,PRIMARY KEY(period_id,standard_id,tier_order),FOREIGN KEY(period_id,standard_id) REFERENCES dbo.AssessmentPeriodStandards(period_id,standard_id));
+END;
+GO
+
+IF COL_LENGTH('dbo.AssessmentPeriodStandards','name') IS NULL ALTER TABLE dbo.AssessmentPeriodStandards ADD name NVARCHAR(200) NULL;
+IF COL_LENGTH('dbo.AssessmentPeriodStandards','priority') IS NULL ALTER TABLE dbo.AssessmentPeriodStandards ADD priority NVARCHAR(20) NULL;
+GO
+
 IF COL_LENGTH('dbo.ComplianceEvidence','content_sha256') IS NULL ALTER TABLE dbo.ComplianceEvidence ADD content_sha256 CHAR(64) NULL;
 IF COL_LENGTH('dbo.ComplianceEvidence','supersedes_id') IS NULL ALTER TABLE dbo.ComplianceEvidence ADD supersedes_id UNIQUEIDENTIFIER NULL REFERENCES dbo.ComplianceEvidence(id);
 IF COL_LENGTH('dbo.ComplianceEvidence','visibility') IS NULL ALTER TABLE dbo.ComplianceEvidence ADD visibility NVARCHAR(20) NOT NULL CONSTRAINT DF_CE_Visibility DEFAULT N'internal';
@@ -134,7 +145,39 @@ IF EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID('
 ALTER TABLE dbo.PenaltyDisputes ADD CONSTRAINT CK_PD_Status CHECK(status IN('submitted','under_review','upheld','adjusted','rescinded','superseded','returned'));
 GO
 
-UPDATE dbo.AssessmentPeriods SET ramp_up_stage='full';
+CREATE OR ALTER VIEW dbo.vw_ScorecardPeriod AS
+SELECT p.id PeriodId,p.contractor_id ContractorId,c.name ContractorName,
+ CONVERT(date,CONCAT(LEFT(p.service_month,4),'-',RIGHT(p.service_month,2),'-01')) ServiceMonthStart,
+ p.status Status,p.proposed_total ProposedTotal,p.final_total AssessedTotal,p.is_partial IsPartial,
+ SUM(CASE WHEN a.tier_label='meets' THEN 1 ELSE 0 END) KpisMet,
+ SUM(CASE WHEN a.tier_label='warning' THEN 1 ELSE 0 END) KpisWarning,
+ SUM(CASE WHEN a.tier_label='tier1' THEN 1 ELSE 0 END) KpisTier1,
+ SUM(CASE WHEN a.tier_label='tier2' THEN 1 ELSE 0 END) KpisTier2,
+ SUM(CASE WHEN a.cap_required=1 THEN 1 ELSE 0 END) CapsRequired
+FROM dbo.AssessmentPeriods p JOIN dbo.Contractors c ON c.id=p.contractor_id
+JOIN dbo.PeriodKpiAssessments a ON a.period_id=p.id
+WHERE p.status IN('finalized','issued')
+GROUP BY p.id,p.contractor_id,c.name,p.service_month,p.status,p.proposed_total,p.final_total,p.is_partial;
+GO
+
+CREATE OR ALTER VIEW dbo.vw_ScorecardKpi AS
+SELECT p.id PeriodId,p.contractor_id ContractorId,c.name ContractorName,
+ CONVERT(date,CONCAT(LEFT(p.service_month,4),'-',RIGHT(p.service_month,2),'-01')) ServiceMonthStart,
+ s.id StandardId,s.code StandardCode,s.name StandardName,s.standard_type StandardType,s.priority Priority,
+ a.metric_value MetricValue,a.metric_display MetricDisplay,a.target_display TargetDisplay,a.tier_label TierLabel,
+ a.variance_pct VariancePct,a.occurrence_count OccurrenceCount,a.unit_quantity UnitQuantity,
+ a.base_amount BaseAmount,a.relief_amount ReliefAmount,a.escalation_multiplier EscalationMultiplier,
+ a.final_amount AssessedAmount,a.manager_action ManagerAction,a.consecutive_months_below ConsecutiveMonthsBelow,
+ a.data_completeness_pct DataCompletenessPct,a.cap_required CapRequired
+FROM dbo.AssessmentPeriods p JOIN dbo.Contractors c ON c.id=p.contractor_id
+JOIN dbo.PeriodKpiAssessments a ON a.period_id=p.id JOIN dbo.ContractorPerformanceStandards s ON s.id=a.standard_id
+WHERE p.status IN('finalized','issued');
+GO
+
+IF EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID('dbo.AssessmentPeriods') AND name='CK_AP_Ramp')
+    ALTER TABLE dbo.AssessmentPeriods DROP CONSTRAINT CK_AP_Ramp;
+ALTER TABLE dbo.AssessmentPeriods ALTER COLUMN ramp_up_stage NVARCHAR(20) NULL;
+UPDATE dbo.AssessmentPeriods SET ramp_up_stage=NULL;
 UPDATE dbo.PeriodKpiAssessments SET ramp_up_multiplier=1;
 GO
 
