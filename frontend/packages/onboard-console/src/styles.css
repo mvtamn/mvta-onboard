@@ -670,3 +670,138 @@ table.data tr.review-focus-row td:first-child {
 /* Light normalization so embedded OCC modules sit inside the shell without
    fighting it: kill their page-level backgrounds, inherit the console font. */
 .occ-embed .evmon, .occ-embed .dmx, .occ-embed .otp-panel { font-family: inherit; }
+.access-management-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.env-badge {
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.access-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 18px 0;
+  border-bottom: 1px solid var(--border, #ccd6d1);
+}
+
+.access-tabs button {
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: inherit;
+  padding: 9px 12px;
+  cursor: pointer;
+}
+
+.access-tabs button.active {
+  border-bottom-color: var(--accent, #006b54);
+  font-weight: 700;
+}
+
+.access-toolbar,
+.access-mode,
+.access-inline {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.access-toolbar .f {
+  min-width: 220px;
+  flex: 1;
+}
+
+.access-source + .access-source {
+  margin-top: 5px;
+}
+
+.access-signins,
+.access-expiry-card,
+.access-preview {
+  position: relative;
+  margin-top: 18px;
+  border: 1px solid var(--border, #ccd6d1);
+  border-radius: 8px;
+  padding: 16px;
+  background: var(--panel-bg, transparent);
+}
+
+.access-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+
+.access-definition-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.access-definition-list div {
+  border-left: 3px solid var(--border, #ccd6d1);
+  padding-left: 10px;
+}
+
+.access-definition-list dt {
+  font-size: 0.8rem;
+  color: var(--muted, #66736e);
+}
+
+.access-definition-list dd {
+  margin: 4px 0 0;
+  font-weight: 650;
+}
+
+.access-candidate {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 7px 0;
+}
+
+.access-role-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 8px;
+}
+
+.access-findings {
+  display: grid;
+  gap: 8px;
+  padding-left: 0;
+  list-style: none;
+}
+
+.access-findings li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border-left: 3px solid var(--border, #ccd6d1);
+  padding: 8px 10px;
+}
+
+@media (max-width: 760px) {
+  .access-toolbar,
+  .access-inline {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .access-toolbar .f {
+    min-width: 0;
+    width: 100%;
+  }
+}

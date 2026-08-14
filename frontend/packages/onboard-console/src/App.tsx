@@ -32,6 +32,7 @@ import { SuggestedAlerts } from "./routes/SuggestedAlerts.js";
 import { Subscribers } from "./routes/Subscribers.js";
 import { AuditLog } from "./routes/AuditLog.js";
 import { Admin } from "./routes/Admin.js";
+import { AccessManagement } from "./routes/AccessManagement.js";
 import { OccTools } from "./routes/OccTools.js";
 import { EventMonitoring } from "./routes/modules/EventMonitoring.js";
 import { EventPlanning } from "./routes/EventPlanning.js";
@@ -50,9 +51,12 @@ import {
 } from "./context/FixedRouteRefreshContext.js";
 
 const ADMIN = ["OCC.Admin"] as const;
+const ACCESS_MANAGEMENT = import.meta.env.VITE_ACCESS_ADMIN_FALLBACK === "true"
+  ? ["OCC.AccessAdmin", "OCC.Admin"] as const
+  : ["OCC.AccessAdmin"] as const;
 const OCC_TOOLS = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin"] as const;
 const EVENT_AVL = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin"] as const;
-const COMPLIANCE = ["OCC.Compliance", "OCC.Admin"] as const;
+const COMPLIANCE = ["OCC.Compliance", "OCC.ComplianceManager", "OCC.Admin"] as const;
 // Read-only for OCC.Viewer, full create/edit/delete for Publisher/Admin (the
 // component itself hides write controls for Viewer-only; the server is the
 // real boundary, same convention as Compose).
@@ -74,6 +78,7 @@ const PAGE_META: { match: (path: string) => boolean; title: string; sub: string 
   { match: (p) => p === "/detour-intake", title: "Detour Intake", sub: "Capture and review preliminary closure reports" },
   { match: (p) => p === "/detour-reports", title: "Detour Reports", sub: "Search and export detour history — read-only" },
   { match: (p) => p === "/admin", title: "Admin", sub: "Expiration defaults and system configuration" },
+  { match: (p) => p === "/admin/access-management", title: "Access Management", sub: "OnBoard access, Directory Onboarding, approvals, and sign-in evidence" },
   {
     match: (p) => p === "/event-monitoring",
     title: "Event AVL",
@@ -158,8 +163,9 @@ export function App() {
   const { account, roles, signIn, signOut } = useAuth();
   const { theme, toggle } = useTheme();
   const isAdmin = roles.includes("OCC.Admin");
+  const canManageAccess = roles.some((role) => (ACCESS_MANAGEMENT as readonly string[]).includes(role));
   const canSeeOccTools = roles.some((role) => (OCC_TOOLS as readonly string[]).includes(role));
-  const isCompliance = isAdmin || roles.includes("OCC.Compliance");
+  const isCompliance = isAdmin || roles.includes("OCC.Compliance") || roles.includes("OCC.ComplianceManager");
   const canSeeDetours = roles.some((r) => (DETOURS as readonly string[]).includes(r));
   const canSeeEventAvl = roles.some((r) => (EVENT_AVL as readonly string[]).includes(r));
   const stats = useLiveStats();
@@ -247,6 +253,7 @@ export function App() {
             <NavLink to="/subscribers"><IconUsers />Subscribers</NavLink>
             <NavLink to="/audit"><IconClock />Audit Log</NavLink>
             {isAdmin && <NavLink to="/admin"><IconGear />Admin</NavLink>}
+            {canManageAccess && <NavLink to="/admin/access-management"><IconShield />Access Management</NavLink>}
           </section>
         </nav>
 
@@ -285,7 +292,7 @@ export function App() {
           </div>
           <div className="topbar-actions">
             <FixedRouteRefreshIndicator />
-            <span className="tr-text">Session: {new Date().toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" })}</span>
+            <span className="tr-text" title="Best-effort managed-device target. Conditional Access, risk, revocation, or browser state may require earlier sign-in.">Session: 12-hour shift target</span>
             <span className="pill-user">
               <span className="avatar">{initialsOf(account.name ?? account.username)}</span>
               {account.name ?? account.username} · {roles.join(", ") || "no roles"}
@@ -353,6 +360,14 @@ export function App() {
                 element={
                   <RequireRole allowed={[...ADMIN]}>
                     <Admin />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="/admin/access-management"
+                element={
+                  <RequireRole allowed={[...ACCESS_MANAGEMENT]}>
+                    <AccessManagement />
                   </RequireRole>
                 }
               />

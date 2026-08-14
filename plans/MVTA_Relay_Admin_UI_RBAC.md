@@ -147,25 +147,33 @@ not mutate Entra or the local audit history.
 1. Admin clicks **Assign Role**.
 2. Type-ahead search against the Entra directory (`GET /users` via Graph, `User.Read.All`).
 3. Select a user or group and one or more allowed roles. Human roles are additive; `System.Ingestion` is excluded from user/group choices.
-4. Submit → backend performs the Graph app-role-assignment call using **app-only credentials**. The OCC Admin's own browser session never needs Graph write permissions — the frontend never talks to Graph directly.
+4. Submit → backend exchanges the signed-in Access Administrator's API token through the OAuth on-behalf-of flow and performs the constrained Graph change. The frontend never talks to Graph directly and never receives directory-write authority.
 5. Confirmation toast + new row appears in the table.
 
-Prefer a managed identity for the backend's Graph access. If credentials are
-unavoidable, store them in Key Vault and include expiry/rotation in the
-operational checklist.
+Use a confidential-client credential only for the on-behalf-of exchange and
+store it in Key Vault. The signed-in administrator remains the delegated actor,
+and their scoped Entra role must authorize the requested OnBoard target. A
+separate managed identity may perform narrowly scoped background reads; it must
+not receive broad directory-write permissions in the normal runtime.
 
 ### 3.4 Two-person rule for granting OCC Admin
 
-Granting **`OCC.Admin`** requires a second existing Admin to confirm before the
-Graph assignment is made. The first Admin creates a pending request; a distinct
-Admin approves or rejects it. The backend, not only the UI, enforces the
+Granting or revoking **`OCC.Admin`** or **`OCC.AccessAdmin`** requires a second
+existing Access Administrator to confirm before the Graph assignment is made.
+The first Access Administrator creates a pending request; a distinct Access
+Administrator approves or rejects it. The backend, not only the UI, enforces the
 different-actor rule. Requests expire after 24 hours and are invalidated if the
 target, requested role, or requestor's authorization changes. Revoking the last
-active Admin is blocked.
+recoverable Access Administrator is blocked.
 
 ### 3.5 Audit Log
 
-Single shared log — role changes and message actions live in the **same table**, not separate ones, matching Section 9 of the architecture doc ("all create/edit/retract actions logged with staff identity and timestamp").
+Access Management uses its own append-only audit table so directory workflow
+records can carry approval, sponsorship, expiry, environment, and Graph
+correlation data without mixing sensitive security administration into the
+message-history schema. The console may present access and operational history
+through a shared navigation surface, but the persistence and export policies
+remain separate.
 
 Columns: timestamp, actor, action type (`role_granted`, `role_revoked`, `message_created`, `message_published`, `message_retracted`, `ttl_default_changed`), target (user or message ID), before/after value where applicable.
 
@@ -184,8 +192,8 @@ plain-language explanation of what controls it:
 - **Application behavior:** persistent MSAL cache and silent token renewal;
 - **Entra behavior:** Conditional Access sign-in frequency, persistent-browser
   session policy, MFA, account disablement, and session revocation; and
-- **Proposed operating target:** an uninterrupted normal OCC shift on a trusted
-  device, subject to an explicit security/IT decision on the number of hours.
+- **Operating target:** a best-effort 12-hour normal OCC shift on a managed
+  device, bounded by MVTA security and Conditional Access policy.
 
 An `OCC.Admin` cannot weaken a tenant Conditional Access policy from inside
 OnBoard. If MVTA wants a longer login period, IT must approve and configure the
@@ -198,31 +206,32 @@ safe, and never loop interactive redirects.
 
 ## 4. Microsoft Graph implementation
 
-### 4.1 Required permissions (app registration, not delegated)
+### 4.1 Delegated permissions and scoped Entra authority
 
 | Permission | Type | Purpose |
 |---|---|---|
-| `AppRoleAssignment.ReadWrite.All` | Application | Grant/revoke app role assignments |
-| `User.Read.All` | Application | Search directory for the Assign Role modal |
-| `Application.Read.All` | Application | Resolve the service principal object ID for MVTA OnBoard itself |
-| `GroupMember.Read.All` | Application | Resolve direct members of assigned OnBoard access groups |
-| `GroupMember.ReadWrite.All` | Application, optional | Add/remove users in OnBoard access groups when group management is enabled |
-| `AuditLog.Read.All` | Application, optional | Read sign-in activity and OnBoard-specific sign-in events |
+| `AppRoleAssignment.ReadWrite.All` | Delegated | Grant/revoke assignments on the configured OnBoard service principal |
+| `User.Read.All` | Delegated | Search directory and read supported user status fields |
+| `Application.Read.All` | Delegated | Read the configured OnBoard service principal and assignments |
+| `GroupMember.Read.All` | Delegated | Resolve direct members of assigned OnBoard access groups |
+| `GroupMember.ReadWrite.All` | Delegated | Add/remove users in configured OnBoard access groups |
+| `User.Invite.All` | Delegated, optional | Create separately sponsored B2B invitations |
+| `AuditLog.Read.All` | Delegated, optional | Read directory-wide sign-in activity and OnBoard-specific events |
 
-These application permissions require **admin consent** in the Entra tenant.
+These delegated permissions require **admin consent** in the Entra tenant.
 Request only the permissions for enabled features. In particular, omit
 `GroupMember.ReadWrite.All` if the UI assigns roles directly and omit
 `AuditLog.Read.All` if MVTA does not license or approve sign-in history.
 
-> **Least privilege:** `AppRoleAssignment.ReadWrite.All` is broad — it can
-> manage assignments for any app in the tenant. Do not replace it with the
-> broader `Directory.ReadWrite.All`. The tighter alternative is a custom Entra
+> **Least privilege:** the Graph permission permits the API operation, while
+> the signed-in administrator's Entra directory role constrains its targets.
+> Do not replace this design with `Directory.ReadWrite.All`. Use a custom Entra
 > directory role containing
 > `microsoft.directory/servicePrincipals/appRoleAssignedTo/read` and/or
-> `microsoft.directory/servicePrincipals/appRoleAssignedTo/update`, assigned to
-> the backend identity at the MVTA OnBoard enterprise-application scope. IT must
-> validate this option against the chosen app-only implementation before Phase
-> 4 approval.
+> `microsoft.directory/servicePrincipals/appRoleAssignedTo/update`, scoped to
+> the MVTA OnBoard enterprise application, plus a custom group role scoped to
+> the designated groups/administrative unit. Avoid role-assignable groups,
+> which would require `RoleManagement.ReadWrite.Directory`.
 
 `signInActivity` and downloadable sign-in logs require Microsoft Entra ID P1 or
 P2 plus `AuditLog.Read.All`. The UI must degrade gracefully when those
@@ -299,15 +308,18 @@ identity's object ID) rather than a user or group ID.
 
 | Your endpoint | Wraps | Auth required |
 |---|---|---|
-| `GET /admin/access/principals` | List direct assignments, assigned groups, direct group members, and role definitions | `OCC.Admin` |
-| `GET /admin/access/principals/{userId}/sign-ins` | Read available directory-wide and OnBoard-specific sign-in activity | `OCC.Admin` |
-| `POST /admin/access/import/preview` | Validate selected Entra users/groups and return a no-write import plan | `OCC.Admin` |
-| `POST /admin/access/import` | Apply approved non-Admin role or group assignments | `OCC.Admin` |
-| `DELETE /admin/access/assignments/{assignmentId}` | Revoke a direct assignment; group-derived access must be removed at its source | `OCC.Admin` |
-| `POST /admin/access/admin-requests` | Request an `OCC.Admin` grant or revocation | `OCC.Admin` |
-| `POST /admin/access/admin-requests/{requestId}/approve` | Apply a pending request; actor must differ from requestor | Different `OCC.Admin` |
-| `POST /admin/access/admin-requests/{requestId}/reject` | Reject a pending request | Different `OCC.Admin` |
-| `GET /admin/audit-log` | Query the local access and operational audit records | `OCC.Admin` (all) / other roles (module-appropriate history) |
+| `GET /admin/access-management/principals` | List direct assignments, assigned groups, and effective direct group members | `OCC.AccessAdmin` |
+| `GET /admin/access-management/directory/search` | Search supported Entra users, groups, and workloads | `OCC.AccessAdmin` |
+| `GET /admin/access-management/principals/{userId}/sign-ins` | Read separately labeled directory-wide and OnBoard-specific sign-in activity | `OCC.AccessAdmin` |
+| `POST /admin/access-management/changes/preview` | Validate selected changes and return a no-write dry run | `OCC.AccessAdmin` |
+| `POST /admin/access-management/changes` | Apply ordinary changes or create privileged approval requests | `OCC.AccessAdmin` |
+| `GET /admin/access-management/changes` | List pending privileged requests | `OCC.AccessAdmin` |
+| `POST /admin/access-management/changes/{requestId}/decision` | Approve/reject with a distinct actor and fresh authentication | Different `OCC.AccessAdmin` |
+| `POST /admin/access-management/changes/{requestId}/cancel` | Cancel a request before it is applied | Requesting `OCC.AccessAdmin` |
+| `GET /admin/access-management/reconciliation` | Preview role/configuration/assignment drift and repair changes | `OCC.AccessAdmin` |
+| `GET/POST /admin/access-management/expirations[/apply]` | Review and idempotently remove due OnBoard access | `OCC.AccessAdmin` |
+| `GET /admin/access-management/audit` | Query immutable access-administration records | `OCC.AccessAdmin` |
+| `POST /admin/access-management/export` | Generate a safe, audited access inventory without sign-in detail | `OCC.AccessAdmin` |
 
 Every mutating endpoint writes a local audit row in addition to its Graph call.
 Graph remains the source of truth for current access; the local audit table is

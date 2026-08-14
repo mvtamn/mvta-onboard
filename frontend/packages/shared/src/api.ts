@@ -80,14 +80,26 @@ import type {
   DecisionMatrixProcedure,
   DecisionMatrixDiagnostics,
   DecisionMatrixCandidate,
+  OnBoardAccessPrincipal,
+  OnBoardDirectoryChange,
+  OnBoardAccessChangeRecord,
+  OnBoardAccessAuditEntry,
+  OnBoardAccessMetadata,
+  OnBoardSignInInformation,
+  OnBoardAccessReconciliationReport,
 } from "./types.js";
 
-export type TokenProvider = () => Promise<string | null>;
+export interface TokenRequestOptions {
+  authenticationContext?: string;
+}
+
+export type TokenProvider = (options?: TokenRequestOptions) => Promise<string | null>;
 
 export interface ApiClientOptions {
   baseUrl: string;
   /** Optional: returns an access token for authenticated (write) calls. */
   getToken?: TokenProvider;
+  privilegedAuthenticationContext?: string;
 }
 
 export class ApiError extends Error {
@@ -144,20 +156,20 @@ async function fetchWithRetry(input: string, init: RequestInit): Promise<Respons
   }
 }
 
-export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
+export function createApiClient({ baseUrl, getToken, privilegedAuthenticationContext = "c1" }: ApiClientOptions) {
   const root = baseUrl.replace(/\/+$/, "");
 
   async function request<T>(
     path: string,
     init: RequestInit = {},
-    authenticated = false,
+    authenticated: boolean | TokenRequestOptions = false,
   ): Promise<T> {
     const headers = new Headers(init.headers);
     if (init.body && !headers.has("Content-Type")) {
       headers.set("Content-Type", "application/json");
     }
     if (authenticated && getToken) {
-      const token = await getToken();
+      const token = await getToken(typeof authenticated === "object" ? authenticated : undefined);
       if (token) headers.set("Authorization", `Bearer ${token}`);
     }
 
@@ -228,6 +240,14 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
     retractMessage(id: string) {
       return request<{ message_id: string; status: string }>(
         `/api/messages/${id}/retract`,
+        { method: "POST" },
+        true,
+      );
+    },
+
+    publishMessage(id: string) {
+      return request<{ message_id: string; status: "active" }>(
+        `/api/messages/${id}/publish`,
         { method: "POST" },
         true,
       );
@@ -800,6 +820,98 @@ export function createApiClient({ baseUrl, getToken }: ApiClientOptions) {
     },
     putManualMetric(input: { standard_id: string; contractor_id: string; service_month: string; metric_value: number; source_note: string }) {
       return request<{ id: string }>("/api/manual-metrics", { method: "PUT", body: JSON.stringify(input) }, true);
+    },
+
+    getAccessPrincipals() {
+      return request<{ environment: string; access_admin_fallback: boolean; principals: OnBoardAccessPrincipal[] }>(
+        "/api/admin/access-management/principals", {}, true,
+      );
+    },
+    searchAccessDirectory(query: string) {
+      return request<{ candidates: OnBoardAccessPrincipal[] }>(
+        `/api/admin/access-management/directory/search?q=${encodeURIComponent(query)}`, {}, true,
+      );
+    },
+    previewAccessChanges(changes: OnBoardDirectoryChange[]) {
+      return request<{
+        environment: string;
+        valid: boolean;
+        items: Array<{ index: number; disposition: "invalid" | "already_satisfied" | "immediate" | "approval_required"; errors: string[] }>;
+      }>(
+        "/api/admin/access-management/changes/preview",
+        { method: "POST", body: JSON.stringify({ changes }) },
+        true,
+      );
+    },
+    submitAccessChanges(changes: OnBoardDirectoryChange[], idempotencyKey: string) {
+      const privileged = changes.some((change) => change.role === "OCC.Admin" || change.role === "OCC.AccessAdmin");
+      return request<{
+        environment: string;
+        results: Array<{ index: number; disposition: string; correlation_id?: string | null; change_id?: string; errors?: string[]; message?: string }>;
+      }>(
+        "/api/admin/access-management/changes",
+        { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ changes }) },
+        privileged ? { authenticationContext: privilegedAuthenticationContext } : true,
+      );
+    },
+    getPendingAccessChanges() {
+      return request<{ changes: OnBoardAccessChangeRecord[] }>(
+        "/api/admin/access-management/changes", {}, true,
+      );
+    },
+    decideAccessChange(id: string, decision: "approved" | "rejected", idempotencyKey: string) {
+      return request<{ change_id: string; status: string; result: { status: string; correlation_id: string | null } | null }>(
+        `/api/admin/access-management/changes/${encodeURIComponent(id)}/decision`,
+        { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ decision }) },
+        { authenticationContext: privilegedAuthenticationContext },
+      );
+    },
+    cancelAccessChange(id: string, reason: string) {
+      return request<{ change_id: string; status: "cancelled" }>(
+        `/api/admin/access-management/changes/${encodeURIComponent(id)}/cancel`,
+        { method: "POST", body: JSON.stringify({ reason }) },
+        true,
+      );
+    },
+    getAccessSignIns(principalId: string) {
+      return request<OnBoardSignInInformation>(
+        `/api/admin/access-management/principals/${encodeURIComponent(principalId)}/sign-ins`, {}, true,
+      );
+    },
+    getAccessAudit() {
+      return request<{ audit: OnBoardAccessAuditEntry[] }>(
+        "/api/admin/access-management/audit", {}, true,
+      );
+    },
+    getAccessExpirations() {
+      return request<{ expirations: OnBoardAccessMetadata[] }>(
+        "/api/admin/access-management/expirations", {}, true,
+      );
+    },
+    applyAccessExpirations(idempotencyKey: string) {
+      return request<{ environment: string; results: Array<{ metadata_id: string; disposition: string; message?: string }> }>(
+        "/api/admin/access-management/expirations/apply",
+        { method: "POST", headers: { "Idempotency-Key": idempotencyKey } },
+        true,
+      );
+    },
+    getAccessReconciliation() {
+      return request<OnBoardAccessReconciliationReport>(
+        "/api/admin/access-management/reconciliation", {}, true,
+      );
+    },
+    exportAccessInventory() {
+      return request<{
+        environment: string;
+        generated_at: string;
+        rows: Array<{
+          display_name: string; sign_in_name: string | null; principal_type: string;
+          account_enabled: boolean | null; guest_state: string | null; role: string;
+          effective_roles: string[]; reconciliation_status: string;
+          source: string; source_name: string; expires_at: string | null;
+          sponsor: string | null; organization: string | null;
+        }>;
+      }>("/api/admin/access-management/export", { method: "POST" }, true);
     },
   };
 }

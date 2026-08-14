@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { type AdminMessage, CATEGORY_LABELS, formatExpires, ApiError } from "@mvta/shared";
 import { api } from "../config.js";
+import { useAuth } from "../auth/AuthContext.js";
 
 const STATUS_PILL: Record<string, string> = {
+  draft: "pill-warning",
   active: "pill-success",
   expired: "pill-muted",
   archived: "pill-muted",
@@ -12,6 +14,8 @@ const STATUS_PILL: Record<string, string> = {
 // Audit Log - server-side tag/keyword search across ALL messages (any status)
 // via GET /admin/messages. Replaces the earlier client-side active-only filter.
 export function AuditLog() {
+  const { roles } = useAuth();
+  const canPublish = roles.includes("OCC.Publisher") || roles.includes("OCC.Admin");
   const [tag, setTag] = useState("");
   const [q, setQ] = useState("");
   const [results, setResults] = useState<AdminMessage[] | null>(null);
@@ -30,6 +34,20 @@ export function AuditLog() {
       setResults(messages);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Search failed (requires staff sign-in).");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function publishDraft(message: AdminMessage) {
+    if (!window.confirm(`Publish the reviewed ingestion draft “${message.summary}”?`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.publishMessage(message.message_id);
+      await search();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "The draft could not be published.");
     } finally {
       setBusy(false);
     }
@@ -75,6 +93,7 @@ export function AuditLog() {
                   <th>By</th>
                   <th>Posted</th>
                   <th>Expires</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -90,6 +109,7 @@ export function AuditLog() {
                     <td className="td-dim">{m.created_by}</td>
                     <td className="td-dim">{new Date(m.created_at).toLocaleDateString()}</td>
                     <td className="td-dim">{formatExpires(m.expires_at)}</td>
+                    <td>{m.status === "draft" && canPublish ? <button className="btn-sm" disabled={busy} onClick={() => void publishDraft(m)}>Review &amp; publish</button> : "—"}</td>
                   </tr>
                 ))}
               </tbody>

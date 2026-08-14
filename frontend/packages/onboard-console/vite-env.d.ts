@@ -7,6 +7,7 @@ interface ImportMetaEnv {
   readonly VITE_API_SCOPE: string;
   /** "mock" enables the dev-only mock sign-in (ignored in production builds). */
   readonly VITE_AUTH_MODE?: string;
+  readonly VITE_PRIVILEGED_AUTH_CONTEXT?: string;
 }
 
 interface ImportMeta {

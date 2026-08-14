@@ -56,6 +56,8 @@ jobs:
           VITE_ENTRA_CLIENT_ID: ${{ vars.VITE_ENTRA_CLIENT_ID }}
           VITE_ENTRA_TENANT_ID: ${{ vars.VITE_ENTRA_TENANT_ID }}
           VITE_API_SCOPE: ${{ vars.VITE_API_SCOPE }}
+          VITE_ACCESS_ADMIN_FALLBACK: ${{ vars.VITE_ACCESS_ADMIN_FALLBACK }}
+          VITE_PRIVILEGED_AUTH_CONTEXT: ${{ vars.VITE_PRIVILEGED_AUTH_CONTEXT }}
         run: |
           npm run build:shared
           npm run build --workspace @mvta/${{ matrix.app }}

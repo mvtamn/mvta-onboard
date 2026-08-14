@@ -4,10 +4,11 @@
 // or hand-written by staff - this endpoint just validates and persists
 // whatever it's given, falling back to a raw_text truncation if summary is
 // omitted entirely. It never calls Claude itself.
-// Restricted to OCC Publisher, OCC Admin, or System Ingestion roles.
+// Human publishers create active messages. System.Ingestion uses this same
+// validated envelope but can create reviewable drafts only.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole } from "../lib/auth";
+import { requireRole, INGESTION_ROLES, PUBLISH_ROLES } from "../lib/auth";
 import { validateCreateMessage } from "../lib/validation";
 import { publishMessageCreated } from "../lib/events";
 import type { CreateMessageBody } from "../lib/types";
@@ -23,7 +24,7 @@ app.http("messagesCreate", {
   methods: ["POST"],
   authLevel: "anonymous", // authorization is enforced in code below via requireRole
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, ["OCC.Publisher", "OCC.Admin", "System.Ingestion"]);
+    const authResult = requireRole(request, [...PUBLISH_ROLES, ...INGESTION_ROLES]);
     if (!authResult.authorized) {
       return {
         status: authResult.status,
@@ -73,40 +74,42 @@ app.http("messagesCreate", {
       sqlRequest.input("created_by", sql.NVarChar, createdBy);
       sqlRequest.input("expires_at", sql.DateTime2, new Date(body.expires_at));
       sqlRequest.input("expiration_source", sql.NVarChar, body.expiration_source);
+      sqlRequest.input("status", sql.NVarChar, isSystemCaller ? "draft" : "active");
 
       const result = await sqlRequest.query<InsertedRow>(`
         INSERT INTO Messages (
           raw_text, summary, category, severity,
           routes_affected, stops_affected, zones_affected, tags, channels,
-          created_by, expires_at, expiration_source
+          created_by, expires_at, expiration_source, status
         )
         OUTPUT INSERTED.message_id, INSERTED.created_at, INSERTED.expires_at
         VALUES (
           @raw_text, @summary, @category, @severity,
           @routes_affected, @stops_affected, @zones_affected, @tags, @channels,
-          @created_by, @expires_at, @expiration_source
+          @created_by, @expires_at, @expiration_source, @status
         )
       `);
 
       const inserted = result.recordset[0];
 
-      // Publish a message-created event so the dispatch Function App fans out
-      // SMS/email to matching subscribers. Best-effort: a publish failure is
-      // logged inside publishMessageCreated and does not fail this request.
-      await publishMessageCreated(
-        {
-          message_id: inserted.message_id,
-          category: body.category,
-          severity: body.severity,
-          summary: body.summary || body.raw_text.substring(0, 200),
-          routes_affected: body.routes_affected || null,
-          zones_affected: body.zones_affected || null,
-          channels: body.channels || null,
-          created_at: inserted.created_at,
-          expires_at: inserted.expires_at,
-        },
-        context,
-      );
+      // Only human-created active messages fan out. Ingestion output must be
+      // reviewed and published through a separate human-authorized action.
+      if (!isSystemCaller) {
+        await publishMessageCreated(
+          {
+            message_id: inserted.message_id,
+            category: body.category,
+            severity: body.severity,
+            summary: body.summary || body.raw_text.substring(0, 200),
+            routes_affected: body.routes_affected || null,
+            zones_affected: body.zones_affected || null,
+            channels: body.channels || null,
+            created_at: inserted.created_at,
+            expires_at: inserted.expires_at,
+          },
+          context,
+        );
+      }
 
       return {
         status: 201,
@@ -114,6 +117,7 @@ app.http("messagesCreate", {
           message_id: inserted.message_id,
           created_at: inserted.created_at,
           expires_at: inserted.expires_at,
+          status: isSystemCaller ? "draft" : "active",
         },
       };
     } catch (err) {

@@ -71,7 +71,7 @@ export interface SubscribeInput {
 
 // Staff-console admin surfaces (Audit Log, Admin, Subscribers, Suggested Alerts).
 
-export type MessageStatus = "active" | "expired" | "archived" | "retracted";
+export type MessageStatus = "draft" | "active" | "expired" | "archived" | "retracted";
 
 export interface AdminMessage {
   message_id: string;
@@ -1000,6 +1000,136 @@ export interface MapsTokenResponse {
   client_id: string;
   access_token: string;
   expires_on: number;
+}
+
+export type OnBoardAccessRole =
+  | "OCC.Viewer"
+  | "OCC.Publisher"
+  | "OCC.Admin"
+  | "OCC.Compliance"
+  | "OCC.ComplianceManager"
+  | "OCC.Detour"
+  | "System.Ingestion"
+  | "OCC.AccessAdmin";
+
+export type AccessPrincipalType = "user" | "group" | "service_principal";
+export type AccessAssignmentSource = "group" | "direct";
+
+export interface OnBoardAccessAssignment {
+  role: OnBoardAccessRole;
+  source: AccessAssignmentSource;
+  source_id: string;
+  source_name: string;
+  expires_at?: string | null;
+  is_exception?: boolean;
+  sponsor?: string | null;
+  organization?: string | null;
+  lifecycle_status?: "active" | "pending_verification" | "revoked" | "expiry_failed";
+}
+
+export interface OnBoardAccessPrincipal {
+  id: string;
+  display_name: string;
+  sign_in_name: string | null;
+  principal_type: AccessPrincipalType;
+  account_enabled: boolean | null;
+  guest_state: string | null;
+  directory_status?: "missing";
+  assignments: OnBoardAccessAssignment[];
+  effective_roles: OnBoardAccessRole[];
+}
+
+export interface OnBoardDirectoryChange {
+  action: "grant" | "revoke" | "invite_guest";
+  principal_id: string;
+  principal_type: AccessPrincipalType;
+  role: OnBoardAccessRole;
+  source: AccessAssignmentSource;
+  source_id?: string;
+  reason: string;
+  sponsor?: string;
+  organization?: string;
+  expires_at?: string;
+}
+
+export interface OnBoardAccessChangeRecord {
+  id: string;
+  environment: string;
+  change: OnBoardDirectoryChange;
+  status: "pending" | "applying" | "approved" | "rejected" | "cancelled" | "expired" | "failed";
+  requested_by_id: string;
+  requested_by_name: string;
+  requested_at: string;
+  approval_expires_at?: string;
+  decided_by_id: string | null;
+  decided_by_name: string | null;
+  decided_at: string | null;
+  result: { status: string; correlation_id: string | null; message?: string } | null;
+}
+
+export interface OnBoardAccessAuditEntry {
+  id?: string;
+  environment: string;
+  actor_id: string;
+  actor_name: string;
+  action: string;
+  target_id: string | null;
+  reason: string | null;
+  outcome: string;
+  correlation_id: string | null;
+  occurred_at: string;
+  details?: Record<string, unknown>;
+}
+
+export interface OnBoardAccessMetadata {
+  id: string;
+  environment: string;
+  principal_id: string;
+  principal_type: AccessPrincipalType;
+  role: OnBoardAccessRole;
+  source: AccessAssignmentSource;
+  source_id: string | null;
+  reason: string;
+  sponsor: string | null;
+  organization: string | null;
+  expires_at: string | null;
+  status: "active" | "pending_verification" | "expiring" | "revoked" | "expiry_failed";
+  last_correlation_id: string | null;
+  updated_at?: string;
+}
+
+export interface OnBoardSignInInformation {
+  directory_summary: {
+    scope: "directory_wide";
+    last_successful_at: string | null;
+    last_interactive_attempt_at: string | null;
+    last_noninteractive_at: string | null;
+  } | null;
+  onboard_events: {
+    scope: "onboard_application";
+    queried_at: string;
+    events: Array<{
+      occurred_at: string;
+      successful: boolean;
+      client_app: string | null;
+      correlation_id: string | null;
+    }>;
+  };
+}
+
+export interface OnBoardAccessReconciliationFinding {
+  code: string;
+  severity: "info" | "warning" | "error";
+  message: string;
+  principal_id?: string;
+  role?: OnBoardAccessRole;
+  repair_change?: OnBoardDirectoryChange;
+}
+
+export interface OnBoardAccessReconciliationReport {
+  environment: string;
+  observed_at: string;
+  findings: OnBoardAccessReconciliationFinding[];
 }
 
 export type AssessmentPeriodStatus = "open" | "in_review" | "in_validation" | "stale" | "finalized" | "issued" | "reopened";

@@ -17,7 +17,7 @@ CREATE TABLE Messages (
     created_at           DATETIME2             NOT NULL DEFAULT SYSUTCDATETIME(),
     expires_at           DATETIME2             NOT NULL,
     expiration_source    NVARCHAR(20)          NOT NULL,  -- explicit, inferred_text, category_default
-    status               NVARCHAR(20)          NOT NULL DEFAULT 'active',  -- active, expired, archived, retracted
+    status               NVARCHAR(20)          NOT NULL DEFAULT 'active',  -- draft, active, expired, archived, retracted
     updated_at           DATETIME2             NOT NULL DEFAULT SYSUTCDATETIME(),
 
     CONSTRAINT CK_Messages_Category CHECK (category IN (
@@ -30,7 +30,7 @@ CREATE TABLE Messages (
         'explicit', 'inferred_text', 'category_default'
     )),
     CONSTRAINT CK_Messages_Status CHECK (status IN (
-        'active', 'expired', 'archived', 'retracted'
+        'draft', 'active', 'expired', 'archived', 'retracted'
     ))
 );
 

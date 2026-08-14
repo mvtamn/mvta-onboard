@@ -9,7 +9,9 @@ export type AppRole =
   | "OCC.Publisher"
   | "OCC.Admin"
   | "OCC.Compliance"
+  | "OCC.ComplianceManager"
   | "OCC.Detour"
+  | "OCC.AccessAdmin"
   | "System.Ingestion";
 
 // App roles are emitted as a `roles` claim array in the ID token.

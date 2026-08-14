@@ -40,6 +40,15 @@ param wafSku string = 'Standard_AzureFrontDoor'
 @description('Create RBAC assignments during first-time provisioning. Keep false for routine deployments when the deployment identity lacks roleAssignments/write.')
 param manageRoleAssignments bool = false
 
+@description('Tenant-specific OnBoard enterprise-app, role, and group identifiers as AccessEnvironmentConfig JSON. Empty leaves Access Management disabled.')
+param accessManagementConfigJson string = ''
+
+@description('Temporary bootstrap only: allow OCC.Admin to operate Access Management until OCC.AccessAdmin is provisioned.')
+param accessAdminFallback bool = false
+
+@description('Conditional Access authentication-context value required for privileged role requests and approvals.')
+param privilegedAuthContext string = 'c1'
+
 var cleanSuffix = replace(uniqueSuffix, '-', '')
 
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
@@ -75,6 +84,10 @@ module restApiFunction 'modules/functionapp.bicep' = {
     spareMissedTripServiceIds: spareMissedTripServiceIds
     spareContractorFaultValues: spareContractorFaultValues
     manageRoleAssignments: manageRoleAssignments
+    enableAccessManagement: !empty(accessManagementConfigJson)
+    accessManagementConfigJson: accessManagementConfigJson
+    accessAdminFallback: accessAdminFallback
+    privilegedAuthContext: privilegedAuthContext
   }
 }
 

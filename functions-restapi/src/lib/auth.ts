@@ -22,6 +22,7 @@ export interface CallerPrincipal {
   userId?: string;
   userDetails?: string;
   roles: string[];
+  claims: Record<string, string[]>;
 }
 
 export type AuthResult =
@@ -49,21 +50,28 @@ export function getCallerPrincipal(request: HttpRequest): CallerPrincipal | null
           (c.typ === "roles" || c.typ.endsWith("/role")),
       )
       .map((c) => c.val);
+    const claims: Record<string, string[]> = {};
+    for (const claim of principal.claims || []) {
+      if (!claim || typeof claim.typ !== "string" || typeof claim.val !== "string") continue;
+      (claims[claim.typ] ??= []).push(claim.val);
+    }
     return {
       userId: principal.userId,
       userDetails: principal.userDetails,
       roles,
+      claims,
     };
   } catch {
     return null;
   }
 }
 
-// Standard role sets. Reads are open to any staff role; message writes to
-// publishers and admins; admin configuration to admins only. System.Ingestion
-// is the Power Automate service principal (writes messages, never reads admin).
+// Standard role sets. Human publishing and workload ingestion are deliberately
+// separate: System.Ingestion may create reviewable drafts, but must never
+// inherit approval, edit, retract, or other human publishing authority.
 export const STAFF_READ_ROLES = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin"];
-export const PUBLISH_ROLES = ["OCC.Publisher", "OCC.Admin", "System.Ingestion"];
+export const PUBLISH_ROLES = ["OCC.Publisher", "OCC.Admin"];
+export const INGESTION_ROLES = ["System.Ingestion"];
 export const ADMIN_ROLES = ["OCC.Admin"];
 export const COMPLIANCE_READ_ROLES = [...STAFF_READ_ROLES, "OCC.Compliance", "OCC.ComplianceManager"];
 export const COMPLIANCE_WRITE_ROLES = [...PUBLISH_ROLES, "OCC.Compliance", "OCC.ComplianceManager"];
@@ -106,6 +114,13 @@ export function requireRole(request: HttpRequest, allowedRoles: string[]): AuthR
   const principal = getCallerPrincipal(request);
   if (!principal) {
     return { authorized: false, status: 401, message: "Not authenticated." };
+  }
+  if (principal.roles.includes("System.Ingestion") && principal.roles.some((role) => role !== "System.Ingestion")) {
+    return {
+      authorized: false,
+      status: 403,
+      message: "System.Ingestion cannot be combined with a human OnBoard role.",
+    };
   }
   const hasRole = principal.roles.some((r) => allowedRoles.includes(r));
   if (!hasRole) {

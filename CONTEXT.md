@@ -778,3 +778,230 @@ _Avoid_: guest import, permanent contractor account
 The IT-controlled Entra/Portal recovery path used to restore privileged OnBoard
 access when the in-app approval path cannot operate.
 _Avoid_: admin bypass, shared emergency login
+
+## Missed-trip language
+
+**Missed-trip candidate**:
+A scheduled run flagged by operational evidence as possibly canceled, not
+operated, or started more than 30 minutes late. It requires investigation and
+is not itself a contractual determination.
+_Avoid_: confirmed missed trip, automatic violation
+
+**Trip start**:
+The departure of a run from its first scheduled public stop in passenger
+service. Assignment, feed presence, or observed progress may provide evidence
+of Trip start but are not the event itself.
+_Avoid_: first observation, vehicle assignment
+
+**Timely service**:
+A run whose Trip start occurs no more than 30 minutes after its scheduled Trip
+start. A start exactly 30 minutes late remains Timely service.
+_Avoid_: observed on time, appeared in feed
+
+**Confirmed missed trip**:
+A human-reviewed determination that a scheduled run did not operate or its Trip
+start occurred more than 30 minutes late. Cancellation evidence is preserved
+but may be superseded by evidence of Timely service.
+_Avoid_: missed-trip candidate, unresolved alert
+
+**First observed progress**:
+The earliest trustworthy observation that a run advanced beyond its first
+scheduled public stop. It bounds when Trip start occurred but is not itself the
+measured Trip start.
+_Avoid_: actual start, first arrival
+
+**Indeterminate trip**:
+A scheduled run whose outcome cannot be classified because the available
+evidence is insufficient. It remains visible for investigation but does not
+count as a Confirmed missed trip.
+_Avoid_: missed trip, suppressed record
+
+**Data coverage gap**:
+Missing or unreliable operational evidence during a run's decision window that
+prevents absence from supporting a missed-trip determination.
+_Avoid_: no-show, zero vehicles
+
+**Partial-service failure**:
+A run that operated but failed to provide a scheduled portion of passenger
+service, such as serving its first public stop. It is distinct from a whole
+missed trip and from Timely service.
+_Avoid_: missed trip, missed stop resolved
+
+**Published Trip start**:
+The Trip start time in the passenger-facing schedule that governs the 30-minute
+missed-trip threshold. A dispatch change replaces it only when the governing
+agreement recognizes the replacement schedule.
+_Avoid_: latest dispatch estimate, first feed time
+
+**Missed-trip evidence finding**:
+The system's current interpretation of operational evidence for a scheduled
+run, independent of investigation workflow or human determination.
+_Avoid_: status, review outcome
+
+**Missed-trip review outcome**:
+A human determination that a run was a Confirmed missed trip, Timely service,
+a Partial-service failure, or an Indeterminate trip.
+_Avoid_: false positive, workflow status
+
+**Service attribution**:
+The separate determination of whether a confirmed service failure is
+contractor-caused, excusable, agency-directed, or unattributed.
+_Avoid_: missed-trip outcome, reason code
+
+**Suspected no-show**:
+A Missed-trip candidate created when Timely service has not been established by
+the 30-minute deadline. It does not become a Confirmed missed trip until the
+expected operating window closes and retrospective evidence or human review
+supports that conclusion.
+_Avoid_: confirmed no-show, automatic missed trip
+
+**Retrospective reconciliation**:
+The comparison of a scheduled run and its live evidence with later operational
+records after the expected operating window closes. A source match may be
+exact, probable, or unmatched and does not replace human confirmation.
+_Avoid_: automatic confirmation, feed import
+
+**Superseding missed-trip review**:
+A new review that corrects an earlier Missed-trip review outcome while
+preserving the former decision, evidence, reviewer, and reason.
+_Avoid_: overwritten review, reopened decision
+
+**Late-arrival failure**:
+A contract-specific service-quality failure based on arrival performance. It
+is distinct from the missed-trip rule based on Trip start unless the governing
+agreement explicitly equates them.
+_Avoid_: missed trip, late start
+
+**Qualifying progress evidence**:
+A source-timestamped observation whose trip, service date, stop sequence, and
+vehicle status coherently place the run at or traveling toward a scheduled stop
+after its first public stop. Position movement may corroborate but is not
+required.
+_Avoid_: feed presence, vehicle assignment
+
+**Decision coverage**:
+Reliable trip-observation coverage from Published Trip start through its
+30-minute deadline, with no observation-system gap longer than 10 minutes.
+Without Decision coverage, absence supports an Indeterminate trip rather than
+a Suspected no-show.
+_Avoid_: last successful poll, feed enabled
+
+**Missed-trip case**:
+The single investigation record for one scheduled run, containing preserved
+live and retrospective evidence from every matched source.
+_Avoid_: feed row, duplicate candidate
+
+**Advance cancellation**:
+Cancellation evidence received before Published Trip start that creates an
+immediate provisional Missed-trip candidate. The case remains subject to
+Timely service evidence through the 30-minute deadline.
+_Avoid_: confirmed missed trip, final cancellation
+
+**Scheduled-run identity**:
+The canonical identity of one expected run on one service date. Evidence from
+other systems links to it through route, Published Trip start, block or run,
+and service type rather than vehicle number alone.
+_Avoid_: vehicle identity, feed record ID
+
+**Evidence-match confidence**:
+The recorded strength of a cross-system link to a Scheduled-run identity:
+exact, probable, or unmatched. Probable links require reviewer confirmation
+before affecting a Missed-trip case.
+_Avoid_: best guess, automatic merge
+
+**Legacy missed-trip record**:
+A preserved detection produced by logic that cannot support current compliance
+standards. It remains available for explicit rereview but is excluded from
+compliance totals by default.
+_Avoid_: corrected history, confirmed missed trip
+
+**Shadow detection**:
+Operation of a candidate detector for evaluation without automatic contractual
+promotion. A detector leaves Shadow detection only after a complete service
+week demonstrates at least 95 percent precision while reporting indeterminate
+and unmatched cases separately.
+_Avoid_: production truth, enabled detector
+
+**Missed-trip review authority**:
+Operations authority to determine the service outcome represented by a
+Missed-trip case. It does not determine Service attribution or assessment
+treatment.
+_Avoid_: compliance approval, contractor fault
+
+**Retained missed-trip evidence**:
+Operational evidence cited by a missed-trip review or assessment and preserved
+under contractual retention even after its source telemetry expires.
+_Avoid_: live telemetry, temporary feed data
+
+**Missed-trip case lifecycle**:
+The workflow progression of a Missed-trip case: Open, Awaiting evidence, Ready
+for review, Reviewed, or Superseded. Lifecycle state is separate from the
+Missed-trip evidence finding and Missed-trip review outcome.
+_Avoid_: resolved status, evidence finding
+
+**Timely-service closure**:
+The preserved closure of a Missed-trip case when Qualifying progress evidence
+proves Timely service. It may close an unreviewed case automatically, but it
+cannot silently rewrite an existing human review.
+_Avoid_: deleted candidate, false positive
+
+**Evidence conflict**:
+Two or more exact-matched sources that support incompatible Missed-trip
+evidence findings. An Evidence conflict requires review and source provenance;
+it is never resolved by an undocumented source priority.
+_Avoid_: duplicate evidence, feed error
+
+**Expected operating window**:
+The period from Published Trip start through the scheduled final-stop time plus
+30 minutes. A Suspected no-show is not eligible for final confirmation until
+this window and the required retrospective source-availability SLA have ended.
+_Avoid_: service day, polling window
+
+**Service-specific Trip start**:
+The agreement-defined first passenger-service event for a service type. Fixed
+route service uses departure from its first scheduled public stop; demand-
+responsive service uses its first committed passenger pickup or service-slot
+start.
+_Avoid_: universal first stop, first feed observation
+
+**Schedule snapshot**:
+The authoritative passenger schedule effective for one local service date and
+retained as the expected-run baseline for later review. A later schedule does
+not rewrite the snapshot used for an existing Missed-trip case.
+_Avoid_: current static feed, mutable schedule
+
+**Post-publication cancellation**:
+A cancellation of a run after it was present in the effective Schedule
+snapshot. It creates an Advance cancellation; removing a run before the
+snapshot became effective is a schedule correction, not a canceled run.
+_Avoid_: schedule edit, final cancellation
+
+**Closed by evidence**:
+A Missed-trip case closed automatically because Qualifying progress evidence
+proved Timely service. It is distinct from a human Reviewed case and remains
+auditable with its evidence and closure reason.
+_Avoid_: reviewed, resolved
+
+**Assessment promotion**:
+The gated transition by which a Confirmed missed trip becomes eligible for
+contractor-performance assessment. It requires retained supporting evidence
+and contractor-caused Service attribution.
+_Avoid_: automatic KPI inclusion, confirmed outcome
+
+**Unattributed service failure**:
+A Confirmed missed trip whose Service attribution is excusable, agency-
+directed, or undetermined. It remains operational history but does not promote
+to contractor-performance assessment.
+_Avoid_: dismissed missed trip, false positive
+
+**Reviewed indeterminate outcome**:
+A human-reviewed conclusion that the available evidence cannot establish
+Timely service or a Confirmed missed trip. It closes the investigation without
+entering missed-trip or contractor-fault totals.
+_Avoid_: incomplete review, dismissed case
+
+**Assessment evidence gate**:
+The requirement that unresolved Evidence conflicts and unsupported source links
+block Service attribution and Assessment promotion while preserving the
+underlying operational outcome.
+_Avoid_: source preference, automatic reconciliation

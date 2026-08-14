@@ -15,6 +15,10 @@ param spareMissedTripServiceIds string = ''
 param spareContractorFaultValues string = ''
 param complianceReportsStorageAccountName string = ''
 param manageRoleAssignments bool = false
+param enableAccessManagement bool = false
+param accessManagementConfigJson string = ''
+param accessAdminFallback bool = false
+param privilegedAuthContext string = 'c1'
 
 @description('Client ID of the MVTA OnBoard Entra ID app registration - wires up Easy Auth so the caller principal and app roles are available via x-ms-client-principal')
 param aadClientId string
@@ -130,7 +134,15 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         // Optional until MVTA provisions the Teams incoming webhook. Keep it
         // as a Key Vault reference so Bicep redeploys cannot expose or wipe it.
         { name: 'TEAMS_EVENT_WEBHOOK_URL', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/teams-event-webhook-url/)' }
-      ], !empty(complianceReportsStorageAccountName) ? [
+      ], enableAccessManagement ? [
+        { name: 'AZURE_TENANT_ID', value: subscription().tenantId }
+        { name: 'ONBOARD_API_CLIENT_ID', value: aadClientId }
+        { name: 'ONBOARD_API_CLIENT_SECRET', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/onboard-api-client-secret/)' }
+        { name: 'ONBOARD_ENVIRONMENT', value: environment }
+        { name: 'ONBOARD_ACCESS_CONFIG_JSON', value: accessManagementConfigJson }
+        { name: 'ONBOARD_ACCESS_ADMIN_FALLBACK', value: string(accessAdminFallback) }
+        { name: 'ONBOARD_PRIVILEGED_AUTH_CONTEXT', value: privilegedAuthContext }
+      ] : [], !empty(complianceReportsStorageAccountName) ? [
         { name: 'COMPLIANCE_REPORTS_STORAGE_ACCOUNT', value: complianceReportsStorageAccountName }
       ] : [], includeSpareApiKey ? [
         // Spare missed-trip ingestion runs only in the REST app. Keep this
