@@ -8,7 +8,7 @@ import { useEventWorkspace } from "../../context/EventWorkspaceContext.js";
 import { EventWorkspaceNav } from "../../components/EventWorkspaceNav.js";
 import { useAuth } from "../../auth/AuthContext.js";
 import "./eventMonitoring.css";
-import { activePlansMissingPublishedScope, defaultMonitoringEventId } from "./eventMonitoringState.js";
+import { activePlansMissingPublishedScope, defaultMonitoringEventId, eventVehiclePositionQuery } from "./eventMonitoringState.js";
 import { removeMapLayersIfPresent } from "./mapLayerCleanup.js";
 
 const AVL_REFRESH_MS = 30_000;
@@ -99,12 +99,9 @@ export function EventMonitoring() {
 
   const load = useCallback(async () => {
     setRefreshing(true);
-    if (!selectedEventId) {
-      setVehicles([]); setUnassignedVehicles([]); setHealth(null); setLastUpdated(null); setRefreshing(false);
-      return;
-    }
     try {
-      const { vehicles: current, unassigned_vehicles: currentUnassigned, diagnostics } = await api.getEventVehiclePositions(selectedEventId || undefined, selectedPlanId || undefined);
+      const query = eventVehiclePositionQuery(selectedEventId, selectedPlanId);
+      const { vehicles: current, unassigned_vehicles: currentUnassigned, diagnostics } = await api.getEventVehiclePositions(query.eventId, query.servicePlanId);
       setVehicles(current);
       setUnassignedVehicles(currentUnassigned ?? []);
       setLastUpdated(new Date());
@@ -237,7 +234,9 @@ export function EventMonitoring() {
   const reportingNow = classifiedVehicles.filter((v) => Date.now() - new Date(v.report_timestamp).getTime() < 60_000).length;
   const hasFilters = routeFilter !== "all" || headingFilter !== "all" || motionFilter !== "all" || search !== "";
   const dataState = !selectedEventId
-    ? { tone: "info", title: "Select an Event to begin monitoring.", action: null }
+    ? vehicles === null
+      ? { tone: "info", title: "Connecting to live AVL vehicles…", action: null }
+      : { tone: vehicles.length ? "success" : "warning", title: vehicles.length ? "Showing all active AVL vehicles." : "No active AVL vehicles are reporting.", action: "Select an Event to see plan membership and geofence scope." }
     : activePlans.length === 0
       ? { tone: "warning", title: "This Event has no active operating period.", action: "Create or activate an operating period in Event Planning." }
       : plansMissingPublishedScope.length > 0

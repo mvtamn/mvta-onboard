@@ -13,3 +13,8 @@ export function defaultMonitoringEventId(events: Event[], plans: EventServicePla
 export function activePlansMissingPublishedScope(plans: EventServicePlan[]): EventServicePlan[] {
   return plans.filter((plan) => plan.status === "active" && !plan.published_scope);
 }
+
+/** No selected Event means the live map should use the shared AVL feed. */
+export function eventVehiclePositionQuery(eventId: string, servicePlanId: string): { eventId?: string; servicePlanId?: string } {
+  return { eventId: eventId || undefined, servicePlanId: servicePlanId || undefined };
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activePlansMissingPublishedScope, defaultMonitoringEventId } from "./eventMonitoringState.js";
+import { activePlansMissingPublishedScope, defaultMonitoringEventId, eventVehiclePositionQuery } from "./eventMonitoringState.js";
 import type { Event, EventServicePlan } from "@mvta/shared";
 
 const event = (id: string, name = id): Event => ({
@@ -25,5 +25,10 @@ describe("Event AVL monitoring state", () => {
 
   it("identifies active plans without a published runtime scope", () => {
     expect(activePlansMissingPublishedScope([plan("missing", "active"), plan("ready", "active", { routes: [], geofences: [], locations: [] })]).map((row) => row.id)).toEqual(["missing-active"]);
+  });
+
+  it("keeps the live AVL feed unscoped until an Event is selected", () => {
+    expect(eventVehiclePositionQuery("", "")).toEqual({ eventId: undefined, servicePlanId: undefined });
+    expect(eventVehiclePositionQuery("event-1", "plan-1")).toEqual({ eventId: "event-1", servicePlanId: "plan-1" });
   });
 });

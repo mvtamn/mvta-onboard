@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.35] - 2026-08-15
+
+- **Show live AVL vehicles before Event selection.** Event AVL now loads the shared active-vehicle feed immediately; selecting an Event continues to add plan membership and geofence scope.
+
 ## [1.5.34] - 2026-08-15
 
 - **Improve Route Classification readability.** The table now uses operator-friendly route names, service-type explanations, explicit label guidance, readable update details, route counts, and descriptive actions.
