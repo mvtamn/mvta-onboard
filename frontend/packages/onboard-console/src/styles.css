@@ -263,10 +263,10 @@ body {
 .dashboard-queue-signal { background: var(--highlight-border); border-radius: 4px; height: 34px; width: 7px; }
 .dashboard-queue-signal.critical { background: var(--danger-text); }
 .dashboard-queue-signal.info { background: var(--pill-accent-fg); }
-.dashboard-alerts-header { align-items: center; }
-.panel-header-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 14px; justify-content: flex-end; }
-.panel-header-link { color: rgba(255, 255, 255, .86); font-size: 11px; font-weight: 700; text-decoration: none; }
-.panel-header-link:hover { color: #fff; text-decoration: underline; }
+.dashboard-published-card { background: var(--surface-bg); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 2px 8px rgba(0, 0, 0, .04); margin-top: 20px; padding: 16px; }
+.dashboard-published-header { align-items: center; display: flex; gap: 16px; justify-content: space-between; margin-bottom: 14px; }
+.dashboard-published-header h2 { color: var(--text); font-size: 21px; margin: 3px 0 0; }
+.dashboard-published-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 
 /* ---------- live status (Dashboard right-rail) ---------- */
 .side-label { font-size: 11px; font-weight: bold; color: var(--text-muted); letter-spacing: 0.5px; margin: 14px 0 8px; text-transform: uppercase; }
@@ -468,6 +468,8 @@ table.data th:last-child { border-top-right-radius: 8px; }
 table.data td { padding: 9px 12px; border-bottom: 1px solid var(--border-soft); color: var(--text); }
 table.data tr:nth-child(even) td { background: var(--table-stripe); }
 .td-dim { font-size: 11px; color: var(--text-dim); }
+.td-subtle { color: var(--text-muted); display: block; font-size: 11px; margin-top: 2px; }
+.data-compact { min-width: 0; }
 
 /* Route-grouped tables (e.g. Live Delays) - a header row breaking the flat
    list into per-route sections. Overrides the even/odd zebra striping

@@ -27,7 +27,7 @@ const SEVERITY_PILL: Record<string, string> = {
 
 // Active Messages table per the dashboard mockup, with Edit (new expiration)
 // and Retract actions. The UI gates by role for clarity; the API enforces it.
-export function MessagesTable({ onChanged, onLoaded }: { onChanged?: () => void; onLoaded?: (messages: ActiveMessage[]) => void }) {
+export function MessagesTable({ compact = false, onChanged, onLoaded }: { compact?: boolean; onChanged?: () => void; onLoaded?: (messages: ActiveMessage[]) => void }) {
   const { roles } = useAuth();
   const canWrite = roles.some((r) => r === "OCC.Publisher" || r === "OCC.Admin");
 
@@ -111,7 +111,7 @@ export function MessagesTable({ onChanged, onLoaded }: { onChanged?: () => void;
   return (
     <>
       {actionError ? <p className="error-text" role="alert">{actionError}</p> : null}
-      <div className="messages-toolbar">
+      {!compact ? <div className="messages-toolbar">
         <label>
           <span className="sr-only">Search active alerts</span>
           <input className="f messages-search" type="search" placeholder="Search message, route, or channel" value={query} onChange={(event) => setQuery(event.target.value)} />
@@ -124,17 +124,16 @@ export function MessagesTable({ onChanged, onLoaded }: { onChanged?: () => void;
           </select>
         </label>
         <span className="messages-result-count">{visibleMessages.length} of {messages.length} alerts · nearest expiration first</span>
-      </div>
+      </div> : null}
       {visibleMessages.length === 0 ? <p className="empty-note">No alerts match these filters.</p> : null}
       <div className="table-scroll">
-      <table className="data">
+      <table className={`data${compact ? " data-compact" : ""}`}>
         <thead>
           <tr>
             <th>Message</th>
-            <th>Category</th>
+            {!compact ? <th>Category</th> : null}
             <th>Severity</th>
             <th>Routes</th>
-            <th>Channels</th>
             <th>Expires</th>
             {canWrite ? <th>Actions</th> : null}
           </tr>
@@ -142,19 +141,22 @@ export function MessagesTable({ onChanged, onLoaded }: { onChanged?: () => void;
         <tbody>
           {visibleMessages.map((m) => (
             <tr key={m.message_id}>
-              <td>{m.summary}</td>
               <td>
+                <strong>{m.summary}</strong>
+                {compact ? <span className="td-subtle">Posted {formatPostedAt(m.created_at)} · {m.channels?.join(", ") || "All channels"}</span> : null}
+              </td>
+              {!compact ? <td>
                 <span className={`pill-sm ${CATEGORY_PILL[m.category] ?? "pill-muted"}`}>
                   {CATEGORY_LABELS[m.category] ?? m.category}
                 </span>
-              </td>
+              </td> : null}
               <td>
                 <span className={`pill-sm ${SEVERITY_PILL[m.severity] ?? "pill-muted"}`}>
                   {SEVERITY_LABELS[m.severity] ?? m.severity}
                 </span>
               </td>
               <td className="td-dim">{m.routes_affected?.join(", ") || "—"}</td>
-              <td className="td-dim">{m.channels?.join(", ") || "All"}</td>
+              {!compact ? <td className="td-dim">{m.channels?.join(", ") || "All"}</td> : null}
               <td>
                 {editing === m.message_id ? (
                   <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
@@ -203,4 +205,8 @@ export function MessagesTable({ onChanged, onLoaded }: { onChanged?: () => void;
       </div>
     </>
   );
+}
+
+function formatPostedAt(value: string): string {
+  return new Date(value).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }

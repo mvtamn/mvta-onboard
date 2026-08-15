@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { NavLink } from "react-router-dom";
 import type { ActiveMessage, SuggestedAlert } from "@mvta/shared";
-import { ComposeForm } from "../components/ComposeForm.js";
 import { MessagesTable } from "../components/MessagesTable.js";
 import { Sidebar } from "../components/Sidebar.js";
 import type { LiveStats } from "../hooks/useLiveStats.js";
 
-// Dashboard: triage-first metrics and next actions, followed by Compose and
-// Active Service Alerts. `stats` comes from App.tsx's single useLiveStats()
+// Dashboard: triage-first metrics and next actions, followed by published
+// communications. Compose remains available from its dedicated route. `stats` comes from App.tsx's single useLiveStats()
 // instance (also drives the nav footer) rather than polling again here.
 export function Dashboard({ stats, onChanged }: { stats: LiveStats; onChanged?: () => void }) {
   const [activeMessages, setActiveMessages] = useState<ActiveMessage[] | null>(null);
@@ -79,21 +78,19 @@ export function Dashboard({ stats, onChanged }: { stats: LiveStats; onChanged?: 
           <Sidebar stats={stats} />
         </div>
 
-        <div className="panel-header dashboard-alerts-header">
-          <span>Active Service Alerts</span>
-          <span className="panel-header-actions">
-            <NavLink className="panel-header-link" to="/service-operations/compose">+ New announcement</NavLink>
-            <NavLink className="panel-header-link" to="/service-operations/active">Open full list →</NavLink>
-          </span>
-        </div>
-        <div className="panel-body">
-          <MessagesTable onChanged={refreshAll} onLoaded={setActiveMessages} />
-        </div>
-
-        <div className="panel-header">New Announcement</div>
-        <div className="panel-body">
-          <ComposeForm onPosted={refreshAll} />
-        </div>
+        <section className="dashboard-published-card" aria-labelledby="published-communications-title">
+          <div className="dashboard-published-header">
+            <div>
+              <span className="dashboard-eyebrow">Published communications</span>
+              <h2 id="published-communications-title">Active Service Alerts</h2>
+            </div>
+            <span className="dashboard-published-actions">
+              <NavLink className="btn-primary" to="/service-operations/compose">+ New announcement</NavLink>
+              <NavLink className="btn-sm" to="/service-operations/active">Open full list →</NavLink>
+            </span>
+          </div>
+          <MessagesTable compact onChanged={refreshAll} onLoaded={setActiveMessages} />
+        </section>
       </div>
     </div>
   );
