@@ -670,6 +670,9 @@ export interface Detour extends DetourReportFields {
   workflow_updated_by?: string | null;
   workflow_updated_at?: string | null;
   avail_build_confirmed_at?: string | null;
+  avail_entry_result?: "entered" | "conflict" | "not_entered" | null;
+  avail_entry_confirmed_by?: string | null;
+  avail_entry_confirmed_at?: string | null;
   segments: DetourSegment[];
 }
 

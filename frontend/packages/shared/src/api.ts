@@ -497,6 +497,14 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       );
     },
 
+    recordAvailEntry(id: string, input: { result: "entered" | "conflict" | "not_entered"; external_detour_id?: string | null; detail?: string | null }) {
+      return request<{ id: string; result: string; lifecycle_state: DetourLifecycleState }>(
+        `/api/detours/${id}/avail-entry`,
+        { method: "POST", body: JSON.stringify(input) },
+        true,
+      );
+    },
+
     deleteDetour(id: string) {
       return request<{ id: string; is_deleted: boolean }>(
         `/api/detours/${id}`,

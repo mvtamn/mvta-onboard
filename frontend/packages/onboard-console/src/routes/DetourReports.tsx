@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from "react";
 import {
   ApiError,
   DETOUR_STATUS_LABELS,
+  DETOUR_LIFECYCLE_LABELS,
   DETOUR_SEVERITY_LABELS,
   type Detour,
   type DetourStatus,
@@ -198,6 +199,8 @@ export function DetourReports() {
                   <th>Routes</th>
                   <th>Dates</th>
                   <th>Status</th>
+                  <th>Path</th>
+                  <th>Workflow</th>
                   {reportingReady ? <th>Reason</th> : null}
                   {reportingReady ? <th>Severity</th> : null}
                   <th>Created by</th>
@@ -214,16 +217,18 @@ export function DetourReports() {
                       <td className="td-dim">{d.segments.map((s) => s.routes).join("; ") || "—"}</td>
                       <td className="td-dim">{dateLabel(d.start_date)} – {dateLabel(d.end_date)}</td>
                       <td><span className={`pill-sm ${STATUS_PILL[d.status]}`}>{DETOUR_STATUS_LABELS[d.status]}</span></td>
+                      <td className="td-dim">{d.fulfillment_mode === "avail" ? "Avail" : d.fulfillment_mode === "mobility_manual" ? "On-demand manual" : "Fixed-route manual"}</td>
+                      <td className="td-dim">{d.lifecycle_state ? DETOUR_LIFECYCLE_LABELS[d.lifecycle_state] : "—"}</td>
                       {reportingReady ? <td className="td-dim">{reasonLabelOf(d.reason_code)}</td> : null}
                       {reportingReady ? (
                         <td className="td-dim">{d.severity ? DETOUR_SEVERITY_LABELS[d.severity] : "—"}</td>
                       ) : null}
                       <td className="td-dim">{d.source === "avail" ? "Avail sync" : d.created_by}</td>
-                      <td className="td-dim">{d.source === "avail" ? "Avail sync" : "Manual"}</td>
+                      <td className="td-dim">{d.source === "avail" ? "Avail feed" : d.external_detour_id ? "OnBoard · Avail linked" : "OnBoard manual"}</td>
                     </tr>
                     {expandedId === d.id ? (
                       <tr>
-                        <td colSpan={reportingReady ? 10 : 8}>
+                        <td colSpan={reportingReady ? 12 : 10}>
                           <div className="subcard" style={{ margin: "4px 0" }}>
                             {d.riders_directed ? <p><b>Riders directed:</b> {d.riders_directed}</p> : null}
                             {d.segments.length === 0 ? (
@@ -255,6 +260,12 @@ export function DetourReports() {
                               </p>
                             ) : null}
                             {d.resolution_notes ? <p><b>Resolution:</b> {d.resolution_notes}</p> : null}
+                            {d.fulfillment_mode === "avail" ? (
+                              <p className="td-dim"><b>Avail:</b> {d.avail_entry_result?.replace("_", " ") || "Entry not recorded"}
+                                {d.external_detour_id ? ` · ID ${d.external_detour_id}` : ""}
+                                {d.avail_last_seen_at ? ` · Last seen ${dateTimeLabel(d.avail_last_seen_at)}` : ""}
+                              </p>
+                            ) : null}
                             <p className="td-dim" style={{ marginTop: 8 }}>
                               Notified — Email: {d.email_sent ? "Yes" : "No"} · Expired email:{" "}
                               {d.expired_email_sent ? "Yes" : "No"} · Spare: {d.spare_emailed ? "Yes" : "No"}

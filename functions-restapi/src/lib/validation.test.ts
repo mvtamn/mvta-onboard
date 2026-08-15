@@ -21,6 +21,7 @@ import {
   validateCreateDetourIntake,
   validateReviewDetourIntake,
   validatePromoteDetourIntake,
+  validateAvailEntryConfirmation,
   MAX_DETOUR_RESOLUTION_NOTES_LENGTH,
   MAX_SUMMARY_LENGTH,
   MAX_CREATED_BY_LENGTH,
@@ -29,6 +30,15 @@ import {
   MAX_DETOUR_CLOSURE_LENGTH,
   validateRouteClassification,
 } from "./validation";
+
+test("Avail entry confirmation requires an Avail id when entered", () => {
+  assert.ok(validateAvailEntryConfirmation({ result: "entered" }).some((error) => error.includes("external_detour_id")));
+  assert.deepStrictEqual(validateAvailEntryConfirmation({ result: "entered", external_detour_id: "42" }), []);
+});
+
+test("Avail entry confirmation accepts an explicit conflict without an id", () => {
+  assert.deepStrictEqual(validateAvailEntryConfirmation({ result: "conflict", detail: "Stop already detoured" }), []);
+});
 
 test("valid message passes with no errors", () => {
   const errors = validateCreateMessage({

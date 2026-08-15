@@ -28,6 +28,7 @@ import { fetchDetours, groupDetourReports, type MappedDetour } from "../lib/avai
 interface ExistingDetourRow {
   id: string;
   last_edited_manually: boolean;
+  source: "manual" | "avail";
 }
 
 async function insertSegments(tx: sql.Transaction, detourId: string, segments: MappedDetour["segments"]): Promise<void> {
@@ -75,9 +76,9 @@ app.timer("availDetoursSync", {
       let existing: ExistingDetourRow | undefined;
       try {
         const existingResult = await lookupReq.query<ExistingDetourRow>(`
-          SELECT id, last_edited_manually
+          SELECT id, last_edited_manually, source
           FROM Detours
-          WHERE external_detour_id = @external_detour_id AND source = 'avail' AND is_deleted = 0
+          WHERE external_detour_id = @external_detour_id AND is_deleted = 0
         `);
         existing = existingResult.recordset[0];
       } catch (err) {
@@ -125,8 +126,11 @@ app.timer("availDetoursSync", {
           continue;
         }
 
-        if (existing.last_edited_manually) {
-          // Preserve the human correction - only bump the freshness marker.
+        if (existing.source === "manual" || existing.last_edited_manually) {
+          // A human-entered Avail ID links the feed observation to the
+          // OnBoard-owned record without changing its provenance or manually
+          // entered details. Avail remains authoritative for the observation,
+          // not for whether this row was created through OnBoard.
           const touchReq = new sql.Request(tx);
           touchReq.input("id", sql.UniqueIdentifier, existing.id);
           await touchReq.query("UPDATE Detours SET avail_last_seen_at = SYSUTCDATETIME() WHERE id = @id");
@@ -134,7 +138,7 @@ app.timer("availDetoursSync", {
           historyReq.input("detour_id", sql.UniqueIdentifier, existing.id);
           historyReq.input("event_type", sql.NVarChar(30), "source_observation");
           historyReq.input("source", sql.NVarChar(20), "avail");
-          historyReq.input("detail", sql.NVarChar(1000), `Observed Avail detour ${detour.external_detour_id}; preserved manual correction`);
+          historyReq.input("detail", sql.NVarChar(1000), `Observed Avail detour ${detour.external_detour_id}; preserved OnBoard record`);
           historyReq.input("changed_by", sql.NVarChar(200), "avail-sync");
           await historyReq.query(`
             INSERT INTO DetourWorkflowHistory

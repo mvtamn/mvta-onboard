@@ -539,6 +539,32 @@ export function validatePromoteDetourIntake(body: UnknownBody): string[] {
   return errors;
 }
 
+export function validateAvailEntryConfirmation(body: UnknownBody): string[] {
+  const errors: string[] = [];
+  const validResults = ["entered", "conflict", "not_entered"] as const;
+  if (!includes(validResults, body.result)) {
+    errors.push(`result must be one of: ${validResults.join(", ")}`);
+  }
+  if (body.external_detour_id !== undefined && body.external_detour_id !== null) {
+    if (typeof body.external_detour_id !== "string" || body.external_detour_id.trim() === "") {
+      errors.push("external_detour_id must be a non-empty string if provided");
+    } else if (body.external_detour_id.length > 100) {
+      errors.push("external_detour_id must be at most 100 characters");
+    }
+  }
+  if (body.result === "entered" && (typeof body.external_detour_id !== "string" || body.external_detour_id.trim() === "")) {
+    errors.push("external_detour_id is required when result is entered");
+  }
+  if (body.detail !== undefined && body.detail !== null) {
+    if (typeof body.detail !== "string" || body.detail.trim() === "") {
+      errors.push("detail must be a non-empty string if provided");
+    } else if (body.detail.length > 1000) {
+      errors.push("detail must be at most 1000 characters");
+    }
+  }
+  return errors;
+}
+
 // Every field a PATCH is allowed to change. Reporting fields (Part B6) are
 // included, so "set only a severity" is a valid edit.
 export const DETOUR_EDITABLE_FIELDS = [

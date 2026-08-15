@@ -309,6 +309,29 @@ export function Detours() {
     }
   }
 
+  async function recordAvailEntry(d: Detour) {
+    const result = window.prompt(
+      "Enter Avail result: entered, conflict, or not_entered",
+      d.avail_entry_result ?? "entered",
+    );
+    if (result !== "entered" && result !== "conflict" && result !== "not_entered") return;
+    const externalId = result === "entered"
+      ? window.prompt("Avail Detour ID", d.external_detour_id ?? "")
+      : null;
+    if (result === "entered" && !externalId?.trim()) return;
+    const detail = window.prompt("Optional entry or conflict details", "") || null;
+    try {
+      await api.recordAvailEntry(d.id, {
+        result,
+        external_detour_id: externalId?.trim() || null,
+        detail,
+      });
+      load();
+    } catch (err) {
+      setLoadError(err instanceof ApiError ? err.message : "Could not record the Avail entry.");
+    }
+  }
+
   function updateSegment(i: number, field: keyof DetourSegmentInput, value: string) {
     setForm((f) => {
       const segments = f.segments.slice();
@@ -519,7 +542,7 @@ export function Detours() {
                       <td>{d.closure}</td>
                       <td className="td-dim">{dateLabel(d.start_date)} – {dateLabel(d.end_date)}</td>
                       <td><span className={`pill-sm ${STATUS_PILL[d.status]}`}>{DETOUR_STATUS_LABELS[d.status]}</span></td>
-                      <td className="td-dim">{d.source === "avail" ? "Avail sync" : "Manual"}</td>
+                      <td className="td-dim">{d.source === "avail" ? "Avail feed" : d.external_detour_id ? "OnBoard · Avail linked" : "OnBoard manual"}</td>
                       {canWrite ? (
                         <td onClick={(e) => e.stopPropagation()}>
                           <button className="btn-sm" onClick={() => openEditForm(d)}>Edit</button>
@@ -545,6 +568,16 @@ export function Detours() {
                             ) : null}
                             {d.lifecycle_state ? (
                               <p><b>Workflow:</b> {DETOUR_LIFECYCLE_LABELS[d.lifecycle_state]}</p>
+                            ) : null}
+                            {d.fulfillment_mode === "avail" && d.avail_entry_result ? (
+                              <p><b>Avail entry:</b> {d.avail_entry_result.replace("_", " ")}
+                                {d.external_detour_id ? ` · ID ${d.external_detour_id}` : ""}
+                                {d.avail_entry_confirmed_by ? ` · ${d.avail_entry_confirmed_by}` : ""}
+                              </p>
+                            ) : null}
+                            {canWrite && d.fulfillment_mode === "avail" &&
+                              (d.lifecycle_state === "awaiting_fulfillment" || d.lifecycle_state === "fulfillment_failed") ? (
+                              <p><button className="btn-sm" onClick={() => recordAvailEntry(d)}>Record human Avail entry</button></p>
                             ) : null}
                             {numberYearMismatch(d.internal_number, d.start_date) ? (
                               <p className="warn-note">
