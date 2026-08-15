@@ -187,7 +187,7 @@ app.http("routeClassificationUpsert", {
 
       const result = await sqlRequest.query<RouteClassificationRow>(`
         IF OBJECT_ID('dbo.RouteClassificationHistory', 'U') IS NOT NULL
-          INSERT INTO RouteClassificationHistory(route_id,route_category,route_label,effective_start_date,effective_end_date,is_active,updated_by,changed_at)
+          INSERT INTO RouteClassificationHistory(route_id,route_category,route_label,effective_start_date,effective_end_date,is_active,changed_by,changed_at)
           SELECT route_id,route_category,route_label,effective_start_date,effective_end_date,is_active,updated_by,SYSUTCDATETIME()
           FROM RouteClassification WHERE route_id=@route_id;
         MERGE RouteClassification WITH (HOLDLOCK) AS target
