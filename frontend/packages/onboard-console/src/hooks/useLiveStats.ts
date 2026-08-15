@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import type { SubscribersSummary, SuggestedAlert } from "@mvta/shared";
+import type { ActiveMessage, SubscribersSummary, SuggestedAlert } from "@mvta/shared";
 import { api } from "../config.js";
 
 export interface LiveStats {
   activeCount: number | null;
+  activeMessages?: ActiveMessage[] | null;
   lastMessageId: string | null;
   pending: SuggestedAlert[] | null; // null = endpoint unavailable (e.g. no token in mock mode)
   subscribers: SubscribersSummary | null;
@@ -18,6 +19,7 @@ export interface LiveStats {
 // failing the whole sidebar. The public active-messages count always works.
 export function useLiveStats(): LiveStats {
   const [activeCount, setActiveCount] = useState<number | null>(null);
+  const [activeMessages, setActiveMessages] = useState<ActiveMessage[] | null>(null);
   const [lastMessageId, setLastMessageId] = useState<string | null>(null);
   const [pending, setPending] = useState<SuggestedAlert[] | null>(null);
   const [subscribers, setSubscribers] = useState<SubscribersSummary | null>(null);
@@ -35,6 +37,7 @@ export function useLiveStats(): LiveStats {
       .then((d) => {
         if (!alive) return;
         setActiveCount(d.messages.length);
+        setActiveMessages(d.messages);
         setLastMessageId(d.messages[0]?.message_id ?? null);
         setSyncedAt(new Date());
         setOk(true);
@@ -56,5 +59,5 @@ export function useLiveStats(): LiveStats {
     };
   }, [tick]);
 
-  return { activeCount, lastMessageId, pending, subscribers, syncedAt, ok, refresh };
+  return { activeCount, activeMessages, lastMessageId, pending, subscribers, syncedAt, ok, refresh };
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   type ActiveMessage,
   CATEGORY_LABELS,
@@ -27,7 +27,7 @@ const SEVERITY_PILL: Record<string, string> = {
 
 // Active Messages table per the dashboard mockup, with Edit (new expiration)
 // and Retract actions. The UI gates by role for clarity; the API enforces it.
-export function MessagesTable({ onChanged }: { onChanged?: () => void }) {
+export function MessagesTable({ onChanged, onLoaded }: { onChanged?: () => void; onLoaded?: (messages: ActiveMessage[]) => void }) {
   const { roles } = useAuth();
   const canWrite = roles.some((r) => r === "OCC.Publisher" || r === "OCC.Admin");
 
@@ -38,6 +38,8 @@ export function MessagesTable({ onChanged }: { onChanged?: () => void }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [editExpires, setEditExpires] = useState("");
   const [busy, setBusy] = useState(false);
+  const [query, setQuery] = useState("");
+  const [severityFilter, setSeverityFilter] = useState("all");
 
   const load = useCallback(() => {
     setLoading(true);
@@ -45,11 +47,26 @@ export function MessagesTable({ onChanged }: { onChanged?: () => void }) {
       .getActiveMessages()
       .then((d) => {
         setMessages(d.messages);
+        onLoaded?.(d.messages);
         setError(null);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [onLoaded]);
+
+  const visibleMessages = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    return [...messages]
+      .filter((message) => severityFilter === "all" || message.severity === severityFilter)
+      .filter((message) => {
+        if (!normalizedQuery) return true;
+        return [message.summary, ...message.routes_affected, ...message.channels]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedQuery);
+      })
+      .sort((a, b) => new Date(a.expires_at).getTime() - new Date(b.expires_at).getTime());
+  }, [messages, query, severityFilter]);
 
   useEffect(load, [load]);
 
@@ -93,7 +110,23 @@ export function MessagesTable({ onChanged }: { onChanged?: () => void }) {
 
   return (
     <>
-      {actionError ? <p className="error-text">{actionError}</p> : null}
+      {actionError ? <p className="error-text" role="alert">{actionError}</p> : null}
+      <div className="messages-toolbar">
+        <label>
+          <span className="sr-only">Search active alerts</span>
+          <input className="f messages-search" type="search" placeholder="Search message, route, or channel" value={query} onChange={(event) => setQuery(event.target.value)} />
+        </label>
+        <label>
+          <span className="sr-only">Filter by severity</span>
+          <select className="f" value={severityFilter} onChange={(event) => setSeverityFilter(event.target.value)}>
+            <option value="all">All severities</option>
+            {Object.entries(SEVERITY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </label>
+        <span className="messages-result-count">{visibleMessages.length} of {messages.length} alerts · nearest expiration first</span>
+      </div>
+      {visibleMessages.length === 0 ? <p className="empty-note">No alerts match these filters.</p> : null}
+      <div className="table-scroll">
       <table className="data">
         <thead>
           <tr>
@@ -107,7 +140,7 @@ export function MessagesTable({ onChanged }: { onChanged?: () => void }) {
           </tr>
         </thead>
         <tbody>
-          {messages.map((m) => (
+          {visibleMessages.map((m) => (
             <tr key={m.message_id}>
               <td>{m.summary}</td>
               <td>
@@ -154,7 +187,7 @@ export function MessagesTable({ onChanged }: { onChanged?: () => void }) {
                           setEditExpires("");
                         }}
                       >
-                        Edit
+                        Edit expiration
                       </button>
                       <button className="btn-sm danger" disabled={busy} onClick={() => retract(m.message_id, m.summary)}>
                         Retract
@@ -167,6 +200,7 @@ export function MessagesTable({ onChanged }: { onChanged?: () => void }) {
           ))}
         </tbody>
       </table>
+      </div>
     </>
   );
 }
