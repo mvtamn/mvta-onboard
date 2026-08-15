@@ -46,6 +46,20 @@ beforeEach(() => {
         source_name: "OnBoard Viewers",
       }],
       effective_roles: ["OCC.Viewer"],
+    }, {
+      id: "group-1",
+      display_name: "OnBoard Viewers",
+      sign_in_name: null,
+      principal_type: "group",
+      account_enabled: true,
+      guest_state: null,
+      assignments: [{
+        role: "OCC.Viewer",
+        source: "direct",
+        source_id: "group-1",
+        source_name: "OnBoard Viewers",
+      }],
+      effective_roles: ["OCC.Viewer"],
     }],
   });
   vi.mocked(api.getPendingAccessChanges).mockResolvedValue({ changes: [] });
@@ -102,7 +116,7 @@ describe("AccessManagement", () => {
 
     render(<AccessManagement />);
     const row = (await screen.findByText("Taylor Operator")).closest("tr")!;
-    await userEvent.click(within(row).getByRole("button", { name: "Remove Viewer access" }));
+    await userEvent.click(within(row).getByRole("button", { name: "Remove access: Viewer for Taylor Operator" }));
     await userEvent.type(screen.getByRole("textbox", { name: "Revocation reason" }), "Moved to another team");
     await userEvent.click(screen.getByRole("button", { name: "Preview revocation" }));
 
@@ -116,5 +130,18 @@ describe("AccessManagement", () => {
       reason: "Moved to another team",
     }]);
     expect(await screen.findByText("This change applies immediately after confirmation.")).toBeInTheDocument();
+  });
+
+  it("keeps access groups out of the people inventory and labels their action clearly", async () => {
+    render(<AccessManagement />);
+
+    await screen.findByText("Taylor Operator");
+    expect(screen.queryByText("OnBoard Viewers")).not.toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Filter guest status" }), "guest");
+    await userEvent.click(screen.getByRole("tab", { name: "Access groups" }));
+    const groupRow = (await screen.findByText("OnBoard Viewers")).closest("tr")!;
+    expect(screen.getByRole("columnheader", { name: "Assigned OnBoard access" })).toBeInTheDocument();
+    expect(within(groupRow).getByRole("button", { name: "Remove group assignment: Viewer for OnBoard Viewers" })).toBeInTheDocument();
   });
 });

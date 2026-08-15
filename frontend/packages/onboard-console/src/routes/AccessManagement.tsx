@@ -26,7 +26,7 @@ const HUMAN_ROLES: OnBoardAccessRole[] = [
   "OCC.AccessAdmin",
 ];
 
-type Tab = "access" | "onboarding" | "approvals" | "reconciliation" | "audit";
+type Tab = "access" | "groups" | "workloads" | "onboarding" | "approvals" | "reconciliation" | "audit";
 
 function displayTime(value: string | null): string {
   if (!value) return "Unavailable";
@@ -64,7 +64,6 @@ export function AccessManagement() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
-  const [principalType, setPrincipalType] = useState("all");
   const [roleFilter, setRoleFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [guestFilter, setGuestFilter] = useState("all");
@@ -130,14 +129,13 @@ export function AccessManagement() {
       .finally(() => setBusy(false));
   }, [reconciliation, tab]);
 
-  const visiblePrincipals = useMemo(() => {
+  const filteredPrincipals = useMemo(() => {
     const query = filter.trim().toLowerCase();
     return principals.filter((principal) =>
-      (principalType === "all" || principal.principal_type === principalType)
-      && (roleFilter === "all" || principal.effective_roles.includes(roleFilter as OnBoardAccessRole))
-      && (sourceFilter === "all" || principal.assignments.some((assignment) => assignment.source === sourceFilter))
-      && (guestFilter === "all" || (guestFilter === "guest") === !!principal.guest_state)
-      && (expiryFilter === "all" || (expiryFilter === "expiring") === principal.assignments.some((assignment) => !!assignment.expires_at))
+      (roleFilter === "all" || principal.effective_roles.includes(roleFilter as OnBoardAccessRole))
+      && (tab !== "access" || sourceFilter === "all" || principal.assignments.some((assignment) => assignment.source === sourceFilter))
+      && (tab !== "access" || guestFilter === "all" || (guestFilter === "guest") === !!principal.guest_state)
+      && (tab !== "access" || expiryFilter === "all" || (expiryFilter === "expiring") === principal.assignments.some((assignment) => !!assignment.expires_at))
       && (reconciliationFilter === "all" || (reconciliationFilter === "missing") === (principal.directory_status === "missing"))
       && (!query
         || principal.display_name.toLowerCase().includes(query)
@@ -145,7 +143,13 @@ export function AccessManagement() {
         || principal.id.toLowerCase().includes(query)
         || principal.effective_roles.some((role) => role.toLowerCase().includes(query))),
     );
-  }, [expiryFilter, filter, guestFilter, principalType, principals, reconciliationFilter, roleFilter, sourceFilter]);
+  }, [expiryFilter, filter, guestFilter, principals, reconciliationFilter, roleFilter, sourceFilter, tab]);
+
+  const inventory = tab === "groups"
+    ? { principals: filteredPrincipals.filter((principal) => principal.principal_type === "group"), label: "Access group", accessLabel: "Assigned OnBoard access", empty: "No access groups match the selected filters.", action: "Remove group assignment" }
+    : tab === "workloads"
+      ? { principals: filteredPrincipals.filter((principal) => principal.principal_type === "service_principal"), label: "Workload", accessLabel: "Assigned OnBoard access", empty: "No workloads match the selected filters.", action: "Remove workload access" }
+      : { principals: filteredPrincipals.filter((principal) => principal.principal_type === "user"), label: "Person", accessLabel: "OnBoard access", empty: "No people or guests match the selected filters.", action: "Remove access" };
 
   async function showSignIns(principal: OnBoardAccessPrincipal) {
     setSignInsLoading(true);
@@ -415,7 +419,9 @@ export function AccessManagement() {
       {accessAdminFallback ? <p className="warning-text" role="status">Temporary setup mode is active: Operations Administrators can manage access until Access Administrators are assigned. Remove this setting after verification.</p> : null}
       <div className="access-tabs" role="tablist" aria-label="Access Management sections">
         {([
-          ["access", "People & access"],
+          ["access", "People & guests"],
+          ["groups", "Access groups"],
+          ["workloads", "Workloads"],
           ["onboarding", "Add access"],
           ["approvals", `Approval requests (${pending.length})`],
           ["reconciliation", "Access health"],
@@ -432,27 +438,28 @@ export function AccessManagement() {
       {notice ? <p className="ok-text" role="status">{notice}</p> : null}
       {loading ? <p className="muted">Loading Access Management…</p> : null}
 
-      {!loading && tab === "access" ? <>
+      {!loading && (tab === "access" || tab === "groups" || tab === "workloads") ? <>
+        <p className="panel-desc">{tab === "access"
+          ? "Review people and guests with access. Use Access groups to manage the group-to-role configuration."
+          : tab === "groups"
+            ? "Review the security groups that grant OnBoard access. Removing an assignment changes the group’s OnBoard role; it does not remove group members."
+            : "Review workload identities. Workload access is separate from people and groups."}</p>
         <div className="access-toolbar">
-          <input className="f" aria-label="Search effective access" placeholder="Search name, sign-in name, or role" value={filter} onChange={(event) => setFilter(event.target.value)} />
-          <select className="f" aria-label="Filter principal type" value={principalType} onChange={(event) => setPrincipalType(event.target.value)}>
-            <option value="all">All principal types</option><option value="user">People</option><option value="group">Groups</option><option value="service_principal">Workloads</option>
-          </select>
+          <input className="f" aria-label="Search access inventory" placeholder={tab === "groups" ? "Search group or role" : tab === "workloads" ? "Search workload or role" : "Search person, sign-in name, or role"} value={filter} onChange={(event) => setFilter(event.target.value)} />
           <select className="f" aria-label="Filter role" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}><option value="all">All access levels</option>{[...HUMAN_ROLES, "System.Ingestion" as const].map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}</select>
-          <select className="f" aria-label="Filter assignment source" value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}><option value="all">All sources</option><option value="group">Group-derived</option><option value="direct">Direct</option></select>
-          <select className="f" aria-label="Filter guest status" value={guestFilter} onChange={(event) => setGuestFilter(event.target.value)}><option value="all">Members and guests</option><option value="guest">Guests</option><option value="member">Members</option></select>
-          <select className="f" aria-label="Filter expiry" value={expiryFilter} onChange={(event) => setExpiryFilter(event.target.value)}><option value="all">Any expiry</option><option value="expiring">Has expiry</option><option value="permanent">No expiry</option></select>
+          {tab === "access" ? <><select className="f" aria-label="Filter assignment source" value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}><option value="all">All sources</option><option value="group">Group-derived</option><option value="direct">Direct</option></select>
+            <select className="f" aria-label="Filter guest status" value={guestFilter} onChange={(event) => setGuestFilter(event.target.value)}><option value="all">Members and guests</option><option value="guest">Guests</option><option value="member">Members</option></select>
+            <select className="f" aria-label="Filter expiry" value={expiryFilter} onChange={(event) => setExpiryFilter(event.target.value)}><option value="all">Any expiry</option><option value="expiring">Has expiry</option><option value="permanent">No expiry</option></select></> : null}
           <select className="f" aria-label="Filter reconciliation state" value={reconciliationFilter} onChange={(event) => setReconciliationFilter(event.target.value)}><option value="all">Any reconciliation state</option><option value="missing">Missing objects</option><option value="current">Current objects</option></select>
           <button className="btn-sm" disabled={busy} onClick={() => void exportInventory()}>Export safe inventory</button>
         </div>
         <div className="table-scroll"><table className="data">
-          <thead><tr><th>Principal</th><th>Type</th><th>Effective roles and sources</th><th>Status</th><th>Expiry</th><th>Actions</th></tr></thead>
-          <tbody>{visiblePrincipals.length === 0 ? <tr><td colSpan={6}>No access principals match the selected filters.</td></tr> : visiblePrincipals.map((principal) => <tr key={principal.id}>
+          <thead><tr><th>{inventory.label}</th><th>{inventory.accessLabel}</th><th>Status</th><th>Expiry</th><th>Actions</th></tr></thead>
+          <tbody>{inventory.principals.length === 0 ? <tr><td colSpan={5}>{inventory.empty}</td></tr> : inventory.principals.map((principal) => <tr key={principal.id}>
             <td><b>{principal.display_name}</b><br /><span className="td-dim">{principal.sign_in_name || principal.id}</span></td>
-            <td>{principal.principal_type === "service_principal" ? "Workload" : principal.principal_type === "group" ? "Group" : principal.guest_state ? "Guest" : "Member"}</td>
             <td>{principal.assignments.length ? principal.assignments.map((assignment) => <div key={`${assignment.role}-${assignment.source}-${assignment.source_id}`} className="access-source">
               <b title={assignment.role}>{roleLabel(assignment.role)}</b> <span className="td-dim">{assignment.source === "group" ? `via ${assignment.source_name}` : assignment.is_exception ? "direct exception" : "direct assignment"}</span>{" "}
-              <button className="btn-link" aria-label={`Remove ${roleLabel(assignment.role)} access`} onClick={() => { setRevokeDraft({ principal, assignment, reason: "", preview: null }); setError(null); }}>Remove</button>
+              <button className="btn-link" aria-label={`${inventory.action}: ${roleLabel(assignment.role)} for ${principal.display_name}`} onClick={() => { setRevokeDraft({ principal, assignment, reason: "", preview: null }); setError(null); }}>{inventory.action}</button>
             </div>) : "No effective roles"}</td>
             <td>{principal.directory_status === "missing" ? "Missing directory object" : principal.account_enabled === false ? "Disabled in Entra" : principal.guest_state || "Enabled"}</td>
             <td>{principal.assignments.map((assignment) => assignment.expires_at ? displayTime(assignment.expires_at) : null).filter(Boolean).join(", ") || "No recorded expiry"}</td>
@@ -463,7 +470,11 @@ export function AccessManagement() {
           <button className="btn-sm access-close" onClick={() => setRevokeDraft(null)}>Cancel</button>
           <h3>Preview access revocation</h3>
           <p><b>{revokeDraft.principal.display_name}</b> · <span title={revokeDraft.assignment.role}>{roleLabel(revokeDraft.assignment.role)}</span> · {revokeDraft.assignment.source === "group" ? `remove from ${revokeDraft.assignment.source_name}` : "remove direct assignment"}</p>
-          <p className="muted">Other assignment sources remain effective. Revoking a group principal affects that group’s direct members.</p>
+          <p className="muted">{revokeDraft.principal.principal_type === "group"
+            ? "This changes the group’s OnBoard role assignment. It does not remove anyone from the Entra group."
+            : revokeDraft.assignment.source === "group"
+              ? `This removes ${revokeDraft.principal.display_name} from the Entra group ${revokeDraft.assignment.source_name}, and therefore this access.`
+              : "This removes the person’s direct OnBoard role assignment. Other assignment sources remain effective."}</p>
           <p className="muted">Authorization may continue until the caller’s current token is refreshed or revalidated. OnBoard does not perform tenant-wide session revocation.</p>
           <label>Revocation reason<textarea className="f" aria-label="Revocation reason" value={revokeDraft.reason} onChange={(event) => setRevokeDraft((draft) => draft ? { ...draft, reason: event.target.value, preview: null } : null)} /></label>
           <div className="access-toolbar"><button className="btn-sm" disabled={busy} onClick={() => void previewRevocation()}>Preview revocation</button>{revokeDraft.preview?.valid ? <button className="btn-primary" disabled={busy} onClick={() => void confirmRevocation()}>Confirm revocation</button> : null}</div>
@@ -508,7 +519,7 @@ export function AccessManagement() {
           <label>MVTA sponsor<input className="f" value={sponsor} onChange={(event) => { setSponsor(event.target.value); setPreview(null); }} /></label>
           <label>Employer / organization<input className="f" value={organization} onChange={(event) => { setOrganization(event.target.value); setPreview(null); }} /></label>
         </div>}
-        <fieldset><legend>Access levels to grant</legend><p className="muted">Choose the minimum access needed. The Entra role value is shown in parentheses for administrators.</p><div className="access-role-grid">{roleChoices.map((role) => <label key={role}><input type="checkbox" checked={selectedRoles.includes(role)} onChange={(event) => { setSelectedRoles((roles) => event.target.checked ? [...roles, role] : roles.filter((item) => item !== role)); setPreview(null); }} /> <span title={role}>{roleLabel(role)} <span className="td-dim">({role})</span></span></label>)}</div></fieldset>
+        <fieldset><legend>Access levels to grant</legend><p className="muted">Choose the minimum access needed. Technical Entra role identifiers remain available in the control tooltip for administrators.</p><div className="access-role-grid">{roleChoices.map((role) => <label key={role}><input type="checkbox" checked={selectedRoles.includes(role)} onChange={(event) => { setSelectedRoles((roles) => event.target.checked ? [...roles, role] : roles.filter((item) => item !== role)); setPreview(null); }} /> <span title={role}>{roleLabel(role)}</span></label>)}</div></fieldset>
         {onboardingMode === "directory" ? <label className="access-inline">How should access be granted? <select className="f" value={source} onChange={(event) => { setSource(event.target.value as AccessAssignmentSource); setPreview(null); }}><option value="group">Through the configured security group (recommended)</option><option value="direct">Direct assignment (audited exception)</option></select></label> : null}
         <div className="field-grid">
           <label>Business reason<textarea className="f" value={reason} onChange={(event) => { setReason(event.target.value); setPreview(null); }} /></label>
