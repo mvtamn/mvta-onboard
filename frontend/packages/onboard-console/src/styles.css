@@ -256,13 +256,16 @@ body {
 .dashboard-queue-list { display: grid; }
 .dashboard-queue-row { align-items: center; border-bottom: 1px solid var(--border-soft); display: grid; gap: 10px; grid-template-columns: 7px minmax(0, 1fr) auto; min-width: 0; padding: 11px 0; }
 .dashboard-queue-row:last-child { border-bottom: 0; }
-.dashboard-queue-row strong, .dashboard-queue-row span:not(.dashboard-queue-signal) { display: block; overflow: hidden; text-overflow: ellipsis; }
+.dashboard-queue-row strong, .dashboard-queue-row > div > span { display: block; overflow: hidden; text-overflow: ellipsis; }
 .dashboard-queue-row strong { color: var(--text); white-space: nowrap; }
 .dashboard-queue-row > div > span { color: var(--text-muted); font-size: 11px; margin-top: 2px; white-space: nowrap; }
-.dashboard-queue-status { color: var(--text-dim); font-weight: 800; margin-right: 4px; }
 .dashboard-queue-signal { background: var(--highlight-border); border-radius: 4px; height: 34px; width: 7px; }
 .dashboard-queue-signal.critical { background: var(--danger-text); }
+.dashboard-queue-signal.attention { background: var(--highlight-border); }
 .dashboard-queue-signal.info { background: var(--pill-accent-fg); }
+.dashboard-queue-action { color: var(--text-dim); font-size: 13px; font-weight: 800; text-align: right; text-decoration: none; white-space: nowrap; }
+.dashboard-queue-action:hover { text-decoration: underline; }
+.dashboard-queue-action.critical, .dashboard-queue-action.attention { color: var(--danger-text); }
 .dashboard-published-card { background: var(--surface-bg); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 2px 8px rgba(0, 0, 0, .04); margin-top: 20px; padding: 16px; }
 .dashboard-published-header { align-items: center; display: flex; gap: 16px; justify-content: space-between; margin-bottom: 14px; }
 .dashboard-published-header h2 { color: var(--text); font-size: 21px; margin: 3px 0 0; }
@@ -278,6 +281,15 @@ body {
 .data-health-feed .live-dot { margin-right: 0; }
 .data-health-feed.is-unavailable { color: var(--danger-text); }
 .data-health-feed.is-unavailable .live-dot { background: var(--danger-text); }
+.data-health-pending { display: grid; gap: 7px; margin-top: 17px; }
+.data-health-pending-heading { color: var(--text-muted); font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.data-health-pending-row { align-items: center; background: var(--surface-alt-bg); border-left: 4px solid var(--border-strong); border-radius: 0 7px 7px 0; display: flex; justify-content: space-between; padding: 8px 10px; }
+.data-health-pending-row.fixed-route { border-left-color: var(--highlight-border); }
+.data-health-pending-row.on-demand { border-left-color: var(--success-text); }
+.data-health-pending-row strong, .data-health-pending-row small { display: block; }
+.data-health-pending-row strong { color: var(--text-dim); font-size: 11px; text-transform: uppercase; }
+.data-health-pending-row small { color: var(--text-muted); font-size: 10px; margin-top: 2px; }
+.data-health-pending-row > b { color: var(--text); font-size: 16px; }
 .data-health-sync { border-top: 1px solid var(--border); color: var(--text-muted); font-size: 12px; margin-top: 17px; padding-top: 14px; }
 .data-health-sync strong { color: var(--text); display: block; font-size: 13px; margin-top: 3px; }
 .data-health-guidance { border-top: 1px solid var(--border); color: var(--text-dim); font-size: 12px; line-height: 1.5; margin: 15px 0 0; padding-top: 14px; }
@@ -547,7 +559,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .dashboard-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dashboard-triage-grid { grid-template-columns: 1fr; }
   .dashboard-queue-row { align-items: start; grid-template-columns: 7px minmax(0, 1fr); }
-  .dashboard-queue-row .btn-sm { grid-column: 2; justify-self: start; }
+  .dashboard-queue-row .dashboard-queue-action { grid-column: 2; justify-self: start; }
   .dashboard-queue-row > div > span { white-space: normal; }
   .messages-toolbar { align-items: stretch; flex-direction: column; }
   .messages-toolbar label, .messages-toolbar .f { width: 100%; }

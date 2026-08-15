@@ -64,9 +64,9 @@ export function Dashboard({ stats, onChanged }: { stats: LiveStats; onChanged?: 
                     <span className={`dashboard-queue-signal ${item.tone}`} aria-hidden="true" />
                     <div>
                       <strong>{item.title}</strong>
-                        <span><b className="dashboard-queue-status">{item.status}</b>{item.meta}</span>
+                      <span>{item.meta}</span>
                     </div>
-                    <NavLink className="btn-sm" to={item.to}>{item.action}</NavLink>
+                    <NavLink className={`dashboard-queue-action ${item.tone}`} to={item.to}>{item.action}</NavLink>
                   </div>
                 ))}
               </div>
@@ -106,7 +106,7 @@ function DashboardMetric({ label, value, tone = "" }: { label: string; value: st
   );
 }
 
-type TriageItem = { id: string; title: string; meta: string; status: string; action: string; to: string; tone: "critical" | "attention" | "info" };
+type TriageItem = { id: string; title: string; meta: string; action: string; to: string; tone: "critical" | "attention" | "info" };
 
 function buildTriageItems(activeMessages: ActiveMessage[] | null, pending: SuggestedAlert[] | null, now = Date.now()): TriageItem[] {
   const items: Array<TriageItem & { priority: number }> = [];
@@ -118,9 +118,8 @@ function buildTriageItems(activeMessages: ActiveMessage[] | null, pending: Sugge
       items.push({
         id: `message-${message.message_id}`,
         title: message.summary,
-        meta: ` · ${message.routes_affected?.join(", ") || "All routes"} · ${message.channels?.join(", ") || "All channels"}`,
-        status: expiresAt <= now ? "Expired" : "Expires soon",
-        action: "Review alert",
+        meta: `${message.routes_affected?.join(", ") || "All routes"} · ${capitalize(message.severity)} · ${message.channels?.join(", ") || "All channels"}`,
+        action: expiresAt <= now ? "Expired" : `Expires in ${formatMinutes(expiresAt - now)}`,
         to: "/service-operations/active",
         tone: expiresAt <= now ? "critical" : "attention",
         priority: Math.max(0, expiresAt - now),
@@ -132,9 +131,8 @@ function buildTriageItems(activeMessages: ActiveMessage[] | null, pending: Sugge
     items.push({
       id: `suggested-${alert.alert_id}`,
       title: alert.draft_text,
-      meta: ` · ${alert.routes_affected?.join(", ") || alert.zones_affected?.join(", ") || "Service risk"} · ${alert.source === "gtfs_rt" ? "Fixed-route feed" : alert.source === "zona" ? "On-demand feed" : "Missed-trip feed"}`,
-      status: "Suggested alert",
-      action: "Review candidate",
+      meta: `${alert.routes_affected?.join(", ") || alert.zones_affected?.join(", ") || "Service risk"} · ${capitalize(alert.severity)} · Suggested alert`,
+      action: "Investigate now",
       to: "/service-operations/suggested",
       tone: "info",
       priority: 1_000_000 + ({ critical: 0, major: 10_000, minor: 20_000, informational: 30_000 }[alert.severity] ?? 40_000),
@@ -142,4 +140,13 @@ function buildTriageItems(activeMessages: ActiveMessage[] | null, pending: Sugge
   }
 
   return items.sort((a, b) => a.priority - b.priority).slice(0, 5);
+}
+
+function capitalize(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function formatMinutes(milliseconds: number) {
+  const minutes = Math.max(1, Math.ceil(milliseconds / 60_000));
+  return `${minutes} min`;
 }

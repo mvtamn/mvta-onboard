@@ -5,6 +5,8 @@ import type { LiveStats } from "../hooks/useLiveStats.js";
 export function Sidebar({ stats }: { stats: LiveStats }) {
   const gtfsHealthy = stats.ok;
   const mvtaConnectHealthy = stats.pending !== null;
+  const fixedRoutePending = stats.pending?.filter((alert) => alert.source === "gtfs_rt").length ?? null;
+  const onDemandPending = stats.pending?.filter((alert) => alert.source === "zona").length ?? null;
   const syncLabel = stats.syncedAt
     ? `Today at ${stats.syncedAt.toLocaleTimeString()}`
     : "Not synced yet";
@@ -29,6 +31,18 @@ export function Sidebar({ stats }: { stats: LiveStats }) {
         <div className={`data-health-feed${mvtaConnectHealthy ? "" : " is-unavailable"}`}>
           <span className="live-dot" />
           MVTA Connect · {mvtaConnectHealthy ? "healthy" : "unavailable"}
+        </div>
+      </div>
+
+      <div className="data-health-pending" aria-label="Pending alerts by feed">
+        <div className="data-health-pending-heading">Pending alerts by feed</div>
+        <div className="data-health-pending-row fixed-route">
+          <span><strong>Fixed-route delays</strong><small>Delay candidates</small></span>
+          <b>{fixedRoutePending ?? "—"}</b>
+        </div>
+        <div className="data-health-pending-row on-demand">
+          <span><strong>On-demand wait times</strong><small>Wait-time candidates</small></span>
+          <b>{onDemandPending ?? "—"}</b>
         </div>
       </div>
 
