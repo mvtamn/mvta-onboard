@@ -42,6 +42,8 @@ mvta-functions-prod-source.zip
 *.docx
 ~$*.docx
 *.png
+!frontend/packages/onboard-console/public/favicon.png
+!frontend/packages/rider-app/public/favicon.png
 *.jpg
 *.csv
 # THIS REPOSITORY IS PUBLIC. *.docx already covered Word contract exhibits,
