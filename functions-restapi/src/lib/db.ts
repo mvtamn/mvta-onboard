@@ -60,6 +60,39 @@ export function parseConnectionString(connectionString: string): sql.config {
   };
 }
 
+// The dev SQL Database runs on a serverless tier that auto-pauses after idle
+// time (see infra-stage0/modules/sql.bicep); the first connection attempt
+// after a pause commonly fails with a transient error while the database
+// resumes (typically 30-60s), surfacing to callers as a bare 500. Retry a
+// few times with backoff before giving up instead of failing on the first
+// blip. This only wraps the initial connect - a query that fails mid-flight
+// is not retried here, since retrying an already-issued non-idempotent
+// write could double it.
+const CONNECT_RETRY_ATTEMPTS = 4;
+const CONNECT_RETRY_BASE_DELAY_MS = 2000;
+
+function isTransientConnectError(err: unknown): boolean {
+  const code = (err as { code?: string } | undefined)?.code;
+  return code === "ESOCKET" || code === "ETIMEOUT" || code === "ECONNRESET";
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function connectWithRetry(config: sql.config): Promise<sql.ConnectionPool> {
+  for (let attempt = 1; attempt <= CONNECT_RETRY_ATTEMPTS; attempt++) {
+    try {
+      return await sql.connect(config);
+    } catch (err) {
+      if (attempt === CONNECT_RETRY_ATTEMPTS || !isTransientConnectError(err)) throw err;
+      await sleep(CONNECT_RETRY_BASE_DELAY_MS * attempt);
+    }
+  }
+  // Unreachable - the loop above always returns or throws - but keeps TS satisfied.
+  throw new Error("connectWithRetry exhausted attempts without a result");
+}
+
 export function getPool(): Promise<sql.ConnectionPool> {
   if (!poolPromise) {
     const connectionString = process.env.SQL_CONNECTION_STRING;
@@ -71,7 +104,7 @@ export function getPool(): Promise<sql.ConnectionPool> {
       );
     }
     const config = parseConnectionString(connectionString);
-    poolPromise = sql.connect(config).catch((err) => {
+    poolPromise = connectWithRetry(config).catch((err) => {
       // Clear the cached promise on failure so the next call actually
       // retries instead of permanently reusing this same rejected promise
       // until the whole process restarts.

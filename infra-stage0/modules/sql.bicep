@@ -15,6 +15,20 @@ param manageSqlConnectionStringSecret bool = false
 var sqlServerName = 'sql-mvta-${environment}-${uniqueSuffix}'
 var sqlDatabaseName = 'sqldb-mvta-onboard-${environment}'
 
+// Serverless (with auto-pause) is the right tradeoff for dev/test - it's idle
+// most of the time and cost matters more than the occasional 30-60s cold-resume
+// delay on the first request after a pause. That same pause behavior is not
+// acceptable for a live production service, where it would surface to riders/
+// ops staff as an intermittent outage. Only `dev` gets the auto-pausing
+// serverless SKU; any other environment name gets a provisioned, always-on tier.
+var isDev = environment == 'dev'
+var sqlSku = isDev
+  ? { name: 'GP_S_Gen5', tier: 'GeneralPurpose', family: 'Gen5', capacity: 1 }
+  : { name: 'GP_Gen5', tier: 'GeneralPurpose', family: 'Gen5', capacity: 2 }
+var sqlDatabaseProperties = isDev
+  ? { autoPauseDelay: 240, minCapacity: json('0.5'), maxSizeBytes: 34359738368 }
+  : { maxSizeBytes: 34359738368 }
+
 resource sqlServer 'Microsoft.Sql/servers@2023-08-01-preview' = {
   name: sqlServerName
   location: location
@@ -30,17 +44,8 @@ resource sqlDatabase 'Microsoft.Sql/servers/databases@2023-08-01-preview' = {
   parent: sqlServer
   name: sqlDatabaseName
   location: location
-  sku: {
-    name: 'GP_S_Gen5'
-    tier: 'GeneralPurpose'
-    family: 'Gen5'
-    capacity: 1
-  }
-  properties: {
-    autoPauseDelay: 60
-    minCapacity: json('0.5')
-    maxSizeBytes: 34359738368
-  }
+  sku: sqlSku
+  properties: sqlDatabaseProperties
 }
 
 resource privateEndpoint 'Microsoft.Network/privateEndpoints@2023-09-01' = {

@@ -1,9 +1,10 @@
 {
   "name": "@mvta/onboard-console",
-  "version": "1.5.32",
+  "version": "1.5.33",
   "private": true,
   "type": "module",
   "scripts": {
+    "prototype:dashboard": "vite --host 127.0.0.1 --open /prototypes/dashboard-ui.html",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "postbuild": "node scripts/wrap-dist.mjs",

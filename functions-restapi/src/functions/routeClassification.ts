@@ -154,6 +154,9 @@ app.http("routeClassificationUpsert", {
     } catch {
       return { status: 400, jsonBody: { error: "Request body must be valid JSON" } };
     }
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+      return { status: 400, jsonBody: { error: "Request body must be a JSON object" } };
+    }
     const errors = validateRouteClassification(raw as Record<string, unknown>);
     if (errors.length > 0) {
       return { status: 400, jsonBody: { error: "Validation failed", details: errors } };
