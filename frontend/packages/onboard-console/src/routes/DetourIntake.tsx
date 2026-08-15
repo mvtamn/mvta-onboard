@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { type DetourFulfillmentMode, type DetourIntake } from "@mvta/shared";
+import { type DetourFulfillmentMode, type DetourIntake, type DetourSegmentInput } from "@mvta/shared";
 import { api } from "../config.js";
 
 const MODES: { value: DetourFulfillmentMode; label: string }[] = [
@@ -15,6 +15,7 @@ export function DetourIntake() {
   const [location, setLocation] = useState("");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
+  const [segments, setSegments] = useState<DetourSegmentInput[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,8 +31,9 @@ export function DetourIntake() {
       await api.createDetourIntake({
         detection_source: source, description, location: location || null,
         proposed_start_date: start || null, proposed_end_date: end || null,
+        segments,
       });
-      setSource(""); setDescription(""); setLocation(""); setStart(""); setEnd("");
+      setSource(""); setDescription(""); setLocation(""); setStart(""); setEnd(""); setSegments([]);
       await load();
     } catch (err) { setError(err instanceof Error ? err.message : "Could not create intake"); }
     finally { setBusy(false); }
@@ -47,7 +49,17 @@ export function DetourIntake() {
   }
 
   async function reject(row: DetourIntake, status: "rejected" | "duplicate") {
-    try { await api.reviewDetourIntake(row.id, status); await load(); }
+    const decision_notes = window.prompt(
+      status === "rejected" ? "Why is this intake being rejected?" : "Why is this intake a duplicate?",
+    );
+    if (!decision_notes?.trim()) return;
+    const input: Parameters<typeof api.reviewDetourIntake>[1] = { status, decision_notes };
+    if (status === "duplicate") {
+      const target = window.prompt("Enter the existing Detour or intake GUID this duplicates");
+      if (!target?.trim()) return;
+      input.duplicate_of_detour_id = target.trim();
+    }
+    try { await api.reviewDetourIntake(row.id, input); await load(); }
     catch (err) { setError(err instanceof Error ? err.message : "Could not review intake"); }
   }
 
@@ -64,11 +76,20 @@ export function DetourIntake() {
           <label className="form-grid-wide">Description<textarea value={description} onChange={(e) => setDescription(e.target.value)} /></label>
           <label>Proposed start<input type="date" value={start} onChange={(e) => setStart(e.target.value)} /></label>
           <label>Proposed end<input type="date" value={end} onChange={(e) => setEnd(e.target.value)} /></label>
+          <div className="form-grid-wide">
+            <p className="field-label">Impacted route segments</p>
+            {segments.map((segment, index) => <div key={index} style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+              <input value={segment.routes} placeholder="Routes / directions" onChange={(e) => setSegments((current) => current.map((item, i) => i === index ? { ...item, routes: e.target.value } : item))} />
+              <input value={segment.directions ?? ""} placeholder="Turn-by-turn or operating notes" onChange={(e) => setSegments((current) => current.map((item, i) => i === index ? { ...item, directions: e.target.value || null } : item))} />
+              <button type="button" className="btn-sm" onClick={() => setSegments((current) => current.filter((_, i) => i !== index))}>Remove</button>
+            </div>)}
+            <button type="button" className="btn-sm" onClick={() => setSegments((current) => [...current, { routes: "", directions: null }])}>Add segment</button>
+          </div>
         </div>
         <button className="btn-primary" disabled={busy || !source.trim() || !description.trim()} onClick={() => void create()}>Log intake</button>
       </div>
       <h3>Pending review</h3>
-      {rows.length === 0 ? <p className="muted">No pending intake reports.</p> : <div className="table-wrap"><table className="data"><thead><tr><th>Source</th><th>Description</th><th>Window</th><th>Actions</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td>{row.detection_source}</td><td>{row.description}<br /><span className="muted">{row.location}</span></td><td>{row.proposed_start_date || "—"} → {row.proposed_end_date || "open"}</td><td><button className="btn-sm" disabled={busy} onClick={() => void promote(row)}>Promote</button>{" "}<button className="btn-sm" disabled={busy} onClick={() => void reject(row, "duplicate")}>Duplicate</button>{" "}<button className="btn-sm" disabled={busy} onClick={() => void reject(row, "rejected")}>Reject</button></td></tr>)}</tbody></table></div>}
+      {rows.length === 0 ? <p className="muted">No pending intake reports.</p> : <div className="table-wrap"><table className="data"><thead><tr><th>Source</th><th>Description</th><th>Window</th><th>Impact</th><th>Actions</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td>{row.detection_source}</td><td>{row.description}<br /><span className="muted">{row.location}</span></td><td>{row.proposed_start_date || "—"} → {row.proposed_end_date || "open"}</td><td>{row.segments.length ? row.segments.map((segment) => segment.routes).join("; ") : "—"}</td><td><button className="btn-sm" disabled={busy} onClick={() => void promote(row)}>Promote</button>{" "}<button className="btn-sm" disabled={busy} onClick={() => void reject(row, "duplicate")}>Duplicate</button>{" "}<button className="btn-sm" disabled={busy} onClick={() => void reject(row, "rejected")}>Reject</button></td></tr>)}</tbody></table></div>}
     </div>
   </section>;
 }

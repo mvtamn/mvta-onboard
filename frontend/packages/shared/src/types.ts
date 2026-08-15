@@ -707,6 +707,9 @@ export interface DetourIntake {
   reviewed_by: string | null;
   reviewed_at: string | null;
   promoted_detour_id: string | null;
+  duplicate_of_intake_id?: string | null;
+  duplicate_of_detour_id?: string | null;
+  segments: DetourSegment[];
   created_by: string;
   created_at: string;
   updated_by: string | null;

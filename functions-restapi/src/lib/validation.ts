@@ -501,6 +501,30 @@ export function validateCreateDetourIntake(body: UnknownBody): string[] {
   return errors;
 }
 
+export function validateReviewDetourIntake(body: UnknownBody): string[] {
+  const errors: string[] = [];
+  if (body.status !== "rejected" && body.status !== "duplicate") {
+    errors.push("status must be rejected or duplicate");
+  }
+  if (body.decision_notes !== undefined && body.decision_notes !== null) {
+    if (typeof body.decision_notes !== "string" || body.decision_notes.trim() === "") {
+      errors.push("decision_notes must be a non-empty string if provided");
+    } else if (body.decision_notes.length > 1000) {
+      errors.push("decision_notes must be at most 1000 characters");
+    }
+  }
+  if (body.status === "rejected" && (!body.decision_notes || typeof body.decision_notes !== "string" || body.decision_notes.trim() === "")) {
+    errors.push("decision_notes is required when rejecting an intake");
+  }
+  const intakeTarget = body.duplicate_of_intake_id;
+  const detourTarget = body.duplicate_of_detour_id;
+  if (intakeTarget !== undefined && !isGuid(intakeTarget)) errors.push("duplicate_of_intake_id must be a GUID if provided");
+  if (detourTarget !== undefined && !isGuid(detourTarget)) errors.push("duplicate_of_detour_id must be a GUID if provided");
+  if (body.status === "duplicate" && !intakeTarget && !detourTarget) errors.push("duplicate target is required when marking an intake duplicate");
+  if (intakeTarget && detourTarget) errors.push("only one duplicate target may be provided");
+  return errors;
+}
+
 export function validatePromoteDetourIntake(body: UnknownBody): string[] {
   const errors: string[] = [];
   if (!VALID_DETOUR_FULFILLMENT_MODES.includes(body.fulfillment_mode as (typeof VALID_DETOUR_FULFILLMENT_MODES)[number])) {

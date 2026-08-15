@@ -19,6 +19,7 @@ import {
   validateCreateDetourReasonCode,
   validateUpdateDetourReasonCode,
   validateCreateDetourIntake,
+  validateReviewDetourIntake,
   validatePromoteDetourIntake,
   MAX_DETOUR_RESOLUTION_NOTES_LENGTH,
   MAX_SUMMARY_LENGTH,
@@ -568,4 +569,17 @@ test("detour intake rejects missing source and malformed dates", () => {
 test("detour intake promotion requires a supported fulfillment mode", () => {
   assert.deepStrictEqual(validatePromoteDetourIntake({ fulfillment_mode: "mobility_manual" }), []);
   assert.ok(validatePromoteDetourIntake({ fulfillment_mode: "unknown" }).some((e) => e.includes("fulfillment_mode")));
+});
+
+test("detour intake duplicate review requires an existing intake or detour target", () => {
+  assert.ok(validateReviewDetourIntake({ status: "duplicate" }).some((e) => e.includes("duplicate target")));
+  assert.deepStrictEqual(validateReviewDetourIntake({
+    status: "duplicate",
+    duplicate_of_detour_id: "11111111-1111-1111-1111-111111111111",
+  }), []);
+});
+
+test("detour intake rejection requires decision notes", () => {
+  assert.ok(validateReviewDetourIntake({ status: "rejected" }).some((e) => e.includes("decision_notes")));
+  assert.deepStrictEqual(validateReviewDetourIntake({ status: "rejected", decision_notes: "Not a closure" }), []);
 });

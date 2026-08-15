@@ -564,10 +564,18 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       );
     },
 
-    reviewDetourIntake(id: string, status: "rejected" | "duplicate", decision_notes?: string) {
+    reviewDetourIntake(
+      id: string,
+      input: {
+        status: "rejected" | "duplicate";
+        decision_notes?: string;
+        duplicate_of_intake_id?: string;
+        duplicate_of_detour_id?: string;
+      },
+    ) {
       return request<{ id: string; status: string }>(
         `/api/detour-intake/${id}`,
-        { method: "PATCH", body: JSON.stringify({ status, decision_notes }) },
+        { method: "PATCH", body: JSON.stringify(input) },
         true,
       );
     },

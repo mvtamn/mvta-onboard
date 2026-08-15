@@ -1,7 +1,7 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { DETOUR_READ_ROLES, DETOUR_WRITE_ROLES, requireRole } from "../lib/auth";
-import { isGuid, validateCreateDetourIntake, validatePromoteDetourIntake } from "../lib/validation";
+import { isGuid, validateCreateDetourIntake, validatePromoteDetourIntake, validateReviewDetourIntake } from "../lib/validation";
 import { toDateOnly } from "../lib/detourStatus";
 import { detourNumberYear } from "../lib/detourNumbering";
 import { allocateDetourNumber } from "../lib/detourNumberAllocator";
@@ -27,15 +27,36 @@ app.http("detourIntakeList", {
       const req = pool.request();
       const where = INTAKE_STATUSES.includes(status as IntakeStatus) ? "WHERE i.status = @status" : "";
       if (where) req.input("status", sql.NVarChar(20), status);
+      const schema = await pool.request().query<{ duplicate_links_ready: number }>(`
+        SELECT CASE WHEN COL_LENGTH('dbo.DetourIntake', 'duplicate_of_intake_id') IS NULL
+                         OR COL_LENGTH('dbo.DetourIntake', 'duplicate_of_detour_id') IS NULL
+                    THEN 0 ELSE 1 END AS duplicate_links_ready
+      `);
+      const duplicateLinksReady = schema.recordset[0]?.duplicate_links_ready === 1;
       const result = await req.query(`
         SELECT i.id, i.detection_source, i.description, i.location,
                i.proposed_start_date, i.proposed_end_date, i.status,
                i.decision_notes, i.reviewed_by, i.reviewed_at,
-               i.promoted_detour_id, i.created_by, i.created_at,
+               i.promoted_detour_id
+               ${duplicateLinksReady ? ", i.duplicate_of_intake_id, i.duplicate_of_detour_id" : ""},
+               i.created_by, i.created_at,
                i.updated_by, i.updated_at
         FROM DetourIntake i ${where}
         ORDER BY i.created_at DESC
       `);
+      const segments = await pool.request().query(`
+        SELECT s.id, s.intake_id, s.routes, s.directions, s.sort_order
+        FROM DetourIntakeSegments s
+        JOIN DetourIntake i ON i.id = s.intake_id
+        ${where ? "WHERE i.status = @status" : ""}
+        ORDER BY s.intake_id, s.sort_order
+      `);
+      const segmentsByIntake = new Map<string, unknown[]>();
+      for (const segment of segments.recordset) {
+        const list = segmentsByIntake.get(segment.intake_id) ?? [];
+        list.push(segment);
+        segmentsByIntake.set(segment.intake_id, list);
+      }
       return {
         status: 200,
         jsonBody: {
@@ -43,6 +64,7 @@ app.http("detourIntakeList", {
             ...row,
             proposed_start_date: toDateOnly(row.proposed_start_date),
             proposed_end_date: toDateOnly(row.proposed_end_date),
+            segments: segmentsByIntake.get(row.id) ?? [],
           })),
         },
       };
@@ -112,22 +134,32 @@ app.http("detourIntakeReview", {
     if (!isGuid(id)) return { status: 400, jsonBody: { error: "id must be a GUID" } };
     let body: Record<string, unknown>;
     try { body = await parseJson(request); } catch { return { status: 400, jsonBody: { error: "Request body must be valid JSON" } }; }
-    if (!INTAKE_STATUSES.includes(body.status as IntakeStatus) || body.status === "accepted") {
-      return { status: 400, jsonBody: { error: "status must be rejected or duplicate" } };
-    }
-    if (body.decision_notes !== undefined && typeof body.decision_notes !== "string") {
-      return { status: 400, jsonBody: { error: "decision_notes must be a string if provided" } };
-    }
+    const errors = validateReviewDetourIntake(body);
+    if (errors.length) return { status: 400, jsonBody: { error: "Validation failed", details: errors } };
     try {
       const pool = await getPool();
+      const schema = await pool.request().query<{ duplicate_links_ready: number }>(`
+        SELECT CASE WHEN COL_LENGTH('dbo.DetourIntake', 'duplicate_of_intake_id') IS NULL
+                         OR COL_LENGTH('dbo.DetourIntake', 'duplicate_of_detour_id') IS NULL
+                    THEN 0 ELSE 1 END AS duplicate_links_ready
+      `);
+      const duplicateLinksReady = schema.recordset[0]?.duplicate_links_ready === 1;
+      if (body.status === "duplicate" && !duplicateLinksReady) {
+        return { status: 503, jsonBody: { error: "Duplicate links are not configured" } };
+      }
       const req = pool.request();
       req.input("id", sql.UniqueIdentifier, id);
       req.input("status", sql.NVarChar(20), body.status);
       req.input("decision_notes", sql.NVarChar(1000), body.decision_notes ?? null);
+      if (duplicateLinksReady) {
+        req.input("duplicate_of_intake_id", sql.UniqueIdentifier, body.duplicate_of_intake_id ?? null);
+        req.input("duplicate_of_detour_id", sql.UniqueIdentifier, body.duplicate_of_detour_id ?? null);
+      }
       req.input("reviewed_by", sql.NVarChar(200), auth.principal.userDetails || "system");
       const result = await req.query(`
         UPDATE DetourIntake
-        SET status = @status, decision_notes = @decision_notes,
+        SET status = @status, decision_notes = @decision_notes
+            ${duplicateLinksReady ? ", duplicate_of_intake_id = @duplicate_of_intake_id, duplicate_of_detour_id = @duplicate_of_detour_id" : ""},
             reviewed_by = @reviewed_by, reviewed_at = SYSUTCDATETIME(),
             updated_by = @reviewed_by, updated_at = SYSUTCDATETIME()
         WHERE id = @id AND status = 'pending_review'
