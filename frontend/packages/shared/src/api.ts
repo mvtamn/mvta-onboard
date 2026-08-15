@@ -91,6 +91,7 @@ import type {
 
 export interface TokenRequestOptions {
   authenticationContext?: string;
+  forceRefresh?: boolean;
 }
 
 export type TokenProvider = (options?: TokenRequestOptions) => Promise<string | null>;
@@ -184,7 +185,17 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
 
     const method = (init.method ?? "GET").toUpperCase();
     const doFetch = method === "GET" ? fetchWithRetry : fetch;
-    const res = await doFetch(`${root}${path}`, { ...init, headers });
+    let res = await doFetch(`${root}${path}`, { ...init, headers });
+    if (res.status === 401 && authenticated && getToken) {
+      const refreshedToken = await getToken({
+        ...(typeof authenticated === "object" ? authenticated : {}),
+        forceRefresh: true,
+      });
+      if (refreshedToken) {
+        headers.set("Authorization", `Bearer ${refreshedToken}`);
+        res = await doFetch(`${root}${path}`, { ...init, headers });
+      }
+    }
     const isJson = res.headers.get("content-type")?.includes("application/json");
     const payload = isJson ? await res.json().catch(() => null) : null;
 

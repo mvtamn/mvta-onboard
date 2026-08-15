@@ -20,7 +20,7 @@ async function getToken(options?: TokenRequestOptions): Promise<string | null> {
     ? JSON.stringify({ access_token: { acrs: { essential: true, value: options.authenticationContext } } })
     : undefined;
   try {
-    const result = await msalInstance.acquireTokenSilent({ scopes: apiScopes, account, claims });
+    const result = await msalInstance.acquireTokenSilent({ scopes: apiScopes, account, claims, forceRefresh: options?.forceRefresh });
     return result.accessToken;
   } catch (err) {
     if (err instanceof InteractionRequiredAuthError) {
