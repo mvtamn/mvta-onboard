@@ -226,7 +226,7 @@ describe("EventPlanning", () => {
       });
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
       const checklist = await screen.findByRole("group", { name: "Activation readiness" });
-      const link = within(checklist).getByRole("link", { name: "Every linked geofence has a direction rule" });
+      const link = within(checklist).getByRole("link", { name: "Messaging geofence configured" });
       expect(link).toHaveAttribute("href", "/admin?geofence=geo1#event-configuration");
     });
 
@@ -245,7 +245,27 @@ describe("EventPlanning", () => {
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
       const checklist = await screen.findByRole("group", { name: "Activation readiness" });
       expect(within(checklist).queryByRole("link")).toBeNull();
-      expect(checklist.querySelector('[aria-label="Complete: Every linked geofence has a direction rule"]')).not.toBeNull();
+      expect(checklist.querySelector('[aria-label="Complete: Messaging geofence configured"]')).not.toBeNull();
+    });
+
+    it("keeps operational-only geofences separate while using a linked geofence with rules for messaging", async () => {
+      mockApiData({
+        events: [makeEvent()],
+        plans: [makePlan({ status: "approved", links: [
+          { kind: "geofences", service_plan_id: "plan1", value: "geo1", label: "Operations Boundary" },
+          { kind: "geofences", service_plan_id: "plan1", value: "geo2", label: "Message Gate" },
+        ] })],
+        geofences: [
+          makeGeofence({ id: "geo1", name: "Operations Boundary", rules: [] }),
+          makeGeofence({ id: "geo2", name: "Message Gate", rules: [{ id: "r1", geofence_id: "geo2", transition: "enter", heading_min: 0, heading_max: 360, destination_label: "Gate A", destination_location_id: null, send_mode: "auto", sort_order: 1 }] }),
+        ],
+      });
+      renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
+      expect((await screen.findAllByText("Operations Boundary")).length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Message Gate").length).toBeGreaterThan(0);
+      expect(screen.getByText("Operational only")).toBeInTheDocument();
+      expect(screen.getByText("Messaging enabled")).toBeInTheDocument();
+      expect(screen.getByLabelText("Complete: Messaging geofence configured")).toBeInTheDocument();
     });
   });
 

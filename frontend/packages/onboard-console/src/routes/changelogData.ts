@@ -18,6 +18,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.33",
+    date: "2026-08-14",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Event geofence notifications now include the bus number explicitly.",
+          "Event Planning now distinguishes operational-only geofences from messaging-enabled geofences while activating them in one operating period.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.32",
     date: "2026-08-13",
     sections: [

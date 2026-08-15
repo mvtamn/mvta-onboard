@@ -5,6 +5,14 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.33] - 2026-08-14
+
+- **Make Event messages operationally identifiable.** Geofence notifications
+  now include the bus number explicitly.
+- **Separate geofence roles in Event Planning.** Operational-only boundaries
+  and messaging-enabled boundaries are shown separately while remaining part
+  of one integrated operating period.
+
 ## [1.5.32] - 2026-08-13
 
 - **Make the running version easy to find.** The sidebar now presents the

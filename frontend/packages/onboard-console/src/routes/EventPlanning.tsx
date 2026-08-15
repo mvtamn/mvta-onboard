@@ -143,6 +143,8 @@ export function EventPlanning() {
     locations: links.filter((link) => link.kind === "locations").length,
   };
   const linkedGeofences = geofences.filter((fence) => links.some((link) => link.kind === "geofences" && String(link.value) === fence.id));
+  const messagingGeofences = linkedGeofences.filter((fence) => (fence.rules?.length ?? 0) > 0);
+  const operationalGeofences = linkedGeofences.filter((fence) => (fence.rules?.length ?? 0) === 0);
   // Point at the specific geofence missing a rule (not just "somewhere in
   // Admin") so following the readiness item lands with it already selected,
   // instead of leaving the user to re-find it in a second dropdown.
@@ -153,8 +155,8 @@ export function EventPlanning() {
     { label: "Active SpecialEvent route linked", ready: counts.routes > 0 },
     { label: "Geofence linked", ready: counts.geofences > 0 },
     {
-      label: "Every linked geofence has a direction rule",
-      ready: linkedGeofences.length > 0 && linkedGeofences.every((fence) => (fence.rules?.length ?? 0) > 0),
+      label: "Messaging geofence configured",
+      ready: messagingGeofences.length > 0,
       href: geofenceMissingDirectionRule ? `/admin?geofence=${geofenceMissingDirectionRule.id}#event-configuration` : undefined,
     },
   ];
@@ -399,6 +401,7 @@ export function EventPlanning() {
         </div>
         <p className="muted event-resource-counts">{counts.routes} routes · {counts.geofences} geofences · {counts.locations} locations linked.</p>
         {links.length > 0 && <div className="event-linked-resource-list"><strong>Linked resources</strong>{links.map((link, index) => <div className="event-linked-resource" key={`${link.kind}-${link.value}-${index}`}><span>{link.label}</span><button className="btn-sm danger" disabled={!editable && !revision} onClick={() => void unlink(link.kind, link.value, link.label)}>Remove</button></div>)}</div>}
+        {counts.geofences > 0 && <div className="subcard event-geofence-roles"><strong>Geofence roles</strong><p className="muted">Operational geofences define monitored boundaries. Messaging geofences are the linked boundaries with direction rules; their crossings create Bus messages. Both roles stay in this same operating period and activate together.</p><div><strong>Operational only</strong><span>{operationalGeofences.length ? operationalGeofences.map((fence) => fence.name).join(", ") : "None"}</span></div><div><strong>Messaging enabled</strong><span>{messagingGeofences.length ? messagingGeofences.map((fence) => fence.name).join(", ") : "None configured"}</span></div></div>}
       </>}
     </section>
     </div>

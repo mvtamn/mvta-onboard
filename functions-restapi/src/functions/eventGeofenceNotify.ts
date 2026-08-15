@@ -39,7 +39,7 @@ app.serviceBusQueue("eventGeofenceNotify", { connection: "ServiceBusConnection",
   }
   const row = (await pool.request().input("id", sql.BigInt, id).query("SELECT c.vehicle_id,c.transition,g.name geofence_name,c.destination_label,c.matched_send_mode send_mode FROM EventGeofenceCrossings c JOIN EventGeofences g ON g.id=c.geofence_id WHERE c.id=@id")).recordset[0] as { vehicle_id: number; transition: string; geofence_name: string; destination_label: string | null; send_mode: "manual" | "auto" | null } | undefined;
   if (!row?.send_mode) return;
-  const body = `Event vehicle ${row.vehicle_id} ${row.transition}ed ${row.geofence_name}${row.destination_label ? `; ${row.destination_label}` : ""}.`;
+  const body = `Bus ${row.vehicle_id} ${row.transition}ed ${row.geofence_name}${row.destination_label ? `; ${row.destination_label}` : ""}.`;
   const insert = pool.request(); insert.input("crossing", sql.BigInt, id); insert.input("mode", sql.NVarChar, row.send_mode); insert.input("body", sql.NVarChar, body);
   let notification: { id: string };
   try { notification = (await insert.query<{ id: string }>("INSERT INTO EventGeofenceNotifications(crossing_id,send_mode,message_body,status) OUTPUT INSERTED.id VALUES(@crossing,@mode,@body,'pending')")).recordset[0]; }

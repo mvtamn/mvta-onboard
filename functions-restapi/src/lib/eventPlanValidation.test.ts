@@ -21,10 +21,14 @@ test("rejects approval readiness when a geofence is missing", () => {
   });
 });
 
-test("rejects approval readiness when a linked geofence has no rule", () => {
+test("allows operational-only geofences when a separate messaging geofence has a rule", () => {
+  assert.deepEqual(validateEventPlanReadiness({ ...ready, geofenceCount: 2, geofencesWithRules: 1 }), { valid: true });
+});
+
+test("rejects approval readiness when no messaging geofence has a rule", () => {
   assert.deepEqual(validateEventPlanReadiness({ ...ready, geofencesWithRules: 0 }), {
     valid: false,
-    error: "Every linked geofence must have a direction rule",
+    error: "An active plan must include at least one messaging geofence with a direction rule",
   });
 });
 
