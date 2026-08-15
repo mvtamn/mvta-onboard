@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.38] - 2026-08-15
+
+- **Populate the unassigned vehicle queue.** Event AVL now projects every fresh AVL vehicle; active plan and geofence scope continue to control assignments and crossing detection.
+
 ## [1.5.37] - 2026-08-15
 
 - **Make expired Event AVL sessions recoverable.** The monitoring page now identifies an expired sign-in and provides a direct Sign in again action instead of remaining in a misleading loading state.

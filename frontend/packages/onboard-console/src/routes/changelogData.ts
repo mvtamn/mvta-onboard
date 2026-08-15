@@ -18,6 +18,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.38",
+    date: "2026-08-15",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "Event AVL now projects every fresh AVL vehicle so vehicles outside active service-plan scope populate the unassigned queue.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.37",
     date: "2026-08-15",
     sections: [

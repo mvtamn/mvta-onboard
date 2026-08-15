@@ -65,6 +65,14 @@ async function claimPollLease(pool: Awaited<ReturnType<typeof getPool>>, moduleN
   return lease.recordset.length > 0;
 }
 
+export function eventVehicleProjectionSql(): string {
+  return `
+    SELECT avl.vehicle_id, avl.route, avl.latitude, avl.longitude, avl.heading, avl.report_timestamp
+    FROM AvailAvlVehiclePositions avl
+    WHERE avl.report_timestamp >= DATEADD(SECOND, -@windowSeconds, SYSUTCDATETIME())
+  `;
+}
+
 async function projectEventPositions(pool: Awaited<ReturnType<typeof getPool>>): Promise<void> {
   const interval = (await pool.request().query<{ seconds: number }>(`
     SELECT COALESCE(TRY_CONVERT(INT, setting_value), 30) seconds
@@ -76,27 +84,7 @@ async function projectEventPositions(pool: Awaited<ReturnType<typeof getPool>>):
   const rows = (await query.query<{
     vehicle_id: number; route: number | null; latitude: number; longitude: number;
     heading: number | null; report_timestamp: Date;
-  }>(`
-    SELECT avl.vehicle_id, avl.route, avl.latitude, avl.longitude, avl.heading, avl.report_timestamp
-    FROM AvailAvlVehiclePositions avl
-    WHERE EXISTS (
-      SELECT 1
-      FROM EventServicePlanRoutes spr
-      INNER JOIN EventServicePlans sp ON sp.id = spr.service_plan_id
-      WHERE spr.route_id = avl.route
-        AND sp.status = 'active'
-        AND (sp.start_date IS NULL OR sp.start_date <= CONVERT(DATE, SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time'))
-        AND (sp.end_date IS NULL OR sp.end_date >= CONVERT(DATE, SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time'))
-        AND EXISTS (
-          SELECT 1
-          FROM EventServicePlanGeofences spg
-          INNER JOIN EventGeofences g ON g.id = spg.geofence_id AND g.is_active = 1
-          INNER JOIN EventGeofenceDirectionRules dr ON dr.geofence_id = g.id
-          WHERE spg.service_plan_id = sp.id
-        )
-    )
-      AND avl.report_timestamp >= DATEADD(SECOND, -@windowSeconds, SYSUTCDATETIME())
-  `)).recordset;
+  }>(eventVehicleProjectionSql())).recordset;
   for (const row of rows) {
     const current = (await pool.request().input("vehicle", sql.Int, row.vehicle_id).query<{ report_timestamp: Date }>(
       "SELECT report_timestamp FROM EventVehicleCurrentPosition WHERE vehicle_id=@vehicle",
