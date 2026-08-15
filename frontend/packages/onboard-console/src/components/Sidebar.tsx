@@ -1,61 +1,45 @@
 import type { LiveStats } from "../hooks/useLiveStats.js";
 
-const dash = (v: number | null | undefined) => (v === null || v === undefined ? "—" : v.toLocaleString());
-
-// Live data-source panel, shown as the Dashboard's right-rail context panel
-// (see routes/Dashboard.tsx). Counts degrade to "—" when an auth-gated
-// endpoint isn't reachable (mock preview mode).
+// Data-health context for the Dashboard's right rail. Each feed status is
+// derived from the live endpoints already used by the dashboard.
 export function Sidebar({ stats }: { stats: LiveStats }) {
-  const gtfsPending = stats.pending?.filter((a) => a.source === "gtfs_rt").length ?? null;
-  const zonaPending = stats.pending?.filter((a) => a.source === "zona").length ?? null;
+  const gtfsHealthy = stats.ok;
+  const mvtaConnectHealthy = stats.pending !== null;
+  const syncLabel = stats.syncedAt
+    ? `Today at ${stats.syncedAt.toLocaleTimeString()}`
+    : "Not synced yet";
 
   return (
-    <div>
-      <div className="side-label">Data source</div>
-      <div className="live-badge">
-        <span className="live-dot" />
-        {stats.ok ? "Live" : "Offline"}
-        {stats.syncedAt ? ` · ${stats.syncedAt.toLocaleTimeString()}` : ""}
-      </div>
-      <div className="datasource-card">
+    <section className="data-health" aria-labelledby="data-health-title">
+      <div className="data-health-header">
         <div>
-          {stats.ok ? <span className="ok">✓ Live data connected</span> : <span className="err">✕ Live data unavailable</span>}
+          <span className="dashboard-eyebrow">Data health</span>
+          <h2 id="data-health-title">Feeds &amp; freshness</h2>
         </div>
-        Active messages: {dash(stats.activeCount)}
-        <br />
-        Pending alerts: {dash(stats.pending?.length ?? null)}
-        <br />
-        Subscribers: {dash(stats.subscribers?.total)}
-        <br />
-        {stats.lastMessageId ? (
-          <>
-            Last message: {stats.lastMessageId.slice(0, 8)}…
-            <br />
-          </>
-        ) : null}
-        Synced: {stats.syncedAt ? stats.syncedAt.toLocaleTimeString() : "—"}
-      </div>
-      <button className="refresh-btn" onClick={stats.refresh}>
-        ↻ Refresh
-      </button>
-
-      <div className="side-label">Pending alerts by feed</div>
-      <div className="stat-card" style={{ borderLeftColor: "#F78E1E" }}>
-        <div className="stat-label" style={{ color: "#B5620C" }}>FIXED-ROUTE DELAYS</div>
-        <div className="stat-value">{dash(gtfsPending)}</div>
-        <div className="stat-sub">Fixed-route delay candidates</div>
-      </div>
-      <div className="stat-card" style={{ borderLeftColor: "#417B68" }}>
-        <div className="stat-label" style={{ color: "#2C5A47" }}>ON-DEMAND WAIT TIMES</div>
-        <div className="stat-value">{dash(zonaPending)}</div>
-        <div className="stat-sub">Wait-time candidates</div>
+        <button className="btn-sm data-health-refresh" onClick={stats.refresh}>
+          ↻ Refresh
+        </button>
       </div>
 
-      <div className="side-label">Message totals</div>
-      <div className="totals-row"><span>Active messages</span><span className="n">{dash(stats.activeCount)}</span></div>
-      <div className="totals-row"><span>SMS subscribers</span><span className="n">{dash(stats.subscribers?.sms_confirmed)}</span></div>
-      <div className="totals-row"><span>Email subscribers</span><span className="n">{dash(stats.subscribers?.email_confirmed)}</span></div>
-      <div className="totals-row"><span>Pending opt-ins</span><span className="n">{dash(stats.subscribers?.pending)}</span></div>
-    </div>
+      <div className="data-health-status" aria-live="polite">
+        <div className={`data-health-feed${gtfsHealthy ? "" : " is-unavailable"}`}>
+          <span className="live-dot" />
+          GTFS-Realtime · {gtfsHealthy ? "healthy" : "unavailable"}
+        </div>
+        <div className={`data-health-feed${mvtaConnectHealthy ? "" : " is-unavailable"}`}>
+          <span className="live-dot" />
+          MVTA Connect · {mvtaConnectHealthy ? "healthy" : "unavailable"}
+        </div>
+      </div>
+
+      <div className="data-health-sync">
+        <span>Last successful sync</span>
+        <strong>{syncLabel}</strong>
+      </div>
+
+      <p className="data-health-guidance">
+        Use the queue to investigate, prepare an alert, or review messages nearest to expiration.
+      </p>
+    </section>
   );
 }
