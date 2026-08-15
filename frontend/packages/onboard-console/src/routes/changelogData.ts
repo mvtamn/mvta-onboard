@@ -18,6 +18,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.37",
+    date: "2026-08-15",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "Event AVL now identifies an expired sign-in and provides a direct Sign in again action instead of remaining in a misleading loading state.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.36",
     date: "2026-08-15",
     sections: [

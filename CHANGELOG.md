@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.37] - 2026-08-15
+
+- **Make expired Event AVL sessions recoverable.** The monitoring page now identifies an expired sign-in and provides a direct Sign in again action instead of remaining in a misleading loading state.
+
 ## [1.5.36] - 2026-08-15
 
 - **Recover from expired AVL sessions.** Authenticated GET requests now refresh the Entra access token once after a 401 response before showing a feed error.

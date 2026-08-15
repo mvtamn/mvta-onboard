@@ -62,7 +62,7 @@ function healthLabel(status: string | undefined): string {
 }
 
 export function EventMonitoring() {
-  const { roles } = useAuth();
+  const { roles, signIn } = useAuth();
   const canManageAssignments = roles.includes("OCC.Admin");
   const [vehicles, setVehicles] = useState<EventVehiclePosition[] | null>(null);
   const [unassignedVehicles, setUnassignedVehicles] = useState<EventVehiclePosition[]>([]);
@@ -112,7 +112,7 @@ export function EventMonitoring() {
       );
     } catch (error) {
       setMessage(error instanceof ApiError
-        ? `Could not load live vehicle positions: ${error.message}`
+        ? error.status === 401 ? "Your OnBoard session has expired. Sign in again to load live vehicle positions." : `Could not load live vehicle positions: ${error.message}`
         : "Could not reach the live vehicle-position service.");
     } finally {
       setRefreshing(false);
@@ -233,7 +233,9 @@ export function EventMonitoring() {
   const geofencesWithRules = visibleGeofences.filter((fence) => (fence.rules?.length ?? 0) > 0).length;
   const reportingNow = classifiedVehicles.filter((v) => Date.now() - new Date(v.report_timestamp).getTime() < 60_000).length;
   const hasFilters = routeFilter !== "all" || headingFilter !== "all" || motionFilter !== "all" || search !== "";
-  const dataState = !selectedEventId
+  const dataState = message && vehicles === null
+    ? { tone: "error", title: "Event AVL needs you to sign in again.", action: message }
+    : !selectedEventId
     ? vehicles === null
       ? { tone: "info", title: "Connecting to live AVL vehicles…", action: null }
       : { tone: vehicles.length ? "success" : "warning", title: vehicles.length ? "Showing all active AVL vehicles." : "No active AVL vehicles are reporting.", action: "Select an Event to see plan membership and geofence scope." }
@@ -273,7 +275,7 @@ export function EventMonitoring() {
       <div className={`evmon-data-state evmon-data-state-${dataState.tone}`} role="status">
         <strong>{dataState.title}</strong>
         {dataState.action && <span>{dataState.action}</span>}
-        {dataState.tone === "error" && <button className="btn-sm" onClick={() => void load()}>Try again</button>}
+        {dataState.tone === "error" && <button className="btn-sm" onClick={() => { if (message?.includes("sign in again")) signIn(); else void load(); }}>{message?.includes("sign in again") ? "Sign in again" : "Try again"}</button>}
         {!selectedEventId && <Link to="/event-planning">Open Event Planning</Link>}
         {selectedEventId && (activePlans.length === 0 || plansMissingPublishedScope.length > 0) && <Link to={`/event-planning?event=${encodeURIComponent(selectedEventId)}${selectedPlan ? `&plan=${encodeURIComponent(selectedPlan.id)}` : ""}`}>Open Event Planning</Link>}
       </div>
