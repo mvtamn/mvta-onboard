@@ -483,6 +483,18 @@ table.data tr:nth-child(even) td { background: var(--table-stripe); }
 .td-dim { font-size: 11px; color: var(--text-dim); }
 .td-subtle { color: var(--text-muted); display: block; font-size: 11px; margin-top: 2px; }
 .data-compact { min-width: 0; }
+.route-classification-table-wrap { border: 1px solid var(--border); border-radius: 10px; overflow-x: auto; }
+.route-classification-table-heading { align-items: center; background: var(--surface-alt-bg); display: flex; justify-content: space-between; gap: 12px; padding: 12px 14px; }
+.route-classification-table-heading h3 { color: var(--text); font-size: 14px; margin: 0; }
+.route-classification-table-heading p { color: var(--text-dim); font-size: 11px; margin: 3px 0 0; }
+.route-classification-count { background: var(--surface-bg); border: 1px solid var(--border-strong); border-radius: 999px; color: var(--text-dim); font-size: 11px; padding: 4px 9px; white-space: nowrap; }
+.route-classification-table { border: 0; min-width: 900px; }
+.route-classification-table th { white-space: nowrap; }
+.route-classification-table td { vertical-align: middle; }
+.route-classification-id { font-size: 13px; }
+.route-classification-updated strong { font-size: 12px; font-weight: 600; }
+.route-classification-actions { white-space: nowrap; }
+.route-classification-actions .btn-sm { margin-right: 5px; }
 
 /* Route-grouped tables (e.g. Live Delays) - a header row breaking the flat
    list into per-route sections. Overrides the even/odd zebra striping

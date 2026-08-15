@@ -21,6 +21,11 @@ import { EventResourceMapEditor } from "./EventResourceMapEditor.js";
 import { FeedHealth } from "./modules/FeedHealth.js";
 
 const ROUTE_CATEGORIES: RouteCategory[] = ["FixedRoute", "SpecialEvent", "OnDemand"];
+const ROUTE_CATEGORY_DESCRIPTIONS: Record<RouteCategory, string> = {
+  FixedRoute: "Regular scheduled service",
+  SpecialEvent: "Event or supplemental service",
+  OnDemand: "Request-based service",
+};
 
 function EventMonitoringSettingsSection() {
   const [setting, setSetting] = useState<AppSettingRow | null>(null);
@@ -374,25 +379,46 @@ function RouteClassificationSection() {
         {routes === null && !error ? (
           <p className="muted">Loading…</p>
         ) : routes && routes.length > 0 ? (
-          <table className="data">
+          <div className="route-classification-table-wrap">
+            <div className="route-classification-table-heading">
+              <div>
+                <h3>Classified routes</h3>
+                <p>These labels are used by Event AVL and operational reports.</p>
+              </div>
+              <span className="route-classification-count">{routes.length} {routes.length === 1 ? "route" : "routes"}</span>
+            </div>
+          <table className="data route-classification-table">
             <thead>
-              <tr><th>Route ID</th><th>Category</th><th>Label</th><th>Updated</th><th>Actions</th></tr>
+              <tr><th scope="col">Route</th><th scope="col">Service type</th><th scope="col">Display label</th><th scope="col">Last updated</th><th scope="col">Actions</th></tr>
             </thead>
             <tbody>
               {routes.map((r) => (
                 <tr key={r.route_id}>
-                  <td>{r.route_id}</td>
-                  <td><span className="pill-sm pill-accent">{ROUTE_CATEGORY_LABELS[r.route_category]}</span></td>
-                  <td>{r.route_label || "—"}</td>
-                  <td className="td-dim">{r.updated_by ? `${r.updated_by} · ` : ""}{new Date(r.updated_at).toLocaleDateString()}</td>
-                  <td style={{ display: "flex", gap: 6 }}>
-                    <button className="btn-sm" onClick={() => startEdit(r)}>Edit</button>
-                    <button className="btn-sm danger" disabled={busy} onClick={() => remove(r)}>Remove</button>
+                  <td>
+                    <strong className="route-classification-id">Route {r.route_id}</strong>
+                    <span className="td-subtle">Operational identifier</span>
+                  </td>
+                  <td>
+                    <span className="pill-sm pill-accent">{ROUTE_CATEGORY_LABELS[r.route_category]}</span>
+                    <span className="td-subtle">{ROUTE_CATEGORY_DESCRIPTIONS[r.route_category]}</span>
+                  </td>
+                  <td>
+                    <strong>{r.route_label || "No display label"}</strong>
+                    {!r.route_label ? <span className="td-subtle">Add one to help operators recognize this service</span> : null}
+                  </td>
+                  <td className="route-classification-updated">
+                    <strong>{new Date(r.updated_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</strong>
+                    <span className="td-subtle">{r.updated_by ? `by ${r.updated_by}` : "by system"}</span>
+                  </td>
+                  <td className="route-classification-actions">
+                    <button className="btn-sm" aria-label={`Edit classification for Route ${r.route_id}`} onClick={() => startEdit(r)}>Edit classification</button>
+                    <button className="btn-sm danger" aria-label={`Remove classification for Route ${r.route_id}`} disabled={busy} onClick={() => remove(r)}>Remove</button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </div>
         ) : (
           <p className="empty-note">No routes classified yet - unclassified routes default to fixed route.</p>
         )}
