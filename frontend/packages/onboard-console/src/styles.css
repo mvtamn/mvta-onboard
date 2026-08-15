@@ -270,6 +270,8 @@ body {
 .dashboard-published-header { align-items: center; display: flex; gap: 16px; justify-content: space-between; margin-bottom: 14px; }
 .dashboard-published-header h2 { color: var(--text); font-size: 21px; margin: 3px 0 0; }
 .dashboard-published-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.dashboard-published-card .data-compact td { padding-bottom: 11px; padding-top: 11px; }
+.dashboard-published-card .data-compact td:first-child { min-width: 260px; }
 
 /* ---------- data health (Dashboard right-rail) ---------- */
 .data-health { min-width: 0; }

@@ -86,7 +86,6 @@ export function Dashboard({ stats, onChanged }: { stats: LiveStats; onChanged?: 
             </div>
             <span className="dashboard-published-actions">
               <NavLink className="btn-primary" to="/service-operations/compose">+ New announcement</NavLink>
-              <NavLink className="btn-sm" to="/service-operations/active">Open full list →</NavLink>
             </span>
           </div>
           <MessagesTable compact onChanged={refreshAll} onLoaded={setActiveMessages} />
