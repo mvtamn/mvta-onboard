@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isTransientNotificationFailure, notificationHasExpired, retryDelaySeconds } from "./eventNotificationPolicy";
+import { formatEventGeofenceMessage, isTransientNotificationFailure, notificationHasExpired, retryDelaySeconds } from "./eventNotificationPolicy";
+
+test("formats event messages with the route captured from AVL", () => {
+  assert.equal(formatEventGeofenceMessage({ vehicle_id: 1234, route_id: 55, transition: "enter", geofence_name: "Gate A", destination_label: "Proceed to staging" }), "Bus 1234 on Route 55 entered Gate A; Proceed to staging.");
+});
 
 test("classifies retryable Teams failures", () => {
   assert.equal(isTransientNotificationFailure(429), true);

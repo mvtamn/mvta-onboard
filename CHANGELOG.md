@@ -14,6 +14,11 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **Clarify Event Planning.** Operating periods now use separate local date/time fields, resources use searchable checkbox selection, and activation presents a simpler readiness handoff.
 - **Improve direction-rule authoring.** Direction rules are organized into matching, movement, and message steps with compass presets, clearer delivery labels, and an Event AVL message preview.
 
+## [1.5.40] - 2026-08-15
+
+- **Identify buses by route in event messages.** Crossings now retain the AVL route ID alongside the bus number, so multiple buses operating the same event route remain distinguishable in Event AVL and Teams notifications.
+- **Allow geofence removal.** Administrators can remove a geofence from the resource list; removal deactivates it and preserves the record for audit. Active-plan geofences remain protected.
+
 ## [1.5.37] - 2026-08-15
 
 - **Make expired Event AVL sessions recoverable.** The monitoring page now identifies an expired sign-in and provides a direct Sign in again action instead of remaining in a misleading loading state.

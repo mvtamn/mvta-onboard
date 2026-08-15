@@ -1,6 +1,6 @@
 import { app, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { isTransientNotificationFailure, retryDelaySeconds } from "../lib/eventNotificationPolicy";
+import { formatEventGeofenceMessage, isTransientNotificationFailure, retryDelaySeconds } from "../lib/eventNotificationPolicy";
 
 interface CrossingMessage { crossing_id: number }
 
@@ -37,9 +37,9 @@ app.serviceBusQueue("eventGeofenceNotify", { connection: "ServiceBusConnection",
     if (await deliver(current.id, current.message_body, current.attempt_count, context)) throw new Error(`Transient Teams failure for event notification ${current.id}`);
     return;
   }
-  const row = (await pool.request().input("id", sql.BigInt, id).query("SELECT c.vehicle_id,c.transition,g.name geofence_name,c.destination_label,c.matched_send_mode send_mode FROM EventGeofenceCrossings c JOIN EventGeofences g ON g.id=c.geofence_id WHERE c.id=@id")).recordset[0] as { vehicle_id: number; transition: string; geofence_name: string; destination_label: string | null; send_mode: "manual" | "auto" | null } | undefined;
+  const row = (await pool.request().input("id", sql.BigInt, id).query("SELECT c.vehicle_id,c.route_id,c.transition,g.name geofence_name,c.destination_label,c.matched_send_mode send_mode FROM EventGeofenceCrossings c JOIN EventGeofences g ON g.id=c.geofence_id WHERE c.id=@id")).recordset[0] as { vehicle_id: number; route_id: number | null; transition: "enter" | "exit"; geofence_name: string; destination_label: string | null; send_mode: "manual" | "auto" | null } | undefined;
   if (!row?.send_mode) return;
-  const body = `Bus ${row.vehicle_id} ${row.transition}ed ${row.geofence_name}${row.destination_label ? `; ${row.destination_label}` : ""}.`;
+  const body = formatEventGeofenceMessage(row);
   const insert = pool.request(); insert.input("crossing", sql.BigInt, id); insert.input("mode", sql.NVarChar, row.send_mode); insert.input("body", sql.NVarChar, body);
   let notification: { id: string };
   try { notification = (await insert.query<{ id: string }>("INSERT INTO EventGeofenceNotifications(crossing_id,send_mode,message_body,status) OUTPUT INSERTED.id VALUES(@crossing,@mode,@body,'pending')")).recordset[0]; }
