@@ -9,6 +9,11 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 - **Populate the unassigned vehicle queue.** Event AVL now projects every fresh AVL vehicle; active plan and geofence scope continue to control assignments and crossing detection.
 
+## [1.5.39] - 2026-08-15
+
+- **Clarify Event Planning.** Operating periods now use separate local date/time fields, resources use searchable checkbox selection, and activation presents a simpler readiness handoff.
+- **Improve direction-rule authoring.** Direction rules are organized into matching, movement, and message steps with compass presets, clearer delivery labels, and an Event AVL message preview.
+
 ## [1.5.37] - 2026-08-15
 
 - **Make expired Event AVL sessions recoverable.** The monitoring page now identifies an expired sign-in and provides a direct Sign in again action instead of remaining in a misleading loading state.

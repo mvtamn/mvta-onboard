@@ -48,6 +48,11 @@ function toUtc(value: string): string | undefined {
   return value ? new Date(value).toISOString() : undefined;
 }
 
+function localParts(value: string | null | undefined): { date: string; time: string } {
+  const local = localInput(value);
+  return local ? { date: local.slice(0, 10), time: local.slice(11, 16) } : { date: "", time: "" };
+}
+
 // NaN !== NaN, so comparing two unset/invalid times directly would read as
 // "changed" even when both sides are simply empty - treat that case as
 // unchanged instead.
@@ -68,8 +73,10 @@ export function EventPlanning() {
   const [eventDescription, setEventDescription] = useState("");
   const [owningTeam, setOwningTeam] = useState("");
   const [planName, setPlanName] = useState("");
-  const [startAt, setStartAt] = useState("");
-  const [endAt, setEndAt] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [startTime, setStartTime] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [endTime, setEndTime] = useState("");
   const [routes, setRoutes] = useState<ResourceOption[]>([]);
   const [geofences, setGeofences] = useState<EventGeofence[]>([]);
   const [locations, setLocations] = useState<ResourceOption[]>([]);
@@ -77,6 +84,7 @@ export function EventPlanning() {
   const [geofenceIds, setGeofenceIds] = useState<string[]>([]);
   const [locationIds, setLocationIds] = useState<string[]>([]);
   const [resourceFocus, setResourceFocus] = useState<ResourceKind>("routes");
+  const [resourceSearch, setResourceSearch] = useState("");
   const [feedback, setFeedback] = useState<Record<FeedbackScope, Feedback | null>>({ event: null, period: null, lifecycle: null, resources: null });
   const setFeedbackFor = (scope: FeedbackScope, text: string, kind: Feedback["kind"] = "success") =>
     setFeedback((prev) => ({ ...prev, [scope]: { text, kind } }));
@@ -149,6 +157,8 @@ export function EventPlanning() {
   // Admin") so following the readiness item lands with it already selected,
   // instead of leaving the user to re-find it in a second dropdown.
   const geofenceMissingDirectionRule = linkedGeofences.find((fence) => (fence.rules?.length ?? 0) === 0);
+  const startAt = startDate && startTime ? `${startDate}T${startTime}` : "";
+  const endAt = endDate && endTime ? `${endDate}T${endTime}` : "";
   const readiness = [
     { label: "Event selected", ready: Boolean(event) },
     { label: "Operating dates are valid", ready: Boolean(startAt && endAt && new Date(startAt).getTime() < new Date(endAt).getTime()) },
@@ -184,6 +194,7 @@ export function EventPlanning() {
     else if (resourceFocus === "geofences") setGeofenceIds(values);
     else setLocationIds(values);
   };
+  const visibleResourceOptions = focusedResourceOptions.filter((row) => row.label.toLowerCase().includes(resourceSearch.trim().toLowerCase()));
   const focusResource = (kind: ResourceKind) => {
     setResourceFocus(kind);
     window.requestAnimationFrame(() => document.getElementById(`event-${kind}-select`)?.focus());
@@ -194,8 +205,8 @@ export function EventPlanning() {
     // otherwise these fields keep showing the previous plan's data
     // displayed against a new, unrelated Event.
     setPlanName(plan?.name ?? "");
-    setStartAt(localInput(plan?.start_at));
-    setEndAt(localInput(plan?.end_at));
+    const start = localParts(plan?.start_at); const end = localParts(plan?.end_at);
+    setStartDate(start.date); setStartTime(start.time); setEndDate(end.date); setEndTime(end.time);
   }, [plan?.id]);
 
   async function createEvent() {
@@ -354,7 +365,7 @@ export function EventPlanning() {
       <div className="event-scope-divider" />
       <h3>Operating period</h3>
       <p className="panel-desc">An operating period is this Event’s time-bounded Service Plan. Times use your MVTA-local browser time.</p>
-      <p id="operating-period-help" className="muted">{selectedEventId ? "Name, start, and end are required. End must be later than start." : "Select an Event above before creating an operating period."}</p>
+      <p id="operating-period-help" className="muted">{selectedEventId ? "Give the period a name, then choose its local service dates and times. The end must be later than the start." : "Select an Event above before creating an operating period."}</p>
       <FeedbackNote feedback={feedback.period} />
       {selectedEventId && <>
         <div className="event-period-form">
@@ -362,10 +373,10 @@ export function EventPlanning() {
             if (periodDirty && !window.confirm(`Discard unsaved changes to "${plan?.name}" and switch operating periods?`)) return;
             selectServicePlan(e.target.value);
           }} aria-label="Selected operating period"><option value="">Select operating period</option>{eventPlans.map((row) => <option key={row.id} value={row.id}>{row.name} · {row.status}</option>)}</select>
-          <input id="operating-period-name" className="f" value={planName} onChange={(e) => setPlanName(e.target.value)} placeholder="Operating period name" aria-label="Operating period name" aria-describedby="operating-period-help" />
-          <label className="f">Starts <input type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} aria-label="Operating period start" aria-invalid={Boolean(periodError)} aria-describedby="operating-period-help" /></label>
-          <label className="f">Ends <input type="datetime-local" value={endAt} onChange={(e) => setEndAt(e.target.value)} aria-label="Operating period end" aria-invalid={Boolean(periodError)} aria-describedby="operating-period-help" /></label>
-          <button className="btn-sm" disabled={!periodReady} onClick={() => void createPlan()}>Create new operating period</button>
+          <input id="operating-period-name" className="f" value={planName} onChange={(e) => setPlanName(e.target.value)} placeholder="Example: State Fair · Friday evening" aria-label="Operating period name" aria-describedby="operating-period-help" />
+          <div className="event-period-fieldset"><strong>Starts</strong><label>Date<input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} aria-label="Operating period start date" aria-invalid={Boolean(periodError)} /></label><label>Time<input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} aria-label="Operating period start time" aria-invalid={Boolean(periodError)} /></label></div>
+          <div className="event-period-fieldset"><strong>Ends</strong><label>Date<input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} aria-label="Operating period end date" aria-invalid={Boolean(periodError)} /></label><label>Time<input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} aria-label="Operating period end time" aria-invalid={Boolean(periodError)} /></label></div>
+          <button className="btn-sm" disabled={!periodReady} onClick={() => void (plan ? savePlanDetails() : createPlan())}>{plan ? "Save period details" : "Create operating period"}</button>
         </div>
         {periodError && <p className="event-field-error" role="alert">{periodError}</p>}
       </>}
@@ -393,9 +404,10 @@ export function EventPlanning() {
           <div className="next event-selected-resource">
             <strong>Selected resource</strong><span className="muted">{focusedResourceLabel}</span>
             <p className="muted">{resourceFocus === "geofences" ? "A geofence defines where crossing detection and operational alerts begin." : resourceFocus === "routes" ? "A route determines which active SpecialEvent service vehicles belong to this scope." : "A transit location provides a destination or reference point for operations."}</p>
-            <select id={`event-${resourceFocus}-select`} multiple className="f" value={focusedResourceIds} onChange={(e) => setFocusedResourceIds(Array.from(e.target.selectedOptions, (option) => option.value))} aria-label={resourceFocus === "routes" ? "Event service route" : resourceFocus === "geofences" ? "Geofence" : "Transit location"}>
-              {focusedResourceOptions.map((row) => <option key={row.id} value={row.id}>{row.label}</option>)}
-            </select>
+            <input id={`event-${resourceFocus}-select`} className="f" type="search" value={resourceSearch} onChange={(e) => setResourceSearch(e.target.value)} placeholder={`Search ${resourceFocus}`} aria-label={`Search ${resourceFocus}`} />
+            <div className="event-resource-options" role="group" aria-label={`Select ${resourceFocus}`}>
+              {visibleResourceOptions.length === 0 ? <p className="event-resource-empty">No matching {resourceFocus}.</p> : visibleResourceOptions.map((row) => <label className="event-resource-option" key={row.id}><input type="checkbox" checked={focusedResourceIds.includes(row.id)} onChange={(e) => setFocusedResourceIds(e.target.checked ? [...focusedResourceIds, row.id] : focusedResourceIds.filter((id) => id !== row.id))} /> <span>{row.label}</span></label>)}
+            </div>
             <div className="actions"><button className="btn-sm" disabled={focusedResourceIds.length === 0 || (!editable && !revision)} onClick={() => void linkMany(resourceFocus, focusedResourceIds, () => setFocusedResourceIds([]))}>Add selected {resourceFocus === "routes" ? "routes" : resourceFocus === "geofences" ? "geofences" : "locations"}</button><button className="btn-sm" onClick={() => focusResource(resourceFocus)}>Open selector</button></div>
           </div>
         </div>
@@ -409,9 +421,9 @@ export function EventPlanning() {
     {plan && <>
       <FeedbackNote feedback={feedback.resources} />
       <div className="event-activation-gate"><strong>Activation gate</strong><span>{readiness.filter((item) => item.ready).length} of {readiness.length} readiness checks complete. The plan cannot activate until all operational resources are valid.</span></div>
-      <div id="operating-period-lifecycle" className="panel-header" style={{ marginTop: 24 }}>4. Review and activate operating period</div>
+      <div id="operating-period-lifecycle" className="panel-header" style={{ marginTop: 24 }}>4. Review & activate</div>
       <div className="panel-body">
-        <p className="panel-desc">Move this operating period from draft through review and approval. Activation publishes its validated scope for Event AVL; completion ends monitoring. Changes to an active period require a reviewed revision.</p>
+        <p className="panel-desc">Confirm the scope below, then use the single next action. Activation publishes the selected routes, geofences, rules, and locations to Event AVL. Active periods can be modified through a reviewed revision.</p>
         <ol className="event-plan-steps" aria-label="Operating period lifecycle">
           {steps.map((step) => {
             // A suspended plan has passed through "active" (there's no
@@ -429,8 +441,8 @@ export function EventPlanning() {
         {nextAction === "advance" && <div className="event-readiness" role="group" aria-label="Activation readiness"><strong>{readyToActivate ? "Ready to activate" : "Activation checklist"}</strong>{readiness.map((item) => <span key={item.label} className={item.ready ? "ready" : "missing"} aria-label={`${item.ready ? "Complete" : "Missing"}: ${item.label}`}>{item.ready ? "✓" : "!"} {!item.ready && item.href ? <Link to={item.href}>{item.label}</Link> : item.label}</span>)}</div>}
         {nextAction && <button className="btn-primary" disabled={nextAction === "advance" && !readyToActivate} onClick={() => void transition(nextAction)}>{nextAction === "submit-review" ? "Submit for review" : nextAction === "approve" ? "Approve operating period" : nextAction === "advance" ? "Activate for Event AVL" : "Complete operating period"}</button>}
         {plan.status === "active" && <div className="event-lifecycle-secondary">
-          <span className="event-lifecycle-secondary-label">Other actions:</span>
-          <button className="btn-sm" onClick={() => void prepareRevision()}>Prepare revision</button>
+          <span className="event-lifecycle-secondary-label">Active period controls:</span>
+          <button className="btn-sm" onClick={() => void prepareRevision()}>Modify active scope</button>
           <button className="btn-sm danger" onClick={() => void transition("suspend")}>Suspend operations</button>
         </div>}
         {plan.status === "approved" && <div className="event-lifecycle-secondary">

@@ -384,6 +384,22 @@ body {
 .event-period-form > select, .event-period-form > input, .event-period-form > label { min-width: 0; }
 .event-period-form > select, .event-period-form > input { grid-column: 1 / -1; }
 .event-period-form > button { justify-self: start; }
+.event-period-fieldset { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; padding: 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-alt-bg); }
+.event-period-fieldset strong { grid-column: 1 / -1; color: var(--text); font-size: 11px; }
+.event-period-fieldset label { display: grid; gap: 3px; color: var(--text-muted); font-size: 10px; font-weight: 700; }
+.event-period-fieldset input { min-width: 0; }
+.event-resource-options { display: grid; gap: 4px; max-height: 180px; overflow: auto; padding: 6px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-alt-bg); }
+.event-resource-option { display: flex; align-items: center; gap: 7px; padding: 6px; border-radius: 5px; color: var(--text); font-size: 12px; cursor: pointer; }
+.event-resource-option:hover { background: var(--surface-bg); }
+.event-direction-rules { display: grid; gap: 14px; }
+.event-rule-step { display: grid; grid-template-columns: 28px 1fr; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-alt-bg); }
+.event-rule-step-number { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--brand-green); color: #fff; font-size: 12px; font-weight: 800; }
+.event-rule-step strong { color: var(--text); font-size: 13px; }
+.event-rule-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin-top: 9px; }
+.event-rule-fields label, .event-rule-preview label { display: grid; gap: 4px; color: var(--text-muted); font-size: 11px; font-weight: 700; }
+.event-rule-preview { display: grid; gap: 7px; padding: 12px; border-left: 3px solid var(--brand-green); border-radius: 7px; background: var(--success-bg); }
+.event-rule-preview span { color: var(--text); font-size: 13px; font-weight: 700; }
+.event-rule-preview small { color: var(--text-muted); line-height: 1.45; }
 .event-field-error { margin: 6px 0 0; color: var(--danger-text); font-size: 11px; }
 .event-readiness { display: grid; gap: 5px; margin-top: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-alt-bg); font-size: 12px; }
 .event-readiness span { color: var(--danger-text); }
@@ -418,7 +434,7 @@ body {
 /* 768px, not 760px - 760px left the common 768px tablet width one row
    short of the stacking breakpoint, clipping the "Ends" datetime input
    against the still-two-column .event-period-form. */
-@media (max-width: 768px) { .event-planning-setup, .event-scope-builder-grid, .event-resource-canvas { grid-template-columns: 1fr; } .event-period-form { grid-template-columns: 1fr; } .event-empty-state, .event-next-action { align-items: flex-start; flex-direction: column; } .event-scope-builder-heading, .event-activation-gate { align-items: flex-start; flex-direction: column; gap: 6px; } }
+@media (max-width: 768px) { .event-planning-setup, .event-scope-builder-grid, .event-resource-canvas { grid-template-columns: 1fr; } .event-period-form, .event-rule-fields { grid-template-columns: 1fr; } .event-empty-state, .event-next-action { align-items: flex-start; flex-direction: column; } .event-scope-builder-heading, .event-activation-gate { align-items: flex-start; flex-direction: column; gap: 6px; } }
 /* Below 700px the fixed 4-column grid squeezes each stage into ~1/4 of the
    viewport width - not enough room for "Reusable resources" etc. at any
    font size, so labels were rendering as 1-2 visible characters. Scrolling

@@ -280,25 +280,27 @@ describe("EventPlanning", () => {
         ],
       });
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
-      return screen.findByRole("listbox", { name: "Event service route" });
+      return screen.findByRole("group", { name: "Select routes" });
     }
 
     it("links every selected route in one action and clears the selection", async () => {
       vi.mocked(api.linkEventServicePlan).mockResolvedValue({ ok: true });
       const routeSelect = await setUpEditablePlanWithRoutes();
-      await userEvent.selectOptions(routeSelect, ["12", "13"]);
+      await userEvent.click(within(routeSelect).getByRole("checkbox", { name: "Route 12 · Fair Shuttle" }));
+      await userEvent.click(within(routeSelect).getByRole("checkbox", { name: "Route 13 · Fair Express" }));
       await userEvent.click(screen.getByRole("button", { name: "Add selected routes" }));
       expect(api.linkEventServicePlan).toHaveBeenCalledWith("plan1", "routes", 12, undefined);
       expect(api.linkEventServicePlan).toHaveBeenCalledWith("plan1", "routes", 13, undefined);
       expect(api.linkEventServicePlan).toHaveBeenCalledTimes(2);
-      expect(routeSelect).toHaveValue([]);
+      expect(within(routeSelect).getByRole("checkbox", { name: "Route 12 · Fair Shuttle" })).not.toBeChecked();
     });
 
     it("reports a partial failure without losing the resources that did succeed", async () => {
       vi.mocked(api.linkEventServicePlan).mockImplementation((_id, _kind, value) =>
         value === 13 ? Promise.reject(new ApiError(409, "Route already covered by another active Event")) : Promise.resolve({ ok: true }));
       const routeSelect = await setUpEditablePlanWithRoutes();
-      await userEvent.selectOptions(routeSelect, ["12", "13"]);
+      await userEvent.click(within(routeSelect).getByRole("checkbox", { name: "Route 12 · Fair Shuttle" }));
+      await userEvent.click(within(routeSelect).getByRole("checkbox", { name: "Route 13 · Fair Express" }));
       await userEvent.click(screen.getByRole("button", { name: "Add selected routes" }));
       const feedback = await screen.findByText(/1 failed/);
       expect(feedback).toHaveTextContent(/1 route added/);
@@ -311,8 +313,8 @@ describe("EventPlanning", () => {
         routes: [{ route_id: 12, route_category: "SpecialEvent", is_active: true, route_label: "Fair Shuttle" }],
       });
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
-      const routeSelect = await screen.findByRole("listbox", { name: "Event service route" });
-      await userEvent.selectOptions(routeSelect, ["12"]);
+      const routeSelect = await screen.findByRole("group", { name: "Select routes" });
+      await userEvent.click(within(routeSelect).getByRole("checkbox", { name: "Route 12 · Fair Shuttle" }));
       await userEvent.click(screen.getByRole("button", { name: "Add selected routes" }));
       expect(api.linkEventServicePlan).not.toHaveBeenCalled();
       expect(await screen.findByText(/already linked/)).toBeInTheDocument();
@@ -326,7 +328,7 @@ describe("EventPlanning", () => {
       });
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
       await userEvent.click(await screen.findByRole("button", { name: "Add geofence" }));
-      expect(screen.getByRole("listbox", { name: "Geofence" })).toBeInTheDocument();
+      expect(screen.getByRole("group", { name: "Select geofences" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Add selected geofences" })).toBeDisabled();
       expect(screen.getByText("Fairgrounds Gate")).toBeInTheDocument();
     });
