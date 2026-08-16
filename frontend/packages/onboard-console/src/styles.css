@@ -375,15 +375,32 @@ body {
 .event-planning-setup-block > .panel-header { margin: 0 !important; }
 .event-planning-setup-block > .panel-body { min-height: 190px; }
 .event-create-toggle { margin-top: 10px; }
+.event-search-control { display: grid; gap: 5px; margin: 14px 0 8px; }
+.event-search-control > label { color: var(--text); font-size: 11px; font-weight: 800; }
+.event-search-control small { color: var(--text-muted); font-size: 11px; line-height: 1.35; }
+.event-search-row { display: flex; align-items: center; gap: 7px; }
+.event-search-row .f { min-width: 0; flex: 1; }
+.event-button-quiet { flex: 0 0 auto; margin: 0; }
 .event-create-form { display: grid; gap: 8px; margin-top: 10px; max-width: 520px; }
 .event-period-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .event-period-form > select, .event-period-form > input, .event-period-form > label { min-width: 0; }
 .event-period-form > select, .event-period-form > input { grid-column: 1 / -1; }
 .event-period-form > button { justify-self: start; }
-.event-period-fieldset { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; padding: 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-alt-bg); }
-.event-period-fieldset strong { grid-column: 1 / -1; color: var(--text); font-size: 11px; }
-.event-period-fieldset label { display: grid; gap: 3px; color: var(--text-muted); font-size: 10px; font-weight: 700; }
-.event-period-fieldset input { min-width: 0; }
+.event-period-fieldset { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; min-width: 0; margin: 0; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: linear-gradient(180deg, var(--surface-alt-bg), var(--surface-bg)); }
+.event-period-fieldset legend { grid-column: 1 / -1; padding: 0 4px; color: var(--text); font-size: 11px; font-weight: 800; }
+.event-date-control { display: grid; gap: 4px; min-width: 0; color: var(--text-muted); font-size: 10px; font-weight: 800; letter-spacing: .02em; text-transform: uppercase; }
+.event-date-control input { width: 100%; min-width: 0; min-height: 38px; padding: 7px 9px; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--surface-bg); color: var(--text); font: inherit; font-size: 12px; text-transform: none; transition: border-color .15s ease, box-shadow .15s ease, background .15s ease; }
+.event-date-control input:hover { border-color: var(--brand-green); }
+.event-date-control input:focus { border-color: var(--brand-green); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-green) 12%, transparent); outline: none; }
+.event-date-control input[aria-invalid="true"] { border-color: var(--danger-text); background: var(--pill-danger-bg); }
+.event-planning .btn-sm, .event-planning .btn-primary { min-height: 36px; transition: background .15s ease, border-color .15s ease, box-shadow .15s ease, color .15s ease, transform .15s ease; }
+.event-planning .btn-sm:hover:not(:disabled), .event-planning .btn-primary:hover:not(:disabled) { box-shadow: 0 3px 8px rgba(23,61,49,.14); transform: translateY(-1px); }
+.event-planning .btn-sm:active:not(:disabled), .event-planning .btn-primary:active:not(:disabled) { transform: translateY(0); }
+.event-button-primary { background: var(--brand-green); border-color: var(--brand-green); color: #fff; font-weight: 800; }
+.event-button-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--brand-green) 88%, #000); color: #fff; }
+.event-button-secondary { background: var(--surface-bg); font-weight: 700; }
+.event-button-expire { background: var(--danger-text); }
+.event-button-expire:hover:not(:disabled) { background: color-mix(in srgb, var(--danger-text) 88%, #000); }
 .event-resource-options { display: grid; gap: 4px; max-height: 180px; overflow: auto; padding: 6px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-alt-bg); }
 .event-resource-option { display: flex; align-items: center; gap: 7px; padding: 6px; border-radius: 5px; color: var(--text); font-size: 12px; cursor: pointer; }
 .event-resource-option:hover { background: var(--surface-bg); }
@@ -775,6 +792,25 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 /* Generic bordered content box, reused by OCC Tools modules instead of each
    one defining its own "card" class for the same white-box-with-border look. */
 .subcard { background: var(--surface-bg); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04); }
+.detour-detail-card { background: linear-gradient(135deg, var(--surface-bg), var(--surface-alt-bg)); border-color: color-mix(in srgb, var(--brand-green) 18%, var(--border)); padding: 18px; }
+.detour-detail-header, .detour-section-heading { align-items: flex-start; display: flex; gap: 14px; justify-content: space-between; }
+.detour-detail-header h3, .detour-section-heading h3 { color: var(--text); font-size: 16px; margin: 4px 0 0; }
+.eyebrow { color: var(--brand-green); font-size: 10px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.detour-detail-grid { display: grid; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 16px 0; }
+.detour-detail-grid > div { background: var(--surface-bg); border: 1px solid var(--border-soft); border-radius: 9px; display: grid; gap: 4px; padding: 10px 12px; }
+.detour-detail-grid span { color: var(--text-muted); font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.detour-detail-grid strong { color: var(--text); font-size: 12px; }
+.detour-count, .communication-status { background: var(--surface-alt-bg); border: 1px solid var(--border-soft); border-radius: 999px; color: var(--text-muted); font-size: 10px; font-weight: 800; padding: 4px 8px; white-space: nowrap; }
+.communication-list { display: grid; gap: 9px; margin: 14px 0; }
+.communication-card { background: var(--surface-alt-bg); border: 1px solid var(--border-soft); border-radius: 10px; padding: 12px 14px; }
+.communication-card-meta { align-items: center; display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; }
+.status-dot { background: var(--brand-green); border-radius: 50%; height: 7px; width: 7px; }
+.communication-content { color: var(--text); font-size: 13px; line-height: 1.55; margin: 10px 0; white-space: pre-wrap; }
+.communication-actions, .communication-compose-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; }
+.communication-empty { background: var(--surface-alt-bg); border: 1px dashed var(--border-strong); border-radius: 9px; margin: 14px 0; padding: 14px; }
+.copy-confirmation { background: var(--success-bg); border: 1px solid color-mix(in srgb, var(--brand-green) 35%, var(--border)); border-radius: 8px; color: var(--success-text); font-size: 12px; margin: 12px 0; padding: 8px 10px; }
+.btn-primary-soft { background: var(--success-bg); border-color: color-mix(in srgb, var(--brand-green) 40%, var(--border-strong)); color: var(--success-text); }
+@media (max-width: 700px) { .detour-detail-grid { grid-template-columns: 1fr; } .detour-detail-header, .detour-section-heading { flex-direction: column; } }
 
 /* Generic stat-card row, reused wherever a handful of stat-cards sit side by
    side (Subscribers tab, OTP dashboard, etc). */

@@ -63,6 +63,28 @@ function timesDiffer(localValue: string, isoValue: string | null | undefined): b
   return a !== b;
 }
 
+function EventDateTimeField({
+  label,
+  date,
+  time,
+  onDateChange,
+  onTimeChange,
+  invalid,
+}: {
+  label: string;
+  date: string;
+  time: string;
+  onDateChange: (value: string) => void;
+  onTimeChange: (value: string) => void;
+  invalid: boolean;
+}) {
+  return <fieldset className="event-period-fieldset">
+    <legend>{label}</legend>
+    <label className="event-date-control"><span>Date</span><input type="date" value={date} onChange={(event) => onDateChange(event.target.value)} aria-label={`${label} date`} aria-invalid={invalid} /></label>
+    <label className="event-date-control"><span>Time</span><input type="time" value={time} onChange={(event) => onTimeChange(event.target.value)} aria-label={`${label} time`} aria-invalid={invalid} /></label>
+  </fieldset>;
+}
+
 export function EventPlanning() {
   const { signIn } = useAuth();
   const [events, setEvents] = useState<Event[]>([]);
@@ -142,7 +164,7 @@ export function EventPlanning() {
   );
   const visibleEvents = useMemo(() => {
     const term = eventSearch.trim().toLowerCase();
-    return term ? sortedEvents.filter((row) => row.name.toLowerCase().includes(term)) : sortedEvents;
+    return term ? sortedEvents.filter((row) => [row.name, row.owning_team, row.description].filter(Boolean).some((value) => value!.toLowerCase().includes(term))) : sortedEvents;
   }, [sortedEvents, eventSearch]);
   const plan = plans.find((row) => row.id === selectedPlanId && (!selectedEventId || row.event_id === selectedEventId));
   const event = events.find((row) => row.id === (plan?.event_id ?? selectedEventId));
@@ -271,7 +293,8 @@ export function EventPlanning() {
     if (!plan) return;
     if (action === "advance" && !window.confirm(`Activate Event Plan "${plan.name}" for internal Event AVL monitoring? This does not publish rider-facing communication.`)) return;
     if (action === "suspend" && !window.confirm(`Suspend operations for "${plan.name}"? This pauses live Event AVL monitoring.`)) return;
-    try { await api.transitionEventServicePlan(plan.id, action, conflictOverrideReason.trim() || undefined); setFeedbackFor("lifecycle", action === "advance" ? "Event Plan activated." : `Event Plan ${action === "submit-review" ? "submitted for review" : `${action}d`}.`); await load(); }
+    if (action === "complete" && !window.confirm(`Expire Event Plan "${plan.name}"? This closes the operating period and removes it from active monitoring.`)) return;
+    try { await api.transitionEventServicePlan(plan.id, action, conflictOverrideReason.trim() || undefined); setFeedbackFor("lifecycle", action === "advance" ? "Event Plan activated." : action === "complete" ? "Event Plan expired." : `Event Plan ${action === "submit-review" ? "submitted for review" : `${action}d`}.`); await load(); }
     catch (err) { setFeedbackFor("lifecycle", err instanceof ApiError ? err.message : "Could not update operating period.", "error"); }
   }
 
@@ -350,13 +373,17 @@ export function EventPlanning() {
       <h3>Plan details</h3>
       <p className="panel-desc">Choose the Event and define the time-bounded Event Plan that owns this service scope.</p>
       <FeedbackNote feedback={feedback.event} />
-      <input type="search" className="f" value={eventSearch} onChange={(e) => setEventSearch(e.target.value)} aria-label="Search Events" placeholder="Search Events…" style={{ marginBottom: 6 }} />
+      <div className="event-search-control">
+        <label htmlFor="event-search">Find an Event</label>
+        <div className="event-search-row"><input id="event-search" type="search" className="f" value={eventSearch} onChange={(e) => setEventSearch(e.target.value)} aria-describedby="event-search-help" placeholder="Search by Event, team, or description" />{eventSearch && <button className="btn-sm event-button-quiet" type="button" onClick={() => setEventSearch("")}>Clear</button>}</div>
+        <small id="event-search-help">Filters the Event selector below; it does not search Event Plan names.</small>
+      </div>
       <select id="event-select" className="f" value={selectedEventId} onChange={(e) => {
         if (periodDirty && !window.confirm(`Discard unsaved changes to "${plan?.name}" and switch Events?`)) return;
         selectEvent(e.target.value);
-      }} aria-label="Selected Event"><option value="">Select Event</option>{visibleEvents.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select>
+      }} aria-label="Selected Event"><option value="">{eventSearch && visibleEvents.length === 0 ? "No matching Events" : "Select Event"}</option>{visibleEvents.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select>
       {event && <p className="muted"><strong>{event.name}</strong>{event.owning_team ? ` · ${event.owning_team}` : ""}{event.description ? ` · ${event.description}` : ""}</p>}
-      <button className="btn-sm event-create-toggle" type="button" onClick={() => setShowCreateEvent((visible) => !visible)}>{showCreateEvent ? "Cancel new Event" : event ? "Create another Event" : "Create an Event"}</button>
+      <button className="btn-sm event-button-secondary event-create-toggle" type="button" onClick={() => setShowCreateEvent((visible) => !visible)}>{showCreateEvent ? "Cancel new Event" : event ? "Create another Event" : "Create an Event"}</button>
       {event && !showCreateEvent && <button className="btn-sm" type="button" onClick={() => {
         setEventName(event.name);
         setEventDescription(event.description ?? "");
@@ -381,15 +408,15 @@ export function EventPlanning() {
             selectServicePlan(e.target.value);
           }} aria-label="Selected Event Plan"><option value="">Select Event Plan</option>{eventPlans.map((row) => <option key={row.id} value={row.id}>{row.name} · {row.status}</option>)}</select>
           <input id="operating-period-name" className="f" value={planName} onChange={(e) => setPlanName(e.target.value)} placeholder="Example: State Fair · Friday evening" aria-label="Operating period name" aria-describedby="operating-period-help" />
-          <div className="event-period-fieldset"><strong>Starts</strong><label>Date<input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} aria-label="Operating period start date" aria-invalid={Boolean(periodError)} /></label><label>Time<input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} aria-label="Operating period start time" aria-invalid={Boolean(periodError)} /></label></div>
-          <div className="event-period-fieldset"><strong>Ends</strong><label>Date<input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} aria-label="Operating period end date" aria-invalid={Boolean(periodError)} /></label><label>Time<input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} aria-label="Operating period end time" aria-invalid={Boolean(periodError)} /></label></div>
-          <button className="btn-sm" disabled={!periodReady} onClick={() => void (plan ? savePlanDetails() : createPlan())}>{plan ? "Save Event Plan details" : "Create Event Plan"}</button>
+          <EventDateTimeField label="Starts" date={startDate} time={startTime} onDateChange={setStartDate} onTimeChange={setStartTime} invalid={Boolean(periodError)} />
+          <EventDateTimeField label="Ends" date={endDate} time={endTime} onDateChange={setEndDate} onTimeChange={setEndTime} invalid={Boolean(periodError)} />
+          <button className="btn-sm event-button-primary" disabled={!periodReady} onClick={() => void (plan ? savePlanDetails() : createPlan())}>{plan ? "Save Event Plan details" : "Create Event Plan"}</button>
         </div>
         {periodError && <p className="event-field-error" role="alert">{periodError}</p>}
       </>}
       {plan && <>
         <p className="muted">Current Event Plan: <strong>{plan.name}</strong> · {plan.start_at ? new Date(plan.start_at).toLocaleString() : "time not configured"} – {plan.end_at ? new Date(plan.end_at).toLocaleString() : "time not configured"}</p>
-        {editable && <div className="actions event-scope-actions"><button className="btn-sm" disabled={!periodReady} onClick={() => void savePlanDetails()}>Save draft</button></div>}
+        {editable && <div className="actions event-scope-actions"><button className="btn-sm event-button-secondary" disabled={!periodReady} onClick={() => void savePlanDetails()}>Save draft</button></div>}
       </>}
     </section>
     <section className="event-scope-column">
@@ -430,7 +457,7 @@ export function EventPlanning() {
       <div className="event-activation-gate"><strong>Activation readiness</strong><span>{readiness.filter((item) => item.ready).length} of {readiness.length} readiness checks complete. The Event Plan cannot activate until all operational resources are valid.</span></div>
       <div id="operating-period-lifecycle" className="panel-header" style={{ marginTop: 24 }}>Review & activate</div>
       <div className="panel-body">
-        <p className="panel-desc">Confirm the Event Plan below, then use the single next action. Activation publishes the selected routes, geofences, rules, and locations to internal Event AVL. Active Event Plans can be modified through a reviewed revision.</p>
+        <p className="panel-desc">Confirm the Event Plan below, then use the single next action. Activation publishes the selected routes, geofences, rules, and locations to internal Event AVL. When an active Event Plan has finished, use <strong>Expire Event Plan</strong> to close its operating period; corrections still require a reviewed revision.</p>
         <p className="muted"><strong>Internal delivery:</strong> {operationalMessaging?.automatic_teams_enabled ? `Teams on · ${operationalMessaging.teams_destination}` : "Off · eligible notifications remain queued in Event AVL"}</p>
         <div className="subcard event-review-evidence" aria-label="Event Plan review evidence">
           <strong>Review evidence</strong>
@@ -455,7 +482,7 @@ export function EventPlanning() {
         {plan.status === "suspended" && <p className="warn-note">Suspended — Event AVL monitoring is paused for this operating period.</p>}
         <FeedbackNote feedback={feedback.lifecycle} />
         {nextAction === "advance" && <div className="event-readiness" role="group" aria-label="Activation readiness"><strong>{readyToActivate ? "Ready to activate" : "Activation checklist"}</strong>{readiness.map((item) => <span key={item.label} className={item.ready ? "ready" : "missing"} aria-label={`${item.ready ? "Complete" : "Missing"}: ${item.label}`}>{item.ready ? "✓" : "!"} {!item.ready && item.href ? <Link to={item.href}>{item.label}</Link> : item.label}</span>)}{plan.route_conflict && <label className="event-conflict-override">Conflict override reason<input value={conflictOverrideReason} onChange={(event) => setConflictOverrideReason(event.target.value)} placeholder="Explain why this route overlap is intentional" aria-label="Conflict override reason" /></label>}</div>}
-        {nextAction && <button className="btn-primary" disabled={nextAction === "advance" && !readyToActivate} onClick={() => void transition(nextAction)}>{nextAction === "submit-review" ? "Submit Event Plan for review" : nextAction === "approve" ? "Approve Event Plan" : nextAction === "advance" ? "Activate Event Plan" : "Complete Event Plan"}</button>}
+        {nextAction && <button className={`btn-primary ${nextAction === "complete" ? "event-button-expire" : ""}`} disabled={nextAction === "advance" && !readyToActivate} onClick={() => void transition(nextAction)}>{nextAction === "submit-review" ? "Submit Event Plan for review" : nextAction === "approve" ? "Approve Event Plan" : nextAction === "advance" ? "Activate Event Plan" : "Expire Event Plan"}</button>}
         {plan.status === "active" && <div className="event-lifecycle-secondary">
           <span className="event-lifecycle-secondary-label">Active period controls:</span>
           <button className="btn-sm" onClick={() => void prepareRevision()}>Modify active scope</button>

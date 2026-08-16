@@ -382,11 +382,22 @@ describe("EventPlanning", () => {
       mockApiData({ events: [makeEvent({ name: "State Fair" }), makeEvent({ id: "evt2", name: "Winter Market" })] });
       renderEventPlanning();
       await screen.findByRole("combobox", { name: "Selected Event" });
-      await userEvent.type(screen.getByRole("searchbox", { name: "Search Events" }), "winter");
+      await userEvent.type(screen.getByRole("searchbox", { name: "Find an Event" }), "winter");
       const select = screen.getByRole("combobox", { name: "Selected Event" });
       const optionNames = within(select).getAllByRole("option").map((option) => option.textContent);
       expect(optionNames).toContain("Winter Market");
       expect(optionNames).not.toContain("State Fair");
+    });
+
+    it("searches Event metadata and explains when there are no matches", async () => {
+      mockApiData({ events: [makeEvent({ owning_team: "Special Events" })] });
+      renderEventPlanning();
+      await screen.findByRole("combobox", { name: "Selected Event" });
+      await userEvent.type(screen.getByRole("searchbox", { name: "Find an Event" }), "special");
+      expect(within(screen.getByRole("combobox", { name: "Selected Event" })).getByText("State Fair")).toBeInTheDocument();
+      await userEvent.clear(screen.getByRole("searchbox", { name: "Find an Event" }));
+      await userEvent.type(screen.getByRole("searchbox", { name: "Find an Event" }), "does-not-exist");
+      expect(screen.getByRole("combobox", { name: "Selected Event" })).toHaveTextContent("No matching Events");
     });
 
     it("keeps the event-select id and label so existing focus() calls still work", async () => {
@@ -409,6 +420,19 @@ describe("EventPlanning", () => {
       const noPeriodBanner = await screen.findByText("Create an Event Plan", { selector: "strong" });
       expect(noPeriodBanner.closest(".event-next-action")).toHaveTextContent(/Event Plan/i);
       expect(noPeriodBanner.closest(".event-next-action")).not.toBeNull();
+    });
+  });
+
+  describe("active plan expiry", () => {
+    it("labels completion as expiry and explains the lifecycle action", async () => {
+      mockApiData({ events: [makeEvent()], plans: [makePlan({ status: "active" })] });
+      renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
+      const expire = await screen.findByRole("button", { name: "Expire Event Plan" });
+      expect(document.querySelector(".panel-body")).toHaveTextContent(/use.*Expire Event Plan.*close its operating period/i);
+      vi.mocked(window.confirm).mockReturnValue(false);
+      await userEvent.click(expire);
+      expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("Expire Event Plan"));
+      expect(api.transitionEventServicePlan).not.toHaveBeenCalled();
     });
   });
 
