@@ -8,7 +8,7 @@ import { useEventWorkspace } from "../../context/EventWorkspaceContext.js";
 import { EventWorkspaceNav } from "../../components/EventWorkspaceNav.js";
 import { useAuth } from "../../auth/AuthContext.js";
 import "./eventMonitoring.css";
-import { activePlansMissingPublishedScope, defaultMonitoringEventId, eventVehiclePositionQuery } from "./eventMonitoringState.js";
+import { activePlansMissingPublishedScope, defaultMonitoringEventId, defaultMonitoringServicePlanId, eventVehiclePositionQuery } from "./eventMonitoringState.js";
 import { removeMapLayersIfPresent } from "./mapLayerCleanup.js";
 
 const AVL_REFRESH_MS = 30_000;
@@ -62,7 +62,7 @@ function healthLabel(status: string | undefined): string {
 }
 
 export function EventMonitoring() {
-  const { roles, signIn } = useAuth();
+  const { account, roles, signIn } = useAuth();
   const canManageAssignments = roles.includes("OCC.Admin");
   const canManageEventMessaging = roles.includes("OCC.EventAVL") || roles.includes("OCC.Admin");
   const canManageNotificationActions = roles.some((role) => ["OCC.EventAVL", "OCC.Publisher", "OCC.Admin"].includes(role));
@@ -129,39 +129,46 @@ export function EventMonitoring() {
       setEvents(eventRows.events);
       setPlans(planRows.plans);
     }).catch(() => { setEvents([]); setPlans([]); });
-  }, []);
+  }, [account]);
 
   useEffect(() => {
     void Promise.all([api.getEventGeofences(), api.getEventLocations()]).then(([geofenceRows, locationRows]) => {
       setResourceGeofences(geofenceRows.geofences);
       setResourceLocations(locationRows.locations);
     }).catch(() => { setResourceGeofences([]); setResourceLocations([]); });
-  }, []);
+  }, [account]);
 
   useEffect(() => {
-    if (defaultedEventRef.current || selectedEventId || events.length === 0) return;
+    if (selectedEventId) {
+      if (!selectedPlanId) {
+        const planId = defaultMonitoringServicePlanId(selectedEventId, plans);
+        if (planId) selectServicePlan(planId);
+      }
+      return;
+    }
+    if (defaultedEventRef.current || events.length === 0) return;
     const eventId = defaultMonitoringEventId(events, plans);
     if (!eventId) return;
     defaultedEventRef.current = true;
     selectEvent(eventId);
-  }, [events, plans, selectedEventId, selectEvent]);
+  }, [events, plans, selectedEventId, selectedPlanId, selectEvent, selectServicePlan]);
 
   useEffect(() => {
     if (!selectedEventId) { setAssignments([]); return; }
     if (!canManageAssignments) { setAssignments([]); return; }
     void api.getEventVehicleAssignments(selectedEventId).then((result) => setAssignments(result.assignments)).catch(() => setAssignments([]));
-  }, [canManageAssignments, selectedEventId]);
+  }, [account, canManageAssignments, selectedEventId]);
 
   useEffect(() => {
     if (!selectedPlanId) { setMessagingControl(null); setMessagingError(null); return; }
     void api.getEventOperationalMessaging(selectedPlanId).then(setMessagingControl).catch((error) => setMessagingError(error instanceof ApiError ? error.message : "Could not load operational messaging controls."));
-  }, [selectedPlanId]);
+  }, [account, selectedPlanId]);
 
   useEffect(() => {
     void load();
     const interval = window.setInterval(() => void load(), AVL_REFRESH_MS);
     return () => window.clearInterval(interval);
-  }, [load]);
+  }, [account, load]);
 
   useEffect(() => {
     if (!selectedEventId) { setCrossings([]); setNotifications([]); setAudit([]); return; }
@@ -175,7 +182,7 @@ export function EventMonitoring() {
         if (a.status === "fulfilled") { setAudit(a.value.entries); setFeedStatus((s) => ({ ...s, audit: { state: "ready", loadedAt: now } })); }
         else setFeedStatus((s) => ({ ...s, audit: { state: "error", loadedAt: s.audit?.loadedAt ?? null } }));
       });
-  }, [lastUpdated, selectedEventId, selectedPlanId]);
+  }, [account, lastUpdated, selectedEventId, selectedPlanId]);
 
   async function reviewNotification(id: string, action: "acknowledge" | "send" | "dismiss") {
     setActionError(null);
@@ -220,7 +227,8 @@ export function EventMonitoring() {
   const selectedPlans = plans.filter((plan) => plan.event_id === selectedEventId);
   const activePlans = selectedPlans.filter((plan) => plan.status === "active");
   const selectedPlan = activePlans.find((plan) => plan.id === selectedPlanId);
-  const scopedPlans = selectedPlan ? [selectedPlan] : activePlans;
+  const requiresPlanSelection = Boolean(selectedEventId && activePlans.length > 1 && !selectedPlanId);
+  const scopedPlans = selectedPlan ? [selectedPlan] : activePlans.length === 1 ? activePlans : [];
   const plansMissingPublishedScope = activePlansMissingPublishedScope(scopedPlans);
   const publishedGeofences = scopedPlans.flatMap((plan) => plan.published_scope?.geofences ?? []);
   const publishedLocations = scopedPlans.flatMap((plan) => plan.published_scope?.locations ?? []);
@@ -247,8 +255,12 @@ export function EventMonitoring() {
   const routeNames = routeOptions.map(([, label]) => label);
   const routeSummary = routeNames.length > 2 ? `${routeNames.slice(0, 2).join(", ")} +${routeNames.length - 2} more` : routeNames.join(", ");
   const geofencesWithRules = visibleGeofences.filter((fence) => (fence.rules?.length ?? 0) > 0).length;
-  const reportingNow = classifiedVehicles.filter((v) => Date.now() - new Date(v.report_timestamp).getTime() < 60_000).length;
+  const reportingNow = classifiedVehicles.filter((v) => !v.is_stale && Date.now() - new Date(v.report_timestamp).getTime() < 60_000).length;
+  const degradedComponents = health?.components.filter((component) => component.status !== "healthy") ?? [];
+  const notificationActionsBlocked = degradedComponents.some((component) => ["event_projection", "crossing_detection"].includes(component.component));
   const hasFilters = routeFilter !== "all" || headingFilter !== "all" || motionFilter !== "all" || search !== "";
+  const sessionExpired = message?.toLowerCase().includes("session has expired") || message?.toLowerCase().includes("sign in again") || false;
+  const hasOperatingContext = Boolean(selectedEventId);
   const dataState = message && vehicles === null
     ? { tone: "error", title: "Event AVL needs you to sign in again.", action: message }
     : !selectedEventId
@@ -257,13 +269,17 @@ export function EventMonitoring() {
       : { tone: vehicles.length ? "success" : "warning", title: vehicles.length ? "Showing all active AVL vehicles." : "No active AVL vehicles are reporting.", action: "Select an Event to see plan membership and geofence scope." }
     : activePlans.length === 0
       ? { tone: "warning", title: "This Event has no active operating period.", action: "Create or activate an operating period in Event Planning." }
+      : requiresPlanSelection
+        ? { tone: "warning", title: "Select an operating period to monitor this Event.", action: "Choose one active Service Plan before opening live vehicles, alerts, and scope-specific controls." }
       : plansMissingPublishedScope.length > 0
         ? { tone: "error", title: "Published Event AVL scope is unavailable.", action: "Repair or reactivate this operating period in Event Planning before monitoring." }
       : health === null && vehicles === null
           ? { tone: "error", title: "Event AVL data is unavailable.", action: "The API health or vehicle-position feed could not be reached." }
           : vehicles === null
             ? { tone: "info", title: "Connecting to Event AVL data…", action: null }
-          : { tone: "success", title: vehicles.length ? "Event AVL data is flowing." : "The feed is healthy, but no active vehicles are reporting.", action: null };
+          : degradedComponents.length > 0
+            ? { tone: "warning", title: "Event AVL is degraded.", action: `Vehicle positions remain visible; ${degradedComponents.map((component) => component.component.replaceAll("_", " ")).join(", ")} cannot support every monitoring claim or action.` }
+            : { tone: "success", title: vehicles.length ? "Event AVL data is flowing." : "No active vehicles are reporting.", action: vehicles.length ? null : "No active vehicles matched this Event operating context." };
 
   const eventQueue = notifications.filter((notification) => ["pending", "acknowledged", "failed"].includes(notification.status));
   const eventHistory = notifications.filter((notification) => ["sent", "dismissed", "expired"].includes(notification.status));
@@ -291,14 +307,20 @@ export function EventMonitoring() {
           <label><input type="checkbox" checked={showUnassigned} onChange={(event) => setShowUnassigned(event.target.checked)} /> Show unassigned vehicles</label>
       </div>
 
-      <div className={`evmon-data-state evmon-data-state-${dataState.tone}`} role="status">
+      {sessionExpired ? <div className="evmon-blocking-state evmon-blocking-state-error" role="alert">
+        <div><strong>Live Event AVL is unavailable</strong><p>Your OnBoard session expired before live vehicle data could be loaded. Sign in again to restore this Event context. Live vehicles, alerts, history, crossings, and audit remain unavailable until then.</p></div>
+        <button className="btn-primary" type="button" onClick={signIn}>Sign in again</button>
+      </div> : !hasOperatingContext ? <div className="evmon-setup-state" role="status">
+        <div><strong>Select an Event to begin monitoring</strong><p>Choose an Event above to reveal its active operating periods, live vehicles, alerts, and managed scope.</p></div>
+        <Link className="btn-sm" to="/event-planning">Open Event Planning</Link>
+      </div> : <div className={`evmon-data-state evmon-data-state-${dataState.tone}`} role="status">
         <strong>{dataState.title}</strong>
         {dataState.action && <span>{dataState.action}</span>}
-        {dataState.tone === "error" && <button className="btn-sm" onClick={() => { if (message?.includes("sign in again")) signIn(); else void load(); }}>{message?.includes("sign in again") ? "Sign in again" : "Try again"}</button>}
-        {!selectedEventId && <Link to="/event-planning">Open Event Planning</Link>}
-        {selectedEventId && (activePlans.length === 0 || plansMissingPublishedScope.length > 0) && <Link to={`/event-planning?event=${encodeURIComponent(selectedEventId)}${selectedPlan ? `&plan=${encodeURIComponent(selectedPlan.id)}` : ""}`}>Open Event Planning</Link>}
-      </div>
+        {dataState.tone === "error" && <button className="btn-sm" onClick={() => void load()}>Try again</button>}
+        {(activePlans.length === 0 || plansMissingPublishedScope.length > 0) && <Link to={`/event-planning?event=${encodeURIComponent(selectedEventId)}${selectedPlan ? `&plan=${encodeURIComponent(selectedPlan.id)}` : ""}`}>Open Event Planning</Link>}
+      </div>}
 
+      {hasOperatingContext && !sessionExpired && !requiresPlanSelection && <>
       <div className="evmon-scope" aria-label="Live operating scope">
         <strong>Live operating scope</strong>
         {activePlans.length > 0 ? <>
@@ -312,14 +334,15 @@ export function EventMonitoring() {
         <strong>Data health</strong>
         {(["shared_avl_ingestion", "event_projection", "crossing_detection"] as const).map((name) => {
           const component = health?.components.find((item) => item.component === name);
-          return <span key={name}>{name.replaceAll("_", " ")}: <b>{healthLabel(component?.status)}</b></span>;
+          const statusClass = component?.status === "healthy" ? "is-healthy" : component?.status ? "is-warning" : "is-unavailable";
+          return <span key={name}>{name.replaceAll("_", " ")}: <b className={statusClass}>{healthLabel(component?.status)}</b></span>;
         })}
-        <span>retention: <b>{health?.maintenance?.last_success_at ? `OK · ${minutesAgo(health.maintenance.last_success_at)}` : "Unavailable"}</b></span>
+        <span>retention: <b className={health?.maintenance?.last_success_at ? "is-healthy" : "is-unavailable"}>{health?.maintenance?.last_success_at ? `OK · ${minutesAgo(health.maintenance.last_success_at)}` : "Unavailable"}</b></span>
       </div>
 
       <section className="evmon-messaging" aria-label="Operational event messaging">
         <div><span className="evmon-eyebrow">Operational control</span><h3>Event geofence messaging</h3><p>Planning defines the standard message type. This control decides whether eligible messages from the selected active operating period are sent to Teams.</p></div>
-        {!selectedPlanId ? <div className="evmon-messaging-state">Select one active operating period to control Teams delivery.</div> : messagingError ? <div className="evmon-messaging-state evmon-messaging-error" role="alert">{messagingError}</div> : messagingControl && <div className="evmon-messaging-control"><label><input type="checkbox" checked={messagingControl.automatic_teams_enabled} disabled={!canManageEventMessaging || !messagingControl.teams_configured} onChange={(event) => void updateMessaging(event.target.checked)} /> <strong>{messagingControl.automatic_teams_enabled ? "Automatic Teams delivery is ON" : "Queue messages in Event AVL only"}</strong></label><span>Destination: {messagingControl.teams_configured ? messagingControl.teams_destination : "Teams webhook is not configured"}</span>{!canManageEventMessaging && <small>Event AVL Manager or Administrator access is required to change this control.</small>}{!messagingControl.teams_configured && <small>Ask an administrator to configure the Teams channel before enabling delivery.</small>}</div>}
+        {!selectedPlanId ? <div className="evmon-messaging-state">Select one active operating period to control Teams delivery.</div> : messagingError ? <div className="evmon-messaging-state evmon-messaging-error" role="alert">{messagingError}</div> : messagingControl && <div className="evmon-messaging-control"><label><input type="checkbox" checked={messagingControl.automatic_teams_enabled} disabled={!canManageEventMessaging || !messagingControl.teams_configured || notificationActionsBlocked} onChange={(event) => void updateMessaging(event.target.checked)} /> <strong>{messagingControl.automatic_teams_enabled ? "Automatic Teams delivery is ON" : "Queue messages in Event AVL only"}</strong></label><span>Destination: {messagingControl.teams_configured ? messagingControl.teams_destination : "Teams webhook is not configured"}</span>{notificationActionsBlocked && <small>Teams delivery is paused while Event projection or crossing detection is degraded.</small>}{!canManageEventMessaging && <small>Event AVL Manager or Administrator access is required to change this control.</small>}{!messagingControl.teams_configured && <small>Ask an administrator to configure the Teams channel before enabling delivery.</small>}</div>}
       </section>
 
       <div className={`evmon-workspace${minimized ? " is-minimized" : ""}`}>
@@ -335,7 +358,9 @@ export function EventMonitoring() {
             </button>
           </div>
         </div>
-        {!minimized && <div className="evmon-controls">
+        {!minimized && <details className="evmon-filter-panel">
+          <summary>Vehicle and map filters {hasFilters && <span className="evmon-filter-count">Active</span>}</summary>
+          <div className="evmon-controls">
           <label><span>Find</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Vehicle or operator" /></label>
           <label><span>Managed service</span><select value={routeFilter} onChange={(event) => setRouteFilter(event.target.value)}><option value="all">All managed services</option>{routeOptions.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
           <label><span>Heading</span><select value={headingFilter} onChange={(event) => setHeadingFilter(event.target.value)}><option value="all">All headings</option>{["NB", "SB", "EB", "WB"].map((value) => <option key={value}>{value}</option>)}</select></label>
@@ -347,7 +372,8 @@ export function EventMonitoring() {
           <label className="evmon-traffic"><input type="checkbox" checked={showLocations} onChange={(event) => setShowLocations(event.target.checked)} /><span>Active locations</span></label>
           <label className="evmon-traffic"><input type="checkbox" checked={showInactiveLocations} onChange={(event) => setShowInactiveLocations(event.target.checked)} /><span>Inactive locations</span></label>
           {hasFilters && <button type="button" className="evmon-clear" onClick={() => { setSearch(""); setRouteFilter("all"); setHeadingFilter("all"); setMotionFilter("all"); }}>Clear filters</button>}
-        </div>}
+          </div>
+        </details>}
         {!minimized && (
           <div className="evmon-command-center">
             <div className="evmon-map-wrap">
@@ -405,17 +431,27 @@ export function EventMonitoring() {
       </div>
       <div className="evmon-list-header"><div><h3>Events queue</h3><span>Operational work for every vehicle crossing in the active scope. Automatic messages are sent to Teams and remain visible in history.</span></div><strong>{eventQueue.length} open</strong></div>
       <div className="evmon-table-wrap">
-        {actionError && <div className="evmon-empty">{actionError}</div>}
-        {eventQueue.length === 0 ? <div className="evmon-empty">No open event messages.</div> : eventQueue.map((notification) => <div key={notification.id} className="panel-body"><strong>{notification.status === "failed" ? "Delivery failed — review required" : notification.status === "acknowledged" ? "Acknowledged notification" : "Review notification"}</strong><p>{notification.message_body}</p>{canManageNotificationActions && notification.status === "pending" && <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "acknowledge")}>Acknowledge</button>} {canManageNotificationActions && (notification.status === "acknowledged" || notification.status === "pending") && <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "send")}>Approve and send</button>} {canManageNotificationActions && <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "dismiss")}>Dismiss</button>}{!canManageNotificationActions && <small className="muted">Read-only access</small>}</div>)}
+        {actionError && <div className="evmon-empty evmon-error-copy" role="alert">{actionError}</div>}
+        {eventQueue.length === 0 ? <div className="evmon-empty">No open event messages.</div> : eventQueue.map((notification) => <div key={notification.id} className="panel-body"><strong>{notification.status === "failed" ? "Delivery failed — review required" : notification.status === "acknowledged" ? "Acknowledged notification" : "Review notification"}</strong><p>{notification.message_body}</p>{canManageNotificationActions && !notificationActionsBlocked && notification.status === "pending" && <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "acknowledge")}>Acknowledge</button>} {canManageNotificationActions && !notificationActionsBlocked && (notification.status === "acknowledged" || notification.status === "pending") && <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "send")}>Approve and send</button>} {canManageNotificationActions && !notificationActionsBlocked && <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "dismiss")}>Dismiss</button>}{notificationActionsBlocked && <small className="muted">Actions paused while Event projection or crossing detection is degraded.</small>}{!canManageNotificationActions && <small className="muted">Event AVL Manager or Publisher access is required for notification actions.</small>}</div>)}
       </div>
-      <div className="evmon-list-header"><div><h3>Event message history</h3><span>Investigate messages already delivered, dismissed, or expired.</span></div><strong>{eventHistory.length} records</strong></div>
-      <div className="evmon-table-wrap">
-        {eventHistory.length === 0 ? <div className="evmon-empty">No event message history for this context.</div> : <table className="data evmon-table"><thead><tr><th>Time</th><th>Status</th><th>Delivery</th><th>Message</th></tr></thead><tbody>{eventHistory.map((notification) => <tr key={notification.id}><td>{new Date(notification.created_at).toLocaleString()}</td><td>{notification.status === "sent" ? "Sent to Teams" : notification.status[0].toUpperCase() + notification.status.slice(1)}</td><td>{notification.status === "sent" ? "Teams" : notification.send_mode === "auto" ? "Eligible for Teams" : "Event AVL review"}</td><td>{notification.message_body}</td></tr>)}</tbody></table>}
-      </div>
-      <div className="evmon-list-header"><div><h3>Geofence crossings</h3><span>Investigative movement detail for active event boundaries.</span></div></div>
-      <div className="evmon-table-wrap"><table className="data evmon-table"><thead><tr><th>Time</th><th>Vehicle</th><th>Route</th><th>Geofence</th><th>Transition</th><th>Destination</th></tr></thead><tbody>{crossings.map((crossing) => <tr key={crossing.id}><td>{new Date(crossing.crossed_at).toLocaleString()}</td><td>{crossing.vehicle_id}</td><td>{crossing.route_id === null ? "—" : `Route ${crossing.route_id}`}</td><td>{crossing.geofence_name}</td><td>{crossing.transition}</td><td>{crossing.destination_label ?? "—"}</td></tr>)}</tbody></table></div>
-      <div className="evmon-list-header"><div><h3>Event audit history</h3><span>Route changes, crossings, and notification actions · {feedStatus.audit?.state === "error" ? "feed unavailable; showing last successful data" : feedStatus.audit?.loadedAt ? `loaded ${feedStatus.audit.loadedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "loading"}</span></div></div>
-      <div className="evmon-table-wrap"><table className="data evmon-table"><thead><tr><th>Time</th><th>Type</th><th>Entity</th><th>Detail</th><th>Actor</th></tr></thead><tbody>{audit.map((entry, index) => <tr key={`${entry.event_at}-${index}`}><td>{new Date(entry.event_at).toLocaleString()}</td><td>{entry.event_type}</td><td>{entry.entity_id}</td><td>{entry.detail}</td><td>{entry.actor ?? "system"}</td></tr>)}</tbody></table></div>
+      <details className="evmon-secondary-section">
+        <summary>Event message history <span>{eventHistory.length} records</span></summary>
+        <p className="evmon-section-help">Investigate messages already delivered, dismissed, or expired.</p>
+        <div className="evmon-table-wrap">
+          {eventHistory.length === 0 ? <div className="evmon-empty">No event message history for this context.</div> : <table className="data evmon-table"><thead><tr><th>Time</th><th>Status</th><th>Delivery</th><th>Message</th></tr></thead><tbody>{eventHistory.map((notification) => <tr key={notification.id}><td>{new Date(notification.created_at).toLocaleString()}</td><td>{notification.status === "sent" ? "Sent to Teams" : notification.status[0].toUpperCase() + notification.status.slice(1)}</td><td>{notification.status === "sent" ? "Teams" : notification.send_mode === "auto" ? "Eligible for Teams" : "Event AVL review"}</td><td>{notification.message_body}</td></tr>)}</tbody></table>}
+        </div>
+      </details>
+      <details className="evmon-secondary-section">
+        <summary>Geofence crossings <span>{crossings.length} records</span></summary>
+        <p className="evmon-section-help">Investigative movement detail for active event boundaries.</p>
+        <div className="evmon-table-wrap"><table className="data evmon-table"><thead><tr><th>Time</th><th>Vehicle</th><th>Route</th><th>Geofence</th><th>Transition</th><th>Destination</th></tr></thead><tbody>{crossings.map((crossing) => <tr key={crossing.id}><td>{new Date(crossing.crossed_at).toLocaleString()}</td><td>{crossing.vehicle_id}</td><td>{crossing.route_id === null ? "—" : `Route ${crossing.route_id}`}</td><td>{crossing.geofence_name}</td><td>{crossing.transition}</td><td>{crossing.destination_label ?? "—"}</td></tr>)}</tbody></table></div>
+      </details>
+      <details className="evmon-secondary-section">
+        <summary>Event audit history <span>{audit.length} records</span></summary>
+        <p className="evmon-section-help">Route changes, crossings, and notification actions · {feedStatus.audit?.state === "error" ? "Feed unavailable; showing last successful data." : feedStatus.audit?.loadedAt ? `Loaded ${feedStatus.audit.loadedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.` : "Loading."}</p>
+        <div className="evmon-table-wrap"><table className="data evmon-table"><thead><tr><th>Time</th><th>Type</th><th>Entity</th><th>Detail</th><th>Actor</th></tr></thead><tbody>{audit.map((entry, index) => <tr key={`${entry.event_at}-${index}`}><td>{new Date(entry.event_at).toLocaleString()}</td><td>{entry.event_type}</td><td>{entry.entity_id}</td><td>{entry.detail}</td><td>{entry.actor ?? "system"}</td></tr>)}</tbody></table></div>
+      </details>
+      </>}
     </section>
   );
 }

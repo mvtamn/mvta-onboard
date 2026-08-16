@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activePlansMissingPublishedScope, defaultMonitoringEventId, eventVehiclePositionQuery } from "./eventMonitoringState.js";
+import { activePlansMissingPublishedScope, defaultMonitoringEventId, defaultMonitoringServicePlanId, eventVehiclePositionQuery } from "./eventMonitoringState.js";
 import type { Event, EventServicePlan } from "@mvta/shared";
 
 const event = (id: string, name = id): Event => ({
@@ -15,12 +15,21 @@ const plan = (event_id: string, status: EventServicePlan["status"], published_sc
 });
 
 describe("Event AVL monitoring state", () => {
-  it("prefers an Event with an active operating period", () => {
-    expect(defaultMonitoringEventId([event("prepared"), event("active")], [plan("prepared", "approved"), plan("active", "active")])).toBe("active");
+  it("auto-selects the Event with the sole active Service Plan", () => {
+    expect(defaultMonitoringEventId([event("active")], [plan("active", "active")])).toBe("active");
   });
 
-  it("falls back to an Event with a prepared period when none is active", () => {
-    expect(defaultMonitoringEventId([event("done"), event("prepared")], [plan("done", "completed"), plan("prepared", "approved")])).toBe("prepared");
+  it("does not auto-select when multiple active Service Plans exist", () => {
+    expect(defaultMonitoringEventId([event("one"), event("two")], [plan("one", "active"), plan("two", "active")])).toBe("");
+  });
+
+  it("does not fall back to a prepared Service Plan", () => {
+    expect(defaultMonitoringEventId([event("prepared")], [plan("prepared", "approved")])).toBe("");
+  });
+
+  it("auto-selects the sole active Service Plan for an already selected Event", () => {
+    expect(defaultMonitoringServicePlanId("active", [plan("active", "active")])).toBe("active-active");
+    expect(defaultMonitoringServicePlanId("active", [plan("active", "active"), { ...plan("active", "active"), id: "active-2" }])).toBe("");
   });
 
   it("identifies active plans without a published runtime scope", () => {

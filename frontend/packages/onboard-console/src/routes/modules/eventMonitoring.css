@@ -20,25 +20,29 @@
 .evmon-toolbar button { border: 1px solid rgba(255,255,255,.4); border-radius: 6px; padding: 6px 10px; color: #fff; background: rgba(255,255,255,.08); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
 .evmon-toolbar button:hover { background: rgba(255,255,255,.18); }
 .evmon-toolbar button:disabled { opacity: .6; cursor: wait; }
-.evmon-controls { display: flex; align-items: flex-end; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--surface-bg); overflow-x: auto; }
+.evmon-filter-panel { border-bottom: 1px solid var(--border); background: var(--surface-bg); }
+.evmon-filter-panel summary { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 0 14px; color: var(--brand-green); font-size: 11px; font-weight: 800; cursor: pointer; list-style-position: inside; }
+.evmon-filter-panel summary::marker, .evmon-secondary-section summary::marker { color: var(--brand-green); }
+.evmon-filter-count { padding: 3px 7px; border-radius: 999px; color: var(--success-text); background: var(--success-bg); font-size: 10px; }
+.evmon-controls { display: flex; align-items: flex-end; gap: 10px; padding: 0 14px 12px; background: var(--surface-bg); overflow-x: auto; }
 .evmon-controls label { flex: 0 0 auto; }
-.evmon-controls label > span { display: block; margin-bottom: 4px; color: var(--text-muted); font-size: 9.5px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; }
-.evmon-controls input:not([type="checkbox"]), .evmon-controls select { height: 32px; min-width: 125px; padding: 0 9px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface-alt-bg); font: inherit; font-size: 11px; }
+.evmon-controls label > span { display: block; margin-bottom: 4px; color: var(--text-muted); font-size: 10.5px; font-weight: 800; letter-spacing: .25px; text-transform: uppercase; }
+.evmon-controls input:not([type="checkbox"]), .evmon-controls select { height: 32px; min-width: 125px; padding: 0 9px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface-alt-bg); font: inherit; font-size: 12px; }
 .evmon-controls input:not([type="checkbox"]) { width: 160px; }
 .evmon-controls .evmon-traffic { height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 9px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface-alt-bg); }
-.evmon-controls .evmon-traffic span { display: inline; margin: 0; color: inherit; font-size: 10.5px; }
-.evmon-clear { height: 32px; border: 0; color: var(--brand-green); background: transparent; font: inherit; font-size: 10.5px; font-weight: 800; cursor: pointer; white-space: nowrap; }
+.evmon-controls .evmon-traffic span { display: inline; margin: 0; color: inherit; font-size: 12px; }
+.evmon-clear { height: 32px; border: 0; color: var(--brand-green); background: transparent; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; white-space: nowrap; }
 .evmon-map-wrap { position: relative; }
 .evmon-command-center { display: grid; grid-template-columns: minmax(0, 1fr) 230px; gap: 0; background: var(--surface-bg); }
 .evmon-command-summary { padding: 18px 16px; border-left: 1px solid var(--border); background: #f7faf7; }
 .evmon-command-summary h3 { margin: 5px 0 3px; font-size: 17px; }
-.evmon-command-summary p { margin: 0 0 18px; color: var(--text-muted); font-size: 11px; }
-.evmon-command-summary dl { display: grid; grid-template-columns: 1fr auto; gap: 11px 8px; margin: 0 0 20px; font-size: 11px; }
+.evmon-command-summary p { max-width: 28ch; margin: 0 0 18px; color: var(--text-muted); font-size: 12px; line-height: 1.45; }
+.evmon-command-summary dl { display: grid; grid-template-columns: 1fr auto; gap: 11px 8px; margin: 0 0 20px; font-size: 12px; }
 .evmon-command-summary dt { color: var(--text-muted); }
 .evmon-command-summary dd { margin: 0; color: var(--brand-green); font-weight: 800; }
 .evmon-command-summary dd.muted { color: var(--text-muted); }
-.evmon-command-link { color: var(--brand-green); font-size: 11px; font-weight: 800; }
-.evmon-map-legend { position: absolute; z-index: 2; left: 12px; top: 12px; display: flex; flex-wrap: wrap; gap: 6px 10px; max-width: min(520px, calc(100% - 24px)); padding: 7px 9px; border: 1px solid rgba(0,0,0,.14); border-radius: 7px; color: #173d31; background: rgba(255,255,255,.94); box-shadow: 0 2px 7px rgba(0,0,0,.16); font-size: 10.5px; font-weight: 700; }
+.evmon-command-link { color: var(--brand-green); font-size: 12px; font-weight: 800; }
+.evmon-map-legend { position: absolute; z-index: 2; left: 12px; top: 12px; display: flex; flex-wrap: wrap; gap: 6px 10px; max-width: min(520px, calc(100% - 24px)); padding: 7px 9px; border: 1px solid rgba(0,0,0,.14); border-radius: 7px; color: #173d31; background: rgba(255,255,255,.94); box-shadow: 0 2px 7px rgba(0,0,0,.16); font-size: 11.5px; font-weight: 700; }
 .evmon-map-legend span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .evmon-legend-dot { display: inline-block; width: 12px; height: 12px; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 0 1px rgba(0,0,0,.28); }
 .evmon-legend-dot-active { background: #007f5f; }
@@ -62,21 +66,28 @@
 .event-map-popup strong { color: #006341; font-size: 13px; margin-bottom: 2px; }
 .evmon-list-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 9px; }
 .evmon-list-header h3 { margin: 0 0 2px; font-size: 16px; }
-.evmon-list-header div > span { color: var(--text-muted); font-size: 11px; }
-.evmon-count { padding: 5px 9px; border-radius: 20px; color: var(--success-text); background: var(--success-bg); font-size: 11px; font-weight: 700; }
+.evmon-list-header div > span { display: block; max-width: 72ch; color: var(--text-muted); font-size: 12px; line-height: 1.45; }
+.evmon-count { padding: 5px 9px; border-radius: 20px; color: var(--success-text); background: var(--success-bg); font-size: 12px; font-weight: 700; }
 .evmon-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-bg); margin-bottom: 10px; }
 .evmon-table th:first-child, .evmon-table th:last-child { border-radius: 0 !important; }
+.evmon-table { font-size: 12.5px; }
+.evmon-table th { font-size: 11px; }
 .evmon-table td { white-space: nowrap; }
 .evmon-bus-chip { display: inline-grid; place-items: center; width: 22px; height: 22px; margin-right: 7px; border-radius: 6px; color: #fff; background: var(--brand-green); font-size: 10px; }
 .evmon-heading { display: inline-block; min-width: 27px; padding: 3px 6px; text-align: center; border: 1px solid var(--border); border-radius: 5px; background: var(--surface-alt-bg); font-size: 10.5px; font-weight: 800; }
 .evmon-empty { padding: 28px; text-align: center; color: var(--text-muted); }
-.evmon-health { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 9px 12px; margin-bottom: 18px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-bg); color: var(--text-muted); font-size: 11px; }
+.evmon-empty[role="status"] { color: var(--text); }
+.evmon-error-copy { color: #8a2e2e; }
+.evmon-health { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 9px 12px; margin-bottom: 18px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-bg); color: var(--text-muted); font-size: 12px; line-height: 1.4; }
 .evmon-health strong { color: var(--text); }
-.evmon-health b { color: var(--success-text); }
-.evmon-context { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px 18px; padding: 10px 12px; margin-bottom: 18px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-bg); color: var(--text-muted); font-size: 11px; }
+.evmon-health b { font-weight: 800; }
+.evmon-health b.is-healthy { color: var(--success-text); }
+.evmon-health b.is-warning { color: #765b00; }
+.evmon-health b.is-unavailable { color: #8a2e2e; }
+.evmon-context { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px 18px; padding: 10px 12px; margin-bottom: 18px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-bg); color: var(--text-muted); font-size: 12px; }
 .evmon-context label { display: flex; align-items: center; gap: 6px; }
 .evmon-context label > span { color: var(--text); font-weight: 800; }
-.evmon-context select { min-width: 230px; height: 31px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface-alt-bg); font: inherit; }
+.evmon-context select { min-width: 230px; height: 31px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface-alt-bg); font: inherit; font-size: 12px; }
 .evmon-data-state { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; padding: 10px 12px; margin: -8px 0 18px; border: 1px solid var(--border); border-radius: 9px; font-size: 12px; }
 .evmon-data-state span { color: var(--text-muted); }
 .evmon-data-state a { margin-left: auto; color: inherit; font-weight: 800; }
@@ -88,13 +99,25 @@
 .evmon-scope strong { color: var(--text); }
 .evmon-scope b { color: var(--brand-green); }
 .evmon-scope a { margin-left: auto; color: var(--brand-green); font-weight: 800; }
-.evmon-messaging { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 16px; margin: -8px 0 18px; border: 1px solid var(--border); border-left: 4px solid var(--brand-green); border-radius: 9px; background: var(--surface-bg); }
+.evmon-messaging { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 16px; margin: -8px 0 18px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-bg); }
 .evmon-messaging h3 { margin: 3px 0 3px; font-size: 15px; }
-.evmon-messaging p { max-width: 650px; margin: 0; color: var(--text-muted); font-size: 11px; }
-.evmon-messaging-control { display: grid; gap: 5px; min-width: 275px; padding: 10px 12px; border-radius: 8px; background: var(--surface-alt-bg); color: var(--text-muted); font-size: 11px; }
+.evmon-messaging p { max-width: 62ch; margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.45; }
+.evmon-messaging-control { display: grid; gap: 5px; min-width: 275px; padding: 10px 12px; border-radius: 8px; background: var(--surface-alt-bg); color: var(--text); font-size: 12px; line-height: 1.4; }
 .evmon-messaging-control label { display: flex; align-items: center; gap: 6px; color: var(--text); }
-.evmon-messaging-control small { color: var(--text-muted); }
-.evmon-messaging-state { min-width: 275px; color: var(--text-muted); font-size: 11px; }
+.evmon-messaging-control small { color: var(--text); font-size: 11.5px; }
+.evmon-messaging-state { min-width: 275px; color: var(--text); font-size: 12px; line-height: 1.4; }
 .evmon-messaging-error { color: #8a2e2e; }
+.evmon-setup-state, .evmon-blocking-state { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 16px 18px; margin: -6px 0 18px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-bg); }
+.evmon-setup-state strong, .evmon-blocking-state strong { display: block; font-size: 15px; }
+.evmon-setup-state p, .evmon-blocking-state p { max-width: 68ch; margin: 4px 0 0; color: var(--text-muted); font-size: 12px; line-height: 1.45; }
+.evmon-blocking-state { border-color: #d8a4a4; background: #fff7f7; }
+.evmon-blocking-state-error strong { color: #7a2020; }
+.evmon-secondary-section { margin: 14px 0; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-bg); }
+.evmon-secondary-section summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 15px; color: var(--text); font-size: 14px; font-weight: 800; cursor: pointer; }
+.evmon-secondary-section summary span { color: var(--text-muted); font-size: 11px; font-weight: 700; }
+.evmon-secondary-section[open] summary { border-bottom: 1px solid var(--border); }
+.evmon-section-help { max-width: 72ch; margin: 12px 15px 10px; color: var(--text-muted); font-size: 12px; line-height: 1.45; }
+.evmon-secondary-section .evmon-table-wrap { margin: 0 12px 12px; }
+@media (max-width: 600px) { .evmon-setup-state, .evmon-blocking-state { align-items: stretch; flex-direction: column; } }
 @media (max-width: 850px) { .evmon-summary { align-items: stretch; flex-direction: column; } .evmon-metrics div { flex: 1; min-width: 0; } .evmon-real-map { min-height: 360px; } .evmon-command-center { grid-template-columns: 1fr; } .evmon-command-summary { border-top: 1px solid var(--border); border-left: 0; } }
 @media (max-width: 600px) { .evmon-toolbar { gap: 8px; padding: 9px 10px; } .evmon-toolbar-actions button:first-child { display: none; } .evmon-metrics strong { font-size: 17px; } .evmon-metrics div { padding: 8px 10px; } }

@@ -1,13 +1,16 @@
 import type { Event, EventServicePlan } from "@mvta/shared";
 
-const workableStatuses = new Set<EventServicePlan["status"]>(["draft", "review", "approved"]);
-
-/** Prefer an operating Event that can actually drive Event AVL. */
+/** Auto-select only when exactly one active operating period is unambiguous. */
 export function defaultMonitoringEventId(events: Event[], plans: EventServicePlan[]): string {
-  const activeEvent = events.find((event) => plans.some((plan) => plan.event_id === event.id && plan.status === "active"));
-  if (activeEvent) return activeEvent.id;
-  const preparedEvent = events.find((event) => plans.some((plan) => plan.event_id === event.id && workableStatuses.has(plan.status)));
-  return preparedEvent?.id ?? "";
+  const activePlans = plans.filter((plan) => plan.status === "active");
+  if (activePlans.length !== 1) return "";
+  return events.some((event) => event.id === activePlans[0].event_id) ? activePlans[0].event_id : "";
+}
+
+/** Auto-select a plan only when the selected Event has one active period. */
+export function defaultMonitoringServicePlanId(eventId: string, plans: EventServicePlan[]): string {
+  const activePlans = plans.filter((plan) => plan.event_id === eventId && plan.status === "active");
+  return activePlans.length === 1 ? activePlans[0].id : "";
 }
 
 export function activePlansMissingPublishedScope(plans: EventServicePlan[]): EventServicePlan[] {
