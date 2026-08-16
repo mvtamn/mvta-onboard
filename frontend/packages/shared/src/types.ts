@@ -684,6 +684,9 @@ export interface Detour extends DetourReportFields {
   avail_entry_confirmed_by?: string | null;
   avail_entry_confirmed_at?: string | null;
   readiness?: DetourReadiness;
+  communication_status?: "published" | "draft" | "needs_communication" | "not_available";
+  communications_published?: number;
+  communications_draft?: number;
   segments: DetourSegment[];
 }
 

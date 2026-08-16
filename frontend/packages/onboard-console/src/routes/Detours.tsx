@@ -583,6 +583,7 @@ export function Detours() {
                             {d.readiness ? (
                               <p><b>Next step:</b> {d.readiness === "ready_for_avail_entry" ? "Enter this detour in Avail" : d.readiness === "avail_conflict" ? "Resolve the Avail conflict" : d.readiness === "ready_for_manual_operations" ? "Ready for manual operations" : d.readiness === "needs_occ_review" ? "Needs OCC review" : "Closed"}</p>
                             ) : null}
+                            {d.communication_status ? <p><b>Communications:</b> {d.communication_status.replace("_", " ")}</p> : null}
                             {d.fulfillment_mode === "avail" && d.avail_entry_result ? (
                               <p><b>Avail entry:</b> {d.avail_entry_result.replace("_", " ")}
                                 {d.external_detour_id ? ` · ID ${d.external_detour_id}` : ""}

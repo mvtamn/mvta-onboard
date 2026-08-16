@@ -59,6 +59,11 @@ interface DetourRow {
   avail_entry_result?: "entered" | "conflict" | "not_entered" | null;
   avail_entry_confirmed_by?: string | null;
   avail_entry_confirmed_at?: Date | null;
+  notification_audiences?: string | null;
+  notification_channels?: string | null;
+  action_instructions?: string | null;
+  communications_published?: number;
+  communications_draft?: number;
 }
 
 interface SegmentRow {
@@ -85,6 +90,7 @@ app.http("detoursList", {
     const statusFilter = VALID_STATUSES.includes(statusParam as DetourStatus)
       ? (statusParam as DetourStatus)
       : null;
+    const operationsView = request.query.get("view") === "operations";
 
     try {
       const pool = await getPool();
@@ -94,7 +100,7 @@ app.http("detoursList", {
       // a missing column fails even inside a CASE. Pre-migration the field
       // comes back undefined and the console falls back to hiding it, same
       // graceful-degradation pattern as every other un-run migration here.
-      const schemaCheck = await pool.request().query<{ has_column: number; reporting_ready: number; workflow_ready: number; avail_entry_ready: number }>(`
+      const schemaCheck = await pool.request().query<{ has_column: number; reporting_ready: number; workflow_ready: number; avail_entry_ready: number; operational_fields: number; communications_ready: number }>(`
         SELECT
           CASE WHEN COL_LENGTH('dbo.Detours', 'internal_number') IS NULL
                THEN 0 ELSE 1 END AS has_column,
@@ -107,11 +113,15 @@ app.http("detoursList", {
                     OR COL_LENGTH('dbo.Detours', 'avail_entry_confirmed_by') IS NULL
                     OR COL_LENGTH('dbo.Detours', 'avail_entry_confirmed_at') IS NULL
                THEN 0 ELSE 1 END AS avail_entry_ready
+          ,CASE WHEN COL_LENGTH('dbo.Detours', 'notification_audiences') IS NULL THEN 0 ELSE 1 END AS operational_fields
+          ,CASE WHEN OBJECT_ID('dbo.DetourCommunications', 'U') IS NULL THEN 0 ELSE 1 END AS communications_ready
       `);
       const hasInternalNumber = schemaCheck.recordset[0]?.has_column === 1;
       const hasReportingFields = schemaCheck.recordset[0]?.reporting_ready === 1;
       const hasWorkflowFields = schemaCheck.recordset[0]?.workflow_ready === 1;
       const hasAvailEntryFields = schemaCheck.recordset[0]?.avail_entry_ready === 1;
+      const hasOperationalFields = schemaCheck.recordset[0]?.operational_fields === 1;
+      const hasCommunications = schemaCheck.recordset[0]?.communications_ready === 1;
 
       const REPORTING_COLUMNS = `
         reason_code, severity, reported_by, reported_at, approved_by, approved_at,
@@ -125,6 +135,8 @@ app.http("detoursList", {
                ${hasReportingFields ? `, ${REPORTING_COLUMNS}` : ""}
                ${hasWorkflowFields ? ", fulfillment_mode, lifecycle_state, workflow_owner, workflow_updated_by, workflow_updated_at, avail_build_confirmed_at" : ""}
                ${hasAvailEntryFields ? ", avail_entry_result, avail_entry_confirmed_by, avail_entry_confirmed_at" : ""}
+               ${hasOperationalFields ? ", notification_audiences, notification_channels, action_instructions" : ""}
+               ${hasCommunications ? ", (SELECT COUNT(*) FROM DetourCommunications c WHERE c.detour_id=Detours.id AND c.status='published') AS communications_published, (SELECT COUNT(*) FROM DetourCommunications c WHERE c.detour_id=Detours.id AND c.status='draft') AS communications_draft" : ""}
         FROM Detours
         WHERE is_deleted = 0
         ORDER BY start_date DESC, created_at DESC
@@ -159,13 +171,25 @@ app.http("detoursList", {
         status: computeDetourStatus(d),
         ...(hasWorkflowFields ? { fulfillment_mode: d.fulfillment_mode, lifecycle_state: d.lifecycle_state, workflow_owner: d.workflow_owner, workflow_updated_by: d.workflow_updated_by, workflow_updated_at: d.workflow_updated_at, avail_build_confirmed_at: d.avail_build_confirmed_at } : {}),
         ...(hasAvailEntryFields ? { avail_entry_result: d.avail_entry_result, avail_entry_confirmed_by: d.avail_entry_confirmed_by, avail_entry_confirmed_at: d.avail_entry_confirmed_at } : {}),
+        ...(hasOperationalFields ? { notification_audiences: d.notification_audiences, notification_channels: d.notification_channels } : {}),
+        ...(hasCommunications ? { communications_published: d.communications_published ?? 0, communications_draft: d.communications_draft ?? 0, communication_status: (d.communications_published ?? 0) > 0 ? "published" : (d.communications_draft ?? 0) > 0 ? "draft" : "needs_communication" } : {}),
         readiness: hasWorkflowFields ? computeDetourReadiness(d.fulfillment_mode, d.lifecycle_state as any) : undefined,
         segments: segmentsByDetour.get(d.id) ?? [],
       }));
 
-      const filtered = statusFilter ? withStatus.filter((d) => d.status === statusFilter) : withStatus;
+      const filtered = statusFilter ? withStatus.filter((d) => d.status === statusFilter) : operationsView ? withStatus.filter((d) => d.status === "active" || d.status === "upcoming") : withStatus;
 
-      return { status: 200, jsonBody: { detours: filtered } };
+      const operationsReport = filtered.map((d) => ({
+        id: d.id, reference: d.internal_number ?? d.number ?? d.id, closure: d.closure,
+        affected_service: d.segments.map((s) => s.routes).join(", ") || "Service details not entered",
+        action_instructions: d.action_instructions || d.riders_directed || "Follow the detour instructions in the record",
+        effective_dates: `${d.start_date ?? "Open"} – ${d.end_date ?? "Open"}`,
+        readiness: d.readiness, communication_status: (d as any).communication_status ?? "not_available",
+        source: d.source === "avail" ? "Avail/feed observation" : "OnBoard intake",
+        fulfillment_mode: d.fulfillment_mode ?? null, status: d.status,
+        technical: { external_detour_id: d.external_detour_id, lifecycle_state: d.lifecycle_state, avail_entry_result: d.avail_entry_result },
+      }));
+      return { status: 200, jsonBody: { detours: filtered, ...(operationsView ? { report: operationsReport } : {}) } };
     } catch (err) {
       context.error("GET /detours failed:", err);
       return { status: 500, jsonBody: { error: "Internal server error" } };

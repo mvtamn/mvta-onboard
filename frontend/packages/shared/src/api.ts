@@ -482,6 +482,10 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<{ detours: Detour[] }>(`/api/detours${suffix}`, {}, true);
     },
 
+    getOperationsDetourReport() {
+      return request<{ detours: Detour[]; report: Array<Record<string, unknown>> }>(`/api/detours?view=operations`, {}, true);
+    },
+
     createDetour(input: CreateDetourInput) {
       return request<{ id: string; created_at: string }>(
         "/api/detours",
