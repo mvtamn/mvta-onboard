@@ -167,7 +167,7 @@ export function EventPlanning() {
     {
       label: "Messaging geofence configured",
       ready: messagingGeofences.length > 0,
-      href: geofenceMissingDirectionRule ? `/admin?geofence=${geofenceMissingDirectionRule.id}#event-configuration` : undefined,
+      href: geofenceMissingDirectionRule ? `/admin/events?geofence=${geofenceMissingDirectionRule.id}#event-configuration` : undefined,
     },
   ];
   const readyToActivate = readiness.every((item) => item.ready);

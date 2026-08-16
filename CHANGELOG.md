@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.44] - 2026-08-16
+
+- **Organize administration into a management workspace.** Administration now has modular navigation for access, Event resources, service configuration, integrations, governance, and subscribers. Event Planning and Event AVL are grouped under a dedicated Events workspace, with legacy links preserved.
+
 ## [1.5.43] - 2026-08-16
 
 - **Recover from invalid geofence rings.** Event Planning now rejects self-intersecting polygons before save, restores the previous boundary when an edit is invalid, and keeps the map available for another attempt.

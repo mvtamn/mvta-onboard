@@ -10,10 +10,10 @@ interface Props {
 }
 
 const stages = [
-  { id: "plan", label: "Plan", description: "Event and operating period", href: "/event-planning" },
-  { id: "configure", label: "Configure", description: "Reusable resources", href: "/admin" },
-  { id: "activate", label: "Activate", description: "Validate and publish scope", href: "/event-planning" },
-  { id: "monitor", label: "Monitor", description: "Live Event AVL", href: "/event-monitoring" },
+  { id: "plan", label: "Plan", description: "Event and operating period", href: "/events/planning" },
+  { id: "configure", label: "Configure", description: "Reusable resources", href: "/admin/events" },
+  { id: "activate", label: "Activate", description: "Validate and publish scope", href: "/events/planning" },
+  { id: "monitor", label: "Monitor", description: "Live Event AVL", href: "/events/avl" },
 ] as const;
 
 export function EventWorkspaceNav({ eventName, planName, planStatus, activeStage = "plan" }: Props) {

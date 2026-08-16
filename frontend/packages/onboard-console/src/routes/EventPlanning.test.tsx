@@ -227,7 +227,7 @@ describe("EventPlanning", () => {
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
       const checklist = await screen.findByRole("group", { name: "Activation readiness" });
       const link = within(checklist).getByRole("link", { name: "Messaging geofence configured" });
-      expect(link).toHaveAttribute("href", "/admin?geofence=geo1#event-configuration");
+      expect(link).toHaveAttribute("href", "/admin/events?geofence=geo1#event-configuration");
     });
 
     it("does not render a link once every linked geofence already has a direction rule", async () => {

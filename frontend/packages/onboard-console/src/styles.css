@@ -230,6 +230,34 @@ body {
 .theme-toggle-btn:hover { border-color: var(--brand-green); }
 
 .content-main { flex: 1; padding: 20px 22px; overflow: auto; }
+
+.admin-layout { display: grid; grid-template-columns: 218px minmax(0, 1fr); gap: 18px; align-items: start; }
+.admin-secondary-nav { background: var(--surface-bg); border: 1px solid var(--border); border-radius: 12px; padding: 14px 10px; position: sticky; top: 0; }
+.admin-secondary-heading { display: grid; gap: 4px; padding: 8px 10px 16px; border-bottom: 1px solid var(--border-soft); }
+.admin-secondary-heading strong { font-size: 17px; }
+.admin-eyebrow { color: var(--brand-green); font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.admin-secondary-links { display: grid; gap: 3px; padding-top: 10px; }
+.admin-secondary-links a { display: flex; align-items: center; gap: 9px; padding: 9px 10px; color: var(--text-dim); text-decoration: none; border-radius: 7px; font-weight: 600; }
+.admin-secondary-links a:hover { background: var(--surface-alt-bg); color: var(--text); }
+.admin-secondary-links a.active { background: var(--chip-bg); color: var(--brand-green); }
+.admin-secondary-links svg { width: 16px; height: 16px; flex-shrink: 0; }
+.admin-layout-content { min-width: 0; }
+.admin-page-heading { display: flex; justify-content: space-between; align-items: end; gap: 18px; margin-bottom: 18px; }
+.admin-page-heading h2 { margin: 4px 0; font-size: 25px; }
+.admin-page-heading p { color: var(--text-dim); margin: 0; }
+.admin-search { width: min(300px, 100%); padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface-bg); color: var(--text); }
+.admin-attention { padding: 13px 15px; margin-bottom: 16px; border-left: 4px solid var(--highlight-border); border-radius: 8px; background: var(--highlight-bg); }
+.admin-attention a, .admin-card-link { color: var(--brand-green); font-weight: 800; }
+.admin-module-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
+.admin-module-card { display: block; padding: 17px; background: var(--surface-bg); border: 1px solid var(--border); border-radius: 11px; color: var(--text); text-decoration: none; }
+.admin-module-card:hover { border-color: var(--brand-green); transform: translateY(-1px); }
+.admin-module-card h3 { margin: 0 0 7px; font-size: 15px; }
+.admin-module-card p { color: var(--text-dim); line-height: 1.45; min-height: 42px; margin: 0 0 13px; }
+.admin-card-status { display: block; font-size: 12px; font-weight: 700; margin-bottom: 10px; }
+.admin-card-status.good { color: var(--success-text); }.admin-card-status.warn { color: var(--pill-warning-fg); }.admin-card-status.danger { color: var(--danger-text); }
+.admin-card-link { font-size: 12px; }
+.admin-scope-note { margin-top: 16px; }
+@media (max-width: 800px) { .admin-layout { grid-template-columns: 1fr; } .admin-secondary-nav { position: static; } .admin-secondary-links { display: flex; overflow-x: auto; } .admin-secondary-links a { white-space: nowrap; } .admin-page-heading { align-items: stretch; flex-direction: column; } .admin-search { width: 100%; } }
 /* flex-wrap so the rail drops below the primary column instead of
    overlapping it when the window is too narrow for both side by side. */
 .content-layout { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }

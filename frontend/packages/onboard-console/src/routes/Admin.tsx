@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
 import {
   type ExpirationDefault,
   CATEGORY_LABELS,
@@ -11,14 +10,8 @@ import {
   ROUTE_CATEGORY_LABELS,
   type GtfsRouteOption,
   type AppSettingRow,
-  type Event,
-  type EventServicePlan,
 } from "@mvta/shared";
 import { api } from "../config.js";
-import { useEventWorkspace } from "../context/EventWorkspaceContext.js";
-import { EventWorkspaceNav } from "../components/EventWorkspaceNav.js";
-import { EventResourceMapEditor } from "./EventResourceMapEditor.js";
-import { FeedHealth } from "./modules/FeedHealth.js";
 
 const ROUTE_CATEGORIES: RouteCategory[] = ["FixedRoute", "SpecialEvent", "OnDemand"];
 const ROUTE_CATEGORY_DESCRIPTIONS: Record<RouteCategory, string> = {
@@ -27,7 +20,7 @@ const ROUTE_CATEGORY_DESCRIPTIONS: Record<RouteCategory, string> = {
   OnDemand: "Request-based service",
 };
 
-function EventMonitoringSettingsSection() {
+export function EventMonitoringSettingsSection() {
   const [setting, setSetting] = useState<AppSettingRow | null>(null);
   const [value, setValue] = useState("");
   const [message, setMessage] = useState<string | null>(null);
@@ -90,7 +83,7 @@ function EventMonitoringSettingsSection() {
 // from special-event RouteIDs, so this is the one place staff maintain that
 // distinction. A light, occasional admin step (per the design doc), not a
 // bulk-import workflow - someone adds/updates a row before an event runs.
-function RouteClassificationSection() {
+export function RouteClassificationSection() {
   const [routes, setRoutes] = useState<RouteClassificationRow[] | null>(null);
   const [unclassified, setUnclassified] = useState<UnclassifiedRoute[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -431,29 +424,11 @@ function RouteClassificationSection() {
 // message is created without an explicit expiration (expiration_source =
 // category_default). PATCH is OCC.Admin-only, enforced server-side.
 export function Admin() {
-  const location = useLocation();
-  const { selection } = useEventWorkspace();
-  const [workspaceEvents, setWorkspaceEvents] = useState<Event[]>([]);
-  const [workspacePlans, setWorkspacePlans] = useState<EventServicePlan[]>([]);
   const [defaults, setDefaults] = useState<ExpirationDefault[] | null>(null);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!selection.eventId) {
-      setWorkspaceEvents([]);
-      setWorkspacePlans([]);
-      return;
-    }
-    void Promise.all([api.getEvents(), api.getEventServicePlans()])
-      .then(([eventRows, planRows]) => { setWorkspaceEvents(eventRows.events); setWorkspacePlans(planRows.plans); })
-      .catch(() => { setWorkspaceEvents([]); setWorkspacePlans([]); });
-  }, [selection.eventId, selection.servicePlanId]);
-
-  const selectedWorkspaceEvent = workspaceEvents.find((row) => row.id === selection.eventId);
-  const selectedWorkspacePlan = workspacePlans.find((row) => row.id === selection.servicePlanId && row.event_id === selection.eventId);
 
   useEffect(() => {
     let alive = true;
@@ -465,17 +440,6 @@ export function Admin() {
       alive = false;
     };
   }, []);
-
-  useEffect(() => {
-    if (location.hash !== "#event-configuration") return;
-    const frame = window.requestAnimationFrame(() => {
-      const target = document.getElementById("event-configuration");
-      if (!target) return;
-      target.scrollIntoView({ behavior: "smooth", block: "start" });
-      target.focus({ preventScroll: true });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [location.hash]);
 
   async function save(category: Category) {
     const value = parseInt(edits[category] ?? "", 10);
@@ -561,17 +525,6 @@ export function Admin() {
           </table>
         ) : null}
       </div>
-      <FeedHealth />
-      <section id="event-configuration" className="event-configuration-section" tabIndex={-1} aria-labelledby="event-configuration-title">
-        {selection.eventId && <EventWorkspaceNav eventName={selectedWorkspaceEvent?.name} planName={selectedWorkspacePlan?.name} planStatus={selectedWorkspacePlan?.status} activeStage="configure" />}
-        <div className="event-configuration-intro">
-          <strong id="event-configuration-title">Reusable Event resources</strong>
-          <span>Maintain routes, map resources, and Event AVL settings here. Active service plans use pinned revisions, so changes do not alter live operations until reviewed and applied.</span>
-        </div>
-        <EventMonitoringSettingsSection />
-        <RouteClassificationSection />
-        <EventResourceMapEditor />
-      </section>
     </>
   );
 }

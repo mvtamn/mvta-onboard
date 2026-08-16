@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { NavLink, Route, Routes, useLocation } from "react-router-dom";
+import { Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./auth/AuthContext.js";
 import { roleLabel } from "./auth/roles.js";
 import { RequireRole } from "./auth/RequireRole.js";
@@ -11,7 +11,6 @@ import {
   IconCompose,
   IconMessages,
   IconBell,
-  IconUsers,
   IconClock,
   IconGear,
   IconWrench,
@@ -32,8 +31,6 @@ import { ActiveMessages } from "./routes/ActiveMessages.js";
 import { SuggestedAlerts } from "./routes/SuggestedAlerts.js";
 import { Subscribers } from "./routes/Subscribers.js";
 import { AuditLog } from "./routes/AuditLog.js";
-import { Admin } from "./routes/Admin.js";
-import { AccessManagement } from "./routes/AccessManagement.js";
 import { OccTools } from "./routes/OccTools.js";
 import { EventMonitoring } from "./routes/modules/EventMonitoring.js";
 import { EventPlanning } from "./routes/EventPlanning.js";
@@ -44,6 +41,9 @@ import { Detours } from "./routes/Detours.js";
 import { DetourReports } from "./routes/DetourReports.js";
 import { DetourIntake } from "./routes/DetourIntake.js";
 import { Changelog } from "./routes/Changelog.js";
+import { AdminLayout } from "./components/AdminLayout.js";
+import { AdminOverview } from "./routes/AdminOverview.js";
+import { AdminAccess, AdminEventAdministration, AdminGovernance, AdminIntegrations, AdminServiceConfiguration, AdminSubscribers } from "./routes/AdminModules.js";
 import { CHANGELOG_ENTRIES } from "./routes/changelogData.js";
 import {
   FixedRouteRefreshProvider,
@@ -56,7 +56,7 @@ const ACCESS_MANAGEMENT = import.meta.env.VITE_ACCESS_ADMIN_FALLBACK === "true"
   ? ["OCC.AccessAdmin", "OCC.Admin"] as const
   : ["OCC.AccessAdmin"] as const;
 const OCC_TOOLS = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin"] as const;
-const EVENT_AVL = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin"] as const;
+const EVENT_AVL = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin", "OCC.EventAVL"] as const;
 const COMPLIANCE = ["OCC.Compliance", "OCC.ComplianceManager", "OCC.Admin"] as const;
 // Read-only for OCC.Viewer, full create/edit/delete for Publisher/Admin (the
 // component itself hides write controls for Viewer-only; the server is the
@@ -78,14 +78,13 @@ const PAGE_META: { match: (path: string) => boolean; title: string; sub: string 
   { match: (p) => p === "/detours", title: "Detours & Closures", sub: "Every detour/closure in one place, Avail-built or not" },
   { match: (p) => p === "/detour-intake", title: "Detour Intake", sub: "Capture and review preliminary closure reports" },
   { match: (p) => p === "/detour-reports", title: "Detour Reports", sub: "Search and export detour history — read-only" },
-  { match: (p) => p === "/admin", title: "Configuration", sub: "System settings, feed diagnostics, and event resources" },
-  { match: (p) => p === "/admin/access-management", title: "Access Management", sub: "Manage OnBoard access, approvals, and sign-in activity" },
+  { match: (p) => p === "/admin" || p.startsWith("/admin/"), title: "Administration", sub: "Manage access, resources, configuration, integrations, and governance" },
   {
-    match: (p) => p === "/event-monitoring",
+    match: (p) => p === "/event-monitoring" || p === "/events/avl",
     title: "Event AVL",
     sub: "Monitor active vehicles and event service in real time",
   },
-  { match: (p) => p === "/event-planning", title: "Event Planning", sub: "Prepare and approve event service plans" },
+  { match: (p) => p === "/event-planning" || p === "/events/planning", title: "Event Planning", sub: "Prepare and approve event service plans" },
   {
     match: (p) => p.startsWith("/occ"),
     title: "OCC Tools",
@@ -106,6 +105,11 @@ const PAGE_META: { match: (path: string) => boolean; title: string; sub: string 
 
 function currentPageMeta(pathname: string) {
   return PAGE_META.find((p) => p.match(pathname)) ?? PAGE_META[0];
+}
+
+function CompatibilityRedirect({ to }: { to: string }) {
+  const location = useLocation();
+  return <Navigate to={`${to}${location.search}${location.hash}`} replace />;
 }
 
 function initialsOf(name: string): string {
@@ -177,6 +181,7 @@ export function App() {
   // navigation so it never stays open covering the next page.
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [specialistOpen, setSpecialistOpen] = useState(true);
+  const [eventsOpen, setEventsOpen] = useState(true);
   const [complianceOpen, setComplianceOpen] = useState(true);
   const [adminOpen, setAdminOpen] = useState(true);
   const [changelogOpen, setChangelogOpen] = useState(false);
@@ -226,7 +231,7 @@ export function App() {
           <NavLink to="/service-operations/active"><IconMessages />Active Service Alerts</NavLink>
           <NavLink to="/service-operations/suggested"><IconBell />Suggested Alerts</NavLink>
           {isAdmin && <NavLink to="/service-operations/risk"><IconWrench />Service Risk &amp; Quality</NavLink>}
-          {(isAdmin || isCompliance || canSeeDetours || canSeeEventAvl) && (
+          {(isAdmin || isCompliance || canSeeDetours || canSeeOccTools) && (
             <section className="nav-group">
               <button className="nav-group-toggle" aria-expanded={specialistOpen} onClick={() => setSpecialistOpen((open) => !open)}>
                 <span>Specialist Operations</span><span aria-hidden="true">{specialistOpen ? "⌃" : "›"}</span>
@@ -235,12 +240,19 @@ export function App() {
                 {canSeeDetours && <NavLink to="/detours"><IconDetour />Detours &amp; Closures</NavLink>}
                 {canSeeDetours && <NavLink to="/detour-intake"><IconDetour />Detour Intake</NavLink>}
                 {canSeeDetours && <NavLink to="/detour-reports"><IconClock />Detour Reports</NavLink>}
-                {canSeeEventAvl && <NavLink to="/event-planning"><IconBus />Event Planning</NavLink>}
-                {canSeeEventAvl && <NavLink to="/event-monitoring"><IconBus />Event AVL</NavLink>}
               {canSeeOccTools && <NavLink to="/occ"><IconWrench />OCC Tools</NavLink>}
               </div> : null}
             </section>
           )}
+          {canSeeEventAvl && <section className="nav-group">
+            <button className="nav-group-toggle" aria-expanded={eventsOpen} onClick={() => setEventsOpen((open) => !open)}>
+              <span>Events</span><span aria-hidden="true">{eventsOpen ? "⌃" : "›"}</span>
+            </button>
+            {eventsOpen ? <div className="nav-group-links">
+              {isAdmin && <NavLink to="/events/planning"><IconBus />Planning</NavLink>}
+              <NavLink to="/events/avl"><IconBus />Event AVL</NavLink>
+            </div> : null}
+          </section>}
           {isCompliance && <section className="nav-group">
             <button className="nav-group-toggle" aria-expanded={complianceOpen} onClick={() => setComplianceOpen((open) => !open)}>
               <span>Compliance &amp; Assessment</span><span aria-hidden="true">{complianceOpen ? "⌃" : "›"}</span>
@@ -252,15 +264,17 @@ export function App() {
           </section>}
           <section className="nav-group nav-group-administration">
             <div className="nav-section-label">Administration</div>
-            <NavLink to="/subscribers"><IconUsers />Subscribers</NavLink>
-            <NavLink to="/audit"><IconClock />Audit Log</NavLink>
             {(isAdmin || canManageAccess) && <>
               <button className="nav-group-toggle" aria-expanded={adminOpen} onClick={() => setAdminOpen((open) => !open)}>
-                <span>Admin tools</span><span aria-hidden="true">{adminOpen ? "⌃" : "›"}</span>
+                <span>Administration</span><span aria-hidden="true">{adminOpen ? "⌃" : "›"}</span>
               </button>
               {adminOpen ? <div className="nav-group-links">
-                {isAdmin && <NavLink to="/admin"><IconGear />Configuration</NavLink>}
-                {canManageAccess && <NavLink to="/admin/access-management"><IconShield />Access Management</NavLink>}
+                <NavLink to="/admin"><IconGear />Overview</NavLink>
+                {canManageAccess && <NavLink to="/admin/access"><IconShield />Access &amp; Identity</NavLink>}
+                {isAdmin && <NavLink to="/admin/events"><IconBus />Event Administration</NavLink>}
+                {isAdmin && <NavLink to="/admin/service"><IconWrench />Service Configuration</NavLink>}
+                {isAdmin && <NavLink to="/admin/integrations"><IconWrench />Integrations &amp; Data Health</NavLink>}
+                {canManageAccess && <NavLink to="/admin/governance"><IconClock />Governance &amp; Audit</NavLink>}
               </div> : null}
             </>}
           </section>
@@ -364,34 +378,21 @@ export function App() {
               <Route path="/subscribers" element={<Subscribers />} />
               <Route path="/audit" element={<AuditLog />} />
               <Route path="/changelog" element={<Changelog />} />
-              <Route
-                path="/admin"
-                element={
-                  <RequireRole allowed={[...ADMIN]}>
-                    <Admin />
-                  </RequireRole>
-                }
-              />
-              <Route
-                path="/admin/access-management"
-                element={
-                  <RequireRole allowed={[...ACCESS_MANAGEMENT]}>
-                    <AccessManagement />
-                  </RequireRole>
-                }
-              />
-              <Route
-                path="/event-monitoring"
-                element={
-                  <RequireRole allowed={[...EVENT_AVL]}>
-                    <EventMonitoring />
-                  </RequireRole>
-                }
-              />
-              <Route
-                path="/event-planning"
-                element={<RequireRole allowed={[...ADMIN]}><EventPlanning /></RequireRole>}
-              />
+              <Route path="/admin/access-management" element={<CompatibilityRedirect to="/admin/access" />} />
+              <Route path="/admin" element={<RequireRole allowed={[...ACCESS_MANAGEMENT]}><AdminLayout /></RequireRole>}>
+                <Route index element={<AdminOverview />} />
+                <Route path="access" element={<RequireRole allowed={[...ACCESS_MANAGEMENT]}><AdminAccess /></RequireRole>} />
+                <Route path="events" element={<RequireRole allowed={[...ADMIN]}><AdminEventAdministration /></RequireRole>} />
+                <Route path="service" element={<RequireRole allowed={[...ADMIN]}><AdminServiceConfiguration /></RequireRole>} />
+                <Route path="integrations" element={<RequireRole allowed={[...ADMIN]}><AdminIntegrations /></RequireRole>} />
+                <Route path="governance" element={<RequireRole allowed={[...ACCESS_MANAGEMENT]}><AdminGovernance /></RequireRole>} />
+                <Route path="subscribers" element={<RequireRole allowed={[...ACCESS_MANAGEMENT]}><AdminSubscribers /></RequireRole>} />
+              </Route>
+              <Route path="/event-monitoring" element={<CompatibilityRedirect to="/events/avl" />} />
+              <Route path="/event-planning" element={<CompatibilityRedirect to="/events/planning" />} />
+              <Route path="/events" element={<Navigate to="/events/avl" replace />} />
+              <Route path="/events/avl" element={<RequireRole allowed={[...EVENT_AVL]}><EventMonitoring /></RequireRole>} />
+              <Route path="/events/planning" element={<RequireRole allowed={[...ADMIN]}><EventPlanning /></RequireRole>} />
               <Route
                 path="/occ/*"
                 element={
