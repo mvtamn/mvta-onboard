@@ -182,47 +182,9 @@ body {
 .content-topbar h1 { font-size: 22px; font-weight: 800; color: var(--text); margin: 0; letter-spacing: -0.01em; }
 .content-topbar .subtitle { color: var(--text-muted); font-size: 12.5px; margin-top: 3px; }
 .topbar-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
-.tr-text { color: var(--text-muted); font-size: 12px; }
-.fixed-route-refresh-indicator {
-  align-items: center;
-  background: var(--surface-alt-bg);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  color: var(--text-dim);
-  display: inline-flex;
-  font-size: 11px;
-  font-weight: 700;
-  gap: 6px;
-  padding: 5px 9px;
-  white-space: nowrap;
-}
-.fixed-route-refresh-indicator > span {
-  background: var(--live-dot);
-  border-radius: 50%;
-  display: inline-block;
-  height: 7px;
-  width: 7px;
-}
-.fixed-route-refresh-indicator > span.refresh-pulse {
-  animation: refresh-pulse 1s ease-in-out infinite;
-}
-@keyframes refresh-pulse {
-  50% { opacity: 0.35; transform: scale(0.8); }
-}
-/* .topbar-actions had no wrap of its own and no responsive collapse, so
-   below ~860px its five children (refresh indicator, session date, user
-   pill, theme toggle, sign out) stayed in one un-wrapping row wider than the
-   viewport - clipped by .frame's overflow:hidden rather than scrollable,
-   making Sign Out physically unreachable on a phone. Hiding the two least
-   essential items frees enough width that what remains (user pill, theme
-   toggle, sign out) fits or wraps onto its own line instead of clipping.
-   Placed after the base .fixed-route-refresh-indicator rule (not before it,
-   as this was mistakenly placed the first time) - equal-specificity rules
-   resolve by source order, so an override earlier in the file loses to a
-   plain rule later in the file regardless of the media condition. */
-@media (max-width: 860px) {
-  .fixed-route-refresh-indicator, .tr-text { display: none; }
-}
+.topbar-system-status { align-items: center; background: var(--surface-alt-bg); border: 1px solid var(--border); border-radius: 999px; color: var(--text-dim); display: inline-flex; font-size: 11px; font-weight: 700; gap: 6px; padding: 5px 9px; white-space: nowrap; }
+.topbar-system-status.stale, .topbar-system-status.unavailable, .topbar-system-status.authentication-required { color: var(--danger-text); }
+.topbar-system-status.stale .live-dot, .topbar-system-status.unavailable .live-dot, .topbar-system-status.authentication-required .live-dot { background: var(--danger-text); }
 .pill-user { display: flex; align-items: center; gap: 8px; background: var(--surface-alt-bg); border: 1px solid var(--border); color: var(--text); font-size: 12px; padding: 4px 12px 4px 4px; border-radius: 999px; }
 .avatar { width: 24px; height: 24px; border-radius: 50%; background: var(--brand-green); color: #fff; font-size: 10.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .btn-signout { background: var(--surface-bg); color: var(--brand-green); font-size: 12px; font-weight: bold; padding: 5px 14px; border-radius: 8px; border: 1px solid var(--border-strong); cursor: pointer; }
@@ -307,7 +269,13 @@ body {
 .data-health-header h2 { color: var(--text); font-size: 21px; margin: 3px 0 0; }
 .data-health-refresh { flex: 0 0 auto; margin-right: 0; }
 .data-health-status { display: grid; gap: 9px; }
+.data-health-summary { align-items: center; background: var(--surface-alt-bg); border: 1px solid var(--border); border-radius: 7px; color: var(--text-dim); display: flex; font-size: 12px; gap: 7px; margin-bottom: 12px; padding: 8px 10px; }
+.data-health-summary.stale, .data-health-summary.unavailable, .data-health-summary.authentication-required { color: var(--danger-text); }
+.data-health-summary.stale .live-dot, .data-health-summary.unavailable .live-dot, .data-health-summary.authentication-required .live-dot { background: var(--danger-text); }
 .data-health-feed { align-items: center; color: var(--success-text); display: flex; font-size: 13px; font-weight: 800; gap: 7px; }
+.data-health-feed.stale, .data-health-feed.unavailable, .data-health-feed.authentication-required { color: var(--danger-text); }
+.data-health-feed.loading { color: var(--text-muted); }
+.data-health-feed.stale .live-dot, .data-health-feed.unavailable .live-dot, .data-health-feed.authentication-required .live-dot { background: var(--danger-text); }
 .data-health-feed .live-dot { margin-right: 0; }
 .data-health-feed.is-unavailable { color: var(--danger-text); }
 .data-health-feed.is-unavailable .live-dot { background: var(--danger-text); }
@@ -484,6 +452,33 @@ body {
 .panel-desc { font-size: 12px; color: var(--text-dim); margin: 0 0 14px; line-height: 1.5; }
 
 /* ---------- forms ---------- */
+.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 18px; margin: 16px 0; }
+.form-grid > label, .form-grid-wide { color: var(--text-dim); display: grid; gap: 5px; font-size: 12px; font-weight: 700; min-width: 0; }
+.form-grid-wide { grid-column: 1 / -1; }
+.form-grid-segment { align-items: center; display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) auto; margin-bottom: 8px; }
+.form-grid input:not(.f), .form-grid select:not(.f), .form-grid textarea:not(.compose) { background: var(--surface-bg); border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text); font: 400 12.5px/1.4 inherit; min-width: 0; padding: 9px 10px; width: 100%; }
+.form-grid textarea:not(.compose) { min-height: 84px; resize: vertical; }
+.form-grid input:focus-visible, .form-grid select:focus-visible, .form-grid textarea:focus-visible { border-color: var(--brand-green); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-green) 16%, transparent); outline: 0; }
+.form-section { border-top: 1px solid var(--border-soft); margin-top: 20px; padding-top: 16px; }
+.form-section h4 { color: var(--text); font-size: 13px; margin: 0 0 3px; }
+.form-section > p { color: var(--text-muted); font-size: 12px; line-height: 1.45; margin: 0 0 12px; }
+.intake-checklist { background: var(--surface-alt-bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text-dim); display: grid; gap: 5px; margin: 14px 0; padding: 10px 12px; }
+.intake-checklist strong { color: var(--text); font-size: 12px; }
+.intake-checklist li { font-size: 12px; line-height: 1.4; }
+.intake-checklist ul { margin: 0; padding-left: 18px; }
+.intake-checklist .is-complete { color: var(--success-text); }
+.intake-form-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; margin-top: 16px; }
+.modal-overlay { align-items: flex-start; background: rgba(10, 22, 16, .58); display: flex; inset: 0; justify-content: center; overflow: auto; padding: 90px 20px 30px; position: fixed; z-index: 90; }
+.modal-card { background: var(--surface-bg); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 18px 50px rgba(0, 0, 0, .28); color: var(--text); max-width: 620px; padding: 22px 24px; width: 100%; }
+.modal-card-header { align-items: flex-start; display: flex; gap: 16px; justify-content: space-between; }
+.modal-card-header h2 { color: var(--text); font-size: 19px; margin: 5px 0 0; }
+.modal-card .eyebrow { color: var(--brand-green); font-size: 10px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.btn-icon { background: var(--surface-alt-bg); border: 0; border-radius: 50%; color: var(--text-muted); cursor: pointer; font-size: 20px; height: 30px; line-height: 20px; width: 30px; }
+.modal-field { color: var(--text-dim); display: grid; font-size: 12px; font-weight: 700; gap: 5px; margin-top: 18px; }
+.modal-field textarea { background: var(--surface-bg); border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text); font: inherit; min-height: 110px; padding: 10px; resize: vertical; }
+.modal-actions { border-top: 1px solid var(--border-soft); display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; padding-top: 14px; }
+@media (max-width: 760px) { .form-grid { grid-template-columns: 1fr; } .form-grid-wide { grid-column: auto; } }
+@media (max-width: 600px) { .form-grid-segment { align-items: stretch; grid-template-columns: 1fr; } .modal-overlay { padding: 20px 10px; } .modal-card { padding: 18px; } }
 textarea.compose { width: 100%; min-height: 56px; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 8px; font-size: 13px; font-family: inherit; margin-bottom: 12px; background: var(--surface-bg); color: var(--text); }
 .field-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
 .field-grid.single { grid-template-columns: 1fr; }
@@ -678,7 +673,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 .service-operations-header h2 { font-size: 21px; margin: 3px 0 5px; }
 .service-operations-header p { color: var(--text-muted); line-height: 1.5; margin: 0; max-width: 760px; }
-.service-operations-cta { flex-shrink: 0; white-space: nowrap; }
 .service-operations-tabs,
 .service-risk-quality-tabs {
   align-items: center;
@@ -773,7 +767,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .service-operations-header,
   .service-operations-overview-head,
   .service-risk-quality-head { flex-direction: column; }
-  .service-operations-cta { align-self: flex-start; }
   .service-operations-card-grid { grid-template-columns: 1fr; }
   .service-operations-tabs { overflow-x: auto; flex-wrap: nowrap; }
   .service-operations-tabs a { white-space: nowrap; }

@@ -1,6 +1,28 @@
 import { useCallback, useEffect, useState } from "react";
-import type { ActiveMessage, SubscribersSummary, SuggestedAlert } from "@mvta/shared";
+import { ApiError, type ActiveMessage, type SubscribersSummary, type SuggestedAlert } from "@mvta/shared";
 import { api } from "../config.js";
+
+export type OperationalDataState = "loading" | "live" | "stale" | "unavailable" | "authentication-required";
+
+export function dataStateLabel(state: OperationalDataState): string {
+  return {
+    loading: "Loading live data",
+    live: "Live data connected",
+    stale: "Stale data",
+    unavailable: "Data unavailable",
+    "authentication-required": "Authentication required",
+  }[state];
+}
+
+function errorState(error: unknown, previous: OperationalDataState): OperationalDataState {
+  if (error instanceof ApiError && error.status === 401) return "authentication-required";
+  return previous === "live" || previous === "stale" ? "stale" : "unavailable";
+}
+
+function overallState(states: OperationalDataState[]): OperationalDataState {
+  const priority: OperationalDataState[] = ["authentication-required", "unavailable", "stale", "loading", "live"];
+  return priority.find((state) => states.includes(state)) ?? "loading";
+}
 
 export interface LiveStats {
   activeCount: number | null;
@@ -10,6 +32,9 @@ export interface LiveStats {
   subscribers: SubscribersSummary | null;
   syncedAt: Date | null;
   ok: boolean;
+  activeState: OperationalDataState;
+  pendingState: OperationalDataState;
+  overallState: OperationalDataState;
   refresh: () => void;
 }
 
@@ -25,6 +50,8 @@ export function useLiveStats(): LiveStats {
   const [subscribers, setSubscribers] = useState<SubscribersSummary | null>(null);
   const [syncedAt, setSyncedAt] = useState<Date | null>(null);
   const [ok, setOk] = useState(false);
+  const [activeState, setActiveState] = useState<OperationalDataState>("loading");
+  const [pendingState, setPendingState] = useState<OperationalDataState>("loading");
   const [tick, setTick] = useState(0);
 
   const refresh = useCallback(() => setTick((t) => t + 1), []);
@@ -41,13 +68,26 @@ export function useLiveStats(): LiveStats {
         setLastMessageId(d.messages[0]?.message_id ?? null);
         setSyncedAt(new Date());
         setOk(true);
+        setActiveState("live");
       })
-      .catch(() => alive && setOk(false));
+      .catch((error) => {
+        if (!alive) return;
+        setOk(false);
+        setActiveState((previous) => errorState(error, previous));
+      });
 
     api
       .getSuggestedAlerts("pending")
-      .then((d) => alive && setPending(d.alerts))
-      .catch(() => alive && setPending(null));
+      .then((d) => {
+        if (!alive) return;
+        setPending(d.alerts);
+        setPendingState("live");
+      })
+      .catch((error) => {
+        if (!alive) return;
+        setPending(null);
+        setPendingState((previous) => errorState(error, previous));
+      });
 
     api
       .getSubscribersSummary()
@@ -59,5 +99,17 @@ export function useLiveStats(): LiveStats {
     };
   }, [tick]);
 
-  return { activeCount, activeMessages, lastMessageId, pending, subscribers, syncedAt, ok, refresh };
+  return {
+    activeCount,
+    activeMessages,
+    lastMessageId,
+    pending,
+    subscribers,
+    syncedAt,
+    ok,
+    activeState,
+    pendingState,
+    overallState: overallState([activeState, pendingState]),
+    refresh,
+  };
 }

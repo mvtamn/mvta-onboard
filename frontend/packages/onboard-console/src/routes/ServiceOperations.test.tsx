@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { ServiceOperations } from "./ServiceOperations.js";
@@ -27,6 +27,9 @@ function stats(overrides: Partial<LiveStats> = {}): LiveStats {
     subscribers: null,
     syncedAt: new Date("2026-08-12T12:00:00Z"),
     ok: true,
+    activeState: "live",
+    pendingState: "live",
+    overallState: "live",
     refresh: vi.fn(),
     ...overrides,
   };
@@ -53,21 +56,21 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("Service Operations", () => {
-  it("shows the expanded-coverage note and the agreed workflows", () => {
+  it("shows the communications workspace and the agreed workflows", () => {
     renderShell();
 
     expect(screen.getByRole("heading", { name: "Service Operations" })).toBeInTheDocument();
-    expect(screen.getByText(/combines service-alert communications and operational monitoring/i)).toBeInTheDocument();
+    expect(screen.getByText("Communications workspace")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Overview" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Active Service Alerts" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Service Risk & Quality" })).toBeInTheDocument();
   });
 
-  it("keeps the New service alert action available from the overview", async () => {
+  it("keeps the Compose service alert action available from the overview", async () => {
     renderShell();
 
     const user = userEvent.setup();
-    await user.click(within(screen.getByRole("banner")).getByRole("link", { name: "New service alert" }));
+    await user.click(screen.getByRole("link", { name: "Compose service alert" }));
     expect(screen.getByText("Compose destination")).toBeInTheDocument();
   });
 
@@ -85,5 +88,12 @@ describe("Service Operations", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("tab", { name: "On-Demand" }));
     expect(screen.getByRole("tabpanel", { name: "On-Demand service quality" })).toHaveTextContent("On-Demand view");
+  });
+
+  it("labels the workspace as communications and uses one compose action", () => {
+    renderShell();
+
+    expect(screen.getByText("Communications workspace")).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Compose service alert" })).toHaveLength(1);
   });
 });

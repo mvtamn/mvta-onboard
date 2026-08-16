@@ -675,7 +675,7 @@ function DepartureRiskDetail({
 
       <div className="risk-actions">
         <button className="btn-primary" disabled={preparing} onClick={onPrepare}>
-          {preparing ? "Preparing…" : isPreview ? "Preview alert draft" : risk.suggestedAlertId ? "Review alert" : "Prepare alert"}
+          {preparing ? "Preparing…" : isPreview ? "Preview Suggested Alert" : risk.suggestedAlertId ? "Review Suggested Alert" : "Prepare Suggested Alert"}
         </button>
         <Link
           className="btn-sm"

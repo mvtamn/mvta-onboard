@@ -3,7 +3,7 @@ import { NavLink } from "react-router-dom";
 import type { ActiveMessage, SuggestedAlert } from "@mvta/shared";
 import { MessagesTable } from "../components/MessagesTable.js";
 import { Sidebar } from "../components/Sidebar.js";
-import type { LiveStats } from "../hooks/useLiveStats.js";
+import { dataStateLabel, type LiveStats, type OperationalDataState } from "../hooks/useLiveStats.js";
 
 // Dashboard: triage-first metrics and next actions, followed by published
 // communications. Compose remains available from its dedicated route. `stats` comes from App.tsx's single useLiveStats()
@@ -29,14 +29,17 @@ export function Dashboard({ stats, onChanged }: { stats: LiveStats; onChanged?: 
     return knownActiveMessages.filter((message) => new Date(message.expires_at).getTime() <= cutoff).length;
   }, [knownActiveMessages, now]);
 
-  const triageItems = useMemo(() => buildTriageItems(knownActiveMessages, stats.pending, now), [knownActiveMessages, stats.pending, now]);
+  const triageItems = useMemo(
+    () => buildTriageItems(knownActiveMessages, stats.pending, stats.activeState, stats.pendingState, now),
+    [knownActiveMessages, stats.pending, stats.activeState, stats.pendingState, now],
+  );
 
   return (
     <div className="content-layout">
       <div className="content-primary">
         <div className="dashboard-freshness" role="status">
-          <span className={stats.ok ? "live-dot" : "live-dot is-offline"} />
-          <strong>{stats.ok ? "Live data connected" : "Live data unavailable"}</strong>
+          <span className={`live-dot ${stats.overallState}`} />
+          <strong>{dataStateLabel(stats.overallState)}</strong>
           <span>{stats.syncedAt ? `Updated ${stats.syncedAt.toLocaleTimeString()}` : "Retrying connection"}</span>
           <NavLink to="/service-operations/suggested">{stats.pending?.length ?? "—"} suggested alerts</NavLink>
         </div>
@@ -45,7 +48,7 @@ export function Dashboard({ stats, onChanged }: { stats: LiveStats; onChanged?: 
           <DashboardMetric label="Active rider alerts" value={knownActiveMessages?.length ?? stats.activeCount ?? "—"} />
           <DashboardMetric label="Suggested alerts" value={stats.pending?.length ?? "—"} tone="attention" />
           <DashboardMetric label="Expiring within 1 hour" value={expiringSoon ?? "—"} tone="attention" />
-          <DashboardMetric label="Feed state" value={stats.ok ? "Live" : "Offline"} tone={stats.ok ? "healthy" : "attention"} />
+          <DashboardMetric label="Feed state" value={dataStateLabel(stats.overallState)} tone={stats.overallState === "live" ? "healthy" : "attention"} />
         </div>
 
         <div className="dashboard-triage-grid">
@@ -53,9 +56,9 @@ export function Dashboard({ stats, onChanged }: { stats: LiveStats; onChanged?: 
             <div className="dashboard-section-heading">
               <div>
                 <span className="dashboard-eyebrow">Priority queue</span>
-                <h2 id="dashboard-queue-title">Next actions</h2>
+                <h2 id="dashboard-queue-title">Triage exceptions</h2>
               </div>
-              <NavLink className="btn-sm" to="/service-operations/suggested">Open queue</NavLink>
+              <NavLink className="btn-sm" to="/service-operations/suggested">Open Suggested Alerts</NavLink>
             </div>
             {triageItems.length > 0 ? (
               <div className="dashboard-queue-list">
@@ -71,7 +74,7 @@ export function Dashboard({ stats, onChanged }: { stats: LiveStats; onChanged?: 
                 ))}
               </div>
             ) : (
-              <p className="empty-note">No priority actions right now.</p>
+              <p className="empty-note">No triage exceptions.</p>
             )}
           </section>
 
@@ -107,7 +110,13 @@ function DashboardMetric({ label, value, tone = "" }: { label: string; value: st
 
 type TriageItem = { id: string; title: string; meta: string; action: string; to: string; tone: "critical" | "attention" | "info" };
 
-function buildTriageItems(activeMessages: ActiveMessage[] | null, pending: SuggestedAlert[] | null, now = Date.now()): TriageItem[] {
+function buildTriageItems(
+  activeMessages: ActiveMessage[] | null,
+  pending: SuggestedAlert[] | null,
+  activeState: OperationalDataState,
+  pendingState: OperationalDataState,
+  now = Date.now(),
+): TriageItem[] {
   const items: Array<TriageItem & { priority: number }> = [];
   const cutoff = now + 60 * 60 * 1000;
 
@@ -135,6 +144,29 @@ function buildTriageItems(activeMessages: ActiveMessage[] | null, pending: Sugge
       to: "/service-operations/suggested",
       tone: "info",
       priority: 1_000_000 + ({ critical: 0, major: 10_000, minor: 20_000, informational: 30_000 }[alert.severity] ?? 40_000),
+    });
+  }
+
+  if (activeState !== "live" && activeState !== "loading") {
+    items.push({
+      id: "active-data-state",
+      title: `Service Alert feed: ${dataStateLabel(activeState)}`,
+      meta: "Review Active Service Alerts before relying on current counts",
+      action: "Review feed",
+      to: "/service-operations/active",
+      tone: activeState === "stale" ? "attention" : "critical",
+      priority: 500,
+    });
+  }
+  if (pendingState !== "live" && pendingState !== "loading") {
+    items.push({
+      id: "suggested-data-state",
+      title: `Suggested Alert feed: ${dataStateLabel(pendingState)}`,
+      meta: "Review Suggested Alerts before relying on the current queue",
+      action: "Review feed",
+      to: "/service-operations/suggested",
+      tone: pendingState === "stale" ? "attention" : "critical",
+      priority: 600,
     });
   }
 

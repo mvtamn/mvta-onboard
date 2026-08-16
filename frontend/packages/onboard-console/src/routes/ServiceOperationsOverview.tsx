@@ -38,11 +38,11 @@ export function ServiceOperationsOverview({ stats }: { stats: LiveStats }) {
     <section className="service-operations-overview" aria-labelledby="service-operations-overview-title">
       <div className="service-operations-overview-head">
         <div>
-          <span className="risk-eyebrow">Start here</span>
-          <h3 id="service-operations-overview-title">Operational work at a glance</h3>
-          <p>Choose the workflow that matches the service condition or communication task in front of you.</p>
+          <span className="risk-eyebrow">Communications at a glance</span>
+          <h3 id="service-operations-overview-title">Service Alert work</h3>
+          <p>Choose the communication workflow that matches the task in front of you.</p>
         </div>
-        <NavLink className="btn-primary" to="compose">New service alert</NavLink>
+        <NavLink className="btn-primary" to="compose">Compose service alert</NavLink>
       </div>
 
       <div className="service-operations-card-grid">

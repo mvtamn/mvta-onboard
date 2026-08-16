@@ -370,10 +370,10 @@ function OnDemandDetail({
           {preparing
             ? "Preparing…"
             : isPreview
-              ? "Preview customer update"
+              ? "Preview Suggested Alert"
               : risk.suggestedAlertId
-                ? "Review customer update"
-                : "Prepare customer update"}
+                ? "Review Suggested Alert"
+                : "Prepare Suggested Alert"}
         </button>
         <Link
           className="btn-sm"

@@ -15,17 +15,10 @@ export function ServiceOperations() {
     <div className="service-operations">
       <header className="service-operations-header">
         <div>
-          <span className="risk-eyebrow">Expanded operational coverage</span>
+          <span className="risk-eyebrow">Communications workspace</span>
           <h2>Service Operations</h2>
-          <p>
-            Service Operations combines service-alert communications and operational monitoring as MVTA’s
-            coverage expands. Use the tabs to compose alerts, review active communications, or investigate
-            fixed-route and on-demand service risk.
-          </p>
+          <p>Prepare, review, publish, and manage rider-facing Service Alerts.</p>
         </div>
-        <NavLink className="btn-primary service-operations-cta" to="compose">
-          New service alert
-        </NavLink>
       </header>
 
       <nav className="service-operations-tabs" aria-label="Service Operations">

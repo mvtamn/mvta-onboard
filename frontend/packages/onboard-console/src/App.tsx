@@ -43,11 +43,8 @@ import { Changelog } from "./routes/Changelog.js";
 import { AdminLayout } from "./components/AdminLayout.js";
 import { AdminAccess, AdminEventAdministration, AdminGovernance, AdminIntegrations, AdminServiceConfiguration, AdminSubscribers } from "./routes/AdminModules.js";
 import { CHANGELOG_ENTRIES } from "./routes/changelogData.js";
-import {
-  FixedRouteRefreshProvider,
-  formatRefreshCountdown,
-  useFixedRouteRefresh,
-} from "./context/FixedRouteRefreshContext.js";
+import { FixedRouteRefreshProvider } from "./context/FixedRouteRefreshContext.js";
+import { dataStateLabel } from "./hooks/useLiveStats.js";
 
 const ADMIN = ["OCC.Admin"] as const;
 const ACCESS_MANAGEMENT = import.meta.env.VITE_ACCESS_ADMIN_FALLBACK === "true"
@@ -115,19 +112,6 @@ function initialsOf(name: string): string {
   if (parts.length === 0) return "?";
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
-
-function FixedRouteRefreshIndicator() {
-  const { secondsLeft, refreshing } = useFixedRouteRefresh();
-  return (
-    <span
-      className="fixed-route-refresh-indicator"
-      title="Service Risk & Quality continues refreshing while you navigate the console"
-    >
-      <span className={refreshing ? "refresh-pulse" : ""} />
-      Service risk {refreshing ? "refreshing…" : `refresh ${formatRefreshCountdown(secondsLeft)}`}
-    </span>
-  );
 }
 
 function ChangelogPopover({ onClose }: { onClose: () => void }) {
@@ -310,8 +294,10 @@ export function App() {
             </div>
           </div>
           <div className="topbar-actions">
-            <FixedRouteRefreshIndicator />
-            <span className="tr-text" title="On managed devices, this is the target sign-in duration. Conditional Access, risk, revocation, or browser state may require you to sign in sooner.">Sign-in target: 12 hours</span>
+            <span className={`topbar-system-status ${stats.overallState}`} role="status">
+              <span className="live-dot" />
+              {dataStateLabel(stats.overallState)}
+            </span>
             <span className="pill-user">
               <span className="avatar">{initialsOf(account.name ?? account.username)}</span>
               {account.name ?? account.username} · {roles.map(roleLabel).join(", ") || "No assigned access"}

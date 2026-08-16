@@ -1,10 +1,8 @@
-import type { LiveStats } from "../hooks/useLiveStats.js";
+import { dataStateLabel, type LiveStats } from "../hooks/useLiveStats.js";
 
 // Data-health context for the Dashboard's right rail. Each feed status is
 // derived from the live endpoints already used by the dashboard.
 export function Sidebar({ stats }: { stats: LiveStats }) {
-  const gtfsHealthy = stats.ok;
-  const mvtaConnectHealthy = stats.pending !== null;
   const fixedRoutePending = stats.pending?.filter((alert) => alert.source === "gtfs_rt").length ?? null;
   const onDemandPending = stats.pending?.filter((alert) => alert.source === "zona").length ?? null;
   const syncLabel = stats.syncedAt
@@ -23,14 +21,19 @@ export function Sidebar({ stats }: { stats: LiveStats }) {
         </button>
       </div>
 
+      <div className={`data-health-summary ${stats.overallState}`} role="status">
+        <span className="live-dot" />
+        <strong>{dataStateLabel(stats.overallState)}</strong>
+      </div>
+
       <div className="data-health-status" aria-live="polite">
-        <div className={`data-health-feed${gtfsHealthy ? "" : " is-unavailable"}`}>
+        <div className={`data-health-feed ${stats.activeState}`}>
           <span className="live-dot" />
-          GTFS-Realtime · {gtfsHealthy ? "healthy" : "unavailable"}
+          GTFS-Realtime · {dataStateLabel(stats.activeState)}
         </div>
-        <div className={`data-health-feed${mvtaConnectHealthy ? "" : " is-unavailable"}`}>
+        <div className={`data-health-feed ${stats.pendingState}`}>
           <span className="live-dot" />
-          MVTA Connect · {mvtaConnectHealthy ? "healthy" : "unavailable"}
+          MVTA Connect · {dataStateLabel(stats.pendingState)}
         </div>
       </div>
 
