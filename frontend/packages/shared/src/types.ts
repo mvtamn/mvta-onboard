@@ -688,6 +688,9 @@ export interface Detour extends DetourReportFields {
   communication_status?: "published" | "draft" | "needs_communication" | "not_available";
   communications_published?: number;
   communications_draft?: number;
+  review_status?: "current" | "needs_review";
+  review_reason?: string | null;
+  closure_reason?: string | null;
   segments: DetourSegment[];
 }
 

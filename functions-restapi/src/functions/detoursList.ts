@@ -64,6 +64,9 @@ interface DetourRow {
   action_instructions?: string | null;
   communications_published?: number;
   communications_draft?: number;
+  review_status?: "current" | "needs_review";
+  review_reason?: string | null;
+  closure_reason?: string | null;
 }
 
 interface SegmentRow {
@@ -100,7 +103,7 @@ app.http("detoursList", {
       // a missing column fails even inside a CASE. Pre-migration the field
       // comes back undefined and the console falls back to hiding it, same
       // graceful-degradation pattern as every other un-run migration here.
-      const schemaCheck = await pool.request().query<{ has_column: number; reporting_ready: number; workflow_ready: number; avail_entry_ready: number; operational_fields: number; communications_ready: number }>(`
+      const schemaCheck = await pool.request().query<{ has_column: number; reporting_ready: number; workflow_ready: number; avail_entry_ready: number; operational_fields: number; communications_ready: number; review_ready: number }>(`
         SELECT
           CASE WHEN COL_LENGTH('dbo.Detours', 'internal_number') IS NULL
                THEN 0 ELSE 1 END AS has_column,
@@ -115,6 +118,7 @@ app.http("detoursList", {
                THEN 0 ELSE 1 END AS avail_entry_ready
           ,CASE WHEN COL_LENGTH('dbo.Detours', 'notification_audiences') IS NULL THEN 0 ELSE 1 END AS operational_fields
           ,CASE WHEN OBJECT_ID('dbo.DetourCommunications', 'U') IS NULL THEN 0 ELSE 1 END AS communications_ready
+          ,CASE WHEN COL_LENGTH('dbo.Detours', 'review_status') IS NULL THEN 0 ELSE 1 END AS review_ready
       `);
       const hasInternalNumber = schemaCheck.recordset[0]?.has_column === 1;
       const hasReportingFields = schemaCheck.recordset[0]?.reporting_ready === 1;
@@ -122,6 +126,7 @@ app.http("detoursList", {
       const hasAvailEntryFields = schemaCheck.recordset[0]?.avail_entry_ready === 1;
       const hasOperationalFields = schemaCheck.recordset[0]?.operational_fields === 1;
       const hasCommunications = schemaCheck.recordset[0]?.communications_ready === 1;
+      const hasReviewFields = schemaCheck.recordset[0]?.review_ready === 1;
 
       const REPORTING_COLUMNS = `
         reason_code, severity, reported_by, reported_at, approved_by, approved_at,
@@ -137,6 +142,7 @@ app.http("detoursList", {
                ${hasAvailEntryFields ? ", avail_entry_result, avail_entry_confirmed_by, avail_entry_confirmed_at" : ""}
                ${hasOperationalFields ? ", notification_audiences, notification_channels, action_instructions" : ""}
                ${hasCommunications ? ", (SELECT COUNT(*) FROM DetourCommunications c WHERE c.detour_id=Detours.id AND c.status='published') AS communications_published, (SELECT COUNT(*) FROM DetourCommunications c WHERE c.detour_id=Detours.id AND c.status='draft') AS communications_draft" : ""}
+               ${hasReviewFields ? ", review_status, review_reason, closure_reason" : ""}
         FROM Detours
         WHERE is_deleted = 0
         ORDER BY start_date DESC, created_at DESC
@@ -173,6 +179,7 @@ app.http("detoursList", {
         ...(hasAvailEntryFields ? { avail_entry_result: d.avail_entry_result, avail_entry_confirmed_by: d.avail_entry_confirmed_by, avail_entry_confirmed_at: d.avail_entry_confirmed_at } : {}),
         ...(hasOperationalFields ? { notification_audiences: d.notification_audiences, notification_channels: d.notification_channels } : {}),
         ...(hasCommunications ? { communications_published: d.communications_published ?? 0, communications_draft: d.communications_draft ?? 0, communication_status: (d.communications_published ?? 0) > 0 ? "published" : (d.communications_draft ?? 0) > 0 ? "draft" : "needs_communication" } : {}),
+        ...(hasReviewFields ? { review_status: d.review_status, review_reason: d.review_reason, closure_reason: d.closure_reason } : {}),
         readiness: hasWorkflowFields ? computeDetourReadiness(d.fulfillment_mode, d.lifecycle_state as any) : undefined,
         segments: segmentsByDetour.get(d.id) ?? [],
       }));

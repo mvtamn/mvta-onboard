@@ -58,6 +58,9 @@ app.http("detoursUpdate", {
              THEN 0 ELSE 1 END AS reporting_ready
     `);
     const reportingReady = schemaCheck.recordset[0]?.reporting_ready === 1;
+    const reviewSchema = await pool.request().query<{ ready: number }>("SELECT CASE WHEN COL_LENGTH('dbo.Detours', 'review_status') IS NULL THEN 0 ELSE 1 END AS ready");
+    const reviewReady = reviewSchema.recordset[0]?.ready === 1;
+    const materialChange = body.closure !== undefined || body.start_date !== undefined || body.end_date !== undefined || body.riders_directed !== undefined || body.segments !== undefined;
     if (!reportingReady) {
       context.warn(
         "Detours reporting columns not present (migration-025 not run) - any reason code, severity or reporting detail in this PATCH is being ignored.",
@@ -77,6 +80,10 @@ app.http("detoursUpdate", {
         "updated_by = @updated_by",
         "last_edited_manually = CASE WHEN source = 'avail' THEN 1 ELSE last_edited_manually END",
       ];
+      if (reviewReady && materialChange) {
+        sets.push("review_status = 'needs_review'", "review_reason = @review_reason");
+        updateReq.input("review_reason", sql.NVarChar(1000), "Material operational details changed; OCC review required before next steps");
+      }
       if (body.number !== undefined) {
         sets.push("number = @number");
         updateReq.input("number", sql.NVarChar, body.number);

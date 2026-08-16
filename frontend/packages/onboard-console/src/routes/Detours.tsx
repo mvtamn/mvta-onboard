@@ -343,6 +343,13 @@ export function Detours() {
     }
   }
 
+  async function closeDetour(d: Detour) {
+    const reason = window.prompt("Why is this detour being closed?");
+    if (!reason?.trim()) return;
+    try { await api.closeDetour(d.id, reason.trim()); load(); }
+    catch (err) { setLoadError(err instanceof ApiError ? err.message : "Could not close detour"); }
+  }
+
   function updateSegment(i: number, field: keyof DetourSegmentInput, value: string) {
     setForm((f) => {
       const segments = f.segments.slice();
@@ -584,6 +591,8 @@ export function Detours() {
                               <p><b>Next step:</b> {d.readiness === "ready_for_avail_entry" ? "Enter this detour in Avail" : d.readiness === "avail_conflict" ? "Resolve the Avail conflict" : d.readiness === "ready_for_manual_operations" ? "Ready for manual operations" : d.readiness === "needs_occ_review" ? "Needs OCC review" : "Closed"}</p>
                             ) : null}
                             {d.communication_status ? <p><b>Communications:</b> {d.communication_status.replace("_", " ")}</p> : null}
+                            {d.review_status === "needs_review" ? <p className="warn-note"><b>Needs OCC re-review:</b> {d.review_reason}</p> : null}
+                            {canWrite && d.lifecycle_state !== "closed" ? <p><button className="btn-sm" onClick={() => closeDetour(d)}>Close detour</button></p> : null}
                             {d.fulfillment_mode === "avail" && d.avail_entry_result ? (
                               <p><b>Avail entry:</b> {d.avail_entry_result.replace("_", " ")}
                                 {d.external_detour_id ? ` · ID ${d.external_detour_id}` : ""}

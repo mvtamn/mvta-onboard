@@ -535,6 +535,10 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<DetourHistoricalImportResult>(`/api/detours/historical-imports`, { method: "POST", body: JSON.stringify(input) }, true);
     },
 
+    closeDetour(id: string, reason: string) {
+      return request<{ id: string; lifecycle_state: DetourLifecycleState; closure_reason: string }>(`/api/detours/${id}/close`, { method: "POST", body: JSON.stringify({ reason }) }, true);
+    },
+
     deleteDetour(id: string) {
       return request<{ id: string; is_deleted: boolean }>(
         `/api/detours/${id}`,
