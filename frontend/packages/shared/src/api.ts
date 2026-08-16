@@ -505,6 +505,14 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       );
     },
 
+    changeDetourFulfillment(id: string, input: { fulfillment_mode: "fixed_route_manual"; reason: string }) {
+      return request<{ id: string; fulfillment_mode: string; lifecycle_state: DetourLifecycleState; readiness: string }>(
+        `/api/detours/${id}/fulfillment`,
+        { method: "POST", body: JSON.stringify(input) },
+        true,
+      );
+    },
+
     deleteDetour(id: string) {
       return request<{ id: string; is_deleted: boolean }>(
         `/api/detours/${id}`,

@@ -321,6 +321,7 @@ export const MAX_DETOUR_PERSON_LENGTH = 200;
 export const MAX_DETOUR_RESOLUTION_NOTES_LENGTH = 1000;
 export const VALID_DETOUR_SEVERITIES = ["minor", "moderate", "major"] as const;
 export const VALID_DETOUR_FULFILLMENT_MODES = ["avail", "fixed_route_manual", "mobility_manual"] as const;
+export const MAX_DETOUR_FULFILLMENT_CHANGE_REASON_LENGTH = 1000;
 export const VALID_DETOUR_LIFECYCLE_STATES = [
   "approved", "awaiting_fulfillment", "fulfilled", "fulfillment_failed", "closed",
 ] as const;
@@ -472,6 +473,21 @@ export function validateCreateDetour(body: UnknownBody): string[] {
   }
   errors.push(...validateDetourReport(body));
 
+  return errors;
+}
+
+// POST /detours/{id}/fulfillment - the only supported path change is the
+// explicit human fallback after Avail reports a conflict.
+export function validateDetourFulfillmentChange(body: UnknownBody): string[] {
+  const errors: string[] = [];
+  if (!VALID_DETOUR_FULFILLMENT_MODES.includes(body.fulfillment_mode as (typeof VALID_DETOUR_FULFILLMENT_MODES)[number])) {
+    errors.push(`fulfillment_mode must be one of: ${VALID_DETOUR_FULFILLMENT_MODES.join(", ")}`);
+  }
+  if (typeof body.reason !== "string" || body.reason.trim() === "") {
+    errors.push("reason is required and must be a non-empty string");
+  } else if (body.reason.length > MAX_DETOUR_FULFILLMENT_CHANGE_REASON_LENGTH) {
+    errors.push(`reason must be at most ${MAX_DETOUR_FULFILLMENT_CHANGE_REASON_LENGTH} characters`);
+  }
   return errors;
 }
 

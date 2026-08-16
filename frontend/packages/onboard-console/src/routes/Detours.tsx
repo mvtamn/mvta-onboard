@@ -332,6 +332,17 @@ export function Detours() {
     }
   }
 
+  async function useManualFallback(d: Detour) {
+    const reason = window.prompt("Why is this detour being fulfilled manually instead of in Avail?");
+    if (!reason?.trim()) return;
+    try {
+      await api.changeDetourFulfillment(d.id, { fulfillment_mode: "fixed_route_manual", reason: reason.trim() });
+      load();
+    } catch (err) {
+      setLoadError(err instanceof ApiError ? err.message : "Could not change fulfillment path");
+    }
+  }
+
   function updateSegment(i: number, field: keyof DetourSegmentInput, value: string) {
     setForm((f) => {
       const segments = f.segments.slice();
@@ -569,6 +580,9 @@ export function Detours() {
                             {d.lifecycle_state ? (
                               <p><b>Workflow:</b> {DETOUR_LIFECYCLE_LABELS[d.lifecycle_state]}</p>
                             ) : null}
+                            {d.readiness ? (
+                              <p><b>Next step:</b> {d.readiness === "ready_for_avail_entry" ? "Enter this detour in Avail" : d.readiness === "avail_conflict" ? "Resolve the Avail conflict" : d.readiness === "ready_for_manual_operations" ? "Ready for manual operations" : d.readiness === "needs_occ_review" ? "Needs OCC review" : "Closed"}</p>
+                            ) : null}
                             {d.fulfillment_mode === "avail" && d.avail_entry_result ? (
                               <p><b>Avail entry:</b> {d.avail_entry_result.replace("_", " ")}
                                 {d.external_detour_id ? ` · ID ${d.external_detour_id}` : ""}
@@ -578,6 +592,9 @@ export function Detours() {
                             {canWrite && d.fulfillment_mode === "avail" &&
                               (d.lifecycle_state === "awaiting_fulfillment" || d.lifecycle_state === "fulfillment_failed") ? (
                               <p><button className="btn-sm" onClick={() => recordAvailEntry(d)}>Record human Avail entry</button></p>
+                            ) : null}
+                            {canWrite && d.fulfillment_mode === "avail" && d.lifecycle_state === "fulfillment_failed" ? (
+                              <p><button className="btn-sm" onClick={() => useManualFallback(d)}>Use fixed-route manual exception</button></p>
                             ) : null}
                             {numberYearMismatch(d.internal_number, d.start_date) ? (
                               <p className="warn-note">

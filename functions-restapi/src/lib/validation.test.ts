@@ -22,6 +22,7 @@ import {
   validateReviewDetourIntake,
   validatePromoteDetourIntake,
   validateAvailEntryConfirmation,
+  validateDetourFulfillmentChange,
   MAX_DETOUR_RESOLUTION_NOTES_LENGTH,
   MAX_SUMMARY_LENGTH,
   MAX_CREATED_BY_LENGTH,
@@ -30,6 +31,11 @@ import {
   MAX_DETOUR_CLOSURE_LENGTH,
   validateRouteClassification,
 } from "./validation";
+
+test("manual fulfillment fallback requires a reason", () => {
+  assert.ok(validateDetourFulfillmentChange({ fulfillment_mode: "fixed_route_manual" }).some((error) => error.includes("reason")));
+  assert.deepStrictEqual(validateDetourFulfillmentChange({ fulfillment_mode: "fixed_route_manual", reason: "Avail conflict confirmed by OCC" }), []);
+});
 
 test("Avail entry confirmation requires an Avail id when entered", () => {
   assert.ok(validateAvailEntryConfirmation({ result: "entered" }).some((error) => error.includes("external_detour_id")));

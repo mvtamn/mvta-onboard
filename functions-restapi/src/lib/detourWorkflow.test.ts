@@ -5,6 +5,14 @@ import {
   canTransition,
   dateWindowsOverlap,
 } from "./detourWorkflow.js";
+import { computeDetourReadiness } from "./detourReadiness.js";
+
+test("readiness explains the next operational action", () => {
+  assert.equal(computeDetourReadiness("avail", "awaiting_fulfillment"), "ready_for_avail_entry");
+  assert.equal(computeDetourReadiness("avail", "fulfillment_failed"), "avail_conflict");
+  assert.equal(computeDetourReadiness("fixed_route_manual", "fulfilled"), "ready_for_manual_operations");
+  assert.equal(computeDetourReadiness("avail", "closed"), "closed");
+});
 
 test("Avail fulfillment moves through fulfillment states before closure", () => {
   assert.equal(canTransition("approved", "awaiting_fulfillment", "avail"), true);

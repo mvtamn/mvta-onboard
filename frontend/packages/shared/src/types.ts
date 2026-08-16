@@ -576,6 +576,9 @@ export type DetourStatus = "monitor" | "upcoming" | "active" | "recently_finishe
 export type DetourFulfillmentMode = "avail" | "fixed_route_manual" | "mobility_manual";
 export type DetourLifecycleState =
   | "approved" | "awaiting_fulfillment" | "fulfilled" | "fulfillment_failed" | "closed";
+export type DetourReadiness =
+  | "needs_occ_review" | "ready_for_avail_entry" | "avail_conflict"
+  | "ready_for_manual_operations" | "closed";
 
 export const DETOUR_LIFECYCLE_LABELS: Record<DetourLifecycleState, string> = {
   approved: "Approved",
@@ -673,6 +676,7 @@ export interface Detour extends DetourReportFields {
   avail_entry_result?: "entered" | "conflict" | "not_entered" | null;
   avail_entry_confirmed_by?: string | null;
   avail_entry_confirmed_at?: string | null;
+  readiness?: DetourReadiness;
   segments: DetourSegment[];
 }
 
