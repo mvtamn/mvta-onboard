@@ -24,6 +24,7 @@ import {
   validateAvailEntryConfirmation,
   validateDetourFulfillmentChange,
   validateDetourCommunication,
+  validateDetourHistoricalImport,
   MAX_DETOUR_RESOLUTION_NOTES_LENGTH,
   MAX_SUMMARY_LENGTH,
   MAX_CREATED_BY_LENGTH,
@@ -42,6 +43,11 @@ test("detour communication requires recipients before publication", () => {
   const draft = { audience: "operators", channel: "email", content: "Use the temporary stop." };
   assert.deepStrictEqual(validateDetourCommunication(draft), []);
   assert.ok(validateDetourCommunication(draft, true).some((error) => error.includes("recipients")));
+});
+
+test("historical detour import requires a source file and rows", () => {
+  assert.ok(validateDetourHistoricalImport({ rows: [], source_file: "legacy.csv" }).some((error) => error.includes("rows")));
+  assert.deepStrictEqual(validateDetourHistoricalImport({ source_file: "legacy.csv", rows: [{ closure: "Bridge closure", reference: "old-1" }] }), []);
 });
 
 test("Avail entry confirmation requires an Avail id when entered", () => {

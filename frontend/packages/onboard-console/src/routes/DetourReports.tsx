@@ -50,6 +50,7 @@ export function DetourReports() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filters, setFilters] = useState<DetourFilters>(EMPTY_FILTERS);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
 
   useEffect(() => {
     api
@@ -95,6 +96,18 @@ export function DetourReports() {
   function reasonLabelOf(code: string | null | undefined): string {
     if (!code) return "—";
     return reasonCodes.find((rc) => rc.code === code)?.label ?? code;
+  }
+
+  async function importLegacyFile(file: File) {
+    try {
+      const text = await file.text();
+      const rows = file.name.toLowerCase().endsWith(".json") ? JSON.parse(text) : text.trim().split(/\r?\n/).slice(1).map((line) => {
+        const values = line.split(",");
+        return { reference: values[0], closure: values[1], service_date: values[2], routes: values[3], communication_audience: values[4], communication_channel: values[5], communication_recipients: values[6], communication_content: values.slice(7).join(",") };
+      });
+      const result = await api.importHistoricalDetours({ source_file: file.name, rows: Array.isArray(rows) ? rows : rows.rows });
+      setImportMessage(`Imported ${result.imported_rows} historical rows. They remain historical evidence and do not become approvals.`);
+    } catch (err) { setImportMessage(err instanceof ApiError ? err.message : "Could not import the historical file"); }
   }
 
   return (
@@ -178,6 +191,12 @@ export function DetourReports() {
           <button className="btn-sm" disabled={visible.length === 0} onClick={exportCsv} style={{ marginLeft: "auto" }}>
             Download CSV
           </button>
+        </div>
+        <div className="subcard" style={{ marginBottom: 12 }}>
+          <b>Legacy spreadsheet history</b>
+          <p className="td-dim">Upload CSV or JSON rows to preserve historical tracking and communication evidence. Imported rows are never treated as current approvals.</p>
+          <input type="file" accept=".csv,.json" onChange={(e) => { const file = e.target.files?.[0]; if (file) void importLegacyFile(file); }} />
+          {importMessage ? <p className="td-dim">{importMessage}</p> : null}
         </div>
 
         {loadError ? <p className="error-text">{loadError}</p> : null}

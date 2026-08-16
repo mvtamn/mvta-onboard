@@ -501,6 +501,14 @@ export function validateDetourCommunication(body: UnknownBody, publishing = fals
   return errors;
 }
 
+export function validateDetourHistoricalImport(body: UnknownBody): string[] {
+  const errors: string[] = [];
+  if (!Array.isArray(body.rows) || body.rows.length === 0) errors.push("rows must be a non-empty array");
+  else if (body.rows.length > 5000) errors.push("rows must contain at most 5000 records per import");
+  if (typeof body.source_file !== "string" || body.source_file.trim() === "") errors.push("source_file is required");
+  return errors;
+}
+
 export function validateCreateDetourIntake(body: UnknownBody): string[] {
   const errors: string[] = [];
   if (typeof body.detection_source !== "string" || body.detection_source.trim() === "") {

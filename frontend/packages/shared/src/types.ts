@@ -586,6 +586,7 @@ export interface DetourCommunication {
   outcome: string | null; created_by: string; created_at: string;
   published_by: string | null; published_at: string | null;
 }
+export interface DetourHistoricalImportResult { import_batch_id: string; imported_rows: number; historical_only: true; }
 
 export const DETOUR_LIFECYCLE_LABELS: Record<DetourLifecycleState, string> = {
   approved: "Approved",

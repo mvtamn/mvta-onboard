@@ -69,6 +69,7 @@ import type {
   DetourFulfillmentMode,
   DetourLifecycleState,
   DetourCommunication,
+  DetourHistoricalImportResult,
   DetourWorkflowHistoryEntry,
   ContractorPerformanceStandard,
   ContractorRecord,
@@ -528,6 +529,10 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
 
     publishDetourCommunication(detourId: string, communicationId: string, outcome?: string) {
       return request<DetourCommunication>(`/api/detours/${detourId}/communications/${communicationId}/publish`, { method: "POST", body: JSON.stringify({ outcome }) }, true);
+    },
+
+    importHistoricalDetours(input: { source_file: string; rows: Array<Record<string, unknown>> }) {
+      return request<DetourHistoricalImportResult>(`/api/detours/historical-imports`, { method: "POST", body: JSON.stringify(input) }, true);
     },
 
     deleteDetour(id: string) {
