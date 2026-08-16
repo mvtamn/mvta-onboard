@@ -99,7 +99,13 @@
 .evmon-scope strong { color: var(--text); }
 .evmon-scope b { color: var(--brand-green); }
 .evmon-scope a { margin-left: auto; color: var(--brand-green); font-weight: 800; }
-.evmon-messaging { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 10px 12px; margin: -4px 0 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-bg); }
+.evmon-messaging { margin: -4px 0 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-bg); }
+.evmon-messaging summary { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 9px 12px; cursor: pointer; list-style-position: inside; }
+.evmon-messaging summary::marker { color: var(--brand-green); }
+.evmon-messaging summary strong { display: block; margin-top: 2px; color: var(--text); font-size: 14px; }
+.evmon-messaging-status { padding: 4px 8px; border-radius: 999px; color: var(--text-muted); background: var(--surface-alt-bg); font-size: 11px; font-weight: 800; }
+.evmon-messaging-status.is-on { color: var(--success-text); background: var(--success-bg); }
+.evmon-messaging-body { padding: 0 12px 10px; }
 .evmon-messaging h3 { margin: 3px 0 0; font-size: 14px; }
 .evmon-messaging p { max-width: 62ch; margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.45; }
 .evmon-messaging-control { display: grid; gap: 3px; min-width: 250px; padding: 7px 10px; border-radius: 8px; background: var(--surface-alt-bg); color: var(--text); font-size: 12px; line-height: 1.35; }
