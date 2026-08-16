@@ -23,6 +23,7 @@ import {
   validatePromoteDetourIntake,
   validateAvailEntryConfirmation,
   validateDetourFulfillmentChange,
+  validateDetourCommunication,
   MAX_DETOUR_RESOLUTION_NOTES_LENGTH,
   MAX_SUMMARY_LENGTH,
   MAX_CREATED_BY_LENGTH,
@@ -35,6 +36,12 @@ import {
 test("manual fulfillment fallback requires a reason", () => {
   assert.ok(validateDetourFulfillmentChange({ fulfillment_mode: "fixed_route_manual" }).some((error) => error.includes("reason")));
   assert.deepStrictEqual(validateDetourFulfillmentChange({ fulfillment_mode: "fixed_route_manual", reason: "Avail conflict confirmed by OCC" }), []);
+});
+
+test("detour communication requires recipients before publication", () => {
+  const draft = { audience: "operators", channel: "email", content: "Use the temporary stop." };
+  assert.deepStrictEqual(validateDetourCommunication(draft), []);
+  assert.ok(validateDetourCommunication(draft, true).some((error) => error.includes("recipients")));
 });
 
 test("Avail entry confirmation requires an Avail id when entered", () => {

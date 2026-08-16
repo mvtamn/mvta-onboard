@@ -491,6 +491,16 @@ export function validateDetourFulfillmentChange(body: UnknownBody): string[] {
   return errors;
 }
 
+export function validateDetourCommunication(body: UnknownBody, publishing = false): string[] {
+  const errors: string[] = [];
+  for (const field of ["audience", "channel", "content"] as const) {
+    if (typeof body[field] !== "string" || body[field].trim() === "") errors.push(`${field} is required and must be a non-empty string`);
+  }
+  if (typeof body.recipients !== "undefined" && body.recipients !== null && typeof body.recipients !== "string") errors.push("recipients must be a string if provided");
+  if (publishing && (typeof body.recipients !== "string" || body.recipients.trim() === "")) errors.push("recipients are required before publishing");
+  return errors;
+}
+
 export function validateCreateDetourIntake(body: UnknownBody): string[] {
   const errors: string[] = [];
   if (typeof body.detection_source !== "string" || body.detection_source.trim() === "") {

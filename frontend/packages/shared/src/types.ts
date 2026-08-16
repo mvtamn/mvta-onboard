@@ -579,6 +579,13 @@ export type DetourLifecycleState =
 export type DetourReadiness =
   | "needs_occ_review" | "ready_for_avail_entry" | "avail_conflict"
   | "ready_for_manual_operations" | "closed";
+export type DetourCommunicationStatus = "draft" | "published" | "failed";
+export interface DetourCommunication {
+  id: string; detour_id: string; audience: string; channel: string;
+  recipients: string | null; content: string; status: DetourCommunicationStatus;
+  outcome: string | null; created_by: string; created_at: string;
+  published_by: string | null; published_at: string | null;
+}
 
 export const DETOUR_LIFECYCLE_LABELS: Record<DetourLifecycleState, string> = {
   approved: "Approved",

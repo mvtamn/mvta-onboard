@@ -596,6 +596,7 @@ export function Detours() {
                             {canWrite && d.fulfillment_mode === "avail" && d.lifecycle_state === "fulfillment_failed" ? (
                               <p><button className="btn-sm" onClick={() => useManualFallback(d)}>Use fixed-route manual exception</button></p>
                             ) : null}
+                            <DetourCommunicationsSection detourId={d.id} canWrite={canWrite} />
                             {numberYearMismatch(d.internal_number, d.start_date) ? (
                               <p className="warn-note">
                                 This detour's internal reference was issued for{" "}
@@ -689,6 +690,43 @@ export function Detours() {
       </div>
     </>
   );
+}
+
+function DetourCommunicationsSection({ detourId, canWrite }: { detourId: string; canWrite: boolean }) {
+  const [communications, setCommunications] = useState<import("@mvta/shared").DetourCommunication[]>([]);
+  const [audience, setAudience] = useState("Operations");
+  const [channel, setChannel] = useState("email");
+  const [recipients, setRecipients] = useState("");
+  const [content, setContent] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const load = () => api.getDetourCommunications(detourId).then((r) => setCommunications(r.communications)).catch(() => setError("Could not load communications"));
+  useEffect(() => { void load(); }, [detourId]);
+  async function save() {
+    if (!content.trim()) return;
+    try {
+      await api.createDetourCommunication(detourId, { audience, channel, recipients: recipients || null, content });
+      setContent(""); setRecipients(""); await load();
+    } catch (err) { setError(err instanceof ApiError ? err.message : "Could not save communication"); }
+  }
+  async function publish(id: string) {
+    try { await api.publishDetourCommunication(detourId, id); await load(); }
+    catch (err) { setError(err instanceof ApiError ? err.message : "Could not publish communication"); }
+  }
+  return <div className="subcard" style={{ marginTop: "8px" }}>
+    <b>Communications</b>{error ? <p className="error-text">{error}</p> : null}
+    {communications.map((communication) => <p key={communication.id}>
+      <b>{communication.audience} · {communication.channel}:</b> {communication.status}
+      {communication.recipients ? ` · ${communication.recipients}` : ""}
+      {canWrite && communication.status === "draft" ? <button className="btn-sm" onClick={() => publish(communication.id)}>Publish</button> : null}
+    </p>)}
+    {canWrite ? <div className="form-grid">
+      <label>Audience<input value={audience} onChange={(e) => setAudience(e.target.value)} /></label>
+      <label>Channel<input value={channel} onChange={(e) => setChannel(e.target.value)} /></label>
+      <label>Recipients<input value={recipients} onChange={(e) => setRecipients(e.target.value)} placeholder="Distribution list or team" /></label>
+      <label>Message<textarea value={content} onChange={(e) => setContent(e.target.value)} /></label>
+      <button className="btn-sm" onClick={save}>Save communication draft</button>
+    </div> : null}
+  </div>;
 }
 
 // Images upload directly to Blob Storage via a short-lived SAS URL -
