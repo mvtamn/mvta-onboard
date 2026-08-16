@@ -1,5 +1,5 @@
 .evmon { color: var(--text); max-width: 1500px; margin: 0 auto; }
-.evmon-summary { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 18px; }
+.evmon-summary { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 12px; }
 .evmon-summary h2 { margin: 5px 0 4px; font-size: 25px; letter-spacing: -.3px; }
 .evmon-summary p { margin: 0; color: var(--text-muted); font-size: 13px; }
 .evmon-eyebrow { color: var(--success-text); font-size: 11px; font-weight: 800; letter-spacing: .7px; text-transform: uppercase; }
@@ -78,13 +78,13 @@
 .evmon-empty { padding: 28px; text-align: center; color: var(--text-muted); }
 .evmon-empty[role="status"] { color: var(--text); }
 .evmon-error-copy { color: #8a2e2e; }
-.evmon-health { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 9px 12px; margin-bottom: 18px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-bg); color: var(--text-muted); font-size: 12px; line-height: 1.4; }
+.evmon-health { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 8px 12px; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-bg); color: var(--text-muted); font-size: 12px; line-height: 1.4; }
 .evmon-health strong { color: var(--text); }
 .evmon-health b { font-weight: 800; }
 .evmon-health b.is-healthy { color: var(--success-text); }
 .evmon-health b.is-warning { color: #765b00; }
 .evmon-health b.is-unavailable { color: #8a2e2e; }
-.evmon-context { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px 18px; padding: 10px 12px; margin-bottom: 18px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-bg); color: var(--text-muted); font-size: 12px; }
+.evmon-context { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px 18px; padding: 10px 12px; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-bg); color: var(--text-muted); font-size: 12px; }
 .evmon-context label { display: flex; align-items: center; gap: 6px; }
 .evmon-context label > span { color: var(--text); font-weight: 800; }
 .evmon-context select { min-width: 230px; height: 31px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface-alt-bg); font: inherit; font-size: 12px; }
@@ -95,14 +95,14 @@
 .evmon-data-state-warning { color: #765b00; background: #fff8d9; }
 .evmon-data-state-error { color: #8a2e2e; background: #fff0f0; }
 .evmon-data-state-info { color: var(--text-muted); background: var(--surface-alt-bg); }
-.evmon-scope { display: flex; align-items: center; flex-wrap: wrap; gap: 7px 15px; padding: 9px 12px; margin: -8px 0 18px; border-bottom: 1px solid var(--border); color: var(--text-muted); font-size: 11px; }
+.evmon-scope { display: flex; align-items: center; flex-wrap: wrap; gap: 7px 15px; padding: 7px 12px; margin: -4px 0 10px; border-bottom: 1px solid var(--border); color: var(--text-muted); font-size: 11px; }
 .evmon-scope strong { color: var(--text); }
 .evmon-scope b { color: var(--brand-green); }
 .evmon-scope a { margin-left: auto; color: var(--brand-green); font-weight: 800; }
-.evmon-messaging { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 16px; margin: -8px 0 18px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-bg); }
-.evmon-messaging h3 { margin: 3px 0 3px; font-size: 15px; }
+.evmon-messaging { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 10px 12px; margin: -4px 0 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-bg); }
+.evmon-messaging h3 { margin: 3px 0 0; font-size: 14px; }
 .evmon-messaging p { max-width: 62ch; margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.45; }
-.evmon-messaging-control { display: grid; gap: 5px; min-width: 275px; padding: 10px 12px; border-radius: 8px; background: var(--surface-alt-bg); color: var(--text); font-size: 12px; line-height: 1.4; }
+.evmon-messaging-control { display: grid; gap: 3px; min-width: 250px; padding: 7px 10px; border-radius: 8px; background: var(--surface-alt-bg); color: var(--text); font-size: 12px; line-height: 1.35; }
 .evmon-messaging-control label { display: flex; align-items: center; gap: 6px; color: var(--text); }
 .evmon-messaging-control small { color: var(--text); font-size: 11.5px; }
 .evmon-messaging-state { min-width: 275px; color: var(--text); font-size: 12px; line-height: 1.4; }

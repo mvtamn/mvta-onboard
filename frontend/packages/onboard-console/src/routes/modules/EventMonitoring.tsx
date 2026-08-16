@@ -5,7 +5,6 @@ import "azure-maps-control/dist/atlas.min.css";
 import { ApiError, type Event, type EventGeofence, type EventLocation, type EventOperationalMessaging, type EventServicePlan, type EventVehicleAssignment, type EventVehiclePosition, type EventGeofenceCrossing, type EventGeofenceNotification, type EventAuditEntry, type EventMonitoringHealth } from "@mvta/shared";
 import { api } from "../../config.js";
 import { useEventWorkspace } from "../../context/EventWorkspaceContext.js";
-import { EventWorkspaceNav } from "../../components/EventWorkspaceNav.js";
 import { useAuth } from "../../auth/AuthContext.js";
 import "./eventMonitoring.css";
 import { activePlansMissingPublishedScope, defaultMonitoringEventId, defaultMonitoringServicePlanId, eventVehiclePositionQuery } from "./eventMonitoringState.js";
@@ -279,7 +278,9 @@ export function EventMonitoring() {
             ? { tone: "info", title: "Connecting to Event AVL data…", action: null }
           : degradedComponents.length > 0
             ? { tone: "warning", title: "Event AVL is degraded.", action: `Vehicle positions remain visible; ${degradedComponents.map((component) => component.component.replaceAll("_", " ")).join(", ")} cannot support every monitoring claim or action.` }
-            : { tone: "success", title: vehicles.length ? "Event AVL data is flowing." : "No active vehicles are reporting.", action: vehicles.length ? null : "No active vehicles matched this Event operating context." };
+            : vehicles.length
+              ? { tone: "success", title: "Event AVL data is flowing.", action: null }
+              : { tone: "warning", title: "No active vehicles are reporting.", action: "No active vehicles matched this Event operating context." };
 
   const eventQueue = notifications.filter((notification) => ["pending", "acknowledged", "failed"].includes(notification.status));
   const eventHistory = notifications.filter((notification) => ["sent", "dismissed", "expired"].includes(notification.status));
@@ -298,13 +299,10 @@ export function EventMonitoring() {
         </div>
       </div>
 
-      <EventWorkspaceNav eventName={selectedEvent?.name} planName={selectedPlan?.name} planStatus={selectedPlan?.status} activeStage="monitor" />
-
       <div className="evmon-context" aria-label="Event operating context">
         <label><span>Event context</span><select value={selectedEventId} onChange={(event) => { selectEvent(event.target.value); setRouteFilter("all"); setVehicles(null); }}><option value="">Select Event</option>{events.map((event) => <option key={event.id} value={event.id}>{event.name}</option>)}</select></label>
         <label><span>Operating period</span><select value={selectedPlanId} onChange={(event) => { selectServicePlan(event.target.value); setRouteFilter("all"); setVehicles(null); }} disabled={!selectedEventId}><option value="">All active periods</option>{activePlans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}</select></label>
         <span>{selectedEvent ? `${selectedPlans.length} operating period${selectedPlans.length === 1 ? "" : "s"}` : "No Event selected"}</span>
-          <label><input type="checkbox" checked={showUnassigned} onChange={(event) => setShowUnassigned(event.target.checked)} /> Show unassigned vehicles</label>
       </div>
 
       {sessionExpired ? <div className="evmon-blocking-state evmon-blocking-state-error" role="alert">
@@ -313,7 +311,7 @@ export function EventMonitoring() {
       </div> : !hasOperatingContext ? <div className="evmon-setup-state" role="status">
         <div><strong>Select an Event to begin monitoring</strong><p>Choose an Event above to reveal its active operating periods, live vehicles, alerts, and managed scope.</p></div>
         <Link className="btn-sm" to="/event-planning">Open Event Planning</Link>
-      </div> : <div className={`evmon-data-state evmon-data-state-${dataState.tone}`} role="status">
+      </div> : dataState.tone !== "success" && <div className={`evmon-data-state evmon-data-state-${dataState.tone}`} role="status">
         <strong>{dataState.title}</strong>
         {dataState.action && <span>{dataState.action}</span>}
         {dataState.tone === "error" && <button className="btn-sm" onClick={() => void load()}>Try again</button>}
@@ -341,7 +339,7 @@ export function EventMonitoring() {
       </div>
 
       <section className="evmon-messaging" aria-label="Operational event messaging">
-        <div><span className="evmon-eyebrow">Operational control</span><h3>Event geofence messaging</h3><p>Planning defines the standard message type. This control decides whether eligible messages from the selected active operating period are sent to Teams.</p></div>
+        <div><span className="evmon-eyebrow">Teams delivery</span><h3>Automatic event messages</h3></div>
         {!selectedPlanId ? <div className="evmon-messaging-state">Select one active operating period to control Teams delivery.</div> : messagingError ? <div className="evmon-messaging-state evmon-messaging-error" role="alert">{messagingError}</div> : messagingControl && <div className="evmon-messaging-control"><label><input type="checkbox" checked={messagingControl.automatic_teams_enabled} disabled={!canManageEventMessaging || !messagingControl.teams_configured || notificationActionsBlocked} onChange={(event) => void updateMessaging(event.target.checked)} /> <strong>{messagingControl.automatic_teams_enabled ? "Automatic Teams delivery is ON" : "Queue messages in Event AVL only"}</strong></label><span>Destination: {messagingControl.teams_configured ? messagingControl.teams_destination : "Teams webhook is not configured"}</span>{notificationActionsBlocked && <small>Teams delivery is paused while Event projection or crossing detection is degraded.</small>}{!canManageEventMessaging && <small>Event AVL Manager or Administrator access is required to change this control.</small>}{!messagingControl.teams_configured && <small>Ask an administrator to configure the Teams channel before enabling delivery.</small>}</div>}
       </section>
 
@@ -361,6 +359,7 @@ export function EventMonitoring() {
         {!minimized && <details className="evmon-filter-panel">
           <summary>Vehicle and map filters {hasFilters && <span className="evmon-filter-count">Active</span>}</summary>
           <div className="evmon-controls">
+          <label className="evmon-traffic"><input type="checkbox" checked={showUnassigned} onChange={(event) => setShowUnassigned(event.target.checked)} /><span>Unassigned vehicles</span></label>
           <label><span>Find</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Vehicle or operator" /></label>
           <label><span>Managed service</span><select value={routeFilter} onChange={(event) => setRouteFilter(event.target.value)}><option value="all">All managed services</option>{routeOptions.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
           <label><span>Heading</span><select value={headingFilter} onChange={(event) => setHeadingFilter(event.target.value)}><option value="all">All headings</option>{["NB", "SB", "EB", "WB"].map((value) => <option key={value}>{value}</option>)}</select></label>
