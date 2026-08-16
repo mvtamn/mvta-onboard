@@ -19,6 +19,10 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **Identify buses by route in event messages.** Crossings now retain the AVL route ID alongside the bus number, so multiple buses operating the same event route remain distinguishable in Event AVL and Teams notifications.
 - **Allow geofence removal.** Administrators can remove a geofence from the resource list; removal deactivates it and preserves the record for audit. Active-plan geofences remain protected.
 
+## [1.5.41] - 2026-08-15
+
+- **Separate the Event AVL queue from history.** Every crossing in an active operating scope now creates an operational queue item, with matched rules controlling the message and manual or automatic delivery. Completed Teams deliveries remain available in investigative history.
+
 ## [1.5.37] - 2026-08-15
 
 - **Make expired Event AVL sessions recoverable.** The monitoring page now identifies an expired sign-in and provides a direct Sign in again action instead of remaining in a misleading loading state.

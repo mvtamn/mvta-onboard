@@ -52,10 +52,10 @@ app.http("eventGeofenceNotifications", { route: "event-geofence-notifications", 
   if (eventId) r.input("event", sql.UniqueIdentifier, eventId);
   if (servicePlanId) r.input("plan", sql.UniqueIdentifier, servicePlanId);
   return { status: 200, jsonBody: { notifications: (await r.query(`
-    SELECT n.*
+    SELECT TOP (200) n.*
     FROM EventGeofenceNotifications n
     JOIN EventGeofenceCrossings c ON c.id=n.crossing_id
-    WHERE n.status=@status ${eventId || servicePlanId ? `AND EXISTS (SELECT 1 FROM EventServicePlanGeofences pg JOIN EventServicePlans p ON p.id=pg.service_plan_id WHERE pg.geofence_id=c.geofence_id ${eventId ? "AND p.event_id=@event" : ""} ${servicePlanId ? "AND p.id=@plan" : ""})` : ""}
+    WHERE ${req.query.get("status") === "all" ? "1=1" : "n.status=@status"} ${eventId || servicePlanId ? `AND EXISTS (SELECT 1 FROM EventServicePlanGeofences pg JOIN EventServicePlans p ON p.id=pg.service_plan_id WHERE pg.geofence_id=c.geofence_id ${eventId ? "AND p.event_id=@event" : ""} ${servicePlanId ? "AND p.id=@plan" : ""})` : ""}
     ORDER BY n.created_at DESC`)).recordset } };
 } });
 app.http("eventGeofenceNotificationSend", { route: "event-geofence-notifications/{id}/send", methods: ["POST"], authLevel: "anonymous", handler: send });

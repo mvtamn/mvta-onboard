@@ -156,7 +156,7 @@ export function EventMonitoring() {
 
   useEffect(() => {
     if (!selectedEventId) { setCrossings([]); setNotifications([]); setAudit([]); return; }
-    Promise.allSettled([api.getEventGeofenceCrossings(selectedEventId, selectedPlanId), api.getEventGeofenceNotifications("pending", selectedEventId, selectedPlanId), api.getEventAuditStream(undefined, undefined, selectedEventId, selectedPlanId)])
+    Promise.allSettled([api.getEventGeofenceCrossings(selectedEventId, selectedPlanId), api.getEventGeofenceNotifications("all", selectedEventId, selectedPlanId), api.getEventAuditStream(undefined, undefined, selectedEventId, selectedPlanId)])
       .then(([c, n, a]) => {
         const now = new Date();
         if (c.status === "fulfilled") { setCrossings(c.value.crossings); setFeedStatus((s) => ({ ...s, crossings: { state: "ready", loadedAt: now } })); }
@@ -248,6 +248,9 @@ export function EventMonitoring() {
           : vehicles === null
             ? { tone: "info", title: "Connecting to Event AVL data…", action: null }
           : { tone: "success", title: vehicles.length ? "Event AVL data is flowing." : "The feed is healthy, but no active vehicles are reporting.", action: null };
+
+  const eventQueue = notifications.filter((notification) => ["pending", "acknowledged", "failed"].includes(notification.status));
+  const eventHistory = notifications.filter((notification) => ["sent", "dismissed", "expired"].includes(notification.status));
 
   return (
     <section className="evmon" aria-label="Live vehicle monitoring">
@@ -379,12 +382,17 @@ export function EventMonitoring() {
           </table>
         )}
       </div>
-      <div className="evmon-list-header"><div><h3>Geofence crossings</h3><span>Recent movement across active event boundaries · {feedStatus.crossings?.state === "error" ? "feed unavailable; showing last successful data" : feedStatus.crossings?.loadedAt ? `loaded ${feedStatus.crossings.loadedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "loading"}</span></div></div>
+      <div className="evmon-list-header"><div><h3>Events queue</h3><span>Operational work for every vehicle crossing in the active scope. Automatic messages are sent to Teams and remain visible in history.</span></div><strong>{eventQueue.length} open</strong></div>
       <div className="evmon-table-wrap">
         {actionError && <div className="evmon-empty">{actionError}</div>}
-        {notifications.map((notification) => <div key={notification.id} className="panel-body"><strong>{notification.status === "acknowledged" ? "Acknowledged notification" : "Review notification"}</strong><p>{notification.message_body}</p>{notification.status === "pending" && <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "acknowledge")}>Acknowledge</button>} {notification.status === "acknowledged" && <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "send")}>Approve and send</button>} {notification.status === "pending" && <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "send")}>Approve and send</button>} {" "}<button className="btn-sm" onClick={() => void reviewNotification(notification.id, "dismiss")}>Dismiss</button></div>)}
-        <table className="data evmon-table"><thead><tr><th>Time</th><th>Vehicle</th><th>Route</th><th>Geofence</th><th>Transition</th><th>Destination</th></tr></thead><tbody>{crossings.map((crossing) => <tr key={crossing.id}><td>{new Date(crossing.crossed_at).toLocaleString()}</td><td>{crossing.vehicle_id}</td><td>{crossing.route_id === null ? "—" : `Route ${crossing.route_id}`}</td><td>{crossing.geofence_name}</td><td>{crossing.transition}</td><td>{crossing.destination_label ?? "—"}</td></tr>)}</tbody></table>
+        {eventQueue.length === 0 ? <div className="evmon-empty">No open event messages.</div> : eventQueue.map((notification) => <div key={notification.id} className="panel-body"><strong>{notification.status === "failed" ? "Delivery failed — review required" : notification.status === "acknowledged" ? "Acknowledged notification" : "Review notification"}</strong><p>{notification.message_body}</p>{notification.status === "pending" && <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "acknowledge")}>Acknowledge</button>} {(notification.status === "acknowledged" || notification.status === "pending") && <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "send")}>Approve and send</button>} {" "}<button className="btn-sm" onClick={() => void reviewNotification(notification.id, "dismiss")}>Dismiss</button></div>)}
       </div>
+      <div className="evmon-list-header"><div><h3>Event message history</h3><span>Investigate messages already delivered, dismissed, or expired.</span></div><strong>{eventHistory.length} records</strong></div>
+      <div className="evmon-table-wrap">
+        {eventHistory.length === 0 ? <div className="evmon-empty">No event message history for this context.</div> : <table className="data evmon-table"><thead><tr><th>Time</th><th>Status</th><th>Delivery</th><th>Message</th></tr></thead><tbody>{eventHistory.map((notification) => <tr key={notification.id}><td>{new Date(notification.created_at).toLocaleString()}</td><td>{notification.status === "sent" ? "Sent to Teams" : notification.status[0].toUpperCase() + notification.status.slice(1)}</td><td>{notification.send_mode === "auto" ? "Automatic" : "Event AVL review"}</td><td>{notification.message_body}</td></tr>)}</tbody></table>}
+      </div>
+      <div className="evmon-list-header"><div><h3>Geofence crossings</h3><span>Investigative movement detail for active event boundaries.</span></div></div>
+      <div className="evmon-table-wrap"><table className="data evmon-table"><thead><tr><th>Time</th><th>Vehicle</th><th>Route</th><th>Geofence</th><th>Transition</th><th>Destination</th></tr></thead><tbody>{crossings.map((crossing) => <tr key={crossing.id}><td>{new Date(crossing.crossed_at).toLocaleString()}</td><td>{crossing.vehicle_id}</td><td>{crossing.route_id === null ? "—" : `Route ${crossing.route_id}`}</td><td>{crossing.geofence_name}</td><td>{crossing.transition}</td><td>{crossing.destination_label ?? "—"}</td></tr>)}</tbody></table></div>
       <div className="evmon-list-header"><div><h3>Event audit history</h3><span>Route changes, crossings, and notification actions · {feedStatus.audit?.state === "error" ? "feed unavailable; showing last successful data" : feedStatus.audit?.loadedAt ? `loaded ${feedStatus.audit.loadedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "loading"}</span></div></div>
       <div className="evmon-table-wrap"><table className="data evmon-table"><thead><tr><th>Time</th><th>Type</th><th>Entity</th><th>Detail</th><th>Actor</th></tr></thead><tbody>{audit.map((entry, index) => <tr key={`${entry.event_at}-${index}`}><td>{new Date(entry.event_at).toLocaleString()}</td><td>{entry.event_type}</td><td>{entry.entity_id}</td><td>{entry.detail}</td><td>{entry.actor ?? "system"}</td></tr>)}</tbody></table></div>
     </section>

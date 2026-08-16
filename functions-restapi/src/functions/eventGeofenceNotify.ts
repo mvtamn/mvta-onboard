@@ -38,11 +38,12 @@ app.serviceBusQueue("eventGeofenceNotify", { connection: "ServiceBusConnection",
     return;
   }
   const row = (await pool.request().input("id", sql.BigInt, id).query("SELECT c.vehicle_id,c.route_id,c.transition,g.name geofence_name,c.destination_label,c.matched_send_mode send_mode FROM EventGeofenceCrossings c JOIN EventGeofences g ON g.id=c.geofence_id WHERE c.id=@id")).recordset[0] as { vehicle_id: number; route_id: number | null; transition: "enter" | "exit"; geofence_name: string; destination_label: string | null; send_mode: "manual" | "auto" | null } | undefined;
-  if (!row?.send_mode) return;
+  if (!row) return;
+  const mode = row.send_mode ?? "manual";
   const body = formatEventGeofenceMessage(row);
-  const insert = pool.request(); insert.input("crossing", sql.BigInt, id); insert.input("mode", sql.NVarChar, row.send_mode); insert.input("body", sql.NVarChar, body);
+  const insert = pool.request(); insert.input("crossing", sql.BigInt, id); insert.input("mode", sql.NVarChar, mode); insert.input("body", sql.NVarChar, body);
   let notification: { id: string };
   try { notification = (await insert.query<{ id: string }>("INSERT INTO EventGeofenceNotifications(crossing_id,send_mode,message_body,status) OUTPUT INSERTED.id VALUES(@crossing,@mode,@body,'pending')")).recordset[0]; }
   catch { return; }
-  if (row.send_mode === "auto" && await deliver(notification.id, body, 0, context)) throw new Error(`Transient Teams failure for event notification ${notification.id}`);
+  if (mode === "auto" && await deliver(notification.id, body, 0, context)) throw new Error(`Transient Teams failure for event notification ${notification.id}`);
 } });
