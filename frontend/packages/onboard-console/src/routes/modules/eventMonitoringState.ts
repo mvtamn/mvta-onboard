@@ -1,5 +1,11 @@
 import type { Event, EventServicePlan } from "@mvta/shared";
 
+export const OPEN_EVENT_NOTIFICATION_STATUSES = ["pending", "acknowledged", "failed"] as const;
+
+export function isOpenEventNotificationStatus(status: string): boolean {
+  return OPEN_EVENT_NOTIFICATION_STATUSES.includes(status as (typeof OPEN_EVENT_NOTIFICATION_STATUSES)[number]);
+}
+
 /** Auto-select only when exactly one active operating period is unambiguous. */
 export function defaultMonitoringEventId(events: Event[], plans: EventServicePlan[]): string {
   const activePlans = plans.filter((plan) => plan.status === "active");

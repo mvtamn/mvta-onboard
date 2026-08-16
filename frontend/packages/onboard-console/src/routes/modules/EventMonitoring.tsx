@@ -7,7 +7,7 @@ import { api } from "../../config.js";
 import { useEventWorkspace } from "../../context/EventWorkspaceContext.js";
 import { useAuth } from "../../auth/AuthContext.js";
 import "./eventMonitoring.css";
-import { activePlansMissingPublishedScope, defaultMonitoringEventId, defaultMonitoringServicePlanId, eventVehiclePositionQuery } from "./eventMonitoringState.js";
+import { activePlansMissingPublishedScope, defaultMonitoringEventId, defaultMonitoringServicePlanId, eventVehiclePositionQuery, isOpenEventNotificationStatus } from "./eventMonitoringState.js";
 import { removeMapLayersIfPresent } from "./mapLayerCleanup.js";
 
 const AVL_REFRESH_MS = 30_000;
@@ -282,7 +282,7 @@ export function EventMonitoring() {
               ? { tone: "success", title: "Event AVL data is flowing.", action: null }
               : { tone: "warning", title: "No active vehicles are reporting.", action: "No active vehicles matched this Event operating context." };
 
-  const eventQueue = notifications.filter((notification) => ["pending", "acknowledged", "failed"].includes(notification.status));
+  const eventQueue = notifications.filter((notification) => isOpenEventNotificationStatus(notification.status));
   const eventHistory = notifications.filter((notification) => ["sent", "dismissed", "expired"].includes(notification.status));
 
   return (
@@ -338,10 +338,21 @@ export function EventMonitoring() {
         <span>retention: <b className={health?.maintenance?.last_success_at ? "is-healthy" : "is-unavailable"}>{health?.maintenance?.last_success_at ? `OK · ${minutesAgo(health.maintenance.last_success_at)}` : "Unavailable"}</b></span>
       </div>
 
+      <section className="evmon-primary-queue" aria-labelledby="evmon-open-notifications-heading">
+        <div className="evmon-list-header">
+          <div><span className="evmon-eyebrow">Primary action</span><h3 id="evmon-open-notifications-heading">Open Event notifications</h3><span>Review, acknowledge, send, or dismiss operational work for the active scope.</span></div>
+          <strong className="evmon-count">{eventQueue.length} open</strong>
+        </div>
+        <div className="evmon-table-wrap">
+          {actionError && <div className="evmon-empty evmon-error-copy" role="alert">{actionError}</div>}
+          {eventQueue.length === 0 ? <div className="evmon-empty">No open event messages.</div> : eventQueue.map((notification) => <div key={notification.id} className="panel-body"><strong>{notification.status === "failed" ? "Delivery failed — review required" : notification.status === "acknowledged" ? "Acknowledged notification" : "Review notification"}</strong><p>{notification.message_body}</p>{canManageNotificationActions && !notificationActionsBlocked && notification.status === "pending" && <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "acknowledge")}>Acknowledge</button>} {canManageNotificationActions && !notificationActionsBlocked && (notification.status === "acknowledged" || notification.status === "pending") && <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "send")}>Approve and send</button>} {canManageNotificationActions && !notificationActionsBlocked && <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "dismiss")}>Dismiss</button>}{notificationActionsBlocked && <small className="muted">Actions paused while Event projection or crossing detection is degraded.</small>}{!canManageNotificationActions && <small className="muted">Event AVL Manager or Publisher access is required for notification actions.</small>}</div>)}
+        </div>
+      </section>
+
       <div className={`evmon-workspace${minimized ? " is-minimized" : ""}`}>
         <div className="evmon-toolbar">
           <div>
-            <strong>Live map</strong>
+            <strong>Vehicle map</strong>
             <span>{lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}` : "Connecting…"} · every 30 sec</span>
           </div>
           <div className="evmon-toolbar-actions">
@@ -422,11 +433,6 @@ export function EventMonitoring() {
             ))}</tbody>
           </table>
         )}
-      </div>
-      <div className="evmon-list-header"><div><h3>Events queue</h3><span>Operational work for every vehicle crossing in the active scope. Automatic messages are sent to Teams and remain visible in history.</span></div><strong>{eventQueue.length} open</strong></div>
-      <div className="evmon-table-wrap">
-        {actionError && <div className="evmon-empty evmon-error-copy" role="alert">{actionError}</div>}
-        {eventQueue.length === 0 ? <div className="evmon-empty">No open event messages.</div> : eventQueue.map((notification) => <div key={notification.id} className="panel-body"><strong>{notification.status === "failed" ? "Delivery failed — review required" : notification.status === "acknowledged" ? "Acknowledged notification" : "Review notification"}</strong><p>{notification.message_body}</p>{canManageNotificationActions && !notificationActionsBlocked && notification.status === "pending" && <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "acknowledge")}>Acknowledge</button>} {canManageNotificationActions && !notificationActionsBlocked && (notification.status === "acknowledged" || notification.status === "pending") && <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "send")}>Approve and send</button>} {canManageNotificationActions && !notificationActionsBlocked && <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "dismiss")}>Dismiss</button>}{notificationActionsBlocked && <small className="muted">Actions paused while Event projection or crossing detection is degraded.</small>}{!canManageNotificationActions && <small className="muted">Event AVL Manager or Publisher access is required for notification actions.</small>}</div>)}
       </div>
       <details className="evmon-messaging" aria-label="Operational event messaging" open={Boolean(messagingError || notificationActionsBlocked)}>
         <summary><span><span className="evmon-eyebrow">Teams delivery</span><strong>Automatic event messages</strong></span><span className="evmon-messaging-summary-state"><span className={`evmon-messaging-status${messagingControl?.automatic_teams_enabled ? " is-on" : ""}`}>{messagingError ? "Unavailable" : !selectedPlanId ? "Select a plan" : messagingControl?.automatic_teams_enabled ? "Teams on" : "Teams off · queued here"}</span>{!canManageEventMessaging && <span className="evmon-messaging-readonly">Read-only</span>}</span></summary>

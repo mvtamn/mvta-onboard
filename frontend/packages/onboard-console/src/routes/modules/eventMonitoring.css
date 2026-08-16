@@ -84,6 +84,13 @@
 .evmon-health b.is-healthy { color: var(--success-text); }
 .evmon-health b.is-warning { color: #765b00; }
 .evmon-health b.is-unavailable { color: #8a2e2e; }
+.evmon-primary-queue { margin: 2px 0 18px; padding: 14px; border: 2px solid var(--brand-green); border-radius: 12px; background: var(--surface-bg); box-shadow: 0 4px 16px rgba(0,0,0,.06); }
+.evmon-primary-queue .evmon-list-header { margin-bottom: 10px; }
+.evmon-primary-queue .evmon-list-header h3 { margin-top: 3px; font-size: 19px; }
+.evmon-primary-queue .evmon-table-wrap { margin-bottom: 0; }
+.evmon-primary-queue .panel-body { padding: 13px 14px; }
+.evmon-primary-queue .panel-body + .panel-body { border-top: 1px solid var(--border); }
+.evmon-primary-queue .panel-body p { max-width: 80ch; margin: 5px 0 9px; }
 .evmon-context { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px 18px; padding: 10px 12px; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-bg); color: var(--text-muted); font-size: 12px; }
 .evmon-context label { display: flex; align-items: center; gap: 6px; }
 .evmon-context label > span { color: var(--text); font-weight: 800; }
