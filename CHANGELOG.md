@@ -5,9 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.44] - 2026-08-16
+## [1.5.45] - 2026-08-16
 
 - **Organize administration into a management workspace.** Administration now has modular navigation for access, Event resources, service configuration, integrations, governance, and subscribers. Event Planning and Event AVL are grouped under a dedicated Events workspace, with legacy links preserved.
+- **Remove the duplicate Administration landing page.** `/admin` now opens the operational Service Configuration module directly while the remaining administration modules stay available in the secondary navigation.
 
 ## [1.5.43] - 2026-08-16
 

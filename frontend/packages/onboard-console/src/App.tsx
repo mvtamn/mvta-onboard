@@ -12,7 +12,6 @@ import {
   IconMessages,
   IconBell,
   IconClock,
-  IconGear,
   IconWrench,
   IconShield,
   IconDetour,
@@ -42,7 +41,6 @@ import { DetourReports } from "./routes/DetourReports.js";
 import { DetourIntake } from "./routes/DetourIntake.js";
 import { Changelog } from "./routes/Changelog.js";
 import { AdminLayout } from "./components/AdminLayout.js";
-import { AdminOverview } from "./routes/AdminOverview.js";
 import { AdminAccess, AdminEventAdministration, AdminGovernance, AdminIntegrations, AdminServiceConfiguration, AdminSubscribers } from "./routes/AdminModules.js";
 import { CHANGELOG_ENTRIES } from "./routes/changelogData.js";
 import {
@@ -269,7 +267,6 @@ export function App() {
                 <span>Administration</span><span aria-hidden="true">{adminOpen ? "⌃" : "›"}</span>
               </button>
               {adminOpen ? <div className="nav-group-links">
-                <NavLink to="/admin"><IconGear />Overview</NavLink>
                 {canManageAccess && <NavLink to="/admin/access"><IconShield />Access &amp; Identity</NavLink>}
                 {isAdmin && <NavLink to="/admin/events"><IconBus />Event Administration</NavLink>}
                 {isAdmin && <NavLink to="/admin/service"><IconWrench />Service Configuration</NavLink>}
@@ -380,7 +377,7 @@ export function App() {
               <Route path="/changelog" element={<Changelog />} />
               <Route path="/admin/access-management" element={<CompatibilityRedirect to="/admin/access" />} />
               <Route path="/admin" element={<RequireRole allowed={[...ACCESS_MANAGEMENT]}><AdminLayout /></RequireRole>}>
-                <Route index element={<AdminOverview />} />
+                <Route index element={<Navigate to="service" replace />} />
                 <Route path="access" element={<RequireRole allowed={[...ACCESS_MANAGEMENT]}><AdminAccess /></RequireRole>} />
                 <Route path="events" element={<RequireRole allowed={[...ADMIN]}><AdminEventAdministration /></RequireRole>} />
                 <Route path="service" element={<RequireRole allowed={[...ADMIN]}><AdminServiceConfiguration /></RequireRole>} />
