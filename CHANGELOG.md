@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.43] - 2026-08-16
+
+- **Recover from invalid geofence rings.** Event Planning now rejects self-intersecting polygons before save, restores the previous boundary when an edit is invalid, and keeps the map available for another attempt.
+
 ## [1.5.38] - 2026-08-15
 
 - **Populate the unassigned vehicle queue.** Event AVL now projects every fresh AVL vehicle; active plan and geofence scope continue to control assignments and crossing detection.

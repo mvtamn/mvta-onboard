@@ -8,6 +8,7 @@ import { ApiError, type EventGeofence, type EventGeofenceMessageType, type Event
 import { api } from "../config.js";
 import { useAuth } from "../auth/AuthContext.js";
 import "./modules/eventMonitoring.css";
+import { validateDrawnPolygon } from "./geofenceGeometry.js";
 
 const CENTER: atlas.data.Position = [-93.25, 44.83];
 type Draft = { shape: atlas.Shape; kind: "geofence" | "location"; position?: atlas.data.Position };
@@ -28,7 +29,7 @@ function geometryOf(shape: atlas.Shape): string | null {
 function MapEditor({ geofences, locations, onChanged }: { geofences: StoredFence[]; locations: EventLocation[]; onChanged: () => void }) {
   const { account, signIn } = useAuth();
   const host = useRef<HTMLDivElement>(null); const mapRef = useRef<atlas.Map | null>(null); const drawingRef = useRef<drawing.drawing.DrawingManager | null>(null); const syncTimer = useRef<number | null>(null); const geofencesRef = useRef(geofences); geofencesRef.current = geofences;
-  const [ready, setReady] = useState(false); const [draft, setDraft] = useState<Draft | null>(null); const [name, setName] = useState(""); const [category, setCategory] = useState<EventLocationCategory>("transit_station"); const [error, setError] = useState<string | null>(null); const [activeMode, setActiveMode] = useState<drawing.drawing.DrawingMode>(drawing.drawing.DrawingMode.idle); const [showGeofences, setShowGeofences] = useState(true); const [showInactiveGeofences, setShowInactiveGeofences] = useState(true); const [showLocations, setShowLocations] = useState(true); const [showInactiveLocations, setShowInactiveLocations] = useState(true); const [cursor, setCursor] = useState<atlas.data.Position | null>(null);
+  const [ready, setReady] = useState(false); const [draft, setDraft] = useState<Draft | null>(null); const [name, setName] = useState(""); const [category, setCategory] = useState<EventLocationCategory>("transit_station"); const [error, setError] = useState<string | null>(null); const [notice, setNotice] = useState<string | null>(null); const [activeMode, setActiveMode] = useState<drawing.drawing.DrawingMode>(drawing.drawing.DrawingMode.idle); const [showGeofences, setShowGeofences] = useState(true); const [showInactiveGeofences, setShowInactiveGeofences] = useState(true); const [showLocations, setShowLocations] = useState(true); const [showInactiveLocations, setShowInactiveLocations] = useState(true); const [cursor, setCursor] = useState<atlas.data.Position | null>(null);
 
   useEffect(() => {
     if (!account) return;
@@ -47,16 +48,44 @@ function MapEditor({ geofences, locations, onChanged }: { geofences: StoredFence
         map.events.add("drawingmodechanged", manager, (mode) => setActiveMode(mode));
         map.events.add("drawingcomplete", manager, (shape) => {
           const geo = shape.toJson() as GeoFeature;
-          if (geo.geometry?.type === "Polygon") setDraft({ shape, kind: "geofence" });
+          if (geo.geometry?.type === "Polygon") {
+            const validationError = validateDrawnPolygon(JSON.stringify(geo.geometry));
+            if (validationError) {
+              manager.getSource().remove(shape);
+              setNotice(`Geofence not created: ${validationError}. Draw a new boundary.`);
+              setDraft(null);
+            } else setDraft({ shape, kind: "geofence" });
+          }
           if (geo.geometry?.type === "Point") setDraft({ shape, kind: "location", position: geo.geometry.coordinates as atlas.data.Position });
           manager.setOptions({ mode: drawing.drawing.DrawingMode.idle });
         });
         map.events.add("drawingchanged", manager, (shape) => {
-          const props = shape.toJson().properties as { id?: string; kind?: string } | undefined; const polygon = geometryOf(shape);
-          if (!props?.id || props.kind !== "geofence" || !polygon) return;
+          const geo = shape.toJson() as GeoFeature;
+          const props = geo.properties as { id?: string; kind?: string } | undefined; const polygon = geometryOf(shape);
+          if (!polygon || geo.geometry?.type !== "Polygon") return;
+          const ring = geo.geometry.coordinates[0] as unknown[] | undefined;
+          const first = ring?.[0] as unknown[] | undefined; const last = ring?.[ring.length - 1] as unknown[] | undefined;
+          const isClosed = Boolean(ring && ring.length >= 4 && Array.isArray(first) && Array.isArray(last) && first[0] === last[0] && first[1] === last[1]);
+          if (!props?.id || props.kind !== "geofence") {
+            if (isClosed) {
+              const validationError = validateDrawnPolygon(polygon);
+              if (validationError) { manager.getSource().remove(shape); manager.setOptions({ mode: drawing.drawing.DrawingMode.idle }); setDraft(null); setNotice(`Geofence not created: ${validationError}. Draw a new boundary.`); }
+            }
+            return;
+          }
+          const validationError = validateDrawnPolygon(polygon);
+          if (validationError) {
+            if (syncTimer.current) window.clearTimeout(syncTimer.current);
+            manager.getSource().remove(shape);
+            const fence = geofencesRef.current.find((row) => row.id === props.id);
+            if (fence) { try { manager.getSource().add(new atlas.Shape({ type: "Feature", geometry: JSON.parse(fence.polygon) as atlas.data.Geometry, properties: { id: fence.id, kind: "geofence" } })); } catch { /* keep the invalid legacy record out of the editor */ } }
+            manager.setOptions({ mode: drawing.drawing.DrawingMode.idle });
+            setNotice(`Boundary change rejected: ${validationError}. The previous boundary was restored.`);
+            return;
+          }
           if (syncTimer.current) window.clearTimeout(syncTimer.current);
           syncTimer.current = window.setTimeout(() => {
-            const fence = geofencesRef.current.find((row) => row.id === props.id); if (fence) void api.updateEventGeofence(fence.id, { name: fence.name, polygon }).then(onChanged).catch(() => undefined);
+            const fence = geofencesRef.current.find((row) => row.id === props.id); if (fence) void api.updateEventGeofence(fence.id, { name: fence.name, polygon }).then(onChanged).catch((err) => setNotice(err instanceof ApiError ? `Boundary could not be saved: ${err.message}` : "Boundary could not be saved; the previous server version is still active."));
           }, 500);
         });
         map.events.add("drawingerased", manager, (shape) => {
@@ -65,7 +94,7 @@ function MapEditor({ geofences, locations, onChanged }: { geofences: StoredFence
         });
       });
     }).catch((err) => setError(err instanceof ApiError && err.status === 401 ? "Your Microsoft session is not connected to the API. Sign in again to use map authoring." : err instanceof ApiError ? err.message : "Map unavailable."));
-    return () => { cancelled = true; drawingRef.current?.dispose(); mapRef.current?.dispose(); drawingRef.current = null; mapRef.current = null; };
+    return () => { cancelled = true; if (syncTimer.current) window.clearTimeout(syncTimer.current); drawingRef.current?.dispose(); mapRef.current?.dispose(); drawingRef.current = null; mapRef.current = null; };
   }, [account]);
 
   useEffect(() => {
@@ -81,15 +110,15 @@ function MapEditor({ geofences, locations, onChanged }: { geofences: StoredFence
   async function saveDraft() {
     if (!draft || !name.trim()) return;
     try {
-      if (draft.kind === "geofence") { const geometry = geometryOf(draft.shape); if (!geometry) return; await api.createEventGeofence({ name: name.trim(), polygon: geometry }); }
+      if (draft.kind === "geofence") { const geometry = geometryOf(draft.shape); if (!geometry) return; const validationError = validateDrawnPolygon(geometry); if (validationError) { setNotice(`Geofence not saved: ${validationError}. Draw a new boundary.`); return; } await api.createEventGeofence({ name: name.trim(), polygon: geometry }); }
       else if (draft.position) await api.createEventLocation({ name: name.trim(), category, latitude: draft.position[1], longitude: draft.position[0], notes: null });
-      setDraft(null); setName(""); onChanged();
-    } catch (err) { setError(err instanceof ApiError ? err.message : "Could not save map item."); }
+      setDraft(null); setName(""); setNotice(null); onChanged();
+    } catch (err) { setNotice(err instanceof ApiError ? err.message : "Could not save map item. The map is ready for another attempt."); }
   }
 
   if (!account) return <div className="evmon-map-message"><p>Sign in with your MVTA Microsoft 365 account to use map authoring.</p><button className="btn-primary" onClick={signIn}>Sign in with Microsoft</button></div>;
-  const selectMode = (mode: drawing.drawing.DrawingMode) => { const manager = drawingRef.current; if (!manager) return; manager.setOptions({ mode, interactionType: drawing.drawing.DrawingInteractionType.click }); setActiveMode(mode); };
-  return <div><div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}><button className="btn-sm" disabled={!ready} onClick={() => selectMode(drawing.drawing.DrawingMode.drawPolygon)}>Draw geofence</button><button className="btn-sm" disabled={!ready} onClick={() => selectMode(drawing.drawing.DrawingMode.drawPoint)}>Place location</button><button className="btn-sm" disabled={!ready} onClick={() => selectMode(drawing.drawing.DrawingMode.editGeometry)}>Edit boundary</button><button className="btn-sm" disabled={!ready} onClick={() => selectMode(drawing.drawing.DrawingMode.eraseGeometry)}>Deactivate boundary</button><button className="btn-sm" disabled={!ready} onClick={() => selectMode(drawing.drawing.DrawingMode.idle)}>Select</button><span className="muted">Mode: {activeMode === drawing.drawing.DrawingMode.drawPolygon ? "Drawing geofence — click vertices, double-click to finish" : activeMode === drawing.drawing.DrawingMode.drawPoint ? "Placing location — click the map" : `Mode: ${activeMode}`}</span><label className="muted"><input type="checkbox" checked={showGeofences} onChange={(e) => setShowGeofences(e.target.checked)} /> Active geofences</label><label className="muted"><input type="checkbox" checked={showInactiveGeofences} onChange={(e) => setShowInactiveGeofences(e.target.checked)} /> Inactive geofences</label><label className="muted"><input type="checkbox" checked={showLocations} onChange={(e) => setShowLocations(e.target.checked)} /> Active locations</label><label className="muted"><input type="checkbox" checked={showInactiveLocations} onChange={(e) => setShowInactiveLocations(e.target.checked)} /> Inactive locations</label></div><div style={{ height: 420, borderRadius: 8, overflow: "hidden", border: "1px solid #ccd6d1", position: "relative" }}><div ref={host} style={{ width: "100%", height: "100%" }} />{!ready && !error && <div className="evmon-map-message">Loading map…</div>}{error && <div className="evmon-map-message"><p>{error}</p>{error.includes("session") && <button className="btn-primary" onClick={signIn}>Sign in again</button>}</div>}</div>{cursor && <p className="muted">Live pointer coordinate: latitude {cursor[1].toFixed(6)}, longitude {cursor[0].toFixed(6)}</p>}{draft && <div className="panel-body" style={{ marginTop: 10, border: "1px solid #ccd6d1" }}><strong>Save new {draft.kind === "geofence" ? "geofence" : "map location"}</strong><div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}><input className="f" value={name} onChange={(e) => setName(e.target.value)} placeholder={draft.kind === "geofence" ? "Geofence name" : "Location name"} />{draft.kind === "location" && <select className="f" value={category} onChange={(e) => setCategory(e.target.value as EventLocationCategory)}><option value="transit_station">Transit station</option><option value="park_and_ride">Park & ride</option><option value="venue">Venue</option><option value="other">Other</option></select>}<button className="btn-sm" disabled={!name.trim()} onClick={() => void saveDraft()}>Save</button><button className="btn-sm" onClick={() => { drawingRef.current?.getSource().remove(draft.shape); setDraft(null); }}>Cancel</button></div></div>}<GeofenceManager geofences={geofences} onChanged={onChanged} /><LocationManager locations={locations} onChanged={onChanged} /></div>;
+  const selectMode = (mode: drawing.drawing.DrawingMode) => { const manager = drawingRef.current; if (!manager) return; setNotice(null); manager.setOptions({ mode, interactionType: drawing.drawing.DrawingInteractionType.click }); setActiveMode(mode); };
+  return <div><div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}><button className="btn-sm" disabled={!ready} onClick={() => selectMode(drawing.drawing.DrawingMode.drawPolygon)}>Draw geofence</button><button className="btn-sm" disabled={!ready} onClick={() => selectMode(drawing.drawing.DrawingMode.drawPoint)}>Place location</button><button className="btn-sm" disabled={!ready} onClick={() => selectMode(drawing.drawing.DrawingMode.editGeometry)}>Edit boundary</button><button className="btn-sm" disabled={!ready} onClick={() => selectMode(drawing.drawing.DrawingMode.eraseGeometry)}>Deactivate boundary</button><button className="btn-sm" disabled={!ready} onClick={() => selectMode(drawing.drawing.DrawingMode.idle)}>Select</button><span className="muted">Mode: {activeMode === drawing.drawing.DrawingMode.drawPolygon ? "Drawing geofence — click vertices, double-click to finish" : activeMode === drawing.drawing.DrawingMode.drawPoint ? "Placing location — click the map" : `Mode: ${activeMode}`}</span><label className="muted"><input type="checkbox" checked={showGeofences} onChange={(e) => setShowGeofences(e.target.checked)} /> Active geofences</label><label className="muted"><input type="checkbox" checked={showInactiveGeofences} onChange={(e) => setShowInactiveGeofences(e.target.checked)} /> Inactive geofences</label><label className="muted"><input type="checkbox" checked={showLocations} onChange={(e) => setShowLocations(e.target.checked)} /> Active locations</label><label className="muted"><input type="checkbox" checked={showInactiveLocations} onChange={(e) => setShowInactiveLocations(e.target.checked)} /> Inactive locations</label></div>{notice && <p className="muted" role="alert">{notice}</p>}<div style={{ height: 420, borderRadius: 8, overflow: "hidden", border: "1px solid #ccd6d1", position: "relative" }}><div ref={host} style={{ width: "100%", height: "100%" }} />{!ready && !error && <div className="evmon-map-message">Loading map…</div>}{error && <div className="evmon-map-message"><p>{error}</p>{error.includes("session") && <button className="btn-primary" onClick={signIn}>Sign in again</button>}</div>}</div>{cursor && <p className="muted">Live pointer coordinate: latitude {cursor[1].toFixed(6)}, longitude {cursor[0].toFixed(6)}</p>}{draft && <div className="panel-body" style={{ marginTop: 10, border: "1px solid #ccd6d1" }}><strong>Save new {draft.kind === "geofence" ? "geofence" : "map location"}</strong><div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}><input className="f" value={name} onChange={(e) => setName(e.target.value)} placeholder={draft.kind === "geofence" ? "Geofence name" : "Location name"} />{draft.kind === "location" && <select className="f" value={category} onChange={(e) => setCategory(e.target.value as EventLocationCategory)}><option value="transit_station">Transit station</option><option value="park_and_ride">Park & ride</option><option value="venue">Venue</option><option value="other">Other</option></select>}<button className="btn-sm" disabled={!name.trim()} onClick={() => void saveDraft()}>Save</button><button className="btn-sm" onClick={() => { drawingRef.current?.getSource().remove(draft.shape); setDraft(null); }}>Cancel</button></div></div>}<GeofenceManager geofences={geofences} onChanged={onChanged} /><LocationManager locations={locations} onChanged={onChanged} /></div>;
 }
 
 function GeofenceManager({ geofences, onChanged }: { geofences: StoredFence[]; onChanged: () => void }) {
