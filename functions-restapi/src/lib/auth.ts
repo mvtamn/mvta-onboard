@@ -96,6 +96,11 @@ export const COMPLIANCE_MANAGER_ROLES = ["OCC.ComplianceManager", ...ADMIN_ROLES
 // Compliance users reached the page and got a 403 from GET /detours).
 export const DETOUR_READ_ROLES = [...STAFF_READ_ROLES, "OCC.Compliance", "OCC.Detour"];
 
+// Detour Intake is an administrative workflow in the current rollout. Report
+// readers may see the resulting operational record, but only administrators
+// may create, review, or advance an intake.
+export const DETOUR_INTAKE_ROLES = ADMIN_ROLES;
+
 // Create/edit. OCC.Detour deliberately does NOT get delete (below).
 export const DETOUR_WRITE_ROLES = [...PUBLISH_ROLES, "OCC.Detour"];
 

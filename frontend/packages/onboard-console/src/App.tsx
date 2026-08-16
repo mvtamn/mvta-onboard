@@ -71,7 +71,7 @@ const PAGE_META: { match: (path: string) => boolean; title: string; sub: string 
   { match: (p) => p === "/subscribers", title: "Subscribers", sub: "Opt-in totals and recent signups" },
   { match: (p) => p === "/audit", title: "Audit Log", sub: "Search every message ever posted" },
   { match: (p) => p === "/detours", title: "Detours & Closures", sub: "Every detour/closure in one place, Avail-built or not" },
-  { match: (p) => p === "/detour-intake", title: "Detour Intake", sub: "Capture and review preliminary closure reports" },
+  { match: (p) => p === "/detour-intake", title: "Detour Intake", sub: "Create and review the complete operational Detour record" },
   { match: (p) => p === "/detour-reports", title: "Detour Reports", sub: "Search and export detour history — read-only" },
   { match: (p) => p === "/admin" || p.startsWith("/admin/"), title: "Administration", sub: "Manage access, resources, configuration, integrations, and governance" },
   {
@@ -220,7 +220,7 @@ export function App() {
               </button>
               {specialistOpen ? <div className="nav-group-links">
                 {canSeeDetours && <NavLink to="/detours"><IconDetour />Detours &amp; Closures</NavLink>}
-                {canSeeDetours && <NavLink to="/detour-intake"><IconDetour />Detour Intake</NavLink>}
+                {isAdmin && <NavLink to="/detour-intake"><IconDetour />Detour Intake</NavLink>}
                 {canSeeDetours && <NavLink to="/detour-reports"><IconClock />Detour Reports</NavLink>}
               {canSeeOccTools && <NavLink to="/occ"><IconWrench />OCC Tools</NavLink>}
               </div> : null}
@@ -354,7 +354,7 @@ export function App() {
               />
               <Route
                 path="/detour-intake"
-                element={<RequireRole allowed={[...DETOURS]}><DetourIntake /></RequireRole>}
+                element={<RequireRole allowed={[...ADMIN]}><DetourIntake /></RequireRole>}
               />
               <Route path="/suggested" element={<SuggestedAlerts onChanged={stats.refresh} />} />
               <Route path="/subscribers" element={<Subscribers />} />

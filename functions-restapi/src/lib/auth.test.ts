@@ -2,11 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { HttpRequest } from "@azure/functions";
 import { readFileSync } from "node:fs";
-import { INGESTION_ROLES, PUBLISH_ROLES, requireRole } from "./auth";
+import { DETOUR_INTAKE_ROLES, INGESTION_ROLES, PUBLISH_ROLES, requireRole } from "./auth";
 
 test("System.Ingestion is isolated from human publishing authority", () => {
   assert.deepEqual(PUBLISH_ROLES, ["OCC.Publisher", "OCC.Admin"]);
   assert.deepEqual(INGESTION_ROLES, ["System.Ingestion"]);
+});
+
+test("Detour Intake is restricted to administrators while reports remain separately readable", () => {
+  assert.deepEqual(DETOUR_INTAKE_ROLES, ["OCC.Admin"]);
 });
 
 test("a mixed ingestion and human-role token is denied at the server boundary", () => {

@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { type DetourFulfillmentMode, type DetourIntake, type DetourSegmentInput } from "@mvta/shared";
 import { api } from "../config.js";
 
-const MODES: { value: DetourFulfillmentMode; label: string }[] = [
-  { value: "fixed_route_manual", label: "Fixed-route manual" },
-  { value: "mobility_manual", label: "Mobility manual" },
-  { value: "avail", label: "Avail-backed" },
+const MODES: { value: DetourFulfillmentMode; label: string; help: string }[] = [
+  { value: "fixed_route_manual", label: "Manual fixed-route exception", help: "Operations and operators carry out the reviewed instructions manually." },
+  { value: "mobility_manual", label: "Manual mobility communication", help: "Mobility Operations and operators receive the reviewed service-area instructions." },
+  { value: "avail", label: "Enter in Avail", help: "A human will enter the reviewed fixed-route Detour into Avail; OnBoard never writes it automatically." },
 ];
+
+type ReviewAction = "accept" | "needs_information" | "duplicate" | "rejected";
 
 export function DetourIntake() {
   const [rows, setRows] = useState<DetourIntake[]>([]);
@@ -26,6 +28,9 @@ export function DetourIntake() {
   const [segments, setSegments] = useState<DetourSegmentInput[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reviewing, setReviewing] = useState<{ row: DetourIntake; action: ReviewAction } | null>(null);
+  const [reviewNotes, setReviewNotes] = useState("");
+  const [duplicateTarget, setDuplicateTarget] = useState("");
 
   async function load() {
     try { setRows((await api.getDetourIntake("pending_review")).intake); }
@@ -33,96 +38,114 @@ export function DetourIntake() {
   }
   useEffect(() => { void load(); }, []);
 
+  const missing = useMemo(() => [
+    !source.trim() ? "Add the detection source" : null,
+    !description.trim() ? "Describe the closure or detour" : null,
+    !instructions.trim() ? "Add action instructions" : null,
+    !audiences.trim() ? "Name the required audiences" : null,
+    !channels.trim() ? "Name the required channels" : null,
+    impact === "fixed_route" && segments.length === 0 ? "Add at least one impacted route segment" : null,
+    impact === "mobility" && !serviceArea.trim() ? "Add the mobility service area or zone" : null,
+  ].filter((item): item is string => Boolean(item)), [source, description, instructions, audiences, channels, impact, segments, serviceArea]);
+
+  function resetForm() {
+    setSource(""); setDescription(""); setLocation(""); setStart(""); setEnd(""); setSegments([]);
+    setImpact("fixed_route"); setServiceArea(""); setInstructions(""); setFulfillment("avail");
+    setAudiences("operators, operations management"); setChannels("email, radio"); setEvidenceNotes(""); setEvidenceReference("");
+  }
+
   async function create() {
+    if (missing.length) return;
     setBusy(true); setError(null);
     try {
       await api.createDetourIntake({
         detection_source: source, description, location: location || null,
         proposed_start_date: start || null, proposed_end_date: end || null,
-        service_impact: impact,
-        service_area: impact === "mobility" ? serviceArea : null,
-        action_instructions: instructions,
-        proposed_fulfillment_mode: fulfillment,
+        service_impact: impact, service_area: impact === "mobility" ? serviceArea : null,
+        action_instructions: instructions, proposed_fulfillment_mode: fulfillment,
         notification_audiences: audiences.split(",").map((item) => item.trim()).filter(Boolean),
         notification_channels: channels.split(",").map((item) => item.trim()).filter(Boolean),
-        evidence_notes: evidenceNotes || null,
-        evidence_reference: evidenceReference || null,
-        segments,
+        evidence_notes: evidenceNotes || null, evidence_reference: evidenceReference || null, segments,
       });
-      setSource(""); setDescription(""); setLocation(""); setStart(""); setEnd(""); setSegments([]);
-      setImpact("fixed_route"); setServiceArea(""); setInstructions(""); setFulfillment("avail");
-      setAudiences("operators, operations management"); setChannels("email, radio"); setEvidenceNotes(""); setEvidenceReference("");
-      await load();
+      resetForm(); await load();
     } catch (err) { setError(err instanceof Error ? err.message : "Could not create intake"); }
     finally { setBusy(false); }
   }
 
-  async function promote(row: DetourIntake) {
-    const mode = row.proposed_fulfillment_mode;
-    if (!mode || !MODES.some((item) => item.value === mode)) return;
+  function openReview(row: DetourIntake, action: ReviewAction) {
+    setReviewing({ row, action }); setReviewNotes(""); setDuplicateTarget(""); setError(null);
+  }
+
+  async function submitReview() {
+    if (!reviewing) return;
+    const { row, action } = reviewing;
+    if (action !== "accept" && !reviewNotes.trim()) return;
+    if (action === "duplicate" && !duplicateTarget.trim()) return;
     setBusy(true); setError(null);
-    try { await api.promoteDetourIntake(row.id, mode, { start_date: row.proposed_start_date, end_date: row.proposed_end_date }); await load(); }
-    catch (err) { setError(err instanceof Error ? err.message : "Could not promote intake"); }
+    try {
+      if (action === "accept") {
+        const mode = row.proposed_fulfillment_mode;
+        if (!mode || !MODES.some((item) => item.value === mode)) throw new Error("Choose a valid fulfillment path before accepting.");
+        await api.promoteDetourIntake(row.id, mode, { start_date: row.proposed_start_date, end_date: row.proposed_end_date });
+      } else {
+        await api.reviewDetourIntake(row.id, {
+          status: action,
+          decision_notes: reviewNotes.trim(),
+          ...(action === "duplicate" ? { duplicate_of_detour_id: duplicateTarget.trim() } : {}),
+        });
+      }
+      setReviewing(null); await load();
+    } catch (err) { setError(err instanceof Error ? err.message : "Could not save review decision"); }
     finally { setBusy(false); }
   }
 
-  async function reject(row: DetourIntake, status: "rejected" | "duplicate") {
-    const decision_notes = window.prompt(
-      status === "rejected" ? "Why is this intake being rejected?" : "Why is this intake a duplicate?",
-    );
-    if (!decision_notes?.trim()) return;
-    const input: Parameters<typeof api.reviewDetourIntake>[1] = { status, decision_notes };
-    if (status === "duplicate") {
-      const target = window.prompt("Enter the existing Detour or intake GUID this duplicates");
-      if (!target?.trim()) return;
-      input.duplicate_of_detour_id = target.trim();
-    }
-    try { await api.reviewDetourIntake(row.id, input); await load(); }
-    catch (err) { setError(err instanceof Error ? err.message : "Could not review intake"); }
-  }
-
-  async function requestInformation(row: DetourIntake) {
-    const decision_notes = window.prompt("What information is still needed?");
-    if (!decision_notes?.trim()) return;
-    try { await api.reviewDetourIntake(row.id, { status: "needs_information", decision_notes }); await load(); }
-    catch (err) { setError(err instanceof Error ? err.message : "Could not return intake for information"); }
-  }
+  const selectedMode = MODES.find((mode) => mode.value === fulfillment);
 
   return <section className="panel">
     <div className="panel-header">Detour Intake</div>
     <div className="panel-body">
-      <p className="muted">Submit the complete operational Detour once. OCC review and the next fulfillment step stay on this record.</p>
-      {error && <p className="error-text">{error}</p>}
+      <p className="panel-desc">Create the complete operational Detour once. OCC review, fulfillment, communication, and reporting stay connected to this record.</p>
+      {error && <p className="error-text" role="alert">{error}</p>}
       <div className="subcard">
-        <h3>New intake report</h3>
-        <div className="form-grid">
-          <label>Detection source<input value={source} onChange={(e) => setSource(e.target.value)} placeholder="Contractor, police, field report…" /></label>
-          <label>Location<input value={location} onChange={(e) => setLocation(e.target.value)} /></label>
-          <label className="form-grid-wide">Description<textarea value={description} onChange={(e) => setDescription(e.target.value)} /></label>
-          <label>Proposed start<input type="date" value={start} onChange={(e) => setStart(e.target.value)} /></label>
-          <label>Proposed end<input type="date" value={end} onChange={(e) => setEnd(e.target.value)} /></label>
-          <label>Service impact<select value={impact} onChange={(e) => { const next = e.target.value as "fixed_route" | "mobility"; setImpact(next); setFulfillment(next === "mobility" ? "mobility_manual" : "avail"); }}><option value="fixed_route">Fixed-route</option><option value="mobility">On-demand / mobility</option></select></label>
-          <label>Proposed fulfillment<select value={fulfillment} onChange={(e) => setFulfillment(e.target.value as DetourFulfillmentMode)}>{MODES.filter((mode) => impact === "mobility" ? mode.value === "mobility_manual" : mode.value !== "mobility_manual").map((mode) => <option key={mode.value} value={mode.value}>{mode.label}</option>)}</select></label>
-          {impact === "mobility" ? <label className="form-grid-wide">Service area / zone<input value={serviceArea} onChange={(e) => setServiceArea(e.target.value)} placeholder="Mobility service area or zone" /></label> : null}
-          <label className="form-grid-wide">Action instructions<textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="What should operators, Operations, or enforcement do?" /></label>
-          {impact === "fixed_route" ? <div className="form-grid-wide">
-            <p className="field-label">Impacted route segments</p>
-            {segments.map((segment, index) => <div key={index} style={{ display: "flex", gap: 8, marginBottom: 6 }}>
-              <input value={segment.routes} placeholder="Routes / directions" onChange={(e) => setSegments((current) => current.map((item, i) => i === index ? { ...item, routes: e.target.value } : item))} />
-              <input value={segment.directions ?? ""} placeholder="Turn-by-turn or operating notes" onChange={(e) => setSegments((current) => current.map((item, i) => i === index ? { ...item, directions: e.target.value || null } : item))} />
-              <button type="button" className="btn-sm" onClick={() => setSegments((current) => current.filter((_, i) => i !== index))}>Remove</button>
-            </div>)}
-            <button type="button" className="btn-sm" onClick={() => setSegments((current) => [...current, { routes: "", directions: null }])}>Add segment</button>
-          </div> : null}
-          <label>Required audiences<input value={audiences} onChange={(e) => setAudiences(e.target.value)} placeholder="Comma-separated audiences" /></label>
-          <label>Required channels<input value={channels} onChange={(e) => setChannels(e.target.value)} placeholder="Comma-separated channels" /></label>
-          <label className="form-grid-wide">Evidence notes<textarea value={evidenceNotes} onChange={(e) => setEvidenceNotes(e.target.value)} placeholder="What documentation supports this report?" /></label>
-          <label className="form-grid-wide">Evidence reference<input value={evidenceReference} onChange={(e) => setEvidenceReference(e.target.value)} placeholder="File name, case number, or reference link" /></label>
+        <h3>New Detour Intake</h3>
+        <div className="form-section">
+          <h4>Situation</h4><p>Capture what happened, where it applies, and the proposed operating window.</p>
+          <div className="form-grid">
+            <label>Detection source<input value={source} onChange={(e) => setSource(e.target.value)} placeholder="Contractor, police, field report…" required /></label>
+            <label>Location<input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Street, stop, facility, or landmark" /></label>
+            <label className="form-grid-wide">Closure or detour description<textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What is closed or changing?" required /></label>
+            <label>Proposed start<input type="date" value={start} onChange={(e) => setStart(e.target.value)} /></label>
+            <label>Proposed end<input type="date" value={end} onChange={(e) => setEnd(e.target.value)} /></label>
+          </div>
         </div>
-        <button className="btn-primary" disabled={busy || !source.trim() || !description.trim() || !instructions.trim() || !audiences.trim() || !channels.trim() || (impact === "fixed_route" && segments.length === 0) || (impact === "mobility" && !serviceArea.trim())} onClick={() => void create()}>Submit complete Detour Intake</button>
+        <div className="form-section">
+          <h4>Affected service</h4><p>Choose the service type; the form will request only the operational details that apply.</p>
+          <div className="form-grid">
+            <label>Service impact<select value={impact} onChange={(e) => { const next = e.target.value as "fixed_route" | "mobility"; setImpact(next); setFulfillment(next === "mobility" ? "mobility_manual" : "avail"); }}><option value="fixed_route">Fixed-route</option><option value="mobility">On-demand / mobility</option></select></label>
+            <label>Proposed fulfillment<select value={fulfillment} onChange={(e) => setFulfillment(e.target.value as DetourFulfillmentMode)}>{MODES.filter((mode) => impact === "mobility" ? mode.value === "mobility_manual" : mode.value !== "mobility_manual").map((mode) => <option key={mode.value} value={mode.value}>{mode.label}</option>)}</select></label>
+            {selectedMode && <p className="form-grid-wide muted">{selectedMode.help}</p>}
+            {impact === "mobility" ? <label className="form-grid-wide">Service area / zone<input value={serviceArea} onChange={(e) => setServiceArea(e.target.value)} placeholder="Mobility service area or zone" required /></label> : null}
+            {impact === "fixed_route" ? <div className="form-grid-wide"><p className="field-label">Impacted route segments <span className="hint">at least one required</span></p>{segments.map((segment, index) => <div key={index} className="form-grid-segment"><input value={segment.routes} placeholder="Routes / stops" onChange={(e) => setSegments((current) => current.map((item, i) => i === index ? { ...item, routes: e.target.value } : item))} /><input value={segment.directions ?? ""} placeholder="Directions or operating notes" onChange={(e) => setSegments((current) => current.map((item, i) => i === index ? { ...item, directions: e.target.value || null } : item))} /><button type="button" className="btn-sm" onClick={() => setSegments((current) => current.filter((_, i) => i !== index))}>Remove</button></div>)}<button type="button" className="btn-sm" onClick={() => setSegments((current) => [...current, { routes: "", directions: null }])}>Add segment</button></div> : null}
+          </div>
+        </div>
+        <div className="form-section">
+          <h4>Instructions and communications</h4><p>Write the action people carrying out the Detour must take and identify every required audience/channel.</p>
+          <div className="form-grid">
+            <label className="form-grid-wide">Action instructions<textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="What should operators, Operations, or enforcement do?" required /></label>
+            <label>Required audiences<input value={audiences} onChange={(e) => setAudiences(e.target.value)} placeholder="Comma-separated audiences" required /></label>
+            <label>Required channels<input value={channels} onChange={(e) => setChannels(e.target.value)} placeholder="Comma-separated channels" required /></label>
+          </div>
+        </div>
+        <div className="form-section">
+          <h4>Evidence</h4><p>Preserve the supporting record so the reviewer can verify the report.</p>
+          <div className="form-grid"><label className="form-grid-wide">Evidence notes<textarea value={evidenceNotes} onChange={(e) => setEvidenceNotes(e.target.value)} placeholder="What documentation supports this report?" /></label><label className="form-grid-wide">Evidence reference<input value={evidenceReference} onChange={(e) => setEvidenceReference(e.target.value)} placeholder="File name, case number, or reference link" /></label></div>
+        </div>
+        <div className="intake-checklist" aria-live="polite"><strong>{missing.length ? `${missing.length} items remaining before submission` : "Complete intake ready for submission"}</strong>{missing.length ? <ul>{missing.map((item) => <li key={item}>{item}</li>)}</ul> : <div className="is-complete">All required operational facts are present. OCC review starts after submission.</div>}</div>
+        <div className="intake-form-actions"><span className="muted">Submitted records start in Pending OCC review.</span><button className="btn-primary" disabled={busy || missing.length > 0} onClick={() => void create()}>Submit complete Detour Intake</button></div>
       </div>
-      <h3>Pending review</h3>
-      {rows.length === 0 ? <p className="muted">No pending intake reports.</p> : <div className="table-wrap"><table className="data"><thead><tr><th>Source</th><th>Description</th><th>Window</th><th>Impact</th><th>Next path</th><th>Actions</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td>{row.detection_source}</td><td>{row.description}<br /><span className="muted">{row.location}</span><br /><span className="muted">{row.action_instructions || "No action instructions"}</span></td><td>{row.proposed_start_date || "—"} → {row.proposed_end_date || "open"}</td><td>{row.service_impact === "mobility" ? row.service_area || "Mobility" : row.segments.length ? row.segments.map((segment) => segment.routes).join("; ") : "Fixed-route details missing"}</td><td>{row.proposed_fulfillment_mode || "—"}</td><td><button className="btn-sm" disabled={busy} onClick={() => void promote(row)}>Accept &amp; continue</button>{" "}<button className="btn-sm" disabled={busy} onClick={() => void requestInformation(row)}>Needs information</button>{" "}<button className="btn-sm" disabled={busy} onClick={() => void reject(row, "duplicate")}>Duplicate</button>{" "}<button className="btn-sm" disabled={busy} onClick={() => void reject(row, "rejected")}>Reject</button></td></tr>)}</tbody></table></div>}
+      <h3>Pending OCC review <span className="chip">{rows.length}</span></h3>
+      {rows.length === 0 ? <p className="muted">No pending intake reports.</p> : <div className="table-wrap"><table className="data"><thead><tr><th>Situation</th><th>Window</th><th>Affected service</th><th>Next path</th><th>Actions</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td><strong>{row.description}</strong><br /><span className="td-subtle">{row.detection_source} · {row.location || "Location not recorded"}</span><br /><span className="td-subtle">{row.action_instructions || "Instructions missing"}</span></td><td>{row.proposed_start_date || "—"} → {row.proposed_end_date || "open"}</td><td>{row.service_impact === "mobility" ? row.service_area || "Mobility area missing" : row.segments.length ? row.segments.map((segment) => segment.routes).join("; ") : "Route segments missing"}</td><td>{MODES.find((mode) => mode.value === row.proposed_fulfillment_mode)?.label || "Not selected"}</td><td><button className="btn-sm" disabled={busy} onClick={() => openReview(row, "accept")}>Accept &amp; continue</button>{" "}<button className="btn-sm" disabled={busy} onClick={() => openReview(row, "needs_information")}>Needs information</button>{" "}<button className="btn-sm" disabled={busy} onClick={() => openReview(row, "duplicate")}>Duplicate</button>{" "}<button className="btn-sm" disabled={busy} onClick={() => openReview(row, "rejected")}>Reject</button></td></tr>)}</tbody></table></div>}
     </div>
+    {reviewing ? <div className="modal-overlay" role="presentation"><section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="detour-review-title"><div className="modal-card-header"><div><span className="eyebrow">Review Detour Intake</span><h2 id="detour-review-title">{reviewing.row.description}</h2></div><button className="btn-icon" aria-label="Close review" onClick={() => setReviewing(null)}>×</button></div><p className="muted">{reviewing.row.location || "Location not recorded"} · {reviewing.row.proposed_start_date || "No start date"} → {reviewing.row.proposed_end_date || "open"}</p>{reviewing.action === "accept" ? <div className="event-next-action"><div><span className="event-next-action-label">Acceptance boundary</span><strong>Make this same record authoritative</strong><p>Acceptance assigns the next fulfillment step. It does not enter Avail or publish communications.</p></div></div> : <>{reviewing.action === "duplicate" ? <label className="modal-field">Existing Detour or intake ID<input value={duplicateTarget} onChange={(e) => setDuplicateTarget(e.target.value)} placeholder="GUID of the existing record" autoFocus /></label> : null}<label className="modal-field">{reviewing.action === "needs_information" ? "Information still needed" : reviewing.action === "duplicate" ? "Why is this a duplicate?" : "Rejection reason"}<textarea value={reviewNotes} onChange={(e) => setReviewNotes(e.target.value)} placeholder="Record the reason for this decision" autoFocus={reviewing.action !== "duplicate"} /></label></>}<div className="modal-actions"><button className="btn-sm" onClick={() => setReviewing(null)}>Cancel</button><button className="btn-primary" disabled={busy || (reviewing.action !== "accept" && !reviewNotes.trim()) || (reviewing.action === "duplicate" && !duplicateTarget.trim())} onClick={() => void submitReview()}>{reviewing.action === "accept" ? "Accept record" : reviewing.action === "needs_information" ? "Return for information" : reviewing.action === "duplicate" ? "Mark duplicate" : "Reject record"}</button></div></section></div> : null}
   </section>;
 }

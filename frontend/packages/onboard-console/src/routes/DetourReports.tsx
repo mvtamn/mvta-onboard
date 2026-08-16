@@ -51,6 +51,7 @@ export function DetourReports() {
   const [filters, setFilters] = useState<DetourFilters>(EMPTY_FILTERS);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
 
   useEffect(() => {
     api
@@ -83,7 +84,8 @@ export function DetourReports() {
     setFilters((f) => ({ ...f, [key]: value }));
   }
 
-  const visible = detours ? filterDetours(detours, filters, reasonCodes) : [];
+  const historicalFilterSelected = filters.status !== "all" && filters.status !== "active" && filters.status !== "upcoming";
+  const visible = detours ? filterDetours(detours, filters, reasonCodes).filter((d) => showHistory || historicalFilterSelected || d.status === "active" || d.status === "upcoming") : [];
   const filtersActive = JSON.stringify(filters) !== JSON.stringify(EMPTY_FILTERS);
 
   function exportCsv() {
@@ -185,6 +187,9 @@ export function DetourReports() {
           <span className="td-dim">
             {detours === null ? "…" : `${visible.length} of ${detours.length} detours`}
           </span>
+          <button className="btn-sm" aria-pressed={showHistory} onClick={() => setShowHistory((current) => !current)}>
+            {showHistory ? "Hide history" : "Show history"}
+          </button>
           {filtersActive ? (
             <button className="btn-sm" onClick={() => setFilters(EMPTY_FILTERS)}>Clear filters</button>
           ) : null}
@@ -219,6 +224,9 @@ export function DetourReports() {
                   <th>Dates</th>
                   <th>Status</th>
                   <th>Path</th>
+                  <th>Readiness</th>
+                  <th>Next owner</th>
+                  <th>Communications</th>
                   <th>Workflow</th>
                   {reportingReady ? <th>Reason</th> : null}
                   {reportingReady ? <th>Severity</th> : null}
@@ -236,7 +244,10 @@ export function DetourReports() {
                       <td className="td-dim">{d.segments.map((s) => s.routes).join("; ") || "—"}</td>
                       <td className="td-dim">{dateLabel(d.start_date)} – {dateLabel(d.end_date)}</td>
                       <td><span className={`pill-sm ${STATUS_PILL[d.status]}`}>{DETOUR_STATUS_LABELS[d.status]}</span></td>
-                      <td className="td-dim">{d.fulfillment_mode === "avail" ? "Avail" : d.fulfillment_mode === "mobility_manual" ? "On-demand manual" : "Fixed-route manual"}</td>
+                      <td className="td-dim">{d.fulfillment_mode === "avail" ? "Enter in Avail" : d.fulfillment_mode === "mobility_manual" ? "Mobility manual" : "Fixed-route manual"}</td>
+                      <td className="td-dim">{d.readiness === "ready_for_avail_entry" ? "Ready for Avail entry" : d.readiness === "avail_conflict" ? "Avail conflict" : d.readiness === "ready_for_manual_operations" ? "Ready for manual operations" : d.readiness === "closed" ? "Closed" : "Needs OCC review"}</td>
+                      <td className="td-dim">{d.workflow_owner || "Unassigned"}</td>
+                      <td className="td-dim">{d.communication_status === "published" ? "Ready / published" : d.communication_status === "draft" ? "Draft in progress" : d.communication_status === "needs_communication" ? "Needs communication" : "Not recorded"}</td>
                       <td className="td-dim">{d.lifecycle_state ? DETOUR_LIFECYCLE_LABELS[d.lifecycle_state] : "—"}</td>
                       {reportingReady ? <td className="td-dim">{reasonLabelOf(d.reason_code)}</td> : null}
                       {reportingReady ? (
@@ -247,7 +258,7 @@ export function DetourReports() {
                     </tr>
                     {expandedId === d.id ? (
                       <tr>
-                        <td colSpan={reportingReady ? 12 : 10}>
+                        <td colSpan={reportingReady ? 15 : 13}>
                           <div className="subcard" style={{ margin: "4px 0" }}>
                             {d.riders_directed ? <p><b>Riders directed:</b> {d.riders_directed}</p> : null}
                             {d.segments.length === 0 ? (

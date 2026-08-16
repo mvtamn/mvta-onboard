@@ -1,6 +1,6 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { DETOUR_READ_ROLES, DETOUR_WRITE_ROLES, requireRole } from "../lib/auth";
+import { DETOUR_INTAKE_ROLES, requireRole } from "../lib/auth";
 import { isGuid, validateCreateDetourIntake, validatePromoteDetourIntake, validateReviewDetourIntake } from "../lib/validation";
 import { toDateOnly } from "../lib/detourStatus";
 import { detourNumberYear } from "../lib/detourNumbering";
@@ -29,7 +29,7 @@ app.http("detourIntakeList", {
   methods: ["GET"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, DETOUR_READ_ROLES);
+    const auth = requireRole(request, DETOUR_INTAKE_ROLES);
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     try {
       const status = request.query.get("status");
@@ -97,7 +97,7 @@ app.http("detourIntakeCreate", {
   methods: ["POST"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, DETOUR_WRITE_ROLES);
+    const auth = requireRole(request, DETOUR_INTAKE_ROLES);
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     let body: Record<string, unknown>;
     try {
@@ -157,7 +157,7 @@ app.http("detourIntakeReview", {
   methods: ["PATCH"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, DETOUR_WRITE_ROLES);
+    const auth = requireRole(request, DETOUR_INTAKE_ROLES);
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const id = request.params.id;
     if (!isGuid(id)) return { status: 400, jsonBody: { error: "id must be a GUID" } };
@@ -207,7 +207,7 @@ app.http("detourIntakePromote", {
   methods: ["POST"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, DETOUR_WRITE_ROLES);
+    const auth = requireRole(request, DETOUR_INTAKE_ROLES);
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const id = request.params.id;
     if (!isGuid(id)) return { status: 400, jsonBody: { error: "id must be a GUID" } };

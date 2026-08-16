@@ -79,6 +79,16 @@ interface SegmentRow {
 
 const VALID_STATUSES: DetourStatus[] = ["monitor", "upcoming", "active", "recently_finished", "expired"];
 
+function parseList(value: string | null | undefined): string[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
+  } catch {
+    return value.split(",").map((item) => item.trim()).filter(Boolean);
+  }
+}
+
 app.http("detoursList", {
   route: "detours",
   methods: ["GET"],
@@ -141,7 +151,7 @@ app.http("detoursList", {
                ${hasWorkflowFields ? ", fulfillment_mode, lifecycle_state, workflow_owner, workflow_updated_by, workflow_updated_at, avail_build_confirmed_at" : ""}
                ${hasAvailEntryFields ? ", avail_entry_result, avail_entry_confirmed_by, avail_entry_confirmed_at" : ""}
                ${hasOperationalFields ? ", notification_audiences, notification_channels, action_instructions" : ""}
-               ${hasCommunications ? ", (SELECT COUNT(*) FROM DetourCommunications c WHERE c.detour_id=Detours.id AND c.status='published') AS communications_published, (SELECT COUNT(*) FROM DetourCommunications c WHERE c.detour_id=Detours.id AND c.status='draft') AS communications_draft" : ""}
+               ${hasCommunications ? ", (SELECT COUNT(DISTINCT c.audience) FROM DetourCommunications c WHERE c.detour_id=Detours.id AND c.status='published') AS communications_published, (SELECT COUNT(*) FROM DetourCommunications c WHERE c.detour_id=Detours.id AND c.status='draft') AS communications_draft" : ""}
                ${hasReviewFields ? ", review_status, review_reason, closure_reason" : ""}
         FROM Detours
         WHERE is_deleted = 0
@@ -178,7 +188,11 @@ app.http("detoursList", {
         ...(hasWorkflowFields ? { fulfillment_mode: d.fulfillment_mode, lifecycle_state: d.lifecycle_state, workflow_owner: d.workflow_owner, workflow_updated_by: d.workflow_updated_by, workflow_updated_at: d.workflow_updated_at, avail_build_confirmed_at: d.avail_build_confirmed_at } : {}),
         ...(hasAvailEntryFields ? { avail_entry_result: d.avail_entry_result, avail_entry_confirmed_by: d.avail_entry_confirmed_by, avail_entry_confirmed_at: d.avail_entry_confirmed_at } : {}),
         ...(hasOperationalFields ? { notification_audiences: d.notification_audiences, notification_channels: d.notification_channels } : {}),
-        ...(hasCommunications ? { communications_published: d.communications_published ?? 0, communications_draft: d.communications_draft ?? 0, communication_status: (d.communications_published ?? 0) > 0 ? "published" : (d.communications_draft ?? 0) > 0 ? "draft" : "needs_communication" } : {}),
+        ...(hasCommunications ? {
+          communications_published: d.communications_published ?? 0,
+          communications_draft: d.communications_draft ?? 0,
+          communication_status: (d.communications_published ?? 0) >= parseList(d.notification_audiences).length && parseList(d.notification_audiences).length > 0 ? "published" : (d.communications_draft ?? 0) > 0 ? "draft" : "needs_communication",
+        } : {}),
         ...(hasReviewFields ? { review_status: d.review_status, review_reason: d.review_reason, closure_reason: d.closure_reason } : {}),
         readiness: hasWorkflowFields ? computeDetourReadiness(d.fulfillment_mode, d.lifecycle_state as any) : undefined,
         segments: segmentsByDetour.get(d.id) ?? [],
