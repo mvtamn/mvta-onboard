@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ApiError, type Event, type EventGeofence, type EventLocation, type EventServicePlan } from "@mvta/shared";
+import { ApiError, type Event, type EventGeofence, type EventLocation, type EventOperationalMessaging, type EventServicePlan } from "@mvta/shared";
 import { api } from "../config.js";
 import { useAuth } from "../auth/AuthContext.js";
 import { useEventWorkspace } from "../context/EventWorkspaceContext.js";
@@ -77,9 +77,11 @@ export function EventPlanning() {
   const [startTime, setStartTime] = useState("");
   const [endDate, setEndDate] = useState("");
   const [endTime, setEndTime] = useState("");
+  const [conflictOverrideReason, setConflictOverrideReason] = useState("");
   const [routes, setRoutes] = useState<ResourceOption[]>([]);
   const [geofences, setGeofences] = useState<EventGeofence[]>([]);
   const [locations, setLocations] = useState<ResourceOption[]>([]);
+  const [operationalMessaging, setOperationalMessaging] = useState<EventOperationalMessaging | null>(null);
   const [routeIds, setRouteIds] = useState<string[]>([]);
   const [geofenceIds, setGeofenceIds] = useState<string[]>([]);
   const [locationIds, setLocationIds] = useState<string[]>([]);
@@ -103,14 +105,15 @@ export function EventPlanning() {
     setLoadError(null);
     setSessionExpired(false);
     try {
-      const [eventRows, planRows, routeRows, geofenceRows, locationRows] = await Promise.all([
-        api.getEvents(), api.getEventServicePlans(), api.getRouteClassification(), api.getEventGeofences(), api.getEventLocations(),
+      const [eventRows, planRows, routeRows, geofenceRows, locationRows, messagingRow] = await Promise.all([
+        api.getEvents(), api.getEventServicePlans(), api.getRouteClassification(), api.getEventGeofences(), api.getEventLocations(), selectedPlanId ? api.getEventOperationalMessaging(selectedPlanId) : Promise.resolve(null),
       ]);
       setEvents(eventRows.events);
       setPlans(planRows.plans);
       setRoutes(routeRows.routes.filter((row) => row.route_category === "SpecialEvent" && row.is_active).map((row) => ({ id: String(row.route_id), label: `Route ${row.route_id}${row.route_label ? ` · ${row.route_label}` : ""}` })));
       setGeofences(geofenceRows.geofences.filter((row: EventGeofence) => row.is_active));
       setLocations(locationRows.locations.filter((row: EventLocation) => row.is_active).map((row: EventLocation) => ({ id: row.id, label: `${row.name} · ${row.category}` })));
+      setOperationalMessaging(messagingRow);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         setSessionExpired(true);
@@ -143,8 +146,8 @@ export function EventPlanning() {
   }, [sortedEvents, eventSearch]);
   const plan = plans.find((row) => row.id === selectedPlanId && (!selectedEventId || row.event_id === selectedEventId));
   const event = events.find((row) => row.id === (plan?.event_id ?? selectedEventId));
-  const links = plan?.links ?? [];
   const revision = plan?.revisions?.find((row) => row.id === revisionId) ?? plan?.revisions?.find((row) => ["draft", "review", "approved"].includes(row.status));
+  const links = revision?.links ?? plan?.links ?? [];
   const counts = {
     routes: links.filter((link) => link.kind === "routes").length,
     geofences: links.filter((link) => link.kind === "geofences").length,
@@ -164,6 +167,7 @@ export function EventPlanning() {
     { label: "Operating dates are valid", ready: Boolean(startAt && endAt && new Date(startAt).getTime() < new Date(endAt).getTime()) },
     { label: "Active SpecialEvent route linked", ready: counts.routes > 0 },
     { label: "Geofence linked", ready: counts.geofences > 0 },
+    { label: "Route conflicts reviewed", ready: !plan?.route_conflict || Boolean(conflictOverrideReason.trim()) },
     {
       label: "Messaging geofence configured",
       ready: messagingGeofences.length > 0,
@@ -205,6 +209,7 @@ export function EventPlanning() {
     // otherwise these fields keep showing the previous plan's data
     // displayed against a new, unrelated Event.
     setPlanName(plan?.name ?? "");
+    setConflictOverrideReason("");
     const start = localParts(plan?.start_at); const end = localParts(plan?.end_at);
     setStartDate(start.date); setStartTime(start.time); setEndDate(end.date); setEndTime(end.time);
   }, [plan?.id]);
@@ -264,9 +269,9 @@ export function EventPlanning() {
 
   async function transition(action: "submit-review" | "approve" | "advance" | "complete" | "suspend") {
     if (!plan) return;
-    if (action === "advance" && !window.confirm(`Activate "${plan.name}" for Event AVL? This publishes the scope live to riders.`)) return;
+    if (action === "advance" && !window.confirm(`Activate Event Plan "${plan.name}" for internal Event AVL monitoring? This does not publish rider-facing communication.`)) return;
     if (action === "suspend" && !window.confirm(`Suspend operations for "${plan.name}"? This pauses live Event AVL monitoring.`)) return;
-    try { await api.transitionEventServicePlan(plan.id, action); setFeedbackFor("lifecycle", action === "advance" ? "Operating period activated." : `Operating period ${action === "submit-review" ? "submitted for review" : `${action}d`}.`); await load(); }
+    try { await api.transitionEventServicePlan(plan.id, action, conflictOverrideReason.trim() || undefined); setFeedbackFor("lifecycle", action === "advance" ? "Event Plan activated." : `Event Plan ${action === "submit-review" ? "submitted for review" : `${action}d`}.`); await load(); }
     catch (err) { setFeedbackFor("lifecycle", err instanceof ApiError ? err.message : "Could not update operating period.", "error"); }
   }
 
@@ -294,24 +299,26 @@ export function EventPlanning() {
     ? "plan"
     : plan.status === "draft"
       ? "configure"
-      : plan.status === "review" || plan.status === "approved"
+      : plan.status === "review"
+        ? "review"
+        : plan.status === "approved"
         ? "activate"
-        : "monitor";
+        : "activate";
   const nextPlanningAction = !selectedEventId
     ? { title: "Select an Event", detail: "Choose the Event this operating period belongs to.", target: "event-select" }
     : !plan
-      ? { title: "Create an operating period", detail: "Set the dates that define when this Event service will run.", target: "operating-period-name" }
+      ? { title: "Create an Event Plan", detail: "Set the dates that define when this Event service will run.", target: "operating-period-name" }
       : plan.status === "draft" && !readyToActivate
         ? { title: `Complete activation checklist${readiness.find((item) => !item.ready) ? `: ${readiness.find((item) => !item.ready)?.label}` : ""}`, detail: "Add the missing operational resource or rule before submitting this period for review.", target: "planned-operating-resources" }
         : plan.status === "draft"
           ? { title: "Submit for review", detail: "The operating scope is complete and ready for review.", target: "operating-period-lifecycle" }
           : plan.status === "review"
-            ? { title: "Approve operating period", detail: "Review the completed scope, then approve it for activation.", target: "operating-period-lifecycle" }
+            ? { title: "Approve Event Plan", detail: "Review the completed scope, then approve it for activation.", target: "operating-period-lifecycle" }
             : plan.status === "approved"
               ? { title: "Activate for Event AVL", detail: "Publish this validated scope so Event AVL and geofence alerts can use it.", target: "operating-period-lifecycle" }
               : plan.status === "active"
-                ? { title: "Monitor in Event AVL", detail: "This operating period is live and ready for vehicle monitoring.", target: "event-avl-link" }
-                : { title: "Operating period completed", detail: "This period is no longer active.", target: "operating-period-lifecycle" };
+                ? { title: "Open Event AVL", detail: "This Event Plan is active and ready for internal vehicle monitoring.", target: "event-avl-link" }
+                : { title: "Event Plan completed", detail: "This Event Plan is no longer active.", target: "operating-period-lifecycle" };
   const focusNextPlanningAction = () => {
     if (nextPlanningAction.target === "event-avl-link") return;
     const target = document.getElementById(nextPlanningAction.target);
@@ -321,7 +328,7 @@ export function EventPlanning() {
 
   return <div className="event-planning">
     <EventWorkspaceNav eventName={event?.name} planName={plan?.name} planStatus={plan?.status} activeStage={activeStage} />
-    <p className="event-workspace-next" role="status">{plan?.status === "active" ? "This operating scope is active. Monitor it in Event AVL." : selectedEventId ? "Define the operating period, add its resources, then activate it for Event AVL." : "Start by choosing an Event, then define its operating period."}</p>
+    <p className="event-workspace-next" role="status">{plan?.status === "active" ? "This Event Plan is active. Monitor it in Event AVL." : selectedEventId ? "Define the Event Plan, add its resources, then activate it for Event AVL." : "Start by choosing an Event, then define its Event Plan."}</p>
     <div className="event-next-action" role="status" aria-label="Next planning action">
       <div><span className="event-next-action-label">Next action</span><strong>{nextPlanningAction.title}</strong><p>{nextPlanningAction.detail}</p></div>
       {nextPlanningAction.target === "event-avl-link" ? <Link id="event-avl-link" className="btn-primary" to={`/event-monitoring?event=${encodeURIComponent(selectedEventId)}${plan ? `&plan=${encodeURIComponent(plan.id)}` : ""}`}>Open Event AVL</Link> : <button className="btn-primary" onClick={focusNextPlanningAction}>{nextPlanningAction.title}</button>}
@@ -335,13 +342,13 @@ export function EventPlanning() {
     {loading && <p className="muted" role="status">Loading Events, operating periods, and reusable resources…</p>}
     <div className="event-scope-builder">
     <div className="event-scope-builder-heading">
-      <div><span className="event-workspace-kicker">Event workspace{event ? ` · ${event.name}` : ""}</span><h2>Operating scope builder</h2></div>
+      <div><span className="event-workspace-kicker">Event workspace{event ? ` · ${event.name}` : ""}</span><h2>Event Plan builder</h2></div>
       <p>Assemble the complete service plan in one place, then move it through review and activation.</p>
     </div>
     <div className="event-scope-builder-grid">
     <section id="planned-operating-resources" className="event-scope-column">
       <h3>Plan details</h3>
-      <p className="panel-desc">Choose the Event and define the time-bounded operating period that owns this service scope.</p>
+      <p className="panel-desc">Choose the Event and define the time-bounded Event Plan that owns this service scope.</p>
       <FeedbackNote feedback={feedback.event} />
       <input type="search" className="f" value={eventSearch} onChange={(e) => setEventSearch(e.target.value)} aria-label="Search Events" placeholder="Search Events…" style={{ marginBottom: 6 }} />
       <select id="event-select" className="f" value={selectedEventId} onChange={(e) => {
@@ -363,25 +370,25 @@ export function EventPlanning() {
         <button className="btn-sm" disabled={!eventName.trim()} onClick={() => void createEvent()}>Create Event</button>
       </div>}
       <div className="event-scope-divider" />
-      <h3>Operating period</h3>
-      <p className="panel-desc">An operating period is this Event’s time-bounded Service Plan. Times use your MVTA-local browser time.</p>
-      <p id="operating-period-help" className="muted">{selectedEventId ? "Give the period a name, then choose its local service dates and times. The end must be later than the start." : "Select an Event above before creating an operating period."}</p>
+      <h3>Event Plan details</h3>
+      <p className="panel-desc">An Event Plan is this Event’s time-bounded Service Plan. Times use MVTA-local time.</p>
+      <p id="operating-period-help" className="muted">{selectedEventId ? "Give the Event Plan a name, then choose its local service dates and times. The end must be later than the start." : "Select an Event above before creating an Event Plan."}</p>
       <FeedbackNote feedback={feedback.period} />
       {selectedEventId && <>
         <div className="event-period-form">
           <select id="operating-period-select" className="f" value={selectedPlanId} onChange={(e) => {
             if (periodDirty && !window.confirm(`Discard unsaved changes to "${plan?.name}" and switch operating periods?`)) return;
             selectServicePlan(e.target.value);
-          }} aria-label="Selected operating period"><option value="">Select operating period</option>{eventPlans.map((row) => <option key={row.id} value={row.id}>{row.name} · {row.status}</option>)}</select>
+          }} aria-label="Selected Event Plan"><option value="">Select Event Plan</option>{eventPlans.map((row) => <option key={row.id} value={row.id}>{row.name} · {row.status}</option>)}</select>
           <input id="operating-period-name" className="f" value={planName} onChange={(e) => setPlanName(e.target.value)} placeholder="Example: State Fair · Friday evening" aria-label="Operating period name" aria-describedby="operating-period-help" />
           <div className="event-period-fieldset"><strong>Starts</strong><label>Date<input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} aria-label="Operating period start date" aria-invalid={Boolean(periodError)} /></label><label>Time<input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} aria-label="Operating period start time" aria-invalid={Boolean(periodError)} /></label></div>
           <div className="event-period-fieldset"><strong>Ends</strong><label>Date<input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} aria-label="Operating period end date" aria-invalid={Boolean(periodError)} /></label><label>Time<input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} aria-label="Operating period end time" aria-invalid={Boolean(periodError)} /></label></div>
-          <button className="btn-sm" disabled={!periodReady} onClick={() => void (plan ? savePlanDetails() : createPlan())}>{plan ? "Save period details" : "Create operating period"}</button>
+          <button className="btn-sm" disabled={!periodReady} onClick={() => void (plan ? savePlanDetails() : createPlan())}>{plan ? "Save Event Plan details" : "Create Event Plan"}</button>
         </div>
         {periodError && <p className="event-field-error" role="alert">{periodError}</p>}
       </>}
       {plan && <>
-        <p className="muted">Current operating period: <strong>{plan.name}</strong> · {plan.start_at ? new Date(plan.start_at).toLocaleString() : "time not configured"} – {plan.end_at ? new Date(plan.end_at).toLocaleString() : "time not configured"}</p>
+        <p className="muted">Current Event Plan: <strong>{plan.name}</strong> · {plan.start_at ? new Date(plan.start_at).toLocaleString() : "time not configured"} – {plan.end_at ? new Date(plan.end_at).toLocaleString() : "time not configured"}</p>
         {editable && <div className="actions event-scope-actions"><button className="btn-sm" disabled={!periodReady} onClick={() => void savePlanDetails()}>Save draft</button></div>}
       </>}
     </section>
@@ -420,10 +427,19 @@ export function EventPlanning() {
     </div>
     {plan && <>
       <FeedbackNote feedback={feedback.resources} />
-      <div className="event-activation-gate"><strong>Activation gate</strong><span>{readiness.filter((item) => item.ready).length} of {readiness.length} readiness checks complete. The plan cannot activate until all operational resources are valid.</span></div>
-      <div id="operating-period-lifecycle" className="panel-header" style={{ marginTop: 24 }}>4. Review & activate</div>
+      <div className="event-activation-gate"><strong>Activation readiness</strong><span>{readiness.filter((item) => item.ready).length} of {readiness.length} readiness checks complete. The Event Plan cannot activate until all operational resources are valid.</span></div>
+      <div id="operating-period-lifecycle" className="panel-header" style={{ marginTop: 24 }}>Review & activate</div>
       <div className="panel-body">
-        <p className="panel-desc">Confirm the scope below, then use the single next action. Activation publishes the selected routes, geofences, rules, and locations to Event AVL. Active periods can be modified through a reviewed revision.</p>
+        <p className="panel-desc">Confirm the Event Plan below, then use the single next action. Activation publishes the selected routes, geofences, rules, and locations to internal Event AVL. Active Event Plans can be modified through a reviewed revision.</p>
+        <p className="muted"><strong>Internal delivery:</strong> {operationalMessaging?.automatic_teams_enabled ? `Teams on · ${operationalMessaging.teams_destination}` : "Off · eligible notifications remain queued in Event AVL"}</p>
+        <div className="subcard event-review-evidence" aria-label="Event Plan review evidence">
+          <strong>Review evidence</strong>
+          <span>Event: {event?.name ?? "Not selected"}</span>
+          <span>Operating period: {plan.start_at ? `${new Date(plan.start_at).toLocaleString()} – ${new Date(plan.end_at ?? plan.start_at).toLocaleString()}` : "Not configured"} · MVTA-local time</span>
+          <span>Scope: {counts.routes} routes · {counts.geofences} geofences · {counts.locations} locations</span>
+          <span>Snapshot: {plan.published_scope ? "Published operational snapshot" : "Will publish atomically at activation"}</span>
+          {plan.route_conflict && <span>Conflict override: {conflictOverrideReason.trim() || "Reason required before activation"}</span>}
+        </div>
         <ol className="event-plan-steps" aria-label="Operating period lifecycle">
           {steps.map((step) => {
             // A suspended plan has passed through "active" (there's no
@@ -438,8 +454,8 @@ export function EventPlanning() {
         </ol>
         {plan.status === "suspended" && <p className="warn-note">Suspended — Event AVL monitoring is paused for this operating period.</p>}
         <FeedbackNote feedback={feedback.lifecycle} />
-        {nextAction === "advance" && <div className="event-readiness" role="group" aria-label="Activation readiness"><strong>{readyToActivate ? "Ready to activate" : "Activation checklist"}</strong>{readiness.map((item) => <span key={item.label} className={item.ready ? "ready" : "missing"} aria-label={`${item.ready ? "Complete" : "Missing"}: ${item.label}`}>{item.ready ? "✓" : "!"} {!item.ready && item.href ? <Link to={item.href}>{item.label}</Link> : item.label}</span>)}</div>}
-        {nextAction && <button className="btn-primary" disabled={nextAction === "advance" && !readyToActivate} onClick={() => void transition(nextAction)}>{nextAction === "submit-review" ? "Submit for review" : nextAction === "approve" ? "Approve operating period" : nextAction === "advance" ? "Activate for Event AVL" : "Complete operating period"}</button>}
+        {nextAction === "advance" && <div className="event-readiness" role="group" aria-label="Activation readiness"><strong>{readyToActivate ? "Ready to activate" : "Activation checklist"}</strong>{readiness.map((item) => <span key={item.label} className={item.ready ? "ready" : "missing"} aria-label={`${item.ready ? "Complete" : "Missing"}: ${item.label}`}>{item.ready ? "✓" : "!"} {!item.ready && item.href ? <Link to={item.href}>{item.label}</Link> : item.label}</span>)}{plan.route_conflict && <label className="event-conflict-override">Conflict override reason<input value={conflictOverrideReason} onChange={(event) => setConflictOverrideReason(event.target.value)} placeholder="Explain why this route overlap is intentional" aria-label="Conflict override reason" /></label>}</div>}
+        {nextAction && <button className="btn-primary" disabled={nextAction === "advance" && !readyToActivate} onClick={() => void transition(nextAction)}>{nextAction === "submit-review" ? "Submit Event Plan for review" : nextAction === "approve" ? "Approve Event Plan" : nextAction === "advance" ? "Activate Event Plan" : "Complete Event Plan"}</button>}
         {plan.status === "active" && <div className="event-lifecycle-secondary">
           <span className="event-lifecycle-secondary-label">Active period controls:</span>
           <button className="btn-sm" onClick={() => void prepareRevision()}>Modify active scope</button>

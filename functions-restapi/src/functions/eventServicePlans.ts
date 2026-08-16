@@ -39,7 +39,10 @@ async function readPlanReadiness(pool: Awaited<ReturnType<typeof getPool>>, plan
         SELECT 1 FROM EventServicePlanRoutes candidate
         JOIN EventServicePlanRoutes activeRoute ON activeRoute.route_id=candidate.route_id AND activeRoute.service_plan_id<>@id
         JOIN EventServicePlans activePlan ON activePlan.id=activeRoute.service_plan_id AND activePlan.status='active'
+        JOIN EventServicePlans candidatePlan ON candidatePlan.id=candidate.service_plan_id
         WHERE candidate.service_plan_id=@id
+          AND COALESCE(candidatePlan.start_at, CAST(candidatePlan.start_date AS DATETIME2)) < COALESCE(activePlan.end_at, DATEADD(day, 1, CAST(activePlan.end_date AS DATETIME2)))
+          AND COALESCE(activePlan.start_at, CAST(activePlan.start_date AS DATETIME2)) < COALESCE(candidatePlan.end_at, DATEADD(day, 1, CAST(candidatePlan.end_date AS DATETIME2)))
       ) THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END AS routeConflict
   `);
   return result.recordset[0] ?? { routeCount: 0, geofenceCount: 0, geofencesWithRules: 0, validDates: false, routeConflict: false };
@@ -56,6 +59,8 @@ app.http("eventServicePlans", { route: "event-service-plans", methods: ["GET", "
     const plans = (await pool.request().query("SELECT * FROM EventServicePlans ORDER BY created_at DESC")).recordset;
     const links = (await pool.request().query("SELECT 'routes' kind,spr.service_plan_id,CONVERT(nvarchar(36),spr.route_id) value,CONCAT('Route ',spr.route_id,CASE WHEN rc.route_label IS NULL THEN '' ELSE CONCAT(' · ',rc.route_label) END) label FROM EventServicePlanRoutes spr LEFT JOIN RouteClassification rc ON rc.route_id=spr.route_id UNION ALL SELECT 'geofences',spg.service_plan_id,CONVERT(nvarchar(36),spg.geofence_id),g.name FROM EventServicePlanGeofences spg JOIN EventGeofences g ON g.id=spg.geofence_id UNION ALL SELECT 'locations',spl.service_plan_id,CONVERT(nvarchar(36),spl.location_id),l.name FROM EventServicePlanLocations spl JOIN EventLocations l ON l.id=spl.location_id")).recordset;
     const revisions = (await pool.request().query("SELECT * FROM EventServicePlanRevisions ORDER BY created_at DESC")).recordset;
+    const revisionLinks = (await pool.request().query("SELECT 'routes' kind,r.revision_id,sp.service_plan_id,CONVERT(nvarchar(36),r.route_id) value,CONCAT('Route ',r.route_id,CASE WHEN rc.route_label IS NULL THEN '' ELSE CONCAT(' · ',rc.route_label) END) label FROM EventServicePlanRevisionRoutes r JOIN EventServicePlanRevisions sp ON sp.id=r.revision_id LEFT JOIN RouteClassification rc ON rc.route_id=r.route_id UNION ALL SELECT 'geofences',r.revision_id,sp.service_plan_id,CONVERT(nvarchar(36),r.geofence_id),g.name FROM EventServicePlanRevisionGeofences r JOIN EventServicePlanRevisions sp ON sp.id=r.revision_id JOIN EventGeofences g ON g.id=r.geofence_id UNION ALL SELECT 'locations',r.revision_id,sp.service_plan_id,CONVERT(nvarchar(36),r.location_id),l.name FROM EventServicePlanRevisionLocations r JOIN EventServicePlanRevisions sp ON sp.id=r.revision_id JOIN EventLocations l ON l.id=r.location_id")).recordset;
+    const readinessByPlan = new Map((await Promise.all(plans.map(async (plan) => [String(plan.id), await readPlanReadiness(pool, String(plan.id))] as const))).map(([id, readiness]) => [id, readiness]));
     const snapshots = (await pool.request().query("SELECT service_plan_id,routes_json,geofences_json,locations_json,rules_json FROM (SELECT s.*,ROW_NUMBER() OVER (PARTITION BY service_plan_id ORDER BY captured_at DESC) snapshot_rank FROM EventServicePlanScopeSnapshots s) latest WHERE snapshot_rank=1")).recordset;
     const snapshotFor = new Map(snapshots.map((snapshot) => [String(snapshot.service_plan_id), snapshot]));
     const parse = (value: unknown): unknown[] => { try { return typeof value === "string" ? JSON.parse(value) as unknown[] : []; } catch { return []; } };
@@ -72,7 +77,7 @@ app.http("eventServicePlans", { route: "event-service-plans", methods: ["GET", "
         locations: locations.map((row) => ({ ...row, id: row.location_id })),
       };
     };
-    return { status: 200, jsonBody: { plans: plans.map((plan) => ({ ...plan, links: links.filter((link) => link.service_plan_id === plan.id), revisions: revisions.filter((revision) => revision.service_plan_id === plan.id), published_scope: publishedScope(plan) })) } };
+    return { status: 200, jsonBody: { plans: plans.map((plan) => ({ ...plan, route_conflict: readinessByPlan.get(String(plan.id))?.routeConflict ?? false, links: links.filter((link) => link.service_plan_id === plan.id), revisions: revisions.filter((revision) => revision.service_plan_id === plan.id).map((revision) => ({ ...revision, links: revisionLinks.filter((link) => link.revision_id === revision.id) })), published_scope: publishedScope(plan) })) } };
   }
   const body = await req.json() as Record<string, unknown>; if (typeof body.name !== "string" || !body.name.trim()) return { status: 400, jsonBody: { error: "name is required" } };
   const hasStart = body.start_at !== undefined && body.start_at !== null;
@@ -159,10 +164,20 @@ app.http("eventServicePlanAction", { route: "event-service-plans/{id}/{action}",
   if (["submit-review", "approve", "advance", "complete", "suspend"].includes(action)) {
     const transitions: Record<string, { from: string; to: string }> = { "submit-review": { from: "draft", to: "review" }, approve: { from: "review", to: "approved" }, advance: { from: "approved", to: "active" }, complete: { from: "active", to: "completed" }, suspend: { from: "active", to: "suspended" } };
     const transition = transitions[action]; const r = pool.request(); r.input("id", sql.UniqueIdentifier, id); r.input("by", sql.NVarChar, auth.principal.userDetails ?? "system");
+    let conflictOverrideReason: string | null = null;
+    if (action === "approve" || action === "advance") {
+      try {
+        const body = await req.json() as { conflict_override_reason?: unknown };
+        if (typeof body.conflict_override_reason === "string") conflictOverrideReason = body.conflict_override_reason.trim() || null;
+      } catch { /* an empty body is valid when no override is needed */ }
+    }
     if (action === "approve" || action === "advance") {
       const readiness = await readPlanReadiness(pool, id);
-      const validation = validateEventPlanReadiness(readiness);
+      const validation = validateEventPlanReadiness(readiness, conflictOverrideReason);
       if (!validation.valid) return { status: 409, jsonBody: { error: validation.error } };
+      if (readiness.routeConflict && conflictOverrideReason) {
+        await pool.request().input("plan", sql.UniqueIdentifier, id).input("type", sql.NVarChar, "route_overlap").input("key", sql.NVarChar, "active-route-overlap").input("reason", sql.NVarChar(1000), conflictOverrideReason).input("by", sql.NVarChar, auth.principal.userDetails ?? "system").query("INSERT INTO EventServicePlanConflictOverrides(service_plan_id,conflict_type,conflict_key,reason,created_by) VALUES(@plan,@type,@key,@reason,@by)");
+      }
     }
     if (action === "advance") {
       await captureScopeSnapshot(pool, id, auth.principal.userDetails ?? "system");

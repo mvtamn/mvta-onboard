@@ -13,6 +13,7 @@ vi.mock("../config.js", () => ({
     getRouteClassification: vi.fn(),
     getEventGeofences: vi.fn(),
     getEventLocations: vi.fn(),
+    getEventOperationalMessaging: vi.fn(),
     createEvent: vi.fn(),
     createEventServicePlan: vi.fn(),
     updateEventServicePlan: vi.fn(),
@@ -67,6 +68,7 @@ function mockApiData({ events = [], plans = [], routes = [], geofences = [], loc
   vi.mocked(api.getRouteClassification).mockResolvedValue({ routes } as never);
   vi.mocked(api.getEventGeofences).mockResolvedValue({ geofences });
   vi.mocked(api.getEventLocations).mockResolvedValue({ locations });
+  vi.mocked(api.getEventOperationalMessaging).mockResolvedValue({ service_plan_id: "plan1", automatic_teams_enabled: false, teams_configured: true, teams_destination: "Event Operations", updated_by: null, updated_at: null });
 }
 
 function renderEventPlanning(initialEntries: string[] = ["/console/event-planning"]) {
@@ -404,8 +406,8 @@ describe("EventPlanning", () => {
       expect(noEventBanner.closest(".event-next-action")).not.toBeNull();
 
       await userEvent.selectOptions(screen.getByRole("combobox", { name: "Selected Event" }), "evt1");
-      const noPeriodBanner = await screen.findByText("Create an operating period", { selector: "strong" });
-      expect(noPeriodBanner.closest(".event-next-action")).toHaveTextContent(/operating period/i);
+      const noPeriodBanner = await screen.findByText("Create an Event Plan", { selector: "strong" });
+      expect(noPeriodBanner.closest(".event-next-action")).toHaveTextContent(/Event Plan/i);
       expect(noPeriodBanner.closest(".event-next-action")).not.toBeNull();
     });
   });
@@ -414,13 +416,46 @@ describe("EventPlanning", () => {
     it("places the scope builder before review and activation", async () => {
       mockApiData({ events: [makeEvent()], plans: [makePlan()] });
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
-      const page = await screen.findByText("Operating scope builder");
+      const page = await screen.findByText("Event Plan builder");
       const workspace = page.closest(".event-planning")!;
       expect(workspace.querySelector("#planned-operating-resources")).not.toBeNull();
       expect(workspace.querySelector("#operating-period-lifecycle")).not.toBeNull();
       expect(workspace.querySelector("#planned-operating-resources")!.compareDocumentPosition(workspace.querySelector("#operating-period-lifecycle")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       expect(screen.getByText("Scope resources")).toBeInTheDocument();
-      expect(screen.getByText("Activation gate")).toBeInTheDocument();
+      expect(screen.getByText("Activation readiness")).toBeInTheDocument();
     });
+  });
+
+  describe("reviewed conflict overrides", () => {
+    it("requires and submits a reason for an active route conflict", async () => {
+      vi.mocked(window.confirm).mockReturnValue(true);
+      mockApiData({
+        events: [makeEvent()],
+        plans: [makePlan({ status: "approved", route_conflict: true, links: [
+          { kind: "routes", service_plan_id: "plan1", value: 12, label: "Route 12" },
+          { kind: "geofences", service_plan_id: "plan1", value: "geo1", label: "Gate" },
+        ] })],
+        geofences: [makeGeofence({ rules: [{ id: "rule1", geofence_id: "geo1", transition: "enter", heading_min: 0, heading_max: 360, destination_label: "Gate", destination_location_id: null, message_type: "custom", send_mode: "auto", sort_order: 1 }] })],
+      });
+      renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
+      const reason = await screen.findByRole("textbox", { name: "Conflict override reason" });
+      expect(screen.getByRole("button", { name: "Activate Event Plan" })).toBeDisabled();
+      await userEvent.type(reason, "Shared route is intentional for the transfer window");
+      expect(screen.getByRole("button", { name: "Activate Event Plan" })).toBeEnabled();
+      await userEvent.click(screen.getByRole("button", { name: "Activate Event Plan" }));
+      expect(api.transitionEventServicePlan).toHaveBeenCalledWith("plan1", "advance", "Shared route is intentional for the transfer window");
+    });
+  });
+
+  it("renders revision resources instead of the active scope while a revision is selected", async () => {
+    mockApiData({
+      events: [makeEvent()],
+      plans: [makePlan({ status: "active", links: [{ kind: "routes", service_plan_id: "plan1", value: 12, label: "Route 12" }], revisions: [{ id: "rev1", service_plan_id: "plan1", status: "draft", links: [{ kind: "routes", service_plan_id: "plan1", value: 13, label: "Route 13" }] }] })],
+      routes: [{ route_id: 12, route_category: "SpecialEvent", is_active: true, route_label: "Active route" }, { route_id: 13, route_category: "SpecialEvent", is_active: true, route_label: "Revision route" }],
+    });
+    renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1&revision=rev1"]);
+    const linked = (await screen.findByText("Route 13")).closest(".event-linked-resource");
+    expect(linked).not.toBeNull();
+    expect(linked).toHaveTextContent("Route 13");
   });
 });

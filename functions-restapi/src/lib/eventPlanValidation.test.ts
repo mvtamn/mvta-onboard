@@ -35,13 +35,24 @@ test("rejects approval readiness when no messaging geofence has a rule", () => {
 test("rejects a route conflict before publishing scope", () => {
   assert.deepEqual(validateEventPlanReadiness({ ...ready, routeConflict: true }), {
     valid: false,
-    error: "A route is already covered by another active Event",
+    error: "A reason is required to override the active route conflict",
   });
 });
 
 test("route conflict applies even when periods belong to the same Event", () => {
   assert.deepEqual(validateEventPlanReadiness({ ...ready, routeConflict: true }), {
     valid: false,
-    error: "A route is already covered by another active Event",
+    error: "A reason is required to override the active route conflict",
+  });
+});
+
+test("accepts a route conflict when an authorized reason is recorded", () => {
+  assert.deepEqual(validateEventPlanReadiness({ ...ready, routeConflict: true }, "Shared route is intentional for the overlapping transfer window"), { valid: true });
+});
+
+test("rejects a route conflict when the override reason is blank", () => {
+  assert.deepEqual(validateEventPlanReadiness({ ...ready, routeConflict: true }, "   "), {
+    valid: false,
+    error: "A reason is required to override the active route conflict",
   });
 });

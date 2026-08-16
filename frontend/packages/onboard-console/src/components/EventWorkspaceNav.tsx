@@ -6,14 +6,14 @@ interface Props {
   eventName?: string;
   planName?: string;
   planStatus?: string;
-  activeStage?: "plan" | "configure" | "activate" | "monitor";
+  activeStage?: "plan" | "configure" | "review" | "activate";
 }
 
 const stages = [
-  { id: "plan", label: "Plan", description: "Event and operating period", href: "/events/planning" },
+  { id: "plan", label: "Plan", description: "Event and Event Plan", href: "/events/planning" },
   { id: "configure", label: "Configure", description: "Reusable resources", href: "/admin/events" },
-  { id: "activate", label: "Activate", description: "Validate and publish scope", href: "/events/planning" },
-  { id: "monitor", label: "Monitor", description: "Live Event AVL", href: "/events/avl" },
+  { id: "review", label: "Review", description: "Readiness and evidence", href: "/events/planning" },
+  { id: "activate", label: "Activate", description: "Publish internal scope", href: "/events/planning" },
 ] as const;
 
 export function EventWorkspaceNav({ eventName, planName, planStatus, activeStage = "plan" }: Props) {
