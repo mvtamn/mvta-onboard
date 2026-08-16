@@ -261,7 +261,6 @@ export function App() {
             </div> : null}
           </section>}
           <section className="nav-group nav-group-administration">
-            <div className="nav-section-label">Administration</div>
             {(isAdmin || canManageAccess) && <>
               <button className="nav-group-toggle" aria-expanded={adminOpen} onClick={() => setAdminOpen((open) => !open)}>
                 <span>Administration</span><span aria-hidden="true">{adminOpen ? "⌃" : "›"}</span>
