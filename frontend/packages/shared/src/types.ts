@@ -713,6 +713,14 @@ export interface DetourIntake {
   duplicate_of_intake_id?: string | null;
   duplicate_of_detour_id?: string | null;
   segments: DetourSegment[];
+  service_impact?: "fixed_route" | "mobility" | null;
+  service_area?: string | null;
+  action_instructions?: string | null;
+  proposed_fulfillment_mode?: DetourFulfillmentMode | null;
+  notification_audiences?: string[];
+  notification_channels?: string[];
+  evidence_notes?: string | null;
+  evidence_reference?: string | null;
   created_by: string;
   created_at: string;
   updated_by: string | null;
@@ -726,6 +734,14 @@ export interface CreateDetourIntakeInput {
   proposed_start_date?: string | null;
   proposed_end_date?: string | null;
   segments?: DetourSegmentInput[];
+  service_impact: "fixed_route" | "mobility";
+  service_area?: string | null;
+  action_instructions: string;
+  proposed_fulfillment_mode: DetourFulfillmentMode;
+  notification_audiences: string[];
+  notification_channels: string[];
+  evidence_notes?: string | null;
+  evidence_reference?: string | null;
 }
 
 export type UpdateDetourInput = Partial<CreateDetourInput>;

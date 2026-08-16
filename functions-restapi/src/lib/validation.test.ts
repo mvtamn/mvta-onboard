@@ -561,13 +561,32 @@ test("detour image creation rejects missing blob_path/file_name and a negative s
   assert.ok(errors.some((e) => e.includes("size_bytes")));
 });
 
-test("detour intake accepts a preliminary report with a proposed window", () => {
+test("complete fixed-route detour intake accepts operational details", () => {
   assert.deepStrictEqual(validateCreateDetourIntake({
     detection_source: "Contractor notice",
     description: "Closure at Cedar Avenue",
     proposed_start_date: "2026-08-10",
     proposed_end_date: "2026-08-12",
+    service_impact: "fixed_route",
+    action_instructions: "Use the signed detour route.",
+    proposed_fulfillment_mode: "avail",
+    notification_audiences: ["operators", "operations management"],
+    notification_channels: ["email", "radio"],
+    segments: [{ routes: "Route 5", directions: "Inbound" }],
   }), []);
+});
+
+test("detour intake requires mobility fields for on-demand impact", () => {
+  const errors = validateCreateDetourIntake({
+    detection_source: "Operations report",
+    description: "Mobility service area closure",
+    service_impact: "mobility",
+    action_instructions: "Use the alternate pickup point.",
+    proposed_fulfillment_mode: "mobility_manual",
+    notification_audiences: ["operators"],
+    notification_channels: ["email"],
+  });
+  assert.ok(errors.some((e) => e.includes("service_area")));
 });
 
 test("detour intake rejects missing source and malformed dates", () => {

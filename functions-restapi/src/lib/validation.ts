@@ -498,6 +498,32 @@ export function validateCreateDetourIntake(body: UnknownBody): string[] {
     }
   }
   errors.push(...isValidDetourSegments(body.segments));
+  const impacts = ["fixed_route", "mobility"] as const;
+  const modes = ["avail", "fixed_route_manual", "mobility_manual"] as const;
+  if (!includes(impacts, body.service_impact)) {
+    errors.push(`service_impact must be one of: ${impacts.join(", ")}`);
+  }
+  if (!includes(modes, body.proposed_fulfillment_mode)) {
+    errors.push(`proposed_fulfillment_mode must be one of: ${modes.join(", ")}`);
+  }
+  if (body.service_impact === "fixed_route") {
+    if (!Array.isArray(body.segments) || body.segments.length === 0) errors.push("segments are required for fixed_route impact");
+    if (body.proposed_fulfillment_mode === "mobility_manual") errors.push("mobility_manual is only valid for mobility impact");
+  }
+  if (body.service_impact === "mobility") {
+    if (typeof body.service_area !== "string" || body.service_area.trim() === "") errors.push("service_area is required for mobility impact");
+    if (body.proposed_fulfillment_mode !== "mobility_manual") errors.push("mobility impact requires mobility_manual fulfillment");
+  }
+  for (const field of ["action_instructions", "service_area", "evidence_notes", "evidence_reference"]) {
+    const value = body[field];
+    if (value !== undefined && value !== null && typeof value !== "string") errors.push(`${field} must be a string if provided`);
+  }
+  if (typeof body.action_instructions !== "string" || body.action_instructions.trim() === "") errors.push("action_instructions is required");
+  for (const field of ["notification_audiences", "notification_channels"]) {
+    if (!Array.isArray(body[field]) || body[field].length === 0 || body[field].some((item) => typeof item !== "string" || item.trim() === "")) {
+      errors.push(`${field} must be a non-empty array of non-empty strings`);
+    }
+  }
   return errors;
 }
 

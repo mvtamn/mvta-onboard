@@ -14,6 +14,16 @@ function parseJson(request: HttpRequest): Promise<Record<string, unknown>> {
   return request.json() as Promise<Record<string, unknown>>;
 }
 
+function parseStringList(value: unknown): string[] {
+  if (typeof value !== "string") return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 app.http("detourIntakeList", {
   route: "detour-intake",
   methods: ["GET"],
@@ -27,19 +37,24 @@ app.http("detourIntakeList", {
       const req = pool.request();
       const where = INTAKE_STATUSES.includes(status as IntakeStatus) ? "WHERE i.status = @status" : "";
       if (where) req.input("status", sql.NVarChar(20), status);
-      const schema = await pool.request().query<{ duplicate_links_ready: number }>(`
+      const schema = await pool.request().query<{ duplicate_links_ready: number; complete_fields_ready: number }>(`
         SELECT CASE WHEN COL_LENGTH('dbo.DetourIntake', 'duplicate_of_intake_id') IS NULL
                          OR COL_LENGTH('dbo.DetourIntake', 'duplicate_of_detour_id') IS NULL
-                    THEN 0 ELSE 1 END AS duplicate_links_ready
+                    THEN 0 ELSE 1 END AS duplicate_links_ready,
+               CASE WHEN COL_LENGTH('dbo.DetourIntake', 'service_impact') IS NULL
+                          OR COL_LENGTH('dbo.DetourIntake', 'action_instructions') IS NULL
+                    THEN 0 ELSE 1 END AS complete_fields_ready
       `);
       const duplicateLinksReady = schema.recordset[0]?.duplicate_links_ready === 1;
+      const completeFieldsReady = schema.recordset[0]?.complete_fields_ready === 1;
       const result = await req.query(`
         SELECT i.id, i.detection_source, i.description, i.location,
                i.proposed_start_date, i.proposed_end_date, i.status,
                i.decision_notes, i.reviewed_by, i.reviewed_at,
                i.promoted_detour_id
                ${duplicateLinksReady ? ", i.duplicate_of_intake_id, i.duplicate_of_detour_id" : ""},
-               i.created_by, i.created_at,
+               i.created_by, i.created_at
+               ${completeFieldsReady ? ", i.service_impact, i.service_area, i.action_instructions, i.proposed_fulfillment_mode, i.notification_audiences, i.notification_channels, i.evidence_notes, i.evidence_reference" : ""},
                i.updated_by, i.updated_at
         FROM DetourIntake i ${where}
         ORDER BY i.created_at DESC
@@ -64,6 +79,8 @@ app.http("detourIntakeList", {
             ...row,
             proposed_start_date: toDateOnly(row.proposed_start_date),
             proposed_end_date: toDateOnly(row.proposed_end_date),
+            notification_audiences: parseStringList(row.notification_audiences),
+            notification_channels: parseStringList(row.notification_channels),
             segments: segmentsByIntake.get(row.id) ?? [],
           })),
         },
@@ -98,12 +115,24 @@ app.http("detourIntakeCreate", {
       req.input("location", sql.NVarChar(500), body.location ?? null);
       req.input("proposed_start_date", sql.Date, body.proposed_start_date ?? null);
       req.input("proposed_end_date", sql.Date, body.proposed_end_date ?? null);
+      req.input("service_impact", sql.NVarChar(20), body.service_impact);
+      req.input("service_area", sql.NVarChar(500), body.service_area ?? null);
+      req.input("action_instructions", sql.NVarChar(2000), body.action_instructions);
+      req.input("proposed_fulfillment_mode", sql.NVarChar(30), body.proposed_fulfillment_mode);
+      req.input("notification_audiences", sql.NVarChar(1000), JSON.stringify(body.notification_audiences));
+      req.input("notification_channels", sql.NVarChar(1000), JSON.stringify(body.notification_channels));
+      req.input("evidence_notes", sql.NVarChar(2000), body.evidence_notes ?? null);
+      req.input("evidence_reference", sql.NVarChar(1000), body.evidence_reference ?? null);
       req.input("created_by", sql.NVarChar(200), auth.principal.userDetails || "system");
       const inserted = await req.query<{ id: string; created_at: Date }>(`
         INSERT INTO DetourIntake
-          (detection_source, description, location, proposed_start_date, proposed_end_date, created_by)
+          (detection_source, description, location, proposed_start_date, proposed_end_date,
+           service_impact, service_area, action_instructions, proposed_fulfillment_mode,
+           notification_audiences, notification_channels, evidence_notes, evidence_reference, created_by)
         OUTPUT INSERTED.id, INSERTED.created_at
-        VALUES (@detection_source, @description, @location, @proposed_start_date, @proposed_end_date, @created_by)
+        VALUES (@detection_source, @description, @location, @proposed_start_date, @proposed_end_date,
+                @service_impact, @service_area, @action_instructions, @proposed_fulfillment_mode,
+                @notification_audiences, @notification_channels, @evidence_notes, @evidence_reference, @created_by)
       `);
       const intake = inserted.recordset[0];
       for (const [index, segment] of ((body.segments as Array<Record<string, unknown>> | undefined) ?? []).entries()) {
