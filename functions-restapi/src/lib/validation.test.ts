@@ -612,3 +612,8 @@ test("detour intake rejection requires decision notes", () => {
   assert.ok(validateReviewDetourIntake({ status: "rejected" }).some((e) => e.includes("decision_notes")));
   assert.deepStrictEqual(validateReviewDetourIntake({ status: "rejected", decision_notes: "Not a closure" }), []);
 });
+
+test("detour intake can return to Operations for missing information", () => {
+  assert.deepStrictEqual(validateReviewDetourIntake({ status: "needs_information", decision_notes: "Add the affected stop." }), []);
+  assert.ok(validateReviewDetourIntake({ status: "needs_information" }).some((e) => e.includes("decision_notes")));
+});

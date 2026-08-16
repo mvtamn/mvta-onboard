@@ -7,7 +7,7 @@ import { detourNumberYear } from "../lib/detourNumbering";
 import { allocateDetourNumber } from "../lib/detourNumberAllocator";
 import type { DetourFulfillmentMode } from "../lib/types";
 
-const INTAKE_STATUSES = ["pending_review", "accepted", "rejected", "duplicate"] as const;
+const INTAKE_STATUSES = ["pending_review", "needs_information", "accepted", "rejected", "duplicate", "withdrawn"] as const;
 type IntakeStatus = (typeof INTAKE_STATUSES)[number];
 
 function parseJson(request: HttpRequest): Promise<Record<string, unknown>> {
@@ -232,6 +232,7 @@ app.http("detourIntakePromote", {
           detourNumberYear(body.start_date as string | null ?? intake.proposed_start_date, new Date()),
         );
         const detourReq = new sql.Request(tx);
+        detourReq.input("id", sql.UniqueIdentifier, id);
         detourReq.input("closure", sql.NVarChar(500), intake.description);
         detourReq.input("riders_directed", sql.NVarChar(500), intake.location ?? null);
         detourReq.input("start_date", sql.Date, body.start_date ?? intake.proposed_start_date ?? null);
@@ -241,13 +242,24 @@ app.http("detourIntakePromote", {
         detourReq.input("workflow_owner", sql.NVarChar(200), auth.principal.userDetails || "system");
         detourReq.input("created_by", sql.NVarChar(200), auth.principal.userDetails || "system");
         detourReq.input("internal_number", sql.NVarChar(50), internalNumber);
+        detourReq.input("service_impact", sql.NVarChar(20), intake.service_impact);
+        detourReq.input("service_area", sql.NVarChar(500), intake.service_area ?? null);
+        detourReq.input("action_instructions", sql.NVarChar(2000), intake.action_instructions ?? null);
+        detourReq.input("notification_audiences", sql.NVarChar(1000), intake.notification_audiences ?? null);
+        detourReq.input("notification_channels", sql.NVarChar(1000), intake.notification_channels ?? null);
+        detourReq.input("evidence_notes", sql.NVarChar(2000), intake.evidence_notes ?? null);
+        detourReq.input("evidence_reference", sql.NVarChar(1000), intake.evidence_reference ?? null);
         const detourResult = await detourReq.query<{ id: string; created_at: Date }>(`
           INSERT INTO Detours
-            (internal_number, closure, start_date, end_date, riders_directed, source, fulfillment_mode,
-             lifecycle_state, workflow_owner, workflow_updated_by, workflow_updated_at, created_by)
+            (id, internal_number, closure, start_date, end_date, riders_directed, source, fulfillment_mode,
+             lifecycle_state, workflow_owner, workflow_updated_by, workflow_updated_at, created_by,
+             service_impact, service_area, action_instructions, notification_audiences,
+             notification_channels, evidence_notes, evidence_reference)
           OUTPUT INSERTED.id, INSERTED.created_at
-          VALUES (@internal_number, @closure, @start_date, @end_date, @riders_directed, 'manual', @fulfillment_mode,
-                  @lifecycle_state, @workflow_owner, @workflow_owner, SYSUTCDATETIME(), @created_by)
+          VALUES (@id, @internal_number, @closure, @start_date, @end_date, @riders_directed, 'manual', @fulfillment_mode,
+                  @lifecycle_state, @workflow_owner, @workflow_owner, SYSUTCDATETIME(), @created_by,
+                  @service_impact, @service_area, @action_instructions, @notification_audiences,
+                  @notification_channels, @evidence_notes, @evidence_reference)
         `);
         const detour = detourResult.recordset[0];
         const segmentsReq = new sql.Request(tx);
@@ -276,7 +288,7 @@ app.http("detourIntakePromote", {
         `);
         const promoteReq = new sql.Request(tx);
         promoteReq.input("id", sql.UniqueIdentifier, id);
-        promoteReq.input("detour_id", sql.UniqueIdentifier, detour.id);
+        promoteReq.input("detour_id", sql.UniqueIdentifier, id);
         promoteReq.input("reviewed_by", sql.NVarChar(200), auth.principal.userDetails || "system");
         await promoteReq.query(`UPDATE DetourIntake SET status = 'accepted', promoted_detour_id = @detour_id,
           reviewed_by = @reviewed_by, reviewed_at = SYSUTCDATETIME(), updated_by = @reviewed_by,

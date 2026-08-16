@@ -697,7 +697,7 @@ export interface CreateDetourInput extends DetourReportFields {
   lifecycle_state?: DetourLifecycleState;
 }
 
-export type DetourIntakeStatus = "pending_review" | "accepted" | "rejected" | "duplicate";
+export type DetourIntakeStatus = "pending_review" | "needs_information" | "accepted" | "rejected" | "duplicate" | "withdrawn";
 export interface DetourIntake {
   id: string;
   detection_source: string;
@@ -891,9 +891,11 @@ export interface EventMonitoringHealth {
 export type EventLocationCategory = "transit_station" | "venue" | "park_and_ride" | "other";
 export interface EventLocation { id: string; name: string; category: EventLocationCategory; latitude: number; longitude: number; notes: string | null; is_active: boolean; }
 export interface EventGeofence { id: string; name: string; polygon: string; is_active: boolean; updated_by: string | null; updated_at: string; rules?: EventGeofenceRule[]; }
-export interface EventGeofenceRule { id: string; geofence_id: string; transition: "enter" | "exit"; heading_min: number; heading_max: number; destination_label: string; destination_location_id: string | null; send_mode: "manual" | "auto"; sort_order: number; }
-export interface EventGeofenceCrossing { id: number; vehicle_id: number; route_id: number | null; geofence_id: string; geofence_name: string; event_id?: string | null; service_plan_id?: string | null; transition: "enter" | "exit"; heading_at_crossing: number | null; destination_label: string | null; matched_rule_id?: string | null; matched_rule_priority?: number | null; matched_destination_location_id?: string | null; matched_send_mode?: "manual" | "auto" | null; crossed_at: string; }
+export type EventGeofenceMessageType = "departing" | "passed" | "arriving_soon" | "custom";
+export interface EventGeofenceRule { id: string; geofence_id: string; transition: "enter" | "exit"; heading_min: number; heading_max: number; destination_label: string; destination_location_id: string | null; message_type: EventGeofenceMessageType; send_mode: "manual" | "auto"; sort_order: number; }
+export interface EventGeofenceCrossing { id: number; vehicle_id: number; route_id: number | null; geofence_id: string; geofence_name: string; event_id?: string | null; service_plan_id?: string | null; transition: "enter" | "exit"; heading_at_crossing: number | null; destination_label: string | null; matched_rule_id?: string | null; matched_rule_priority?: number | null; matched_destination_location_id?: string | null; matched_message_type?: EventGeofenceMessageType | null; matched_send_mode?: "manual" | "auto" | null; crossed_at: string; }
 export interface EventGeofenceNotification { id: string; crossing_id: number; send_mode: "manual" | "auto"; message_body: string; status: "pending" | "acknowledged" | "sent" | "dismissed" | "failed" | "expired"; sent_by: string | null; sent_at: string | null; acknowledged_by?: string | null; acknowledged_at?: string | null; created_at: string; attempt_count: number; last_error: string | null; next_attempt_at: string | null; }
+export interface EventOperationalMessaging { service_plan_id: string; automatic_teams_enabled: boolean; teams_configured: boolean; teams_destination: string; updated_by: string | null; updated_at: string | null; }
 export interface EventServicePlanRevision { id: string; service_plan_id: string; status: "draft" | "review" | "approved" | "applied" | "rejected"; created_by?: string; created_at?: string; }
 export interface Event { id: string; name: string; description: string | null; owning_team: string | null; created_by: string; created_at: string; updated_by: string | null; updated_at: string; }
 export interface EventServicePlan { id: string; event_id: string; name: string; status: "draft" | "review" | "approved" | "active" | "completed" | "suspended"; start_date: string | null; end_date: string | null; start_at: string | null; end_at: string | null; created_by: string; created_at: string; updated_by: string | null; updated_at: string; links?: { kind: "routes" | "geofences" | "locations"; service_plan_id: string; value: string | number; label: string }[]; revisions?: EventServicePlanRevision[]; published_scope?: { routes: { route_id: number; route_label: string | null; route_category: string; is_active: boolean }[]; geofences: (EventGeofence & { rules: EventGeofenceRule[] })[]; locations: EventLocation[] } | null; }

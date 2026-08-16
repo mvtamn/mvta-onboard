@@ -529,8 +529,9 @@ export function validateCreateDetourIntake(body: UnknownBody): string[] {
 
 export function validateReviewDetourIntake(body: UnknownBody): string[] {
   const errors: string[] = [];
-  if (body.status !== "rejected" && body.status !== "duplicate") {
-    errors.push("status must be rejected or duplicate");
+  const allowed = ["needs_information", "rejected", "duplicate", "withdrawn"] as const;
+  if (!includes(allowed, body.status)) {
+    errors.push(`status must be one of: ${allowed.join(", ")}`);
   }
   if (body.decision_notes !== undefined && body.decision_notes !== null) {
     if (typeof body.decision_notes !== "string" || body.decision_notes.trim() === "") {
@@ -539,8 +540,8 @@ export function validateReviewDetourIntake(body: UnknownBody): string[] {
       errors.push("decision_notes must be at most 1000 characters");
     }
   }
-  if (body.status === "rejected" && (!body.decision_notes || typeof body.decision_notes !== "string" || body.decision_notes.trim() === "")) {
-    errors.push("decision_notes is required when rejecting an intake");
+  if ((body.status === "rejected" || body.status === "needs_information" || body.status === "withdrawn") && (!body.decision_notes || typeof body.decision_notes !== "string" || body.decision_notes.trim() === "")) {
+    errors.push("decision_notes is required for this review outcome");
   }
   const intakeTarget = body.duplicate_of_intake_id;
   const detourTarget = body.duplicate_of_detour_id;

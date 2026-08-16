@@ -58,7 +58,7 @@ export function DetourIntake() {
   }
 
   async function promote(row: DetourIntake) {
-    const mode = window.prompt("Fulfillment mode: avail, fixed_route_manual, or mobility_manual", "fixed_route_manual") as DetourFulfillmentMode | null;
+    const mode = row.proposed_fulfillment_mode;
     if (!mode || !MODES.some((item) => item.value === mode)) return;
     setBusy(true); setError(null);
     try { await api.promoteDetourIntake(row.id, mode, { start_date: row.proposed_start_date, end_date: row.proposed_end_date }); await load(); }
@@ -79,6 +79,13 @@ export function DetourIntake() {
     }
     try { await api.reviewDetourIntake(row.id, input); await load(); }
     catch (err) { setError(err instanceof Error ? err.message : "Could not review intake"); }
+  }
+
+  async function requestInformation(row: DetourIntake) {
+    const decision_notes = window.prompt("What information is still needed?");
+    if (!decision_notes?.trim()) return;
+    try { await api.reviewDetourIntake(row.id, { status: "needs_information", decision_notes }); await load(); }
+    catch (err) { setError(err instanceof Error ? err.message : "Could not return intake for information"); }
   }
 
   return <section className="panel">
@@ -115,7 +122,7 @@ export function DetourIntake() {
         <button className="btn-primary" disabled={busy || !source.trim() || !description.trim() || !instructions.trim() || !audiences.trim() || !channels.trim() || (impact === "fixed_route" && segments.length === 0) || (impact === "mobility" && !serviceArea.trim())} onClick={() => void create()}>Submit complete Detour Intake</button>
       </div>
       <h3>Pending review</h3>
-      {rows.length === 0 ? <p className="muted">No pending intake reports.</p> : <div className="table-wrap"><table className="data"><thead><tr><th>Source</th><th>Description</th><th>Window</th><th>Impact</th><th>Next path</th><th>Actions</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td>{row.detection_source}</td><td>{row.description}<br /><span className="muted">{row.location}</span><br /><span className="muted">{row.action_instructions || "No action instructions"}</span></td><td>{row.proposed_start_date || "—"} → {row.proposed_end_date || "open"}</td><td>{row.service_impact === "mobility" ? row.service_area || "Mobility" : row.segments.length ? row.segments.map((segment) => segment.routes).join("; ") : "Fixed-route details missing"}</td><td>{row.proposed_fulfillment_mode || "—"}</td><td><button className="btn-sm" disabled={busy} onClick={() => void promote(row)}>Promote</button>{" "}<button className="btn-sm" disabled={busy} onClick={() => void reject(row, "duplicate")}>Duplicate</button>{" "}<button className="btn-sm" disabled={busy} onClick={() => void reject(row, "rejected")}>Reject</button></td></tr>)}</tbody></table></div>}
+      {rows.length === 0 ? <p className="muted">No pending intake reports.</p> : <div className="table-wrap"><table className="data"><thead><tr><th>Source</th><th>Description</th><th>Window</th><th>Impact</th><th>Next path</th><th>Actions</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td>{row.detection_source}</td><td>{row.description}<br /><span className="muted">{row.location}</span><br /><span className="muted">{row.action_instructions || "No action instructions"}</span></td><td>{row.proposed_start_date || "—"} → {row.proposed_end_date || "open"}</td><td>{row.service_impact === "mobility" ? row.service_area || "Mobility" : row.segments.length ? row.segments.map((segment) => segment.routes).join("; ") : "Fixed-route details missing"}</td><td>{row.proposed_fulfillment_mode || "—"}</td><td><button className="btn-sm" disabled={busy} onClick={() => void promote(row)}>Accept &amp; continue</button>{" "}<button className="btn-sm" disabled={busy} onClick={() => void requestInformation(row)}>Needs information</button>{" "}<button className="btn-sm" disabled={busy} onClick={() => void reject(row, "duplicate")}>Duplicate</button>{" "}<button className="btn-sm" disabled={busy} onClick={() => void reject(row, "rejected")}>Reject</button></td></tr>)}</tbody></table></div>}
     </div>
   </section>;
 }

@@ -48,7 +48,7 @@ import type {
   EventVehiclePosition,
   EventMonitoringHealth,
   AppSettingRow,
-  Event, EventLocation, EventGeofence, EventGeofenceRule, EventGeofenceCrossing, EventGeofenceNotification, EventServicePlan, EventServicePlanRevision, EventAuditEntry, EventVehicleAssignment,
+  Event, EventLocation, EventGeofence, EventGeofenceRule, EventGeofenceCrossing, EventGeofenceNotification, EventOperationalMessaging, EventServicePlan, EventServicePlanRevision, EventAuditEntry, EventVehicleAssignment,
   OtpStopExclusion,
   PutStopExclusionInput,
   OtpDateExclusion,
@@ -575,7 +575,7 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     reviewDetourIntake(
       id: string,
       input: {
-        status: "rejected" | "duplicate";
+        status: "needs_information" | "rejected" | "duplicate" | "withdrawn";
         decision_notes?: string;
         duplicate_of_intake_id?: string;
         duplicate_of_detour_id?: string;
@@ -657,6 +657,9 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       const suffix = qs.toString() ? `?${qs}` : "";
       return request<EventMonitoringHealth>(`/api/event-monitoring-health${suffix}`, {}, true);
     },
+
+    getEventOperationalMessaging(servicePlanId: string) { return request<EventOperationalMessaging>(`/api/event-operational-messaging?service_plan_id=${encodeURIComponent(servicePlanId)}`, {}, true); },
+    updateEventOperationalMessaging(servicePlanId: string, automatic_teams_enabled: boolean) { return request<EventOperationalMessaging>(`/api/event-operational-messaging?service_plan_id=${encodeURIComponent(servicePlanId)}`, { method: "PATCH", body: JSON.stringify({ automatic_teams_enabled }) }, true); },
 
     getAppSettings(module: string) {
       return request<{ settings: AppSettingRow[] }>(
