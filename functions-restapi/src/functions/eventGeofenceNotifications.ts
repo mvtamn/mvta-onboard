@@ -1,10 +1,10 @@
 import { app, type HttpRequest } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, PUBLISH_ROLES, STAFF_READ_ROLES } from "../lib/auth";
+import { requireRole, EVENT_AVL_NOTIFICATION_ROLES, STAFF_READ_ROLES } from "../lib/auth";
 import { isTransientNotificationFailure, retryDelaySeconds } from "../lib/eventNotificationPolicy";
 
 async function send(req: HttpRequest) {
-  const auth = requireRole(req, PUBLISH_ROLES);
+  const auth = requireRole(req, EVENT_AVL_NOTIFICATION_ROLES);
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   const pool = await getPool(); const id = req.params.id;
   const row = (await pool.request().input("id", sql.UniqueIdentifier, id).query<{ message_body: string; status: string; created_at: Date; attempt_count: number }>("SELECT message_body,status,created_at,attempt_count FROM EventGeofenceNotifications WHERE id=@id")).recordset[0];
@@ -30,13 +30,13 @@ async function send(req: HttpRequest) {
 }
 
 async function dismiss(req: HttpRequest) {
-  const auth = requireRole(req, PUBLISH_ROLES); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
+  const auth = requireRole(req, EVENT_AVL_NOTIFICATION_ROLES); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   const pool = await getPool(); const r = pool.request(); r.input("id", sql.UniqueIdentifier, req.params.id); r.input("by", sql.NVarChar, auth.principal.userDetails ?? "system");
   const out = await r.query("UPDATE EventGeofenceNotifications SET status='dismissed',sent_by=@by WHERE id=@id AND status IN ('pending','acknowledged')"); return out.rowsAffected[0] ? { status: 200, jsonBody: { ok: true } } : { status: 409, jsonBody: { error: "Notification is no longer actionable" } };
 }
 
 async function acknowledge(req: HttpRequest) {
-  const auth = requireRole(req, PUBLISH_ROLES); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
+  const auth = requireRole(req, EVENT_AVL_NOTIFICATION_ROLES); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   const pool = await getPool(); const r = pool.request(); r.input("id", sql.UniqueIdentifier, req.params.id); r.input("by", sql.NVarChar, auth.principal.userDetails ?? "system");
   const out = await r.query("UPDATE EventGeofenceNotifications SET status='acknowledged',acknowledged_by=@by,acknowledged_at=SYSUTCDATETIME() WHERE id=@id AND status='pending'");
   return out.rowsAffected[0] ? { status: 200, jsonBody: { ok: true } } : { status: 409, jsonBody: { error: "Notification is no longer pending" } };
@@ -55,7 +55,7 @@ app.http("eventGeofenceNotifications", { route: "event-geofence-notifications", 
     SELECT TOP (200) n.*
     FROM EventGeofenceNotifications n
     JOIN EventGeofenceCrossings c ON c.id=n.crossing_id
-    WHERE ${req.query.get("status") === "all" ? "1=1" : "n.status=@status"} ${eventId || servicePlanId ? `AND EXISTS (SELECT 1 FROM EventServicePlanGeofences pg JOIN EventServicePlans p ON p.id=pg.service_plan_id WHERE pg.geofence_id=c.geofence_id ${eventId ? "AND p.event_id=@event" : ""} ${servicePlanId ? "AND p.id=@plan" : ""})` : ""}
+    WHERE ${req.query.get("status") === "all" ? "1=1" : "n.status=@status"} ${eventId ? "AND (EXISTS (SELECT 1 FROM EventServicePlans p WHERE p.id=c.service_plan_id AND p.event_id=@event) OR (c.service_plan_id IS NULL AND EXISTS (SELECT 1 FROM EventServicePlanGeofences pg JOIN EventServicePlans p ON p.id=pg.service_plan_id WHERE pg.geofence_id=c.geofence_id AND p.event_id=@event)))" : ""} ${servicePlanId ? "AND (c.service_plan_id=@plan OR (c.service_plan_id IS NULL AND EXISTS (SELECT 1 FROM EventServicePlanGeofences pg WHERE pg.geofence_id=c.geofence_id AND pg.service_plan_id=@plan)))" : ""}
     ORDER BY n.created_at DESC`)).recordset } };
 } });
 app.http("eventGeofenceNotificationSend", { route: "event-geofence-notifications/{id}/send", methods: ["POST"], authLevel: "anonymous", handler: send });

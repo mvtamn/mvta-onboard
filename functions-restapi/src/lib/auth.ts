@@ -69,8 +69,10 @@ export function getCallerPrincipal(request: HttpRequest): CallerPrincipal | null
 // Standard role sets. Human publishing and workload ingestion are deliberately
 // separate: System.Ingestion may create reviewable drafts, but must never
 // inherit approval, edit, retract, or other human publishing authority.
-export const STAFF_READ_ROLES = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin"];
+export const STAFF_READ_ROLES = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin", "OCC.EventAVL"];
 export const PUBLISH_ROLES = ["OCC.Publisher", "OCC.Admin"];
+export const EVENT_AVL_WRITE_ROLES = ["OCC.EventAVL", "OCC.Admin"];
+export const EVENT_AVL_NOTIFICATION_ROLES = [...PUBLISH_ROLES, "OCC.EventAVL"];
 export const INGESTION_ROLES = ["System.Ingestion"];
 export const ADMIN_ROLES = ["OCC.Admin"];
 export const COMPLIANCE_READ_ROLES = [...STAFF_READ_ROLES, "OCC.Compliance", "OCC.ComplianceManager"];

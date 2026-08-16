@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import * as atlas from "azure-maps-control";
 import "azure-maps-control/dist/atlas.min.css";
-import { ApiError, type Event, type EventGeofence, type EventLocation, type EventServicePlan, type EventVehicleAssignment, type EventVehiclePosition, type EventGeofenceCrossing, type EventGeofenceNotification, type EventAuditEntry, type EventMonitoringHealth } from "@mvta/shared";
+import { ApiError, type Event, type EventGeofence, type EventLocation, type EventOperationalMessaging, type EventServicePlan, type EventVehicleAssignment, type EventVehiclePosition, type EventGeofenceCrossing, type EventGeofenceNotification, type EventAuditEntry, type EventMonitoringHealth } from "@mvta/shared";
 import { api } from "../../config.js";
 import { useEventWorkspace } from "../../context/EventWorkspaceContext.js";
 import { EventWorkspaceNav } from "../../components/EventWorkspaceNav.js";
@@ -64,6 +64,8 @@ function healthLabel(status: string | undefined): string {
 export function EventMonitoring() {
   const { roles, signIn } = useAuth();
   const canManageAssignments = roles.includes("OCC.Admin");
+  const canManageEventMessaging = roles.includes("OCC.EventAVL") || roles.includes("OCC.Admin");
+  const canManageNotificationActions = roles.some((role) => ["OCC.EventAVL", "OCC.Publisher", "OCC.Admin"].includes(role));
   const [vehicles, setVehicles] = useState<EventVehiclePosition[] | null>(null);
   const [unassignedVehicles, setUnassignedVehicles] = useState<EventVehiclePosition[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
@@ -95,6 +97,8 @@ export function EventMonitoring() {
   const [health, setHealth] = useState<EventMonitoringHealth | null>(null);
   const [feedStatus, setFeedStatus] = useState<Record<string, { state: "ready" | "error"; loadedAt: Date | null }>>({});
   const [actionError, setActionError] = useState<string | null>(null);
+  const [messagingControl, setMessagingControl] = useState<EventOperationalMessaging | null>(null);
+  const [messagingError, setMessagingError] = useState<string | null>(null);
   const defaultedEventRef = useRef(false);
 
   const load = useCallback(async () => {
@@ -149,6 +153,11 @@ export function EventMonitoring() {
   }, [canManageAssignments, selectedEventId]);
 
   useEffect(() => {
+    if (!selectedPlanId) { setMessagingControl(null); setMessagingError(null); return; }
+    void api.getEventOperationalMessaging(selectedPlanId).then(setMessagingControl).catch((error) => setMessagingError(error instanceof ApiError ? error.message : "Could not load operational messaging controls."));
+  }, [selectedPlanId]);
+
+  useEffect(() => {
     void load();
     const interval = window.setInterval(() => void load(), AVL_REFRESH_MS);
     return () => window.clearInterval(interval);
@@ -178,6 +187,13 @@ export function EventMonitoring() {
     } catch (error) {
       setActionError(error instanceof ApiError ? error.message : "Notification action failed; the item was retained.");
     }
+  }
+
+  async function updateMessaging(enabled: boolean) {
+    if (!selectedPlanId || !messagingControl || !canManageEventMessaging) return;
+    setMessagingError(null);
+    try { setMessagingControl(await api.updateEventOperationalMessaging(selectedPlanId, enabled)); }
+    catch (error) { setMessagingError(error instanceof ApiError ? error.message : "Could not update operational messaging controls."); }
   }
 
   async function proposeAssignment(vehicle: EventVehiclePosition) {
@@ -301,6 +317,11 @@ export function EventMonitoring() {
         <span>retention: <b>{health?.maintenance?.last_success_at ? `OK · ${minutesAgo(health.maintenance.last_success_at)}` : "Unavailable"}</b></span>
       </div>
 
+      <section className="evmon-messaging" aria-label="Operational event messaging">
+        <div><span className="evmon-eyebrow">Operational control</span><h3>Event geofence messaging</h3><p>Planning defines the standard message type. This control decides whether eligible messages from the selected active operating period are sent to Teams.</p></div>
+        {!selectedPlanId ? <div className="evmon-messaging-state">Select one active operating period to control Teams delivery.</div> : messagingError ? <div className="evmon-messaging-state evmon-messaging-error" role="alert">{messagingError}</div> : messagingControl && <div className="evmon-messaging-control"><label><input type="checkbox" checked={messagingControl.automatic_teams_enabled} disabled={!canManageEventMessaging || !messagingControl.teams_configured} onChange={(event) => void updateMessaging(event.target.checked)} /> <strong>{messagingControl.automatic_teams_enabled ? "Automatic Teams delivery is ON" : "Queue messages in Event AVL only"}</strong></label><span>Destination: {messagingControl.teams_configured ? messagingControl.teams_destination : "Teams webhook is not configured"}</span>{!canManageEventMessaging && <small>Event AVL Manager or Administrator access is required to change this control.</small>}{!messagingControl.teams_configured && <small>Ask an administrator to configure the Teams channel before enabling delivery.</small>}</div>}
+      </section>
+
       <div className={`evmon-workspace${minimized ? " is-minimized" : ""}`}>
         <div className="evmon-toolbar">
           <div>
@@ -385,11 +406,11 @@ export function EventMonitoring() {
       <div className="evmon-list-header"><div><h3>Events queue</h3><span>Operational work for every vehicle crossing in the active scope. Automatic messages are sent to Teams and remain visible in history.</span></div><strong>{eventQueue.length} open</strong></div>
       <div className="evmon-table-wrap">
         {actionError && <div className="evmon-empty">{actionError}</div>}
-        {eventQueue.length === 0 ? <div className="evmon-empty">No open event messages.</div> : eventQueue.map((notification) => <div key={notification.id} className="panel-body"><strong>{notification.status === "failed" ? "Delivery failed — review required" : notification.status === "acknowledged" ? "Acknowledged notification" : "Review notification"}</strong><p>{notification.message_body}</p>{notification.status === "pending" && <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "acknowledge")}>Acknowledge</button>} {(notification.status === "acknowledged" || notification.status === "pending") && <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "send")}>Approve and send</button>} {" "}<button className="btn-sm" onClick={() => void reviewNotification(notification.id, "dismiss")}>Dismiss</button></div>)}
+        {eventQueue.length === 0 ? <div className="evmon-empty">No open event messages.</div> : eventQueue.map((notification) => <div key={notification.id} className="panel-body"><strong>{notification.status === "failed" ? "Delivery failed — review required" : notification.status === "acknowledged" ? "Acknowledged notification" : "Review notification"}</strong><p>{notification.message_body}</p>{canManageNotificationActions && notification.status === "pending" && <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "acknowledge")}>Acknowledge</button>} {canManageNotificationActions && (notification.status === "acknowledged" || notification.status === "pending") && <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "send")}>Approve and send</button>} {canManageNotificationActions && <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "dismiss")}>Dismiss</button>}{!canManageNotificationActions && <small className="muted">Read-only access</small>}</div>)}
       </div>
       <div className="evmon-list-header"><div><h3>Event message history</h3><span>Investigate messages already delivered, dismissed, or expired.</span></div><strong>{eventHistory.length} records</strong></div>
       <div className="evmon-table-wrap">
-        {eventHistory.length === 0 ? <div className="evmon-empty">No event message history for this context.</div> : <table className="data evmon-table"><thead><tr><th>Time</th><th>Status</th><th>Delivery</th><th>Message</th></tr></thead><tbody>{eventHistory.map((notification) => <tr key={notification.id}><td>{new Date(notification.created_at).toLocaleString()}</td><td>{notification.status === "sent" ? "Sent to Teams" : notification.status[0].toUpperCase() + notification.status.slice(1)}</td><td>{notification.send_mode === "auto" ? "Automatic" : "Event AVL review"}</td><td>{notification.message_body}</td></tr>)}</tbody></table>}
+        {eventHistory.length === 0 ? <div className="evmon-empty">No event message history for this context.</div> : <table className="data evmon-table"><thead><tr><th>Time</th><th>Status</th><th>Delivery</th><th>Message</th></tr></thead><tbody>{eventHistory.map((notification) => <tr key={notification.id}><td>{new Date(notification.created_at).toLocaleString()}</td><td>{notification.status === "sent" ? "Sent to Teams" : notification.status[0].toUpperCase() + notification.status.slice(1)}</td><td>{notification.status === "sent" ? "Teams" : notification.send_mode === "auto" ? "Eligible for Teams" : "Event AVL review"}</td><td>{notification.message_body}</td></tr>)}</tbody></table>}
       </div>
       <div className="evmon-list-header"><div><h3>Geofence crossings</h3><span>Investigative movement detail for active event boundaries.</span></div></div>
       <div className="evmon-table-wrap"><table className="data evmon-table"><thead><tr><th>Time</th><th>Vehicle</th><th>Route</th><th>Geofence</th><th>Transition</th><th>Destination</th></tr></thead><tbody>{crossings.map((crossing) => <tr key={crossing.id}><td>{new Date(crossing.crossed_at).toLocaleString()}</td><td>{crossing.vehicle_id}</td><td>{crossing.route_id === null ? "—" : `Route ${crossing.route_id}`}</td><td>{crossing.geofence_name}</td><td>{crossing.transition}</td><td>{crossing.destination_label ?? "—"}</td></tr>)}</tbody></table></div>

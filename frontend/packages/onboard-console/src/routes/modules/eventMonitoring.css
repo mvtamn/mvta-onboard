@@ -88,5 +88,13 @@
 .evmon-scope strong { color: var(--text); }
 .evmon-scope b { color: var(--brand-green); }
 .evmon-scope a { margin-left: auto; color: var(--brand-green); font-weight: 800; }
+.evmon-messaging { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 16px; margin: -8px 0 18px; border: 1px solid var(--border); border-left: 4px solid var(--brand-green); border-radius: 9px; background: var(--surface-bg); }
+.evmon-messaging h3 { margin: 3px 0 3px; font-size: 15px; }
+.evmon-messaging p { max-width: 650px; margin: 0; color: var(--text-muted); font-size: 11px; }
+.evmon-messaging-control { display: grid; gap: 5px; min-width: 275px; padding: 10px 12px; border-radius: 8px; background: var(--surface-alt-bg); color: var(--text-muted); font-size: 11px; }
+.evmon-messaging-control label { display: flex; align-items: center; gap: 6px; color: var(--text); }
+.evmon-messaging-control small { color: var(--text-muted); }
+.evmon-messaging-state { min-width: 275px; color: var(--text-muted); font-size: 11px; }
+.evmon-messaging-error { color: #8a2e2e; }
 @media (max-width: 850px) { .evmon-summary { align-items: stretch; flex-direction: column; } .evmon-metrics div { flex: 1; min-width: 0; } .evmon-real-map { min-height: 360px; } .evmon-command-center { grid-template-columns: 1fr; } .evmon-command-summary { border-top: 1px solid var(--border); border-left: 0; } }
 @media (max-width: 600px) { .evmon-toolbar { gap: 8px; padding: 9px 10px; } .evmon-toolbar-actions button:first-child { display: none; } .evmon-metrics strong { font-size: 17px; } .evmon-metrics div { padding: 8px 10px; } }

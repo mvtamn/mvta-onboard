@@ -20,7 +20,7 @@ async function activeLocation(pool: Awaited<ReturnType<typeof getPool>>, locatio
 async function readRules(pool: Awaited<ReturnType<typeof getPool>>, geofenceId: string): Promise<DirectionRule[]> {
   const request = pool.request();
   request.input("geofence", sql.UniqueIdentifier, geofenceId);
-  return (await request.query<DirectionRule>("SELECT id,geofence_id,transition,heading_min,heading_max,destination_label,destination_location_id,send_mode,sort_order FROM EventGeofenceDirectionRules WHERE geofence_id=@geofence")).recordset;
+  return (await request.query<DirectionRule>("SELECT id,geofence_id,transition,heading_min,heading_max,destination_label,destination_location_id,message_type,send_mode,sort_order FROM EventGeofenceDirectionRules WHERE geofence_id=@geofence")).recordset;
 }
 
 app.http("eventGeofences", { route: "event-geofences", methods: ["GET", "POST"], authLevel: "anonymous", handler: async (req: HttpRequest) => {
@@ -48,7 +48,7 @@ app.http("eventGeofenceRuleUpdate", { route: "event-geofences/{id}/rules/{ruleId
   if (!isGuid(req.params.id) || !isGuid(req.params.ruleId)) return { status: 400, jsonBody: { error: "Geofence and rule ids must be valid GUIDs" } };
   const pool = await getPool(); const request = pool.request();
   request.input("id", sql.UniqueIdentifier, req.params.ruleId); request.input("geofence", sql.UniqueIdentifier, req.params.id);
-  const existing = (await request.query<DirectionRule>("SELECT id,geofence_id,transition,heading_min,heading_max,destination_label,destination_location_id,send_mode,sort_order FROM EventGeofenceDirectionRules WHERE id=@id AND geofence_id=@geofence")).recordset[0];
+  const existing = (await request.query<DirectionRule>("SELECT id,geofence_id,transition,heading_min,heading_max,destination_label,destination_location_id,message_type,send_mode,sort_order FROM EventGeofenceDirectionRules WHERE id=@id AND geofence_id=@geofence")).recordset[0];
   if (!existing) return { status: 404, jsonBody: { error: "Rule not found" } };
   if (await activePlanUsesGeofence(pool, req.params.id)) return { status: 409, jsonBody: { error: "Direction rules used by an active Service Plan must be changed through a reviewed revision" } };
   if (req.method === "DELETE") {
@@ -57,11 +57,11 @@ app.http("eventGeofenceRuleUpdate", { route: "event-geofences/{id}/rules/{ruleId
   }
   let body: Record<string, unknown>;
   try { body = await req.json() as Record<string, unknown>; } catch { return { status: 400, jsonBody: { error: "Request body must be valid JSON" } }; }
-  const result = validateDirectionRule({ ...body, id: existing.id, geofence_id: existing.geofence_id, send_mode: (body.send_mode ?? "manual") as DirectionRule["send_mode"], sort_order: Number(body.sort_order ?? 0) }, await readRules(pool, req.params.id), existing.id);
+  const result = validateDirectionRule({ ...body, id: existing.id, geofence_id: existing.geofence_id, message_type: (body.message_type ?? existing.message_type ?? "custom") as DirectionRule["message_type"], send_mode: (body.send_mode ?? existing.send_mode ?? "manual") as DirectionRule["send_mode"], sort_order: Number(body.sort_order ?? existing.sort_order) }, await readRules(pool, req.params.id), existing.id);
   if (!result.ok) return { status: 400, jsonBody: { error: "Validation failed", details: result.errors } };
   if (result.value.destination_location_id && !(await activeLocation(pool, result.value.destination_location_id))) return { status: 400, jsonBody: { error: "destination_location_id must reference an active location" } };
-  request.input("transition", sql.NVarChar, result.value.transition); request.input("min", sql.Float, result.value.heading_min); request.input("max", sql.Float, result.value.heading_max); request.input("label", sql.NVarChar, result.value.destination_label.trim()); request.input("location", sql.UniqueIdentifier, result.value.destination_location_id); request.input("mode", sql.NVarChar, result.value.send_mode); request.input("sort", sql.Int, result.value.sort_order);
-  const out = await request.query("UPDATE EventGeofenceDirectionRules SET transition=@transition,heading_min=@min,heading_max=@max,destination_label=@label,destination_location_id=@location,send_mode=@mode,sort_order=@sort WHERE id=@id AND geofence_id=@geofence OUTPUT INSERTED.*");
+    request.input("transition", sql.NVarChar, result.value.transition); request.input("min", sql.Float, result.value.heading_min); request.input("max", sql.Float, result.value.heading_max); request.input("label", sql.NVarChar, result.value.destination_label?.trim() || null); request.input("location", sql.UniqueIdentifier, result.value.destination_location_id); request.input("messageType", sql.NVarChar, result.value.message_type); request.input("mode", sql.NVarChar, result.value.send_mode); request.input("sort", sql.Int, result.value.sort_order);
+    const out = await request.query("UPDATE EventGeofenceDirectionRules SET transition=@transition,heading_min=@min,heading_max=@max,destination_label=@label,message_type=@messageType,destination_location_id=@location,send_mode=@mode,sort_order=@sort WHERE id=@id AND geofence_id=@geofence OUTPUT INSERTED.*");
   return out.recordset.length ? { status: 200, jsonBody: out.recordset[0] } : { status: 404, jsonBody: { error: "Rule not found" } };
 } });
 
@@ -92,9 +92,9 @@ app.http("eventGeofenceRules", { route: "event-geofences/{id}/rules", methods: [
   const fence = await pool.request().input("geofence", sql.UniqueIdentifier, req.params.id).query("SELECT TOP 1 id FROM EventGeofences WHERE id=@geofence");
   if (!fence.recordset.length) return { status: 404, jsonBody: { error: "Geofence not found" } };
   if (await activePlanUsesGeofence(pool, req.params.id)) return { status: 409, jsonBody: { error: "Direction rules used by an active Service Plan must be changed through a reviewed revision" } };
-  const result = validateDirectionRule({ ...body, id: "", geofence_id: req.params.id, send_mode: (body.send_mode ?? "manual") as DirectionRule["send_mode"], sort_order: Number(body.sort_order ?? 0) }, await readRules(pool, req.params.id));
+  const result = validateDirectionRule({ ...body, id: "", geofence_id: req.params.id, message_type: (body.message_type ?? "custom") as DirectionRule["message_type"], send_mode: (body.send_mode ?? "manual") as DirectionRule["send_mode"], sort_order: Number(body.sort_order ?? 0) }, await readRules(pool, req.params.id));
   if (!result.ok) return { status: 400, jsonBody: { error: "Validation failed", details: result.errors } };
   if (result.value.destination_location_id && !(await activeLocation(pool, result.value.destination_location_id))) return { status: 400, jsonBody: { error: "destination_location_id must reference an active location" } };
-  const request = pool.request(); request.input("geofence_id", sql.UniqueIdentifier, req.params.id); request.input("transition", sql.NVarChar, result.value.transition); request.input("min", sql.Float, result.value.heading_min); request.input("max", sql.Float, result.value.heading_max); request.input("label", sql.NVarChar, result.value.destination_label.trim()); request.input("location", sql.UniqueIdentifier, result.value.destination_location_id); request.input("mode", sql.NVarChar, result.value.send_mode); request.input("sort", sql.Int, result.value.sort_order);
-  return { status: 201, jsonBody: (await request.query("INSERT INTO EventGeofenceDirectionRules(geofence_id,transition,heading_min,heading_max,destination_label,destination_location_id,send_mode,sort_order) OUTPUT INSERTED.* VALUES(@geofence_id,@transition,@min,@max,@label,@location,@mode,@sort)")).recordset[0] };
+  const request = pool.request(); request.input("geofence_id", sql.UniqueIdentifier, req.params.id); request.input("transition", sql.NVarChar, result.value.transition); request.input("min", sql.Float, result.value.heading_min); request.input("max", sql.Float, result.value.heading_max); request.input("label", sql.NVarChar, result.value.destination_label?.trim() || null); request.input("location", sql.UniqueIdentifier, result.value.destination_location_id); request.input("messageType", sql.NVarChar, result.value.message_type); request.input("mode", sql.NVarChar, result.value.send_mode); request.input("sort", sql.Int, result.value.sort_order);
+  return { status: 201, jsonBody: (await request.query("INSERT INTO EventGeofenceDirectionRules(geofence_id,transition,heading_min,heading_max,destination_label,destination_location_id,message_type,send_mode,sort_order) OUTPUT INSERTED.* VALUES(@geofence_id,@transition,@min,@max,@label,@location,@messageType,@mode,@sort)")).recordset[0] };
 } });

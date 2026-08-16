@@ -11,6 +11,7 @@ export type AppRole =
   | "OCC.Compliance"
   | "OCC.ComplianceManager"
   | "OCC.Detour"
+  | "OCC.EventAVL"
   | "OCC.AccessAdmin"
   | "System.Ingestion";
 

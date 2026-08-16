@@ -15,6 +15,7 @@ const baseRule: DirectionRule = {
   heading_max: 10,
   destination_label: "Downtown",
   destination_location_id: "9e5a35b1-dc1b-473d-987d-6942a7b4fae2",
+  message_type: "custom",
   send_mode: "manual",
   sort_order: 10,
 };
@@ -30,6 +31,7 @@ test("rejects malformed direction-rule values", () => {
     heading_min: Number.NaN,
     heading_max: 361,
     destination_label: "   ",
+    message_type: "unexpected" as unknown as DirectionRule["message_type"],
     send_mode: "sometimes" as unknown as DirectionRule["send_mode"],
     sort_order: -1,
   }, []);
@@ -37,7 +39,7 @@ test("rejects malformed direction-rule values", () => {
   if (!result.ok) assert.deepEqual(result.errors, [
     "transition must be enter or exit",
     "heading_min and heading_max must be finite numbers between 0 and 360",
-    "destination_label must be a non-empty string of at most 200 characters",
+    "message_type must be departing, passed, arriving_soon, or custom",
     "send_mode must be manual or auto",
     "sort_order must be a non-negative integer",
   ]);
@@ -65,6 +67,17 @@ test("creates a stable matched rule snapshot", () => {
     matched_rule_priority: 10,
     matched_destination_label: "Downtown",
     matched_destination_location_id: "9e5a35b1-dc1b-473d-987d-6942a7b4fae2",
+    matched_message_type: "custom",
     matched_send_mode: "manual",
   });
+});
+
+test("allows a standard message type without custom wording", () => {
+  const result = validateDirectionRule({ ...baseRule, message_type: "arriving_soon", destination_label: "" }, []);
+  assert.deepEqual(result, { ok: false, errors: ["arriving_soon messages must use an enter transition"] });
+});
+
+test("allows arriving soon only when the vehicle enters the geofence", () => {
+  const result = validateDirectionRule({ ...baseRule, transition: "enter", message_type: "arriving_soon", destination_label: "" }, []);
+  assert.equal(result.ok, true);
 });

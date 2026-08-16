@@ -5,4 +5,4 @@ root `CONTEXT.md` and the relevant records in `docs/adr/`.
 
 Use the canonical vocabulary from `CONTEXT.md`: Event, Event operating
 context, Service Plan, operating period, Scope contract, pinned resource,
-unplanned vehicle, and Event Monitoring.
+unplanned vehicle, and Event AVL.

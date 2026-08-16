@@ -23,6 +23,10 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 - **Separate the Event AVL queue from history.** Every crossing in an active operating scope now creates an operational queue item, with matched rules controlling the message and manual or automatic delivery. Completed Teams deliveries remain available in investigative history.
 
+## [1.5.42] - 2026-08-15
+
+- **Add operational Event AVL messaging control.** Planning now defines standard geofence message types for departing, passed, arriving-soon, or custom messages. Event AVL controls automatic Teams delivery for the selected active operating period; the arriving-soon message is triggered by entering its configured approach geofence.
+
 ## [1.5.37] - 2026-08-15
 
 - **Make expired Event AVL sessions recoverable.** The monitoring page now identifies an expired sign-in and provides a direct Sign in again action instead of remaining in a misleading loading state.

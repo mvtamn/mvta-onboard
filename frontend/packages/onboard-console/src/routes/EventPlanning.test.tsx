@@ -240,7 +240,7 @@ describe("EventPlanning", () => {
             { kind: "geofences", service_plan_id: "plan1", value: "geo1", label: "Fairgrounds Gate" },
           ],
         })],
-        geofences: [makeGeofence({ id: "geo1", rules: [{ id: "r1", geofence_id: "geo1", transition: "enter", heading_min: 0, heading_max: 360, destination_label: "Gate A", destination_location_id: null, send_mode: "auto", sort_order: 1 }] })],
+        geofences: [makeGeofence({ id: "geo1", rules: [{ id: "r1", geofence_id: "geo1", transition: "enter", heading_min: 0, heading_max: 360, destination_label: "Gate A", destination_location_id: null, message_type: "custom", send_mode: "auto", sort_order: 1 }] })],
       });
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
       const checklist = await screen.findByRole("group", { name: "Activation readiness" });
@@ -257,7 +257,7 @@ describe("EventPlanning", () => {
         ] })],
         geofences: [
           makeGeofence({ id: "geo1", name: "Operations Boundary", rules: [] }),
-          makeGeofence({ id: "geo2", name: "Message Gate", rules: [{ id: "r1", geofence_id: "geo2", transition: "enter", heading_min: 0, heading_max: 360, destination_label: "Gate A", destination_location_id: null, send_mode: "auto", sort_order: 1 }] }),
+          makeGeofence({ id: "geo2", name: "Message Gate", rules: [{ id: "r1", geofence_id: "geo2", transition: "enter", heading_min: 0, heading_max: 360, destination_label: "Gate A", destination_location_id: null, message_type: "custom", send_mode: "auto", sort_order: 1 }] }),
         ],
       });
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
