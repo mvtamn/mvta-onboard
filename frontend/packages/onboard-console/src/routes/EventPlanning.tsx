@@ -332,7 +332,7 @@ export function EventPlanning() {
     : !plan
       ? { title: "Create an Event Plan", detail: "Set the dates that define when this Event service will run.", target: "operating-period-name" }
       : plan.status === "draft" && !readyToActivate
-        ? { title: `Complete activation checklist${readiness.find((item) => !item.ready) ? `: ${readiness.find((item) => !item.ready)?.label}` : ""}`, detail: "Add the missing operational resource or rule before submitting this period for review.", target: "planned-operating-resources" }
+        ? { title: `Complete activation checklist${readiness.find((item) => !item.ready) ? `: ${readiness.find((item) => !item.ready)?.label}` : ""}`, detail: "Add the missing operational resource or rule before submitting this period for review.", target: "scope-resources" }
         : plan.status === "draft"
           ? { title: "Submit for review", detail: "The operating scope is complete and ready for review.", target: "operating-period-lifecycle" }
           : plan.status === "review"
@@ -419,7 +419,7 @@ export function EventPlanning() {
         {editable && <div className="actions event-scope-actions"><button className="btn-sm event-button-secondary" disabled={!periodReady} onClick={() => void savePlanDetails()}>Save draft</button></div>}
       </>}
     </section>
-    <section className="event-scope-column">
+    <section id="scope-resources" className="event-scope-column">
       <h3>Scope resources</h3>
       {!plan ? <p className="muted">Create or select an operating period to add routes, geofences, and transit locations.</p> : <>
         <p className="panel-desc">Each resource becomes a visible part of the Event AVL handoff. Select a resource type to add it to the scope.</p>
@@ -455,6 +455,14 @@ export function EventPlanning() {
     {plan && <>
       <FeedbackNote feedback={feedback.resources} />
       <div className="event-activation-gate"><strong>Activation readiness</strong><span>{readiness.filter((item) => item.ready).length} of {readiness.length} readiness checks complete. The Event Plan cannot activate until all operational resources are valid.</span></div>
+      {/* Shown from draft onward, not just at `approved`. Draft is the longest
+          phase and the one where items are actually outstanding - gating the
+          itemized list (and its repair links) behind the activate step meant it
+          only appeared once every item was already satisfied. */}
+      <div className="event-readiness" role="group" aria-label="Activation readiness">
+        <strong>{readyToActivate ? "Ready to activate" : "Activation checklist"}</strong>
+        {readiness.map((item) => <span key={item.label} className={item.ready ? "ready" : "missing"} aria-label={`${item.ready ? "Complete" : "Missing"}: ${item.label}`}>{item.ready ? "✓" : "!"} {!item.ready && item.href ? <Link to={item.href}>{item.label}</Link> : item.label}</span>)}
+      </div>
       <div id="operating-period-lifecycle" className="panel-header" style={{ marginTop: 24 }}>Review & activate</div>
       <div className="panel-body">
         <p className="panel-desc">Confirm the Event Plan below, then use the single next action. Activation publishes the selected routes, geofences, rules, and locations to internal Event AVL. When an active Event Plan has finished, use <strong>Expire Event Plan</strong> to close its operating period; corrections still require a reviewed revision.</p>
@@ -481,7 +489,7 @@ export function EventPlanning() {
         </ol>
         {plan.status === "suspended" && <p className="warn-note">Suspended — Event AVL monitoring is paused for this operating period.</p>}
         <FeedbackNote feedback={feedback.lifecycle} />
-        {nextAction === "advance" && <div className="event-readiness" role="group" aria-label="Activation readiness"><strong>{readyToActivate ? "Ready to activate" : "Activation checklist"}</strong>{readiness.map((item) => <span key={item.label} className={item.ready ? "ready" : "missing"} aria-label={`${item.ready ? "Complete" : "Missing"}: ${item.label}`}>{item.ready ? "✓" : "!"} {!item.ready && item.href ? <Link to={item.href}>{item.label}</Link> : item.label}</span>)}{plan.route_conflict && <label className="event-conflict-override">Conflict override reason<input value={conflictOverrideReason} onChange={(event) => setConflictOverrideReason(event.target.value)} placeholder="Explain why this route overlap is intentional" aria-label="Conflict override reason" /></label>}</div>}
+        {nextAction === "advance" && plan.route_conflict && <label className="event-conflict-override">Conflict override reason<input className="f" value={conflictOverrideReason} onChange={(event) => setConflictOverrideReason(event.target.value)} placeholder="Explain why this route overlap is intentional" aria-label="Conflict override reason" /></label>}
         {nextAction && <button className={`btn-primary ${nextAction === "complete" ? "event-button-expire" : ""}`} disabled={nextAction === "advance" && !readyToActivate} onClick={() => void transition(nextAction)}>{nextAction === "submit-review" ? "Submit Event Plan for review" : nextAction === "approve" ? "Approve Event Plan" : nextAction === "advance" ? "Activate Event Plan" : "Expire Event Plan"}</button>}
         {plan.status === "active" && <div className="event-lifecycle-secondary">
           <span className="event-lifecycle-secondary-label">Active period controls:</span>

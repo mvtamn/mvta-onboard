@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.47] - 2026-08-17
+
+- **Show the activation checklist while the Event Plan is still a draft.** The itemized readiness list and its repair links previously appeared only once the plan reached `approved` - after every item was already satisfied. Draft is the longest phase and the one where items are actually outstanding, so the list now renders from draft onward beside the activation readiness gate.
+- **Send the "complete the checklist" next action to the right panel.** The action that asks for a missing operational resource scrolled to *Plan details* (the Event picker and dates) instead of *Scope resources*, which is where routes, geofences, and locations are actually linked.
+- **Restore the staff console typecheck.** `@mvta/shared`'s build output had drifted behind its source, so the console typechecked against declarations missing `route_conflict`, `EventServicePlanRevision.links`, and the conflict-override argument. Rebuilding the shared package clears all 13 errors in Event Planning and the remaining Detour errors across the package. The affected behavior worked correctly at runtime; only the build was broken.
+
 ## [1.5.46] - 2026-08-16
 
 - **Organize administration into a management workspace.** Administration now has modular navigation for access, Event resources, service configuration, integrations, governance, and subscribers. Event Planning and Event AVL are grouped under a dedicated Events workspace, with legacy links preserved.
