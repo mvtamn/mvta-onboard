@@ -49,6 +49,7 @@ import type {
   EventMonitoringHealth,
   AppSettingRow,
   Event, EventLocation, EventGeofence, EventGeofenceRule, EventGeofenceCrossing, EventGeofenceNotification, EventOperationalMessaging, EventServicePlan, EventServicePlanRevision, EventAuditEntry, EventVehicleAssignment,
+  EventScopeException,
   OtpStopExclusion,
   PutStopExclusionInput,
   OtpDateExclusion,
@@ -672,6 +673,7 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<{
         vehicles: EventVehiclePosition[];
         unassigned_vehicles: EventVehiclePosition[];
+        scope_exceptions: EventScopeException[];
         diagnostics: { table_ready: boolean; vehicle_count: number; managed_vehicle_count?: number; unassigned_vehicle_count?: number; last_report_at: string | null; source?: string; stale_vehicle_count?: number };
       }>(`/api/event-vehicle-positions${suffix}`, {}, true);
     },
@@ -715,8 +717,8 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     createEventLocation(input: Omit<EventLocation, "id" | "is_active">) { return request<EventLocation>("/api/event-locations", { method: "POST", body: JSON.stringify(input) }, true); },
     updateEventLocation(id: string, input: Partial<EventLocation>) { return request<EventLocation>(`/api/event-locations/${id}`, { method: "PATCH", body: JSON.stringify(input) }, true); },
     getEventGeofences() { return request<{ geofences: EventGeofence[] }>("/api/event-geofences", {}, true); },
-    createEventGeofence(input: Pick<EventGeofence, "name" | "polygon">) { return request<EventGeofence>("/api/event-geofences", { method: "POST", body: JSON.stringify(input) }, true); },
-    updateEventGeofence(id: string, input: Pick<EventGeofence, "name" | "polygon"> & { is_active?: boolean }) { return request<EventGeofence>(`/api/event-geofences/${id}`, { method: "PATCH", body: JSON.stringify(input) }, true); },
+    createEventGeofence(input: Pick<EventGeofence, "name" | "polygon" | "purpose">) { return request<EventGeofence>("/api/event-geofences", { method: "POST", body: JSON.stringify(input) }, true); },
+    updateEventGeofence(id: string, input: Partial<Pick<EventGeofence, "name" | "polygon" | "purpose">> & { is_active?: boolean }) { return request<EventGeofence>(`/api/event-geofences/${id}`, { method: "PATCH", body: JSON.stringify(input) }, true); },
     addEventGeofenceRule(id: string, input: Omit<EventGeofenceRule, "id" | "geofence_id">) { return request<EventGeofenceRule>(`/api/event-geofences/${id}/rules`, { method: "POST", body: JSON.stringify(input) }, true); },
     updateEventGeofenceRule(geofenceId: string, ruleId: string, input: Omit<EventGeofenceRule, "id" | "geofence_id">) { return request<EventGeofenceRule>(`/api/event-geofences/${geofenceId}/rules/${ruleId}`, { method: "PATCH", body: JSON.stringify(input) }, true); },
     deleteEventGeofenceRule(geofenceId: string, ruleId: string) { return request<void>(`/api/event-geofences/${geofenceId}/rules/${ruleId}`, { method: "DELETE" }, true); },

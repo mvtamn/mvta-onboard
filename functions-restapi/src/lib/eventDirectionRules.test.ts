@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   selectMatchingDirectionRule,
+  shouldPublishEventGeofenceNotification,
   snapshotMatchedDirectionRule,
   validateDirectionRule,
   type DirectionRule,
@@ -70,6 +71,11 @@ test("creates a stable matched rule snapshot", () => {
     matched_message_type: "custom",
     matched_send_mode: "manual",
   });
+});
+
+test("publishes notifications only for matched direction rules", () => {
+  assert.equal(shouldPublishEventGeofenceNotification(baseRule), true);
+  assert.equal(shouldPublishEventGeofenceNotification(undefined), false);
 });
 
 test("allows a standard message type without custom wording", () => {

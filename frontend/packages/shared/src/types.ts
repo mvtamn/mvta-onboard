@@ -867,6 +867,9 @@ export interface AppSettingRow {
 // an event RouteID is absent from GTFS static (and so from GTFS-RT), so
 // getRoutes()/GtfsRouteOption can never name one - the classification row is
 // the only source of a friendly name for a special-service route.
+export type EventGeofencePurpose = "staging" | "corridor" | "venue" | "other";
+export type EventZoneDerivedVehicleStatus = "At venue" | "Staged" | "In corridor" | "In zone" | "Outside monitored zones";
+
 export interface EventVehiclePosition {
   vehicle_id: number;
   route: number | null;
@@ -887,6 +890,29 @@ export interface EventVehiclePosition {
   report_age_seconds: number;
   is_stale: boolean;
   is_in_active_scope: boolean;
+  zone_id: string | null;
+  zone_name: string | null;
+  zone_purpose: EventGeofencePurpose | null;
+  zone_status: EventZoneDerivedVehicleStatus;
+}
+
+export type EventScopeExceptionCategory = "needs_scope_review" | "telemetry_incomplete" | "stale_observation" | "assigned_elsewhere";
+export type EventScopeProposalStatus = "proposed" | "accepted" | "applied" | "rejected" | null;
+export interface EventScopeException extends EventVehiclePosition {
+  category: EventScopeExceptionCategory;
+  evidence: {
+    route: number | null;
+    route_label: string | null;
+    operator_name: string | null;
+    block: number | null;
+    run: number | null;
+    report_timestamp: string;
+    report_age_seconds: number;
+    other_scope: string | null;
+  };
+  action_eligible: boolean;
+  proposal_id: string | null;
+  proposal_status: EventScopeProposalStatus;
 }
 
 export type EventHealthStatus = "healthy" | "degraded" | "failed" | "unknown";
@@ -908,7 +934,7 @@ export interface EventMonitoringHealth {
 
 export type EventLocationCategory = "transit_station" | "venue" | "park_and_ride" | "other";
 export interface EventLocation { id: string; name: string; category: EventLocationCategory; latitude: number; longitude: number; notes: string | null; is_active: boolean; }
-export interface EventGeofence { id: string; name: string; polygon: string; is_active: boolean; updated_by: string | null; updated_at: string; rules?: EventGeofenceRule[]; }
+export interface EventGeofence { id: string; name: string; polygon: string; purpose: EventGeofencePurpose; is_active: boolean; updated_by: string | null; updated_at: string; rules?: EventGeofenceRule[]; }
 export type EventGeofenceMessageType = "departing" | "passed" | "arriving_soon" | "custom";
 export interface EventGeofenceRule { id: string; geofence_id: string; transition: "enter" | "exit"; heading_min: number; heading_max: number; destination_label: string | null; destination_location_id: string | null; message_type: EventGeofenceMessageType; send_mode: "manual" | "auto"; sort_order: number; }
 export interface EventGeofenceCrossing { id: number; vehicle_id: number; route_id: number | null; geofence_id: string; geofence_name: string; event_id?: string | null; service_plan_id?: string | null; transition: "enter" | "exit"; heading_at_crossing: number | null; destination_label: string | null; matched_rule_id?: string | null; matched_rule_priority?: number | null; matched_destination_location_id?: string | null; matched_message_type?: EventGeofenceMessageType | null; matched_send_mode?: "manual" | "auto" | null; crossed_at: string; }

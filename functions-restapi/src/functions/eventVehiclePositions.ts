@@ -6,6 +6,9 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { classifyEventScopeException } from "../lib/eventScopeExceptions";
+import { polygonContains } from "../lib/geofence";
+import { classifyVehicleZone, type VehicleZoneFence } from "../lib/eventVehicleZone";
 
 // route_label/route_category come from RouteClassification, NOT GtfsRoutes -
 // a SpecialEvent RouteID is by definition absent from the GTFS static
@@ -36,6 +39,13 @@ interface EventVehiclePositionRow {
   report_age_seconds: number;
   is_stale: boolean;
   is_in_active_scope: boolean;
+  other_scope_name: string | null;
+  proposal_id: string | null;
+  proposal_status: "proposed" | "accepted" | "applied" | "rejected" | null;
+  zone_id: string | null;
+  zone_name: string | null;
+  zone_purpose: "staging" | "corridor" | "venue" | "other" | null;
+  zone_status: "At venue" | "Staged" | "In corridor" | "In zone" | "Outside monitored zones";
 }
 
 app.http("eventVehiclePositionsList", {
@@ -59,7 +69,7 @@ app.http("eventVehiclePositionsList", {
       if (tableCheck.recordset[0]?.table_exists !== 1) {
         return {
           status: 200,
-          jsonBody: { vehicles: [], unassigned_vehicles: [], diagnostics: { table_ready: false, vehicle_count: 0, last_report_at: null } },
+          jsonBody: { vehicles: [], unassigned_vehicles: [], scope_exceptions: [], diagnostics: { table_ready: false, vehicle_count: 0, last_report_at: null } },
         };
       }
 
@@ -74,6 +84,9 @@ app.http("eventVehiclePositionsList", {
                CASE WHEN assignment.operator_name IS NOT NULL THEN 'Avail Pullout Reports' END AS operator_source,
                COALESCE(plans.service_plan_names, '') AS service_plan_names,
                COALESCE(plans.service_plan_ids, '') AS service_plan_ids,
+               other_scope.service_plan_name AS other_scope_name,
+               proposal.id AS proposal_id,
+               proposal.status AS proposal_status,
                CAST(CASE WHEN EXISTS (
                  SELECT 1
                  FROM EventServicePlans scope_plan
@@ -123,15 +136,37 @@ app.http("eventVehiclePositionsList", {
         OUTER APPLY (
           SELECT STRING_AGG(CONVERT(NVARCHAR(MAX), sp.name), ' | ') AS service_plan_names,
                  STRING_AGG(CONVERT(NVARCHAR(MAX), CONVERT(NVARCHAR(36), sp.id)), ',') AS service_plan_ids
-          FROM EventServicePlanRoutes spr
-          INNER JOIN EventServicePlans sp ON sp.id = spr.service_plan_id
-          WHERE spr.route_id = p.route
+          FROM EventServicePlans sp
+          CROSS APPLY (SELECT TOP (1) routes_json FROM EventServicePlanScopeSnapshots snapshot WHERE snapshot.service_plan_id = sp.id ORDER BY snapshot.captured_at DESC) scope
+          CROSS APPLY OPENJSON(scope.routes_json) scope_route
+          WHERE TRY_CONVERT(INT, JSON_VALUE(scope_route.value, '$.route_id')) = p.route
             AND sp.status = 'active'
             AND (@eventId IS NULL OR sp.event_id = @eventId)
             AND (@servicePlanId IS NULL OR sp.id = @servicePlanId)
             AND (sp.start_date IS NULL OR sp.start_date <= CONVERT(CHAR(8), SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time', 112))
             AND (sp.end_date IS NULL OR sp.end_date >= CONVERT(CHAR(8), SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time', 112))
         ) plans
+        OUTER APPLY (
+          SELECT TOP (1) sp.name AS service_plan_name
+          FROM EventServicePlans sp
+          CROSS APPLY (SELECT TOP (1) routes_json FROM EventServicePlanScopeSnapshots snapshot WHERE snapshot.service_plan_id = sp.id ORDER BY snapshot.captured_at DESC) scope
+          CROSS APPLY OPENJSON(scope.routes_json) scope_route
+          WHERE TRY_CONVERT(INT, JSON_VALUE(scope_route.value, '$.route_id')) = p.route
+            AND sp.status = 'active'
+            AND @servicePlanId IS NOT NULL
+            AND sp.id <> @servicePlanId
+            AND (sp.start_date IS NULL OR sp.start_date <= CONVERT(CHAR(8), SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time', 112))
+            AND (sp.end_date IS NULL OR sp.end_date >= CONVERT(CHAR(8), SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time', 112))
+          ORDER BY sp.start_date, sp.name
+        ) other_scope
+        OUTER APPLY (
+          SELECT TOP (1) a.id, a.status
+          FROM EventVehicleAssignments a
+          WHERE a.vehicle_id = p.vehicle_id
+            AND a.event_id = @eventId
+            AND a.service_plan_id = @servicePlanId
+          ORDER BY a.requested_at DESC
+        ) proposal
         OUTER APPLY (
           SELECT TOP (1) m.speed_mps
           FROM MonitoredTripDelays m
@@ -152,12 +187,57 @@ app.http("eventVehiclePositionsList", {
           AND p.longitude BETWEEN -95.5 AND -92.0
         ORDER BY p.route, p.vehicle_id
       `);
+      const fenceRequest = pool.request();
+      fenceRequest.input("eventId", sql.UniqueIdentifier, eventId || null);
+      fenceRequest.input("servicePlanId", sql.UniqueIdentifier, servicePlanId || null);
+      const fences = (await fenceRequest.query<(VehicleZoneFence & { service_plan_id: string })>(`
+        SELECT sp.id service_plan_id, f.geofence_id id, f.name, f.polygon, COALESCE(f.purpose, 'other') purpose, f.is_active
+        FROM EventServicePlans sp
+        CROSS APPLY (SELECT TOP (1) geofences_json FROM EventServicePlanScopeSnapshots s WHERE s.service_plan_id=sp.id ORDER BY s.captured_at DESC) scope
+        CROSS APPLY OPENJSON(scope.geofences_json) WITH (geofence_id UNIQUEIDENTIFIER '$.geofence_id',name NVARCHAR(150) '$.name',polygon NVARCHAR(MAX) '$.polygon',purpose NVARCHAR(20) '$.purpose',is_active BIT '$.is_active') f
+        WHERE sp.status='active' AND (@eventId IS NULL OR sp.event_id=@eventId) AND (@servicePlanId IS NULL OR sp.id=@servicePlanId)
+      `)).recordset;
+      const outsideZones = { zone_id: null, zone_name: null, zone_purpose: null, zone_status: "Outside monitored zones" as const };
       const allVehicles = result.recordset.map((row) => ({
         ...row,
         service_plan_names: row.service_plan_names ? row.service_plan_names.split(" | ") : [],
         service_plan_ids: row.service_plan_ids ? row.service_plan_ids.split(",") : [],
+        ...((() => {
+          const planId = servicePlanId || (row.service_plan_ids ? row.service_plan_ids.split(",")[0] : undefined);
+          return planId ? classifyVehicleZone(row, fences.filter((fence) => fence.service_plan_id === planId), polygonContains) : outsideZones;
+        })()),
       }));
       const unassignedVehicles = allVehicles.filter((row) => row.service_plan_ids.length === 0);
+      const scopeExceptions = servicePlanId
+        ? allVehicles.flatMap((vehicle) => {
+          const category = classifyEventScopeException({
+            route_category: vehicle.route_category,
+            operator_name: vehicle.operator_name,
+            block: vehicle.block,
+            run: vehicle.run,
+            is_stale: vehicle.is_stale,
+            is_in_active_scope: vehicle.is_in_active_scope,
+            has_other_active_scope: Boolean(vehicle.other_scope_name),
+          });
+          return category ? [{
+            ...vehicle,
+            category,
+            evidence: {
+              route: vehicle.route,
+              route_label: vehicle.route_label,
+              operator_name: vehicle.operator_name,
+              block: vehicle.block,
+              run: vehicle.run,
+              report_timestamp: vehicle.report_timestamp,
+              report_age_seconds: vehicle.report_age_seconds,
+              other_scope: vehicle.other_scope_name,
+            },
+            action_eligible: category === "needs_scope_review" && !["proposed", "accepted", "applied"].includes(vehicle.proposal_status ?? ""),
+            proposal_id: vehicle.proposal_id,
+            proposal_status: vehicle.proposal_status,
+          }] : [];
+        })
+        : [];
       const lastReportAt = allVehicles.reduce<Date | null>(
         (latest, row) => (!latest || row.report_timestamp > latest ? row.report_timestamp : latest),
         null,
@@ -168,6 +248,7 @@ app.http("eventVehiclePositionsList", {
         jsonBody: {
           vehicles: allVehicles,
           unassigned_vehicles: unassignedVehicles,
+          scope_exceptions: scopeExceptions,
           diagnostics: {
             table_ready: true,
             vehicle_count: allVehicles.length,

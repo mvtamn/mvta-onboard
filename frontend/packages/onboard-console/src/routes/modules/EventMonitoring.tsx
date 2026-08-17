@@ -1,595 +1,105 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import * as atlas from "azure-maps-control";
-import "azure-maps-control/dist/atlas.min.css";
-import { ApiError, type Event, type EventGeofence, type EventLocation, type EventOperationalMessaging, type EventServicePlan, type EventVehicleAssignment, type EventVehiclePosition, type EventGeofenceCrossing, type EventGeofenceNotification, type EventAuditEntry, type EventMonitoringHealth } from "@mvta/shared";
-import { api } from "../../config.js";
+import { type EventGeofence, type EventGeofenceNotification, type EventLocation, type EventScopeException, type EventVehiclePosition } from "@mvta/shared";
 import { useEventWorkspace } from "../../context/EventWorkspaceContext.js";
 import { useAuth } from "../../auth/AuthContext.js";
 import "./eventMonitoring.css";
-import { activePlansMissingPublishedScope, defaultMonitoringEventId, defaultMonitoringServicePlanId, eventVehiclePositionQuery } from "./eventMonitoringState.js";
-import { removeMapLayersIfPresent } from "./mapLayerCleanup.js";
+import { activePlansMissingPublishedScope, defaultMonitoringEventId, defaultMonitoringServicePlanId, deriveEventMonitoringDataState, isEventNotificationHistoryStatus, isOpenEventNotificationStatus } from "./eventMonitoringState.js";
+import { useEventMonitoringData } from "./useEventMonitoringData.js";
+import { cardinalHeading, displayOperator, minutesAgo, routeLabel } from "./eventVehicleFormat.js";
+import { EventVehicleMap, type MapStyle } from "./EventVehicleMap.js";
 
-const AVL_REFRESH_MS = 30_000;
-const MAP_CENTER: atlas.data.Position = [-93.25, 44.83];
-const MAP_ZOOM = 10;
-type MapStyle = "road" | "grayscale_light" | "night" | "satellite_road_labels";
+const SCOPE_EXCEPTION_LABELS: Record<EventScopeException["category"], string> = {
+  needs_scope_review: "Needs scope review", telemetry_incomplete: "Telemetry incomplete", stale_observation: "Stale observation", assigned_elsewhere: "Assigned elsewhere",
+};
 
-function minutesAgo(value: string | null): string {
-  if (!value) return "—";
-  const time = new Date(value).getTime();
-  if (Number.isNaN(time)) return "—";
-  return `${Math.max(0, Math.floor((Date.now() - time) / 60_000))} min ago`;
+function vehicleAttention(vehicle: EventVehiclePosition | EventScopeException): number {
+  if ("category" in vehicle) return 0;
+  return vehicle.is_stale ? 1 : 2;
 }
 
-function cardinalHeading(heading: number | null, direction: string | null): string {
-  if (heading !== null) {
-    const normalized = ((heading % 360) + 360) % 360;
-    if (normalized >= 315 || normalized < 45) return "NB";
-    if (normalized < 135) return "EB";
-    if (normalized < 225) return "SB";
-    return "WB";
-  }
-  const raw = direction?.trim().toUpperCase();
-  if (raw === "N" || raw === "NB") return "NB";
-  if (raw === "S" || raw === "SB") return "SB";
-  if (raw === "E" || raw === "EB" || raw === "O") return "EB";
-  if (raw === "W" || raw === "WB" || raw === "I") return "WB";
-  return "—";
-}
-
-function displayOperator(value: string | null): string {
-  if (!value) return "Operator unavailable";
-  const withoutId = value.replace(/\s+-\d+\s*$/, "").trim();
-  const [last, first] = withoutId.split(",").map((part) => part.trim());
-  return first ? `${first} ${last}` : withoutId;
-}
-
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>'"]/g, (char) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",
-  })[char] ?? char);
-}
-
-function routeLabel(vehicle: EventVehiclePosition): string {
-  if (vehicle.route === null) return "Unassigned";
-  return vehicle.route_label ? `${vehicle.route} · ${vehicle.route_label}` : String(vehicle.route);
-}
-
-function healthLabel(status: string | undefined): string {
-  return status ? status[0].toUpperCase() + status.slice(1) : "Unavailable";
-}
-
-export function EventMonitoring() {
+export function EventMonitoring({ fieldView = false }: { fieldView?: boolean }) {
   const { account, roles, signIn } = useAuth();
+  const { selection, selectEvent, selectServicePlan, selectRevision } = useEventWorkspace();
+  const { eventId: selectedEventId, servicePlanId: selectedPlanId } = selection;
   const canManageAssignments = roles.includes("OCC.Admin");
   const canManageEventMessaging = roles.includes("OCC.EventAVL") || roles.includes("OCC.Admin");
   const canManageNotificationActions = roles.some((role) => ["OCC.EventAVL", "OCC.Publisher", "OCC.Admin"].includes(role));
-  const [vehicles, setVehicles] = useState<EventVehiclePosition[] | null>(null);
-  const [unassignedVehicles, setUnassignedVehicles] = useState<EventVehiclePosition[]>([]);
-  const [events, setEvents] = useState<Event[]>([]);
-  const [plans, setPlans] = useState<EventServicePlan[]>([]);
-  const [resourceGeofences, setResourceGeofences] = useState<EventGeofence[]>([]);
-  const [resourceLocations, setResourceLocations] = useState<EventLocation[]>([]);
-  const { selection, selectEvent, selectServicePlan, selectRevision } = useEventWorkspace();
-  const { eventId: selectedEventId, servicePlanId: selectedPlanId } = selection;
-  const [showUnassigned, setShowUnassigned] = useState(true);
-  const [showGeofences, setShowGeofences] = useState(true);
-  const [showLocations, setShowLocations] = useState(true);
-  const [showInactiveGeofences, setShowInactiveGeofences] = useState(true);
-  const [showInactiveLocations, setShowInactiveLocations] = useState(true);
-  const [assignments, setAssignments] = useState<EventVehicleAssignment[]>([]);
-  const [assignmentMessage, setAssignmentMessage] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [minimized, setMinimized] = useState(false);
-  const [routeFilter, setRouteFilter] = useState("all");
-  const [headingFilter, setHeadingFilter] = useState("all");
-  const [motionFilter, setMotionFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [mapStyle, setMapStyle] = useState<MapStyle>("road");
   const [traffic, setTraffic] = useState(false);
-  const [crossings, setCrossings] = useState<EventGeofenceCrossing[]>([]);
-  const [notifications, setNotifications] = useState<EventGeofenceNotification[]>([]);
-  const [audit, setAudit] = useState<EventAuditEntry[]>([]);
-  const [health, setHealth] = useState<EventMonitoringHealth | null>(null);
-  const [feedStatus, setFeedStatus] = useState<Record<string, { state: "ready" | "error"; loadedAt: Date | null }>>({});
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [messagingControl, setMessagingControl] = useState<EventOperationalMessaging | null>(null);
-  const [messagingError, setMessagingError] = useState<string | null>(null);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<number | null>(null);
+  const [notificationDrawer, setNotificationDrawer] = useState(false);
+  const [rosterSegment, setRosterSegment] = useState<"in-period" | "outside">("in-period");
+  const [rosterFilter, setRosterFilter] = useState<"all" | "stale" | "exceptions">("all");
   const defaultedEventRef = useRef(false);
-
-  const load = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      const query = eventVehiclePositionQuery(selectedEventId, selectedPlanId);
-      const { vehicles: current, unassigned_vehicles: currentUnassigned, diagnostics } = await api.getEventVehiclePositions(query.eventId, query.servicePlanId);
-      setVehicles(current);
-      setUnassignedVehicles(currentUnassigned ?? []);
-      setLastUpdated(new Date());
-      setMessage(
-        diagnostics.table_ready
-          ? current.length === 0 ? "No active vehicles match the current SpecialEvent route classifications." : null
-          : "Event vehicle monitoring has not been configured yet.",
-      );
-    } catch (error) {
-      setMessage(error instanceof ApiError
-        ? error.status === 401 ? "Your OnBoard session has expired. Sign in again to load live vehicle positions." : `Could not load live vehicle positions: ${error.message}`
-        : "Could not reach the live vehicle-position service.");
-    } finally {
-      setRefreshing(false);
-    }
-    void api.getEventMonitoringHealth(selectedEventId || undefined, selectedPlanId || undefined).then(setHealth).catch(() => setHealth(null));
-  }, [selectedEventId, selectedPlanId]);
+  const data = useEventMonitoringData({ eventId: selectedEventId, servicePlanId: selectedPlanId, account, canManageAssignments, canManageEventMessaging, onAssignmentRevision: selectRevision });
+  const { vehicles, scopeExceptions, events, plans, notifications, crossings, audit, health, message, authExpired, actionError, messagingControl, messagingError, refresh, resetLiveVehicles, reviewNotification, updateMessaging, proposeAssignment } = data;
 
   useEffect(() => {
-    void Promise.all([api.getEvents(), api.getEventServicePlans()]).then(([eventRows, planRows]) => {
-      setEvents(eventRows.events);
-      setPlans(planRows.plans);
-    }).catch(() => { setEvents([]); setPlans([]); });
-  }, [account]);
-
-  useEffect(() => {
-    void Promise.all([api.getEventGeofences(), api.getEventLocations()]).then(([geofenceRows, locationRows]) => {
-      setResourceGeofences(geofenceRows.geofences);
-      setResourceLocations(locationRows.locations);
-    }).catch(() => { setResourceGeofences([]); setResourceLocations([]); });
-  }, [account]);
-
-  useEffect(() => {
-    if (selectedEventId) {
-      if (!selectedPlanId) {
-        const planId = defaultMonitoringServicePlanId(selectedEventId, plans);
-        if (planId) selectServicePlan(planId);
-      }
-      return;
-    }
+    if (selectedEventId) { if (!selectedPlanId) { const id = defaultMonitoringServicePlanId(selectedEventId, plans); if (id) selectServicePlan(id); } return; }
     if (defaultedEventRef.current || events.length === 0) return;
-    const eventId = defaultMonitoringEventId(events, plans);
-    if (!eventId) return;
-    defaultedEventRef.current = true;
-    selectEvent(eventId);
+    const id = defaultMonitoringEventId(events, plans); if (!id) return;
+    defaultedEventRef.current = true; selectEvent(id);
   }, [events, plans, selectedEventId, selectedPlanId, selectEvent, selectServicePlan]);
 
-  useEffect(() => {
-    if (!selectedEventId) { setAssignments([]); return; }
-    if (!canManageAssignments) { setAssignments([]); return; }
-    void api.getEventVehicleAssignments(selectedEventId).then((result) => setAssignments(result.assignments)).catch(() => setAssignments([]));
-  }, [account, canManageAssignments, selectedEventId]);
-
-  useEffect(() => {
-    if (!selectedPlanId) { setMessagingControl(null); setMessagingError(null); return; }
-    void api.getEventOperationalMessaging(selectedPlanId).then(setMessagingControl).catch((error) => setMessagingError(error instanceof ApiError ? error.message : "Could not load operational messaging controls."));
-  }, [account, selectedPlanId]);
-
-  useEffect(() => {
-    void load();
-    const interval = window.setInterval(() => void load(), AVL_REFRESH_MS);
-    return () => window.clearInterval(interval);
-  }, [account, load]);
-
-  useEffect(() => {
-    if (!selectedEventId) { setCrossings([]); setNotifications([]); setAudit([]); return; }
-    Promise.allSettled([api.getEventGeofenceCrossings(selectedEventId, selectedPlanId), api.getEventGeofenceNotifications("all", selectedEventId, selectedPlanId), api.getEventAuditStream(undefined, undefined, selectedEventId, selectedPlanId)])
-      .then(([c, n, a]) => {
-        const now = new Date();
-        if (c.status === "fulfilled") { setCrossings(c.value.crossings); setFeedStatus((s) => ({ ...s, crossings: { state: "ready", loadedAt: now } })); }
-        else setFeedStatus((s) => ({ ...s, crossings: { state: "error", loadedAt: s.crossings?.loadedAt ?? null } }));
-        if (n.status === "fulfilled") { setNotifications(n.value.notifications); setFeedStatus((s) => ({ ...s, notifications: { state: "ready", loadedAt: now } })); }
-        else setFeedStatus((s) => ({ ...s, notifications: { state: "error", loadedAt: s.notifications?.loadedAt ?? null } }));
-        if (a.status === "fulfilled") { setAudit(a.value.entries); setFeedStatus((s) => ({ ...s, audit: { state: "ready", loadedAt: now } })); }
-        else setFeedStatus((s) => ({ ...s, audit: { state: "error", loadedAt: s.audit?.loadedAt ?? null } }));
-      });
-  }, [account, lastUpdated, selectedEventId, selectedPlanId]);
-
-  async function reviewNotification(id: string, action: "acknowledge" | "send" | "dismiss") {
-    setActionError(null);
-    try {
-      if (action === "send") await api.sendEventGeofenceNotification(id);
-      else if (action === "acknowledge") await api.acknowledgeEventGeofenceNotification(id);
-      else await api.dismissEventGeofenceNotification(id);
-      setNotifications((rows) => action === "acknowledge" ? rows.map((row) => row.id === id ? { ...row, status: "acknowledged" as const } : row) : rows.filter((row) => row.id !== id));
-    } catch (error) {
-      setActionError(error instanceof ApiError ? error.message : "Notification action failed; the item was retained.");
-    }
-  }
-
-  async function updateMessaging(enabled: boolean) {
-    if (!selectedPlanId || !messagingControl || !canManageEventMessaging) return;
-    setMessagingError(null);
-    try { setMessagingControl(await api.updateEventOperationalMessaging(selectedPlanId, enabled)); }
-    catch (error) { setMessagingError(error instanceof ApiError ? error.message : "Could not update operational messaging controls."); }
-  }
-
-  async function proposeAssignment(vehicle: EventVehiclePosition) {
-    const targetPlan = selectedPlan ?? selectedPlans.find((plan) => plan.status === "draft" || plan.status === "review");
-    if (!selectedEventId || !targetPlan || vehicle.route === null) { setAssignmentMessage("Select an Event with a draft, review, or active operating period before proposing an assignment."); return; }
-    try {
-      const assignment = await api.createEventVehicleAssignment({ event_id: selectedEventId, service_plan_id: targetPlan.id, vehicle_id: vehicle.vehicle_id, route_id: vehicle.route, reason: "Proposed from Event AVL unassigned vehicle view" });
-      setAssignments((rows) => [assignment, ...rows]);
-      setAssignmentMessage(selectedPlan?.status === "active" ? "Assignment proposed as an active-plan revision; it is not live until the revision is approved and applied." : "Assignment proposed for the operating period.");
-    } catch (error) { setAssignmentMessage(error instanceof ApiError ? error.message : "Could not propose vehicle assignment."); }
-  }
-
-  async function reviewAssignment(id: string, action: "approve" | "reject") {
-    try {
-      const result = await api.transitionEventVehicleAssignment(id, action);
-      if (result.revision_id) selectRevision(result.revision_id);
-      setAssignments((rows) => rows.map((row) => row.id === id ? { ...row, status: result.status as EventVehicleAssignment["status"], revision_id: result.revision_id ?? row.revision_id } : row));
-      setAssignmentMessage(action === "approve" && result.target === "revision" ? "Assignment accepted into a new revision. Review and apply that revision before it becomes operational." : `Assignment ${action}d.`);
-    } catch (error) { setAssignmentMessage(error instanceof ApiError ? error.message : "Could not update the assignment proposal."); }
-  }
-
-  const classifiedVehicles = vehicles ?? [];
   const selectedEvent = events.find((event) => event.id === selectedEventId);
   const selectedPlans = plans.filter((plan) => plan.event_id === selectedEventId);
   const activePlans = selectedPlans.filter((plan) => plan.status === "active");
   const selectedPlan = activePlans.find((plan) => plan.id === selectedPlanId);
   const requiresPlanSelection = Boolean(selectedEventId && activePlans.length > 1 && !selectedPlanId);
   const scopedPlans = selectedPlan ? [selectedPlan] : activePlans.length === 1 ? activePlans : [];
-  const plansMissingPublishedScope = activePlansMissingPublishedScope(scopedPlans);
-  const publishedGeofences = scopedPlans.flatMap((plan) => plan.published_scope?.geofences ?? []);
-  const publishedLocations = scopedPlans.flatMap((plan) => plan.published_scope?.locations ?? []);
-  const visibleGeofences = Array.from(new Map(publishedGeofences.map((fence) => [fence.id, fence])).values());
-  const visibleLocations = Array.from(new Map(publishedLocations.map((location) => [location.id, location])).values());
-  const mapGeofences = resourceGeofences.filter((fence) => fence.is_active ? showGeofences : showInactiveGeofences);
-  const mapLocations = resourceLocations.filter((location) => location.is_active ? showLocations : showInactiveLocations);
-  const routeOptions = useMemo(() => Array.from(new Map(scopedPlans.flatMap((plan) => plan.links?.filter((link) => link.kind === "routes").map((link) => [String(link.value), link.label] as [string, string]) ?? [])).entries()), [scopedPlans]);
-  const activeVehicles = useMemo(() => classifiedVehicles.filter((vehicle) => {
-    const heading = cardinalHeading(vehicle.heading, vehicle.direction);
-    const query = search.trim().toLowerCase();
-    const matchesSearch = !query || String(vehicle.vehicle_id).includes(query)
-      || displayOperator(vehicle.operator_name).toLowerCase().includes(query)
-      || routeLabel(vehicle).toLowerCase().includes(query);
-    const matchesMotion = motionFilter === "all"
-      || (motionFilter === "moving"
-        ? vehicle.speed_mph !== null && vehicle.speed_mph >= 1
-        : vehicle.speed_mph !== null && vehicle.speed_mph < 1);
-    return (routeFilter === "all" || String(vehicle.route) === routeFilter)
-      && (headingFilter === "all" || heading === headingFilter)
-      && matchesMotion && matchesSearch;
-  }), [classifiedVehicles, headingFilter, motionFilter, routeFilter, search]);
-  const routesActive = new Set(scopedPlans.flatMap((plan) => plan.links?.filter((link) => link.kind === "routes").map((link) => String(link.value)) ?? [])).size;
-  const routeNames = routeOptions.map(([, label]) => label);
-  const routeSummary = routeNames.length > 2 ? `${routeNames.slice(0, 2).join(", ")} +${routeNames.length - 2} more` : routeNames.join(", ");
-  const geofencesWithRules = visibleGeofences.filter((fence) => (fence.rules?.length ?? 0) > 0).length;
-  const reportingNow = classifiedVehicles.filter((v) => !v.is_stale && Date.now() - new Date(v.report_timestamp).getTime() < 60_000).length;
-  const degradedComponents = health?.components.filter((component) => component.status !== "healthy") ?? [];
-  const notificationActionsBlocked = degradedComponents.some((component) => ["event_projection", "crossing_detection"].includes(component.component));
-  const hasFilters = routeFilter !== "all" || headingFilter !== "all" || motionFilter !== "all" || search !== "";
-  const sessionExpired = message?.toLowerCase().includes("session has expired") || message?.toLowerCase().includes("sign in again") || false;
-  const hasOperatingContext = Boolean(selectedEventId);
-  const dataState = message && vehicles === null
-    ? { tone: "error", title: "Event AVL needs you to sign in again.", action: message }
-    : !selectedEventId
-    ? vehicles === null
-      ? { tone: "info", title: "Connecting to live AVL vehicles…", action: null }
-      : { tone: vehicles.length ? "success" : "warning", title: vehicles.length ? "Showing all active AVL vehicles." : "No active AVL vehicles are reporting.", action: "Select an Event to see plan membership and geofence scope." }
-    : activePlans.length === 0
-      ? { tone: "warning", title: "This Event has no active operating period.", action: "Create or activate an operating period in Event Planning." }
-      : requiresPlanSelection
-        ? { tone: "warning", title: "Select an operating period to monitor this Event.", action: "Choose one active Service Plan before opening live vehicles, alerts, and scope-specific controls." }
-      : plansMissingPublishedScope.length > 0
-        ? { tone: "error", title: "Published Event AVL scope is unavailable.", action: "Repair or reactivate this operating period in Event Planning before monitoring." }
-      : health === null && vehicles === null
-          ? { tone: "error", title: "Event AVL data is unavailable.", action: "The API health or vehicle-position feed could not be reached." }
-          : vehicles === null
-            ? { tone: "info", title: "Connecting to Event AVL data…", action: null }
-          : degradedComponents.length > 0
-            ? { tone: "warning", title: "Event AVL is degraded.", action: `Vehicle positions remain visible; ${degradedComponents.map((component) => component.component.replaceAll("_", " ")).join(", ")} cannot support every monitoring claim or action.` }
-            : vehicles.length
-              ? { tone: "success", title: "Event AVL data is flowing.", action: null }
-              : { tone: "warning", title: "No active vehicles are reporting.", action: "No active vehicles matched this Event operating context." };
+  const missingScope = activePlansMissingPublishedScope(scopedPlans);
+  const visibleGeofences = Array.from(new Map(scopedPlans.flatMap((plan) => plan.published_scope?.geofences ?? []).map((fence) => [fence.id, fence])).values());
+  const visibleLocations = Array.from(new Map(scopedPlans.flatMap((plan) => plan.published_scope?.locations ?? []).map((location) => [location.id, location])).values());
+  const allVehicles = vehicles ?? [];
+  const query = search.trim().toLowerCase();
+  const filteredVehicles = useMemo(() => allVehicles.filter((vehicle) => (rosterFilter !== "stale" || vehicle.is_stale) && (!query || String(vehicle.vehicle_id).includes(query) || routeLabel(vehicle).toLowerCase().includes(query) || displayOperator(vehicle.operator_name).toLowerCase().includes(query))), [allVehicles, query, rosterFilter]);
+  const exceptionIds = new Set(scopeExceptions.map((vehicle) => vehicle.vehicle_id));
+  const roster = useMemo(() => {
+    const inPeriod = filteredVehicles.filter((vehicle) => vehicle.is_in_active_scope && !exceptionIds.has(vehicle.vehicle_id));
+    const outside = scopeExceptions.filter((vehicle) => !query || String(vehicle.vehicle_id).includes(query) || routeLabel(vehicle).toLowerCase().includes(query));
+    return { inPeriod: inPeriod.sort((a, b) => vehicleAttention(a) - vehicleAttention(b) || a.vehicle_id - b.vehicle_id), outside: outside.sort((a, b) => vehicleAttention(a) - vehicleAttention(b) || a.vehicle_id - b.vehicle_id) };
+  }, [exceptionIds, filteredVehicles, query, scopeExceptions]);
+  const currentRoster = rosterFilter === "exceptions" ? roster.outside : rosterSegment === "in-period" ? roster.inPeriod : roster.outside;
+  const selectedVehicle = allVehicles.find((vehicle) => vehicle.vehicle_id === selectedVehicleId) ?? scopeExceptions.find((vehicle) => vehicle.vehicle_id === selectedVehicleId);
+  const eventQueue = notifications.filter((notification) => isOpenEventNotificationStatus(notification.status));
+  const eventHistory = notifications.filter((notification) => isEventNotificationHistoryStatus(notification.status));
+  const degraded = health?.components.filter((component) => component.status !== "healthy") ?? [];
+  const actionsBlocked = degraded.some((component) => ["event_projection", "crossing_detection"].includes(component.component));
+  const state = deriveEventMonitoringDataState({ authenticationExpired: authExpired, loadError: message, vehicles, hasOperatingContext: Boolean(selectedEventId), activePlanCount: activePlans.length, requiresPlanSelection, missingPublishedScopePlanNames: missingScope.map((plan) => plan.name), health, degradedComponentNames: degraded.map((component) => component.component.replaceAll("_", " ")) });
+  const reportingNow = allVehicles.filter((vehicle) => !vehicle.is_stale && vehicle.report_age_seconds < 60).length;
 
-  const eventQueue = notifications.filter((notification) => ["pending", "acknowledged", "failed"].includes(notification.status));
-  const eventHistory = notifications.filter((notification) => ["sent", "dismissed", "expired"].includes(notification.status));
+  if (fieldView && authExpired) return <div className="evmon-blocking-state evmon-blocking-state-error" role="alert"><div><strong>Live Event AVL is unavailable</strong><p>Your OnBoard session expired. Sign in again to restore this Event context.</p></div><button className="btn-primary" onClick={signIn}>Sign in again</button></div>;
+  if (fieldView) return <EventAVLFieldView vehicles={allVehicles} notifications={eventQueue} selectedVehicleId={selectedVehicleId} onSelectVehicle={setSelectedVehicleId} mapGeofences={visibleGeofences} mapLocations={visibleLocations} mapStyle={mapStyle} traffic={traffic} staleCount={allVehicles.filter((vehicle) => vehicle.is_stale).length} trustState={state} actionsBlocked={actionsBlocked} canManageNotificationActions={canManageNotificationActions} onReviewNotification={reviewNotification} onRefresh={() => void refresh()} />;
 
-  return (
-    <section className="evmon" aria-label="Live vehicle monitoring">
-      <div className="evmon-summary">
-        <div>
-          <span className="evmon-eyebrow"><span className="evmon-live-dot" /> Live operations</span>
-          <h2>Event AVL</h2>
-          <p>{selectedEvent ? `${selectedEvent.name} · ${selectedPlan?.name ?? "Select an operating period"}` : "Select an Event operating context to monitor."}</p>
-        </div>
-        <div className="evmon-metrics" aria-label="Live monitoring summary">
-          <div><strong>{classifiedVehicles.length}</strong><span>Vehicles</span></div>
-          <div><strong>{reportingNow}</strong><span>Reporting now</span></div>
-        </div>
-      </div>
-
-      <div className="evmon-context" aria-label="Event operating context">
-        <label><span>Event context</span><select value={selectedEventId} onChange={(event) => { selectEvent(event.target.value); setRouteFilter("all"); setVehicles(null); }}><option value="">Select Event</option>{events.map((event) => <option key={event.id} value={event.id}>{event.name}</option>)}</select></label>
-        <label><span>Operating period</span><select value={selectedPlanId} onChange={(event) => { selectServicePlan(event.target.value); setRouteFilter("all"); setVehicles(null); }} disabled={!selectedEventId}><option value="">All active periods</option>{activePlans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}</select></label>
-        <span>{selectedEvent ? `${selectedPlans.length} operating period${selectedPlans.length === 1 ? "" : "s"}` : "No Event selected"}</span>
-      </div>
-
-      {sessionExpired ? <div className="evmon-blocking-state evmon-blocking-state-error" role="alert">
-        <div><strong>Live Event AVL is unavailable</strong><p>Your OnBoard session expired before live vehicle data could be loaded. Sign in again to restore this Event context. Live vehicles, alerts, history, crossings, and audit remain unavailable until then.</p></div>
-        <button className="btn-primary" type="button" onClick={signIn}>Sign in again</button>
-      </div> : !hasOperatingContext ? <div className="evmon-setup-state" role="status">
-        <div><strong>Select an Event to begin monitoring</strong><p>Choose an Event above to reveal its active operating periods, live vehicles, alerts, and managed scope.</p></div>
-        <Link className="btn-sm" to="/event-planning">Open Event Planning</Link>
-      </div> : dataState.tone !== "success" && <div className={`evmon-data-state evmon-data-state-${dataState.tone}`} role="status">
-        <strong>{dataState.title}</strong>
-        {dataState.action && <span>{dataState.action}</span>}
-        {dataState.tone === "error" && <button className="btn-sm" onClick={() => void load()}>Try again</button>}
-        {(activePlans.length === 0 || plansMissingPublishedScope.length > 0) && <Link to={`/event-planning?event=${encodeURIComponent(selectedEventId)}${selectedPlan ? `&plan=${encodeURIComponent(selectedPlan.id)}` : ""}`}>Open Event Planning</Link>}
-      </div>}
-
-      {hasOperatingContext && !sessionExpired && !requiresPlanSelection && <>
-      <div className="evmon-scope" aria-label="Live operating scope">
-        <strong>Live operating scope</strong>
-        {activePlans.length > 0 ? <>
-          {plansMissingPublishedScope.length > 0
-            ? <><span>Published scope unavailable for {plansMissingPublishedScope.map((plan) => plan.name).join(", ")}.</span><Link to={`/event-planning?event=${encodeURIComponent(selectedEventId)}${selectedPlan ? `&plan=${encodeURIComponent(selectedPlan.id)}` : ""}`}>Repair scope</Link></>
-            : <><span><b>{routesActive}</b> routes{routeSummary ? ` · ${routeSummary}` : ""}</span><span><b>{visibleGeofences.length}</b> geofences · <b>{geofencesWithRules}</b> with rules</span><span><b>{visibleLocations.length}</b> locations</span><Link to={`/event-planning?event=${encodeURIComponent(selectedEventId)}${selectedPlan ? `&plan=${encodeURIComponent(selectedPlan.id)}` : ""}`}>Review scope</Link></>}
-        </> : <span>Select an active operating period to see the managed scope.</span>}
-      </div>
-
-      <div className="evmon-health" aria-label="Event monitoring data health">
-        <strong>Data health</strong>
-        {(["shared_avl_ingestion", "event_projection", "crossing_detection"] as const).map((name) => {
-          const component = health?.components.find((item) => item.component === name);
-          const statusClass = component?.status === "healthy" ? "is-healthy" : component?.status ? "is-warning" : "is-unavailable";
-          return <span key={name}>{name.replaceAll("_", " ")}: <b className={statusClass}>{healthLabel(component?.status)}</b></span>;
-        })}
-        <span>retention: <b className={health?.maintenance?.last_success_at ? "is-healthy" : "is-unavailable"}>{health?.maintenance?.last_success_at ? `OK · ${minutesAgo(health.maintenance.last_success_at)}` : "Unavailable"}</b></span>
-      </div>
-
-      <div className={`evmon-workspace${minimized ? " is-minimized" : ""}`}>
-        <div className="evmon-toolbar">
-          <div>
-            <strong>Live map</strong>
-            <span>{lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}` : "Connecting…"} · every 30 sec</span>
-          </div>
-          <div className="evmon-toolbar-actions">
-            <button type="button" onClick={() => void load()} disabled={refreshing}>{refreshing ? "Refreshing…" : "Refresh now"}</button>
-            <button type="button" onClick={() => setMinimized((value) => !value)} aria-expanded={!minimized}>
-              {minimized ? "Restore map" : "Minimize map"}
-            </button>
-          </div>
-        </div>
-        {!minimized && <details className="evmon-filter-panel">
-          <summary>Vehicle and map filters {hasFilters && <span className="evmon-filter-count">Active</span>}</summary>
-          <div className="evmon-controls">
-          <label className="evmon-traffic"><input type="checkbox" checked={showUnassigned} onChange={(event) => setShowUnassigned(event.target.checked)} /><span>Unassigned vehicles</span></label>
-          <label><span>Find</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Vehicle or operator" /></label>
-          <label><span>Managed service</span><select value={routeFilter} onChange={(event) => setRouteFilter(event.target.value)}><option value="all">All managed services</option>{routeOptions.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
-          <label><span>Heading</span><select value={headingFilter} onChange={(event) => setHeadingFilter(event.target.value)}><option value="all">All headings</option>{["NB", "SB", "EB", "WB"].map((value) => <option key={value}>{value}</option>)}</select></label>
-          <label><span>Motion</span><select value={motionFilter} onChange={(event) => setMotionFilter(event.target.value)}><option value="all">Moving + stopped</option><option value="moving">Moving</option><option value="stopped">Stopped</option></select></label>
-          <label><span>Map layer</span><select value={mapStyle} onChange={(event) => setMapStyle(event.target.value as MapStyle)}><option value="road">Road</option><option value="grayscale_light">Light</option><option value="night">Night</option><option value="satellite_road_labels">Satellite + labels</option></select></label>
-          <label className="evmon-traffic"><input type="checkbox" checked={traffic} onChange={(event) => setTraffic(event.target.checked)} /><span>Traffic</span></label>
-          <label className="evmon-traffic"><input type="checkbox" checked={showGeofences} onChange={(event) => setShowGeofences(event.target.checked)} /><span>Active geofences</span></label>
-          <label className="evmon-traffic"><input type="checkbox" checked={showInactiveGeofences} onChange={(event) => setShowInactiveGeofences(event.target.checked)} /><span>Inactive geofences</span></label>
-          <label className="evmon-traffic"><input type="checkbox" checked={showLocations} onChange={(event) => setShowLocations(event.target.checked)} /><span>Active locations</span></label>
-          <label className="evmon-traffic"><input type="checkbox" checked={showInactiveLocations} onChange={(event) => setShowInactiveLocations(event.target.checked)} /><span>Inactive locations</span></label>
-          {hasFilters && <button type="button" className="evmon-clear" onClick={() => { setSearch(""); setRouteFilter("all"); setHeadingFilter("all"); setMotionFilter("all"); }}>Clear filters</button>}
-          </div>
-        </details>}
-        {!minimized && (
-          <div className="evmon-command-center">
-            <div className="evmon-map-wrap">
-              <VehicleMap vehicles={activeVehicles} geofences={mapGeofences} locations={mapLocations} showGeofences={mapGeofences.length > 0} showLocations={mapLocations.length > 0} mapStyle={mapStyle} traffic={traffic} />
-              <div className="evmon-map-legend" aria-label="Map legend">
-                <span><i className="evmon-legend-dot evmon-legend-dot-active" /> Active location</span>
-                <span><i className="evmon-legend-dot evmon-legend-dot-inactive" /> Inactive location</span>
-                <span><i className="evmon-legend-bus" /> Managed vehicle</span>
-              </div>
-            </div>
-            <aside className="evmon-command-summary" aria-label="Operational brief">
-              <span className="evmon-eyebrow">Operational brief</span>
-              <h3>{selectedEvent?.name ?? "No Event selected"}</h3>
-              <p>{selectedPlan?.name ?? "Select an active operating period"}</p>
-              <dl>
-                <dt>Vehicles visible</dt><dd>{classifiedVehicles.length}</dd>
-                <dt>Managed by plan</dt><dd>{classifiedVehicles.filter((vehicle) => vehicle.is_in_active_scope).length}</dd>
-                <dt>Unassigned</dt><dd>{unassignedVehicles.length}</dd>
-                <dt>Geofence alerts</dt><dd className={health?.components.find((item) => item.component === "crossing_detection")?.status === "healthy" ? "ok" : "muted"}>{health?.components.find((item) => item.component === "crossing_detection")?.status === "healthy" ? "Active" : "Plan-scoped"}</dd>
-              </dl>
-              <Link className="evmon-command-link" to={selectedEventId ? `/event-planning?event=${encodeURIComponent(selectedEventId)}${selectedPlan ? `&plan=${encodeURIComponent(selectedPlan.id)}` : ""}` : "/event-planning"}>Review Event Planning</Link>
-            </aside>
-          </div>
-        )}
-      </div>
-
-      <div className="evmon-list-header">
-        <div><h3>All active Event vehicles</h3><span>Fresh and recently stale vehicles from shared AVL; plan membership is shown below.</span></div>
-        <span className="evmon-count">{activeVehicles.length}{hasFilters ? ` of ${classifiedVehicles.length}` : ""} active</span>
-      </div>
-      {showUnassigned && <>
-        <div className="evmon-list-header"><div><h3>Unassigned vehicles</h3><span>Active vehicles not currently assigned to the selected operating plan.</span></div><span className="evmon-count">{unassignedVehicles.length}</span></div>
-        <div className="evmon-table-wrap"><table className="data evmon-table"><thead><tr><th>Vehicle</th><th>Route</th><th>Heading</th><th>Last report</th>{canManageAssignments && <th>Planning action</th>}</tr></thead><tbody>{unassignedVehicles.map((vehicle) => <tr key={`unassigned-${vehicle.vehicle_id}`}><td><strong>{vehicle.vehicle_id}</strong></td><td>{routeLabel(vehicle)}</td><td><span className="evmon-heading">{cardinalHeading(vehicle.heading, vehicle.direction)}</span></td><td className={vehicle.is_stale ? "evmon-stale" : undefined}>{vehicle.is_stale ? "Stale · " : ""}{minutesAgo(vehicle.report_timestamp)}</td>{canManageAssignments && <td>{vehicle.route_category === "SpecialEvent" ? <button className="btn-sm" onClick={() => void proposeAssignment(vehicle)}>Propose assignment</button> : "—"}</td>}</tr>)}</tbody></table>{unassignedVehicles.length === 0 && <div className="evmon-empty">All active vehicles are assigned to the selected context.</div>}</div>
-        {assignmentMessage && <div className="evmon-empty" role="status">{assignmentMessage}</div>}
-        {canManageAssignments && assignments.length > 0 && <div className="evmon-table-wrap"><table className="data evmon-table"><thead><tr><th>Assignment</th><th>Vehicle</th><th>Route</th><th>Plan</th><th>Status</th><th>Review</th></tr></thead><tbody>{assignments.map((assignment) => <tr key={assignment.id}><td>{new Date(assignment.requested_at).toLocaleString()}</td><td>{assignment.vehicle_id}</td><td>{assignment.route_id}</td><td>{assignment.service_plan_name ?? "—"}</td><td>{assignment.status}{assignment.revision_id ? ` · revision ${assignment.revision_id.slice(0, 8)}` : ""}</td><td>{assignment.status === "proposed" ? <><button className="btn-sm" onClick={() => void reviewAssignment(assignment.id, "approve")}>Approve</button> <button className="btn-sm" onClick={() => void reviewAssignment(assignment.id, "reject")}>Reject</button></> : "—"}</td></tr>)}</tbody></table></div>}
-      </>}
-      <div className="evmon-table-wrap">
-        {message ? <div className="evmon-empty">{message}</div> : vehicles === null ? <div className="evmon-empty">Loading live positions…</div> : (
-          <table className="data evmon-table">
-            <thead><tr><th>Vehicle</th><th>Operator</th><th>Route</th><th>Service plan</th><th>Block / Run</th><th>Heading</th><th>Speed</th><th>Last report</th></tr></thead>
-            <tbody>{activeVehicles.map((vehicle) => (
-              <tr key={vehicle.vehicle_id}>
-                <td><span className="evmon-bus-chip">▣</span><strong>{vehicle.vehicle_id}</strong></td>
-                <td>{displayOperator(vehicle.operator_name)}</td>
-                <td>{routeLabel(vehicle)}</td>
-                <td>{vehicle.service_plan_names?.join(", ") || "—"}</td>
-                <td>{vehicle.block ?? "—"} / {vehicle.run ?? "—"}</td>
-                <td><span className="evmon-heading">{cardinalHeading(vehicle.heading, vehicle.direction)}</span></td>
-                <td>{vehicle.speed_mph === null ? "—" : `${vehicle.speed_mph.toFixed(1)} mph`}</td>
-                <td className={vehicle.is_stale ? "evmon-stale" : undefined}>{vehicle.is_stale ? "Stale · " : ""}{minutesAgo(vehicle.report_timestamp)}</td>
-              </tr>
-            ))}</tbody>
-          </table>
-        )}
-      </div>
-      <div className="evmon-list-header"><div><h3>Events queue</h3><span>Operational work for every vehicle crossing in the active scope. Automatic messages are sent to Teams and remain visible in history.</span></div><strong>{eventQueue.length} open</strong></div>
-      <div className="evmon-table-wrap">
-        {actionError && <div className="evmon-empty evmon-error-copy" role="alert">{actionError}</div>}
-        {eventQueue.length === 0 ? <div className="evmon-empty">No open event messages.</div> : eventQueue.map((notification) => <div key={notification.id} className="panel-body"><strong>{notification.status === "failed" ? "Delivery failed — review required" : notification.status === "acknowledged" ? "Acknowledged notification" : "Review notification"}</strong><p>{notification.message_body}</p>{canManageNotificationActions && !notificationActionsBlocked && notification.status === "pending" && <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "acknowledge")}>Acknowledge</button>} {canManageNotificationActions && !notificationActionsBlocked && (notification.status === "acknowledged" || notification.status === "pending") && <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "send")}>Approve and send</button>} {canManageNotificationActions && !notificationActionsBlocked && <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "dismiss")}>Dismiss</button>}{notificationActionsBlocked && <small className="muted">Actions paused while Event projection or crossing detection is degraded.</small>}{!canManageNotificationActions && <small className="muted">Event AVL Manager or Publisher access is required for notification actions.</small>}</div>)}
-      </div>
-      <details className="evmon-messaging" aria-label="Operational event messaging" open={Boolean(messagingError || notificationActionsBlocked)}>
-        <summary><span><span className="evmon-eyebrow">Teams delivery</span><strong>Automatic event messages</strong></span><span className="evmon-messaging-summary-state"><span className={`evmon-messaging-status${messagingControl?.automatic_teams_enabled ? " is-on" : ""}`}>{messagingError ? "Unavailable" : !selectedPlanId ? "Select a plan" : messagingControl?.automatic_teams_enabled ? "Teams on" : "Teams off · queued here"}</span>{!canManageEventMessaging && <span className="evmon-messaging-readonly">Read-only</span>}</span></summary>
-        <div className="evmon-messaging-body">
-          {!selectedPlanId ? <div className="evmon-messaging-state">Select one active operating period to control Teams delivery.</div> : messagingError ? <div className="evmon-messaging-state evmon-messaging-error" role="alert">{messagingError}</div> : messagingControl && <div className="evmon-messaging-control"><label><input type="checkbox" checked={messagingControl.automatic_teams_enabled} disabled={!canManageEventMessaging || !messagingControl.teams_configured || notificationActionsBlocked} onChange={(event) => void updateMessaging(event.target.checked)} /> <strong>{messagingControl.automatic_teams_enabled ? "Automatic Teams delivery is ON" : "Queue messages in Event AVL only"}</strong></label><span>Destination: {messagingControl.teams_configured ? messagingControl.teams_destination : "Teams webhook is not configured"}</span>{notificationActionsBlocked && <small>Teams delivery is paused while Event projection or crossing detection is degraded.</small>}{!canManageEventMessaging && <small>Event AVL Manager or Administrator access is required to change this control.</small>}{!messagingControl.teams_configured && <small>Ask an administrator to configure the Teams channel before enabling delivery.</small>}</div>}
-        </div>
-      </details>
-      <details className="evmon-secondary-section">
-        <summary>Event message history <span>{eventHistory.length} records</span></summary>
-        <p className="evmon-section-help">Investigate messages already delivered, dismissed, or expired.</p>
-        <div className="evmon-table-wrap">
-          {eventHistory.length === 0 ? <div className="evmon-empty">No event message history for this context.</div> : <table className="data evmon-table"><thead><tr><th>Time</th><th>Status</th><th>Delivery</th><th>Message</th></tr></thead><tbody>{eventHistory.map((notification) => <tr key={notification.id}><td>{new Date(notification.created_at).toLocaleString()}</td><td>{notification.status === "sent" ? "Sent to Teams" : notification.status[0].toUpperCase() + notification.status.slice(1)}</td><td>{notification.status === "sent" ? "Teams" : notification.send_mode === "auto" ? "Eligible for Teams" : "Event AVL review"}</td><td>{notification.message_body}</td></tr>)}</tbody></table>}
-        </div>
-      </details>
-      <details className="evmon-secondary-section">
-        <summary>Geofence crossings <span>{crossings.length} records</span></summary>
-        <p className="evmon-section-help">Investigative movement detail for active event boundaries.</p>
-        <div className="evmon-table-wrap"><table className="data evmon-table"><thead><tr><th>Time</th><th>Vehicle</th><th>Route</th><th>Geofence</th><th>Transition</th><th>Destination</th></tr></thead><tbody>{crossings.map((crossing) => <tr key={crossing.id}><td>{new Date(crossing.crossed_at).toLocaleString()}</td><td>{crossing.vehicle_id}</td><td>{crossing.route_id === null ? "—" : `Route ${crossing.route_id}`}</td><td>{crossing.geofence_name}</td><td>{crossing.transition}</td><td>{crossing.destination_label ?? "—"}</td></tr>)}</tbody></table></div>
-      </details>
-      <details className="evmon-secondary-section">
-        <summary>Event audit history <span>{audit.length} records</span></summary>
-        <p className="evmon-section-help">Route changes, crossings, and notification actions · {feedStatus.audit?.state === "error" ? "Feed unavailable; showing last successful data." : feedStatus.audit?.loadedAt ? `Loaded ${feedStatus.audit.loadedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.` : "Loading."}</p>
-        <div className="evmon-table-wrap"><table className="data evmon-table"><thead><tr><th>Time</th><th>Type</th><th>Entity</th><th>Detail</th><th>Actor</th></tr></thead><tbody>{audit.map((entry, index) => <tr key={`${entry.event_at}-${index}`}><td>{new Date(entry.event_at).toLocaleString()}</td><td>{entry.event_type}</td><td>{entry.entity_id}</td><td>{entry.detail}</td><td>{entry.actor ?? "system"}</td></tr>)}</tbody></table></div>
-      </details>
-      </>}
-    </section>
-  );
+  return <section className="evmon" aria-label="Live vehicle monitoring">
+    <div className="evmon-sticky-bar">
+      <div><span className="evmon-eyebrow"><span className="evmon-live-dot" /> Event AVL</span><strong>{selectedEvent?.name ?? "Select an Event"}</strong><span>{selectedPlan?.name ?? "Select an operating period"}</span></div>
+      <label>Event<select value={selectedEventId} onChange={(event) => { selectEvent(event.target.value); resetLiveVehicles(); }}><option value="">Select Event</option>{events.map((event) => <option key={event.id} value={event.id}>{event.name}</option>)}</select></label>
+      <label>Operating period<select value={selectedPlanId} disabled={!selectedEventId} onChange={(event) => { selectServicePlan(event.target.value); resetLiveVehicles(); }}><option value="">Select period</option>{activePlans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}</select></label>
+      <button className="evmon-chip" type="button" onClick={() => setRosterFilter("all")}>Vehicles {allVehicles.length}</button><button className="evmon-chip" type="button" onClick={() => setRosterFilter("all")}>Reporting now {reportingNow}</button><button className={`evmon-chip${rosterFilter === "stale" ? " is-active" : ""}`} type="button" onClick={() => { setRosterFilter("stale"); setRosterSegment("in-period"); }}>Stale {allVehicles.filter((vehicle) => vehicle.is_stale).length}</button><button className={`evmon-chip${rosterFilter === "exceptions" ? " is-active" : ""}`} type="button" onClick={() => { setRosterFilter("exceptions"); setRosterSegment("outside"); }}>Scope exceptions {scopeExceptions.length}</button><details className="evmon-feed-detail"><summary>Feed {health === null ? "Unavailable" : degraded.length ? "Degraded" : "Ready"}</summary>{health?.components.map((component) => <span key={component.component}>{component.component}: {component.status} · updated {new Date(component.updated_at).toLocaleTimeString()}</span>)}</details>
+      <button className="evmon-notification-badge" type="button" aria-label={`${eventQueue.length} open Event notifications`} onClick={() => setNotificationDrawer(true)}>Open notifications <strong>{eventQueue.length}</strong></button>
+    </div>
+    {authExpired ? <div className="evmon-blocking-state evmon-blocking-state-error" role="alert"><div><strong>Live Event AVL is unavailable</strong><p>Your OnBoard session expired. Sign in again to restore this Event context.</p></div><button className="btn-primary" onClick={signIn}>Sign in again</button></div> : state.tone !== "success" && <div className={`evmon-data-state evmon-data-state-${state.tone}`} role="status"><strong>{state.title}</strong>{state.action && <span>{state.action}</span>}</div>}
+    {selectedEventId && !authExpired && !requiresPlanSelection && <>
+      <div className="evmon-work-surface"><div className="evmon-map-wrap"><EventVehicleMap vehicles={filteredVehicles} geofences={visibleGeofences} locations={visibleLocations} showGeofences showLocations mapStyle={mapStyle} traffic={traffic} selectedVehicleId={selectedVehicleId} onSelectVehicle={setSelectedVehicleId} /></div><div className="evmon-roster-pane">
+        <div className="evmon-roster-tools"><input aria-label="Find vehicle" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Vehicle, route, operator" /><select aria-label="Map style" value={mapStyle} onChange={(event) => setMapStyle(event.target.value as MapStyle)}><option value="road">Road</option><option value="grayscale_light">Light</option><option value="night">Night</option><option value="satellite_road_labels">Satellite</option></select><label><input type="checkbox" checked={traffic} onChange={(event) => setTraffic(event.target.checked)} /> Traffic</label></div>
+        <div className="evmon-segmented-tabs"><button className={rosterSegment === "in-period" ? "is-active" : ""} onClick={() => setRosterSegment("in-period")}>In this operating period ({roster.inPeriod.length})</button><button className={rosterSegment === "outside" ? "is-active" : ""} onClick={() => setRosterSegment("outside")}>Event-relevant, outside this period ({roster.outside.length})</button></div>
+        {currentRoster.length === 0 ? <div className="evmon-empty">{vehicles === null ? "Loading live positions…" : "No results"}</div> : <div className="evmon-roster-scroll"><table className="data evmon-table"><thead><tr><th>Vehicle</th><th>Status</th><th>Zone</th><th>Route</th><th>Last report</th>{rosterSegment === "outside" && canManageAssignments && <th>Planning action</th>}</tr></thead><tbody>{currentRoster.map((vehicle) => <tr key={vehicle.vehicle_id} className={selectedVehicleId === vehicle.vehicle_id ? "is-selected" : ""} onClick={() => setSelectedVehicleId(vehicle.vehicle_id)}><td><strong>{vehicle.vehicle_id}</strong></td><td>{"category" in vehicle ? <>{SCOPE_EXCEPTION_LABELS[vehicle.category as EventScopeException["category"]]}<small className="evmon-exception-meta"> · {(vehicle as EventScopeException).proposal_status ?? "No proposal"}</small></> : vehicle.zone_status}</td><td>{vehicle.zone_name ?? vehicle.zone_status}</td><td>{routeLabel(vehicle)}</td><td className={vehicle.is_stale ? "evmon-stale" : undefined}>{vehicle.is_stale ? "Stale · " : ""}{minutesAgo(vehicle.report_timestamp)}</td>{rosterSegment === "outside" && canManageAssignments && <td>{"action_eligible" in vehicle && vehicle.action_eligible && vehicle.route !== null ? <button className="btn-sm" onClick={(event) => { event.stopPropagation(); void proposeAssignment(vehicle, selectedPlan); }}>Propose scope change</button> : "Inspection required"}</td>}</tr>)}</tbody></table></div>}
+        {selectedVehicle && <div className="evmon-vehicle-detail" aria-label="Vehicle detail"><strong>Vehicle {selectedVehicle.vehicle_id}</strong><span>{displayOperator(selectedVehicle.operator_name)} · {routeLabel(selectedVehicle)}</span><span>{selectedVehicle.zone_status} · {selectedVehicle.zone_name ?? "Outside monitored zones"}</span><span>Heading {cardinalHeading(selectedVehicle.heading, selectedVehicle.direction)} · Speed {selectedVehicle.speed_mph === null ? "unavailable" : `${selectedVehicle.speed_mph.toFixed(1)} mph`}</span></div>}
+      </div></div>
+      <div className="evmon-investigative-rail"><details><summary>Event message history <span>{eventHistory.length}</span></summary><div className="evmon-table-wrap">{eventHistory.map((notification) => <p key={notification.id}>{notification.status}: {notification.message_body}</p>)}</div></details><details><summary>Geofence crossings <span>{crossings.length}</span></summary><div className="evmon-table-wrap">{crossings.map((crossing) => <p key={crossing.id}>{crossing.transition} · Vehicle {crossing.vehicle_id} · {crossing.geofence_name} · {new Date(crossing.crossed_at).toLocaleString()}</p>)}</div></details><details><summary>Event audit history <span>{audit.length}</span></summary><div className="evmon-table-wrap">{audit.map((entry, index) => <p key={`${entry.event_at}-${index}`}>{entry.event_type} · {entry.detail}</p>)}</div></details><details open={Boolean(messagingError || actionsBlocked)}><summary>Teams delivery <span>{messagingControl?.automatic_teams_enabled ? "On" : "Off"}</span></summary><div className="evmon-table-wrap">{messagingError ? <p role="alert">{messagingError}</p> : messagingControl && <label><input type="checkbox" checked={messagingControl.automatic_teams_enabled} disabled={!canManageEventMessaging || !messagingControl.teams_configured || actionsBlocked} onChange={(event) => void updateMessaging(event.target.checked)} /> Automatic Teams delivery</label>}</div></details></div>
+    </>}
+    {notificationDrawer && <div className="evmon-drawer-backdrop" role="presentation" onClick={() => setNotificationDrawer(false)}><aside className="evmon-drawer" role="dialog" aria-label="Open Event notifications" onClick={(event) => event.stopPropagation()}><div className="evmon-drawer-header"><strong>{eventQueue.length} open Event notifications</strong><button onClick={() => setNotificationDrawer(false)}>Close</button></div>{actionError && <p role="alert">{actionError}</p>}{eventQueue.map((notification) => <div className="panel-body" key={notification.id}><strong>{notification.status}</strong><p>{notification.message_body}</p>{actionsBlocked && <small>Actions paused while monitoring is degraded.</small>}{canManageNotificationActions && !actionsBlocked && <div><button className="btn-sm" onClick={() => void reviewNotification(notification.id, "acknowledge")}>Acknowledge</button> <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "send")}>Approve and send</button> <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "dismiss")}>Dismiss</button></div>}{!canManageNotificationActions && <small>Event AVL Manager or Publisher access is required for notification actions.</small>}</div>)}</aside></div>}
+    <Link className="evmon-field-view-link" to="/events/avl/field">Open Event AVL field view</Link>
+  </section>;
 }
 
-function VehicleMap({ vehicles, geofences, locations, showGeofences, showLocations, mapStyle, traffic }: { vehicles: EventVehiclePosition[]; geofences: EventGeofence[]; locations: EventLocation[]; showGeofences: boolean; showLocations: boolean; mapStyle: MapStyle; traffic: boolean }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<atlas.Map | null>(null);
-  const popupRef = useRef<atlas.Popup | null>(null);
-  const resourceSourceRef = useRef<atlas.source.DataSource | null>(null);
-  const resourceLayersRef = useRef<atlas.layer.Layer[]>([]);
-  const fittedRef = useRef(false);
-  const [ready, setReady] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!containerRef.current) return;
-    let cancelled = false;
-    let map: atlas.Map | null = null;
-    api.getMapsToken().then((initial) => {
-      if (cancelled || !containerRef.current) return;
-      map = new atlas.Map(containerRef.current, {
-        center: MAP_CENTER, zoom: MAP_ZOOM, style: "road",
-        authOptions: {
-          authType: atlas.AuthenticationType.anonymous,
-          clientId: initial.client_id,
-          getToken: (resolve, reject) => api.getMapsToken().then((data) => resolve(data.access_token)).catch(reject),
-        },
-      });
-      mapRef.current = map;
-      popupRef.current = new atlas.Popup({ pixelOffset: [0, -24], closeButton: false });
-      map.events.addOnce("ready", () => !cancelled && setReady(true));
-    }).catch((err) => setError(err instanceof ApiError ? `Could not load the map: ${err.message}` : "Could not reach the map service."));
-    return () => { cancelled = true; popupRef.current = null; map?.dispose(); mapRef.current = null; };
-  }, []);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !ready) return;
-    let source = resourceSourceRef.current;
-    if (!source) {
-      source = new atlas.source.DataSource("event-resources");
-      map.sources.add(source);
-      resourceSourceRef.current = source;
-    }
-    removeMapLayersIfPresent(map, resourceLayersRef.current);
-    resourceLayersRef.current = [];
-    source.clear();
-    if (showGeofences) {
-      geofences.forEach((fence) => {
-        try {
-          const polygon = JSON.parse(fence.polygon) as { coordinates: atlas.data.Position[][] };
-          source?.add(new atlas.data.Feature(new atlas.data.Polygon(polygon.coordinates), { kind: "geofence", name: fence.name }));
-        } catch { /* invalid authoring data is reported by the authoring surface */ }
-      });
-      const layer = new atlas.layer.PolygonLayer(source, "event-geofences", { fillColor: "#007f5f", fillOpacity: 0.18 });
-      const outline = new atlas.layer.LineLayer(source, "event-geofence-outlines", { strokeColor: "#005c45", strokeWidth: 2 });
-      map.layers.add([layer, outline]);
-      resourceLayersRef.current.push(layer, outline);
-    }
-    if (showLocations) {
-      locations.forEach((location) => source?.add(new atlas.data.Feature(new atlas.data.Point([location.longitude, location.latitude]), { kind: "location", name: location.name, category: location.category, active: location.is_active })));
-      const activePoints = new atlas.layer.BubbleLayer(source, "event-active-location-points", {
-        color: "#007f5f", radius: 10, strokeColor: "#ffffff", strokeWidth: 3,
-        filter: ["all", ["==", ["get", "kind"], "location"], ["==", ["get", "active"], true]],
-      });
-      const inactivePoints = new atlas.layer.BubbleLayer(source, "event-inactive-location-points", {
-        color: "#6b7280", radius: 9, strokeColor: "#ffffff", strokeWidth: 3,
-        filter: ["all", ["==", ["get", "kind"], "location"], ["==", ["get", "active"], false]],
-      });
-      const labels = new atlas.layer.SymbolLayer(source, "event-location-labels", {
-        iconOptions: { image: "none", allowOverlap: true },
-        textOptions: { textField: ["get", "name"], offset: [0, 1.5], color: "#123", haloColor: "#fff", haloWidth: 2, allowOverlap: true },
-        filter: ["==", ["get", "kind"], "location"],
-      });
-      map.layers.add([activePoints, inactivePoints, labels]);
-      resourceLayersRef.current.push(activePoints, inactivePoints, labels);
-    }
-    return () => {
-      removeMapLayersIfPresent(map, resourceLayersRef.current);
-      resourceLayersRef.current = [];
-    };
-  }, [geofences, locations, ready, showGeofences, showLocations]);
-
-  useEffect(() => {
-    if (!ready || !mapRef.current) return;
-    mapRef.current.setStyle({ style: mapStyle });
-  }, [mapStyle, ready]);
-
-  useEffect(() => {
-    if (!ready || !mapRef.current) return;
-    mapRef.current.setTraffic({ flow: traffic ? "relative" : "none", incidents: traffic });
-  }, [traffic, ready]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    const popup = popupRef.current;
-    if (!map || !ready) return;
-    map.markers.clear();
-    vehicles.forEach((vehicle) => {
-      const heading = vehicle.heading ?? 0;
-      const marker = new atlas.HtmlMarker({
-        position: [vehicle.longitude, vehicle.latitude],
-        htmlContent: `<div class="event-map-bus" style="--bus-heading:${heading}deg" role="img" aria-label="Bus ${vehicle.vehicle_id}"><span>▰</span></div>`,
-      });
-      map.markers.add(marker);
-      const showPopup = () => {
-        popup?.setOptions({
-          position: [vehicle.longitude, vehicle.latitude],
-          content: `<div class="event-map-popup"><strong>${escapeHtml(displayOperator(vehicle.operator_name))}</strong><span>Vehicle ${vehicle.vehicle_id} · Route ${escapeHtml(routeLabel(vehicle))}</span><span>${cardinalHeading(vehicle.heading, vehicle.direction)} · ${vehicle.speed_mph === null ? "Speed unavailable" : `${vehicle.speed_mph.toFixed(1)} mph`}</span><span>Last report ${minutesAgo(vehicle.report_timestamp)}</span></div>`,
-        });
-        popup?.open(map);
-      };
-      map.events.add("mouseover", marker, showPopup);
-      map.events.add("click", marker, () => {
-        showPopup();
-      });
-      map.events.add("mouseout", marker, () => popup?.close());
-    });
-    // Fit once when the first valid classified set arrives. Subsequent
-    // 30-second refreshes update markers without overriding the operator's
-    // current pan/zoom or flashing out to world view.
-    if (vehicles.length > 0 && !fittedRef.current) {
-      const positions = vehicles.map((vehicle) => [vehicle.longitude, vehicle.latitude] as atlas.data.Position);
-      map.setCamera({ bounds: atlas.data.BoundingBox.fromPositions(positions), padding: 70, maxZoom: 14 });
-      fittedRef.current = true;
-    }
-  }, [vehicles, ready]);
-
-  function openLargerMap() {
-    const camera = mapRef.current?.getCamera();
-    const center = camera?.center ?? MAP_CENTER;
-    window.open(`https://www.bing.com/maps?cp=${center[1]}~${center[0]}&lvl=${Math.round(camera?.zoom ?? MAP_ZOOM)}`, "_blank", "noopener,noreferrer");
-  }
-
-  return <div className="evmon-real-map">
-    <div ref={containerRef} className="evmon-map-container" />
-    <button type="button" className="evmon-open-map" onClick={openLargerMap}>Open larger map ↗</button>
-    {error && <div className="evmon-map-message">{error}</div>}
-    {!error && !ready && <div className="evmon-map-message">Loading live map…</div>}
-  </div>;
+function EventAVLFieldView({ vehicles, notifications, selectedVehicleId, onSelectVehicle, mapGeofences, mapLocations, mapStyle, traffic, staleCount, trustState, actionsBlocked, canManageNotificationActions, onReviewNotification, onRefresh }: { vehicles: EventVehiclePosition[]; notifications: EventGeofenceNotification[]; selectedVehicleId: number | null; onSelectVehicle: (id: number) => void; mapGeofences: EventGeofence[]; mapLocations: EventLocation[]; mapStyle: MapStyle; traffic: boolean; staleCount: number; trustState: ReturnType<typeof deriveEventMonitoringDataState>; actionsBlocked: boolean; canManageNotificationActions: boolean; onReviewNotification: (id: string, action: "acknowledge" | "send" | "dismiss") => Promise<void>; onRefresh: () => void }) {
+  const groups = new Map<string, EventVehiclePosition[]>();
+  const [showNotifications, setShowNotifications] = useState(false);
+  for (const vehicle of vehicles) { const key = vehicle.zone_name ?? "Outside monitored zones"; groups.set(key, [...(groups.get(key) ?? []), vehicle]); }
+  const selected = vehicles.find((vehicle) => vehicle.vehicle_id === selectedVehicleId);
+  return <section className="evmon evmon-field" aria-label="Event AVL field view"><div className="evmon-field-header"><strong>Event AVL field view</strong><span>{trustState.tone === "success" ? "Feed trusted" : trustState.title} · {staleCount} stale</span><button onClick={onRefresh}>Refresh</button><button className="evmon-notification-badge" type="button" onClick={() => setShowNotifications(true)}>Open notifications <strong>{notifications.length}</strong></button></div>{trustState.action && trustState.tone !== "success" && <p className="evmon-data-state evmon-data-state-warning">{trustState.action}</p>}<div className="evmon-field-surface"><div><EventVehicleMap vehicles={vehicles} geofences={mapGeofences} locations={mapLocations} showGeofences={false} showLocations={false} mapStyle={mapStyle} traffic={traffic} selectedVehicleId={selectedVehicleId} onSelectVehicle={onSelectVehicle} />{selected && <div className="evmon-vehicle-detail"><strong>Vehicle {selected.vehicle_id}</strong><span>{selected.zone_status} · {selected.zone_name ?? "Outside monitored zones"}</span><span>{routeLabel(selected)} · {minutesAgo(selected.report_timestamp)}</span></div>}</div><div className="evmon-field-list">{Array.from(groups, ([zone, rows]) => <section key={zone}><h3>{zone} <span>{rows.length}</span></h3>{rows.map((vehicle) => <button className={selectedVehicleId === vehicle.vehicle_id ? "is-selected" : ""} key={vehicle.vehicle_id} onClick={() => onSelectVehicle(vehicle.vehicle_id)}><strong>{vehicle.vehicle_id}</strong><span>{vehicle.zone_status} · {routeLabel(vehicle)}</span><small>{vehicle.is_stale ? "Stale" : minutesAgo(vehicle.report_timestamp)}</small></button>)}</section>)}</div></div>{showNotifications && <div className="evmon-drawer-backdrop" role="presentation" onClick={() => setShowNotifications(false)}><aside className="evmon-drawer" role="dialog" aria-label="Open Event notifications" onClick={(event) => event.stopPropagation()}><div className="evmon-drawer-header"><strong>{notifications.length} open Event notifications</strong><button onClick={() => setShowNotifications(false)}>Close</button></div>{notifications.map((notification) => <div className="panel-body" key={notification.id}><p>{notification.message_body}</p>{actionsBlocked && <small>Actions paused while monitoring is degraded.</small>}{canManageNotificationActions && !actionsBlocked && <div><button className="btn-sm" onClick={() => void onReviewNotification(notification.id, "acknowledge")}>Acknowledge</button> <button className="btn-sm" onClick={() => void onReviewNotification(notification.id, "send")}>Approve and send</button> <button className="btn-sm" onClick={() => void onReviewNotification(notification.id, "dismiss")}>Dismiss</button></div>}</div>)}</aside></div>}</section>;
 }

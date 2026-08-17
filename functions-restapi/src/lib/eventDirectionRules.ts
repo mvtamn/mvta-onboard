@@ -88,3 +88,7 @@ export function snapshotMatchedDirectionRule(rule: DirectionRule): DirectionRule
     matched_send_mode: rule.send_mode,
   };
 }
+
+export function shouldPublishEventGeofenceNotification(rule: DirectionRule | undefined): boolean {
+  return rule !== undefined;
+}

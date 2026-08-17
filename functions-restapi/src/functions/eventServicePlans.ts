@@ -13,7 +13,7 @@ const keyFor = (kind: string) => kind === "routes" ? "route_id" : kind === "geof
 
 async function captureScopeSnapshot(pool: Awaited<ReturnType<typeof getPool>>, planId: string, actor: string, revisionId: string | null = null) {
   const routes = (await pool.request().input("plan", sql.UniqueIdentifier, planId).query("SELECT rc.route_id,rc.route_label,rc.route_category,rc.is_active FROM EventServicePlanRoutes link JOIN RouteClassification rc ON rc.route_id=link.route_id WHERE link.service_plan_id=@plan ORDER BY rc.route_id")).recordset;
-  const geofences = (await pool.request().input("plan", sql.UniqueIdentifier, planId).query("SELECT g.id geofence_id,g.name,g.polygon,g.is_active FROM EventServicePlanGeofences link JOIN EventGeofences g ON g.id=link.geofence_id WHERE link.service_plan_id=@plan ORDER BY g.id")).recordset;
+  const geofences = (await pool.request().input("plan", sql.UniqueIdentifier, planId).query("SELECT g.id geofence_id,g.name,g.polygon,g.purpose,g.is_active FROM EventServicePlanGeofences link JOIN EventGeofences g ON g.id=link.geofence_id WHERE link.service_plan_id=@plan ORDER BY g.id")).recordset;
   const locations = (await pool.request().input("plan", sql.UniqueIdentifier, planId).query("SELECT l.id location_id,l.name,l.category,l.latitude,l.longitude,l.notes,l.is_active FROM EventServicePlanLocations link JOIN EventLocations l ON l.id=link.location_id WHERE link.service_plan_id=@plan ORDER BY l.id")).recordset;
   const rules = (await pool.request().input("plan", sql.UniqueIdentifier, planId).query("SELECT r.* FROM EventServicePlanGeofences link JOIN EventGeofenceDirectionRules r ON r.geofence_id=link.geofence_id WHERE link.service_plan_id=@plan ORDER BY r.geofence_id,r.transition,r.sort_order,r.id")).recordset;
   const request = pool.request();
@@ -73,7 +73,7 @@ app.http("eventServicePlans", { route: "event-service-plans", methods: ["GET", "
       const rules = parse(snapshot.rules_json) as Record<string, unknown>[];
       return {
         routes: parse(snapshot.routes_json) as Record<string, unknown>[],
-        geofences: geofences.map((row) => ({ ...row, id: row.geofence_id, rules: rules.filter((rule) => rule.geofence_id === row.geofence_id) })),
+        geofences: geofences.map((row) => ({ ...row, purpose: row.purpose ?? "other", id: row.geofence_id, rules: rules.filter((rule) => rule.geofence_id === row.geofence_id) })),
         locations: locations.map((row) => ({ ...row, id: row.location_id })),
       };
     };

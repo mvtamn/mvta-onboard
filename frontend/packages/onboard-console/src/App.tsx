@@ -373,6 +373,7 @@ export function App() {
               <Route path="/event-monitoring" element={<CompatibilityRedirect to="/events/avl" />} />
               <Route path="/event-planning" element={<CompatibilityRedirect to="/events/planning" />} />
               <Route path="/events" element={<Navigate to="/events/avl" replace />} />
+              <Route path="/events/avl/field" element={<RequireRole allowed={[...EVENT_AVL]}><EventMonitoring fieldView /></RequireRole>} />
               <Route path="/events/avl" element={<RequireRole allowed={[...EVENT_AVL]}><EventMonitoring /></RequireRole>} />
               <Route path="/events/planning" element={<RequireRole allowed={[...ADMIN]}><EventPlanning /></RequireRole>} />
               <Route

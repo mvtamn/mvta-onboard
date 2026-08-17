@@ -5,6 +5,9 @@ import { isGuid } from "../lib/validation";
 import { validatePolygon } from "../lib/geofence";
 import { validateDirectionRule, type DirectionRule } from "../lib/eventDirectionRules";
 
+const GEOFENCE_PURPOSES = ["staging", "corridor", "venue", "other"] as const;
+type GeofencePurpose = (typeof GEOFENCE_PURPOSES)[number];
+
 async function activePlanUsesGeofence(pool: Awaited<ReturnType<typeof getPool>>, geofenceId: string): Promise<boolean> {
   const request = pool.request();
   request.input("geofence", sql.UniqueIdentifier, geofenceId);
@@ -35,11 +38,13 @@ app.http("eventGeofences", { route: "event-geofences", methods: ["GET", "POST"],
   let body: Record<string, unknown>;
   try { body = await req.json() as Record<string, unknown>; } catch { return { status: 400, jsonBody: { error: "Request body must be valid JSON" } }; }
   if (typeof body.name !== "string" || typeof body.polygon !== "string") return { status: 400, jsonBody: { error: "name and GeoJSON polygon are required" } };
+  const purpose = (body.purpose ?? "other") as string;
+  if (!GEOFENCE_PURPOSES.includes(purpose as GeofencePurpose)) return { status: 400, jsonBody: { error: "purpose must be staging, corridor, venue, or other" } };
   const polygonError = validatePolygon(body.polygon);
   if (polygonError) return { status: 400, jsonBody: { error: polygonError } };
   const request = pool.request();
-  request.input("name", sql.NVarChar, body.name.trim()); request.input("polygon", sql.NVarChar, body.polygon); request.input("by", sql.NVarChar, auth.principal.userDetails ?? "system");
-  return { status: 201, jsonBody: (await request.query("INSERT INTO EventGeofences(name,polygon,updated_by) OUTPUT INSERTED.* VALUES(@name,@polygon,@by)")).recordset[0] };
+  request.input("name", sql.NVarChar, body.name.trim()); request.input("polygon", sql.NVarChar, body.polygon); request.input("purpose", sql.NVarChar, purpose); request.input("by", sql.NVarChar, auth.principal.userDetails ?? "system");
+  return { status: 201, jsonBody: (await request.query("INSERT INTO EventGeofences(name,polygon,purpose,updated_by) OUTPUT INSERTED.* VALUES(@name,@polygon,@purpose,@by)")).recordset[0] };
 } });
 
 app.http("eventGeofenceRuleUpdate", { route: "event-geofences/{id}/rules/{ruleId}", methods: ["PATCH", "DELETE"], authLevel: "anonymous", handler: async (req: HttpRequest) => {
@@ -71,12 +76,13 @@ app.http("eventGeofenceUpdate", { route: "event-geofences/{id}", methods: ["PATC
   if (!isGuid(req.params.id)) return { status: 400, jsonBody: { error: "Geofence id must be a valid GUID" } };
   let body: Record<string, unknown>;
   try { body = await req.json() as Record<string, unknown>; } catch { return { status: 400, jsonBody: { error: "Request body must be valid JSON" } }; }
-  if (typeof body.polygon !== "string") return { status: 400, jsonBody: { error: "polygon is required" } };
-  const polygonError = validatePolygon(body.polygon); if (polygonError) return { status: 400, jsonBody: { error: polygonError } };
+  if (body.polygon !== undefined && typeof body.polygon !== "string") return { status: 400, jsonBody: { error: "polygon must be a string" } };
+  const polygonError = typeof body.polygon === "string" ? validatePolygon(body.polygon) : null; if (polygonError) return { status: 400, jsonBody: { error: polygonError } };
+  if (body.purpose !== undefined && !GEOFENCE_PURPOSES.includes(body.purpose as GeofencePurpose)) return { status: 400, jsonBody: { error: "purpose must be staging, corridor, venue, or other" } };
   if (body.expected_updated_at !== undefined && (typeof body.expected_updated_at !== "string" || Number.isNaN(Date.parse(body.expected_updated_at)))) return { status: 400, jsonBody: { error: "expected_updated_at must be a valid timestamp" } };
   const pool = await getPool(); if (await activePlanUsesGeofence(pool, req.params.id)) return { status: 409, jsonBody: { error: "Geofences used by an active Service Plan must be changed through a reviewed revision" } };
-  const request = pool.request(); request.input("id", sql.UniqueIdentifier, req.params.id); request.input("name", sql.NVarChar, typeof body.name === "string" ? body.name.trim() : body.name); request.input("polygon", sql.NVarChar, body.polygon); request.input("is_active", sql.Bit, body.is_active ?? true); request.input("by", sql.NVarChar, auth.principal.userDetails ?? "system"); request.input("expected", sql.DateTime2, typeof body.expected_updated_at === "string" ? new Date(body.expected_updated_at) : null);
-  const out = await request.query("UPDATE EventGeofences SET name=@name,polygon=@polygon,is_active=@is_active,updated_by=@by,updated_at=SYSUTCDATETIME() OUTPUT INSERTED.* WHERE id=@id AND (@expected IS NULL OR updated_at=@expected)");
+  const request = pool.request(); request.input("id", sql.UniqueIdentifier, req.params.id); request.input("name", sql.NVarChar, typeof body.name === "string" ? body.name.trim() : null); request.input("polygon", sql.NVarChar, typeof body.polygon === "string" ? body.polygon : null); request.input("purpose", sql.NVarChar, typeof body.purpose === "string" ? body.purpose : null); request.input("is_active", sql.Bit, body.is_active ?? true); request.input("by", sql.NVarChar, auth.principal.userDetails ?? "system"); request.input("expected", sql.DateTime2, typeof body.expected_updated_at === "string" ? new Date(body.expected_updated_at) : null);
+  const out = await request.query("UPDATE EventGeofences SET name=COALESCE(@name,name),polygon=COALESCE(@polygon,polygon),purpose=COALESCE(@purpose,purpose),is_active=@is_active,updated_by=@by,updated_at=SYSUTCDATETIME() OUTPUT INSERTED.* WHERE id=@id AND (@expected IS NULL OR updated_at=@expected)");
   if (out.recordset.length) return { status: 200, jsonBody: out.recordset[0] };
   const exists = await request.query("SELECT TOP 1 id FROM EventGeofences WHERE id=@id");
   return exists.recordset.length ? { status: 409, jsonBody: { error: "Geofence changed since it was loaded. Reload before saving." } } : { status: 404, jsonBody: { error: "Geofence not found" } };

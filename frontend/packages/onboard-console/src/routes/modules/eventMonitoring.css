@@ -1,14 +1,14 @@
 .evmon { color: var(--text); max-width: 1500px; margin: 0 auto; }
 .evmon-summary { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 12px; }
-.evmon-summary h2 { margin: 5px 0 4px; font-size: 25px; letter-spacing: -.3px; }
+.evmon-summary h2 { margin: 5px 0 4px; font-size: 22px; letter-spacing: -.3px; }
 .evmon-summary p { margin: 0; color: var(--text-muted); font-size: 13px; }
 .evmon-eyebrow { color: var(--success-text); font-size: 11px; font-weight: 800; letter-spacing: .7px; text-transform: uppercase; }
-.evmon-live-dot { display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: #27ae60; box-shadow: 0 0 0 4px rgba(39,174,96,.12); }
+.evmon-live-dot { display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: var(--live-dot); box-shadow: 0 0 0 4px color-mix(in srgb, var(--live-dot) 12%, transparent); }
 .evmon-metrics { display: flex; background: var(--surface-bg); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,.04); }
 .evmon-metrics div { min-width: 105px; padding: 10px 16px; border-right: 1px solid var(--border); }
 .evmon-metrics div:last-child { border-right: 0; }
 .evmon-metrics strong, .evmon-metrics span { display: block; }
-.evmon-metrics strong { font-size: 20px; color: var(--brand-green); }
+.evmon-metrics strong { font-size: 20px; color: var(--brand-green-text); }
 .evmon-metrics span { color: var(--text-muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
 .evmon-workspace { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--surface-bg); box-shadow: 0 4px 16px rgba(0,0,0,.07); margin-bottom: 22px; }
 .evmon-workspace.is-minimized { box-shadow: none; }
@@ -21,8 +21,8 @@
 .evmon-toolbar button:hover { background: rgba(255,255,255,.18); }
 .evmon-toolbar button:disabled { opacity: .6; cursor: wait; }
 .evmon-filter-panel { border-bottom: 1px solid var(--border); background: var(--surface-bg); }
-.evmon-filter-panel summary { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 0 14px; color: var(--brand-green); font-size: 11px; font-weight: 800; cursor: pointer; list-style-position: inside; }
-.evmon-filter-panel summary::marker, .evmon-secondary-section summary::marker { color: var(--brand-green); }
+.evmon-filter-panel summary { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 0 14px; color: var(--brand-green-text); font-size: 11px; font-weight: 800; cursor: pointer; list-style-position: inside; }
+.evmon-filter-panel summary::marker, .evmon-secondary-section summary::marker { color: var(--brand-green-text); }
 .evmon-filter-count { padding: 3px 7px; border-radius: 999px; color: var(--success-text); background: var(--success-bg); font-size: 10px; }
 .evmon-controls { display: flex; align-items: flex-end; gap: 10px; padding: 0 14px 12px; background: var(--surface-bg); overflow-x: auto; }
 .evmon-controls label { flex: 0 0 auto; }
@@ -31,39 +31,47 @@
 .evmon-controls input:not([type="checkbox"]) { width: 160px; }
 .evmon-controls .evmon-traffic { height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 9px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface-alt-bg); }
 .evmon-controls .evmon-traffic span { display: inline; margin: 0; color: inherit; font-size: 12px; }
-.evmon-clear { height: 32px; border: 0; color: var(--brand-green); background: transparent; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; white-space: nowrap; }
+.evmon-clear { height: 32px; border: 0; color: var(--brand-green-text); background: transparent; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; white-space: nowrap; }
 .evmon-map-wrap { position: relative; }
 .evmon-command-center { display: grid; grid-template-columns: minmax(0, 1fr) 230px; gap: 0; background: var(--surface-bg); }
-.evmon-command-summary { padding: 18px 16px; border-left: 1px solid var(--border); background: #f7faf7; }
+.evmon-command-summary { padding: 18px 16px; border-left: 1px solid var(--border); background: var(--surface-alt-bg); }
 .evmon-command-summary h3 { margin: 5px 0 3px; font-size: 17px; }
 .evmon-command-summary p { max-width: 28ch; margin: 0 0 18px; color: var(--text-muted); font-size: 12px; line-height: 1.45; }
 .evmon-command-summary dl { display: grid; grid-template-columns: 1fr auto; gap: 11px 8px; margin: 0 0 20px; font-size: 12px; }
 .evmon-command-summary dt { color: var(--text-muted); }
-.evmon-command-summary dd { margin: 0; color: var(--brand-green); font-weight: 800; }
+.evmon-command-summary dd { margin: 0; color: var(--brand-green-text); font-weight: 800; }
 .evmon-command-summary dd.muted { color: var(--text-muted); }
-.evmon-command-link { color: var(--brand-green); font-size: 12px; font-weight: 800; }
-.evmon-map-legend { position: absolute; z-index: 2; left: 12px; top: 12px; display: flex; flex-wrap: wrap; gap: 6px 10px; max-width: min(520px, calc(100% - 24px)); padding: 7px 9px; border: 1px solid rgba(0,0,0,.14); border-radius: 7px; color: #173d31; background: rgba(255,255,255,.94); box-shadow: 0 2px 7px rgba(0,0,0,.16); font-size: 11.5px; font-weight: 700; }
+.evmon-command-link { color: var(--brand-green-text); font-size: 12px; font-weight: 800; }
+/* Map overlay chrome follows the console theme. The 94% fill keeps it reading
+   as a distinct chip against whichever raster tiles are underneath. */
+.evmon-map-legend { position: absolute; z-index: 2; left: 12px; top: 12px; display: flex; flex-wrap: wrap; gap: 6px 10px; max-width: min(520px, calc(100% - 24px)); padding: 7px 9px; border: 1px solid var(--border); border-radius: 7px; color: var(--text); background: color-mix(in srgb, var(--surface-bg) 94%, transparent); box-shadow: 0 2px 7px rgba(0,0,0,.16); font-size: 11.5px; font-weight: 700; }
 .evmon-map-legend span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+/* Swatches mirror the data-layer colors in EventVehicleMap.tsx exactly; they
+   stay constant across themes because the map tiles they describe do too. The
+   white ring keeps them delineated against either legend background. */
 .evmon-legend-dot { display: inline-block; width: 12px; height: 12px; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 0 1px rgba(0,0,0,.28); }
-.evmon-legend-dot-active { background: #007f5f; }
-.evmon-legend-dot-inactive { background: #6b7280; }
-.evmon-legend-bus { display: inline-block; width: 12px; height: 12px; border: 1px solid #fff; border-radius: 3px; background: #006341; box-shadow: 0 0 0 1px rgba(0,0,0,.28); }
+.evmon-legend-dot-active { background: #00553d; }
+.evmon-legend-dot-inactive { background: #888888; }
+.evmon-legend-bus { display: inline-block; width: 12px; height: 12px; border: 1px solid #fff; border-radius: 3px; background: #00553d; box-shadow: 0 0 0 1px rgba(0,0,0,.28); }
 .event-authoring-location-marker { display: flex; align-items: center; gap: 5px; transform: translate(-7px, -7px); pointer-events: none; }
 .event-authoring-location-dot { display: grid; place-items: center; width: 20px; height: 20px; border: 3px solid #fff; border-radius: 50%; color: #fff; box-shadow: 0 1px 5px rgba(0,0,0,.4); font-size: 13px; line-height: 1; }
-.event-authoring-location-marker.is-active .event-authoring-location-dot { background: #007f5f; }
-.event-authoring-location-marker.is-inactive .event-authoring-location-dot { background: #6b7280; }
-.event-authoring-location-label { padding: 3px 5px; border-radius: 4px; color: #173d31; background: rgba(255,255,255,.94); box-shadow: 0 1px 4px rgba(0,0,0,.2); font-size: 10px; font-weight: 800; white-space: nowrap; }
+.event-authoring-location-marker.is-active .event-authoring-location-dot { background: #00553d; }
+.event-authoring-location-marker.is-inactive .event-authoring-location-dot { background: #888888; }
+.event-authoring-location-label { padding: 3px 5px; border-radius: 4px; color: var(--text); background: color-mix(in srgb, var(--surface-bg) 94%, transparent); box-shadow: 0 1px 4px rgba(0,0,0,.2); font-size: 10px; font-weight: 800; white-space: nowrap; }
 .evmon-real-map { height: min(58vh, 610px); min-height: 430px; position: relative; }
 .evmon-map-container { position: absolute; inset: 0; }
 .evmon-map-message { position: absolute; inset: 0; display: grid; place-items: center; background: var(--surface-alt-bg); color: var(--text-muted); }
-.evmon-open-map { position: absolute; z-index: 3; top: 12px; right: 12px; padding: 7px 10px; border: 1px solid rgba(0,0,0,.18); border-radius: 6px; color: #173d31; background: rgba(255,255,255,.94); box-shadow: 0 2px 7px rgba(0,0,0,.18); font: inherit; font-size: 10.5px; font-weight: 800; cursor: pointer; }
-.evmon-open-map:hover { background: #fff; }
-.evmon-map-hint { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 2; padding: 6px 11px; color: #fff; background: rgba(17,35,29,.78); border-radius: 20px; font-size: 10.5px; pointer-events: none; }
-.event-map-bus { width: 28px; height: 28px; display: grid; place-items: center; border: 2px solid #fff; border-radius: 8px; background: #006341; color: #fff; box-shadow: 0 2px 7px rgba(0,0,0,.4); cursor: help; transform: rotate(var(--bus-heading)); }
+.evmon-open-map { position: absolute; z-index: 3; top: 12px; right: 12px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: color-mix(in srgb, var(--surface-bg) 94%, transparent); box-shadow: 0 2px 7px rgba(0,0,0,.18); font: inherit; font-size: 10.5px; font-weight: 800; cursor: pointer; }
+.evmon-open-map:hover { background: var(--surface-bg); }
+/* The bus marker is a data layer, not chrome: it stays constant so it reads
+   the same against road, satellite, and night tiles. Matches MAP_BRAND. */
+.event-map-bus { width: 28px; height: 28px; display: grid; place-items: center; border: 2px solid #fff; border-radius: 8px; background: #00553d; color: #fff; box-shadow: 0 2px 7px rgba(0,0,0,.4); cursor: help; transform: rotate(var(--bus-heading)); }
 .event-map-bus span { font-size: 15px; line-height: 1; transform: rotate(calc(-1 * var(--bus-heading))); }
-.event-map-popup { min-width: 190px; padding: 3px; color: #17221e; font-size: 12px; line-height: 1.5; }
+/* Text inside the Atlas popup; the bubble's own fill is themed via the
+   Popup fillColor option in EventVehicleMap.tsx. */
+.event-map-popup { min-width: 190px; padding: 3px; color: var(--text); font-size: 12px; line-height: 1.5; }
 .event-map-popup strong, .event-map-popup span { display: block; }
-.event-map-popup strong { color: #006341; font-size: 13px; margin-bottom: 2px; }
+.event-map-popup strong { color: var(--brand-green-text); font-size: 13px; margin-bottom: 2px; }
 .evmon-list-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 9px; }
 .evmon-list-header h3 { margin: 0 0 2px; font-size: 16px; }
 .evmon-list-header div > span { display: block; max-width: 72ch; color: var(--text-muted); font-size: 12px; line-height: 1.45; }
@@ -77,31 +85,47 @@
 .evmon-heading { display: inline-block; min-width: 27px; padding: 3px 6px; text-align: center; border: 1px solid var(--border); border-radius: 5px; background: var(--surface-alt-bg); font-size: 10.5px; font-weight: 800; }
 .evmon-empty { padding: 28px; text-align: center; color: var(--text-muted); }
 .evmon-empty[role="status"] { color: var(--text); }
-.evmon-error-copy { color: #8a2e2e; }
+.evmon-error-copy { color: var(--danger-text); }
 .evmon-health { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 8px 12px; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-bg); color: var(--text-muted); font-size: 12px; line-height: 1.4; }
 .evmon-health strong { color: var(--text); }
 .evmon-health b { font-weight: 800; }
 .evmon-health b.is-healthy { color: var(--success-text); }
-.evmon-health b.is-warning { color: #765b00; }
-.evmon-health b.is-unavailable { color: #8a2e2e; }
+.evmon-health b.is-warning { color: var(--pill-warning-fg); }
+.evmon-health b.is-unavailable { color: var(--danger-text); }
+.evmon-primary-queue { margin: 2px 0 18px; padding: 14px; border: 2px solid var(--brand-green-text); border-radius: 12px; background: var(--surface-bg); box-shadow: 0 4px 16px rgba(0,0,0,.06); }
+.evmon-variant-b-layout { display: grid; grid-template-columns: minmax(280px, .72fr) minmax(0, 1.28fr); grid-template-areas: "queue awareness" "rail awareness"; align-items: start; gap: 0 16px; }
+.evmon-variant-b-layout > .evmon-primary-queue { grid-area: queue; min-width: 0; }
+.evmon-variant-b-awareness { grid-area: awareness; min-width: 0; }
+.evmon-variant-b-rail { grid-area: rail; min-width: 0; }
+.evmon-variant-b-rail .evmon-messaging, .evmon-variant-b-rail .evmon-secondary-section { margin-left: 0; margin-right: 0; }
+.evmon-variant-b-awareness .evmon-workspace { margin-bottom: 18px; }
+.evmon-primary-queue .evmon-list-header { margin-bottom: 10px; }
+.evmon-primary-queue .evmon-list-header h3 { margin-top: 3px; font-size: 19px; }
+.evmon-primary-queue .evmon-table-wrap { margin-bottom: 0; }
+.evmon-primary-queue .panel-body { padding: 13px 14px; }
+.evmon-primary-queue .panel-body + .panel-body { border-top: 1px solid var(--border); }
+.evmon-primary-queue .panel-body p { max-width: 80ch; margin: 5px 0 9px; }
 .evmon-context { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px 18px; padding: 10px 12px; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-bg); color: var(--text-muted); font-size: 12px; }
 .evmon-context label { display: flex; align-items: center; gap: 6px; }
 .evmon-context label > span { color: var(--text); font-weight: 800; }
 .evmon-context select { min-width: 230px; height: 31px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface-alt-bg); font: inherit; font-size: 12px; }
 .evmon-data-state { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; padding: 10px 12px; margin: -8px 0 18px; border: 1px solid var(--border); border-radius: 9px; font-size: 12px; }
-.evmon-data-state span { color: var(--text-muted); }
+/* Derived from the band's own semantic color rather than the global muted
+   token: these bands carry themed semantic backgrounds, so a fixed muted
+   foreground inverts against them under [data-theme="dark"]. */
+.evmon-data-state span { color: inherit; opacity: .85; }
 .evmon-data-state a { margin-left: auto; color: inherit; font-weight: 800; }
 .evmon-data-state-success { color: var(--success-text); background: var(--success-bg); }
-.evmon-data-state-warning { color: #765b00; background: #fff8d9; }
-.evmon-data-state-error { color: #8a2e2e; background: #fff0f0; }
+.evmon-data-state-warning { color: var(--pill-warning-fg); background: var(--pill-warning-bg); }
+.evmon-data-state-error { color: var(--pill-danger-fg); background: var(--pill-danger-bg); }
 .evmon-data-state-info { color: var(--text-muted); background: var(--surface-alt-bg); }
 .evmon-scope { display: flex; align-items: center; flex-wrap: wrap; gap: 7px 15px; padding: 7px 12px; margin: -4px 0 10px; border-bottom: 1px solid var(--border); color: var(--text-muted); font-size: 11px; }
 .evmon-scope strong { color: var(--text); }
-.evmon-scope b { color: var(--brand-green); }
-.evmon-scope a { margin-left: auto; color: var(--brand-green); font-weight: 800; }
+.evmon-scope b { color: var(--brand-green-text); }
+.evmon-scope a { margin-left: auto; color: var(--brand-green-text); font-weight: 800; }
 .evmon-messaging { margin: -4px 0 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-bg); }
 .evmon-messaging summary { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 9px 12px; cursor: pointer; list-style-position: inside; }
-.evmon-messaging summary::marker { color: var(--brand-green); }
+.evmon-messaging summary::marker { color: var(--brand-green-text); }
 .evmon-messaging summary strong { display: block; margin-top: 2px; color: var(--text); font-size: 14px; }
 .evmon-messaging-status { padding: 4px 8px; border-radius: 999px; color: var(--text-muted); background: var(--surface-alt-bg); font-size: 11px; font-weight: 800; }
 .evmon-messaging-status.is-on { color: var(--success-text); background: var(--success-bg); }
@@ -114,12 +138,15 @@
 .evmon-messaging-control label { display: flex; align-items: center; gap: 6px; color: var(--text); }
 .evmon-messaging-control small { color: var(--text); font-size: 11.5px; }
 .evmon-messaging-state { min-width: 275px; color: var(--text); font-size: 12px; line-height: 1.4; }
-.evmon-messaging-error { color: #8a2e2e; }
+.evmon-messaging-error { color: var(--danger-text); }
 .evmon-setup-state, .evmon-blocking-state { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 16px 18px; margin: -6px 0 18px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-bg); }
 .evmon-setup-state strong, .evmon-blocking-state strong { display: block; font-size: 15px; }
 .evmon-setup-state p, .evmon-blocking-state p { max-width: 68ch; margin: 4px 0 0; color: var(--text-muted); font-size: 12px; line-height: 1.45; }
-.evmon-blocking-state { border-color: #d8a4a4; background: #fff7f7; }
-.evmon-blocking-state-error strong { color: #7a2020; }
+/* The blocking state carries a semantic danger background, so its body copy
+   derives from that band's own foreground instead of the global muted token. */
+.evmon-blocking-state p { color: var(--pill-danger-fg); opacity: .85; }
+.evmon-blocking-state { border-color: color-mix(in srgb, var(--pill-danger-fg) 35%, transparent); background: var(--pill-danger-bg); }
+.evmon-blocking-state-error strong { color: var(--pill-danger-fg); }
 .evmon-secondary-section { margin: 14px 0; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-bg); }
 .evmon-secondary-section summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 15px; color: var(--text); font-size: 14px; font-weight: 800; cursor: pointer; }
 .evmon-secondary-section summary span { color: var(--text-muted); font-size: 11px; font-weight: 700; }
@@ -128,4 +155,56 @@
 .evmon-secondary-section .evmon-table-wrap { margin: 0 12px 12px; }
 @media (max-width: 600px) { .evmon-setup-state, .evmon-blocking-state { align-items: stretch; flex-direction: column; } }
 @media (max-width: 850px) { .evmon-summary { align-items: stretch; flex-direction: column; } .evmon-metrics div { flex: 1; min-width: 0; } .evmon-real-map { min-height: 360px; } .evmon-command-center { grid-template-columns: 1fr; } .evmon-command-summary { border-top: 1px solid var(--border); border-left: 0; } }
+@media (max-width: 1050px) { .evmon-variant-b-layout { grid-template-columns: minmax(250px, .8fr) minmax(0, 1.2fr); gap: 0 12px; } }
+@media (max-width: 850px) { .evmon-variant-b-layout { display: flex; flex-direction: column; gap: 0; } .evmon-variant-b-layout > .evmon-primary-queue, .evmon-variant-b-awareness, .evmon-variant-b-rail { width: 100%; } .evmon-variant-b-rail { order: 2; } .evmon-variant-b-awareness { order: 3; } }
 @media (max-width: 600px) { .evmon-toolbar { gap: 8px; padding: 9px 10px; } .evmon-toolbar-actions button:first-child { display: none; } .evmon-metrics strong { font-size: 17px; } .evmon-metrics div { padding: 8px 10px; } }
+
+.evmon-sticky-bar { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 10px; background: color-mix(in srgb, var(--surface-bg) 96%, transparent); box-shadow: 0 3px 12px rgba(0,0,0,.08); }
+.evmon-sticky-bar > div { display: grid; gap: 2px; min-width: 170px; margin-right: auto; }
+.evmon-sticky-bar > div > strong { font-size: 14px; }
+.evmon-sticky-bar > div > span:not(.evmon-eyebrow) { color: var(--text-muted); font-size: 11px; }
+.evmon-sticky-bar label { display: grid; gap: 3px; color: var(--text-muted); font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.evmon-sticky-bar select, .evmon-roster-tools input, .evmon-roster-tools select { min-height: 30px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface-alt-bg); font: inherit; font-size: 12px; }
+.evmon-chip, .evmon-notification-badge { padding: 6px 9px; border: 1px solid var(--border); border-radius: 999px; color: var(--text); background: var(--surface-alt-bg); font-size: 11px; font-weight: 800; white-space: nowrap; cursor: pointer; }
+.evmon-chip.is-active { color: var(--success-text); border-color: var(--brand-green); background: var(--success-bg); }
+.evmon-feed-age { color: var(--text-muted); font-size: 11px; font-weight: 800; white-space: nowrap; }
+.evmon-notification-badge { color: var(--brand-green-text); cursor: pointer; }
+.evmon-notification-badge strong { display: inline-grid; min-width: 19px; height: 19px; place-items: center; margin-left: 4px; border-radius: 50%; color: #fff; background: var(--brand-green); }
+.evmon-work-surface { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(390px, .8fr); min-height: min(70vh, 720px); overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-bg); box-shadow: 0 4px 16px rgba(0,0,0,.07); }
+.evmon-work-surface > .evmon-map-wrap { min-height: 560px; }
+.evmon-roster-pane { display: flex; min-width: 0; flex-direction: column; border-left: 1px solid var(--border); }
+.evmon-roster-tools { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; padding: 10px; border-bottom: 1px solid var(--border); background: var(--surface-alt-bg); }
+.evmon-roster-tools input { flex: 1 1 160px; }
+.evmon-roster-tools label { color: var(--text-muted); font-size: 11px; white-space: nowrap; }
+.evmon-segmented-tabs { display: flex; border-bottom: 1px solid var(--border); overflow-x: auto; }
+.evmon-segmented-tabs button { flex: 1 0 max-content; padding: 10px; border: 0; border-bottom: 3px solid transparent; color: var(--text-muted); background: transparent; font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }
+.evmon-segmented-tabs button.is-active { border-bottom-color: var(--brand-green); color: var(--brand-green-text); background: var(--surface-bg); }
+.evmon-roster-scroll { flex: 1; overflow: auto; }
+.evmon-roster-scroll .evmon-table td { cursor: pointer; }
+.evmon-roster-scroll tr.is-selected { outline: 2px solid var(--brand-green); outline-offset: -2px; background: var(--success-bg); }
+.evmon-vehicle-detail { display: grid; gap: 3px; padding: 12px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 12px; }
+.evmon-vehicle-detail strong { color: var(--text); }
+.evmon-investigative-rail { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
+.evmon-investigative-rail details { min-width: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-bg); }
+.evmon-investigative-rail summary { padding: 10px; color: var(--text); font-size: 12px; font-weight: 800; cursor: pointer; }
+.evmon-investigative-rail summary span { float: right; color: var(--text-muted); }
+.evmon-investigative-rail .evmon-table-wrap { margin: 0 8px 8px; padding: 7px; border: 0; }
+.evmon-investigative-rail p { margin: 0 0 7px; color: var(--text-muted); font-size: 11px; line-height: 1.35; }
+.evmon-drawer-backdrop { position: fixed; inset: 0; z-index: 20; display: flex; justify-content: flex-end; background: rgba(0,0,0,.35); }
+.evmon-drawer { width: min(480px, 100%); height: 100%; overflow: auto; padding: 16px; background: var(--surface-bg); box-shadow: -5px 0 20px rgba(0,0,0,.2); }
+.evmon-drawer-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; color: var(--text); }
+.evmon-drawer-header button { border: 0; color: var(--brand-green-text); background: transparent; font: inherit; font-weight: 800; cursor: pointer; }
+.evmon-field-header { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-bg); }
+.evmon-field-header strong { margin-right: auto; }
+.evmon-field-surface { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(260px, .7fr); gap: 10px; margin-top: 10px; }
+.evmon-field-list { display: grid; align-content: start; gap: 8px; max-height: min(70vh, 720px); overflow: auto; }
+.evmon-field-list section { border: 1px solid var(--border); border-radius: 8px; background: var(--surface-bg); }
+.evmon-field-list h3 { display: flex; justify-content: space-between; margin: 0; padding: 10px; border-bottom: 1px solid var(--border); font-size: 13px; }
+.evmon-field-list h3 span { color: var(--text-muted); }
+.evmon-field-list button { display: grid; grid-template-columns: 60px 1fr auto; gap: 8px; width: 100%; padding: 10px; border: 0; border-bottom: 1px solid var(--border); color: var(--text); background: transparent; text-align: left; cursor: pointer; }
+.evmon-field-list button:last-child { border-bottom: 0; }
+.evmon-field-list button.is-selected { background: var(--success-bg); }
+.evmon-field-list button span, .evmon-field-list button small { color: var(--text-muted); font-size: 11px; }
+.evmon-field-view-link { display: inline-block; margin-top: 12px; color: var(--brand-green-text); font-size: 12px; font-weight: 800; }
+@media (max-width: 900px) { .evmon-work-surface, .evmon-field-surface { grid-template-columns: 1fr; } .evmon-roster-pane { border-top: 1px solid var(--border); border-left: 0; } .evmon-work-surface > .evmon-map-wrap { min-height: 420px; } .evmon-investigative-rail { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 600px) { .evmon-investigative-rail { grid-template-columns: 1fr; } .evmon-sticky-bar > div { flex-basis: 100%; } .evmon-field-list button { grid-template-columns: 55px 1fr; } .evmon-field-list button small { grid-column: 2; } }
