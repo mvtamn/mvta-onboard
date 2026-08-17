@@ -221,6 +221,13 @@ period, assembles and validates a Service Plan, submits it for review, and
 activates or changes its operational scope. Event Planning owns the workflow;
 it does not replace reusable resource authoring.
 
+## Event Plan
+
+The canonical operator-facing label for one Event's time-bounded plan in the
+Event Planning console. In domain, API, audit, and lifecycle language this is
+still a Service Plan: the label does not change the Service Plan entity or the
+meaning of an operating period.
+
 ## Operational observation
 
 An observed runtime fact, such as a vehicle entering or leaving a geofence.

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { ApiError, type Event, type EventGeofence, type EventLocation, type EventServicePlan } from "@mvta/shared";
@@ -81,6 +81,10 @@ function renderEventPlanning(initialEntries: string[] = ["/console/event-plannin
   );
 }
 
+async function findLinkedResourceRow(label: string) {
+  return (await screen.findAllByText(label)).map((node) => node.closest<HTMLElement>(".event-linked-resource")).find(Boolean)!;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.spyOn(window, "confirm");
@@ -96,6 +100,15 @@ describe("EventPlanning", () => {
     mockApiData({ events: [makeEvent()] });
     renderEventPlanning(["/console/event-planning?event=evt1"]);
     expect(await screen.findByRole("combobox", { name: "Selected Event" })).toHaveValue("evt1");
+  });
+
+  it("shows a useful first-Event empty state after loading", async () => {
+    mockApiData({ events: [] });
+    renderEventPlanning();
+    const create = await screen.findByRole("button", { name: "Create your first Event" });
+    expect(screen.getByText("Start an Event workspace, then add its Event Plan and operational scope.")).toBeInTheDocument();
+    await userEvent.click(create);
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "New Event name" })).toHaveFocus());
   });
 
   describe("switching Events with unsaved operating-period edits", () => {
@@ -126,7 +139,7 @@ describe("EventPlanning", () => {
       await setUpDirtyPeriod();
       await userEvent.selectOptions(screen.getByRole("combobox", { name: "Selected Event" }), "evt2");
       expect(screen.getByRole("combobox", { name: "Selected Event" })).toHaveValue("evt1");
-      expect(screen.getByRole("textbox", { name: "Operating period name" })).toHaveValue("Edited but unsaved");
+      expect(screen.getByRole("textbox", { name: "Event Plan name" })).toHaveValue("Edited but unsaved");
     });
 
     it("switches Events and clears the stale period fields once confirmed", async () => {
@@ -134,7 +147,7 @@ describe("EventPlanning", () => {
       await setUpDirtyPeriod();
       await userEvent.selectOptions(screen.getByRole("combobox", { name: "Selected Event" }), "evt2");
       expect(screen.getByRole("combobox", { name: "Selected Event" })).toHaveValue("evt2");
-      expect(screen.getByRole("textbox", { name: "Operating period name" })).toHaveValue("");
+      expect(screen.getByRole("textbox", { name: "Event Plan name" })).toHaveValue("");
     });
 
     it("does not prompt when there are no unsaved edits", async () => {
@@ -162,7 +175,7 @@ describe("EventPlanning", () => {
     it("gives completed lifecycle steps a text-based accessible name, not just color", async () => {
       mockApiData({ events: [makeEvent()], plans: [makePlan({ status: "active" })] });
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
-      const stepper = await screen.findByRole("list", { name: "Operating period lifecycle" });
+      const stepper = await screen.findByRole("list", { name: "Event Plan lifecycle" });
       const draftStep = within(stepper).getByText("Draft");
       expect(draftStep).toHaveAccessibleName("Completed step: Draft");
       const activeStep = within(stepper).getByText("Active");
@@ -177,8 +190,8 @@ describe("EventPlanning", () => {
       vi.mocked(window.confirm).mockReturnValue(true);
       mockApiData({ events: [makeEvent()], plans: [makePlan({ status: "draft", links: [linkedRoute] })] });
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
-      const row = (await screen.findByText("Route 12")).closest<HTMLElement>(".event-linked-resource")!;
-      const removeButton = within(row).getByRole("button", { name: "Remove" });
+      const row = await findLinkedResourceRow("Route 12");
+      const removeButton = within(row).getByRole("button", { name: "Remove Route 12" });
       expect(removeButton).toBeEnabled();
       await userEvent.click(removeButton);
       expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("Route 12"));
@@ -189,16 +202,16 @@ describe("EventPlanning", () => {
       vi.mocked(window.confirm).mockReturnValue(false);
       mockApiData({ events: [makeEvent()], plans: [makePlan({ status: "draft", links: [linkedRoute] })] });
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
-      const row = (await screen.findByText("Route 12")).closest<HTMLElement>(".event-linked-resource")!;
-      await userEvent.click(within(row).getByRole("button", { name: "Remove" }));
+      const row = await findLinkedResourceRow("Route 12");
+      await userEvent.click(within(row).getByRole("button", { name: "Remove Route 12" }));
       expect(api.unlinkEventServicePlan).not.toHaveBeenCalled();
     });
 
     it("disables Remove for an active plan with no open revision", async () => {
       mockApiData({ events: [makeEvent()], plans: [makePlan({ status: "active", links: [linkedRoute] })] });
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
-      const row = (await screen.findByText("Route 12")).closest<HTMLElement>(".event-linked-resource")!;
-      expect(within(row).getByRole("button", { name: "Remove" })).toBeDisabled();
+      const row = await findLinkedResourceRow("Route 12");
+      expect(within(row).getByRole("button", { name: "Remove Route 12" })).toBeDisabled();
     });
 
     it("enables Remove against an open revision and passes its id", async () => {
@@ -211,8 +224,8 @@ describe("EventPlanning", () => {
         })],
       });
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
-      const row = (await screen.findByText("Route 12")).closest<HTMLElement>(".event-linked-resource")!;
-      const removeButton = within(row).getByRole("button", { name: "Remove" });
+      const row = await findLinkedResourceRow("Route 12");
+      const removeButton = within(row).getByRole("button", { name: "Remove Route 12" });
       expect(removeButton).toBeEnabled();
       await userEvent.click(removeButton);
       expect(api.unlinkEventServicePlan).toHaveBeenCalledWith("plan1", "routes", 12, "rev1");
@@ -229,7 +242,7 @@ describe("EventPlanning", () => {
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
       const checklist = await screen.findByRole("group", { name: "Activation readiness" });
       const link = within(checklist).getByRole("link", { name: "Messaging geofence configured" });
-      expect(link).toHaveAttribute("href", "/admin/events?geofence=geo1#event-configuration");
+      expect(link).toHaveAttribute("href", "/admin/events?geofence=geo1&event=evt1&plan=plan1#event-configuration");
     });
 
     it("does not render a link once every linked geofence already has a direction rule", async () => {
@@ -306,6 +319,7 @@ describe("EventPlanning", () => {
       await userEvent.click(screen.getByRole("button", { name: "Add selected routes" }));
       const feedback = await screen.findByText(/1 failed/);
       expect(feedback).toHaveTextContent(/1 route added/);
+      expect(within(routeSelect).getByRole("checkbox", { name: "Route 13 · Fair Express" })).toBeChecked();
     });
 
     it("skips a resource already on the plan and reports it instead of re-adding it", async () => {
@@ -334,6 +348,20 @@ describe("EventPlanning", () => {
       expect(screen.getByRole("button", { name: "Add selected geofences" })).toBeDisabled();
       expect(screen.getByText("Fairgrounds Gate")).toBeInTheDocument();
     });
+
+    it("keeps each resource tab's search term independent", async () => {
+      mockApiData({
+        events: [makeEvent()],
+        plans: [makePlan({ status: "draft" })],
+        routes: [{ route_id: 12, route_category: "SpecialEvent", is_active: true, route_label: "Fair Shuttle" }],
+        geofences: [makeGeofence({ name: "Fairgrounds Gate" })],
+      });
+      renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
+      await userEvent.type(await screen.findByRole("searchbox", { name: "Search routes" }), "shuttle");
+      await userEvent.click(screen.getByRole("button", { name: "Add geofence" }));
+      expect(screen.getByRole("searchbox", { name: "Search geofences" })).toHaveValue("");
+      expect(screen.getByText("Fairgrounds Gate")).toBeInTheDocument();
+    });
   });
 
   describe("duplicating an Event as a template", () => {
@@ -341,7 +369,7 @@ describe("EventPlanning", () => {
       mockApiData({ events: [makeEvent({ description: "Annual state fair", owning_team: "OCC" })] });
       renderEventPlanning(["/console/event-planning?event=evt1"]);
       await userEvent.click(await screen.findByRole("button", { name: "Duplicate this Event" }));
-      expect(screen.getByRole("textbox", { name: "New Event name" })).toHaveValue("State Fair");
+      expect(screen.getByRole("textbox", { name: "New Event name" })).toHaveValue("State Fair (copy)");
       expect(screen.getByRole("textbox", { name: "Event description" })).toHaveValue("Annual state fair");
       expect(screen.getByRole("textbox", { name: "Owning team" })).toHaveValue("OCC");
       const nameInput = screen.getByRole("textbox", { name: "New Event name" });
@@ -427,13 +455,30 @@ describe("EventPlanning", () => {
     it("labels completion as expiry and explains the lifecycle action", async () => {
       mockApiData({ events: [makeEvent()], plans: [makePlan({ status: "active" })] });
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
-      const expire = await screen.findByRole("button", { name: "Expire Event Plan" });
-      expect(document.querySelector(".panel-body")).toHaveTextContent(/use.*Expire Event Plan.*close its operating period/i);
+      const complete = await screen.findByRole("button", { name: "Complete Event Plan" });
+      expect(document.querySelector(".panel-body")).toHaveTextContent(/use.*Complete Event Plan.*close it/i);
       vi.mocked(window.confirm).mockReturnValue(false);
-      await userEvent.click(expire);
-      expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("Expire Event Plan"));
+      await userEvent.click(complete);
+      expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("Complete Event Plan"));
       expect(api.transitionEventServicePlan).not.toHaveBeenCalled();
     });
+  });
+
+  it("refreshes operational messaging when the selected Event Plan changes", async () => {
+    const secondPlan = makePlan({ id: "plan2", name: "State Fair Week 2", status: "active" });
+    mockApiData({ events: [makeEvent()], plans: [makePlan({ status: "active" }), secondPlan] });
+    vi.mocked(api.getEventOperationalMessaging).mockImplementation(async (planId) => ({
+      service_plan_id: planId,
+      automatic_teams_enabled: planId === "plan2",
+      teams_configured: true,
+      teams_destination: "Event Operations",
+      updated_by: null,
+      updated_at: null,
+    }));
+    renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
+    expect(await screen.findByText("Off · eligible notifications remain queued in Event AVL")).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Selected Event Plan" }), "plan2");
+    expect(await screen.findByText("Teams on · Event Operations")).toBeInTheDocument();
   });
 
   describe("operating-period workflow order", () => {
@@ -443,8 +488,8 @@ describe("EventPlanning", () => {
       const page = await screen.findByText("Event Plan builder");
       const workspace = page.closest(".event-planning")!;
       expect(workspace.querySelector("#planned-operating-resources")).not.toBeNull();
-      expect(workspace.querySelector("#operating-period-lifecycle")).not.toBeNull();
-      expect(workspace.querySelector("#planned-operating-resources")!.compareDocumentPosition(workspace.querySelector("#operating-period-lifecycle")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(workspace.querySelector("#event-plan-lifecycle")).not.toBeNull();
+      expect(workspace.querySelector("#planned-operating-resources")!.compareDocumentPosition(workspace.querySelector("#event-plan-lifecycle")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       expect(screen.getByText("Scope resources")).toBeInTheDocument();
       expect(screen.getByText("Activation readiness")).toBeInTheDocument();
     });
@@ -478,7 +523,7 @@ describe("EventPlanning", () => {
       routes: [{ route_id: 12, route_category: "SpecialEvent", is_active: true, route_label: "Active route" }, { route_id: 13, route_category: "SpecialEvent", is_active: true, route_label: "Revision route" }],
     });
     renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1&revision=rev1"]);
-    const linked = (await screen.findByText("Route 13")).closest(".event-linked-resource");
+    const linked = await findLinkedResourceRow("Route 13");
     expect(linked).not.toBeNull();
     expect(linked).toHaveTextContent("Route 13");
   });

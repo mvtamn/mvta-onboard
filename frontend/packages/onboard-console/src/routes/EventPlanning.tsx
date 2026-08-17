@@ -108,7 +108,8 @@ export function EventPlanning() {
   const [geofenceIds, setGeofenceIds] = useState<string[]>([]);
   const [locationIds, setLocationIds] = useState<string[]>([]);
   const [resourceFocus, setResourceFocus] = useState<ResourceKind>("routes");
-  const [resourceSearch, setResourceSearch] = useState("");
+  const [resourceSearch, setResourceSearch] = useState<Record<ResourceKind, string>>({ routes: "", geofences: "", locations: "" });
+  const [resourceFocusRequest, setResourceFocusRequest] = useState(0);
   const [feedback, setFeedback] = useState<Record<FeedbackScope, Feedback | null>>({ event: null, period: null, lifecycle: null, resources: null });
   const setFeedbackFor = (scope: FeedbackScope, text: string, kind: Feedback["kind"] = "success") =>
     setFeedback((prev) => ({ ...prev, [scope]: { text, kind } }));
@@ -148,7 +149,7 @@ export function EventPlanning() {
     }
   };
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { void load(); }, [selectedPlanId]);
 
   const eventPlans = useMemo(() => selectedEventId ? plans.filter((row) => row.event_id === selectedEventId) : [], [plans, selectedEventId]);
   // An Event has no status of its own - "completed" is derived from its
@@ -193,7 +194,13 @@ export function EventPlanning() {
     {
       label: "Messaging geofence configured",
       ready: messagingGeofences.length > 0,
-      href: geofenceMissingDirectionRule ? `/admin/events?geofence=${geofenceMissingDirectionRule.id}#event-configuration` : undefined,
+      href: geofenceMissingDirectionRule ? (() => {
+        const query = new URLSearchParams({ geofence: geofenceMissingDirectionRule.id });
+        if (selectedEventId) query.set("event", selectedEventId);
+        if (selectedPlanId) query.set("plan", selectedPlanId);
+        if (revisionId) query.set("revision", revisionId);
+        return `/admin/events?${query}#event-configuration`;
+      })() : undefined,
     },
   ];
   const readyToActivate = readiness.every((item) => item.ready);
@@ -220,11 +227,22 @@ export function EventPlanning() {
     else if (resourceFocus === "geofences") setGeofenceIds(values);
     else setLocationIds(values);
   };
-  const visibleResourceOptions = focusedResourceOptions.filter((row) => row.label.toLowerCase().includes(resourceSearch.trim().toLowerCase()));
+  const visibleResourceOptions = focusedResourceOptions.filter((row) => row.label.toLowerCase().includes(resourceSearch[resourceFocus].trim().toLowerCase()));
   const focusResource = (kind: ResourceKind) => {
     setResourceFocus(kind);
-    window.requestAnimationFrame(() => document.getElementById(`event-${kind}-select`)?.focus());
+    setResourceFocusRequest((request) => request + 1);
   };
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => document.getElementById(`event-${resourceFocus}-select`)?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [resourceFocus, resourceFocusRequest]);
+
+  useEffect(() => {
+    if (!showCreateEvent) return;
+    const frame = window.requestAnimationFrame(() => document.getElementById("new-event-name")?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [showCreateEvent]);
 
   useEffect(() => {
     // Reset even when there's no plan (e.g. after switching Events) -
@@ -240,7 +258,7 @@ export function EventPlanning() {
     if (!eventName.trim()) return;
     try {
       const created = await api.createEvent({ name: eventName.trim(), description: eventDescription.trim() || null, owning_team: owningTeam.trim() || null });
-      setEventName(""); setEventDescription(""); setOwningTeam(""); selectEvent(created.id); setFeedbackFor("event", "Event created. Add an operating period to begin planning."); await load();
+      setEventName(""); setEventDescription(""); setOwningTeam(""); selectEvent(created.id); setFeedbackFor("event", "Event created. Add an Event Plan to begin planning."); await load();
     } catch (err) { setFeedbackFor("event", err instanceof ApiError ? err.message : "Could not create Event.", "error"); }
   }
 
@@ -248,33 +266,36 @@ export function EventPlanning() {
     if (!selectedEventId || !periodReady) return;
     try {
       const created = await api.createEventServicePlan({ name: planName.trim(), event_id: selectedEventId, start_at: toUtc(startAt), end_at: toUtc(endAt) });
-      setPlanName(""); selectServicePlan(created.id); setFeedbackFor("period", "Draft operating period created."); await load();
-    } catch (err) { setFeedbackFor("period", err instanceof ApiError ? err.message : "Could not create operating period.", "error"); }
+      setPlanName(""); selectServicePlan(created.id); setFeedbackFor("period", "Draft Event Plan created."); await load();
+    } catch (err) { setFeedbackFor("period", err instanceof ApiError ? err.message : "Could not create Event Plan.", "error"); }
   }
 
   async function savePlanDetails() {
     if (!plan || !periodReady) return;
-    try { await api.updateEventServicePlan(plan.id, { name: planName.trim() || plan.name, start_at: toUtc(startAt), end_at: toUtc(endAt) }); setFeedbackFor("period", "Operating period saved."); await load(); }
-    catch (err) { setFeedbackFor("period", err instanceof ApiError ? err.message : "Could not save operating period.", "error"); }
+    try { await api.updateEventServicePlan(plan.id, { name: planName.trim() || plan.name, start_at: toUtc(startAt), end_at: toUtc(endAt) }); setFeedbackFor("period", "Event Plan saved."); await load(); }
+    catch (err) { setFeedbackFor("period", err instanceof ApiError ? err.message : "Could not save Event Plan.", "error"); }
   }
 
-  async function linkMany(kind: "routes" | "geofences" | "locations", values: string[], clearSelection: () => void) {
+  async function linkMany(kind: "routes" | "geofences" | "locations", values: string[]) {
     if (!plan || values.length === 0) return;
     const singular = kind.slice(0, -1);
     const alreadyLinked = new Set(links.filter((existing) => existing.kind === kind).map((existing) => String(existing.value)));
     const toAdd = values.filter((value) => !alreadyLinked.has(value));
     const skipped = values.length - toAdd.length;
-    clearSelection();
     if (toAdd.length === 0) {
+      setFocusedResourceIds([]);
       setFeedbackFor("resources", `Those ${kind} are already linked to ${plan.name}.`, "error");
       return;
     }
     const results = await Promise.allSettled(toAdd.map((value) => api.linkEventServicePlan(plan.id, kind, kind === "routes" ? Number(value) : value, revision?.id)));
+    const failedValues = toAdd.filter((_value, index) => results[index].status === "rejected");
+    setFocusedResourceIds(failedValues);
+    const failedLabels = failedValues.map((value) => focusedResourceOptions.find((option) => option.id === value)?.label ?? value);
     const succeeded = results.filter((result) => result.status === "fulfilled").length;
     const failed = results.length - succeeded;
     const parts = [
       succeeded > 0 ? `${succeeded} ${succeeded === 1 ? singular : kind} added` : null,
-      failed > 0 ? `${failed} failed` : null,
+      failed > 0 ? `${failed} failed${failedLabels.length ? `: ${failedLabels.join(", ")}` : ""}` : null,
       skipped > 0 ? `${skipped} already linked` : null,
     ].filter(Boolean);
     setFeedbackFor("resources", `${parts.join(", ")} to ${plan.name}.`, failed > 0 ? "error" : "success");
@@ -293,9 +314,9 @@ export function EventPlanning() {
     if (!plan) return;
     if (action === "advance" && !window.confirm(`Activate Event Plan "${plan.name}" for internal Event AVL monitoring? This does not publish rider-facing communication.`)) return;
     if (action === "suspend" && !window.confirm(`Suspend operations for "${plan.name}"? This pauses live Event AVL monitoring.`)) return;
-    if (action === "complete" && !window.confirm(`Expire Event Plan "${plan.name}"? This closes the operating period and removes it from active monitoring.`)) return;
-    try { await api.transitionEventServicePlan(plan.id, action, conflictOverrideReason.trim() || undefined); setFeedbackFor("lifecycle", action === "advance" ? "Event Plan activated." : action === "complete" ? "Event Plan expired." : `Event Plan ${action === "submit-review" ? "submitted for review" : `${action}d`}.`); await load(); }
-    catch (err) { setFeedbackFor("lifecycle", err instanceof ApiError ? err.message : "Could not update operating period.", "error"); }
+    if (action === "complete" && !window.confirm(`Complete Event Plan "${plan.name}"? This closes the Event Plan and removes it from active monitoring.`)) return;
+    try { await api.transitionEventServicePlan(plan.id, action, conflictOverrideReason.trim() || undefined); setFeedbackFor("lifecycle", action === "advance" ? "Event Plan activated." : action === "complete" ? "Event Plan completed." : `Event Plan ${action === "submit-review" ? "submitted for review" : `${action}d`}.`); await load(); }
+    catch (err) { setFeedbackFor("lifecycle", err instanceof ApiError ? err.message : "Could not update Event Plan.", "error"); }
   }
 
   async function prepareRevision() {
@@ -306,7 +327,7 @@ export function EventPlanning() {
 
   async function prepareRepair() {
     if (!plan) return;
-    try { const repaired = await api.repairEventServicePlan(plan.id); selectServicePlan(repaired.id); setFeedbackFor("lifecycle", "Draft repair created from the approved operating period. Add or correct resources, then submit it for review."); await load(); }
+    try { const repaired = await api.repairEventServicePlan(plan.id); selectServicePlan(repaired.id); setFeedbackFor("lifecycle", "Draft repair created from the approved Event Plan. Add or correct resources, then submit it for review."); await load(); }
     catch (err) { setFeedbackFor("lifecycle", err instanceof ApiError ? err.message : "Could not create a repair plan.", "error"); }
   }
 
@@ -328,7 +349,7 @@ export function EventPlanning() {
         ? "activate"
         : "activate";
   const nextPlanningAction = !selectedEventId
-    ? { title: "Select an Event", detail: "Choose the Event this operating period belongs to.", target: "event-select" }
+    ? { title: "Select an Event", detail: "Choose the Event this Event Plan belongs to.", target: "event-select" }
     : !plan
       ? { title: "Create an Event Plan", detail: "Set the dates that define when this Event service will run.", target: "operating-period-name" }
       : plan.status === "draft" && !readyToActivate
@@ -344,13 +365,14 @@ export function EventPlanning() {
                 : { title: "Event Plan completed", detail: "This Event Plan is no longer active.", target: "operating-period-lifecycle" };
   const focusNextPlanningAction = () => {
     if (nextPlanningAction.target === "event-avl-link") return;
-    const target = document.getElementById(nextPlanningAction.target);
+    const targetId = nextPlanningAction.target === "operating-period-name" ? "event-plan-name" : nextPlanningAction.target === "operating-period-lifecycle" ? "event-plan-lifecycle" : nextPlanningAction.target;
+    const target = document.getElementById(targetId);
     target?.scrollIntoView({ behavior: "smooth", block: "center" });
     if (target instanceof HTMLElement && target.matches("input, select, button")) target.focus();
   };
 
   return <div className="event-planning">
-    <EventWorkspaceNav eventName={event?.name} planName={plan?.name} planStatus={plan?.status} activeStage={activeStage} />
+    <EventWorkspaceNav eventName={event?.name} planName={plan?.name} planStatus={plan ? displayStatus(plan.status) : undefined} activeStage={activeStage} />
     <p className="event-workspace-next" role="status">{plan?.status === "active" ? "This Event Plan is active. Monitor it in Event AVL." : selectedEventId ? "Define the Event Plan, add its resources, then activate it for Event AVL." : "Start by choosing an Event, then define its Event Plan."}</p>
     <div className="event-next-action" role="status" aria-label="Next planning action">
       <div><span className="event-next-action-label">Next action</span><strong>{nextPlanningAction.title}</strong><p>{nextPlanningAction.detail}</p></div>
@@ -362,11 +384,11 @@ export function EventPlanning() {
         ? <button className="btn-sm" onClick={signIn}>Sign in again</button>
         : <button className="btn-sm" onClick={() => void load()}>Try again</button>}
     </div>}
-    {loading && <p className="muted" role="status">Loading Events, operating periods, and reusable resources…</p>}
+    {loading && <p className="muted" role="status">Loading Events, Event Plans, and reusable resources…</p>}
     <div className="event-scope-builder">
     <div className="event-scope-builder-heading">
       <div><span className="event-workspace-kicker">Event workspace{event ? ` · ${event.name}` : ""}</span><h2>Event Plan builder</h2></div>
-      <p>Assemble the complete service plan in one place, then move it through review and activation.</p>
+      <p>Assemble the complete operational scope in one place, then move it through review and activation.</p>
     </div>
     <div className="event-scope-builder-grid">
     <section id="planned-operating-resources" className="event-scope-column">
@@ -375,7 +397,7 @@ export function EventPlanning() {
       <FeedbackNote feedback={feedback.event} />
       <div className="event-search-control">
         <label htmlFor="event-search">Find an Event</label>
-        <div className="event-search-row"><input id="event-search" type="search" className="f" value={eventSearch} onChange={(e) => setEventSearch(e.target.value)} aria-describedby="event-search-help" placeholder="Search by Event, team, or description" />{eventSearch && <button className="btn-sm event-button-quiet" type="button" onClick={() => setEventSearch("")}>Clear</button>}</div>
+        <div className="event-search-row"><input id="event-search" type="search" className="f" value={eventSearch} onChange={(e) => setEventSearch(e.target.value)} aria-describedby="event-search-help" placeholder="Search by Event, team, or description" />{eventSearch && <button className="btn-sm" type="button" onClick={() => setEventSearch("")}>Clear</button>}</div>
         <small id="event-search-help">Filters the Event selector below; it does not search Event Plan names.</small>
       </div>
       <select id="event-select" className="f" value={selectedEventId} onChange={(e) => {
@@ -383,9 +405,13 @@ export function EventPlanning() {
         selectEvent(e.target.value);
       }} aria-label="Selected Event"><option value="">{eventSearch && visibleEvents.length === 0 ? "No matching Events" : "Select Event"}</option>{visibleEvents.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select>
       {event && <p className="muted"><strong>{event.name}</strong>{event.owning_team ? ` · ${event.owning_team}` : ""}{event.description ? ` · ${event.description}` : ""}</p>}
-      <button className="btn-sm event-button-secondary event-create-toggle" type="button" onClick={() => setShowCreateEvent((visible) => !visible)}>{showCreateEvent ? "Cancel new Event" : event ? "Create another Event" : "Create an Event"}</button>
+      {!loading && !loadError && events.length === 0 && <div className="event-empty-state" role="status">
+        <div><strong>Create your first Event</strong><p>Start an Event workspace, then add its Event Plan and operational scope.</p></div>
+        <button className="btn-primary" type="button" onClick={() => { setShowCreateEvent(true); window.requestAnimationFrame(() => document.getElementById("new-event-name")?.focus()); }}>Create your first Event</button>
+      </div>}
+      <button className="btn-sm event-create-toggle" type="button" onClick={() => setShowCreateEvent((visible) => !visible)}>{showCreateEvent ? "Cancel new Event" : event ? "Create another Event" : "Create an Event"}</button>
       {event && !showCreateEvent && <button className="btn-sm" type="button" onClick={() => {
-        setEventName(event.name);
+        setEventName(`${event.name} (copy)`.slice(0, 120));
         setEventDescription(event.description ?? "");
         setOwningTeam(event.owning_team ?? "");
         setShowCreateEvent(true);
@@ -398,56 +424,56 @@ export function EventPlanning() {
       </div>}
       <div className="event-scope-divider" />
       <h3>Event Plan details</h3>
-      <p className="panel-desc">An Event Plan is this Event’s time-bounded Service Plan. Times use MVTA-local time.</p>
-      <p id="operating-period-help" className="muted">{selectedEventId ? "Give the Event Plan a name, then choose its local service dates and times. The end must be later than the start." : "Select an Event above before creating an Event Plan."}</p>
+      <p className="panel-desc">An Event Plan is this Event’s time-bounded operational scope. Times use MVTA-local time.</p>
+      <p id="event-plan-help" className="muted">{selectedEventId ? "Give the Event Plan a name, then choose its local service dates and times. The end must be later than the start." : "Select an Event above before creating an Event Plan."}</p>
       <FeedbackNote feedback={feedback.period} />
       {selectedEventId && <>
         <div className="event-period-form">
-          <select id="operating-period-select" className="f" value={selectedPlanId} onChange={(e) => {
-            if (periodDirty && !window.confirm(`Discard unsaved changes to "${plan?.name}" and switch operating periods?`)) return;
+          <select id="event-plan-select" className="f" value={selectedPlanId} onChange={(e) => {
+            if (periodDirty && !window.confirm(`Discard unsaved changes to "${plan?.name}" and switch Event Plans?`)) return;
             selectServicePlan(e.target.value);
-          }} aria-label="Selected Event Plan"><option value="">Select Event Plan</option>{eventPlans.map((row) => <option key={row.id} value={row.id}>{row.name} · {row.status}</option>)}</select>
-          <input id="operating-period-name" className="f" value={planName} onChange={(e) => setPlanName(e.target.value)} placeholder="Example: State Fair · Friday evening" aria-label="Operating period name" aria-describedby="operating-period-help" />
+          }} aria-label="Selected Event Plan"><option value="">Select Event Plan</option>{eventPlans.map((row) => <option key={row.id} value={row.id}>{row.name} · {displayStatus(row.status)}</option>)}</select>
+          <input id="event-plan-name" className="f" value={planName} onChange={(e) => setPlanName(e.target.value)} placeholder="Example: State Fair · Friday evening" aria-label="Event Plan name" aria-describedby="event-plan-help" />
           <EventDateTimeField label="Starts" date={startDate} time={startTime} onDateChange={setStartDate} onTimeChange={setStartTime} invalid={Boolean(periodError)} />
           <EventDateTimeField label="Ends" date={endDate} time={endTime} onDateChange={setEndDate} onTimeChange={setEndTime} invalid={Boolean(periodError)} />
-          <button className="btn-sm event-button-primary" disabled={!periodReady} onClick={() => void (plan ? savePlanDetails() : createPlan())}>{plan ? "Save Event Plan details" : "Create Event Plan"}</button>
+          <button className="btn-primary" disabled={!periodReady} onClick={() => void (plan ? savePlanDetails() : createPlan())}>{plan ? "Save Event Plan details" : "Create Event Plan"}</button>
         </div>
         {periodError && <p className="event-field-error" role="alert">{periodError}</p>}
       </>}
       {plan && <>
         <p className="muted">Current Event Plan: <strong>{plan.name}</strong> · {plan.start_at ? new Date(plan.start_at).toLocaleString() : "time not configured"} – {plan.end_at ? new Date(plan.end_at).toLocaleString() : "time not configured"}</p>
-        {editable && <div className="actions event-scope-actions"><button className="btn-sm event-button-secondary" disabled={!periodReady} onClick={() => void savePlanDetails()}>Save draft</button></div>}
+        {editable && <div className="actions event-scope-actions"><button className="btn-sm" disabled={!periodReady} onClick={() => void savePlanDetails()}>Save draft</button></div>}
       </>}
     </section>
     <section id="scope-resources" className="event-scope-column">
       <h3>Scope resources</h3>
-      {!plan ? <p className="muted">Create or select an operating period to add routes, geofences, and transit locations.</p> : <>
+      {!plan ? <p className="muted">Create or select an Event Plan to add routes, geofences, and transit locations.</p> : <>
         <p className="panel-desc">Each resource becomes a visible part of the Event AVL handoff. Select a resource type to add it to the scope.</p>
         <div className="event-resource-canvas">
           <div className="event-resource-list">
             <div className={`event-resource-card ${resourceFocus === "routes" ? "selected" : ""}`}>
-              <span><strong>Routes</strong><small>{counts.routes} active route{counts.routes === 1 ? "" : "s"} linked</small></span><button className="btn-sm" onClick={() => focusResource("routes")}>Manage routes</button>
+              <span><strong>Routes</strong><small>{counts.routes} active route{counts.routes === 1 ? "" : "s"} linked</small></span><button className="btn-sm" aria-pressed={resourceFocus === "routes"} aria-controls="event-resource-selector" onClick={() => focusResource("routes")}>Manage routes</button>
             </div>
             <div className={`event-resource-card ${resourceFocus === "geofences" ? "selected" : ""}`}>
-              <span><strong>Geofences</strong><small>{counts.geofences} linked · required for alerts</small></span><button className="btn-sm" onClick={() => focusResource("geofences")}>Add geofence</button>
+              <span><strong>Geofences</strong><small>{counts.geofences} linked · required for alerts</small></span><button className="btn-sm" aria-pressed={resourceFocus === "geofences"} aria-controls="event-resource-selector" onClick={() => focusResource("geofences")}>Add geofence</button>
             </div>
             <div className={`event-resource-card ${resourceFocus === "locations" ? "selected" : ""}`}>
-              <span><strong>Transit locations</strong><small>{counts.locations} reference point{counts.locations === 1 ? "" : "s"} linked</small></span><button className="btn-sm" onClick={() => focusResource("locations")}>Add location</button>
+              <span><strong>Transit locations</strong><small>{counts.locations} reference point{counts.locations === 1 ? "" : "s"} linked</small></span><button className="btn-sm" aria-pressed={resourceFocus === "locations"} aria-controls="event-resource-selector" onClick={() => focusResource("locations")}>Add location</button>
             </div>
           </div>
-          <div className="next event-selected-resource">
+          <div id="event-resource-selector" className="next event-selected-resource" role="region" aria-live="polite" aria-label={`${resourceFocus} resource selector`}>
             <strong>Selected resource</strong><span className="muted">{focusedResourceLabel}</span>
             <p className="muted">{resourceFocus === "geofences" ? "A geofence defines where crossing detection and operational alerts begin." : resourceFocus === "routes" ? "A route determines which active SpecialEvent service vehicles belong to this scope." : "A transit location provides a destination or reference point for operations."}</p>
-            <input id={`event-${resourceFocus}-select`} className="f" type="search" value={resourceSearch} onChange={(e) => setResourceSearch(e.target.value)} placeholder={`Search ${resourceFocus}`} aria-label={`Search ${resourceFocus}`} />
+            <input id={`event-${resourceFocus}-select`} className="f" type="search" value={resourceSearch[resourceFocus]} onChange={(e) => setResourceSearch((current) => ({ ...current, [resourceFocus]: e.target.value }))} placeholder={`Search ${resourceFocus}`} aria-label={`Search ${resourceFocus}`} />
             <div className="event-resource-options" role="group" aria-label={`Select ${resourceFocus}`}>
               {visibleResourceOptions.length === 0 ? <p className="event-resource-empty">No matching {resourceFocus}.</p> : visibleResourceOptions.map((row) => <label className="event-resource-option" key={row.id}><input type="checkbox" checked={focusedResourceIds.includes(row.id)} onChange={(e) => setFocusedResourceIds(e.target.checked ? [...focusedResourceIds, row.id] : focusedResourceIds.filter((id) => id !== row.id))} /> <span>{row.label}</span></label>)}
             </div>
-            <div className="actions"><button className="btn-sm" disabled={focusedResourceIds.length === 0 || (!editable && !revision)} onClick={() => void linkMany(resourceFocus, focusedResourceIds, () => setFocusedResourceIds([]))}>Add selected {resourceFocus === "routes" ? "routes" : resourceFocus === "geofences" ? "geofences" : "locations"}</button><button className="btn-sm" onClick={() => focusResource(resourceFocus)}>Open selector</button></div>
+            <div className="actions"><button className="btn-sm" disabled={focusedResourceIds.length === 0 || (!editable && !revision)} onClick={() => void linkMany(resourceFocus, focusedResourceIds)}>Add selected {resourceFocus === "routes" ? "routes" : resourceFocus === "geofences" ? "geofences" : "locations"}</button><button className="btn-sm" onClick={() => focusResource(resourceFocus)}>Open selector</button></div>
           </div>
         </div>
         <p className="muted event-resource-counts">{counts.routes} routes · {counts.geofences} geofences · {counts.locations} locations linked.</p>
-        {links.length > 0 && <div className="event-linked-resource-list"><strong>Linked resources</strong>{links.map((link, index) => <div className="event-linked-resource" key={`${link.kind}-${link.value}-${index}`}><span>{link.label}</span><button className="btn-sm danger" disabled={!editable && !revision} onClick={() => void unlink(link.kind, link.value, link.label)}>Remove</button></div>)}</div>}
-        {counts.geofences > 0 && <div className="subcard event-geofence-roles"><strong>Geofence roles</strong><p className="muted">Operational geofences define monitored boundaries. Messaging geofences are the linked boundaries with direction rules; their crossings create Bus messages. Both roles stay in this same operating period and activate together.</p><div><strong>Operational only</strong><span>{operationalGeofences.length ? operationalGeofences.map((fence) => fence.name).join(", ") : "None"}</span></div><div><strong>Messaging enabled</strong><span>{messagingGeofences.length ? messagingGeofences.map((fence) => fence.name).join(", ") : "None configured"}</span></div></div>}
+        {links.length > 0 && <div className="event-linked-resource-list"><strong>Linked resources</strong>{links.map((link, index) => <div className="event-linked-resource" key={`${link.kind}-${link.value}-${index}`}><span>{link.label}</span><button className="btn-sm danger" aria-label={`Remove ${link.label}`} disabled={!editable && !revision} onClick={() => void unlink(link.kind, link.value, link.label)}>Remove</button></div>)}</div>}
+        {counts.geofences > 0 && <div className="subcard event-geofence-roles"><strong>Geofence roles</strong><p className="muted">Operational geofences define monitored boundaries. Messaging geofences are the linked boundaries with direction rules; their crossings create operational notifications. Both roles stay in this same Event Plan and activate together.</p><div><strong>Operational only</strong><span>{operationalGeofences.length ? operationalGeofences.map((fence) => fence.name).join(", ") : "None"}</span></div><div><strong>Messaging enabled</strong><span>{messagingGeofences.length ? messagingGeofences.map((fence) => fence.name).join(", ") : "None configured"}</span></div></div>}
       </>}
     </section>
     </div>
@@ -463,19 +489,23 @@ export function EventPlanning() {
         <strong>{readyToActivate ? "Ready to activate" : "Activation checklist"}</strong>
         {readiness.map((item) => <span key={item.label} className={item.ready ? "ready" : "missing"} aria-label={`${item.ready ? "Complete" : "Missing"}: ${item.label}`}>{item.ready ? "✓" : "!"} {!item.ready && item.href ? <Link to={item.href}>{item.label}</Link> : item.label}</span>)}
       </div>
-      <div id="operating-period-lifecycle" className="panel-header" style={{ marginTop: 24 }}>Review & activate</div>
+      <h2 id="event-plan-lifecycle" className="panel-header" style={{ marginTop: 24 }}>Review &amp; activate</h2>
       <div className="panel-body">
-        <p className="panel-desc">Confirm the Event Plan below, then use the single next action. Activation publishes the selected routes, geofences, rules, and locations to internal Event AVL. When an active Event Plan has finished, use <strong>Expire Event Plan</strong> to close its operating period; corrections still require a reviewed revision.</p>
+        <p className="panel-desc">Confirm the Event Plan below, then use the single next action. Activation publishes the selected routes, geofences, rules, and locations to internal Event AVL. When an active Event Plan has finished, use <strong>Complete Event Plan</strong> to close it; corrections still require a reviewed revision.</p>
         <p className="muted"><strong>Internal delivery:</strong> {operationalMessaging?.automatic_teams_enabled ? `Teams on · ${operationalMessaging.teams_destination}` : "Off · eligible notifications remain queued in Event AVL"}</p>
         <div className="subcard event-review-evidence" aria-label="Event Plan review evidence">
           <strong>Review evidence</strong>
-          <span>Event: {event?.name ?? "Not selected"}</span>
-          <span>Operating period: {plan.start_at ? `${new Date(plan.start_at).toLocaleString()} – ${new Date(plan.end_at ?? plan.start_at).toLocaleString()}` : "Not configured"} · MVTA-local time</span>
-          <span>Scope: {counts.routes} routes · {counts.geofences} geofences · {counts.locations} locations</span>
-          <span>Snapshot: {plan.published_scope ? "Published operational snapshot" : "Will publish atomically at activation"}</span>
-          {plan.route_conflict && <span>Conflict override: {conflictOverrideReason.trim() || "Reason required before activation"}</span>}
+          <dl>
+            <div><dt>Event</dt><dd>{event?.name ?? "Not selected"}</dd></div>
+            <div><dt>Event Plan</dt><dd>{plan.start_at ? `${new Date(plan.start_at).toLocaleString()} – ${new Date(plan.end_at ?? plan.start_at).toLocaleString()}` : "Not configured"} · MVTA-local time</dd></div>
+            <div><dt>Routes</dt><dd>{links.filter((link) => link.kind === "routes").map((link) => link.label).join(", ") || "None"}</dd></div>
+            <div><dt>Geofences</dt><dd>{links.filter((link) => link.kind === "geofences").map((link) => link.label).join(", ") || "None"}</dd></div>
+            <div><dt>Transit locations</dt><dd>{links.filter((link) => link.kind === "locations").map((link) => link.label).join(", ") || "None"}</dd></div>
+            <div><dt>Snapshot</dt><dd>{plan.published_scope ? "Published operational snapshot" : "Will publish atomically at activation"}</dd></div>
+            {plan.route_conflict && <div><dt>Conflict override</dt><dd>{conflictOverrideReason.trim() || "Reason required before activation"}</dd></div>}
+          </dl>
         </div>
-        <ol className="event-plan-steps" aria-label="Operating period lifecycle">
+        <ol className="event-plan-steps" aria-label="Event Plan lifecycle">
           {steps.map((step) => {
             // A suspended plan has passed through "active" (there's no
             // transition back), so it renders as the last completed step
@@ -487,12 +517,12 @@ export function EventPlanning() {
             return <li key={step} className={isPast ? "is-past" : undefined} aria-current={isCurrent ? "step" : undefined} aria-label={isPast ? `Completed step: ${statusLabels[step]}` : undefined}>{statusLabels[step]}</li>;
           })}
         </ol>
-        {plan.status === "suspended" && <p className="warn-note">Suspended — Event AVL monitoring is paused for this operating period.</p>}
+        {plan.status === "suspended" && <p className="warn-note">Suspended — Event AVL monitoring is paused for this Event Plan.</p>}
         <FeedbackNote feedback={feedback.lifecycle} />
         {nextAction === "advance" && plan.route_conflict && <label className="event-conflict-override">Conflict override reason<input className="f" value={conflictOverrideReason} onChange={(event) => setConflictOverrideReason(event.target.value)} placeholder="Explain why this route overlap is intentional" aria-label="Conflict override reason" /></label>}
-        {nextAction && <button className={`btn-primary ${nextAction === "complete" ? "event-button-expire" : ""}`} disabled={nextAction === "advance" && !readyToActivate} onClick={() => void transition(nextAction)}>{nextAction === "submit-review" ? "Submit Event Plan for review" : nextAction === "approve" ? "Approve Event Plan" : nextAction === "advance" ? "Activate Event Plan" : "Expire Event Plan"}</button>}
+        {nextAction && <button className="btn-primary" disabled={nextAction === "advance" && !readyToActivate} onClick={() => void transition(nextAction)}>{nextAction === "submit-review" ? "Submit Event Plan for review" : nextAction === "approve" ? "Approve Event Plan" : nextAction === "advance" ? "Activate Event Plan" : "Complete Event Plan"}</button>}
         {plan.status === "active" && <div className="event-lifecycle-secondary">
-          <span className="event-lifecycle-secondary-label">Active period controls:</span>
+          <span className="event-lifecycle-secondary-label">Active Event Plan controls:</span>
           <button className="btn-sm" onClick={() => void prepareRevision()}>Modify active scope</button>
           <button className="btn-sm danger" onClick={() => void transition("suspend")}>Suspend operations</button>
         </div>}

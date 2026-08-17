@@ -332,6 +332,17 @@ body {
 .event-empty-state strong { display: block; color: var(--text); font-size: 14px; }
 .event-empty-state p { margin: 4px 0 0; color: var(--text-dim); line-height: 1.45; }
 .event-planning-empty-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.event-workspace-return { align-self: center; color: var(--brand-green); font-size: 12px; font-weight: 800; white-space: nowrap; }
+.event-review-evidence { display: grid; gap: 10px; }
+.event-review-evidence > strong { color: var(--text); }
+.event-review-evidence dl { display: grid; gap: 8px; margin: 0; }
+.event-review-evidence dl > div { display: grid; gap: 10px; grid-template-columns: minmax(110px, .25fr) 1fr; }
+.event-review-evidence dt { color: var(--text-dim); font-weight: 800; }
+.event-review-evidence dd { color: var(--text); margin: 0; }
+.event-conflict-override { display: grid; gap: 6px; margin: 14px 0; max-width: 560px; }
+.event-geofence-roles { display: grid; gap: 8px; }
+.event-geofence-roles > div { display: grid; gap: 10px; grid-template-columns: minmax(130px, .3fr) 1fr; }
+.event-geofence-roles > div strong { color: var(--text-dim); }
 .event-scope-builder { margin-top: 2px; padding: 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-bg); box-shadow: 0 3px 14px rgba(23,61,49,.07); }
 .event-scope-builder-heading { display: flex; align-items: end; justify-content: space-between; gap: 18px; padding-bottom: 14px; border-bottom: 1px solid var(--border-soft); }
 .event-scope-builder-heading h2 { margin: 4px 0 0; color: var(--text); font-size: 18px; }

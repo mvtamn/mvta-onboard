@@ -1,5 +1,4 @@
 import { EventWorkspaceNav } from "../components/EventWorkspaceNav.js";
-import { useEventWorkspace } from "../context/EventWorkspaceContext.js";
 import { Admin, EventMonitoringSettingsSection, RouteClassificationSection } from "./Admin.js";
 import { AccessManagement } from "./AccessManagement.js";
 import { AuditLog } from "./AuditLog.js";
@@ -14,9 +13,8 @@ export function AdminGovernance() { return <AuditLog />; }
 export function AdminSubscribers() { return <Subscribers />; }
 
 export function AdminEventAdministration() {
-  const { selection } = useEventWorkspace();
   return <>
-    {selection.eventId ? <EventWorkspaceNav activeStage="configure" /> : null}
+    <EventWorkspaceNav activeStage="configure" showReturnToPlanning />
     <div id="event-configuration" tabIndex={-1} className="panel-header">Event Administration</div>
     <div className="panel-body"><p className="panel-desc">Maintain reusable resources independently from Event Planning. Active service plans use pinned revisions, so edits do not change live operations until reviewed and applied.</p></div>
     <EventMonitoringSettingsSection />

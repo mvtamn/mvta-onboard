@@ -7,6 +7,7 @@ interface Props {
   planName?: string;
   planStatus?: string;
   activeStage?: "plan" | "configure" | "review" | "activate";
+  showReturnToPlanning?: boolean;
 }
 
 const stages = [
@@ -16,7 +17,7 @@ const stages = [
   { id: "activate", label: "Activate", description: "Publish internal scope", href: "/events/planning" },
 ] as const;
 
-export function EventWorkspaceNav({ eventName, planName, planStatus, activeStage = "plan" }: Props) {
+export function EventWorkspaceNav({ eventName, planName, planStatus, activeStage = "plan", showReturnToPlanning = false }: Props) {
   const { selection } = useEventWorkspace();
   const query = new URLSearchParams();
   if (selection.eventId) query.set("event", selection.eventId);
@@ -38,6 +39,7 @@ export function EventWorkspaceNav({ eventName, planName, planStatus, activeStage
         <strong>{eventName ?? "No Event selected"}</strong>
         {planName && <span>{planName}{planStatus ? ` · ${planStatus}` : ""}</span>}
       </div>
+      {showReturnToPlanning && <NavLink className="event-workspace-return" to={`/events/planning${suffix}`}>Return to Event Planning</NavLink>}
       <ol className="event-workspace-stages">
         {stages.map((stage, index) => {
           const isActive = stage.id === activeStage;

@@ -11,6 +11,12 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **Send the "complete the checklist" next action to the right panel.** The action that asks for a missing operational resource scrolled to *Plan details* (the Event picker and dates) instead of *Scope resources*, which is where routes, geofences, and locations are actually linked.
 - **Restore the staff console typecheck.** `@mvta/shared`'s build output had drifted behind its source, so the console typechecked against declarations missing `route_conflict`, `EventServicePlanRevision.links`, and the conflict-override argument. Rebuilding the shared package clears all 13 errors in Event Planning and the remaining Detour errors across the package. The affected behavior worked correctly at runtime; only the build was broken.
 
+## [1.5.48] - 2026-08-17
+
+- **Keep Event Planning context across resource administration.** Missing geofence links now preserve the selected Event Plan and revision, and Event Administration always offers an explicit return to Planning.
+- **Clarify Event Plan terminology and review evidence.** User-facing labels now consistently call the workflow object an Event Plan, lifecycle completion is labeled Completed, and review evidence lists the selected resource names.
+- **Improve Event Planning recovery and accessibility.** Empty consoles offer a first-Event action, resource selectors retain independent searches and failed bulk links, selected panels announce their changes, and remove actions identify their resource.
+
 ## [1.5.46] - 2026-08-16
 
 - **Organize administration into a management workspace.** Administration now has modular navigation for access, Event resources, service configuration, integrations, governance, and subscribers. Event Planning and Event AVL are grouped under a dedicated Events workspace, with legacy links preserved.
