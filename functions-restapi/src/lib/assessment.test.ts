@@ -5,6 +5,7 @@ import { assessmentInputHash, canonicalJson } from "./assessment/hash";
 import { addBusinessDays, assertHolidayCoverage } from "./assessment/businessDays";
 import { computePenalty } from "./assessment/penalty";
 import { matchTier } from "./assessment/tiers";
+import { splitAssessmentInput } from "./assessment/input";
 import type { StandardTier } from "./assessment/types";
 
 const otpTiers: StandardTier[] = [
@@ -57,6 +58,17 @@ test("assessment hashes are stable across object key ordering", () => {
 test("business-day deadlines skip weekends and observed holidays", () => {
   const result = addBusinessDays(new Date("2026-12-23T12:00:00Z"), 3, new Set(["2026-12-25"]));
   assert.equal(result.toISOString().slice(0, 10), "2026-12-29");
+});
+
+test("contractual exclusions change assessable input without losing raw input", () => {
+  assert.deepEqual(splitAssessmentInput([
+    { id: "raw-1", quantity: 2, excluded: false },
+    { id: "relief-1", quantity: 3, excluded: true },
+  ]), {
+    rawCount: 2, rawQuantity: 5, excludedCount: 1, excludedQuantity: 3,
+    assessableCount: 1, assessableQuantity: 2,
+    assessableIds: ["raw-1"], excludedIds: ["relief-1"],
+  });
 });
 
 test("holiday coverage fails closed", () => {

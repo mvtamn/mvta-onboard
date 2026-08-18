@@ -81,7 +81,7 @@ app.http("assessmentPeriodFinalize", {
           AND NOT EXISTS(SELECT 1 FROM PeriodKpiAssessments a WHERE a.period_id=@id AND a.assessment_outcome='not_assessable' AND NOT EXISTS(SELECT 1 FROM AssessmentExceptions e WHERE e.assessment_id=a.id))
           AND NOT EXISTS(SELECT 1 FROM ComplianceOccurrences o JOIN AssessmentPeriods p ON p.contractor_id=o.contractor_id AND p.service_month=o.service_month WHERE p.id=@id AND o.review_status='candidate');
         DECLARE @changed INT=@@ROWCOUNT;
-        IF @changed=1 UPDATE PeriodKpiAssessments SET manager_action=recommended_action,manager_reason=recommendation_reason,final_amount=recommended_amount,binding_decision_by=@actor WHERE period_id=@id;
+        IF @changed=1 UPDATE PeriodKpiAssessments SET manager_action=recommended_action,manager_reason=recommendation_reason,final_amount=CASE WHEN recommended_amount<0 THEN 0 ELSE recommended_amount END,binding_amount=CASE WHEN recommended_amount<0 THEN 0 ELSE recommended_amount END,binding_reason=recommendation_reason,binding_decision_by=@actor,binding_decision_at=SYSUTCDATETIME() WHERE period_id=@id;
         SELECT @changed changed;
       `);
       if (!result.recordset[0]?.changed) return { status: 409, jsonBody: { error: "Period is stale, incomplete, or has pending KPI review" } };

@@ -4,6 +4,7 @@ import { escalationMultiplier } from "./escalation";
 import { assessmentInputHash, canonicalJson } from "./hash";
 import { computePenalty } from "./penalty";
 import { matchTier } from "./tiers";
+import { splitAssessmentInput } from "./input";
 import type { StandardDirection, StandardTier, TierLabel } from "./types";
 
 interface PeriodRow { id: string; contractor_id: string; service_month: string; input_revision: number; status: string }
@@ -22,8 +23,10 @@ async function resolveThreshold(tx: Transaction, standard: StandardRow, contract
   if (standard.code === "OTP_FIXED_ROUTE") {
     const request = new sql.Request(tx);
     request.input("month", sql.Char(6), month);
-    const result = await request.query<{ total: number; ontime: number }>(`
+    const result = await request.query<{ raw_total: number; raw_ontime: number; total: number; ontime: number }>(`
       SELECT
+        SUM(ISNULL(otp.total,0)) raw_total,
+        SUM(ISNULL(otp.ontime,0)) raw_ontime,
         SUM(CASE WHEN exclusion.id IS NULL THEN ISNULL(otp.total,0) ELSE 0 END) total,
         SUM(CASE WHEN exclusion.id IS NULL THEN ISNULL(otp.ontime,0) ELSE 0 END) ontime
       FROM OtpMonthlyRouteStopDay otp
@@ -33,9 +36,11 @@ async function resolveThreshold(tx: Transaction, standard: StandardRow, contract
        AND exclusion.day_of_week=otp.day_of_week AND exclusion.status='approved'
       WHERE otp.service_month=@month AND ISNULL(classification.route_category,'FixedRoute')='FixedRoute'
     `);
+    const rawTotal = Number(result.recordset[0]?.raw_total ?? 0);
+    const rawOntime = Number(result.recordset[0]?.raw_ontime ?? 0);
     const total = Number(result.recordset[0]?.total ?? 0);
     const ontime = Number(result.recordset[0]?.ontime ?? 0);
-    return { metricValue: total > 0 ? ontime / total : null, quantity: 1, occurrenceCount: 0, completeness: total > 0 ? 100 : 0, sourceRefs: [`OtpMonthlyRouteStopDay:${month}`] };
+    return { metricValue: total > 0 ? ontime / total : null, rawMetricValue: rawTotal > 0 ? rawOntime / rawTotal : null, excludedMetricValue: rawTotal - total > 0 ? (rawOntime - ontime) / (rawTotal - total) : null, rawQuantity: rawTotal, excludedQuantity: rawTotal - total, quantity: 1, occurrenceCount: 0, completeness: total > 0 ? 100 : 0, sourceRefs: [`OtpMonthlyRouteStopDay:${month}`] };
   }
   const request = new sql.Request(tx);
   request.input("standard_id", sql.UniqueIdentifier, standard.id);
@@ -47,7 +52,9 @@ async function resolveThreshold(tx: Transaction, standard: StandardRow, contract
     ORDER BY entered_at DESC
   `);
   const row = result.recordset[0];
-  return { metricValue: row ? Number(row.metric_value) : null, quantity: Number(row?.unit_count ?? row?.metric_value ?? 0), occurrenceCount: Number(row?.unit_count ?? 0), completeness: row ? 100 : 0, sourceRefs: row ? [`ManualMetricEntries:${row.id}`] : [] };
+  const value = row ? Number(row.metric_value) : null;
+  const quantity = Number(row?.unit_count ?? row?.metric_value ?? 0);
+  return { metricValue: value, rawMetricValue: value, excludedMetricValue: null, rawQuantity: quantity, excludedQuantity: 0, quantity, occurrenceCount: Number(row?.unit_count ?? 0), completeness: row ? 100 : 0, sourceRefs: row ? [`ManualMetricEntries:${row.id}`] : [] };
 }
 
 export async function assessPeriod(tx: Transaction, periodId: string): Promise<void> {
@@ -71,6 +78,13 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
     let occurrenceCount = 0;
     let completeness = 100;
     let sourceRefs: string[] = [];
+    let rawMetricValue: number | null = null;
+    let rawOccurrenceCount = 0;
+    let rawUnitQuantity = 0;
+    let excludedMetricValue: number | null = null;
+    let excludedOccurrenceCount = 0;
+    let excludedUnitQuantity = 0;
+    let excludedSourceRefs: string[] = [];
     let baseAmount = 0;
     let capRequired = false;
     let tierLabel: TierLabel = "meets";
@@ -80,15 +94,25 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
       occurrencesReq.input("standard_id", sql.UniqueIdentifier, standard.id);
       occurrencesReq.input("contractor", sql.UniqueIdentifier, period.contractor_id);
       occurrencesReq.input("month", sql.Char(6), period.service_month);
-      const occurrences = await occurrencesReq.query<{ id: string; quantity: number; duration_days: number | null; qualifier_code: string | null }>(`
-        SELECT id,quantity,duration_days,qualifier_code FROM ComplianceOccurrences
-        WHERE standard_id=@standard_id AND contractor_id=@contractor AND service_month=@month AND review_status='confirmed' AND attribution='contractor_error'
+      const occurrences = await occurrencesReq.query<{ id: string; quantity: number; duration_days: number | null; qualifier_code: string | null; excluded: boolean }>(`
+        SELECT o.id,o.quantity,o.duration_days,o.qualifier_code,
+          CONVERT(bit,CASE WHEN o.attribution<>'contractor_error' OR c.status='approved' THEN 1 ELSE 0 END) excluded
+        FROM ComplianceOccurrences o LEFT JOIN ExcusableDelayClaims c ON c.id=o.relief_id
+        WHERE o.standard_id=@standard_id AND o.contractor_id=@contractor AND o.service_month=@month AND o.review_status='confirmed'
       `);
-      occurrenceCount = occurrences.recordset.length;
-      quantity = occurrences.recordset.reduce((sum, row) => sum + row.quantity, 0);
+      const input = splitAssessmentInput(occurrences.recordset);
+      rawOccurrenceCount = input.rawCount;
+      rawUnitQuantity = input.rawQuantity;
+      rawMetricValue = input.rawQuantity;
+      excludedOccurrenceCount = input.excludedCount;
+      excludedUnitQuantity = input.excludedQuantity;
+      excludedMetricValue = input.excludedQuantity;
+      excludedSourceRefs = input.excludedIds.map(id => `ComplianceOccurrences:${id}`);
+      occurrenceCount = input.assessableCount;
+      quantity = input.assessableQuantity;
       metricValue = quantity;
-      sourceRefs = occurrences.recordset.map((row) => `ComplianceOccurrences:${row.id}`).sort();
-      for (const row of occurrences.recordset) {
+      sourceRefs = input.assessableIds.map(id => `ComplianceOccurrences:${id}`);
+      for (const row of occurrences.recordset.filter(row => !row.excluded)) {
         const tier = matchTier(tiers, row.quantity, standard.direction, row.qualifier_code);
         if (!tier) continue;
         baseAmount += computePenalty(tier, { quantity: row.quantity, durationDays: row.duration_days ?? 1 });
@@ -99,6 +123,8 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
     } else {
       const resolved = await resolveThreshold(tx, standard, period.contractor_id, period.service_month);
       metricValue = resolved.metricValue; quantity = resolved.quantity; occurrenceCount = resolved.occurrenceCount;
+      rawMetricValue = resolved.rawMetricValue; rawUnitQuantity = resolved.rawQuantity; rawMetricValue ??= metricValue;
+      excludedMetricValue = resolved.excludedMetricValue; excludedUnitQuantity = resolved.excludedQuantity;
       completeness = resolved.completeness; sourceRefs = resolved.sourceRefs;
       if (metricValue !== null) {
         const tier = matchTier(tiers, metricValue, standard.direction);
@@ -123,13 +149,15 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
     const escalation = escalationMultiplier(consecutive);
     const proposed = notAssessable ? 0 : Math.max(0, baseAmount) * escalation;
     const outcome = notAssessable ? "not_assessable" : tierLabel;
-    const snapshot = { standardCode: standard.code, metricValue, quantity, occurrenceCount, sourceRefs, baseAmount, escalation, proposed, tierLabel, outcome };
+    const snapshot = { standardCode: standard.code, metricValue, quantity, occurrenceCount, sourceRefs, rawMetricValue, rawOccurrenceCount, rawUnitQuantity, excludedMetricValue, excludedOccurrenceCount, excludedUnitQuantity, excludedSourceRefs, baseAmount, escalation, proposed, tierLabel, outcome };
     const computationJson = canonicalJson(snapshot);
     const inputHash = assessmentInputHash(snapshot);
     const upsert = new sql.Request(tx);
     upsert.input("period_id", sql.UniqueIdentifier, period.id); upsert.input("standard_id", sql.UniqueIdentifier, standard.id);
     upsert.input("metric", sql.Float, metricValue); upsert.input("display", sql.NVarChar(50), metricValue === null ? "No data" : String(metricValue));
     upsert.input("count", sql.Int, occurrenceCount); upsert.input("quantity", sql.Float, quantity); upsert.input("tier", sql.NVarChar(20), tierLabel);
+    upsert.input("raw_metric", sql.Float, rawMetricValue); upsert.input("raw_count", sql.Int, rawOccurrenceCount); upsert.input("raw_quantity", sql.Float, rawUnitQuantity);
+    upsert.input("excluded_metric", sql.Float, excludedMetricValue); upsert.input("excluded_count", sql.Int, excludedOccurrenceCount); upsert.input("excluded_quantity", sql.Float, excludedUnitQuantity); upsert.input("excluded_refs", sql.NVarChar(sql.MAX), JSON.stringify(excludedSourceRefs));
     upsert.input("base", sql.Decimal(12,2), baseAmount); upsert.input("escalation", sql.Decimal(4,2), escalation);
     upsert.input("proposed", sql.Decimal(12,2), proposed); upsert.input("hash", sql.Char(64), inputHash); upsert.input("json", sql.NVarChar(sql.MAX), computationJson);
     upsert.input("consecutive", sql.Int, consecutive); upsert.input("completeness", sql.Float, completeness);
@@ -138,7 +166,7 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
     await upsert.query(`
       MERGE PeriodKpiAssessments WITH (HOLDLOCK) target USING (SELECT @period_id period_id,@standard_id standard_id) source
       ON target.period_id=source.period_id AND target.standard_id=source.standard_id
-      WHEN MATCHED THEN UPDATE SET metric_value=@metric,metric_display=@display,occurrence_count=@count,unit_quantity=@quantity,tier_label=@tier,
+      WHEN MATCHED THEN UPDATE SET metric_value=@metric,metric_display=@display,occurrence_count=@count,unit_quantity=@quantity,raw_metric_value=@raw_metric,raw_occurrence_count=@raw_count,raw_unit_quantity=@raw_quantity,excluded_metric_value=@excluded_metric,excluded_occurrence_count=@excluded_count,excluded_unit_quantity=@excluded_quantity,excluded_source_refs_json=@excluded_refs,tier_label=@tier,
        target_display=N'Configured tiers',base_amount=@base,escalation_multiplier=@escalation,relief_amount=0,proposed_amount=@proposed,
        manager_action=CASE WHEN target.input_sha256=@hash THEN target.manager_action ELSE 'pending' END,
        final_amount=CASE WHEN target.input_sha256=@hash THEN target.final_amount ELSE NULL END,
@@ -147,8 +175,8 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
        reviewed_by=CASE WHEN target.input_sha256=@hash THEN target.reviewed_by ELSE NULL END,
        reviewed_at=CASE WHEN target.input_sha256=@hash THEN target.reviewed_at ELSE NULL END,cap_required=@cap,
        input_sha256=@hash,consecutive_months_below=@consecutive,data_completeness_pct=@completeness,computation_json=@json,assessment_outcome=@outcome
-      WHEN NOT MATCHED THEN INSERT(period_id,standard_id,metric_value,metric_display,occurrence_count,unit_quantity,tier_label,target_display,base_amount,escalation_multiplier,proposed_amount,input_sha256,consecutive_months_below,data_completeness_pct,computation_json,assessment_outcome,cap_required)
-       VALUES(@period_id,@standard_id,@metric,@display,@count,@quantity,@tier,N'Configured tiers',@base,@escalation,@proposed,@hash,@consecutive,@completeness,@json,@outcome,@cap);
+      WHEN NOT MATCHED THEN INSERT(period_id,standard_id,metric_value,metric_display,occurrence_count,unit_quantity,raw_metric_value,raw_occurrence_count,raw_unit_quantity,excluded_metric_value,excluded_occurrence_count,excluded_unit_quantity,excluded_source_refs_json,tier_label,target_display,base_amount,escalation_multiplier,proposed_amount,input_sha256,consecutive_months_below,data_completeness_pct,computation_json,assessment_outcome,cap_required)
+       VALUES(@period_id,@standard_id,@metric,@display,@count,@quantity,@raw_metric,@raw_count,@raw_quantity,@excluded_metric,@excluded_count,@excluded_quantity,@excluded_refs,@tier,N'Configured tiers',@base,@escalation,@proposed,@hash,@consecutive,@completeness,@json,@outcome,@cap);
     `);
   }
   const finish = new sql.Request(tx);
