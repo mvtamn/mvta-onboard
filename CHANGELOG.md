@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.47] - 2026-08-20
+
+- **Lead Event AVL with the open notification queue.** Open Event notifications now appear above the vehicle map as the page's primary action, rather than below it; the map is retitled "Vehicle map" to match. Open-queue membership (pending, acknowledged, failed) is now a single named predicate covered by a test.
+
 ## [1.5.46] - 2026-08-16
 
 - **Organize administration into a management workspace.** Administration now has modular navigation for access, Event resources, service configuration, integrations, governance, and subscribers. Event Planning and Event AVL are grouped under a dedicated Events workspace, with legacy links preserved.
