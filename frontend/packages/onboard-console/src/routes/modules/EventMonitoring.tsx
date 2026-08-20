@@ -13,6 +13,10 @@ const SCOPE_EXCEPTION_LABELS: Record<EventScopeException["category"], string> = 
   needs_scope_review: "Needs scope review", telemetry_incomplete: "Telemetry incomplete", stale_observation: "Stale observation", assigned_elsewhere: "Assigned elsewhere",
 };
 
+function displayNotificationStatus(status: string): string {
+  return status.replaceAll("_", " ").replace(/^./, (character) => character.toUpperCase());
+}
+
 function vehicleAttention(vehicle: EventVehiclePosition | EventScopeException): number {
   if ("category" in vehicle) return 0;
   return vehicle.is_stale ? 1 : 2;
@@ -89,7 +93,51 @@ export function EventMonitoring({ fieldView = false }: { fieldView?: boolean }) 
         {currentRoster.length === 0 ? <div className="evmon-empty">{vehicles === null ? "Loading live positions…" : "No results"}</div> : <div className="evmon-roster-scroll"><table className="data evmon-table"><thead><tr><th>Vehicle</th><th>Status</th><th>Zone</th><th>Route</th><th>Last report</th>{rosterSegment === "outside" && canManageAssignments && <th>Planning action</th>}</tr></thead><tbody>{currentRoster.map((vehicle) => <tr key={vehicle.vehicle_id} className={selectedVehicleId === vehicle.vehicle_id ? "is-selected" : ""} onClick={() => setSelectedVehicleId(vehicle.vehicle_id)}><td><strong>{vehicle.vehicle_id}</strong></td><td>{"category" in vehicle ? <>{SCOPE_EXCEPTION_LABELS[vehicle.category as EventScopeException["category"]]}<small className="evmon-exception-meta"> · {(vehicle as EventScopeException).proposal_status ?? "No proposal"}</small></> : vehicle.zone_status}</td><td>{vehicle.zone_name ?? vehicle.zone_status}</td><td>{routeLabel(vehicle)}</td><td className={vehicle.is_stale ? "evmon-stale" : undefined}>{vehicle.is_stale ? "Stale · " : ""}{minutesAgo(vehicle.report_timestamp)}</td>{rosterSegment === "outside" && canManageAssignments && <td>{"action_eligible" in vehicle && vehicle.action_eligible && vehicle.route !== null ? <button className="btn-sm" onClick={(event) => { event.stopPropagation(); void proposeAssignment(vehicle, selectedPlan); }}>Propose scope change</button> : "Inspection required"}</td>}</tr>)}</tbody></table></div>}
         {selectedVehicle && <div className="evmon-vehicle-detail" aria-label="Vehicle detail"><strong>Vehicle {selectedVehicle.vehicle_id}</strong><span>{displayOperator(selectedVehicle.operator_name)} · {routeLabel(selectedVehicle)}</span><span>{selectedVehicle.zone_status} · {selectedVehicle.zone_name ?? "Outside monitored zones"}</span><span>Heading {cardinalHeading(selectedVehicle.heading, selectedVehicle.direction)} · Speed {selectedVehicle.speed_mph === null ? "unavailable" : `${selectedVehicle.speed_mph.toFixed(1)} mph`}</span></div>}
       </div></div>
-      <div className="evmon-investigative-rail"><details><summary>Event message history <span>{eventHistory.length}</span></summary><div className="evmon-table-wrap">{eventHistory.map((notification) => <p key={notification.id}>{notification.status}: {notification.message_body}</p>)}</div></details><details><summary>Geofence crossings <span>{crossings.length}</span></summary><div className="evmon-table-wrap">{crossings.map((crossing) => <p key={crossing.id}>{crossing.transition} · Vehicle {crossing.vehicle_id} · {crossing.geofence_name} · {new Date(crossing.crossed_at).toLocaleString()}</p>)}</div></details><details><summary>Event audit history <span>{audit.length}</span></summary><div className="evmon-table-wrap">{audit.map((entry, index) => <p key={`${entry.event_at}-${index}`}>{entry.event_type} · {entry.detail}</p>)}</div></details><details open={Boolean(messagingError || actionsBlocked)}><summary>Teams delivery <span>{messagingControl?.automatic_teams_enabled ? "On" : "Off"}</span></summary><div className="evmon-table-wrap">{messagingError ? <p role="alert">{messagingError}</p> : messagingControl && <label><input type="checkbox" checked={messagingControl.automatic_teams_enabled} disabled={!canManageEventMessaging || !messagingControl.teams_configured || actionsBlocked} onChange={(event) => void updateMessaging(event.target.checked)} /> Automatic Teams delivery</label>}</div></details></div>
+      {/* Each rail entry carries a timestamp, a label, and its detail as
+          distinct elements. These were single muted paragraphs with every
+          field run together by dots, which made the three histories
+          unreadable at exactly the moment someone is investigating. */}
+      <div className="evmon-investigative-rail">
+        <details>
+          <summary>Event message history <span>{eventHistory.length}</span></summary>
+          <div className="evmon-rail-body">
+            {eventHistory.length === 0 ? <p className="evmon-rail-empty">No messages recorded for this Event context.</p> : eventHistory.map((notification) => <div className="evmon-rail-entry" key={notification.id}>
+              <span className="evmon-rail-when">{new Date(notification.created_at).toLocaleTimeString()}</span>
+              <strong>{notification.status === "sent" ? "Sent to Teams" : displayNotificationStatus(notification.status)}</strong>
+              <span className="evmon-rail-detail">{notification.message_body}</span>
+            </div>)}
+          </div>
+        </details>
+        <details>
+          <summary>Geofence crossings <span>{crossings.length}</span></summary>
+          <div className="evmon-rail-body">
+            {crossings.length === 0 ? <p className="evmon-rail-empty">No crossings detected yet.</p> : crossings.map((crossing) => <div className="evmon-rail-entry" key={crossing.id}>
+              <span className="evmon-rail-when">{new Date(crossing.crossed_at).toLocaleTimeString()}</span>
+              <strong>Vehicle {crossing.vehicle_id} {crossing.transition === "enter" ? "entered" : "exited"}</strong>
+              <span className="evmon-rail-detail">{crossing.geofence_name}</span>
+            </div>)}
+          </div>
+        </details>
+        <details>
+          <summary>Event audit history <span>{audit.length}</span></summary>
+          <div className="evmon-rail-body">
+            {audit.length === 0 ? <p className="evmon-rail-empty">No audit entries for this Event context.</p> : audit.map((entry, index) => <div className="evmon-rail-entry" key={`${entry.event_at}-${index}`}>
+              <span className="evmon-rail-when">{new Date(entry.event_at).toLocaleTimeString()}</span>
+              <strong>{entry.event_type.replaceAll("_", " ")}</strong>
+              <span className="evmon-rail-detail">{entry.detail}</span>
+            </div>)}
+          </div>
+        </details>
+        <details open={Boolean(messagingError || actionsBlocked)}>
+          <summary>Teams delivery <span>{messagingControl?.automatic_teams_enabled ? "On" : "Off"}</span></summary>
+          <div className="evmon-rail-body">
+            {messagingError ? <p className="evmon-rail-empty" role="alert">{messagingError}</p> : messagingControl && <>
+              <label className="evmon-rail-toggle"><input type="checkbox" checked={messagingControl.automatic_teams_enabled} disabled={!canManageEventMessaging || !messagingControl.teams_configured || actionsBlocked} onChange={(event) => void updateMessaging(event.target.checked)} /> Automatic Teams delivery</label>
+              <p className="evmon-rail-empty">{messagingControl.teams_configured ? messagingControl.teams_destination : "No Teams channel is configured."}{actionsBlocked ? " Paused while monitoring is degraded." : ""}</p>
+            </>}
+          </div>
+        </details>
+      </div>
     </>}
     {notificationDrawer && <div className="evmon-drawer-backdrop" role="presentation" onClick={() => setNotificationDrawer(false)}><aside className="evmon-drawer" role="dialog" aria-label="Open Event notifications" onClick={(event) => event.stopPropagation()}><div className="evmon-drawer-header"><strong>{eventQueue.length} open Event notifications</strong><button onClick={() => setNotificationDrawer(false)}>Close</button></div>{actionError && <p role="alert">{actionError}</p>}{eventQueue.map((notification) => <div className="panel-body" key={notification.id}><strong>{notification.status}</strong><p>{notification.message_body}</p>{actionsBlocked && <small>Actions paused while monitoring is degraded.</small>}{canManageNotificationActions && !actionsBlocked && <div><button className="btn-sm" onClick={() => void reviewNotification(notification.id, "acknowledge")}>Acknowledge</button> <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "send")}>Approve and send</button> <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "dismiss")}>Dismiss</button></div>}{!canManageNotificationActions && <small>Event AVL Manager or Publisher access is required for notification actions.</small>}</div>)}</aside></div>}
     <Link className="evmon-field-view-link" to="/events/avl/field">Open Event AVL field view</Link>

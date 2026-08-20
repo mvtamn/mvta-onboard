@@ -5,6 +5,18 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.50] - 2026-08-18
+
+- **Choose an Event Plan's geographic scope on a map.** Geofences and transit locations can now be added and removed by selecting them on a map beside the list, with in-scope boundaries filled and available ones dashed. Routes stay list-only - special service is absent from the GTFS schedule, so routes have no geometry to draw - and the list remains a complete alternative for every resource type.
+- **Copy an Event Plan to its next run.** Recurring Events reuse their routes, geofences, and locations almost unchanged while the dates always differ, so `Copy to a new Event Plan` carries the scope and deliberately leaves the operating period unset - landing the new draft on the dates as its first outstanding readiness item.
+- **The workspace stages stopped pretending to be destinations.** Plan, Review, and Activate all pointed at the same `/events/planning`, so choosing one reloaded the page you were already on. They now render as status; only Configure, which genuinely navigates to Event Administration, remains a link.
+
+- **The Event Planning next action now performs the step instead of scrolling to it.** Its button previously called `scrollIntoView` in every state, so the most prominent control on the page moved the viewport rather than advancing the work. It now submits for review, approves, and activates directly; an incomplete draft jumps to the resource selector that resolves the first missing readiness item, with that resource tab already chosen.
+- **Advancing an Event Plan no longer requires scrolling to a duplicate button.** The lifecycle panel repeated the same primary transition at the bottom of the page; the Next action panel is now the single control, and the panel points to it. Completion stays with the other deliberate active-plan controls, where suspend and modify already live.
+- **The conflict override reason moved into the panel that activates.** The one field standing between an operator and a live scope is no longer somewhere further down the page.
+- **Event AVL histories are readable.** Message history, geofence crossings, and audit entries rendered as single muted paragraphs with every field run together by dots; each entry now carries its timestamp, label, and detail as distinct elements, with real empty states and a scroll region per panel.
+- **Event Planning links to Event AVL directly.** The activation handoff pointed at the legacy `/event-monitoring` redirect rather than `/events/avl`.
+
 ## [1.5.47] - 2026-08-17
 
 - **Show the activation checklist while the Event Plan is still a draft.** The itemized readiness list and its repair links previously appeared only once the plan reached `approved` - after every item was already satisfied. Draft is the longest phase and the one where items are actually outstanding, so the list now renders from draft onward beside the activation readiness gate.

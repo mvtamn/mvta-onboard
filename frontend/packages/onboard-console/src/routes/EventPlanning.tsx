@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiError, type Event, type EventGeofence, type EventLocation, type EventOperationalMessaging, type EventServicePlan } from "@mvta/shared";
 import { api } from "../config.js";
 import { useAuth } from "../auth/AuthContext.js";
 import { useEventWorkspace } from "../context/EventWorkspaceContext.js";
 import { EventWorkspaceNav } from "../components/EventWorkspaceNav.js";
+// Lazy: azure-maps-control needs WebGL and pulls a large bundle, so it is
+// fetched only when a planner actually opens the map view.
+const EventScopeMap = lazy(() => import("./modules/EventScopeMap.js").then((module) => ({ default: module.EventScopeMap })));
 
 // "suspended" is deliberately not in this list: there is no backend
 // transition back from suspended to active or completed (checked against
@@ -103,6 +106,9 @@ export function EventPlanning() {
   const [routes, setRoutes] = useState<ResourceOption[]>([]);
   const [geofences, setGeofences] = useState<EventGeofence[]>([]);
   const [locations, setLocations] = useState<ResourceOption[]>([]);
+  // The selector needs id+label; the map needs coordinates, so the raw rows
+  // are kept alongside rather than re-fetched.
+  const [locationRecords, setLocationRecords] = useState<EventLocation[]>([]);
   const [operationalMessaging, setOperationalMessaging] = useState<EventOperationalMessaging | null>(null);
   const [routeIds, setRouteIds] = useState<string[]>([]);
   const [geofenceIds, setGeofenceIds] = useState<string[]>([]);
@@ -110,6 +116,7 @@ export function EventPlanning() {
   const [resourceFocus, setResourceFocus] = useState<ResourceKind>("routes");
   const [resourceSearch, setResourceSearch] = useState<Record<ResourceKind, string>>({ routes: "", geofences: "", locations: "" });
   const [resourceFocusRequest, setResourceFocusRequest] = useState(0);
+  const [scopeView, setScopeView] = useState<"list" | "map">("list");
   const [feedback, setFeedback] = useState<Record<FeedbackScope, Feedback | null>>({ event: null, period: null, lifecycle: null, resources: null });
   const setFeedbackFor = (scope: FeedbackScope, text: string, kind: Feedback["kind"] = "success") =>
     setFeedback((prev) => ({ ...prev, [scope]: { text, kind } }));
@@ -135,7 +142,9 @@ export function EventPlanning() {
       setPlans(planRows.plans);
       setRoutes(routeRows.routes.filter((row) => row.route_category === "SpecialEvent" && row.is_active).map((row) => ({ id: String(row.route_id), label: `Route ${row.route_id}${row.route_label ? ` · ${row.route_label}` : ""}` })));
       setGeofences(geofenceRows.geofences.filter((row: EventGeofence) => row.is_active));
-      setLocations(locationRows.locations.filter((row: EventLocation) => row.is_active).map((row: EventLocation) => ({ id: row.id, label: `${row.name} · ${row.category}` })));
+      const activeLocations = locationRows.locations.filter((row: EventLocation) => row.is_active);
+      setLocations(activeLocations.map((row: EventLocation) => ({ id: row.id, label: `${row.name} · ${row.category}` })));
+      setLocationRecords(activeLocations);
       setOperationalMessaging(messagingRow);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
@@ -185,12 +194,22 @@ export function EventPlanning() {
   const geofenceMissingDirectionRule = linkedGeofences.find((fence) => (fence.rules?.length ?? 0) === 0);
   const startAt = startDate && startTime ? `${startDate}T${startTime}` : "";
   const endAt = endDate && endTime ? `${endDate}T${endTime}` : "";
-  const readiness = [
-    { label: "Event selected", ready: Boolean(event) },
-    { label: "Operating dates are valid", ready: Boolean(startAt && endAt && new Date(startAt).getTime() < new Date(endAt).getTime()) },
-    { label: "Active SpecialEvent route linked", ready: counts.routes > 0 },
-    { label: "Geofence linked", ready: counts.geofences > 0 },
-    { label: "Route conflicts reviewed", ready: !plan?.route_conflict || Boolean(conflictOverrideReason.trim()) },
+  // `resource` and `focusId` let the Next action resolve a missing item to the
+  // control that fixes it, instead of scrolling the page and leaving the user
+  // to find it. `href` stays the escape hatch for the one item whose fix lives
+  // on another route (Event Administration).
+  const readiness: {
+    label: string;
+    ready: boolean;
+    resource?: ResourceKind;
+    focusId?: string;
+    href?: string;
+  }[] = [
+    { label: "Event selected", ready: Boolean(event), focusId: "event-select" },
+    { label: "Operating dates are valid", ready: Boolean(startAt && endAt && new Date(startAt).getTime() < new Date(endAt).getTime()), focusId: "event-plan-name" },
+    { label: "Active SpecialEvent route linked", ready: counts.routes > 0, resource: "routes" },
+    { label: "Geofence linked", ready: counts.geofences > 0, resource: "geofences" },
+    { label: "Route conflicts reviewed", ready: !plan?.route_conflict || Boolean(conflictOverrideReason.trim()), focusId: "event-conflict-override" },
     {
       label: "Messaging geofence configured",
       ready: messagingGeofences.length > 0,
@@ -270,6 +289,32 @@ export function EventPlanning() {
     } catch (err) { setFeedbackFor("period", err instanceof ApiError ? err.message : "Could not create Event Plan.", "error"); }
   }
 
+  // Recurring Events reuse their routes, geofences and locations almost
+  // unchanged; the dates are what actually differ each time. So the copy
+  // carries the scope and deliberately leaves the operating period unset -
+  // which lands the new draft on "Operating dates are valid" as its first
+  // outstanding readiness item, pointing straight at the thing that changed.
+  async function duplicatePlanWithScope() {
+    if (!plan) return;
+    const sourceLinks = plan.links ?? [];
+    try {
+      const created = await api.createEventServicePlan({ name: `${plan.name} (copy)`, event_id: plan.event_id });
+      const results = await Promise.allSettled(sourceLinks.map((link) => api.linkEventServicePlan(created.id, link.kind, link.value)));
+      const failed = results.filter((result) => result.status === "rejected").length;
+      selectServicePlan(created.id);
+      setFeedbackFor(
+        "period",
+        failed > 0
+          ? `Copied ${sourceLinks.length - failed} of ${sourceLinks.length} resources from ${plan.name}. Re-add the ${failed} that failed, then set the operating dates.`
+          : `Copied ${sourceLinks.length} resource${sourceLinks.length === 1 ? "" : "s"} from ${plan.name}. Set the operating dates for this run.`,
+        failed > 0 ? "error" : "success",
+      );
+      await load();
+    } catch (err) {
+      setFeedbackFor("period", err instanceof ApiError ? err.message : "Could not copy this Event Plan.", "error");
+    }
+  }
+
   async function savePlanDetails() {
     if (!plan || !periodReady) return;
     try { await api.updateEventServicePlan(plan.id, { name: planName.trim() || plan.name, start_at: toUtc(startAt), end_at: toUtc(endAt) }); setFeedbackFor("period", "Event Plan saved."); await load(); }
@@ -338,7 +383,6 @@ export function EventPlanning() {
     catch (err) { setFeedbackFor("lifecycle", err instanceof ApiError ? err.message : "Could not update revision.", "error"); }
   }
 
-  const nextAction = plan?.status === "draft" ? "submit-review" : plan?.status === "review" ? "approve" : plan?.status === "approved" ? "advance" : plan?.status === "active" ? "complete" : null;
   const activeStage = !selectedEventId || !plan
     ? "plan"
     : plan.status === "draft"
@@ -348,35 +392,69 @@ export function EventPlanning() {
         : plan.status === "approved"
         ? "activate"
         : "activate";
-  const nextPlanningAction = !selectedEventId
-    ? { title: "Select an Event", detail: "Choose the Event this Event Plan belongs to.", target: "event-select" }
-    : !plan
-      ? { title: "Create an Event Plan", detail: "Set the dates that define when this Event service will run.", target: "operating-period-name" }
-      : plan.status === "draft" && !readyToActivate
-        ? { title: `Complete activation checklist${readiness.find((item) => !item.ready) ? `: ${readiness.find((item) => !item.ready)?.label}` : ""}`, detail: "Add the missing operational resource or rule before submitting this period for review.", target: "scope-resources" }
-        : plan.status === "draft"
-          ? { title: "Submit for review", detail: "The operating scope is complete and ready for review.", target: "operating-period-lifecycle" }
-          : plan.status === "review"
-            ? { title: "Approve Event Plan", detail: "Review the completed scope, then approve it for activation.", target: "operating-period-lifecycle" }
-            : plan.status === "approved"
-              ? { title: "Activate for Event AVL", detail: "Publish this validated scope so Event AVL and geofence alerts can use it.", target: "operating-period-lifecycle" }
-              : plan.status === "active"
-                ? { title: "Open Event AVL", detail: "This Event Plan is active and ready for internal vehicle monitoring.", target: "event-avl-link" }
-                : { title: "Event Plan completed", detail: "This Event Plan is no longer active.", target: "operating-period-lifecycle" };
-  const focusNextPlanningAction = () => {
-    if (nextPlanningAction.target === "event-avl-link") return;
-    const targetId = nextPlanningAction.target === "operating-period-name" ? "event-plan-name" : nextPlanningAction.target === "operating-period-lifecycle" ? "event-plan-lifecycle" : nextPlanningAction.target;
-    const target = document.getElementById(targetId);
+  // The Next action used to scroll the page in every state, so its button - the
+  // most prominent control here - moved the viewport instead of advancing the
+  // work. Each state now carries what it actually does: `run` performs the
+  // lifecycle transition outright, `reveal` selects the control that fixes a
+  // missing readiness item, and `link` navigates. Nothing here is a bare
+  // scroll, and the lifecycle transition is no longer duplicated further down
+  // the page, so advancing an Event Plan never requires scrolling to find the
+  // same button twice.
+  const firstMissing = readiness.find((item) => !item.ready);
+  const revealControl = (id: string) => {
+    const target = document.getElementById(id);
     target?.scrollIntoView({ behavior: "smooth", block: "center" });
-    if (target instanceof HTMLElement && target.matches("input, select, button")) target.focus();
+    if (target instanceof HTMLElement) target.focus({ preventScroll: true });
   };
+  const revealMissingItem = () => {
+    if (!firstMissing) return;
+    if (firstMissing.resource) { focusResource(firstMissing.resource); return; }
+    if (firstMissing.focusId) revealControl(firstMissing.focusId);
+  };
+  type PlanningAction = {
+    title: string;
+    detail: string;
+    label: string;
+    run?: () => void;
+    link?: string;
+    disabled?: boolean;
+  };
+  const nextPlanningAction: PlanningAction = !selectedEventId
+    ? { title: "Select an Event", detail: "Choose the Event this Event Plan belongs to.", label: "Select an Event", run: () => revealControl("event-select") }
+    : !plan
+      ? { title: "Create an Event Plan", detail: "Set the dates that define when this Event service will run.", label: "Name this Event Plan", run: () => revealControl("event-plan-name") }
+      : plan.status === "draft" && !readyToActivate
+        ? { title: `Complete activation checklist${firstMissing ? `: ${firstMissing.label}` : ""}`, detail: firstMissing?.href ? "This item is configured in Event Administration; your Event Plan context travels with you." : "Jump straight to the control that resolves this item.", label: firstMissing?.resource ? `Add ${firstMissing.resource}` : "Resolve this item", run: firstMissing?.href ? undefined : revealMissingItem, link: firstMissing?.href }
+        : plan.status === "draft"
+          ? { title: "Submit Event Plan for review", detail: "The operating scope is complete and ready for review.", label: "Submit Event Plan for review", run: () => void transition("submit-review") }
+          : plan.status === "review"
+            ? { title: "Approve Event Plan", detail: "Review the completed scope, then approve it for activation.", label: "Approve Event Plan", run: () => void transition("approve") }
+            : plan.status === "approved"
+              ? { title: "Activate Event Plan", detail: readyToActivate ? "Publishes the selected routes, geofences, rules, and locations to internal Event AVL." : `Blocked until every readiness check passes${firstMissing ? `: ${firstMissing.label}` : ""}.`, label: "Activate Event Plan", run: () => void transition("advance"), disabled: !readyToActivate }
+              : plan.status === "active"
+                ? { title: "Monitor in Event AVL", detail: "This Event Plan is active and ready for internal vehicle monitoring.", label: "Open Event AVL", link: `/events/avl?event=${encodeURIComponent(selectedEventId)}${plan ? `&plan=${encodeURIComponent(plan.id)}` : ""}` }
+                : plan.status === "suspended"
+                  ? { title: "Event Plan suspended", detail: "Event AVL monitoring is paused for this Event Plan.", label: "Complete Event Plan", run: () => void transition("complete") }
+                  : { title: "Event Plan completed", detail: "This Event Plan is no longer active. Its scope and history remain available.", label: "Event Plan completed", disabled: true };
 
   return <div className="event-planning">
     <EventWorkspaceNav eventName={event?.name} planName={plan?.name} planStatus={plan ? displayStatus(plan.status) : undefined} activeStage={activeStage} />
     <p className="event-workspace-next" role="status">{plan?.status === "active" ? "This Event Plan is active. Monitor it in Event AVL." : selectedEventId ? "Define the Event Plan, add its resources, then activate it for Event AVL." : "Start by choosing an Event, then define its Event Plan."}</p>
     <div className="event-next-action" role="status" aria-label="Next planning action">
-      <div><span className="event-next-action-label">Next action</span><strong>{nextPlanningAction.title}</strong><p>{nextPlanningAction.detail}</p></div>
-      {nextPlanningAction.target === "event-avl-link" ? <Link id="event-avl-link" className="btn-primary" to={`/event-monitoring?event=${encodeURIComponent(selectedEventId)}${plan ? `&plan=${encodeURIComponent(plan.id)}` : ""}`}>Open Event AVL</Link> : <button className="btn-primary" onClick={focusNextPlanningAction}>{nextPlanningAction.title}</button>}
+      <div>
+        <span className="event-next-action-label">Next action</span>
+        <strong>{nextPlanningAction.title}</strong>
+        <p>{nextPlanningAction.detail}</p>
+        {/* Activation needs a conflict reason, so the field lives in the card
+            that activates - otherwise the one control standing between the
+            operator and a live scope is somewhere further down the page. */}
+        {plan?.status === "approved" && plan.route_conflict && <label className="event-conflict-override">Conflict override reason
+          <input id="event-conflict-override" className="f" value={conflictOverrideReason} onChange={(event) => setConflictOverrideReason(event.target.value)} placeholder="Explain why this route overlap is intentional" aria-label="Conflict override reason" />
+        </label>}
+      </div>
+      {nextPlanningAction.link
+        ? <Link id="event-avl-link" className="btn-primary" to={nextPlanningAction.link}>{nextPlanningAction.label}</Link>
+        : <button className="btn-primary" disabled={nextPlanningAction.disabled || !nextPlanningAction.run} onClick={nextPlanningAction.run}>{nextPlanningAction.label}</button>}
     </div>
     {loadError && <div className="event-inline-error" role="alert">
       <span>{loadError}{sessionExpired ? " Sign in again to continue." : ""}</span>
@@ -442,13 +520,35 @@ export function EventPlanning() {
       </>}
       {plan && <>
         <p className="muted">Current Event Plan: <strong>{plan.name}</strong> · {plan.start_at ? new Date(plan.start_at).toLocaleString() : "time not configured"} – {plan.end_at ? new Date(plan.end_at).toLocaleString() : "time not configured"}</p>
-        {editable && <div className="actions event-scope-actions"><button className="btn-sm" disabled={!periodReady} onClick={() => void savePlanDetails()}>Save draft</button></div>}
+        <div className="actions event-scope-actions">
+          {editable && <button className="btn-sm" disabled={!periodReady} onClick={() => void savePlanDetails()}>Save draft</button>}
+          <button className="btn-sm" onClick={() => void duplicatePlanWithScope()}>Copy to a new Event Plan</button>
+        </div>
       </>}
     </section>
     <section id="scope-resources" className="event-scope-column">
       <h3>Scope resources</h3>
       {!plan ? <p className="muted">Create or select an Event Plan to add routes, geofences, and transit locations.</p> : <>
         <p className="panel-desc">Each resource becomes a visible part of the Event AVL handoff. Select a resource type to add it to the scope.</p>
+        {/* Geofences and transit locations are places, so they can be chosen
+            on the map. Routes have no geometry in this system - special service
+            is absent from the GTFS schedule - so the list stays the way routes
+            are picked, and remains a complete alternative for everything. */}
+        <div className="event-scope-view-toggle" role="group" aria-label="Scope resource view">
+          <button className="btn-sm" aria-pressed={scopeView === "list"} onClick={() => setScopeView("list")}>List</button>
+          <button className="btn-sm" aria-pressed={scopeView === "map"} onClick={() => setScopeView("map")}>Map</button>
+        </div>
+        {scopeView === "map" && <Suspense fallback={<p className="event-scope-map-state">Loading the scope map…</p>}>
+          <EventScopeMap
+            geofences={geofences}
+            locations={locationRecords}
+            linkedGeofenceIds={links.filter((link) => link.kind === "geofences").map((link) => String(link.value))}
+            linkedLocationIds={links.filter((link) => link.kind === "locations").map((link) => String(link.value))}
+            onToggleGeofence={(fence, isLinked) => void (isLinked ? unlink("geofences", fence.id, fence.name) : linkMany("geofences", [fence.id]))}
+            onToggleLocation={(location, isLinked) => void (isLinked ? unlink("locations", location.id, location.name) : linkMany("locations", [location.id]))}
+            disabled={!editable && !revision}
+          />
+        </Suspense>}
         <div className="event-resource-canvas">
           <div className="event-resource-list">
             <div className={`event-resource-card ${resourceFocus === "routes" ? "selected" : ""}`}>
@@ -519,12 +619,18 @@ export function EventPlanning() {
         </ol>
         {plan.status === "suspended" && <p className="warn-note">Suspended — Event AVL monitoring is paused for this Event Plan.</p>}
         <FeedbackNote feedback={feedback.lifecycle} />
-        {nextAction === "advance" && plan.route_conflict && <label className="event-conflict-override">Conflict override reason<input className="f" value={conflictOverrideReason} onChange={(event) => setConflictOverrideReason(event.target.value)} placeholder="Explain why this route overlap is intentional" aria-label="Conflict override reason" /></label>}
-        {nextAction && <button className="btn-primary" disabled={nextAction === "advance" && !readyToActivate} onClick={() => void transition(nextAction)}>{nextAction === "submit-review" ? "Submit Event Plan for review" : nextAction === "approve" ? "Approve Event Plan" : nextAction === "advance" ? "Activate Event Plan" : "Complete Event Plan"}</button>}
+        {/* The primary transition lives in the Next action card at the top of
+            the page. Repeating it here was the second of two identical buttons
+            and the reason advancing a plan meant scrolling to the bottom. */}
+        <p className="muted event-lifecycle-pointer">Use <strong>{nextPlanningAction.label}</strong> in the Next action panel at the top of this page to advance this Event Plan.</p>
+        {/* Completion is not the "next" thing an operator does with a live
+            Event Plan - monitoring is - so it sits with the other deliberate
+            active-plan controls rather than in the Next action card. */}
         {plan.status === "active" && <div className="event-lifecycle-secondary">
           <span className="event-lifecycle-secondary-label">Active Event Plan controls:</span>
           <button className="btn-sm" onClick={() => void prepareRevision()}>Modify active scope</button>
           <button className="btn-sm danger" onClick={() => void transition("suspend")}>Suspend operations</button>
+          <button className="btn-sm" onClick={() => void transition("complete")}>Complete Event Plan</button>
         </div>}
         {plan.status === "approved" && <div className="event-lifecycle-secondary">
           <span className="event-lifecycle-secondary-label">Need to correct the approved scope?</span>

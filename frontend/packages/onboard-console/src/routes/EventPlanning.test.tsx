@@ -51,7 +51,7 @@ function makePlan(overrides: Partial<EventServicePlan> = {}): EventServicePlan {
 }
 
 function makeGeofence(overrides: Partial<EventGeofence> = {}): EventGeofence {
-  return { id: "geo1", name: "Fairgrounds Gate", polygon: "", is_active: true, updated_by: null, updated_at: "2026-01-01T00:00:00.000Z", rules: [], ...overrides };
+  return { id: "geo1", name: "Fairgrounds Gate", polygon: "", purpose: "other", is_active: true, updated_by: null, updated_at: "2026-01-01T00:00:00.000Z", rules: [], ...overrides };
 }
 
 type Mocks = {
@@ -492,6 +492,89 @@ describe("EventPlanning", () => {
       expect(workspace.querySelector("#planned-operating-resources")!.compareDocumentPosition(workspace.querySelector("#event-plan-lifecycle")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       expect(screen.getByText("Scope resources")).toBeInTheDocument();
       expect(screen.getByText("Activation readiness")).toBeInTheDocument();
+    });
+  });
+
+  describe("map-based scope selection", () => {
+    it("offers a map view alongside the list and defaults to the list", async () => {
+      mockApiData({ events: [makeEvent()], plans: [makePlan()] });
+      renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
+      const list = await screen.findByRole("button", { name: "List" });
+      const map = screen.getByRole("button", { name: "Map" });
+      // The list stays a complete alternative: routes have no geometry, so
+      // they can only ever be picked from it.
+      expect(list).toHaveAttribute("aria-pressed", "true");
+      expect(map).toHaveAttribute("aria-pressed", "false");
+      expect(screen.getByRole("button", { name: "Manage routes" })).toBeInTheDocument();
+    });
+  });
+
+  describe("recurring Event Plans", () => {
+    it("copies the scope to a new draft and leaves the dates to be set", async () => {
+      mockApiData({
+        events: [makeEvent()],
+        plans: [makePlan({ status: "active", links: [
+          { kind: "routes", service_plan_id: "plan1", value: 12, label: "Route 12" },
+          { kind: "geofences", service_plan_id: "plan1", value: "geo1", label: "Gate" },
+          { kind: "locations", service_plan_id: "plan1", value: "loc1", label: "Lot A" },
+        ] })],
+      });
+      vi.mocked(api.createEventServicePlan).mockResolvedValue(makePlan({ id: "plan2", name: "State Fair Week 1 (copy)", status: "draft", start_at: null, end_at: null, links: [] }));
+      renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
+
+      await userEvent.click(await screen.findByRole("button", { name: "Copy to a new Event Plan" }));
+
+      // The scope carries over; the operating period deliberately does not,
+      // because the dates are the part that changes every run.
+      expect(api.createEventServicePlan).toHaveBeenCalledWith({ name: "State Fair Week 1 (copy)", event_id: "evt1" });
+      expect(api.linkEventServicePlan).toHaveBeenCalledWith("plan2", "routes", 12);
+      expect(api.linkEventServicePlan).toHaveBeenCalledWith("plan2", "geofences", "geo1");
+      expect(api.linkEventServicePlan).toHaveBeenCalledWith("plan2", "locations", "loc1");
+      expect(await screen.findByText(/Copied 3 resources/)).toBeInTheDocument();
+    });
+  });
+
+  describe("next action performs the work", () => {
+    it("submits for review from the next-action panel without a second button", async () => {
+      vi.mocked(window.confirm).mockReturnValue(true);
+      mockApiData({
+        events: [makeEvent()],
+        plans: [makePlan({ status: "draft", links: [
+          { kind: "routes", service_plan_id: "plan1", value: 12, label: "Route 12" },
+          { kind: "geofences", service_plan_id: "plan1", value: "geo1", label: "Gate" },
+        ] })],
+        geofences: [makeGeofence({ rules: [{ id: "rule1", geofence_id: "geo1", transition: "enter", heading_min: 0, heading_max: 360, destination_label: "Gate", destination_location_id: null, message_type: "custom", send_mode: "auto", sort_order: 1 }] })],
+      });
+      renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
+      const submit = await screen.findByRole("button", { name: "Submit Event Plan for review" });
+      // The lifecycle panel used to repeat this control, which is why
+      // advancing a plan meant scrolling to the bottom of the page.
+      expect(screen.getAllByRole("button", { name: "Submit Event Plan for review" })).toHaveLength(1);
+      expect(submit.closest(".event-next-action")).not.toBeNull();
+      await userEvent.click(submit);
+      expect(api.transitionEventServicePlan).toHaveBeenCalledWith("plan1", "submit-review", undefined);
+    });
+
+    it("sends an incomplete draft to the resource that resolves the missing item", async () => {
+      mockApiData({
+        events: [makeEvent()],
+        plans: [makePlan({ status: "draft" })],
+        routes: [{ route_id: 12, route_category: "SpecialEvent", is_active: true, route_label: "Fair Express" }],
+      });
+      renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
+      const resolve = await screen.findByRole("button", { name: "Add routes" });
+      await userEvent.click(resolve);
+      // Selecting the routes tab is the action; previously this button only
+      // scrolled and left the user to pick the right resource themselves.
+      expect(screen.getByRole("button", { name: "Manage routes" })).toHaveAttribute("aria-pressed", "true");
+    });
+
+    it("offers monitoring, not completion, as the next action for an active plan", async () => {
+      mockApiData({ events: [makeEvent()], plans: [makePlan({ status: "active" })] });
+      renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
+      const monitor = await screen.findByRole("link", { name: "Open Event AVL" });
+      expect(monitor).toHaveAttribute("href", expect.stringContaining("/events/avl"));
+      expect(monitor.closest(".event-next-action")).not.toBeNull();
     });
   });
 

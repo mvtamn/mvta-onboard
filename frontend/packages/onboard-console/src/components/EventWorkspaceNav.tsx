@@ -10,11 +10,16 @@ interface Props {
   showReturnToPlanning?: boolean;
 }
 
+// Event Planning is one page, so Plan, Review and Activate are not places you
+// can navigate to - they describe where the Event Plan has got to. Rendering
+// them as links pointed all three at the same `/events/planning`, so choosing
+// "Review" reloaded the page you were already on and appeared broken. Only
+// Configure names a genuinely different route.
 const stages = [
-  { id: "plan", label: "Plan", description: "Event and Event Plan", href: "/events/planning" },
+  { id: "plan", label: "Plan", description: "Event and Event Plan", href: undefined },
   { id: "configure", label: "Configure", description: "Reusable resources", href: "/admin/events" },
-  { id: "review", label: "Review", description: "Readiness and evidence", href: "/events/planning" },
-  { id: "activate", label: "Activate", description: "Publish internal scope", href: "/events/planning" },
+  { id: "review", label: "Review", description: "Readiness and evidence", href: undefined },
+  { id: "activate", label: "Activate", description: "Publish internal scope", href: undefined },
 ] as const;
 
 export function EventWorkspaceNav({ eventName, planName, planStatus, activeStage = "plan", showReturnToPlanning = false }: Props) {
@@ -44,12 +49,14 @@ export function EventWorkspaceNav({ eventName, planName, planStatus, activeStage
         {stages.map((stage, index) => {
           const isActive = stage.id === activeStage;
           const isComplete = index < stages.findIndex((item) => item.id === activeStage);
-          const stageSuffix = `${stage.href}${suffix}${stage.id === "configure" ? "#event-configuration" : ""}`;
+          const body = <>
+            <span className="event-workspace-stage-marker">{isComplete ? "✓" : index + 1}</span>
+            <span><strong>{stage.label}</strong><small>{stage.description}</small></span>
+          </>;
           return <li key={stage.id} ref={isActive ? activeRef : undefined} className={isActive ? "is-active" : isComplete ? "is-complete" : undefined}>
-            <NavLink to={stageSuffix} aria-current={isActive ? "step" : undefined}>
-              <span className="event-workspace-stage-marker">{isComplete ? "✓" : index + 1}</span>
-              <span><strong>{stage.label}</strong><small>{stage.description}</small></span>
-            </NavLink>
+            {stage.href
+              ? <NavLink to={`${stage.href}${suffix}#event-configuration`} aria-current={isActive ? "step" : undefined}>{body}</NavLink>
+              : <span className="event-workspace-stage-status" aria-current={isActive ? "step" : undefined}>{body}</span>}
           </li>;
         })}
       </ol>

@@ -190,6 +190,17 @@
 .evmon-investigative-rail summary span { float: right; color: var(--text-muted); }
 .evmon-investigative-rail .evmon-table-wrap { margin: 0 8px 8px; padding: 7px; border: 0; }
 .evmon-investigative-rail p { margin: 0 0 7px; color: var(--text-muted); font-size: 11px; line-height: 1.35; }
+
+/* Rail entries: timestamp, label, detail as a readable stack rather than one
+   run-together muted sentence. */
+.evmon-rail-body { max-height: 220px; overflow-y: auto; margin: 0 8px 8px; padding: 2px; }
+.evmon-rail-entry { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; padding: 7px 0; border-bottom: 1px solid var(--border-soft); }
+.evmon-rail-entry:last-child { border-bottom: 0; }
+.evmon-rail-when { color: var(--text-muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+.evmon-rail-entry strong { min-width: 0; color: var(--text); font-size: 11px; overflow-wrap: anywhere; }
+.evmon-rail-detail { grid-column: 1 / -1; color: var(--text-muted); font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.evmon-rail-empty { margin: 0; padding: 4px 0; color: var(--text-muted); font-size: 11px; }
+.evmon-rail-toggle { display: flex; align-items: center; gap: 6px; color: var(--text); font-size: 11px; }
 .evmon-drawer-backdrop { position: fixed; inset: 0; z-index: 20; display: flex; justify-content: flex-end; background: rgba(0,0,0,.35); }
 .evmon-drawer { width: min(480px, 100%); height: 100%; overflow: auto; padding: 16px; background: var(--surface-bg); box-shadow: -5px 0 20px rgba(0,0,0,.2); }
 .evmon-drawer-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; color: var(--text); }
