@@ -5,6 +5,13 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.52] - 2026-08-18
+
+- **The scope map now shows that it is a control, not a picture.** Hovering a boundary or point changes the cursor and opens a popup naming the resource and what selecting it will do - add it, remove it, or that the Event Plan is read-only at its current status. Previously nothing distinguished a clickable boundary from a drawn one.
+- **The scope map opens on the scope.** It used a fixed centre and zoom, so geometry outside that view rendered as an apparently empty map; it now fits once to the boundaries and points it has, and gained a zoom control.
+- **An Event Plan with no authored geometry explains itself.** A console with no geofences or transit locations rendered a blank basemap that reads as broken. It now states that boundaries are drawn in Event Administration and links there.
+- **The list is named as the equivalent path.** The map is pointer-driven, so its help text now states that the list view does the same thing without one.
+
 ## [1.5.51] - 2026-08-18
 
 - **The Event Plan scope map reports a failed map instead of hanging.** Fetching the Azure Maps token can succeed while the map itself still fails to authenticate or initialise, and the panel sat on "Loading the scope map…" indefinitely - which reads as a hang rather than a failure. Confirmed against a running console; it now surfaces the failure as an alert.

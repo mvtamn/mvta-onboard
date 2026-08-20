@@ -20,6 +20,14 @@ describe("scopeMapFeatures", () => {
   });
 });
 
+describe("scopeMapFeatures with nothing authored", () => {
+  it("produces no features when no boundaries or points exist", () => {
+    // Dev environments can have zero authored geofences; the map surface uses
+    // this to show an explanation instead of a blank basemap.
+    expect(scopeMapFeatures([], [], [], [])).toEqual([]);
+  });
+});
+
 describe("resolveScopeMapClick", () => {
   const fences = [fence("g1", "Gate")];
   const locations = [location("l1", "Depot")];

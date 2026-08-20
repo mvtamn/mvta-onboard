@@ -366,6 +366,14 @@ body {
 .event-scope-swatch { width: 13px; height: 13px; border-radius: 3px; }
 .event-scope-swatch.is-linked { border: 2px solid #00553d; background: rgba(0, 85, 61, .22); }
 .event-scope-swatch.is-available { border: 1px dashed #8a8a86; background: rgba(138, 138, 134, .12); }
+.event-scope-map-canvas { position: relative; }
+.event-scope-map-empty { display: grid; justify-items: start; gap: 8px; padding: 22px; border: 1px dashed var(--border-strong); border-radius: 10px; background: var(--surface-bg); }
+.event-scope-map-empty strong { color: var(--text); font-size: 13px; }
+.event-scope-map-empty p { max-width: 52ch; margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.45; }
+.event-scope-map-popup { padding: 7px 9px; }
+.event-scope-map-popup strong { display: block; color: #173d31; font-size: 12px; }
+.event-scope-map-popup span { display: block; margin-top: 2px; color: #4d5f57; font-size: 11px; }
+
 @media (max-width: 768px) { .event-scope-map-canvas { height: 260px; } }
 .event-geofence-roles { display: grid; gap: 8px; }
 .event-geofence-roles > div { display: grid; gap: 10px; grid-template-columns: minmax(130px, .3fr) 1fr; }

@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import * as atlas from "azure-maps-control";
 import "azure-maps-control/dist/atlas.min.css";
 import { ApiError, type EventGeofence, type EventLocation } from "@mvta/shared";
 import { api } from "../../config.js";
 import { removeMapLayersIfPresent } from "./mapLayerCleanup.js";
 import { resolveScopeMapClick, scopeMapFeatures } from "./eventScopeMapFeatures.js";
+import { escapeHtml } from "./eventVehicleFormat.js";
 
 const MAP_CENTER: atlas.data.Position = [-93.25, 44.83];
 const MAP_ZOOM = 10;
@@ -38,6 +40,8 @@ export function EventScopeMap({ geofences, locations, linkedGeofenceIds, linkedL
   const mapRef = useRef<atlas.Map | null>(null);
   const sourceRef = useRef<atlas.source.DataSource | null>(null);
   const layersRef = useRef<atlas.layer.Layer[]>([]);
+  const popupRef = useRef<atlas.Popup | null>(null);
+  const fittedRef = useRef(false);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,6 +67,8 @@ export function EventScopeMap({ geofences, locations, linkedGeofenceIds, linkedL
         },
       });
       mapRef.current = map;
+      popupRef.current = new atlas.Popup({ pixelOffset: [0, -18], closeButton: false });
+      map.controls.add(new atlas.control.ZoomControl(), { position: atlas.ControlPosition.TopRight });
       map.events.addOnce("ready", () => !cancelled && setReady(true));
       // Fetching the token can succeed while the map itself still fails to
       // authenticate or initialise. Without this the panel sat on "Loading the
@@ -72,7 +78,7 @@ export function EventScopeMap({ geofences, locations, linkedGeofenceIds, linkedL
         if (!cancelled) setError("The map could not be initialised. Check that your session grants access to Azure Maps, then try again.");
       });
     }).catch((err) => setError(err instanceof ApiError ? `Could not load the map: ${err.message}` : "Could not reach the map service."));
-    return () => { cancelled = true; map?.dispose(); mapRef.current = null; };
+    return () => { cancelled = true; popupRef.current?.close(); popupRef.current = null; map?.dispose(); mapRef.current = null; };
   }, []);
 
   useEffect(() => {
@@ -153,11 +159,63 @@ export function EventScopeMap({ geofences, locations, linkedGeofenceIds, linkedL
       const location = current.locations.find((row) => row.id === resolved.id);
       if (location) current.onToggleLocation(location, isLinked);
     };
-    map.events.add("click", inScopeFill, onClick);
-    map.events.add("click", availableFill, onClick);
-    map.events.add("click", linkedPointLayer, onClick);
-    map.events.add("click", availablePointLayer, onClick);
+    const clickable = [inScopeFill, availableFill, linkedPointLayer, availablePointLayer];
+    clickable.forEach((layer) => map.events.add("click", layer, onClick));
+
+    // Without these a boundary looks like a picture: nothing signals that the
+    // shapes are the control. The cursor marks them as targets and the popup
+    // names both the resource and what a click will do, so the action is
+    // legible before it is taken rather than only in the feedback afterwards.
+    const canvas = map.getCanvasContainer();
+    clickable.forEach((layer) => {
+      map.events.add("mousemove", layer, (event: atlas.MapMouseEvent) => {
+        const shape = event.shapes?.[0];
+        if (!shape) return;
+        const properties = ("getProperties" in shape ? shape.getProperties() : {}) as { name?: string; linked?: boolean };
+        canvas.style.cursor = handlersRef.current.disabled ? "not-allowed" : "pointer";
+        if (!popupRef.current || !event.position) return;
+        const verb = handlersRef.current.disabled
+          ? "Read-only at this status"
+          : properties.linked ? "Select to remove from this Event Plan" : "Select to add to this Event Plan";
+        popupRef.current.setOptions({
+          position: event.position,
+          content: `<div class="event-scope-map-popup"><strong>${escapeHtml(properties.name ?? "Resource")}</strong><span>${verb}</span></div>`,
+        });
+        popupRef.current.open(map);
+      });
+      map.events.add("mouseleave", layer, () => {
+        canvas.style.cursor = "";
+        popupRef.current?.close();
+      });
+    });
+
+    // A fixed centre showed an empty map whenever the geometry sat elsewhere.
+    // Fit once, so the first view is the scope rather than a default region.
+    if (!fittedRef.current) {
+      const positions = source.getShapes().flatMap((shape) => {
+        const geometry = shape.toJson().geometry as { type: string; coordinates: unknown };
+        if (geometry.type === "Polygon") return (geometry.coordinates as atlas.data.Position[][])[0] ?? [];
+        if (geometry.type === "Point") return [geometry.coordinates as atlas.data.Position];
+        return [];
+      });
+      if (positions.length > 0) {
+        map.setCamera({ bounds: atlas.data.BoundingBox.fromPositions(positions), padding: 60, maxZoom: 14 });
+        fittedRef.current = true;
+      }
+    }
   }, [geofences, locations, linkedGeofenceIds, linkedLocationIds, ready]);
+
+  // Nothing to draw is a real state, not an error: a console with no authored
+  // boundaries renders a blank basemap that reads as broken. Say so, and point
+  // at the surface that fixes it, rather than showing an empty world map.
+  const hasGeometry = geofences.length > 0 || locations.length > 0;
+  if (!hasGeometry) {
+    return <div className="event-scope-map event-scope-map-empty">
+      <strong>No geofences or transit locations exist yet</strong>
+      <p>Boundaries and points are drawn in Event Administration. Once they exist they can be added to this Event Plan here, or from the list.</p>
+      <Link className="btn-sm" to="/admin/events#event-configuration">Open Event Administration</Link>
+    </div>;
+  }
 
   return <div className="event-scope-map">
     <div className="event-scope-map-canvas" ref={containerRef} role="application" aria-label="Event Plan scope map" />
@@ -166,7 +224,7 @@ export function EventScopeMap({ geofences, locations, linkedGeofenceIds, linkedL
     <p className="event-scope-map-legend">
       <span><i className="event-scope-swatch is-linked" /> In this Event Plan</span>
       <span><i className="event-scope-swatch is-available" /> Available to add</span>
-      <span className="muted">{disabled ? "This Event Plan is read-only at its current status." : "Select a boundary or point on the map to add or remove it."}</span>
+      <span className="muted">{disabled ? "This Event Plan is read-only at its current status." : "Select a boundary or point to add or remove it. The list view does the same without a pointer."}</span>
     </p>
   </div>;
 }
