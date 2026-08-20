@@ -64,6 +64,13 @@ export function EventScopeMap({ geofences, locations, linkedGeofenceIds, linkedL
       });
       mapRef.current = map;
       map.events.addOnce("ready", () => !cancelled && setReady(true));
+      // Fetching the token can succeed while the map itself still fails to
+      // authenticate or initialise. Without this the panel sat on "Loading the
+      // scope map..." indefinitely, which reads as a hang rather than a
+      // failure - confirmed against a running console.
+      map.events.add("error", () => {
+        if (!cancelled) setError("The map could not be initialised. Check that your session grants access to Azure Maps, then try again.");
+      });
     }).catch((err) => setError(err instanceof ApiError ? `Could not load the map: ${err.message}` : "Could not reach the map service."));
     return () => { cancelled = true; map?.dispose(); mapRef.current = null; };
   }, []);

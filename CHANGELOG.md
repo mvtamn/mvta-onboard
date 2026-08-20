@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.51] - 2026-08-18
+
+- **The Event Plan scope map reports a failed map instead of hanging.** Fetching the Azure Maps token can succeed while the map itself still fails to authenticate or initialise, and the panel sat on "Loading the scope map…" indefinitely - which reads as a hang rather than a failure. Confirmed against a running console; it now surfaces the failure as an alert.
+
 ## [1.5.50] - 2026-08-18
 
 - **Choose an Event Plan's geographic scope on a map.** Geofences and transit locations can now be added and removed by selecting them on a map beside the list, with in-scope boundaries filled and available ones dashed. Routes stay list-only - special service is absent from the GTFS schedule, so routes have no geometry to draw - and the list remains a complete alternative for every resource type.
