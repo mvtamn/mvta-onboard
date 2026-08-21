@@ -20,8 +20,8 @@ import {
   type GtfsRtTripUpdateEntity,
 } from "../lib/gtfsTripUpdates";
 import { agencyServiceDate } from "../lib/missedTripTime";
+import { DEPARTURE_RISK_THRESHOLD_SECONDS } from "../lib/tripDelayRisk";
 
-const DELAY_THRESHOLD_SECONDS = 15 * 60;
 const ESCALATION_POLL_COUNT = 2;
 const STALE_AFTER_MINUTES = 15;
 
@@ -103,7 +103,7 @@ async function upsertDelay(pool: sql.ConnectionPool, delay: MappedTripDelay): Pr
         prediction_confidence = @prediction_confidence,
         prediction_reasons = @prediction_reasons,
         prediction_updated_at = SYSUTCDATETIME(),
-        polls_over_threshold = CASE WHEN @predicted_max_departure_delay_seconds > ${DELAY_THRESHOLD_SECONDS} THEN target.polls_over_threshold + 1 ELSE 0 END,
+        polls_over_threshold = CASE WHEN @predicted_max_departure_delay_seconds > ${DEPARTURE_RISK_THRESHOLD_SECONDS} THEN target.polls_over_threshold + 1 ELSE 0 END,
         last_polled_at = SYSUTCDATETIME()
     WHEN NOT MATCHED THEN
       INSERT (
@@ -118,7 +118,7 @@ async function upsertDelay(pool: sql.ConnectionPool, delay: MappedTripDelay): Pr
         @predicted_max_departure_delay_seconds, @first_threshold_stop_id,
         @first_threshold_departure_at, @departure_predictions,
         @prediction_confidence, @prediction_reasons, SYSUTCDATETIME(),
-        CASE WHEN @predicted_max_departure_delay_seconds > ${DELAY_THRESHOLD_SECONDS} THEN 1 ELSE 0 END,
+        CASE WHEN @predicted_max_departure_delay_seconds > ${DEPARTURE_RISK_THRESHOLD_SECONDS} THEN 1 ELSE 0 END,
         SYSUTCDATETIME(), SYSUTCDATETIME()
       )
     OUTPUT INSERTED.polls_over_threshold, INSERTED.suggested_alert_id;

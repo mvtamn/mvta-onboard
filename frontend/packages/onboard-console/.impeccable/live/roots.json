@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "appRoot": "/Users/tyrefant/AI Projects/MVTA Onboard/frontend/packages/onboard-console",
+  "repoRoot": "/Users/tyrefant/AI Projects/MVTA Onboard",
+  "contextRoot": "/Users/tyrefant/AI Projects/MVTA Onboard/frontend/packages/onboard-console",
+  "sessionRoot": "/Users/tyrefant/AI Projects/MVTA Onboard/frontend/packages/onboard-console/.impeccable/live",
+  "productPath": "/Users/tyrefant/AI Projects/MVTA Onboard/frontend/packages/onboard-console/PRODUCT.md",
+  "designPath": "/Users/tyrefant/AI Projects/MVTA Onboard/DESIGN.md",
+  "resolvedFrom": "target:frontend/packages/onboard-console/src/routes/Detours.tsx"
+}

@@ -589,7 +589,7 @@ export interface DetourCommunication {
 export interface DetourHistoricalImportResult { import_batch_id: string; imported_rows: number; historical_only: true; }
 
 export const DETOUR_LIFECYCLE_LABELS: Record<DetourLifecycleState, string> = {
-  approved: "Approved",
+  approved: "Needs OCC review",
   awaiting_fulfillment: "Awaiting fulfillment",
   fulfilled: "Fulfilled",
   fulfillment_failed: "Fulfillment failed",
@@ -686,6 +686,9 @@ export interface Detour extends DetourReportFields {
   avail_entry_confirmed_at?: string | null;
   readiness?: DetourReadiness;
   communication_status?: "published" | "draft" | "needs_communication" | "not_available";
+  workflow_label?: string;
+  next_action?: string;
+  next_owner?: string;
   communications_published?: number;
   communications_draft?: number;
   review_status?: "current" | "needs_review";
@@ -715,7 +718,7 @@ export interface CreateDetourInput extends DetourReportFields {
   lifecycle_state?: DetourLifecycleState;
 }
 
-export type DetourIntakeStatus = "pending_review" | "needs_information" | "accepted" | "rejected" | "duplicate" | "withdrawn";
+export type DetourIntakeStatus = "draft" | "pending_review" | "needs_information" | "accepted" | "rejected" | "duplicate" | "withdrawn";
 export interface DetourIntake {
   id: string;
   detection_source: string;
@@ -739,6 +742,7 @@ export interface DetourIntake {
   notification_channels?: string[];
   evidence_notes?: string | null;
   evidence_reference?: string | null;
+  notes?: string | null;
   created_by: string;
   created_at: string;
   updated_by: string | null;
@@ -746,6 +750,7 @@ export interface DetourIntake {
 }
 
 export interface CreateDetourIntakeInput {
+  status?: "draft" | "pending_review";
   detection_source: string;
   description: string;
   location?: string | null;
@@ -760,6 +765,7 @@ export interface CreateDetourIntakeInput {
   notification_channels: string[];
   evidence_notes?: string | null;
   evidence_reference?: string | null;
+  notes?: string | null;
 }
 
 export type UpdateDetourInput = Partial<CreateDetourInput>;
@@ -767,9 +773,10 @@ export type UpdateDetourInput = Partial<CreateDetourInput>;
 // Detour image attachments - Part B3 of detour-and-event-module-
 // implementation-plan.md. Images never pass through the API directly -
 // upload/read both go through short-lived SAS URLs.
-export interface DetourImage {
+export interface DetourAttachment {
   id: string;
-  detour_id: string;
+  detour_id: string | null;
+  intake_id?: string | null;
   blob_path: string;
   file_name: string;
   content_type: string | null;
@@ -779,7 +786,21 @@ export interface DetourImage {
   uploaded_by: string;
   uploaded_at: string;
   read_url: string | null;
+  availability_state: "quarantined" | "scanning" | "available" | "rejected" | "failed" | "purged";
+  content_sha256?: string | null;
+  scan_completed_at?: string | null;
+  scan_error?: string | null;
+  retention_purge_at?: string | null;
+  version_of?: string | null;
+  removed_at?: string | null;
+  report_shared?: boolean;
+  shared_by?: string | null;
+  shared_at?: string | null;
+  share_reason?: string | null;
 }
+
+/** Compatibility name for existing Detours image consumers. */
+export type DetourImage = DetourAttachment;
 
 export type DetourWorkflowHistoryEventType =
   | "created"

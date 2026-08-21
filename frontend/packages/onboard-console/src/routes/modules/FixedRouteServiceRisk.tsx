@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ApiError,
+  isDepartureAtRisk,
   type PrepareSuggestedAlertInput,
   type TripDelay,
   type TripDelayDiagnostics,
@@ -39,9 +40,10 @@ function timeLabel(value: string | null): string {
 
 function fromTripDelay(delay: TripDelay): FixedRouteRisk {
   const currentMinutes = Math.round(delay.delay_seconds / 60);
-  const predictedSeconds =
-    delay.predicted_max_departure_delay_seconds ?? delay.delay_seconds;
-  const predictedMinutes = Math.round(predictedSeconds / 60);
+  const predictedSeconds = delay.predicted_max_departure_delay_seconds;
+  const predictedMinutes = predictedSeconds === null
+    ? null
+    : Math.round(predictedSeconds / 60);
   const thresholdAt = delay.first_threshold_departure_at
     ? new Date(delay.first_threshold_departure_at)
     : null;
@@ -50,7 +52,9 @@ function fromTripDelay(delay: TripDelay): FixedRouteRisk {
       ? Math.max(0, Math.round((thresholdAt.getTime() - Date.now()) / 60_000))
       : null;
   const trend: RiskTrend =
-    predictedSeconds > delay.delay_seconds + 120
+    predictedSeconds === null
+      ? "Stable"
+      : predictedSeconds > delay.delay_seconds + 120
       ? "Worsening"
       : predictedSeconds < delay.delay_seconds - 120
         ? "Recovering"
@@ -319,15 +323,7 @@ export function FixedRouteServiceRisk() {
 
   useEffect(() => {
     if (snapshot) {
-      const mapped = snapshot.delays
-        .map(fromTripDelay)
-        .filter(
-          (risk) =>
-            risk.predictedMaxMinutes === null ||
-            risk.predictedMaxMinutes > 15 ||
-            risk.currentDelayMinutes === null ||
-            risk.currentDelayMinutes > 15,
-        );
+      const mapped = snapshot.delays.filter(isDepartureAtRisk).map(fromTripDelay);
       setLiveRisks(mapped);
       setDiagnostics(snapshot.diagnostics);
       setDataMode("live");
@@ -388,10 +384,16 @@ export function FixedRouteServiceRisk() {
     );
   }
 
-  const predicted = risks.filter((risk) => (risk.predictedMaxMinutes ?? 0) > 15).length;
-  const missing = risks.filter((risk) => risk.predictedMaxMinutes === null).length;
-  const worsening = risks.filter((risk) => risk.trend === "Worsening").length;
-  const routesAffected = new Set(risks.map((risk) => risk.route)).size;
+  const allLiveRisks = snapshot?.delays.map(fromTripDelay) ?? [];
+  const statRisks = dataMode === "live" ? allLiveRisks : risks;
+  const predicted = dataMode === "live"
+    ? snapshot?.delays.filter(isDepartureAtRisk).length ?? 0
+    : statRisks.filter((risk) => (risk.predictedMaxMinutes ?? 0) > 15).length;
+  const missing = dataMode === "live"
+    ? snapshot?.delays.filter((delay) => delay.predicted_max_departure_delay_seconds === null).length ?? 0
+    : statRisks.filter((risk) => risk.predictedMaxMinutes === null).length;
+  const worsening = statRisks.filter((risk) => risk.trend === "Worsening").length;
+  const routesAffected = new Set(statRisks.map((risk) => risk.route)).size;
 
   return (
     <div className="risk-module">

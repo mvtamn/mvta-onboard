@@ -7,6 +7,7 @@
 // running late" - not an aggregate across the whole remaining trip.
 import type { GtfsRtFeedMessage } from "./gtfsRealtime";
 import type { Severity } from "./types";
+import { DEPARTURE_RISK_THRESHOLD_SECONDS } from "./tripDelayRisk";
 
 export interface GtfsRtStopTimeEvent {
   Delay: number;
@@ -78,8 +79,6 @@ export interface DeparturePrediction {
   departure_delay_seconds: number;
   predicted_departure_at: string | null;
 }
-
-const DEPARTURE_RISK_THRESHOLD_SECONDS = 15 * 60;
 
 // GTFS-RT TripDescriptor.ScheduleRelationship enum (spec-fixed values, not
 // agency-specific): 0=SCHEDULED, 1=ADDED, 2=UNSCHEDULED, 3=CANCELED.
@@ -182,4 +181,3 @@ export function buildDepartureRiskDraftText(
   const stopPhrase = stopName ? ` beginning at ${stopName}` : "";
   return `Route ${routeId} is predicted to depart up to ${delayMinutes} minutes late${stopPhrase}.`;
 }
-

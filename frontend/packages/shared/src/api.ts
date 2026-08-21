@@ -64,6 +64,7 @@ import type {
   OtpHistoricalBackfillInput,
   OtpHistoricalBackfillResponse,
   MapsTokenResponse,
+  DetourAttachment,
   DetourImage,
   DetourIntake,
   CreateDetourIntakeInput,
@@ -594,9 +595,59 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<{ images: DetourImage[] }>(`/api/detours/${detourId}/images`, {}, true);
     },
 
+    getDetourAttachments(owner: { intake_id?: string; detour_id?: string }, options?: { include_private?: boolean }) {
+      const query = new URLSearchParams({ ...owner, ...(options?.include_private ? { include_private: "1" } : {}) }).toString();
+      return request<{ attachments: DetourAttachment[] }>(`/api/detour-attachments?${query}`, {}, true);
+    },
+
+    getDetourAttachmentReadiness() {
+      return request<{ configured: boolean }>("/api/detour-attachments/readiness", {}, true);
+    },
+
+    getDetourAttachmentUploadUrl(owner: { intake_id?: string; detour_id?: string }, file: { file_name: string; content_type: string; size_bytes: number }, options?: { attachment_id?: string; version_of?: string }) {
+      return request<{ attachment_id: string; upload_url: string; blob_path: string; availability_state: string }>(
+        "/api/detour-attachments/upload-url",
+        { method: "POST", body: JSON.stringify({ ...owner, ...file, ...options }) },
+        true,
+      );
+    },
+
+    createDetourAttachment(input: { intake_id?: string; detour_id?: string; attachment_id?: string; version_of?: string; blob_path: string; file_name: string; content_type: string; size_bytes: number; content_sha256?: string }) {
+      return request<DetourAttachment>(
+        "/api/detour-attachments",
+        { method: "POST", body: JSON.stringify(input) },
+        true,
+      );
+    },
+
+    removeDetourAttachment(id: string) {
+      return request<void>(`/api/detour-attachments/${id}`, { method: "DELETE" }, true);
+    },
+
+    shareDetourAttachment(id: string, reason: string) {
+      return request<{ id: string; report_shared: boolean }>(`/api/detour-attachments/${id}/share`, { method: "POST", body: JSON.stringify({ reason }) }, true);
+    },
+
+    unshareDetourAttachment(id: string, reason: string) {
+      return request<{ id: string; report_shared: boolean }>(`/api/detour-attachments/${id}/unshare`, { method: "POST", body: JSON.stringify({ reason }) }, true);
+    },
+
     getDetourIntake(status?: string) {
       const suffix = status ? `?status=${encodeURIComponent(status)}` : "";
       return request<{ intake: DetourIntake[] }>(`/api/detour-intake${suffix}`, {}, true);
+    },
+
+    getDetourIntakeOptions(type?: string) {
+      const suffix = type ? `?type=${encodeURIComponent(type)}` : "";
+      return request<{ options: Array<{ id: string; option_type: string; code: string; label: string; is_active: boolean; sort_order: number }> }>(`/api/detour-intake-options${suffix}`, {}, true);
+    },
+
+    createDetourIntakeOption(input: { option_type: string; code: string; label: string; sort_order?: number }) {
+      return request<{ id: string; option_type: string; code: string; label: string; is_active: boolean; sort_order: number }>("/api/detour-intake-options", { method: "POST", body: JSON.stringify(input) }, true);
+    },
+
+    updateDetourIntakeOption(id: string, input: { label?: string; is_active?: boolean; sort_order?: number }) {
+      return request<{ id: string; option_type: string; code: string; label: string; is_active: boolean; sort_order: number }>(`/api/detour-intake-options/${id}`, { method: "PATCH", body: JSON.stringify(input) }, true);
     },
 
     createDetourIntake(input: CreateDetourIntakeInput) {

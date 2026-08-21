@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.js";
 import { api } from "../config.js";
+import { isDepartureAtRisk } from "@mvta/shared";
 import type { LiveStats } from "../hooks/useLiveStats.js";
 import { hasServiceRiskAccess } from "./ServiceOperations.js";
 
@@ -17,10 +18,7 @@ export function ServiceOperationsOverview({ stats }: { stats: LiveStats }) {
     Promise.allSettled([api.getTripDelays(), api.getOnDemandRisks()]).then(([fixedRoute, onDemand]) => {
       if (!alive) return;
       const fixedRouteCount = fixedRoute.status === "fulfilled"
-        ? fixedRoute.value.delays.filter((delay) => {
-            const predicted = delay.predicted_max_departure_delay_seconds;
-            return predicted === null || predicted > 15 * 60 || delay.delay_seconds > 15 * 60;
-          }).length
+        ? fixedRoute.value.delays.filter(isDepartureAtRisk).length
         : null;
       const onDemandCount = onDemand.status === "fulfilled"
         ? onDemand.value.risks.filter((risk) => risk.current_wait_minutes > 25 || (risk.predicted_wait_minutes ?? 0) > 25).length

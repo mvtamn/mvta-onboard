@@ -8,6 +8,10 @@ import {
   determineTripDelayState,
   TRIP_DELAY_STALE_AFTER_MINUTES,
 } from "../lib/tripDelayDiagnostics";
+import {
+  DEPARTURE_RISK_THRESHOLD_SECONDS,
+  isDepartureAtRisk,
+} from "../lib/tripDelayRisk";
 
 interface TripDelayRow {
   trip_id: string;
@@ -68,7 +72,7 @@ app.http("tripDelaysList", {
         LEFT JOIN GtfsStops fs ON fs.stop_id = d.first_threshold_stop_id
         LEFT JOIN GtfsTripDirections td ON td.trip_id = d.trip_id
         ORDER BY
-          CASE WHEN d.predicted_max_departure_delay_seconds > 900 THEN 0 ELSE 1 END,
+          CASE WHEN COALESCE(d.predicted_max_departure_delay_seconds, d.delay_seconds) > ${DEPARTURE_RISK_THRESHOLD_SECONDS} THEN 0 ELSE 1 END,
           d.predicted_max_departure_delay_seconds DESC,
           d.route_id
       `);
@@ -113,10 +117,7 @@ app.http("tripDelaysList", {
           !latest || row.last_polled_at > latest ? row.last_polled_at : latest,
         null,
       );
-      const thresholdRiskCount = result.recordset.filter(
-        (row) =>
-          (row.predicted_max_departure_delay_seconds ?? row.delay_seconds) > 900,
-      ).length;
+      const thresholdRiskCount = result.recordset.filter(isDepartureAtRisk).length;
       const tripUpdatesConfigured = Boolean(
         process.env.GTFS_RT_TRIPUPDATE_URL?.trim(),
       );

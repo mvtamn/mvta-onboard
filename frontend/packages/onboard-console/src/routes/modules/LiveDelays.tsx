@@ -1,8 +1,13 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { type TripDelay, ApiError, OCCUPANCY_LABELS, CURRENT_STATUS_LABELS } from "@mvta/shared";
+import {
+  type TripDelay,
+  ApiError,
+  CURRENT_STATUS_LABELS,
+  DEPARTURE_RISK_THRESHOLD_SECONDS,
+  OCCUPANCY_LABELS,
+} from "@mvta/shared";
 import { api } from "../../config.js";
 
-const ESCALATION_THRESHOLD_SECONDS = 15 * 60;
 const AUTO_REFRESH_INTERVAL_MS = 15_000;
 const AUTO_REFRESH_STORAGE_KEY = "mvta-onboard-live-delays-auto-refresh";
 
@@ -20,7 +25,7 @@ function delayPill(seconds: number) {
   if (seconds <= 0) {
     return <span className="pill-sm pill-success">On time</span>;
   }
-  const cls = seconds >= ESCALATION_THRESHOLD_SECONDS ? "pill-danger" : "pill-warning";
+  const cls = seconds >= DEPARTURE_RISK_THRESHOLD_SECONDS ? "pill-danger" : "pill-warning";
   return (
     <span className={`pill-sm ${cls}`}>
       +{minutes} min

@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "appRoot": "/Users/tyrefant/AI Projects/MVTA Onboard/frontend/packages/onboard-console",
+  "framework": "vite-generic",
+  "port": 8400,
+  "pid": 84436,
+  "recordedAt": "2026-08-16T04:29:01.104Z",
+  "artifacts": [
+    {
+      "kind": "patched",
+      "path": "index.html",
+      "patch": "live-tag",
+      "markers": [
+        "impeccable-live-start",
+        "data-impeccable-csp-original"
+      ]
+    }
+  ]
+}
