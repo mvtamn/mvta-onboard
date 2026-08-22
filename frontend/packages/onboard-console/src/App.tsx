@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./auth/AuthContext.js";
-import { roleLabel } from "./auth/roles.js";
 import { RequireRole } from "./auth/RequireRole.js";
 import { ErrorBoundary } from "./components/ErrorBoundary.js";
 import { useTheme } from "./theme/ThemeContext.js";
@@ -47,6 +46,7 @@ import { AdminAccess, AdminEventAdministration, AdminGovernance, AdminIntegratio
 import { CHANGELOG_ENTRIES } from "./routes/changelogData.js";
 import { FixedRouteRefreshProvider } from "./context/FixedRouteRefreshContext.js";
 import { dataStateLabel } from "./hooks/useLiveStats.js";
+import { OperatorIdentity } from "./components/OperatorIdentity.js";
 
 const ADMIN = ["OCC.Admin"] as const;
 const ACCESS_MANAGEMENT = import.meta.env.VITE_ACCESS_ADMIN_FALLBACK === "true"
@@ -107,13 +107,6 @@ function currentPageMeta(pathname: string) {
 function CompatibilityRedirect({ to }: { to: string }) {
   const location = useLocation();
   return <Navigate to={`${to}${location.search}${location.hash}`} replace />;
-}
-
-function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
 const NAV_COLLAPSED_KEY = "mvta-onboard-nav-collapsed";
@@ -334,10 +327,13 @@ export function App() {
               <span className="live-dot" />
               {dataStateLabel(stats.overallState)}
             </span>
-            <span className="pill-user">
-              <span className="avatar">{initialsOf(account.name ?? account.username)}</span>
-              {account.name ?? account.username} · {roles.map(roleLabel).join(", ") || "No assigned access"}
-            </span>
+            <OperatorIdentity
+              name={account.name ?? account.username}
+              username={account.username}
+              roles={roles}
+              canManageAccess={canManageAccess}
+              onSignOut={signOut}
+            />
             <button
               className="theme-toggle-btn"
               title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
@@ -346,7 +342,6 @@ export function App() {
             >
               {theme === "dark" ? <IconSun /> : <IconMoon />}
             </button>
-            <button className="btn-signout" onClick={signOut}>Sign out</button>
           </div>
         </header>
 
