@@ -169,13 +169,13 @@
 .evmon-feed-popover span { color: var(--success-text); font-weight: 800; text-transform: capitalize; }
 .evmon-feed-popover small { grid-column: 1 / -1; color: var(--text-muted); font-size: 10px; }
 .evmon-feed-popover p { margin: 4px 0; color: var(--text-muted); font-size: 11px; }
-.evmon-exception-meta { display: block; max-width: 34ch; margin-top: 3px; color: var(--text-muted); font-size: 10.5px; line-height: 1.3; }
+.evmon-exception-meta { display: block; margin-top: 3px; color: var(--text-muted); font-size: 10.5px; line-height: 1.3; white-space: nowrap; }
 .evmon-feed-age { color: var(--text-muted); font-size: 11px; font-weight: 800; white-space: nowrap; }
 .evmon-notification-badge { color: var(--brand-green-text); cursor: pointer; }
 .evmon-notification-badge strong { display: inline-grid; min-width: 19px; height: 19px; place-items: center; margin-left: 4px; border-radius: 50%; color: #fff; background: var(--brand-green); }
 .evmon-work-surface { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(390px, .8fr); min-height: min(70vh, 720px); overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-bg); box-shadow: 0 4px 16px rgba(0,0,0,.07); }
 .evmon-work-surface > .evmon-map-wrap { min-height: 560px; }
-.evmon-roster-pane { display: flex; min-width: 0; flex-direction: column; border-left: 1px solid var(--border); }
+.evmon-roster-pane { container-type: inline-size; display: flex; min-width: 0; flex-direction: column; border-left: 1px solid var(--border); }
 .evmon-roster-tools { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; padding: 10px; border-bottom: 1px solid var(--border); background: var(--surface-alt-bg); }
 .evmon-roster-tools input { flex: 1 1 160px; }
 .evmon-roster-tools label { color: var(--text-muted); font-size: 11px; white-space: nowrap; }
@@ -183,10 +183,22 @@
 .evmon-segmented-tabs button { flex: 1 0 max-content; padding: 10px; border: 0; border-bottom: 3px solid transparent; color: var(--text-muted); background: transparent; font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }
 .evmon-segmented-tabs button.is-active { border-bottom-color: var(--brand-green); color: var(--brand-green-text); background: var(--surface-bg); }
 .evmon-roster-scroll { flex: 1; overflow: auto; }
+.evmon-roster-scroll .evmon-table { table-layout: fixed; }
 .evmon-roster-scroll .evmon-table td { cursor: pointer; }
 .evmon-roster-scroll tr.is-selected { outline: 2px solid var(--brand-green); outline-offset: -2px; background: var(--success-bg); }
 .evmon-vehicle-detail { display: grid; gap: 3px; padding: 12px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 12px; }
 .evmon-vehicle-detail strong { color: var(--text); }
+.evmon-attention-explanation { display: grid; gap: 2px; margin: 2px 0 0; color: var(--text-muted); line-height: 1.35; }
+.evmon-attention-explanation strong { font-size: 11px; }
+@container (max-width: 620px) {
+  .evmon-roster-scroll .evmon-table { min-width: 0; font-size: 12px; }
+  .evmon-roster-scroll .evmon-table th, .evmon-roster-scroll .evmon-table td { padding: 9px 8px; overflow-wrap: anywhere; vertical-align: top; }
+  .evmon-roster-scroll .evmon-table th:nth-child(1) { width: 17%; }
+  .evmon-roster-scroll .evmon-table th:nth-child(2) { width: 47%; }
+  .evmon-roster-scroll .evmon-table th:nth-child(3) { width: 36%; }
+  .evmon-roster-scroll .evmon-table th:nth-child(4), .evmon-roster-scroll .evmon-table td:nth-child(4), .evmon-roster-scroll .evmon-table th:nth-child(5), .evmon-roster-scroll .evmon-table td:nth-child(5) { display: none; }
+  .evmon-exception-meta { white-space: normal; }
+}
 .evmon-investigative-rail { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
 .evmon-investigative-rail details { min-width: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-bg); }
 .evmon-investigative-rail summary { padding: 10px; color: var(--text); font-size: 12px; font-weight: 800; cursor: pointer; }

@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => {
     sources: { add: vi.fn() },
     layers: { getLayers: vi.fn(() => []), remove: vi.fn(), add: vi.fn() },
     markers: { clear: vi.fn(), add: vi.fn() },
+    resize: vi.fn(),
     setTraffic: vi.fn(),
     setStyle: vi.fn(),
     dispose: vi.fn(),
@@ -54,5 +55,26 @@ describe("EventVehicleMap", () => {
 
     await waitFor(() => expect(mocks.map.setTraffic).toHaveBeenCalled());
     expect(mocks.map.setStyle).not.toHaveBeenCalled();
+  });
+
+  it("resizes after its pane finishes layout so a first paint cannot be left blank", async () => {
+    mocks.getMapsToken.mockResolvedValue({ client_id: "maps-client", access_token: "token" });
+    let notify: (() => void) | undefined;
+    const observe = vi.fn();
+    const disconnect = vi.fn();
+    vi.stubGlobal("ResizeObserver", vi.fn(function (callback: () => void) {
+      notify = callback;
+      return { observe, disconnect };
+    }));
+
+    render(<EventVehicleMap vehicles={[]} geofences={[]} locations={[]} showGeofences={false} showLocations={false} mapStyle="road" traffic={false} />);
+
+    await waitFor(() => expect(mocks.readyHandler()).toEqual(expect.any(Function)));
+    act(() => mocks.readyHandler()?.());
+    await waitFor(() => expect(observe).toHaveBeenCalled());
+    act(() => notify?.());
+
+    await waitFor(() => expect(mocks.map.resize).toHaveBeenCalled());
+    expect(disconnect).not.toHaveBeenCalled();
   });
 });

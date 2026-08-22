@@ -38,6 +38,18 @@ export function EventVehicleMap({ vehicles, geofences, locations, showGeofences,
     if (!containerRef.current) return;
     let cancelled = false;
     let map: atlas.Map | null = null;
+    let mapReady = false;
+    let resizeFrame: number | undefined;
+    let resizeObserver: ResizeObserver | undefined;
+    let listeningForWindowResize = false;
+    const resizeMap = () => {
+      if (cancelled || !mapReady) return;
+      if (resizeFrame !== undefined) cancelAnimationFrame(resizeFrame);
+      resizeFrame = requestAnimationFrame(() => {
+        resizeFrame = undefined;
+        if (!cancelled) map?.resize();
+      });
+    };
     api.getMapsToken().then((initial) => {
       if (cancelled || !containerRef.current) return;
       map = new atlas.Map(containerRef.current, {
@@ -53,15 +65,32 @@ export function EventVehicleMap({ vehicles, geofences, locations, showGeofences,
       // `ready` flips - before any marker can open the popup.
       popupRef.current = new atlas.Popup({ pixelOffset: [0, -24], closeButton: false });
       map.events.addOnce("ready", () => {
+        mapReady = true;
         appliedStyleRef.current = initialMapStyleRef.current;
+        resizeMap();
         if (!cancelled) setReady(true);
       });
       map.events.addOnce("load", () => !cancelled && setLoaded(true));
       map.events.add("error", () => {
         if (!cancelled) setError("The map could not be initialised. Check that your session grants access to Azure Maps, then try again.");
       });
+      if (typeof ResizeObserver !== "undefined") {
+        resizeObserver = new ResizeObserver(resizeMap);
+        resizeObserver.observe(containerRef.current);
+      } else {
+        window.addEventListener("resize", resizeMap);
+        listeningForWindowResize = true;
+      }
     }).catch((err) => setError(err instanceof ApiError ? `Could not load the map: ${err.message}` : "Could not reach the map service."));
-    return () => { cancelled = true; popupRef.current = null; map?.dispose(); mapRef.current = null; };
+    return () => {
+      cancelled = true;
+      if (resizeFrame !== undefined) cancelAnimationFrame(resizeFrame);
+      resizeObserver?.disconnect();
+      if (listeningForWindowResize) window.removeEventListener("resize", resizeMap);
+      popupRef.current = null;
+      map?.dispose();
+      mapRef.current = null;
+    };
   }, []);
 
   useEffect(() => {
