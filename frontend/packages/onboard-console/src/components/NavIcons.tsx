@@ -156,3 +156,21 @@ export function IconMoon(_: IconProps) {
     </svg>
   );
 }
+
+export function IconCollapseNav(_: IconProps) {
+  return (
+    <svg {...base}>
+      <path d="M11 7l-5 5 5 5" />
+      <path d="M18 7l-5 5 5 5" />
+    </svg>
+  );
+}
+
+export function IconExpandNav(_: IconProps) {
+  return (
+    <svg {...base}>
+      <path d="M13 7l5 5-5 5" />
+      <path d="M6 7l5 5-5 5" />
+    </svg>
+  );
+}
