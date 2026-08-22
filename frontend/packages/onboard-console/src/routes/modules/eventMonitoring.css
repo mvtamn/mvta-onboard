@@ -92,19 +92,10 @@
 .evmon-health b.is-healthy { color: var(--success-text); }
 .evmon-health b.is-warning { color: var(--pill-warning-fg); }
 .evmon-health b.is-unavailable { color: var(--danger-text); }
-.evmon-primary-queue { margin: 2px 0 18px; padding: 14px; border: 2px solid var(--brand-green-text); border-radius: 12px; background: var(--surface-bg); box-shadow: 0 4px 16px rgba(0,0,0,.06); }
-.evmon-variant-b-layout { display: grid; grid-template-columns: minmax(280px, .72fr) minmax(0, 1.28fr); grid-template-areas: "queue awareness" "rail awareness"; align-items: start; gap: 0 16px; }
-.evmon-variant-b-layout > .evmon-primary-queue { grid-area: queue; min-width: 0; }
-.evmon-variant-b-awareness { grid-area: awareness; min-width: 0; }
-.evmon-variant-b-rail { grid-area: rail; min-width: 0; }
-.evmon-variant-b-rail .evmon-messaging, .evmon-variant-b-rail .evmon-secondary-section { margin-left: 0; margin-right: 0; }
-.evmon-variant-b-awareness .evmon-workspace { margin-bottom: 18px; }
-.evmon-primary-queue .evmon-list-header { margin-bottom: 10px; }
-.evmon-primary-queue .evmon-list-header h3 { margin-top: 3px; font-size: 19px; }
-.evmon-primary-queue .evmon-table-wrap { margin-bottom: 0; }
-.evmon-primary-queue .panel-body { padding: 13px 14px; }
-.evmon-primary-queue .panel-body + .panel-body { border-top: 1px solid var(--border); }
-.evmon-primary-queue .panel-body p { max-width: 80ch; margin: 5px 0 9px; }
+/* The queue-first primary-queue and variant-B grid were superseded by the
+   notification badge and drawer (open notifications stop competing with the
+   map for the first viewport). Their rules had no consumer left, so they are
+   removed here rather than merged forward as dead selectors. */
 .evmon-context { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px 18px; padding: 10px 12px; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-bg); color: var(--text-muted); font-size: 12px; }
 .evmon-context label { display: flex; align-items: center; gap: 6px; }
 .evmon-context label > span { color: var(--text); font-weight: 800; }
@@ -155,8 +146,6 @@
 .evmon-secondary-section .evmon-table-wrap { margin: 0 12px 12px; }
 @media (max-width: 600px) { .evmon-setup-state, .evmon-blocking-state { align-items: stretch; flex-direction: column; } }
 @media (max-width: 850px) { .evmon-summary { align-items: stretch; flex-direction: column; } .evmon-metrics div { flex: 1; min-width: 0; } .evmon-real-map { min-height: 360px; } .evmon-command-center { grid-template-columns: 1fr; } .evmon-command-summary { border-top: 1px solid var(--border); border-left: 0; } }
-@media (max-width: 1050px) { .evmon-variant-b-layout { grid-template-columns: minmax(250px, .8fr) minmax(0, 1.2fr); gap: 0 12px; } }
-@media (max-width: 850px) { .evmon-variant-b-layout { display: flex; flex-direction: column; gap: 0; } .evmon-variant-b-layout > .evmon-primary-queue, .evmon-variant-b-awareness, .evmon-variant-b-rail { width: 100%; } .evmon-variant-b-rail { order: 2; } .evmon-variant-b-awareness { order: 3; } }
 @media (max-width: 600px) { .evmon-toolbar { gap: 8px; padding: 9px 10px; } .evmon-toolbar-actions button:first-child { display: none; } .evmon-metrics strong { font-size: 17px; } .evmon-metrics div { padding: 8px 10px; } }
 
 .evmon-sticky-bar { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 10px; background: color-mix(in srgb, var(--surface-bg) 96%, transparent); box-shadow: 0 3px 12px rgba(0,0,0,.08); }

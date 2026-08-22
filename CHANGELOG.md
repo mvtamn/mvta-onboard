@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.55] - 2026-08-22
+
+- **Resolve two parallel Event AVL designs in favour of the notification badge.** `main` released 1.5.47 with the open notification queue leading above the vehicle map; this branch had since reframed it as a count badge in the context bar that opens a queue drawer, so that notifications stop competing with the map for the first viewport without becoming less visible. The badge wins as the later, documented decision, and the queue-first arrangement described in 1.5.47 no longer applies.
+- **Queue-first semantics are kept in full.** Pending, acknowledged, and failed notifications all remain in the open queue - a failed delivery stays retryable rather than terminal - which both designs had implemented identically.
+- **Remove the superseded queue-first styles.** The `evmon-primary-queue` and variant-B grid rules had no consumer left after the reframing, so they are deleted rather than merged forward as dead selectors.
+
 ## [1.5.54] - 2026-08-22
 
 - **Polish the in-app release notes.** The Changelog now has a clearer hierarchy, a prominent current-build indicator, and refined expandable release cards that are easier to scan across desktop and mobile.
@@ -66,6 +72,17 @@ badge and footer read this version at build time - see `vite.config.ts`).
 ## [1.5.49] - 2026-08-18
 
 - **Align fixed-route service-risk counts.** Overview, diagnostics, the exception list, and summary tiles now use the same raw-seconds threshold predicate, preserving missing-prediction telemetry instead of rounding before filtering.
+## [1.5.49] - 2026-08-22
+
+- **Restore the missing in-app release notes.** The console's Changelog page and "What's new" popover were missing 1.5.46 and 1.5.47 entirely - `changelogData.ts` had not been hand-synced when those releases were cut, so the popover reported "not available yet" for the deployed build. Both versions are now present.
+
+## [1.5.48] - 2026-08-22
+
+- **Collapse and expand the side navigation.** The primary navigation rail now has a collapse control in its brand row that shrinks it to a 64px icon-only rail, giving map- and table-heavy pages (Event AVL, Detour Reports) the extra width. Every destination stays reachable while collapsed - group headings hide but their links remain, and each icon carries its label as a tooltip. The choice persists across reloads, and below 860px the existing off-canvas drawer still governs, so the collapsed rail is desktop-only.
+
+## [1.5.47] - 2026-08-20
+
+- **Lead Event AVL with the open notification queue.** Open Event notifications now appear above the vehicle map as the page's primary action, rather than below it; the map is retitled "Vehicle map" to match. Open-queue membership (pending, acknowledged, failed) is now a single named predicate covered by a test.
 
 ## [1.5.46] - 2026-08-16
 

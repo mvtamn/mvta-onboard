@@ -103,6 +103,28 @@ body {
 
 /* ---------- left nav sidebar ---------- */
 .nav-sidebar { width: 232px; flex-shrink: 0; background: var(--nav-bg); display: flex; flex-direction: column; padding: 18px 14px; }
+
+/* ---------- collapsed (icon-only) rail ---------- */
+/* Desktop affordance for reclaiming ~170px of width on map/table-heavy pages
+   (Event AVL, Detour Reports). Labels are replaced by native title tooltips
+   rather than shrunk, and every group's links stay rendered while collapsed so
+   no destination becomes unreachable behind a hidden group heading. */
+.nav-sidebar { transition: width .18s ease; }
+.nav-sidebar.is-collapsed { width: 64px; padding-left: 10px; padding-right: 10px; }
+.nav-sidebar.is-collapsed .nav-brand { flex-direction: column; gap: 12px; padding: 6px 0 18px; }
+.nav-sidebar.is-collapsed .nav-brand-detail,
+.nav-sidebar.is-collapsed .nav-label,
+.nav-sidebar.is-collapsed .nav-section-label,
+.nav-sidebar.is-collapsed .nav-group-toggle { display: none; }
+.nav-sidebar.is-collapsed .nav-list a,
+.nav-sidebar.is-collapsed .nav-status { justify-content: center; gap: 0; padding-left: 0; padding-right: 0; }
+.nav-sidebar.is-collapsed .nav-group { margin-top: 6px; padding-top: 8px; }
+.nav-sidebar.is-collapsed .nav-group-administration { padding-top: 0; }
+.nav-collapse-btn { align-items: center; background: rgba(255, 255, 255, .08); border: 0; border-radius: 7px; color: var(--nav-item-fg); cursor: pointer; display: flex; flex-shrink: 0; height: 26px; justify-content: center; margin-left: auto; padding: 0; width: 26px; }
+.nav-collapse-btn:hover { background: rgba(255, 255, 255, .18); color: #fff; }
+.nav-collapse-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.nav-collapse-btn svg { height: 15px; width: 15px; }
+.nav-sidebar.is-collapsed .nav-collapse-btn { margin-left: 0; }
 /* Below 860px there's no room for a fixed 232px rail beside real content
    (this is what previously made Event Planning unusable on a phone
    regardless of its own responsive CSS - the shell never offered a way to
@@ -124,6 +146,21 @@ body {
   }
   .nav-sidebar.is-open { transform: translateX(0); }
   .nav-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, .35); z-index: 39; border: none; padding: 0; cursor: pointer; }
+}
+/* The off-canvas drawer is already the small-screen answer, so the collapsed
+   rail is a desktop-only mode - below 860px it renders full-width with labels
+   and the collapse control is hidden. */
+@media (max-width: 860px) {
+  .nav-collapse-btn { display: none; }
+  .nav-sidebar.is-collapsed { width: 260px; max-width: 82vw; padding-left: 14px; padding-right: 14px; }
+  .nav-sidebar.is-collapsed .nav-brand { flex-direction: row; gap: 10px; padding: 6px 8px 22px; }
+  .nav-sidebar.is-collapsed .nav-brand-detail,
+  .nav-sidebar.is-collapsed .nav-label,
+  .nav-sidebar.is-collapsed .nav-section-label,
+  .nav-sidebar.is-collapsed .nav-group-toggle { display: revert; }
+  .nav-sidebar.is-collapsed .nav-group-toggle { display: flex; }
+  .nav-sidebar.is-collapsed .nav-list a { justify-content: flex-start; gap: 10px; padding-left: 12px; padding-right: 12px; }
+  .nav-sidebar.is-collapsed .nav-status { justify-content: flex-start; gap: 7px; padding: 0 12px 10px; }
 }
 .nav-brand { display: flex; align-items: center; gap: 10px; padding: 6px 8px 22px; }
 .nav-brand .logo-badge { background: rgba(255, 255, 255, 0.15); color: #fff; font-weight: bold; font-size: 12px; padding: 5px 9px; border-radius: 6px; letter-spacing: 0.5px; }
