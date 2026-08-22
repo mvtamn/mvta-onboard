@@ -15,6 +15,7 @@ vi.mock("../config.js", () => ({
     getEventLocations: vi.fn(),
     getEventOperationalMessaging: vi.fn(),
     createEvent: vi.fn(),
+    updateEvent: vi.fn(),
     createEventServicePlan: vi.fn(),
     updateEventServicePlan: vi.fn(),
     linkEventServicePlan: vi.fn(),
@@ -100,6 +101,30 @@ describe("EventPlanning", () => {
     mockApiData({ events: [makeEvent()] });
     renderEventPlanning(["/console/event-planning?event=evt1"]);
     expect(await screen.findByRole("combobox", { name: "Selected Event" })).toHaveValue("evt1");
+  });
+
+  it("renames the selected Event", async () => {
+    mockApiData({ events: [makeEvent({ name: "r" })] });
+    vi.mocked(api.updateEvent).mockResolvedValue(makeEvent({ name: "Special Events Test" }));
+    renderEventPlanning(["/console/event-planning?event=evt1"]);
+    await userEvent.click(await screen.findByRole("button", { name: "Rename Event" }));
+    const name = screen.getByRole("textbox", { name: "Event name" });
+    await userEvent.clear(name);
+    await userEvent.type(name, "Special Events Test");
+    await userEvent.click(screen.getByRole("button", { name: "Save Event name" }));
+    await waitFor(() => expect(api.updateEvent).toHaveBeenCalledWith("evt1", { name: "Special Events Test" }));
+  });
+
+  it("lets an active Event Plan correct its name without changing its dates", async () => {
+    mockApiData({ events: [makeEvent()], plans: [makePlan({ name: "Fall Servuce", status: "active" })] });
+    vi.mocked(api.updateEventServicePlan).mockResolvedValue(makePlan({ name: "Fall Service", status: "active" }));
+    renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
+    const name = await screen.findByRole("textbox", { name: "Event Plan name" });
+    await userEvent.clear(name);
+    await userEvent.type(name, "Fall Service");
+    await userEvent.click(screen.getByRole("button", { name: "Save Event Plan name" }));
+    await waitFor(() => expect(api.updateEventServicePlan).toHaveBeenCalledWith("plan1", { name: "Fall Service" }));
+    expect(screen.getByLabelText("Starts date")).toBeDisabled();
   });
 
   it("shows a useful first-Event empty state after loading", async () => {
@@ -241,7 +266,7 @@ describe("EventPlanning", () => {
       });
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
       const checklist = await screen.findByRole("group", { name: "Activation readiness" });
-      const link = within(checklist).getByRole("link", { name: "Messaging geofence configured" });
+      const link = within(checklist).getByRole("link", { name: "Messaging Monitoring Area configured" });
       expect(link).toHaveAttribute("href", "/admin/events?geofence=geo1&event=evt1&plan=plan1#event-configuration");
     });
 
@@ -260,7 +285,7 @@ describe("EventPlanning", () => {
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
       const checklist = await screen.findByRole("group", { name: "Activation readiness" });
       expect(within(checklist).queryByRole("link")).toBeNull();
-      expect(checklist.querySelector('[aria-label="Complete: Messaging geofence configured"]')).not.toBeNull();
+      expect(checklist.querySelector('[aria-label="Complete: Messaging Monitoring Area configured"]')).not.toBeNull();
     });
 
     it("keeps operational-only geofences separate while using a linked geofence with rules for messaging", async () => {
@@ -280,7 +305,7 @@ describe("EventPlanning", () => {
       expect(screen.getAllByText("Message Gate").length).toBeGreaterThan(0);
       expect(screen.getByText("Operational only")).toBeInTheDocument();
       expect(screen.getByText("Messaging enabled")).toBeInTheDocument();
-      expect(screen.getByLabelText("Complete: Messaging geofence configured")).toBeInTheDocument();
+      expect(screen.getByLabelText("Complete: Messaging Monitoring Area configured")).toBeInTheDocument();
     });
   });
 
@@ -343,9 +368,9 @@ describe("EventPlanning", () => {
         geofences: [makeGeofence()],
       });
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
-      await userEvent.click(await screen.findByRole("button", { name: "Add geofence" }));
-      expect(screen.getByRole("group", { name: "Select geofences" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Add selected geofences" })).toBeDisabled();
+      await userEvent.click(await screen.findByRole("button", { name: "Add Monitoring Area" }));
+      expect(screen.getByRole("group", { name: "Select Monitoring Areas" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Add selected Monitoring Areas" })).toBeDisabled();
       expect(screen.getByText("Fairgrounds Gate")).toBeInTheDocument();
     });
 
@@ -358,8 +383,8 @@ describe("EventPlanning", () => {
       });
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
       await userEvent.type(await screen.findByRole("searchbox", { name: "Search routes" }), "shuttle");
-      await userEvent.click(screen.getByRole("button", { name: "Add geofence" }));
-      expect(screen.getByRole("searchbox", { name: "Search geofences" })).toHaveValue("");
+      await userEvent.click(screen.getByRole("button", { name: "Add Monitoring Area" }));
+      expect(screen.getByRole("searchbox", { name: "Search Monitoring Areas" })).toHaveValue("");
       expect(screen.getByText("Fairgrounds Gate")).toBeInTheDocument();
     });
   });

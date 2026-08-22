@@ -86,8 +86,8 @@ export function deriveEventMonitoringDataState(input: DeriveEventMonitoringDataS
   if (!hasOperatingContext) {
     if (vehicles === null) return { tone: "info", title: "Connecting to live AVL vehicles…", action: null };
     return vehicles.length
-      ? { tone: "success", title: "Showing all active AVL vehicles.", action: "Select an Event to see plan membership and geofence scope." }
-      : { tone: "warning", title: "No active AVL vehicles are reporting.", action: "Select an Event to see plan membership and geofence scope." };
+      ? { tone: "success", title: "Showing all active AVL vehicles.", action: "Select an Event to see plan membership and Monitoring Area scope." }
+      : { tone: "warning", title: "No active AVL vehicles are reporting.", action: "Select an Event to see plan membership and Monitoring Area scope." };
   }
 
   if (activePlanCount === 0) {

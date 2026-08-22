@@ -156,6 +156,20 @@
 .evmon-sticky-bar select, .evmon-roster-tools input, .evmon-roster-tools select { min-height: 30px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface-alt-bg); font: inherit; font-size: 12px; }
 .evmon-chip, .evmon-notification-badge { padding: 6px 9px; border: 1px solid var(--border); border-radius: 999px; color: var(--text); background: var(--surface-alt-bg); font-size: 11px; font-weight: 800; white-space: nowrap; cursor: pointer; }
 .evmon-chip.is-active { color: var(--success-text); border-color: var(--brand-green); background: var(--success-bg); }
+.evmon-feed-detail { position: relative; flex: 0 0 auto; }
+.evmon-feed-detail summary { display: flex; align-items: center; gap: 6px; padding: 6px 9px; border: 1px solid var(--border); border-radius: 999px; color: var(--text); background: var(--surface-alt-bg); font-size: 11px; font-weight: 800; white-space: nowrap; cursor: pointer; list-style: none; }
+.evmon-feed-detail summary::-webkit-details-marker { display: none; }
+.evmon-feed-detail summary i { width: 7px; height: 7px; border-radius: 50%; background: var(--live-dot); }
+.evmon-feed-detail.is-degraded summary i, .evmon-feed-detail.is-unavailable summary i { background: #a15c00; }
+.evmon-feed-detail[open] summary { color: var(--brand-green-text); border-color: var(--brand-green); background: var(--success-bg); }
+.evmon-feed-popover { position: absolute; z-index: 7; top: calc(100% + 6px); right: 0; display: grid; min-width: 260px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-bg); box-shadow: 0 5px 16px rgba(0,0,0,.15); }
+.evmon-feed-popover > div { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 11px; }
+.evmon-feed-popover > div:last-child { border-bottom: 0; }
+.evmon-feed-popover strong { text-transform: capitalize; }
+.evmon-feed-popover span { color: var(--success-text); font-weight: 800; text-transform: capitalize; }
+.evmon-feed-popover small { grid-column: 1 / -1; color: var(--text-muted); font-size: 10px; }
+.evmon-feed-popover p { margin: 4px 0; color: var(--text-muted); font-size: 11px; }
+.evmon-exception-meta { display: block; max-width: 34ch; margin-top: 3px; color: var(--text-muted); font-size: 10.5px; line-height: 1.3; }
 .evmon-feed-age { color: var(--text-muted); font-size: 11px; font-weight: 800; white-space: nowrap; }
 .evmon-notification-badge { color: var(--brand-green-text); cursor: pointer; }
 .evmon-notification-badge strong { display: inline-grid; min-width: 19px; height: 19px; place-items: center; margin-left: 4px; border-radius: 50%; color: #fff; background: var(--brand-green); }

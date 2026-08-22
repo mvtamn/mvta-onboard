@@ -27,7 +27,10 @@ export function EventVehicleMap({ vehicles, geofences, locations, showGeofences,
   const resourceSourceRef = useRef<atlas.source.DataSource | null>(null);
   const resourceLayersRef = useRef<atlas.layer.Layer[]>([]);
   const fittedRef = useRef(false);
+  const initialMapStyleRef = useRef(mapStyle);
+  const appliedStyleRef = useRef<MapStyle | null>(null);
   const [ready, setReady] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { theme } = useTheme();
 
@@ -38,7 +41,7 @@ export function EventVehicleMap({ vehicles, geofences, locations, showGeofences,
     api.getMapsToken().then((initial) => {
       if (cancelled || !containerRef.current) return;
       map = new atlas.Map(containerRef.current, {
-        center: MAP_CENTER, zoom: MAP_ZOOM, style: "road",
+        center: MAP_CENTER, zoom: MAP_ZOOM, style: initialMapStyleRef.current,
         authOptions: {
           authType: atlas.AuthenticationType.anonymous,
           clientId: initial.client_id,
@@ -49,7 +52,11 @@ export function EventVehicleMap({ vehicles, geofences, locations, showGeofences,
       // fillColor is applied by the theme-sync effect below, which runs once
       // `ready` flips - before any marker can open the popup.
       popupRef.current = new atlas.Popup({ pixelOffset: [0, -24], closeButton: false });
-      map.events.addOnce("ready", () => !cancelled && setReady(true));
+      map.events.addOnce("ready", () => {
+        appliedStyleRef.current = initialMapStyleRef.current;
+        if (!cancelled) setReady(true);
+      });
+      map.events.addOnce("load", () => !cancelled && setLoaded(true));
       map.events.add("error", () => {
         if (!cancelled) setError("The map could not be initialised. Check that your session grants access to Azure Maps, then try again.");
       });
@@ -126,7 +133,12 @@ export function EventVehicleMap({ vehicles, geofences, locations, showGeofences,
 
   useEffect(() => {
     if (!ready || !mapRef.current) return;
-    mapRef.current.setStyle({ style: mapStyle });
+    if (appliedStyleRef.current === mapStyle) return;
+    const map = mapRef.current;
+    map.events.addOnce("load", () => setLoaded(true));
+    map.setStyle({ style: mapStyle });
+    appliedStyleRef.current = mapStyle;
+    setLoaded(false);
   }, [mapStyle, ready]);
 
   useEffect(() => {
@@ -187,6 +199,6 @@ export function EventVehicleMap({ vehicles, geofences, locations, showGeofences,
     <div ref={containerRef} className="evmon-map-container" />
     <button type="button" className="evmon-open-map" onClick={openLargerMap}>Open larger map ↗</button>
     {error && <div className="evmon-map-message">{error}</div>}
-    {!error && !ready && <div className="evmon-map-message">Loading live map…</div>}
+    {!error && !loaded && <div className="evmon-map-message">Loading live map…</div>}
   </div>;
 }

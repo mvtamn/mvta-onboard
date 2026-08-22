@@ -211,7 +211,7 @@ export function EventScopeMap({ geofences, locations, linkedGeofenceIds, linkedL
   const hasGeometry = geofences.length > 0 || locations.length > 0;
   if (!hasGeometry) {
     return <div className="event-scope-map event-scope-map-empty">
-      <strong>No geofences or transit locations exist yet</strong>
+      <strong>No Monitoring Areas or transit locations exist yet</strong>
       <p>Boundaries and points are drawn in Event Administration. Once they exist they can be added to this Event Plan here, or from the list.</p>
       <Link className="btn-sm" to="/admin/events#event-configuration">Open Event Administration</Link>
     </div>;

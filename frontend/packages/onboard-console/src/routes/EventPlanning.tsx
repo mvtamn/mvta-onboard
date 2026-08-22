@@ -73,6 +73,7 @@ function EventDateTimeField({
   onDateChange,
   onTimeChange,
   invalid,
+  disabled = false,
 }: {
   label: string;
   date: string;
@@ -80,11 +81,12 @@ function EventDateTimeField({
   onDateChange: (value: string) => void;
   onTimeChange: (value: string) => void;
   invalid: boolean;
+  disabled?: boolean;
 }) {
   return <fieldset className="event-period-fieldset">
     <legend>{label}</legend>
-    <label className="event-date-control"><span>Date</span><input type="date" value={date} onChange={(event) => onDateChange(event.target.value)} aria-label={`${label} date`} aria-invalid={invalid} /></label>
-    <label className="event-date-control"><span>Time</span><input type="time" value={time} onChange={(event) => onTimeChange(event.target.value)} aria-label={`${label} time`} aria-invalid={invalid} /></label>
+    <label className="event-date-control"><span>Date</span><input type="date" value={date} onChange={(event) => onDateChange(event.target.value)} aria-label={`${label} date`} aria-invalid={invalid} disabled={disabled} /></label>
+    <label className="event-date-control"><span>Time</span><input type="time" value={time} onChange={(event) => onTimeChange(event.target.value)} aria-label={`${label} time`} aria-invalid={invalid} disabled={disabled} /></label>
   </fieldset>;
 }
 
@@ -97,6 +99,8 @@ export function EventPlanning() {
   const [eventName, setEventName] = useState("");
   const [eventDescription, setEventDescription] = useState("");
   const [owningTeam, setOwningTeam] = useState("");
+  const [editingEventName, setEditingEventName] = useState(false);
+  const [eventNameDraft, setEventNameDraft] = useState("");
   const [planName, setPlanName] = useState("");
   const [startDate, setStartDate] = useState("");
   const [startTime, setStartTime] = useState("");
@@ -208,10 +212,10 @@ export function EventPlanning() {
     { label: "Event selected", ready: Boolean(event), focusId: "event-select" },
     { label: "Operating dates are valid", ready: Boolean(startAt && endAt && new Date(startAt).getTime() < new Date(endAt).getTime()), focusId: "event-plan-name" },
     { label: "Active SpecialEvent route linked", ready: counts.routes > 0, resource: "routes" },
-    { label: "Geofence linked", ready: counts.geofences > 0, resource: "geofences" },
+    { label: "Monitoring Area linked", ready: counts.geofences > 0, resource: "geofences" },
     { label: "Route conflicts reviewed", ready: !plan?.route_conflict || Boolean(conflictOverrideReason.trim()), focusId: "event-conflict-override" },
     {
-      label: "Messaging geofence configured",
+      label: "Messaging Monitoring Area configured",
       ready: messagingGeofences.length > 0,
       href: geofenceMissingDirectionRule ? (() => {
         const query = new URLSearchParams({ geofence: geofenceMissingDirectionRule.id });
@@ -224,6 +228,7 @@ export function EventPlanning() {
   ];
   const readyToActivate = readiness.every((item) => item.ready);
   const editable = Boolean(plan && ["draft", "review"].includes(plan.status));
+  const planNameEditable = Boolean(plan && ["draft", "review", "active"].includes(plan.status));
   const periodError = startAt && endAt && new Date(startAt).getTime() >= new Date(endAt).getTime()
     ? "End time must be later than the start time."
     : "";
@@ -240,7 +245,7 @@ export function EventPlanning() {
   const focusedResourceOptions = resourceFocus === "routes" ? routes : resourceFocus === "geofences" ? geofences.map((row) => ({ id: row.id, label: row.name })) : locations;
   const focusedResourceLabel = focusedResourceIds.length > 0
     ? focusedResourceOptions.find((row) => row.id === focusedResourceIds[0])?.label ?? "Selected resource"
-    : resourceFocus === "routes" ? "Select a route" : resourceFocus === "geofences" ? "Select a geofence" : "Select a transit location";
+    : resourceFocus === "routes" ? "Select a route" : resourceFocus === "geofences" ? "Select a Monitoring Area" : "Select a transit location";
   const setFocusedResourceIds = (values: string[]) => {
     if (resourceFocus === "routes") setRouteIds(values);
     else if (resourceFocus === "geofences") setGeofenceIds(values);
@@ -273,12 +278,20 @@ export function EventPlanning() {
     setStartDate(start.date); setStartTime(start.time); setEndDate(end.date); setEndTime(end.time);
   }, [plan?.id]);
 
+  useEffect(() => { setEditingEventName(false); setEventNameDraft(event?.name ?? ""); }, [event?.id]);
+
   async function createEvent() {
     if (!eventName.trim()) return;
     try {
       const created = await api.createEvent({ name: eventName.trim(), description: eventDescription.trim() || null, owning_team: owningTeam.trim() || null });
       setEventName(""); setEventDescription(""); setOwningTeam(""); selectEvent(created.id); setFeedbackFor("event", "Event created. Add an Event Plan to begin planning."); await load();
     } catch (err) { setFeedbackFor("event", err instanceof ApiError ? err.message : "Could not create Event.", "error"); }
+  }
+
+  async function saveEventName() {
+    if (!event || !eventNameDraft.trim()) return;
+    try { await api.updateEvent(event.id, { name: eventNameDraft.trim() }); setEditingEventName(false); setFeedbackFor("event", "Event name saved."); await load(); }
+    catch (err) { setFeedbackFor("event", err instanceof ApiError ? err.message : "Could not update Event name.", "error"); }
   }
 
   async function createPlan() {
@@ -316,8 +329,8 @@ export function EventPlanning() {
   }
 
   async function savePlanDetails() {
-    if (!plan || !periodReady) return;
-    try { await api.updateEventServicePlan(plan.id, { name: planName.trim() || plan.name, start_at: toUtc(startAt), end_at: toUtc(endAt) }); setFeedbackFor("period", "Event Plan saved."); await load(); }
+    if (!plan || (editable && !periodReady) || (!editable && !planName.trim())) return;
+    try { await api.updateEventServicePlan(plan.id, editable ? { name: planName.trim() || plan.name, start_at: toUtc(startAt), end_at: toUtc(endAt) } : { name: planName.trim() || plan.name }); setFeedbackFor("period", editable ? "Event Plan saved." : "Event Plan name saved."); await load(); }
     catch (err) { setFeedbackFor("period", err instanceof ApiError ? err.message : "Could not save Event Plan.", "error"); }
   }
 
@@ -430,7 +443,7 @@ export function EventPlanning() {
           : plan.status === "review"
             ? { title: "Approve Event Plan", detail: "Review the completed scope, then approve it for activation.", label: "Approve Event Plan", run: () => void transition("approve") }
             : plan.status === "approved"
-              ? { title: "Activate Event Plan", detail: readyToActivate ? "Publishes the selected routes, geofences, rules, and locations to internal Event AVL." : `Blocked until every readiness check passes${firstMissing ? `: ${firstMissing.label}` : ""}.`, label: "Activate Event Plan", run: () => void transition("advance"), disabled: !readyToActivate }
+              ? { title: "Activate Event Plan", detail: readyToActivate ? "Publishes the selected routes, Monitoring Areas, rules, and locations to internal Event AVL." : `Blocked until every readiness check passes${firstMissing ? `: ${firstMissing.label}` : ""}.`, label: "Activate Event Plan", run: () => void transition("advance"), disabled: !readyToActivate }
               : plan.status === "active"
                 ? { title: "Monitor in Event AVL", detail: "This Event Plan is active and ready for internal vehicle monitoring.", label: "Open Event AVL", link: `/events/avl?event=${encodeURIComponent(selectedEventId)}${plan ? `&plan=${encodeURIComponent(plan.id)}` : ""}` }
                 : plan.status === "suspended"
@@ -482,7 +495,7 @@ export function EventPlanning() {
         if (periodDirty && !window.confirm(`Discard unsaved changes to "${plan?.name}" and switch Events?`)) return;
         selectEvent(e.target.value);
       }} aria-label="Selected Event"><option value="">{eventSearch && visibleEvents.length === 0 ? "No matching Events" : "Select Event"}</option>{visibleEvents.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select>
-      {event && <p className="muted"><strong>{event.name}</strong>{event.owning_team ? ` · ${event.owning_team}` : ""}{event.description ? ` · ${event.description}` : ""}</p>}
+      {event && <><p className="muted"><strong>{event.name}</strong>{event.owning_team ? ` · ${event.owning_team}` : ""}{event.description ? ` · ${event.description}` : ""} <button className="btn-sm" type="button" onClick={() => setEditingEventName(true)}>Rename Event</button></p>{editingEventName && <div className="event-create-form"><input className="f" value={eventNameDraft} onChange={(e) => setEventNameDraft(e.target.value)} aria-label="Event name" /><button className="btn-sm" disabled={!eventNameDraft.trim()} onClick={() => void saveEventName()}>Save Event name</button><button className="btn-sm" onClick={() => { setEventNameDraft(event.name); setEditingEventName(false); }}>Cancel</button></div>}</>}
       {!loading && !loadError && events.length === 0 && <div className="event-empty-state" role="status">
         <div><strong>Create your first Event</strong><p>Start an Event workspace, then add its Event Plan and operational scope.</p></div>
         <button className="btn-primary" type="button" onClick={() => { setShowCreateEvent(true); window.requestAnimationFrame(() => document.getElementById("new-event-name")?.focus()); }}>Create your first Event</button>
@@ -511,10 +524,10 @@ export function EventPlanning() {
             if (periodDirty && !window.confirm(`Discard unsaved changes to "${plan?.name}" and switch Event Plans?`)) return;
             selectServicePlan(e.target.value);
           }} aria-label="Selected Event Plan"><option value="">Select Event Plan</option>{eventPlans.map((row) => <option key={row.id} value={row.id}>{row.name} · {displayStatus(row.status)}</option>)}</select>
-          <input id="event-plan-name" className="f" value={planName} onChange={(e) => setPlanName(e.target.value)} placeholder="Example: State Fair · Friday evening" aria-label="Event Plan name" aria-describedby="event-plan-help" />
-          <EventDateTimeField label="Starts" date={startDate} time={startTime} onDateChange={setStartDate} onTimeChange={setStartTime} invalid={Boolean(periodError)} />
-          <EventDateTimeField label="Ends" date={endDate} time={endTime} onDateChange={setEndDate} onTimeChange={setEndTime} invalid={Boolean(periodError)} />
-          <button className="btn-primary" disabled={!periodReady} onClick={() => void (plan ? savePlanDetails() : createPlan())}>{plan ? "Save Event Plan details" : "Create Event Plan"}</button>
+          <input id="event-plan-name" className="f" value={planName} onChange={(e) => setPlanName(e.target.value)} disabled={Boolean(plan && !planNameEditable)} placeholder="Example: State Fair · Friday evening" aria-label="Event Plan name" aria-describedby="event-plan-help" />
+          <EventDateTimeField label="Starts" date={startDate} time={startTime} onDateChange={setStartDate} onTimeChange={setStartTime} invalid={Boolean(periodError)} disabled={Boolean(plan && !editable)} />
+          <EventDateTimeField label="Ends" date={endDate} time={endTime} onDateChange={setEndDate} onTimeChange={setEndTime} invalid={Boolean(periodError)} disabled={Boolean(plan && !editable)} />
+          <button className="btn-primary" disabled={plan ? (editable ? !periodReady : !planName.trim() || !planNameEditable) : !periodReady} onClick={() => void (plan ? savePlanDetails() : createPlan())}>{plan ? editable ? "Save Event Plan details" : "Save Event Plan name" : "Create Event Plan"}</button>
         </div>
         {periodError && <p className="event-field-error" role="alert">{periodError}</p>}
       </>}
@@ -528,7 +541,7 @@ export function EventPlanning() {
     </section>
     <section id="scope-resources" className="event-scope-column">
       <h3>Scope resources</h3>
-      {!plan ? <p className="muted">Create or select an Event Plan to add routes, geofences, and transit locations.</p> : <>
+      {!plan ? <p className="muted">Create or select an Event Plan to add routes, Monitoring Areas, and transit locations.</p> : <>
         <p className="panel-desc">Each resource becomes a visible part of the Event AVL handoff. Select a resource type to add it to the scope.</p>
         {/* Geofences and transit locations are places, so they can be chosen
             on the map. Routes have no geometry in this system - special service
@@ -555,23 +568,23 @@ export function EventPlanning() {
               <span><strong>Routes</strong><small>{counts.routes} active route{counts.routes === 1 ? "" : "s"} linked</small></span><button className="btn-sm" aria-pressed={resourceFocus === "routes"} aria-controls="event-resource-selector" onClick={() => focusResource("routes")}>Manage routes</button>
             </div>
             <div className={`event-resource-card ${resourceFocus === "geofences" ? "selected" : ""}`}>
-              <span><strong>Geofences</strong><small>{counts.geofences} linked · required for alerts</small></span><button className="btn-sm" aria-pressed={resourceFocus === "geofences"} aria-controls="event-resource-selector" onClick={() => focusResource("geofences")}>Add geofence</button>
+              <span><strong>Monitoring Areas</strong><small>{counts.geofences} linked · required for alerts</small></span><button className="btn-sm" aria-pressed={resourceFocus === "geofences"} aria-controls="event-resource-selector" onClick={() => focusResource("geofences")}>Add Monitoring Area</button>
             </div>
             <div className={`event-resource-card ${resourceFocus === "locations" ? "selected" : ""}`}>
               <span><strong>Transit locations</strong><small>{counts.locations} reference point{counts.locations === 1 ? "" : "s"} linked</small></span><button className="btn-sm" aria-pressed={resourceFocus === "locations"} aria-controls="event-resource-selector" onClick={() => focusResource("locations")}>Add location</button>
             </div>
           </div>
-          <div id="event-resource-selector" className="next event-selected-resource" role="region" aria-live="polite" aria-label={`${resourceFocus} resource selector`}>
+          <div id="event-resource-selector" className="next event-selected-resource" role="region" aria-live="polite" aria-label={`${resourceFocus === "geofences" ? "Monitoring Area" : resourceFocus.slice(0, -1)} resource selector`}>
             <strong>Selected resource</strong><span className="muted">{focusedResourceLabel}</span>
-            <p className="muted">{resourceFocus === "geofences" ? "A geofence defines where crossing detection and operational alerts begin." : resourceFocus === "routes" ? "A route determines which active SpecialEvent service vehicles belong to this scope." : "A transit location provides a destination or reference point for operations."}</p>
-            <input id={`event-${resourceFocus}-select`} className="f" type="search" value={resourceSearch[resourceFocus]} onChange={(e) => setResourceSearch((current) => ({ ...current, [resourceFocus]: e.target.value }))} placeholder={`Search ${resourceFocus}`} aria-label={`Search ${resourceFocus}`} />
-            <div className="event-resource-options" role="group" aria-label={`Select ${resourceFocus}`}>
-              {visibleResourceOptions.length === 0 ? <p className="event-resource-empty">No matching {resourceFocus}.</p> : visibleResourceOptions.map((row) => <label className="event-resource-option" key={row.id}><input type="checkbox" checked={focusedResourceIds.includes(row.id)} onChange={(e) => setFocusedResourceIds(e.target.checked ? [...focusedResourceIds, row.id] : focusedResourceIds.filter((id) => id !== row.id))} /> <span>{row.label}</span></label>)}
+            <p className="muted">{resourceFocus === "geofences" ? "A Monitoring Area defines where crossing detection and operational alerts begin." : resourceFocus === "routes" ? "A route determines which active SpecialEvent service vehicles belong to this scope." : "A transit location provides a destination or reference point for operations."}</p>
+            <input id={`event-${resourceFocus}-select`} className="f" type="search" value={resourceSearch[resourceFocus]} onChange={(e) => setResourceSearch((current) => ({ ...current, [resourceFocus]: e.target.value }))} placeholder={`Search ${resourceFocus === "geofences" ? "Monitoring Areas" : resourceFocus}`} aria-label={`Search ${resourceFocus === "geofences" ? "Monitoring Areas" : resourceFocus}`} />
+            <div className="event-resource-options" role="group" aria-label={`Select ${resourceFocus === "geofences" ? "Monitoring Areas" : resourceFocus}`}>
+              {visibleResourceOptions.length === 0 ? <p className="event-resource-empty">No matching {resourceFocus === "geofences" ? "Monitoring Areas" : resourceFocus}.</p> : visibleResourceOptions.map((row) => <label className="event-resource-option" key={row.id}><input type="checkbox" checked={focusedResourceIds.includes(row.id)} onChange={(e) => setFocusedResourceIds(e.target.checked ? [...focusedResourceIds, row.id] : focusedResourceIds.filter((id) => id !== row.id))} /> <span>{row.label}</span></label>)}
             </div>
-            <div className="actions"><button className="btn-sm" disabled={focusedResourceIds.length === 0 || (!editable && !revision)} onClick={() => void linkMany(resourceFocus, focusedResourceIds)}>Add selected {resourceFocus === "routes" ? "routes" : resourceFocus === "geofences" ? "geofences" : "locations"}</button><button className="btn-sm" onClick={() => focusResource(resourceFocus)}>Open selector</button></div>
+            <div className="actions"><button className="btn-sm" disabled={focusedResourceIds.length === 0 || (!editable && !revision)} onClick={() => void linkMany(resourceFocus, focusedResourceIds)}>Add selected {resourceFocus === "routes" ? "routes" : resourceFocus === "geofences" ? "Monitoring Areas" : "locations"}</button><button className="btn-sm" onClick={() => focusResource(resourceFocus)}>Open selector</button></div>
           </div>
         </div>
-        <p className="muted event-resource-counts">{counts.routes} routes · {counts.geofences} geofences · {counts.locations} locations linked.</p>
+        <p className="muted event-resource-counts">{counts.routes} routes · {counts.geofences} Monitoring Areas · {counts.locations} locations linked.</p>
         {links.length > 0 && <div className="event-linked-resource-list"><strong>Linked resources</strong>{links.map((link, index) => {
           // Two resources can share a name - duplicate geofences exist in real
           // data - and removing the wrong one is unrecoverable without another
@@ -583,7 +596,7 @@ export function EventPlanning() {
             <button className="btn-sm danger" aria-label={`Remove ${link.label}${suffix}`} disabled={!editable && !revision} onClick={() => void unlink(link.kind, link.value, link.label)}>Remove</button>
           </div>;
         })}</div>}
-        {counts.geofences > 0 && <div className="subcard event-geofence-roles"><strong>Geofence roles</strong><p className="muted">Operational geofences define monitored boundaries. Messaging geofences are the linked boundaries with direction rules; their crossings create operational notifications. Both roles stay in this same Event Plan and activate together.</p><div><strong>Operational only</strong><span>{operationalGeofences.length ? operationalGeofences.map((fence) => fence.name).join(", ") : "None"}</span></div><div><strong>Messaging enabled</strong><span>{messagingGeofences.length ? messagingGeofences.map((fence) => fence.name).join(", ") : "None configured"}</span></div></div>}
+        {counts.geofences > 0 && <div className="subcard event-geofence-roles"><strong>Monitoring Area roles</strong><p className="muted">Operational Monitoring Areas define monitored boundaries. Messaging Monitoring Areas are the linked boundaries with direction rules; their crossings create operational notifications. Both roles stay in this same Event Plan and activate together.</p><div><strong>Operational only</strong><span>{operationalGeofences.length ? operationalGeofences.map((fence) => fence.name).join(", ") : "None"}</span></div><div><strong>Messaging enabled</strong><span>{messagingGeofences.length ? messagingGeofences.map((fence) => fence.name).join(", ") : "None configured"}</span></div></div>}
       </>}
     </section>
     </div>
@@ -601,7 +614,7 @@ export function EventPlanning() {
       </div>
       <h2 id="event-plan-lifecycle" className="panel-header" style={{ marginTop: 24 }}>Review &amp; activate</h2>
       <div className="panel-body">
-        <p className="panel-desc">Confirm the Event Plan below, then use the single next action. Activation publishes the selected routes, geofences, rules, and locations to internal Event AVL. When an active Event Plan has finished, use <strong>Complete Event Plan</strong> to close it; corrections still require a reviewed revision.</p>
+        <p className="panel-desc">Confirm the Event Plan below, then use the single next action. Activation publishes the selected routes, Monitoring Areas, rules, and locations to internal Event AVL. When an active Event Plan has finished, use <strong>Complete Event Plan</strong> to close it; corrections still require a reviewed revision.</p>
         <p className="muted"><strong>Internal delivery:</strong> {operationalMessaging?.automatic_teams_enabled ? `Teams on · ${operationalMessaging.teams_destination}` : "Off · eligible notifications remain queued in Event AVL"}</p>
         <div className="subcard event-review-evidence" aria-label="Event Plan review evidence">
           <strong>Review evidence</strong>
@@ -609,7 +622,7 @@ export function EventPlanning() {
             <div><dt>Event</dt><dd>{event?.name ?? "Not selected"}</dd></div>
             <div><dt>Event Plan</dt><dd>{plan.start_at ? `${new Date(plan.start_at).toLocaleString()} – ${new Date(plan.end_at ?? plan.start_at).toLocaleString()}` : "Not configured"} · MVTA-local time</dd></div>
             <div><dt>Routes</dt><dd>{links.filter((link) => link.kind === "routes").map((link) => link.label).join(", ") || "None"}</dd></div>
-            <div><dt>Geofences</dt><dd>{links.filter((link) => link.kind === "geofences").map((link) => link.label).join(", ") || "None"}</dd></div>
+            <div><dt>Monitoring Areas</dt><dd>{links.filter((link) => link.kind === "geofences").map((link) => link.label).join(", ") || "None"}</dd></div>
             <div><dt>Transit locations</dt><dd>{links.filter((link) => link.kind === "locations").map((link) => link.label).join(", ") || "None"}</dd></div>
             <div><dt>Snapshot</dt><dd>{plan.published_scope ? "Published operational snapshot" : "Will publish atomically at activation"}</dd></div>
             {plan.route_conflict && <div><dt>Conflict override</dt><dd>{conflictOverrideReason.trim() || "Reason required before activation"}</dd></div>}

@@ -117,10 +117,11 @@ app.http("eventServicePlanAction", { route: "event-service-plans/{id}/{action}",
     const body = await req.json() as Record<string, unknown>;
     const current = (await pool.request().input("id", sql.UniqueIdentifier, id).query<{ status: string }>("SELECT status FROM EventServicePlans WHERE id=@id")).recordset[0];
     if (!current) return { status: 404, jsonBody: { error: "Service plan not found" } };
-    if (!["draft", "review"].includes(current.status)) return { status: 409, jsonBody: { error: "Only draft or review plans can be edited" } };
     const hasStart = body.start_at !== undefined && body.start_at !== null;
     const hasEnd = body.end_at !== undefined && body.end_at !== null;
     if (hasStart !== hasEnd) return { status: 400, jsonBody: { error: "start_at and end_at must be provided together" } };
+    const isDraftOrReview = ["draft", "review"].includes(current.status);
+    if (!isDraftOrReview && (current.status !== "active" || body.name === undefined || hasStart || hasEnd)) return { status: 409, jsonBody: { error: "Only draft or review plans can be edited; active plans may only be renamed" } };
     if (hasStart) {
       const period = validateOperatingPeriod({ start_at: String(body.start_at), end_at: String(body.end_at) });
       if (!period.valid) return { status: 400, jsonBody: { error: period.error } };
