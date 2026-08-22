@@ -68,5 +68,8 @@ jobs:
           azure_static_web_apps_api_token: ${{ secrets[matrix.token_secret] }}
           action: upload
           app_location: ${{ matrix.output }}
+          # The app is already built above, so Oryx must not rebuild it.
+          # There is deliberately no api_location - the REST API deploys via
+          # api.yml as a Function App, not as a Static Web Apps managed API -
+          # so no api-skip input is needed (and the action has none).
           skip_app_build: true
-          skip_api_build: true
