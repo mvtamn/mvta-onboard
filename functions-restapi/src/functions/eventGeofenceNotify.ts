@@ -1,6 +1,6 @@
 import { app, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { formatEventGeofenceMessage, isTransientNotificationFailure, retryDelaySeconds, shouldAutomaticallyDeliver } from "../lib/eventNotificationPolicy";
+import { formatEventGeofenceMessage, formatTeamsWebhookPayload, isTransientNotificationFailure, retryDelaySeconds, shouldAutomaticallyDeliver } from "../lib/eventNotificationPolicy";
 
 interface CrossingMessage { crossing_id: number }
 
@@ -13,7 +13,7 @@ async function deliver(notificationId: string, body: string, attemptCount: numbe
   }
   let response: Response;
   try {
-    response = await fetch(webhook, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: body }) });
+    response = await fetch(webhook, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(formatTeamsWebhookPayload(body)) });
   } catch (err) {
     context.error("Teams event notification failed", err);
     response = new Response(null, { status: 599 });
@@ -38,7 +38,7 @@ app.serviceBusQueue("eventGeofenceNotify", { connection: "ServiceBusConnection",
     if (shouldAutomaticallyDeliver(Boolean(operational?.automatic_teams_enabled), current.matched_rule_id) && await deliver(current.id, current.message_body, current.attempt_count, context)) throw new Error(`Transient Teams failure for event notification ${current.id}`);
     return;
   }
-  const row = (await pool.request().input("id", sql.BigInt, id).query("SELECT c.vehicle_id,c.route_id,c.service_plan_id,c.transition,c.matched_rule_id,g.name geofence_name,c.destination_label,c.matched_message_type message_type,c.matched_send_mode send_mode,l.name location_name FROM EventGeofenceCrossings c JOIN EventGeofences g ON g.id=c.geofence_id LEFT JOIN EventLocations l ON l.id=c.matched_destination_location_id WHERE c.id=@id")).recordset[0] as { vehicle_id: number; route_id: number | null; service_plan_id: string | null; matched_rule_id: string | null; transition: "enter" | "exit"; geofence_name: string; destination_label: string | null; message_type: "departing" | "passed" | "arriving_soon" | "custom" | null; location_name: string | null; send_mode: "manual" | "auto" | null } | undefined;
+  const row = (await pool.request().input("id", sql.BigInt, id).query("SELECT c.vehicle_id,c.route_id,c.service_plan_id,c.transition,c.matched_rule_id,c.crossed_at,g.name geofence_name,g.purpose geofence_purpose,c.destination_label,c.matched_message_type message_type,c.matched_send_mode send_mode,l.name location_name FROM EventGeofenceCrossings c JOIN EventGeofences g ON g.id=c.geofence_id LEFT JOIN EventLocations l ON l.id=c.matched_destination_location_id WHERE c.id=@id")).recordset[0] as { vehicle_id: number; route_id: number | null; service_plan_id: string | null; matched_rule_id: string | null; crossed_at: Date; transition: "enter" | "exit"; geofence_name: string; geofence_purpose: string | null; destination_label: string | null; message_type: "departing" | "passed" | "arriving_soon" | "custom" | null; location_name: string | null; send_mode: "manual" | "auto" | null } | undefined;
   if (!row) return;
   const mode = row.send_mode ?? "manual";
   const body = formatEventGeofenceMessage({ ...row, message_type: row.message_type ?? "custom" });

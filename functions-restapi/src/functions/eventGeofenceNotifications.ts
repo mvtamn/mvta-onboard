@@ -1,7 +1,7 @@
 import { app, type HttpRequest } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { requireRole, EVENT_AVL_NOTIFICATION_ROLES, STAFF_READ_ROLES } from "../lib/auth";
-import { isTransientNotificationFailure, retryDelaySeconds } from "../lib/eventNotificationPolicy";
+import { formatTeamsWebhookPayload, isTransientNotificationFailure, retryDelaySeconds } from "../lib/eventNotificationPolicy";
 
 async function send(req: HttpRequest) {
   const auth = requireRole(req, EVENT_AVL_NOTIFICATION_ROLES);
@@ -20,7 +20,7 @@ async function send(req: HttpRequest) {
     return { status: 503, jsonBody: { error: "Teams webhook is not configured" } };
   }
   let response: Response;
-  try { response = await fetch(webhook, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: row.message_body }) }); }
+  try { response = await fetch(webhook, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(formatTeamsWebhookPayload(row.message_body)) }); }
   catch { response = new Response(null, { status: 599 }); }
   const status = isTransientNotificationFailure(response.status) ? "pending" : "failed";
   const update = pool.request(); update.input("id", sql.UniqueIdentifier, id); update.input("status", sql.NVarChar, status); update.input("error", sql.NVarChar, `Teams webhook returned ${response.status}`); update.input("delay", sql.Int, retryDelaySeconds(row.attempt_count + 1)); update.input("by", sql.NVarChar, auth.principal.userDetails ?? "system");

@@ -50,6 +50,9 @@ export function EventVehicleMap({ vehicles, geofences, locations, showGeofences,
       // `ready` flips - before any marker can open the popup.
       popupRef.current = new atlas.Popup({ pixelOffset: [0, -24], closeButton: false });
       map.events.addOnce("ready", () => !cancelled && setReady(true));
+      map.events.add("error", () => {
+        if (!cancelled) setError("The map could not be initialised. Check that your session grants access to Azure Maps, then try again.");
+      });
     }).catch((err) => setError(err instanceof ApiError ? `Could not load the map: ${err.message}` : "Could not reach the map service."));
     return () => { cancelled = true; popupRef.current = null; map?.dispose(); mapRef.current = null; };
   }, []);
