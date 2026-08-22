@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.49] - 2026-08-22
+
+- **Restore the missing in-app release notes.** The console's Changelog page and "What's new" popover were missing 1.5.46 and 1.5.47 entirely - `changelogData.ts` had not been hand-synced when those releases were cut, so the popover reported "not available yet" for the deployed build. Both versions are now present.
+
 ## [1.5.48] - 2026-08-22
 
 - **Collapse and expand the side navigation.** The primary navigation rail now has a collapse control in its brand row that shrinks it to a 64px icon-only rail, giving map- and table-heavy pages (Event AVL, Detour Reports) the extra width. Every destination stays reachable while collapsed - group headings hide but their links remain, and each icon carries its label as a tooltip. The choice persists across reloads, and below 860px the existing off-canvas drawer still governs, so the collapsed rail is desktop-only.

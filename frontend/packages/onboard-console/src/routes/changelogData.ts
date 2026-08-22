@@ -18,6 +18,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.49",
+    date: "2026-08-22",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "The Changelog page and \"What's new\" popover were missing the 1.5.46 and 1.5.47 releases. Both are listed again.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.48",
     date: "2026-08-22",
     sections: [
@@ -25,6 +37,37 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
         heading: "Added",
         items: [
           "The side navigation can now be collapsed to an icon-only rail and expanded again from the control beside the OnBoard logo. Your choice is remembered between visits, every link stays reachable while collapsed, and hovering an icon shows its name.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.47",
+    date: "2026-08-20",
+    sections: [
+      {
+        heading: "Improved",
+        items: [
+          "Event AVL now leads with the open notification queue above the vehicle map, so the work waiting on you comes before the map rather than after it.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.46",
+    date: "2026-08-16",
+    sections: [
+      {
+        heading: "Improved",
+        items: [
+          "Administration is now a management workspace with its own navigation for access, Event resources, service configuration, integrations, governance, and subscribers. Event Planning and Event AVL are grouped under a dedicated Events workspace; existing links still work.",
+        ],
+      },
+      {
+        heading: "Fixed",
+        items: [
+          "Administration no longer opens a landing page that just repeated its own menu - it goes straight to Service Configuration.",
+          "The Administration heading no longer appears twice in the sidebar.",
         ],
       },
     ],
