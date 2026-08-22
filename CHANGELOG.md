@@ -5,6 +5,13 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.53] - 2026-08-18
+
+- **Geofences with the same name can be told apart and removed.** Two "Eagan Bus Garage" boundaries exist in real data, and the Event Administration table rendered only the name, so identical rows could not be distinguished and neither could be removed with any confidence about which was going. Rows that share a name now show the identifier that separates them, alongside the Event Plans using each one and when it was last updated.
+- **The geofence and location tables moved above the map.** Removing or auditing a boundary previously sat below a 420px canvas and its drawing toolbar, which is why the control went unfound.
+- **Deactivating a geofence says what it affects.** The confirmation now names the Event Plans holding it in scope, and states that governed plans keep running from their published scope snapshot until a reviewed revision removes it.
+- **Duplicate linked resources are distinguishable in Event Planning too.** Removing the wrong one needs another revision to undo, so colliding labels now carry their identifier in the visible text and the accessible name.
+
 ## [1.5.52] - 2026-08-18
 
 - **The scope map now shows that it is a control, not a picture.** Hovering a boundary or point changes the cursor and opens a popup naming the resource and what selecting it will do - add it, remove it, or that the Event Plan is read-only at its current status. Previously nothing distinguished a clickable boundary from a drawn one.

@@ -572,7 +572,17 @@ export function EventPlanning() {
           </div>
         </div>
         <p className="muted event-resource-counts">{counts.routes} routes · {counts.geofences} geofences · {counts.locations} locations linked.</p>
-        {links.length > 0 && <div className="event-linked-resource-list"><strong>Linked resources</strong>{links.map((link, index) => <div className="event-linked-resource" key={`${link.kind}-${link.value}-${index}`}><span>{link.label}</span><button className="btn-sm danger" aria-label={`Remove ${link.label}`} disabled={!editable && !revision} onClick={() => void unlink(link.kind, link.value, link.label)}>Remove</button></div>)}</div>}
+        {links.length > 0 && <div className="event-linked-resource-list"><strong>Linked resources</strong>{links.map((link, index) => {
+          // Two resources can share a name - duplicate geofences exist in real
+          // data - and removing the wrong one is unrecoverable without another
+          // revision, so collisions show the identifier that separates them.
+          const duplicateLabel = links.filter((other) => other.kind === link.kind && other.label === link.label).length > 1;
+          const suffix = duplicateLabel ? ` · id ends ${String(link.value).slice(-6)}` : "";
+          return <div className="event-linked-resource" key={`${link.kind}-${link.value}-${index}`}>
+            <span>{link.label}{duplicateLabel && <small className="td-subtle">{suffix.replace(" · ", "")}</small>}</span>
+            <button className="btn-sm danger" aria-label={`Remove ${link.label}${suffix}`} disabled={!editable && !revision} onClick={() => void unlink(link.kind, link.value, link.label)}>Remove</button>
+          </div>;
+        })}</div>}
         {counts.geofences > 0 && <div className="subcard event-geofence-roles"><strong>Geofence roles</strong><p className="muted">Operational geofences define monitored boundaries. Messaging geofences are the linked boundaries with direction rules; their crossings create operational notifications. Both roles stay in this same Event Plan and activate together.</p><div><strong>Operational only</strong><span>{operationalGeofences.length ? operationalGeofences.map((fence) => fence.name).join(", ") : "None"}</span></div><div><strong>Messaging enabled</strong><span>{messagingGeofences.length ? messagingGeofences.map((fence) => fence.name).join(", ") : "None configured"}</span></div></div>}
       </>}
     </section>

@@ -1116,3 +1116,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     width: 100%;
   }
 }
+
+/* Reusable-resource tables in Event Administration. These sit above the map
+   now, so they carry their own heading and count rather than reading as an
+   afterthought below the canvas. */
+.event-resource-table { margin: 0 0 18px; }
+.event-resource-table-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.event-resource-table-heading h3 { margin: 0; color: var(--text); font-size: 14px; }
+.event-resource-table .td-subtle { display: block; color: var(--text-muted); font-size: 11px; }

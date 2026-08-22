@@ -4,7 +4,7 @@ import * as atlas from "azure-maps-control";
 import * as drawing from "azure-maps-drawing-tools";
 import "azure-maps-control/dist/atlas.min.css";
 import "azure-maps-drawing-tools/dist/atlas-drawing.min.css";
-import { ApiError, type EventGeofence, type EventGeofenceMessageType, type EventGeofencePurpose, type EventGeofenceRule, type EventLocation, type EventLocationCategory } from "@mvta/shared";
+import { ApiError, type EventGeofence, type EventGeofenceMessageType, type EventGeofencePurpose, type EventGeofenceRule, type EventLocation, type EventLocationCategory, type EventServicePlan } from "@mvta/shared";
 import { api } from "../config.js";
 import { useAuth } from "../auth/AuthContext.js";
 import "./modules/eventMonitoring.css";
@@ -26,7 +26,7 @@ function geometryOf(shape: atlas.Shape): string | null {
   return feature.geometry ? JSON.stringify(feature.geometry) : null;
 }
 
-function MapEditor({ geofences, locations, onChanged }: { geofences: StoredFence[]; locations: EventLocation[]; onChanged: () => void }) {
+function MapEditor({ geofences, locations, plans, onChanged }: { geofences: StoredFence[]; locations: EventLocation[]; plans: EventServicePlan[]; onChanged: () => void }) {
   const { account, signIn } = useAuth();
   const host = useRef<HTMLDivElement>(null); const mapRef = useRef<atlas.Map | null>(null); const drawingRef = useRef<drawing.drawing.DrawingManager | null>(null); const syncTimer = useRef<number | null>(null); const geofencesRef = useRef(geofences); geofencesRef.current = geofences;
   const [ready, setReady] = useState(false); const [draft, setDraft] = useState<Draft | null>(null); const [name, setName] = useState(""); const [purpose, setPurpose] = useState<EventGeofencePurpose>("other"); const [category, setCategory] = useState<EventLocationCategory>("transit_station"); const [error, setError] = useState<string | null>(null); const [notice, setNotice] = useState<string | null>(null); const [activeMode, setActiveMode] = useState<drawing.drawing.DrawingMode>(drawing.drawing.DrawingMode.idle); const [showGeofences, setShowGeofences] = useState(true); const [showInactiveGeofences, setShowInactiveGeofences] = useState(true); const [showLocations, setShowLocations] = useState(true); const [showInactiveLocations, setShowInactiveLocations] = useState(true); const [cursor, setCursor] = useState<atlas.data.Position | null>(null);
@@ -118,21 +118,82 @@ function MapEditor({ geofences, locations, onChanged }: { geofences: StoredFence
 
   if (!account) return <div className="evmon-map-message"><p>Sign in with your MVTA Microsoft 365 account to use map authoring.</p><button className="btn-primary" onClick={signIn}>Sign in with Microsoft</button></div>;
   const selectMode = (mode: drawing.drawing.DrawingMode) => { const manager = drawingRef.current; if (!manager) return; setNotice(null); manager.setOptions({ mode, interactionType: drawing.drawing.DrawingInteractionType.click }); setActiveMode(mode); };
-  return <div><div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}><button className="btn-sm" disabled={!ready} onClick={() => selectMode(drawing.drawing.DrawingMode.drawPolygon)}>Draw geofence</button><button className="btn-sm" disabled={!ready} onClick={() => selectMode(drawing.drawing.DrawingMode.drawPoint)}>Place location</button><button className="btn-sm" disabled={!ready} onClick={() => selectMode(drawing.drawing.DrawingMode.editGeometry)}>Edit boundary</button><button className="btn-sm" disabled={!ready} onClick={() => selectMode(drawing.drawing.DrawingMode.eraseGeometry)}>Deactivate boundary</button><button className="btn-sm" disabled={!ready} onClick={() => selectMode(drawing.drawing.DrawingMode.idle)}>Select</button><span className="muted">Mode: {activeMode === drawing.drawing.DrawingMode.drawPolygon ? "Drawing geofence — click vertices, double-click to finish" : activeMode === drawing.drawing.DrawingMode.drawPoint ? "Placing location — click the map" : `Mode: ${activeMode}`}</span><label className="muted"><input type="checkbox" checked={showGeofences} onChange={(e) => setShowGeofences(e.target.checked)} /> Active geofences</label><label className="muted"><input type="checkbox" checked={showInactiveGeofences} onChange={(e) => setShowInactiveGeofences(e.target.checked)} /> Inactive geofences</label><label className="muted"><input type="checkbox" checked={showLocations} onChange={(e) => setShowLocations(e.target.checked)} /> Active locations</label><label className="muted"><input type="checkbox" checked={showInactiveLocations} onChange={(e) => setShowInactiveLocations(e.target.checked)} /> Inactive locations</label></div>{notice && <p className="muted" role="alert">{notice}</p>}<div style={{ height: 420, borderRadius: 8, overflow: "hidden", border: "1px solid #ccd6d1", position: "relative" }}><div ref={host} style={{ width: "100%", height: "100%" }} />{!ready && !error && <div className="evmon-map-message">Loading map…</div>}{error && <div className="evmon-map-message"><p>{error}</p>{error.includes("session") && <button className="btn-primary" onClick={signIn}>Sign in again</button>}</div>}</div>{cursor && <p className="muted">Live pointer coordinate: latitude {cursor[1].toFixed(6)}, longitude {cursor[0].toFixed(6)}</p>}{draft && <div className="panel-body" style={{ marginTop: 10, border: "1px solid #ccd6d1" }}><strong>Save new {draft.kind === "geofence" ? "geofence" : "map location"}</strong><div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}><input className="f" value={name} onChange={(e) => setName(e.target.value)} placeholder={draft.kind === "geofence" ? "Geofence name" : "Location name"} />{draft.kind === "geofence" && <select className="f" aria-label="Zone purpose" value={purpose} onChange={(e) => setPurpose(e.target.value as EventGeofencePurpose)}><option value="staging">Staging</option><option value="corridor">Corridor</option><option value="venue">Venue</option><option value="other">Other</option></select>}{draft.kind === "location" && <select className="f" value={category} onChange={(e) => setCategory(e.target.value as EventLocationCategory)}><option value="transit_station">Transit station</option><option value="park_and_ride">Park & ride</option><option value="venue">Venue</option><option value="other">Other</option></select>}<button className="btn-sm" disabled={!name.trim()} onClick={() => void saveDraft()}>Save</button><button className="btn-sm" onClick={() => { drawingRef.current?.getSource().remove(draft.shape); setDraft(null); }}>Cancel</button></div></div>}<GeofenceManager geofences={geofences} onChanged={onChanged} /><LocationManager locations={locations} onChanged={onChanged} /></div>;
+  return <div>{/* Above the map: auditing or removing a boundary previously sat
+      below a 420px canvas and its toolbar, which is why the control went
+      unfound. */}
+    <GeofenceManager geofences={geofences} plans={plans} onChanged={onChanged} /><LocationManager locations={locations} onChanged={onChanged} />
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}><button className="btn-sm" disabled={!ready} onClick={() => selectMode(drawing.drawing.DrawingMode.drawPolygon)}>Draw geofence</button><button className="btn-sm" disabled={!ready} onClick={() => selectMode(drawing.drawing.DrawingMode.drawPoint)}>Place location</button><button className="btn-sm" disabled={!ready} onClick={() => selectMode(drawing.drawing.DrawingMode.editGeometry)}>Edit boundary</button><button className="btn-sm" disabled={!ready} onClick={() => selectMode(drawing.drawing.DrawingMode.eraseGeometry)}>Deactivate boundary</button><button className="btn-sm" disabled={!ready} onClick={() => selectMode(drawing.drawing.DrawingMode.idle)}>Select</button><span className="muted">Mode: {activeMode === drawing.drawing.DrawingMode.drawPolygon ? "Drawing geofence — click vertices, double-click to finish" : activeMode === drawing.drawing.DrawingMode.drawPoint ? "Placing location — click the map" : `Mode: ${activeMode}`}</span><label className="muted"><input type="checkbox" checked={showGeofences} onChange={(e) => setShowGeofences(e.target.checked)} /> Active geofences</label><label className="muted"><input type="checkbox" checked={showInactiveGeofences} onChange={(e) => setShowInactiveGeofences(e.target.checked)} /> Inactive geofences</label><label className="muted"><input type="checkbox" checked={showLocations} onChange={(e) => setShowLocations(e.target.checked)} /> Active locations</label><label className="muted"><input type="checkbox" checked={showInactiveLocations} onChange={(e) => setShowInactiveLocations(e.target.checked)} /> Inactive locations</label></div>{notice && <p className="muted" role="alert">{notice}</p>}<div style={{ height: 420, borderRadius: 8, overflow: "hidden", border: "1px solid #ccd6d1", position: "relative" }}><div ref={host} style={{ width: "100%", height: "100%" }} />{!ready && !error && <div className="evmon-map-message">Loading map…</div>}{error && <div className="evmon-map-message"><p>{error}</p>{error.includes("session") && <button className="btn-primary" onClick={signIn}>Sign in again</button>}</div>}</div>{cursor && <p className="muted">Live pointer coordinate: latitude {cursor[1].toFixed(6)}, longitude {cursor[0].toFixed(6)}</p>}{draft && <div className="panel-body" style={{ marginTop: 10, border: "1px solid #ccd6d1" }}><strong>Save new {draft.kind === "geofence" ? "geofence" : "map location"}</strong><div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}><input className="f" value={name} onChange={(e) => setName(e.target.value)} placeholder={draft.kind === "geofence" ? "Geofence name" : "Location name"} />{draft.kind === "geofence" && <select className="f" aria-label="Zone purpose" value={purpose} onChange={(e) => setPurpose(e.target.value as EventGeofencePurpose)}><option value="staging">Staging</option><option value="corridor">Corridor</option><option value="venue">Venue</option><option value="other">Other</option></select>}{draft.kind === "location" && <select className="f" value={category} onChange={(e) => setCategory(e.target.value as EventLocationCategory)}><option value="transit_station">Transit station</option><option value="park_and_ride">Park & ride</option><option value="venue">Venue</option><option value="other">Other</option></select>}<button className="btn-sm" disabled={!name.trim()} onClick={() => void saveDraft()}>Save</button><button className="btn-sm" onClick={() => { drawingRef.current?.getSource().remove(draft.shape); setDraft(null); }}>Cancel</button></div></div>}</div>;
 }
 
-function GeofenceManager({ geofences, onChanged }: { geofences: StoredFence[]; onChanged: () => void }) {
+// Duplicate geofence names are real in this data - two "Eagan Bus Garage"
+// rows exist - and the table rendered only the name, so identical rows could
+// not be told apart and none could be removed with confidence about which was
+// going. Each added column either separates otherwise-identical rows or says
+// what deactivating one would affect.
+function GeofenceManager({ geofences, plans, onChanged }: { geofences: StoredFence[]; plans: EventServicePlan[]; onChanged: () => void }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const plansUsing = (geofenceId: string) =>
+    plans.filter((plan) => (plan.links ?? []).some((link) => link.kind === "geofences" && String(link.value) === geofenceId));
+
   async function changePurpose(geofence: StoredFence, purpose: EventGeofencePurpose) {
+    setError(null);
     try { await api.updateEventGeofence(geofence.id, { purpose }); onChanged(); }
-    catch (err) { window.alert(err instanceof ApiError ? err.message : "Could not update geofence purpose."); }
+    catch (err) { setError(err instanceof ApiError ? err.message : "Could not update geofence purpose."); }
   }
+
   async function remove(geofence: StoredFence) {
-    if (!window.confirm(`Remove geofence "${geofence.name}"? It will be deactivated and retained for audit.`)) return;
-    try { await api.updateEventGeofence(geofence.id, { name: geofence.name, polygon: geofence.polygon, is_active: false }); onChanged(); }
-    catch (err) { window.alert(err instanceof ApiError ? err.message : "Could not remove geofence."); }
+    const using = plansUsing(geofence.id);
+    const governed = using.filter((plan) => ["active", "suspended", "approved"].includes(plan.status));
+    const lines = [`Deactivate geofence "${geofence.name}"? It is retained for audit and leaves every picker.`];
+    if (using.length > 0) lines.push(`In the scope of: ${using.map((plan) => `${plan.name} (${plan.status})`).join(", ")}.`);
+    if (governed.length > 0) lines.push("Live monitoring is unaffected - governed Event Plans run from a published scope snapshot - but their scope still references it until a reviewed revision removes it.");
+    if (!window.confirm(lines.join("\n\n"))) return;
+    setBusy(geofence.id);
+    setError(null);
+    try {
+      await api.updateEventGeofence(geofence.id, { name: geofence.name, polygon: geofence.polygon, is_active: false });
+      onChanged();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not deactivate this geofence.");
+    } finally {
+      setBusy(null);
+    }
   }
+
   if (!geofences.length) return null;
-  return <table className="data" style={{ marginTop: 12 }}><thead><tr><th>Geofence</th><th>Zone purpose</th><th>Rules</th><th>Status</th><th>Actions</th></tr></thead><tbody>{geofences.map((geofence) => <tr key={geofence.id}><td>{geofence.name}</td><td><select aria-label={`${geofence.name} zone purpose`} value={geofence.purpose ?? "other"} onChange={(event) => void changePurpose(geofence, event.target.value as EventGeofencePurpose)}><option value="staging">Staging</option><option value="corridor">Corridor</option><option value="venue">Venue</option><option value="other">Other</option></select></td><td>{geofence.rules?.length ?? 0}</td><td>{geofence.is_active ? "Active" : "Inactive"}</td><td>{geofence.is_active ? <button className="btn-sm danger" onClick={() => void remove(geofence)}>Remove</button> : "—"}</td></tr>)}</tbody></table>;
+  const duplicated = new Set(geofences.map((row) => row.name).filter((name, index, all) => all.indexOf(name) !== index));
+
+  return <div className="event-resource-table">
+    <div className="event-resource-table-heading">
+      <h3>Geofences</h3>
+      <span className="muted">{geofences.filter((row) => row.is_active).length} active · {geofences.length} total</span>
+    </div>
+    {error && <p className="event-field-error" role="alert">{error}</p>}
+    <table className="data">
+      <thead><tr><th scope="col">Geofence</th><th scope="col">Zone purpose</th><th scope="col">Rules</th><th scope="col">Used by</th><th scope="col">Last updated</th><th scope="col">Status</th><th scope="col">Actions</th></tr></thead>
+      <tbody>{geofences.map((geofence) => {
+        const using = plansUsing(geofence.id);
+        return <tr key={geofence.id}>
+          <td>
+            <strong>{geofence.name}</strong>
+            {/* Shown only where it is needed: the sole thing separating two
+                rows that are otherwise identical on screen. */}
+            {duplicated.has(geofence.name) && <span className="td-subtle">Duplicate name · id ends {geofence.id.slice(-6)}</span>}
+          </td>
+          <td><select aria-label={`${geofence.name} zone purpose`} value={geofence.purpose ?? "other"} onChange={(event) => void changePurpose(geofence, event.target.value as EventGeofencePurpose)}><option value="staging">Staging</option><option value="corridor">Corridor</option><option value="venue">Venue</option><option value="other">Other</option></select></td>
+          <td>{geofence.rules?.length ?? 0}</td>
+          <td>{using.length === 0 ? <span className="td-subtle">Not in any Event Plan</span> : using.map((plan) => `${plan.name} (${plan.status})`).join(", ")}</td>
+          <td className="td-dim">{new Date(geofence.updated_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}{geofence.updated_by ? ` · ${geofence.updated_by}` : ""}</td>
+          <td>{geofence.is_active ? "Active" : "Inactive"}</td>
+          <td>{geofence.is_active
+            ? <button className="btn-sm danger" disabled={busy === geofence.id} aria-label={`Deactivate geofence ${geofence.name}`} onClick={() => void remove(geofence)}>{busy === geofence.id ? "Deactivating…" : "Deactivate"}</button>
+            : "—"}</td>
+        </tr>;
+      })}</tbody>
+    </table>
+  </div>;
 }
 
 function LocationManager({ locations, onChanged }: { locations: EventLocation[]; onChanged: () => void }) {
@@ -148,8 +209,8 @@ export function EventResourceMapEditor() {
   // landing here with nothing selected - resolves once `geofences` loads
   // even though the id is read before that request resolves.
   const [searchParams] = useSearchParams();
-  const [geofences, setGeofences] = useState<StoredFence[]>([]); const [locations, setLocations] = useState<EventLocation[]>([]); const [selectedFence, setSelectedFence] = useState(() => searchParams.get("geofence") ?? ""); const [editingRuleId, setEditingRuleId] = useState<string | null>(null); const [saving, setSaving] = useState(false); const [rule, setRule] = useState<Partial<EventGeofenceRule>>({ transition: "exit", heading_min: 0, heading_max: 360, message_type: "custom", send_mode: "manual", destination_label: "", sort_order: 0 }); const [directionPreset, setDirectionPreset] = useState<CompassDirection>("any"); const [testBus, setTestBus] = useState("1234"); const [message, setMessage] = useState<string | null>(null);
-  const load = () => Promise.all([api.getEventGeofences(), api.getEventLocations()]).then(([g, l]) => { setGeofences(g.geofences); setLocations(l.locations); }).catch((err) => setMessage(err instanceof ApiError ? err.message : "Event resources are unavailable until migrations 033 and 034 are applied."));
+  const [geofences, setGeofences] = useState<StoredFence[]>([]); const [locations, setLocations] = useState<EventLocation[]>([]); const [plans, setPlans] = useState<EventServicePlan[]>([]); const [selectedFence, setSelectedFence] = useState(() => searchParams.get("geofence") ?? ""); const [editingRuleId, setEditingRuleId] = useState<string | null>(null); const [saving, setSaving] = useState(false); const [rule, setRule] = useState<Partial<EventGeofenceRule>>({ transition: "exit", heading_min: 0, heading_max: 360, message_type: "custom", send_mode: "manual", destination_label: "", sort_order: 0 }); const [directionPreset, setDirectionPreset] = useState<CompassDirection>("any"); const [testBus, setTestBus] = useState("1234"); const [message, setMessage] = useState<string | null>(null);
+  const load = () => Promise.all([api.getEventGeofences(), api.getEventLocations(), api.getEventServicePlans()]).then(([g, l, p]) => { setGeofences(g.geofences); setLocations(l.locations); setPlans(p.plans); }).catch((err) => setMessage(err instanceof ApiError ? err.message : "Event resources are unavailable until migrations 033 and 034 are applied."));
   useEffect(() => { void load(); }, []);
   useEffect(() => {
     if (!selectedFence) return;
@@ -180,7 +241,7 @@ export function EventResourceMapEditor() {
     : "Choose a geofence and enter an operational message to preview it.";
   return <>
     <div className="panel-header" style={{ marginTop: 24 }}>Event Map Authoring</div>
-    <div className="panel-body"><p className="panel-desc">Draw and maintain reusable operational boundaries and transit locations here. Link them to an operating period in Event Planning before they affect Event AVL.</p>{message && <p className="muted">{message}</p>}<EventResourceMapEditorInner geofences={geofences} locations={locations} onChanged={load} /></div>
+    <div className="panel-body"><p className="panel-desc">Draw and maintain reusable operational boundaries and transit locations here. Link them to an operating period in Event Planning before they affect Event AVL.</p>{message && <p className="muted">{message}</p>}<EventResourceMapEditorInner geofences={geofences} locations={locations} plans={plans} onChanged={load} /></div>
     <div className="panel-header" style={{ marginTop: 24 }}>Direction Rule Configuration</div>
     <div className="panel-body event-direction-rules">
       <p className="panel-desc">Every crossing in an active operating scope creates an Event AVL message. Planning defines the message type and wording; Event AVL controls whether matched messages are sent automatically to the configured Teams channel. Lower priority wins when rules overlap.</p>
@@ -194,4 +255,4 @@ export function EventResourceMapEditor() {
   </>;
 }
 
-function EventResourceMapEditorInner(props: { geofences: StoredFence[]; locations: EventLocation[]; onChanged: () => void }) { return <MapEditor {...props} />; }
+function EventResourceMapEditorInner(props: { geofences: StoredFence[]; locations: EventLocation[]; plans: EventServicePlan[]; onChanged: () => void }) { return <MapEditor {...props} />; }

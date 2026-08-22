@@ -495,6 +495,26 @@ describe("EventPlanning", () => {
     });
   });
 
+  describe("duplicate resources", () => {
+    it("shows an identifier when two linked resources share a name", async () => {
+      mockApiData({
+        events: [makeEvent()],
+        plans: [makePlan({ links: [
+          { kind: "geofences", service_plan_id: "plan1", value: "aaaaaa-111111", label: "Eagan Bus Garage" },
+          { kind: "geofences", service_plan_id: "plan1", value: "bbbbbb-222222", label: "Eagan Bus Garage" },
+          { kind: "routes", service_plan_id: "plan1", value: 12, label: "Route 12" },
+        ] })],
+      });
+      renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
+      // Removing the wrong one needs another revision to undo, so the two must
+      // be distinguishable before the click.
+      expect(await screen.findByRole("button", { name: "Remove Eagan Bus Garage · id ends 111111" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Remove Eagan Bus Garage · id ends 222222" })).toBeInTheDocument();
+      // A name that does not collide stays clean.
+      expect(screen.getByRole("button", { name: "Remove Route 12" })).toBeInTheDocument();
+    });
+  });
+
   describe("map-based scope selection", () => {
     it("offers a map view alongside the list and defaults to the list", async () => {
       mockApiData({ events: [makeEvent()], plans: [makePlan()] });
