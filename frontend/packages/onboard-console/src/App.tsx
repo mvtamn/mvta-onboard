@@ -20,6 +20,8 @@ import {
   IconAssessment,
   IconBus,
   IconMenu,
+  IconCollapseNav,
+  IconExpandNav,
 } from "./components/NavIcons.js";
 import { Dashboard } from "./routes/Dashboard.js";
 import { ServiceOperations } from "./routes/ServiceOperations.js";
@@ -114,6 +116,16 @@ function initialsOf(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
+const NAV_COLLAPSED_KEY = "mvta-onboard-nav-collapsed";
+
+function readNavCollapsed(): boolean {
+  try {
+    return window.localStorage.getItem(NAV_COLLAPSED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
 function ChangelogPopover({ onClose }: { onClose: () => void }) {
   const currentRelease = CHANGELOG_ENTRIES.find((entry) => entry.version === __APP_VERSION__);
   useEffect(() => {
@@ -162,12 +174,23 @@ export function App() {
   // - this just tracks whether it's pulled into view, and closes it on every
   // navigation so it never stays open covering the next page.
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  // Desktop-only rail collapse (icon-only, 64px). Persisted so an operator who
+  // wants the extra map/table width keeps it across sessions and page reloads.
+  const [navCollapsed, setNavCollapsed] = useState(readNavCollapsed);
   const [specialistOpen, setSpecialistOpen] = useState(true);
   const [eventsOpen, setEventsOpen] = useState(true);
   const [complianceOpen, setComplianceOpen] = useState(true);
   const [adminOpen, setAdminOpen] = useState(true);
   const [changelogOpen, setChangelogOpen] = useState(false);
   useEffect(() => { setMobileNavOpen(false); }, [location.pathname]);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(NAV_COLLAPSED_KEY, navCollapsed ? "true" : "false");
+    } catch {
+      // Private-browsing / storage-disabled: collapsing still works, it just
+      // won't survive a reload.
+    }
+  }, [navCollapsed]);
 
   if (!account) {
     return (
@@ -193,36 +216,49 @@ export function App() {
     <FixedRouteRefreshProvider>
       <EventWorkspaceProvider>
       <div className="frame">
-        <aside className={`nav-sidebar${mobileNavOpen ? " is-open" : ""}`}>
+        <aside
+          className={`nav-sidebar${mobileNavOpen ? " is-open" : ""}${navCollapsed ? " is-collapsed" : ""}`}
+          data-collapsed={navCollapsed ? "true" : "false"}
+        >
         <div className="nav-brand">
           <span className="logo-badge">MVTA</span>
-          <div>
+          <div className="nav-brand-detail">
             <div className="nav-brand-text">OnBoard</div>
             <button className="nav-version-button" onClick={() => setChangelogOpen(true)} aria-haspopup="dialog">
               <span className="nav-version-number">v{__APP_VERSION__}</span>
               <span>What’s new</span>
             </button>
           </div>
+          <button
+            className="nav-collapse-btn"
+            aria-expanded={!navCollapsed}
+            aria-controls="primary-nav"
+            aria-label={navCollapsed ? "Expand navigation menu" : "Collapse navigation menu"}
+            title={navCollapsed ? "Expand navigation menu" : "Collapse navigation menu"}
+            onClick={() => setNavCollapsed((collapsed) => !collapsed)}
+          >
+            {navCollapsed ? <IconExpandNav /> : <IconCollapseNav />}
+          </button>
         </div>
 
-        <nav className="nav-list">
-          <NavLink to="/" end><IconDashboard />Dashboard</NavLink>
+        <nav className="nav-list" id="primary-nav">
+          <NavLink to="/" end title="Dashboard"><IconDashboard /><span className="nav-label">Dashboard</span></NavLink>
           <div className="nav-section-label">Service Operations</div>
-          <NavLink to="/service-operations" end><IconDashboard />Overview</NavLink>
-          <NavLink to="/service-operations/compose"><IconCompose />Compose</NavLink>
-          <NavLink to="/service-operations/active"><IconMessages />Active Service Alerts</NavLink>
-          <NavLink to="/service-operations/suggested"><IconBell />Suggested Alerts</NavLink>
-          {isAdmin && <NavLink to="/service-operations/risk"><IconWrench />Service Risk &amp; Quality</NavLink>}
+          <NavLink to="/service-operations" end title="Overview"><IconDashboard /><span className="nav-label">Overview</span></NavLink>
+          <NavLink to="/service-operations/compose" title="Compose"><IconCompose /><span className="nav-label">Compose</span></NavLink>
+          <NavLink to="/service-operations/active" title="Active Service Alerts"><IconMessages /><span className="nav-label">Active Service Alerts</span></NavLink>
+          <NavLink to="/service-operations/suggested" title="Suggested Alerts"><IconBell /><span className="nav-label">Suggested Alerts</span></NavLink>
+          {isAdmin && <NavLink to="/service-operations/risk" title="Service Risk & Quality"><IconWrench /><span className="nav-label">Service Risk &amp; Quality</span></NavLink>}
           {(isAdmin || isCompliance || canSeeDetours || canSeeOccTools) && (
             <section className="nav-group">
               <button className="nav-group-toggle" aria-expanded={specialistOpen} onClick={() => setSpecialistOpen((open) => !open)}>
                 <span>Specialist Operations</span><span aria-hidden="true">{specialistOpen ? "⌃" : "›"}</span>
               </button>
-              {specialistOpen ? <div className="nav-group-links">
-                {canSeeDetours && <NavLink to="/detours"><IconDetour />Detours &amp; Closures</NavLink>}
-                {isAdmin && <NavLink to="/detour-intake"><IconDetour />Detour Intake</NavLink>}
-                {canSeeDetours && <NavLink to="/detour-reports"><IconClock />Detour Reports</NavLink>}
-              {canSeeOccTools && <NavLink to="/occ"><IconWrench />OCC Tools</NavLink>}
+              {specialistOpen || navCollapsed ? <div className="nav-group-links">
+                {canSeeDetours && <NavLink to="/detours" title="Detours & Closures"><IconDetour /><span className="nav-label">Detours &amp; Closures</span></NavLink>}
+                {isAdmin && <NavLink to="/detour-intake" title="Detour Intake"><IconDetour /><span className="nav-label">Detour Intake</span></NavLink>}
+                {canSeeDetours && <NavLink to="/detour-reports" title="Detour Reports"><IconClock /><span className="nav-label">Detour Reports</span></NavLink>}
+              {canSeeOccTools && <NavLink to="/occ" title="OCC Tools"><IconWrench /><span className="nav-label">OCC Tools</span></NavLink>}
               </div> : null}
             </section>
           )}
@@ -230,18 +266,18 @@ export function App() {
             <button className="nav-group-toggle" aria-expanded={eventsOpen} onClick={() => setEventsOpen((open) => !open)}>
               <span>Events</span><span aria-hidden="true">{eventsOpen ? "⌃" : "›"}</span>
             </button>
-            {eventsOpen ? <div className="nav-group-links">
-              {isAdmin && <NavLink to="/events/planning"><IconBus />Planning</NavLink>}
-              <NavLink to="/events/avl"><IconBus />Event AVL</NavLink>
+            {eventsOpen || navCollapsed ? <div className="nav-group-links">
+              {isAdmin && <NavLink to="/events/planning" title="Event Planning"><IconBus /><span className="nav-label">Planning</span></NavLink>}
+              <NavLink to="/events/avl" title="Event AVL"><IconBus /><span className="nav-label">Event AVL</span></NavLink>
             </div> : null}
           </section>}
           {isCompliance && <section className="nav-group">
             <button className="nav-group-toggle" aria-expanded={complianceOpen} onClick={() => setComplianceOpen((open) => !open)}>
               <span>Compliance &amp; Assessment</span><span aria-hidden="true">{complianceOpen ? "⌃" : "›"}</span>
             </button>
-            {complianceOpen ? <div className="nav-group-links">
-              <NavLink to="/compliance"><IconShield />Compliance</NavLink>
-              <NavLink to="/performance-assessment"><IconAssessment />Performance Assessment</NavLink>
+            {complianceOpen || navCollapsed ? <div className="nav-group-links">
+              <NavLink to="/compliance" title="Compliance"><IconShield /><span className="nav-label">Compliance</span></NavLink>
+              <NavLink to="/performance-assessment" title="Performance Assessment"><IconAssessment /><span className="nav-label">Performance Assessment</span></NavLink>
             </div> : null}
           </section>}
           <section className="nav-group nav-group-administration">
@@ -249,12 +285,12 @@ export function App() {
               <button className="nav-group-toggle" aria-expanded={adminOpen} onClick={() => setAdminOpen((open) => !open)}>
                 <span>Administration</span><span aria-hidden="true">{adminOpen ? "⌃" : "›"}</span>
               </button>
-              {adminOpen ? <div className="nav-group-links">
-                {canManageAccess && <NavLink to="/admin/access"><IconShield />Access &amp; Identity</NavLink>}
-                {isAdmin && <NavLink to="/admin/events"><IconBus />Event Administration</NavLink>}
-                {isAdmin && <NavLink to="/admin/service"><IconWrench />Service Configuration</NavLink>}
-                {isAdmin && <NavLink to="/admin/integrations"><IconWrench />Integrations &amp; Data Health</NavLink>}
-                {canManageAccess && <NavLink to="/admin/governance"><IconClock />Governance &amp; Audit</NavLink>}
+              {adminOpen || navCollapsed ? <div className="nav-group-links">
+                {canManageAccess && <NavLink to="/admin/access" title="Access & Identity"><IconShield /><span className="nav-label">Access &amp; Identity</span></NavLink>}
+                {isAdmin && <NavLink to="/admin/events" title="Event Administration"><IconBus /><span className="nav-label">Event Administration</span></NavLink>}
+                {isAdmin && <NavLink to="/admin/service" title="Service Configuration"><IconWrench /><span className="nav-label">Service Configuration</span></NavLink>}
+                {isAdmin && <NavLink to="/admin/integrations" title="Integrations & Data Health"><IconWrench /><span className="nav-label">Integrations &amp; Data Health</span></NavLink>}
+                {canManageAccess && <NavLink to="/admin/governance" title="Governance & Audit"><IconClock /><span className="nav-label">Governance &amp; Audit</span></NavLink>}
               </div> : null}
             </>}
           </section>
@@ -262,9 +298,9 @@ export function App() {
 
         <div className="nav-spacer" />
         <div className="nav-footer">
-          <div className="nav-status">
+          <div className="nav-status" title={stats.ok ? "Console Live" : "Console Offline"}>
             <span className="live-dot" />
-            {stats.ok ? "Console Live" : "Console Offline"}
+            <span className="nav-label">{stats.ok ? "Console Live" : "Console Offline"}</span>
           </div>
         </div>
         </aside>
