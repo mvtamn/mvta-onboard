@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.54] - 2026-08-22
+
+- **Polish the in-app release notes.** The Changelog now has a clearer hierarchy, a prominent current-build indicator, and refined expandable release cards that are easier to scan across desktop and mobile.
+
 ## [1.5.53] - 2026-08-18
 
 - **Geofences with the same name can be told apart and removed.** Two "Eagan Bus Garage" boundaries exist in real data, and the Event Administration table rendered only the name, so identical rows could not be distinguished and neither could be removed with any confidence about which was going. Rows that share a name now show the identifier that separates them, alongside the Event Plans using each one and when it was last updated.

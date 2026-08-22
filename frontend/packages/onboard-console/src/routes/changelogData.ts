@@ -18,6 +18,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.54",
+    date: "2026-08-22",
+    sections: [
+      {
+        heading: "Improved",
+        items: [
+          "Release notes now use a clearer, more scannable layout with a prominent current-build indicator and refined expandable release cards.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.43",
     date: "2026-08-16",
     sections: [
