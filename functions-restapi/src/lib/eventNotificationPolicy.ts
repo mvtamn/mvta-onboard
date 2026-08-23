@@ -13,8 +13,12 @@ export function notificationHasExpired(createdAt: Date | string, now = new Date(
 export const MOVEMENT_NOTIFICATION_COOLDOWN_SECONDS = 60;
 export const MOVEMENT_NOTIFICATION_COOLDOWN_REASON = "Suppressed by the 60-second movement notification cooldown";
 
-export function shouldAutomaticallyDeliver(automaticTeamsEnabled: boolean, matchedRuleId: string | null | undefined): boolean {
-  return automaticTeamsEnabled && Boolean(matchedRuleId);
+export function shouldAutomaticallyDeliver(
+  automaticTeamsEnabled: boolean,
+  matchedRuleId: string | null | undefined,
+  sendMode: "manual" | "auto" | null | undefined,
+): boolean {
+  return automaticTeamsEnabled && Boolean(matchedRuleId) && sendMode === "auto";
 }
 
 export function formatTeamsWebhookPayload(text: string) {

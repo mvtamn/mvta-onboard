@@ -49,7 +49,8 @@ test("expires manual notifications after 24 hours", () => {
 });
 
 test("only automatic rule messages deliver when Event AVL Teams delivery is enabled", () => {
-  assert.equal(shouldAutomaticallyDeliver(true, "rule-1"), true);
-  assert.equal(shouldAutomaticallyDeliver(false, "rule-1"), false);
-  assert.equal(shouldAutomaticallyDeliver(true, null), false);
+  assert.equal(shouldAutomaticallyDeliver(true, "rule-1", "auto"), true);
+  assert.equal(shouldAutomaticallyDeliver(true, "rule-1", "manual"), false);
+  assert.equal(shouldAutomaticallyDeliver(false, "rule-1", "auto"), false);
+  assert.equal(shouldAutomaticallyDeliver(true, null, "auto"), false);
 });
