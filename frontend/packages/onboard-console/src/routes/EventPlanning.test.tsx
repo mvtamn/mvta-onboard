@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { ApiError, type Event, type EventGeofence, type EventLocation, type EventServicePlan } from "@mvta/shared";
 import { EventWorkspaceProvider } from "../context/EventWorkspaceContext.js";
+import { AppDialogProvider } from "../components/AppDialog.js";
 import { EventPlanning } from "./EventPlanning.js";
 
 vi.mock("../config.js", () => ({
@@ -81,7 +82,7 @@ function renderEventPlanning(initialEntries: string[] = ["/console/event-plannin
   return render(
     <MemoryRouter initialEntries={initialEntries}>
       <EventWorkspaceProvider>
-        <EventPlanning />
+        <AppDialogProvider><EventPlanning /></AppDialogProvider>
       </EventWorkspaceProvider>
     </MemoryRouter>,
   );
@@ -93,7 +94,6 @@ async function findLinkedResourceRow(label: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.spyOn(window, "confirm");
 });
 
 afterEach(() => {
@@ -158,24 +158,23 @@ describe("EventPlanning", () => {
     }
 
     it("asks for confirmation before switching Events", async () => {
-      vi.mocked(window.confirm).mockReturnValue(false);
       await setUpDirtyPeriod();
       await userEvent.selectOptions(screen.getByRole("combobox", { name: "Selected Event" }), "evt2");
-      expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("State Fair Week 1"));
+      expect(await screen.findByRole("dialog", { name: "Discard unsaved changes?" })).toHaveTextContent("State Fair Week 1");
     });
 
     it("stays on the original Event when the confirmation is canceled", async () => {
-      vi.mocked(window.confirm).mockReturnValue(false);
       await setUpDirtyPeriod();
       await userEvent.selectOptions(screen.getByRole("combobox", { name: "Selected Event" }), "evt2");
+      await userEvent.click(await screen.findByRole("button", { name: "Cancel" }));
       expect(screen.getByRole("combobox", { name: "Selected Event" })).toHaveValue("evt1");
       expect(screen.getByRole("textbox", { name: "Event Plan name" })).toHaveValue("Edited but unsaved");
     });
 
     it("switches Events and clears the stale period fields once confirmed", async () => {
-      vi.mocked(window.confirm).mockReturnValue(true);
       await setUpDirtyPeriod();
       await userEvent.selectOptions(screen.getByRole("combobox", { name: "Selected Event" }), "evt2");
+      await userEvent.click(await screen.findByRole("button", { name: "Discard changes" }));
       expect(screen.getByRole("combobox", { name: "Selected Event" })).toHaveValue("evt2");
       expect(screen.getByRole("textbox", { name: "Event Plan name" })).toHaveValue("");
     });
@@ -185,7 +184,7 @@ describe("EventPlanning", () => {
       renderEventPlanning(["/console/event-planning?event=evt1"]);
       await screen.findByRole("combobox", { name: "Selected Event" });
       await userEvent.selectOptions(screen.getByRole("combobox", { name: "Selected Event" }), "evt2");
-      expect(window.confirm).not.toHaveBeenCalled();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
   });
 
@@ -217,23 +216,22 @@ describe("EventPlanning", () => {
     const linkedRoute = { kind: "routes" as const, service_plan_id: "plan1", value: 12, label: "Route 12" };
 
     it("enables Remove for a draft/review plan and calls unlinkEventServicePlan on confirm", async () => {
-      vi.mocked(window.confirm).mockReturnValue(true);
       mockApiData({ events: [makeEvent()], plans: [makePlan({ status: "draft", links: [linkedRoute] })] });
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
       const row = await findLinkedResourceRow("Route 12");
       const removeButton = within(row).getByRole("button", { name: "Remove Route 12" });
       expect(removeButton).toBeEnabled();
       await userEvent.click(removeButton);
-      expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("Route 12"));
+      await userEvent.click(await screen.findByRole("button", { name: "Remove route" }));
       expect(api.unlinkEventServicePlan).toHaveBeenCalledWith("plan1", "routes", 12, undefined);
     });
 
     it("does not call unlinkEventServicePlan when the confirmation is canceled", async () => {
-      vi.mocked(window.confirm).mockReturnValue(false);
       mockApiData({ events: [makeEvent()], plans: [makePlan({ status: "draft", links: [linkedRoute] })] });
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
       const row = await findLinkedResourceRow("Route 12");
       await userEvent.click(within(row).getByRole("button", { name: "Remove Route 12" }));
+      await userEvent.click(await screen.findByRole("button", { name: "Cancel" }));
       expect(api.unlinkEventServicePlan).not.toHaveBeenCalled();
     });
 
@@ -245,7 +243,6 @@ describe("EventPlanning", () => {
     });
 
     it("enables Remove against an open revision and passes its id", async () => {
-      vi.mocked(window.confirm).mockReturnValue(true);
       mockApiData({
         events: [makeEvent()],
         plans: [makePlan({
@@ -258,6 +255,7 @@ describe("EventPlanning", () => {
       const removeButton = within(row).getByRole("button", { name: "Remove Route 12" });
       expect(removeButton).toBeEnabled();
       await userEvent.click(removeButton);
+      await userEvent.click(await screen.findByRole("button", { name: "Remove route" }));
       expect(api.unlinkEventServicePlan).toHaveBeenCalledWith("plan1", "routes", 12, "rev1");
     });
   });
@@ -487,9 +485,9 @@ describe("EventPlanning", () => {
       renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
       const complete = await screen.findByRole("button", { name: "Complete Event Plan" });
       expect(document.querySelector(".panel-body")).toHaveTextContent(/use.*Complete Event Plan.*close it/i);
-      vi.mocked(window.confirm).mockReturnValue(false);
       await userEvent.click(complete);
-      expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("Complete Event Plan"));
+      expect(await screen.findByRole("dialog", { name: "Complete State Fair Week 1?" })).toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
       expect(api.transitionEventServicePlan).not.toHaveBeenCalled();
     });
   });
@@ -598,7 +596,6 @@ describe("EventPlanning", () => {
 
   describe("next action performs the work", () => {
     it("submits for review from the next-action panel without a second button", async () => {
-      vi.mocked(window.confirm).mockReturnValue(true);
       mockApiData({
         events: [makeEvent()],
         plans: [makePlan({ status: "draft", links: [
@@ -642,7 +639,6 @@ describe("EventPlanning", () => {
 
   describe("reviewed conflict overrides", () => {
     it("requires and submits a reason for an active route conflict", async () => {
-      vi.mocked(window.confirm).mockReturnValue(true);
       mockApiData({
         events: [makeEvent()],
         plans: [makePlan({ status: "approved", route_conflict: true, links: [
@@ -657,6 +653,7 @@ describe("EventPlanning", () => {
       await userEvent.type(reason, "Shared route is intentional for the transfer window");
       expect(screen.getByRole("button", { name: "Activate Event Plan" })).toBeEnabled();
       await userEvent.click(screen.getByRole("button", { name: "Activate Event Plan" }));
+      await userEvent.click(within(await screen.findByRole("dialog", { name: "Activate State Fair Week 1?" })).getByRole("button", { name: "Activate Event Plan" }));
       expect(api.transitionEventServicePlan).toHaveBeenCalledWith("plan1", "advance", "Shared route is intentional for the transfer window");
     });
   });

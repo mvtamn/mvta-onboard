@@ -762,6 +762,9 @@ can focus on one task without losing the surrounding operational context.
   compass range, a standard message template or custom instruction, an
   appended operational note, and a related location. The saved-rule list
   shows the rule name and message detail rather than raw storage codes.
+- Short text entry and consequential actions use an OnBoard dialog rather
+  than browser-owned prompts. The dialog identifies the operation, explains
+  its impact, validates required input, and labels destructive actions.
 
 Changes to a reusable resource cannot alter an active Event Plan directly:
 active plans run from their published scope snapshot until a reviewed revision

@@ -606,7 +606,9 @@ body {
 .modal-card .eyebrow { color: var(--brand-green); font-size: 10px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
 .btn-icon { background: var(--surface-alt-bg); border: 0; border-radius: 50%; color: var(--text-muted); cursor: pointer; font-size: 20px; height: 30px; line-height: 20px; width: 30px; }
 .modal-field { color: var(--text-dim); display: grid; font-size: 12px; font-weight: 700; gap: 5px; margin-top: 18px; }
-.modal-field textarea { background: var(--surface-bg); border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text); font: inherit; min-height: 110px; padding: 10px; resize: vertical; }
+.modal-field input, .modal-field textarea { background: var(--surface-bg); border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text); font: inherit; padding: 10px; }
+.modal-field textarea { min-height: 110px; resize: vertical; }
+.modal-description { color: var(--text-dim); line-height: 1.5; margin: 16px 0 0; }
 .modal-actions { border-top: 1px solid var(--border-soft); display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; padding-top: 14px; }
 @media (max-width: 760px) { .form-grid { grid-template-columns: 1fr; } .form-grid-wide { grid-column: auto; } }
 @media (max-width: 600px) { .form-grid-segment { align-items: stretch; grid-template-columns: 1fr; } .modal-overlay { padding: 20px 10px; } .modal-card { padding: 18px; } }

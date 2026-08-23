@@ -5,6 +5,7 @@ import { api } from "../config.js";
 import { useAuth } from "../auth/AuthContext.js";
 import { useEventWorkspace } from "../context/EventWorkspaceContext.js";
 import { EventWorkspaceNav } from "../components/EventWorkspaceNav.js";
+import { useAppDialog } from "../components/AppDialog.js";
 // Lazy: azure-maps-control needs WebGL and pulls a large bundle, so it is
 // fetched only when a planner actually opens the map view.
 const EventScopeMap = lazy(() => import("./modules/EventScopeMap.js").then((module) => ({ default: module.EventScopeMap })));
@@ -92,6 +93,7 @@ function EventDateTimeField({
 
 export function EventPlanning() {
   const { signIn } = useAuth();
+  const { confirm } = useAppDialog();
   const [events, setEvents] = useState<Event[]>([]);
   const [plans, setPlans] = useState<EventServicePlan[]>([]);
   const { selection, selectEvent, selectServicePlan, selectRevision } = useEventWorkspace();
@@ -364,16 +366,17 @@ export function EventPlanning() {
   async function unlink(kind: "routes" | "geofences" | "locations", value: string | number, label: string) {
     if (!plan) return;
     const singular = kind.slice(0, -1);
-    if (!window.confirm(`Remove ${singular} "${label}" from ${plan.name}?`)) return;
+    if (!await confirm({ title: `Remove ${label}?`, description: `This ${singular} will no longer be part of ${plan.name}.`, confirmLabel: `Remove ${singular}`, danger: true })) return;
     try { await api.unlinkEventServicePlan(plan.id, kind, value, revision?.id); setFeedbackFor("resources", `${singular} removed from ${plan.name}.`); await load(); }
     catch (err) { setFeedbackFor("resources", err instanceof ApiError ? err.message : `Could not remove ${kind}.`, "error"); }
   }
 
   async function transition(action: "submit-review" | "approve" | "advance" | "complete" | "suspend") {
     if (!plan) return;
-    if (action === "advance" && !window.confirm(`Activate Event Plan "${plan.name}" for internal Event AVL monitoring? This does not publish rider-facing communication.`)) return;
-    if (action === "suspend" && !window.confirm(`Suspend operations for "${plan.name}"? This pauses live Event AVL monitoring.`)) return;
-    if (action === "complete" && !window.confirm(`Complete Event Plan "${plan.name}"? This closes the Event Plan and removes it from active monitoring.`)) return;
+    const confirmation = action === "advance" ? { title: `Activate ${plan.name}?`, description: "This starts internal Event AVL monitoring. It does not publish rider-facing communication.", confirmLabel: "Activate Event Plan" }
+      : action === "suspend" ? { title: `Suspend ${plan.name}?`, description: "This pauses live Event AVL monitoring.", confirmLabel: "Suspend operations", danger: true }
+        : action === "complete" ? { title: `Complete ${plan.name}?`, description: "This closes the Event Plan and removes it from active monitoring.", confirmLabel: "Complete Event Plan", danger: true } : null;
+    if (confirmation && !await confirm(confirmation)) return;
     try { await api.transitionEventServicePlan(plan.id, action, conflictOverrideReason.trim() || undefined); setFeedbackFor("lifecycle", action === "advance" ? "Event Plan activated." : action === "complete" ? "Event Plan completed." : `Event Plan ${action === "submit-review" ? "submitted for review" : `${action}d`}.`); await load(); }
     catch (err) { setFeedbackFor("lifecycle", err instanceof ApiError ? err.message : "Could not update Event Plan.", "error"); }
   }
@@ -392,9 +395,19 @@ export function EventPlanning() {
 
   async function revise(action: "submit-review" | "approve" | "apply" | "reject") {
     if (!plan || !revision) return;
-    if (action === "apply" && !window.confirm("Apply this revision to the active scope? This changes what's live in Event AVL immediately.")) return;
+    if (action === "apply" && !await confirm({ title: "Apply this revision?", description: "This changes what is live in Event AVL immediately.", confirmLabel: "Apply revision" })) return;
     try { await api.transitionEventServicePlanRevision(plan.id, revision.id, action); setFeedbackFor("lifecycle", `Revision ${action === "apply" ? "applied" : `${action}d`}.`); await load(); }
     catch (err) { setFeedbackFor("lifecycle", err instanceof ApiError ? err.message : "Could not update revision.", "error"); }
+  }
+
+  async function switchEvent(eventId: string) {
+    if (periodDirty && !await confirm({ title: "Discard unsaved changes?", description: `The unsaved changes to ${plan?.name} will be lost.`, confirmLabel: "Discard changes", danger: true })) return;
+    selectEvent(eventId);
+  }
+
+  async function switchPlan(planId: string) {
+    if (periodDirty && !await confirm({ title: "Discard unsaved changes?", description: `The unsaved changes to ${plan?.name} will be lost.`, confirmLabel: "Discard changes", danger: true })) return;
+    selectServicePlan(planId);
   }
 
   const activeStage = !selectedEventId || !plan
@@ -492,10 +505,7 @@ export function EventPlanning() {
         <div className="event-search-row"><input id="event-search" type="search" className="f" value={eventSearch} onChange={(e) => setEventSearch(e.target.value)} aria-describedby="event-search-help" placeholder="Search by Event, team, or description" />{eventSearch && <button className="btn-sm" type="button" onClick={() => setEventSearch("")}>Clear</button>}</div>
         <small id="event-search-help">Filters the Event selector below; it does not search Event Plan names.</small>
       </div>
-      <select id="event-select" className="f" value={selectedEventId} onChange={(e) => {
-        if (periodDirty && !window.confirm(`Discard unsaved changes to "${plan?.name}" and switch Events?`)) return;
-        selectEvent(e.target.value);
-      }} aria-label="Selected Event"><option value="">{eventSearch && visibleEvents.length === 0 ? "No matching Events" : "Select Event"}</option>{visibleEvents.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select>
+      <select id="event-select" className="f" value={selectedEventId} onChange={(e) => void switchEvent(e.target.value)} aria-label="Selected Event"><option value="">{eventSearch && visibleEvents.length === 0 ? "No matching Events" : "Select Event"}</option>{visibleEvents.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select>
       {event && <><p className="muted"><strong>{event.name}</strong>{event.owning_team ? ` · ${event.owning_team}` : ""}{event.description ? ` · ${event.description}` : ""} <button className="btn-sm" type="button" onClick={() => setEditingEventName(true)}>Rename Event</button></p>{editingEventName && <div className="event-create-form"><input className="f" value={eventNameDraft} onChange={(e) => setEventNameDraft(e.target.value)} aria-label="Event name" /><button className="btn-sm" disabled={!eventNameDraft.trim()} onClick={() => void saveEventName()}>Save Event name</button><button className="btn-sm" onClick={() => { setEventNameDraft(event.name); setEditingEventName(false); }}>Cancel</button></div>}</>}
       {!loading && !loadError && events.length === 0 && <div className="event-empty-state" role="status">
         <div><strong>Create your first Event</strong><p>Start an Event workspace, then add its Event Plan and operational scope.</p></div>
@@ -521,10 +531,7 @@ export function EventPlanning() {
       <FeedbackNote feedback={feedback.period} />
       {selectedEventId && <>
         <div className="event-period-form">
-          <select id="event-plan-select" className="f" value={selectedPlanId} onChange={(e) => {
-            if (periodDirty && !window.confirm(`Discard unsaved changes to "${plan?.name}" and switch Event Plans?`)) return;
-            selectServicePlan(e.target.value);
-          }} aria-label="Selected Event Plan"><option value="">Select Event Plan</option>{eventPlans.map((row) => <option key={row.id} value={row.id}>{row.name} · {displayStatus(row.status)}</option>)}</select>
+          <select id="event-plan-select" className="f" value={selectedPlanId} onChange={(e) => void switchPlan(e.target.value)} aria-label="Selected Event Plan"><option value="">Select Event Plan</option>{eventPlans.map((row) => <option key={row.id} value={row.id}>{row.name} · {displayStatus(row.status)}</option>)}</select>
           <input id="event-plan-name" className="f" value={planName} onChange={(e) => setPlanName(e.target.value)} disabled={Boolean(plan && !planNameEditable)} placeholder="Example: State Fair · Friday evening" aria-label="Event Plan name" aria-describedby="event-plan-help" />
           <EventDateTimeField label="Starts" date={startDate} time={startTime} onDateChange={setStartDate} onTimeChange={setStartTime} invalid={Boolean(periodError)} disabled={Boolean(plan && !editable)} />
           <EventDateTimeField label="Ends" date={endDate} time={endTime} onDateChange={setEndDate} onTimeChange={setEndTime} invalid={Boolean(periodError)} disabled={Boolean(plan && !editable)} />

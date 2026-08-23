@@ -7,6 +7,7 @@ import "azure-maps-drawing-tools/dist/atlas-drawing.min.css";
 import { ApiError, type EventGeofence, type EventGeofenceMessageType, type EventGeofencePurpose, type EventGeofencePurposeOption, type EventGeofenceRule, type EventLocation, type EventLocationCategory, type EventServicePlan } from "@mvta/shared";
 import { api } from "../config.js";
 import { useAuth } from "../auth/AuthContext.js";
+import { useAppDialog } from "../components/AppDialog.js";
 import "./modules/eventMonitoring.css";
 import { validateDrawnPolygon } from "./geofenceGeometry.js";
 
@@ -167,10 +168,11 @@ function MapEditor({ geofences, locations, plans, purposes, onChanged }: { geofe
 function PurposeManager({ purposes, geofences, onChanged }: { purposes: EventGeofencePurposeOption[]; geofences: StoredFence[]; onChanged: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const { confirm, prompt } = useAppDialog();
   const codeFor = (label: string) => label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
 
   async function add() {
-    const label = window.prompt("Area purpose name")?.trim();
+    const label = (await prompt({ title: "Add area purpose", description: "Describe how a Monitoring Area is used in Event AVL.", label: "Purpose name", confirmLabel: "Add purpose", required: true }))?.trim();
     if (!label) return;
     setBusy("new"); setError(null);
     try { await api.createEventGeofencePurpose({ code: codeFor(label), label }); onChanged(); }
@@ -179,7 +181,7 @@ function PurposeManager({ purposes, geofences, onChanged }: { purposes: EventGeo
   }
 
   async function rename(purpose: EventGeofencePurposeOption) {
-    const label = window.prompt("Area purpose name", purpose.label)?.trim();
+    const label = (await prompt({ title: "Rename area purpose", label: "Purpose name", defaultValue: purpose.label, confirmLabel: "Save changes", required: true }))?.trim();
     if (!label || label === purpose.label) return;
     setBusy(purpose.code); setError(null);
     try { await api.updateEventGeofencePurpose(purpose.code, { label }); onChanged(); }
@@ -189,7 +191,7 @@ function PurposeManager({ purposes, geofences, onChanged }: { purposes: EventGeo
 
   async function remove(purpose: EventGeofencePurposeOption) {
     const using = geofences.filter((geofence) => geofence.purpose === purpose.code).length;
-    if (!window.confirm(`Delete Area purpose "${purpose.label}"?${using ? ` ${using} Monitoring Area${using === 1 ? "" : "s"} still use it and must be reassigned first.` : ""}`)) return;
+    if (!await confirm({ title: `Delete ${purpose.label}?`, description: using ? `${using} Monitoring Area${using === 1 ? " still uses" : "s still use"} this purpose and must be reassigned first.` : "This cannot be undone.", confirmLabel: "Delete purpose", danger: true })) return;
     setBusy(purpose.code); setError(null);
     try { await api.deleteEventGeofencePurpose(purpose.code); onChanged(); }
     catch (err) { setError(err instanceof ApiError ? err.message : "Could not delete this Area purpose."); }
@@ -216,6 +218,7 @@ function PurposeManager({ purposes, geofences, onChanged }: { purposes: EventGeo
 function GeofenceManager({ geofences, plans, purposes, selectedId, onSelect, onChanged }: { geofences: StoredFence[]; plans: EventServicePlan[]; purposes: EventGeofencePurposeOption[]; selectedId: string | null; onSelect: (id: string) => void; onChanged: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { confirm, prompt } = useAppDialog();
 
   const plansUsing = (geofenceId: string) =>
     plans.filter((plan) => (plan.links ?? []).some((link) => link.kind === "geofences" && String(link.value) === geofenceId));
@@ -227,7 +230,7 @@ function GeofenceManager({ geofences, plans, purposes, selectedId, onSelect, onC
   }
 
   async function rename(geofence: StoredFence) {
-    const name = window.prompt("Monitoring Area name", geofence.name)?.trim();
+    const name = (await prompt({ title: "Rename Monitoring Area", label: "Monitoring Area name", defaultValue: geofence.name, confirmLabel: "Save changes", required: true }))?.trim();
     if (!name || name === geofence.name) return;
     setBusy(geofence.id);
     setError(null);
@@ -239,10 +242,10 @@ function GeofenceManager({ geofences, plans, purposes, selectedId, onSelect, onC
   async function remove(geofence: StoredFence) {
     const using = plansUsing(geofence.id);
     const governed = using.filter((plan) => ["active", "suspended", "approved"].includes(plan.status));
-    const lines = [`Deactivate Monitoring Area "${geofence.name}"? It is retained for audit and leaves every picker.`];
+    const lines = [`It is retained for audit and leaves every picker.`];
     if (using.length > 0) lines.push(`In the scope of: ${using.map((plan) => `${plan.name} (${plan.status})`).join(", ")}.`);
     if (governed.length > 0) lines.push("Live monitoring is unaffected - governed Event Plans run from a published scope snapshot - but their scope still references it until a reviewed revision removes it.");
-    if (!window.confirm(lines.join("\n\n"))) return;
+    if (!await confirm({ title: `Deactivate ${geofence.name}?`, description: lines.join(" "), confirmLabel: "Deactivate", danger: true })) return;
     setBusy(geofence.id);
     setError(null);
     try {
@@ -292,8 +295,9 @@ function GeofenceManager({ geofences, plans, purposes, selectedId, onSelect, onC
 }
 
 function LocationManager({ locations, selectedId, onSelect, onChanged }: { locations: EventLocation[]; selectedId: string | null; onSelect: (id: string) => void; onChanged: () => void }) {
-  async function rename(location: EventLocation) { const name = window.prompt("Location name", location.name)?.trim(); if (!name || name === location.name) return; await api.updateEventLocation(location.id, { name }); onChanged(); }
-  async function deactivate(location: EventLocation) { if (!window.confirm(`Deactivate ${location.name}?`)) return; await api.updateEventLocation(location.id, { is_active: false }); onChanged(); }
+  const { confirm, prompt } = useAppDialog();
+  async function rename(location: EventLocation) { const name = (await prompt({ title: "Rename transit location", label: "Location name", defaultValue: location.name, confirmLabel: "Save changes", required: true }))?.trim(); if (!name || name === location.name) return; await api.updateEventLocation(location.id, { name }); onChanged(); }
+  async function deactivate(location: EventLocation) { if (!await confirm({ title: `Deactivate ${location.name}?`, description: "The location will remain available in audit history but cannot be selected for new rules or scope.", confirmLabel: "Deactivate", danger: true })) return; await api.updateEventLocation(location.id, { is_active: false }); onChanged(); }
   if (!locations.length) return null;
   return <details className="event-admin-disclosure" open>
     <summary>
@@ -312,6 +316,7 @@ export function EventResourceMapEditor() {
   // landing here with nothing selected - resolves once `geofences` loads
   // even though the id is read before that request resolves.
   const [searchParams] = useSearchParams();
+  const { confirm } = useAppDialog();
   const [geofences, setGeofences] = useState<StoredFence[]>([]); const [locations, setLocations] = useState<EventLocation[]>([]); const [plans, setPlans] = useState<EventServicePlan[]>([]); const [purposes, setPurposes] = useState<EventGeofencePurposeOption[]>([]); const [selectedFence, setSelectedFence] = useState(() => searchParams.get("geofence") ?? ""); const [editingRuleId, setEditingRuleId] = useState<string | null>(null); const [saving, setSaving] = useState(false); const [rule, setRule] = useState<Partial<EventGeofenceRule>>({ name: "", transition: "exit", heading_min: 0, heading_max: 360, message_type: "custom", send_mode: "manual", destination_label: "", sort_order: 0 }); const [directionPreset, setDirectionPreset] = useState<CompassDirection>("any"); const [testBus, setTestBus] = useState("1234"); const [message, setMessage] = useState<string | null>(null);
   const load = () => Promise.all([api.getEventGeofences(), api.getEventLocations(), api.getEventServicePlans(), api.getEventGeofencePurposes()]).then(([g, l, p, purposesResponse]) => { setGeofences(g.geofences); setLocations(l.locations); setPlans(p.plans); setPurposes(purposesResponse.purposes); }).catch((err) => setMessage(err instanceof ApiError ? err.message : "Event resources are unavailable until migrations 033, 034, 066, and 067 are applied."));
   useEffect(() => { void load(); }, []);
@@ -334,7 +339,7 @@ export function EventResourceMapEditor() {
   }
   function chooseDirection(value: CompassDirection) { setDirectionPreset(value); if (value === "any") setRule((r) => ({ ...r, heading_min: 0, heading_max: 360 })); else if (value !== "custom") setRule((r) => ({ ...r, heading_min: COMPASS_RANGES[value][0], heading_max: COMPASS_RANGES[value][1] })); }
   function editRule(item: EventGeofenceRule) { const messageType = item.message_type ?? "custom"; setEditingRuleId(item.id); setRule({ ...item, message_type: messageType, transition: messageType === "arriving_soon" ? "enter" : item.transition }); setDirectionPreset("custom"); }
-  async function deleteRule(ruleId: string) { if (!selectedFence || !window.confirm("Delete this direction rule?")) return; try { await api.deleteEventGeofenceRule(selectedFence, ruleId); setMessage("Direction rule deleted."); await load(); } catch (err) { setMessage(err instanceof ApiError ? err.message : "Could not delete direction rule."); } }
+  async function deleteRule(ruleId: string) { if (!selectedFence || !await confirm({ title: "Delete direction rule?", description: "This removes the operational message rule from the Monitoring Area.", confirmLabel: "Delete rule", danger: true })) return; try { await api.deleteEventGeofenceRule(selectedFence, ruleId); setMessage("Direction rule deleted."); await load(); } catch (err) { setMessage(err instanceof ApiError ? err.message : "Could not delete direction rule."); } }
   const previewContext = rule.destination_label?.trim() ? `; ${rule.destination_label.trim()}` : "";
   const previewMessage = selected
     ? rule.message_type === "departing" ? `Bus ${testBus || "1234"} on Route 55 is departing ${locations.find((location) => location.id === rule.destination_location_id)?.name ?? selected.name}${previewContext}.`

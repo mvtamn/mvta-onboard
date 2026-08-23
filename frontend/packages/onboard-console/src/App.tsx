@@ -35,6 +35,7 @@ import { OccTools } from "./routes/OccTools.js";
 import { EventMonitoring } from "./routes/modules/EventMonitoring.js";
 import { EventPlanning } from "./routes/EventPlanning.js";
 import { EventWorkspaceProvider } from "./context/EventWorkspaceContext.js";
+import { AppDialogProvider } from "./components/AppDialog.js";
 import { Compliance } from "./routes/Compliance.js";
 import { PerformanceAssessment } from "./routes/PerformanceAssessment.js";
 import { Detours } from "./routes/Detours.js";
@@ -208,6 +209,7 @@ export function App() {
   return (
     <FixedRouteRefreshProvider>
       <EventWorkspaceProvider>
+      <AppDialogProvider>
       <div className="frame">
         <aside
           className={`nav-sidebar${mobileNavOpen ? " is-open" : ""}${navCollapsed ? " is-collapsed" : ""}`}
@@ -441,6 +443,7 @@ export function App() {
         </div>
         </div>
       </div>
+      </AppDialogProvider>
       </EventWorkspaceProvider>
     </FixedRouteRefreshProvider>
   );

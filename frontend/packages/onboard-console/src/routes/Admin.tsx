@@ -12,6 +12,7 @@ import {
   type AppSettingRow,
 } from "@mvta/shared";
 import { api } from "../config.js";
+import { useAppDialog } from "../components/AppDialog.js";
 
 const ROUTE_CATEGORIES: RouteCategory[] = ["FixedRoute", "SpecialEvent", "OnDemand"];
 const ROUTE_CATEGORY_DESCRIPTIONS: Record<RouteCategory, string> = {
@@ -87,6 +88,7 @@ export function EventMonitoringSettingsSection() {
 // distinction. A light, occasional admin step (per the design doc), not a
 // bulk-import workflow - someone adds/updates a row before an event runs.
 export function RouteClassificationSection() {
+  const { confirm } = useAppDialog();
   const [routes, setRoutes] = useState<RouteClassificationRow[] | null>(null);
   const [unclassified, setUnclassified] = useState<UnclassifiedRoute[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -230,7 +232,7 @@ export function RouteClassificationSection() {
   // per Ty's live report: no way existed to remove a route reclassified
   // for testing.
   async function remove(r: RouteClassificationRow) {
-    if (!window.confirm(`Remove the classification for Route ${r.route_id}? It will go back to unclassified (treated as fixed route).`)) {
+    if (!await confirm({ title: `Remove Route ${r.route_id} classification?`, description: "The route will return to unclassified and be treated as fixed route service.", confirmLabel: "Remove classification", danger: true })) {
       return;
     }
     setBusy(true);

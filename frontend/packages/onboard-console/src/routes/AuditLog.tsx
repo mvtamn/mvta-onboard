@@ -2,6 +2,7 @@ import { useState } from "react";
 import { type AdminMessage, CATEGORY_LABELS, formatExpires, ApiError } from "@mvta/shared";
 import { api } from "../config.js";
 import { useAuth } from "../auth/AuthContext.js";
+import { useAppDialog } from "../components/AppDialog.js";
 
 const STATUS_PILL: Record<string, string> = {
   draft: "pill-warning",
@@ -15,6 +16,7 @@ const STATUS_PILL: Record<string, string> = {
 // via GET /admin/messages. Replaces the earlier client-side active-only filter.
 export function AuditLog() {
   const { roles } = useAuth();
+  const { confirm } = useAppDialog();
   const canPublish = roles.includes("OCC.Publisher") || roles.includes("OCC.Admin");
   const [tag, setTag] = useState("");
   const [q, setQ] = useState("");
@@ -40,7 +42,7 @@ export function AuditLog() {
   }
 
   async function publishDraft(message: AdminMessage) {
-    if (!window.confirm(`Publish the reviewed ingestion draft “${message.summary}”?`)) return;
+    if (!await confirm({ title: "Publish reviewed draft?", description: `“${message.summary}” will be published to its configured rider channels.`, confirmLabel: "Publish draft" })) return;
     setBusy(true);
     setError(null);
     try {

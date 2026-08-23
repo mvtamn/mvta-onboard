@@ -8,6 +8,7 @@ import {
 } from "@mvta/shared";
 import { useAuth } from "../auth/AuthContext.js";
 import { api } from "../config.js";
+import { useAppDialog } from "./AppDialog.js";
 
 const CATEGORY_PILL: Record<string, string> = {
   delay: "pill-warning",
@@ -29,6 +30,7 @@ const SEVERITY_PILL: Record<string, string> = {
 // and Retract actions. The UI gates by role for clarity; the API enforces it.
 export function MessagesTable({ compact = false, onChanged, onLoaded }: { compact?: boolean; onChanged?: () => void; onLoaded?: (messages: ActiveMessage[]) => void }) {
   const { roles } = useAuth();
+  const { confirm } = useAppDialog();
   const canWrite = roles.some((r) => r === "OCC.Publisher" || r === "OCC.Admin");
 
   const [messages, setMessages] = useState<ActiveMessage[]>([]);
@@ -88,7 +90,7 @@ export function MessagesTable({ compact = false, onChanged, onLoaded }: { compac
   }
 
   async function retract(id: string, summary: string) {
-    if (!window.confirm(`Retract this message?\n\n"${summary}"\n\nIt will disappear from all rider channels immediately.`)) {
+    if (!await confirm({ title: "Retract this message?", description: `“${summary}” will disappear from all rider channels immediately.`, confirmLabel: "Retract message", danger: true })) {
       return;
     }
     setBusy(true);

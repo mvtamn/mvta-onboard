@@ -2,6 +2,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AccessManagement, spreadsheetSafeText } from "./AccessManagement.js";
+import { AppDialogProvider } from "../components/AppDialog.js";
 
 vi.mock("../config.js", () => ({
   api: {
@@ -94,7 +95,7 @@ describe("AccessManagement", () => {
       },
     });
 
-    render(<AccessManagement />);
+    render(<AppDialogProvider><AccessManagement /></AppDialogProvider>);
     const row = (await screen.findByText("Taylor Operator")).closest("tr")!;
     expect(within(row).getByText("Viewer")).toBeInTheDocument();
     expect(within(row).getByText("via OnBoard Viewers")).toBeInTheDocument();
@@ -114,7 +115,7 @@ describe("AccessManagement", () => {
       items: [{ index: 0, disposition: "immediate", errors: [] }],
     });
 
-    render(<AccessManagement />);
+    render(<AppDialogProvider><AccessManagement /></AppDialogProvider>);
     const row = (await screen.findByText("Taylor Operator")).closest("tr")!;
     await userEvent.click(within(row).getByRole("button", { name: "Remove access: Viewer for Taylor Operator" }));
     await userEvent.type(screen.getByRole("textbox", { name: "Revocation reason" }), "Moved to another team");
@@ -133,7 +134,7 @@ describe("AccessManagement", () => {
   });
 
   it("keeps access groups out of the people inventory and labels their action clearly", async () => {
-    render(<AccessManagement />);
+    render(<AppDialogProvider><AccessManagement /></AppDialogProvider>);
 
     await screen.findByText("Taylor Operator");
     expect(screen.queryByText("OnBoard Viewers")).not.toBeInTheDocument();

@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.58] - 2026-08-22
+
+- **Replace browser dialogs with OnBoard dialogs.** Confirmations and short text requests now use a consistent, accessible in-app dialog with clear consequence copy, keyboard dismissal, inline required-field validation, and explicitly styled destructive actions. This covers Event Administration and Event Planning as well as messages, access, route classification, detours, and assessment workflows.
+
 ## [1.5.57] - 2026-08-22
 
 - **Manage Monitoring Areas directly.** Event Administration now offers a Rename action alongside the existing purpose, boundary-editing, and audited deactivation controls. Deactivation keeps the record for audit rather than hard-deleting operational history.

@@ -15,6 +15,7 @@ import {
 import { api } from "../config.js";
 import { useAuth } from "../auth/AuthContext.js";
 import { roleLabel } from "../auth/roles.js";
+import { useAppDialog } from "../components/AppDialog.js";
 
 const HUMAN_ROLES: OnBoardAccessRole[] = [
   "OCC.Viewer",
@@ -51,6 +52,7 @@ export function spreadsheetSafeText(value: unknown): string {
 }
 
 export function AccessManagement() {
+  const { prompt } = useAppDialog();
   const { account } = useAuth();
   const [tab, setTab] = useState<Tab>("access");
   const [principals, setPrincipals] = useState<OnBoardAccessPrincipal[]>([]);
@@ -257,7 +259,7 @@ export function AccessManagement() {
   }
 
   async function cancelChange(change: OnBoardAccessChangeRecord) {
-    const cancellationReason = window.prompt("Why is this privileged access request no longer needed?");
+    const cancellationReason = await prompt({ title: "Cancel privileged access request", description: "Record why this request is no longer needed.", label: "Cancellation reason", confirmLabel: "Cancel request", multiline: true, required: true });
     if (!cancellationReason?.trim()) return;
     setBusy(true);
     try {

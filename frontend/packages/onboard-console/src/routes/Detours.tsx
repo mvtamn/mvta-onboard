@@ -16,6 +16,7 @@ import { useAuth } from "../auth/AuthContext.js";
 import { api } from "../config.js";
 import { resizeImageFile } from "../lib/imageResize.js";
 import { detourMatchesSearch } from "../lib/detourSearch.js";
+import { useAppDialog } from "../components/AppDialog.js";
 import { dateLabel, dateTimeLabel, toDateInputValue } from "../lib/detourDates.js";
 
 const STATUS_TABS: { key: DetourStatus | "all"; label: string }[] = [
@@ -195,6 +196,7 @@ function detourToCloneForm(d: Detour): DetourFormState {
 // drift from any other consumer of the same data. See
 // detour-and-event-module-implementation-plan.md (Part B).
 export function Detours() {
+  const { confirm, prompt } = useAppDialog();
   const { roles } = useAuth();
   // Mirrors DETOUR_WRITE_ROLES / DETOUR_DELETE_ROLES in auth.ts. OCC.Detour
   // can create, edit and attach, but not delete - the server enforces the
@@ -300,7 +302,7 @@ export function Detours() {
   }
 
   async function remove(d: Detour) {
-    if (!window.confirm(`Delete this detour record?\n\n"${d.closure}"`)) return;
+    if (!await confirm({ title: "Delete this detour record?", description: `“${d.closure}” will be permanently deleted.`, confirmLabel: "Delete detour", danger: true })) return;
     try {
       await api.deleteDetour(d.id);
       load();
@@ -310,16 +312,13 @@ export function Detours() {
   }
 
   async function recordAvailEntry(d: Detour) {
-    const result = window.prompt(
-      "Enter Avail result: entered, conflict, or not_entered",
-      d.avail_entry_result ?? "entered",
-    );
+    const result = await prompt({ title: "Record Avail result", description: "Enter entered, conflict, or not_entered.", label: "Avail result", defaultValue: d.avail_entry_result ?? "entered", confirmLabel: "Continue", required: true });
     if (result !== "entered" && result !== "conflict" && result !== "not_entered") return;
     const externalId = result === "entered"
-      ? window.prompt("Avail Detour ID", d.external_detour_id ?? "")
+      ? await prompt({ title: "Record Avail Detour ID", label: "Avail Detour ID", defaultValue: d.external_detour_id ?? "", confirmLabel: "Continue", required: true })
       : null;
     if (result === "entered" && !externalId?.trim()) return;
-    const detail = window.prompt("Optional entry or conflict details", "") || null;
+    const detail = await prompt({ title: "Add entry details", label: "Details", placeholder: "Optional entry or conflict details", confirmLabel: "Save result", multiline: true }) || null;
     try {
       await api.recordAvailEntry(d.id, {
         result,
@@ -333,7 +332,7 @@ export function Detours() {
   }
 
   async function useManualFallback(d: Detour) {
-    const reason = window.prompt("Why is this detour being fulfilled manually instead of in Avail?");
+    const reason = await prompt({ title: "Use manual fulfillment", label: "Reason", placeholder: "Why is this detour being fulfilled manually instead of in Avail?", confirmLabel: "Use manual fulfillment", multiline: true, required: true });
     if (!reason?.trim()) return;
     try {
       await api.changeDetourFulfillment(d.id, { fulfillment_mode: "fixed_route_manual", reason: reason.trim() });
@@ -344,7 +343,7 @@ export function Detours() {
   }
 
   async function closeDetour(d: Detour) {
-    const reason = window.prompt("Why is this detour being closed?");
+    const reason = await prompt({ title: "Close detour", label: "Closure reason", placeholder: "Why is this detour being closed?", confirmLabel: "Close detour", multiline: true, required: true });
     if (!reason?.trim()) return;
     try { await api.closeDetour(d.id, reason.trim()); load(); }
     catch (err) { setLoadError(err instanceof ApiError ? err.message : "Could not close detour"); }
