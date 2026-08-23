@@ -14,6 +14,14 @@ export interface ScopeMapFeature {
   linked: boolean;
 }
 
+export function isScopeMapLayerVisible(
+  kind: ScopeMapFeature["kind"],
+  showMonitoringAreas: boolean,
+  showLocations: boolean,
+): boolean {
+  return kind === "geofence" ? showMonitoringAreas : showLocations;
+}
+
 export function scopeMapFeatures(
   geofences: EventGeofence[],
   locations: EventLocation[],

@@ -5,7 +5,7 @@ import "azure-maps-control/dist/atlas.min.css";
 import { ApiError, type EventGeofence, type EventLocation } from "@mvta/shared";
 import { api } from "../../config.js";
 import { removeMapLayersIfPresent } from "./mapLayerCleanup.js";
-import { resolveScopeMapClick, scopeMapFeatures } from "./eventScopeMapFeatures.js";
+import { isScopeMapLayerVisible, resolveScopeMapClick, scopeMapFeatures } from "./eventScopeMapFeatures.js";
 import { escapeHtml } from "./eventVehicleFormat.js";
 
 const MAP_CENTER: atlas.data.Position = [-93.25, 44.83];
@@ -44,6 +44,8 @@ export function EventScopeMap({ geofences, locations, linkedGeofenceIds, linkedL
   const fittedRef = useRef(false);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showMonitoringAreas, setShowMonitoringAreas] = useState(true);
+  const [showLocations, setShowLocations] = useState(true);
 
   // Click handlers close over the current links, and Azure Maps holds the
   // handler it was given at layer-creation time. Routing through a ref keeps
@@ -94,9 +96,11 @@ export function EventScopeMap({ geofences, locations, linkedGeofenceIds, linkedL
     layersRef.current = [];
     source.clear();
 
-    const features = scopeMapFeatures(geofences, locations, linkedGeofenceIds, linkedLocationIds);
+    const features = scopeMapFeatures(geofences, locations, linkedGeofenceIds, linkedLocationIds)
+      .filter((feature) => isScopeMapLayerVisible(feature.kind, showMonitoringAreas, showLocations));
     const linkedOf = new Map(features.map((feature) => [`${feature.kind}:${feature.id}`, feature.linked]));
     geofences.forEach((fence) => {
+      if (!showMonitoringAreas) return;
       try {
         const polygon = JSON.parse(fence.polygon) as { coordinates: atlas.data.Position[][] };
         source?.add(new atlas.data.Feature(new atlas.data.Polygon(polygon.coordinates), {
@@ -104,7 +108,7 @@ export function EventScopeMap({ geofences, locations, linkedGeofenceIds, linkedL
         }));
       } catch { /* invalid authoring geometry is surfaced by the authoring surface */ }
     });
-    locations.forEach((location) => source?.add(new atlas.data.Feature(new atlas.data.Point([location.longitude, location.latitude]), {
+    if (showLocations) locations.forEach((location) => source?.add(new atlas.data.Feature(new atlas.data.Point([location.longitude, location.latitude]), {
       kind: "location", id: location.id, name: location.name, linked: linkedOf.get(`location:${location.id}`) ?? false,
     })));
 
@@ -203,7 +207,7 @@ export function EventScopeMap({ geofences, locations, linkedGeofenceIds, linkedL
         fittedRef.current = true;
       }
     }
-  }, [geofences, locations, linkedGeofenceIds, linkedLocationIds, ready]);
+  }, [geofences, locations, linkedGeofenceIds, linkedLocationIds, ready, showMonitoringAreas, showLocations]);
 
   // Nothing to draw is a real state, not an error: a console with no authored
   // boundaries renders a blank basemap that reads as broken. Say so, and point
@@ -218,6 +222,11 @@ export function EventScopeMap({ geofences, locations, linkedGeofenceIds, linkedL
   }
 
   return <div className="event-scope-map">
+    <fieldset className="event-scope-map-layers">
+      <legend>Map layers</legend>
+      <label><input type="checkbox" checked={showMonitoringAreas} onChange={(event) => setShowMonitoringAreas(event.target.checked)} /> Monitoring Areas</label>
+      <label><input type="checkbox" checked={showLocations} onChange={(event) => setShowLocations(event.target.checked)} /> Transit locations</label>
+    </fieldset>
     <div className="event-scope-map-canvas" ref={containerRef} role="application" aria-label="Event Plan scope map" />
     {!ready && !error && <p className="event-scope-map-state">Loading the scope map…</p>}
     {error && <p className="event-scope-map-state" role="alert">{error}</p>}

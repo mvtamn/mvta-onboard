@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EventGeofence, EventLocation } from "@mvta/shared";
-import { resolveScopeMapClick, scopeMapFeatures } from "./eventScopeMapFeatures.js";
+import { isScopeMapLayerVisible, resolveScopeMapClick, scopeMapFeatures } from "./eventScopeMapFeatures.js";
 
 const fence = (id: string, name: string): EventGeofence => ({
   id, name, polygon: "", purpose: "other", is_active: true, updated_by: null, updated_at: "2026-01-01T00:00:00.000Z", rules: [],
@@ -25,6 +25,15 @@ describe("scopeMapFeatures with nothing authored", () => {
     // Dev environments can have zero authored geofences; the map surface uses
     // this to show an explanation instead of a blank basemap.
     expect(scopeMapFeatures([], [], [], [])).toEqual([]);
+  });
+});
+
+describe("scope map layers", () => {
+  it("hides only the layer an operator turns off", () => {
+    expect(isScopeMapLayerVisible("geofence", false, true)).toBe(false);
+    expect(isScopeMapLayerVisible("location", false, true)).toBe(true);
+    expect(isScopeMapLayerVisible("geofence", true, false)).toBe(true);
+    expect(isScopeMapLayerVisible("location", true, false)).toBe(false);
   });
 });
 

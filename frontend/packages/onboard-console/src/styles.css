@@ -427,6 +427,9 @@ body {
 .event-scope-view-toggle button { border: 0; background: none; }
 .event-scope-view-toggle button[aria-pressed="true"] { background: var(--success-bg); color: var(--success-text); font-weight: 700; }
 .event-scope-map { margin: 0 0 14px; }
+.event-scope-map-layers { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 8px; padding: 0; border: 0; color: var(--text-muted); font-size: 12px; }
+.event-scope-map-layers legend { width: 100%; margin-bottom: 2px; color: var(--text); font-weight: 700; }
+.event-scope-map-layers label { display: inline-flex; align-items: center; gap: 5px; }
 .event-scope-map-canvas { height: 340px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface-bg); }
 .event-scope-map-state { margin: 8px 0 0; color: var(--text-muted); font-size: 12px; }
 .event-scope-map-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 8px 0 0; color: var(--text-muted); font-size: 11px; }
