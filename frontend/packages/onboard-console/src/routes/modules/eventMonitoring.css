@@ -2,14 +2,14 @@
 .evmon-summary { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 12px; }
 .evmon-summary h2 { margin: 5px 0 4px; font-size: 22px; letter-spacing: -.3px; }
 .evmon-summary p { margin: 0; color: var(--text-muted); font-size: 13px; }
-.evmon-eyebrow { color: var(--success-text); font-size: 11px; font-weight: 800; letter-spacing: .7px; text-transform: uppercase; }
+.evmon-eyebrow { color: var(--success-text); font-size: 11px; font-weight: 800; letter-spacing: .7px; }
 .evmon-live-dot { display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: var(--live-dot); box-shadow: 0 0 0 4px color-mix(in srgb, var(--live-dot) 12%, transparent); }
 .evmon-metrics { display: flex; background: var(--surface-bg); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,.04); }
 .evmon-metrics div { min-width: 105px; padding: 10px 16px; border-right: 1px solid var(--border); }
 .evmon-metrics div:last-child { border-right: 0; }
 .evmon-metrics strong, .evmon-metrics span { display: block; }
 .evmon-metrics strong { font-size: 20px; color: var(--brand-green-text); }
-.evmon-metrics span { color: var(--text-muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
+.evmon-metrics span { color: var(--text-muted); font-size: 10px; font-weight: 700; letter-spacing: .5px; }
 .evmon-workspace { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--surface-bg); box-shadow: 0 4px 16px rgba(0,0,0,.07); margin-bottom: 22px; }
 .evmon-workspace.is-minimized { box-shadow: none; }
 .evmon-toolbar { min-height: 48px; padding: 0 14px 0 17px; background: var(--brand-green); color: #fff; display: flex; align-items: center; justify-content: space-between; }
@@ -26,7 +26,7 @@
 .evmon-filter-count { padding: 3px 7px; border-radius: 999px; color: var(--success-text); background: var(--success-bg); font-size: 10px; }
 .evmon-controls { display: flex; align-items: flex-end; gap: 10px; padding: 0 14px 12px; background: var(--surface-bg); overflow-x: auto; }
 .evmon-controls label { flex: 0 0 auto; }
-.evmon-controls label > span { display: block; margin-bottom: 4px; color: var(--text-muted); font-size: 10.5px; font-weight: 800; letter-spacing: .25px; text-transform: uppercase; }
+.evmon-controls label > span { display: block; margin-bottom: 4px; color: var(--text-muted); font-size: 10.5px; font-weight: 800; letter-spacing: .25px; }
 .evmon-controls input:not([type="checkbox"]), .evmon-controls select { height: 32px; min-width: 125px; padding: 0 9px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface-alt-bg); font: inherit; font-size: 12px; }
 .evmon-controls input:not([type="checkbox"]) { width: 160px; }
 .evmon-controls .evmon-traffic { height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 9px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface-alt-bg); }
@@ -152,7 +152,7 @@
 .evmon-sticky-bar > div { display: grid; gap: 2px; min-width: 170px; margin-right: auto; }
 .evmon-sticky-bar > div > strong { font-size: 14px; }
 .evmon-sticky-bar > div > span:not(.evmon-eyebrow) { color: var(--text-muted); font-size: 11px; }
-.evmon-sticky-bar label { display: grid; gap: 3px; color: var(--text-muted); font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.evmon-sticky-bar label { display: grid; gap: 3px; color: var(--text-muted); font-size: 10px; font-weight: 800; }
 .evmon-sticky-bar select, .evmon-roster-tools input, .evmon-roster-tools select { min-height: 30px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface-alt-bg); font: inherit; font-size: 12px; }
 .evmon-chip, .evmon-notification-badge { padding: 6px 9px; border: 1px solid var(--border); border-radius: 999px; color: var(--text); background: var(--surface-alt-bg); font-size: 11px; font-weight: 800; white-space: nowrap; cursor: pointer; }
 .evmon-chip.is-active { color: var(--success-text); border-color: var(--brand-green); background: var(--success-bg); }

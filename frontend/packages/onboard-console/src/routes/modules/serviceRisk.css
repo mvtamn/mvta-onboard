@@ -60,7 +60,6 @@
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .risk-view-toggle {
@@ -106,7 +105,6 @@
   font-size: 9.5px;
   font-weight: 700;
   letter-spacing: 0.05em;
-  text-transform: uppercase;
 }
 
 .standard-chip strong {
@@ -143,7 +141,6 @@
   font-size: 10.5px;
   font-weight: 800;
   letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .risk-refresh-bar select {
@@ -172,7 +169,6 @@
   font-weight: 800;
   letter-spacing: 0.06em;
   padding: 3px 7px;
-  text-transform: uppercase;
 }
 
 .risk-stat-grid {
@@ -284,7 +280,6 @@
   font-weight: 800;
   letter-spacing: 0.06em;
   padding: 7px 13px;
-  text-transform: uppercase;
 }
 
 .risk-list-row {
@@ -682,7 +677,6 @@
   font-size: 9px;
   font-weight: 800;
   letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .downstream-card strong,
@@ -727,7 +721,6 @@
   font-size: 9px;
   font-weight: 800;
   letter-spacing: 0.05em;
-  text-transform: uppercase;
 }
 
 .risk-draft-preview p {
