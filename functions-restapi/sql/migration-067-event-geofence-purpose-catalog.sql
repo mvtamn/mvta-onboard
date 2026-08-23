@@ -24,7 +24,12 @@ WHERE NOT EXISTS (SELECT 1 FROM dbo.EventGeofencePurposes existing WHERE existin
 GO
 
 DECLARE @legacyConstraint sysname = (SELECT name FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID('dbo.EventGeofences') AND name='CK_EventGeofences_Purpose');
-IF @legacyConstraint IS NOT NULL EXEC('ALTER TABLE dbo.EventGeofences DROP CONSTRAINT ' + QUOTENAME(@legacyConstraint));
+DECLARE @dropLegacyConstraint nvarchar(1000);
+IF @legacyConstraint IS NOT NULL
+BEGIN
+  SET @dropLegacyConstraint = N'ALTER TABLE dbo.EventGeofences DROP CONSTRAINT ' + QUOTENAME(@legacyConstraint);
+  EXEC sys.sp_executesql @dropLegacyConstraint;
+END;
 GO
 
 PRINT 'Migration 067 applied: Event Area purpose catalog added.';
