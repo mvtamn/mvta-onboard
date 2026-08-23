@@ -66,7 +66,17 @@ test("treats optional percent/lat-long fields as null when absent", () => {
   assert.strictEqual(mapped!.direction, null);
 });
 
-test("fetchOtpDailyReports returns the rows when the guessed envelope key matches", () =>
+test("fetchOtpDailyReports returns the rows under Avail's lowercase otp envelope key", () =>
+  withFetchStub(
+    { success: true, errors: [], result: { otp: [GUESSED_SAMPLE], results: [] } },
+    async () => {
+      const rows = await fetchOtpDailyReports("https://example.test/OtpByRouteStopDayHour/v1/MVTA", "key", new Date(), new Date());
+      assert.strictEqual(rows.length, 1);
+      assert.strictEqual(rows[0].RouteID, 90);
+    },
+  ));
+
+test("fetchOtpDailyReports returns the rows when the documented envelope key matches", () =>
   withFetchStub(
     { success: true, errors: [], result: { OtpByRouteStopDayHour: [GUESSED_SAMPLE] } },
     async () => {

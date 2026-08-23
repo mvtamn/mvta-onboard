@@ -16,14 +16,9 @@
 // says this feed "includes lat/long, direction"). The URL's param list is
 // guessed by the same analogy - Start/End Date swapped in for
 // OtpByRouteStopDayAgg's single ServiceDate, same threshold/outlier params
-// otherwise. The envelope key is guessed as PascalCase "OtpByRouteStopDayHour"
-// matching its monthly sibling's own envelope key convention - but Detours'
-// envelope key turned out to be lowercase against the exact same guessing
-// pattern (see availDetoursFeed.ts), so treat this as genuinely likely to
-// be wrong. The diagnostic below throws with the real key names on first
-// mismatch specifically because of that low confidence - do not remove it
-// once this is confirmed working, and check the logs after first deploy
-// rather than assuming success.
+// otherwise. The envelope key is confirmed as lowercase "otp" from live
+// responses; the field mapping remains unconfirmed. The diagnostic below
+// names unexpected keys - do not remove it.
 export interface AvailOtpDailyReport {
   CalendarDate: string;
   HourOfDay: number;
@@ -50,7 +45,8 @@ export interface AvailOtpDailyReport {
 export interface AvailOtpDailyEnvelope {
   errors: string[];
   result: {
-    OtpByRouteStopDayHour: AvailOtpDailyReport[];
+    otp?: AvailOtpDailyReport[];
+    OtpByRouteStopDayHour?: AvailOtpDailyReport[];
   };
   success: boolean;
 }
@@ -92,7 +88,7 @@ export async function fetchOtpDailyReports(
   if (!payload.success) {
     throw new Error(`Avail OTP Daily API returned success=false: ${payload.errors?.join(", ") || "no error detail"}`);
   }
-  const rows = payload.result?.OtpByRouteStopDayHour;
+  const rows = payload.result?.otp ?? payload.result?.OtpByRouteStopDayHour;
   if (rows !== undefined) return rows;
 
   const actualKeys = payload.result ? Object.keys(payload.result) : [];
