@@ -30,6 +30,11 @@ vi.mock("../auth/AuthContext.js", () => ({
   useAuth: () => ({ signIn: vi.fn(), signOut: vi.fn(), account: { name: "Test User", username: "test@mvta.com" }, roles: ["OCC.Admin"] }),
 }));
 
+vi.mock("./modules/EventScopeMap.js", () => ({
+  EventScopeMap: ({ geofences, onToggleGeofence }: { geofences: EventGeofence[]; onToggleGeofence: (geofence: EventGeofence, isLinked: boolean) => void }) =>
+    <button onClick={() => onToggleGeofence(geofences[0], false)}>Link {geofences[0]?.name} from map</button>,
+}));
+
 // Imported after the mock so this binding is the mocked module.
 const { api } = await import("../config.js");
 
@@ -551,6 +556,18 @@ describe("EventPlanning", () => {
       expect(list).toHaveAttribute("aria-pressed", "true");
       expect(map).toHaveAttribute("aria-pressed", "false");
       expect(screen.getByRole("button", { name: "Manage routes" })).toBeInTheDocument();
+    });
+
+    it("keeps Monitoring Areas selected after linking one from the map", async () => {
+      vi.mocked(api.linkEventServicePlan).mockResolvedValue({ ok: true });
+      mockApiData({ events: [makeEvent()], plans: [makePlan()], geofences: [makeGeofence()] });
+      renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
+
+      await userEvent.click(await screen.findByRole("button", { name: "Map" }));
+      await userEvent.click(await screen.findByRole("button", { name: "Link Fairgrounds Gate from map" }));
+
+      expect(await screen.findByRole("group", { name: "Select Monitoring Areas" })).toBeInTheDocument();
+      expect(api.linkEventServicePlan).toHaveBeenCalledWith("plan1", "geofences", "geo1", undefined);
     });
   });
 

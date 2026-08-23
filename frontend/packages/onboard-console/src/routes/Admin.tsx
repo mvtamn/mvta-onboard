@@ -58,9 +58,12 @@ export function EventMonitoringSettingsSection() {
     }
   }
 
-  return <>
-    <div className="panel-header">Event resources</div>
-    <div className="panel-body">
+  return <details className="event-admin-disclosure" open>
+    <summary>
+      <span><strong>Event AVL settings</strong><small>Control the live-position polling cadence</small></span>
+      <span className="event-admin-disclosure-count">{setting ? `${setting.setting_value}s` : "Loading"}</span>
+    </summary>
+    <div className="event-admin-disclosure-body">
       <p className="panel-desc">Control how often the server retrieves live Avail AVL positions. Changes take effect without a redeploy.</p>
       {error && <p className="error-text">{error}</p>}
       {message && <p className="ok-text">{message}</p>}
@@ -76,7 +79,7 @@ export function EventMonitoringSettingsSection() {
       </table>}
       <p className="muted">Allowed range: 15 seconds to 5 minutes. Faster polling increases Avail API usage.</p>
     </div>
-  </>;
+  </details>;
 }
 
 // Route Classification editor - no Avail feed distinguishes fixed-route
@@ -246,9 +249,12 @@ export function RouteClassificationSection() {
   }
 
   return (
-    <>
-      <div className="panel-header" style={{ marginTop: 24 }}>Route Classification</div>
-      <div className="panel-body">
+    <details className="event-admin-disclosure" open>
+      <summary>
+        <span><strong>Route classification</strong><small>Identify fixed, special-event, and on-demand service</small></span>
+        <span className="event-admin-disclosure-count">{routes ? `${routes.length} classified` : "Loading"}</span>
+      </summary>
+      <div className="event-admin-disclosure-body">
         <p className="panel-desc">
           No Avail feed distinguishes a fixed route from a special-event route - classify RouteIDs
           here so the OTP/Missed Trips/AVL integrations and the event-bus live map know which is
@@ -416,7 +422,7 @@ export function RouteClassificationSection() {
           <p className="empty-note">No routes classified yet - unclassified routes default to fixed route.</p>
         )}
       </div>
-    </>
+    </details>
   );
 }
 

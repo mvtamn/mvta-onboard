@@ -246,11 +246,12 @@ export function EventPlanning() {
   const focusedResourceLabel = focusedResourceIds.length > 0
     ? focusedResourceOptions.find((row) => row.id === focusedResourceIds[0])?.label ?? "Selected resource"
     : resourceFocus === "routes" ? "Select a route" : resourceFocus === "geofences" ? "Select a Monitoring Area" : "Select a transit location";
-  const setFocusedResourceIds = (values: string[]) => {
-    if (resourceFocus === "routes") setRouteIds(values);
-    else if (resourceFocus === "geofences") setGeofenceIds(values);
+  const setResourceIds = (kind: ResourceKind, values: string[]) => {
+    if (kind === "routes") setRouteIds(values);
+    else if (kind === "geofences") setGeofenceIds(values);
     else setLocationIds(values);
   };
+  const setFocusedResourceIds = (values: string[]) => setResourceIds(resourceFocus, values);
   const visibleResourceOptions = focusedResourceOptions.filter((row) => row.label.toLowerCase().includes(resourceSearch[resourceFocus].trim().toLowerCase()));
   const focusResource = (kind: ResourceKind) => {
     setResourceFocus(kind);
@@ -341,13 +342,13 @@ export function EventPlanning() {
     const toAdd = values.filter((value) => !alreadyLinked.has(value));
     const skipped = values.length - toAdd.length;
     if (toAdd.length === 0) {
-      setFocusedResourceIds([]);
+      setResourceIds(kind, []);
       setFeedbackFor("resources", `Those ${kind} are already linked to ${plan.name}.`, "error");
       return;
     }
     const results = await Promise.allSettled(toAdd.map((value) => api.linkEventServicePlan(plan.id, kind, kind === "routes" ? Number(value) : value, revision?.id)));
     const failedValues = toAdd.filter((_value, index) => results[index].status === "rejected");
-    setFocusedResourceIds(failedValues);
+    setResourceIds(kind, failedValues);
     const failedLabels = failedValues.map((value) => focusedResourceOptions.find((option) => option.id === value)?.label ?? value);
     const succeeded = results.filter((result) => result.status === "fulfilled").length;
     const failed = results.length - succeeded;
@@ -557,8 +558,14 @@ export function EventPlanning() {
             locations={locationRecords}
             linkedGeofenceIds={links.filter((link) => link.kind === "geofences").map((link) => String(link.value))}
             linkedLocationIds={links.filter((link) => link.kind === "locations").map((link) => String(link.value))}
-            onToggleGeofence={(fence, isLinked) => void (isLinked ? unlink("geofences", fence.id, fence.name) : linkMany("geofences", [fence.id]))}
-            onToggleLocation={(location, isLinked) => void (isLinked ? unlink("locations", location.id, location.name) : linkMany("locations", [location.id]))}
+            onToggleGeofence={(fence, isLinked) => {
+              focusResource("geofences");
+              void (isLinked ? unlink("geofences", fence.id, fence.name) : linkMany("geofences", [fence.id]));
+            }}
+            onToggleLocation={(location, isLinked) => {
+              focusResource("locations");
+              void (isLinked ? unlink("locations", location.id, location.name) : linkMany("locations", [location.id]));
+            }}
             disabled={!editable && !revision}
           />
         </Suspense>}

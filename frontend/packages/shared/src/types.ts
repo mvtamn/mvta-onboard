@@ -888,7 +888,8 @@ export interface AppSettingRow {
 // an event RouteID is absent from GTFS static (and so from GTFS-RT), so
 // getRoutes()/GtfsRouteOption can never name one - the classification row is
 // the only source of a friendly name for a special-service route.
-export type EventGeofencePurpose = "staging" | "corridor" | "venue" | "other";
+export type EventGeofencePurpose = string;
+export interface EventGeofencePurposeOption { code: EventGeofencePurpose; label: string; sort_order: number; is_system: boolean; }
 export type EventZoneDerivedVehicleStatus = "At venue" | "Staged" | "In corridor" | "In zone" | "Outside monitored zones";
 
 export interface EventVehiclePosition {
@@ -957,8 +958,8 @@ export type EventLocationCategory = "transit_station" | "venue" | "park_and_ride
 export interface EventLocation { id: string; name: string; category: EventLocationCategory; latitude: number; longitude: number; notes: string | null; is_active: boolean; }
 export interface EventGeofence { id: string; name: string; polygon: string; purpose: EventGeofencePurpose; is_active: boolean; updated_by: string | null; updated_at: string; rules?: EventGeofenceRule[]; }
 export type EventGeofenceMessageType = "departing" | "passed" | "arriving_soon" | "custom";
-export interface EventGeofenceRule { id: string; geofence_id: string; transition: "enter" | "exit"; heading_min: number; heading_max: number; destination_label: string | null; destination_location_id: string | null; message_type: EventGeofenceMessageType; send_mode: "manual" | "auto"; sort_order: number; }
-export interface EventGeofenceCrossing { id: number; vehicle_id: number; route_id: number | null; geofence_id: string; geofence_name: string; event_id?: string | null; service_plan_id?: string | null; transition: "enter" | "exit"; heading_at_crossing: number | null; destination_label: string | null; matched_rule_id?: string | null; matched_rule_priority?: number | null; matched_destination_location_id?: string | null; matched_message_type?: EventGeofenceMessageType | null; matched_send_mode?: "manual" | "auto" | null; crossed_at: string; }
+export interface EventGeofenceRule { id: string; geofence_id: string; name?: string | null; transition: "enter" | "exit"; heading_min: number; heading_max: number; destination_label: string | null; destination_location_id: string | null; message_type: EventGeofenceMessageType; send_mode: "manual" | "auto"; sort_order: number; }
+export interface EventGeofenceCrossing { id: number; vehicle_id: number; route_id: number | null; geofence_id: string; geofence_name: string; event_id?: string | null; service_plan_id?: string | null; transition: "enter" | "exit"; heading_at_crossing: number | null; destination_label: string | null; matched_rule_id?: string | null; matched_rule_priority?: number | null; matched_destination_location_id?: string | null; matched_message_type?: EventGeofenceMessageType | null; matched_send_mode?: "manual" | "auto" | null; detection_method?: "point_confirmed" | "path_interpolated"; source_report_from_at?: string | null; source_report_to_at?: string | null; source_displacement_meters?: number | null; crossed_at: string; }
 export interface EventGeofenceNotification { id: string; crossing_id: number; send_mode: "manual" | "auto"; message_body: string; status: "pending" | "acknowledged" | "sent" | "dismissed" | "failed" | "expired"; sent_by: string | null; sent_at: string | null; acknowledged_by?: string | null; acknowledged_at?: string | null; created_at: string; attempt_count: number; last_error: string | null; next_attempt_at: string | null; }
 export interface EventOperationalMessaging { service_plan_id: string; automatic_teams_enabled: boolean; teams_configured: boolean; teams_destination: string; updated_by: string | null; updated_at: string | null; }
 export interface EventServicePlanRevision { id: string; service_plan_id: string; status: "draft" | "review" | "approved" | "applied" | "rejected"; created_by?: string; created_at?: string; links?: { kind: "routes" | "geofences" | "locations"; service_plan_id: string; value: string | number; label: string }[]; }

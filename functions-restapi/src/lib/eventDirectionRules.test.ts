@@ -11,6 +11,7 @@ import {
 const baseRule: DirectionRule = {
   id: "7e5a35b1-dc1b-473d-987d-6942a7b4fae2",
   geofence_id: "8e5a35b1-dc1b-473d-987d-6942a7b4fae2",
+  name: null,
   transition: "exit",
   heading_min: 350,
   heading_max: 10,
@@ -23,6 +24,17 @@ const baseRule: DirectionRule = {
 
 test("accepts a valid wrapped direction rule", () => {
   assert.deepEqual(validateDirectionRule({ ...baseRule }, []), { ok: true, value: baseRule });
+});
+
+test("keeps an optional operator-facing rule name", () => {
+  const result = validateDirectionRule({ ...baseRule, name: " Fairgrounds departure " }, []);
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.value.name, "Fairgrounds departure");
+});
+
+test("rejects an overlong rule name", () => {
+  const result = validateDirectionRule({ ...baseRule, name: "x".repeat(101) }, []);
+  assert.deepEqual(result, { ok: false, errors: ["name must be empty or at most 100 characters"] });
 });
 
 test("rejects malformed direction-rule values", () => {

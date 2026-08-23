@@ -8,6 +8,7 @@ export type EventGeofenceMessageType = "departing" | "passed" | "arriving_soon" 
 export interface DirectionRule {
   id: string;
   geofence_id: string;
+  name?: string | null;
   transition: DirectionTransition;
   heading_min: number;
   heading_max: number;
@@ -27,7 +28,7 @@ export interface DirectionRuleSnapshot {
   matched_send_mode: DirectionNotificationMode;
 }
 
-type DirectionRuleInput = Partial<DirectionRule> & Record<string, unknown>;
+type DirectionRuleInput = Record<string, unknown>;
 
 export function validateDirectionRule(input: DirectionRuleInput, existingRules: DirectionRule[], currentId?: string):
   | { ok: true; value: DirectionRule }
@@ -36,6 +37,7 @@ export function validateDirectionRule(input: DirectionRuleInput, existingRules: 
   const transition = input.transition;
   const min = input.heading_min;
   const max = input.heading_max;
+  const name = input.name;
   const label = input.destination_label;
   const messageType = input.message_type ?? "custom";
   const mode = input.send_mode;
@@ -47,6 +49,7 @@ export function validateDirectionRule(input: DirectionRuleInput, existingRules: 
   }
   if (!["departing", "passed", "arriving_soon", "custom"].includes(String(messageType))) errors.push("message_type must be departing, passed, arriving_soon, or custom");
   if (messageType === "arriving_soon" && transition !== "enter") errors.push("arriving_soon messages must use an enter transition");
+  if (name !== undefined && name !== null && (typeof name !== "string" || name.trim().length > 100)) errors.push("name must be empty or at most 100 characters");
   if (typeof label !== "string" || label.length > 200 || (messageType === "custom" && label.trim() === "")) errors.push("destination_label must be empty or at most 200 characters; custom messages require text");
   if (mode !== "manual" && mode !== "auto") errors.push("send_mode must be manual or auto");
   if (typeof priority !== "number" || !Number.isInteger(priority) || priority < 0) errors.push("sort_order must be a non-negative integer");
@@ -60,6 +63,7 @@ export function validateDirectionRule(input: DirectionRuleInput, existingRules: 
     value: {
       id: String(input.id ?? ""),
       geofence_id: String(input.geofence_id ?? ""),
+      name: typeof name === "string" && name.trim() ? name.trim() : null,
       transition: transition as DirectionTransition,
       heading_min: min as number,
       heading_max: max as number,

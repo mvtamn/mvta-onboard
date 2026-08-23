@@ -5,6 +5,15 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.57] - 2026-08-22
+
+- **Manage Monitoring Areas directly.** Event Administration now offers a Rename action alongside the existing purpose, boundary-editing, and audited deactivation controls. Deactivation keeps the record for audit rather than hard-deleting operational history.
+- **Make Event Administration easier to scan.** Event AVL settings, route classification, Monitoring Area authoring, reference locations, and direction rules now use compact collapsible sections with clearer titles, descriptions, and live counts.
+- **Make direction rules readable and message templates extensible.** Rules can now carry an optional operator-facing name; standard Event AVL message templates accept an appended instruction, and both editing and the saved-rule table use that plain-language framing.
+- **Manage Area purposes as data.** Administrators can add, rename, and delete unused custom purposes from Event Administration. The built-in Staging, Corridor, Venue, and Other purposes are protected, and custom purposes safely fall back to the generic live-area status.
+- **Use friendly location categories.** Reference locations now display “Park & ride” and other operator-facing labels instead of stored codes such as `park_and_ride`.
+- **Find and inspect map resources faster.** The authoring map now filters Monitoring Areas and locations by name or category, and selecting a row focuses and highlights that resource on the map.
+
 ## [1.5.55] - 2026-08-22
 
 - **Resolve two parallel Event AVL designs in favour of the notification badge.** `main` released 1.5.47 with the open notification queue leading above the vehicle map; this branch had since reframed it as a count badge in the context bar that opens a queue drawer, so that notifications stop competing with the map for the first viewport without becoming less visible. The badge wins as the later, documented decision, and the queue-first arrangement described in 1.5.47 no longer applies.

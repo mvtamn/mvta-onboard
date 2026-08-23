@@ -1,6 +1,6 @@
 # MVTA OnBoard — Consolidated Manual
 
-**Last updated:** July 27, 2026  
+**Last updated:** August 22, 2026
 **Audience:** OCC leadership, control center staff, product owners, developers,
 and implementation partners  
 **Status:** Current repository-level source of truth
@@ -743,18 +743,35 @@ and capacity concerns using event-specific thresholds.
 A post-event report should compare planned and operated service and retain
 alerts, incidents, controller actions, and data gaps.
 
-**A concrete design for this already exists**
-(`Special_Event_Vehicle_Monitoring_Module_1.docx`) but is **not yet built** -
-no trace of its proposed tables (`StaffAssignments`, `Events`,
-`VehiclePositions`, `TrafficConditions`, `PredictedDelays`, `MonitoredVehicles`)
-or endpoints exists in the current codebase. The design uses the State Fair
-park-and-ride shuttle service as its worked example, targets a 5-10 second
-live-map refresh (faster than the core rider-facing polling), and is
-phase-gated: monitoring-only first, then an approve/publish workflow reusing
-the core Suggested Alerts path, then signage/rider-facing ETA and historical
-playback later. Its one explicitly unresolved governance question - who at
-OCC has authority to set up staff assignments and events for a given event
-day - has no answer recorded anywhere in this repository.
+### Current Event Administration capability
+
+The staff console now has an Event Administration workspace for reusable
+Monitoring Areas, transit locations, direction rules, route classification,
+and Event AVL polling settings. Its sections are collapsible so an operator
+can focus on one task without losing the surrounding operational context.
+
+- A Monitoring Area can be drawn, renamed, reshaped, assigned a purpose, or
+  deactivated. Selecting it in the table focuses and highlights it on the map;
+  map resources can also be filtered by name or category. Deactivation retains
+  the record for audit; it is not a hard delete.
+- Area purposes are a managed catalog. Administrators can add and rename
+  purposes; unused custom purposes can be deleted. The built-in **Staging**,
+  **Corridor**, **Venue**, and **Other** purposes cannot be deleted.
+- Transit locations use human-readable categories such as **Park & ride**.
+- A direction rule may have an optional operational name, a movement and
+  compass range, a standard message template or custom instruction, an
+  appended operational note, and a related location. The saved-rule list
+  shows the rule name and message detail rather than raw storage codes.
+
+Changes to a reusable resource cannot alter an active Event Plan directly:
+active plans run from their published scope snapshot until a reviewed revision
+is applied. The Area-purpose catalog requires SQL migration 067 and rule
+names require migration 066 before this console version is deployed.
+
+The broader special-event module design in
+`Special_Event_Vehicle_Monitoring_Module_1.docx` remains useful as a future
+reference for advanced watchlists, staffing, signage/ETA, and post-event
+reporting. Those capabilities are not implied by the current implementation.
 
 ## 19. Application maintenance
 

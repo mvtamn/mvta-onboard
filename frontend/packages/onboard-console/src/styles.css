@@ -518,7 +518,7 @@ body {
 .event-resource-options { display: grid; gap: 4px; max-height: 180px; overflow: auto; padding: 6px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-alt-bg); }
 .event-resource-option { display: flex; align-items: center; gap: 7px; padding: 6px; border-radius: 5px; color: var(--text); font-size: 12px; cursor: pointer; }
 .event-resource-option:hover { background: var(--surface-bg); }
-.event-direction-rules { display: grid; gap: 14px; }
+.event-direction-rules .event-admin-disclosure-body { display: grid; gap: 14px; }
 .event-rule-step { display: grid; grid-template-columns: 28px 1fr; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-alt-bg); }
 .event-rule-step-number { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--brand-green); color: #fff; font-size: 12px; font-weight: 800; }
 .event-rule-step strong { color: var(--text); font-size: 13px; }
@@ -1168,10 +1168,27 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   }
 }
 
-/* Reusable-resource tables in Event Administration. These sit above the map
-   now, so they carry their own heading and count rather than reading as an
-   afterthought below the canvas. */
-.event-resource-table { margin: 0 0 18px; }
-.event-resource-table-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
-.event-resource-table-heading h3 { margin: 0; color: var(--text); font-size: 14px; }
-.event-resource-table .td-subtle { display: block; color: var(--text-muted); font-size: 11px; }
+/* Collapsible Event Administration sections keep resource maintenance dense
+   without burying the controls below the map. */
+.event-admin-disclosure { margin: 0 0 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-bg); box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+.event-admin-disclosure > summary { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 56px; padding: 10px 14px; color: var(--text); cursor: pointer; list-style: none; }
+.event-admin-disclosure > summary::-webkit-details-marker { display: none; }
+.event-admin-disclosure > summary::before { content: "›"; color: var(--brand-green-text); font-size: 22px; font-weight: 400; transition: transform .15s ease; }
+.event-admin-disclosure[open] > summary::before { transform: rotate(90deg); }
+.event-admin-disclosure > summary > span:first-of-type { display: grid; gap: 2px; margin-right: auto; }
+.event-admin-disclosure > summary strong { font-size: 14px; }
+.event-admin-disclosure > summary small { color: var(--text-muted); font-size: 11px; font-weight: 400; }
+.event-admin-disclosure-count { flex: 0 0 auto; padding: 4px 8px; border-radius: 999px; color: var(--success-text); background: var(--success-bg); font-size: 11px; font-weight: 800; white-space: nowrap; }
+.event-admin-disclosure-body { padding: 0 14px 14px; border-top: 1px solid var(--border-soft); }
+.event-admin-disclosure-body > .panel-desc:first-child { margin-top: 12px; }
+.event-admin-disclosure .td-subtle { display: block; color: var(--text-muted); font-size: 11px; }
+.event-admin-map-section { margin-top: 24px; }
+.event-map-filter { min-width: 180px; max-width: 250px; }
+.event-resource-select { border: 0; padding: 0; color: var(--brand-green-text); background: transparent; font: inherit; font-weight: 700; text-align: left; text-decoration: underline; cursor: pointer; }
+.event-resource-select:focus-visible { outline-offset: 3px; }
+.event-resource-selected td { background: var(--success-bg); }
+
+@media (max-width: 560px) {
+  .event-admin-disclosure > summary { align-items: flex-start; }
+  .event-admin-disclosure-count { margin-top: 4px; }
+}
