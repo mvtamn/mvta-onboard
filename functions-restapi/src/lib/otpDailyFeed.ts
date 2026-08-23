@@ -8,24 +8,18 @@
 //
 // KNOWN UNCONFIRMED - MORE SO than any other feed built in this project: no
 // sample response was ever provided for this specific operation anywhere in
-// this repo (every other feed integration had at least one example record
-// to build the mapping from - this one has none). Field names below are a
-// best-guess by close analogy to OtpByRouteStopDayAgg's own fields plus
-// CalendarDate (Missed Trips' convention) and Latitude/Longitude/Direction
-// (AVL Reports' convention, since the evaluation doc's own summary only
-// says this feed "includes lat/long, direction"). The URL's param list is
-// guessed by the same analogy - Start/End Date swapped in for
+// this repo. Live responses confirmed the envelope and core ID/hour fields
+// on 2026-08-22; the URL's param list remains inferred by analogy - Start/End Date swapped in for
 // OtpByRouteStopDayAgg's single ServiceDate, same threshold/outlier params
 // otherwise. The envelope key is confirmed as lowercase "otp" from live
-// responses; the field mapping remains unconfirmed. The diagnostic below
-// names unexpected keys - do not remove it.
+// responses. The diagnostic below names unexpected keys - do not remove it.
 export interface AvailOtpDailyReport {
   CalendarDate: string;
-  HourOfDay: number;
+  Time24Hour: number;
   StopID: number;
   StopInternetName: string | null;
   RouteReportLabel: string | null;
-  RouteID: number;
+  RouteFareboxID: number;
   PercentEarly: number | null;
   PercentOntime: number | null;
   PercentLate: number | null;
@@ -94,7 +88,7 @@ export async function fetchOtpDailyReports(
   const actualKeys = payload.result ? Object.keys(payload.result) : [];
   if (actualKeys.length > 0) {
     throw new Error(
-      `Avail OTP Daily response has no "OtpByRouteStopDayHour" key under result - found [${actualKeys.join(", ")}] instead. Update the guessed key in otpDailyFeed.ts.`,
+      `Avail OTP Daily response has no "otp" key under result - found [${actualKeys.join(", ")}] instead. Update otpDailyFeed.ts.`,
     );
   }
   return [];
@@ -136,9 +130,9 @@ function parseCalendarDate(value: string): string | null {
 // whole poll (same convention as every other mapper in this repo).
 export function mapOtpDailyReport(report: AvailOtpDailyReport): MappedOtpDaily | null {
   if (
-    typeof report.RouteID !== "number" ||
+    typeof report.RouteFareboxID !== "number" ||
     typeof report.StopID !== "number" ||
-    typeof report.HourOfDay !== "number" ||
+    typeof report.Time24Hour !== "number" ||
     !report.CalendarDate
   ) {
     return null;
@@ -148,8 +142,8 @@ export function mapOtpDailyReport(report: AvailOtpDailyReport): MappedOtpDaily |
 
   return {
     calendar_date: calendarDate,
-    hour_of_day: report.HourOfDay,
-    route_id: report.RouteID,
+    hour_of_day: report.Time24Hour,
+    route_id: report.RouteFareboxID,
     stop_id: report.StopID,
     stop_name: report.StopInternetName ?? null,
     route_label: report.RouteReportLabel ?? null,

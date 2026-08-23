@@ -66,7 +66,7 @@ app.timer("otpDailyFeedPoll", {
       try {
         mapped = mapOtpDailyReport(report);
       } catch (err) {
-        context.error(`Failed to map Avail OTP Daily report for route ${report.RouteID}/stop ${report.StopID}:`, err);
+        context.error(`Failed to map Avail OTP Daily report for route ${report.RouteFareboxID}/stop ${report.StopID}:`, err);
         continue;
       }
       if (!mapped) continue;
