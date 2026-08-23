@@ -10,9 +10,9 @@ const api = vi.hoisted(() => ({
   getEventGeofences: vi.fn(),
   getEventLocations: vi.fn(),
   getEventServicePlans: vi.fn(),
-  getDepotDepartureTests: vi.fn(),
-  startDepotDepartureTest: vi.fn(),
-  stopDepotDepartureTest: vi.fn(),
+  getMonitoringAreaTests: vi.fn(),
+  startMonitoringAreaTest: vi.fn(),
+  stopMonitoringAreaTest: vi.fn(),
   updateEventGeofenceRule: vi.fn(),
 }));
 
@@ -34,7 +34,7 @@ describe("EventResourceMapEditor", () => {
     api.getEventLocations.mockResolvedValue({ locations: [{ id: "location-a", name: "Eagan Bus Garage", category: "other", latitude: 44.8, longitude: -93.2, notes: null, is_active: true }] });
     api.getEventServicePlans.mockResolvedValue({ plans: [] });
     api.getEventGeofencePurposes.mockResolvedValue({ purposes: [{ code: "other", label: "Other", sort_order: 0, is_system: true }] });
-    api.getDepotDepartureTests.mockResolvedValue({ tests: [], teams_configured: true, teams_destination: "Event Operations" });
+    api.getMonitoringAreaTests.mockResolvedValue({ tests: [], teams_configured: true, teams_destination: "Event Operations" });
     api.addEventGeofenceRule.mockResolvedValue({});
 
     render(<MemoryRouter><AppDialogProvider><EventResourceMapEditor /></AppDialogProvider></MemoryRouter>);
@@ -60,8 +60,8 @@ describe("EventResourceMapEditor", () => {
     api.getEventLocations.mockResolvedValue({ locations: [{ id: "location-a", name: "Eagan Bus Garage", category: "other", latitude: 44.8, longitude: -93.2, notes: null, is_active: true }] });
     api.getEventServicePlans.mockResolvedValue({ plans: [] });
     api.getEventGeofencePurposes.mockResolvedValue({ purposes: [] });
-    api.getDepotDepartureTests.mockResolvedValue({ tests: [], teams_configured: true, teams_destination: "Event Operations" });
-    api.startDepotDepartureTest.mockResolvedValue({ tests: [], teams_configured: true, teams_destination: "Event Operations" });
+    api.getMonitoringAreaTests.mockResolvedValue({ tests: [], teams_configured: true, teams_destination: "Event Operations" });
+    api.startMonitoringAreaTest.mockResolvedValue({ tests: [], teams_configured: true, teams_destination: "Event Operations" });
 
     render(<MemoryRouter><AppDialogProvider><EventResourceMapEditor /></AppDialogProvider></MemoryRouter>);
     const user = userEvent.setup();
@@ -74,6 +74,6 @@ describe("EventResourceMapEditor", () => {
     await user.type(controls.getByLabelText("Test duration (minutes)"), "60");
     await user.click(controls.getByRole("button", { name: "Start Monitoring Area test" }));
 
-    await waitFor(() => expect(api.startDepotDepartureTest).toHaveBeenCalledWith({ location_id: "location-a", geofence_id: "area-a", duration_minutes: 60 }));
+    await waitFor(() => expect(api.startMonitoringAreaTest).toHaveBeenCalledWith({ location_id: "location-a", geofence_id: "area-a", duration_minutes: 60 }));
   });
 });

@@ -48,7 +48,7 @@ import type {
   EventVehiclePosition,
   EventMonitoringHealth,
   AppSettingRow,
-  Event, EventLocation, EventGeofence, EventGeofencePurposeOption, EventGeofenceRule, EventGeofenceCrossing, EventGeofenceNotification, EventOperationalMessaging, DepotDepartureTest, EventServicePlan, EventServicePlanRevision, EventAuditEntry, EventVehicleAssignment,
+  Event, EventLocation, EventGeofence, EventGeofencePurposeOption, EventGeofenceRule, EventGeofenceCrossing, EventGeofenceNotification, EventOperationalMessaging, MonitoringAreaTest, EventServicePlan, EventServicePlanRevision, EventAuditEntry, EventVehicleAssignment,
   EventScopeException,
   OtpStopExclusion,
   PutStopExclusionInput,
@@ -747,9 +747,9 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
 
     getEventOperationalMessaging(servicePlanId: string) { return request<EventOperationalMessaging>(`/api/event-operational-messaging?service_plan_id=${encodeURIComponent(servicePlanId)}`, {}, true); },
     updateEventOperationalMessaging(servicePlanId: string, automatic_teams_enabled: boolean) { return request<EventOperationalMessaging>(`/api/event-operational-messaging?service_plan_id=${encodeURIComponent(servicePlanId)}`, { method: "PATCH", body: JSON.stringify({ automatic_teams_enabled }) }, true); },
-    getDepotDepartureTests() { return request<{ tests: DepotDepartureTest[]; teams_configured: boolean; teams_destination: string }>("/api/depot-departure-tests", {}, true); },
-    startDepotDepartureTest(input: { location_id: string; geofence_id: string; duration_minutes: number }) { return request<{ tests: DepotDepartureTest[]; teams_configured: boolean; teams_destination: string }>("/api/depot-departure-tests", { method: "POST", body: JSON.stringify(input) }, true); },
-    stopDepotDepartureTest(id: string) { return request<void>(`/api/depot-departure-tests/${id}`, { method: "DELETE" }, true); },
+    getMonitoringAreaTests() { return request<{ tests: MonitoringAreaTest[]; teams_configured: boolean; teams_destination: string }>("/api/monitoring-area-tests", {}, true); },
+    startMonitoringAreaTest(input: { location_id: string; geofence_id: string; duration_minutes: number }) { return request<{ tests: MonitoringAreaTest[]; teams_configured: boolean; teams_destination: string }>("/api/monitoring-area-tests", { method: "POST", body: JSON.stringify(input) }, true); },
+    stopMonitoringAreaTest(id: string) { return request<void>(`/api/monitoring-area-tests/${id}`, { method: "DELETE" }, true); },
 
     getAppSettings(module: string) {
       return request<{ settings: AppSettingRow[] }>(
