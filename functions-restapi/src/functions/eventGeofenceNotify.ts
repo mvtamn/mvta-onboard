@@ -58,15 +58,11 @@ app.serviceBusQueue("eventGeofenceNotify", { connection: "ServiceBusConnection",
     notification = (await notificationRequest.query<{ id: string; suppressed: boolean }>(`
       SET XACT_ABORT ON;
       BEGIN TRANSACTION;
-      DECLARE @previous DATETIME2;
       DECLARE @suppressed BIT = 0;
-      SELECT @previous=last_notified_at FROM EventGeofenceNotificationCooldowns WITH (UPDLOCK,HOLDLOCK) WHERE vehicle_id=@vehicle AND service_plan_id=@plan AND geofence_id=@fence AND transition=@transition;
-      IF @previous IS NULL
-        INSERT INTO EventGeofenceNotificationCooldowns(vehicle_id,service_plan_id,geofence_id,transition,last_notified_at) VALUES(@vehicle,@plan,@fence,@transition,@crossed);
-      ELSE IF @crossed <= @previous OR @crossed < DATEADD(SECOND,@cooldownSeconds,@previous)
+      IF EXISTS (SELECT 1 FROM EventGeofenceNotificationCooldowns WITH (UPDLOCK,HOLDLOCK) WHERE vehicle_id=@vehicle AND service_plan_id=@plan AND geofence_id=@fence AND transition=@transition AND crossed_at > DATEADD(SECOND,-@cooldownSeconds,@crossed) AND crossed_at < DATEADD(SECOND,@cooldownSeconds,@crossed))
         SET @suppressed=1;
       ELSE
-        UPDATE EventGeofenceNotificationCooldowns SET last_notified_at=@crossed WHERE vehicle_id=@vehicle AND service_plan_id=@plan AND geofence_id=@fence AND transition=@transition;
+        INSERT INTO EventGeofenceNotificationCooldowns(vehicle_id,service_plan_id,geofence_id,transition,last_notified_at,crossed_at) VALUES(@vehicle,@plan,@fence,@transition,@crossed,@crossed);
       DECLARE @inserted TABLE(id UNIQUEIDENTIFIER);
       INSERT INTO EventGeofenceNotifications(crossing_id,send_mode,message_body,status,last_error)
       OUTPUT INSERTED.id INTO @inserted

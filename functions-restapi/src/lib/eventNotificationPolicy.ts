@@ -13,12 +13,6 @@ export function notificationHasExpired(createdAt: Date | string, now = new Date(
 export const MOVEMENT_NOTIFICATION_COOLDOWN_SECONDS = 60;
 export const MOVEMENT_NOTIFICATION_COOLDOWN_REASON = "Suppressed by the 60-second movement notification cooldown";
 
-export function isWithinMovementNotificationCooldown(previousDetectedAt: Date | string | null, detectedAt: Date | string, cooldownSeconds = MOVEMENT_NOTIFICATION_COOLDOWN_SECONDS): boolean {
-  if (!previousDetectedAt) return false;
-  const elapsed = new Date(detectedAt).getTime() - new Date(previousDetectedAt).getTime();
-  return Number.isFinite(elapsed) && elapsed >= 0 && elapsed < cooldownSeconds * 1_000;
-}
-
 export function shouldAutomaticallyDeliver(automaticTeamsEnabled: boolean, matchedRuleId: string | null | undefined): boolean {
   return automaticTeamsEnabled && Boolean(matchedRuleId);
 }
