@@ -14,7 +14,7 @@ interface PreviousPosition { latitude: number; longitude: number; report_timesta
 export function formatDepotDepartureTestMessage(input: { vehicleId: number; routeId: number | null; locationName: string; geofenceName: string; exitedAt: Date | string }): string {
   const route = input.routeId === null ? "" : ` on Route ${input.routeId}`;
   const exitedAt = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", month: "2-digit", day: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true, timeZoneName: "short" }).format(new Date(input.exitedAt));
-  return `[TEST] Bus ${input.vehicleId}${route} exited ${input.geofenceName} at ${input.locationName}.\n\nDepot departure test · Detected: ${exitedAt}`;
+  return `[TEST] Bus ${input.vehicleId}${route} exited ${input.geofenceName} at ${input.locationName}.\n\nMonitoring Area test · Detected: ${exitedAt}`;
 }
 
 export function depotTestIsActive(expiresAt: Date | string, now = new Date()): boolean {
@@ -75,10 +75,8 @@ export async function detectDepotDepartureTests(context: InvocationContext): Pro
     const prior = await previousPosition(pool, position);
     const movements = prior && reportOccurredDuringDepotTest(prior.report_timestamp, watch.active_since)
       ? detectQualifiedBoundaryMovements(watch.polygon, { previous: prior, current: position, pollIntervalSeconds: pollSeconds }) : [];
-    // A depot test is deliberately narrower than an Event boundary alert: a
-    // bus must have been in the depot before it can be reported as leaving it.
-    // This excludes an outside-to-outside path that merely passes through the
-    // depot area between polls.
+    // A Monitoring Area test reports a bus leaving the selected area, not a
+    // vehicle that merely passes through the area between polls.
     const wasPreviouslyInside = prior ? polygonContains(watch.polygon, [prior.longitude, prior.latitude]) : false;
     const exitedAlongPath = movements.some((movement) => movement.transition === "exit");
     if (!state) {
@@ -104,7 +102,7 @@ export async function detectDepotDepartureTests(context: InvocationContext): Pro
 export async function deliverPendingDepotDepartureTestMessages(context: InvocationContext): Promise<void> {
   const pool = await getPool();
   const rows = (await pool.request().query<{ id: number; message_body: string; attempt_count: number }>(`
-    UPDATE m SET status='expired',last_error=CASE WHEN t.is_enabled=0 OR t.expires_at<=SYSUTCDATETIME() THEN 'Depot departure test stopped or expired' ELSE 'Test delivery retry window expired' END,next_attempt_at=NULL
+    UPDATE m SET status='expired',last_error=CASE WHEN t.is_enabled=0 OR t.expires_at<=SYSUTCDATETIME() THEN 'Monitoring Area test stopped or expired' ELSE 'Test delivery retry window expired' END,next_attempt_at=NULL
     FROM EventDepotDepartureTestMessages m JOIN EventDepotDepartureTests t ON t.id=m.test_id
     WHERE m.status='pending' AND (t.is_enabled=0 OR t.expires_at<=SYSUTCDATETIME() OR m.created_at<=DATEADD(HOUR,-24,SYSUTCDATETIME()));
     SELECT TOP (20) m.id,m.message_body,m.attempt_count FROM EventDepotDepartureTestMessages m

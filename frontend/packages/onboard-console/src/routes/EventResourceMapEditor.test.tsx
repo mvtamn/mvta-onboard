@@ -55,7 +55,7 @@ describe("EventResourceMapEditor", () => {
     expect(api.updateEventGeofenceRule).not.toHaveBeenCalled();
   });
 
-  it("starts a time-limited depot departure test in the configured Teams channel", async () => {
+  it("starts a time-limited corridor Monitoring Area test in the configured Teams channel", async () => {
     api.getEventGeofences.mockResolvedValue({ geofences: [{ id: "area-a", name: "Garage Exit", purpose: "other", is_active: true, updated_at: "2026-08-22T00:00:00Z", updated_by: null, polygon: "{}", rules: [] }] });
     api.getEventLocations.mockResolvedValue({ locations: [{ id: "location-a", name: "Eagan Bus Garage", category: "other", latitude: 44.8, longitude: -93.2, notes: null, is_active: true }] });
     api.getEventServicePlans.mockResolvedValue({ plans: [] });
@@ -65,13 +65,14 @@ describe("EventResourceMapEditor", () => {
 
     render(<MemoryRouter><AppDialogProvider><EventResourceMapEditor /></AppDialogProvider></MemoryRouter>);
     const user = userEvent.setup();
-    const testMode = (await screen.findByText("Depot departure test mode")).closest("details");
+    const testMode = (await screen.findByText("Monitoring Area test mode")).closest("details");
     expect(testMode).not.toBeNull();
     const controls = within(testMode!);
-    await user.selectOptions(controls.getByLabelText("Depot location"), "location-a");
+    await user.selectOptions(controls.getByLabelText("Reference location"), "location-a");
     await user.selectOptions(controls.getByLabelText("Monitoring Area"), "area-a");
-    await user.selectOptions(controls.getByLabelText("Test duration"), "60");
-    await user.click(controls.getByRole("button", { name: "Start depot departure test" }));
+    await user.clear(controls.getByLabelText("Test duration (minutes)"));
+    await user.type(controls.getByLabelText("Test duration (minutes)"), "60");
+    await user.click(controls.getByRole("button", { name: "Start Monitoring Area test" }));
 
     await waitFor(() => expect(api.startDepotDepartureTest).toHaveBeenCalledWith({ location_id: "location-a", geofence_id: "area-a", duration_minutes: 60 }));
   });

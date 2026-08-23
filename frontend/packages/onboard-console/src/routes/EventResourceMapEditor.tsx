@@ -316,25 +316,25 @@ function DepotDepartureTestManager({ locations, geofences, tests, teamsConfigure
     if (!locationId || !geofenceId || busy) return;
     setBusy(true); setError(null);
     try { await api.startDepotDepartureTest({ location_id: locationId, geofence_id: geofenceId, duration_minutes: duration }); await onChanged(); }
-    catch (err) { setError(err instanceof ApiError ? err.message : "Could not start depot departure test."); }
+    catch (err) { setError(err instanceof ApiError ? err.message : "Could not start Monitoring Area test."); }
     finally { setBusy(false); }
   }
   async function stop(id: string) {
     if (busy) return;
     setBusy(true); setError(null);
     try { await api.stopDepotDepartureTest(id); await onChanged(); }
-    catch (err) { setError(err instanceof ApiError ? err.message : "Could not stop depot departure test."); }
+    catch (err) { setError(err instanceof ApiError ? err.message : "Could not stop Monitoring Area test."); }
     finally { setBusy(false); }
   }
   return <details className="event-admin-disclosure" open>
-    <summary><span><strong>Depot departure test mode</strong><small>Confirm live AVL departure detection and Teams delivery without an Event Plan</small></span><span className="event-admin-disclosure-count">{tests.filter((test) => test.is_enabled && new Date(test.expires_at) > new Date()).length} active</span></summary>
+    <summary><span><strong>Monitoring Area test mode</strong><small>Confirm live AVL exits and Teams delivery without an Event Plan</small></span><span className="event-admin-disclosure-count">{tests.filter((test) => test.is_enabled && new Date(test.expires_at) > new Date()).length} active</span></summary>
     <div className="event-admin-disclosure-body">
-      <p className="panel-desc">A test sends a clearly marked <strong>[TEST]</strong> message to {teamsConfigured ? teamsDestination : "the configured Teams channel"} whenever any vehicle exits the selected Monitoring Area. The depot location must be inside the area. Tests expire automatically.</p>
+      <p className="panel-desc">A test sends a clearly marked <strong>[TEST]</strong> message to {teamsConfigured ? teamsDestination : "the configured Teams channel"} whenever any vehicle exits the selected Monitoring Area. Use any reference location, including one for a corridor; it must be inside the area. Tests expire automatically.</p>
       {!teamsConfigured && <p className="event-field-error">Teams is not configured, so a test cannot be started.</p>}
       {error && <p className="event-field-error" role="alert">{error}</p>}
-      <div className="event-rule-fields"><label>Depot location<select className="f" value={locationId} onChange={(event) => setLocationId(event.target.value)}><option value="">Select depot location</option>{locations.filter((location) => location.is_active).map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label><label>Monitoring Area<select className="f" value={geofenceId} onChange={(event) => setGeofenceId(event.target.value)}><option value="">Select Monitoring Area</option>{geofences.filter((geofence) => geofence.is_active).map((geofence) => <option key={geofence.id} value={geofence.id}>{geofence.name}</option>)}</select></label><label>Test duration<select className="f" value={duration} onChange={(event) => setDuration(Number(event.target.value))}><option value={30}>30 minutes</option><option value={60}>1 hour</option><option value={120}>2 hours</option><option value={240}>4 hours</option></select></label></div>
-      <div className="actions"><button className="btn-primary" disabled={!teamsConfigured || !locationId || !geofenceId || busy} onClick={() => void start()}>{busy ? "Starting…" : "Start depot departure test"}</button></div>
-      {tests.length > 0 && <table className="data" style={{ marginTop: 12 }}><thead><tr><th>Depot</th><th>Monitoring Area</th><th>Expires</th><th>Last delivery</th><th>Action</th></tr></thead><tbody>{tests.map((test) => <tr key={test.id}><td>{test.location_name}</td><td>{test.geofence_name}</td><td>{test.is_enabled ? new Date(test.expires_at).toLocaleString() : "Stopped"}</td><td>{test.last_message_status ? `${test.last_message_status}${test.last_message_at ? ` · ${new Date(test.last_message_at).toLocaleString()}` : ""}` : "No departures yet"}</td><td>{test.is_enabled ? <button className="btn-sm danger" disabled={busy} onClick={() => void stop(test.id)}>Stop</button> : "—"}</td></tr>)}</tbody></table>}
+      <div className="event-rule-fields"><label>Reference location<select className="f" value={locationId} onChange={(event) => setLocationId(event.target.value)}><option value="">Select reference location</option>{locations.filter((location) => location.is_active).map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label><label>Monitoring Area<select className="f" value={geofenceId} onChange={(event) => setGeofenceId(event.target.value)}><option value="">Select Monitoring Area</option>{geofences.filter((geofence) => geofence.is_active).map((geofence) => <option key={geofence.id} value={geofence.id}>{geofence.name}</option>)}</select></label><label>Test duration (minutes)<input className="f" type="number" min={15} max={1440} value={duration} onChange={(event) => setDuration(Number(event.target.value))} /></label></div>
+      <div className="actions"><button className="btn-primary" disabled={!teamsConfigured || !locationId || !geofenceId || busy || duration < 15 || duration > 1440} onClick={() => void start()}>{busy ? "Starting…" : "Start Monitoring Area test"}</button></div>
+      {tests.length > 0 && <table className="data" style={{ marginTop: 12 }}><thead><tr><th>Reference location</th><th>Monitoring Area</th><th>Expires</th><th>Last delivery</th><th>Action</th></tr></thead><tbody>{tests.map((test) => <tr key={test.id}><td>{test.location_name}</td><td>{test.geofence_name}</td><td>{test.is_enabled ? new Date(test.expires_at).toLocaleString() : "Stopped"}</td><td>{test.last_message_status ? `${test.last_message_status}${test.last_message_at ? ` · ${new Date(test.last_message_at).toLocaleString()}` : ""}` : "No departures yet"}</td><td>{test.is_enabled ? <button className="btn-sm danger" disabled={busy} onClick={() => void stop(test.id)}>Stop</button> : "—"}</td></tr>)}</tbody></table>}
     </div>
   </details>;
 }

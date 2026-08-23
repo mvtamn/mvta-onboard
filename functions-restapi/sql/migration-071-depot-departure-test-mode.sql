@@ -1,4 +1,4 @@
--- Temporary, independent verification of depot departures through the configured Teams channel.
+-- Temporary, independent verification of Monitoring Area exits through the configured Teams channel.
 IF OBJECT_ID('dbo.EventDepotDepartureTests', 'U') IS NULL
 BEGIN
   CREATE TABLE dbo.EventDepotDepartureTests (
@@ -53,4 +53,4 @@ BEGIN
 END;
 GO
 
-PRINT 'Migration 071 applied: temporary depot departure test mode.';
+PRINT 'Migration 071 applied: temporary Monitoring Area test mode.';

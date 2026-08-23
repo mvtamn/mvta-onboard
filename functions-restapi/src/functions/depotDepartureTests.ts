@@ -5,7 +5,7 @@ import { isGuid } from "../lib/validation";
 import { polygonContains } from "../lib/geofence";
 
 const MIN_DURATION_MINUTES = 15;
-const MAX_DURATION_MINUTES = 240;
+const MAX_DURATION_MINUTES = 1440;
 
 async function listTests() {
   const pool = await getPool();
@@ -36,8 +36,8 @@ app.http("depotDepartureTests", { route: "depot-departure-tests", methods: ["GET
     SELECT l.latitude,l.longitude,g.polygon FROM EventLocations l CROSS JOIN EventGeofences g
     WHERE l.id=@location AND l.is_active=1 AND g.id=@geofence AND g.is_active=1
   `)).recordset[0];
-  if (!pair) return { status: 400, jsonBody: { error: "Select active depot location and Monitoring Area" } };
-  try { if (!polygonContains(pair.polygon, [pair.longitude, pair.latitude])) return { status: 400, jsonBody: { error: "The depot location must be inside the selected Monitoring Area" } }; }
+  if (!pair) return { status: 400, jsonBody: { error: "Select an active reference location and Monitoring Area" } };
+  try { if (!polygonContains(pair.polygon, [pair.longitude, pair.latitude])) return { status: 400, jsonBody: { error: "The reference location must be inside the selected Monitoring Area" } }; }
   catch { return { status: 400, jsonBody: { error: "The selected Monitoring Area has invalid geometry" } }; }
   const actor = auth.principal.userDetails ?? "system";
   const request = pool.request(); request.input("location", sql.UniqueIdentifier, locationId); request.input("geofence", sql.UniqueIdentifier, geofenceId); request.input("minutes", sql.Int, durationMinutes); request.input("actor", sql.NVarChar, actor);

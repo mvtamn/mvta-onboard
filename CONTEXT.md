@@ -114,17 +114,17 @@ The delivery behavior attached to a direction rule: manual review or automatic
 send. It affects what happens after an eligible crossing and does not define
 whether the crossing is in scope.
 
-## Depot departure test
+## Monitoring Area test
 
 An explicitly time-limited, operator-configured check that detects any vehicle
-exiting a selected depot Monitoring Area and sends a clearly marked test
-message. It is independent of Event and Service Plan scope.
+exiting a selected Monitoring Area and sends a clearly marked test message. It
+is independent of Event and Service Plan scope.
 
-## Depot test watch
+## Monitoring Area test watch
 
-One configured pair of a depot location and the Monitoring Area that surrounds
-it. The location identifies the depot to operators; the area provides the
-actual boundary used for exit detection.
+One configured pair of a reference location and the Monitoring Area that
+surrounds it. The location identifies the place or corridor to operators; the
+area provides the actual boundary used for exit detection.
 
 ## Direction-rule precedence
 
