@@ -42,8 +42,10 @@ app.serviceBusQueue("eventGeofenceNotify", { connection: "ServiceBusConnection",
   if (!row) return;
   const mode = row.send_mode ?? "manual";
   const body = formatEventGeofenceMessage({ ...row, message_type: row.message_type ?? "custom" });
+  const operational = row.service_plan_id ? (await pool.request().input("plan", sql.UniqueIdentifier, row.service_plan_id).query<{ automatic_teams_enabled: boolean }>("SELECT automatic_teams_enabled FROM EventOperationalMessaging WHERE service_plan_id=@plan")).recordset[0] : undefined;
+  const automaticDelivery = shouldAutomaticallyDeliver(Boolean(operational?.automatic_teams_enabled), row.matched_rule_id);
   let notification: { id: string; suppressed: boolean };
-  if (!row.service_plan_id) {
+  if (!row.service_plan_id || !automaticDelivery) {
     const insert = pool.request();
     insert.input("crossing", sql.BigInt, id); insert.input("mode", sql.NVarChar, mode); insert.input("body", sql.NVarChar, body);
     try { notification = { ...(await insert.query<{ id: string }>("INSERT INTO EventGeofenceNotifications(crossing_id,send_mode,message_body,status) OUTPUT INSERTED.id VALUES(@crossing,@mode,@body,'pending')")).recordset[0], suppressed: false }; }
@@ -73,6 +75,5 @@ app.serviceBusQueue("eventGeofenceNotify", { connection: "ServiceBusConnection",
   } catch { return; }
   }
   if (notification.suppressed) return;
-  const operational = row.service_plan_id ? (await pool.request().input("plan", sql.UniqueIdentifier, row.service_plan_id).query<{ automatic_teams_enabled: boolean }>("SELECT automatic_teams_enabled FROM EventOperationalMessaging WHERE service_plan_id=@plan")).recordset[0] : undefined;
-  if (shouldAutomaticallyDeliver(Boolean(operational?.automatic_teams_enabled), row.matched_rule_id) && await deliver(notification.id, body, 0, context)) throw new Error(`Transient Teams failure for event notification ${notification.id}`);
+  if (automaticDelivery && await deliver(notification.id, body, 0, context)) throw new Error(`Transient Teams failure for event notification ${notification.id}`);
 } });
