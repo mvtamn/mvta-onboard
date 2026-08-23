@@ -33,4 +33,20 @@ describe("EventWorkspaceNav", () => {
 
     expect(screen.getByRole("link", { name: "Return to Event Planning" })).toHaveAttribute("href", "/events/planning");
   });
+
+  it("places workflow stages in their reserved grid column before the return action", () => {
+    render(
+      <MemoryRouter initialEntries={["/admin/events?event=evt1"]}>
+        <EventWorkspaceProvider>
+          <EventWorkspaceNav activeStage="configure" showReturnToPlanning />
+        </EventWorkspaceProvider>
+      </MemoryRouter>,
+    );
+
+    expect(Array.from(screen.getByRole("navigation", { name: "Event workspace" }).children).map((element) => element.className)).toEqual([
+      "event-workspace-context",
+      "event-workspace-stages",
+      "event-workspace-return",
+    ]);
+  });
 });

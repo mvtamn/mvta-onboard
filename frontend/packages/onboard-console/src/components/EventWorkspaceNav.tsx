@@ -44,7 +44,6 @@ export function EventWorkspaceNav({ eventName, planName, planStatus, activeStage
         <strong>{eventName ?? "No Event selected"}</strong>
         {planName && <span>{planName}{planStatus ? ` · ${planStatus}` : ""}</span>}
       </div>
-      {showReturnToPlanning && <NavLink className="event-workspace-return" to={`/events/planning${suffix}`}>Return to Event Planning</NavLink>}
       <ol className="event-workspace-stages">
         {stages.map((stage, index) => {
           const isActive = stage.id === activeStage;
@@ -60,6 +59,7 @@ export function EventWorkspaceNav({ eventName, planName, planStatus, activeStage
           </li>;
         })}
       </ol>
+      {showReturnToPlanning && <NavLink className="event-workspace-return" to={`/events/planning${suffix}`}>Return to Event Planning</NavLink>}
     </nav>
   );
 }
