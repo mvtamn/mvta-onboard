@@ -10,6 +10,12 @@ export function notificationHasExpired(createdAt: Date | string, now = new Date(
   return now.getTime() - new Date(createdAt).getTime() >= 24 * 60 * 60 * 1000;
 }
 
+export function isWithinMovementNotificationCooldown(previousDetectedAt: Date | string | null, detectedAt: Date | string, cooldownSeconds = 60): boolean {
+  if (!previousDetectedAt) return false;
+  const elapsed = new Date(detectedAt).getTime() - new Date(previousDetectedAt).getTime();
+  return Number.isFinite(elapsed) && elapsed >= 0 && elapsed < cooldownSeconds * 1_000;
+}
+
 export function shouldAutomaticallyDeliver(automaticTeamsEnabled: boolean, matchedRuleId: string | null | undefined): boolean {
   return automaticTeamsEnabled && Boolean(matchedRuleId);
 }

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { formatEventGeofenceMessage, formatTeamsWebhookPayload, isTransientNotificationFailure, notificationHasExpired, retryDelaySeconds, shouldAutomaticallyDeliver } from "./eventNotificationPolicy";
+import { formatEventGeofenceMessage, formatTeamsWebhookPayload, isWithinMovementNotificationCooldown, isTransientNotificationFailure, notificationHasExpired, retryDelaySeconds, shouldAutomaticallyDeliver } from "./eventNotificationPolicy";
 
 test("formats event messages with the route captured from AVL", () => {
   assert.equal(formatEventGeofenceMessage({ vehicle_id: 1234, route_id: 55, transition: "enter", geofence_name: "Gate A", geofence_purpose: "staging", destination_label: "Proceed to staging", crossed_at: "2026-08-22T21:34:00Z", send_mode: "auto" }), "Bus 1234 on Route 55 entered Gate A; Proceed to staging.\n\nGeofence: Gate A (staging)\nConfiguration: enter transition · custom message · auto delivery\nCrossed: 08/22/2026, 04:34 PM CDT");
@@ -52,4 +52,11 @@ test("only automatic rule messages deliver when Event AVL Teams delivery is enab
   assert.equal(shouldAutomaticallyDeliver(true, "rule-1"), true);
   assert.equal(shouldAutomaticallyDeliver(false, "rule-1"), false);
   assert.equal(shouldAutomaticallyDeliver(true, null), false);
+});
+
+test("suppresses repeat movement notifications for less than sixty seconds", () => {
+  const current = "2026-08-22T12:00:00Z";
+  assert.equal(isWithinMovementNotificationCooldown("2026-08-22T11:59:01Z", current), true);
+  assert.equal(isWithinMovementNotificationCooldown("2026-08-22T11:59:00Z", current), false);
+  assert.equal(isWithinMovementNotificationCooldown(null, current), false);
 });

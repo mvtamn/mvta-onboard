@@ -8,6 +8,7 @@ import { activePlansMissingPublishedScope, defaultMonitoringEventId, defaultMoni
 import { useEventMonitoringData } from "./useEventMonitoringData.js";
 import { cardinalHeading, displayOperator, minutesAgo, routeLabel } from "./eventVehicleFormat.js";
 import { EventVehicleMap, type MapStyle } from "./EventVehicleMap.js";
+import { crossingEvidenceLabel } from "./crossingEvidence.js";
 
 const SCOPE_EXCEPTION_LABELS: Record<EventScopeException["category"], string> = {
   needs_scope_review: "Needs scope review", telemetry_incomplete: "Telemetry incomplete", stale_observation: "Stale observation", assigned_elsewhere: "Assigned elsewhere",
@@ -123,9 +124,9 @@ export function EventMonitoring({ fieldView = false }: { fieldView?: boolean }) 
           <summary>Monitoring Area crossings <span>{crossings.length}</span></summary>
           <div className="evmon-rail-body">
             {crossings.length === 0 ? <p className="evmon-rail-empty">No crossings detected yet.</p> : crossings.map((crossing) => <div className="evmon-rail-entry" key={crossing.id}>
-              <span className="evmon-rail-when">{new Date(crossing.crossed_at).toLocaleTimeString()}</span>
+              <span className="evmon-rail-when">Detected {new Date(crossing.crossed_at).toLocaleTimeString()}</span>
               <strong>Vehicle {crossing.vehicle_id} {crossing.transition === "enter" ? "entered" : "exited"}</strong>
-              <span className="evmon-rail-detail">{crossing.geofence_name}</span>
+              <span className="evmon-rail-detail">{crossing.geofence_name} · {crossingEvidenceLabel(crossing)}</span>
             </div>)}
           </div>
         </details>

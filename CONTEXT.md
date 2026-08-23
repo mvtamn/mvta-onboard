@@ -234,6 +234,46 @@ An observed runtime fact, such as a vehicle entering or leaving a geofence.
 An observation is retained for monitoring and audit before any notification or
 other operational action is selected.
 
+## Boundary-interpolated crossing
+
+A crossing inferred where the straight path between two consecutive vehicle
+positions intersects a Monitoring Area boundary. It captures a movement even
+when neither position is recorded inside the area.
+
+## Qualified boundary movement
+
+A boundary-interpolated crossing whose consecutive positions are at least 25
+metres apart. The movement may be recorded as an entry and an exit when a
+vehicle passes completely through a Monitoring Area between reports.
+
+## Movement notification cooldown
+
+The 60-second period during which repeated notifications for the same vehicle,
+Monitoring Area, and movement type are suppressed. The underlying movements
+remain in the Event audit.
+
+## Pass-through movement
+
+A qualified boundary movement that enters and exits a Monitoring Area between
+two reports. Its entry and exit are independent movements that each evaluate
+their own direction rule.
+
+## Detected time
+
+The timestamp of the GPS report that confirms a boundary movement. It is not
+an estimated physical crossing time.
+
+## Monitoring Area hole
+
+An excluded inner space within a Monitoring Area. A vehicle in a hole is
+outside the Monitoring Area, so crossing its boundary is an entry or exit.
+
+## Interpolation window
+
+The maximum time between consecutive GPS reports that allows a
+boundary-interpolated crossing. It is two effective polling intervals; later
+reports use point-based confirmation only.
+
 ## Operational rule
 
 A configured decision applied to an operational observation. It determines
