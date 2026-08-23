@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
@@ -10,6 +10,9 @@ const api = vi.hoisted(() => ({
   getEventGeofences: vi.fn(),
   getEventLocations: vi.fn(),
   getEventServicePlans: vi.fn(),
+  getDepotDepartureTests: vi.fn(),
+  startDepotDepartureTest: vi.fn(),
+  stopDepotDepartureTest: vi.fn(),
   updateEventGeofenceRule: vi.fn(),
 }));
 
@@ -28,14 +31,16 @@ describe("EventResourceMapEditor", () => {
       { id: "area-a", name: "Area A", purpose: "other", is_active: true, updated_at: "2026-08-22T00:00:00Z", updated_by: null, polygon: "{}", rules: [{ id: "rule-a", geofence_id: "area-a", name: "Original", transition: "exit", heading_min: 0, heading_max: 360, destination_label: "Proceed", destination_location_id: null, message_type: "custom", send_mode: "manual", sort_order: 0 }] },
       { id: "area-b", name: "Area B", purpose: "other", is_active: true, updated_at: "2026-08-22T00:00:00Z", updated_by: null, polygon: "{}", rules: [] },
     ] });
-    api.getEventLocations.mockResolvedValue({ locations: [] });
+    api.getEventLocations.mockResolvedValue({ locations: [{ id: "location-a", name: "Eagan Bus Garage", category: "other", latitude: 44.8, longitude: -93.2, notes: null, is_active: true }] });
     api.getEventServicePlans.mockResolvedValue({ plans: [] });
     api.getEventGeofencePurposes.mockResolvedValue({ purposes: [{ code: "other", label: "Other", sort_order: 0, is_system: true }] });
+    api.getDepotDepartureTests.mockResolvedValue({ tests: [], teams_configured: true, teams_destination: "Event Operations" });
     api.addEventGeofenceRule.mockResolvedValue({});
 
     render(<MemoryRouter><AppDialogProvider><EventResourceMapEditor /></AppDialogProvider></MemoryRouter>);
     const user = userEvent.setup();
-    const area = await screen.findByLabelText("Monitoring Area");
+    const area = document.getElementById("event-geofence-rule-select") as HTMLSelectElement;
+    await waitFor(() => expect(area).toBeInTheDocument());
     await user.selectOptions(area, "area-a");
     await user.click(await screen.findByRole("button", { name: "Edit" }));
     await user.selectOptions(area, "area-b");
@@ -48,5 +53,26 @@ describe("EventResourceMapEditor", () => {
 
     await waitFor(() => expect(api.addEventGeofenceRule).toHaveBeenCalledWith("area-b", expect.anything()));
     expect(api.updateEventGeofenceRule).not.toHaveBeenCalled();
+  });
+
+  it("starts a time-limited depot departure test in the configured Teams channel", async () => {
+    api.getEventGeofences.mockResolvedValue({ geofences: [{ id: "area-a", name: "Garage Exit", purpose: "other", is_active: true, updated_at: "2026-08-22T00:00:00Z", updated_by: null, polygon: "{}", rules: [] }] });
+    api.getEventLocations.mockResolvedValue({ locations: [{ id: "location-a", name: "Eagan Bus Garage", category: "other", latitude: 44.8, longitude: -93.2, notes: null, is_active: true }] });
+    api.getEventServicePlans.mockResolvedValue({ plans: [] });
+    api.getEventGeofencePurposes.mockResolvedValue({ purposes: [] });
+    api.getDepotDepartureTests.mockResolvedValue({ tests: [], teams_configured: true, teams_destination: "Event Operations" });
+    api.startDepotDepartureTest.mockResolvedValue({ tests: [], teams_configured: true, teams_destination: "Event Operations" });
+
+    render(<MemoryRouter><AppDialogProvider><EventResourceMapEditor /></AppDialogProvider></MemoryRouter>);
+    const user = userEvent.setup();
+    const testMode = (await screen.findByText("Depot departure test mode")).closest("details");
+    expect(testMode).not.toBeNull();
+    const controls = within(testMode!);
+    await user.selectOptions(controls.getByLabelText("Depot location"), "location-a");
+    await user.selectOptions(controls.getByLabelText("Monitoring Area"), "area-a");
+    await user.selectOptions(controls.getByLabelText("Test duration"), "60");
+    await user.click(controls.getByRole("button", { name: "Start depot departure test" }));
+
+    await waitFor(() => expect(api.startDepotDepartureTest).toHaveBeenCalledWith({ location_id: "location-a", geofence_id: "area-a", duration_minutes: 60 }));
   });
 });

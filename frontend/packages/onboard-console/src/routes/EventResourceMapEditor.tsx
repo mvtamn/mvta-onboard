@@ -4,7 +4,7 @@ import * as atlas from "azure-maps-control";
 import * as drawing from "azure-maps-drawing-tools";
 import "azure-maps-control/dist/atlas.min.css";
 import "azure-maps-drawing-tools/dist/atlas-drawing.min.css";
-import { ApiError, type EventGeofence, type EventGeofenceMessageType, type EventGeofencePurpose, type EventGeofencePurposeOption, type EventGeofenceRule, type EventLocation, type EventLocationCategory, type EventServicePlan } from "@mvta/shared";
+import { ApiError, type DepotDepartureTest, type EventGeofence, type EventGeofenceMessageType, type EventGeofencePurpose, type EventGeofencePurposeOption, type EventGeofenceRule, type EventLocation, type EventLocationCategory, type EventServicePlan } from "@mvta/shared";
 import { api } from "../config.js";
 import { useAuth } from "../auth/AuthContext.js";
 import { useAppDialog } from "../components/AppDialog.js";
@@ -310,6 +310,35 @@ function LocationManager({ locations, selectedId, onSelect, onChanged }: { locat
   </details>;
 }
 
+function DepotDepartureTestManager({ locations, geofences, tests, teamsConfigured, teamsDestination, onChanged }: { locations: EventLocation[]; geofences: StoredFence[]; tests: DepotDepartureTest[]; teamsConfigured: boolean; teamsDestination: string; onChanged: () => void }) {
+  const [locationId, setLocationId] = useState(""); const [geofenceId, setGeofenceId] = useState(""); const [duration, setDuration] = useState(120); const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null);
+  async function start() {
+    if (!locationId || !geofenceId || busy) return;
+    setBusy(true); setError(null);
+    try { await api.startDepotDepartureTest({ location_id: locationId, geofence_id: geofenceId, duration_minutes: duration }); await onChanged(); }
+    catch (err) { setError(err instanceof ApiError ? err.message : "Could not start depot departure test."); }
+    finally { setBusy(false); }
+  }
+  async function stop(id: string) {
+    if (busy) return;
+    setBusy(true); setError(null);
+    try { await api.stopDepotDepartureTest(id); await onChanged(); }
+    catch (err) { setError(err instanceof ApiError ? err.message : "Could not stop depot departure test."); }
+    finally { setBusy(false); }
+  }
+  return <details className="event-admin-disclosure" open>
+    <summary><span><strong>Depot departure test mode</strong><small>Confirm live AVL departure detection and Teams delivery without an Event Plan</small></span><span className="event-admin-disclosure-count">{tests.filter((test) => test.is_enabled && new Date(test.expires_at) > new Date()).length} active</span></summary>
+    <div className="event-admin-disclosure-body">
+      <p className="panel-desc">A test sends a clearly marked <strong>[TEST]</strong> message to {teamsConfigured ? teamsDestination : "the configured Teams channel"} whenever any vehicle exits the selected Monitoring Area. The depot location must be inside the area. Tests expire automatically.</p>
+      {!teamsConfigured && <p className="event-field-error">Teams is not configured, so a test cannot be started.</p>}
+      {error && <p className="event-field-error" role="alert">{error}</p>}
+      <div className="event-rule-fields"><label>Depot location<select className="f" value={locationId} onChange={(event) => setLocationId(event.target.value)}><option value="">Select depot location</option>{locations.filter((location) => location.is_active).map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label><label>Monitoring Area<select className="f" value={geofenceId} onChange={(event) => setGeofenceId(event.target.value)}><option value="">Select Monitoring Area</option>{geofences.filter((geofence) => geofence.is_active).map((geofence) => <option key={geofence.id} value={geofence.id}>{geofence.name}</option>)}</select></label><label>Test duration<select className="f" value={duration} onChange={(event) => setDuration(Number(event.target.value))}><option value={30}>30 minutes</option><option value={60}>1 hour</option><option value={120}>2 hours</option><option value={240}>4 hours</option></select></label></div>
+      <div className="actions"><button className="btn-primary" disabled={!teamsConfigured || !locationId || !geofenceId || busy} onClick={() => void start()}>{busy ? "Starting…" : "Start depot departure test"}</button></div>
+      {tests.length > 0 && <table className="data" style={{ marginTop: 12 }}><thead><tr><th>Depot</th><th>Monitoring Area</th><th>Expires</th><th>Last delivery</th><th>Action</th></tr></thead><tbody>{tests.map((test) => <tr key={test.id}><td>{test.location_name}</td><td>{test.geofence_name}</td><td>{test.is_enabled ? new Date(test.expires_at).toLocaleString() : "Stopped"}</td><td>{test.last_message_status ? `${test.last_message_status}${test.last_message_at ? ` · ${new Date(test.last_message_at).toLocaleString()}` : ""}` : "No departures yet"}</td><td>{test.is_enabled ? <button className="btn-sm danger" disabled={busy} onClick={() => void stop(test.id)}>Stop</button> : "—"}</td></tr>)}</tbody></table>}
+    </div>
+  </details>;
+}
+
 export function EventResourceMapEditor() {
   // Lets Event Planning's "Every linked geofence has a direction rule"
   // readiness item deep-link straight to the relevant geofence instead of
@@ -317,8 +346,8 @@ export function EventResourceMapEditor() {
   // even though the id is read before that request resolves.
   const [searchParams] = useSearchParams();
   const { confirm } = useAppDialog();
-  const [geofences, setGeofences] = useState<StoredFence[]>([]); const [locations, setLocations] = useState<EventLocation[]>([]); const [plans, setPlans] = useState<EventServicePlan[]>([]); const [purposes, setPurposes] = useState<EventGeofencePurposeOption[]>([]); const [selectedFence, setSelectedFence] = useState(() => searchParams.get("geofence") ?? ""); const [editingRuleId, setEditingRuleId] = useState<string | null>(null); const [saving, setSaving] = useState(false); const [rule, setRule] = useState<Partial<EventGeofenceRule>>({ name: "", transition: "exit", heading_min: 0, heading_max: 360, message_type: "custom", send_mode: "manual", destination_label: "", sort_order: 0 }); const [directionPreset, setDirectionPreset] = useState<CompassDirection>("any"); const [testBus, setTestBus] = useState("1234"); const [message, setMessage] = useState<string | null>(null);
-  const load = () => Promise.all([api.getEventGeofences(), api.getEventLocations(), api.getEventServicePlans(), api.getEventGeofencePurposes()]).then(([g, l, p, purposesResponse]) => { setGeofences(g.geofences); setLocations(l.locations); setPlans(p.plans); setPurposes(purposesResponse.purposes); }).catch((err) => setMessage(err instanceof ApiError ? err.message : "Event resources are unavailable until migrations 033, 034, 066, and 067 are applied."));
+  const [geofences, setGeofences] = useState<StoredFence[]>([]); const [locations, setLocations] = useState<EventLocation[]>([]); const [plans, setPlans] = useState<EventServicePlan[]>([]); const [purposes, setPurposes] = useState<EventGeofencePurposeOption[]>([]); const [depotTests, setDepotTests] = useState<DepotDepartureTest[]>([]); const [testTeams, setTestTeams] = useState({ configured: false, destination: "Configured Teams channel" }); const [selectedFence, setSelectedFence] = useState(() => searchParams.get("geofence") ?? ""); const [editingRuleId, setEditingRuleId] = useState<string | null>(null); const [saving, setSaving] = useState(false); const [rule, setRule] = useState<Partial<EventGeofenceRule>>({ name: "", transition: "exit", heading_min: 0, heading_max: 360, message_type: "custom", send_mode: "manual", destination_label: "", sort_order: 0 }); const [directionPreset, setDirectionPreset] = useState<CompassDirection>("any"); const [testBus, setTestBus] = useState("1234"); const [message, setMessage] = useState<string | null>(null);
+  const load = () => Promise.all([api.getEventGeofences(), api.getEventLocations(), api.getEventServicePlans(), api.getEventGeofencePurposes(), api.getDepotDepartureTests()]).then(([g, l, p, purposesResponse, testResponse]) => { setGeofences(g.geofences); setLocations(l.locations); setPlans(p.plans); setPurposes(purposesResponse.purposes); setDepotTests(testResponse.tests); setTestTeams({ configured: testResponse.teams_configured, destination: testResponse.teams_destination }); }).catch((err) => setMessage(err instanceof ApiError ? err.message : "Event resources are unavailable until migrations 033, 034, 066, 067, and 071 are applied."));
   useEffect(() => { void load(); }, []);
   useEffect(() => {
     if (!selectedFence) return;
@@ -349,6 +378,7 @@ export function EventResourceMapEditor() {
           : rule.destination_label?.trim() ? `Bus ${testBus || "1234"} on Route 55 ${rule.transition === "enter" ? "entered" : "exited"} ${selected.name}; ${rule.destination_label.trim()}.` : "Choose a Monitoring Area and enter an operational message to preview it."
     : "Choose a Monitoring Area and enter an operational message to preview it.";
   return <>
+    <DepotDepartureTestManager locations={locations} geofences={geofences} tests={depotTests} teamsConfigured={testTeams.configured} teamsDestination={testTeams.destination} onChanged={load} />
     <details className="event-admin-disclosure event-admin-map-section" open>
       <summary>
         <span><strong>Monitoring Area authoring</strong><small>Draw boundaries and maintain reference locations</small></span>

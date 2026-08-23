@@ -11,6 +11,7 @@ import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchAvlReports, mapAvlReport } from "../lib/availAvl";
 import { detectEventGeofenceCrossings } from "../lib/eventGeofenceDetection";
+import { detectDepotDepartureTests } from "../lib/depotDepartureTest";
 import { detectionWindowSeconds, shouldAcceptObservation } from "../lib/eventProcessing";
 import { recordEventHealth, recordTelemetryDiagnostic } from "../lib/eventHealth";
 
@@ -236,6 +237,11 @@ app.timer("availAvlPoll", {
       } catch (err) {
         context.error("Event geofence detection skipped:", err);
         await safeHealth(pool, "crossing_detection", "failed", "Crossing detection failed.", err);
+      }
+      try {
+        await detectDepotDepartureTests(context);
+      } catch (err) {
+        context.error("Depot departure test detection skipped:", err);
       }
     }
 
