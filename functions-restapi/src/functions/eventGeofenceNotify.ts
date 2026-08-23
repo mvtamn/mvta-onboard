@@ -1,6 +1,6 @@
 import { app, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { formatEventGeofenceMessage, formatTeamsWebhookPayload, isTransientNotificationFailure, isWithinMovementNotificationCooldown, retryDelaySeconds, shouldAutomaticallyDeliver } from "../lib/eventNotificationPolicy";
+import { formatEventGeofenceMessage, formatTeamsWebhookPayload, isTransientNotificationFailure, isWithinMovementNotificationCooldown, MOVEMENT_NOTIFICATION_COOLDOWN_REASON, retryDelaySeconds, shouldAutomaticallyDeliver } from "../lib/eventNotificationPolicy";
 
 interface CrossingMessage { crossing_id: number }
 
@@ -46,9 +46,10 @@ app.serviceBusQueue("eventGeofenceNotify", { connection: "ServiceBusConnection",
     .input("vehicle", sql.Int, row.vehicle_id).input("plan", sql.UniqueIdentifier, row.service_plan_id)
     .input("fence", sql.UniqueIdentifier, row.geofence_id).input("transition", sql.NVarChar, row.transition)
     .input("crossed", sql.DateTime2, row.crossed_at)
-    .query<{ crossed_at: Date }>(`SELECT TOP (1) c.crossed_at FROM EventGeofenceNotifications n JOIN EventGeofenceCrossings c ON c.id=n.crossing_id WHERE c.vehicle_id=@vehicle AND c.service_plan_id=@plan AND c.geofence_id=@fence AND c.transition=@transition AND n.status <> 'dismissed' AND c.crossed_at < @crossed ORDER BY c.crossed_at DESC`)).recordset[0] : undefined;
+    .input("cooldownReason", sql.NVarChar, MOVEMENT_NOTIFICATION_COOLDOWN_REASON)
+    .query<{ crossed_at: Date }>(`SELECT TOP (1) c.crossed_at FROM EventGeofenceNotifications n JOIN EventGeofenceCrossings c ON c.id=n.crossing_id WHERE c.vehicle_id=@vehicle AND c.service_plan_id=@plan AND c.geofence_id=@fence AND c.transition=@transition AND NOT (n.status='dismissed' AND n.last_error=@cooldownReason) AND c.crossed_at < @crossed ORDER BY c.crossed_at DESC`)).recordset[0] : undefined;
   const suppressed = isWithinMovementNotificationCooldown(previous?.crossed_at ?? null, row.crossed_at);
-  const insert = pool.request(); insert.input("crossing", sql.BigInt, id); insert.input("mode", sql.NVarChar, mode); insert.input("body", sql.NVarChar, body); insert.input("status", sql.NVarChar, suppressed ? "dismissed" : "pending"); insert.input("error", sql.NVarChar, suppressed ? "Suppressed by the 60-second movement notification cooldown" : null);
+  const insert = pool.request(); insert.input("crossing", sql.BigInt, id); insert.input("mode", sql.NVarChar, mode); insert.input("body", sql.NVarChar, body); insert.input("status", sql.NVarChar, suppressed ? "dismissed" : "pending"); insert.input("error", sql.NVarChar, suppressed ? MOVEMENT_NOTIFICATION_COOLDOWN_REASON : null);
   let notification: { id: string };
   try { notification = (await insert.query<{ id: string }>("INSERT INTO EventGeofenceNotifications(crossing_id,send_mode,message_body,status,last_error) OUTPUT INSERTED.id VALUES(@crossing,@mode,@body,@status,@error)")).recordset[0]; }
   catch { return; }

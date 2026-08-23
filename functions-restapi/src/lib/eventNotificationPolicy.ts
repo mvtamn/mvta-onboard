@@ -10,6 +10,8 @@ export function notificationHasExpired(createdAt: Date | string, now = new Date(
   return now.getTime() - new Date(createdAt).getTime() >= 24 * 60 * 60 * 1000;
 }
 
+export const MOVEMENT_NOTIFICATION_COOLDOWN_REASON = "Suppressed by the 60-second movement notification cooldown";
+
 export function isWithinMovementNotificationCooldown(previousDetectedAt: Date | string | null, detectedAt: Date | string, cooldownSeconds = 60): boolean {
   if (!previousDetectedAt) return false;
   const elapsed = new Date(detectedAt).getTime() - new Date(previousDetectedAt).getTime();

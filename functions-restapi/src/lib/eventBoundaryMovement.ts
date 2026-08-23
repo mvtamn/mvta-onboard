@@ -22,7 +22,7 @@ function timestamp(value: Date | string): string {
   return new Date(value).toISOString();
 }
 
-function distanceMeters(a: Point, b: Point): number {
+export function distanceMeters(a: Point, b: Point): number {
   const radians = Math.PI / 180;
   const latitude = (b[1] - a[1]) * radians;
   const longitude = (b[0] - a[0]) * radians;

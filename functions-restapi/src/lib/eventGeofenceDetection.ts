@@ -1,7 +1,7 @@
 import type { InvocationContext } from "@azure/functions";
 import { getPool, sql } from "./db";
 import { polygonContains } from "./geofence";
-import { detectQualifiedBoundaryMovements } from "./eventBoundaryMovement";
+import { detectQualifiedBoundaryMovements, distanceMeters } from "./eventBoundaryMovement";
 import { publishEventGeofenceNotification } from "./events";
 import { detectionWindowSeconds, isStableTransition, nextTransitionConfirmations } from "./eventProcessing";
 import { selectMatchingDirectionRule, shouldPublishEventGeofenceNotification, snapshotMatchedDirectionRule, type DirectionRule } from "./eventDirectionRules";
@@ -65,11 +65,7 @@ async function previousPosition(pool: Awaited<ReturnType<typeof getPool>>, posit
 
 function displacementMeters(previous: PreviousPosition | undefined, position: Position): number | null {
   if (!previous) return null;
-  const radians = Math.PI / 180;
-  const latitude = (position.latitude - previous.latitude) * radians;
-  const longitude = (position.longitude - previous.longitude) * radians;
-  const h = Math.sin(latitude / 2) ** 2 + Math.cos(previous.latitude * radians) * Math.cos(position.latitude * radians) * Math.sin(longitude / 2) ** 2;
-  return Math.round(2 * 6_371_000 * Math.asin(Math.sqrt(h)) * 10) / 10;
+  return Math.round(distanceMeters([previous.longitude, previous.latitude], [position.longitude, position.latitude]) * 10) / 10;
 }
 
 export async function detectEventGeofenceCrossings(context: InvocationContext): Promise<void> {
@@ -92,14 +88,18 @@ export async function detectEventGeofenceCrossings(context: InvocationContext): 
       stateRequest.input("fence", sql.UniqueIdentifier, fence.id);
       const prior = (await stateRequest.query<{ is_inside: boolean; pending_is_inside: boolean | null; pending_confirmations: number; last_report_timestamp: Date | null }>("SELECT is_inside,pending_is_inside,pending_confirmations,last_report_timestamp FROM EventGeofenceVehicleState WHERE vehicle_id=@vehicle AND geofence_id=@fence")).recordset[0];
       if (prior?.last_report_timestamp && new Date(position.report_timestamp).getTime() <= new Date(prior.last_report_timestamp).getTime()) continue;
+      const interpolated = priorPosition ? detectQualifiedBoundaryMovements(fence.polygon, { previous: priorPosition, current: position, pollIntervalSeconds: configuredInterval }) : [];
       if (!prior) {
         const seed = pool.request();
         seed.input("vehicle", sql.Int, position.vehicle_id); seed.input("fence", sql.UniqueIdentifier, fence.id); seed.input("inside", sql.Bit, inside); seed.input("reported", sql.DateTime2, position.report_timestamp);
         await seed.query("INSERT INTO EventGeofenceVehicleState(vehicle_id,geofence_id,is_inside,updated_at,last_report_timestamp) VALUES(@vehicle,@fence,@inside,SYSUTCDATETIME(),@reported)");
+        for (const movement of interpolated) await insertCrossing({
+          pool, context, position, fence, transition: movement.transition,
+          evidence: { detectionMethod: movement.detection_method, sourceFrom: new Date(movement.source_report_from_at), sourceTo: new Date(movement.source_report_to_at), displacementMeters: movement.source_displacement_meters },
+        });
         continue;
       }
 
-      const interpolated = priorPosition ? detectQualifiedBoundaryMovements(fence.polygon, { previous: priorPosition, current: position, pollIntervalSeconds: configuredInterval }) : [];
       if (interpolated.length) {
         const update = pool.request();
         update.input("vehicle", sql.Int, position.vehicle_id); update.input("fence", sql.UniqueIdentifier, fence.id); update.input("inside", sql.Bit, inside); update.input("reported", sql.DateTime2, position.report_timestamp);

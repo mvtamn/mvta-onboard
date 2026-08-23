@@ -14,4 +14,13 @@ describe("crossingEvidenceLabel", () => {
   it("keeps confirmed point crossings understandable", () => {
     expect(crossingEvidenceLabel({ detection_method: "point_confirmed" })).toBe("Confirmed by two GPS reports");
   });
+
+  it("shows retained report evidence for a confirmed point crossing", () => {
+    expect(crossingEvidenceLabel({
+      detection_method: "point_confirmed",
+      source_report_from_at: "2026-08-22T12:00:00Z",
+      source_report_to_at: "2026-08-22T12:00:30Z",
+      source_displacement_meters: 84.6,
+    })).toBe("Confirmed by two GPS reports · 30 sec between reports · 85 m moved");
+  });
 });
