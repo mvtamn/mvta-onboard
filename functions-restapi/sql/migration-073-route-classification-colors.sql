@@ -20,19 +20,34 @@ BEGIN TRY
     WHERE parent_object_id = OBJECT_ID('dbo.RouteClassification')
       AND name = 'CK_RouteClassification_RouteColor'
   )
-    ALTER TABLE dbo.RouteClassification ADD CONSTRAINT CK_RouteClassification_RouteColor
-      CHECK (route_color LIKE '#[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]');
+    EXEC sys.sp_executesql N'
+      ALTER TABLE dbo.RouteClassification
+        ADD CONSTRAINT CK_RouteClassification_RouteColor
+        CHECK (route_color LIKE ''#[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]'');';
 
   IF OBJECT_ID('dbo.RouteClassificationHistory', 'U') IS NOT NULL
      AND COL_LENGTH('dbo.RouteClassificationHistory', 'route_color') IS NULL
     ALTER TABLE dbo.RouteClassificationHistory ADD route_color CHAR(7) NULL;
 
+  IF COL_LENGTH('dbo.RouteClassification', 'route_color') IS NULL
+    THROW 50074, 'Migration 073 did NOT apply: dbo.RouteClassification.route_color is missing.', 1;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM sys.check_constraints
+    WHERE parent_object_id = OBJECT_ID('dbo.RouteClassification')
+      AND name = 'CK_RouteClassification_RouteColor'
+  )
+    THROW 50075, 'Migration 073 did NOT apply: route color validation constraint is missing.', 1;
+
+  IF OBJECT_ID('dbo.RouteClassificationHistory', 'U') IS NOT NULL
+     AND COL_LENGTH('dbo.RouteClassificationHistory', 'route_color') IS NULL
+    THROW 50076, 'Migration 073 did NOT apply: dbo.RouteClassificationHistory.route_color is missing.', 1;
+
   COMMIT TRANSACTION;
+  PRINT 'Migration 073 applied: Event AVL route marker colors added.';
 END TRY
 BEGIN CATCH
   IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
   THROW;
 END CATCH;
 GO
-
-PRINT 'Migration 073 applied: Event AVL route marker colors added.';
