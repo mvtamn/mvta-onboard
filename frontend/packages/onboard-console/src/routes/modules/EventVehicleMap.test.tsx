@@ -87,17 +87,19 @@ describe("EventVehicleMap", () => {
     expect(disconnect).not.toHaveBeenCalled();
   });
 
-  it("expands the live OnBoard map instead of losing its layers in an external map", () => {
+  it("opens the live OnBoard field view in a separate window", () => {
     mocks.getMapsToken.mockResolvedValue({ client_id: "maps-client", access_token: "token" });
     const open = vi.spyOn(window, "open").mockImplementation(() => null);
-    const { container } = render(<EventVehicleMap vehicles={[]} geofences={[]} locations={[]} showGeofences showLocations mapStyle="road" traffic={false} />);
+    const { container } = render(<EventVehicleMap vehicles={[]} geofences={[]} locations={[]} showGeofences showLocations mapStyle="road" traffic={false} largerMapUrl="/console/events/avl/field?event=event-1&plan=plan-1" />);
     const view = within(container);
 
-    fireEvent.click(view.getByRole("button", { name: /open larger map/i }));
+    fireEvent.click(view.getByRole("button", { name: /open field window/i }));
 
-    expect(view.getByRole("button", { name: "Close larger map" })).toBeInTheDocument();
-    expect(container.querySelector(".evmon-real-map")).toHaveClass("is-expanded");
-    expect(open).not.toHaveBeenCalled();
+    expect(open).toHaveBeenCalledWith(
+      "/console/events/avl/field?event=event-1&plan=plan-1",
+      "_blank",
+      "popup,width=1600,height=1000,noopener,noreferrer",
+    );
   });
 
   it("keeps map style, traffic, Monitoring Area, and location controls on the map", () => {

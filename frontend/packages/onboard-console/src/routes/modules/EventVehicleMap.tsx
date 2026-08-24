@@ -25,6 +25,7 @@ interface EventVehicleMapProps {
   onShowLocationsChange?: (visible: boolean) => void;
   onMapStyleChange?: (style: MapStyle) => void;
   onTrafficChange?: (visible: boolean) => void;
+  largerMapUrl?: string;
 }
 
 // Map data-layer palette. These paint onto raster tiles rather than a console
@@ -36,7 +37,7 @@ const MAP_BRAND = "#00553d";
 const MAP_INACTIVE = "#888888";
 const MAP_LABEL_INK = "#2c2c2a";
 
-export function EventVehicleMap({ vehicles, geofences, locations, showGeofences, showLocations, mapStyle, traffic, selectedVehicleId, onSelectVehicle, onShowGeofencesChange, onShowLocationsChange, onMapStyleChange, onTrafficChange }: EventVehicleMapProps) {
+export function EventVehicleMap({ vehicles, geofences, locations, showGeofences, showLocations, mapStyle, traffic, selectedVehicleId, onSelectVehicle, onShowGeofencesChange, onShowLocationsChange, onMapStyleChange, onTrafficChange, largerMapUrl }: EventVehicleMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<atlas.Map | null>(null);
   const popupRef = useRef<atlas.Popup | null>(null);
@@ -48,7 +49,6 @@ export function EventVehicleMap({ vehicles, geofences, locations, showGeofences,
   const [ready, setReady] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(false);
   const { theme } = useTheme();
 
   useEffect(() => {
@@ -236,15 +236,7 @@ export function EventVehicleMap({ vehicles, geofences, locations, showGeofences,
     mapRef.current.setCamera({ center: [vehicle.longitude, vehicle.latitude], zoom: Math.max(mapRef.current.getCamera().zoom ?? 10, 13) });
   }, [selectedVehicleId, vehicles, ready]);
 
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => mapRef.current?.resize());
-    if (!expanded) return () => cancelAnimationFrame(frame);
-    const close = (event: KeyboardEvent) => { if (event.key === "Escape") setExpanded(false); };
-    window.addEventListener("keydown", close);
-    return () => { cancelAnimationFrame(frame); window.removeEventListener("keydown", close); };
-  }, [expanded]);
-
-  return <div className={`evmon-real-map${expanded ? " is-expanded" : ""}`}>
+  return <div className="evmon-real-map">
     <div ref={containerRef} className="evmon-map-container" />
     <div className="evmon-map-controls" aria-label="Map layers and display">
       <select aria-label="Map style" value={mapStyle} onChange={(event) => onMapStyleChange?.(event.target.value as MapStyle)} disabled={!onMapStyleChange}><option value="road">Road</option><option value="grayscale_light">Light</option><option value="night">Night</option><option value="satellite_road_labels">Satellite</option></select>
@@ -252,7 +244,7 @@ export function EventVehicleMap({ vehicles, geofences, locations, showGeofences,
       <label><input type="checkbox" checked={showGeofences} onChange={(event) => onShowGeofencesChange?.(event.target.checked)} disabled={!onShowGeofencesChange || geofences.length === 0} /> Monitoring Areas ({geofences.length})</label>
       <label><input type="checkbox" checked={showLocations} onChange={(event) => onShowLocationsChange?.(event.target.checked)} disabled={!onShowLocationsChange || locations.length === 0} /> Locations ({locations.length})</label>
     </div>
-    <button type="button" className="evmon-open-map" aria-label={expanded ? "Close larger map" : "Open larger map"} aria-pressed={expanded} onClick={() => setExpanded((value) => !value)}>{expanded ? "Close larger map ×" : "Open larger map ↗"}</button>
+    {largerMapUrl && <button type="button" className="evmon-open-map" onClick={() => window.open(largerMapUrl, "_blank", "popup,width=1600,height=1000,noopener,noreferrer")}>Open field window ↗</button>}
     {error && <div className="evmon-map-message">{error}</div>}
     {!error && !loaded && <div className="evmon-map-message">Loading live map…</div>}
   </div>;

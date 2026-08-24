@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.60] - 2026-08-24
+
+- **Keep Event AVL visible while navigating OnBoard.** “Open field window” now launches the focused Event AVL view in a separate 1600×1000 browser window with the selected Event and operating period preserved, leaving the original console free for other work.
+
 ## [1.5.59] - 2026-08-24
 
 - **Keep Event AVL context in the larger map.** The larger map now expands inside OnBoard instead of opening a separate Bing map, preserving vehicles, the selected vehicle, Monitoring Areas, locations, traffic, map style, zoom, and compass controls.
