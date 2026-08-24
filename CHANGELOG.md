@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.59] - 2026-08-24
+
+- **Keep Event AVL context in the larger map.** The larger map now expands inside OnBoard instead of opening a separate Bing map, preserving vehicles, the selected vehicle, Monitoring Areas, locations, traffic, map style, zoom, and compass controls.
+- **Make vehicle identity and location easier to scan.** Selected vehicles now lead with a labeled route and vehicle pair such as `Route 5555 (Vehicle 4834)`, show Monitoring Area context once, and label report freshness instead of repeating “Outside monitored zones.”
+- **Name the Event AVL field view correctly.** The focused field route now retains the Event AVL page title instead of falling back to Dashboard.
+
 ## [1.5.58] - 2026-08-22
 
 - **Replace browser dialogs with OnBoard dialogs.** Confirmations and short text requests now use a consistent, accessible in-app dialog with clear consequence copy, keyboard dismissal, inline required-field validation, and explicitly styled destructive actions. This covers Event Administration and Event Planning as well as messages, access, route classification, detours, and assessment workflows.
