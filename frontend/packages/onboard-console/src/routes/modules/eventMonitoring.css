@@ -59,7 +59,9 @@
 .event-authoring-location-marker.is-inactive .event-authoring-location-dot { background: #888888; }
 .event-authoring-location-label { padding: 3px 5px; border-radius: 4px; color: var(--text); background: color-mix(in srgb, var(--surface-bg) 94%, transparent); box-shadow: 0 1px 4px rgba(0,0,0,.2); font-size: 10px; font-weight: 800; white-space: nowrap; }
 .evmon-real-map { height: min(58vh, 610px); min-height: 430px; position: relative; }
-.evmon-map-container { position: absolute; inset: 0; }
+/* More specific than Azure Maps' later-loaded .maplibregl-map rule, which
+   otherwise resets this host to position:relative and collapses it to 0px. */
+.evmon-real-map > .evmon-map-container { position: absolute; inset: 0; height: 100%; }
 .evmon-map-message { position: absolute; inset: 0; display: grid; place-items: center; background: var(--surface-alt-bg); color: var(--text-muted); }
 .evmon-open-map { position: absolute; z-index: 3; top: 12px; right: 12px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: color-mix(in srgb, var(--surface-bg) 94%, transparent); box-shadow: 0 2px 7px rgba(0,0,0,.18); font: inherit; font-size: 10.5px; font-weight: 800; cursor: pointer; }
 .evmon-open-map:hover { background: var(--surface-bg); }
