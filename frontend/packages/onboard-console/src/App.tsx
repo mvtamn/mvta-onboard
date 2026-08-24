@@ -154,6 +154,35 @@ function ChangelogPopover({ onClose }: { onClose: () => void }) {
 
 export function App() {
   const { account, roles, signIn, signOut } = useAuth();
+
+  if (!account) {
+    return (
+      <div className="signin-backdrop">
+        <div className="signin-card">
+          <span className="signin-logo">MVTA</span>
+          <div className="signin-eyebrow">Staff Console</div>
+          <h1>Welcome to the MVTA OnBoard console</h1>
+          <p className="signin-desc">
+            Sign in with your MVTA Microsoft 365 account to manage service alerts and rider
+            notifications.
+          </p>
+          <button className="btn-primary signin-btn" onClick={signIn}>
+            Sign in with Microsoft
+          </button>
+          <p className="signin-footer">Internal MVTA use only</p>
+        </div>
+      </div>
+    );
+  }
+
+  return <AuthenticatedApp account={account} roles={roles} signOut={signOut} />;
+}
+
+function AuthenticatedApp({ account, roles, signOut }: {
+  account: NonNullable<ReturnType<typeof useAuth>["account"]>;
+  roles: ReturnType<typeof useAuth>["roles"];
+  signOut: ReturnType<typeof useAuth>["signOut"];
+}) {
   const { theme, toggle } = useTheme();
   const isAdmin = roles.includes("OCC.Admin");
   const canManageAccess = roles.some((role) => (ACCESS_MANAGEMENT as readonly string[]).includes(role));
@@ -185,26 +214,6 @@ export function App() {
       // won't survive a reload.
     }
   }, [navCollapsed]);
-
-  if (!account) {
-    return (
-      <div className="signin-backdrop">
-        <div className="signin-card">
-          <span className="signin-logo">MVTA</span>
-          <div className="signin-eyebrow">Staff Console</div>
-          <h1>Welcome to the MVTA OnBoard console</h1>
-          <p className="signin-desc">
-            Sign in with your MVTA Microsoft 365 account to manage service alerts and rider
-            notifications.
-          </p>
-          <button className="btn-primary signin-btn" onClick={signIn}>
-            Sign in with Microsoft
-          </button>
-          <p className="signin-footer">Internal MVTA use only</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <FixedRouteRefreshProvider>
