@@ -595,6 +595,29 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<{ images: DetourImage[] }>(`/api/detours/${detourId}/images`, {}, true);
     },
 
+    getDetourIntakeImageUploadUrl(intakeId: string, fileName: string, contentType: string, sizeBytes: number) {
+      return request<{ upload_url: string; blob_path: string }>(
+        `/api/detour-intake/${intakeId}/images/upload-url`,
+        { method: "POST", body: JSON.stringify({ file_name: fileName, content_type: contentType, size_bytes: sizeBytes }) },
+        true,
+      );
+    },
+
+    createDetourIntakeImage(
+      intakeId: string,
+      input: { blob_path: string; file_name: string; content_type?: string; size_bytes?: number; caption?: string },
+    ) {
+      return request<DetourImage>(
+        `/api/detour-intake/${intakeId}/images`,
+        { method: "POST", body: JSON.stringify(input) },
+        true,
+      );
+    },
+
+    getDetourIntakeImages(intakeId: string) {
+      return request<{ images: DetourImage[] }>(`/api/detour-intake/${intakeId}/images`, {}, true);
+    },
+
     getDetourAttachments(owner: { intake_id?: string; detour_id?: string }, options?: { include_private?: boolean }) {
       const query = new URLSearchParams({ ...owner, ...(options?.include_private ? { include_private: "1" } : {}) }).toString();
       return request<{ attachments: DetourAttachment[] }>(`/api/detour-attachments?${query}`, {}, true);

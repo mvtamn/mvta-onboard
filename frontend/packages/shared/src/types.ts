@@ -726,6 +726,12 @@ export interface DetourIntake {
   location: string | null;
   proposed_start_date: string | null;
   proposed_end_date: string | null;
+  proposed_start_time?: string | null;
+  proposed_end_time?: string | null;
+  time_window_status?: "pending" | "estimated" | "confirmed";
+  affected_stops_and_stations?: string | null;
+  operational_impacts?: string | null;
+  confirmation_contact?: string | null;
   status: DetourIntakeStatus;
   decision_notes: string | null;
   reviewed_by: string | null;
@@ -756,6 +762,12 @@ export interface CreateDetourIntakeInput {
   location?: string | null;
   proposed_start_date?: string | null;
   proposed_end_date?: string | null;
+  proposed_start_time?: string | null;
+  proposed_end_time?: string | null;
+  time_window_status: "pending" | "estimated" | "confirmed";
+  affected_stops_and_stations?: string | null;
+  operational_impacts?: string | null;
+  confirmation_contact?: string | null;
   segments?: DetourSegmentInput[];
   service_impact: "fixed_route" | "mobility";
   service_area?: string | null;

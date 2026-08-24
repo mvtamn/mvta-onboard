@@ -531,6 +531,17 @@ export function validateCreateDetourIntake(body: UnknownBody): string[] {
       errors.push(`${field} must be a YYYY-MM-DD date string if provided`);
     }
   }
+  for (const field of ["proposed_start_time", "proposed_end_time"] as const) {
+    if (body[field] !== undefined && body[field] !== null && (typeof body[field] !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(body[field]))) {
+      errors.push(`${field} must be an HH:mm time string if provided`);
+    }
+  }
+  if (!["pending", "estimated", "confirmed"].includes(body.time_window_status as string)) {
+    errors.push("time_window_status must be pending, estimated, or confirmed");
+  }
+  if (body.time_window_status === "confirmed" && (!body.proposed_start_date || !body.proposed_start_time)) {
+    errors.push("a confirmed window requires proposed_start_date and proposed_start_time");
+  }
   errors.push(...isValidDetourSegments(body.segments));
   const impacts = ["fixed_route", "mobility"] as const;
   const modes = ["avail", "fixed_route_manual", "mobility_manual"] as const;
@@ -548,7 +559,7 @@ export function validateCreateDetourIntake(body: UnknownBody): string[] {
     if (typeof body.service_area !== "string" || body.service_area.trim() === "") errors.push("service_area is required for mobility impact");
     if (body.proposed_fulfillment_mode !== "mobility_manual") errors.push("mobility impact requires mobility_manual fulfillment");
   }
-  for (const field of ["action_instructions", "service_area", "evidence_notes", "evidence_reference"]) {
+  for (const field of ["action_instructions", "service_area", "evidence_notes", "evidence_reference", "affected_stops_and_stations", "operational_impacts", "confirmation_contact"]) {
     const value = body[field];
     if (value !== undefined && value !== null && typeof value !== "string") errors.push(`${field} must be a string if provided`);
   }
@@ -969,6 +980,31 @@ export function validateCreateDetourImage(body: UnknownBody): string[] {
     }
   }
   return errors;
+}
+
+const INTAKE_ATTACHMENT_CONTENT_TYPES = new Set([
+  "application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "text/csv", "text/plain",
+]);
+const MAX_INTAKE_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+
+function intakeAttachmentMetadataErrors(body: UnknownBody, errors: string[]): string[] {
+  if (typeof body.content_type !== "string" || (!body.content_type.startsWith("image/") && !INTAKE_ATTACHMENT_CONTENT_TYPES.has(body.content_type))) {
+    errors.push("content_type must be an image, PDF, Office document, CSV, or text file");
+  }
+  if (typeof body.size_bytes !== "number" || body.size_bytes > MAX_INTAKE_ATTACHMENT_BYTES) {
+    errors.push(`size_bytes is required and must not exceed ${MAX_INTAKE_ATTACHMENT_BYTES} bytes`);
+  }
+  return errors;
+}
+
+export function validateDetourIntakeAttachmentUpload(body: UnknownBody): string[] {
+  return intakeAttachmentMetadataErrors(body, validateUploadUrlRequest(body));
+}
+
+export function validateDetourIntakeAttachment(body: UnknownBody): string[] {
+  return intakeAttachmentMetadataErrors(body, validateCreateDetourImage(body));
 }
 
 export { VALID_CATEGORIES, VALID_SEVERITIES, VALID_EXPIRATION_SOURCES, VALID_CONSENT_SOURCES };

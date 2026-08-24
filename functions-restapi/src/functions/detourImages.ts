@@ -13,13 +13,14 @@
 // OCC.Compliance.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, DETOUR_READ_ROLES, DETOUR_ATTACHMENT_WRITE_ROLES } from "../lib/auth";
-import { validateUploadUrlRequest, validateCreateDetourImage, isGuid } from "../lib/validation";
-import { getUploadSasUrl, getReadSasUrl, buildDetourImageBlobPath, BlobStorageNotConfiguredError } from "../lib/blobStorage";
+import { requireRole, DETOUR_READ_ROLES, DETOUR_ATTACHMENT_WRITE_ROLES, DETOUR_INTAKE_ROLES } from "../lib/auth";
+import { validateUploadUrlRequest, validateCreateDetourImage, validateDetourIntakeAttachment, validateDetourIntakeAttachmentUpload, isGuid } from "../lib/validation";
+import { getUploadSasUrl, getReadSasUrl, buildDetourImageBlobPath, buildDetourIntakeImageBlobPath, BlobStorageNotConfiguredError } from "../lib/blobStorage";
 
 interface DetourImageRow {
   id: string;
-  detour_id: string;
+  detour_id: string | null;
+  intake_id?: string | null;
   blob_path: string;
   file_name: string;
   content_type: string | null;
@@ -28,6 +29,20 @@ interface DetourImageRow {
   sort_order: number;
   uploaded_by: string;
   uploaded_at: Date;
+}
+
+async function listImages(ownerColumn: "detour_id" | "intake_id", ownerId: string) {
+  const pool = await getPool();
+  const tableCheck = await pool.request().query<{ table_exists: number }>(`SELECT CASE WHEN OBJECT_ID('dbo.DetourImages', 'U') IS NULL THEN 0 ELSE 1 END AS table_exists`);
+  if (tableCheck.recordset[0]?.table_exists !== 1) return [];
+  const req = pool.request();
+  req.input("id", sql.UniqueIdentifier, ownerId);
+  const result = await req.query<DetourImageRow>(`SELECT id, detour_id, intake_id, blob_path, file_name, content_type, size_bytes, caption, sort_order, uploaded_by, uploaded_at FROM DetourImages WHERE ${ownerColumn}=@id ORDER BY sort_order`);
+  try { return await Promise.all(result.recordset.map(async (image) => ({ ...image, read_url: await getReadSasUrl(image.blob_path) }))); }
+  catch (err) {
+    if (err instanceof BlobStorageNotConfiguredError) return result.recordset.map((image) => ({ ...image, read_url: null }));
+    throw err;
+  }
 }
 
 app.http("detourImagesUploadUrl", {
@@ -184,5 +199,73 @@ app.http("detourImagesList", {
       context.error("GET /detours/{id}/images failed:", err);
       return { status: 500, jsonBody: { error: "Internal server error" } };
     }
+  },
+});
+
+app.http("detourIntakeImagesUploadUrl", {
+  route: "detour-intake/{id}/images/upload-url",
+  methods: ["POST"],
+  authLevel: "anonymous",
+  handler: async (request: HttpRequest, context: InvocationContext) => {
+    const auth = requireRole(request, DETOUR_INTAKE_ROLES);
+    if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
+    const intakeId = request.params.id;
+    if (!isGuid(intakeId)) return { status: 400, jsonBody: { error: "id must be a GUID" } };
+    let body: Record<string, unknown>;
+    try { body = await request.json() as Record<string, unknown>; } catch { return { status: 400, jsonBody: { error: "Request body must be valid JSON" } }; }
+    const errors = validateDetourIntakeAttachmentUpload(body);
+    if (errors.length) return { status: 400, jsonBody: { error: "Validation failed", details: errors } };
+    try {
+      const pool = await getPool();
+      const exists = await pool.request().input("id", sql.UniqueIdentifier, intakeId).query("SELECT 1 AS found FROM DetourIntake WHERE id=@id");
+      if (!exists.recordset[0]) return { status: 404, jsonBody: { error: "Detour intake not found" } };
+      const blob_path = buildDetourIntakeImageBlobPath(intakeId, body.file_name as string);
+      return { status: 200, jsonBody: { upload_url: await getUploadSasUrl(blob_path), blob_path } };
+    } catch (err) {
+      if (err instanceof BlobStorageNotConfiguredError) return { status: 503, jsonBody: { error: "Supporting-file storage is not configured yet." } };
+      context.error("POST /detour-intake/{id}/images/upload-url failed:", err);
+      return { status: 500, jsonBody: { error: "Internal server error" } };
+    }
+  },
+});
+
+app.http("detourIntakeImagesCreate", {
+  route: "detour-intake/{id}/images",
+  methods: ["POST"],
+  authLevel: "anonymous",
+  handler: async (request: HttpRequest, context: InvocationContext) => {
+    const auth = requireRole(request, DETOUR_INTAKE_ROLES);
+    if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
+    const intakeId = request.params.id;
+    if (!isGuid(intakeId)) return { status: 400, jsonBody: { error: "id must be a GUID" } };
+    let body: Record<string, unknown>;
+    try { body = await request.json() as Record<string, unknown>; } catch { return { status: 400, jsonBody: { error: "Request body must be valid JSON" } }; }
+    const errors = validateDetourIntakeAttachment(body);
+    if (errors.length) return { status: 400, jsonBody: { error: "Validation failed", details: errors } };
+    try {
+      const pool = await getPool();
+      const req = pool.request();
+      req.input("intake_id", sql.UniqueIdentifier, intakeId); req.input("blob_path", sql.NVarChar, body.blob_path); req.input("file_name", sql.NVarChar, body.file_name);
+      req.input("content_type", sql.NVarChar, body.content_type ?? null); req.input("size_bytes", sql.Int, body.size_bytes ?? null); req.input("caption", sql.NVarChar, body.caption ?? null); req.input("uploaded_by", sql.NVarChar, auth.principal.userDetails || "system");
+      const result = await req.query<DetourImageRow>(`INSERT INTO DetourImages (intake_id, blob_path, file_name, content_type, size_bytes, caption, uploaded_by) OUTPUT INSERTED.id, INSERTED.detour_id, INSERTED.intake_id, INSERTED.blob_path, INSERTED.file_name, INSERTED.content_type, INSERTED.size_bytes, INSERTED.caption, INSERTED.sort_order, INSERTED.uploaded_by, INSERTED.uploaded_at VALUES (@intake_id, @blob_path, @file_name, @content_type, @size_bytes, @caption, @uploaded_by)`);
+      return { status: 201, jsonBody: result.recordset[0] };
+    } catch (err) {
+      context.error("POST /detour-intake/{id}/images failed:", err);
+      return { status: 500, jsonBody: { error: "Internal server error" } };
+    }
+  },
+});
+
+app.http("detourIntakeImagesList", {
+  route: "detour-intake/{id}/images",
+  methods: ["GET"],
+  authLevel: "anonymous",
+  handler: async (request: HttpRequest, context: InvocationContext) => {
+    const auth = requireRole(request, DETOUR_INTAKE_ROLES);
+    if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
+    const intakeId = request.params.id;
+    if (!isGuid(intakeId)) return { status: 400, jsonBody: { error: "id must be a GUID" } };
+    try { return { status: 200, jsonBody: { images: await listImages("intake_id", intakeId) } }; }
+    catch (err) { context.error("GET /detour-intake/{id}/images failed:", err); return { status: 500, jsonBody: { error: "Internal server error" } }; }
   },
 });

@@ -58,6 +58,11 @@ export function buildDetourImageBlobPath(detourId: string, fileName: string): st
   return `detours/${detourId}/${crypto.randomUUID()}-${safeName}`;
 }
 
+export function buildDetourIntakeImageBlobPath(intakeId: string, fileName: string): string {
+  const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+  return `detour-intake/${intakeId}/${crypto.randomUUID()}-${safeName}`;
+}
+
 // Exported for unit testing the expiry math without a live storage account:
 // the key window must fully contain the SAS window, or Azure 403s.
 export function sasWindow(now: Date) {

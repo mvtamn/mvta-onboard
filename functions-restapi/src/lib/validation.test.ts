@@ -15,6 +15,8 @@ import {
   validateOtpHistoricalBackfill,
   validateUploadUrlRequest,
   validateCreateDetourImage,
+  validateDetourIntakeAttachment,
+  validateDetourIntakeAttachmentUpload,
   validateDetourReport,
   validateCreateDetourReasonCode,
   validateUpdateDetourReasonCode,
@@ -585,12 +587,25 @@ test("detour image creation rejects missing blob_path/file_name and a negative s
   assert.ok(errors.some((e) => e.includes("size_bytes")));
 });
 
+test("detour intake attachment accepts source documents but rejects unbounded files", () => {
+  assert.deepStrictEqual(validateDetourIntakeAttachmentUpload({ file_name: "source.pdf", content_type: "application/pdf", size_bytes: 200 }), []);
+  assert.deepStrictEqual(validateDetourIntakeAttachment({ blob_path: "detour-intake/1/source.pdf", file_name: "source.pdf", content_type: "application/pdf", size_bytes: 200 }), []);
+  assert.ok(validateDetourIntakeAttachment({ blob_path: "detour-intake/1/source.exe", file_name: "source.exe", content_type: "application/octet-stream", size_bytes: 200 }).some((error) => error.includes("content_type")));
+  assert.ok(validateDetourIntakeAttachment({ blob_path: "detour-intake/1/large.pdf", file_name: "large.pdf", content_type: "application/pdf", size_bytes: 26 * 1024 * 1024 }).some((error) => error.includes("size_bytes")));
+});
+
 test("complete fixed-route detour intake accepts operational details", () => {
   assert.deepStrictEqual(validateCreateDetourIntake({
     detection_source: "Contractor notice",
     description: "Closure at Cedar Avenue",
     proposed_start_date: "2026-08-10",
     proposed_end_date: "2026-08-12",
+    proposed_start_time: "06:00",
+    proposed_end_time: "20:00",
+    time_window_status: "confirmed",
+    affected_stops_and_stations: "Cedar Avenue Station",
+    operational_impacts: "Temporary layover required",
+    confirmation_contact: "Project manager",
     service_impact: "fixed_route",
     action_instructions: "Use the signed detour route.",
     proposed_fulfillment_mode: "avail",
@@ -604,6 +619,7 @@ test("detour intake requires mobility fields for on-demand impact", () => {
   const errors = validateCreateDetourIntake({
     detection_source: "Operations report",
     description: "Mobility service area closure",
+    time_window_status: "pending",
     service_impact: "mobility",
     action_instructions: "Use the alternate pickup point.",
     proposed_fulfillment_mode: "mobility_manual",
@@ -614,9 +630,15 @@ test("detour intake requires mobility fields for on-demand impact", () => {
 });
 
 test("detour intake rejects missing source and malformed dates", () => {
-  const errors = validateCreateDetourIntake({ description: "Closure", proposed_start_date: "tomorrow" });
+  const errors = validateCreateDetourIntake({ description: "Closure", proposed_start_date: "tomorrow", time_window_status: "confirmed" });
   assert.ok(errors.some((e) => e.includes("detection_source")));
   assert.ok(errors.some((e) => e.includes("proposed_start_date")));
+});
+
+test("detour intake requires a precise start only for a confirmed window", () => {
+  const base = { detection_source: "Contractor notice", description: "Closure", service_impact: "fixed_route", action_instructions: "Use signed detour.", proposed_fulfillment_mode: "avail", notification_audiences: ["operators"], notification_channels: ["email"], segments: [{ routes: "Route 5" }] };
+  assert.ok(validateCreateDetourIntake({ ...base, time_window_status: "confirmed", proposed_start_date: "2026-08-10" }).some((error) => error.includes("confirmed window")));
+  assert.deepStrictEqual(validateCreateDetourIntake({ ...base, time_window_status: "estimated" }), []);
 });
 
 test("detour intake promotion requires a supported fulfillment mode", () => {

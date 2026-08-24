@@ -37,16 +37,20 @@ app.http("detourIntakeList", {
       const req = pool.request();
       const where = INTAKE_STATUSES.includes(status as IntakeStatus) ? "WHERE i.status = @status" : "";
       if (where) req.input("status", sql.NVarChar(20), status);
-      const schema = await pool.request().query<{ duplicate_links_ready: number; complete_fields_ready: number }>(`
+      const schema = await pool.request().query<{ duplicate_links_ready: number; complete_fields_ready: number; operational_fields_ready: number }>(`
         SELECT CASE WHEN COL_LENGTH('dbo.DetourIntake', 'duplicate_of_intake_id') IS NULL
                          OR COL_LENGTH('dbo.DetourIntake', 'duplicate_of_detour_id') IS NULL
                     THEN 0 ELSE 1 END AS duplicate_links_ready,
                CASE WHEN COL_LENGTH('dbo.DetourIntake', 'service_impact') IS NULL
                           OR COL_LENGTH('dbo.DetourIntake', 'action_instructions') IS NULL
-                    THEN 0 ELSE 1 END AS complete_fields_ready
+                    THEN 0 ELSE 1 END AS complete_fields_ready,
+               CASE WHEN COL_LENGTH('dbo.DetourIntake', 'time_window_status') IS NULL
+                          OR COL_LENGTH('dbo.DetourIntake', 'affected_stops_and_stations') IS NULL
+                    THEN 0 ELSE 1 END AS operational_fields_ready
       `);
       const duplicateLinksReady = schema.recordset[0]?.duplicate_links_ready === 1;
       const completeFieldsReady = schema.recordset[0]?.complete_fields_ready === 1;
+      const operationalFieldsReady = schema.recordset[0]?.operational_fields_ready === 1;
       const result = await req.query(`
         SELECT i.id, i.detection_source, i.description, i.location,
                i.proposed_start_date, i.proposed_end_date, i.status,
@@ -55,6 +59,7 @@ app.http("detourIntakeList", {
                ${duplicateLinksReady ? ", i.duplicate_of_intake_id, i.duplicate_of_detour_id" : ""},
                i.created_by, i.created_at
                ${completeFieldsReady ? ", i.service_impact, i.service_area, i.action_instructions, i.proposed_fulfillment_mode, i.notification_audiences, i.notification_channels, i.evidence_notes, i.evidence_reference" : ""},
+               ${operationalFieldsReady ? ", i.proposed_start_time, i.proposed_end_time, i.time_window_status, i.affected_stops_and_stations, i.operational_impacts, i.confirmation_contact" : ""},
                i.updated_by, i.updated_at
         FROM DetourIntake i ${where}
         ORDER BY i.created_at DESC
@@ -115,6 +120,12 @@ app.http("detourIntakeCreate", {
       req.input("location", sql.NVarChar(500), body.location ?? null);
       req.input("proposed_start_date", sql.Date, body.proposed_start_date ?? null);
       req.input("proposed_end_date", sql.Date, body.proposed_end_date ?? null);
+      req.input("proposed_start_time", sql.Time, body.proposed_start_time ?? null);
+      req.input("proposed_end_time", sql.Time, body.proposed_end_time ?? null);
+      req.input("time_window_status", sql.NVarChar(20), body.time_window_status);
+      req.input("affected_stops_and_stations", sql.NVarChar(2000), body.affected_stops_and_stations ?? null);
+      req.input("operational_impacts", sql.NVarChar(2000), body.operational_impacts ?? null);
+      req.input("confirmation_contact", sql.NVarChar(500), body.confirmation_contact ?? null);
       req.input("service_impact", sql.NVarChar(20), body.service_impact);
       req.input("service_area", sql.NVarChar(500), body.service_area ?? null);
       req.input("action_instructions", sql.NVarChar(2000), body.action_instructions);
@@ -126,11 +137,11 @@ app.http("detourIntakeCreate", {
       req.input("created_by", sql.NVarChar(200), auth.principal.userDetails || "system");
       const inserted = await req.query<{ id: string; created_at: Date }>(`
         INSERT INTO DetourIntake
-          (detection_source, description, location, proposed_start_date, proposed_end_date,
+          (detection_source, description, location, proposed_start_date, proposed_end_date, proposed_start_time, proposed_end_time, time_window_status, affected_stops_and_stations, operational_impacts, confirmation_contact,
            service_impact, service_area, action_instructions, proposed_fulfillment_mode,
            notification_audiences, notification_channels, evidence_notes, evidence_reference, created_by)
         OUTPUT INSERTED.id, INSERTED.created_at
-        VALUES (@detection_source, @description, @location, @proposed_start_date, @proposed_end_date,
+        VALUES (@detection_source, @description, @location, @proposed_start_date, @proposed_end_date, @proposed_start_time, @proposed_end_time, @time_window_status, @affected_stops_and_stations, @operational_impacts, @confirmation_contact,
                 @service_impact, @service_area, @action_instructions, @proposed_fulfillment_mode,
                 @notification_audiences, @notification_channels, @evidence_notes, @evidence_reference, @created_by)
       `);
@@ -237,6 +248,12 @@ app.http("detourIntakePromote", {
         detourReq.input("riders_directed", sql.NVarChar(500), intake.location ?? null);
         detourReq.input("start_date", sql.Date, body.start_date ?? intake.proposed_start_date ?? null);
         detourReq.input("end_date", sql.Date, body.end_date ?? intake.proposed_end_date ?? null);
+        detourReq.input("start_time", sql.Time, intake.proposed_start_time ?? null);
+        detourReq.input("end_time", sql.Time, intake.proposed_end_time ?? null);
+        detourReq.input("time_window_status", sql.NVarChar(20), intake.time_window_status);
+        detourReq.input("affected_stops_and_stations", sql.NVarChar(2000), intake.affected_stops_and_stations ?? null);
+        detourReq.input("operational_impacts", sql.NVarChar(2000), intake.operational_impacts ?? null);
+        detourReq.input("confirmation_contact", sql.NVarChar(500), intake.confirmation_contact ?? null);
         detourReq.input("fulfillment_mode", sql.NVarChar(30), fulfillmentMode);
         detourReq.input("lifecycle_state", sql.NVarChar(30), lifecycleState);
         detourReq.input("workflow_owner", sql.NVarChar(200), auth.principal.userDetails || "system");
@@ -254,12 +271,14 @@ app.http("detourIntakePromote", {
             (id, internal_number, closure, start_date, end_date, riders_directed, source, fulfillment_mode,
              lifecycle_state, workflow_owner, workflow_updated_by, workflow_updated_at, created_by,
              service_impact, service_area, action_instructions, notification_audiences,
-             notification_channels, evidence_notes, evidence_reference)
+             notification_channels, evidence_notes, evidence_reference, start_time, end_time, time_window_status,
+             affected_stops_and_stations, operational_impacts, confirmation_contact)
           OUTPUT INSERTED.id, INSERTED.created_at
           VALUES (@id, @internal_number, @closure, @start_date, @end_date, @riders_directed, 'manual', @fulfillment_mode,
                   @lifecycle_state, @workflow_owner, @workflow_owner, SYSUTCDATETIME(), @created_by,
                   @service_impact, @service_area, @action_instructions, @notification_audiences,
-                  @notification_channels, @evidence_notes, @evidence_reference)
+                  @notification_channels, @evidence_notes, @evidence_reference, @start_time, @end_time, @time_window_status,
+                  @affected_stops_and_stations, @operational_impacts, @confirmation_contact)
         `);
         const detour = detourResult.recordset[0];
         const segmentsReq = new sql.Request(tx);
@@ -274,6 +293,10 @@ app.http("detourIntakePromote", {
           await segmentReq.query(`INSERT INTO DetourSegments (detour_id, routes, directions, sort_order)
             VALUES (@detour_id, @routes, @directions, @sort_order)`);
         }
+        const attachmentsReq = new sql.Request(tx);
+        attachmentsReq.input("detour_id", sql.UniqueIdentifier, detour.id);
+        attachmentsReq.input("intake_id", sql.UniqueIdentifier, id);
+        await attachmentsReq.query("UPDATE DetourImages SET detour_id=@detour_id,intake_id=NULL WHERE intake_id=@intake_id");
         const historyReq = new sql.Request(tx);
         historyReq.input("detour_id", sql.UniqueIdentifier, detour.id);
         historyReq.input("event_type", sql.NVarChar(30), "state_transition");
