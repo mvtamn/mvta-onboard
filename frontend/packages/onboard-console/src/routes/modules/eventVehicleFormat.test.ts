@@ -22,6 +22,11 @@ describe("Event AVL vehicle labels", () => {
     expect(monitoringAreaLabel(row)).toBe("Outside monitored zones");
   });
 
+  it("leads with the route display label", () => {
+    expect(routeVehicleLabel(vehicle({ route: 444, route_label: "State Fair Shuttle", vehicle_id: 4522 })))
+      .toBe("State Fair Shuttle: Route 444 (Vehicle 4522)");
+  });
+
   it("keeps a distinct Monitoring Area name when one is available", () => {
     expect(monitoringAreaLabel(vehicle({ zone_status: "In zone", zone_name: "State Fair Transit Hub" })))
       .toBe("In zone · State Fair Transit Hub");

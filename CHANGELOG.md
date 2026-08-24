@@ -5,6 +5,11 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.62] - 2026-08-24
+
+- **Put every Monitoring Area crossing in the Status queue.** Enter and exit crossings now create operator-visible work even when no direction rule matches; unmatched crossings remain manual-review items and cannot auto-send to Teams.
+- **Lead Event AVL vehicle identity with the display label.** Vehicle details, lists, map popups, crossing history, and new queue messages use `State Fair Shuttle: Route 444 (Vehicle 4522)`, with a route-only fallback when no display label exists.
+
 ## [1.5.61] - 2026-08-24
 
 - **Identify Event AVL vehicles by route color.** Route Classification now provides a native color picker and hex value for each route; live bus markers use that route color with MVTA evergreen as the safe default.

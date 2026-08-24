@@ -772,7 +772,12 @@ can focus on one task without losing the surrounding operational context.
   operational queue. Pending, acknowledged, and failed work remains visible
   there whether automatic Teams
   delivery is on or off; the Teams control changes delivery only, not queue
-  creation or visibility.
+  creation or visibility. Every detected entry or exit crossing creates a
+  queue item. A matching direction rule can enrich the message and authorize
+  automatic delivery; an unmatched crossing remains a manual-review item.
+- Event AVL identifies a vehicle as **Display label: Route number (Vehicle
+  number)**, for example **State Fair Shuttle: Route 444 (Vehicle 4522)**.
+  When no display label exists, it falls back to **Route 444 (Vehicle 4522)**.
 
 Changes to a reusable resource cannot alter an active Event Plan directly:
 active plans run from their published scope snapshot until a reviewed revision

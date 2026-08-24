@@ -93,6 +93,7 @@ export function snapshotMatchedDirectionRule(rule: DirectionRule): DirectionRule
   };
 }
 
-export function shouldPublishEventGeofenceNotification(rule: DirectionRule | undefined): boolean {
-  return rule !== undefined;
+export function shouldPublishEventGeofenceNotification(_rule: DirectionRule | undefined): boolean {
+  // Rule matching enriches content and delivery; every in-scope crossing is queue work.
+  return true;
 }

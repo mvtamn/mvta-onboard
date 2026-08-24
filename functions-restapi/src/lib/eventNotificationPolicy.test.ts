@@ -3,15 +3,15 @@ import assert from "node:assert/strict";
 import { formatEventGeofenceMessage, formatTeamsWebhookPayload, isTransientNotificationFailure, notificationHasExpired, retryDelaySeconds, shouldAutomaticallyDeliver } from "./eventNotificationPolicy";
 
 test("formats event messages with the route captured from AVL", () => {
-  assert.equal(formatEventGeofenceMessage({ vehicle_id: 1234, route_id: 55, route_label: "Fair Shuttle", transition: "enter", geofence_name: "Gate A", geofence_purpose: "staging", destination_label: "Proceed to staging", crossed_at: "2026-08-22T21:34:00Z", send_mode: "auto" }), "Bus 1234 on Route 55 · Fair Shuttle entered Gate A; Proceed to staging.\n\nGeofence: Gate A (staging)\nConfiguration: enter transition · custom message · auto delivery\nCrossed: 08/22/2026, 04:34 PM CDT");
+  assert.equal(formatEventGeofenceMessage({ vehicle_id: 1234, route_id: 55, route_label: "Fair Shuttle", transition: "enter", geofence_name: "Gate A", geofence_purpose: "staging", destination_label: "Proceed to staging", crossed_at: "2026-08-22T21:34:00Z", send_mode: "auto" }), "Fair Shuttle: Route 55 (Vehicle 1234) entered Gate A; Proceed to staging.\n\nGeofence: Gate A (staging)\nConfiguration: enter transition · custom message · auto delivery\nCrossed: 08/22/2026, 04:34 PM CDT");
 });
 
 test("formats standard operational messages from geofence events", () => {
   const input = { vehicle_id: 1234, route_id: 55, transition: "enter" as const, geofence_name: "Gate A approach", geofence_purpose: "venue", destination_label: null, crossed_at: "2026-08-22T21:34:00Z", location_name: "Gate A" };
-  assert.match(formatEventGeofenceMessage({ ...input, message_type: "departing" }), /^Bus 1234 on Route 55 is departing Gate A\./);
-  assert.match(formatEventGeofenceMessage({ ...input, message_type: "passed" }), /^Bus 1234 on Route 55 has passed Gate A\./);
-  assert.match(formatEventGeofenceMessage({ ...input, message_type: "arriving_soon" }), /^Bus 1234 on Route 55 is arriving at Gate A soon\./);
-  assert.match(formatEventGeofenceMessage({ ...input, message_type: "departing", destination_label: "Proceed to staging" }), /^Bus 1234 on Route 55 is departing Gate A; Proceed to staging\./);
+  assert.match(formatEventGeofenceMessage({ ...input, message_type: "departing" }), /^Route 55 \(Vehicle 1234\) is departing Gate A\./);
+  assert.match(formatEventGeofenceMessage({ ...input, message_type: "passed" }), /^Route 55 \(Vehicle 1234\) has passed Gate A\./);
+  assert.match(formatEventGeofenceMessage({ ...input, message_type: "arriving_soon" }), /^Route 55 \(Vehicle 1234\) is arriving at Gate A soon\./);
+  assert.match(formatEventGeofenceMessage({ ...input, message_type: "departing", destination_label: "Proceed to staging" }), /^Route 55 \(Vehicle 1234\) is departing Gate A; Proceed to staging\./);
 });
 
 test("formats Teams Workflows-compatible adaptive card payloads", () => {

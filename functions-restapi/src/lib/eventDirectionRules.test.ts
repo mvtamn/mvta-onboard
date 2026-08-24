@@ -85,9 +85,9 @@ test("creates a stable matched rule snapshot", () => {
   });
 });
 
-test("publishes notifications only for matched direction rules", () => {
+test("publishes every crossing to the status queue", () => {
   assert.equal(shouldPublishEventGeofenceNotification(baseRule), true);
-  assert.equal(shouldPublishEventGeofenceNotification(undefined), false);
+  assert.equal(shouldPublishEventGeofenceNotification(undefined), true);
 });
 
 test("allows a standard message type without custom wording", () => {

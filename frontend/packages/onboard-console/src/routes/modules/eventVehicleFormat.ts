@@ -35,15 +35,19 @@ export function displayOperator(value: string | null): string {
 
 export function routeLabel(vehicle: EventVehiclePosition): string {
   if (vehicle.route === null) return "Route unavailable";
-  return vehicle.route_label ? `${vehicle.route} · ${vehicle.route_label}` : String(vehicle.route);
+  return vehicle.route_label ? `${vehicle.route_label}: Route ${vehicle.route}` : `Route ${vehicle.route}`;
 }
 
 export function routeDisplayLabel(vehicle: EventVehiclePosition): string {
-  return vehicle.route === null ? "Route unavailable" : `Route ${routeLabel(vehicle)}`;
+  return routeLabel(vehicle);
+}
+
+export function routeVehicleIdentity(route: number | null, routeLabelValue: string | null, vehicleId: number): string {
+  return `${routeLabelValue && route !== null ? `${routeLabelValue}: ` : ""}${route === null ? "Route unavailable" : `Route ${route}`} (Vehicle ${vehicleId})`;
 }
 
 export function routeVehicleLabel(vehicle: EventVehiclePosition): string {
-  return `${routeDisplayLabel(vehicle)} (Vehicle ${vehicle.vehicle_id})`;
+  return routeVehicleIdentity(vehicle.route, vehicle.route_label, vehicle.vehicle_id);
 }
 
 export function routeMarkerColor(vehicle: EventVehiclePosition): string {

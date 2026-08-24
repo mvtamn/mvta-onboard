@@ -177,8 +177,8 @@ validated plan revision.
 ## Unmatched crossing
 
 An observed crossing within an active operational scope for which no linked
-direction rule matches the vehicle heading. It is retained for audit and
-diagnostics but does not create a notification.
+direction rule matches the vehicle heading. It creates a manual-review Status
+queue item but cannot trigger automatic external delivery.
 
 ## Classification change
 
@@ -416,8 +416,8 @@ vehicle arrived safely.
 
 The factual payload sent to a Teams destination: Event, operating period,
 vehicle, route, heading, geofence or location, transition, observation time,
-and matched rule or destination. It does not include an ETA unless a reliable
-ETA source is available.
+and any matched rule or destination. It does not include an ETA unless a
+reliable ETA source is available.
 
 ## Event AVL layer
 

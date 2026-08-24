@@ -5,7 +5,7 @@ import { useAuth } from "../../auth/AuthContext.js";
 import "./eventMonitoring.css";
 import { activePlansMissingPublishedScope, defaultMonitoringEventId, defaultMonitoringServicePlanId, deriveEventMonitoringDataState, isEventNotificationHistoryStatus, isOpenEventNotificationStatus } from "./eventMonitoringState.js";
 import { useEventMonitoringData } from "./useEventMonitoringData.js";
-import { cardinalHeading, displayOperator, minutesAgo, monitoringAreaLabel, routeDisplayLabel, routeLabel, routeVehicleLabel } from "./eventVehicleFormat.js";
+import { cardinalHeading, displayOperator, minutesAgo, monitoringAreaLabel, routeDisplayLabel, routeLabel, routeVehicleIdentity, routeVehicleLabel } from "./eventVehicleFormat.js";
 import { EventVehicleMap, type MapStyle } from "./EventVehicleMap.js";
 import { crossingEvidenceLabel } from "./crossingEvidence.js";
 
@@ -138,7 +138,7 @@ export function EventMonitoring({ fieldView = false }: { fieldView?: boolean }) 
           <div className="evmon-rail-body">
             {crossings.length === 0 ? <p className="evmon-rail-empty">No crossings detected yet.</p> : crossings.map((crossing) => <div className="evmon-rail-entry" key={crossing.id}>
               <span className="evmon-rail-when">Detected {new Date(crossing.crossed_at).toLocaleTimeString()}</span>
-              <strong>Vehicle {crossing.vehicle_id} {crossing.transition === "enter" ? "entered" : "exited"}</strong>
+              <strong>{routeVehicleIdentity(crossing.route_id, crossing.route_label, crossing.vehicle_id)} {crossing.transition === "enter" ? "entered" : "exited"}</strong>
               <span className="evmon-rail-detail">{crossing.geofence_name} · {crossingEvidenceLabel(crossing)}</span>
             </div>)}
           </div>
