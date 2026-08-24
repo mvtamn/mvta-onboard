@@ -38,6 +38,20 @@ export function routeLabel(vehicle: EventVehiclePosition): string {
   return vehicle.route_label ? `${vehicle.route} · ${vehicle.route_label}` : String(vehicle.route);
 }
 
+export function routeDisplayLabel(vehicle: EventVehiclePosition): string {
+  return vehicle.route === null ? "Route unavailable" : `Route ${routeLabel(vehicle)}`;
+}
+
+export function routeVehicleLabel(vehicle: EventVehiclePosition): string {
+  return `${routeDisplayLabel(vehicle)} (Vehicle ${vehicle.vehicle_id})`;
+}
+
+export function monitoringAreaLabel(vehicle: EventVehiclePosition): string {
+  return vehicle.zone_name && vehicle.zone_name !== vehicle.zone_status
+    ? `${vehicle.zone_status} · ${vehicle.zone_name}`
+    : vehicle.zone_status;
+}
+
 /** Escapes text interpolated into Atlas HtmlMarker/Popup content strings. */
 export function escapeHtml(value: string): string {
   return value.replace(/[&<>'"]/g, (char) => ({

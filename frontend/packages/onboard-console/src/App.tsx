@@ -78,7 +78,7 @@ const PAGE_META: { match: (path: string) => boolean; title: string; sub: string 
   { match: (p) => p === "/detour-reports", title: "Detour Reports", sub: "Search and export detour history — read-only" },
   { match: (p) => p === "/admin" || p.startsWith("/admin/"), title: "Administration", sub: "Manage access, resources, configuration, integrations, and governance" },
   {
-    match: (p) => p === "/event-monitoring" || p === "/events/avl",
+    match: (p) => p === "/event-monitoring" || p.startsWith("/events/avl"),
     title: "Event AVL",
     sub: "Monitor active vehicles and event service in real time",
   },

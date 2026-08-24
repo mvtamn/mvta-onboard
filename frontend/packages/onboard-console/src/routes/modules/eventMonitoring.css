@@ -59,10 +59,15 @@
 .event-authoring-location-marker.is-inactive .event-authoring-location-dot { background: #888888; }
 .event-authoring-location-label { padding: 3px 5px; border-radius: 4px; color: var(--text); background: color-mix(in srgb, var(--surface-bg) 94%, transparent); box-shadow: 0 1px 4px rgba(0,0,0,.2); font-size: 10px; font-weight: 800; white-space: nowrap; }
 .evmon-real-map { height: min(58vh, 610px); min-height: 430px; position: relative; }
+.evmon-real-map.is-expanded { position: fixed; z-index: 50; inset: 12px; width: auto; height: auto; min-height: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-bg); box-shadow: 0 18px 60px rgba(0,0,0,.42); }
 /* More specific than Azure Maps' later-loaded .maplibregl-map rule, which
    otherwise resets this host to position:relative and collapses it to 0px. */
 .evmon-real-map > .evmon-map-container { position: absolute; inset: 0; height: 100%; }
 .evmon-map-message { position: absolute; inset: 0; display: grid; place-items: center; background: var(--surface-alt-bg); color: var(--text-muted); }
+.evmon-map-controls { position: absolute; z-index: 4; top: 12px; left: 12px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; max-width: calc(100% - 190px); padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); background: color-mix(in srgb, var(--surface-bg) 94%, transparent); box-shadow: 0 2px 7px rgba(0,0,0,.16); font-size: 11px; font-weight: 750; }
+.evmon-map-controls select { min-height: 27px; padding: 0 7px; border: 1px solid var(--border); border-radius: 5px; color: var(--text); background: var(--surface-bg); font: inherit; }
+.evmon-map-controls label { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.evmon-map-controls label:has(input:disabled) { color: var(--text-muted); }
 .evmon-open-map { position: absolute; z-index: 3; top: 12px; right: 12px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: color-mix(in srgb, var(--surface-bg) 94%, transparent); box-shadow: 0 2px 7px rgba(0,0,0,.18); font: inherit; font-size: 10.5px; font-weight: 800; cursor: pointer; }
 .evmon-open-map:hover { background: var(--surface-bg); }
 /* The bus marker is a data layer, not chrome: it stays constant so it reads
@@ -243,4 +248,4 @@
 .evmon-field-list button span, .evmon-field-list button small { color: var(--text-muted); font-size: 11px; }
 .evmon-field-view-link { display: inline-block; margin-top: 12px; color: var(--brand-green-text); font-size: 12px; font-weight: 800; }
 @media (max-width: 900px) { .evmon-work-surface, .evmon-field-surface { grid-template-columns: 1fr; } .evmon-roster-pane { border-top: 1px solid var(--border); border-left: 0; } .evmon-work-surface > .evmon-map-wrap { min-height: 420px; } .evmon-investigative-rail { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 600px) { .evmon-investigative-rail { grid-template-columns: 1fr; } .evmon-sticky-bar > div { flex-basis: 100%; } .evmon-field-list button { grid-template-columns: 55px 1fr; } .evmon-field-list button small { grid-column: 2; } }
+@media (max-width: 600px) { .evmon-investigative-rail { grid-template-columns: 1fr; } .evmon-sticky-bar > div { flex-basis: 100%; } .evmon-map-controls { top: 52px; max-width: calc(100% - 24px); } .evmon-field-list button { grid-template-columns: 55px 1fr; } .evmon-field-list button small { grid-column: 2; } }

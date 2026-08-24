@@ -5,11 +5,27 @@ import { ApiError, type EventGeofence, type EventLocation, type EventVehiclePosi
 import { api } from "../../config.js";
 import { useTheme } from "../../theme/ThemeContext.js";
 import { removeMapLayersIfPresent } from "./mapLayerCleanup.js";
-import { cardinalHeading, displayOperator, escapeHtml, minutesAgo, routeLabel } from "./eventVehicleFormat.js";
+import { cardinalHeading, displayOperator, escapeHtml, minutesAgo, routeVehicleLabel } from "./eventVehicleFormat.js";
 
 const MAP_CENTER: atlas.data.Position = [-93.25, 44.83];
 const MAP_ZOOM = 10;
 export type MapStyle = "road" | "grayscale_light" | "night" | "satellite_road_labels";
+
+interface EventVehicleMapProps {
+  vehicles: EventVehiclePosition[];
+  geofences: EventGeofence[];
+  locations: EventLocation[];
+  showGeofences: boolean;
+  showLocations: boolean;
+  mapStyle: MapStyle;
+  traffic: boolean;
+  selectedVehicleId?: number | null;
+  onSelectVehicle?: (vehicleId: number) => void;
+  onShowGeofencesChange?: (visible: boolean) => void;
+  onShowLocationsChange?: (visible: boolean) => void;
+  onMapStyleChange?: (style: MapStyle) => void;
+  onTrafficChange?: (visible: boolean) => void;
+}
 
 // Map data-layer palette. These paint onto raster tiles rather than a console
 // surface, so they stay constant across themes - but they are anchored on MVTA
@@ -20,7 +36,7 @@ const MAP_BRAND = "#00553d";
 const MAP_INACTIVE = "#888888";
 const MAP_LABEL_INK = "#2c2c2a";
 
-export function EventVehicleMap({ vehicles, geofences, locations, showGeofences, showLocations, mapStyle, traffic, selectedVehicleId, onSelectVehicle }: { vehicles: EventVehiclePosition[]; geofences: EventGeofence[]; locations: EventLocation[]; showGeofences: boolean; showLocations: boolean; mapStyle: MapStyle; traffic: boolean; selectedVehicleId?: number | null; onSelectVehicle?: (vehicleId: number) => void }) {
+export function EventVehicleMap({ vehicles, geofences, locations, showGeofences, showLocations, mapStyle, traffic, selectedVehicleId, onSelectVehicle, onShowGeofencesChange, onShowLocationsChange, onMapStyleChange, onTrafficChange }: EventVehicleMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<atlas.Map | null>(null);
   const popupRef = useRef<atlas.Popup | null>(null);
@@ -32,6 +48,7 @@ export function EventVehicleMap({ vehicles, geofences, locations, showGeofences,
   const [ready, setReady] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const { theme } = useTheme();
 
   useEffect(() => {
@@ -61,6 +78,7 @@ export function EventVehicleMap({ vehicles, geofences, locations, showGeofences,
         },
       });
       mapRef.current = map;
+      map.controls.add([new atlas.control.ZoomControl(), new atlas.control.CompassControl()], { position: atlas.ControlPosition.BottomRight });
       // fillColor is applied by the theme-sync effect below, which runs once
       // `ready` flips - before any marker can open the popup.
       popupRef.current = new atlas.Popup({ pixelOffset: [0, -24], closeButton: false });
@@ -190,7 +208,7 @@ export function EventVehicleMap({ vehicles, geofences, locations, showGeofences,
       const showPopup = () => {
         popup?.setOptions({
           position: [vehicle.longitude, vehicle.latitude],
-          content: `<div class="event-map-popup"><strong>${escapeHtml(displayOperator(vehicle.operator_name))}</strong><span>Vehicle ${vehicle.vehicle_id} · Route ${escapeHtml(routeLabel(vehicle))}</span><span>${cardinalHeading(vehicle.heading, vehicle.direction)} · ${vehicle.speed_mph === null ? "Speed unavailable" : `${vehicle.speed_mph.toFixed(1)} mph`}</span><span>Last report ${minutesAgo(vehicle.report_timestamp)}</span></div>`,
+          content: `<div class="event-map-popup"><strong>${escapeHtml(routeVehicleLabel(vehicle))}</strong><span>${escapeHtml(displayOperator(vehicle.operator_name))}</span><span>${cardinalHeading(vehicle.heading, vehicle.direction)} · ${vehicle.speed_mph === null ? "Speed unavailable" : `${vehicle.speed_mph.toFixed(1)} mph`}</span><span>Last report ${minutesAgo(vehicle.report_timestamp)}</span></div>`,
         });
         popup?.open(map);
       };
@@ -218,15 +236,23 @@ export function EventVehicleMap({ vehicles, geofences, locations, showGeofences,
     mapRef.current.setCamera({ center: [vehicle.longitude, vehicle.latitude], zoom: Math.max(mapRef.current.getCamera().zoom ?? 10, 13) });
   }, [selectedVehicleId, vehicles, ready]);
 
-  function openLargerMap() {
-    const camera = mapRef.current?.getCamera();
-    const center = camera?.center ?? MAP_CENTER;
-    window.open(`https://www.bing.com/maps?cp=${center[1]}~${center[0]}&lvl=${Math.round(camera?.zoom ?? MAP_ZOOM)}`, "_blank", "noopener,noreferrer");
-  }
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => mapRef.current?.resize());
+    if (!expanded) return () => cancelAnimationFrame(frame);
+    const close = (event: KeyboardEvent) => { if (event.key === "Escape") setExpanded(false); };
+    window.addEventListener("keydown", close);
+    return () => { cancelAnimationFrame(frame); window.removeEventListener("keydown", close); };
+  }, [expanded]);
 
-  return <div className="evmon-real-map">
+  return <div className={`evmon-real-map${expanded ? " is-expanded" : ""}`}>
     <div ref={containerRef} className="evmon-map-container" />
-    <button type="button" className="evmon-open-map" onClick={openLargerMap}>Open larger map ↗</button>
+    <div className="evmon-map-controls" aria-label="Map layers and display">
+      <select aria-label="Map style" value={mapStyle} onChange={(event) => onMapStyleChange?.(event.target.value as MapStyle)} disabled={!onMapStyleChange}><option value="road">Road</option><option value="grayscale_light">Light</option><option value="night">Night</option><option value="satellite_road_labels">Satellite</option></select>
+      <label><input type="checkbox" checked={traffic} onChange={(event) => onTrafficChange?.(event.target.checked)} disabled={!onTrafficChange} /> Traffic</label>
+      <label><input type="checkbox" checked={showGeofences} onChange={(event) => onShowGeofencesChange?.(event.target.checked)} disabled={!onShowGeofencesChange || geofences.length === 0} /> Monitoring Areas ({geofences.length})</label>
+      <label><input type="checkbox" checked={showLocations} onChange={(event) => onShowLocationsChange?.(event.target.checked)} disabled={!onShowLocationsChange || locations.length === 0} /> Locations ({locations.length})</label>
+    </div>
+    <button type="button" className="evmon-open-map" aria-label={expanded ? "Close larger map" : "Open larger map"} aria-pressed={expanded} onClick={() => setExpanded((value) => !value)}>{expanded ? "Close larger map ×" : "Open larger map ↗"}</button>
     {error && <div className="evmon-map-message">{error}</div>}
     {!error && !loaded && <div className="evmon-map-message">Loading live map…</div>}
   </div>;
