@@ -37,8 +37,8 @@ export function formatTeamsWebhookPayload(text: string) {
   };
 }
 
-export function formatEventGeofenceMessage(input: { vehicle_id: number; route_id: number | null; transition: "enter" | "exit"; geofence_name: string; geofence_purpose: string | null; destination_label: string | null; crossed_at: Date | string; message_type?: "departing" | "passed" | "arriving_soon" | "custom"; send_mode?: "manual" | "auto" | null; location_name?: string | null }): string {
-  const route = input.route_id === null ? " on an unknown route" : ` on Route ${input.route_id}`;
+export function formatEventGeofenceMessage(input: { vehicle_id: number; route_id: number | null; route_label?: string | null; transition: "enter" | "exit"; geofence_name: string; geofence_purpose: string | null; destination_label: string | null; crossed_at: Date | string; message_type?: "departing" | "passed" | "arriving_soon" | "custom"; send_mode?: "manual" | "auto" | null; location_name?: string | null }): string {
+  const route = input.route_id === null ? " on an unknown route" : ` on Route ${input.route_id}${input.route_label ? ` · ${input.route_label}` : ""}`;
   const location = input.location_name?.trim() || input.geofence_name;
   const additionalContext = input.destination_label?.trim() ? `; ${input.destination_label.trim()}` : "";
   const message = input.message_type === "departing" ? `Bus ${input.vehicle_id}${route} is departing ${location}${additionalContext}.`

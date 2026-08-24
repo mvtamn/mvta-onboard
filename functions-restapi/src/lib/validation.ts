@@ -755,6 +755,10 @@ export function validateRouteClassification(body: UnknownBody): string[] {
       errors.push(`route_label must be at most ${MAX_ROUTE_LABEL_LENGTH} characters`);
     }
   }
+  if (body.route_color !== undefined && body.route_color !== null
+      && (typeof body.route_color !== "string" || !/^#[0-9a-f]{6}$/i.test(body.route_color))) {
+    errors.push("route_color must be a six-digit hex color such as #00553D");
+  }
   for (const field of ["effective_start_date", "effective_end_date"]) {
     const v = body[field];
     if (v !== undefined && v !== null && (typeof v !== "string" || !DATE_RE.test(v))) {

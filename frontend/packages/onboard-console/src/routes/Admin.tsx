@@ -15,6 +15,7 @@ import { api } from "../config.js";
 import { useAppDialog } from "../components/AppDialog.js";
 
 const ROUTE_CATEGORIES: RouteCategory[] = ["FixedRoute", "SpecialEvent", "OnDemand"];
+const DEFAULT_ROUTE_COLOR = "#00553D";
 const ROUTE_CATEGORY_DESCRIPTIONS: Record<RouteCategory, string> = {
   FixedRoute: "Regular scheduled service",
   SpecialEvent: "Event or supplemental service",
@@ -99,6 +100,7 @@ export function RouteClassificationSection() {
   const [routeIdInput, setRouteIdInput] = useState("");
   const [category, setCategory] = useState<RouteCategory>("SpecialEvent");
   const [label, setLabel] = useState("");
+  const [routeColor, setRouteColor] = useState(DEFAULT_ROUTE_COLOR);
   const [routeSearch, setRouteSearch] = useState("");
 
   // Same registry (GtfsRoutes via GET /routes) already backing Compose's
@@ -174,6 +176,7 @@ export function RouteClassificationSection() {
     setRouteIdInput(String(r.route_id));
     setCategory(r.route_category);
     setLabel(r.route_label ?? "");
+    setRouteColor(r.route_color || DEFAULT_ROUTE_COLOR);
     setOkMsg(null);
     setRouteSearch("");
   }
@@ -183,6 +186,7 @@ export function RouteClassificationSection() {
     setRouteIdInput("");
     setCategory("SpecialEvent");
     setLabel("");
+    setRouteColor(DEFAULT_ROUTE_COLOR);
     setOkMsg(null);
     setRouteSearch("");
   }
@@ -197,6 +201,7 @@ export function RouteClassificationSection() {
     setRouteIdInput(String(u.route_id));
     setCategory("SpecialEvent");
     setLabel(u.suggested_label ?? "");
+    setRouteColor(DEFAULT_ROUTE_COLOR);
     setOkMsg(null);
     setRouteSearch("");
   }
@@ -207,6 +212,10 @@ export function RouteClassificationSection() {
       setError("Route ID must be a whole number.");
       return;
     }
+    if (!/^#[0-9a-f]{6}$/i.test(routeColor)) {
+      setError("AVL marker color must be a six-digit hex color such as #00553D.");
+      return;
+    }
     setBusy(true);
     setError(null);
     setOkMsg(null);
@@ -215,6 +224,7 @@ export function RouteClassificationSection() {
       await api.putRouteClassification(routeId, {
         route_category: category,
         route_label: label.trim() || null,
+        route_color: routeColor,
         expected_updated_at: existing?.updated_at,
       });
       setOkMsg(`Route ${routeId} classified as ${ROUTE_CATEGORY_LABELS[category]}.`);
@@ -367,8 +377,16 @@ export function RouteClassificationSection() {
               </select>
             </div>
             <div>
-              <p className="field-label">Label <span className="hint">(optional)</span></p>
+              <p className="field-label">Display label <span className="hint">(optional)</span></p>
               <input className="f" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Vikings Game Shuttle" />
+            </div>
+            <div>
+              <p className="field-label">AVL marker color</p>
+              <label className="route-color-picker">
+                <input type="color" value={/^#[0-9a-f]{6}$/i.test(routeColor) ? routeColor : DEFAULT_ROUTE_COLOR} onChange={(event) => setRouteColor(event.target.value.toUpperCase())} aria-label="Choose AVL marker color" />
+                <input className="f" value={routeColor} onChange={(event) => setRouteColor(event.target.value.toUpperCase())} pattern="#[0-9A-Fa-f]{6}" aria-label="AVL marker color hex value" />
+              </label>
+              <span className="td-subtle">Used for every live bus assigned to this route.</span>
             </div>
           </div>
           <button className="btn-post" disabled={busy || !routeIdInput} onClick={save}>
@@ -390,7 +408,7 @@ export function RouteClassificationSection() {
             </div>
           <table className="data route-classification-table">
             <thead>
-              <tr><th scope="col">Route</th><th scope="col">Service type</th><th scope="col">Display label</th><th scope="col">Last updated</th><th scope="col">Actions</th></tr>
+              <tr><th scope="col">Route</th><th scope="col">Service type</th><th scope="col">Display label</th><th scope="col">AVL marker</th><th scope="col">Last updated</th><th scope="col">Actions</th></tr>
             </thead>
             <tbody>
               {routes.map((r) => (
@@ -407,6 +425,7 @@ export function RouteClassificationSection() {
                     <strong>{r.route_label || "No display label"}</strong>
                     {!r.route_label ? <span className="td-subtle">Add one to help operators recognize this service</span> : null}
                   </td>
+                  <td><span className="route-color-swatch" style={{ backgroundColor: r.route_color }} aria-hidden="true" /><strong>{r.route_color}</strong></td>
                   <td className="route-classification-updated">
                     <strong>{new Date(r.updated_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</strong>
                     <span className="td-subtle">{r.updated_by ? `by ${r.updated_by}` : "by system"}</span>

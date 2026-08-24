@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.61] - 2026-08-24
+
+- **Identify Event AVL vehicles by route color.** Route Classification now provides a native color picker and hex value for each route; live bus markers use that route color with MVTA evergreen as the safe default.
+- **Use route display labels throughout Event AVL.** Vehicle lists, selected details, map accessibility labels, popups, search, and newly created status-queue messages include the configured display label.
+- **Keep the status queue independent from Teams.** The critical in-app queue is now explicitly labeled **Status queue** and retains pending, acknowledged, and failed work. Turning automatic Teams delivery off prevents automatic external delivery without disabling or hiding queue items.
+
 ## [1.5.60] - 2026-08-24
 
 - **Keep Event AVL visible while navigating OnBoard.** “Open field window” now launches the focused Event AVL view in a separate 1600×1000 browser window with the selected Event and operating period preserved, leaving the original console free for other work.

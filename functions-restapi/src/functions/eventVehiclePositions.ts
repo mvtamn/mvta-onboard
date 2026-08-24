@@ -22,6 +22,7 @@ interface EventVehiclePositionRow {
   vehicle_id: number;
   route: number | null;
   route_label: string | null;
+  route_color: string | null;
   route_category: string | null;
   latitude: number;
   longitude: number;
@@ -77,7 +78,7 @@ app.http("eventVehiclePositionsList", {
       positionRequest.input("eventId", sql.UniqueIdentifier, eventId || null);
       positionRequest.input("servicePlanId", sql.UniqueIdentifier, servicePlanId || null);
       const result = await positionRequest.query<EventVehiclePositionRow>(`
-        SELECT p.vehicle_id, p.route, rc.route_label, rc.route_category,
+        SELECT p.vehicle_id, p.route, rc.route_label, rc.route_color, rc.route_category,
                p.latitude, p.longitude, p.heading, avl.direction,
                NULLIF(avl.block, 0) AS block, NULLIF(avl.run, 0) AS run,
                assignment.operator_name,

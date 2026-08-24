@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EventVehiclePosition } from "@mvta/shared";
-import { monitoringAreaLabel, routeVehicleLabel } from "./eventVehicleFormat.js";
+import { monitoringAreaLabel, routeMarkerColor, routeVehicleLabel } from "./eventVehicleFormat.js";
 
 function vehicle(overrides: Partial<EventVehiclePosition> = {}): EventVehiclePosition {
   return {
@@ -25,5 +25,10 @@ describe("Event AVL vehicle labels", () => {
   it("keeps a distinct Monitoring Area name when one is available", () => {
     expect(monitoringAreaLabel(vehicle({ zone_status: "In zone", zone_name: "State Fair Transit Hub" })))
       .toBe("In zone · State Fair Transit Hub");
+  });
+
+  it("uses the classified route color and safely falls back to MVTA evergreen", () => {
+    expect(routeMarkerColor(vehicle({ route_color: "#F78E1E" }))).toBe("#F78E1E");
+    expect(routeMarkerColor(vehicle({ route_color: "not-css" }))).toBe("#00553D");
   });
 });

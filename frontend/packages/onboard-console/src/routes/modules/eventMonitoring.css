@@ -71,7 +71,7 @@
 .evmon-open-map:hover { background: var(--surface-bg); }
 /* The bus marker is a data layer, not chrome: it stays constant so it reads
    the same against road, satellite, and night tiles. Matches MAP_BRAND. */
-.event-map-bus { width: 28px; height: 28px; display: grid; place-items: center; border: 2px solid #fff; border-radius: 8px; background: #00553d; color: #fff; box-shadow: 0 2px 7px rgba(0,0,0,.4); cursor: help; transform: rotate(var(--bus-heading)); }
+.event-map-bus { width: 28px; height: 28px; display: grid; place-items: center; border: 2px solid #fff; border-radius: 8px; background: var(--route-color, #00553d); color: #fff; box-shadow: 0 2px 7px rgba(0,0,0,.4); cursor: help; transform: rotate(var(--bus-heading)); }
 .event-map-bus span { font-size: 15px; line-height: 1; transform: rotate(calc(-1 * var(--bus-heading))); }
 /* Text inside the Atlas popup; the bubble's own fill is themed via the
    Popup fillColor option in EventVehicleMap.tsx. */

@@ -830,6 +830,7 @@ export interface RouteClassificationRow {
   route_id: number;
   route_category: RouteCategory;
   route_label: string | null;
+  route_color: string;
   effective_start_date: string | null;
   effective_end_date: string | null;
   is_active: boolean;
@@ -856,6 +857,7 @@ export interface RouteClassificationListResponse {
 export interface RouteClassificationInput {
   route_category: RouteCategory;
   route_label?: string | null;
+  route_color?: string | null;
   effective_start_date?: string | null;
   effective_end_date?: string | null;
   is_active?: boolean;
@@ -896,6 +898,7 @@ export interface EventVehiclePosition {
   vehicle_id: number;
   route: number | null;
   route_label: string | null;
+  route_color?: string | null;
   route_category: string | null;
   latitude: number;
   longitude: number;

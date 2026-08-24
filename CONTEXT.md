@@ -12,6 +12,12 @@ The operational category assigned to a route, such as `SpecialEvent`,
 service a route represents; it does not by itself activate monitoring for a
 particular occasion.
 
+A route classification also owns the operator-facing display label and Event
+AVL marker color for that route. The label is used anywhere Event AVL names
+the route, including vehicle details, map popups, and newly created status
+queue messages; the color identifies its live vehicle markers. These are
+presentation attributes and do not alter monitoring eligibility or scope.
+
 ## Service plan
 
 The operational configuration that places selected routes and geofences in

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { formatEventGeofenceMessage, formatTeamsWebhookPayload, isTransientNotificationFailure, notificationHasExpired, retryDelaySeconds, shouldAutomaticallyDeliver } from "./eventNotificationPolicy";
 
 test("formats event messages with the route captured from AVL", () => {
-  assert.equal(formatEventGeofenceMessage({ vehicle_id: 1234, route_id: 55, transition: "enter", geofence_name: "Gate A", geofence_purpose: "staging", destination_label: "Proceed to staging", crossed_at: "2026-08-22T21:34:00Z", send_mode: "auto" }), "Bus 1234 on Route 55 entered Gate A; Proceed to staging.\n\nGeofence: Gate A (staging)\nConfiguration: enter transition · custom message · auto delivery\nCrossed: 08/22/2026, 04:34 PM CDT");
+  assert.equal(formatEventGeofenceMessage({ vehicle_id: 1234, route_id: 55, route_label: "Fair Shuttle", transition: "enter", geofence_name: "Gate A", geofence_purpose: "staging", destination_label: "Proceed to staging", crossed_at: "2026-08-22T21:34:00Z", send_mode: "auto" }), "Bus 1234 on Route 55 · Fair Shuttle entered Gate A; Proceed to staging.\n\nGeofence: Gate A (staging)\nConfiguration: enter transition · custom message · auto delivery\nCrossed: 08/22/2026, 04:34 PM CDT");
 });
 
 test("formats standard operational messages from geofence events", () => {

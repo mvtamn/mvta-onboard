@@ -109,6 +109,11 @@ test("route classification accepts an optimistic concurrency timestamp", () => {
   }), []);
 });
 
+test("route classification accepts a hex route color and rejects unsafe CSS values", () => {
+  assert.deepStrictEqual(validateRouteClassification({ route_category: "SpecialEvent", route_color: "#F78E1E" }), []);
+  assert.deepStrictEqual(validateRouteClassification({ route_category: "SpecialEvent", route_color: "red; background:url(x)" }), ["route_color must be a six-digit hex color such as #00553D"]);
+});
+
 test("rejects invalid severity", () => {
   const errors = validateCreateMessage({
     raw_text: "test",

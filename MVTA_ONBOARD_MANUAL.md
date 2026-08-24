@@ -758,6 +758,9 @@ can focus on one task without losing the surrounding operational context.
   purposes; unused custom purposes can be deleted. The built-in **Staging**,
   **Corridor**, **Venue**, and **Other** purposes cannot be deleted.
 - Transit locations use human-readable categories such as **Park & ride**.
+- Route classifications carry a display label and an operator-selected marker
+  color. Event AVL uses the display label whenever it names the route and
+  colors every live vehicle marker from that classification.
 - A direction rule may have an optional operational name, a movement and
   compass range, a standard message template or custom instruction, an
   appended operational note, and a related location. The saved-rule list
@@ -765,11 +768,17 @@ can focus on one task without losing the surrounding operational context.
 - Short text entry and consequential actions use an OnBoard dialog rather
   than browser-owned prompts. The dialog identifies the operation, explains
   its impact, validates required input, and labels destructive actions.
+- **Status queue** (formerly labeled **Open notifications**) is the Event AVL
+  operational queue. Pending, acknowledged, and failed work remains visible
+  there whether automatic Teams
+  delivery is on or off; the Teams control changes delivery only, not queue
+  creation or visibility.
 
 Changes to a reusable resource cannot alter an active Event Plan directly:
 active plans run from their published scope snapshot until a reviewed revision
-is applied. The Area-purpose catalog requires SQL migration 067 and rule
-names require migration 066 before this console version is deployed.
+is applied. The Area-purpose catalog requires SQL migration 067, rule names
+require migration 066, and route marker colors require migration 073 before
+the corresponding API and console versions are deployed.
 
 The broader special-event module design in
 `Special_Event_Vehicle_Monitoring_Module_1.docx` remains useful as a future

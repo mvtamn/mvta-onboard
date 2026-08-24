@@ -5,7 +5,7 @@ import { ApiError, type EventGeofence, type EventLocation, type EventVehiclePosi
 import { api } from "../../config.js";
 import { useTheme } from "../../theme/ThemeContext.js";
 import { removeMapLayersIfPresent } from "./mapLayerCleanup.js";
-import { cardinalHeading, displayOperator, escapeHtml, minutesAgo, routeVehicleLabel } from "./eventVehicleFormat.js";
+import { cardinalHeading, displayOperator, escapeHtml, minutesAgo, routeMarkerColor, routeVehicleLabel } from "./eventVehicleFormat.js";
 
 const MAP_CENTER: atlas.data.Position = [-93.25, 44.83];
 const MAP_ZOOM = 10;
@@ -200,15 +200,16 @@ export function EventVehicleMap({ vehicles, geofences, locations, showGeofences,
     map.markers.clear();
     vehicles.forEach((vehicle) => {
       const heading = vehicle.heading ?? 0;
+      const markerLabel = routeVehicleLabel(vehicle);
       const marker = new atlas.HtmlMarker({
         position: [vehicle.longitude, vehicle.latitude],
-        htmlContent: `<div class="event-map-bus" style="--bus-heading:${heading}deg" role="img" aria-label="Bus ${vehicle.vehicle_id}"><span>▰</span></div>`,
+        htmlContent: `<div class="event-map-bus" style="--bus-heading:${heading}deg;--route-color:${routeMarkerColor(vehicle)}" role="img" aria-label="${escapeHtml(markerLabel)}"><span>▰</span></div>`,
       });
       map.markers.add(marker);
       const showPopup = () => {
         popup?.setOptions({
           position: [vehicle.longitude, vehicle.latitude],
-          content: `<div class="event-map-popup"><strong>${escapeHtml(routeVehicleLabel(vehicle))}</strong><span>${escapeHtml(displayOperator(vehicle.operator_name))}</span><span>${cardinalHeading(vehicle.heading, vehicle.direction)} · ${vehicle.speed_mph === null ? "Speed unavailable" : `${vehicle.speed_mph.toFixed(1)} mph`}</span><span>Last report ${minutesAgo(vehicle.report_timestamp)}</span></div>`,
+          content: `<div class="event-map-popup"><strong>${escapeHtml(markerLabel)}</strong><span>${escapeHtml(displayOperator(vehicle.operator_name))}</span><span>${cardinalHeading(vehicle.heading, vehicle.direction)} · ${vehicle.speed_mph === null ? "Speed unavailable" : `${vehicle.speed_mph.toFixed(1)} mph`}</span><span>Last report ${minutesAgo(vehicle.report_timestamp)}</span></div>`,
         });
         popup?.open(map);
       };

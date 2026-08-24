@@ -46,6 +46,10 @@ export function routeVehicleLabel(vehicle: EventVehiclePosition): string {
   return `${routeDisplayLabel(vehicle)} (Vehicle ${vehicle.vehicle_id})`;
 }
 
+export function routeMarkerColor(vehicle: EventVehiclePosition): string {
+  return vehicle.route_color && /^#[0-9a-f]{6}$/i.test(vehicle.route_color) ? vehicle.route_color : "#00553D";
+}
+
 export function monitoringAreaLabel(vehicle: EventVehiclePosition): string {
   return vehicle.zone_name && vehicle.zone_name !== vehicle.zone_status
     ? `${vehicle.zone_status} · ${vehicle.zone_name}`

@@ -770,6 +770,10 @@ table.data tr:nth-child(even) td { background: var(--table-stripe); }
 .route-classification-updated strong { font-size: 12px; font-weight: 600; }
 .route-classification-actions { white-space: nowrap; }
 .route-classification-actions .btn-sm { margin-right: 5px; }
+.route-color-picker { align-items: center; display: flex; gap: 8px; }
+.route-color-picker input[type="color"] { width: 44px; height: 36px; padding: 3px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface-bg); cursor: pointer; }
+.route-color-picker .f { max-width: 110px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; }
+.route-color-swatch { display: inline-block; width: 24px; height: 24px; margin-right: 8px; border: 2px solid #fff; border-radius: 7px; box-shadow: 0 0 0 1px var(--border-strong); vertical-align: middle; }
 
 /* Route-grouped tables (e.g. Live Delays) - a header row breaking the flat
    list into per-route sections. Overrides the even/odd zebra striping

@@ -26,6 +26,7 @@ interface RouteClassificationRow {
   route_id: number;
   route_category: string;
   route_label: string | null;
+  route_color: string;
   effective_start_date: string | null;
   effective_end_date: string | null;
   is_active: boolean;
@@ -73,7 +74,7 @@ app.http("routeClassificationList", {
     try {
       const pool = await getPool();
       const result = await pool.request().query<RouteClassificationRow>(`
-        SELECT route_id, route_category, route_label, effective_start_date, effective_end_date,
+        SELECT route_id, route_category, route_label, route_color, effective_start_date, effective_end_date,
                is_active, updated_by, updated_at
         FROM RouteClassification
         ORDER BY route_id
@@ -161,6 +162,7 @@ app.http("routeClassificationUpsert", {
     const body = raw as {
       route_category: "FixedRoute" | "SpecialEvent" | "OnDemand";
       route_label?: string | null;
+      route_color?: string | null;
       effective_start_date?: string | null;
       effective_end_date?: string | null;
       is_active?: boolean;
@@ -173,6 +175,7 @@ app.http("routeClassificationUpsert", {
       sqlRequest.input("route_id", sql.Int, routeId);
       sqlRequest.input("route_category", sql.NVarChar, body.route_category);
       sqlRequest.input("route_label", sql.NVarChar, body.route_label ?? null);
+      sqlRequest.input("route_color", sql.Char(7), body.route_color?.toUpperCase() ?? null);
       sqlRequest.input("effective_start_date", sql.Char(8), toYyyymmdd(body.effective_start_date));
       sqlRequest.input("effective_end_date", sql.Char(8), toYyyymmdd(body.effective_end_date));
       sqlRequest.input("is_active", sql.Bit, body.is_active ?? true);
@@ -187,21 +190,21 @@ app.http("routeClassificationUpsert", {
 
       const result = await sqlRequest.query<RouteClassificationRow>(`
         IF OBJECT_ID('dbo.RouteClassificationHistory', 'U') IS NOT NULL
-          INSERT INTO RouteClassificationHistory(route_id,route_category,route_label,effective_start_date,effective_end_date,is_active,changed_by,changed_at)
-          SELECT route_id,route_category,route_label,effective_start_date,effective_end_date,is_active,updated_by,SYSUTCDATETIME()
+          INSERT INTO RouteClassificationHistory(route_id,route_category,route_label,route_color,effective_start_date,effective_end_date,is_active,changed_by,changed_at)
+          SELECT route_id,route_category,route_label,route_color,effective_start_date,effective_end_date,is_active,updated_by,SYSUTCDATETIME()
           FROM RouteClassification WHERE route_id=@route_id;
         MERGE RouteClassification WITH (HOLDLOCK) AS target
         USING (SELECT @route_id AS route_id) AS src
         ON target.route_id = src.route_id
         WHEN MATCHED THEN
           UPDATE SET
-            route_category = @route_category, route_label = @route_label,
+            route_category = @route_category, route_label = @route_label, route_color = COALESCE(@route_color, target.route_color),
             effective_start_date = @effective_start_date, effective_end_date = @effective_end_date,
             is_active = @is_active, updated_by = @updated_by, updated_at = SYSUTCDATETIME()
         WHEN NOT MATCHED THEN
-          INSERT (route_id, route_category, route_label, effective_start_date, effective_end_date, is_active, updated_by)
-          VALUES (@route_id, @route_category, @route_label, @effective_start_date, @effective_end_date, @is_active, @updated_by)
-        OUTPUT INSERTED.route_id, INSERTED.route_category, INSERTED.route_label,
+          INSERT (route_id, route_category, route_label, route_color, effective_start_date, effective_end_date, is_active, updated_by)
+          VALUES (@route_id, @route_category, @route_label, COALESCE(@route_color, '#00553D'), @effective_start_date, @effective_end_date, @is_active, @updated_by)
+        OUTPUT INSERTED.route_id, INSERTED.route_category, INSERTED.route_label, INSERTED.route_color,
                INSERTED.effective_start_date, INSERTED.effective_end_date, INSERTED.is_active,
                INSERTED.updated_by, INSERTED.updated_at;
       `);
