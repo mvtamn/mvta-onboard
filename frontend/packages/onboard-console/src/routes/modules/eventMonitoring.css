@@ -156,6 +156,14 @@
 .evmon-sticky-bar select, .evmon-roster-tools input, .evmon-roster-tools select { min-height: 30px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface-alt-bg); font: inherit; font-size: 12px; }
 .evmon-chip, .evmon-notification-badge { padding: 6px 9px; border: 1px solid var(--border); border-radius: 999px; color: var(--text); background: var(--surface-alt-bg); font-size: 11px; font-weight: 800; white-space: nowrap; cursor: pointer; }
 .evmon-chip.is-active { color: var(--success-text); border-color: var(--brand-green); background: var(--success-bg); }
+.evmon-refresh-button { display: inline-flex; min-height: 31px; align-items: center; justify-content: center; gap: 6px; padding: 0 10px; border: 1px solid color-mix(in srgb, var(--brand-green) 55%, var(--border)); border-radius: 999px; color: var(--brand-green-text); background: var(--success-bg); box-shadow: 0 1px 2px rgba(0,0,0,.06); font: inherit; font-size: 11px; font-weight: 800; white-space: nowrap; cursor: pointer; transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease; }
+.evmon-refresh-button svg { width: 15px; height: 15px; flex: 0 0 auto; }
+.evmon-refresh-button:hover:not(:disabled) { border-color: var(--brand-green); box-shadow: 0 3px 8px rgba(0,85,61,.14); transform: translateY(-1px); }
+.evmon-refresh-button:focus-visible { outline: 3px solid color-mix(in srgb, var(--brand-green) 25%, transparent); outline-offset: 2px; }
+.evmon-refresh-button:disabled { opacity: .72; cursor: wait; }
+.evmon-refresh-button:disabled svg { animation: evmon-refresh-spin .8s linear infinite; }
+@keyframes evmon-refresh-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .evmon-refresh-button { transition: none; } .evmon-refresh-button:disabled svg { animation: none; } }
 .evmon-feed-detail { position: relative; flex: 0 0 auto; }
 .evmon-feed-detail summary { display: flex; align-items: center; gap: 6px; padding: 6px 9px; border: 1px solid var(--border); border-radius: 999px; color: var(--text); background: var(--surface-alt-bg); font-size: 11px; font-weight: 800; white-space: nowrap; cursor: pointer; list-style: none; }
 .evmon-feed-detail summary::-webkit-details-marker { display: none; }
