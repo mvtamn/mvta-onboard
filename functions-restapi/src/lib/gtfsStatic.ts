@@ -45,7 +45,7 @@ export interface GtfsRouteRow {
 // naive String.split(",") would break on a quoted value that itself
 // contains a comma (e.g. a stop name "Main St, Suite 100"), so this still
 // needs to be quote-aware.
-function parseCsvLine(line: string): string[] {
+export function parseCsvLine(line: string): string[] {
   const fields: string[] = [];
   let field = "";
   let inQuotes = false;
