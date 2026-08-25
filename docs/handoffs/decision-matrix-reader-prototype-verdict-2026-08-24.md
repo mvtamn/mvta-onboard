@@ -34,6 +34,17 @@ that choice in the shareable URL; production implementation must decide and
 test a durable per-specialist preference separately from the operational
 Procedure content.
 
+## Supporting-document interaction
+
+An attached **QRG** opens in an inline OnBoard view, subject to the controller's
+SharePoint entitlement; its SharePoint action remains available as a fallback.
+The QRG is supporting guidance only and never replaces the governing Procedure
+text or primary SOP/Reference. **SOP**, **REF**, and **APP** document actions
+open their source documents in SharePoint rather than rendering inline. The
+prototype uses a labelled placeholder for the QRG; production requires an
+authorized SharePoint viewer/stream and must not expose credentials or durable
+download URLs.
+
 ## Required controller validation before production UI
 
 The authenticated local route prevented an agent-only visual walkthrough.
