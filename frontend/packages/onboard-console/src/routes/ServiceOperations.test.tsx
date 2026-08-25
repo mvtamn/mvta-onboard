@@ -74,11 +74,11 @@ describe("Service Operations", () => {
     expect(screen.getByText("Compose destination")).toBeInTheDocument();
   });
 
-  it("hides Service Risk & Quality from users without the specialist role", () => {
+  it("shows Service Risk & Quality to dispatch viewers", () => {
     authState.roles = ["OCC.Viewer"];
     renderShell();
 
-    expect(screen.queryByRole("link", { name: "Service Risk & Quality" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Service Risk & Quality" })).toBeInTheDocument();
   });
 
   it("switches between Fixed Route and On-Demand risk views", async () => {

@@ -309,6 +309,33 @@ export function validateExpirationDefault(body: UnknownBody): string[] {
   return errors;
 }
 
+export function validateOnDemandServiceStandard(body: UnknownBody): string[] {
+  const errors: string[] = [];
+  const minutes = body.minutes;
+  if (typeof minutes !== "number" || !Number.isInteger(minutes) || minutes < 10 || minutes > 60) {
+    errors.push("minutes must be an integer between 10 and 60");
+  }
+  return errors;
+}
+
+export function validateOnDemandZoneServiceStandardOverride(body: UnknownBody): string[] {
+  const errors = validateOnDemandServiceStandard(body);
+  if (typeof body.reason !== "string" || !body.reason.trim() || body.reason.trim().length > 500) {
+    errors.push("reason is required and must be at most 500 characters");
+  }
+  const isIsoTimestamp = (value: unknown): value is string => typeof value === "string"
+    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+    && !Number.isNaN(Date.parse(value));
+  const effectiveAt = isIsoTimestamp(body.effective_at) ? Date.parse(body.effective_at) : NaN;
+  const expiresAt = isIsoTimestamp(body.expires_at) ? Date.parse(body.expires_at) : NaN;
+  if (Number.isNaN(effectiveAt)) errors.push("effective_at must be a valid ISO 8601 timestamp");
+  if (Number.isNaN(expiresAt)) errors.push("expires_at must be a valid ISO 8601 timestamp");
+  if (!Number.isNaN(effectiveAt) && !Number.isNaN(expiresAt) && expiresAt <= effectiveAt) {
+    errors.push("expires_at must be after effective_at");
+  }
+  return errors;
+}
+
 // Detour & Closure module - column-size ceilings from migration-017-detours.sql.
 export const MAX_DETOUR_NUMBER_LENGTH = 50;
 export const MAX_DETOUR_CLOSURE_LENGTH = 500;

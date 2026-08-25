@@ -1,7 +1,7 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.js";
 
-const SERVICE_RISK_ROLES = ["OCC.Admin"] as const;
+const SERVICE_RISK_ROLES = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin"] as const;
 
 function hasServiceRiskAccess(roles: string[]): boolean {
   return roles.some((role) => SERVICE_RISK_ROLES.includes(role as (typeof SERVICE_RISK_ROLES)[number]));

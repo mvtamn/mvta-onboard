@@ -7,6 +7,8 @@ import {
   MAX_SUMMARY_LENGTH,
   MIN_TTL_MINUTES,
   MAX_TTL_MINUTES,
+  validateOnDemandServiceStandard,
+  validateOnDemandZoneServiceStandardOverride,
 } from "./validation";
 
 test("update: accepts summary only", () => {
@@ -48,6 +50,29 @@ test("expiration default: rejects out-of-range ttl", () => {
 
 test("expiration default: rejects missing ttl", () => {
   assert.ok(validateExpirationDefault({}).length > 0);
+});
+
+test("on-demand service standards require a bounded integer and a complete override window", () => {
+  assert.deepStrictEqual(validateOnDemandServiceStandard({ minutes: 25 }), []);
+  assert.ok(validateOnDemandServiceStandard({ minutes: 25.5 }).length > 0);
+  assert.deepStrictEqual(validateOnDemandZoneServiceStandardOverride({
+    minutes: 35,
+    reason: "Constrained vehicle availability",
+    effective_at: "2026-08-24T08:00:00Z",
+    expires_at: "2026-08-24T20:00:00Z",
+  }), []);
+  assert.ok(validateOnDemandZoneServiceStandardOverride({
+    minutes: 35,
+    reason: "",
+    effective_at: "2026-08-24T20:00:00Z",
+    expires_at: "2026-08-24T08:00:00Z",
+  }).length > 0);
+  assert.ok(validateOnDemandZoneServiceStandardOverride({
+    minutes: 35,
+    reason: "Constrained vehicle availability",
+    effective_at: "Aug 24 2026",
+    expires_at: "2026-08-24T20:00:00Z",
+  }).length > 0);
 });
 
 test("isGuid accepts a valid GUID and rejects junk", () => {

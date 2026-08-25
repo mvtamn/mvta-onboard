@@ -95,6 +95,32 @@ export interface ExpirationDefault {
   updated_at: string;
 }
 
+export interface OnDemandServiceStandardZone {
+  zone_id: string;
+  external_location_id: string;
+  name: string;
+  minutes: number | null;
+  reason: string | null;
+  effective_at: string | null;
+  expires_at: string | null;
+  override_active: boolean;
+}
+
+export interface OnDemandServiceStandardPolicy {
+  default_minutes: number;
+  updated_by: string | null;
+  updated_at: string;
+  zones: OnDemandServiceStandardZone[];
+}
+
+export interface OnDemandServiceStandardAudit {
+  action: "default_updated" | "override_created" | "override_updated" | "override_removed";
+  zone_override_id: string | null;
+  detail_json: string;
+  occurred_by: string | null;
+  occurred_at: string;
+}
+
 export interface SubscribersSummary {
   total: number;
   sms_confirmed: number;
@@ -399,6 +425,7 @@ export interface OnDemandRiskRecord {
   source_updated_at: string | null;
   last_polled_at: string;
   suggested_alert_id: string | null;
+  service_standard_minutes: number;
 }
 
 // GTFS-Realtime standard enums (raw ints from VehiclePosition, translated

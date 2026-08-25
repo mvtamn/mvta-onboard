@@ -27,6 +27,7 @@ interface OnDemandRiskRow {
   source_updated_at: Date | null;
   last_polled_at: Date;
   suggested_alert_id: string | null;
+  service_standard_minutes: number;
 }
 
 app.http("onDemandRisksList", {
@@ -43,22 +44,31 @@ app.http("onDemandRisksList", {
       const pool = await getPool();
       const result = await pool.request().query<OnDemandRiskRow>(`
         SELECT TOP 250
-          trip_id, external_trip_id, zone_id, wait_started_at,
-          predicted_pickup_at, current_wait_minutes, predicted_wait_minutes,
-          assigned_vehicle_id, stops_ahead, accessible_vehicle_required,
-          eligible_vehicles_in_zone, nearest_vehicle_context, trend,
-          prediction_confidence, prediction_reasons, source_updated_at,
-          last_polled_at, suggested_alert_id
-        FROM MonitoredOnDemandWaits
-        WHERE last_polled_at >= DATEADD(MINUTE, -30, SYSUTCDATETIME())
+          m.trip_id, m.external_trip_id, m.zone_id, m.wait_started_at,
+          m.predicted_pickup_at, m.current_wait_minutes, m.predicted_wait_minutes,
+          m.assigned_vehicle_id, m.stops_ahead, m.accessible_vehicle_required,
+          m.eligible_vehicles_in_zone, m.nearest_vehicle_context, m.trend,
+          m.prediction_confidence, m.prediction_reasons, m.source_updated_at,
+          m.last_polled_at, m.suggested_alert_id,
+          COALESCE(o.minutes, p.default_minutes, 25) AS service_standard_minutes
+        FROM MonitoredOnDemandWaits m
+        LEFT JOIN (
+          SELECT z.external_location_id
+          FROM dbo.OnDemandOperationalZones z
+          JOIN dbo.OnDemandOperationalZoneVersions v ON v.id = z.zone_version_id AND v.is_active = 1
+        ) z ON z.external_location_id = m.zone_id
+        LEFT JOIN dbo.OnDemandServiceStandardPolicy p ON p.id = 1
+        LEFT JOIN dbo.OnDemandZoneServiceStandardOverrides o ON o.external_location_id = z.external_location_id
+          AND o.revoked_at IS NULL AND o.effective_at <= SYSUTCDATETIME() AND SYSUTCDATETIME() < o.expires_at
+        WHERE m.last_polled_at >= DATEADD(MINUTE, -30, SYSUTCDATETIME())
         ORDER BY
           CASE
-            WHEN current_wait_minutes > 25 THEN 0
-            WHEN predicted_wait_minutes > 25 THEN 1
-            WHEN predicted_wait_minutes > 20 THEN 2
+            WHEN m.current_wait_minutes > COALESCE(o.minutes, p.default_minutes, 25) THEN 0
+            WHEN m.predicted_wait_minutes > COALESCE(o.minutes, p.default_minutes, 25) THEN 1
+            WHEN m.predicted_wait_minutes > COALESCE(o.minutes, p.default_minutes, 25) - 5 THEN 2
             ELSE 3
           END,
-          COALESCE(predicted_wait_minutes, current_wait_minutes) DESC
+          COALESCE(m.predicted_wait_minutes, m.current_wait_minutes) DESC
       `);
 
       const risks = result.recordset.map((row) => ({

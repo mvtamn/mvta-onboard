@@ -185,6 +185,7 @@ function AuthenticatedApp({ account, roles, signOut }: {
 }) {
   const { theme, toggle } = useTheme();
   const isAdmin = roles.includes("OCC.Admin");
+  const canSeeServiceRisk = roles.some((role) => (OCC_TOOLS as readonly string[]).includes(role));
   const canManageAccess = roles.some((role) => (ACCESS_MANAGEMENT as readonly string[]).includes(role));
   const canSeeOccTools = roles.some((role) => (OCC_TOOLS as readonly string[]).includes(role));
   const isCompliance = isAdmin || roles.includes("OCC.Compliance") || roles.includes("OCC.ComplianceManager");
@@ -252,7 +253,7 @@ function AuthenticatedApp({ account, roles, signOut }: {
           <NavLink to="/service-operations/compose" title="Compose"><IconCompose /><span className="nav-label">Compose</span></NavLink>
           <NavLink to="/service-operations/active" title="Active Service Alerts"><IconMessages /><span className="nav-label">Active Service Alerts</span></NavLink>
           <NavLink to="/service-operations/suggested" title="Suggested Alerts"><IconBell /><span className="nav-label">Suggested Alerts</span></NavLink>
-          {isAdmin && <NavLink to="/service-operations/risk" title="Service Risk & Quality"><IconWrench /><span className="nav-label">Service Risk &amp; Quality</span></NavLink>}
+          {canSeeServiceRisk && <NavLink to="/service-operations/risk" title="Service Risk & Quality"><IconWrench /><span className="nav-label">Service Risk &amp; Quality</span></NavLink>}
           {(isAdmin || isCompliance || canSeeDetours || canSeeOccTools) && (
             <section className="nav-group">
               <button className="nav-group-toggle" aria-expanded={specialistOpen} onClick={() => setSpecialistOpen((open) => !open)}>
@@ -370,7 +371,7 @@ function AuthenticatedApp({ account, roles, signOut }: {
                 <Route path="suggested" element={<SuggestedAlerts onChanged={stats.refresh} />} />
                 <Route
                   path="risk"
-                  element={<RequireRole allowed={[...ADMIN]}><ServiceRiskQuality /></RequireRole>}
+                  element={<RequireRole allowed={[...OCC_TOOLS]}><ServiceRiskQuality /></RequireRole>}
                 />
               </Route>
               <Route path="/compose" element={<Compose onChanged={stats.refresh} />} />

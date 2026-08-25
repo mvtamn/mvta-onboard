@@ -51,6 +51,7 @@ export interface OnDemandRisk {
   reasons: string[];
   sourceTripId?: string;
   suggestedAlertId?: string | null;
+  serviceStandardMinutes?: number;
 }
 
 export const FIXED_ROUTE_RISKS: FixedRouteRisk[] = [
@@ -215,7 +216,7 @@ export const ON_DEMAND_RISKS: OnDemandRisk[] = [
     availableVehicles: 2,
     nearestEligibleVehicle: "Assigned vehicle is 4 minutes away",
     reasons: [
-      "Actual wait has already exceeded the 25-minute service standard.",
+      "Actual wait has already exceeded the active service standard.",
       "Assigned vehicle is completing its final preceding drop-off.",
       "Pickup prediction improved by three minutes in the latest update.",
     ],

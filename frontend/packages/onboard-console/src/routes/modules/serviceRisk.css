@@ -111,6 +111,61 @@
   font-size: 17px;
 }
 
+.service-standard-controls {
+  background: var(--surface-alt-bg);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  margin-bottom: 14px;
+  padding: 12px;
+}
+
+.service-standard-head,
+.service-standard-default,
+.zone-standard-row {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.service-standard-head { justify-content: space-between; }
+.service-standard-head h3 { font-size: 14px; margin: 2px 0 0; }
+.service-standard-head small,
+.zone-standard-row small { color: var(--text-muted); font-size: 10.5px; }
+
+.service-standard-default { justify-content: space-between; margin-top: 12px; }
+.service-standard-default span { color: var(--text-muted); font-size: 11px; font-weight: 700; }
+.service-standard-default strong { font-size: 16px; }
+
+.service-standard-controls input[type="range"] {
+  accent-color: var(--brand-green);
+  cursor: pointer;
+  width: 100%;
+}
+
+.zone-standard-list { border-top: 1px solid var(--border); margin-top: 10px; }
+.zone-standard-row { border-bottom: 1px solid var(--border); padding: 8px 0; }
+.zone-standard-row label { display: flex; flex-direction: column; min-width: 132px; }
+.zone-standard-row > strong { min-width: 45px; text-align: right; }
+.zone-standard-row .btn-sm { flex-shrink: 0; }
+
+.zone-standard-editor {
+  align-items: end;
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.zone-standard-editor strong { grid-column: 1 / -1; }
+.zone-standard-editor label { color: var(--text-muted); display: grid; font-size: 10px; gap: 3px; }
+.zone-standard-editor input,
+.zone-standard-editor select { min-width: 0; }
+.service-standard-message { color: var(--danger-text); display: block; margin-top: 8px; }
+.service-standard-audit { border-top: 1px solid var(--border); display: grid; gap: 3px; margin-top: 10px; padding-top: 9px; }
+.service-standard-audit small { color: var(--text-muted); font-size: 10px; }
+
 .concept-banner {
   align-items: center;
   background: var(--pill-accent-bg);
@@ -802,6 +857,13 @@
   .standard-chip {
     align-items: flex-start;
   }
+
+  .zone-standard-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .zone-standard-row input[type="range"] { order: 2; }
 
   .risk-stat-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

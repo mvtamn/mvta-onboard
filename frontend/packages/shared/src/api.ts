@@ -91,6 +91,8 @@ import type {
   OnBoardAccessMetadata,
   OnBoardSignInInformation,
   OnBoardAccessReconciliationReport,
+  OnDemandServiceStandardPolicy,
+  OnDemandServiceStandardAudit,
 } from "./types.js";
 
 export interface TokenRequestOptions {
@@ -381,6 +383,30 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
 
     getOnDemandRisks() {
       return request<{ risks: OnDemandRiskRecord[] }>("/api/on-demand-risks", {}, true);
+    },
+
+    getOnDemandServiceStandards() {
+      return request<OnDemandServiceStandardPolicy>("/api/on-demand-service-standards", {}, true);
+    },
+
+    updateOnDemandServiceStandard(minutes: number) {
+      return request<Pick<OnDemandServiceStandardPolicy, "default_minutes" | "updated_by" | "updated_at">>(
+        "/api/on-demand-service-standards",
+        { method: "PATCH", body: JSON.stringify({ minutes }) },
+        true,
+      );
+    },
+
+    updateOnDemandZoneServiceStandard(zoneId: string, input: { minutes: number; reason: string; effective_at: string; expires_at: string }) {
+      return request(`/api/on-demand-service-standards/zones/${encodeURIComponent(zoneId)}`, { method: "PUT", body: JSON.stringify(input) }, true);
+    },
+
+    removeOnDemandZoneServiceStandard(zoneId: string) {
+      return request<void>(`/api/on-demand-service-standards/zones/${encodeURIComponent(zoneId)}`, { method: "DELETE" }, true);
+    },
+
+    getOnDemandServiceStandardAudit() {
+      return request<{ audit: OnDemandServiceStandardAudit[] }>("/api/on-demand-service-standards/audit", {}, true);
     },
 
     getFeedChecks() {
