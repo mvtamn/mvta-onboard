@@ -102,12 +102,12 @@ export function DecisionMatrixReaderPrototype() {
   const [searchParams, setSearchParams] = useSearchParams();
   const variantParam = searchParams.get("variant");
   const variant: Variant = isVariant(variantParam) ? variantParam : "split";
-  const [selectedId, setSelectedId] = useState("vehicle-collision");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [previewState, setPreviewState] = useState<PreviewState>("ready");
-  const selected = PROCEDURES.find((procedure) => procedure.id === selectedId) ?? PROCEDURES[0];
+  const selected = PROCEDURES.find((procedure) => procedure.id === selectedId) ?? null;
   const visibleProcedures = useMemo(() => PROCEDURES.filter((procedure) => `${procedure.condition} ${procedure.criteria.join(" ")} ${procedure.actions.join(" ")}`.toLowerCase().includes(query.toLowerCase())), [query]);
-  const displayedProcedure = visibleProcedures.find((procedure) => procedure.id === selected.id) ?? visibleProcedures[0] ?? null;
+  const displayedProcedure = selected === null ? null : visibleProcedures.find((procedure) => procedure.id === selected.id) ?? null;
 
   function chooseProcedure(procedureId: string) {
     setSelectedId(procedureId);
@@ -147,7 +147,7 @@ export function DecisionMatrixReaderPrototype() {
         <div className="dmxp-recommendation-list">
           {RECOMMENDATIONS.map((recommendation) => {
             const procedure = PROCEDURES.find((item) => item.id === recommendation.procedureId)!;
-            return <button key={recommendation.procedureId} type="button" className={selected.id === procedure.id ? "selected" : ""} onClick={() => chooseProcedure(procedure.id)}>
+            return <button key={recommendation.procedureId} type="button" className={selected?.id === procedure.id ? "selected" : ""} onClick={() => chooseProcedure(procedure.id)}>
               <span>{procedure.condition}</span><small>{recommendation.source} · {recommendation.reason}</small>
             </button>;
           })}
@@ -160,9 +160,9 @@ export function DecisionMatrixReaderPrototype() {
       </label>
       <div className="dmxp-fixture-picker" aria-label="Prototype Procedure fixtures">
         <span>Inspect fixture</span>
-        {PROCEDURES.map((procedure) => <button key={procedure.id} type="button" className={selected.id === procedure.id ? "selected" : ""} onClick={() => chooseProcedure(procedure.id)}>{procedure.severity}: {procedure.health}</button>)}
+        {visibleProcedures.map((procedure) => <button key={procedure.id} type="button" className={selected?.id === procedure.id ? "selected" : ""} onClick={() => chooseProcedure(procedure.id)}>{procedure.severity}: {procedure.health}</button>)}
       </div>
-      {displayedProcedure === null ? <p className="dmxp-empty" role="status">No prototype Procedures match this search.</p> : <>
+      {visibleProcedures.length === 0 ? <p className="dmxp-empty" role="status">No prototype Procedures match this search.</p> : displayedProcedure === null ? <p className="dmxp-empty" role="status">Select a suggested Procedure, a search result, or a fixture to open its structured guidance.</p> : <>
         {variant === "split" ? <SplitDetail procedure={displayedProcedure} previewState={previewState} setPreviewState={setPreviewState} /> : null}
         {variant === "action-first" ? <ActionFirstDetail procedure={displayedProcedure} previewState={previewState} setPreviewState={setPreviewState} /> : null}
         {variant === "progressive" ? <ProgressiveDetail procedures={visibleProcedures} procedure={displayedProcedure} chooseProcedure={chooseProcedure} previewState={previewState} setPreviewState={setPreviewState} /> : null}
@@ -191,7 +191,7 @@ function DocumentSupport({ procedure, previewState, setPreviewState }: { procedu
 }
 
 function VisualPreview({ state, setState }: { state: PreviewState; setState: (state: PreviewState) => void }) {
-  return <details className="dmxp-preview"><summary>Open approved visual rendition (PNG)</summary><div className={`dmxp-preview-art ${state}`} aria-live="polite">{state === "loading" ? "Loading approved visual rendition…" : state === "unavailable" ? "Approved visual rendition unavailable" : <><span>Scene protection</span><span>Emergency response</span><span>OCC notification</span></>}</div><div className="dmxp-preview-controls"><button type="button" onClick={() => setState("ready")}>Show rendition</button><button type="button" onClick={() => setState("loading")}>Preview loading</button><button type="button" onClick={() => setState("unavailable")}>Preview unavailable</button></div></details>;
+  return <details className="dmxp-preview"><summary>Open prototype placeholder rendition (PNG)</summary><div className={`dmxp-preview-art ${state}`} aria-live="polite">{state === "loading" ? "Loading approved visual rendition…" : state === "unavailable" ? "Approved visual rendition unavailable" : <><span>Prototype placeholder · scene protection</span><span>Prototype placeholder · emergency response</span><span>Prototype placeholder · OCC notification</span></>}</div><div className="dmxp-preview-controls"><button type="button" onClick={() => setState("ready")}>Show rendition</button><button type="button" onClick={() => setState("loading")}>Preview loading</button><button type="button" onClick={() => setState("unavailable")}>Preview unavailable</button></div></details>;
 }
 
 function SplitDetail({ procedure, previewState, setPreviewState }: { procedure: Procedure; previewState: PreviewState; setPreviewState: (state: PreviewState) => void }) {
