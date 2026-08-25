@@ -176,6 +176,9 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         // reference in Bicep so a redeploy does not remove the setting.
         { name: 'SPARE_API_KEY', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/spare-api-key/)' }
         { name: 'SPARE_API_BASE_URL', value: 'https://api.us.sparelabs.com' }
+        // Dedicated inbound receiver secret. It is deliberately distinct from
+        // SPARE_API_KEY, which grants outbound reconciliation access.
+        { name: 'SPARE_WEBHOOK_AUTH_SECRET', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/spare-webhook-auth-secret/)' }
         { name: 'SPARE_MISSED_TRIPS_ENABLED', value: string(spareMissedTripsEnabled) }
         { name: 'SPARE_MISSED_TRIP_SERVICE_IDS', value: spareMissedTripServiceIds }
         { name: 'SPARE_CONTRACTOR_FAULT_VALUES', value: spareContractorFaultValues }
