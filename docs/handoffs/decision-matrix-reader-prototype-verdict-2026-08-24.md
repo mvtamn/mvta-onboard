@@ -25,6 +25,15 @@ deliberate secondary disclosure. The Split detail remains a useful comparison
 for wide screens; Progressive detail is useful for search-heavy work but adds a
 selection step under pressure.
 
+## Specialist view choice
+
+Keep all four reader views: **Action-first detail**, **Split detail**,
+**Progressive detail**, and the existing **Grid** browse pattern. A specialist
+may switch between them according to the task at hand. The prototype represents
+that choice in the shareable URL; production implementation must decide and
+test a durable per-specialist preference separately from the operational
+Procedure content.
+
 ## Required controller validation before production UI
 
 The authenticated local route prevented an agent-only visual walkthrough.

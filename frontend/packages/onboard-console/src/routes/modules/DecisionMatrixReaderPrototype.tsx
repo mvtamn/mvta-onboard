@@ -1,9 +1,9 @@
-// PROTOTYPE ONLY: three Decision Matrix reader layouts, switchable on /occ?prototype=reader&variant=.
+// PROTOTYPE ONLY: four Decision Matrix reader layouts, switchable on /occ?prototype=reader&variant=.
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import "./decisionMatrixReaderPrototype.css";
 
-type Variant = "split" | "action-first" | "progressive";
+type Variant = "split" | "action-first" | "progressive" | "grid";
 type PreviewState = "ready" | "loading" | "unavailable";
 type DocumentHealth = "Valid" | "Needs review" | "Unavailable";
 
@@ -27,6 +27,7 @@ const VARIANTS: { key: Variant; label: string }[] = [
   { key: "split", label: "Split detail" },
   { key: "action-first", label: "Action-first detail" },
   { key: "progressive", label: "Progressive detail" },
+  { key: "grid", label: "Existing grid" },
 ];
 
 const PROCEDURES: Procedure[] = [
@@ -139,7 +140,7 @@ export function DecisionMatrixReaderPrototype() {
       <header className="dmxp-hero">
         <span>PROTOTYPE · NOT GOVERNED GUIDANCE</span>
         <h1>Decision Matrix reader</h1>
-        <p>Compare three ways to keep Criteria and Immediate Actions ahead of document health and visual support.</p>
+        <p>Compare four views while keeping Criteria and Immediate Actions ahead of document health and visual support.</p>
       </header>
 
       <section className="dmxp-recommendations" aria-label="Explainable Procedure recommendations">
@@ -162,7 +163,7 @@ export function DecisionMatrixReaderPrototype() {
         <span>Inspect fixture</span>
         {visibleProcedures.map((procedure) => <button key={procedure.id} type="button" className={selected?.id === procedure.id ? "selected" : ""} onClick={() => chooseProcedure(procedure.id)}>{procedure.severity}: {procedure.health}</button>)}
       </div>
-      {visibleProcedures.length === 0 ? <p className="dmxp-empty" role="status">No prototype Procedures match this search.</p> : displayedProcedure === null ? <p className="dmxp-empty" role="status">Select a suggested Procedure, a search result, or a fixture to open its structured guidance.</p> : <>
+      {visibleProcedures.length === 0 ? <p className="dmxp-empty" role="status">No prototype Procedures match this search.</p> : variant === "grid" ? <GridDetail procedures={visibleProcedures} selectedId={selected?.id ?? null} chooseProcedure={chooseProcedure} /> : displayedProcedure === null ? <p className="dmxp-empty" role="status">Select a suggested Procedure, a search result, or a fixture to open its structured guidance.</p> : <>
         {variant === "split" ? <SplitDetail procedure={displayedProcedure} previewState={previewState} setPreviewState={setPreviewState} /> : null}
         {variant === "action-first" ? <ActionFirstDetail procedure={displayedProcedure} previewState={previewState} setPreviewState={setPreviewState} /> : null}
         {variant === "progressive" ? <ProgressiveDetail procedures={visibleProcedures} procedure={displayedProcedure} chooseProcedure={chooseProcedure} previewState={previewState} setPreviewState={setPreviewState} /> : null}
@@ -206,8 +207,12 @@ function ProgressiveDetail({ procedures, procedure, chooseProcedure, previewStat
   return <article className="dmxp-detail dmxp-progressive-detail"><nav aria-label="Prototype search results"><h2>Results</h2>{procedures.map((item) => <button key={item.id} type="button" className={item.id === procedure.id ? "selected" : ""} onClick={() => chooseProcedure(item.id)}><strong>{item.condition}</strong><span>{item.actions[0]}</span></button>)}</nav><div className="dmxp-progressive-reader"><ProcedureHeader procedure={procedure} /><ImmediateActions procedure={procedure} /><Criteria procedure={procedure} /><details><summary>Open visual and source-document support</summary><DocumentSupport procedure={procedure} previewState={previewState} setPreviewState={setPreviewState} /></details></div></article>;
 }
 
+function GridDetail({ procedures, selectedId, chooseProcedure }: { procedures: Procedure[]; selectedId: string | null; chooseProcedure: (id: string) => void }) {
+  return <section className="dmxp-grid-detail"><header><div><span>EXISTING BROWSE PATTERN</span><h2>Procedure grid</h2><p>High-density scanning of conditions, first actions, and Document Reference Health. Select a card, then switch to a detail view for the full guidance.</p></div><p className="dmxp-grid-preference">Specialist view choice: shareable in this prototype URL; saved profile preference is intentionally not modeled here.</p></header><div className="dmxp-grid" aria-label="Procedure grid results">{procedures.map((procedure) => <button key={procedure.id} type="button" aria-pressed={selectedId === procedure.id} className={selectedId === procedure.id ? "selected" : ""} onClick={() => chooseProcedure(procedure.id)}><span className={`dmxp-severity ${procedure.severity.toLowerCase().replaceAll(" ", "-").replaceAll("/", "")}`}>{procedure.severity}</span><h3>{procedure.condition}</h3><p><strong>Criteria</strong>{procedure.criteria[0]}</p><p className="dmxp-grid-action"><strong>First immediate action</strong>{procedure.actions[0]}</p><footer><span className={`dmxp-grid-health ${procedure.health.toLowerCase().replaceAll(" ", "-")}`}>{procedure.health}</span><span>{procedure.effectiveRevision}</span></footer></button>)}</div></section>;
+}
+
 function PrototypeState({ variant, procedure, previewState }: { variant: Variant; procedure: Procedure | null; previewState: PreviewState }) {
-  return <section className="dmxp-state" aria-label="Prototype state"><strong>Prototype state</strong><span>Variant: {VARIANTS.find((item) => item.key === variant)?.label}</span><span>Displayed Procedure: {procedure?.condition ?? "No matching Procedure"}</span><span>Document Reference Health: {procedure?.health ?? "Not applicable"}</span><span>Visual preview: {previewState}</span></section>;
+  return <section className="dmxp-state" aria-label="Prototype state"><strong>Prototype state</strong><span>Variant: {VARIANTS.find((item) => item.key === variant)?.label}</span><span>View choice: URL query parameter; no saved profile preference in this prototype</span><span>Displayed Procedure: {procedure?.condition ?? "No matching Procedure"}</span><span>Document Reference Health: {procedure?.health ?? "Not applicable"}</span><span>Visual preview: {previewState}</span></section>;
 }
 
 function PrototypeSwitcher({ variant, setVariant }: { variant: Variant; setVariant: (next: Variant) => void }) {

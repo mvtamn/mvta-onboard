@@ -65,9 +65,27 @@
 .dmxp-progressive-detail nav h2 { font-size: 13px; margin: 0 0 4px; text-transform: uppercase; }
 .dmxp-progressive-detail nav button span { color: var(--text-dim); display: block; font-size: 11px; font-weight: 400; margin-top: 5px; }
 .dmxp-progressive-reader { padding: 20px; }
+.dmxp-grid-detail { background: var(--surface-alt-bg); border: 1px solid var(--border); border-radius: 8px; padding: 18px; }
+.dmxp-grid-detail > header { align-items: flex-start; display: flex; gap: 18px; justify-content: space-between; margin-bottom: 16px; }
+.dmxp-grid-detail > header span { color: var(--brand-green); font-size: 10px; font-weight: 800; letter-spacing: .08em; }
+.dmxp-grid-detail h2 { font-size: 20px; margin: 5px 0; }
+.dmxp-grid-detail header p { color: var(--text-dim); font-size: 12px; margin: 0; max-width: 620px; }
+.dmxp-grid-detail .dmxp-grid-preference { max-width: 200px; text-align: right; }
+.dmxp-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+.dmxp-grid > button { background: var(--surface-bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); cursor: pointer; display: flex; flex-direction: column; font: inherit; gap: 9px; padding: 14px; text-align: left; }
+.dmxp-grid > button:hover, .dmxp-grid > button:focus-visible, .dmxp-grid > button.selected { border-color: var(--brand-green); box-shadow: inset 3px 0 var(--brand-green); outline: none; }
+.dmxp-grid h3 { font-size: 15px; line-height: 1.35; margin: 0; }
+.dmxp-grid p { color: var(--text-dim); font-size: 12px; line-height: 1.45; margin: 0; }
+.dmxp-grid p strong { color: var(--brand-green); display: block; font-size: 10px; letter-spacing: .06em; margin-bottom: 3px; text-transform: uppercase; }
+.dmxp-grid .dmxp-grid-action { border-left: 3px solid var(--brand-green); color: var(--text); padding-left: 8px; }
+.dmxp-grid footer { border-top: 1px solid var(--border); color: var(--text-dim); display: flex; font-size: 10px; justify-content: space-between; margin-top: auto; padding-top: 9px; }
+.dmxp-grid-health { font-weight: 800; }
+.dmxp-grid-health.valid { color: var(--dmxp-green); }
+.dmxp-grid-health.needs-review { color: var(--dmxp-orange); }
+.dmxp-grid-health.unavailable { color: var(--dmxp-red); }
 .dmxp-state { background: var(--surface-alt-bg); border: 1px dashed var(--border-strong); color: var(--text-dim); display: grid; font-size: 11px; gap: 3px; margin-top: 18px; padding: 10px; }
 .dmxp-state strong { color: var(--text); }
 .dmxp-switcher { align-items: center; background: #17221e; border: 1px solid #496759; border-radius: 999px; bottom: 18px; box-shadow: 0 6px 22px rgba(0,0,0,.3); color: #fff; display: flex; gap: 12px; left: 50%; padding: 7px; position: fixed; transform: translateX(-50%); z-index: 4; }
 .dmxp-switcher button { background: #fff; border: 0; border-radius: 999px; color: #17221e; cursor: pointer; font-size: 18px; height: 30px; line-height: 1; width: 30px; }
 .dmxp-switcher span { font-size: 12px; min-width: 155px; text-align: center; }
-@media (max-width: 760px) { .dmxp-recommendations, .dmxp-split-detail, .dmxp-progressive-detail { grid-template-columns: 1fr; } .dmxp-split-detail aside, .dmxp-progressive-detail nav { border-left: 0; border-right: 0; border-top: 1px solid var(--border); } .dmxp-split-detail aside { order: 2; } .dmxp-procedure-header { flex-direction: column; } .dmxp-meta { text-align: left; } .dmxp-action-first-detail .dmxp-actions { margin-left: -20px; margin-right: -20px; padding-left: 20px; padding-right: 20px; } }
+@media (max-width: 760px) { .dmxp-recommendations, .dmxp-split-detail, .dmxp-progressive-detail { grid-template-columns: 1fr; } .dmxp-split-detail aside, .dmxp-progressive-detail nav { border-left: 0; border-right: 0; border-top: 1px solid var(--border); } .dmxp-split-detail aside { order: 2; } .dmxp-procedure-header, .dmxp-grid-detail > header { flex-direction: column; } .dmxp-meta, .dmxp-grid-detail .dmxp-grid-preference { text-align: left; } .dmxp-action-first-detail .dmxp-actions { margin-left: -20px; margin-right: -20px; padding-left: 20px; padding-right: 20px; } }
