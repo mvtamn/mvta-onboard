@@ -20,6 +20,7 @@ type Procedure = {
   healthDetail: string;
   sourceAvailable: boolean;
   hasRendition: boolean;
+  withdrawal?: { reason: string; replacement: string };
 };
 
 const VARIANTS: { key: Variant; label: string }[] = [
@@ -71,6 +72,21 @@ const PROCEDURES: Procedure[] = [
     sourceAvailable: false,
     hasRendition: false,
   },
+  {
+    id: "bridge-closure",
+    condition: "Bridge closure detour guidance",
+    severity: "Restrict service",
+    severityMeaning: "This former Procedure must not be used for a new service condition.",
+    criteria: ["This fixture represents an emergency-withdrawn Procedure reached through an old link."],
+    actions: ["Do not use the withdrawn guidance.", "Open the identified replacement Procedure before making an operating decision."],
+    owner: "Service Delivery",
+    effectiveRevision: "Revision 3 · withdrawn Aug 23, 2026",
+    health: "Unavailable",
+    healthDetail: "Historical document access is not a substitute for current approved guidance.",
+    sourceAvailable: false,
+    hasRendition: false,
+    withdrawal: { reason: "The detour boundaries were found to be unsafe.", replacement: "Current bridge closure detour Procedure" },
+  },
 ];
 
 const RECOMMENDATIONS = [
@@ -91,6 +107,7 @@ export function DecisionMatrixReaderPrototype() {
   const [previewState, setPreviewState] = useState<PreviewState>("ready");
   const selected = PROCEDURES.find((procedure) => procedure.id === selectedId) ?? PROCEDURES[0];
   const visibleProcedures = useMemo(() => PROCEDURES.filter((procedure) => `${procedure.condition} ${procedure.criteria.join(" ")} ${procedure.actions.join(" ")}`.toLowerCase().includes(query.toLowerCase())), [query]);
+  const displayedProcedure = visibleProcedures.find((procedure) => procedure.id === selected.id) ?? visibleProcedures[0] ?? null;
 
   function chooseProcedure(procedureId: string) {
     setSelectedId(procedureId);
@@ -145,20 +162,20 @@ export function DecisionMatrixReaderPrototype() {
         <span>Inspect fixture</span>
         {PROCEDURES.map((procedure) => <button key={procedure.id} type="button" className={selected.id === procedure.id ? "selected" : ""} onClick={() => chooseProcedure(procedure.id)}>{procedure.severity}: {procedure.health}</button>)}
       </div>
-      {visibleProcedures.length === 0 ? <p className="dmxp-empty" role="status">No prototype Procedures match this search.</p> : <>
-        {variant === "split" ? <SplitDetail procedure={selected} previewState={previewState} setPreviewState={setPreviewState} /> : null}
-        {variant === "action-first" ? <ActionFirstDetail procedure={selected} previewState={previewState} setPreviewState={setPreviewState} /> : null}
-        {variant === "progressive" ? <ProgressiveDetail procedures={visibleProcedures} procedure={selected} chooseProcedure={chooseProcedure} previewState={previewState} setPreviewState={setPreviewState} /> : null}
+      {displayedProcedure === null ? <p className="dmxp-empty" role="status">No prototype Procedures match this search.</p> : <>
+        {variant === "split" ? <SplitDetail procedure={displayedProcedure} previewState={previewState} setPreviewState={setPreviewState} /> : null}
+        {variant === "action-first" ? <ActionFirstDetail procedure={displayedProcedure} previewState={previewState} setPreviewState={setPreviewState} /> : null}
+        {variant === "progressive" ? <ProgressiveDetail procedures={visibleProcedures} procedure={displayedProcedure} chooseProcedure={chooseProcedure} previewState={previewState} setPreviewState={setPreviewState} /> : null}
       </>}
 
-      <PrototypeState variant={variant} procedure={selected} previewState={previewState} />
+      <PrototypeState variant={variant} procedure={displayedProcedure} previewState={previewState} />
       <PrototypeSwitcher variant={variant} setVariant={setVariant} />
     </div>
   );
 }
 
 function ProcedureHeader({ procedure }: { procedure: Procedure }) {
-  return <header className="dmxp-procedure-header"><div><span className={`dmxp-severity ${procedure.severity.toLowerCase().replaceAll(" ", "-").replaceAll("/", "")}`}>{procedure.severity}</span><h2>{procedure.condition}</h2><p>{procedure.severityMeaning}</p></div><div className="dmxp-meta"><strong>{procedure.owner}</strong><span>{procedure.effectiveRevision}</span></div></header>;
+  return <header className="dmxp-procedure-header"><div><span className={`dmxp-severity ${procedure.severity.toLowerCase().replaceAll(" ", "-").replaceAll("/", "")}`}>{procedure.severity}</span><h2>{procedure.condition}</h2><p>{procedure.severityMeaning}</p>{procedure.withdrawal ? <p className="dmxp-withdrawal" role="alert"><strong>Withdrawn — do not use this guidance.</strong> {procedure.withdrawal.reason} Use <strong>{procedure.withdrawal.replacement}</strong> instead.</p> : null}</div><div className="dmxp-meta"><strong>{procedure.owner}</strong><span>{procedure.effectiveRevision}</span></div></header>;
 }
 
 function Criteria({ procedure }: { procedure: Procedure }) {
@@ -174,7 +191,7 @@ function DocumentSupport({ procedure, previewState, setPreviewState }: { procedu
 }
 
 function VisualPreview({ state, setState }: { state: PreviewState; setState: (state: PreviewState) => void }) {
-  return <div className="dmxp-preview"><div className={`dmxp-preview-art ${state}`} aria-live="polite">{state === "loading" ? "Loading approved visual rendition…" : state === "unavailable" ? "Approved visual rendition unavailable" : <><span>Scene protection</span><span>Emergency response</span><span>OCC notification</span></>}</div><div className="dmxp-preview-controls"><button type="button" onClick={() => setState("ready")}>Show rendition</button><button type="button" onClick={() => setState("loading")}>Preview loading</button><button type="button" onClick={() => setState("unavailable")}>Preview unavailable</button></div></div>;
+  return <details className="dmxp-preview"><summary>Open approved visual rendition (PNG)</summary><div className={`dmxp-preview-art ${state}`} aria-live="polite">{state === "loading" ? "Loading approved visual rendition…" : state === "unavailable" ? "Approved visual rendition unavailable" : <><span>Scene protection</span><span>Emergency response</span><span>OCC notification</span></>}</div><div className="dmxp-preview-controls"><button type="button" onClick={() => setState("ready")}>Show rendition</button><button type="button" onClick={() => setState("loading")}>Preview loading</button><button type="button" onClick={() => setState("unavailable")}>Preview unavailable</button></div></details>;
 }
 
 function SplitDetail({ procedure, previewState, setPreviewState }: { procedure: Procedure; previewState: PreviewState; setPreviewState: (state: PreviewState) => void }) {
@@ -189,8 +206,8 @@ function ProgressiveDetail({ procedures, procedure, chooseProcedure, previewStat
   return <article className="dmxp-detail dmxp-progressive-detail"><nav aria-label="Prototype search results"><h2>Results</h2>{procedures.map((item) => <button key={item.id} type="button" className={item.id === procedure.id ? "selected" : ""} onClick={() => chooseProcedure(item.id)}><strong>{item.condition}</strong><span>{item.actions[0]}</span></button>)}</nav><div className="dmxp-progressive-reader"><ProcedureHeader procedure={procedure} /><ImmediateActions procedure={procedure} /><Criteria procedure={procedure} /><details><summary>Open visual and source-document support</summary><DocumentSupport procedure={procedure} previewState={previewState} setPreviewState={setPreviewState} /></details></div></article>;
 }
 
-function PrototypeState({ variant, procedure, previewState }: { variant: Variant; procedure: Procedure; previewState: PreviewState }) {
-  return <section className="dmxp-state" aria-label="Prototype state"><strong>Prototype state</strong><span>Variant: {VARIANTS.find((item) => item.key === variant)?.label}</span><span>Controller-selected Procedure: {procedure.condition}</span><span>Document Reference Health: {procedure.health}</span><span>Visual preview: {previewState}</span></section>;
+function PrototypeState({ variant, procedure, previewState }: { variant: Variant; procedure: Procedure | null; previewState: PreviewState }) {
+  return <section className="dmxp-state" aria-label="Prototype state"><strong>Prototype state</strong><span>Variant: {VARIANTS.find((item) => item.key === variant)?.label}</span><span>Displayed Procedure: {procedure?.condition ?? "No matching Procedure"}</span><span>Document Reference Health: {procedure?.health ?? "Not applicable"}</span><span>Visual preview: {previewState}</span></section>;
 }
 
 function PrototypeSwitcher({ variant, setVariant }: { variant: Variant; setVariant: (next: Variant) => void }) {
