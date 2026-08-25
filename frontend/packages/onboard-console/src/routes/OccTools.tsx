@@ -1,6 +1,8 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.js";
 import { DecisionMatrix } from "./modules/DecisionMatrix.js";
+import { DecisionMatrixReaderPrototype } from "./modules/DecisionMatrixReaderPrototype.js";
 import { SpeedAlerts } from "./modules/SpeedAlerts.js";
 
 const TOOLS = [
@@ -16,7 +18,9 @@ type ToolKey = (typeof TOOLS)[number]["key"];
 export function OccTools() {
   const { roles } = useAuth();
   const isAdmin = roles.includes("OCC.Admin");
+  const [searchParams] = useSearchParams();
   const [tool, setTool] = useState<ToolKey>("decision-matrix");
+  const showReaderPrototype = import.meta.env.DEV && searchParams.get("prototype") === "reader";
 
   return (
     <>
@@ -29,7 +33,7 @@ export function OccTools() {
             </button>
           ))}
         </div>
-        {tool === "decision-matrix" && <DecisionMatrix />}
+        {tool === "decision-matrix" && (showReaderPrototype ? <DecisionMatrixReaderPrototype /> : <DecisionMatrix />)}
         {tool === "speed-alerts" && isAdmin && <SpeedAlerts />}
       </div>
     </>
