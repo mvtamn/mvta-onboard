@@ -175,6 +175,10 @@ function dataQualityLabel(status: MissedTripAlert["dataQualityStatus"]): string 
   return "Legacy — unverified";
 }
 
+function sourceLabel(source: MissedTripAlert["sourceSystem"]): string {
+  return source === "spare" ? "Spare" : "GTFS-Realtime";
+}
+
 function routeLabel(routeId: string, routesById: Map<string, GtfsRouteOption>, sourceSystem: "gtfs" | "spare" = "gtfs"): string {
   if (sourceSystem === "spare") return `Spare · ${routeId}`;
   const r = routesById.get(routeId);
@@ -299,6 +303,7 @@ function MissedTripsInvestigationPage({
   // list down to one route or one service date.
   const [routeFilter, setRouteFilter] = useState("");
   const [dateFilter, setDateFilter] = useState("");
+  const [sourceFilter, setSourceFilter] = useState<"all" | "spare" | "gtfs">("all");
 
   // "List" is the original card-row layout (Service/Detection/Review,
   // drives the detail pane beside it) - "Table" is an addition, not a
@@ -333,16 +338,20 @@ function MissedTripsInvestigationPage({
     [activeAlerts, selectedId],
   );
 
+  const sourceAlerts = useMemo(
+    () => sourceFilter === "all" ? activeAlerts : activeAlerts.filter((alert) => alert.sourceSystem === sourceFilter),
+    [activeAlerts, sourceFilter],
+  );
   const routeOptions = useMemo(
-    () => [...new Set(activeAlerts.map((a) => a.route))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
-    [activeAlerts],
+    () => [...new Set(sourceAlerts.map((a) => a.route))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+    [sourceAlerts],
   );
   const filteredAlerts = useMemo(
     () =>
-      activeAlerts.filter(
+      sourceAlerts.filter(
         (a) => (!routeFilter || a.route === routeFilter) && (!dateFilter || a.serviceDate === dateFilter),
       ),
-    [activeAlerts, routeFilter, dateFilter],
+    [sourceAlerts, routeFilter, dateFilter],
   );
   const displayPageCount = Math.max(1, Math.ceil(filteredAlerts.length / displayPageSize));
   const effectiveDisplayPage = Math.min(displayPage, displayPageCount - 1);
@@ -363,7 +372,7 @@ function MissedTripsInvestigationPage({
 
   useEffect(() => {
     setDisplayPage(0);
-  }, [routeFilter, dateFilter, displayPageSize]);
+  }, [sourceFilter, routeFilter, dateFilter, displayPageSize]);
 
   useEffect(() => {
     if (displayPage !== effectiveDisplayPage) setDisplayPage(effectiveDisplayPage);
@@ -481,6 +490,7 @@ function MissedTripsInvestigationPage({
   const unreviewed = activeAlerts.filter((a) => a.validationStatus === "unreviewed").length;
   const confirmed = activeAlerts.filter((a) => a.validationStatus === "confirmed").length;
   const falsePositives = activeAlerts.filter((a) => a.validationStatus === "false_positive").length;
+  const spareCandidates = activeAlerts.filter((a) => a.sourceSystem === "spare").length;
   const routesAffected = new Set(activeAlerts.map((a) => a.route)).size;
 
   // Computed once, outside the list-vs-table branches below - referencing
@@ -542,6 +552,18 @@ function MissedTripsInvestigationPage({
       </button>
     </nav>
   ) : null;
+  const sourceFilterControl = (
+    <select
+      className="f"
+      value={sourceFilter}
+      onChange={(event) => setSourceFilter(event.target.value as "all" | "spare" | "gtfs")}
+      aria-label="Filter by data source"
+    >
+      <option value="all">All sources</option>
+      <option value="spare">Spare</option>
+      <option value="gtfs">GTFS-Realtime</option>
+    </select>
+  );
 
   return (
     <>
@@ -566,6 +588,16 @@ function MissedTripsInvestigationPage({
           <span className="concept-badge">Feed warning</span>
           <span>
             {diagnostics.feed_health.filter((feed) => feed.status === "stale").map((feed) => feed.feed_name).join(", ")} has not succeeded within 15 minutes. Absence must not be treated as a no-show.
+          </span>
+        </div>
+      ) : null}
+      {dataMode === "live" ? (
+        <div className="concept-banner" aria-label="Spare feed status">
+          <span className="concept-badge">{diagnostics?.spare_enabled ? "Spare feed enabled" : "Spare feed disabled"}</span>
+          <span>
+            {spareCandidates > 0
+              ? `${spareCandidates} Spare candidate${spareCandidates === 1 ? "" : "s"} in this ${mode === "queue" ? "view" : "history"}.`
+              : "No Spare missed-trip candidates are in this view."}
           </span>
         </div>
       ) : null}
@@ -605,6 +637,7 @@ function MissedTripsInvestigationPage({
           </div>
 
           <div className="risk-list-toolbar">
+            {sourceFilterControl}
             <select className="f" value={routeFilter} onChange={(e) => setRouteFilter(e.target.value)}>
               <option value="">All routes</option>
               {routeOptions.map((r) => (
@@ -618,8 +651,8 @@ function MissedTripsInvestigationPage({
               onChange={(e) => setDateFilter(e.target.value ? e.target.value.replace(/-/g, "") : "")}
               aria-label="Filter by service date"
             />
-            {routeFilter || dateFilter ? (
-              <button className="btn-sm" onClick={() => { setRouteFilter(""); setDateFilter(""); }}>
+            {sourceFilter !== "all" || routeFilter || dateFilter ? (
+              <button className="btn-sm" onClick={() => { setSourceFilter("all"); setRouteFilter(""); setDateFilter(""); }}>
                 Clear filters
               </button>
             ) : null}
@@ -704,6 +737,7 @@ function MissedTripsInvestigationPage({
             </div>
 
             <div className="risk-list-toolbar">
+              {sourceFilterControl}
               <select className="f" value={routeFilter} onChange={(e) => setRouteFilter(e.target.value)}>
                 <option value="">All routes</option>
                 {routeOptions.map((r) => (
@@ -717,8 +751,8 @@ function MissedTripsInvestigationPage({
                 onChange={(e) => setDateFilter(e.target.value ? e.target.value.replace(/-/g, "") : "")}
                 aria-label="Filter by service date"
               />
-              {routeFilter || dateFilter ? (
-                <button className="btn-sm" onClick={() => { setRouteFilter(""); setDateFilter(""); }}>
+              {sourceFilter !== "all" || routeFilter || dateFilter ? (
+                <button className="btn-sm" onClick={() => { setSourceFilter("all"); setRouteFilter(""); setDateFilter(""); }}>
                   Clear filters
                 </button>
               ) : null}
@@ -747,7 +781,7 @@ function MissedTripsInvestigationPage({
                 >
                   <span className="risk-service">
                     <strong>{routeLabel(alert.route, routesById, alert.sourceSystem)}</strong>
-                    <small>Scheduled {timeLabel(alert.scheduledDepartureAt)}</small>
+                    <small>{sourceLabel(alert.sourceSystem)} · scheduled {timeLabel(alert.scheduledDepartureAt)}</small>
                   </span>
                   <span className="risk-departure">
                     <span className={`pill-sm ${statusClass(alert.status, alert.validationStatus)}`}>
