@@ -1,26 +1,27 @@
 import { app, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { formatEventGeofenceMessage, formatTeamsWebhookPayload, isTransientNotificationFailure, MOVEMENT_NOTIFICATION_COOLDOWN_REASON, MOVEMENT_NOTIFICATION_COOLDOWN_SECONDS, retryDelaySeconds, shouldAutomaticallyDeliver } from "../lib/eventNotificationPolicy";
+import { formatEventGeofenceMessage, formatTeamsWebhookPayload, isTransientNotificationFailure, MOVEMENT_NOTIFICATION_COOLDOWN_REASON, MOVEMENT_NOTIFICATION_COOLDOWN_SECONDS, shouldAutomaticallyDeliver } from "../lib/eventNotificationPolicy";
+import { claimEventNotification, finishEventNotificationDelivery } from "../lib/eventNotificationDelivery";
 
 interface CrossingMessage { crossing_id: number }
 
-async function deliver(notificationId: string, body: string, attemptCount: number, context: InvocationContext): Promise<boolean> {
+async function deliver(notificationId: string, context: InvocationContext): Promise<boolean> {
   const pool = await getPool();
   const webhook = process.env.TEAMS_EVENT_WEBHOOK_URL;
   if (!webhook) {
     await pool.request().input("id", sql.UniqueIdentifier, notificationId).query("UPDATE EventGeofenceNotifications SET last_error='Teams webhook is not configured',next_attempt_at=DATEADD(HOUR,1,SYSUTCDATETIME()) WHERE id=@id AND status='pending'");
     return false;
   }
+  const claim = await claimEventNotification(pool, notificationId, "automatic");
+  if (!claim) return false;
   let response: Response;
   try {
-    response = await fetch(webhook, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(formatTeamsWebhookPayload(body)) });
+    response = await fetch(webhook, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(formatTeamsWebhookPayload(claim.message_body)), signal: AbortSignal.timeout(30_000) });
   } catch (err) {
     context.error("Teams event notification failed", err);
     response = new Response(null, { status: 599 });
   }
-  const request = pool.request(); request.input("id", sql.UniqueIdentifier, notificationId); request.input("status", sql.NVarChar, isTransientNotificationFailure(response.status) ? "pending" : "failed"); request.input("error", sql.NVarChar, `Teams webhook returned ${response.status}`); request.input("delay", sql.Int, retryDelaySeconds(attemptCount + 1));
-  if (response.ok) await request.query("UPDATE EventGeofenceNotifications SET status='sent',sent_by=NULL,sent_at=SYSUTCDATETIME(),attempt_count=attempt_count+1,last_error=NULL,next_attempt_at=NULL WHERE id=@id AND status='pending'");
-  else await request.query("UPDATE EventGeofenceNotifications SET status=@status,attempt_count=attempt_count+1,last_error=@error,next_attempt_at=CASE WHEN @status='pending' THEN DATEADD(SECOND,@delay,SYSUTCDATETIME()) ELSE NULL END WHERE id=@id AND status='pending'");
+  await finishEventNotificationDelivery(pool, claim, response.ok ? "sent" : isTransientNotificationFailure(response.status) ? "pending" : "failed", response.ok ? null : `Teams webhook returned ${response.status}`, null);
   return !response.ok && isTransientNotificationFailure(response.status);
 }
 
@@ -29,13 +30,13 @@ app.serviceBusQueue("eventGeofenceNotify", { connection: "ServiceBusConnection",
   const existing = await pool.request().input("crossing", sql.BigInt, id).query<{ id: string; message_body: string; status: string; attempt_count: number; created_at: Date; send_mode: "manual" | "auto"; service_plan_id: string | null; matched_rule_id: string | null }>("SELECT TOP 1 n.id,n.message_body,n.status,n.attempt_count,n.created_at,n.send_mode,c.service_plan_id,c.matched_rule_id FROM EventGeofenceNotifications n JOIN EventGeofenceCrossings c ON c.id=n.crossing_id WHERE n.crossing_id=@crossing");
   if (existing.recordset[0]) {
     const current = existing.recordset[0];
-    if (current.status !== "pending") return;
+    if (!["pending", "sending"].includes(current.status)) return;
     if (Date.now() - new Date(current.created_at).getTime() >= 24 * 60 * 60 * 1000) {
       await pool.request().input("id", sql.UniqueIdentifier, current.id).query("UPDATE EventGeofenceNotifications SET status='expired',last_error='Automatic retry window expired',next_attempt_at=NULL WHERE id=@id AND status='pending'");
       return;
     }
     const operational = (await pool.request().input("plan", sql.UniqueIdentifier, current.service_plan_id).query<{ automatic_teams_enabled: boolean }>("SELECT automatic_teams_enabled FROM EventOperationalMessaging WHERE service_plan_id=@plan")).recordset[0];
-    if (shouldAutomaticallyDeliver(Boolean(operational?.automatic_teams_enabled), current.matched_rule_id, current.send_mode) && await deliver(current.id, current.message_body, current.attempt_count, context)) throw new Error(`Transient Teams failure for event notification ${current.id}`);
+    if (shouldAutomaticallyDeliver(Boolean(operational?.automatic_teams_enabled), current.matched_rule_id, current.send_mode) && await deliver(current.id, context)) throw new Error(`Transient Teams failure for event notification ${current.id}`);
     return;
   }
   const row = (await pool.request().input("id", sql.BigInt, id).query("SELECT c.vehicle_id,c.route_id,rc.route_label,c.service_plan_id,c.geofence_id,c.transition,c.matched_rule_id,c.crossed_at,g.name geofence_name,g.purpose geofence_purpose,c.destination_label,c.matched_message_type message_type,c.matched_send_mode send_mode,l.name location_name FROM EventGeofenceCrossings c JOIN EventGeofences g ON g.id=c.geofence_id LEFT JOIN RouteClassification rc ON rc.route_id=c.route_id LEFT JOIN EventLocations l ON l.id=c.matched_destination_location_id WHERE c.id=@id")).recordset[0] as { vehicle_id: number; route_id: number | null; route_label: string | null; service_plan_id: string | null; geofence_id: string; matched_rule_id: string | null; crossed_at: Date; transition: "enter" | "exit"; geofence_name: string; geofence_purpose: string | null; destination_label: string | null; message_type: "departing" | "passed" | "arriving_soon" | "custom" | null; location_name: string | null; send_mode: "manual" | "auto" | null } | undefined;
@@ -75,5 +76,5 @@ app.serviceBusQueue("eventGeofenceNotify", { connection: "ServiceBusConnection",
   } catch { return; }
   }
   if (notification.suppressed) return;
-  if (automaticDelivery && await deliver(notification.id, body, 0, context)) throw new Error(`Transient Teams failure for event notification ${notification.id}`);
+  if (automaticDelivery && await deliver(notification.id, context)) throw new Error(`Transient Teams failure for event notification ${notification.id}`);
 } });
