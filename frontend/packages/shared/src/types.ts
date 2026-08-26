@@ -225,6 +225,75 @@ export interface DecisionMatrixCandidate extends Pick<DecisionMatrixProcedure, "
   match_reason: string;
 }
 
+export type ProcedureDraftSeverity = "Stop service" | "Restrict service" | "Routine / no escalation";
+export type ProcedureCriterionKind = "applies" | "excludes";
+export type ProcedureImmediateActionKind = "required" | "conditional" | "informational";
+export type SupportingDocumentType = "SOP" | "Reference" | "Form" | "Map" | "QRG" | "Visual rendition";
+export type DocumentReferenceHealth = "Valid" | "Needs review" | "Unavailable";
+
+export interface ProcedureCriterionDraft {
+  id?: string;
+  kind: ProcedureCriterionKind;
+  text: string;
+}
+
+export interface ProcedureImmediateActionDraft {
+  id?: string;
+  kind: ProcedureImmediateActionKind;
+  instruction: string;
+}
+
+export interface SupportingDocumentReferenceDraft {
+  id?: string;
+  document_type: SupportingDocumentType;
+  is_primary: boolean;
+  document_code: string;
+  site_id: string;
+  drive_id: string;
+  item_id: string;
+  expected_version: string;
+  expected_file_name: string;
+  expected_mime_type: string;
+  web_url: string;
+  health_status?: DocumentReferenceHealth;
+  checked_at?: string | null;
+}
+
+export interface ProcedureDraftInput {
+  procedure_id?: string;
+  condition_key?: string;
+  condition?: string;
+  severity?: ProcedureDraftSeverity;
+  severity_meaning?: string;
+  owner_team?: string;
+  owner_contact?: string | null;
+  effective_at?: string;
+  next_review_at?: string;
+  criteria: ProcedureCriterionDraft[];
+  immediate_actions: ProcedureImmediateActionDraft[];
+  document_references: SupportingDocumentReferenceDraft[];
+  concurrency_token?: string;
+}
+
+export interface ProcedureDraft extends ProcedureDraftInput {
+  procedure_id: string;
+  condition_key: string;
+  condition: string;
+  revision: number;
+  lifecycle_state: "Draft" | "Under review" | "Approved" | "Superseded" | "Retired";
+  concurrency_token: string;
+}
+
+export interface ProcedureDraftSaveResult {
+  procedure_id: string;
+  revision: number;
+  lifecycle_state: "Draft";
+  concurrency_token: string;
+  criteria?: ProcedureCriterionDraft[];
+  immediate_actions?: ProcedureImmediateActionDraft[];
+  document_references?: SupportingDocumentReferenceDraft[];
+}
+
 export interface TripDelay {
   trip_id: string;
   route_id: string;
