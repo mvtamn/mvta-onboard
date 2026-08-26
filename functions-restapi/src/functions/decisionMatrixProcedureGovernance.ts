@@ -88,10 +88,11 @@ async function checkReferences(procedureId: string, revision: number, actor: str
 
 async function revisionIsComplete(executor: { request: () => sql.Request }, procedureId: string, revision: number, requireValidPrimary: boolean) {
   const gate = await executor.request().input("procedure_id", sql.NVarChar, procedureId).input("revision", sql.Int, revision).query<{ complete: number }>(`
-    SELECT CASE WHEN EXISTS(SELECT 1 FROM ProcedureRevisions WHERE procedure_id=@procedure_id AND revision=@revision AND severity IS NOT NULL AND severity_meaning IS NOT NULL AND owner_team IS NOT NULL AND effective_at IS NOT NULL AND next_review_at IS NOT NULL)
+    SELECT CASE WHEN EXISTS(SELECT 1 FROM ProcedureRevisions r WHERE procedure_id=@procedure_id AND revision=@revision AND severity IS NOT NULL AND severity_meaning IS NOT NULL AND owner_team IS NOT NULL AND effective_at IS NOT NULL AND next_review_at IS NOT NULL)
       AND EXISTS(SELECT 1 FROM ProcedureCriteria WHERE procedure_id=@procedure_id AND revision=@revision)
       AND EXISTS(SELECT 1 FROM ProcedureImmediateActions WHERE procedure_id=@procedure_id AND revision=@revision)
       AND EXISTS(SELECT 1 FROM ProcedureDocumentReferences WHERE procedure_id=@procedure_id AND revision=@revision AND is_primary=1 AND document_type IN ('SOP','Reference') ${requireValidPrimary ? "AND health_status='Valid'" : ""})
+      AND NOT EXISTS(SELECT 1 FROM ProcedureDocumentReferences d JOIN ProcedureRevisions r ON r.procedure_id=d.procedure_id AND r.revision=d.revision WHERE d.procedure_id=@procedure_id AND d.revision=@revision AND (d.checked_at IS NULL OR d.checked_at<r.updated_at))
     THEN 1 ELSE 0 END complete`);
   return gate.recordset[0]?.complete === 1;
 }
