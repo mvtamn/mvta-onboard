@@ -112,7 +112,7 @@ export function DecisionMatrix() {
         {allTags.length ? <div className="dmx-filter-group" aria-label="Tag filters"><span className="dmx-filter-label">Tags (all selected must match)</span>{allTags.map((tag) => <button type="button" className="dmx-filter" aria-pressed={tags.has(tag)} data-active={tags.has(tag)} key={tag} onClick={() => toggle(tags, tag, setTags)}>{tag}</button>)}</div> : null}
         {activeFilterCount ? <div className="dmx-active-filters" role="status">{activeFilterCount} active filter{activeFilterCount === 1 ? "" : "s"}<button type="button" className="btn-sm" onClick={clearFilters}>Clear all filters</button></div> : null}
         <div className="dmx-meta">{filtered.length} of {(procedures ?? []).length} Procedures</div>
-        {isAdmin ? <div className="dmx-admin-actions"><button className="btn-sm" type="button" onClick={() => api.syncDecisionMatrix().then(() => api.getDecisionMatrix({ includeHistory: true }).then((result) => setProcedures(result.procedures))).catch((reason) => setError(reason instanceof ApiError ? reason.message : "Synchronization failed."))}>Sync SharePoint source</button><span className="dmx-meta">Admin governance controls are available on each revision.</span></div> : null}
+        {isAdmin ? <div className="dmx-admin-actions"><span className="dmx-meta">Admin governance controls are available on each revision.</span></div> : null}
       </div>
 
       {diagnostics ? <div className="dmx-state dmx-state-warning" role="status">{diagnostics}</div> : null}

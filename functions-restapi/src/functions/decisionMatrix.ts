@@ -88,29 +88,25 @@ function toProcedure(row: ProcedureRow) {
   };
 }
 
-app.http("decisionMatrix", {
-  route: "decision-matrix",
-  methods: ["GET"],
-  authLevel: "anonymous",
-  handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, STAFF_READ_ROLES);
-    if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
+export async function listDecisionMatrix(request: HttpRequest, context: InvocationContext) {
+  const auth = requireRole(request, STAFF_READ_ROLES);
+  if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
 
-    try {
-      const pool = await getPool();
-      const ready = await pool.request().query<{ ready: number }>(`
+  try {
+    const pool = await getPool();
+    const ready = await pool.request().query<{ ready: number }>(`
         SELECT CASE WHEN OBJECT_ID('dbo.DecisionMatrixProcedures', 'U') IS NULL THEN 0 ELSE 1 END AS ready
       `);
-      if (ready.recordset[0]?.ready !== 1) {
-        return { status: 200, jsonBody: { procedures: [], diagnostics: { table_ready: false, source: "unavailable" } } };
-      }
+    if (ready.recordset[0]?.ready !== 1) {
+      return { status: 200, jsonBody: { procedures: [], diagnostics: { table_ready: false, source: "unavailable" } } };
+    }
 
-      const includeHistory = request.query.get("include_history") === "true" &&
-        auth.principal.roles.includes("OCC.Admin");
-      const q = request.query.get("q")?.trim();
-      const dbRequest = pool.request();
-      if (q) dbRequest.input("q", sql.NVarChar, `%${q}%`);
-      const result = await dbRequest.query<ProcedureRow>(`
+    const includeHistory = request.query.get("include_history") === "true" &&
+      auth.principal.roles.includes("OCC.Admin");
+    const q = request.query.get("q")?.trim();
+    const dbRequest = pool.request();
+    if (q) dbRequest.input("q", sql.NVarChar, `%${q}%`);
+    const result = await dbRequest.query<ProcedureRow>(`
         SELECT procedure_id, revision, condition_key, condition, criteria, severity,
                severity_meaning, immediate_actions_json, escalation_triggers_json,
                notifications_json, communication_guidance, required_documentation,
@@ -123,16 +119,22 @@ app.http("decisionMatrix", {
           ${q ? "AND (condition LIKE @q OR criteria LIKE @q OR document_code LIKE @q OR tags_json LIKE @q OR affected_workflow LIKE @q)" : ""}
         ORDER BY condition, revision DESC
       `);
-      return {
-        status: 200,
-        jsonBody: {
-          procedures: result.recordset.map(toProcedure),
-          diagnostics: { table_ready: true, source: "governed", include_history: includeHistory },
-        },
-      };
-    } catch (error) {
-      context.error("GET /decision-matrix failed", error);
-      return { status: 500, jsonBody: { error: "Decision Matrix content is temporarily unavailable." } };
-    }
-  },
+    return {
+      status: 200,
+      jsonBody: {
+        procedures: result.recordset.map(toProcedure),
+        diagnostics: { table_ready: true, source: "governed", include_history: includeHistory },
+      },
+    };
+  } catch (error) {
+    context.error("GET /decision-matrix failed", error);
+    return { status: 500, jsonBody: { error: "Decision Matrix content is temporarily unavailable." } };
+  }
+}
+
+app.http("decisionMatrix", {
+  route: "decision-matrix",
+  methods: ["GET"],
+  authLevel: "anonymous",
+  handler: listDecisionMatrix,
 });
