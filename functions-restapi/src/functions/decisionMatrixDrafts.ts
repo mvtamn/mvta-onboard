@@ -187,7 +187,8 @@ export async function createDecisionMatrixProcedureDraft(request: HttpRequest, c
   const procedureId = text(input.procedure_id, 100, "procedure_id", true)!;
   const conditionKey = text(input.condition_key, 100, "condition_key", true)!;
   const condition = text(input.condition, 200, "condition", true)!;
-  const actor = auth.principal.userDetails ?? auth.principal.userId ?? "OCC Admin";
+  const actor = auth.principal.userId;
+  if (!actor) return { status: 401, jsonBody: { error: "A stable Admin identity is required to author a Procedure Draft." } };
   const pool = await getPool();
   const transaction = new sql.Transaction(pool);
   try {
@@ -236,7 +237,8 @@ export async function cloneDecisionMatrixProcedureDraft(request: HttpRequest, co
   try { body = await request.json() as typeof body; } catch { return { status: 400, jsonBody: { error: "Request body must be valid JSON." } }; }
   const sourceRevision = Number(body.source_revision);
   if (!Number.isInteger(sourceRevision)) return { status: 400, jsonBody: { error: "source_revision must be an integer." } };
-  const actor = auth.principal.userDetails ?? auth.principal.userId ?? "OCC Admin";
+  const actor = auth.principal.userId;
+  if (!actor) return { status: 401, jsonBody: { error: "A stable Admin identity is required to author a Procedure Draft." } };
   const pool = await getPool();
   const transaction = new sql.Transaction(pool);
   try {
@@ -296,7 +298,8 @@ export async function saveDecisionMatrixProcedureDraft(request: HttpRequest, con
   if (parsed.error) return { status: 400, jsonBody: { error: parsed.error } };
   const input = parsed.input;
   if (!text(input.concurrency_token, 34, "concurrency_token", true)) return { status: 400, jsonBody: { error: "concurrency_token is required to save a Draft." } };
-  const actor = auth.principal.userDetails ?? auth.principal.userId ?? "OCC Admin";
+  const actor = auth.principal.userId;
+  if (!actor) return { status: 401, jsonBody: { error: "A stable Admin identity is required to author a Procedure Draft." } };
   const pool = await getPool();
   const transaction = new sql.Transaction(pool);
   try {
