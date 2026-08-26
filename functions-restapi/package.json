@@ -10,7 +10,8 @@
     "prestart": "npm run build",
     "start": "func start",
     "pretest": "npm run build",
-    "test": "node --test dist/src/lib/*.test.js dist/src/functions/*.test.js"
+    "test": "node --test dist/src/lib/*.test.js dist/src/functions/*.test.js",
+    "test:decision-matrix-contract": "npm run build && node --test dist/src/functions/decisionMatrixDrafts.db.contract.test.js"
   },
   "dependencies": {
     "@azure/functions": "^4.5.0",
