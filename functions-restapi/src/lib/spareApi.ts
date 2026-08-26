@@ -19,12 +19,16 @@ export interface SpareRequestRecord {
   updatedAt?: unknown;
   status?: unknown;
   dutyId?: unknown;
+  vehicleId?: unknown;
   lockedToDutyId?: unknown;
   serviceId?: unknown;
   serviceBrand?: unknown;
+  requestedPickupTs?: unknown;
   initialScheduledPickupTs?: unknown;
   scheduledPickupTs?: unknown;
+  estimatedPickupTime?: unknown;
   pickupArrivedTs?: unknown;
+  pickupLocation?: unknown;
   initialScheduledDropoffTs?: unknown;
   scheduledDropoffTs?: unknown;
   dropoffArrivedTs?: unknown;
@@ -109,4 +113,17 @@ export async function fetchSparePage<T>(
   const page = validPage<T>(await response.json());
   if (!page) throw new Error(`Spare ${path} returned an unexpected response envelope`);
   return page;
+}
+
+export async function fetchSpareRequest<T>(requestId: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
+  const response = await fetch(`${configuredBaseUrl()}/v1/requests/${encodeURIComponent(requestId)}`, {
+    headers: { Accept: "application/json", Authorization: `Bearer ${configuredToken()}` },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) throw new Error(`Spare /v1/requests/{id} returned HTTP ${response.status}`);
+  const value = await response.json();
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Spare /v1/requests/{id} returned an unexpected payload");
+  }
+  return value as T;
 }

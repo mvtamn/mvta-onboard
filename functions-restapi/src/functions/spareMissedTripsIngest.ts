@@ -14,6 +14,8 @@ import {
   type SpareRequestRecord,
   type SpareSlotRecord,
 } from "../lib/spareApi";
+import { normalizeOnDemandSpareRequest } from "../lib/onDemandSpareMonitor";
+import { loadActiveOperationalZones, storeOnDemandSpareRequest } from "../lib/onDemandSpareMonitorStore";
 
 const REQUEST_PAGE_SIZE = 200;
 const SLOT_PAGE_SIZE = 1000;
@@ -263,9 +265,17 @@ app.timer("spareMissedTripsIngest", {
         .filter((entry): entry is readonly [string, SpareSlotRecord] => Boolean(entry[0])),
     ).values()];
     const pool = await getPool();
+    const activeZones = await loadActiveOperationalZones();
     let requestWrites = 0;
     let slotWrites = 0;
-    for (const row of requests) if (await upsertRequest(pool, row)) requestWrites++;
+    let monitorWrites = 0;
+    for (const row of requests) {
+      if (await upsertRequest(pool, row)) {
+        requestWrites++;
+        const normalized = normalizeOnDemandSpareRequest(row);
+        if (normalized && await storeOnDemandSpareRequest(normalized, activeZones)) monitorWrites++;
+      }
+    }
     for (const row of slots) if (await upsertSlot(pool, row)) slotWrites++;
     const maxRequestUpdatedAt = requests.reduce((max, row) => Math.max(max, spareNumber(row.updatedAt) ?? 0), 0);
     const maxSlotUpdatedAt = slots.reduce((max, row) => Math.max(max, spareNumber(row.updatedAt) ?? 0), 0);
@@ -273,7 +283,7 @@ app.timer("spareMissedTripsIngest", {
     await recordMissedTripFeedSuccess(pool, "spare_slots", slotWrites, maxSlotUpdatedAt || null);
     context.log(
       `Spare Missed Trips ingestion: ${requests.length} requests fetched/${requestWrites} stored; ` +
-        `${slots.length} slots fetched/${slotWrites} stored.`,
+        `${slots.length} slots fetched/${slotWrites} stored; ${monitorWrites} on-demand monitor updates.`,
     );
   },
 });

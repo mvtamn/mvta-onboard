@@ -426,6 +426,8 @@ export interface OnDemandRiskRecord {
   last_polled_at: string;
   suggested_alert_id: string | null;
   service_standard_minutes: number;
+  monitor_state: "active" | "completed" | "cancelled";
+  zone_resolution: "assigned" | "missing_pickup_coordinate" | "outside_operational_zones" | "ambiguous_operational_zones" | "legacy_unknown";
 }
 
 // GTFS-Realtime standard enums (raw ints from VehiclePosition, translated

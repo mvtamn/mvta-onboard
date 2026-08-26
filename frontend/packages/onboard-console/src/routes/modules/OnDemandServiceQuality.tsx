@@ -31,8 +31,12 @@ function trendClass(trend: RiskTrend): string {
 }
 
 function waitState(risk: OnDemandRisk, serviceStandard: number): { label: string; className: string } {
-  if (risk.currentWaitMinutes > serviceStandard) return { label: "Poor service occurring", className: "pill-danger" };
-  if (risk.predictedWaitMinutes > serviceStandard) return { label: "Predicted poor service", className: "pill-warning" };
+  if (risk.zoneResolution === "legacy_unknown") return { label: "Monitoring incomplete", className: "pill-muted" };
+  if (risk.zoneResolution && risk.zoneResolution !== "assigned") return { label: "Unzoned", className: "pill-muted" };
+  if (risk.currentWaitMinutes >= serviceStandard + 15 || risk.predictedWaitMinutes >= serviceStandard + 15) return { label: "Critical", className: "pill-danger" };
+  if (risk.currentWaitMinutes > serviceStandard) return { label: "Standard exceeded", className: "pill-danger" };
+  if (risk.currentWaitMinutes > 0) return { label: "Overdue", className: "pill-warning" };
+  if (risk.predictedWaitMinutes > serviceStandard) return { label: "Projected risk", className: "pill-warning" };
   return { label: "Watch", className: "pill-accent" };
 }
 
@@ -70,6 +74,7 @@ function fromOnDemandRecord(record: OnDemandRiskRecord): OnDemandRisk {
     sourceTripId: record.trip_id,
     suggestedAlertId: record.suggested_alert_id,
     serviceStandardMinutes: record.service_standard_minutes,
+    zoneResolution: record.zone_resolution,
   };
 }
 
