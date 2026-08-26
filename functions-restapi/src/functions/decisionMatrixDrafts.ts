@@ -165,6 +165,17 @@ async function replaceDraftContent(transaction: sql.Transaction, procedureId: st
   }
 }
 
+async function recordDraftAudit(transaction: sql.Transaction, procedureId: string, revision: number, actor: string, eventType: "draft_created" | "draft_saved" | "revision_cloned", details: Record<string, unknown> = {}) {
+  const audit = transaction.request();
+  audit.input("id", sql.UniqueIdentifier, randomUUID());
+  audit.input("procedure_id", sql.NVarChar, procedureId);
+  audit.input("revision", sql.Int, revision);
+  audit.input("event_type", sql.NVarChar, eventType);
+  audit.input("actor", sql.NVarChar, actor);
+  audit.input("details", sql.NVarChar, JSON.stringify(details));
+  await audit.query("IF OBJECT_ID('dbo.ProcedureAuditEvents', 'U') IS NOT NULL INSERT INTO ProcedureAuditEvents(event_id,procedure_id,revision,event_type,actor,details_json) VALUES(@id,@procedure_id,@revision,@event_type,@actor,@details)");
+}
+
 export async function createDecisionMatrixProcedureDraft(request: HttpRequest, context: InvocationContext) {
   const auth = requireRole(request, ADMIN_ROLES);
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
@@ -198,6 +209,7 @@ export async function createDecisionMatrixProcedureDraft(request: HttpRequest, c
     insertRevision.input("next_review_at", sql.DateTime2, input.next_review_at ? date(input.next_review_at) : null);
     const created = await insertRevision.query<{ concurrency_token: string }>("INSERT INTO ProcedureRevisions(procedure_id,revision,severity,severity_meaning,owner_team,owner_contact,effective_at,next_review_at,created_by,updated_by) OUTPUT CONVERT(varchar(34),INSERTED.row_version,1) AS concurrency_token VALUES(@procedure_id,1,@severity,@severity_meaning,@owner_team,@owner_contact,@effective_at,@next_review_at,@actor,@actor)");
     await replaceDraftContent(transaction, procedureId, 1, input);
+    await recordDraftAudit(transaction, procedureId, 1, actor, "draft_created");
     await transaction.commit();
     return { status: 201, jsonBody: {
       procedure_id: procedureId,
@@ -262,6 +274,7 @@ export async function cloneDecisionMatrixProcedureDraft(request: HttpRequest, co
     copyReferences.input("source_revision", sql.Int, sourceRevision);
     copyReferences.input("revision", sql.Int, revision);
     await copyReferences.query("INSERT INTO ProcedureDocumentReferences(reference_id,procedure_id,revision,sort_order,document_type,is_primary,document_code,site_id,drive_id,item_id,expected_version,expected_file_name,expected_mime_type,web_url) SELECT NEWID(),procedure_id,@revision,sort_order,document_type,is_primary,document_code,site_id,drive_id,item_id,expected_version,expected_file_name,expected_mime_type,web_url FROM ProcedureDocumentReferences WHERE procedure_id=@procedure_id AND revision=@source_revision");
+    await recordDraftAudit(transaction, procedureId, revision, actor, "revision_cloned", { source_revision: sourceRevision });
     await transaction.commit();
     return { status: 201, jsonBody: { procedure_id: procedureId, revision, lifecycle_state: "Draft", concurrency_token: copied.recordset[0].concurrency_token, cloned_from_revision: sourceRevision } };
   } catch (error) {
@@ -305,6 +318,7 @@ export async function saveDecisionMatrixProcedureDraft(request: HttpRequest, con
       return { status: 409, jsonBody: { error: "This Draft changed or is no longer editable. Refresh to compare the latest revision before saving again." } };
     }
     await replaceDraftContent(transaction, procedureId, revision, input);
+    await recordDraftAudit(transaction, procedureId, revision, actor, "draft_saved");
     await transaction.commit();
     return { status: 200, jsonBody: { procedure_id: procedureId, revision, lifecycle_state: "Draft", concurrency_token: changed.recordset[0].concurrency_token } };
   } catch (error) {
