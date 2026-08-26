@@ -41,8 +41,43 @@ jobs:
         working-directory: ${{ matrix.app }}
         run: npm test
 
+  decision-matrix-contract:
+    runs-on: ubuntu-latest
+    services:
+      sql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: DecisionMatrix!2026
+        ports:
+          - 1433:1433
+    env:
+      DECISION_MATRIX_TEST_SQL_CONNECTION_STRING: "Server=127.0.0.1,1433;Database=master;User ID=sa;Password=DecisionMatrix!2026;Encrypt=false;TrustServerCertificate=true;Connection Timeout=30;"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions-restapi/package-lock.json
+      - name: Wait for SQL Server
+        run: |
+          for attempt in {1..30}; do
+            if docker exec ${{ job.services.sql.id }} /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "DecisionMatrix!2026" -C -Q "SELECT 1"; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
+      - name: Install
+        working-directory: functions-restapi
+        run: npm ci
+      - name: Decision Matrix database contract
+        working-directory: functions-restapi
+        run: npm run test:decision-matrix-contract
+
   deploy:
-    needs: test
+    needs: [test, decision-matrix-contract]
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: dev
