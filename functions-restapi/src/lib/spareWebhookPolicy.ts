@@ -24,3 +24,16 @@ export function spareWebhookEventType(payload: unknown): SpareWebhookEventType |
     ? type as SpareWebhookEventType
     : null;
 }
+
+function fieldNames(value: unknown): string[] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+  return Object.keys(value).sort().slice(0, 40);
+}
+
+// Contract diagnostics retain field names only. Values can include rider,
+// location, or operationally sensitive data and must never reach logs.
+export function spareWebhookSchema(payload: unknown): { envelope_fields: string[]; data_fields: string[] } | null {
+  if (!spareWebhookEventType(payload)) return null;
+  const value = payload as Record<string, unknown>;
+  return { envelope_fields: fieldNames(value), data_fields: fieldNames(value.data) };
+}
