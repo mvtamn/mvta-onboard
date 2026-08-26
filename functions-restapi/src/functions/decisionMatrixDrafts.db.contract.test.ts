@@ -6,6 +6,7 @@ import test from "node:test";
 import { HttpRequest, type InvocationContext } from "@azure/functions";
 import { parseConnectionString, sql } from "../lib/db";
 import { cloneDecisionMatrixProcedureDraft, createDecisionMatrixProcedureDraft, getDecisionMatrixProcedureDraft, saveDecisionMatrixProcedureDraft } from "./decisionMatrixDrafts";
+import { governDecisionMatrixProcedureRevision } from "./decisionMatrixProcedureGovernance";
 
 const connectionString = process.env.DECISION_MATRIX_TEST_SQL_CONNECTION_STRING;
 const context = { error: () => undefined } as unknown as InvocationContext;
@@ -25,11 +26,11 @@ function requestFor(method: string, url: string, body?: unknown, params: Record<
   });
 }
 
-async function applyDraftMigration(pool: sql.ConnectionPool) {
-  const migration = readFileSync(join(process.cwd(), "sql/migration-076-procedure-drafts-and-document-references.sql"), "utf8");
-  for (const batch of migration.split(/^\s*GO\s*$/m)) {
-    if (batch.trim()) await pool.request().batch(batch);
-  }
+async function applyMigration(pool: sql.ConnectionPool, file: string) {
+    const migration = readFileSync(join(process.cwd(), "sql", file), "utf8");
+    for (const batch of migration.split(/^\s*GO\s*$/m)) {
+      if (batch.trim()) await pool.request().batch(batch);
+    }
 }
 
 test("Decision Matrix Draft API persists ordered content, rejects stale saves, and clones a new revision in SQL Server", { skip: !connectionString }, async () => {
@@ -38,6 +39,7 @@ test("Decision Matrix Draft API persists ordered content, rejects stale saves, a
   const contractPool = new sql.ConnectionPool(parseConnectionString(connectionString));
   const procedureId = `dm-contract-${randomUUID()}`;
   const conditionKey = `dm-contract-${randomUUID()}`;
+  const replacementProcedureId = `dm-replacement-${randomUUID()}`;
   const draft = {
     procedure_id: procedureId,
     condition_key: conditionKey,
@@ -72,8 +74,9 @@ test("Decision Matrix Draft API persists ordered content, rejects stale saves, a
 
   await contractPool.connect();
   try {
-    const tables = await contractPool.request().query<{ exists: number }>("SELECT CASE WHEN OBJECT_ID('dbo.Procedures', 'U') IS NULL THEN 0 ELSE 1 END AS exists");
-    if (!tables.recordset[0]?.exists) await applyDraftMigration(contractPool);
+    const tables = await contractPool.request().query<{ procedures: number; audit: number }>("SELECT CASE WHEN OBJECT_ID('dbo.Procedures', 'U') IS NULL THEN 0 ELSE 1 END procedures,CASE WHEN OBJECT_ID('dbo.ProcedureAuditEvents', 'U') IS NULL THEN 0 ELSE 1 END audit");
+    if (!tables.recordset[0]?.procedures) await applyMigration(contractPool, "migration-076-procedure-drafts-and-document-references.sql");
+    if (!tables.recordset[0]?.audit) await applyMigration(contractPool, "migration-078-procedure-governance-audit.sql");
 
     const created = await createDecisionMatrixProcedureDraft(
       requestFor("POST", "https://example.test/api/admin/decision-matrix/procedures", draft),
@@ -114,17 +117,79 @@ test("Decision Matrix Draft API persists ordered content, rejects stale saves, a
     );
     assert.equal(stale.status, 409);
 
+    const validDocument = async () => ({ health_status: "Valid" as const, observed_version: "3.0", observed_file_name: "SOP-OCC-CONTRACT.docx", observed_mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", reason: null });
+    const review = await governDecisionMatrixProcedureRevision(
+      requestFor("POST", `https://example.test/api/admin/decision-matrix/procedures/${procedureId}/revisions/1/lifecycle`, { action: "submit_for_review", reason: "Ready for governance review." }, { procedureId, revision: "1" }),
+      context,
+      validDocument,
+    );
+    assert.deepEqual(review.jsonBody, { procedure_id: procedureId, revision: 1, lifecycle_state: "Under review" });
+    const approved = await governDecisionMatrixProcedureRevision(
+      requestFor("POST", `https://example.test/api/admin/decision-matrix/procedures/${procedureId}/revisions/1/lifecycle`, { action: "approve", reason: "Approved for immediate operational use." }, { procedureId, revision: "1" }),
+      context,
+      validDocument,
+    );
+    assert.deepEqual(approved.jsonBody, { procedure_id: procedureId, revision: 1, lifecycle_state: "Approved" });
+
     const cloned = await cloneDecisionMatrixProcedureDraft(
       requestFor("POST", `https://example.test/api/admin/decision-matrix/procedures/${procedureId}/revisions`, { source_revision: 1 }, { procedureId }),
       context,
     );
     assert.equal(cloned.status, 201);
+    const secondReview = await governDecisionMatrixProcedureRevision(
+      requestFor("POST", `https://example.test/api/admin/decision-matrix/procedures/${procedureId}/revisions/2/lifecycle`, { action: "submit_for_review", reason: "Updated revision is ready for review." }, { procedureId, revision: "2" }),
+      context,
+      validDocument,
+    );
+    assert.equal(secondReview.status, 200);
+    const secondApproval = await governDecisionMatrixProcedureRevision(
+      requestFor("POST", `https://example.test/api/admin/decision-matrix/procedures/${procedureId}/revisions/2/lifecycle`, { action: "approve", reason: "Replacement approved." }, { procedureId, revision: "2" }),
+      context,
+      validDocument,
+    );
+    assert.equal(secondApproval.status, 200);
     const cloneRows = await contractPool.request()
       .input("procedure_id", sql.NVarChar, procedureId)
       .query<{ revision: number; criteria: number; actions: number; references: number }>("SELECT r.revision,(SELECT COUNT(*) FROM ProcedureCriteria c WHERE c.procedure_id=r.procedure_id AND c.revision=r.revision) AS criteria,(SELECT COUNT(*) FROM ProcedureImmediateActions a WHERE a.procedure_id=r.procedure_id AND a.revision=r.revision) AS actions,(SELECT COUNT(*) FROM ProcedureDocumentReferences d WHERE d.procedure_id=r.procedure_id AND d.revision=r.revision) AS references FROM ProcedureRevisions r WHERE r.procedure_id=@procedure_id AND r.revision=2");
     assert.deepEqual(cloneRows.recordset[0], { revision: 2, criteria: 2, actions: 2, references: 1 });
+    const governance = await contractPool.request().input("procedure_id", sql.NVarChar, procedureId)
+      .query<{ revision: number; lifecycle_state: string; audit_events: number }>("SELECT r.revision,r.lifecycle_state,(SELECT COUNT(*) FROM ProcedureAuditEvents e WHERE e.procedure_id=r.procedure_id AND e.revision=r.revision) audit_events FROM ProcedureRevisions r WHERE r.procedure_id=@procedure_id ORDER BY r.revision");
+    assert.deepEqual(governance.recordset, [
+      { revision: 1, lifecycle_state: "Superseded", audit_events: 7 },
+      { revision: 2, lifecycle_state: "Approved", audit_events: 5 },
+    ]);
+
+    const replacement = await createDecisionMatrixProcedureDraft(
+      requestFor("POST", "https://example.test/api/admin/decision-matrix/procedures", {
+        ...draft,
+        procedure_id: replacementProcedureId,
+        condition_key: `replacement-${randomUUID()}`,
+        condition: "Approved replacement Procedure",
+        criteria: draft.criteria.map(({ kind, text }) => ({ kind, text })),
+        immediate_actions: draft.immediate_actions.map(({ kind, instruction }) => ({ kind, instruction })),
+        document_references: draft.document_references.map(({ document_type, is_primary, document_code, site_id, drive_id, item_id, expected_version, expected_file_name, expected_mime_type, web_url }) => ({ document_type, is_primary, document_code, site_id, drive_id, item_id, expected_version, expected_file_name, expected_mime_type, web_url })),
+      }),
+      context,
+    );
+    assert.equal(replacement.status, 201);
+    assert.equal((await governDecisionMatrixProcedureRevision(requestFor("POST", `https://example.test/api/admin/decision-matrix/procedures/${replacementProcedureId}/revisions/1/lifecycle`, { action: "submit_for_review", reason: "Replacement is ready." }, { procedureId: replacementProcedureId, revision: "1" }), context, validDocument)).status, 200);
+    assert.equal((await governDecisionMatrixProcedureRevision(requestFor("POST", `https://example.test/api/admin/decision-matrix/procedures/${replacementProcedureId}/revisions/1/lifecycle`, { action: "approve", reason: "Replacement is approved." }, { procedureId: replacementProcedureId, revision: "1" }), context, validDocument)).status, 200);
+    const retired = await governDecisionMatrixProcedureRevision(
+      requestFor("POST", `https://example.test/api/admin/decision-matrix/procedures/${procedureId}/revisions/2/lifecycle`, { action: "retire", reason: "Replacement is in effect.", replacement_procedure_id: replacementProcedureId, replacement_revision: 1 }, { procedureId, revision: "2" }),
+      context,
+      validDocument,
+    );
+    assert.deepEqual(retired.jsonBody, { procedure_id: procedureId, revision: 2, lifecycle_state: "Retired" });
+    const withdrawn = await governDecisionMatrixProcedureRevision(
+      requestFor("POST", `https://example.test/api/admin/decision-matrix/procedures/${replacementProcedureId}/revisions/1/lifecycle`, { action: "withdraw", reason: "Guidance is unsafe.", confirm_withdrawal: true }, { procedureId: replacementProcedureId, revision: "1" }),
+      context,
+      validDocument,
+    );
+    assert.deepEqual(withdrawn.jsonBody, { procedure_id: replacementProcedureId, revision: 1, lifecycle_state: "Retired" });
+    assert.equal((await cloneDecisionMatrixProcedureDraft(requestFor("POST", `https://example.test/api/admin/decision-matrix/procedures/${replacementProcedureId}/revisions`, { source_revision: 1 }, { procedureId: replacementProcedureId }), context)).status, 201);
   } finally {
     await contractPool.request().input("procedure_id", sql.NVarChar, procedureId).query("DELETE FROM Procedures WHERE procedure_id=@procedure_id").catch(() => undefined);
+    await contractPool.request().input("procedure_id", sql.NVarChar, replacementProcedureId).query("DELETE FROM Procedures WHERE procedure_id=@procedure_id").catch(() => undefined);
     await contractPool.close();
     await (sql as unknown as { close(): Promise<void> }).close();
   }
