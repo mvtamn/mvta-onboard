@@ -84,6 +84,9 @@ import type {
   DecisionMatrixProcedure,
   DecisionMatrixDiagnostics,
   DecisionMatrixCandidate,
+  ProcedureDraft,
+  ProcedureDraftInput,
+  ProcedureDraftSaveResult,
   OnBoardAccessPrincipal,
   OnBoardDirectoryChange,
   OnBoardAccessChangeRecord,
@@ -333,6 +336,38 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       if (input.source) query.set("source", input.source);
       if (input.sourceId) query.set("source_id", input.sourceId);
       return request<{ candidates: DecisionMatrixCandidate[]; context: { source: string | null; source_id: string | null } }>(`/api/decision-matrix/matches?${query}`, {}, true);
+    },
+
+    createDecisionMatrixProcedureDraft(input: ProcedureDraftInput) {
+      return request<ProcedureDraftSaveResult>(
+        "/api/admin/decision-matrix/procedures",
+        { method: "POST", body: JSON.stringify(input) },
+        true,
+      );
+    },
+
+    getDecisionMatrixProcedureDraft(procedureId: string, revision: number) {
+      return request<ProcedureDraft>(
+        `/api/admin/decision-matrix/procedures/${encodeURIComponent(procedureId)}/revisions/${revision}`,
+        {},
+        true,
+      );
+    },
+
+    cloneDecisionMatrixProcedureDraft(procedureId: string, sourceRevision: number) {
+      return request<ProcedureDraftSaveResult & { cloned_from_revision: number }>(
+        `/api/admin/decision-matrix/procedures/${encodeURIComponent(procedureId)}/revisions`,
+        { method: "POST", body: JSON.stringify({ source_revision: sourceRevision }) },
+        true,
+      );
+    },
+
+    saveDecisionMatrixProcedureDraft(procedureId: string, revision: number, input: ProcedureDraftInput) {
+      return request<ProcedureDraftSaveResult>(
+        `/api/admin/decision-matrix/procedures/${encodeURIComponent(procedureId)}/revisions/${revision}`,
+        { method: "PUT", body: JSON.stringify(input) },
+        true,
+      );
     },
 
     governDecisionMatrix(procedureId: string, revision: number, action: "approve" | "retire", reason?: string) {
