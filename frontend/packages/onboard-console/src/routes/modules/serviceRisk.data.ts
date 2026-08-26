@@ -52,6 +52,7 @@ export interface OnDemandRisk {
   sourceTripId?: string;
   suggestedAlertId?: string | null;
   serviceStandardMinutes?: number;
+  zoneResolution?: "assigned" | "missing_pickup_coordinate" | "outside_operational_zones" | "ambiguous_operational_zones" | "legacy_unknown";
 }
 
 export const FIXED_ROUTE_RISKS: FixedRouteRisk[] = [
