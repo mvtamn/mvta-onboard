@@ -98,6 +98,7 @@ import type {
 export interface TokenRequestOptions {
   authenticationContext?: string;
   forceRefresh?: boolean;
+  delegatedSharePoint?: boolean;
 }
 
 export type TokenProvider = (options?: TokenRequestOptions) => Promise<string | null>;
@@ -158,6 +159,29 @@ export interface DecisionMatrixMatchRule {
   priority: number;
   explanation: string;
   is_active: boolean;
+}
+
+export interface DecisionMatrixGovernanceProcedure {
+  procedure_id: string;
+  condition_key: string;
+  condition: string;
+  revision: number;
+  lifecycle_state: "Draft" | "Under review" | "Approved";
+  next_review_at: string | null;
+  review_overdue: boolean;
+  unhealthy_reference_count: number;
+  unchecked_reference_count: number;
+}
+
+export interface DecisionMatrixAuditEvent {
+  event_id: string;
+  procedure_id: string;
+  revision: number;
+  event_type: string;
+  actor: string;
+  reason: string | null;
+  details_json: string;
+  occurred_at: string;
 }
 
 export interface FeedCheck {
@@ -228,7 +252,10 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     }
     if (authenticated && getToken) {
       const token = await getToken(typeof authenticated === "object" ? authenticated : undefined);
-      if (token) headers.set("Authorization", `Bearer ${token}`);
+      if (token) {
+        headers.set("Authorization", `Bearer ${token}`);
+        if (typeof authenticated === "object" && authenticated.delegatedSharePoint) headers.set("x-ms-token-aad-access-token", token);
+      }
     }
 
     const method = (init.method ?? "GET").toUpperCase();
@@ -405,6 +432,26 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
 
     updateDecisionMatrixMatchRule(matchRuleId: string, input: Partial<Omit<DecisionMatrixMatchRule, "match_rule_id">>) {
       return request<DecisionMatrixMatchRule>(`/api/admin/decision-matrix/match-rules/${encodeURIComponent(matchRuleId)}`, { method: "PUT", body: JSON.stringify(input) }, true);
+    },
+
+    getDecisionMatrixGovernanceQueue() {
+      return request<{ procedures: DecisionMatrixGovernanceProcedure[] }>("/api/admin/decision-matrix/governance-queue", {}, true);
+    },
+
+    getDecisionMatrixAudit() {
+      return request<{ audit_events: DecisionMatrixAuditEvent[] }>("/api/admin/decision-matrix/audit", {}, true);
+    },
+
+    governDecisionMatrixProcedureRevision(procedureId: string, revision: number, input: { action: "submit_for_review" | "return_to_draft" | "approve" | "retire" | "withdraw"; reason: string; replacement_procedure_id?: string; replacement_revision?: number; confirm_withdrawal?: boolean }) {
+      return request<{ procedure_id: string; revision: number; lifecycle_state: string }>(`/api/admin/decision-matrix/procedures/${encodeURIComponent(procedureId)}/revisions/${revision}/lifecycle`, { method: "POST", body: JSON.stringify(input) }, { delegatedSharePoint: true });
+    },
+
+    checkDecisionMatrixProcedureReferences(procedureId: string, revision: number) {
+      return request<{ document_references: Array<{ reference_id: string; health_status: string; reason: string | null }> }>(`/api/admin/decision-matrix/procedures/${encodeURIComponent(procedureId)}/revisions/${revision}/document-references/check`, { method: "POST" }, { delegatedSharePoint: true });
+    },
+
+    getDecisionMatrixLegacyCandidates() {
+      return request<{ candidates: Array<{ procedure_id: string; revision: number; condition: string; mapping_status: string }> }>("/api/admin/decision-matrix/legacy-candidates", {}, true);
     },
 
     createDecisionMatrixProcedureDraft(input: ProcedureDraftInput) {

@@ -33,7 +33,7 @@ import { Subscribers } from "./routes/Subscribers.js";
 import { AuditLog } from "./routes/AuditLog.js";
 import { OccTools } from "./routes/OccTools.js";
 import { EventMonitoring } from "./routes/modules/EventMonitoring.js";
-import { DecisionMatrix } from "./routes/modules/DecisionMatrix.js";
+import { DecisionMatrixAdmin } from "./routes/DecisionMatrixAdmin.js";
 import { EventPlanning } from "./routes/EventPlanning.js";
 import { EventWorkspaceProvider } from "./context/EventWorkspaceContext.js";
 import { AppDialogProvider } from "./components/AppDialog.js";
@@ -407,14 +407,14 @@ function AuthenticatedApp({ account, roles, signOut }: {
               <Route path="/audit" element={<AuditLog />} />
               <Route path="/changelog" element={<Changelog />} />
               <Route path="/admin/access-management" element={<CompatibilityRedirect to="/admin/access" />} />
-              <Route path="/admin" element={<RequireRole allowed={[...ACCESS_MANAGEMENT]}><AdminLayout /></RequireRole>}>
+              <Route path="/admin" element={<RequireRole allowed={[...ACCESS_MANAGEMENT, ...ADMIN]}><AdminLayout /></RequireRole>}>
                 <Route index element={<Navigate to="service" replace />} />
                 <Route path="access" element={<RequireRole allowed={[...ACCESS_MANAGEMENT]}><AdminAccess /></RequireRole>} />
                 <Route path="events" element={<RequireRole allowed={[...ADMIN]}><AdminEventAdministration /></RequireRole>} />
                 <Route path="service" element={<RequireRole allowed={[...ADMIN]}><AdminServiceConfiguration /></RequireRole>} />
                 <Route path="integrations" element={<RequireRole allowed={[...ADMIN]}><AdminIntegrations /></RequireRole>} />
                 <Route path="service-standards" element={<RequireRole allowed={[...ADMIN]}><OnDemandServiceStandardsAdmin /></RequireRole>} />
-                <Route path="decision-matrix" element={<RequireRole allowed={[...ADMIN]}><DecisionMatrix /></RequireRole>} />
+                <Route path="decision-matrix" element={<RequireRole allowed={[...ADMIN]}><DecisionMatrixAdmin /></RequireRole>} />
                 <Route path="governance" element={<RequireRole allowed={[...ACCESS_MANAGEMENT]}><AdminGovernance /></RequireRole>} />
                 <Route path="subscribers" element={<RequireRole allowed={[...ACCESS_MANAGEMENT]}><AdminSubscribers /></RequireRole>} />
               </Route>
