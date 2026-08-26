@@ -31,16 +31,25 @@ export async function migrateDecisionMatrixLegacyCandidate(request: HttpRequest,
   const reviewedFields = Array.isArray(body.reviewed_fields) && body.reviewed_fields.every((field): field is string => typeof field === "string") ? body.reviewed_fields : null;
   if (!body.draft || typeof body.draft !== "object" || !reviewedFields || !reviewedFieldNames.every((field) => reviewedFields.includes(field))) return { status: 400, jsonBody: { error: "An explicitly reviewed Draft and every migrated field are required." } };
   const pool = await getPool();
+  const existing = await pool.request().input("procedure_id", sql.NVarChar, procedureId).input("revision", sql.Int, revision).query<{ mapping_outcome: string; governed_procedure_id: string | null; governed_revision: number | null }>("SELECT mapping_outcome,governed_procedure_id,governed_revision FROM DecisionMatrixLegacyMigrations WHERE legacy_procedure_id=@procedure_id AND legacy_revision=@revision");
+  if (existing.recordset[0]) return { status: 409, jsonBody: { error: "This legacy candidate is already being mapped or has been mapped.", migration: existing.recordset[0] } };
   const source = await pool.request().input("procedure_id", sql.NVarChar, procedureId).input("revision", sql.Int, revision).query<LegacyCandidate>("SELECT procedure_id,revision,condition_key,condition,criteria,severity,severity_meaning,immediate_actions_json,document_type,document_code,source_url,source_revision,owner,effective_at,next_review_at FROM DecisionMatrixProcedures WHERE procedure_id=@procedure_id AND revision=@revision");
   const candidate = source.recordset[0];
   if (!candidate) return { status: 404, jsonBody: { error: "Legacy Decision Matrix candidate not found." } };
-  const reserve = await pool.request().input("legacy_procedure_id", sql.NVarChar, procedureId).input("legacy_revision", sql.Int, revision).input("snapshot", sql.NVarChar, JSON.stringify(candidate)).input("reviewed", sql.NVarChar, JSON.stringify(body.reviewed_fields)).input("actor", sql.NVarChar, actor).query("INSERT INTO DecisionMatrixLegacyMigrations(legacy_procedure_id,legacy_revision,source_snapshot_json,reviewed_fields_json,mapping_outcome,mapped_by) VALUES(@legacy_procedure_id,@legacy_revision,@snapshot,@reviewed,'converting',@actor)");
-  if (reserve.rowsAffected[0] !== 1) return { status: 409, jsonBody: { error: "This legacy candidate is already being mapped or has been mapped." } };
+  try { await pool.request().input("legacy_procedure_id", sql.NVarChar, procedureId).input("legacy_revision", sql.Int, revision).input("snapshot", sql.NVarChar, JSON.stringify(candidate)).input("reviewed", sql.NVarChar, JSON.stringify(body.reviewed_fields)).input("actor", sql.NVarChar, actor).query("INSERT INTO DecisionMatrixLegacyMigrations(legacy_procedure_id,legacy_revision,source_snapshot_json,reviewed_fields_json,mapping_outcome,mapped_by) VALUES(@legacy_procedure_id,@legacy_revision,@snapshot,@reviewed,'converting',@actor)"); }
+  catch { return { status: 409, jsonBody: { error: "This legacy candidate is already being mapped or has been mapped." } }; }
   const draftRequest = new HttpRequest({ method: "POST", url: request.url, headers: { "content-type": "application/json", "x-ms-client-principal": request.headers.get("x-ms-client-principal") ?? "" }, body: { string: JSON.stringify(body.draft) } });
   const created = await createDecisionMatrixProcedureDraft(draftRequest, context);
   if (created.status !== 201) { await pool.request().input("procedure_id", sql.NVarChar, procedureId).input("revision", sql.Int, revision).query("DELETE FROM DecisionMatrixLegacyMigrations WHERE legacy_procedure_id=@procedure_id AND legacy_revision=@revision"); return created; }
   const result = created.jsonBody as { procedure_id: string; revision: number };
-  await pool.request().input("legacy_procedure_id", sql.NVarChar, procedureId).input("legacy_revision", sql.Int, revision).input("governed_procedure_id", sql.NVarChar, result.procedure_id).input("governed_revision", sql.Int, result.revision).query("UPDATE DecisionMatrixLegacyMigrations SET governed_procedure_id=@governed_procedure_id,governed_revision=@governed_revision,mapping_outcome='mapped',mapped_at=SYSUTCDATETIME() WHERE legacy_procedure_id=@legacy_procedure_id AND legacy_revision=@legacy_revision");
+  try {
+    await pool.request().input("legacy_procedure_id", sql.NVarChar, procedureId).input("legacy_revision", sql.Int, revision).input("governed_procedure_id", sql.NVarChar, result.procedure_id).input("governed_revision", sql.Int, result.revision).query("UPDATE DecisionMatrixLegacyMigrations SET governed_procedure_id=@governed_procedure_id,governed_revision=@governed_revision,mapping_outcome='mapped',mapped_at=SYSUTCDATETIME() WHERE legacy_procedure_id=@legacy_procedure_id AND legacy_revision=@legacy_revision");
+  } catch (error) {
+    await pool.request().input("procedure_id", sql.NVarChar, result.procedure_id).query("DELETE FROM Procedures WHERE procedure_id=@procedure_id").catch(() => undefined);
+    await pool.request().input("procedure_id", sql.NVarChar, procedureId).input("revision", sql.Int, revision).query("DELETE FROM DecisionMatrixLegacyMigrations WHERE legacy_procedure_id=@procedure_id AND legacy_revision=@revision").catch(() => undefined);
+    context.error("Decision Matrix legacy mapping finalization failed", error);
+    return { status: 500, jsonBody: { error: "Legacy candidate mapping could not be finalized; no governed Draft was retained." } };
+  }
   return { status: 201, jsonBody: { legacy_procedure_id: procedureId, legacy_revision: revision, procedure_id: result.procedure_id, revision: result.revision, lifecycle_state: "Draft" } };
 }
 
