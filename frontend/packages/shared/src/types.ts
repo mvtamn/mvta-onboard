@@ -269,6 +269,7 @@ export interface ProcedureDraftInput {
   owner_contact?: string | null;
   effective_at?: string;
   next_review_at?: string;
+  tags?: string[];
   criteria: ProcedureCriterionDraft[];
   immediate_actions: ProcedureImmediateActionDraft[];
   document_references: SupportingDocumentReferenceDraft[];

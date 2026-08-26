@@ -33,6 +33,7 @@ import { Subscribers } from "./routes/Subscribers.js";
 import { AuditLog } from "./routes/AuditLog.js";
 import { OccTools } from "./routes/OccTools.js";
 import { EventMonitoring } from "./routes/modules/EventMonitoring.js";
+import { DecisionMatrix } from "./routes/modules/DecisionMatrix.js";
 import { EventPlanning } from "./routes/EventPlanning.js";
 import { EventWorkspaceProvider } from "./context/EventWorkspaceContext.js";
 import { AppDialogProvider } from "./components/AppDialog.js";
@@ -295,6 +296,7 @@ function AuthenticatedApp({ account, roles, signOut }: {
                 {isAdmin && <NavLink to="/admin/events" title="Event Administration"><IconBus /><span className="nav-label">Event Administration</span></NavLink>}
                 {isAdmin && <NavLink to="/admin/service" title="Service Configuration"><IconWrench /><span className="nav-label">Service Configuration</span></NavLink>}
                 {isAdmin && <NavLink to="/admin/integrations" title="Integrations & Data Health"><IconWrench /><span className="nav-label">Integrations &amp; Data Health</span></NavLink>}
+                {isAdmin && <NavLink to="/admin/decision-matrix" title="Decision Matrix"><IconWrench /><span className="nav-label">Decision Matrix</span></NavLink>}
                 {canManageAccess && <NavLink to="/admin/governance" title="Governance & Audit"><IconClock /><span className="nav-label">Governance &amp; Audit</span></NavLink>}
               </div> : null}
             </>}
@@ -409,7 +411,8 @@ function AuthenticatedApp({ account, roles, signOut }: {
                 <Route path="access" element={<RequireRole allowed={[...ACCESS_MANAGEMENT]}><AdminAccess /></RequireRole>} />
                 <Route path="events" element={<RequireRole allowed={[...ADMIN]}><AdminEventAdministration /></RequireRole>} />
                 <Route path="service" element={<RequireRole allowed={[...ADMIN]}><AdminServiceConfiguration /></RequireRole>} />
-                <Route path="integrations" element={<RequireRole allowed={[...ADMIN]}><AdminIntegrations /></RequireRole>} />
+              <Route path="integrations" element={<RequireRole allowed={[...ADMIN]}><AdminIntegrations /></RequireRole>} />
+              <Route path="decision-matrix" element={<RequireRole allowed={[...ADMIN]}><DecisionMatrix /></RequireRole>} />
                 <Route path="governance" element={<RequireRole allowed={[...ACCESS_MANAGEMENT]}><AdminGovernance /></RequireRole>} />
                 <Route path="subscribers" element={<RequireRole allowed={[...ACCESS_MANAGEMENT]}><AdminSubscribers /></RequireRole>} />
               </Route>

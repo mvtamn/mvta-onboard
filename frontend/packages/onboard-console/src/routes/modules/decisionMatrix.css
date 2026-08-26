@@ -100,6 +100,19 @@
 .dmx-state-info { margin: 0 0 14px; background: var(--surface-alt-bg); color: var(--text-dim); }
 .dmx-unavailable { color: var(--text-dim); font-size: 11px; }
 .action-list { margin: 0; padding-left: 20px; line-height: 1.5; }
+.dmx-details { display: grid; gap: 10px; margin-top: 14px; }
+.dmx-documents { display: grid; gap: 8px; border-top: 1px solid var(--border); padding-top: 12px; }
+.dmx-documents h3 { margin: 0; font-size: 13px; }
+.dmx-document { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; }
+.dmx-rendition { display: block; width: min(100%, 860px); max-height: 520px; object-fit: contain; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-alt-bg); }
+.dmx-recommendation { display: flex; align-items: center; gap: 8px; }
+.dmx-admin { display: grid; gap: 12px; margin-top: 24px; padding: 16px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-alt-bg); }
+.dmx-admin h2 { margin: 0; font-size: 16px; }
+.dmx-rule-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; align-items: end; }
+.dmx-rule-form label { display: grid; gap: 4px; color: var(--text-dim); font-size: 11px; font-weight: 700; }
+.dmx-rule-form input, .dmx-rule-form select { min-height: 34px; color: var(--text); background: var(--surface-bg); border: 1px solid var(--border-strong); border-radius: 4px; }
+.dmx-rule-list { display: grid; gap: 8px; font-size: 12px; }
+.dmx-rule-list > div { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding-top: 8px; border-top: 1px solid var(--border); }
 .dmx .row.preview, .dmx .row.needs-review, .dmx .row.stale, .dmx .row.partial { border-left-color: var(--severity-restricting); }
 .dmx .row.unavailable, .dmx .row.retired { border-left-color: var(--border-strong); opacity: .82; }
 
@@ -108,4 +121,6 @@
   .dmx .rowaction { align-items: flex-start; text-align: left; }
   .dmx .qrg-section { overflow-x: auto; }
   .dmx .qrg-section table.data { min-width: 680px; }
+  .dmx .dmx-qrg { overflow-x: auto; }
+  .dmx .dmx-qrg table.data { min-width: 640px; }
 }

@@ -70,6 +70,7 @@ export function getCallerPrincipal(request: HttpRequest): CallerPrincipal | null
 // separate: System.Ingestion may create reviewable drafts, but must never
 // inherit approval, edit, retract, or other human publishing authority.
 export const STAFF_READ_ROLES = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin", "OCC.EventAVL"];
+export const DECISION_MATRIX_READ_ROLES = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin"];
 export const PUBLISH_ROLES = ["OCC.Publisher", "OCC.Admin"];
 export const EVENT_AVL_WRITE_ROLES = ["OCC.EventAVL", "OCC.Admin"];
 export const EVENT_AVL_NOTIFICATION_ROLES = [...PUBLISH_ROLES, "OCC.EventAVL"];

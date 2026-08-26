@@ -81,9 +81,6 @@ import type {
   ContractorStandardTier,
   ManualMetricEntry,
   ManagerAssessmentAction,
-  DecisionMatrixProcedure,
-  DecisionMatrixDiagnostics,
-  DecisionMatrixCandidate,
   ProcedureDraft,
   ProcedureDraftInput,
   ProcedureDraftSaveResult,
@@ -121,6 +118,46 @@ export class ApiError extends Error {
     super(message);
     this.name = "ApiError";
   }
+}
+
+export interface DecisionMatrixReaderProcedure {
+  procedure_id: string;
+  revision: number;
+  condition_key: string;
+  condition: string;
+  severity: string;
+  severity_meaning: string;
+  owner_team: string;
+  owner_contact: string | null;
+  effective_at: string;
+  next_review_at: string;
+  tags: string[];
+  criteria: Array<{ id: string; kind: string; text: string }>;
+  immediate_actions: Array<{ id: string; kind: string; instruction: string }>;
+  document_references: Array<{ reference_id: string; document_type: string; is_primary: boolean; document_code: string; expected_file_name: string; expected_mime_type: string; web_url: string; health_status: "Valid" | "Needs review" | "Unavailable"; checked_at: string | null; health_reason: string | null; source_available: boolean; inline_preview_available: boolean }>;
+}
+
+export interface DecisionMatrixRecommendation {
+  match_rule_id: string;
+  source_type: "SuggestedAlert" | "ServiceRisk";
+  source_qualifier: string;
+  priority: number;
+  explanation: string;
+  procedure_id: string;
+  condition_key: string;
+  condition: string;
+  revision: number;
+  severity: string;
+}
+
+export interface DecisionMatrixMatchRule {
+  match_rule_id: string;
+  source_type: "SuggestedAlert" | "ServiceRisk";
+  source_qualifier: string;
+  procedure_id: string;
+  priority: number;
+  explanation: string;
+  is_active: boolean;
 }
 
 export interface FeedCheck {
@@ -214,6 +251,25 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       throw new ApiError(res.status, message, payload?.details);
     }
     return payload as T;
+  }
+
+  async function requestBlob(path: string): Promise<Blob> {
+    const headers = new Headers();
+    if (getToken) {
+      const token = await getToken();
+      if (token) {
+        headers.set("Authorization", `Bearer ${token}`);
+        // The Function exchanges this caller token through OBO; it is never
+        // returned to the browser as a SharePoint URL or durable grant.
+        headers.set("x-ms-token-aad-access-token", token);
+      }
+    }
+    const response = await fetch(`${root}${path}`, { headers });
+    if (!response.ok) {
+      const payload = response.headers.get("content-type")?.includes("application/json") ? await response.json().catch(() => null) : null;
+      throw new ApiError(response.status, (payload && (payload.error as string)) || `Request failed (${response.status})`);
+    }
+    return response.blob();
   }
 
   return {
@@ -315,25 +371,38 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<{ alerts: SuggestedAlert[] }>(`/api/suggested-alerts?status=${status}`, {}, true);
     },
 
-    getDecisionMatrix(filters?: { q?: string; includeHistory?: boolean }) {
+    getDecisionMatrix(filters?: { q?: string }) {
       const query = new URLSearchParams();
       if (filters?.q) query.set("q", filters.q);
-      if (filters?.includeHistory) query.set("include_history", "true");
       const suffix = query.toString() ? `?${query.toString()}` : "";
-      return request<{ procedures: DecisionMatrixProcedure[]; diagnostics: DecisionMatrixDiagnostics }>(
+      return request<{ procedures: DecisionMatrixReaderProcedure[] }>(
         `/api/decision-matrix${suffix}`,
         {},
         true,
       );
     },
 
-    getDecisionMatrixMatches(input: { conditionKey?: string; q?: string; source?: string; sourceId?: string }) {
+    getDecisionMatrixRecommendations(input: { sourceType: "SuggestedAlert" | "ServiceRisk"; sourceQualifier: string }) {
       const query = new URLSearchParams();
-      if (input.conditionKey) query.set("condition_key", input.conditionKey);
-      if (input.q) query.set("q", input.q);
-      if (input.source) query.set("source", input.source);
-      if (input.sourceId) query.set("source_id", input.sourceId);
-      return request<{ candidates: DecisionMatrixCandidate[]; context: { source: string | null; source_id: string | null } }>(`/api/decision-matrix/matches?${query}`, {}, true);
+      query.set("source_type", input.sourceType);
+      query.set("source_qualifier", input.sourceQualifier);
+      return request<{ source_type: string; source_qualifier: string; recommendations: DecisionMatrixRecommendation[] }>(`/api/decision-matrix/recommendations?${query}`, {}, true);
+    },
+
+    getDecisionMatrixRendition(procedureId: string, revision: number, referenceId: string) {
+      return requestBlob(`/api/decision-matrix/procedures/${encodeURIComponent(procedureId)}/revisions/${revision}/document-references/${encodeURIComponent(referenceId)}/preview`);
+    },
+
+    getDecisionMatrixMatchRules() {
+      return request<{ match_rules: DecisionMatrixMatchRule[] }>("/api/admin/decision-matrix/match-rules", {}, true);
+    },
+
+    createDecisionMatrixMatchRule(input: Omit<DecisionMatrixMatchRule, "match_rule_id">) {
+      return request<DecisionMatrixMatchRule>("/api/admin/decision-matrix/match-rules", { method: "POST", body: JSON.stringify(input) }, true);
+    },
+
+    updateDecisionMatrixMatchRule(matchRuleId: string, input: Partial<Omit<DecisionMatrixMatchRule, "match_rule_id">>) {
+      return request<DecisionMatrixMatchRule>(`/api/admin/decision-matrix/match-rules/${encodeURIComponent(matchRuleId)}`, { method: "PUT", body: JSON.stringify(input) }, true);
     },
 
     createDecisionMatrixProcedureDraft(input: ProcedureDraftInput) {

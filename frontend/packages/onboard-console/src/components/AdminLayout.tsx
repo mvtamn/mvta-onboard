@@ -10,6 +10,7 @@ const links = [
   { to: "/admin/events", label: "Event Administration", icon: IconBus, roles: ADMIN },
   { to: "/admin/service", label: "Service Configuration", icon: IconWrench, roles: ADMIN },
   { to: "/admin/integrations", label: "Integrations & Data Health", icon: IconWrench, roles: ADMIN },
+  { to: "/admin/decision-matrix", label: "Decision Matrix", icon: IconWrench, roles: ADMIN },
   { to: "/admin/governance", label: "Governance & Audit", icon: IconClock, roles: ACCESS },
   { to: "/admin/subscribers", label: "Subscribers", icon: IconUsers, roles: ACCESS },
 ] as const;
