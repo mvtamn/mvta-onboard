@@ -30,10 +30,31 @@ function fieldNames(value: unknown): string[] {
   return Object.keys(value).sort().slice(0, 40);
 }
 
+function arrayItemFields(value: unknown): Record<string, string[]> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => Array.isArray(item))
+      .map(([name, items]) => [
+        name,
+        [...new Set((items as unknown[]).flatMap(fieldNames))].sort().slice(0, 40),
+      ])
+      .filter(([, fields]) => fields.length > 0),
+  );
+}
+
 // Contract diagnostics retain field names only. Values can include rider,
 // location, or operationally sensitive data and must never reach logs.
-export function spareWebhookSchema(payload: unknown): { envelope_fields: string[]; data_fields: string[] } | null {
+export function spareWebhookSchema(payload: unknown): {
+  envelope_fields: string[];
+  data_fields: string[];
+  data_array_item_fields: Record<string, string[]>;
+} | null {
   if (!spareWebhookEventType(payload)) return null;
   const value = payload as Record<string, unknown>;
-  return { envelope_fields: fieldNames(value), data_fields: fieldNames(value.data) };
+  return {
+    envelope_fields: fieldNames(value),
+    data_fields: fieldNames(value.data),
+    data_array_item_fields: arrayItemFields(value.data),
+  };
 }

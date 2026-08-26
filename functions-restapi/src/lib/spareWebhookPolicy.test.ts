@@ -20,7 +20,25 @@ test("contract diagnostics retain field names but never values", () => {
       type: "requestStatus",
       data: { id: "request-42", pickupLocation: { latitude: 44.8 }, rider: { phone: "555-0100" } },
     }),
-    { envelope_fields: ["data", "type"], data_fields: ["id", "pickupLocation", "rider"] },
+    {
+      envelope_fields: ["data", "type"],
+      data_fields: ["id", "pickupLocation", "rider"],
+      data_array_item_fields: {},
+    },
   );
   assert.equal(spareWebhookSchema({ type: "riderCreated", data: {} }), null);
+});
+
+test("contract diagnostics retain array-item field names but never values", () => {
+  assert.deepEqual(
+    spareWebhookSchema({
+      type: "eta",
+      data: { updates: [{ requestId: "request-42", pickup: { eta: 123 } }, { requestId: "request-99", dropoff: { eta: 456 } }] },
+    }),
+    {
+      envelope_fields: ["data", "type"],
+      data_fields: ["updates"],
+      data_array_item_fields: { updates: ["dropoff", "pickup", "requestId"] },
+    },
+  );
 });
