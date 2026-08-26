@@ -10,7 +10,7 @@
     "prestart": "npm run build",
     "start": "func start",
     "pretest": "npm run build",
-    "test": "node --test dist/src/lib/*.test.js"
+    "test": "node --test dist/src/lib/*.test.js dist/src/functions/*.test.js"
   },
   "dependencies": {
     "@azure/functions": "^4.5.0",

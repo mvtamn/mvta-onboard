@@ -6,7 +6,7 @@ import { DecisionMatrix } from "./DecisionMatrix.js";
 
 const authState = { roles: ["OCC.Admin"], account: { name: "Test User", username: "test@mvta.com" }, signIn: vi.fn(), signOut: vi.fn() };
 vi.mock("../../auth/AuthContext.js", () => ({ useAuth: () => authState }));
-vi.mock("../../config.js", () => ({ api: { getDecisionMatrix: vi.fn(), syncDecisionMatrix: vi.fn(), governDecisionMatrix: vi.fn() } }));
+vi.mock("../../config.js", () => ({ api: { getDecisionMatrix: vi.fn(), governDecisionMatrix: vi.fn() } }));
 
 import { api } from "../../config.js";
 
@@ -51,5 +51,11 @@ describe("Decision Matrix", () => {
     vi.mocked(api.getDecisionMatrix).mockRejectedValueOnce(new Error("offline"));
     renderMatrix();
     expect(await screen.findByRole("alert")).toHaveTextContent(/temporarily unavailable/i);
+  });
+
+  it("does not expose the retired SharePoint structured-content import", async () => {
+    renderMatrix();
+    await screen.findByRole("heading", { name: "Vehicle Collision" });
+    expect(screen.queryByRole("button", { name: /sync sharepoint source/i })).not.toBeInTheDocument();
   });
 });

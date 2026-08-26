@@ -335,14 +335,6 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<{ candidates: DecisionMatrixCandidate[]; context: { source: string | null; source_id: string | null } }>(`/api/decision-matrix/matches?${query}`, {}, true);
     },
 
-    syncDecisionMatrix() {
-      return request<{ status: string; count: number; reason?: string }>(
-        "/api/admin/decision-matrix/sync",
-        { method: "POST" },
-        true,
-      );
-    },
-
     governDecisionMatrix(procedureId: string, revision: number, action: "approve" | "retire", reason?: string) {
       return request<{ procedure_id: string; revision: number; approval_state: string; trust_state: string }>(
         `/api/admin/decision-matrix/${encodeURIComponent(procedureId)}/${revision}`,
