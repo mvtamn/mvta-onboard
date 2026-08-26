@@ -2,7 +2,7 @@
 // secret and event allowlist but intentionally does not retain a payload yet:
 // #93 still requires sanitized contract samples before #95 maps state.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
-import { hasSpareWebhookAuthorization, spareWebhookEventType } from "../lib/spareWebhookPolicy";
+import { hasSpareWebhookAuthorization, spareWebhookEventType, spareWebhookSchema } from "../lib/spareWebhookPolicy";
 
 app.http("onDemandSpareWebhook", {
   route: "on-demand-webhooks/spare",
@@ -21,9 +21,10 @@ app.http("onDemandSpareWebhook", {
     const eventType = spareWebhookEventType(payload);
     if (!eventType) return { status: 422, jsonBody: { error: "Webhook event type is not supported" } };
 
-    // Deliberately log no payload values: they may contain rider or location
-    // data. The event name is sufficient to verify secure connectivity.
-    context.log(`Accepted Spare ${eventType} webhook for contract validation.`);
+    const schema = spareWebhookSchema(payload);
+    // Deliberately log schema names only: webhook values may contain rider or
+    // location data. This temporary diagnostic closes the source-contract gap.
+    context.log(JSON.stringify({ event: "spare_webhook_contract", type: eventType, ...schema }));
     return { status: 202, jsonBody: { status: "accepted" } };
   },
 });
