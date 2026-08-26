@@ -4,58 +4,18 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { DecisionMatrix } from "./DecisionMatrix.js";
 
-const authState = { roles: ["OCC.Admin"], account: { name: "Test User", username: "test@mvta.com" }, signIn: vi.fn(), signOut: vi.fn() };
-vi.mock("../../auth/AuthContext.js", () => ({ useAuth: () => authState }));
-vi.mock("../../config.js", () => ({ api: { getDecisionMatrix: vi.fn(), governDecisionMatrix: vi.fn() } }));
-
+vi.mock("../../config.js", () => ({ api: { getDecisionMatrix: vi.fn(), getDecisionMatrixRecommendations: vi.fn(), getDecisionMatrixRendition: vi.fn() } }));
+vi.mock("../../auth/AuthContext.js", () => ({ useAuth: () => ({ roles: ["OCC.Viewer"] }) }));
 import { api } from "../../config.js";
 
-const procedure = {
-  procedure_id: "occ-collision", revision: 1, condition_key: "vehicle-collision", condition: "Vehicle Collision",
-  criteria: "Any collision with injury or a blocked lane.", severity: "Stop", severity_meaning: "Begin emergency response.",
-  immediate_actions: ["Notify command staff", "Dispatch EMS"], escalation_triggers: ["Any injury"], notifications: ["Command staff"],
-  communication_guidance: null, required_documentation: null, tags: ["Safety", "Emergency Response"], service_mode: "FixedRoute",
-  affected_workflow: "Emergency Response", urgency: "Immediate", document_type: "SOP" as const, document_code: "SOP-OCC-001-00",
-  source_url: "https://example.com/sop", source_revision: "SOP-OCC-001-00", owner: "OCC", approver: "Admin", approval_state: "Approved" as const,
-  trust_state: "Approved" as const, effective_at: "2026-01-01T00:00:00Z", next_review_at: "2027-01-01T00:00:00Z", retired_at: null,
-  source_status: "available" as const, last_synced_at: "2026-08-12T00:00:00Z", updated_at: "2026-08-12T00:00:00Z",
-};
+const procedure = { procedure_id: "occ-collision", revision: 1, condition_key: "vehicle-collision", condition: "Vehicle Collision", severity: "Stop service", severity_meaning: "Begin emergency response.", owner_team: "OCC", owner_contact: "occ@mvta.com", effective_at: "2026-01-01T00:00:00Z", next_review_at: "2027-01-01T00:00:00Z", tags: ["Safety"], criteria: [{ id: "c1", kind: "applies", text: "Any collision with injury." }], immediate_actions: [{ id: "a1", kind: "required", instruction: "Notify command staff" }], document_references: [{ reference_id: "ref1", document_type: "SOP", is_primary: true, document_code: "SOP-1", expected_file_name: "collision.pdf", expected_mime_type: "application/pdf", web_url: "https://sharepoint.example/collision.pdf", health_status: "Valid" as const, checked_at: "2026-08-01T00:00:00Z", health_reason: null, source_available: true, inline_preview_available: false }, { reference_id: "qrg1", document_type: "Visual rendition", is_primary: false, document_code: "QRG-1", expected_file_name: "collision.png", expected_mime_type: "image/png", web_url: "https://sharepoint.example/collision.png", health_status: "Valid" as const, checked_at: "2026-08-01T00:00:00Z", health_reason: null, source_available: false, inline_preview_available: true }] };
 
-beforeEach(() => {
-  vi.clearAllMocks();
-  vi.mocked(api.getDecisionMatrix).mockResolvedValue({ procedures: [procedure], diagnostics: { table_ready: true, source: "governed" } });
-});
+beforeEach(() => { vi.clearAllMocks(); vi.mocked(api.getDecisionMatrix).mockResolvedValue({ procedures: [procedure] }); vi.mocked(api.getDecisionMatrixRecommendations).mockResolvedValue({ source_type: "SuggestedAlert", source_qualifier: "collision", recommendations: [] }); vi.mocked(api.getDecisionMatrixRendition).mockResolvedValue(new Blob(["image"], { type: "image/png" })); vi.stubGlobal("URL", { createObjectURL: vi.fn(() => "blob:preview"), revokeObjectURL: vi.fn() }); });
 afterEach(() => cleanup());
-
-function renderMatrix() { return render(<MemoryRouter><DecisionMatrix /></MemoryRouter>); }
+function renderMatrix(entry = "/console/occ") { return render(<MemoryRouter initialEntries={[entry]}><DecisionMatrix /></MemoryRouter>); }
 
 describe("Decision Matrix", () => {
-  it("renders governed content and the full SOP action", async () => {
-    renderMatrix();
-    expect(await screen.findByRole("heading", { name: "Vehicle Collision" })).toBeInTheDocument();
-    expect(screen.getAllByText("Approved").length).toBeGreaterThan(0);
-    expect(screen.getByRole("link", { name: /Open SOP/i })).toHaveAttribute("href", "https://example.com/sop");
-  });
-
-  it("lets staff filter and clear a governed result", async () => {
-    renderMatrix();
-    await screen.findByRole("heading", { name: "Vehicle Collision" });
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Stale" }));
-    expect(screen.getByText(/No Procedures match/i)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Clear all filters" }));
-    expect(screen.getByRole("heading", { name: "Vehicle Collision" })).toBeInTheDocument();
-  });
-
-  it("shows unavailable source failures as a visible error state", async () => {
-    vi.mocked(api.getDecisionMatrix).mockRejectedValueOnce(new Error("offline"));
-    renderMatrix();
-    expect(await screen.findByRole("alert")).toHaveTextContent(/temporarily unavailable/i);
-  });
-
-  it("does not expose the retired SharePoint structured-content import", async () => {
-    renderMatrix();
-    await screen.findByRole("heading", { name: "Vehicle Collision" });
-    expect(screen.queryByRole("button", { name: /sync sharepoint source/i })).not.toBeInTheDocument();
-  });
+  it("shows approved text guidance before its secondary SharePoint source", async () => { renderMatrix(); expect(await screen.findByRole("heading", { name: "Vehicle Collision" })).toBeInTheDocument(); expect(screen.getByText(/Any collision with injury/)).toBeInTheDocument(); expect(screen.getByText("Notify command staff")).toBeInTheDocument(); expect(screen.getByRole("link", { name: /Open primary SOP/i })).toHaveAttribute("href", "https://sharepoint.example/collision.pdf"); });
+  it("keeps grid and QRG views available", async () => { renderMatrix(); await screen.findByRole("heading", { name: "Vehicle Collision" }); const user = userEvent.setup(); await user.click(screen.getByRole("button", { name: "Grid" })); expect(screen.getByRole("button", { name: "Read" })).toBeInTheDocument(); await user.click(screen.getByRole("button", { name: "QRG" })); expect(screen.getByText(/QRGs are rendered inline/i)).toBeInTheDocument(); });
+  it("loads an approved QRG rendition inline and does not expose a Graph URL", async () => { renderMatrix(); await screen.findByRole("heading", { name: "Vehicle Collision" }); const user = userEvent.setup(); await user.click(screen.getByRole("button", { name: "View inline" })); expect(await screen.findByRole("img", { name: /collision.png/i })).toHaveAttribute("src", "blob:preview"); expect(vi.mocked(api.getDecisionMatrixRendition)).toHaveBeenCalledWith("occ-collision", 1, "qrg1"); });
 });

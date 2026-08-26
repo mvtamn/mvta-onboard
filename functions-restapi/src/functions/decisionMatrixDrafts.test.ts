@@ -181,6 +181,7 @@ test("an Admin can read a Draft with ordered content and independently reported 
       revision: 1,
       lifecycle_state: "Draft",
       concurrency_token: "0x0000000000000002",
+      tags: [],
       criteria: [
         { id: "00000000-0000-0000-0000-000000000002", kind: "applies", text: "First criterion" },
         { id: "00000000-0000-0000-0000-000000000001", kind: "excludes", text: "Second criterion" },

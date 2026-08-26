@@ -74,9 +74,10 @@ test("Decision Matrix Draft API persists ordered content, rejects stale saves, a
 
   await contractPool.connect();
   try {
-    const tables = await contractPool.request().query<{ procedures: number; audit: number }>("SELECT CASE WHEN OBJECT_ID('dbo.Procedures', 'U') IS NULL THEN 0 ELSE 1 END procedures,CASE WHEN OBJECT_ID('dbo.ProcedureAuditEvents', 'U') IS NULL THEN 0 ELSE 1 END audit");
+    const tables = await contractPool.request().query<{ procedures: number; audit: number; tags: number }>("SELECT CASE WHEN OBJECT_ID('dbo.Procedures', 'U') IS NULL THEN 0 ELSE 1 END procedures,CASE WHEN OBJECT_ID('dbo.ProcedureAuditEvents', 'U') IS NULL THEN 0 ELSE 1 END audit,CASE WHEN COL_LENGTH('dbo.ProcedureRevisions','tags_json') IS NULL THEN 0 ELSE 1 END tags");
     if (!tables.recordset[0]?.procedures) await applyMigration(contractPool, "migration-076-procedure-drafts-and-document-references.sql");
     if (!tables.recordset[0]?.audit) await applyMigration(contractPool, "migration-078-procedure-governance-audit.sql");
+    if (!tables.recordset[0]?.tags) await applyMigration(contractPool, "migration-080-decision-matrix-search-and-match-rules.sql");
 
     const created = await createDecisionMatrixProcedureDraft(
       requestFor("POST", "https://example.test/api/admin/decision-matrix/procedures", draft),

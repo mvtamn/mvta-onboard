@@ -34,6 +34,7 @@ type DraftInput = {
   owner_contact?: string | null;
   effective_at?: string;
   next_review_at?: string;
+  tags?: string[];
   criteria?: CriterionInput[];
   immediate_actions?: ActionInput[];
   document_references?: DocumentReferenceInput[];
@@ -85,6 +86,7 @@ function parseDraft(value: unknown, requireIdentity: boolean): { input: Required
   if (body.owner_contact !== undefined && body.owner_contact !== null && body.owner_contact !== "" && !text(body.owner_contact, 320, "owner_contact", true)) return { input: { criteria, immediate_actions: immediateActions, document_references: documentReferences }, error: "owner_contact must be 320 characters or fewer." };
   if (body.effective_at !== undefined && !date(body.effective_at)) return { input: { criteria, immediate_actions: immediateActions, document_references: documentReferences }, error: "effective_at must be an ISO date." };
   if (body.next_review_at !== undefined && !date(body.next_review_at)) return { input: { criteria, immediate_actions: immediateActions, document_references: documentReferences }, error: "next_review_at must be an ISO date." };
+  if (body.tags !== undefined && (!Array.isArray(body.tags) || body.tags.some((tag) => !text(tag, 80, "tag", true)))) return { input: { criteria, immediate_actions: immediateActions, document_references: documentReferences }, error: "tags must be an array of non-empty values of 80 characters or fewer." };
 
   const seenCriteria = new Set<string>();
   for (const criterion of criteria) {
@@ -208,7 +210,8 @@ export async function createDecisionMatrixProcedureDraft(request: HttpRequest, c
     insertRevision.input("owner_contact", sql.NVarChar, optionalText(input.owner_contact, 320, "owner_contact") ?? null);
     insertRevision.input("effective_at", sql.DateTime2, input.effective_at ? date(input.effective_at) : null);
     insertRevision.input("next_review_at", sql.DateTime2, input.next_review_at ? date(input.next_review_at) : null);
-    const created = await insertRevision.query<{ concurrency_token: string }>("INSERT INTO ProcedureRevisions(procedure_id,revision,severity,severity_meaning,owner_team,owner_contact,effective_at,next_review_at,created_by,updated_by) OUTPUT CONVERT(varchar(34),INSERTED.row_version,1) AS concurrency_token VALUES(@procedure_id,1,@severity,@severity_meaning,@owner_team,@owner_contact,@effective_at,@next_review_at,@actor,@actor)");
+    insertRevision.input("tags_json", sql.NVarChar, JSON.stringify(input.tags ?? []));
+    const created = await insertRevision.query<{ concurrency_token: string }>("INSERT INTO ProcedureRevisions(procedure_id,revision,severity,severity_meaning,owner_team,owner_contact,effective_at,next_review_at,tags_json,created_by,updated_by) OUTPUT CONVERT(varchar(34),INSERTED.row_version,1) AS concurrency_token VALUES(@procedure_id,1,@severity,@severity_meaning,@owner_team,@owner_contact,@effective_at,@next_review_at,@tags_json,@actor,@actor)");
     await replaceDraftContent(transaction, procedureId, 1, input);
     await recordDraftAudit(transaction, procedureId, 1, actor, "draft_created");
     await transaction.commit();
@@ -217,6 +220,7 @@ export async function createDecisionMatrixProcedureDraft(request: HttpRequest, c
       revision: 1,
       lifecycle_state: "Draft",
       concurrency_token: created.recordset[0]?.concurrency_token,
+      tags: input.tags ?? [],
       criteria: input.criteria,
       immediate_actions: input.immediate_actions,
       document_references: input.document_references.map((reference) => ({ ...reference, health_status: "Needs review", checked_at: null })),
@@ -256,7 +260,7 @@ export async function cloneDecisionMatrixProcedureDraft(request: HttpRequest, co
     copy.input("source_revision", sql.Int, sourceRevision);
     copy.input("revision", sql.Int, revision);
     copy.input("actor", sql.NVarChar, actor);
-    const copied = await copy.query<{ concurrency_token: string }>("INSERT INTO ProcedureRevisions(procedure_id,revision,lifecycle_state,severity,severity_meaning,owner_team,owner_contact,effective_at,next_review_at,created_by,updated_by) OUTPUT CONVERT(varchar(34),INSERTED.row_version,1) AS concurrency_token SELECT procedure_id,@revision,'Draft',severity,severity_meaning,owner_team,owner_contact,effective_at,next_review_at,@actor,@actor FROM ProcedureRevisions WHERE procedure_id=@procedure_id AND revision=@source_revision");
+    const copied = await copy.query<{ concurrency_token: string }>("INSERT INTO ProcedureRevisions(procedure_id,revision,lifecycle_state,severity,severity_meaning,owner_team,owner_contact,effective_at,next_review_at,tags_json,created_by,updated_by) OUTPUT CONVERT(varchar(34),INSERTED.row_version,1) AS concurrency_token SELECT procedure_id,@revision,'Draft',severity,severity_meaning,owner_team,owner_contact,effective_at,next_review_at,tags_json,@actor,@actor FROM ProcedureRevisions WHERE procedure_id=@procedure_id AND revision=@source_revision");
     if (!copied.recordset[0]) {
       await transaction.rollback();
       return { status: 404, jsonBody: { error: "Source Procedure Revision not found." } };
@@ -315,7 +319,8 @@ export async function saveDecisionMatrixProcedureDraft(request: HttpRequest, con
     update.input("owner_contact", sql.NVarChar, optionalText(input.owner_contact, 320, "owner_contact") ?? null);
     update.input("effective_at", sql.DateTime2, input.effective_at ? date(input.effective_at) : null);
     update.input("next_review_at", sql.DateTime2, input.next_review_at ? date(input.next_review_at) : null);
-    const changed = await update.query<{ concurrency_token: string }>("UPDATE ProcedureRevisions SET severity=@severity,severity_meaning=@severity_meaning,owner_team=@owner_team,owner_contact=@owner_contact,effective_at=@effective_at,next_review_at=@next_review_at,updated_by=@actor,updated_at=SYSUTCDATETIME() OUTPUT CONVERT(varchar(34),INSERTED.row_version,1) AS concurrency_token WHERE procedure_id=@procedure_id AND revision=@revision AND lifecycle_state='Draft' AND row_version=CONVERT(binary(8),@concurrency_token,1)");
+    update.input("tags_json", sql.NVarChar, JSON.stringify(input.tags ?? []));
+    const changed = await update.query<{ concurrency_token: string }>("UPDATE ProcedureRevisions SET severity=@severity,severity_meaning=@severity_meaning,owner_team=@owner_team,owner_contact=@owner_contact,effective_at=@effective_at,next_review_at=@next_review_at,tags_json=@tags_json,updated_by=@actor,updated_at=SYSUTCDATETIME() OUTPUT CONVERT(varchar(34),INSERTED.row_version,1) AS concurrency_token WHERE procedure_id=@procedure_id AND revision=@revision AND lifecycle_state='Draft' AND row_version=CONVERT(binary(8),@concurrency_token,1)");
     if (!changed.recordset[0]) {
       await transaction.rollback();
       return { status: 409, jsonBody: { error: "This Draft changed or is no longer editable. Refresh to compare the latest revision before saving again." } };
@@ -342,7 +347,7 @@ export async function getDecisionMatrixProcedureDraft(request: HttpRequest, cont
     const revisionRequest = pool.request();
     revisionRequest.input("procedure_id", sql.NVarChar, procedureId);
     revisionRequest.input("revision", sql.Int, revision);
-    const record = await revisionRequest.query<Record<string, unknown>>("SELECT p.procedure_id,p.condition_key,p.condition,r.revision,r.lifecycle_state,r.severity,r.severity_meaning,r.owner_team,r.owner_contact,r.effective_at,r.next_review_at,CONVERT(varchar(34),r.row_version,1) AS concurrency_token FROM Procedures p JOIN ProcedureRevisions r ON r.procedure_id=p.procedure_id WHERE p.procedure_id=@procedure_id AND r.revision=@revision");
+    const record = await revisionRequest.query<Record<string, unknown>>("SELECT p.procedure_id,p.condition_key,p.condition,r.revision,r.lifecycle_state,r.severity,r.severity_meaning,r.owner_team,r.owner_contact,r.effective_at,r.next_review_at,r.tags_json,CONVERT(varchar(34),r.row_version,1) AS concurrency_token FROM Procedures p JOIN ProcedureRevisions r ON r.procedure_id=p.procedure_id WHERE p.procedure_id=@procedure_id AND r.revision=@revision");
     if (!record.recordset[0]) return { status: 404, jsonBody: { error: "Procedure Draft not found." } };
     const contentRequest = () => {
       const content = pool.request();
@@ -357,6 +362,7 @@ export async function getDecisionMatrixProcedureDraft(request: HttpRequest, cont
     ]);
     return { status: 200, jsonBody: {
       ...record.recordset[0],
+      tags: (() => { try { const value = JSON.parse(String(record.recordset[0]?.tags_json ?? "[]")); return Array.isArray(value) ? value : []; } catch { return []; } })(),
       criteria: criteria.recordset.map((row) => ({ id: row.criterion_id, kind: row.criterion_kind, text: row.criterion_text })),
       immediate_actions: actions.recordset.map((row) => ({ id: row.action_id, kind: row.action_kind, instruction: row.instruction })),
       document_references: references.recordset.map((row) => ({ id: row.reference_id, document_type: row.document_type, is_primary: row.is_primary, document_code: row.document_code, site_id: row.site_id, drive_id: row.drive_id, item_id: row.item_id, expected_version: row.expected_version, expected_file_name: row.expected_file_name, expected_mime_type: row.expected_mime_type, web_url: row.web_url, health_status: row.health_status, checked_at: row.checked_at })),

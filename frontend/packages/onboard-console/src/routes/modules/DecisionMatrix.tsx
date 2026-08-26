@@ -1,152 +1,81 @@
-import { useEffect, useMemo, useState } from "react";
-import type { DecisionMatrixCandidate, DecisionMatrixProcedure, ProcedureTrustState } from "@mvta/shared";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import type { DecisionMatrixMatchRule, DecisionMatrixReaderProcedure, DecisionMatrixRecommendation } from "@mvta/shared";
 import { ApiError } from "@mvta/shared";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../../config.js";
 import { useAuth } from "../../auth/AuthContext.js";
 import "./decisionMatrix.css";
 
-type View = "scan" | "browse" | "qrg";
-const TRUST_STATES: ProcedureTrustState[] = ["Approved", "Preview", "Needs review", "Stale", "Partial", "Unavailable", "Retired"];
-const TRUST_CLASS: Record<ProcedureTrustState, string> = {
-  Approved: "pill-success", Preview: "pill-warning", "Needs review": "pill-warning",
-  Stale: "pill-danger", Partial: "pill-warning", Unavailable: "pill-muted", Retired: "pill-muted",
-};
+type View = "scan" | "action-first" | "grid" | "qrg";
+const VIEWS: Array<{ value: View; label: string }> = [{ value: "scan", label: "Reader" }, { value: "action-first", label: "Action first" }, { value: "grid", label: "Grid" }, { value: "qrg", label: "QRG" }];
 
-function trustLabel(state: ProcedureTrustState) { return state; }
+function formatDate(value: string) { return new Date(value).toLocaleDateString(); }
 
 export function DecisionMatrix() {
   const { roles } = useAuth();
-  const isAdmin = roles.includes("OCC.Admin");
-  const [searchParams] = useSearchParams();
-  const [procedures, setProcedures] = useState<DecisionMatrixProcedure[] | null>(null);
-  const [diagnostics, setDiagnostics] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const query = searchParams.get("q") ?? "";
+  const selectedId = searchParams.get("procedure_id");
+  const requestedView = searchParams.get("view");
+  const view: View = requestedView === "action-first" || requestedView === "grid" || requestedView === "qrg" ? requestedView : "scan";
+  const [procedures, setProcedures] = useState<DecisionMatrixReaderProcedure[] | null>(null);
+  const [recommendations, setRecommendations] = useState<DecisionMatrixRecommendation[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState(searchParams.get("q") ?? "");
-  const [view, setView] = useState<View>("scan");
-  const [trustStates, setTrustStates] = useState<Set<ProcedureTrustState>>(new Set());
-  const [tags, setTags] = useState<Set<string>>(new Set());
-  const [documentTypes, setDocumentTypes] = useState<Set<"SOP" | "REF">>(new Set());
-  const [matches, setMatches] = useState<DecisionMatrixCandidate[]>([]);
+  const sourceType = searchParams.get("source_type");
+  const sourceQualifier = searchParams.get("source_qualifier");
 
   useEffect(() => {
-    api.getDecisionMatrix({ q: query || undefined, includeHistory: isAdmin })
-      .then((result) => {
-        setProcedures(result.procedures);
-        setDiagnostics(result.diagnostics.table_ready ? null : "Procedure content is not connected yet; no authoritative records are available.");
-        setError(null);
-      })
-      .catch((reason) => {
-        setProcedures([]);
-        setError(reason instanceof ApiError ? reason.message : "Decision Matrix content is temporarily unavailable.");
-      });
-  }, [query, isAdmin]);
-
-  const sourceContext = searchParams.get("source");
-  const sourceId = searchParams.get("source_id");
-  const selectedProcedureId = searchParams.get("procedure_id");
-  const selectedRevision = searchParams.get("revision");
+    api.getDecisionMatrix({ q: query || undefined }).then((result) => { setProcedures(result.procedures); setError(null); }).catch((reason) => { setProcedures([]); setError(reason instanceof ApiError ? reason.message : "Decision Matrix content is temporarily unavailable."); });
+  }, [query]);
 
   useEffect(() => {
-    if (!sourceContext || !query) {
-      setMatches([]);
-      return;
-    }
-    api.getDecisionMatrixMatches({ q: query, source: sourceContext, sourceId: sourceId ?? undefined })
-      .then((result) => setMatches(result.candidates))
-      .catch(() => setMatches([]));
-  }, [query, sourceContext, sourceId]);
+    if ((sourceType !== "SuggestedAlert" && sourceType !== "ServiceRisk") || !sourceQualifier) { setRecommendations([]); return; }
+    api.getDecisionMatrixRecommendations({ sourceType, sourceQualifier }).then((result) => setRecommendations(result.recommendations)).catch(() => setRecommendations([]));
+  }, [sourceType, sourceQualifier]);
 
-  const allTags = useMemo(() => [...new Set((procedures ?? []).flatMap((p) => p.tags))].sort(), [procedures]);
-  const filtered = useMemo(() => (procedures ?? []).filter((p) => {
-    if (trustStates.size && !trustStates.has(p.trust_state)) return false;
-    if (documentTypes.size && !documentTypes.has(p.document_type)) return false;
-    if (tags.size && ![...tags].every((tag) => p.tags.includes(tag))) return false;
-    return true;
-  }), [procedures, trustStates, documentTypes, tags]);
-
-  function toggle<T>(set: Set<T>, value: T, setter: (next: Set<T>) => void) {
-    const next = new Set(set);
-    if (next.has(value)) next.delete(value); else next.add(value);
-    setter(next);
+  const selected = useMemo(() => procedures?.find((procedure) => procedure.procedure_id === selectedId) ?? null, [procedures, selectedId]);
+  function update(params: Record<string, string | null>) {
+    const next = new URLSearchParams(searchParams);
+    for (const [name, value] of Object.entries(params)) value ? next.set(name, value) : next.delete(name);
+    setSearchParams(next, { replace: true });
   }
 
-  function clearFilters() {
-    setTrustStates(new Set());
-    setTags(new Set());
-    setDocumentTypes(new Set());
-  }
-
-  const activeFilterCount = trustStates.size + tags.size + documentTypes.size;
-  return (
-    <div className="dmx">
-      <header className="dmx-hero">
-        <span className="dmx-eyebrow">Governed operational guidance</span>
-        <h1>Control Center Decision Matrix</h1>
-        <p>Search the structured summary, confirm its trust state, then open the full approved SOP or REF.</p>
-        {sourceContext ? <p className="dmx-context" role="status">Opened from operational context: <strong>{sourceContext}</strong>{sourceId ? ` · record ${sourceId}` : ""}{selectedProcedureId ? ` · Procedure ${selectedProcedureId}${selectedRevision ? ` rev ${selectedRevision}` : ""}` : ""}</p> : null}
-      </header>
-
-      <div className="dmx-controls">
-        <div className="searchrow">
-          <label className="sr-only" htmlFor="decision-matrix-search">Search Procedures</label>
-          <input id="decision-matrix-search" className="search" type="search" placeholder="Search conditions, criteria, actions, tags, or document code…" value={query} onChange={(event) => setQuery(event.target.value)} />
-          {query ? <button className="btn-sm" type="button" onClick={() => setQuery("")}>Clear search</button> : null}
-          <div className="viewtoggle" role="tablist" aria-label="Decision Matrix view">
-            {(["scan", "browse", "qrg"] as const).map((option) => (
-              <button key={option} type="button" role="tab" aria-selected={view === option} className={view === option ? "active" : ""} onClick={() => setView(option)}>
-                {option === "scan" ? "Scan" : option === "browse" ? "Browse" : "QRG"}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="dmx-filter-group" aria-label="Trust state filters">
-          <span className="dmx-filter-label">Trust state</span>
-          {TRUST_STATES.map((state) => <button type="button" className="dmx-filter" aria-pressed={trustStates.has(state)} data-active={trustStates.has(state)} key={state} onClick={() => toggle(trustStates, state, setTrustStates)}>{state}</button>)}
-        </div>
-        <div className="dmx-filter-group" aria-label="Document type filters">
-          <span className="dmx-filter-label">Document</span>
-          {(["SOP", "REF"] as const).map((type) => <button type="button" className="dmx-filter" aria-pressed={documentTypes.has(type)} data-active={documentTypes.has(type)} key={type} onClick={() => toggle(documentTypes, type, setDocumentTypes)}>{type}</button>)}
-        </div>
-        {allTags.length ? <div className="dmx-filter-group" aria-label="Tag filters"><span className="dmx-filter-label">Tags (all selected must match)</span>{allTags.map((tag) => <button type="button" className="dmx-filter" aria-pressed={tags.has(tag)} data-active={tags.has(tag)} key={tag} onClick={() => toggle(tags, tag, setTags)}>{tag}</button>)}</div> : null}
-        {activeFilterCount ? <div className="dmx-active-filters" role="status">{activeFilterCount} active filter{activeFilterCount === 1 ? "" : "s"}<button type="button" className="btn-sm" onClick={clearFilters}>Clear all filters</button></div> : null}
-        <div className="dmx-meta">{filtered.length} of {(procedures ?? []).length} Procedures</div>
-        {isAdmin ? <div className="dmx-admin-actions"><span className="dmx-meta">Admin governance controls are available on each revision.</span></div> : null}
-      </div>
-
-      {diagnostics ? <div className="dmx-state dmx-state-warning" role="status">{diagnostics}</div> : null}
-      {error ? <div className="dmx-state dmx-state-error" role="alert">{error}</div> : null}
-      {sourceContext && matches.length ? <div className="dmx-matches" aria-label="Suggested Procedure matches"><strong>Suggested Procedures for this context</strong>{matches.map((match) => <span key={`${match.procedure_id}-${match.revision}`}>{match.condition} · {match.match_reason}</span>)}</div> : null}
-      {procedures === null ? <div className="dmx-empty" role="status">Loading governed Procedures…</div> : filtered.length === 0 ? <div className="dmx-empty">No Procedures match this search or filter set.</div> : view === "qrg" ? <QrgView procedures={filtered} /> : view === "browse" ? <div className="matrix-grid">{filtered.map((procedure) => <MatrixCard key={`${procedure.procedure_id}-${procedure.revision}`} procedure={procedure} isAdmin={isAdmin} />)}</div> : <div className="matrix-list">{filtered.map((procedure) => <MatrixRow key={`${procedure.procedure_id}-${procedure.revision}`} procedure={procedure} isAdmin={isAdmin} />)}</div>}
-    </div>
-  );
+  return <div className="dmx">
+    <header className="dmx-hero"><span className="dmx-eyebrow">Governed operational guidance</span><h1>Control Center Decision Matrix</h1><p>Read approved criteria and immediate actions first. Supporting documents remain in SharePoint.</p></header>
+    <div className="dmx-controls"><div className="searchrow"><label className="sr-only" htmlFor="decision-matrix-search">Search approved Procedures</label><input id="decision-matrix-search" className="search" type="search" placeholder="Search condition, criteria, actions, tags, or document identifier…" value={query} onChange={(event) => update({ q: event.target.value || null })} />{query ? <button className="btn-sm" type="button" onClick={() => update({ q: null })}>Clear search</button> : null}<div className="viewtoggle" aria-label="Decision Matrix view">{VIEWS.map((option) => <button key={option.value} type="button" aria-pressed={view === option.value} className={view === option.value ? "active" : ""} onClick={() => update({ view: option.value })}>{option.label}</button>)}</div></div><div className="dmx-meta">{procedures?.length ?? 0} approved Procedure{procedures?.length === 1 ? "" : "s"}</div></div>
+    {error ? <div className="dmx-state dmx-state-error" role="alert">{error}</div> : null}
+    {recommendations.length ? <section className="dmx-matches" aria-label="Suggested Procedures"><strong>Suggested Procedures — controller selection required</strong><span>Source: {sourceType} · {sourceQualifier}</span>{recommendations.map((recommendation) => <div className="dmx-recommendation" key={recommendation.match_rule_id}><button type="button" className="btn-sm" onClick={() => update({ procedure_id: recommendation.procedure_id })}>Choose {recommendation.condition}</button><span>Priority {recommendation.priority} · {recommendation.explanation}</span></div>)}</section> : null}
+    {procedures === null ? <div className="dmx-empty" role="status">Loading approved Procedures…</div> : procedures.length === 0 ? <div className="dmx-empty">No approved Procedures match this search.</div> : view === "grid" ? <div className="matrix-grid">{procedures.map((procedure) => <ProcedureCard key={`${procedure.procedure_id}-${procedure.revision}`} procedure={procedure} onSelect={() => update({ procedure_id: procedure.procedure_id })} />)}</div> : view === "qrg" ? <QrgView procedures={procedures} onSelect={(id) => update({ procedure_id: id })} /> : <div className="matrix-list">{procedures.map((procedure) => <ProcedureReader key={`${procedure.procedure_id}-${procedure.revision}`} procedure={procedure} actionFirst={view === "action-first"} expanded={selected?.procedure_id === procedure.procedure_id || !selectedId} onSelect={() => update({ procedure_id: procedure.procedure_id })} />)}</div>}
+    {roles.includes("OCC.Admin") ? <MatchRuleAdmin procedures={procedures ?? []} /> : null}
+  </div>;
 }
 
-function TrustPill({ state }: { state: ProcedureTrustState }) { return <span className={`pill-sm ${TRUST_CLASS[state]}`}>{trustLabel(state)}</span>; }
-
-function GovernanceActions({ procedure, isAdmin }: { procedure: DecisionMatrixProcedure; isAdmin: boolean }) {
-  if (!isAdmin || procedure.approval_state === "Retired") return null;
-  return <div className="dmx-governance"><button type="button" className="btn-sm" disabled={procedure.approval_state === "Approved"} onClick={() => api.governDecisionMatrix(procedure.procedure_id, procedure.revision, "approve").then(() => window.location.reload())}>Approve</button><button type="button" className="btn-sm danger" onClick={() => api.governDecisionMatrix(procedure.procedure_id, procedure.revision, "retire", "Retired by OCC Admin").then(() => window.location.reload())}>Retire</button></div>;
+function ProcedureReader({ procedure, actionFirst, expanded, onSelect }: { procedure: DecisionMatrixReaderProcedure; actionFirst: boolean; expanded: boolean; onSelect: () => void }) {
+  const content = <><section className="field"><div className="flabel">Criteria</div><ul className="fvalue">{procedure.criteria.map((criterion) => <li key={criterion.id}>{criterion.kind === "excludes" ? "Does not apply: " : "Applies: "}{criterion.text}</li>)}</ul></section><section className="field"><div className="flabel">Immediate actions</div><ol className="action-list">{procedure.immediate_actions.map((action) => <li key={action.id}>{action.instruction}</li>)}</ol></section></>;
+  return <article className="row"><div className="rowbody"><div className="card-top"><h2>{procedure.condition}</h2><button type="button" className="btn-sm" onClick={onSelect} aria-pressed={expanded}>{expanded ? "Selected" : "Read Procedure"}</button></div>{actionFirst ? <><section className="field"><div className="flabel">Immediate actions</div><ol className="action-list">{procedure.immediate_actions.map((action) => <li key={action.id}>{action.instruction}</li>)}</ol></section><section className="field"><div className="flabel">Criteria</div><ul className="fvalue">{procedure.criteria.map((criterion) => <li key={criterion.id}>{criterion.kind === "excludes" ? "Does not apply: " : "Applies: "}{criterion.text}</li>)}</ul></section></> : content}{expanded ? <ProcedureDetails procedure={procedure} /> : null}</div></article>;
 }
 
-function ProcedureActions({ procedure, isAdmin }: { procedure: DecisionMatrixProcedure; isAdmin: boolean }) {
-  return <><GovernanceActions procedure={procedure} isAdmin={isAdmin} />{procedure.source_url && procedure.trust_state !== "Unavailable" ? <a className="btn-sm" href={procedure.source_url} target="_blank" rel="noopener noreferrer">Open {procedure.document_type} ↗</a> : <span className="dmx-unavailable">Full {procedure.document_type} unavailable</span>}</>;
+function ProcedureDetails({ procedure }: { procedure: DecisionMatrixReaderProcedure }) {
+  const warnings = procedure.document_references.filter((reference) => reference.health_status !== "Valid");
+  const primary = procedure.document_references.find((reference) => reference.source_available);
+  return <div className="dmx-details"><section className="field"><div className="flabel">Revision</div><div className="fvalue">Approved revision {procedure.revision}</div></section><section className="field"><div className="flabel">Severity</div><div className="fvalue"><strong>{procedure.severity}</strong><br />{procedure.severity_meaning}</div></section><section className="field"><div className="flabel">Owner & review</div><div className="fvalue">{procedure.owner_team}{procedure.owner_contact ? ` · ${procedure.owner_contact}` : ""}<br />Effective {formatDate(procedure.effective_at)} · review by {formatDate(procedure.next_review_at)}</div></section>{warnings.length ? <div className="dmx-state dmx-state-warning" role="status"><strong>Document check needed:</strong> {warnings.map((reference) => `${reference.expected_file_name} is ${reference.health_status.toLowerCase()}${reference.health_reason ? ` — ${reference.health_reason}` : ""}`).join("; ")}. Guidance above remains available.</div> : null}<section className="dmx-documents" aria-label="Supporting documents"><h3>Supporting documents</h3>{procedure.document_references.map((reference) => <DocumentReference key={reference.reference_id} procedure={procedure} reference={reference} />)}{primary ? <a className="btn-sm" href={primary.web_url} target="_blank" rel="noopener noreferrer">Open primary {primary.document_type} in SharePoint ↗</a> : <span className="dmx-unavailable">Primary SOP or Reference is unavailable until its health check is valid.</span>}</section></div>;
 }
 
-function MatrixRow({ procedure, isAdmin }: { procedure: DecisionMatrixProcedure; isAdmin: boolean }) {
-  return <article className={`row ${procedure.trust_state.toLowerCase().replace(/\s/g, "-")}`}>
-    <div className="rowbody"><h3>{procedure.condition}</h3><div className="field"><div className="flabel">Criteria</div><div className="fvalue">{procedure.criteria}</div></div><div className="field"><div className="flabel">Immediate actions</div><ol className="action-list">{procedure.immediate_actions.map((action) => <li key={action}>{action}</li>)}</ol></div><div className="tags">{procedure.tags.map((tag) => <span key={tag}>{tag}</span>)}</div></div>
-    <div className="rowaction"><TrustPill state={procedure.trust_state} /><div className="doccode">{procedure.document_type} · {procedure.document_code} · Rev {procedure.revision}</div><ProcedureActions procedure={procedure} isAdmin={isAdmin} /><div className="reviewed">{procedure.owner ? `Owner: ${procedure.owner}` : "Owner unavailable"}<br />Review {procedure.next_review_at ? new Date(procedure.next_review_at).toLocaleDateString() : "date unavailable"}</div></div>
-  </article>;
+function DocumentReference({ procedure, reference }: { procedure: DecisionMatrixReaderProcedure; reference: DecisionMatrixReaderProcedure["document_references"][number] }) {
+  const [preview, setPreview] = useState<string | null>(null); const [error, setError] = useState<string | null>(null);
+  useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
+  async function showPreview() { try { const file = await api.getDecisionMatrixRendition(procedure.procedure_id, procedure.revision, reference.reference_id); setPreview(URL.createObjectURL(file)); setError(null); } catch { setError("The visual rendition cannot be displayed with your current SharePoint access."); } }
+  return <div className="dmx-document"><span><strong>{reference.document_type}</strong> · {reference.document_code} · {reference.expected_file_name} · {reference.health_status}{reference.checked_at ? ` · checked ${formatDate(reference.checked_at)}` : " · not yet checked"}{reference.health_reason ? ` — ${reference.health_reason}` : ""}</span>{reference.inline_preview_available ? <button type="button" className="btn-sm" onClick={showPreview}>View inline</button> : null}<a href={reference.web_url} target="_blank" rel="noopener noreferrer" className="btn-sm">Open in SharePoint ↗</a>{preview ? <img className="dmx-rendition" src={preview} alt={`${reference.document_type}: ${reference.expected_file_name}`} /> : null}{error ? <span className="dmx-unavailable">{error}</span> : null}</div>;
 }
 
-function MatrixCard({ procedure, isAdmin }: { procedure: DecisionMatrixProcedure; isAdmin: boolean }) {
-  return <article className="card"><div className="card-top"><h3>{procedure.condition}</h3><TrustPill state={procedure.trust_state} /></div><div className="cfield"><span className="clabel">Criteria</span>{procedure.criteria}</div><div className="cfield"><span className="clabel">First action</span>{procedure.immediate_actions[0] ?? "No immediate action published"}</div><div className="ctags">{procedure.tags.map((tag) => <span key={tag}>{tag}</span>)}</div><div className="card-foot"><span className="doccode">{procedure.document_type} · Rev {procedure.revision}</span><ProcedureActions procedure={procedure} isAdmin={isAdmin} /></div></article>;
-}
+function ProcedureCard({ procedure, onSelect }: { procedure: DecisionMatrixReaderProcedure; onSelect: () => void }) { return <article className="card"><div className="card-top"><h2>{procedure.condition}</h2><button className="btn-sm" type="button" onClick={onSelect}>Read</button></div><div className="cfield"><span className="clabel">First action</span>{procedure.immediate_actions[0]?.instruction ?? "No action published"}</div><div className="cfield"><span className="clabel">Criteria</span>{procedure.criteria[0]?.text ?? "No criteria published"}</div><div className="ctags">{procedure.tags.map((tag) => <span key={tag}>{tag}</span>)}</div></article>; }
+function QrgView({ procedures, onSelect }: { procedures: DecisionMatrixReaderProcedure[]; onSelect: (id: string) => void }) { return <div className="dmx-qrg"><div className="dmx-state dmx-state-info">QRGs are rendered inline when they are Valid PNG or JPEG visual renditions. SOPs, References, Forms, and applications open in SharePoint.</div><table className="data"><thead><tr><th>Condition</th><th>Immediate action</th><th>Quick reference</th></tr></thead><tbody>{procedures.map((procedure) => <tr key={`${procedure.procedure_id}-${procedure.revision}`}><td><button type="button" className="btn-sm" onClick={() => onSelect(procedure.procedure_id)}>{procedure.condition}</button></td><td>{procedure.immediate_actions[0]?.instruction}</td><td>{procedure.document_references.filter((reference) => reference.document_type === "QRG" || reference.document_type === "Visual rendition").map((reference) => <DocumentReference key={reference.reference_id} procedure={procedure} reference={reference} />)}</td></tr>)}</tbody></table></div>; }
 
-function QrgView({ procedures }: { procedures: DecisionMatrixProcedure[] }) {
-  const groups = new Map<string, DecisionMatrixProcedure[]>();
-  for (const procedure of procedures) { const group = procedure.affected_workflow || "General operations"; groups.set(group, [...(groups.get(group) ?? []), procedure]); }
-  return <div className="dmx-qrg"><div className="dmx-state dmx-state-info">QRG view uses the same governed Procedure records as Scan and Browse.</div>{[...groups.entries()].map(([group, rows]) => <section className="qrg-section" key={group}><h2 className="qrg-section-header">{group}</h2><table className="data"><thead><tr><th>Condition</th><th>Criteria</th><th>Immediate remedy</th><th>Reference</th></tr></thead><tbody>{rows.map((procedure) => <tr key={`${procedure.procedure_id}-${procedure.revision}`}><td><strong>{procedure.condition}</strong><br /><TrustPill state={procedure.trust_state} /></td><td>{procedure.criteria}</td><td>{procedure.immediate_actions[0] ?? "No immediate action published"}</td><td><ProcedureActions procedure={procedure} isAdmin={false} /></td></tr>)}</tbody></table></section>)}</div>;
+function MatchRuleAdmin({ procedures }: { procedures: DecisionMatrixReaderProcedure[] }) {
+  const [rules, setRules] = useState<DecisionMatrixMatchRule[]>([]); const [loaded, setLoaded] = useState(false); const [message, setMessage] = useState<string | null>(null);
+  const [sourceType, setSourceType] = useState<"SuggestedAlert" | "ServiceRisk">("SuggestedAlert"); const [qualifier, setQualifier] = useState(""); const [procedureId, setProcedureId] = useState(""); const [priority, setPriority] = useState("1"); const [explanation, setExplanation] = useState("");
+  async function load() { try { const result = await api.getDecisionMatrixMatchRules(); setRules(result.match_rules); setLoaded(true); setMessage(null); } catch { setMessage("Match Rules could not be loaded."); } }
+  async function create(event: FormEvent) { event.preventDefault(); try { const created = await api.createDecisionMatrixMatchRule({ source_type: sourceType, source_qualifier: qualifier, procedure_id: procedureId, priority: Number(priority), explanation, is_active: true }); setRules((current) => [...current, created]); setQualifier(""); setExplanation(""); setMessage("Match Rule added."); } catch (error) { setMessage(error instanceof ApiError ? error.message : "Match Rule could not be saved."); } }
+  async function toggle(rule: DecisionMatrixMatchRule) { try { const updated = await api.updateDecisionMatrixMatchRule(rule.match_rule_id, { is_active: !rule.is_active }); setRules((current) => current.map((item) => item.match_rule_id === updated.match_rule_id ? updated : item)); } catch { setMessage("Match Rule could not be updated."); } }
+  return <section className="dmx-admin" aria-label="Decision Matrix administration"><div className="card-top"><h2>Admin · Match Rules</h2><button className="btn-sm" type="button" onClick={load}>{loaded ? "Refresh" : "Manage rules"}</button></div>{message ? <p role="status">{message}</p> : null}{loaded ? <><form className="dmx-rule-form" onSubmit={create}><label>Source<select value={sourceType} onChange={(event) => setSourceType(event.target.value as "SuggestedAlert" | "ServiceRisk")}><option>SuggestedAlert</option><option>ServiceRisk</option></select></label><label>Qualifier<input required value={qualifier} onChange={(event) => setQualifier(event.target.value)} /></label><label>Procedure<select required value={procedureId} onChange={(event) => setProcedureId(event.target.value)}><option value="">Choose approved Procedure</option>{procedures.map((procedure) => <option key={procedure.procedure_id} value={procedure.procedure_id}>{procedure.condition}</option>)}</select></label><label>Priority<input required min="1" type="number" value={priority} onChange={(event) => setPriority(event.target.value)} /></label><label>Explanation<input required value={explanation} onChange={(event) => setExplanation(event.target.value)} /></label><button className="btn-sm" type="submit">Add rule</button></form><div className="dmx-rule-list">{rules.map((rule) => <div key={rule.match_rule_id}><strong>{rule.source_type} · {rule.source_qualifier}</strong> → {rule.procedure_id} · priority {rule.priority} · {rule.explanation}<button className="btn-sm" type="button" onClick={() => toggle(rule)}>{rule.is_active ? "Deactivate" : "Activate"}</button></div>)}</div></> : null}</section>;
 }
