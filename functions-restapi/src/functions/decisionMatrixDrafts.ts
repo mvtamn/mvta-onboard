@@ -41,6 +41,12 @@ type DraftInput = {
   concurrency_token?: string;
 };
 
+export function concurrencyToken(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (Buffer.isBuffer(value)) return `0x${value.toString("hex").toUpperCase()}`;
+  return undefined;
+}
+
 function text(value: unknown, maximum: number, field: string, required = false): string | null {
   if (value === undefined || value === null || value === "") return required ? null : "";
   if (typeof value !== "string" || !value.trim() || value.trim().length > maximum) return null;
@@ -219,7 +225,7 @@ export async function createDecisionMatrixProcedureDraft(request: HttpRequest, c
       procedure_id: procedureId,
       revision: 1,
       lifecycle_state: "Draft",
-      concurrency_token: created.recordset[0]?.concurrency_token,
+      concurrency_token: concurrencyToken(created.recordset[0]?.concurrency_token),
       tags: input.tags ?? [],
       criteria: input.criteria,
       immediate_actions: input.immediate_actions,
@@ -282,7 +288,7 @@ export async function cloneDecisionMatrixProcedureDraft(request: HttpRequest, co
     await copyReferences.query("INSERT INTO ProcedureDocumentReferences(reference_id,procedure_id,revision,sort_order,document_type,is_primary,document_code,site_id,drive_id,item_id,expected_version,expected_file_name,expected_mime_type,web_url) SELECT NEWID(),procedure_id,@revision,sort_order,document_type,is_primary,document_code,site_id,drive_id,item_id,expected_version,expected_file_name,expected_mime_type,web_url FROM ProcedureDocumentReferences WHERE procedure_id=@procedure_id AND revision=@source_revision");
     await recordDraftAudit(transaction, procedureId, revision, actor, "revision_cloned", { source_revision: sourceRevision });
     await transaction.commit();
-    return { status: 201, jsonBody: { procedure_id: procedureId, revision, lifecycle_state: "Draft", concurrency_token: copied.recordset[0].concurrency_token, cloned_from_revision: sourceRevision } };
+    return { status: 201, jsonBody: { procedure_id: procedureId, revision, lifecycle_state: "Draft", concurrency_token: concurrencyToken(copied.recordset[0].concurrency_token), cloned_from_revision: sourceRevision } };
   } catch (error) {
     await transaction.rollback().catch(() => undefined);
     context.error("Decision Matrix Draft clone failed", error);
@@ -328,7 +334,7 @@ export async function saveDecisionMatrixProcedureDraft(request: HttpRequest, con
     await replaceDraftContent(transaction, procedureId, revision, input);
     await recordDraftAudit(transaction, procedureId, revision, actor, "draft_saved");
     await transaction.commit();
-    return { status: 200, jsonBody: { procedure_id: procedureId, revision, lifecycle_state: "Draft", concurrency_token: changed.recordset[0].concurrency_token } };
+    return { status: 200, jsonBody: { procedure_id: procedureId, revision, lifecycle_state: "Draft", concurrency_token: concurrencyToken(changed.recordset[0].concurrency_token) } };
   } catch (error) {
     await transaction.rollback().catch(() => undefined);
     context.error("Decision Matrix Draft save failed", error);

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { HttpRequest, type InvocationContext } from "@azure/functions";
 import * as db from "../lib/db";
-import { cloneDecisionMatrixProcedureDraft, createDecisionMatrixProcedureDraft, getDecisionMatrixProcedureDraft, saveDecisionMatrixProcedureDraft } from "./decisionMatrixDrafts";
+import { cloneDecisionMatrixProcedureDraft, concurrencyToken, createDecisionMatrixProcedureDraft, getDecisionMatrixProcedureDraft, saveDecisionMatrixProcedureDraft } from "./decisionMatrixDrafts";
 
 function requestFor(roles: string[], body: unknown): HttpRequest {
   const principal = Buffer.from(JSON.stringify({
@@ -46,6 +46,10 @@ const completeDraft = {
 };
 
 const context = { error: () => undefined } as unknown as InvocationContext;
+
+test("normalizes a SQL row-version buffer to the concurrency token returned by the API", () => {
+  assert.equal(concurrencyToken(Buffer.from("0000000000000fa1", "hex")), "0x0000000000000FA1");
+});
 
 test("only an Admin can create a Decision Matrix Procedure Draft", async () => {
   const response = await createDecisionMatrixProcedureDraft(requestFor(["OCC.Publisher"], completeDraft), context);
