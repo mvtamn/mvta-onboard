@@ -28,16 +28,22 @@ function message(error: unknown) {
 }
 
 function trustDetail(stream: KpiTrust[string]): string {
-  const required = stream.dependencies.filter((dependency) => dependency.required);
-  const times = required
+  const times = stream.dependencies
     .map((dependency) => {
       const delivery = dependency.last_success_at
         ? `received ${new Date(dependency.last_success_at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
         : "not received";
-      const coverage = dependency.source_timestamp_at
-        ? ` · source ${new Date(dependency.source_timestamp_at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
+      const coverageEnd = dependency.coverage_end_at ?? dependency.source_timestamp_at;
+      const coverage = coverageEnd
+        ? ` · coverage through ${new Date(coverageEnd).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
+        : " · coverage time not supplied";
+      const contract = dependency.stale_after_minutes === null
+        ? " · periodic deadline pending"
+        : ` · ${dependency.stale_after_minutes}-minute contract`;
+      const failure = dependency.last_failure_at
+        ? ` · last failure ${new Date(dependency.last_failure_at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
         : "";
-      return `${dependency.feed_name.replaceAll("_", " ")}: ${delivery}${coverage}`;
+      return `${dependency.required ? "required" : "supporting"} ${dependency.feed_name.replaceAll("_", " ")}: ${delivery}${coverage}${contract}${failure}`;
     });
   return `${stream.explanation} ${times.join("; ")}`;
 }

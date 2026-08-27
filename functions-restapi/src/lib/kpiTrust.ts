@@ -17,6 +17,10 @@ export interface KpiFeedHealth {
   last_success_at: Date | null;
   last_entity_count: number | null;
   source_timestamp_at: Date | null;
+  coverage_start_at?: Date | null;
+  coverage_end_at?: Date | null;
+  last_failure_at?: Date | null;
+  last_failure_reason?: string | null;
 }
 
 export interface KpiTrustDependency {
@@ -25,6 +29,11 @@ export interface KpiTrustDependency {
   state: "current" | "stale" | "unavailable";
   last_success_at: string | null;
   source_timestamp_at: string | null;
+  coverage_start_at: string | null;
+  coverage_end_at: string | null;
+  stale_after_minutes: number | null;
+  last_failure_at: string | null;
+  last_failure_reason: string | null;
 }
 
 export interface KpiTrustStream {
@@ -57,9 +66,15 @@ function dependency(
   now: Date,
 ): KpiTrustDependency {
   const lastSuccess = health?.last_success_at ?? null;
-  const state = !lastSuccess
+  // A successful delivery of old data is not current coverage. When a source
+  // timestamp is supplied, it is the limiting freshness signal.
+  const sourceTime = health?.source_timestamp_at ?? health?.coverage_end_at ?? null;
+  const freshestUsableAt = sourceTime && lastSuccess
+    ? new Date(Math.min(sourceTime.getTime(), lastSuccess.getTime()))
+    : lastSuccess;
+  const state = !lastSuccess || (staleAfterMinutes && !sourceTime)
     ? "unavailable"
-    : staleAfterMinutes && now.getTime() - lastSuccess.getTime() > staleAfterMinutes * 60_000
+    : staleAfterMinutes && freshestUsableAt && now.getTime() - freshestUsableAt.getTime() > staleAfterMinutes * 60_000
       ? "stale"
       : "current";
   return {
@@ -68,6 +83,11 @@ function dependency(
     state,
     last_success_at: lastSuccess?.toISOString() ?? null,
     source_timestamp_at: health?.source_timestamp_at?.toISOString() ?? null,
+    coverage_start_at: health?.coverage_start_at?.toISOString() ?? null,
+    coverage_end_at: health?.coverage_end_at?.toISOString() ?? null,
+    stale_after_minutes: staleAfterMinutes ?? null,
+    last_failure_at: health?.last_failure_at?.toISOString() ?? null,
+    last_failure_reason: health?.last_failure_reason ?? null,
   };
 }
 

@@ -217,7 +217,6 @@ export function OnDemandServiceQuality() {
       setWorkflow((current) => ({ ...current, [risk.id]: "Alert prepared" }));
       return;
     }
-    if (diagnostics?.state !== "current") return;
     if (risk.suggestedAlertId) {
       navigate(`/suggested?focus=${encodeURIComponent(risk.suggestedAlertId)}`);
       return;
@@ -226,8 +225,9 @@ export function OnDemandServiceQuality() {
     try {
       const { streams } = await api.getKpiTrust();
       if (streams.on_demand?.state !== "current") {
-        setPrepareError("Suggested Alerts are unavailable while On-Demand KPI trust is not current.");
-        return;
+        const reason = window.prompt("Why is it safe to prepare this customer update from stale KPI data?");
+        if (!reason?.trim()) return;
+        draft.stale_data_acknowledgement_reason = reason.trim();
       }
       const result = await api.prepareSuggestedAlert(draft);
       navigate(`/suggested?focus=${encodeURIComponent(result.alert_id)}`);

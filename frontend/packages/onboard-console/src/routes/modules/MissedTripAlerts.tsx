@@ -261,8 +261,7 @@ export function MissedTripAlerts() {
         </div>
       </div>
 
-      <KpiTrustSummary stream="fixed_route_missed_trips" />
-      <KpiTrustSummary stream="spare_missed_trips" />
+      <KpiTrustSummary stream={["fixed_route_missed_trips", "spare_missed_trips"]} />
 
       {view === "investigation" || view === "history" ? (
         <MissedTripsInvestigationPage

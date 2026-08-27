@@ -17,19 +17,24 @@ function evidence(trust: KpiTrustStream): string | null {
     : null;
 }
 
-export function KpiTrustSummary({ stream }: { stream: string }) {
-  const [trust, setTrust] = useState<KpiTrustStream | null>(null);
+export function KpiTrustSummary({ stream }: { stream: string | string[] }) {
+  const names = Array.isArray(stream) ? stream : [stream];
+  const [trust, setTrust] = useState<KpiTrustStream[]>([]);
 
   useEffect(() => {
     if (typeof api.getKpiTrust !== "function") return;
-    api.getKpiTrust().then(({ streams }) => setTrust(streams[stream] ?? null)).catch(() => setTrust(null));
-  }, [stream]);
+    api.getKpiTrust().then(({ streams }) => setTrust(names.map((name) => streams[name]).filter((value): value is KpiTrustStream => Boolean(value)))).catch(() => setTrust([]));
+  }, [names.join(",")]);
 
-  if (!trust) return null;
+  if (!trust.length) return null;
   return (
-    <div className={`concept-banner kpi-trust ${trust.state}`} role="status">
-      <span className="concept-badge">{label(trust.state)}</span>
-      <span>{trust.explanation}{trust.contract_pending ? " Reporting deadline pending." : ""} {evidence(trust)}</span>
-    </div>
+    <>
+      {trust.map((item, index) => (
+        <div className={`concept-banner kpi-trust ${item.state}`} role="status" key={names[index] ?? index}>
+          <span className="concept-badge">{label(item.state)}</span>
+          <span>{item.explanation}{item.contract_pending ? " Reporting deadline pending." : ""} {evidence(item)}</span>
+        </div>
+      ))}
+    </>
   );
 }

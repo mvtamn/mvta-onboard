@@ -208,7 +208,7 @@ app.timer("gtfsStopsSync", {
 
       await tx.commit();
       try {
-        await recordFeedHealth(pool, "gtfs_static", stops.length + trips.length + routes.length, null);
+        await recordFeedHealth(pool, "gtfs_static", stops.length + trips.length + routes.length, null, { startAt: new Date(), endAt: new Date() });
       } catch (healthError) {
         context.error("Failed to update static GTFS feed health:", healthError);
       }

@@ -113,6 +113,12 @@ export function validatePrepareSuggestedAlert(body: UnknownBody): string[] {
   ) {
     errors.push("detail is required and must be an object");
   }
+  if (body.stale_data_acknowledgement_reason !== undefined &&
+    (typeof body.stale_data_acknowledgement_reason !== "string" ||
+      !body.stale_data_acknowledgement_reason.trim() ||
+      body.stale_data_acknowledgement_reason.length > 1000)) {
+    errors.push("stale_data_acknowledgement_reason must be a non-empty string of at most 1000 characters if provided");
+  }
 
   return errors;
 }

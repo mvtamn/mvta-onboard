@@ -26,7 +26,7 @@ import {
   subtractMonths,
   upsertOtpMonthlyReport,
 } from "../lib/otpMonthlyFeed";
-import { recordFeedHealth } from "../lib/missedTripFeedHealth";
+import { recordFeedFailure, recordFeedHealth } from "../lib/missedTripFeedHealth";
 
 const TRAILING_MONTHS = 3; // current + prior 2
 
@@ -44,7 +44,7 @@ app.timer("otpMonthlyFeedPoll", {
     const pool = await getPool();
 
     let successfulReports = 0;
-    let completedFetch = false;
+    let completedFetches = 0;
     for (let i = 0; i < TRAILING_MONTHS; i++) {
       const targetDate = subtractMonths(now, i);
       const serviceMonth = serviceMonthOf(targetDate);
@@ -54,10 +54,11 @@ app.timer("otpMonthlyFeedPoll", {
         reports = await fetchOtpMonthlyReports(baseUrl, apiKey, targetDate);
       } catch (err) {
         context.error(`Failed to fetch Avail OTP Monthly reports for ${serviceMonth}:`, err);
+        try { await recordFeedFailure(pool, "avail_otp_monthly", err); } catch (healthError) { context.error("Failed to record Avail OTP Monthly feed failure:", healthError); }
         continue;
       }
 
-      completedFetch = true;
+      completedFetches++;
 
       let upsertedCount = 0;
       for (const report of reports) {
@@ -81,12 +82,17 @@ app.timer("otpMonthlyFeedPoll", {
       context.log(`Avail OTP Monthly poll: ${reports.length} reports seen, ${upsertedCount} rows upserted for ${serviceMonth}.`);
       successfulReports += reports.length;
     }
-    if (completedFetch) {
+    if (completedFetches === TRAILING_MONTHS) {
       try {
-        await recordFeedHealth(pool, "avail_otp_monthly", successfulReports, null);
+        await recordFeedHealth(pool, "avail_otp_monthly", successfulReports, null, {
+          startAt: subtractMonths(now, TRAILING_MONTHS - 1),
+          endAt: now,
+        });
       } catch (healthError) {
         context.error("Failed to update Avail OTP Monthly feed health:", healthError);
       }
+    } else {
+      context.warn(`Avail OTP Monthly feed health was not advanced: ${completedFetches}/${TRAILING_MONTHS} coverage months completed.`);
     }
   },
 });

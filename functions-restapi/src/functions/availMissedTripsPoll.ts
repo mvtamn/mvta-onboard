@@ -69,7 +69,7 @@ app.timer("availMissedTripsPoll", {
       return;
     }
     try {
-      await recordFeedHealth(pool, "avail_missed_trips", reports.length, null);
+      await recordFeedHealth(pool, "avail_missed_trips", reports.length, null, { startAt: windowStart, endAt: now });
     } catch (err) {
       context.error("Failed to record Avail Missed Trips feed health:", err);
     }

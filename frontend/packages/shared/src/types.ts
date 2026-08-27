@@ -165,6 +165,7 @@ export interface PrepareSuggestedAlertInput {
   routes_affected?: string[];
   zones_affected?: string[];
   detail: Record<string, unknown>;
+  stale_data_acknowledgement_reason?: string;
 }
 
 export interface PrepareSuggestedAlertResult {

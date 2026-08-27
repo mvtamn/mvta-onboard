@@ -202,6 +202,11 @@ export interface KpiTrustDependency {
   state: "current" | "stale" | "unavailable";
   last_success_at: string | null;
   source_timestamp_at: string | null;
+  coverage_start_at: string | null;
+  coverage_end_at: string | null;
+  stale_after_minutes: number | null;
+  last_failure_at: string | null;
+  last_failure_reason: string | null;
 }
 
 export interface KpiTrustStream {

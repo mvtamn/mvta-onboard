@@ -52,6 +52,9 @@ export interface PrepareSuggestedAlertBody {
   routes_affected?: string[];
   zones_affected?: string[];
   detail: Record<string, unknown>;
+  // Required only when a staff member knowingly prepares a communication
+  // from a stale source. The server records this immutable acknowledgement.
+  stale_data_acknowledgement_reason?: string;
 }
 
 export interface SubscribeBody {
