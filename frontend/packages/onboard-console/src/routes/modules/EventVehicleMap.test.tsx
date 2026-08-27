@@ -102,7 +102,7 @@ describe("EventVehicleMap", () => {
     );
   });
 
-  it("keeps map style, traffic, Monitoring Area, and location controls on the map", () => {
+  it("keeps map style, vehicle, traffic, Monitoring Area, and location controls on the map", () => {
     mocks.getMapsToken.mockResolvedValue({ client_id: "maps-client", access_token: "token" });
     const onMapStyleChange = vi.fn();
     const onTrafficChange = vi.fn();
@@ -120,6 +120,10 @@ describe("EventVehicleMap", () => {
 
     fireEvent.change(view.getByRole("combobox", { name: "Map style" }), { target: { value: "night" } });
     fireEvent.click(view.getByRole("checkbox", { name: "Traffic" }));
+    const nonEventBuses = view.getByRole("checkbox", { name: "Show non-event buses" });
+    expect(nonEventBuses).not.toBeChecked();
+    fireEvent.click(nonEventBuses);
+    expect(nonEventBuses).toBeChecked();
     fireEvent.click(view.getByRole("checkbox", { name: "Monitoring Areas (1)" }));
     fireEvent.click(view.getByRole("checkbox", { name: "Locations (1)" }));
 
