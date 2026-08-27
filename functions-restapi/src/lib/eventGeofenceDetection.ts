@@ -18,10 +18,10 @@ async function insertCrossing(input: { pool: Awaited<ReturnType<typeof getPool>>
   ruleRequest.input("fence", sql.UniqueIdentifier, fence.id);
   ruleRequest.input("transition", sql.NVarChar, transition);
   const rules = (await ruleRequest.query<DirectionRule>(`
-    SELECT rule.id,rule.geofence_id,rule.name,rule.transition,rule.heading_min,rule.heading_max,rule.destination_label,rule.destination_location_id,rule.message_type,rule.send_mode,rule.sort_order
+    SELECT direction_rule.id,direction_rule.geofence_id,direction_rule.name,direction_rule.transition,direction_rule.heading_min,direction_rule.heading_max,direction_rule.destination_label,direction_rule.destination_location_id,direction_rule.message_type,direction_rule.send_mode,direction_rule.sort_order
     FROM (SELECT TOP (1) rules_json FROM EventServicePlanScopeSnapshots snapshot WHERE snapshot.service_plan_id=@plan ORDER BY snapshot.captured_at DESC) scope
-    CROSS APPLY OPENJSON(scope.rules_json) WITH (id UNIQUEIDENTIFIER '$.id',geofence_id UNIQUEIDENTIFIER '$.geofence_id',name NVARCHAR(100) '$.name',transition NVARCHAR(10) '$.transition',heading_min FLOAT '$.heading_min',heading_max FLOAT '$.heading_max',destination_label NVARCHAR(200) '$.destination_label',destination_location_id UNIQUEIDENTIFIER '$.destination_location_id',message_type NVARCHAR(30) '$.message_type',send_mode NVARCHAR(10) '$.send_mode',sort_order INT '$.sort_order') rule
-    WHERE rule.geofence_id=@fence AND rule.transition=@transition
+    CROSS APPLY OPENJSON(scope.rules_json) WITH (id UNIQUEIDENTIFIER '$.id',geofence_id UNIQUEIDENTIFIER '$.geofence_id',name NVARCHAR(100) '$.name',transition NVARCHAR(10) '$.transition',heading_min FLOAT '$.heading_min',heading_max FLOAT '$.heading_max',destination_label NVARCHAR(200) '$.destination_label',destination_location_id UNIQUEIDENTIFIER '$.destination_location_id',message_type NVARCHAR(30) '$.message_type',send_mode NVARCHAR(10) '$.send_mode',sort_order INT '$.sort_order') direction_rule
+    WHERE direction_rule.geofence_id=@fence AND direction_rule.transition=@transition
   `)).recordset;
   const rule = selectMatchingDirectionRule(rules, transition, position.heading);
   const snapshot = rule ? snapshotMatchedDirectionRule(rule) : null;
