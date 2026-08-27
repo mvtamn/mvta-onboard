@@ -2,12 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ApiError,
   type OnDemandRiskRecord,
-  type OnDemandServiceStandardAudit,
   type OnDemandServiceStandardPolicy,
   type PrepareSuggestedAlertInput,
 } from "@mvta/shared";
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../../auth/AuthContext.js";
 import { api } from "../../config.js";
 import {
   ON_DEMAND_RISKS,
@@ -106,8 +104,6 @@ function onDemandDraft(risk: OnDemandRisk, serviceStandard: number): PrepareSugg
 
 export function OnDemandServiceQuality() {
   const navigate = useNavigate();
-  const { roles } = useAuth();
-  const canManageStandards = roles.includes("OCC.Admin");
   const [selectedId, setSelectedId] = useState(ON_DEMAND_RISKS[0].id);
   const [workflow, setWorkflow] = useState<Record<string, RiskWorkflow>>({});
   const [liveRisks, setLiveRisks] = useState<OnDemandRisk[] | null>(null);
@@ -117,14 +113,6 @@ export function OnDemandServiceQuality() {
   const [prepareError, setPrepareError] = useState<string | null>(null);
   const [allZonesStandard, setAllZonesStandard] = useState(25);
   const [policy, setPolicy] = useState<OnDemandServiceStandardPolicy | null>(null);
-  const [policyAudit, setPolicyAudit] = useState<OnDemandServiceStandardAudit[]>([]);
-  const [policyMessage, setPolicyMessage] = useState<string | null>(null);
-  const [savingPolicy, setSavingPolicy] = useState(false);
-  const [overrideZoneId, setOverrideZoneId] = useState("");
-  const [overrideMinutes, setOverrideMinutes] = useState(25);
-  const [overrideReason, setOverrideReason] = useState("");
-  const [overrideEffectiveAt, setOverrideEffectiveAt] = useState("");
-  const [overrideExpiresAt, setOverrideExpiresAt] = useState("");
   const risks = liveRisks ?? ON_DEMAND_RISKS;
   const standardFor = (risk: OnDemandRisk) => {
     if (risk.serviceStandardMinutes !== undefined) return risk.serviceStandardMinutes;
@@ -158,67 +146,13 @@ export function OnDemandServiceQuality() {
   }, []);
 
   useEffect(() => {
-    if (!canManageStandards) return;
-    api.getOnDemandServiceStandardAudit().then((result) => setPolicyAudit(result.audit)).catch(() => undefined);
-  }, [canManageStandards]);
-
-  useEffect(() => {
     api.getOnDemandServiceStandards()
       .then((result) => {
         setPolicy(result);
         setAllZonesStandard(result.default_minutes);
-        setOverrideZoneId(result.zones[0]?.zone_id ?? "");
       })
-      .catch(() => setPolicyMessage("The saved service standard is unavailable; showing the 25-minute default."));
+      .catch(() => undefined);
   }, []);
-
-  async function refreshPolicy() {
-    const [result, audit] = await Promise.all([
-      api.getOnDemandServiceStandards(),
-      canManageStandards ? api.getOnDemandServiceStandardAudit() : Promise.resolve({ audit: [] }),
-    ]);
-    setPolicy(result);
-    setPolicyAudit(audit.audit);
-    setAllZonesStandard(result.default_minutes);
-    setPolicyMessage(null);
-  }
-
-  async function saveDefault() {
-    setSavingPolicy(true);
-    try {
-      await api.updateOnDemandServiceStandard(allZonesStandard);
-      await refreshPolicy();
-    } catch {
-      setPolicyMessage("The all-zones standard could not be saved.");
-    } finally { setSavingPolicy(false); }
-  }
-
-  async function saveOverride() {
-    if (!overrideZoneId) return;
-    setSavingPolicy(true);
-    try {
-      await api.updateOnDemandZoneServiceStandard(overrideZoneId, {
-        minutes: overrideMinutes,
-        reason: overrideReason,
-        effective_at: new Date(overrideEffectiveAt).toISOString(),
-        expires_at: new Date(overrideExpiresAt).toISOString(),
-      });
-      await refreshPolicy();
-      setOverrideReason("");
-    } catch {
-      setPolicyMessage("The Zone override could not be saved. Include a reason and a valid effective period.");
-    } finally { setSavingPolicy(false); }
-  }
-
-  async function removeOverride(zoneId: string) {
-    setSavingPolicy(true);
-    try {
-      await api.removeOnDemandZoneServiceStandard(zoneId);
-      await refreshPolicy();
-    } catch {
-      setPolicyMessage("The Zone override could not be removed.");
-    } finally { setSavingPolicy(false); }
-  }
 
   async function prepareUpdate(risk: OnDemandRisk) {
     setPrepareError(null);
@@ -268,71 +202,6 @@ export function OnDemandServiceQuality() {
           <strong>{allZonesStandard} min</strong>
         </div>
       </div>
-
-      <section className="service-standard-controls" aria-label="Service standard controls">
-        <div className="service-standard-head">
-          <div>
-            <span className="risk-eyebrow">Current review threshold</span>
-            <h3>Service standard</h3>
-          </div>
-          <small>{policy ? "Saved policy" : "Default shown"}</small>
-        </div>
-        <label className="service-standard-default" htmlFor="all-zones-standard">
-          <span>All-zones default</span>
-          <strong>{allZonesStandard} min</strong>
-        </label>
-        <input
-          id="all-zones-standard"
-          aria-label="All-zones service standard"
-          type="range"
-          min={10}
-          max={60}
-          step={1}
-          value={allZonesStandard}
-          onChange={(event) => setAllZonesStandard(Number(event.target.value))}
-          disabled={!canManageStandards}
-        />
-        {canManageStandards && <button className="btn-sm" disabled={savingPolicy} onClick={() => void saveDefault()}>Save all-zones default</button>}
-        <div className="zone-standard-list">
-          {(policy?.zones ?? []).map((zone) => {
-            const active = zone.override_active;
-            return (
-              <div className="zone-standard-row" key={zone.zone_id}>
-                <label>
-                  <span>{zone.name}</span>
-                  <small>{active ? `${zone.minutes} min until ${new Date(zone.expires_at!).toLocaleString()}` : "Uses all-zones default"}</small>
-                </label>
-                <strong>{active ? `${zone.minutes} min` : `${allZonesStandard} min`}</strong>
-                {canManageStandards && zone.minutes !== null && <button className="btn-sm" disabled={savingPolicy} onClick={() => void removeOverride(zone.zone_id)}>Use default</button>}
-              </div>
-            );
-          })}
-        </div>
-        {canManageStandards && policy && (
-          <div className="zone-standard-editor">
-            <strong>Zone override</strong>
-            <select aria-label="Operational Zone" value={overrideZoneId} onChange={(event) => setOverrideZoneId(event.target.value)}>
-              {policy.zones.map((zone) => <option key={zone.zone_id} value={zone.zone_id}>{zone.name}</option>)}
-            </select>
-            <label>Minutes <input aria-label="Zone override minutes" type="number" min={10} max={60} value={overrideMinutes} onChange={(event) => setOverrideMinutes(Number(event.target.value))} /></label>
-            <label>Reason <input aria-label="Zone override reason" value={overrideReason} onChange={(event) => setOverrideReason(event.target.value)} /></label>
-            <label>Effective <input aria-label="Zone override effective time" type="datetime-local" value={overrideEffectiveAt} onChange={(event) => setOverrideEffectiveAt(event.target.value)} /></label>
-            <label>Expires <input aria-label="Zone override expiry time" type="datetime-local" value={overrideExpiresAt} onChange={(event) => setOverrideExpiresAt(event.target.value)} /></label>
-            <button className="btn-sm" disabled={savingPolicy} onClick={() => void saveOverride()}>Save Zone override</button>
-          </div>
-        )}
-        {policyMessage && <small className="service-standard-message">{policyMessage}</small>}
-        {canManageStandards && policyAudit.length > 0 && (
-          <div className="service-standard-audit">
-            <strong>Recent policy history</strong>
-            {policyAudit.slice(0, 5).map((entry) => (
-              <small key={`${entry.occurred_at}-${entry.action}`}>
-                {entry.action.replaceAll("_", " ")} · {new Date(entry.occurred_at).toLocaleString()} · {entry.occurred_by ?? "system"}
-              </small>
-            ))}
-          </div>
-        )}
-      </section>
 
       <div className="concept-banner">
         <span className="concept-badge">{liveRisks === null ? "Preview data" : "Live data"}</span>

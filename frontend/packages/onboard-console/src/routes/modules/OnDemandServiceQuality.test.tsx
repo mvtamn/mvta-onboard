@@ -26,7 +26,7 @@ afterEach(() => {
 });
 
 describe("On-Demand Risk investigation workspace", () => {
-  it("keeps the service standard and monitoring contract visible without live records", async () => {
+  it("keeps the applied standard and monitoring contract visible without live records", async () => {
     vi.mocked(api.getOnDemandRisks).mockRejectedValueOnce(new Error("offline"));
 
     render(
@@ -56,14 +56,14 @@ describe("On-Demand Risk investigation workspace", () => {
     expect(screen.getByRole("button", { name: "Monitor" })).toBeInTheDocument();
   });
 
-  it("shows the saved standard to a dispatcher without edit controls", async () => {
+  it("shows the saved standard to a dispatcher without administration controls", async () => {
     vi.mocked(api.getOnDemandRisks).mockRejectedValueOnce(new Error("preview mode"));
     authState.roles = ["OCC.Viewer"];
 
     render(<MemoryRouter><OnDemandServiceQuality /></MemoryRouter>);
 
-    expect(await screen.findByText("Saved policy")).toBeInTheDocument();
-    expect(screen.getByLabelText("All-zones service standard")).toBeDisabled();
+    expect(screen.getAllByText("25 min").length).toBeGreaterThan(0);
+    expect(screen.queryByLabelText("All-zones service standard")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save all-zones default" })).not.toBeInTheDocument();
   });
 });

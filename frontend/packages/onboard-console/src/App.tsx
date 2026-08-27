@@ -44,6 +44,7 @@ import { DetourReports } from "./routes/DetourReports.js";
 import { DetourIntake } from "./routes/DetourIntake.js";
 import { Changelog } from "./routes/Changelog.js";
 import { AdminLayout } from "./components/AdminLayout.js";
+import { OnDemandServiceStandardsAdmin } from "./routes/OnDemandServiceStandardsAdmin.js";
 import { AdminAccess, AdminEventAdministration, AdminGovernance, AdminIntegrations, AdminServiceConfiguration, AdminSubscribers } from "./routes/AdminModules.js";
 import { CHANGELOG_ENTRIES } from "./routes/changelogData.js";
 import { FixedRouteRefreshProvider } from "./context/FixedRouteRefreshContext.js";
@@ -411,6 +412,7 @@ function AuthenticatedApp({ account, roles, signOut }: {
                 <Route path="access" element={<RequireRole allowed={[...ACCESS_MANAGEMENT]}><AdminAccess /></RequireRole>} />
                 <Route path="events" element={<RequireRole allowed={[...ADMIN]}><AdminEventAdministration /></RequireRole>} />
                 <Route path="service" element={<RequireRole allowed={[...ADMIN]}><AdminServiceConfiguration /></RequireRole>} />
+                <Route path="service-standards" element={<RequireRole allowed={[...ADMIN]}><OnDemandServiceStandardsAdmin /></RequireRole>} />
               <Route path="integrations" element={<RequireRole allowed={[...ADMIN]}><AdminIntegrations /></RequireRole>} />
               <Route path="decision-matrix" element={<RequireRole allowed={[...ADMIN]}><DecisionMatrixAdmin /></RequireRole>} />
                 <Route path="governance" element={<RequireRole allowed={[...ACCESS_MANAGEMENT]}><AdminGovernance /></RequireRole>} />

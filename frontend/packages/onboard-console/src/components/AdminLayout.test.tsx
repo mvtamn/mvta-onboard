@@ -21,6 +21,7 @@ describe("Administration navigation", () => {
     expect(screen.getByRole("link", { name: "Access & Identity" })).toHaveAttribute("href", "/admin/access");
     expect(screen.getByRole("link", { name: "Event Administration" })).toHaveAttribute("href", "/admin/events");
     expect(screen.getByRole("link", { name: "Service Configuration" })).toHaveAttribute("href", "/admin/service");
+    expect(screen.getByRole("link", { name: "Service Standards" })).toHaveAttribute("href", "/admin/service-standards");
     expect(screen.getByRole("link", { name: "Integrations & Data Health" })).toHaveAttribute("href", "/admin/integrations");
     expect(screen.getByRole("link", { name: "Governance & Audit" })).toHaveAttribute("href", "/admin/governance");
   });
