@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as atlas from "azure-maps-control";
 import "azure-maps-control/dist/atlas.min.css";
 import { ApiError, type EventGeofence, type EventLocation, type EventVehiclePosition } from "@mvta/shared";
@@ -49,7 +49,9 @@ export function EventVehicleMap({ vehicles, geofences, locations, showGeofences,
   const [ready, setReady] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showNonEventBuses, setShowNonEventBuses] = useState(false);
   const { theme } = useTheme();
+  const mapVehicles = useMemo(() => showNonEventBuses ? vehicles : vehicles.filter((vehicle) => vehicle.route_category === "SpecialEvent"), [showNonEventBuses, vehicles]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -198,7 +200,7 @@ export function EventVehicleMap({ vehicles, geofences, locations, showGeofences,
     const popup = popupRef.current;
     if (!map || !ready) return;
     map.markers.clear();
-    vehicles.forEach((vehicle) => {
+    mapVehicles.forEach((vehicle) => {
       const heading = vehicle.heading ?? 0;
       const markerLabel = routeVehicleLabel(vehicle);
       const marker = new atlas.HtmlMarker({
@@ -223,12 +225,12 @@ export function EventVehicleMap({ vehicles, geofences, locations, showGeofences,
     // Fit once when the first valid classified set arrives. Subsequent
     // 30-second refreshes update markers without overriding the operator's
     // current pan/zoom or flashing out to world view.
-    if (vehicles.length > 0 && !fittedRef.current) {
-      const positions = vehicles.map((vehicle) => [vehicle.longitude, vehicle.latitude] as atlas.data.Position);
+    if (mapVehicles.length > 0 && !fittedRef.current) {
+      const positions = mapVehicles.map((vehicle) => [vehicle.longitude, vehicle.latitude] as atlas.data.Position);
       map.setCamera({ bounds: atlas.data.BoundingBox.fromPositions(positions), padding: 70, maxZoom: 14 });
       fittedRef.current = true;
     }
-  }, [onSelectVehicle, vehicles, ready]);
+  }, [onSelectVehicle, mapVehicles, ready]);
 
   useEffect(() => {
     if (!ready || selectedVehicleId === null || selectedVehicleId === undefined) return;
@@ -242,6 +244,7 @@ export function EventVehicleMap({ vehicles, geofences, locations, showGeofences,
     <div className="evmon-map-controls" aria-label="Map layers and display">
       <select aria-label="Map style" value={mapStyle} onChange={(event) => onMapStyleChange?.(event.target.value as MapStyle)} disabled={!onMapStyleChange}><option value="road">Road</option><option value="grayscale_light">Light</option><option value="night">Night</option><option value="satellite_road_labels">Satellite</option></select>
       <label><input type="checkbox" checked={traffic} onChange={(event) => onTrafficChange?.(event.target.checked)} disabled={!onTrafficChange} /> Traffic</label>
+      <label><input type="checkbox" checked={showNonEventBuses} onChange={(event) => setShowNonEventBuses(event.target.checked)} /> Show non-event buses</label>
       <label><input type="checkbox" checked={showGeofences} onChange={(event) => onShowGeofencesChange?.(event.target.checked)} disabled={!onShowGeofencesChange || geofences.length === 0} /> Monitoring Areas ({geofences.length})</label>
       <label><input type="checkbox" checked={showLocations} onChange={(event) => onShowLocationsChange?.(event.target.checked)} disabled={!onShowLocationsChange || locations.length === 0} /> Locations ({locations.length})</label>
     </div>
