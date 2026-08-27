@@ -132,7 +132,7 @@ export async function governDecisionMatrixProcedureRevision(request: HttpRequest
       if (action === "retire") {
         const replacement = Number(body.replacement_revision);
         const replacementProcedureId = typeof body.replacement_procedure_id === "string" && body.replacement_procedure_id.trim() ? body.replacement_procedure_id.trim() : procedureId;
-        const replacementOk = Number.isInteger(replacement) && !(replacementProcedureId === procedureId && replacement === revision) && (await transaction.request().input("procedure_id", sql.NVarChar, replacementProcedureId).input("replacement", sql.Int, replacement).query<{ exists: number }>("SELECT CASE WHEN EXISTS(SELECT 1 FROM ProcedureRevisions WHERE procedure_id=@procedure_id AND revision=@replacement AND lifecycle_state='Approved') THEN 1 ELSE 0 END exists")).recordset[0]?.exists === 1;
+        const replacementOk = Number.isInteger(replacement) && !(replacementProcedureId === procedureId && replacement === revision) && (await transaction.request().input("procedure_id", sql.NVarChar, replacementProcedureId).input("replacement", sql.Int, replacement).query<{ replacement_exists: number }>("SELECT CASE WHEN EXISTS(SELECT 1 FROM ProcedureRevisions WHERE procedure_id=@procedure_id AND revision=@replacement AND lifecycle_state='Approved') THEN 1 ELSE 0 END AS replacement_exists")).recordset[0]?.replacement_exists === 1;
         if (!replacementOk) { await transaction.rollback(); return { status: 409, jsonBody: { error: "Ordinary retirement requires a different approved replacement revision." } }; }
       }
       if (action === "approve") {
