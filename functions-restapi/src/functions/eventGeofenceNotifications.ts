@@ -1,15 +1,17 @@
 import { app, type HttpRequest } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { requireRole, EVENT_AVL_NOTIFICATION_ROLES, STAFF_READ_ROLES } from "../lib/auth";
-import { formatTeamsWebhookPayload, isTransientNotificationFailure, retryDelaySeconds } from "../lib/eventNotificationPolicy";
+import { formatTeamsWebhookPayload, isTransientNotificationFailure } from "../lib/eventNotificationPolicy";
+import { claimEventNotification, EVENT_NOTIFICATION_DELIVERY_LEASE_MINUTES, finishEventNotificationDelivery } from "../lib/eventNotificationDelivery";
 
 async function send(req: HttpRequest) {
   const auth = requireRole(req, EVENT_AVL_NOTIFICATION_ROLES);
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   const pool = await getPool(); const id = req.params.id;
-  const row = (await pool.request().input("id", sql.UniqueIdentifier, id).query<{ message_body: string; status: string; created_at: Date; attempt_count: number }>("SELECT message_body,status,created_at,attempt_count FROM EventGeofenceNotifications WHERE id=@id")).recordset[0];
+  const row = (await pool.request().input("id", sql.UniqueIdentifier, id).query<{ status: string; created_at: Date; delivery_claimed_at: Date | null }>("SELECT status,created_at,delivery_claimed_at FROM EventGeofenceNotifications WHERE id=@id")).recordset[0];
   if (!row) return { status: 404, jsonBody: { error: "Notification not found" } };
-  if (!["pending", "acknowledged"].includes(row.status)) return { status: 409, jsonBody: { error: "Notification is no longer actionable" } };
+  const staleDeliveryLease = row.status === "sending" && row.delivery_claimed_at !== null && Date.now() - new Date(row.delivery_claimed_at).getTime() >= EVENT_NOTIFICATION_DELIVERY_LEASE_MINUTES * 60 * 1000;
+  if (!["pending", "acknowledged"].includes(row.status) && !staleDeliveryLease) return { status: 409, jsonBody: { error: "Notification is already being delivered or is no longer actionable" } };
   if (Date.now() - new Date(row.created_at).getTime() >= 24 * 60 * 60 * 1000) {
     await pool.request().input("id", sql.UniqueIdentifier, id).query("UPDATE EventGeofenceNotifications SET status='expired',last_error='Manual review window expired' WHERE id=@id AND status IN ('pending','acknowledged')");
     return { status: 409, jsonBody: { error: "Notification has expired" } };
@@ -19,13 +21,14 @@ async function send(req: HttpRequest) {
     await pool.request().input("id", sql.UniqueIdentifier, id).query("UPDATE EventGeofenceNotifications SET last_error='Teams webhook is not configured',attempt_count=attempt_count+1,next_attempt_at=DATEADD(HOUR,1,SYSUTCDATETIME()) WHERE id=@id AND status IN ('pending','acknowledged')");
     return { status: 503, jsonBody: { error: "Teams webhook is not configured" } };
   }
+  const claim = await claimEventNotification(pool, id, "manual");
+  if (!claim) return { status: 409, jsonBody: { error: "Notification is already being delivered or is no longer actionable" } };
   let response: Response;
-  try { response = await fetch(webhook, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(formatTeamsWebhookPayload(row.message_body)) }); }
+  try { response = await fetch(webhook, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(formatTeamsWebhookPayload(claim.message_body)), signal: AbortSignal.timeout(30_000) }); }
   catch { response = new Response(null, { status: 599 }); }
   const status = isTransientNotificationFailure(response.status) ? "pending" : "failed";
-  const update = pool.request(); update.input("id", sql.UniqueIdentifier, id); update.input("status", sql.NVarChar, status); update.input("error", sql.NVarChar, `Teams webhook returned ${response.status}`); update.input("delay", sql.Int, retryDelaySeconds(row.attempt_count + 1)); update.input("by", sql.NVarChar, auth.principal.userDetails ?? "system");
-  if (response.ok) { await update.query("UPDATE EventGeofenceNotifications SET status='sent',sent_by=@by,sent_at=SYSUTCDATETIME(),attempt_count=attempt_count+1,last_error=NULL,next_attempt_at=NULL WHERE id=@id AND status IN ('pending','acknowledged')"); return { status: 200, jsonBody: { ok: true } }; }
-  await update.query("UPDATE EventGeofenceNotifications SET status=@status,attempt_count=attempt_count+1,last_error=@error,next_attempt_at=CASE WHEN @status='pending' THEN DATEADD(SECOND,@delay,SYSUTCDATETIME()) ELSE NULL END WHERE id=@id AND status IN ('pending','acknowledged')");
+  await finishEventNotificationDelivery(pool, claim, response.ok ? "sent" : status, response.ok ? null : `Teams webhook returned ${response.status}`, auth.principal.userDetails ?? "system");
+  if (response.ok) return { status: 200, jsonBody: { ok: true } };
   return { status: isTransientNotificationFailure(response.status) ? 503 : 502, jsonBody: { error: "Teams webhook rejected the notification" } };
 }
 
@@ -45,7 +48,7 @@ async function acknowledge(req: HttpRequest) {
 app.http("eventGeofenceNotifications", { route: "event-geofence-notifications", methods: ["GET"], authLevel: "anonymous", handler: async (req: HttpRequest) => {
   const auth = requireRole(req, STAFF_READ_ROLES); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   const pool = await getPool();
-  await pool.request().query("UPDATE EventGeofenceNotifications SET status='expired',last_error='Manual review window expired' WHERE status='pending' AND created_at <= DATEADD(HOUR,-24,SYSUTCDATETIME())");
+  await pool.request().query("UPDATE EventGeofenceNotifications SET status='expired',last_error='Manual review window expired',delivery_claim_token=NULL,delivery_claimed_at=NULL WHERE status IN ('pending','acknowledged','sending') AND created_at <= DATEADD(HOUR,-24,SYSUTCDATETIME())");
   const r = pool.request(); r.input("status", sql.NVarChar, req.query.get("status") ?? "pending");
   const eventId = req.query.get("event_id");
   const servicePlanId = req.query.get("service_plan_id");

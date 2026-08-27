@@ -16,7 +16,7 @@ Sources have different authority and currency:
 
 | Source | Use in this analysis | Status |
 | --- | --- | --- |
-| [`CONTEXT.md`](../CONTEXT.md#L723-L742) | Domain vocabulary. | Authoritative vocabulary, but its statement that the source document is maintained in SharePoint conflicts with the decision above and needs correction. |
+| [`CONTEXT.md`](../CONTEXT.md#L780-L920) | Domain vocabulary. | Authoritative vocabulary; it records the accepted app-owned Procedure boundary and related Decision Matrix terms. |
 | [`MVTA_ONBOARD_MANUAL.md`](../MVTA_ONBOARD_MANUAL.md#L642-L654) | Product direction for a versioned Procedure and future operational workflow. | Directionally current; its claim that the Matrix is static/limited is stale. |
 | [`plans/SUGGESTED_IMPROVEMENTS.md` §13](../plans/SUGGESTED_IMPROVEMENTS.md#L698-L791) | Historical requirements input. | Useful for procedure fields, exception workflow, and reporting; the manual supersedes it where they differ. |
 | [`docs/decision-matrix-feature-evaluation.md`](decision-matrix-feature-evaluation.md#L6-L38) | Earlier UI assessment. | Its reference-vs-operational layering remains useful, but its bundled mock-data, QRG, role, accessibility, and absent-governance claims predate the current implementation. |
@@ -111,53 +111,56 @@ proposal's requirement that justified deviations remain possible
 | P1 | **Trust metadata is not fully actionable in the UI.** The row shows trust, owner, and next review date, while effective date, document check time, source revision, and the reason for a trust state are not shown. [`DecisionMatrix.tsx`](../frontend/packages/onboard-console/src/routes/modules/DecisionMatrix.tsx#L126-L151) | Display enough provenance to decide whether to rely on a procedure: revision, effective date, owner, approver, next review, document-reference status/last check, and reason for partial/stale/unavailable. |
 | P1 | **Search is not aligned with the UI promise.** The placeholder says actions are searchable, but server search omits `immediate_actions_json`; it also does not search several other content fields. [`DecisionMatrix.tsx`](../frontend/packages/onboard-console/src/routes/modules/DecisionMatrix.tsx#L91-L94) [`decisionMatrix.ts`](../functions-restapi/src/functions/decisionMatrix.ts#L110-L124) | Define a search index/scope that includes condition, criteria, action text, tags, controlled metadata, and document identifiers, then test it. |
 | P1 | **Matching and deep linking do not pin a decision.** Links pass keyword queries; the matches endpoint can accept a condition key but the UI currently invokes it with `q`. No workflow persists a selected procedure/revision against the originating record. [`DecisionMatrix.tsx`](../frontend/packages/onboard-console/src/routes/modules/DecisionMatrix.tsx#L45-L58) | Use controlled condition keys/match rules, show match confidence/reason, let the controller select a revision, and retain that selection only once an operational instance exists. |
-| P1 | **Role policy is incomplete.** Read and admin governance roles exist, but the product has not assigned author, reviewer, approver, publisher, document-reference administrator, or audit-reader permissions. [`auth.ts`](../functions-restapi/src/lib/auth.ts#L69-L80) | Decide least-privilege role capabilities and enforce them in both UI and API. Separate authoring from approval unless an explicit emergency exception is governed. |
+| P1 | **Role policy is not implemented.** Read and admin governance roles exist, but the product has no endpoints or UI enforcing the accepted Admin-only author/reviewer/approver/reference-administrator/audit-reader capability. [`auth.ts`](../functions-restapi/src/lib/auth.ts#L69-L80) | Enforce Admin-only governance in this release, including append-only audit and required transition reasons; revisit separation of duties only if policy later requires it. |
 | P1 | **The operational layer is absent.** The product direction calls for acknowledgement, action completion, notes, owner, escalation, communications, resolution, and the exact shown revision; the existing Procedure data and UI do not record them. [`MVTA_ONBOARD_MANUAL.md`](../MVTA_ONBOARD_MANUAL.md#L646-L654) | Specify and implement Procedure Instances after reference content is trustworthy; preserve deviations rather than forcing false completion. |
 | P2 | **Current tests are narrow.** There is a component test, but no Decision Matrix API, lifecycle, document-validation, authorization, migration, or end-to-end contextual-link test in the identified test files. [`DecisionMatrix.test.tsx`](../frontend/packages/onboard-console/src/routes/modules/DecisionMatrix.test.tsx#L30-L54) | Build a test matrix alongside the phases below, including authorization and failure behavior. |
-| P2 | **Repository documentation is misleading.** The evaluation, manual/current-state, README, and CONTEXT wording contain stale or contradictory source/role/data claims cited above. | Update documentation only after the operating model is accepted, with the gap analysis as the transition reference. |
+| P2 | **Repository documentation is misleading.** The evaluation, manual/current-state, and README contain stale or contradictory source/role/data claims cited above. | Update those documents from the accepted operating model and ADR-0024. |
 
-## Decisions required before implementation
+## Decisions settled through design review
 
-1. **Procedure lifecycle and segregation of duties.** Which roles may draft,
-   edit a draft, submit, review, approve/publish, retire, restore, and invoke
-   an emergency separation override? Is a published revision automatically
-   effective at approval or scheduled for a future effective time?
-2. **Criteria contract.** Are criteria plain ordered statements with
-   inclusion/exclusion types, or do they need route/mode/threshold/operator
-   decision fields from the first release? The recommended minimum is ordered
-   typed statements with stable IDs; do not build automatic document parsing.
-3. **Immediate-action contract.** Which actions are mandatory, skippable with a
-   reason, informational, or only required for particular procedures? This
-   determines the Procedure Instance audit model.
-4. **Document-reference contract.** Can a revision link multiple SOP/REF files?
-   What stable SharePoint identity is available (site/library/item ID versus
-   URL), which document metadata is authoritative, how is expected document
-   revision represented, and what status blocks approval versus merely warns?
-5. **Document-check implementation and service identity.** Choose the approved
-   SharePoint/Graph access path, app permissions, secret/managed-identity
-   handling, check cadence, retries, and what can be shown to a staff member
-   when access fails. This integration validates references only.
-6. **Migration and cutover.** Which existing governed rows are authoritative,
-   who validates/rewrites them in the app, and when is the import endpoint and
-   timer disabled? The repository cannot establish whether migration 051 or any
-   source configuration is deployed.
-7. **Operational-instance scope.** Which exception sources create instances,
-   when one is created versus merely suggested, who owns it, allowed resolution
-   codes, retention, and whether customer-communication handoff is a link or
-   an integrated workflow.
+The following decisions are accepted for the reference-layer implementation.
+They replace the open questions above; the boundary decision is recorded in
+[ADR-0024](adr/0024-keep-decision-matrix-content-in-onboard.md).
+
+| Concern | Accepted decision |
+| --- | --- |
+| Ownership | OnBoard owns Matrix content, revision, matching, governance, and audit. SharePoint stores and validates supporting documents only. |
+| Roles | `OCC.Viewer`, `OCC.Publisher`, and `OCC.Admin` read current approved guidance. `OCC.Admin` alone authors, reviews, approves, retires/withdraws, checks references, and sees governance history in the first release. |
+| Revision workflow | `Draft → Under review → Approved → Superseded or Retired`. Approved is immediately effective; only one revision is effective. A correction clones to a new Draft; optimistic concurrency rejects a stale save. |
+| Governance | Admin self-approval is allowed in the first release. Saved Draft changes, lifecycle transitions, reference changes, and health checks produce append-only audit events; transition/reference changes require reasons. |
+| Content | Criteria are ordered `applies`/`excludes` statements. Immediate Actions are ordered `required`/`conditional`/`informational` instructions. Severity is `Stop service`, `Restrict service`, or `Routine / no escalation` and triggers no automation. |
+| Publication gate | Require procedure identity, severity and meaning, owner team, effective/next-review dates, at least one Criterion and Immediate Action, and one currently valid primary SOP/Reference. |
+| Documents | References use SharePoint `site_id`, `drive_id`, and `item_id` plus expected version/name/MIME type. One SOP/Reference is primary; optional ordered references are SOP, Reference, Form, Map, QRG, or Visual rendition. Changing references creates a new Procedure Revision. |
+| Document health | Valid, Needs review, and Unavailable are explicit document-reference states. A failed post-publication check leaves structured guidance readable with a prominent warning; it never silently changes or retires content. Checks run before review, at approval, daily, and on demand. |
+| Preview UX | The reader view is text-first. An approved PNG/JPEG rendition is visual support in the same detail panel; the full SharePoint document opens secondarily. PDF/Office embedding is out of scope until a tenant-backed spike validates it. |
+| Discovery | Search covers title/condition, Criteria, Immediate Actions, tags, document code, and file name; it preserves URL state and explains matches. Source-qualified Match Rules offer controller-selected recommendations and never auto-select a revision. |
+| Cutover | Disable SharePoint structured-content import/timer before app authoring goes live. Preserve existing rows as read-only migration candidates; Admins create and approve app-owned revisions one at a time. |
+| Deferred scope | Procedure Instances—acknowledgement, action outcome, assignment, escalation, communications, resolution, and reporting—follow only after the reference layer is trustworthy. |
+
+## Remaining implementation prerequisites
+
+1. Identify the approved SharePoint site/library and obtain the stable item
+   identities for migration candidates and their documents.
+2. Configure and validate the delegated/OBO Graph access path in the target
+   environment; the app must not provide app-only file credentials to the
+   browser.
+3. Run the read-experience prototype described in
+   [`decision-matrix-read-experience-prototype-handoff-2026-08-24.md`](handoffs/decision-matrix-read-experience-prototype-handoff-2026-08-24.md)
+   before decomposing the UI work into implementation tickets.
 
 ## Phased implementation plan
 
-### Phase 0 — confirm the contract and protect current content
+### Phase 0 — protect current content and prepare cutover
 
-1. Approve the decisions above, especially the app/SharePoint boundary and
-   role matrix.
-2. Inventory every existing Procedure/revision and its supporting document;
+1. Inventory every existing Procedure/revision and its supporting document;
    record which data must be retained or rewritten.
-3. Disable the automatic content-import timer and prevent the current sync
+2. Disable the automatic content-import timer and prevent the current sync
    endpoint from changing structured Matrix fields. Rename the UI capability
    only when its replacement exists.
-4. Update the domain wording and stale status claims after approval.
+3. Establish the approved SharePoint site/library, delegated/OBO access path,
+   and stable document locator rules; run the prototype handoff before UI
+   ticketing.
+4. Update stale status claims and link the accepted ADR.
 
 **Acceptance checkpoint:** no process treats a SharePoint JSON payload as the
 authority for Criteria or Immediate actions; the cutover inventory has an
@@ -168,14 +171,14 @@ owner and sign-off; rollback and migration paths are documented.
 1. Model Procedure, immutable Procedure Revision, Criteria, ordered Immediate
    Action, Document Reference, and append-only Procedure Audit Event. Preserve
    the current stable procedure/revision identifiers where feasible.
-2. Define API schemas and server validation for all mandatory fields, action
-   ordering/stable IDs, controlled values, transition rules, optimistic
-   concurrency, and document-reference revision alignment.
+2. Define API schemas and server validation for the accepted publication gate,
+   action ordering/stable IDs, controlled values, lifecycle transitions,
+   optimistic concurrency, and document-reference revision alignment.
 3. Implement authoring screens for draft, edit, clone-to-new-revision, submit,
    review, approve/effective, supersede, and retire. An approved revision must
    be rendered read-only.
-4. Implement the agreed role matrix on every endpoint; record reasons and
-   actor identity in the audit event stream.
+4. Implement the Admin-only governance matrix on every endpoint; record
+   actor identity and the required governance reasons in the audit event stream.
 
 **Acceptance checkpoint:** an authorized author can create a complete
 procedure in the app; an approver can publish a new revision without changing
@@ -184,19 +187,20 @@ explains every lifecycle transition.
 
 ### Phase 2 — SharePoint supporting-document references
 
-1. Implement the chosen locator and validator for SharePoint files. Store the
+1. Implement the delegated/OBO locator and validator for SharePoint files. Store the
    retrieved metadata, expected/observed revision, validation result, failure
    reason category, and checked-at time on each document reference.
-2. Provide admin/manual and scheduled **Check document references** operations.
+2. Provide Admin/manual and daily scheduled **Check document references** operations.
    They may update reference-health fields only; they may not create or edit a
    Procedure Revision, Criteria, or Immediate Action.
-3. Surface document status, revision mismatch, stale check, and access failure
-   in authoring/review and the read-only Matrix. Define whether each state
-   blocks publishing or only prevents document opening.
+3. Surface Valid, Needs review, and Unavailable status, revision mismatch,
+   stale check, and access failure in authoring/review and the read-only Matrix.
+   A failed required reference blocks approval; a later failure warns without
+   silently withdrawing structured guidance.
 4. Run the preview-first delivery spike described below against the approved
-   SharePoint library. Select a delegated or narrowly scoped app-identity
-   authorization model and prove only the file types that will be promised;
-   do not include an Office/PDF iframe renderer without that result.
+   SharePoint library using the accepted delegated/OBO authorization model.
+   Prove only the file types that will be promised; do not include an
+   Office/PDF iframe renderer without that result.
 
 **Acceptance checkpoint:** valid documents are confirmed; missing,
 unauthorized, changed, and timed-out documents are distinguishable; checks do

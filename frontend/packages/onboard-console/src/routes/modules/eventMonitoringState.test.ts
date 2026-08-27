@@ -42,8 +42,8 @@ describe("Event AVL monitoring state", () => {
     expect(eventVehiclePositionQuery("event-1", "plan-1")).toEqual({ eventId: "event-1", servicePlanId: "plan-1" });
   });
 
-  it("keeps pending, acknowledged, and failed notifications in the open queue", () => {
-    expect(["pending", "acknowledged", "failed", "sent", "dismissed"].filter(isOpenEventNotificationStatus)).toEqual(["pending", "acknowledged", "failed"]);
+  it("keeps pending, acknowledged, sending, and failed notifications in the open queue", () => {
+    expect(["pending", "acknowledged", "sending", "failed", "sent", "dismissed"].filter(isOpenEventNotificationStatus)).toEqual(["pending", "acknowledged", "sending", "failed"]);
   });
 });
 
