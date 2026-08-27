@@ -17,6 +17,7 @@ import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool } from "../lib/db";
 import { fetchMissedTripReports, mapMissedTripReport, replaceMissedTripsForMonths } from "../lib/availMissedTripsFeed";
 import { serviceMonthOf, subtractMonths } from "../lib/otpMonthlyFeed";
+import { recordFeedHealth } from "../lib/missedTripFeedHealth";
 
 const TRAILING_MONTHS = 3; // current + prior 2
 
@@ -65,6 +66,12 @@ app.timer("availMissedTripsPoll", {
       );
     } catch (err) {
       context.error(`Failed to refresh AvailMissedTripsRouteStopDay for ${targetMonths.join(", ")}:`, err);
+      return;
+    }
+    try {
+      await recordFeedHealth(pool, "avail_missed_trips", reports.length, null);
+    } catch (err) {
+      context.error("Failed to record Avail Missed Trips feed health:", err);
     }
   },
 });

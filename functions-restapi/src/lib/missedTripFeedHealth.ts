@@ -1,8 +1,9 @@
 import { sql } from "./db";
+import type { KpiFeedName } from "./kpiTrust";
 
-export async function recordMissedTripFeedSuccess(
+export async function recordFeedHealth(
   pool: sql.ConnectionPool,
-  feedName: "gtfs_trip_update" | "gtfs_vehicle_position" | "spare_requests" | "spare_slots",
+  feedName: KpiFeedName,
   entityCount: number,
   sourceTimestampSeconds: number | null,
 ): Promise<void> {
@@ -34,3 +35,5 @@ export async function recordMissedTripFeedSuccess(
     );
   `);
 }
+
+export const recordMissedTripFeedSuccess = recordFeedHealth;

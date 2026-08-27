@@ -11,6 +11,7 @@
 // suggestedAlertsApprove flow as everything else in that queue.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
+import { recordFeedHealth } from "../lib/missedTripFeedHealth";
 import {
   fetchTripUpdateFeed,
   mapTripUpdateEntity,
@@ -263,6 +264,11 @@ app.timer("gtfsDelaysPoll", {
     }
 
     const pool = await getPool();
+    try {
+      await recordFeedHealth(pool, "gtfs_trip_updates", feed.Entities.length, feed.Header?.Timestamp ?? null);
+    } catch (err) {
+      context.error("Failed to update TripUpdate feed health:", err);
+    }
     let escalatedCount = 0;
 
     const observedTableCheck = await pool.request().query<{ table_exists: number }>(`

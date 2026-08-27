@@ -9,6 +9,7 @@ import {
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext.js";
 import { api } from "../../config.js";
+import { KpiTrustSummary } from "./KpiTrustSummary.js";
 import {
   ON_DEMAND_RISKS,
   type OnDemandRisk,
@@ -18,11 +19,12 @@ import {
 } from "./serviceRisk.data.js";
 import "./serviceRisk.css";
 
-type DataMode = "loading" | "live" | "preview";
+type DataMode = "loading" | "live" | "preview" | "authentication_required";
 
 function monitoringLabel(mode: DataMode, diagnostics: OnDemandRiskDiagnostics | null): string {
   if (mode === "loading") return "Loading";
   if (mode === "preview") return "Preview data";
+  if (mode === "authentication_required") return "Authentication required";
   if (diagnostics?.state === "current") return "Live data";
   if (diagnostics?.state === "not_connected") return "Not connected";
   if (diagnostics?.state === "degraded") return "Degraded";
@@ -32,6 +34,7 @@ function monitoringLabel(mode: DataMode, diagnostics: OnDemandRiskDiagnostics | 
 function monitoringMessage(mode: DataMode, diagnostics: OnDemandRiskDiagnostics | null, previewMessage: string | null): string {
   if (mode === "loading") return "Checking the protected on-demand monitor.";
   if (mode === "preview") return previewMessage ?? "Preview scenarios are shown locally; no workflow changes will be saved.";
+  if (mode === "authentication_required") return "Sign in again to access protected on-demand monitoring.";
   if (diagnostics?.state === "not_connected") return "On-Demand monitoring is not connected.";
   if (diagnostics?.state === "degraded") return "On-Demand reconciliation is overdue; last-known records are read-only.";
   if (diagnostics?.state === "no_active_service") return "The latest authoritative reconciliation found no active on-demand service.";
@@ -168,8 +171,14 @@ export function OnDemandServiceQuality() {
         setLiveMessage(null);
         if (mapped.length > 0) setSelectedId(mapped[0].id);
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (!alive) return;
+        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+          setDataMode("authentication_required");
+          setDiagnostics(null);
+          setLiveMessage(null);
+          return;
+        }
         setDataMode("preview");
         setDiagnostics(null);
         setLiveMessage(
@@ -209,6 +218,11 @@ export function OnDemandServiceQuality() {
     }
     setPreparing(true);
     try {
+      const { streams } = await api.getKpiTrust();
+      if (streams.on_demand?.state !== "current") {
+        setPrepareError("Suggested Alerts are unavailable while On-Demand KPI trust is not current.");
+        return;
+      }
       const result = await api.prepareSuggestedAlert(draft);
       navigate(`/suggested?focus=${encodeURIComponent(result.alert_id)}`);
     } catch (err) {
@@ -263,6 +277,8 @@ export function OnDemandServiceQuality() {
         </div>
       </div>
 
+      <KpiTrustSummary stream="on_demand" />
+
       <div className="concept-banner">
         <span className="concept-badge">{trainingMode ? "Training" : monitoringLabel(dataMode, diagnostics)}</span>
         <span>{trainingMode
@@ -291,6 +307,11 @@ export function OnDemandServiceQuality() {
         <div className="risk-empty-state">
           <strong>No active on-demand service</strong>
           <span>The latest authoritative reconciliation found no active requests.</span>
+        </div>
+      ) : !trainingMode && dataMode === "authentication_required" ? (
+        <div className="risk-empty-state">
+          <strong>Authentication required</strong>
+          <span>Sign in again before treating this workspace as live monitoring.</span>
         </div>
       ) : risks.length === 0 ? (
         <div className="risk-empty-state">

@@ -15,6 +15,7 @@
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchOtpDailyReports, mapOtpDailyReport } from "../lib/otpDailyFeed";
+import { recordFeedHealth } from "../lib/missedTripFeedHealth";
 
 const RETENTION_DAYS = 90;
 
@@ -143,5 +144,10 @@ app.timer("otpDailyFeedPoll", {
     context.log(
       `Avail OTP Daily poll: ${reports.length} reports seen, ${upsertedCount} rows upserted, ${purgedCount} old rows purged.`,
     );
+    try {
+      await recordFeedHealth(pool, "avail_otp_daily", reports.length, null);
+    } catch (healthError) {
+      context.error("Failed to update Avail OTP Daily feed health:", healthError);
+    }
   },
 });

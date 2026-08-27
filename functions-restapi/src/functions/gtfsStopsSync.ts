@@ -11,6 +11,7 @@
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchAndParseStatic, resolveDirectionLabels } from "../lib/gtfsStatic";
+import { recordFeedHealth } from "../lib/missedTripFeedHealth";
 
 app.timer("gtfsStopsSync", {
   schedule: "0 0 9 * * *",
@@ -206,6 +207,11 @@ app.timer("gtfsStopsSync", {
       }
 
       await tx.commit();
+      try {
+        await recordFeedHealth(pool, "gtfs_static", stops.length + trips.length + routes.length, null);
+      } catch (healthError) {
+        context.error("Failed to update static GTFS feed health:", healthError);
+      }
       context.log(
         `GTFS static sync: refreshed ${stops.length} stops, ` +
           `${resolvedTrips.length} trip directions, ` +

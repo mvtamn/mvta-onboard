@@ -36,7 +36,7 @@ app.timer("gtfsVehiclePositionsPoll", {
     try {
       await recordMissedTripFeedSuccess(
         pool,
-        "gtfs_vehicle_position",
+        "gtfs_vehicle_positions",
         feed.Entities.length,
         feed.Header?.Timestamp ?? null,
       );

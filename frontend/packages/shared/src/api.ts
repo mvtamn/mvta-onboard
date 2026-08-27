@@ -196,6 +196,23 @@ export interface FeedCheck {
   last_success_at?: string;
 }
 
+export interface KpiTrustDependency {
+  feed_name: string;
+  required: boolean;
+  state: "current" | "stale" | "unavailable";
+  last_success_at: string | null;
+  source_timestamp_at: string | null;
+}
+
+export interface KpiTrustStream {
+  state: "current" | "stale" | "unavailable" | "current_but_empty";
+  contract_pending: boolean;
+  explanation: string;
+  dependencies: KpiTrustDependency[];
+}
+
+export type KpiTrust = Record<string, KpiTrustStream>;
+
 // The live API has been observed returning a bare scalar (e.g. a route number)
 // for these fields instead of a JSON array - likely a not-yet-redeployed
 // backend predating the current contract. Every consumer in both frontends
@@ -565,6 +582,9 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
 
     getFeedChecks() {
       return request<{ checked_at: string; checks: FeedCheck[] }>("/api/feed-checks", {}, true);
+    },
+    getKpiTrust() {
+      return request<{ checked_at: string; streams: KpiTrust }>("/api/kpi-trust", {}, true);
     },
 
     getMissedTrips(view: "queue" | "history" | "all" = "queue", limit = 200, offset = 0) {
