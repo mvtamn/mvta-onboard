@@ -49,6 +49,7 @@ const context = { error: () => undefined } as unknown as InvocationContext;
 
 test("normalizes a SQL row-version buffer to the concurrency token returned by the API", () => {
   assert.equal(concurrencyToken(Buffer.from("0000000000000fa1", "hex")), "0x0000000000000FA1");
+  assert.equal(concurrencyToken("\0\0\0\0\0\0\x0F¡"), "0x0000000000000FA1");
 });
 
 test("only an Admin can create a Decision Matrix Procedure Draft", async () => {

@@ -42,7 +42,11 @@ type DraftInput = {
 };
 
 export function concurrencyToken(value: unknown): string | undefined {
-  if (typeof value === "string") return value;
+  if (typeof value === "string") {
+    if (/^0x[0-9A-F]+$/i.test(value)) return value;
+    if (value.length === 8) return `0x${Buffer.from(value, "latin1").toString("hex").toUpperCase()}`;
+    return undefined;
+  }
   if (Buffer.isBuffer(value)) return `0x${value.toString("hex").toUpperCase()}`;
   return undefined;
 }
