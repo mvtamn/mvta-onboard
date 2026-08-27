@@ -18,7 +18,8 @@ import { normalizeOnDemandSpareRequest } from "../lib/onDemandSpareMonitor";
 import { loadActiveOperationalZones, storeOnDemandSpareRequest } from "../lib/onDemandSpareMonitorStore";
 
 const REQUEST_PAGE_SIZE = 200;
-const SLOT_PAGE_SIZE = 1000;
+const SLOT_PAGE_SIZE = 200;
+const SLOT_DUTY_CONCURRENCY = 8;
 const DEFAULT_LOOKBACK_MINUTES = 120;
 const DEFAULT_MAX_ROWS = 10_000;
 
@@ -41,7 +42,7 @@ function scopedServiceIds(): ReadonlySet<string> {
 }
 
 async function fetchUpdated<T>(
-  path: "/v1/requests" | "/v1/slots",
+  path: "/v1/requests",
   fromSeconds: number,
   toSeconds: number,
   pageSize: number,
@@ -72,9 +73,8 @@ async function fetchUpdated<T>(
   return rows;
 }
 
-async function fetchPickupSlotsByRequestedTime(
-  fromSeconds: number,
-  toSeconds: number,
+async function fetchPickupSlotsForDuty(
+  dutyId: string,
   maxRows: number,
 ): Promise<SpareSlotRecord[]> {
   const rows: SpareSlotRecord[] = [];
@@ -82,8 +82,7 @@ async function fetchPickupSlotsByRequestedTime(
   let reportedTotal = 0;
   while (rows.length < maxRows) {
     const query = new URLSearchParams({
-      fromRequestedTs: String(fromSeconds),
-      toRequestedTs: String(toSeconds),
+      dutyId,
       type: "pickup",
       orderBy: "updatedAt",
       orderDirection: "ASC",
@@ -95,10 +94,10 @@ async function fetchPickupSlotsByRequestedTime(
     rows.push(...page.data);
     skip += page.data.length;
     if (page.data.length === 0 || skip >= page.total) break;
-    if (skip > 50_000) throw new Error("Spare /v1/slots pagination exceeded the documented skip limit");
+    if (skip > 50_000) throw new Error("Spare /v1/slots duty pagination exceeded the documented skip limit");
   }
   if (rows.length >= maxRows && reportedTotal > rows.length) {
-    throw new Error(`Spare /v1/slots requested-time window exceeded the ${maxRows}-row safety cap`);
+    throw new Error(`Spare /v1/slots duty ${dutyId} exceeded the ${maxRows}-row safety cap`);
   }
   return rows;
 }
@@ -254,16 +253,18 @@ app.timer("spareMissedTripsIngest", {
     const lookbackMinutes = positiveInteger("SPARE_MISSED_TRIP_LOOKBACK_MINUTES", DEFAULT_LOOKBACK_MINUTES, 7 * 24 * 60);
     const maxRows = positiveInteger("SPARE_MISSED_TRIP_MAX_ROWS", DEFAULT_MAX_ROWS, 50_000);
     const fromSeconds = nowSeconds - lookbackMinutes * 60;
-    const [requests, updatedSlots, pickupWindowSlots] = await Promise.all([
-      fetchUpdated<SpareRequestRecord>("/v1/requests", fromSeconds, nowSeconds, REQUEST_PAGE_SIZE, maxRows),
-      fetchUpdated<SpareSlotRecord>("/v1/slots", fromSeconds, nowSeconds, SLOT_PAGE_SIZE, maxRows),
-      fetchPickupSlotsByRequestedTime(fromSeconds, nowSeconds + 60 * 60, maxRows),
-    ]);
-    const slots = [...new Map(
-      [...updatedSlots, ...pickupWindowSlots]
-        .map((row) => [spareString(row.id, 64), row] as const)
-        .filter((entry): entry is readonly [string, SpareSlotRecord] => Boolean(entry[0])),
-    ).values()];
+    const requests = await fetchUpdated<SpareRequestRecord>("/v1/requests", fromSeconds, nowSeconds, REQUEST_PAGE_SIZE, maxRows);
+    const dutyIds = [...new Set(requests.flatMap((row) => {
+      const dutyId = spareString(row.dutyId, 64) ?? spareString(row.lockedToDutyId, 64);
+      return dutyId ? [dutyId] : [];
+    }))];
+    const slots: SpareSlotRecord[] = [];
+    const rowsPerDuty = Math.max(1, Math.floor(maxRows / Math.max(1, dutyIds.length)));
+    for (let index = 0; index < dutyIds.length; index += SLOT_DUTY_CONCURRENCY) {
+      const batches = await Promise.all(dutyIds.slice(index, index + SLOT_DUTY_CONCURRENCY)
+        .map((dutyId) => fetchPickupSlotsForDuty(dutyId, rowsPerDuty)));
+      slots.push(...batches.flat());
+    }
     const pool = await getPool();
     const activeZones = await loadActiveOperationalZones();
     let requestWrites = 0;
