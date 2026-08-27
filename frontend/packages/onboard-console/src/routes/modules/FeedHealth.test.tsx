@@ -16,6 +16,7 @@ describe("FeedHealth", () => {
         { name: "TripUpdates", configured: true, status: 200, records: 134 },
         { name: "Pullout", configured: true, status: 200, records: 0 },
         { name: "Spare", configured: true, status: 401 },
+        { name: "Spare missed-trip Slots ingestion", configured: true, records: 24, freshness: "current", last_success_at: "2026-08-14T21:58:00Z" },
       ],
     });
     render(<FeedHealth />);
@@ -25,6 +26,8 @@ describe("FeedHealth", () => {
     expect(await screen.findByText("Live")).toBeInTheDocument();
     expect(screen.getByText("Empty")).toBeInTheDocument();
     expect(screen.getByText("Failed")).toBeInTheDocument();
+    expect(screen.getByText("Spare missed-trip Slots ingestion")).toBeInTheDocument();
+    expect(screen.getByText("Current")).toBeInTheDocument();
     expect(getFeedChecks).toHaveBeenCalledOnce();
   });
 });
