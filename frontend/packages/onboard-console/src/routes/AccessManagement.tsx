@@ -29,6 +29,8 @@ const HUMAN_ROLES: OnBoardAccessRole[] = [
 
 type Tab = "access" | "groups" | "workloads" | "onboarding" | "approvals" | "reconciliation" | "audit";
 
+type AccessChangeResults = Awaited<ReturnType<typeof api.submitAccessChanges>>;
+
 function displayTime(value: string | null): string {
   if (!value) return "Unavailable";
   return new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
@@ -44,6 +46,30 @@ function errorMessage(error: unknown, fallback: string): string {
 
 function idempotencyKey(prefix: string): string {
   return `${prefix}-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`}`;
+}
+
+function changeLabel(change: Pick<OnBoardDirectoryChange, "action" | "role"> | undefined): string {
+  if (!change) return "Access change";
+  return `${change.action === "grant" ? "Grant" : change.action === "revoke" ? "Remove" : "Invite"} ${roleLabel(change.role)}`;
+}
+
+function previewLabel(disposition: string): string {
+  return ({
+    immediate: "Will be applied after confirmation.",
+    approval_required: "Requires approval from another Access Administrator.",
+    already_satisfied: "Already assigned.",
+    invalid: "Cannot be submitted.",
+  } as Record<string, string>)[disposition] ?? disposition;
+}
+
+function resultLabel(disposition: string): string {
+  return ({
+    completed: "Applied.",
+    pending_approval: "Awaiting approval from another Access Administrator.",
+    already_satisfied: "Already assigned.",
+    invalid: "Could not be submitted.",
+    failed: "Could not be applied.",
+  } as Record<string, string>)[disposition] ?? disposition;
 }
 
 export function spreadsheetSafeText(value: unknown): string {
@@ -87,7 +113,7 @@ export function AccessManagement() {
   const [directoryQuery, setDirectoryQuery] = useState("");
   const [candidates, setCandidates] = useState<OnBoardAccessPrincipal[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [selectedRoles, setSelectedRoles] = useState<OnBoardAccessRole[]>(["OCC.Viewer"]);
+  const [selectedRoles, setSelectedRoles] = useState<OnBoardAccessRole[]>([]);
   const [source, setSource] = useState<AccessAssignmentSource>("group");
   const [reason, setReason] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
@@ -95,26 +121,40 @@ export function AccessManagement() {
   const [sponsor, setSponsor] = useState("");
   const [organization, setOrganization] = useState("");
   const [preview, setPreview] = useState<Awaited<ReturnType<typeof api.previewAccessChanges>> | null>(null);
-  const [results, setResults] = useState<Awaited<ReturnType<typeof api.submitAccessChanges>> | null>(null);
+  const [results, setResults] = useState<{ changes: OnBoardDirectoryChange[]; data: AccessChangeResults } | null>(null);
 
-  async function load() {
+  async function load(afterSubmission = false) {
     setLoading(true);
+    const [accessResult, changesResult, expiryResult, auditResult] = await Promise.allSettled([
+      api.getAccessPrincipals(),
+      api.getPendingAccessChanges(),
+      api.getAccessExpirations(),
+      api.getAccessAudit(),
+    ] as const);
     try {
-      const [access, changes, expiry, auditLog] = await Promise.all([
-        api.getAccessPrincipals(),
-        api.getPendingAccessChanges(),
-        api.getAccessExpirations(),
-        api.getAccessAudit(),
-      ]);
-      setPrincipals(access.principals);
-      setEnvironment(access.environment);
-      setAccessAdminFallback(access.access_admin_fallback);
-      setPending(changes.changes);
-      setExpirations(expiry.expirations);
-      setAudit(auditLog.audit);
-      setError(null);
-    } catch (loadError) {
-      setError(errorMessage(loadError, "Access Management could not be loaded."));
+      if (accessResult.status === "fulfilled") {
+        const access = accessResult.value;
+        setPrincipals(access.principals);
+        setEnvironment(access.environment);
+        setAccessAdminFallback(access.access_admin_fallback);
+      }
+      if (changesResult.status === "fulfilled") {
+        setPending(changesResult.value.changes);
+      }
+      if (expiryResult.status === "fulfilled") {
+        setExpirations(expiryResult.value.expirations);
+      }
+      if (auditResult.status === "fulfilled") {
+        setAudit(auditResult.value.audit);
+      }
+      const failed = [accessResult, changesResult, expiryResult, auditResult].find((result) => result.status === "rejected");
+      if (failed?.status === "rejected") {
+        setError(afterSubmission
+          ? "The access request was saved, but live Microsoft Entra data could not be refreshed. Do not submit it again."
+          : errorMessage(failed.reason, "Access Management could not be loaded."));
+      } else {
+        setError(null);
+      }
     } finally {
       setLoading(false);
     }
@@ -233,11 +273,12 @@ export function AccessManagement() {
     if (!preview?.valid) return;
     setBusy(true);
     try {
-      const submitted = await api.submitAccessChanges(plannedChanges(), idempotencyKey("onboard"));
-      setResults(submitted);
+      const changes = plannedChanges();
+      const submitted = await api.submitAccessChanges(changes, idempotencyKey("onboard"));
+      setResults({ changes, data: submitted });
       setNotice("Access request submitted. Review each item outcome below.");
       setPreview(null);
-      await load();
+      await load(true);
     } catch (submitError) {
       setError(errorMessage(submitError, "The access request could not be submitted."));
     } finally {
@@ -521,7 +562,7 @@ export function AccessManagement() {
           <label>MVTA sponsor<input className="f" value={sponsor} onChange={(event) => { setSponsor(event.target.value); setPreview(null); }} /></label>
           <label>Employer / organization<input className="f" value={organization} onChange={(event) => { setOrganization(event.target.value); setPreview(null); }} /></label>
         </div>}
-        <fieldset><legend>Access levels to grant</legend><p className="muted">Choose the minimum access needed. Technical Entra role identifiers remain available in the control tooltip for administrators.</p><div className="access-role-grid">{roleChoices.map((role) => <label key={role}><input type="checkbox" checked={selectedRoles.includes(role)} onChange={(event) => { setSelectedRoles((roles) => event.target.checked ? [...roles, role] : roles.filter((item) => item !== role)); setPreview(null); }} /> <span title={role}>{roleLabel(role)}</span></label>)}</div></fieldset>
+        <fieldset><legend>Access levels to grant</legend><p className="muted">Choose the minimum access needed. Technical Entra role identifiers remain available in the control tooltip for administrators.</p><div className="access-role-grid">{roleChoices.map((role) => <label key={role}><input type="checkbox" checked={selectedRoles.includes(role)} onChange={(event) => { setSelectedRoles((roles) => event.target.checked ? [...roles, role] : roles.filter((item) => item !== role)); setPreview(null); }} /> <span title={role}>{roleLabel(role)}</span></label>)}</div>{selectedRoles.includes("OCC.AccessAdmin") ? <p className="warning-text">Access Administrator can manage everyone’s OnBoard access. Grant it only to designated access managers.</p> : null}</fieldset>
         {onboardingMode === "directory" ? <label className="access-inline">How should access be granted? <select className="f" value={source} onChange={(event) => { setSource(event.target.value as AccessAssignmentSource); setPreview(null); }}><option value="group">Through the configured security group (recommended)</option><option value="direct">Direct assignment (audited exception)</option></select></label> : null}
         <div className="field-grid">
           <label>Business reason<textarea className="f" value={reason} onChange={(event) => { setReason(event.target.value); setPreview(null); }} /></label>
@@ -530,10 +571,10 @@ export function AccessManagement() {
         <button className="btn-sm" disabled={busy} onClick={() => void previewChanges()}>Review changes</button>
         {preview ? <section className="access-preview" aria-label="Access request preview">
           <h3>Review results</h3>
-          <ul>{preview.items.map((item) => <li key={item.index}>Item {item.index + 1}: {item.disposition}{item.errors.length ? ` — ${item.errors.join(" ")}` : ""}</li>)}</ul>
+          <ul>{preview.items.map((item) => <li key={item.index}>{changeLabel(plannedChanges()[item.index])} — {item.errors.length ? item.errors.join(" ") : previewLabel(item.disposition)}</li>)}</ul>
           <button className="btn-primary" disabled={busy || !preview.valid} onClick={() => void submitChanges()}>Confirm changes</button>
         </section> : null}
-        {results ? <section aria-label="Access request outcomes"><h3>Request results</h3><ul>{results.results.map((result) => <li key={result.index}>Item {result.index + 1}: {result.disposition}{result.message ? ` — ${result.message}` : ""}</li>)}</ul></section> : null}
+        {results ? <section aria-label="Access request outcomes"><h3>Request results</h3><ul>{results.data.results.map((result) => <li key={result.index}>{changeLabel(results.changes[result.index])} — {result.message || result.errors?.join(" ") || resultLabel(result.disposition)}</li>)}</ul></section> : null}
       </section> : null}
 
       {!loading && tab === "approvals" ? <section>
@@ -541,7 +582,11 @@ export function AccessManagement() {
         {pending.length ? <div className="table-scroll"><table className="data"><thead><tr><th>Requested change</th><th>Requester</th><th>Reason</th><th>Actions</th></tr></thead><tbody>{pending.map((change) => <tr key={change.id}>
           <td>{change.change.action} <span title={change.change.role}>{roleLabel(change.change.role)}</span> · {change.change.principal_id}<br /><span className="td-dim">{change.environment} · requested {displayTime(change.requested_at)} · expires {displayTime(change.approval_expires_at ?? null)}</span></td>
           <td>{change.requested_by_name}</td><td>{change.change.reason}</td>
-          <td><button className="btn-sm" disabled={busy} onClick={() => void decide(change, "approved")}>Approve</button> <button className="btn-sm" disabled={busy} onClick={() => void decide(change, "rejected")}>Reject</button>{change.requested_by_name.toLowerCase() === account?.username.toLowerCase() ? <> <button className="btn-sm" disabled={busy} onClick={() => void cancelChange(change)}>Cancel request</button></> : null}</td>
+          <td>{change.requested_by_id === "unknown"
+            ? <><span className="td-dim">Unverifiable legacy request — reject and resubmit</span> <button className="btn-sm" disabled={busy} onClick={() => void decide(change, "rejected")}>Reject</button></>
+            : (change.requested_by_id === account?.id || (!!account?.username && change.requested_by_name.toLowerCase() === account.username.toLowerCase()))
+              ? <><span className="td-dim">Awaiting another Access Administrator</span> <button className="btn-sm" disabled={busy} onClick={() => void cancelChange(change)}>Cancel request</button></>
+              : <><button className="btn-sm" disabled={busy} onClick={() => void decide(change, "approved")}>Approve</button> <button className="btn-sm" disabled={busy} onClick={() => void decide(change, "rejected")}>Reject</button></>}</td>
         </tr>)}</tbody></table></div> : <p>No privileged changes await approval.</p>}
       </section> : null}
 
