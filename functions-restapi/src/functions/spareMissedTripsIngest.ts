@@ -102,6 +102,25 @@ async function fetchPickupSlotsForDuty(
   return rows;
 }
 
+export async function fetchSlotsForRequestDuties(
+  requests: readonly SpareRequestRecord[],
+  maxRows: number,
+  fetchSlots: (dutyId: string, rowsPerDuty: number) => Promise<SpareSlotRecord[]> = fetchPickupSlotsForDuty,
+): Promise<SpareSlotRecord[]> {
+  const dutyIds = [...new Set(requests.flatMap((row) => {
+    const dutyId = spareString(row.dutyId, 64) ?? spareString(row.lockedToDutyId, 64);
+    return dutyId ? [dutyId] : [];
+  }))];
+  const rowsPerDuty = Math.max(1, Math.floor(maxRows / Math.max(1, dutyIds.length)));
+  const slots: SpareSlotRecord[] = [];
+  for (let index = 0; index < dutyIds.length; index += SLOT_DUTY_CONCURRENCY) {
+    const batches = await Promise.all(dutyIds.slice(index, index + SLOT_DUTY_CONCURRENCY)
+      .map((dutyId) => fetchSlots(dutyId, rowsPerDuty)));
+    slots.push(...batches.flat());
+  }
+  return slots;
+}
+
 async function upsertRequest(pool: sql.ConnectionPool, row: SpareRequestRecord): Promise<boolean> {
   const requestId = spareString(row.id, 64);
   const status = spareString(row.status, 32);
@@ -254,17 +273,7 @@ app.timer("spareMissedTripsIngest", {
     const maxRows = positiveInteger("SPARE_MISSED_TRIP_MAX_ROWS", DEFAULT_MAX_ROWS, 50_000);
     const fromSeconds = nowSeconds - lookbackMinutes * 60;
     const requests = await fetchUpdated<SpareRequestRecord>("/v1/requests", fromSeconds, nowSeconds, REQUEST_PAGE_SIZE, maxRows);
-    const dutyIds = [...new Set(requests.flatMap((row) => {
-      const dutyId = spareString(row.dutyId, 64) ?? spareString(row.lockedToDutyId, 64);
-      return dutyId ? [dutyId] : [];
-    }))];
-    const slots: SpareSlotRecord[] = [];
-    const rowsPerDuty = Math.max(1, Math.floor(maxRows / Math.max(1, dutyIds.length)));
-    for (let index = 0; index < dutyIds.length; index += SLOT_DUTY_CONCURRENCY) {
-      const batches = await Promise.all(dutyIds.slice(index, index + SLOT_DUTY_CONCURRENCY)
-        .map((dutyId) => fetchPickupSlotsForDuty(dutyId, rowsPerDuty)));
-      slots.push(...batches.flat());
-    }
+    const slots = await fetchSlotsForRequestDuties(requests, maxRows);
     const pool = await getPool();
     const activeZones = await loadActiveOperationalZones();
     let requestWrites = 0;
