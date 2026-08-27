@@ -43,6 +43,8 @@ export function EventVehicleMap({ vehicles, geofences, locations, showGeofences,
   const popupRef = useRef<atlas.Popup | null>(null);
   const resourceSourceRef = useRef<atlas.source.DataSource | null>(null);
   const resourceLayersRef = useRef<atlas.layer.Layer[]>([]);
+  const vehicleSourceRef = useRef<atlas.source.DataSource | null>(null);
+  const vehicleLayersRef = useRef<atlas.layer.Layer[]>([]);
   const fittedRef = useRef(false);
   const initialMapStyleRef = useRef(mapStyle);
   const appliedStyleRef = useRef<MapStyle | null>(null);
@@ -199,28 +201,53 @@ export function EventVehicleMap({ vehicles, geofences, locations, showGeofences,
     const map = mapRef.current;
     const popup = popupRef.current;
     if (!map || !ready) return;
-    map.markers.clear();
-    mapVehicles.forEach((vehicle) => {
-      const heading = vehicle.heading ?? 0;
+    let source = vehicleSourceRef.current;
+    if (!source) {
+      source = new atlas.source.DataSource("event-vehicles", { cluster: true, clusterRadius: 48, clusterMaxZoom: 13 });
+      map.sources.add(source);
+      vehicleSourceRef.current = source;
+    }
+    removeMapLayersIfPresent(map, vehicleLayersRef.current);
+    vehicleLayersRef.current = [];
+    source.clear();
+    source.add(mapVehicles.map((vehicle) => new atlas.data.Feature(new atlas.data.Point([vehicle.longitude, vehicle.latitude]), {
+      vehicle_id: vehicle.vehicle_id, heading: vehicle.heading ?? 0, route_color: routeMarkerColor(vehicle),
+    })));
+    const clusters = new atlas.layer.BubbleLayer(source, "event-vehicle-clusters", {
+      color: MAP_BRAND, radius: ["step", ["get", "point_count"], 18, 10, 24, 25, 30], strokeColor: "#ffffff", strokeWidth: 3,
+      filter: ["has", "point_count"],
+    });
+    const clusterCount = new atlas.layer.SymbolLayer(source, "event-vehicle-cluster-count", {
+      iconOptions: { image: "none" }, textOptions: { textField: ["get", "point_count_abbreviated"], color: "#ffffff", size: 12, font: ["StandardFont-Bold"] },
+      filter: ["has", "point_count"],
+    });
+    const buses = new atlas.layer.BubbleLayer(source, "event-vehicle-points", {
+      color: ["get", "route_color"], radius: 13, strokeColor: "#ffffff", strokeWidth: 3, filter: ["!", ["has", "point_count"]],
+    });
+    const busIcons = new atlas.layer.SymbolLayer(source, "event-vehicle-icons", {
+      iconOptions: { image: "none" }, textOptions: { textField: "▰", color: "#ffffff", size: 15, rotation: ["get", "heading"], allowOverlap: true },
+      filter: ["!", ["has", "point_count"]],
+    });
+    map.layers.add([clusters, clusterCount, buses, busIcons]);
+    vehicleLayersRef.current = [clusters, clusterCount, buses, busIcons];
+    map.events.add("click", clusters, (event: atlas.MapMouseEvent) => {
+      const shape = event.shapes?.[0];
+      const properties = (shape && ("getProperties" in shape ? shape.getProperties() : shape.properties)) as { cluster_id?: number } | undefined;
+      if (properties?.cluster_id === undefined || !event.position) return;
+      void source.getClusterExpansionZoom(properties.cluster_id).then((zoom) => map.setCamera({ center: event.position!, zoom }));
+    });
+    map.events.add("click", buses, (event: atlas.MapMouseEvent) => {
+      const shape = event.shapes?.[0];
+      const properties = (shape && ("getProperties" in shape ? shape.getProperties() : shape.properties)) as { vehicle_id?: number } | undefined;
+      const vehicle = mapVehicles.find((row) => row.vehicle_id === properties?.vehicle_id);
+      if (!vehicle) return;
       const markerLabel = routeVehicleLabel(vehicle);
-      const marker = new atlas.HtmlMarker({
+      onSelectVehicle?.(vehicle.vehicle_id);
+      popup?.setOptions({
         position: [vehicle.longitude, vehicle.latitude],
-        htmlContent: `<div class="event-map-bus" style="--bus-heading:${heading}deg;--route-color:${routeMarkerColor(vehicle)}" role="img" aria-label="${escapeHtml(markerLabel)}"><span>▰</span></div>`,
+        content: `<div class="event-map-popup"><strong>${escapeHtml(markerLabel)}</strong><span>${escapeHtml(displayOperator(vehicle.operator_name))}</span><span>${cardinalHeading(vehicle.heading, vehicle.direction)} · ${vehicle.speed_mph === null ? "Speed unavailable" : `${vehicle.speed_mph.toFixed(1)} mph`}</span><span>Last report ${minutesAgo(vehicle.report_timestamp)}</span></div>`,
       });
-      map.markers.add(marker);
-      const showPopup = () => {
-        popup?.setOptions({
-          position: [vehicle.longitude, vehicle.latitude],
-          content: `<div class="event-map-popup"><strong>${escapeHtml(markerLabel)}</strong><span>${escapeHtml(displayOperator(vehicle.operator_name))}</span><span>${cardinalHeading(vehicle.heading, vehicle.direction)} · ${vehicle.speed_mph === null ? "Speed unavailable" : `${vehicle.speed_mph.toFixed(1)} mph`}</span><span>Last report ${minutesAgo(vehicle.report_timestamp)}</span></div>`,
-        });
-        popup?.open(map);
-      };
-      map.events.add("mouseover", marker, showPopup);
-      map.events.add("click", marker, () => {
-        onSelectVehicle?.(vehicle.vehicle_id);
-        showPopup();
-      });
-      map.events.add("mouseout", marker, () => popup?.close());
+      popup?.open(map);
     });
     // Fit once when the first valid classified set arrives. Subsequent
     // 30-second refreshes update markers without overriding the operator's
@@ -230,6 +257,10 @@ export function EventVehicleMap({ vehicles, geofences, locations, showGeofences,
       map.setCamera({ bounds: atlas.data.BoundingBox.fromPositions(positions), padding: 70, maxZoom: 14 });
       fittedRef.current = true;
     }
+    return () => {
+      removeMapLayersIfPresent(map, vehicleLayersRef.current);
+      vehicleLayersRef.current = [];
+    };
   }, [onSelectVehicle, mapVehicles, ready]);
 
   useEffect(() => {

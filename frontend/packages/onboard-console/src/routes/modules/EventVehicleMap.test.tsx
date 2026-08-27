@@ -22,7 +22,8 @@ const mocks = vi.hoisted(() => {
     setStyle: vi.fn(),
     dispose: vi.fn(),
   };
-  return { errorHandler: () => errorHandler, readyHandler: () => readyHandler, getMapsToken: vi.fn(), map };
+  const dataSource = vi.fn(function () { return { clear: vi.fn(), add: vi.fn() }; });
+  return { errorHandler: () => errorHandler, readyHandler: () => readyHandler, getMapsToken: vi.fn(), map, dataSource };
 });
 
 vi.mock("azure-maps-control", () => ({
@@ -34,7 +35,11 @@ vi.mock("azure-maps-control", () => ({
     ZoomControl: vi.fn(function () { return { kind: "zoom" }; }),
     CompassControl: vi.fn(function () { return { kind: "compass" }; }),
   },
-  source: { DataSource: vi.fn(function () { return { clear: vi.fn(), add: vi.fn() }; }) },
+  source: { DataSource: mocks.dataSource },
+  layer: {
+    BubbleLayer: vi.fn(function () { return { kind: "bubble" }; }),
+    SymbolLayer: vi.fn(function () { return { kind: "symbol" }; }),
+  },
 }));
 vi.mock("../../config.js", () => ({ api: { getMapsToken: mocks.getMapsToken } }));
 vi.mock("../../theme/ThemeContext.js", () => ({ useTheme: () => ({ theme: "light" }) }));
@@ -64,6 +69,16 @@ describe("EventVehicleMap", () => {
     await waitFor(() => expect(mocks.map.setTraffic).toHaveBeenCalled());
     expect(mocks.map.controls.add).toHaveBeenCalledWith(expect.any(Array), { position: "bottom-right" });
     expect(mocks.map.setStyle).not.toHaveBeenCalled();
+  });
+
+  it("clusters nearby buses natively until the operator zooms in", async () => {
+    mocks.getMapsToken.mockResolvedValue({ client_id: "maps-client", access_token: "token" });
+    render(<EventVehicleMap vehicles={[]} geofences={[]} locations={[]} showGeofences={false} showLocations={false} mapStyle="road" traffic={false} />);
+
+    await waitFor(() => expect(mocks.readyHandler()).toEqual(expect.any(Function)));
+    act(() => mocks.readyHandler()?.());
+
+    await waitFor(() => expect(mocks.dataSource).toHaveBeenCalledWith("event-vehicles", expect.objectContaining({ cluster: true, clusterRadius: 48, clusterMaxZoom: 13 })));
   });
 
   it("resizes after its pane finishes layout so a first paint cannot be left blank", async () => {
