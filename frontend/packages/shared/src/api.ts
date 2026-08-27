@@ -191,6 +191,8 @@ export interface FeedCheck {
   records?: number;
   keys?: string[];
   error?: string;
+  freshness?: "current" | "stale";
+  last_success_at?: string;
 }
 
 // The live API has been observed returning a bare scalar (e.g. a route number)

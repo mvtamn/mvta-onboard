@@ -5,9 +5,20 @@ import "./serviceRisk.css";
 
 function state(check: FeedCheck): { label: string; className: string } {
   if (!check.configured) return { label: "Not configured", className: "muted" };
+  if (check.freshness === "current") return { label: "Current", className: "success" };
+  if (check.freshness === "stale") return { label: "Stale", className: "warning" };
   if (check.error || !check.status || check.status >= 400) return { label: "Failed", className: "danger" };
   if ((check.records ?? 0) === 0) return { label: "Empty", className: "warning" };
   return { label: "Live", className: "success" };
+}
+
+function detail(check: FeedCheck): string {
+  if (check.error) return check.error;
+  if (check.last_success_at) {
+    const when = new Date(check.last_success_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    return `Last success ${when} · ${(check.records ?? 0).toLocaleString()} records`;
+  }
+  return check.records === undefined ? "No count returned" : `${check.records.toLocaleString()} records`;
 }
 
 function message(error: unknown) {
@@ -56,7 +67,7 @@ export function FeedHealth() {
               return (
                 <div className="feed-health-row" role="listitem" key={check.name}>
                   <span>{check.name}</span>
-                  <small>{check.error ?? (check.records === undefined ? "No count returned" : `${check.records.toLocaleString()} records`)}</small>
+                  <small>{detail(check)}</small>
                   <strong className={`feed-health-status ${current.className}`}>{current.label}</strong>
                 </div>
               );

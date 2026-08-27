@@ -1,6 +1,7 @@
 // GET /feed-checks - staff-only, PII-free upstream feed diagnostics.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { getPool } from "../lib/db";
 import { summarizeFeedResponse } from "../lib/feedCheckResponse";
 
 type FeedCheck = {
@@ -10,6 +11,8 @@ type FeedCheck = {
   records?: number;
   keys?: string[];
   error?: string;
+  freshness?: "current" | "stale";
+  last_success_at?: string;
 };
 
 function dateMmDdYyyy(date: Date): string {
@@ -49,6 +52,48 @@ async function checkStaticGtfs(url: string | undefined): Promise<FeedCheck> {
   }
 }
 
+async function spareMissedTripPipelineChecks(): Promise<FeedCheck[]> {
+  const configured = process.env.SPARE_MISSED_TRIPS_ENABLED?.trim().toLowerCase() === "true";
+  if (!configured) {
+    return ["Requests", "Slots"].map((name) => ({ name: `Spare missed-trip ${name} ingestion`, configured: false }));
+  }
+  try {
+    const pool = await getPool();
+    const table = await pool.request().query<{ ready: number }>(`
+      SELECT CASE WHEN OBJECT_ID('dbo.MissedTripFeedHealth', 'U') IS NULL THEN 0 ELSE 1 END AS ready
+    `);
+    if (table.recordset[0]?.ready !== 1) {
+      return ["Requests", "Slots"].map((name) => ({ name: `Spare missed-trip ${name} ingestion`, configured: true, error: "Pipeline health table is not ready" }));
+    }
+    const result = await pool.request().query<{
+      feed_name: "spare_requests" | "spare_slots";
+      last_success_at: Date | null;
+      last_entity_count: number | null;
+    }>(`
+      SELECT feed_name, last_success_at, last_entity_count
+      FROM MissedTripFeedHealth
+      WHERE feed_name IN ('spare_requests', 'spare_slots')
+    `);
+    const rows = new Map(result.recordset.map((row) => [row.feed_name, row]));
+    return (["spare_requests", "spare_slots"] as const).map((feedName) => {
+      const row = rows.get(feedName);
+      const lastSuccessAt = row?.last_success_at ?? null;
+      return {
+        name: `Spare missed-trip ${feedName === "spare_requests" ? "Requests" : "Slots"} ingestion`,
+        configured: true,
+        records: row?.last_entity_count ?? 0,
+        freshness: lastSuccessAt && lastSuccessAt.getTime() >= Date.now() - 35 * 60_000 ? "current" : "stale",
+        last_success_at: lastSuccessAt?.toISOString(),
+      };
+    });
+  } catch (error) {
+    return ["Requests", "Slots"].map((name) => ({
+      name: `Spare missed-trip ${name} ingestion`, configured: true,
+      error: error instanceof Error ? error.message : "Pipeline health check failed",
+    }));
+  }
+}
+
 app.http("feedChecks", {
   route: "feed-checks",
   methods: ["GET"],
@@ -70,7 +115,8 @@ app.http("feedChecks", {
     const spareKey = process.env.SPARE_API_KEY?.trim();
     const nowSeconds = Math.floor(now.getTime() / 1000);
 
-    const checks = await Promise.all([
+    const [checks, sparePipelineChecks] = await Promise.all([
+      Promise.all([
       checkJson("GTFS TripUpdates", process.env.GTFS_RT_TRIPUPDATE_URL?.trim() ?? ""),
       checkJson("GTFS VehiclePositions", process.env.GTFS_RT_VEHICLE_URL?.trim() ?? ""),
       checkJson("GTFS Alerts", process.env.GTFS_RT_ALERT_URL?.trim() ?? ""),
@@ -91,7 +137,9 @@ app.http("feedChecks", {
       spareKey
         ? checkJson("Spare Requests", `https://api.us.sparelabs.com/v1/requests?fromUpdatedAt=${nowSeconds - 7200}&toUpdatedAt=${nowSeconds}&limit=1&skip=0`, { Authorization: `Bearer ${spareKey}` })
         : Promise.resolve({ name: "Spare Requests", configured: false, error: "API key unavailable" } satisfies FeedCheck),
+      ]),
+      spareMissedTripPipelineChecks(),
     ]);
-    return { status: 200, jsonBody: { checked_at: now.toISOString(), checks } };
+    return { status: 200, jsonBody: { checked_at: now.toISOString(), checks: [...checks, ...sparePipelineChecks] } };
   },
 });
