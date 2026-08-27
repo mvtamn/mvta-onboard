@@ -26,6 +26,23 @@ import { EventResourceMapEditor } from "./EventResourceMapEditor.js";
 afterEach(() => { cleanup(); vi.resetAllMocks(); });
 
 describe("EventResourceMapEditor", () => {
+  it("does not scroll the page when selecting a Monitoring Area in direction rules", async () => {
+    api.getEventGeofences.mockResolvedValue({ geofences: [{ id: "area-a", name: "Burnsville Transit Station", purpose: "other", is_active: true, updated_at: "2026-08-22T00:00:00Z", updated_by: null, polygon: "{}", rules: [] }] });
+    api.getEventLocations.mockResolvedValue({ locations: [] });
+    api.getEventServicePlans.mockResolvedValue({ plans: [] });
+    api.getEventGeofencePurposes.mockResolvedValue({ purposes: [] });
+    api.getMonitoringAreaTests.mockResolvedValue({ tests: [], teams_configured: true, teams_destination: "Event Operations" });
+    const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView");
+
+    render(<MemoryRouter><AppDialogProvider><div id="event-configuration" /><EventResourceMapEditor /></AppDialogProvider></MemoryRouter>);
+    const area = document.getElementById("event-geofence-rule-select") as HTMLSelectElement;
+    await waitFor(() => expect(area).toBeInTheDocument());
+    await userEvent.setup().selectOptions(area, "area-a");
+
+    expect(area).toHaveValue("area-a");
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
   it("starts a new rule after changing Monitoring Areas while editing", async () => {
     api.getEventGeofences.mockResolvedValue({ geofences: [
       { id: "area-a", name: "Area A", purpose: "other", is_active: true, updated_at: "2026-08-22T00:00:00Z", updated_by: null, polygon: "{}", rules: [{ id: "rule-a", geofence_id: "area-a", name: "Original", transition: "exit", heading_min: 0, heading_max: 360, destination_label: "Proceed", destination_location_id: null, message_type: "custom", send_mode: "manual", sort_order: 0 }] },
