@@ -9,6 +9,7 @@ import { rolesOf, type AppRole } from "./roles.js";
 import { loginRequest } from "./msalConfig.js";
 
 export interface AuthAccount {
+  id?: string;
   name?: string;
   username: string;
 }
@@ -43,7 +44,7 @@ export function MsalAuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AuthState>(
     () => ({
-      account: account ? { name: account.name, username: account.username } : null,
+      account: account ? { id: typeof account.idTokenClaims?.oid === "string" ? account.idTokenClaims.oid : undefined, name: account.name, username: account.username } : null,
       roles: rolesOf(account),
       signIn: () => {
         void instance.loginRedirect(loginRequest);

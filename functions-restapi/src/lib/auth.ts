@@ -55,8 +55,11 @@ export function getCallerPrincipal(request: HttpRequest): CallerPrincipal | null
       if (!claim || typeof claim.typ !== "string" || typeof claim.val !== "string") continue;
       (claims[claim.typ] ??= []).push(claim.val);
     }
+    const userId = principal.userId?.trim()
+      || claims.oid?.[0]
+      || claims["http://schemas.microsoft.com/identity/claims/objectidentifier"]?.[0];
     return {
-      userId: principal.userId,
+      userId,
       userDetails: principal.userDetails,
       roles,
       claims,

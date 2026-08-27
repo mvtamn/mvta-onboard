@@ -116,6 +116,36 @@ test("a mixed ingestion and Access Administrator token is denied", async () => {
   assert.equal(response.status, 403);
 });
 
+test("Access Management requires a stable requester identity", async () => {
+  const directory: AccessDirectory = {
+    listAccessPrincipals: async () => [],
+    searchPrincipals: async () => [],
+    getSignIns: async () => ({ summary: null, events: [] }),
+    applyChange: async () => ({ status: "completed", correlation_id: null }),
+  };
+  const handler = createAccessManagementHttpHandler({ directory, store: emptyStore, environment: "test" });
+
+  const response = await handler(new HttpRequest({
+    method: "POST",
+    url: "https://example.test/api/admin/access-management/changes",
+    headers: {
+      "idempotency-key": "missing-requester-identity",
+      "x-ms-client-principal": principalHeader(["OCC.AccessAdmin"], "", "", [{ typ: "acrs", val: "c1" }]),
+    },
+    body: { string: JSON.stringify({ changes: [{
+      action: "grant",
+      principal_id: "user-1",
+      principal_type: "user",
+      role: "OCC.Admin",
+      source: "group",
+      reason: "Duty manager",
+    }] }) },
+  }));
+
+  assert.equal(response.status, 401);
+  assert.deepEqual(response.jsonBody, { error: "A stable sign-in identity is required to manage access." });
+});
+
 test("Directory Onboarding preview rejects System.Ingestion for a person", async () => {
   const directory: AccessDirectory = {
     listAccessPrincipals: async () => [],
@@ -389,6 +419,46 @@ test("a different freshly authenticated Access Administrator approves a privileg
     result: { status: "completed", correlation_id: "graph-admin-1" },
   });
   assert.deepEqual((access.jsonBody as { principals: Array<{ effective_roles: string[] }> }).principals[0].effective_roles, ["OCC.Admin"]);
+});
+
+test("a privileged request with an unknown legacy requester cannot be approved", async () => {
+  const directory: AccessDirectory = {
+    listAccessPrincipals: async () => [],
+    searchPrincipals: async () => [],
+    getSignIns: async () => ({ summary: null, events: [] }),
+    applyChange: async () => ({ status: "completed", correlation_id: null }),
+  };
+  const store: AccessManagementStore = {
+    ...emptyStore,
+    getChange: async () => ({
+      id: "legacy-change",
+      environment: "test",
+      change: { action: "grant", principal_id: "user-1", principal_type: "user", role: "OCC.Admin", source: "group", reason: "Legacy request" },
+      status: "pending",
+      requested_by_id: "unknown",
+      requested_by_name: "unknown",
+      requested_at: "2026-08-14T12:00:00.000Z",
+      approval_expires_at: "2026-08-15T12:00:00.000Z",
+      decided_by_id: null,
+      decided_by_name: null,
+      decided_at: null,
+      result: null,
+    }),
+  };
+  const handler = createAccessManagementHttpHandler({ directory, store, environment: "test" });
+
+  const response = await handler(new HttpRequest({
+    method: "POST",
+    url: "https://example.test/api/admin/access-management/changes/legacy-change/decision",
+    headers: {
+      "idempotency-key": "legacy-approval",
+      "x-ms-client-principal": principalHeader(["OCC.AccessAdmin"], "actor-2", "jamie@mvta.com", [{ typ: "acrs", val: "c1" }]),
+    },
+    body: { string: JSON.stringify({ decision: "approved" }) },
+  }));
+
+  assert.equal(response.status, 409);
+  assert.deepEqual(response.jsonBody, { error: "This legacy request has no verifiable requester and cannot be approved. Reject it and create a new request." });
 });
 
 test("OnBoard sign-in details are queried on demand without being copied into audit", async () => {

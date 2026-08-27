@@ -342,7 +342,7 @@ export interface AccessManagementDependencies {
 
 function accessAdministrator(request: HttpRequest, allowAdminFallback: boolean): CallerPrincipal | null {
   const principal = getCallerPrincipal(request);
-  if (!principal) return null;
+  if (!principal?.userId?.trim()) return null;
   if (principal.roles.includes(WORKLOAD_ACCESS_ROLE) && principal.roles.some((role) => role !== WORKLOAD_ACCESS_ROLE)) {
     return null;
   }
@@ -354,6 +354,7 @@ function accessAdministrator(request: HttpRequest, allowAdminFallback: boolean):
 function forbidden(request: HttpRequest, allowAdminFallback: boolean): HttpResponseInit | null {
   const principal = getCallerPrincipal(request);
   if (!principal) return { status: 401, jsonBody: { error: "Not authenticated." } };
+  if (!principal.userId?.trim()) return { status: 401, jsonBody: { error: "A stable sign-in identity is required to manage access." } };
   if (!accessAdministrator(request, allowAdminFallback)) {
     return { status: 403, jsonBody: { error: "Access Management permission is required." } };
   }
@@ -784,6 +785,9 @@ export function createAccessManagementHttpHandler({
       }
       const actorId = actor.userId ?? actor.userDetails ?? "unknown";
       const actorName = actor.userDetails ?? actor.userId ?? "unknown";
+      if (existing.requested_by_id === "unknown" && decision === "approved") {
+        return { status: 409, jsonBody: { error: "This legacy request has no verifiable requester and cannot be approved. Reject it and create a new request." } };
+      }
       if (existing.requested_by_id === actorId) {
         return { status: 409, jsonBody: { error: "The requester cannot approve or reject their own privileged change." } };
       }
