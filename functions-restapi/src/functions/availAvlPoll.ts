@@ -14,7 +14,7 @@ import { detectEventGeofenceCrossings } from "../lib/eventGeofenceDetection";
 import { detectMonitoringAreaTests } from "../lib/monitoringAreaTest";
 import { detectionWindowSeconds, shouldAcceptObservation } from "../lib/eventProcessing";
 import { recordEventHealth, recordTelemetryDiagnostic } from "../lib/eventHealth";
-import { recordFeedHealth } from "../lib/missedTripFeedHealth";
+import { recordFeedFailure, recordFeedHealth } from "../lib/missedTripFeedHealth";
 
 type PollPool = Awaited<ReturnType<typeof getPool>>;
 
@@ -148,6 +148,7 @@ app.timer("availAvlPoll", {
         await safeHealth(pool, "shared_avl_ingestion", "healthy", `Fetched ${reports.length} reports.`);
       } catch (err) {
         context.error("Failed to fetch Avail AVL Reports:", err);
+        try { await recordFeedFailure(pool, "avail_avl", err); } catch (healthError) { context.error("Failed to record Avail AVL feed failure:", healthError); }
         await safeHealth(pool, "shared_avl_ingestion", "failed", "Avail AVL fetch failed.", err);
         return;
       }
@@ -158,6 +159,8 @@ app.timer("availAvlPoll", {
     `);
 
     let upsertedCount = 0;
+    let coverageStartMs = Number.POSITIVE_INFINITY;
+    let coverageEndMs = Number.NEGATIVE_INFINITY;
 
     for (const report of sharedDue ? reports : []) {
       let mapped;
@@ -172,6 +175,8 @@ app.timer("availAvlPoll", {
         await safeDiagnostic(pool, "shared_avl_ingestion", "invalid_report", "Avail AVL report was missing usable position data.", Number(report.Vehicle));
         continue;
       }
+      coverageStartMs = Math.min(coverageStartMs, mapped.report_timestamp.getTime());
+      coverageEndMs = Math.max(coverageEndMs, mapped.report_timestamp.getTime());
       if (mapped.latitude < 43 || mapped.latitude > 46 || mapped.longitude < -95.5 || mapped.longitude > -92) {
         await safeDiagnostic(pool, "shared_avl_ingestion", "out_of_bounds", "Avail AVL report coordinates were outside the MVTA operating bounds.", mapped.vehicle_id);
       }
@@ -252,7 +257,11 @@ app.timer("availAvlPoll", {
     );
     if (sharedDue) {
       try {
-        await recordFeedHealth(pool, "avail_avl", reports.length, null);
+        await recordFeedHealth(pool, "avail_avl", reports.length, null, {
+          // An empty successful request still covers the requested window.
+          startAt: Number.isFinite(coverageStartMs) ? new Date(coverageStartMs) : twoMinutesAgo,
+          endAt: Number.isFinite(coverageEndMs) ? new Date(coverageEndMs) : now,
+        });
       } catch (healthError) {
         context.error("Failed to update Avail AVL feed health:", healthError);
       }

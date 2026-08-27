@@ -364,8 +364,9 @@ export function FixedRouteServiceRisk() {
     try {
       const { streams } = await api.getKpiTrust();
       if (streams.fixed_route_delay?.state !== "current") {
-        setPrepareError("Suggested Alerts are unavailable while fixed-route KPI trust is not current.");
-        return;
+        const reason = window.prompt("Why is it safe to prepare this customer update from stale KPI data?");
+        if (!reason?.trim()) return;
+        draft.stale_data_acknowledgement_reason = reason.trim();
       }
       const result = await api.prepareSuggestedAlert(draft);
       navigate(`/suggested?focus=${encodeURIComponent(result.alert_id)}`);

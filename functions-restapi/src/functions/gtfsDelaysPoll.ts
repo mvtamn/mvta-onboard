@@ -12,6 +12,7 @@
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { recordFeedHealth } from "../lib/missedTripFeedHealth";
+import { loadKpiTrust } from "../lib/kpiTrustStore";
 import {
   fetchTripUpdateFeed,
   mapTripUpdateEntity,
@@ -191,6 +192,10 @@ async function escalateToSuggestedAlert(
   delay: MappedTripDelay,
   context: InvocationContext,
 ): Promise<void> {
+  if ((await loadKpiTrust(pool)).fixed_route_delay.state !== "current") {
+    context.warn(`Skipped automatic Suggested Alert for ${delay.trip_id}: fixed-route delay KPI trust is not current.`);
+    return;
+  }
   let stopName: string | null = null;
   const affectedStopId = delay.first_threshold_stop_id ?? delay.next_stop_id;
   if (affectedStopId) {
@@ -264,11 +269,6 @@ app.timer("gtfsDelaysPoll", {
     }
 
     const pool = await getPool();
-    try {
-      await recordFeedHealth(pool, "gtfs_trip_updates", feed.Entities.length, feed.Header?.Timestamp ?? null);
-    } catch (err) {
-      context.error("Failed to update TripUpdate feed health:", err);
-    }
     let escalatedCount = 0;
 
     const observedTableCheck = await pool.request().query<{ table_exists: number }>(`
@@ -335,6 +335,13 @@ app.timer("gtfsDelaysPoll", {
       context.error("Failed to clean up stale MonitoredTripDelays rows:", err);
     }
 
+    try {
+      // The trust record means this fetched feed was successfully processed,
+      // not merely that an HTTP response was received.
+      await recordFeedHealth(pool, "gtfs_trip_updates", feed.Entities.length, feed.Header?.Timestamp ?? null);
+    } catch (err) {
+      context.error("Failed to update TripUpdate feed health:", err);
+    }
     context.log(
       `GTFS-RT TripUpdate poll: ${feed.Entities.length} entities seen, ${evidenceCount} evidence rows recorded, ` +
         `${escalatedCount} new suggested alerts escalated.`,

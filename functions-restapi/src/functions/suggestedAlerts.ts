@@ -13,7 +13,7 @@ import { getPool, sql } from "../lib/db";
 import { requireRole, STAFF_READ_ROLES, PUBLISH_ROLES } from "../lib/auth";
 import { isGuid, validatePrepareSuggestedAlert } from "../lib/validation";
 import { publishMessageCreated } from "../lib/events";
-import { resolveKpiTrust, type KpiFeedHealth } from "../lib/kpiTrust";
+import { loadKpiTrust } from "../lib/kpiTrustStore";
 import type { Category, PrepareSuggestedAlertBody, Severity } from "../lib/types";
 
 interface SuggestedAlertRow {
@@ -32,19 +32,15 @@ interface SuggestedAlertRow {
   message_id: string | null;
 }
 
-async function sourceTrustIsCurrent(pool: sql.ConnectionPool, source: string): Promise<boolean> {
-  const streamName = source === "gtfs_rt" ? "fixed_route_delay" : source === "zona" ? "on_demand" : null;
-  if (!streamName) return true;
-  const table = await pool.request().query<{ ready: number }>(`
-    SELECT CASE WHEN OBJECT_ID('dbo.MissedTripFeedHealth', 'U') IS NULL THEN 0 ELSE 1 END AS ready
-  `);
-  const records = table.recordset[0]?.ready === 1
-    ? (await pool.request().query<KpiFeedHealth>(`
-        SELECT feed_name, last_success_at, last_entity_count, source_timestamp_at
-        FROM MissedTripFeedHealth
-      `)).recordset
-    : [];
-  return resolveKpiTrust(records)[streamName].state === "current";
+async function sourceTrustState(pool: sql.ConnectionPool, body: PrepareSuggestedAlertBody) {
+  const streamName = body.source === "gtfs_rt"
+    ? "fixed_route_delay"
+    : body.source === "zona"
+      ? "on_demand"
+      : body.detail.source_system === "spare"
+        ? "spare_missed_trips"
+        : "fixed_route_missed_trips";
+  return { streamName, state: (await loadKpiTrust(pool))[streamName].state };
 }
 
 async function linkPreparedAlertToRisk(
@@ -122,8 +118,21 @@ app.http("suggestedAlertsPrepare", {
     const body = raw as PrepareSuggestedAlertBody;
 
     const pool = await getPool();
-    if (!await sourceTrustIsCurrent(pool, body.source)) {
-      return { status: 409, jsonBody: { error: "Suggested Alert preparation is unavailable while the required KPI trust state is not current." } };
+    const trust = await sourceTrustState(pool, body);
+    const acknowledgementReason = body.stale_data_acknowledgement_reason?.trim();
+    if (trust.state !== "current" && trust.state !== "current_but_empty" && !acknowledgementReason) {
+      return { status: 409, jsonBody: { error: "Preparing a Suggested Alert from stale or unavailable KPI data requires a recorded stale-data acknowledgement." } };
+    }
+    if (acknowledgementReason && (trust.state === "current" || trust.state === "current_but_empty")) {
+      return { status: 400, jsonBody: { error: "A stale-data acknowledgement may only be recorded when the KPI trust state is stale or unavailable." } };
+    }
+    if (acknowledgementReason) {
+      const acknowledgementTable = await pool.request().query<{ ready: number }>(`
+        SELECT CASE WHEN OBJECT_ID('dbo.KpiTrustAcknowledgements', 'U') IS NULL THEN 0 ELSE 1 END AS ready
+      `);
+      if (acknowledgementTable.recordset[0]?.ready !== 1) {
+        return { status: 409, jsonBody: { error: "Stale-data acknowledgement storage is not ready. Apply migration 085 before preparing this alert." } };
+      }
     }
     const tx = new sql.Transaction(pool);
     try {
@@ -176,7 +185,10 @@ app.http("suggestedAlertsPrepare", {
         sql.NVarChar,
         body.zones_affected ? JSON.stringify(body.zones_affected) : null,
       );
-      insertReq.input("detail", sql.NVarChar, JSON.stringify(body.detail));
+      insertReq.input("detail", sql.NVarChar, JSON.stringify({
+        ...body.detail,
+        ...(acknowledgementReason ? { stale_data_acknowledgement: { stream_name: trust.streamName, reason: acknowledgementReason } } : {}),
+      }));
       const inserted = await insertReq.query<{ alert_id: string; status: string }>(`
         INSERT INTO SuggestedAlerts (
           source, external_id, draft_text, category, severity,
@@ -327,6 +339,20 @@ app.http("suggestedAlertsApprove", {
         )
       `);
       const message = inserted.recordset[0];
+
+      const detail = alert.detail ? JSON.parse(alert.detail) as Record<string, unknown> : {};
+      const acknowledgement = detail.stale_data_acknowledgement as { stream_name?: string; reason?: string } | undefined;
+      if (acknowledgement?.stream_name && acknowledgement.reason) {
+        const record = new sql.Request(tx);
+        record.input("stream", sql.NVarChar(64), acknowledgement.stream_name);
+        record.input("reference", sql.NVarChar(100), message.message_id);
+        record.input("reason", sql.NVarChar(1000), acknowledgement.reason);
+        record.input("actor", sql.NVarChar(200), reviewedBy);
+        await record.query(`
+          INSERT INTO KpiTrustAcknowledgements(stream_name, communication_reference, reason, acknowledged_by)
+          VALUES(@stream, @reference, @reason, @actor)
+        `);
+      }
 
       const updateReq = new sql.Request(tx);
       updateReq.input("id", sql.UniqueIdentifier, id);

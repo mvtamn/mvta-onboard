@@ -49,3 +49,12 @@ test("does not invent a stale deadline for periodic sources", () => {
   assert.strictEqual(trust.otp.state, "current");
   assert.strictEqual(trust.otp.contract_pending, true);
 });
+
+test("does not call a recently delivered but old source record current", () => {
+  const record = health("gtfs_trip_updates", 1);
+  record.source_timestamp_at = new Date(now.getTime() - 30 * 60_000);
+  const trust = resolveKpiTrust([record, health("gtfs_static", 1)], now);
+
+  assert.strictEqual(trust.fixed_route_delay.state, "stale");
+  assert.strictEqual(trust.fixed_route_delay.dependencies[0].stale_after_minutes, 15);
+});

@@ -1,4 +1,5 @@
 import { sql } from "./db";
+import { loadKpiTrust } from "./kpiTrustStore";
 
 interface Candidate {
   trip_id: string;
@@ -38,6 +39,9 @@ function draftText(candidate: Candidate): string {
 }
 
 async function ensureSuggestedAlert(pool: sql.ConnectionPool, candidate: Candidate): Promise<string> {
+  if ((await loadKpiTrust(pool)).on_demand.state !== "current") {
+    throw new Error("Automatic Suggested Alert creation is unavailable while On-Demand KPI trust is not current.");
+  }
   const externalId = `wait:${candidate.trip_id}`.slice(0, 100);
   const existing = pool.request();
   existing.input("source", sql.NVarChar, "zona");

@@ -145,7 +145,10 @@ app.timer("otpDailyFeedPoll", {
       `Avail OTP Daily poll: ${reports.length} reports seen, ${upsertedCount} rows upserted, ${purgedCount} old rows purged.`,
     );
     try {
-      await recordFeedHealth(pool, "avail_otp_daily", reports.length, null);
+      await recordFeedHealth(pool, "avail_otp_daily", reports.length, null, {
+        startAt: target,
+        endAt: new Date(target.getTime() + 24 * 60 * 60_000),
+      });
     } catch (healthError) {
       context.error("Failed to update Avail OTP Daily feed health:", healthError);
     }

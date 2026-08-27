@@ -2,6 +2,7 @@ import { app, type HttpRequest, type InvocationContext } from "@azure/functions"
 import { assessPeriod } from "../lib/assessment/assess";
 import { COMPLIANCE_MANAGER_ROLES, COMPLIANCE_READ_ROLES, COMPLIANCE_WRITE_ROLES, requireRole } from "../lib/auth";
 import { getPool, sql } from "../lib/db";
+import { loadKpiTrust } from "../lib/kpiTrustStore";
 import { isGuid, isServiceMonth } from "../lib/validation";
 
 app.http("assessmentPeriodsList", {
@@ -71,7 +72,12 @@ app.http("assessmentPeriodFinalize", {
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     if (!isGuid(request.params.id)) return { status: 400, jsonBody: { error: "Invalid period id" } };
     try {
-      const pool = await getPool(); const req = pool.request(); req.input("id", sql.UniqueIdentifier, request.params.id); req.input("actor", sql.NVarChar(200), auth.principal.userDetails ?? "onboard-console");
+      const pool = await getPool();
+      const otpTrust = (await loadKpiTrust(pool)).otp;
+      if (otpTrust.state !== "current" && otpTrust.state !== "current_but_empty") {
+        return { status: 409, jsonBody: { error: "Assessment finalization is unavailable while OTP KPI trust is stale or unavailable." } };
+      }
+      const req = pool.request(); req.input("id", sql.UniqueIdentifier, request.params.id); req.input("actor", sql.NVarChar(200), auth.principal.userDetails ?? "onboard-console");
       const result = await req.query<{ changed: number }>(`
         UPDATE AssessmentPeriods SET status='finalized',final_total=(SELECT SUM(recommended_amount) FROM PeriodKpiAssessments WHERE period_id=@id),finalized_by=@actor,finalized_at=SYSUTCDATETIME()
         WHERE id=@id AND status='in_validation' AND validation_ends_on<=CONVERT(date,SYSUTCDATETIME()) AND computed_revision=input_revision

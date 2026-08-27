@@ -95,7 +95,10 @@ app.timer("fixedRouteDeparturesPoll", {
     }
 
     try {
-      await recordFeedHealth(pool, "avail_pullout", reports.length, null);
+      await recordFeedHealth(pool, "avail_pullout", reports.length, null, {
+        startAt: new Date(`${serviceDate.slice(0, 4)}-${serviceDate.slice(4, 6)}-${serviceDate.slice(6, 8)}T00:00:00Z`),
+        endAt: new Date(),
+      });
     } catch (healthError) {
       context.error("Failed to update Avail Pullout feed health:", healthError);
     }
