@@ -19,7 +19,7 @@ describe("Event AVL vehicle labels", () => {
     const row = vehicle();
 
     expect(routeVehicleLabel(row)).toBe("Route 5555 (Vehicle 4834)");
-    expect(monitoringAreaLabel(row)).toBe("Outside monitored zones");
+    expect(monitoringAreaLabel(row)).toBe("Special-event route · outside configured Monitoring Areas");
   });
 
   it("leads with the route display label", () => {

@@ -55,6 +55,7 @@ export function routeMarkerColor(vehicle: EventVehiclePosition): string {
 }
 
 export function monitoringAreaLabel(vehicle: EventVehiclePosition): string {
+  if (vehicle.route_category === "SpecialEvent" && vehicle.zone_status === "Outside monitored zones") return "Special-event route · outside configured Monitoring Areas";
   return vehicle.zone_name && vehicle.zone_name !== vehicle.zone_status
     ? `${vehicle.zone_status} · ${vehicle.zone_name}`
     : vehicle.zone_status;
