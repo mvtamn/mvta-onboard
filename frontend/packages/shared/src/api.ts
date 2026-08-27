@@ -22,6 +22,7 @@ import type {
   TripDelay,
   TripDelayDiagnostics,
   OnDemandRiskRecord,
+  OnDemandRiskDiagnostics,
   MissedTrip,
   MissedTripsDiagnostics,
   MissedTripReview,
@@ -527,7 +528,15 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     },
 
     getOnDemandRisks() {
-      return request<{ risks: OnDemandRiskRecord[] }>("/api/on-demand-risks", {}, true);
+      return request<{ risks: OnDemandRiskRecord[]; diagnostics: OnDemandRiskDiagnostics }>("/api/on-demand-risks", {}, true);
+    },
+
+    resolveOnDemandIntervention(tripId: string, reason?: string) {
+      return request<{ trip_id: string; status: "resolved" }>(
+        `/api/on-demand-risks/${encodeURIComponent(tripId)}/resolve`,
+        { method: "POST", body: JSON.stringify(reason ? { reason } : {}) },
+        true,
+      );
     },
 
     getOnDemandServiceStandards() {

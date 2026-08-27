@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ApiError,
   isDepartureAtRisk,
+  isDepartureWatch,
   type PrepareSuggestedAlertInput,
   type TripDelay,
   type TripDelayDiagnostics,
@@ -79,7 +80,7 @@ function fromTripDelay(delay: TripDelay): FixedRouteRisk {
     trend,
     confidence: delay.prediction_confidence
       ? titleCase(delay.prediction_confidence)
-      : "Low",
+      : "Unknown",
     location: delay.latitude !== null && delay.longitude !== null
       ? `${delay.latitude.toFixed(4)}, ${delay.longitude.toFixed(4)}`
       : "Vehicle position unavailable",
@@ -128,7 +129,7 @@ function fromTripDelay(delay: TripDelay): FixedRouteRisk {
   };
 }
 
-function confidenceClass(confidence: RiskConfidence): string {
+function confidenceClass(confidence: RiskConfidence | "Unknown"): string {
   if (confidence === "High") return "pill-success";
   if (confidence === "Medium") return "pill-warning";
   return "pill-muted";
@@ -304,6 +305,7 @@ export function FixedRouteServiceRisk() {
   const [selectedId, setSelectedId] = useState(FIXED_ROUTE_RISKS[0].id);
   const [workflow, setWorkflow] = useState<Record<string, RiskWorkflow>>({});
   const [dataMode, setDataMode] = useState<DataMode>("loading");
+  const [trainingMode, setTrainingMode] = useState(false);
   const [liveRisks, setLiveRisks] = useState<FixedRouteRisk[]>([]);
   const [diagnostics, setDiagnostics] = useState<TripDelayDiagnostics | null>(null);
   const [liveMessage, setLiveMessage] = useState(
@@ -312,7 +314,8 @@ export function FixedRouteServiceRisk() {
   const [previewDrafts, setPreviewDrafts] = useState<Record<string, string>>({});
   const [preparing, setPreparing] = useState(false);
   const [prepareError, setPrepareError] = useState<string | null>(null);
-  const risks = dataMode === "preview" ? FIXED_ROUTE_RISKS : liveRisks;
+  const isPreview = trainingMode || dataMode === "preview";
+  const risks = isPreview ? FIXED_ROUTE_RISKS : liveRisks;
   const selected = useMemo(
     () =>
       risks.find((risk) => risk.id === selectedId) ??
@@ -347,7 +350,7 @@ export function FixedRouteServiceRisk() {
   async function prepareAlert(risk: FixedRouteRisk) {
     setPrepareError(null);
     const draft = fixedRouteDraft(risk);
-    if (dataMode === "preview") {
+    if (isPreview) {
       setPreviewDrafts((current) => ({ ...current, [risk.id]: draft.draft_text }));
       setWorkflow((current) => ({ ...current, [risk.id]: "Alert prepared" }));
       return;
@@ -384,16 +387,22 @@ export function FixedRouteServiceRisk() {
     );
   }
 
-  const allLiveRisks = snapshot?.delays.map(fromTripDelay) ?? [];
-  const statRisks = dataMode === "live" ? allLiveRisks : risks;
-  const predicted = dataMode === "live"
-    ? snapshot?.delays.filter(isDepartureAtRisk).length ?? 0
-    : statRisks.filter((risk) => (risk.predictedMaxMinutes ?? 0) > 15).length;
-  const missing = dataMode === "live"
-    ? snapshot?.delays.filter((delay) => delay.predicted_max_departure_delay_seconds === null).length ?? 0
-    : statRisks.filter((risk) => risk.predictedMaxMinutes === null).length;
-  const worsening = statRisks.filter((risk) => risk.trend === "Worsening").length;
-  const routesAffected = new Set(statRisks.map((risk) => risk.route)).size;
+  const allLiveDelays = snapshot?.delays ?? [];
+  const riskDelays = allLiveDelays.filter(isDepartureAtRisk);
+  const watchDelays = allLiveDelays.filter(isDepartureWatch);
+  const riskStats = dataMode === "live" && !trainingMode ? riskDelays.map(fromTripDelay) : risks;
+  const predicted = riskStats.length;
+  const watch = dataMode === "live" && !trainingMode
+    ? watchDelays.length
+    : risks.filter((risk) => risk.predictedMaxMinutes !== null && risk.predictedMaxMinutes >= 10 && risk.predictedMaxMinutes <= 15).length;
+  const missing = dataMode === "live" && !trainingMode
+    ? allLiveDelays.filter((delay) => delay.predicted_max_departure_delay_seconds === null).length
+    : risks.filter((risk) => risk.predictedMaxMinutes === null).length;
+  const routesAffected = new Set(riskStats.map((risk) => risk.route)).size;
+  const routesMonitored = dataMode === "live" && !trainingMode
+    ? new Set(allLiveDelays.map((delay) => delay.route_id)).size
+    : new Set(risks.map((risk) => risk.route)).size;
+  const actionsDisabled = !isPreview && dataMode === "live" && diagnostics?.state !== "current";
 
   return (
     <div className="risk-module">
@@ -402,13 +411,17 @@ export function FixedRouteServiceRisk() {
         description="Trips predicted to depart more than 15 minutes late, ordered by time to intervention."
         view={view}
         onView={setView}
+        trainingMode={trainingMode}
+        onTrainingMode={() => setTrainingMode((current) => !current)}
       />
 
       <FixedRouteRefreshControls />
 
       <div className="concept-banner">
         <span className="concept-badge">
-          {dataMode === "loading"
+          {trainingMode
+            ? "Training"
+            : dataMode === "loading"
             ? "Connecting"
             : dataMode === "preview"
               ? "Preview data"
@@ -416,14 +429,17 @@ export function FixedRouteServiceRisk() {
                 ? "Live data"
                 : "Feed status"}
         </span>
-        <span>{liveMessage}</span>
+        <span>{trainingMode
+          ? "Training scenario — local rehearsal only. No operational data or workflow changes will be saved."
+          : liveMessage}</span>
       </div>
 
       <div className="risk-stat-grid" aria-label="Fixed route risk summary">
         <RiskStat value={predicted} label="Predicted over 15 min" tone="danger" />
-        <RiskStat value={worsening} label="Worsening trips" tone="warning" />
+        <RiskStat value={watch} label="Watch conditions" tone="warning" />
         <RiskStat value={missing} label="Missing predictions" tone="muted" />
         <RiskStat value={routesAffected} label="Routes affected" tone="accent" />
+        <RiskStat value={routesMonitored} label="Routes monitored" tone="accent" />
       </div>
 
       {dataMode === "loading" ? (
@@ -483,9 +499,10 @@ export function FixedRouteServiceRisk() {
         <DepartureRiskDetail
           risk={selected}
           workflow={workflow[selected.id] ?? "New"}
-          isPreview={dataMode === "preview"}
+          isPreview={isPreview}
           previewDraft={previewDrafts[selected.id] ?? null}
           preparing={preparing}
+          actionsDisabled={actionsDisabled}
           prepareError={prepareError}
           onPrepare={() => void prepareAlert(selected)}
           onWorkflow={(state) => setWorkflow((current) => ({ ...current, [selected.id]: state }))}
@@ -501,11 +518,15 @@ function RiskModuleHeader({
   description,
   view,
   onView,
+  trainingMode,
+  onTrainingMode,
 }: {
   title: string;
   description: string;
   view: View;
   onView: (view: View) => void;
+  trainingMode?: boolean;
+  onTrainingMode?: () => void;
 }) {
   return (
     <div className="risk-module-head">
@@ -521,6 +542,11 @@ function RiskModuleHeader({
         <button className={view === "telemetry" ? "active" : ""} onClick={() => onView("telemetry")}>
           Current telemetry
         </button>
+        {onTrainingMode ? (
+          <button className={trainingMode ? "active" : ""} onClick={onTrainingMode}>
+            {trainingMode ? "Return to monitoring" : "Training scenario"}
+          </button>
+        ) : null}
       </div>
     </div>
   );
@@ -584,6 +610,7 @@ function DepartureRiskDetail({
   isPreview,
   previewDraft,
   preparing,
+  actionsDisabled,
   prepareError,
   onPrepare,
   onWorkflow,
@@ -593,6 +620,7 @@ function DepartureRiskDetail({
   isPreview: boolean;
   previewDraft: string | null;
   preparing: boolean;
+  actionsDisabled: boolean;
   prepareError: string | null;
   onPrepare: () => void;
   onWorkflow: (workflow: RiskWorkflow) => void;
@@ -676,8 +704,8 @@ function DepartureRiskDetail({
       {prepareError ? <p className="risk-action-error">{prepareError}</p> : null}
 
       <div className="risk-actions">
-        <button className="btn-primary" disabled={preparing} onClick={onPrepare}>
-          {preparing ? "Preparing…" : isPreview ? "Preview Suggested Alert" : risk.suggestedAlertId ? "Review Suggested Alert" : "Prepare Suggested Alert"}
+        <button className="btn-primary" disabled={preparing || actionsDisabled} onClick={onPrepare}>
+          {preparing ? "Preparing…" : actionsDisabled ? "Actions unavailable" : isPreview ? "Preview Suggested Alert" : risk.suggestedAlertId ? "Review Suggested Alert" : "Prepare Suggested Alert"}
         </button>
         <Link
           className="btn-sm"
@@ -685,8 +713,8 @@ function DepartureRiskDetail({
         >
           Find Procedure
         </Link>
-        <button className="btn-sm" onClick={() => onWorkflow("Acknowledged")}>Acknowledge</button>
-        <button className="btn-sm" onClick={() => onWorkflow("Monitoring")}>Monitor</button>
+        <button className="btn-sm" disabled={actionsDisabled} onClick={() => onWorkflow("Acknowledged")}>Acknowledge</button>
+        <button className="btn-sm" disabled={actionsDisabled} onClick={() => onWorkflow("Monitoring")}>Monitor</button>
       </div>
     </aside>
   );

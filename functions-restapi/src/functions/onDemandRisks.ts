@@ -6,7 +6,12 @@
 // implemented. No customer PII is returned.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
-import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { PUBLISH_ROLES, requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import {
+  ON_DEMAND_DEGRADED_AFTER_MINUTES,
+  ON_DEMAND_RECONCILIATION_INTERVAL_MINUTES,
+  onDemandMonitoringState,
+} from "../lib/onDemandMonitoringHealth";
 
 interface OnDemandRiskRow {
   trip_id: string;
@@ -27,9 +32,16 @@ interface OnDemandRiskRow {
   source_updated_at: Date | null;
   last_polled_at: Date;
   suggested_alert_id: string | null;
+  intervention_status: "open" | "resolved" | null;
   service_standard_minutes: number;
   monitor_state: "active" | "completed" | "cancelled";
   zone_resolution: "assigned" | "missing_pickup_coordinate" | "outside_operational_zones" | "ambiguous_operational_zones" | "legacy_unknown";
+}
+
+interface OnDemandHealthRow {
+  last_authoritative_reconciliation_at: Date | null;
+  latest_source_update_at: Date | null;
+  active_request_count: number | null;
 }
 
 app.http("onDemandRisksList", {
@@ -44,6 +56,15 @@ app.http("onDemandRisksList", {
 
     try {
       const pool = await getPool();
+      const healthResult = await pool.request().query<OnDemandHealthRow>(`
+        IF OBJECT_ID('dbo.OnDemandMonitoringHealth', 'U') IS NULL
+          SELECT CAST(NULL AS DATETIME2) AS last_authoritative_reconciliation_at,
+            CAST(NULL AS DATETIME2) AS latest_source_update_at,
+            CAST(NULL AS INT) AS active_request_count;
+        ELSE
+          SELECT last_authoritative_reconciliation_at, latest_source_update_at, active_request_count
+          FROM dbo.OnDemandMonitoringHealth WHERE id = 1;
+      `);
       const result = await pool.request().query<OnDemandRiskRow>(`
         SELECT TOP 250
           m.trip_id, m.external_trip_id, m.zone_id, m.wait_started_at,
@@ -54,6 +75,7 @@ app.http("onDemandRisksList", {
           m.eligible_vehicles_in_zone, m.nearest_vehicle_context, m.trend,
           m.prediction_confidence, m.prediction_reasons, m.source_updated_at,
           m.last_polled_at, m.suggested_alert_id, m.monitor_state, m.zone_resolution,
+          i.status AS intervention_status,
           COALESCE(o.minutes, p.default_minutes, 25) AS service_standard_minutes
         FROM MonitoredOnDemandWaits m
         LEFT JOIN (
@@ -64,7 +86,8 @@ app.http("onDemandRisksList", {
         LEFT JOIN dbo.OnDemandServiceStandardPolicy p ON p.id = 1
         LEFT JOIN dbo.OnDemandZoneServiceStandardOverrides o ON o.external_location_id = z.external_location_id
           AND o.revoked_at IS NULL AND o.effective_at <= SYSUTCDATETIME() AND SYSUTCDATETIME() < o.expires_at
-        WHERE m.monitor_state = 'active' AND m.last_polled_at >= DATEADD(HOUR, -2, SYSUTCDATETIME())
+        LEFT JOIN dbo.OnDemandServiceQualityInterventions i ON i.request_id = m.trip_id
+        WHERE m.monitor_state = 'active'
         ORDER BY
           CASE
             WHEN DATEDIFF(MINUTE, m.wait_started_at, SYSUTCDATETIME()) > COALESCE(o.minutes, p.default_minutes, 25) THEN 0
@@ -81,9 +104,72 @@ app.http("onDemandRisksList", {
           ? JSON.parse(row.prediction_reasons)
           : [],
       }));
-      return { status: 200, jsonBody: { risks } };
+      const enabled = process.env.ON_DEMAND_MONITORING_ENABLED?.trim().toLowerCase() === "true";
+      const health = healthResult.recordset[0] ?? null;
+      const state = onDemandMonitoringState(enabled, health && {
+        lastAuthoritativeReconciliationAt: health.last_authoritative_reconciliation_at,
+        latestSourceUpdateAt: health.latest_source_update_at,
+        activeRequestCount: health.active_request_count,
+      });
+      return {
+        status: 200,
+        jsonBody: {
+          risks: enabled ? risks : [],
+          diagnostics: {
+            state,
+            last_authoritative_reconciliation_at: health?.last_authoritative_reconciliation_at?.toISOString() ?? null,
+            latest_source_update_at: health?.latest_source_update_at?.toISOString() ?? null,
+            active_request_count: enabled ? health?.active_request_count ?? null : null,
+            reconciliation_interval_minutes: ON_DEMAND_RECONCILIATION_INTERVAL_MINUTES,
+            degraded_after_minutes: ON_DEMAND_DEGRADED_AFTER_MINUTES,
+          },
+        },
+      };
     } catch (err) {
       context.error("GET /on-demand-risks failed:", err);
+      return { status: 500, jsonBody: { error: "Internal server error" } };
+    }
+  },
+});
+
+app.http("onDemandInterventionResolve", {
+  route: "on-demand-risks/{tripId}/resolve",
+  methods: ["POST"],
+  authLevel: "anonymous",
+  handler: async (request: HttpRequest, context: InvocationContext) => {
+    const authResult = requireRole(request, PUBLISH_ROLES);
+    if (!authResult.authorized) {
+      return { status: authResult.status, jsonBody: { error: authResult.message } };
+    }
+    const tripId = request.params.tripId?.trim();
+    if (!tripId || tripId.length > 100) {
+      return { status: 400, jsonBody: { error: "tripId is required and must be at most 100 characters." } };
+    }
+    let reason: string | null = null;
+    try {
+      const body = await request.json() as { reason?: unknown };
+      reason = typeof body.reason === "string" && body.reason.trim()
+        ? body.reason.trim().slice(0, 500)
+        : null;
+    } catch {
+      // An empty request body is valid for an operator acknowledgement.
+    }
+    try {
+      const update = (await getPool()).request();
+      update.input("request_id", tripId);
+      update.input("resolved_by", authResult.principal.userDetails ?? "onboard-console");
+      update.input("reason", reason ?? "Resolved by OCC operator.");
+      const result = await update.query<{ request_id: string }>(`
+        UPDATE dbo.OnDemandServiceQualityInterventions
+        SET status = 'resolved', resolved_at = SYSUTCDATETIME(), resolved_by = @resolved_by,
+          resolution_reason = @reason, updated_at = SYSUTCDATETIME()
+        OUTPUT INSERTED.request_id
+        WHERE request_id = @request_id AND status = 'open';
+      `);
+      if (!result.recordset[0]) return { status: 404, jsonBody: { error: "No open intervention was found for this trip." } };
+      return { status: 200, jsonBody: { trip_id: tripId, status: "resolved" } };
+    } catch (err) {
+      context.error("POST /on-demand-risks/{tripId}/resolve failed:", err);
       return { status: 500, jsonBody: { error: "Internal server error" } };
     }
   },
