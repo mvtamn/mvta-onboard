@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ApiError,
   type OnDemandRiskRecord,
+  type OnDemandRiskDiagnostics,
   type OnDemandServiceStandardPolicy,
   type PrepareSuggestedAlertInput,
 } from "@mvta/shared";
 import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "../../auth/AuthContext.js";
 import { api } from "../../config.js";
 import {
   ON_DEMAND_RISKS,
@@ -16,7 +18,27 @@ import {
 } from "./serviceRisk.data.js";
 import "./serviceRisk.css";
 
-function confidenceClass(confidence: RiskConfidence): string {
+type DataMode = "loading" | "live" | "preview";
+
+function monitoringLabel(mode: DataMode, diagnostics: OnDemandRiskDiagnostics | null): string {
+  if (mode === "loading") return "Loading";
+  if (mode === "preview") return "Preview data";
+  if (diagnostics?.state === "current") return "Live data";
+  if (diagnostics?.state === "not_connected") return "Not connected";
+  if (diagnostics?.state === "degraded") return "Degraded";
+  return "No active service";
+}
+
+function monitoringMessage(mode: DataMode, diagnostics: OnDemandRiskDiagnostics | null, previewMessage: string | null): string {
+  if (mode === "loading") return "Checking the protected on-demand monitor.";
+  if (mode === "preview") return previewMessage ?? "Preview scenarios are shown locally; no workflow changes will be saved.";
+  if (diagnostics?.state === "not_connected") return "On-Demand monitoring is not connected.";
+  if (diagnostics?.state === "degraded") return "On-Demand reconciliation is overdue; last-known records are read-only.";
+  if (diagnostics?.state === "no_active_service") return "The latest authoritative reconciliation found no active on-demand service.";
+  return "Current wait-risk records are provided by the vendor-neutral on-demand monitoring contract.";
+}
+
+function confidenceClass(confidence: RiskConfidence | "Unknown"): string {
   if (confidence === "High") return "pill-success";
   if (confidence === "Medium") return "pill-warning";
   return "pill-muted";
@@ -33,8 +55,8 @@ function waitState(risk: OnDemandRisk, serviceStandard: number): { label: string
   if (risk.zoneResolution && risk.zoneResolution !== "assigned") return { label: "Unzoned", className: "pill-muted" };
   if (risk.currentWaitMinutes >= serviceStandard + 15 || risk.predictedWaitMinutes >= serviceStandard + 15) return { label: "Critical", className: "pill-danger" };
   if (risk.currentWaitMinutes > serviceStandard) return { label: "Standard exceeded", className: "pill-danger" };
-  if (risk.currentWaitMinutes > 0) return { label: "Overdue", className: "pill-warning" };
   if (risk.predictedWaitMinutes > serviceStandard) return { label: "Projected risk", className: "pill-warning" };
+  if (risk.predictedWaitMinutes > 20 || risk.currentWaitMinutes > 0) return { label: "Watch", className: "pill-warning" };
   return { label: "Watch", className: "pill-accent" };
 }
 
@@ -60,17 +82,17 @@ function fromOnDemandRecord(record: OnDemandRiskRecord): OnDemandRisk {
     stopsAhead: record.stops_ahead,
     confidence: record.prediction_confidence
       ? titleCase(record.prediction_confidence)
-      : "Low",
+      : "Unknown",
     trend: titleCase(record.trend),
     accessibleVehicleRequired: record.accessible_vehicle_required,
-    availableVehicles: record.eligible_vehicles_in_zone ?? 0,
-    nearestEligibleVehicle:
-      record.nearest_vehicle_context ?? "Vehicle context unavailable",
+    availableVehicles: record.eligible_vehicles_in_zone,
+    nearestEligibleVehicle: record.nearest_vehicle_context,
     reasons: record.prediction_reasons.length
       ? record.prediction_reasons
       : ["Prediction evidence is not available for this record."],
     sourceTripId: record.trip_id,
     suggestedAlertId: record.suggested_alert_id,
+    interventionStatus: record.intervention_status,
     serviceStandardMinutes: record.service_standard_minutes,
     zoneResolution: record.zone_resolution,
   };
@@ -104,16 +126,22 @@ function onDemandDraft(risk: OnDemandRisk, serviceStandard: number): PrepareSugg
 
 export function OnDemandServiceQuality() {
   const navigate = useNavigate();
+  const { roles } = useAuth();
   const [selectedId, setSelectedId] = useState(ON_DEMAND_RISKS[0].id);
   const [workflow, setWorkflow] = useState<Record<string, RiskWorkflow>>({});
-  const [liveRisks, setLiveRisks] = useState<OnDemandRisk[] | null>(null);
+  const [dataMode, setDataMode] = useState<DataMode>("loading");
+  const [trainingMode, setTrainingMode] = useState(false);
+  const [liveRisks, setLiveRisks] = useState<OnDemandRisk[]>([]);
+  const [diagnostics, setDiagnostics] = useState<OnDemandRiskDiagnostics | null>(null);
   const [liveMessage, setLiveMessage] = useState<string | null>(null);
   const [previewDrafts, setPreviewDrafts] = useState<Record<string, string>>({});
   const [preparing, setPreparing] = useState(false);
+  const [resolving, setResolving] = useState(false);
   const [prepareError, setPrepareError] = useState<string | null>(null);
   const [allZonesStandard, setAllZonesStandard] = useState(25);
   const [policy, setPolicy] = useState<OnDemandServiceStandardPolicy | null>(null);
-  const risks = liveRisks ?? ON_DEMAND_RISKS;
+  const isPreview = trainingMode || dataMode === "preview";
+  const risks = isPreview ? ON_DEMAND_RISKS : liveRisks;
   const standardFor = (risk: OnDemandRisk) => {
     if (risk.serviceStandardMinutes !== undefined) return risk.serviceStandardMinutes;
     const override = policy?.zones.find((item) => item.external_location_id === risk.zone && item.override_active);
@@ -128,21 +156,33 @@ export function OnDemandServiceQuality() {
   );
 
   useEffect(() => {
-    api
+    let alive = true;
+    const load = () => api
       .getOnDemandRisks()
-      .then(({ risks: records }) => {
+      .then(({ risks: records, diagnostics: nextDiagnostics }) => {
+        if (!alive) return;
         const mapped = records.map(fromOnDemandRecord);
         setLiveRisks(mapped);
+        setDiagnostics(nextDiagnostics);
+        setDataMode("live");
         setLiveMessage(null);
         if (mapped.length > 0) setSelectedId(mapped[0].id);
       })
       .catch(() => {
-        setLiveRisks(null);
+        if (!alive) return;
+        setDataMode("preview");
+        setDiagnostics(null);
         setLiveMessage(
           "Preview mode — local mock sign-in cannot access operational wait-time data. " +
           "No alerts or workflow changes will be saved.",
         );
       });
+    void load();
+    const refreshId = window.setInterval(() => void load(), 30_000);
+    return () => {
+      alive = false;
+      window.clearInterval(refreshId);
+    };
   }, []);
 
   useEffect(() => {
@@ -157,11 +197,12 @@ export function OnDemandServiceQuality() {
   async function prepareUpdate(risk: OnDemandRisk) {
     setPrepareError(null);
     const draft = onDemandDraft(risk, standardFor(risk));
-    if (liveRisks === null) {
+    if (isPreview) {
       setPreviewDrafts((current) => ({ ...current, [risk.id]: draft.draft_text }));
       setWorkflow((current) => ({ ...current, [risk.id]: "Alert prepared" }));
       return;
     }
+    if (diagnostics?.state !== "current") return;
     if (risk.suggestedAlertId) {
       navigate(`/suggested?focus=${encodeURIComponent(risk.suggestedAlertId)}`);
       return;
@@ -178,6 +219,22 @@ export function OnDemandServiceQuality() {
       );
     } finally {
       setPreparing(false);
+    }
+  }
+
+  async function resolveIntervention(risk: OnDemandRisk) {
+    if (!risk.sourceTripId || risk.interventionStatus !== "open") return;
+    setResolving(true);
+    try {
+      await api.resolveOnDemandIntervention(risk.sourceTripId);
+      setLiveRisks((current) => current.map((item) => item.id === risk.id
+        ? { ...item, interventionStatus: "resolved" }
+        : item));
+      setWorkflow((current) => ({ ...current, [risk.id]: "Monitoring" }));
+    } catch (err) {
+      setPrepareError(err instanceof ApiError ? err.message : "The intervention could not be resolved.");
+    } finally {
+      setResolving(false);
     }
   }
 
@@ -200,19 +257,17 @@ export function OnDemandServiceQuality() {
         <div className="standard-chip">
           <span>All-zones default</span>
           <strong>{allZonesStandard} min</strong>
+          <button className="btn-sm" onClick={() => setTrainingMode((current) => !current)}>
+            {trainingMode ? "Return to monitoring" : "Training scenario"}
+          </button>
         </div>
       </div>
 
       <div className="concept-banner">
-        <span className="concept-badge">{liveRisks === null ? "Preview data" : "Live data"}</span>
-        {liveRisks === null && (
-          <span>
-            {liveMessage ?? "Loading on-demand wait risks; review scenarios are shown meanwhile."}
-          </span>
-        )}
-        <span>
-          Current wait-risk records are provided by the vendor-neutral on-demand monitoring contract.
-        </span>
+        <span className="concept-badge">{trainingMode ? "Training" : monitoringLabel(dataMode, diagnostics)}</span>
+        <span>{trainingMode
+          ? "Training scenario — local rehearsal only. No operational data or workflow changes will be saved."
+          : monitoringMessage(dataMode, diagnostics, liveMessage)}</span>
       </div>
 
       <div className="risk-stat-grid" aria-label="On-demand service quality summary">
@@ -222,7 +277,22 @@ export function OnDemandServiceQuality() {
         <RiskStat value={`${median} min`} label="Median predicted wait" tone="accent" />
       </div>
 
-      {risks.length === 0 ? (
+      {dataMode === "loading" && !trainingMode ? (
+        <div className="risk-empty-state" role="status">
+          <strong>Loading on-demand monitoring</strong>
+          <span>Checking the protected monitor and its source health.</span>
+        </div>
+      ) : !trainingMode && dataMode === "live" && diagnostics?.state === "not_connected" ? (
+        <div className="risk-empty-state">
+          <strong>On-Demand monitoring is not connected</strong>
+          <span>Connect and verify the approved source before relying on on-demand risk data.</span>
+        </div>
+      ) : !trainingMode && dataMode === "live" && diagnostics?.state === "no_active_service" ? (
+        <div className="risk-empty-state">
+          <strong>No active on-demand service</strong>
+          <span>The latest authoritative reconciliation found no active requests.</span>
+        </div>
+      ) : risks.length === 0 ? (
         <div className="risk-empty-state">
           <strong>No on-demand wait risks</strong>
           <span>No active customer wait is currently inside the watch band or above its applicable standard.</span>
@@ -274,13 +344,17 @@ export function OnDemandServiceQuality() {
         <OnDemandDetail
           risk={selected}
           workflow={workflow[selected.id] ?? "New"}
-          isPreview={liveRisks === null}
+          isPreview={isPreview}
+          actionsDisabled={!isPreview && dataMode === "live" && diagnostics?.state !== "current"}
           previewDraft={previewDrafts[selected.id] ?? null}
           preparing={preparing}
           prepareError={prepareError}
           serviceStandard={standardFor(selected)}
           onPrepare={() => void prepareUpdate(selected)}
           onWorkflow={(state) => setWorkflow((current) => ({ ...current, [selected.id]: state }))}
+          canResolve={roles.some((role) => role === "OCC.Publisher" || role === "OCC.Admin")}
+          resolving={resolving}
+          onResolve={() => void resolveIntervention(selected)}
         />
       </div>
       )}
@@ -309,22 +383,30 @@ function OnDemandDetail({
   risk,
   workflow,
   isPreview,
+  actionsDisabled,
   previewDraft,
   preparing,
   prepareError,
   serviceStandard,
   onPrepare,
   onWorkflow,
+  canResolve,
+  resolving,
+  onResolve,
 }: {
   risk: OnDemandRisk;
   workflow: RiskWorkflow;
   isPreview: boolean;
+  actionsDisabled: boolean;
   previewDraft: string | null;
   preparing: boolean;
   prepareError: string | null;
   serviceStandard: number;
   onPrepare: () => void;
   onWorkflow: (workflow: RiskWorkflow) => void;
+  canResolve: boolean;
+  resolving: boolean;
+  onResolve: () => void;
 }) {
   const state = waitState(risk, serviceStandard);
   const thresholdDelta = risk.predictedWaitMinutes - serviceStandard;
@@ -370,9 +452,9 @@ function OnDemandDetail({
 
       <div className="assignment-card">
         <span>Assignment context</span>
-        <strong>{risk.nearestEligibleVehicle}</strong>
+        <strong>{risk.nearestEligibleVehicle ?? "Unknown"}</strong>
         <small>
-          {risk.availableVehicles} eligible vehicle{risk.availableVehicles === 1 ? "" : "s"} available in zone
+          {risk.availableVehicles ?? "Unknown"} eligible vehicle{risk.availableVehicles === 1 ? "" : "s"} available in zone
           {risk.accessibleVehicleRequired ? " · Accessible vehicle required" : ""}
         </small>
       </div>
@@ -393,9 +475,11 @@ function OnDemandDetail({
       {prepareError ? <p className="risk-action-error">{prepareError}</p> : null}
 
       <div className="risk-actions">
-        <button className="btn-primary" disabled={preparing} onClick={onPrepare}>
+        <button className="btn-primary" disabled={preparing || actionsDisabled} onClick={onPrepare}>
           {preparing
             ? "Preparing…"
+            : actionsDisabled
+              ? "Actions unavailable"
             : isPreview
               ? "Preview Suggested Alert"
               : risk.suggestedAlertId
@@ -408,8 +492,13 @@ function OnDemandDetail({
         >
           Find Procedure
         </Link>
-        <button className="btn-sm" onClick={() => onWorkflow("Acknowledged")}>Acknowledge</button>
-        <button className="btn-sm" onClick={() => onWorkflow("Monitoring")}>Monitor</button>
+        <button className="btn-sm" disabled={actionsDisabled} onClick={() => onWorkflow("Acknowledged")}>Acknowledge</button>
+        <button className="btn-sm" disabled={actionsDisabled} onClick={() => onWorkflow("Monitoring")}>Monitor</button>
+        {risk.interventionStatus === "open" && canResolve ? (
+          <button className="btn-sm" disabled={actionsDisabled || resolving} onClick={onResolve}>
+            {resolving ? "Resolving…" : "Resolve intervention"}
+          </button>
+        ) : null}
       </div>
     </aside>
   );

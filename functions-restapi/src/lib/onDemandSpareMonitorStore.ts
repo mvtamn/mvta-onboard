@@ -146,3 +146,26 @@ export async function storeSpareDutyMatching(update: SpareDutyMatchingUpdate): P
     WHEN NOT MATCHED THEN INSERT (duty_id, is_matching_enabled, matching_updated_at) VALUES (@duty_id, @is_matching_enabled, SYSUTCDATETIME());
   `);
 }
+
+export async function recordOnDemandAuthoritativeReconciliation(input: {
+  reconciledAt: Date;
+  latestSourceUpdateAt: Date | null;
+  activeRequestCount: number;
+}): Promise<void> {
+  const request = (await getPool()).request();
+  request.input("reconciled_at", sql.DateTime2, input.reconciledAt);
+  request.input("latest_source_update_at", sql.DateTime2, input.latestSourceUpdateAt);
+  request.input("active_request_count", sql.Int, input.activeRequestCount);
+  await request.query(`
+    MERGE dbo.OnDemandMonitoringHealth WITH (HOLDLOCK) AS target
+    USING (SELECT CAST(1 AS TINYINT) AS id) AS source ON target.id = source.id
+    WHEN MATCHED THEN UPDATE SET
+      last_authoritative_reconciliation_at = @reconciled_at,
+      latest_source_update_at = @latest_source_update_at,
+      active_request_count = @active_request_count,
+      updated_at = SYSUTCDATETIME()
+    WHEN NOT MATCHED THEN INSERT (
+      id, last_authoritative_reconciliation_at, latest_source_update_at, active_request_count
+    ) VALUES (1, @reconciled_at, @latest_source_update_at, @active_request_count);
+  `);
+}

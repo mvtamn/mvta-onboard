@@ -3,6 +3,7 @@ import {
   DEPARTURE_RISK_THRESHOLD_SECONDS,
   departureRiskSeconds,
   isDepartureAtRisk,
+  isDepartureWatch,
 } from "./tripDelayRisk.js";
 
 describe("fixed-route departure risk", () => {
@@ -43,5 +44,14 @@ describe("fixed-route departure risk", () => {
         predicted_max_departure_delay_seconds: 600,
       }),
     ).toBe(false);
+  });
+
+  it.each([
+    [599, false],
+    [600, true],
+    [900, true],
+    [901, false],
+  ])("classifies %i predicted seconds as Watch=%s", (predicted, expected) => {
+    expect(isDepartureWatch({ delay_seconds: 0, predicted_max_departure_delay_seconds: predicted })).toBe(expected);
   });
 });

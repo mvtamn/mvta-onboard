@@ -22,7 +22,7 @@ export interface FixedRouteRisk {
   firstAffectedTime: string;
   thresholdInMinutes: number | null;
   trend: RiskTrend;
-  confidence: RiskConfidence;
+  confidence: RiskConfidence | "Unknown";
   location: string;
   tripProgress: string;
   updatedSecondsAgo: number;
@@ -43,14 +43,15 @@ export interface OnDemandRisk {
   predictedPickup: string;
   vehicle: string | null;
   stopsAhead: number | null;
-  confidence: RiskConfidence;
+  confidence: RiskConfidence | "Unknown";
   trend: RiskTrend;
   accessibleVehicleRequired: boolean;
-  availableVehicles: number;
-  nearestEligibleVehicle: string;
+  availableVehicles: number | null;
+  nearestEligibleVehicle: string | null;
   reasons: string[];
   sourceTripId?: string;
   suggestedAlertId?: string | null;
+  interventionStatus?: "open" | "resolved" | null;
   serviceStandardMinutes?: number;
   zoneResolution?: "assigned" | "missing_pickup_coordinate" | "outside_operational_zones" | "ambiguous_operational_zones" | "legacy_unknown";
 }

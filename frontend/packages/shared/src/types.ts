@@ -495,9 +495,21 @@ export interface OnDemandRiskRecord {
   source_updated_at: string | null;
   last_polled_at: string;
   suggested_alert_id: string | null;
+  intervention_status: "open" | "resolved" | null;
   service_standard_minutes: number;
   monitor_state: "active" | "completed" | "cancelled";
   zone_resolution: "assigned" | "missing_pickup_coordinate" | "outside_operational_zones" | "ambiguous_operational_zones" | "legacy_unknown";
+}
+
+export type OnDemandMonitoringState = "not_connected" | "current" | "no_active_service" | "degraded";
+
+export interface OnDemandRiskDiagnostics {
+  state: OnDemandMonitoringState;
+  last_authoritative_reconciliation_at: string | null;
+  latest_source_update_at: string | null;
+  active_request_count: number | null;
+  reconciliation_interval_minutes: number;
+  degraded_after_minutes: number;
 }
 
 // GTFS-Realtime standard enums (raw ints from VehiclePosition, translated
