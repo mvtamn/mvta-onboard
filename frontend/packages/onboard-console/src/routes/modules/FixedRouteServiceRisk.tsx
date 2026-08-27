@@ -15,6 +15,7 @@ import {
   useFixedRouteRefresh,
 } from "../../context/FixedRouteRefreshContext.js";
 import { LiveDelays } from "./LiveDelays.js";
+import { KpiTrustSummary } from "./KpiTrustSummary.js";
 import {
   FIXED_ROUTE_RISKS,
   type FixedRouteRisk,
@@ -361,6 +362,11 @@ export function FixedRouteServiceRisk() {
     }
     setPreparing(true);
     try {
+      const { streams } = await api.getKpiTrust();
+      if (streams.fixed_route_delay?.state !== "current") {
+        setPrepareError("Suggested Alerts are unavailable while fixed-route KPI trust is not current.");
+        return;
+      }
       const result = await api.prepareSuggestedAlert(draft);
       navigate(`/suggested?focus=${encodeURIComponent(result.alert_id)}`);
     } catch (err) {
@@ -416,6 +422,8 @@ export function FixedRouteServiceRisk() {
       />
 
       <FixedRouteRefreshControls />
+
+      <KpiTrustSummary stream="fixed_route_delay" />
 
       <div className="concept-banner">
         <span className="concept-badge">

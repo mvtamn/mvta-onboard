@@ -9,6 +9,7 @@
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchPulloutReports, mapPulloutReport } from "../lib/availPullout";
+import { recordFeedHealth } from "../lib/missedTripFeedHealth";
 
 function serviceDateToday(): string {
   // UTC-based, same known simplification used elsewhere in this repo.
@@ -93,6 +94,11 @@ app.timer("fixedRouteDeparturesPoll", {
       }
     }
 
+    try {
+      await recordFeedHealth(pool, "avail_pullout", reports.length, null);
+    } catch (healthError) {
+      context.error("Failed to update Avail Pullout feed health:", healthError);
+    }
     context.log(`Avail Pullout Reports poll: ${reports.length} reports seen, ${upsertedCount} rows upserted.`);
   },
 });

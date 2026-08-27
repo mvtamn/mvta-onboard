@@ -14,6 +14,7 @@ import { detectEventGeofenceCrossings } from "../lib/eventGeofenceDetection";
 import { detectMonitoringAreaTests } from "../lib/monitoringAreaTest";
 import { detectionWindowSeconds, shouldAcceptObservation } from "../lib/eventProcessing";
 import { recordEventHealth, recordTelemetryDiagnostic } from "../lib/eventHealth";
+import { recordFeedHealth } from "../lib/missedTripFeedHealth";
 
 type PollPool = Awaited<ReturnType<typeof getPool>>;
 
@@ -249,5 +250,12 @@ app.timer("availAvlPoll", {
       `Avail AVL Reports poll: ${reports.length} reports seen, ${upsertedCount} vehicles upserted, ` +
       `${eventDue ? "event projection due" : "event projection deferred"}.`,
     );
+    if (sharedDue) {
+      try {
+        await recordFeedHealth(pool, "avail_avl", reports.length, null);
+      } catch (healthError) {
+        context.error("Failed to update Avail AVL feed health:", healthError);
+      }
+    }
   },
 });

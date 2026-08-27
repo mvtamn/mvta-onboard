@@ -300,7 +300,7 @@ app.timer("gtfsMissedTripsPoll", {
     try {
       await recordMissedTripFeedSuccess(
         pool,
-        "gtfs_trip_update",
+        "gtfs_trip_updates",
         feed.Entities.length,
         feed.Header?.Timestamp ?? null,
       );

@@ -13,6 +13,7 @@ import { getPool, sql } from "../lib/db";
 import { requireRole, STAFF_READ_ROLES, PUBLISH_ROLES } from "../lib/auth";
 import { isGuid, validatePrepareSuggestedAlert } from "../lib/validation";
 import { publishMessageCreated } from "../lib/events";
+import { resolveKpiTrust, type KpiFeedHealth } from "../lib/kpiTrust";
 import type { Category, PrepareSuggestedAlertBody, Severity } from "../lib/types";
 
 interface SuggestedAlertRow {
@@ -29,6 +30,21 @@ interface SuggestedAlertRow {
   reviewed_by: string | null;
   reviewed_at: Date | null;
   message_id: string | null;
+}
+
+async function sourceTrustIsCurrent(pool: sql.ConnectionPool, source: string): Promise<boolean> {
+  const streamName = source === "gtfs_rt" ? "fixed_route_delay" : source === "zona" ? "on_demand" : null;
+  if (!streamName) return true;
+  const table = await pool.request().query<{ ready: number }>(`
+    SELECT CASE WHEN OBJECT_ID('dbo.MissedTripFeedHealth', 'U') IS NULL THEN 0 ELSE 1 END AS ready
+  `);
+  const records = table.recordset[0]?.ready === 1
+    ? (await pool.request().query<KpiFeedHealth>(`
+        SELECT feed_name, last_success_at, last_entity_count, source_timestamp_at
+        FROM MissedTripFeedHealth
+      `)).recordset
+    : [];
+  return resolveKpiTrust(records)[streamName].state === "current";
 }
 
 async function linkPreparedAlertToRisk(
@@ -106,6 +122,9 @@ app.http("suggestedAlertsPrepare", {
     const body = raw as PrepareSuggestedAlertBody;
 
     const pool = await getPool();
+    if (!await sourceTrustIsCurrent(pool, body.source)) {
+      return { status: 409, jsonBody: { error: "Suggested Alert preparation is unavailable while the required KPI trust state is not current." } };
+    }
     const tx = new sql.Transaction(pool);
     try {
       await tx.begin();

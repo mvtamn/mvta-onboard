@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError, type GtfsRouteOption, type MissedTrip, type MissedTripReview, type MissedTripsDiagnostics, type MissedTripsMonthlySummaryRow, type OtpReasonCode } from "@mvta/shared";
 import { api } from "../../config.js";
+import { KpiTrustSummary } from "./KpiTrustSummary.js";
 import { MISSED_TRIP_ALERTS, type MissedTripAlert } from "./missedTrips.data.js";
 import "./serviceRisk.css";
 
@@ -259,6 +260,9 @@ export function MissedTripAlerts() {
           </button>
         </div>
       </div>
+
+      <KpiTrustSummary stream="fixed_route_missed_trips" />
+      <KpiTrustSummary stream="spare_missed_trips" />
 
       {view === "investigation" || view === "history" ? (
         <MissedTripsInvestigationPage

@@ -26,6 +26,7 @@ import {
   subtractMonths,
   upsertOtpMonthlyReport,
 } from "../lib/otpMonthlyFeed";
+import { recordFeedHealth } from "../lib/missedTripFeedHealth";
 
 const TRAILING_MONTHS = 3; // current + prior 2
 
@@ -42,6 +43,8 @@ app.timer("otpMonthlyFeedPoll", {
     const now = new Date();
     const pool = await getPool();
 
+    let successfulReports = 0;
+    let completedFetch = false;
     for (let i = 0; i < TRAILING_MONTHS; i++) {
       const targetDate = subtractMonths(now, i);
       const serviceMonth = serviceMonthOf(targetDate);
@@ -53,6 +56,8 @@ app.timer("otpMonthlyFeedPoll", {
         context.error(`Failed to fetch Avail OTP Monthly reports for ${serviceMonth}:`, err);
         continue;
       }
+
+      completedFetch = true;
 
       let upsertedCount = 0;
       for (const report of reports) {
@@ -74,6 +79,14 @@ app.timer("otpMonthlyFeedPoll", {
       }
 
       context.log(`Avail OTP Monthly poll: ${reports.length} reports seen, ${upsertedCount} rows upserted for ${serviceMonth}.`);
+      successfulReports += reports.length;
+    }
+    if (completedFetch) {
+      try {
+        await recordFeedHealth(pool, "avail_otp_monthly", successfulReports, null);
+      } catch (healthError) {
+        context.error("Failed to update Avail OTP Monthly feed health:", healthError);
+      }
     }
   },
 });

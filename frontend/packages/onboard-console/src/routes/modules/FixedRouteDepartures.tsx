@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ApiError, type FixedRouteDeparture } from "@mvta/shared";
 import { api } from "../../config.js";
+import { KpiTrustSummary } from "./KpiTrustSummary.js";
 import "./serviceRisk.css";
 
 const DAY_OPTIONS = [7, 14, 30] as const;
@@ -91,6 +92,8 @@ export function FixedRouteDepartures() {
           </p>
         </div>
       </div>
+
+      <KpiTrustSummary stream="fixed_route_departures" />
 
       <div className="risk-refresh-bar" aria-label="Fixed route departures controls">
         <label htmlFor="frd-days">Window</label>

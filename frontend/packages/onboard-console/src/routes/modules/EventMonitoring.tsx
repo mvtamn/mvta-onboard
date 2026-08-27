@@ -8,6 +8,7 @@ import { useEventMonitoringData } from "./useEventMonitoringData.js";
 import { cardinalHeading, displayOperator, minutesAgo, monitoringAreaLabel, routeDisplayLabel, routeLabel, routeVehicleIdentity, routeVehicleLabel } from "./eventVehicleFormat.js";
 import { EventVehicleMap, type MapStyle } from "./EventVehicleMap.js";
 import { crossingEvidenceLabel } from "./crossingEvidence.js";
+import { KpiTrustSummary } from "./KpiTrustSummary.js";
 
 const SCOPE_EXCEPTION_LABELS: Record<EventScopeException["category"], string> = {
   needs_scope_review: "Needs scope review", telemetry_incomplete: "Telemetry incomplete", stale_observation: "Stale observation", assigned_elsewhere: "Assigned elsewhere",
@@ -110,6 +111,7 @@ export function EventMonitoring({ fieldView = false }: { fieldView?: boolean }) 
       <RefreshLiveDataButton refreshing={refreshing} onRefresh={() => void refresh()} />
       <button className="evmon-notification-badge" type="button" aria-label={`${eventQueue.length} items in the Event AVL status queue`} onClick={() => setNotificationDrawer(true)}>Status queue <strong>{eventQueue.length}</strong></button>
     </div>
+    <KpiTrustSummary stream="event_avl" />
     {authExpired ? <div className="evmon-blocking-state evmon-blocking-state-error" role="alert"><div><strong>Live Event AVL is unavailable</strong><p>Your OnBoard session expired. Sign in again to restore this Event context.</p></div><button className="btn-primary" onClick={signIn}>Sign in again</button></div> : state.tone !== "success" && <div className={`evmon-data-state evmon-data-state-${state.tone}`} role="status"><strong>{state.title}</strong>{state.action && <span>{state.action}</span>}</div>}
     {selectedEventId && !authExpired && !requiresPlanSelection && <>
       <div className="evmon-work-surface"><div className="evmon-map-wrap"><EventVehicleMap vehicles={filteredVehicles} geofences={visibleGeofences} locations={visibleLocations} showGeofences={showGeofences} showLocations={showLocations} mapStyle={mapStyle} traffic={traffic} selectedVehicleId={selectedVehicleId} onSelectVehicle={setSelectedVehicleId} onShowGeofencesChange={setShowGeofences} onShowLocationsChange={setShowLocations} onMapStyleChange={setMapStyle} onTrafficChange={setTraffic} largerMapUrl={fieldViewUrl} /></div><div className="evmon-roster-pane">

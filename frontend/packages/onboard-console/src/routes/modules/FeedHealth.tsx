@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ApiError, type FeedCheck } from "@mvta/shared";
+import { ApiError, type FeedCheck, type KpiTrust } from "@mvta/shared";
 import { api } from "../../config.js";
 import "./serviceRisk.css";
 
@@ -27,9 +27,25 @@ function message(error: unknown) {
   return "Feed checks could not be completed. Try again shortly.";
 }
 
+function trustDetail(stream: KpiTrust[string]): string {
+  const required = stream.dependencies.filter((dependency) => dependency.required);
+  const times = required
+    .map((dependency) => {
+      const delivery = dependency.last_success_at
+        ? `received ${new Date(dependency.last_success_at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
+        : "not received";
+      const coverage = dependency.source_timestamp_at
+        ? ` · source ${new Date(dependency.source_timestamp_at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
+        : "";
+      return `${dependency.feed_name.replaceAll("_", " ")}: ${delivery}${coverage}`;
+    });
+  return `${stream.explanation} ${times.join("; ")}`;
+}
+
 export function FeedHealth() {
   const [checks, setChecks] = useState<FeedCheck[] | null>(null);
   const [checkedAt, setCheckedAt] = useState<string | null>(null);
+  const [trust, setTrust] = useState<KpiTrust | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -37,9 +53,13 @@ export function FeedHealth() {
     setLoading(true);
     setError(null);
     try {
-      const result = await api.getFeedChecks();
+      const [result, trustResult] = await Promise.all([
+        api.getFeedChecks(),
+        api.getKpiTrust().catch(() => null),
+      ]);
       setChecks(result.checks);
       setCheckedAt(result.checked_at);
+      setTrust(trustResult?.streams ?? null);
     } catch (err) {
       setError(message(err));
     } finally {
@@ -73,6 +93,23 @@ export function FeedHealth() {
               );
             })}
           </div>
+          {trust && (
+            <section className="feed-health-list" aria-labelledby="kpi-trust-title">
+              <h4 id="kpi-trust-title">KPI trust</h4>
+              <p>Current usability is derived from recorded ingestion evidence; it does not run vendor checks.</p>
+              <div role="list" aria-label="KPI trust results">
+                {Object.entries(trust).map(([name, stream]) => (
+                  <div className="feed-health-row" role="listitem" key={name}>
+                    <span>{name.replaceAll("_", " ")}</span>
+                    <small>{trustDetail(stream)}</small>
+                    <strong className={`feed-health-status ${stream.state === "current" ? "success" : stream.state === "current_but_empty" ? "warning" : stream.state === "stale" ? "warning" : "danger"}`}>
+                      {stream.state === "current_but_empty" ? "Current · no records" : stream.state.replaceAll("_", " ")}
+                    </strong>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
         </>
       )}
     </section>
