@@ -111,6 +111,9 @@ export async function storeOnDemandSpareRequest(
       WHEN MATCHED THEN UPDATE SET zone_version_id = source.zone_version_id, zone_id = source.zone_id, resolution = source.resolution, assigned_at = SYSUTCDATETIME()
       WHEN NOT MATCHED THEN INSERT (request_id, zone_version_id, zone_id, resolution) VALUES (source.request_id, source.zone_version_id, source.zone_id, source.resolution);
     END
+    UPDATE dbo.MonitoredOnDemandWaits
+    SET last_polled_at = SYSUTCDATETIME()
+    WHERE trip_id = @request_id AND monitor_state = @monitor_state;
     COMMIT;
     SELECT CAST(CASE WHEN EXISTS (SELECT 1 FROM @changes) THEN 1 ELSE 0 END AS bit) AS applied;
   `);

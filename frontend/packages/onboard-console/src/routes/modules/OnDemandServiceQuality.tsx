@@ -36,7 +36,12 @@ function monitoringMessage(mode: DataMode, diagnostics: OnDemandRiskDiagnostics 
   if (mode === "preview") return previewMessage ?? "Preview scenarios are shown locally; no workflow changes will be saved.";
   if (mode === "authentication_required") return "Sign in again to access protected on-demand monitoring.";
   if (diagnostics?.state === "not_connected") return "On-Demand monitoring is not connected.";
-  if (diagnostics?.state === "degraded") return "On-Demand reconciliation is overdue; last-known records are read-only.";
+  if (diagnostics?.state === "degraded") {
+    const last = diagnostics.last_authoritative_reconciliation_at
+      ? new Date(diagnostics.last_authoritative_reconciliation_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+      : "Unknown";
+    return `On-Demand reconciliation is overdue (last authoritative reconciliation: ${last}); last-known records are read-only.`;
+  }
   if (diagnostics?.state === "no_active_service") return "The latest authoritative reconciliation found no active on-demand service.";
   return "Current wait-risk records are provided by the vendor-neutral on-demand monitoring contract.";
 }
@@ -59,7 +64,8 @@ function waitState(risk: OnDemandRisk, serviceStandard: number): { label: string
   if (risk.currentWaitMinutes >= serviceStandard + 15 || risk.predictedWaitMinutes >= serviceStandard + 15) return { label: "Critical", className: "pill-danger" };
   if (risk.currentWaitMinutes > serviceStandard) return { label: "Standard exceeded", className: "pill-danger" };
   if (risk.predictedWaitMinutes > serviceStandard) return { label: "Projected risk", className: "pill-warning" };
-  if (risk.predictedWaitMinutes > 20 || risk.currentWaitMinutes > 0) return { label: "Watch", className: "pill-warning" };
+  if (risk.predictedWaitMinutes > 20) return { label: "Watch", className: "pill-warning" };
+  if (risk.currentWaitMinutes > 0) return { label: "Overdue", className: "pill-warning" };
   return { label: "Watch", className: "pill-accent" };
 }
 
@@ -307,6 +313,11 @@ export function OnDemandServiceQuality() {
         <div className="risk-empty-state">
           <strong>No active on-demand service</strong>
           <span>The latest authoritative reconciliation found no active requests.</span>
+        </div>
+      ) : !trainingMode && dataMode === "live" && diagnostics?.state === "degraded" && risks.length === 0 ? (
+        <div className="risk-empty-state">
+          <strong>On-Demand monitoring is degraded</strong>
+          <span>There is no current risk claim until authoritative reconciliation recovers.</span>
         </div>
       ) : !trainingMode && dataMode === "authentication_required" ? (
         <div className="risk-empty-state">
