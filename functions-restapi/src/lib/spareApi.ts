@@ -94,11 +94,18 @@ function validPage<T>(payload: unknown): SparePage<T> | null {
   return { total, limit, skip, data: value.data as T[] };
 }
 
+export function assertSpareSlotsFilter(query: URLSearchParams): void {
+  if (!["dutyId", "requestId", "ids"].some((name) => query.get(name)?.trim())) {
+    throw new Error("Spare /v1/slots requires dutyId, requestId, or ids");
+  }
+}
+
 export async function fetchSparePage<T>(
   path: string,
   query: URLSearchParams,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 ): Promise<SparePage<T>> {
+  if (path === "/v1/slots") assertSpareSlotsFilter(query);
   const response = await fetch(`${configuredBaseUrl()}${path}?${query.toString()}`, {
     headers: {
       Accept: "application/json",

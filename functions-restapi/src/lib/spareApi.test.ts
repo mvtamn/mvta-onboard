@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { spareNumber, spareServiceName, spareString, spareTimestamp } from "./spareApi";
+import { assertSpareSlotsFilter, spareNumber, spareServiceName, spareString, spareTimestamp } from "./spareApi";
 
 test("Spare field guards accept only bounded values of the expected type", () => {
   assert.equal(spareString(" request-1 ", 64), "request-1");
@@ -17,4 +17,11 @@ test("Spare epoch timestamps are converted to UTC Date values", () => {
 test("Spare service names are read without retaining the rest of serviceBrand", () => {
   assert.equal(spareServiceName({ name: " MVTA Connect ", color: "#fff" }), "MVTA Connect");
   assert.equal(spareServiceName("MVTA Connect"), null);
+});
+
+test("requires a targeted Spare slots filter before issuing a request", () => {
+  assert.throws(() => assertSpareSlotsFilter(new URLSearchParams()), /requires dutyId/);
+  assert.doesNotThrow(() => assertSpareSlotsFilter(new URLSearchParams({ dutyId: "duty-7" })));
+  assert.doesNotThrow(() => assertSpareSlotsFilter(new URLSearchParams({ requestId: "request-7" })));
+  assert.doesNotThrow(() => assertSpareSlotsFilter(new URLSearchParams({ ids: "slot-7" })));
 });
