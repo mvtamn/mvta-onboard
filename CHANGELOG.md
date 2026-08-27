@@ -5,6 +5,11 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.63] - 2026-08-27
+
+- **Prevent concurrent Event AVL Teams deliveries.** Notification delivery now uses a short-lived claim, so an operator action and queue retry cannot post the same Status queue item twice. The queue shows an in-progress delivery and recovers an abandoned claim safely.
+- **Keep delivery status visible in Event AVL health.** Pending, acknowledged, in-progress, and failed status items remain in the operational count until they reach a terminal outcome.
+
 ## [1.5.62] - 2026-08-24
 
 - **Put every Monitoring Area crossing in the Status queue.** Enter and exit crossings now create operator-visible work even when no direction rule matches; unmatched crossings remain manual-review items and cannot auto-send to Teams.
