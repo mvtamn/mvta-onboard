@@ -511,6 +511,21 @@ customer wait quality. Fixed Route and On-Demand are service-type views within
 the workflow, not separate primary navigation areas.
 _Avoid_: Live Delays, Fixed Route Risk module, On-Demand Quality module
 
+**Watch condition**:
+A current service observation that merits operational attention but has not
+crossed its service-risk threshold. It is not a Service risk.
+_Avoid_: minor risk, at-risk service, near breach
+
+**Training scenario**:
+An explicitly labeled, non-operational service-risk example used to rehearse
+the fixed-route or on-demand workflow. It must never be presented as Live data.
+_Avoid_: test risk, simulated live incident, demo data
+
+**Not-connected monitoring**:
+The trust state in which a Service Risk & Quality source has not passed its
+required operational activation gate. It cannot make claims about service risk.
+_Avoid_: no risks, unavailable service, Live data
+
 ## Detour and closure language
 
 ## Detour intake
@@ -780,16 +795,126 @@ _Avoid_: deleted dispute, transferred dispute
 
 **Procedure**:
 Governed operational guidance for responding to a service condition or
-incident. A Procedure has a structured Decision Matrix entry for discovery
-and a source document, initially maintained in SharePoint, for the complete
-approved guidance.
+incident. OnBoard owns a Procedure's structured Decision Matrix content,
+revision, and governance; SharePoint stores its supporting source documents
+for the complete approved guidance.
 _Avoid_: static help article, unapproved note
+
+**Procedure Revision**:
+An immutable version of a Procedure's governed content. A new or corrected
+Procedure Revision supersedes a prior revision without changing the guidance
+or document references that were previously approved.
+_Avoid_: edited approved procedure, current row
+
+**Procedure Revision Lifecycle**:
+The governed progression of a Procedure Revision: Draft, Under review,
+Approved, Superseded, or Retired. Draft is editable; Under review is returned
+to Draft with a reason when changes are needed; Approved is immediately
+effective; Superseded and Retired are terminal and may only be used as the
+source for a new Draft.
+_Avoid_: direct approved edit, reactivated revision
+
+**Procedure Identity**:
+The durable `procedure_id` and `condition_key` of a Procedure. They remain
+unchanged after approval so that recommendations, reporting, and audit retain
+their meaning; a materially different condition is a new Procedure.
+_Avoid_: renamed key, recycled procedure
+
+**Procedure Withdrawal**:
+The exceptional retirement of the only effective Procedure Revision because
+its guidance is dangerous or invalid. It requires prominent confirmation and
+a recorded reason; ordinary retirement requires an approved replacement.
+_Avoid_: ordinary retirement, silent removal
+
+**Criterion**:
+An ordered, observable statement on a Procedure Revision that says when the
+Procedure applies or does not apply. A Criterion is either an inclusion or an
+exclusion; it is not an unstructured note.
+_Avoid_: tag, free-form tip
+
+**Immediate Action**:
+An ordered instruction on a Procedure Revision that is required, conditional,
+or informational. It is guidance, not a completed-action record; a later
+Operational Exception may record its outcome.
+_Avoid_: incident action, checklist completion
+
+**Supporting Document Reference**:
+The controlled link between a Procedure Revision and a source document stored
+in SharePoint. It identifies the expected document and its validation state,
+but does not author or overwrite Procedure content. A Procedure Revision may
+have multiple Supporting Document References, all frozen with that revision.
+_Avoid_: content sync, procedure source of truth
+
+**Primary Supporting Document Reference**:
+The one required Supporting Document Reference for a Procedure Revision. It
+is an SOP or Reference and provides the unambiguous source-document action;
+any other references are ordered, labelled supporting material.
+_Avoid_: arbitrary first link, visual rendition
+
+**Document Reference Health**:
+The observed availability and revision alignment of a Supporting Document
+Reference. A failed check makes the reference visible as needing review but
+does not silently revise, hide, or retire its approved Procedure Revision.
+An updated source document also requires a reviewed Procedure Revision before
+it becomes the referenced approved version.
+_Avoid_: procedure status, content freshness
+
+**Procedure Match Rule**:
+An explicit, source-qualified rule that recommends a Procedure for an
+operational condition. It carries its priority and explanation and may produce
+multiple recommendations; it never selects a Procedure Revision automatically.
+_Avoid_: free-text guess, automatic procedure selection
+
+**Quick Reference Guide (QRG)**:
+A controlled supporting guide that helps a controller scan a Procedure. It is
+not an eligible primary source document and never replaces the governing SOP
+or Reference.
+_Avoid_: primary procedure, uncontrolled cheat sheet
+
+**Document Rendition**:
+An approved PNG or JPEG visual companion to a Supporting Document Reference.
+It helps orient a controller but never replaces the text-based Criteria or
+Immediate Actions that govern the response.
+_Avoid_: source document, visual-only procedure
+
+**Procedure Audit Event**:
+An append-only record of a saved Procedure Revision or Supporting Document
+Reference change, lifecycle decision, or document-reference health result. It
+identifies the actor, time, affected revision, and reason or content change
+without recording unsaved keystrokes.
+_Avoid_: activity log, edit history
+
+**Procedure Severity**:
+A controlled, plain-language classification of a Procedure Revision's
+operational significance: Stop service, Restrict service, or Routine / no
+escalation. It helps a controller scan and interpret guidance; it does not
+automatically dispatch, escalate, or communicate on its own.
+_Avoid_: automation trigger, incident state
+
+**Procedure Owner**:
+The operational team accountable for a Procedure Revision's correctness and
+review. It is distinct from the Admin who authors or approves the revision and
+may name an individual contact for practical escalation.
+_Avoid_: approver, current editor
+
+**Procedure Review Date**:
+The next date by which an approved Procedure Revision must be reviewed. It
+defaults to six months after approval unless an Admin selects a shorter period;
+passing the date makes the revision need review but does not retire it.
+_Avoid_: expiry, automatic retirement
+
+**Procedure Recommendation**:
+An explainable, non-binding suggestion that a Procedure may help with an
+operational record. It may use a controlled condition key or keyword match,
+but it never selects or records a Procedure Revision without a controller's
+explicit later action.
+_Avoid_: automatic procedure selection, Procedure Instance
 
 **Decision Matrix Entry**:
 The searchable, structured summary of a Procedure: its condition, observable
 criteria, severity meaning, immediate actions, references, and governance
-metadata. It is not a separate procedure version and must identify the exact
-Procedure revision it summarizes.
+metadata. It is app-owned, is not a separate procedure version, and must
+identify the exact Procedure revision it summarizes.
 _Avoid_: incident record, free-form tip
 
 **Operational Exception**:
@@ -984,7 +1109,9 @@ _Avoid_: corrected history, confirmed missed trip
 Operation of a candidate detector for evaluation without automatic contractual
 promotion. A detector leaves Shadow detection only after a complete service
 week demonstrates at least 95 percent precision while reporting indeterminate
-and unmatched cases separately.
+and unmatched cases separately; on-demand service-quality additionally requires
+two complete service weeks, dispatcher agreement, and no unresolved feed-health
+issue.
 _Avoid_: production truth, enabled detector
 
 **Missed-trip review authority**:
@@ -1070,3 +1197,230 @@ The requirement that unresolved Evidence conflicts and unsupported source links
 block Service attribution and Assessment promotion while preserving the
 underlying operational outcome.
 _Avoid_: source preference, automatic reconciliation
+
+## On-demand service quality
+
+**Active on-demand request**:
+A passenger request that has not reached a terminal pickup, cancellation, or
+dropoff outcome and remains eligible for live service-quality monitoring.
+_Avoid_: active trip, open booking
+
+**Pickup commitment**:
+The scheduled pickup timestamp promised for an on-demand request; the requested
+pickup timestamp is its fallback only when a scheduled pickup is absent.
+_Avoid_: vehicle ETA, arrival estimate
+
+**Observed service risk**:
+The current condition in which an Active on-demand request is overdue against
+its Pickup commitment or has exceeded its applicable Service standard.
+_Avoid_: missed trip, predicted delay
+
+**Service standard**:
+The maximum permitted minutes after a Pickup commitment before a request is
+considered to have exceeded its on-demand service target. The all-zones default
+is 25 minutes unless a valid Zone override applies.
+_Avoid_: vehicle ETA, wait prediction
+
+**Zone override**:
+A reasoned, time-bounded exception to the all-zones Service standard for one
+operational Zone. It applies immediately to active requests in that Zone and
+expires without operator action.
+_Avoid_: permanent zone setting, informal exception
+
+**Operational zone**:
+A versioned GTFS-Flex service area that classifies an on-demand request by its
+pickup coordinate for service-quality monitoring.
+_Avoid_: route, vehicle territory
+
+**Reconciliation**:
+The hourly refresh of authoritative active-request data used to recover from
+late, missing, or out-of-order real-time feed deliveries.
+_Avoid_: live event, polling-only monitoring
+
+**Projected risk**:
+A forecast that a request may exceed its applicable Service standard, derived
+from ETA or vehicle-location information. It is operational context, not an
+Observed service risk or a completed service-quality outcome.
+_Avoid_: observed failure, confirmed delay
+
+**Overdue request**:
+An Active on-demand request whose Pickup commitment has passed without a
+confirmed pickup but has not yet exceeded its applicable Service standard.
+_Avoid_: standard exceeded, missed trip
+
+**Standard-exceeded request**:
+An Active on-demand request whose uncompleted wait is beyond its applicable
+Service standard.
+_Avoid_: projected risk, late vehicle
+
+**Critical request**:
+A Standard-exceeded request that is at least 15 minutes beyond its applicable
+Service standard.
+_Avoid_: high-priority estimate, missed trip
+
+**Service-quality intervention**:
+An internal Suggested Alert created for a Standard-exceeded or Critical
+request. It does not contact a rider or an external party.
+_Avoid_: automated rider notification, service failure
+
+**Service-day quality rollup**:
+The cumulative counts and rates of distinct on-demand requests for one local
+service day, calculated by the request's single Operational zone and again for
+all Zones.
+_Avoid_: sum of zone percentages, live snapshot total
+
+**Original pickup commitment**:
+The Pickup commitment first recorded for an accepted request. It remains
+historical evidence when a request is later rescheduled.
+_Avoid_: current pickup commitment, mutable promise
+
+**Unzoned request**:
+An on-demand request whose pickup cannot be assigned to exactly one active
+Operational zone. It remains visible in all-zones quality results with an
+explicit data-quality condition.
+_Avoid_: excluded request, default zone
+
+**Risk evaluation record**:
+A retained, non-PII explanation of one service-risk result, including the
+request, zone version, applicable Service standard, timestamps, outcome, and
+source freshness.
+_Avoid_: raw webhook archive, rider record
+
+**Degraded feed**:
+The trust state entered when the authoritative Reconciliation has not completed
+within 90 minutes. Last-known risks remain visible, but new Service-quality
+interventions are suspended until current data returns.
+_Avoid_: no risks, healthy feed
+
+**Service-standard authority**:
+The Service Operations administrator authority to set the all-zones Service
+standard or a Zone override. Dispatchers may act on Service-quality
+interventions but cannot change the policy.
+_Avoid_: dispatcher preference, shared setting
+
+**Rescheduled risk**:
+An active Observed service risk that is no longer current because a later
+Pickup commitment changes its applicable evaluation. Its earlier Risk
+evaluation record remains historical evidence.
+_Avoid_: deleted risk, corrected history
+
+**Source-state precedence**:
+The rule that a newer authoritative request state may update an Active
+on-demand request, while an older delivery remains audit information only and
+cannot overwrite it.
+_Avoid_: last received wins, retry state
+
+**On-demand feed boundary**:
+The limited integration that accepts only request-status, ETA, vehicle-location,
+and duty-matching updates; authenticates them before processing; and retains
+only whitelisted non-PII facts.
+_Avoid_: vendor payload archive, rider integration
+
+**Authoritative pickup evidence**:
+The Spare Request Status record used to establish request lifecycle and
+confirmed pickup. Duties and Driver Operations are corroborating operational
+evidence and do not silently replace it.
+_Avoid_: driver event override, vehicle estimate
+
+**Effective service outcome**:
+The completed on-demand request outcome calculated from the Pickup commitment
+and Service standard effective at confirmed pickup. Later policy changes do
+not recalculate it; rescheduling is reported separately.
+_Avoid_: retroactive score, current-policy outcome
+
+**Monitoring-incomplete request**:
+An Active on-demand request lacking both a scheduled and requested Pickup
+commitment. It is visible in data quality but excluded from service-quality
+rates because no defensible wait clock exists.
+_Avoid_: zero-wait request, unmonitored request
+
+**Zone assignment snapshot**:
+The one Operational-zone version assigned from a request's pickup coordinate
+when it is first evaluated. It is retained for that request's history even when
+later GTFS-Flex geography changes.
+_Avoid_: current zone lookup, retroactive remapping
+
+**Open service-quality intervention**:
+The single active Service-quality intervention for one request. It is updated
+as the risk changes and closes at pickup, cancellation, rescheduling,
+projected-risk recovery, or an explicit manual resolution.
+_Avoid_: duplicate alert, recurring intervention
+
+## Feed-backed KPI observability
+
+**KPI feed dependency**:
+An identified upstream feed whose current, complete input is required for an
+operational KPI to be interpreted as current. A KPI may depend on more than
+one feed.
+_Avoid_: optional diagnostic, interchangeable source
+
+**KPI trust state**:
+The operational status of a feed-backed KPI. It is Current only when every
+required KPI feed dependency satisfies its freshness contract; otherwise it is
+Stale and its last-known value remains context rather than a current
+operational conclusion.
+_Avoid_: feed connection result, no data, current KPI value
+
+**Required KPI feed dependency**:
+A KPI feed dependency whose stale or unavailable state makes the KPI Stale.
+_Avoid_: supporting evidence, optional enrichment
+
+**Supporting KPI feed dependency**:
+A KPI feed dependency that adds context or confidence without determining the
+KPI trust state by itself.
+_Avoid_: required KPI feed dependency, substitute source
+
+**Stale-data acknowledgement**:
+The recorded human reason required before a staff member uses a Stale KPI as
+context for a manual communication. It never reclassifies the KPI as Current
+or permits an automatic action.
+_Avoid_: freshness override, automatic exception
+
+**Freshness contract**:
+The expected update cadence and allowed lateness for one KPI feed dependency.
+It is evaluated according to that source's real-time, daily, or monthly
+operating cycle rather than a universal elapsed-time threshold.
+_Avoid_: one-hour rule, source connection test
+
+**KPI trust view**:
+The operator-facing presentation of KPI feed dependencies and the resulting
+KPI trust state. The Admin view compares all dependencies; each KPI view
+states its own trust state at the point of operational use.
+_Avoid_: raw feed log, hidden technical diagnostic
+
+**KPI trust authority**:
+The separation in which Administrators maintain KPI dependencies and
+Freshness contracts, while dispatch or OCC staff may record a
+Stale-data acknowledgement for a manual communication.
+_Avoid_: shared configuration, freshness override
+
+**KPI source stream**:
+A distinct evidence and result path within a compound KPI. Each source stream
+has its own required and supporting feed dependencies and its own KPI trust
+state, so a disruption in one stream does not conceal a current result from
+another.
+_Avoid_: one all-or-nothing status for unrelated sources
+
+**Current-but-empty KPI**:
+A KPI source stream whose required dependencies have completed within their
+Freshness contracts but produced no qualifying records. It is Current, with an
+empty result, rather than Stale.
+_Avoid_: no data, failed ingestion
+
+**Delivery freshness**:
+Whether a feed ingestion has completed within its allowed lateness. It reports
+the health of delivery and processing, independently of what period the source
+data represents.
+_Avoid_: current source data, source coverage
+
+**Data coverage**:
+The service period represented by the newest successfully ingested source data.
+A current KPI requires both Data coverage for its expected period and Delivery
+freshness for its Freshness contract.
+_Avoid_: last poll time, ingestion success
+
+**Stale-data acknowledgement record**:
+The auditable record attached to a manual communication that uses stale KPI
+context. It identifies the KPI source stream, staff member, timestamp, and
+reason; it does not change the KPI trust state.
+_Avoid_: freshness override, generic activity log

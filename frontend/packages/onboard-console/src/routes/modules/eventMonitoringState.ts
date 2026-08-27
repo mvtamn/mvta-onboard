@@ -1,6 +1,6 @@
 import type { Event, EventServicePlan } from "@mvta/shared";
 
-export const OPEN_EVENT_NOTIFICATION_STATUSES = ["pending", "acknowledged", "failed"] as const;
+export const OPEN_EVENT_NOTIFICATION_STATUSES = ["pending", "acknowledged", "sending", "failed"] as const;
 export const EVENT_NOTIFICATION_HISTORY_STATUSES = ["sent", "dismissed", "expired"] as const;
 
 export function isOpenEventNotificationStatus(status: string): boolean {
