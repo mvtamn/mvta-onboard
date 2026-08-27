@@ -18,4 +18,4 @@ CREATE INDEX IX_OnDemandServiceQualityInterventions_Open
     ON dbo.OnDemandServiceQualityInterventions (status, last_authoritative_at DESC);
 GO
 
-PRINT 'Migration 083 applied: on-demand service-quality interventions created.';
+PRINT 'Migration 084 applied: on-demand service-quality interventions created.';

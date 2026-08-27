@@ -12,6 +12,7 @@ interface InterventionRow {
   status: "open" | "resolved";
   projected_breach_count: number;
   suggested_alert_id: string | null;
+  resolved_by: string | null;
 }
 
 export function onDemandInterventionDecision(
@@ -87,6 +88,7 @@ async function ensureSuggestedAlert(pool: sql.ConnectionPool, candidate: Candida
 export async function reconcileOnDemandInterventions(
   pool: sql.ConnectionPool,
   reconciledAt: Date,
+  authoritativeRequestIds: ReadonlySet<string>,
 ): Promise<void> {
   const candidates = await pool.request().query<Candidate>(`
     SELECT m.trip_id, m.zone_id,
@@ -100,10 +102,11 @@ export async function reconcileOnDemandInterventions(
     WHERE m.monitor_state = 'active';
   `);
   for (const candidate of candidates.recordset) {
+    if (!authoritativeRequestIds.has(candidate.trip_id)) continue;
     const request = pool.request();
     request.input("request_id", sql.NVarChar(100), candidate.trip_id);
     const existing = await request.query<InterventionRow>(`
-      SELECT status, projected_breach_count, suggested_alert_id
+      SELECT status, projected_breach_count, suggested_alert_id, resolved_by
       FROM dbo.OnDemandServiceQualityInterventions WHERE request_id = @request_id;
     `);
     const prior = existing.recordset[0];
@@ -113,6 +116,19 @@ export async function reconcileOnDemandInterventions(
       candidate.predicted_wait_minutes,
       candidate.service_standard_minutes,
     );
+
+    if (prior?.status === "resolved" && prior.resolved_by !== "System.Ingestion") {
+      const keepResolved = pool.request();
+      keepResolved.input("request_id", sql.NVarChar(100), candidate.trip_id);
+      keepResolved.input("projected_count", sql.Int, projectedCount);
+      keepResolved.input("reconciled_at", sql.DateTime2, reconciledAt);
+      await keepResolved.query(`
+        UPDATE dbo.OnDemandServiceQualityInterventions
+        SET projected_breach_count = @projected_count, last_authoritative_at = @reconciled_at, updated_at = SYSUTCDATETIME()
+        WHERE request_id = @request_id;
+      `);
+      continue;
+    }
 
     if (!needsIntervention) {
       if (prior?.status === "open") {

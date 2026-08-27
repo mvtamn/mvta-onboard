@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { ApiError } from "@mvta/shared";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../config.js";
@@ -46,6 +47,15 @@ describe("On-Demand Risk investigation workspace", () => {
 
     expect(await screen.findByText("On-Demand monitoring is not connected.")).toBeInTheDocument();
     expect(screen.getByText("Not connected")).toBeInTheDocument();
+    expect(screen.queryByText("No on-demand wait risks")).not.toBeInTheDocument();
+  });
+
+  it("distinguishes an expired sign-in from an empty monitoring result", async () => {
+    vi.mocked(api.getOnDemandRisks).mockRejectedValueOnce(new ApiError(401, "Not authenticated"));
+
+    render(<MemoryRouter><OnDemandServiceQuality /></MemoryRouter>);
+
+    expect((await screen.findAllByText("Authentication required")).length).toBeGreaterThan(0);
     expect(screen.queryByText("No on-demand wait risks")).not.toBeInTheDocument();
   });
 

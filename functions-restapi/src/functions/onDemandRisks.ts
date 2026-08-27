@@ -5,7 +5,7 @@
 // this read contract and the OCC UI do not need to change when that adapter is
 // implemented. No customer PII is returned.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
-import { getPool } from "../lib/db";
+import { getPool, sql } from "../lib/db";
 import { PUBLISH_ROLES, requireRole, STAFF_READ_ROLES } from "../lib/auth";
 import {
   ON_DEMAND_DEGRADED_AFTER_MINUTES,
@@ -65,7 +65,17 @@ app.http("onDemandRisksList", {
           SELECT last_authoritative_reconciliation_at, latest_source_update_at, active_request_count
           FROM dbo.OnDemandMonitoringHealth WHERE id = 1;
       `);
-      const result = await pool.request().query<OnDemandRiskRow>(`
+      const enabled = process.env.ON_DEMAND_MONITORING_ENABLED?.trim().toLowerCase() === "true";
+      const health = healthResult.recordset[0] ?? null;
+      const state = onDemandMonitoringState(enabled, health && {
+        lastAuthoritativeReconciliationAt: health.last_authoritative_reconciliation_at,
+        latestSourceUpdateAt: health.latest_source_update_at,
+        activeRequestCount: health.active_request_count,
+      });
+      const riskQuery = pool.request();
+      riskQuery.input("show_last_known", sql.Bit, state === "degraded");
+      riskQuery.input("reconciled_at", sql.DateTime2, health?.last_authoritative_reconciliation_at ?? null);
+      const result = await riskQuery.query<OnDemandRiskRow>(`
         SELECT TOP 250
           m.trip_id, m.external_trip_id, m.zone_id, m.wait_started_at,
           m.predicted_pickup_at,
@@ -88,6 +98,7 @@ app.http("onDemandRisksList", {
           AND o.revoked_at IS NULL AND o.effective_at <= SYSUTCDATETIME() AND SYSUTCDATETIME() < o.expires_at
         LEFT JOIN dbo.OnDemandServiceQualityInterventions i ON i.request_id = m.trip_id
         WHERE m.monitor_state = 'active'
+          AND (@show_last_known = 1 OR @reconciled_at IS NULL OR m.last_polled_at >= @reconciled_at)
         ORDER BY
           CASE
             WHEN DATEDIFF(MINUTE, m.wait_started_at, SYSUTCDATETIME()) > COALESCE(o.minutes, p.default_minutes, 25) THEN 0
@@ -104,13 +115,6 @@ app.http("onDemandRisksList", {
           ? JSON.parse(row.prediction_reasons)
           : [],
       }));
-      const enabled = process.env.ON_DEMAND_MONITORING_ENABLED?.trim().toLowerCase() === "true";
-      const health = healthResult.recordset[0] ?? null;
-      const state = onDemandMonitoringState(enabled, health && {
-        lastAuthoritativeReconciliationAt: health.last_authoritative_reconciliation_at,
-        latestSourceUpdateAt: health.latest_source_update_at,
-        activeRequestCount: health.active_request_count,
-      });
       return {
         status: 200,
         jsonBody: {
