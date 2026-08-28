@@ -26,7 +26,7 @@ import {
   subtractMonths,
   upsertOtpMonthlyReport,
 } from "../lib/otpMonthlyFeed";
-import { recordFeedFailure, recordFeedHealth } from "../lib/missedTripFeedHealth";
+import { recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
 
 const TRAILING_MONTHS = 3; // current + prior 2
 

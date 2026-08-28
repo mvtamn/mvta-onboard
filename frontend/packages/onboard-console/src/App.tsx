@@ -48,7 +48,6 @@ import { OnDemandServiceStandardsAdmin } from "./routes/OnDemandServiceStandards
 import { AdminAccess, AdminEventAdministration, AdminGovernance, AdminIntegrations, AdminServiceConfiguration, AdminSubscribers } from "./routes/AdminModules.js";
 import { CHANGELOG_ENTRIES } from "./routes/changelogData.js";
 import { FixedRouteRefreshProvider } from "./context/FixedRouteRefreshContext.js";
-import { dataStateLabel } from "./hooks/useLiveStats.js";
 import { OperatorIdentity } from "./components/OperatorIdentity.js";
 
 const ADMIN = ["OCC.Admin"] as const;
@@ -338,10 +337,8 @@ function AuthenticatedApp({ account, roles, signOut }: {
             </div>
           </div>
           <div className="topbar-actions">
-            <span className={`topbar-system-status ${stats.overallState}`} role="status">
-              <span className="live-dot" />
-              {dataStateLabel(stats.overallState)}
-            </span>
+            {/* ADR 0026: the shell makes no cross-workspace live-data claim.
+                Each workspace states its own health where the data is used. */}
             <OperatorIdentity
               name={account.name ?? account.username}
               username={account.username}

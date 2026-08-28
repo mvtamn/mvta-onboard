@@ -2,7 +2,7 @@ import { sql } from "./db";
 import { loadKpiTrust } from "./kpiTrustStore";
 
 interface Candidate {
-  trip_id: string;
+  request_id: string;
   zone_id: string;
   current_wait_minutes: number;
   predicted_wait_minutes: number | null;
@@ -42,7 +42,7 @@ async function ensureSuggestedAlert(pool: sql.ConnectionPool, candidate: Candida
   if ((await loadKpiTrust(pool)).on_demand.state !== "current") {
     throw new Error("Automatic Suggested Alert creation is unavailable while On-Demand KPI trust is not current.");
   }
-  const externalId = `wait:${candidate.trip_id}`.slice(0, 100);
+  const externalId = `wait:${candidate.request_id}`.slice(0, 100);
   const existing = pool.request();
   existing.input("source", sql.NVarChar, "zona");
   existing.input("external_id", sql.NVarChar, externalId);
@@ -61,7 +61,9 @@ async function ensureSuggestedAlert(pool: sql.ConnectionPool, candidate: Candida
   insert.input("zones_affected", sql.NVarChar, JSON.stringify([candidate.zone_id]));
   insert.input("detail", sql.NVarChar, JSON.stringify({
     detection_type: "on_demand_wait_risk",
-    trip_id: candidate.trip_id,
+    // Shared with the fixed-route and missed-trip drafts: detail.trip_id is the
+    // key linkPreparedAlertToRisk reads for every source, so it keeps its name.
+    trip_id: candidate.request_id,
     zone_id: candidate.zone_id,
     current_wait_minutes: candidate.current_wait_minutes,
     predicted_wait_minutes: candidate.predicted_wait_minutes,
@@ -95,7 +97,7 @@ export async function reconcileOnDemandInterventions(
   authoritativeRequestIds: ReadonlySet<string>,
 ): Promise<void> {
   const candidates = await pool.request().query<Candidate>(`
-    SELECT m.trip_id, m.zone_id,
+    SELECT m.trip_id AS request_id, m.zone_id,
       CASE WHEN m.wait_started_at < SYSUTCDATETIME() THEN DATEDIFF(MINUTE, m.wait_started_at, SYSUTCDATETIME()) ELSE 0 END AS current_wait_minutes,
       CASE WHEN m.predicted_pickup_at IS NULL THEN NULL WHEN m.predicted_pickup_at > m.wait_started_at THEN DATEDIFF(MINUTE, m.wait_started_at, m.predicted_pickup_at) ELSE 0 END AS predicted_wait_minutes,
       COALESCE(o.minutes, p.default_minutes, 25) AS service_standard_minutes
@@ -106,9 +108,9 @@ export async function reconcileOnDemandInterventions(
     WHERE m.monitor_state = 'active';
   `);
   for (const candidate of candidates.recordset) {
-    if (!authoritativeRequestIds.has(candidate.trip_id)) continue;
+    if (!authoritativeRequestIds.has(candidate.request_id)) continue;
     const request = pool.request();
-    request.input("request_id", sql.NVarChar(100), candidate.trip_id);
+    request.input("request_id", sql.NVarChar(100), candidate.request_id);
     const existing = await request.query<InterventionRow>(`
       SELECT status, projected_breach_count, suggested_alert_id, resolved_by
       FROM dbo.OnDemandServiceQualityInterventions WHERE request_id = @request_id;
@@ -123,7 +125,7 @@ export async function reconcileOnDemandInterventions(
 
     if (prior?.status === "resolved" && prior.resolved_by !== "System.Ingestion") {
       const keepResolved = pool.request();
-      keepResolved.input("request_id", sql.NVarChar(100), candidate.trip_id);
+      keepResolved.input("request_id", sql.NVarChar(100), candidate.request_id);
       keepResolved.input("projected_count", sql.Int, projectedCount);
       keepResolved.input("reconciled_at", sql.DateTime2, reconciledAt);
       await keepResolved.query(`
@@ -137,7 +139,7 @@ export async function reconcileOnDemandInterventions(
     if (!needsIntervention) {
       if (prior?.status === "open") {
         const resolve = pool.request();
-        resolve.input("request_id", sql.NVarChar(100), candidate.trip_id);
+        resolve.input("request_id", sql.NVarChar(100), candidate.request_id);
         resolve.input("reconciled_at", sql.DateTime2, reconciledAt);
         await resolve.query(`
           UPDATE dbo.OnDemandServiceQualityInterventions
@@ -147,7 +149,7 @@ export async function reconcileOnDemandInterventions(
         `);
       } else {
         const update = pool.request();
-        update.input("request_id", sql.NVarChar(100), candidate.trip_id);
+        update.input("request_id", sql.NVarChar(100), candidate.request_id);
         update.input("projected_count", sql.Int, projectedCount);
         update.input("reconciled_at", sql.DateTime2, reconciledAt);
         await update.query(`
@@ -161,7 +163,7 @@ export async function reconcileOnDemandInterventions(
 
     const alertId = prior?.suggested_alert_id ?? await ensureSuggestedAlert(pool, candidate);
     const upsert = pool.request();
-    upsert.input("request_id", sql.NVarChar(100), candidate.trip_id);
+    upsert.input("request_id", sql.NVarChar(100), candidate.request_id);
     upsert.input("projected_count", sql.Int, projectedCount);
     upsert.input("alert_id", sql.UniqueIdentifier, alertId);
     upsert.input("reconciled_at", sql.DateTime2, reconciledAt);
@@ -175,7 +177,7 @@ export async function reconcileOnDemandInterventions(
         VALUES (@request_id, 'open', @projected_count, @alert_id, @reconciled_at);
     `);
     const link = pool.request();
-    link.input("request_id", sql.NVarChar(100), candidate.trip_id);
+    link.input("request_id", sql.NVarChar(100), candidate.request_id);
     link.input("alert_id", sql.UniqueIdentifier, alertId);
     await link.query("UPDATE dbo.MonitoredOnDemandWaits SET suggested_alert_id = @alert_id WHERE trip_id = @request_id;");
   }

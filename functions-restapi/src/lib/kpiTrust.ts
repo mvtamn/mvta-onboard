@@ -1,3 +1,5 @@
+import { ON_DEMAND_DEGRADED_AFTER_MINUTES } from "./onDemandMonitoringHealth";
+
 export type KpiTrustState = "current" | "stale" | "unavailable" | "current_but_empty";
 
 export type KpiFeedName =
@@ -10,7 +12,8 @@ export type KpiFeedName =
   | "avail_otp_daily"
   | "avail_missed_trips"
   | "spare_requests"
-  | "spare_slots";
+  | "spare_slots"
+  | "spare_on_demand_reconciliation";
 
 export interface KpiFeedHealth {
   feed_name: KpiFeedName;
@@ -51,9 +54,25 @@ const CONTRACTS = {
   fixed_route_departures: { required: [{ feedName: "avail_pullout", staleAfterMinutes: 15 }] },
   otp: { required: [{ feedName: "avail_otp_monthly" }], supporting: [{ feedName: "avail_otp_daily" }] },
   event_avl: { required: [{ feedName: "avail_avl", staleAfterMinutes: 2 }] },
-  on_demand: { required: [{ feedName: "spare_requests", staleAfterMinutes: 45 }], supporting: [{ feedName: "spare_slots", staleAfterMinutes: 45 }] },
-  fixed_route_missed_trips: { required: [{ feedName: "gtfs_trip_updates", staleAfterMinutes: 15 }, { feedName: "gtfs_vehicle_positions", staleAfterMinutes: 15 }] },
-  spare_missed_trips: { required: [{ feedName: "spare_requests", staleAfterMinutes: 45 }, { feedName: "spare_slots", staleAfterMinutes: 45 }] },
+  // Only the hourly authoritative reconciliation can establish On-Demand
+  // currency, and it runs independently of missed-trip activation. The Spare
+  // ingestion feeds stay supporting evidence so SPARE_MISSED_TRIPS_ENABLED
+  // cannot decide whether On-Demand risk is trustworthy.
+  on_demand: {
+    required: [{ feedName: "spare_on_demand_reconciliation", staleAfterMinutes: ON_DEMAND_DEGRADED_AFTER_MINUTES }],
+    supporting: [{ feedName: "spare_requests", staleAfterMinutes: 45 }, { feedName: "spare_slots", staleAfterMinutes: 45 }],
+  },
+  // Avail Missed Trips is retrospective evidence for both missed-trip streams:
+  // it explains reduced context without invalidating a current result, so it is
+  // declared supporting rather than required.
+  fixed_route_missed_trips: {
+    required: [{ feedName: "gtfs_trip_updates", staleAfterMinutes: 15 }, { feedName: "gtfs_vehicle_positions", staleAfterMinutes: 15 }],
+    supporting: [{ feedName: "avail_missed_trips" }],
+  },
+  spare_missed_trips: {
+    required: [{ feedName: "spare_requests", staleAfterMinutes: 45 }, { feedName: "spare_slots", staleAfterMinutes: 45 }],
+    supporting: [{ feedName: "avail_missed_trips" }],
+  },
 } as const satisfies Record<string, Contract>;
 
 export type KpiTrust = { [K in keyof typeof CONTRACTS]: KpiTrustStream };
@@ -72,7 +91,12 @@ function dependency(
   const freshestUsableAt = sourceTime && lastSuccess
     ? new Date(Math.min(sourceTime.getTime(), lastSuccess.getTime()))
     : lastSuccess;
-  const state = !lastSuccess || (staleAfterMinutes && !sourceTime)
+  // ADR 0027: a successful run with no qualifying records is Current-but-empty,
+  // not Stale. Such a run has nothing to timestamp, so the delivery itself is
+  // the freshness signal and still ages against the contract. A non-empty
+  // delivery of unknown vintage stays unavailable - its coverage is unproven.
+  const emptySuccess = health?.last_entity_count === 0;
+  const state = !lastSuccess || (staleAfterMinutes && !sourceTime && !emptySuccess)
     ? "unavailable"
     : staleAfterMinutes && freshestUsableAt && now.getTime() - freshestUsableAt.getTime() > staleAfterMinutes * 60_000
       ? "stale"

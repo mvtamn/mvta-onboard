@@ -14,7 +14,7 @@ import { detectEventGeofenceCrossings } from "../lib/eventGeofenceDetection";
 import { detectMonitoringAreaTests } from "../lib/monitoringAreaTest";
 import { detectionWindowSeconds, shouldAcceptObservation } from "../lib/eventProcessing";
 import { recordEventHealth, recordTelemetryDiagnostic } from "../lib/eventHealth";
-import { recordFeedFailure, recordFeedHealth } from "../lib/missedTripFeedHealth";
+import { recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
 
 type PollPool = Awaited<ReturnType<typeof getPool>>;
 

@@ -4,7 +4,7 @@
 // deliberately neither logged nor stored.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { recordMissedTripFeedSuccess } from "../lib/missedTripFeedHealth";
+import { recordFeedHealth } from "../lib/kpiFeedHealth";
 import {
   fetchSparePage,
   spareNumber,
@@ -289,8 +289,8 @@ app.timer("spareMissedTripsIngest", {
     for (const row of slots) if (await upsertSlot(pool, row)) slotWrites++;
     const maxRequestUpdatedAt = requests.reduce((max, row) => Math.max(max, spareNumber(row.updatedAt) ?? 0), 0);
     const maxSlotUpdatedAt = slots.reduce((max, row) => Math.max(max, spareNumber(row.updatedAt) ?? 0), 0);
-    await recordMissedTripFeedSuccess(pool, "spare_requests", requestWrites, maxRequestUpdatedAt || null);
-    await recordMissedTripFeedSuccess(pool, "spare_slots", slotWrites, maxSlotUpdatedAt || null);
+    await recordFeedHealth(pool, "spare_requests", requestWrites, maxRequestUpdatedAt || null);
+    await recordFeedHealth(pool, "spare_slots", slotWrites, maxSlotUpdatedAt || null);
     context.log(
       `Spare Missed Trips ingestion: ${requests.length} requests fetched/${requestWrites} stored; ` +
         `${slots.length} slots fetched/${slotWrites} stored; ${monitorWrites} on-demand monitor updates.`,

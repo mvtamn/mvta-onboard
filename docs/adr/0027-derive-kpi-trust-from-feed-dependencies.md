@@ -20,7 +20,10 @@ trust view and remain fixed in the first release. The implementation uses one
 shared, PII-free projection over existing ingestion health records; it does not
 introduce a separate monitoring platform, client-side probes, or vendor calls
 from the UI. Real-time initial lateness limits are three missed cycles: 15
-minutes for GTFS, 2 minutes for AVL, and 45 minutes for Spare reconciliation.
+minutes for GTFS, 2 minutes for AVL, and 45 minutes for the Spare ingestion
+feeds. On-Demand currency is established by the hourly authoritative
+reconciliation on the 90-minute On-Demand degraded boundary, so the separately
+gated Spare missed-trip ingestion cannot decide On-Demand trust.
 Operations must approve periodic-source reporting deadlines before daily or
 monthly streams automatically enter Stale.
 

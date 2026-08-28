@@ -238,9 +238,6 @@ body {
 .content-topbar h1 { font-size: 22px; font-weight: 800; color: var(--text); margin: 0; letter-spacing: -0.01em; }
 .content-topbar .subtitle { color: var(--text-muted); font-size: 12.5px; margin-top: 3px; }
 .topbar-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
-.topbar-system-status { align-items: center; background: var(--surface-alt-bg); border: 1px solid var(--border); border-radius: 999px; color: var(--text-dim); display: inline-flex; font-size: 11px; font-weight: 700; gap: 6px; padding: 5px 9px; white-space: nowrap; }
-.topbar-system-status.stale, .topbar-system-status.unavailable, .topbar-system-status.authentication-required { color: var(--danger-text); }
-.topbar-system-status.stale .live-dot, .topbar-system-status.unavailable .live-dot, .topbar-system-status.authentication-required .live-dot { background: var(--danger-text); }
 .pill-user { display: flex; align-items: center; gap: 8px; background: var(--surface-alt-bg); border: 1px solid var(--border); color: var(--text); font-size: 12px; padding: 4px 12px 4px 4px; border-radius: 999px; }
 .operator-identity { position: relative; }
 .operator-identity .pill-user { cursor: pointer; max-width: min(560px, 42vw); text-align: left; }

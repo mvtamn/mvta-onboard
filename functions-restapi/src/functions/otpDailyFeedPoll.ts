@@ -15,7 +15,7 @@
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchOtpDailyReports, mapOtpDailyReport } from "../lib/otpDailyFeed";
-import { recordFeedHealth } from "../lib/missedTripFeedHealth";
+import { recordFeedHealth } from "../lib/kpiFeedHealth";
 
 const RETENTION_DAYS = 90;
 

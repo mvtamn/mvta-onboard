@@ -9,7 +9,7 @@
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchPulloutReports, mapPulloutReport } from "../lib/availPullout";
-import { recordFeedHealth } from "../lib/missedTripFeedHealth";
+import { recordFeedHealth } from "../lib/kpiFeedHealth";
 
 function serviceDateToday(): string {
   // UTC-based, same known simplification used elsewhere in this repo.

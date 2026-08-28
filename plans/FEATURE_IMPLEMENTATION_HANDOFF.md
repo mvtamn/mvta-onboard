@@ -140,8 +140,8 @@ predicted_departure_at
 Important properties:
 
 ```text
-trip_id
-external_trip_id
+request_id
+external_request_id
 zone_id
 wait_started_at
 predicted_pickup_at

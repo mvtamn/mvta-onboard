@@ -5,6 +5,38 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.70] - 2026-08-28
+
+- **Rename the feed-health ledger to match what it holds.** Migration 086 renames `MissedTripFeedHealth` to `KpiFeedHealth`; it backs every KPI trust stream, not only missed trips. The application resolves the table name per call and accepts either, so the migration and the deployment can land in either order.
+
+## [1.5.69] - 2026-08-28
+
+- **Stop calling a healthy On-Demand request a Watch condition.** A request that is neither overdue nor forecast past its standard now reads "Within standard", so the Watch label carries one meaning.
+- **Share the risk workspace contract.** The Fixed Route and On-Demand workspaces now use one implementation of the training-scenario toggle and notice, the confidence styling, the actions-unavailable rule, and the stale-data acknowledgement prompt. KPI trust states read identically in the workspaces and the Admin feed-health view.
+
+## [1.5.68] - 2026-08-28
+
+- **Name On-Demand records as requests, not trips.** The On-Demand risk contract now returns `request_id` and `external_request_id`, the resolve endpoint reports `request_id`, and the workspace reads "Connect Request" throughout, matching the glossary definition of an Active on-demand request. Stored column names and the Suggested Alert detail linking key are unchanged.
+
+## [1.5.67] - 2026-08-27
+
+- **Stop reporting a healthy empty poll as unavailable.** A feed run that completed successfully with no qualifying records now counts as covered, using its delivery time as the freshness signal, instead of reading as unavailable and blocking alert preparation. A non-empty delivery whose source vintage is unknown still reads as unavailable.
+
+## [1.5.66] - 2026-08-27
+
+- **Drop the console-wide live-data claim.** The application shell no longer states a single data status in its top bar. Each workspace reports its own health where the data is used, so an alert-feed connection cannot imply that risk monitoring is current.
+- **Show Avail Missed Trips evidence on the missed-trip KPIs.** Both the fixed-route and Spare missed-trip streams now declare Avail Missed Trips as supporting retrospective evidence; its state is visible without gating either stream.
+
+## [1.5.65] - 2026-08-27
+
+- **Record the stale-data acknowledgement when the update is prepared.** The acknowledgement is now written as the staff member prepares a communication from stale KPI data, naming that person, rather than at approval under the reviewer's name. A prepared-then-discarded draft still leaves evidence.
+- **Keep an observed overdue On-Demand request visible.** A request whose pickup commitment has passed now reads as Overdue even when its forecast also qualifies as a Watch, so a projection cannot hide an observation.
+
+## [1.5.64] - 2026-08-27
+
+- **Base On-Demand KPI trust on the authoritative reconciliation.** The hourly On-Demand reconciliation now records its own feed health, so On-Demand trust no longer depends on the separately gated Spare missed-trip ingestion. The Spare Requests and Slots feeds remain supporting evidence.
+- **Stop asking for a stale-data reason on a healthy empty result.** Fixed Route and On-Demand risk workspaces treat a Current-but-empty KPI stream as current, matching the Suggested Alert endpoint, which previously rejected the prepared alert.
+
 ## [1.5.63] - 2026-08-27
 
 - **Prevent concurrent Event AVL Teams deliveries.** Notification delivery now uses a short-lived claim, so an operator action and queue retry cannot post the same Status queue item twice. The queue shows an in-progress delivery and recovers an abandoned claim safely.

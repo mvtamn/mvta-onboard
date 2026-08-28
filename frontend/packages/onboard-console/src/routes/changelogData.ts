@@ -18,6 +18,94 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.70",
+    date: "2026-08-28",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "The shared feed-health ledger behind KPI trust is now named KpiFeedHealth rather than MissedTripFeedHealth, since every KPI stream depends on it.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.69",
+    date: "2026-08-28",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "An On-Demand request that is neither overdue nor forecast past its standard now reads \"Within standard\" instead of Watch, so the Watch label carries one meaning.",
+          "The Fixed Route and On-Demand workspaces now share one training-scenario toggle, actions-unavailable rule, and stale-data acknowledgement prompt, and KPI trust states read identically in the Admin feed-health view.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.68",
+    date: "2026-08-28",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "On-Demand records are now named requests rather than trips, in both the workspace labels and the underlying data contract, matching the Active on-demand request terminology.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.67",
+    date: "2026-08-27",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "A feed run that completed successfully with no qualifying records now reports as covered rather than unavailable, so a quiet period no longer blocks preparing a customer update.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.66",
+    date: "2026-08-27",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "The top bar no longer shows a single console-wide data status; each workspace states its own health where the data is used.",
+          "Fixed-route and Spare missed-trip KPI trust now list Avail Missed Trips as supporting retrospective evidence, visible without gating either stream.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.65",
+    date: "2026-08-27",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "A stale-data acknowledgement is now recorded when a communication is prepared, under the name of the staff member who used the stale data, instead of at approval under the reviewer's name.",
+          "An On-Demand request whose pickup commitment has passed now reads as Overdue rather than Watch, keeping an observed condition distinct from a forecast one.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.64",
+    date: "2026-08-27",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "On-Demand KPI trust is now established by the hourly authoritative reconciliation, so it no longer depends on the separately enabled Spare missed-trip ingestion. Spare Requests and Slots remain supporting evidence.",
+          "Preparing a Suggested Alert from a Current-but-empty KPI stream no longer asks for a stale-data reason, which the review endpoint rejected.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.63",
     date: "2026-08-27",
     sections: [

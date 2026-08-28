@@ -216,7 +216,30 @@ export interface KpiTrustStream {
   dependencies: KpiTrustDependency[];
 }
 
-export type KpiTrust = Record<string, KpiTrustStream>;
+// Hand-synced with CONTRACTS in functions-restapi/src/lib/kpiTrust.ts - the
+// same mirroring convention used for the other types shared with the API.
+// Partial, because a stream this console knows about may predate the deployed
+// backend; every read still has to handle an absent stream.
+export type KpiTrustStreamName =
+  | "fixed_route_delay"
+  | "fixed_route_departures"
+  | "otp"
+  | "event_avl"
+  | "on_demand"
+  | "fixed_route_missed_trips"
+  | "spare_missed_trips";
+
+export type KpiTrust = Partial<Record<KpiTrustStreamName, KpiTrustStream>>;
+
+// The prepare endpoint accepts `current_but_empty` as healthy coverage and
+// rejects an acknowledgement recorded against it, so callers must ask for a
+// stale-data reason on exactly the two states the backend treats as degraded.
+// An absent stream is unknown coverage, which is not a claim of currency.
+export function requiresStaleDataAcknowledgement(
+  state: KpiTrustStream["state"] | undefined,
+): boolean {
+  return state !== "current" && state !== "current_but_empty";
+}
 
 // The live API has been observed returning a bare scalar (e.g. a route number)
 // for these fields instead of a JSON array - likely a not-yet-redeployed
@@ -553,9 +576,9 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<{ risks: OnDemandRiskRecord[]; diagnostics: OnDemandRiskDiagnostics }>("/api/on-demand-risks", {}, true);
     },
 
-    resolveOnDemandIntervention(tripId: string, reason?: string) {
-      return request<{ trip_id: string; status: "resolved" }>(
-        `/api/on-demand-risks/${encodeURIComponent(tripId)}/resolve`,
+    resolveOnDemandIntervention(requestId: string, reason?: string) {
+      return request<{ request_id: string; status: "resolved" }>(
+        `/api/on-demand-risks/${encodeURIComponent(requestId)}/resolve`,
         { method: "POST", body: JSON.stringify(reason ? { reason } : {}) },
         true,
       );

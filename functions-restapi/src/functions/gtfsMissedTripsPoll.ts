@@ -40,7 +40,7 @@ import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchTripUpdateFeed, mapCanceledTrip, type CanceledTrip } from "../lib/gtfsTripUpdates";
 import { agencyServiceDate, serviceDateAndGtfsSecondsToUtc } from "../lib/missedTripTime";
-import { recordMissedTripFeedSuccess } from "../lib/missedTripFeedHealth";
+import { recordFeedHealth } from "../lib/kpiFeedHealth";
 
 const GRACE_MINUTES = 30; // ops definition: never-ran OR started >30 min late = missed
 const GRACE_SECONDS = GRACE_MINUTES * 60;
@@ -298,7 +298,7 @@ app.timer("gtfsMissedTripsPoll", {
 
     const pool = await getPool();
     try {
-      await recordMissedTripFeedSuccess(
+      await recordFeedHealth(
         pool,
         "gtfs_trip_updates",
         feed.Entities.length,

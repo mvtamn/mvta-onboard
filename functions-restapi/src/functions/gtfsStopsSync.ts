@@ -11,7 +11,7 @@
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchAndParseStatic, resolveDirectionLabels } from "../lib/gtfsStatic";
-import { recordFeedHealth } from "../lib/missedTripFeedHealth";
+import { recordFeedHealth } from "../lib/kpiFeedHealth";
 
 app.timer("gtfsStopsSync", {
   schedule: "0 0 9 * * *",

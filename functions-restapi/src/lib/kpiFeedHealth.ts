@@ -1,5 +1,24 @@
+// The shared, PII-free ingestion ledger behind every KPI trust stream - not
+// only missed trips, which is where its original name came from.
 import { sql } from "./db";
 import type { KpiFeedName } from "./kpiTrust";
+
+// Migration 086 renamed dbo.MissedTripFeedHealth to dbo.KpiFeedHealth.
+// Resolving the name per call keeps writes working whichever of the migration
+// and the deployment lands first; drop the legacy arm once 086 is applied
+// everywhere. Both values are literals from this closed set, never input, so
+// interpolating them into a statement introduces no injection surface.
+export type FeedHealthTable = "KpiFeedHealth" | "MissedTripFeedHealth";
+
+export async function feedHealthTable(pool: sql.ConnectionPool): Promise<FeedHealthTable | null> {
+  const result = await pool.request().query<{ table_name: FeedHealthTable | null }>(`
+    SELECT CASE
+      WHEN OBJECT_ID('dbo.KpiFeedHealth', 'U') IS NOT NULL THEN 'KpiFeedHealth'
+      WHEN OBJECT_ID('dbo.MissedTripFeedHealth', 'U') IS NOT NULL THEN 'MissedTripFeedHealth'
+      ELSE NULL END AS table_name
+  `);
+  return result.recordset[0]?.table_name ?? null;
+}
 
 export async function recordFeedHealth(
   pool: sql.ConnectionPool,
@@ -8,10 +27,8 @@ export async function recordFeedHealth(
   sourceTimestampSeconds: number | null,
   coverage?: { startAt?: Date | null; endAt?: Date | null },
 ): Promise<void> {
-  const tableCheck = await pool.request().query<{ ready: number }>(`
-    SELECT CASE WHEN OBJECT_ID('dbo.MissedTripFeedHealth', 'U') IS NULL THEN 0 ELSE 1 END AS ready
-  `);
-  if (tableCheck.recordset[0]?.ready !== 1) return;
+  const table = await feedHealthTable(pool);
+  if (!table) return;
   const sourceTimestamp =
     sourceTimestampSeconds && Number.isFinite(sourceTimestampSeconds)
       ? new Date(sourceTimestampSeconds * 1000)
@@ -23,7 +40,7 @@ export async function recordFeedHealth(
   req.input("coverage_start_at", sql.DateTime2, coverage?.startAt ?? sourceTimestamp);
   req.input("coverage_end_at", sql.DateTime2, coverage?.endAt ?? sourceTimestamp);
   await req.query(`
-    MERGE MissedTripFeedHealth WITH (HOLDLOCK) AS target
+    MERGE ${table} WITH (HOLDLOCK) AS target
     USING (SELECT @feed_name AS feed_name) AS src
     ON target.feed_name = src.feed_name
     WHEN MATCHED THEN UPDATE SET
@@ -44,14 +61,13 @@ export async function recordFeedHealth(
 }
 
 export async function recordFeedFailure(pool: sql.ConnectionPool, feedName: KpiFeedName, error: unknown): Promise<void> {
+  const table = await feedHealthTable(pool);
+  if (!table) return;
   const message = error instanceof Error ? error.message : String(error);
   await pool.request().input("feed_name", sql.NVarChar, feedName).input("reason", sql.NVarChar(1000), message.slice(0, 1000)).query(`
-    IF OBJECT_ID('dbo.MissedTripFeedHealth', 'U') IS NOT NULL
-      MERGE MissedTripFeedHealth WITH (HOLDLOCK) AS target
-      USING (SELECT @feed_name AS feed_name) AS src ON target.feed_name = src.feed_name
-      WHEN MATCHED THEN UPDATE SET last_failure_at = SYSUTCDATETIME(), last_failure_reason = @reason, updated_at = SYSUTCDATETIME()
-      WHEN NOT MATCHED THEN INSERT(feed_name, last_failure_at, last_failure_reason) VALUES(@feed_name, SYSUTCDATETIME(), @reason);
+    MERGE ${table} WITH (HOLDLOCK) AS target
+    USING (SELECT @feed_name AS feed_name) AS src ON target.feed_name = src.feed_name
+    WHEN MATCHED THEN UPDATE SET last_failure_at = SYSUTCDATETIME(), last_failure_reason = @reason, updated_at = SYSUTCDATETIME()
+    WHEN NOT MATCHED THEN INSERT(feed_name, last_failure_at, last_failure_reason) VALUES(@feed_name, SYSUTCDATETIME(), @reason);
   `);
 }
-
-export const recordMissedTripFeedSuccess = recordFeedHealth;
