@@ -6,7 +6,7 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
-import { feedHealthTable } from "../lib/kpiFeedHealth";
+import { feedHealthTableReady } from "../lib/kpiFeedHealth";
 
 interface MissedTripRow {
   trip_id: string;
@@ -126,7 +126,7 @@ app.http("missedTripsList", {
         FROM MonitoredMissedTrips
       `);
       const total = totals.recordset[0];
-      const healthTable = await feedHealthTable(pool);
+      const healthTableReady = await feedHealthTableReady(pool);
       let feedHealth: Array<{
         feed_name: string;
         last_success_at: string | null;
@@ -134,7 +134,7 @@ app.http("missedTripsList", {
         source_timestamp_at: string | null;
         status: "current" | "stale";
       }> = [];
-      if (healthTable) {
+      if (healthTableReady) {
         const health = await pool.request().query<{
           feed_name: string;
           last_success_at: Date | null;
@@ -142,7 +142,7 @@ app.http("missedTripsList", {
           source_timestamp_at: Date | null;
         }>(`
           SELECT feed_name, last_success_at, last_entity_count, source_timestamp_at
-          FROM ${healthTable} ORDER BY feed_name
+          FROM KpiFeedHealth ORDER BY feed_name
         `);
         feedHealth = health.recordset.map((row) => ({
           feed_name: row.feed_name,

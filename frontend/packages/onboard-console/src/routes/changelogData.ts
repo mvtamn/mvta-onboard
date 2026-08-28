@@ -18,6 +18,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.71",
+    date: "2026-08-28",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Feed health is now read from the KpiFeedHealth table only; the temporary compatibility path for the pre-rename table name has been removed.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.70",
     date: "2026-08-28",
     sections: [
