@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.70] - 2026-08-28
+
+- **Rename the feed-health ledger to match what it holds.** Migration 086 renames `MissedTripFeedHealth` to `KpiFeedHealth`; it backs every KPI trust stream, not only missed trips. The application resolves the table name per call and accepts either, so the migration and the deployment can land in either order.
+
 ## [1.5.69] - 2026-08-28
 
 - **Stop calling a healthy On-Demand request a Watch condition.** A request that is neither overdue nor forecast past its standard now reads "Within standard", so the Watch label carries one meaning.

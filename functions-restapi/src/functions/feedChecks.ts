@@ -3,6 +3,7 @@ import { app, type HttpRequest, type InvocationContext } from "@azure/functions"
 import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
 import { getPool } from "../lib/db";
 import { summarizeFeedResponse } from "../lib/feedCheckResponse";
+import { feedHealthTable } from "../lib/kpiFeedHealth";
 
 type FeedCheck = {
   name: string;
@@ -59,10 +60,8 @@ async function spareMissedTripPipelineChecks(): Promise<FeedCheck[]> {
   }
   try {
     const pool = await getPool();
-    const table = await pool.request().query<{ ready: number }>(`
-      SELECT CASE WHEN OBJECT_ID('dbo.MissedTripFeedHealth', 'U') IS NULL THEN 0 ELSE 1 END AS ready
-    `);
-    if (table.recordset[0]?.ready !== 1) {
+    const table = await feedHealthTable(pool);
+    if (!table) {
       return ["Requests", "Slots"].map((name) => ({ name: `Spare missed-trip ${name} ingestion`, configured: true, error: "Pipeline health table is not ready" }));
     }
     const result = await pool.request().query<{
@@ -71,7 +70,7 @@ async function spareMissedTripPipelineChecks(): Promise<FeedCheck[]> {
       last_entity_count: number | null;
     }>(`
       SELECT feed_name, last_success_at, last_entity_count
-      FROM MissedTripFeedHealth
+      FROM ${table}
       WHERE feed_name IN ('spare_requests', 'spare_slots')
     `);
     const rows = new Map(result.recordset.map((row) => [row.feed_name, row]));
