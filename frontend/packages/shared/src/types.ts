@@ -478,8 +478,8 @@ export interface MissedTripsMonthlySummaryResponse {
 }
 
 export interface OnDemandRiskRecord {
-  trip_id: string;
-  external_trip_id: string | null;
+  request_id: string;
+  external_request_id: string | null;
   zone_id: string;
   wait_started_at: string;
   predicted_pickup_at: string | null;

@@ -36,7 +36,7 @@ export interface FixedRouteRisk {
 
 export interface OnDemandRisk {
   id: string;
-  tripNumber: string;
+  requestNumber: string;
   zone: string;
   currentWaitMinutes: number;
   predictedWaitMinutes: number;
@@ -49,7 +49,7 @@ export interface OnDemandRisk {
   availableVehicles: number | null;
   nearestEligibleVehicle: string | null;
   reasons: string[];
-  sourceTripId?: string;
+  sourceRequestId?: string;
   suggestedAlertId?: string | null;
   interventionStatus?: "open" | "resolved" | null;
   serviceStandardMinutes?: number;
@@ -164,7 +164,7 @@ export const FIXED_ROUTE_RISKS: FixedRouteRisk[] = [
 export const ON_DEMAND_RISKS: OnDemandRisk[] = [
   {
     id: "connect-1842",
-    tripNumber: "1842",
+    requestNumber: "1842",
     zone: "2",
     currentWaitMinutes: 19,
     predictedWaitMinutes: 31,
@@ -185,7 +185,7 @@ export const ON_DEMAND_RISKS: OnDemandRisk[] = [
   },
   {
     id: "connect-1817",
-    tripNumber: "1817",
+    requestNumber: "1817",
     zone: "1",
     currentWaitMinutes: 23,
     predictedWaitMinutes: 28,
@@ -205,7 +205,7 @@ export const ON_DEMAND_RISKS: OnDemandRisk[] = [
   },
   {
     id: "connect-1799",
-    tripNumber: "1799",
+    requestNumber: "1799",
     zone: "3",
     currentWaitMinutes: 27,
     predictedWaitMinutes: 29,
@@ -225,7 +225,7 @@ export const ON_DEMAND_RISKS: OnDemandRisk[] = [
   },
   {
     id: "connect-1860",
-    tripNumber: "1860",
+    requestNumber: "1860",
     zone: "2",
     currentWaitMinutes: 17,
     predictedWaitMinutes: 24,

@@ -3,6 +3,7 @@ import {
   ApiError,
   isDepartureAtRisk,
   isDepartureWatch,
+  requiresStaleDataAcknowledgement,
   type PrepareSuggestedAlertInput,
   type TripDelay,
   type TripDelayDiagnostics,
@@ -363,7 +364,7 @@ export function FixedRouteServiceRisk() {
     setPreparing(true);
     try {
       const { streams } = await api.getKpiTrust();
-      if (streams.fixed_route_delay?.state !== "current") {
+      if (requiresStaleDataAcknowledgement(streams.fixed_route_delay?.state)) {
         const reason = window.prompt("Why is it safe to prepare this customer update from stale KPI data?");
         if (!reason?.trim()) return;
         draft.stale_data_acknowledgement_reason = reason.trim();

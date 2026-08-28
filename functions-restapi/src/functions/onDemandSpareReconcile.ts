@@ -3,6 +3,7 @@
 // read advances the health record exposed to OCC.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool } from "../lib/db";
+import { recordFeedFailure, recordFeedHealth } from "../lib/missedTripFeedHealth";
 import { reconcileOnDemandInterventions } from "../lib/onDemandInterventions";
 import { normalizeOnDemandSpareRequest } from "../lib/onDemandSpareMonitor";
 import {
@@ -59,7 +60,17 @@ app.timer("onDemandSpareReconcile", {
       return;
     }
     const reconciledAt = new Date();
-    const requests = await fetchAuthoritativeRequests();
+    const pool = await getPool();
+    let requests: SpareRequestRecord[];
+    try {
+      requests = await fetchAuthoritativeRequests();
+    } catch (err) {
+      context.error("On-demand authoritative reconciliation failed:", err);
+      try { await recordFeedFailure(pool, "spare_on_demand_reconciliation", err); } catch (healthError) {
+        context.error("Failed to record on-demand reconciliation feed failure:", healthError);
+      }
+      throw err;
+    }
     const zones = await loadActiveOperationalZones();
     let writes = 0;
     let latestSourceUpdateAt: Date | null = null;
@@ -73,13 +84,23 @@ app.timer("onDemandSpareReconcile", {
         latestSourceUpdateAt = normalized.sourceUpdatedAt;
       }
     }
-    const pool = await getPool();
     await recordOnDemandAuthoritativeReconciliation({
       reconciledAt,
       latestSourceUpdateAt,
       activeRequestCount: activeRequestIds.size,
     });
     await reconcileOnDemandInterventions(pool, reconciledAt, activeRequestIds);
+    try {
+      // This complete source read - not the missed-trip ingestion - is what
+      // makes On-Demand KPI trust current. A zero-active reconciliation still
+      // covers the source through reconciledAt, so it reads as current-but-empty
+      // rather than unavailable.
+      await recordFeedHealth(pool, "spare_on_demand_reconciliation", activeRequestIds.size, null, {
+        endAt: reconciledAt,
+      });
+    } catch (healthError) {
+      context.error("Failed to update on-demand reconciliation feed health:", healthError);
+    }
     context.log(`On-demand reconciliation: ${requests.length} source requests checked; ${writes} monitor records updated.`);
   },
 });

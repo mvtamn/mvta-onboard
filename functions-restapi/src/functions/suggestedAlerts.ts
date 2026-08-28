@@ -43,6 +43,28 @@ async function sourceTrustState(pool: sql.ConnectionPool, body: PrepareSuggested
   return { streamName, state: (await loadKpiTrust(pool))[streamName].state };
 }
 
+// ADR 0027: the acknowledgement is the precondition for using stale KPI data,
+// so it is written when the staff member prepares the communication - not when
+// a reviewer later approves it. A prepared-then-discarded draft still leaves
+// evidence, and the record names the person who used the stale data.
+async function recordStaleDataAcknowledgement(
+  tx: sql.Transaction,
+  streamName: string,
+  alertId: string,
+  reason: string,
+  acknowledgedBy: string,
+): Promise<void> {
+  const record = new sql.Request(tx);
+  record.input("stream", sql.NVarChar(64), streamName);
+  record.input("reference", sql.NVarChar(100), alertId);
+  record.input("reason", sql.NVarChar(1000), reason);
+  record.input("actor", sql.NVarChar(200), acknowledgedBy);
+  await record.query(`
+    INSERT INTO KpiTrustAcknowledgements(stream_name, communication_reference, reason, acknowledged_by)
+    VALUES(@stream, @reference, @reason, @actor)
+  `);
+}
+
 async function linkPreparedAlertToRisk(
   tx: sql.Transaction,
   body: PrepareSuggestedAlertBody,
@@ -116,6 +138,7 @@ app.http("suggestedAlertsPrepare", {
       };
     }
     const body = raw as PrepareSuggestedAlertBody;
+    const preparedBy = authResult.principal.userDetails ?? "onboard-console";
 
     const pool = await getPool();
     const trust = await sourceTrustState(pool, body);
@@ -152,6 +175,9 @@ app.http("suggestedAlertsPrepare", {
       const prior = existing.recordset[0];
       if (prior) {
         await linkPreparedAlertToRisk(tx, body, prior.alert_id);
+        if (acknowledgementReason) {
+          await recordStaleDataAcknowledgement(tx, trust.streamName, prior.alert_id, acknowledgementReason, preparedBy);
+        }
         await tx.commit();
         if (prior.status !== "pending") {
           return {
@@ -187,6 +213,8 @@ app.http("suggestedAlertsPrepare", {
       );
       insertReq.input("detail", sql.NVarChar, JSON.stringify({
         ...body.detail,
+        // Provenance shown with the draft; the auditable record lives in
+        // KpiTrustAcknowledgements, written below against this alert_id.
         ...(acknowledgementReason ? { stale_data_acknowledgement: { stream_name: trust.streamName, reason: acknowledgementReason } } : {}),
       }));
       const inserted = await insertReq.query<{ alert_id: string; status: string }>(`
@@ -202,6 +230,9 @@ app.http("suggestedAlertsPrepare", {
       `);
       const alert = inserted.recordset[0];
       await linkPreparedAlertToRisk(tx, body, alert.alert_id);
+      if (acknowledgementReason) {
+        await recordStaleDataAcknowledgement(tx, trust.streamName, alert.alert_id, acknowledgementReason, preparedBy);
+      }
       await tx.commit();
       context.log(
         `OCC prepared suggested alert ${alert.alert_id} for ${body.source}:${body.external_id}`,
@@ -340,20 +371,8 @@ app.http("suggestedAlertsApprove", {
       `);
       const message = inserted.recordset[0];
 
-      const detail = alert.detail ? JSON.parse(alert.detail) as Record<string, unknown> : {};
-      const acknowledgement = detail.stale_data_acknowledgement as { stream_name?: string; reason?: string } | undefined;
-      if (acknowledgement?.stream_name && acknowledgement.reason) {
-        const record = new sql.Request(tx);
-        record.input("stream", sql.NVarChar(64), acknowledgement.stream_name);
-        record.input("reference", sql.NVarChar(100), message.message_id);
-        record.input("reason", sql.NVarChar(1000), acknowledgement.reason);
-        record.input("actor", sql.NVarChar(200), reviewedBy);
-        await record.query(`
-          INSERT INTO KpiTrustAcknowledgements(stream_name, communication_reference, reason, acknowledged_by)
-          VALUES(@stream, @reference, @reason, @actor)
-        `);
-      }
-
+      // The stale-data acknowledgement was recorded at prepare time against
+      // this alert_id; approval adds review, not a second acknowledgement.
       const updateReq = new sql.Request(tx);
       updateReq.input("id", sql.UniqueIdentifier, id);
       updateReq.input("reviewed_by", sql.NVarChar, reviewedBy);

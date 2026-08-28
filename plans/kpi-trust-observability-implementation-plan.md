@@ -16,7 +16,7 @@ The first release covers these KPI source streams:
 | Fixed-route departures | Avail Pullout | — |
 | OTP | Avail OTP Monthly | Avail OTP Daily |
 | Event AVL | Avail AVL | — |
-| On-Demand risk | Spare Request Status and authoritative reconciliation | Spare ETA, Vehicle Location, Duty Matching |
+| On-Demand risk | Authoritative On-Demand reconciliation | Spare Request Status, Spare Slots |
 | Missed trips | Fixed-route and Spare streams independently | Avail Missed Trips retrospective evidence |
 
 ## Non-goals

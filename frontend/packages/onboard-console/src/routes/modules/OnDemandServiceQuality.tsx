@@ -5,6 +5,7 @@ import {
   type OnDemandRiskDiagnostics,
   type OnDemandServiceStandardPolicy,
   type PrepareSuggestedAlertInput,
+  requiresStaleDataAcknowledgement,
 } from "@mvta/shared";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext.js";
@@ -64,8 +65,11 @@ function waitState(risk: OnDemandRisk, serviceStandard: number): { label: string
   if (risk.currentWaitMinutes >= serviceStandard + 15 || risk.predictedWaitMinutes >= serviceStandard + 15) return { label: "Critical", className: "pill-danger" };
   if (risk.currentWaitMinutes > serviceStandard) return { label: "Standard exceeded", className: "pill-danger" };
   if (risk.predictedWaitMinutes > serviceStandard) return { label: "Projected risk", className: "pill-warning" };
-  if (risk.predictedWaitMinutes > 20) return { label: "Watch", className: "pill-warning" };
+  // An observed condition outranks a forecast: a request whose Pickup
+  // commitment has already passed is Overdue even when its projected wait also
+  // qualifies as a Watch, so the forecast cannot hide the observation.
   if (risk.currentWaitMinutes > 0) return { label: "Overdue", className: "pill-warning" };
+  if (risk.predictedWaitMinutes > 20) return { label: "Watch", className: "pill-warning" };
   return { label: "Watch", className: "pill-accent" };
 }
 
@@ -75,8 +79,8 @@ function titleCase<T extends string>(value: T): Capitalize<T> {
 
 function fromOnDemandRecord(record: OnDemandRiskRecord): OnDemandRisk {
   return {
-    id: `live-${record.trip_id}`,
-    tripNumber: record.external_trip_id ?? record.trip_id,
+    id: `live-${record.request_id}`,
+    requestNumber: record.external_request_id ?? record.request_id,
     zone: record.zone_id,
     currentWaitMinutes: record.current_wait_minutes,
     predictedWaitMinutes:
@@ -99,7 +103,7 @@ function fromOnDemandRecord(record: OnDemandRiskRecord): OnDemandRisk {
     reasons: record.prediction_reasons.length
       ? record.prediction_reasons
       : ["Prediction evidence is not available for this record."],
-    sourceTripId: record.trip_id,
+    sourceRequestId: record.request_id,
     suggestedAlertId: record.suggested_alert_id,
     interventionStatus: record.intervention_status,
     serviceStandardMinutes: record.service_standard_minutes,
@@ -110,7 +114,7 @@ function fromOnDemandRecord(record: OnDemandRiskRecord): OnDemandRisk {
 function onDemandDraft(risk: OnDemandRisk, serviceStandard: number): PrepareSuggestedAlertInput {
   return {
     source: "zona",
-    external_id: `wait:${risk.sourceTripId ?? risk.tripNumber}`.slice(0, 100),
+    external_id: `wait:${risk.sourceRequestId ?? risk.requestNumber}`.slice(0, 100),
     draft_text:
       `MVTA Connect customers in Zone ${risk.zone}: Pickup for this trip is predicted ` +
       `after approximately ${risk.predictedWaitMinutes} minutes, above the ${serviceStandard}-minute ` +
@@ -120,8 +124,10 @@ function onDemandDraft(risk: OnDemandRisk, serviceStandard: number): PrepareSugg
     zones_affected: [risk.zone],
     detail: {
       detection_type: "on_demand_wait_risk",
-      trip_id: risk.sourceTripId ?? risk.tripNumber,
-      external_trip_id: risk.tripNumber,
+      // detail.trip_id is the shared linking key the prepare endpoint reads for
+      // every source, so it keeps its name while the risk model does not.
+      trip_id: risk.sourceRequestId ?? risk.requestNumber,
+      external_trip_id: risk.requestNumber,
       zone_id: risk.zone,
       current_wait_minutes: risk.currentWaitMinutes,
       predicted_wait_minutes: risk.predictedWaitMinutes,
@@ -224,7 +230,7 @@ export function OnDemandServiceQuality() {
     setPreparing(true);
     try {
       const { streams } = await api.getKpiTrust();
-      if (streams.on_demand?.state !== "current") {
+      if (requiresStaleDataAcknowledgement(streams.on_demand?.state)) {
         const reason = window.prompt("Why is it safe to prepare this customer update from stale KPI data?");
         if (!reason?.trim()) return;
         draft.stale_data_acknowledgement_reason = reason.trim();
@@ -243,10 +249,10 @@ export function OnDemandServiceQuality() {
   }
 
   async function resolveIntervention(risk: OnDemandRisk) {
-    if (!risk.sourceTripId || risk.interventionStatus !== "open") return;
+    if (!risk.sourceRequestId || risk.interventionStatus !== "open") return;
     setResolving(true);
     try {
-      await api.resolveOnDemandIntervention(risk.sourceTripId);
+      await api.resolveOnDemandIntervention(risk.sourceRequestId);
       setLiveRisks((current) => current.map((item) => item.id === risk.id
         ? { ...item, interventionStatus: "resolved" }
         : item));
@@ -357,7 +363,7 @@ export function OnDemandServiceQuality() {
                 aria-pressed={active}
               >
                 <span className="risk-service">
-                  <strong>Trip {risk.tripNumber} · Zone {risk.zone}</strong>
+                  <strong>Request {risk.requestNumber} · Zone {risk.zone}</strong>
                   <small>Vehicle {risk.vehicle ?? "unassigned"} · {workflow[risk.id] ?? "New"}</small>
                 </span>
                 <span className="risk-departure">
@@ -444,11 +450,11 @@ function OnDemandDetail({
   const thresholdDelta = risk.predictedWaitMinutes - serviceStandard;
 
   return (
-    <aside className="risk-detail" aria-label={`Connect trip ${risk.tripNumber} wait-time detail`}>
+    <aside className="risk-detail" aria-label={`Connect request ${risk.requestNumber} wait-time detail`}>
       <div className="risk-detail-head">
         <div>
           <span className="risk-eyebrow">Selected exception</span>
-          <h3>Connect Trip {risk.tripNumber}</h3>
+          <h3>Connect Request {risk.requestNumber}</h3>
           <p>Zone {risk.zone} · Vehicle {risk.vehicle ?? "unassigned"}</p>
         </div>
         <span className={`pill-sm ${confidenceClass(risk.confidence)}`}>{risk.confidence} confidence</span>

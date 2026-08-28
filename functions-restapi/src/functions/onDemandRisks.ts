@@ -1,5 +1,9 @@
 // GET /on-demand-risks - active MVTA Connect wait-time risks.
 //
+// MonitoredOnDemandWaits still stores the legacy trip_id/external_trip_id
+// column names; this contract speaks the canonical vocabulary (an on-demand
+// passenger request, never a trip) and aliases them at the query boundary.
+//
 // The endpoint is vendor-neutral. A future adapter for the authoritative
 // on-demand platform writes current trip state into MonitoredOnDemandWaits;
 // this read contract and the OCC UI do not need to change when that adapter is
@@ -14,8 +18,8 @@ import {
 } from "../lib/onDemandMonitoringHealth";
 
 interface OnDemandRiskRow {
-  trip_id: string;
-  external_trip_id: string | null;
+  request_id: string;
+  external_request_id: string | null;
   zone_id: string;
   wait_started_at: Date;
   predicted_pickup_at: Date | null;
@@ -77,7 +81,7 @@ app.http("onDemandRisksList", {
       riskQuery.input("reconciled_at", sql.DateTime2, health?.last_authoritative_reconciliation_at ?? null);
       const result = await riskQuery.query<OnDemandRiskRow>(`
         SELECT TOP 250
-          m.trip_id, m.external_trip_id, m.zone_id, m.wait_started_at,
+          m.trip_id AS request_id, m.external_trip_id AS external_request_id, m.zone_id, m.wait_started_at,
           m.predicted_pickup_at,
           CASE WHEN m.wait_started_at < SYSUTCDATETIME() THEN DATEDIFF(MINUTE, m.wait_started_at, SYSUTCDATETIME()) ELSE 0 END AS current_wait_minutes,
           CASE WHEN m.predicted_pickup_at IS NULL THEN NULL WHEN m.predicted_pickup_at > m.wait_started_at THEN DATEDIFF(MINUTE, m.wait_started_at, m.predicted_pickup_at) ELSE 0 END AS predicted_wait_minutes,
@@ -137,7 +141,7 @@ app.http("onDemandRisksList", {
 });
 
 app.http("onDemandInterventionResolve", {
-  route: "on-demand-risks/{tripId}/resolve",
+  route: "on-demand-risks/{requestId}/resolve",
   methods: ["POST"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
@@ -145,9 +149,9 @@ app.http("onDemandInterventionResolve", {
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }
-    const tripId = request.params.tripId?.trim();
-    if (!tripId || tripId.length > 100) {
-      return { status: 400, jsonBody: { error: "tripId is required and must be at most 100 characters." } };
+    const requestId = request.params.requestId?.trim();
+    if (!requestId || requestId.length > 100) {
+      return { status: 400, jsonBody: { error: "requestId is required and must be at most 100 characters." } };
     }
     let reason: string | null = null;
     try {
@@ -160,7 +164,7 @@ app.http("onDemandInterventionResolve", {
     }
     try {
       const update = (await getPool()).request();
-      update.input("request_id", tripId);
+      update.input("request_id", requestId);
       update.input("resolved_by", authResult.principal.userDetails ?? "onboard-console");
       update.input("reason", reason ?? "Resolved by OCC operator.");
       const result = await update.query<{ request_id: string }>(`
@@ -170,10 +174,10 @@ app.http("onDemandInterventionResolve", {
         OUTPUT INSERTED.request_id
         WHERE request_id = @request_id AND status = 'open';
       `);
-      if (!result.recordset[0]) return { status: 404, jsonBody: { error: "No open intervention was found for this trip." } };
-      return { status: 200, jsonBody: { trip_id: tripId, status: "resolved" } };
+      if (!result.recordset[0]) return { status: 404, jsonBody: { error: "No open intervention was found for this request." } };
+      return { status: 200, jsonBody: { request_id: requestId, status: "resolved" } };
     } catch (err) {
-      context.error("POST /on-demand-risks/{tripId}/resolve failed:", err);
+      context.error("POST /on-demand-risks/{requestId}/resolve failed:", err);
       return { status: 500, jsonBody: { error: "Internal server error" } };
     }
   },
