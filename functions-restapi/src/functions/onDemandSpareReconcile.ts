@@ -3,8 +3,9 @@
 // read advances the health record exposed to OCC.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool } from "../lib/db";
-import { recordFeedFailure, recordFeedHealth } from "../lib/missedTripFeedHealth";
+import { recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
 import { reconcileOnDemandInterventions } from "../lib/onDemandInterventions";
+import { onDemandMonitoringEnabled } from "../lib/onDemandMonitoringHealth";
 import { normalizeOnDemandSpareRequest } from "../lib/onDemandSpareMonitor";
 import {
   loadActiveOperationalZones,
@@ -15,10 +16,6 @@ import { fetchSparePage, spareString, type SpareRequestRecord } from "../lib/spa
 
 const PAGE_SIZE = 200;
 const MAX_ROWS = 10_000;
-
-function enabled(): boolean {
-  return process.env.ON_DEMAND_MONITORING_ENABLED?.trim().toLowerCase() === "true";
-}
 
 function serviceIds(): ReadonlySet<string> {
   return new Set((process.env.ON_DEMAND_MONITORING_SERVICE_IDS ?? "")
@@ -55,7 +52,7 @@ async function fetchAuthoritativeRequests(): Promise<SpareRequestRecord[]> {
 app.timer("onDemandSpareReconcile", {
   schedule: "0 0 * * * *",
   handler: async (_timer: Timer, context: InvocationContext) => {
-    if (!enabled()) {
+    if (!onDemandMonitoringEnabled()) {
       context.log("On-demand reconciliation is disabled (ON_DEMAND_MONITORING_ENABLED is not true).");
       return;
     }

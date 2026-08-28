@@ -216,7 +216,20 @@ export interface KpiTrustStream {
   dependencies: KpiTrustDependency[];
 }
 
-export type KpiTrust = Record<string, KpiTrustStream>;
+// Hand-synced with CONTRACTS in functions-restapi/src/lib/kpiTrust.ts - the
+// same mirroring convention used for the other types shared with the API.
+// Partial, because a stream this console knows about may predate the deployed
+// backend; every read still has to handle an absent stream.
+export type KpiTrustStreamName =
+  | "fixed_route_delay"
+  | "fixed_route_departures"
+  | "otp"
+  | "event_avl"
+  | "on_demand"
+  | "fixed_route_missed_trips"
+  | "spare_missed_trips";
+
+export type KpiTrust = Partial<Record<KpiTrustStreamName, KpiTrustStream>>;
 
 // The prepare endpoint accepts `current_but_empty` as healthy coverage and
 // rejects an acknowledgement recorded against it, so callers must ask for a

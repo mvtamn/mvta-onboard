@@ -14,6 +14,7 @@ import { PUBLISH_ROLES, requireRole, STAFF_READ_ROLES } from "../lib/auth";
 import {
   ON_DEMAND_DEGRADED_AFTER_MINUTES,
   ON_DEMAND_RECONCILIATION_INTERVAL_MINUTES,
+  onDemandMonitoringEnabled,
   onDemandMonitoringState,
 } from "../lib/onDemandMonitoringHealth";
 
@@ -69,7 +70,7 @@ app.http("onDemandRisksList", {
           SELECT last_authoritative_reconciliation_at, latest_source_update_at, active_request_count
           FROM dbo.OnDemandMonitoringHealth WHERE id = 1;
       `);
-      const enabled = process.env.ON_DEMAND_MONITORING_ENABLED?.trim().toLowerCase() === "true";
+      const enabled = onDemandMonitoringEnabled();
       const health = healthResult.recordset[0] ?? null;
       const state = onDemandMonitoringState(enabled, health && {
         lastAuthoritativeReconciliationAt: health.last_authoritative_reconciliation_at,

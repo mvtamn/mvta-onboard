@@ -5,16 +5,21 @@ import {
   type OnDemandRiskDiagnostics,
   type OnDemandServiceStandardPolicy,
   type PrepareSuggestedAlertInput,
-  requiresStaleDataAcknowledgement,
 } from "@mvta/shared";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext.js";
 import { api } from "../../config.js";
 import { KpiTrustSummary } from "./KpiTrustSummary.js";
 import {
+  confidenceClass,
+  riskActionsDisabled,
+  staleDataAcknowledgement,
+  TRAINING_SCENARIO_NOTICE,
+  TrainingScenarioToggle,
+} from "./serviceRisk.shared.js";
+import {
   ON_DEMAND_RISKS,
   type OnDemandRisk,
-  type RiskConfidence,
   type RiskTrend,
   type RiskWorkflow,
 } from "./serviceRisk.data.js";
@@ -47,12 +52,6 @@ function monitoringMessage(mode: DataMode, diagnostics: OnDemandRiskDiagnostics 
   return "Current wait-risk records are provided by the vendor-neutral on-demand monitoring contract.";
 }
 
-function confidenceClass(confidence: RiskConfidence | "Unknown"): string {
-  if (confidence === "High") return "pill-success";
-  if (confidence === "Medium") return "pill-warning";
-  return "pill-muted";
-}
-
 function trendClass(trend: RiskTrend): string {
   if (trend === "Worsening") return "risk-trend worsening";
   if (trend === "Recovering") return "risk-trend recovering";
@@ -70,7 +69,9 @@ function waitState(risk: OnDemandRisk, serviceStandard: number): { label: string
   // qualifies as a Watch, so the forecast cannot hide the observation.
   if (risk.currentWaitMinutes > 0) return { label: "Overdue", className: "pill-warning" };
   if (risk.predictedWaitMinutes > 20) return { label: "Watch", className: "pill-warning" };
-  return { label: "Watch", className: "pill-accent" };
+  // Neither observed nor forecast to breach: a Watch condition is an
+  // observation that merits attention, so a healthy request is not one.
+  return { label: "Within standard", className: "pill-accent" };
 }
 
 function titleCase<T extends string>(value: T): Capitalize<T> {
@@ -230,10 +231,10 @@ export function OnDemandServiceQuality() {
     setPreparing(true);
     try {
       const { streams } = await api.getKpiTrust();
-      if (requiresStaleDataAcknowledgement(streams.on_demand?.state)) {
-        const reason = window.prompt("Why is it safe to prepare this customer update from stale KPI data?");
-        if (!reason?.trim()) return;
-        draft.stale_data_acknowledgement_reason = reason.trim();
+      const acknowledgement = staleDataAcknowledgement(streams.on_demand?.state);
+      if (acknowledgement.required) {
+        if (!acknowledgement.reason) return;
+        draft.stale_data_acknowledgement_reason = acknowledgement.reason;
       }
       const result = await api.prepareSuggestedAlert(draft);
       navigate(`/suggested?focus=${encodeURIComponent(result.alert_id)}`);
@@ -283,9 +284,11 @@ export function OnDemandServiceQuality() {
         <div className="standard-chip">
           <span>All-zones default</span>
           <strong>{allZonesStandard} min</strong>
-          <button className="btn-sm" onClick={() => setTrainingMode((current) => !current)}>
-            {trainingMode ? "Return to monitoring" : "Training scenario"}
-          </button>
+          <TrainingScenarioToggle
+            trainingMode={trainingMode}
+            onToggle={() => setTrainingMode((current) => !current)}
+            className="btn-sm"
+          />
         </div>
       </div>
 
@@ -294,7 +297,7 @@ export function OnDemandServiceQuality() {
       <div className="concept-banner">
         <span className="concept-badge">{trainingMode ? "Training" : monitoringLabel(dataMode, diagnostics)}</span>
         <span>{trainingMode
-          ? "Training scenario — local rehearsal only. No operational data or workflow changes will be saved."
+          ? TRAINING_SCENARIO_NOTICE
           : monitoringMessage(dataMode, diagnostics, liveMessage)}</span>
       </div>
 
@@ -383,7 +386,7 @@ export function OnDemandServiceQuality() {
           risk={selected}
           workflow={workflow[selected.id] ?? "New"}
           isPreview={isPreview}
-          actionsDisabled={!isPreview && dataMode === "live" && diagnostics?.state !== "current"}
+          actionsDisabled={riskActionsDisabled(isPreview, dataMode, diagnostics?.state)}
           previewDraft={previewDrafts[selected.id] ?? null}
           preparing={preparing}
           prepareError={prepareError}

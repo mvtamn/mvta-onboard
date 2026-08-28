@@ -13,7 +13,7 @@ import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchVehiclePositionFeed, mapVehiclePositionEntity } from "../lib/gtfsVehiclePositions";
 import { agencyServiceDate } from "../lib/missedTripTime";
-import { recordMissedTripFeedSuccess } from "../lib/missedTripFeedHealth";
+import { recordFeedHealth } from "../lib/kpiFeedHealth";
 
 app.timer("gtfsVehiclePositionsPoll", {
   schedule: "0 */5 * * * *",
@@ -34,7 +34,7 @@ app.timer("gtfsVehiclePositionsPoll", {
 
     const pool = await getPool();
     try {
-      await recordMissedTripFeedSuccess(
+      await recordFeedHealth(
         pool,
         "gtfs_vehicle_positions",
         feed.Entities.length,

@@ -1,3 +1,7 @@
+// The shared, PII-free ingestion ledger behind every KPI trust stream - not
+// only missed trips. dbo.MissedTripFeedHealth is the table's legacy name from
+// when missed trips were its only producer; renaming it needs its own
+// migration, so the storage name stays put and the module speaks KPI feeds.
 import { sql } from "./db";
 import type { KpiFeedName } from "./kpiTrust";
 
@@ -53,5 +57,3 @@ export async function recordFeedFailure(pool: sql.ConnectionPool, feedName: KpiF
       WHEN NOT MATCHED THEN INSERT(feed_name, last_failure_at, last_failure_reason) VALUES(@feed_name, SYSUTCDATETIME(), @reason);
   `);
 }
-
-export const recordMissedTripFeedSuccess = recordFeedHealth;

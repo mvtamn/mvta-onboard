@@ -1,6 +1,12 @@
 export const ON_DEMAND_RECONCILIATION_INTERVAL_MINUTES = 60;
 export const ON_DEMAND_DEGRADED_AFTER_MINUTES = 90;
 
+// The activation gate for the whole On-Demand path: the read contract and the
+// reconciliation timer must agree on what "enabled" means.
+export function onDemandMonitoringEnabled(): boolean {
+  return process.env.ON_DEMAND_MONITORING_ENABLED?.trim().toLowerCase() === "true";
+}
+
 export interface OnDemandMonitoringHealthSnapshot {
   lastAuthoritativeReconciliationAt: Date | null;
   latestSourceUpdateAt: Date | null;

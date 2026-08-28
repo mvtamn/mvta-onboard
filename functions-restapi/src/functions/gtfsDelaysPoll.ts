@@ -11,7 +11,7 @@
 // suggestedAlertsApprove flow as everything else in that queue.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { recordFeedHealth } from "../lib/missedTripFeedHealth";
+import { recordFeedHealth } from "../lib/kpiFeedHealth";
 import { loadKpiTrust } from "../lib/kpiTrustStore";
 import {
   fetchTripUpdateFeed,

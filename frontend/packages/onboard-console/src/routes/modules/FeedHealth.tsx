@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { ApiError, type FeedCheck, type KpiTrust } from "@mvta/shared";
+import { ApiError, type FeedCheck, type KpiTrust, type KpiTrustStream } from "@mvta/shared";
 import { api } from "../../config.js";
+import { kpiTrustStateLabel, kpiTrustStateTone } from "./KpiTrustSummary.js";
 import "./serviceRisk.css";
 
 function state(check: FeedCheck): { label: string; className: string } {
@@ -27,7 +28,7 @@ function message(error: unknown) {
   return "Feed checks could not be completed. Try again shortly.";
 }
 
-function trustDetail(stream: KpiTrust[string]): string {
+function trustDetail(stream: KpiTrustStream): string {
   const times = stream.dependencies
     .map((dependency) => {
       const delivery = dependency.last_success_at
@@ -108,8 +109,8 @@ export function FeedHealth() {
                   <div className="feed-health-row" role="listitem" key={name}>
                     <span>{name.replaceAll("_", " ")}</span>
                     <small>{trustDetail(stream)}</small>
-                    <strong className={`feed-health-status ${stream.state === "current" ? "success" : stream.state === "current_but_empty" ? "warning" : stream.state === "stale" ? "warning" : "danger"}`}>
-                      {stream.state === "current_but_empty" ? "Current · no records" : stream.state.replaceAll("_", " ")}
+                    <strong className={`feed-health-status ${kpiTrustStateTone(stream.state)}`}>
+                      {kpiTrustStateLabel(stream.state)}
                     </strong>
                   </div>
                 ))}

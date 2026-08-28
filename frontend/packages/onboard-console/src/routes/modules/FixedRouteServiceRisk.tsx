@@ -3,13 +3,19 @@ import {
   ApiError,
   isDepartureAtRisk,
   isDepartureWatch,
-  requiresStaleDataAcknowledgement,
   type PrepareSuggestedAlertInput,
   type TripDelay,
   type TripDelayDiagnostics,
 } from "@mvta/shared";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../../config.js";
+import {
+  confidenceClass,
+  riskActionsDisabled,
+  staleDataAcknowledgement,
+  TRAINING_SCENARIO_NOTICE,
+  TrainingScenarioToggle,
+} from "./serviceRisk.shared.js";
 import {
   FIXED_ROUTE_REFRESH_OPTIONS,
   formatRefreshCountdown,
@@ -20,7 +26,6 @@ import { KpiTrustSummary } from "./KpiTrustSummary.js";
 import {
   FIXED_ROUTE_RISKS,
   type FixedRouteRisk,
-  type RiskConfidence,
   type RiskTrend,
   type RiskWorkflow,
 } from "./serviceRisk.data.js";
@@ -129,12 +134,6 @@ function fromTripDelay(delay: TripDelay): FixedRouteRisk {
       };
     }),
   };
-}
-
-function confidenceClass(confidence: RiskConfidence | "Unknown"): string {
-  if (confidence === "High") return "pill-success";
-  if (confidence === "Medium") return "pill-warning";
-  return "pill-muted";
 }
 
 function trendClass(trend: RiskTrend): string {
@@ -364,10 +363,10 @@ export function FixedRouteServiceRisk() {
     setPreparing(true);
     try {
       const { streams } = await api.getKpiTrust();
-      if (requiresStaleDataAcknowledgement(streams.fixed_route_delay?.state)) {
-        const reason = window.prompt("Why is it safe to prepare this customer update from stale KPI data?");
-        if (!reason?.trim()) return;
-        draft.stale_data_acknowledgement_reason = reason.trim();
+      const acknowledgement = staleDataAcknowledgement(streams.fixed_route_delay?.state);
+      if (acknowledgement.required) {
+        if (!acknowledgement.reason) return;
+        draft.stale_data_acknowledgement_reason = acknowledgement.reason;
       }
       const result = await api.prepareSuggestedAlert(draft);
       navigate(`/suggested?focus=${encodeURIComponent(result.alert_id)}`);
@@ -410,7 +409,7 @@ export function FixedRouteServiceRisk() {
   const routesMonitored = dataMode === "live" && !trainingMode
     ? new Set(allLiveDelays.map((delay) => delay.route_id)).size
     : new Set(risks.map((risk) => risk.route)).size;
-  const actionsDisabled = !isPreview && dataMode === "live" && diagnostics?.state !== "current";
+  const actionsDisabled = riskActionsDisabled(isPreview, dataMode, diagnostics?.state);
 
   return (
     <div className="risk-module">
@@ -440,7 +439,7 @@ export function FixedRouteServiceRisk() {
                 : "Feed status"}
         </span>
         <span>{trainingMode
-          ? "Training scenario — local rehearsal only. No operational data or workflow changes will be saved."
+          ? TRAINING_SCENARIO_NOTICE
           : liveMessage}</span>
       </div>
 
@@ -553,9 +552,11 @@ function RiskModuleHeader({
           Current telemetry
         </button>
         {onTrainingMode ? (
-          <button className={trainingMode ? "active" : ""} onClick={onTrainingMode}>
-            {trainingMode ? "Return to monitoring" : "Training scenario"}
-          </button>
+          <TrainingScenarioToggle
+            trainingMode={Boolean(trainingMode)}
+            onToggle={onTrainingMode}
+            className={trainingMode ? "active" : ""}
+          />
         ) : null}
       </div>
     </div>

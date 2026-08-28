@@ -5,6 +5,11 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.69] - 2026-08-28
+
+- **Stop calling a healthy On-Demand request a Watch condition.** A request that is neither overdue nor forecast past its standard now reads "Within standard", so the Watch label carries one meaning.
+- **Share the risk workspace contract.** The Fixed Route and On-Demand workspaces now use one implementation of the training-scenario toggle and notice, the confidence styling, the actions-unavailable rule, and the stale-data acknowledgement prompt. KPI trust states read identically in the workspaces and the Admin feed-health view.
+
 ## [1.5.68] - 2026-08-28
 
 - **Name On-Demand records as requests, not trips.** The On-Demand risk contract now returns `request_id` and `external_request_id`, the resolve endpoint reports `request_id`, and the workspace reads "Connect Request" throughout, matching the glossary definition of an Active on-demand request. Stored column names and the Suggested Alert detail linking key are unchanged.
