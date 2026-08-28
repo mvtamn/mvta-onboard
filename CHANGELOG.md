@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.71] - 2026-08-28
+
+- **Read the KPI feed-health ledger by its current name only.** With migration 086 applied, the compatibility path that also accepted the pre-086 table name is removed; a database without 086 now reports feed health as unavailable rather than silently reading the old table.
+
 ## [1.5.70] - 2026-08-28
 
 - **Rename the feed-health ledger to match what it holds.** Migration 086 renames `MissedTripFeedHealth` to `KpiFeedHealth`; it backs every KPI trust stream, not only missed trips. The application resolves the table name per call and accepts either, so the migration and the deployment can land in either order.
