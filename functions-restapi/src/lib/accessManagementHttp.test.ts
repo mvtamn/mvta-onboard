@@ -1203,7 +1203,12 @@ test("concurrent guest onboarding does not issue a second invitation", async () 
     saveGuestInvitation: async () => undefined,
     recordMetadata: async () => { metadataWrites += 1; },
   };
-  const handler = createAccessManagementHttpHandler({ directory, store, environment: "test" });
+  const handler = createAccessManagementHttpHandler({
+    directory,
+    store,
+    environment: "test",
+    now: () => new Date("2026-08-14T12:00:00.000Z"),
+  });
 
   const response = await handler(new HttpRequest({
     method: "POST",
@@ -1340,7 +1345,12 @@ test("stale guest invitation recovery reuses the guest found in Entra", async ()
     getGuestInvitation: async () => null,
     saveGuestInvitation: async () => undefined,
   };
-  const handler = createAccessManagementHttpHandler({ directory, store, environment: "test" });
+  const handler = createAccessManagementHttpHandler({
+    directory,
+    store,
+    environment: "test",
+    now: () => new Date("2026-08-14T12:00:00.000Z"),
+  });
 
   await handler(new HttpRequest({
     method: "POST",
@@ -1387,7 +1397,12 @@ test("stale guest recovery waits when the accepted invitation is not visible in 
     saveGuestInvitation: async () => undefined,
     recordMetadata: async () => { metadataWrites += 1; },
   };
-  const handler = createAccessManagementHttpHandler({ directory, store, environment: "test" });
+  const handler = createAccessManagementHttpHandler({
+    directory,
+    store,
+    environment: "test",
+    now: () => new Date("2026-08-14T12:00:00.000Z"),
+  });
 
   const response = await handler(new HttpRequest({
     method: "POST",
