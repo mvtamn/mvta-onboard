@@ -509,6 +509,13 @@ function MissedTripsInvestigationPage({
   const falsePositives = !isPreview && diagnostics ? diagnostics.false_positive_count : activeAlerts.filter((a) => a.validationStatus === "false_positive").length;
   const routesAffected = !isPreview && diagnostics ? diagnostics.routes_affected_count : new Set(activeAlerts.map((a) => a.route)).size;
   const spareCandidates = activeAlerts.filter((a) => a.sourceSystem === "spare").length;
+  // Only a required feed can undermine the no-show inference this module draws
+  // from absence - a supporting retrospective feed (Avail Missed Trips) being
+  // behind reduces context without invalidating a live candidate, so it must
+  // not raise a warning that tells staff to distrust the queue.
+  const blockingFeeds = (diagnostics?.feed_health ?? []).filter(
+    (feed) => feed.required && feed.status !== "current",
+  );
 
   // Computed once, outside the list-vs-table branches below - referencing
   // `layout` from inside a branch that already narrowed it to one literal
@@ -605,11 +612,14 @@ function MissedTripsInvestigationPage({
           {liveMessage ?? `Authenticated missed-trip data loaded${diagnostics?.last_checked_at ? ` · last detector check ${agoLabel(minutesAgo(diagnostics.last_checked_at))}` : ""}.`}
         </span>
       </div>
-      {diagnostics?.feed_health.some((feed) => feed.status === "stale") ? (
+      {blockingFeeds.length > 0 ? (
         <div className="concept-banner" role="status">
           <span className="concept-badge">Feed warning</span>
           <span>
-            {diagnostics.feed_health.filter((feed) => feed.status === "stale").map((feed) => feed.feed_name).join(", ")} has not succeeded within 15 minutes. Absence must not be treated as a no-show.
+            {blockingFeeds.map((feed) => feed.status === "stale" && feed.stale_after_minutes !== null
+              ? `${feed.feed_name} (beyond its ${feed.stale_after_minutes}-minute contract)`
+              : `${feed.feed_name} (no usable ingestion recorded)`).join(", ")}
+            {blockingFeeds.length === 1 ? " is" : " are"} outside the freshness contract for missed-trip detection. Absence must not be treated as a no-show.
           </span>
         </div>
       ) : null}

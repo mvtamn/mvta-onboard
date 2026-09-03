@@ -6,7 +6,8 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
-import { feedHealthTable } from "../lib/kpiFeedHealth";
+import { missedTripFeedDependencies } from "../lib/kpiTrust";
+import { loadKpiFeedHealthRecords } from "../lib/kpiTrustStore";
 
 interface MissedTripRow {
   trip_id: string;
@@ -132,34 +133,21 @@ app.http("missedTripsList", {
         FROM MonitoredMissedTrips
       `);
       const total = totals.recordset[0];
-      const healthTable = await feedHealthTable(pool);
-      let feedHealth: Array<{
-        feed_name: string;
-        last_success_at: string | null;
-        last_entity_count: number | null;
-        source_timestamp_at: string | null;
-        status: "current" | "stale";
-      }> = [];
-      if (healthTable) {
-        const health = await pool.request().query<{
-          feed_name: string;
-          last_success_at: Date | null;
-          last_entity_count: number | null;
-          source_timestamp_at: Date | null;
-        }>(`
-          SELECT feed_name, last_success_at, last_entity_count, source_timestamp_at
-          FROM ${healthTable} ORDER BY feed_name
-        `);
-        feedHealth = health.recordset.map((row) => ({
-          feed_name: row.feed_name,
-          last_success_at: row.last_success_at?.toISOString() ?? null,
-          last_entity_count: row.last_entity_count,
-          source_timestamp_at: row.source_timestamp_at?.toISOString() ?? null,
-          status: row.last_success_at && row.last_success_at.getTime() >=
-            Date.now() - (row.feed_name.startsWith("spare_") ? 35 : 15) * 60 * 1000
-            ? "current" : "stale",
-        }));
-      }
+      // Resolved through the shared KPI trust contracts rather than a local
+      // freshness rule: only the feeds missed-trip detection actually depends
+      // on are reported, each against the deadline Operations approved for it
+      // (or none, for a feed whose periodic deadline is still pending).
+      const healthRecords = await loadKpiFeedHealthRecords(pool);
+      const countsByFeed = new Map(healthRecords.map((record) => [record.feed_name, record.last_entity_count]));
+      const feedHealth = missedTripFeedDependencies(healthRecords).map((dependency) => ({
+        feed_name: dependency.feed_name,
+        required: dependency.required,
+        last_success_at: dependency.last_success_at,
+        last_entity_count: countsByFeed.get(dependency.feed_name) ?? null,
+        source_timestamp_at: dependency.source_timestamp_at,
+        stale_after_minutes: dependency.stale_after_minutes,
+        status: dependency.state,
+      }));
       const configured = Boolean(
         process.env.GTFS_RT_TRIPUPDATE_URL?.trim() && process.env.GTFS_STATIC_URL?.trim(),
       );

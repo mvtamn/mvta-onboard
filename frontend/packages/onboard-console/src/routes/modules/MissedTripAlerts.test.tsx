@@ -63,3 +63,60 @@ describe("Missed Trips Spare source visibility", () => {
     expect(screen.queryByText("Route 400")).not.toBeInTheDocument();
   });
 });
+
+function feed(
+  feed_name: string,
+  required: boolean,
+  status: "current" | "stale" | "unavailable",
+  stale_after_minutes: number | null,
+) {
+  return {
+    feed_name, required, status, stale_after_minutes,
+    last_success_at: "2026-09-03T08:02:00.000Z",
+    last_entity_count: 0,
+    source_timestamp_at: null,
+  };
+}
+
+describe("Missed Trips feed warning", () => {
+  it("warns only about required feeds, naming each feed's own contract", async () => {
+    vi.mocked(api.getMissedTrips).mockResolvedValue({
+      missed_trips: [candidate("gtfs", "400")],
+      diagnostics: {
+        ...diagnostics,
+        feed_health: [
+          feed("gtfs_trip_updates", true, "current", 15),
+          feed("spare_requests", true, "stale", 45),
+          // Supporting and beyond nothing it has agreed to - a daily
+          // retrospective feed must not tell staff to distrust the queue.
+          feed("avail_missed_trips", false, "current", null),
+        ],
+      },
+    });
+
+    render(<MissedTripAlerts />);
+
+    expect(await screen.findByText(/spare_requests \(beyond its 45-minute contract\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/avail_missed_trips/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/within 15 minutes/)).not.toBeInTheDocument();
+  });
+
+  it("stays silent when every required feed is current", async () => {
+    vi.mocked(api.getMissedTrips).mockResolvedValue({
+      missed_trips: [candidate("gtfs", "400")],
+      diagnostics: {
+        ...diagnostics,
+        feed_health: [
+          feed("gtfs_trip_updates", true, "current", 15),
+          feed("gtfs_vehicle_positions", true, "current", 15),
+          feed("avail_missed_trips", false, "current", null),
+        ],
+      },
+    });
+
+    render(<MissedTripAlerts />);
+
+    expect(await screen.findByText("Spare feed enabled")).toBeInTheDocument();
+    expect(screen.queryByText("Feed warning")).not.toBeInTheDocument();
+  });
+});

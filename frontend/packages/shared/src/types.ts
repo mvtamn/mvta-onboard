@@ -456,12 +456,19 @@ export interface MissedTripsDiagnostics {
   schedule_detection_status: "paused" | "experimental";
   spare_enabled: boolean;
   spare_service_scope_configured: boolean;
+  // Only the feeds missed-trip detection depends on, resolved against the same
+  // KPI trust contracts the trust summary uses. `required` marks a feed that
+  // gates one of the two detection paths; a feed whose periodic stale deadline
+  // has not been approved yet carries a null `stale_after_minutes` and is never
+  // reported stale on a guess.
   feed_health: Array<{
     feed_name: string;
+    required: boolean;
     last_success_at: string | null;
     last_entity_count: number | null;
     source_timestamp_at: string | null;
-    status: "current" | "stale";
+    stale_after_minutes: number | null;
+    status: "current" | "stale" | "unavailable";
   }>;
 }
 
