@@ -112,6 +112,9 @@ app.http("missedTripsList", {
         queue_count: number;
         history_count: number;
         legacy_count: number;
+        confirmed_count: number;
+        false_positive_count: number;
+        routes_affected_count: number;
         last_checked_at: Date | null;
       }>(`
         SELECT
@@ -122,6 +125,9 @@ app.http("missedTripsList", {
           SUM(CASE WHEN validation_status = 'unreviewed' AND status <> 'resolved' THEN 1 ELSE 0 END) AS queue_count,
           SUM(CASE WHEN validation_status <> 'unreviewed' OR status = 'resolved' THEN 1 ELSE 0 END) AS history_count,
           SUM(CASE WHEN data_quality_status = 'legacy_unverified' THEN 1 ELSE 0 END) AS legacy_count,
+          SUM(CASE WHEN validation_status = 'confirmed' THEN 1 ELSE 0 END) AS confirmed_count,
+          SUM(CASE WHEN validation_status = 'false_positive' THEN 1 ELSE 0 END) AS false_positive_count,
+          COUNT(DISTINCT route_id) AS routes_affected_count,
           MAX(last_checked_at) AS last_checked_at
         FROM MonitoredMissedTrips
       `);
@@ -174,6 +180,9 @@ app.http("missedTripsList", {
             active_count: total?.active_count ?? 0,
             resolved_count: total?.resolved_count ?? 0,
             unreviewed_count: total?.unreviewed_count ?? 0,
+            confirmed_count: total?.confirmed_count ?? 0,
+            false_positive_count: total?.false_positive_count ?? 0,
+            routes_affected_count: total?.routes_affected_count ?? 0,
             legacy_unverified_count: total?.legacy_count ?? 0,
             last_checked_at: total?.last_checked_at?.toISOString() ?? null,
             silent_no_show_enabled: silentNoShowEnabled,
