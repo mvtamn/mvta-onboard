@@ -190,6 +190,14 @@ async function detectSilentNoShows(
   // date, then compare real UTC instants in TypeScript. Comparing raw GTFS
   // seconds with UTC seconds-since-midnight was five hours early during CDT
   // (six during CST) and cannot safely handle DST or >24:00:00 times.
+  //
+  // Excludes routes actively classified as SpecialEvent (migration-016):
+  // a base-schedule trip on a route that's been overridden for a special
+  // event may legitimately not run that service day even though it's still
+  // sitting in the static GtfsScheduledTrips import - without this filter
+  // that reads as a silent no-show for a trip nobody ever intended to run.
+  // Explicit GTFS-RT cancellations (flagCanceled) aren't filtered this way
+  // since those are a real-time signal, not an inference from the schedule.
   const candidateTrips = await req.query<ScheduledTripRow>(`
     SELECT st.trip_id, st.route_id, st.first_departure_seconds, evidence.first_underway_at
     FROM GtfsScheduledTrips st
@@ -199,6 +207,14 @@ async function detectSilentNoShows(
       AND NOT EXISTS (
         SELECT 1 FROM MonitoredMissedTrips mmt
         WHERE mmt.trip_id = st.trip_id AND mmt.service_date = @service_date
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM RouteClassification rc
+        WHERE CAST(rc.route_id AS NVARCHAR(50)) = st.route_id
+          AND rc.route_category = 'SpecialEvent'
+          AND rc.is_active = 1
+          AND (rc.effective_start_date IS NULL OR rc.effective_start_date <= @service_date)
+          AND (rc.effective_end_date IS NULL OR rc.effective_end_date >= @service_date)
       )
   `);
 
