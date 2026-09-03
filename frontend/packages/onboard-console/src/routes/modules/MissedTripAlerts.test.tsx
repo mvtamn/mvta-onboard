@@ -20,7 +20,8 @@ vi.mock("../../config.js", () => ({
 const diagnostics: MissedTripsDiagnostics = {
   configured: true, view: "queue", limit: 200, offset: 0, returned_count: 2,
   view_count: 2, total_count: 2, active_count: 2, resolved_count: 0,
-  unreviewed_count: 2, legacy_unverified_count: 0, last_checked_at: null,
+  unreviewed_count: 2, confirmed_count: 0, false_positive_count: 0, routes_affected_count: 2,
+  legacy_unverified_count: 0, last_checked_at: null,
   silent_no_show_enabled: true, schedule_detection_status: "experimental",
   spare_enabled: true, spare_service_scope_configured: true, feed_health: [],
 };

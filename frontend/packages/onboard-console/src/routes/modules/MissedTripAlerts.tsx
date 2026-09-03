@@ -336,11 +336,6 @@ function MissedTripsInvestigationPage({
       : a.status === "resolved" || a.validationStatus !== "unreviewed"),
     [alerts, mode],
   );
-  const selected = useMemo(
-    () => activeAlerts.find((a) => a.id === selectedId) ?? activeAlerts[0] ?? MISSED_TRIP_ALERTS[0],
-    [activeAlerts, selectedId],
-  );
-
   const sourceAlerts = useMemo(
     () => sourceFilter === "all" ? activeAlerts : activeAlerts.filter((alert) => alert.sourceSystem === sourceFilter),
     [activeAlerts, sourceFilter],
@@ -355,6 +350,17 @@ function MissedTripsInvestigationPage({
         (a) => (!routeFilter || a.route === routeFilter) && (!dateFilter || a.serviceDate === dateFilter),
       ),
     [sourceAlerts, routeFilter, dateFilter],
+  );
+  // Selected from the fully-filtered set, not the mode-only `activeAlerts` -
+  // otherwise a trip excluded by the route/date/source filters could still be
+  // shown (and reviewed) in the detail pane while the list itself reports "No
+  // trips match these filters", which is exactly the confusing state a
+  // reviewer should never see. `null` when the filters exclude everything;
+  // the detail pane renders an empty state in that case instead of falling
+  // back to an out-of-scope trip.
+  const selected = useMemo(
+    () => filteredAlerts.find((a) => a.id === selectedId) ?? filteredAlerts[0] ?? null,
+    [filteredAlerts, selectedId],
   );
   const displayPageCount = Math.max(1, Math.ceil(filteredAlerts.length / displayPageSize));
   const effectiveDisplayPage = Math.min(displayPage, displayPageCount - 1);
@@ -388,14 +394,14 @@ function MissedTripsInvestigationPage({
   }, [selectedId, visibleAlerts]);
 
   useEffect(() => {
-    setNotesDraft(selected.notes ?? "");
-    setReasonDraft(selected.reasonCode ?? "");
+    setNotesDraft(selected?.notes ?? "");
+    setReasonDraft(selected?.reasonCode ?? "");
     setValidateError(null);
-  }, [selected.id, selected.notes, selected.reasonCode]);
+  }, [selected?.id, selected?.notes, selected?.reasonCode]);
 
   useEffect(() => {
     let alive = true;
-    if (isPreview || dataMode !== "live") {
+    if (isPreview || dataMode !== "live" || !selected) {
       setReviews([]);
       return () => { alive = false; };
     }
@@ -404,7 +410,7 @@ function MissedTripsInvestigationPage({
       .then((result) => alive && setReviews(result.reviews))
       .catch(() => alive && setReviews([]));
     return () => { alive = false; };
-  }, [dataMode, isPreview, selected.tripId, selected.serviceDate]);
+  }, [dataMode, isPreview, selected?.tripId, selected?.serviceDate]);
 
   useEffect(() => {
     let alive = true;
@@ -490,11 +496,19 @@ function MissedTripsInvestigationPage({
     }
   }
 
-  const unreviewed = activeAlerts.filter((a) => a.validationStatus === "unreviewed").length;
-  const confirmed = activeAlerts.filter((a) => a.validationStatus === "confirmed").length;
-  const falsePositives = activeAlerts.filter((a) => a.validationStatus === "false_positive").length;
+  // Sourced from `diagnostics` (a real database-wide aggregate) rather than
+  // counted off `activeAlerts` whenever live data is available - `activeAlerts`
+  // is both page-limited (capped at `pageLimit`, so "Unreviewed" would read as
+  // a coincidental page-size number once the true count exceeds it) and
+  // mode-scoped (in "queue" mode every row is unreviewed by construction, so
+  // a client-side count would always show 0 Confirmed/False positives here
+  // regardless of the real numbers). Preview mode has no diagnostics payload,
+  // so it falls back to counting the fixture data directly.
+  const unreviewed = !isPreview && diagnostics ? diagnostics.unreviewed_count : activeAlerts.filter((a) => a.validationStatus === "unreviewed").length;
+  const confirmed = !isPreview && diagnostics ? diagnostics.confirmed_count : activeAlerts.filter((a) => a.validationStatus === "confirmed").length;
+  const falsePositives = !isPreview && diagnostics ? diagnostics.false_positive_count : activeAlerts.filter((a) => a.validationStatus === "false_positive").length;
+  const routesAffected = !isPreview && diagnostics ? diagnostics.routes_affected_count : new Set(activeAlerts.map((a) => a.route)).size;
   const spareCandidates = activeAlerts.filter((a) => a.sourceSystem === "spare").length;
-  const routesAffected = new Set(activeAlerts.map((a) => a.route)).size;
 
   // Computed once, outside the list-vs-table branches below - referencing
   // `layout` from inside a branch that already narrowed it to one literal
@@ -507,7 +521,7 @@ function MissedTripsInvestigationPage({
       <button className={currentLayout === "table" ? "active" : ""} onClick={() => setLayout("table")}>Table</button>
     </div>
   );
-  const detailPane = (
+  const detailPane = selected ? (
     <MissedTripDetail
       key={selected.id}
       alert={selected}
@@ -522,6 +536,11 @@ function MissedTripsInvestigationPage({
       reviews={reviews}
       onValidate={(status) => void validate(selected, status)}
     />
+  ) : (
+    <aside className="risk-detail missed-trip-detail risk-empty-state" aria-label="No trip selected">
+      <strong>No trip selected</strong>
+      <span>No candidate matches the current filters. Clear a filter or pick a trip from the list.</span>
+    </aside>
   );
   const pageSizeControl = (
     <label className="risk-page-size">
@@ -687,7 +706,7 @@ function MissedTripsInvestigationPage({
                     return (
                       <tr
                         key={alert.id}
-                        className={`missed-trip-row ${alert.id === selected.id ? "selected" : ""}`}
+                        className={`missed-trip-row ${alert.id === selected?.id ? "selected" : ""}`}
                         onClick={goToDetail}
                         onKeyDown={(event) => {
                           if (event.key === "Enter" || event.key === " ") {
@@ -773,7 +792,7 @@ function MissedTripsInvestigationPage({
             ) : null}
 
             {visibleAlerts.map((alert) => {
-              const active = alert.id === selected.id;
+              const active = alert.id === selected?.id;
               const age = agingBadge(alert);
               return (
                 <button

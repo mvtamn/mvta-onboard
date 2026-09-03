@@ -447,6 +447,9 @@ export interface MissedTripsDiagnostics {
   active_count: number;
   resolved_count: number;
   unreviewed_count: number;
+  confirmed_count: number;
+  false_positive_count: number;
+  routes_affected_count: number;
   legacy_unverified_count: number;
   last_checked_at: string | null;
   silent_no_show_enabled: boolean;
