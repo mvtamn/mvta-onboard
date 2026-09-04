@@ -17,7 +17,7 @@ import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool } from "../lib/db";
 import { fetchMissedTripReports, mapMissedTripReport, replaceMissedTripsForMonths } from "../lib/availMissedTripsFeed";
 import { serviceMonthOf, subtractMonths } from "../lib/otpMonthlyFeed";
-import { recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
+import { feedHealthOutcome, recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
 
 const TRAILING_MONTHS = 3; // current + prior 2
 
@@ -64,6 +64,25 @@ app.timer("availMissedTripsPoll", {
       .filter((m): m is NonNullable<typeof m> => m !== null);
 
     const pool = await getPool();
+    // replaceMissedTripsForMonths DELETEs the target months before inserting,
+    // so an empty mapped set does not merely record nothing - it erases months
+    // of retained evidence and then reports a clean run. Reports that all
+    // failed to map are a source or contract problem, not an instruction to
+    // discard the rows already held.
+    const outcome = feedHealthOutcome(reports.length, mapped.length, "missed-trip reports");
+    if (outcome.kind === "failure") {
+      context.error(`Avail Missed Trips poll: ${outcome.reason} Retained rows for ${targetMonths.join(", ")} are left in place.`);
+      try {
+        await recordFeedFailure(pool, "avail_missed_trips", new Error(outcome.reason));
+      } catch (healthError) {
+        context.error("Failed to record Avail Missed Trips feed failure:", healthError);
+      }
+      return;
+    }
+    if (outcome.unstoredCount > 0) {
+      context.warn(`Avail Missed Trips poll: ${outcome.unstoredCount} of ${reports.length} reports could not be mapped.`);
+    }
+
     try {
       await replaceMissedTripsForMonths(pool, targetMonths, mapped);
       context.log(
@@ -81,7 +100,7 @@ app.timer("availMissedTripsPoll", {
       return;
     }
     try {
-      await recordFeedHealth(pool, "avail_missed_trips", reports.length, null, { startAt: windowStart, endAt: now });
+      await recordFeedHealth(pool, "avail_missed_trips", outcome.entityCount, null, { startAt: windowStart, endAt: now });
     } catch (err) {
       context.error("Failed to record Avail Missed Trips feed health:", err);
     }

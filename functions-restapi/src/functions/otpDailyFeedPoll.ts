@@ -15,7 +15,7 @@
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchOtpDailyReports, mapOtpDailyReport } from "../lib/otpDailyFeed";
-import { recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
+import { feedHealthOutcome, recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
 
 const RETENTION_DAYS = 90;
 
@@ -149,8 +149,24 @@ app.timer("otpDailyFeedPoll", {
     context.log(
       `Avail OTP Daily poll: ${reports.length} reports seen, ${upsertedCount} rows upserted, ${purgedCount} old rows purged.`,
     );
+    // Every skip in the loop above is a mapping or upsert failure, so the
+    // shortfall is real loss and feedHealthOutcome's rule applies directly.
+    const outcome = feedHealthOutcome(reports.length, upsertedCount, "OTP Daily reports");
+    if (outcome.kind === "failure") {
+      context.error(`Avail OTP Daily poll: ${outcome.reason}`);
+      try {
+        await recordFeedFailure(pool, "avail_otp_daily", new Error(outcome.reason));
+      } catch (healthError) {
+        context.error("Failed to record Avail OTP Daily feed failure:", healthError);
+      }
+      return;
+    }
+    if (outcome.unstoredCount > 0) {
+      context.warn(`Avail OTP Daily poll: ${outcome.unstoredCount} of ${reports.length} reports were not stored.`);
+    }
+
     try {
-      await recordFeedHealth(pool, "avail_otp_daily", reports.length, null, {
+      await recordFeedHealth(pool, "avail_otp_daily", outcome.entityCount, null, {
         startAt: target,
         endAt: new Date(target.getTime() + 24 * 60 * 60_000),
       });

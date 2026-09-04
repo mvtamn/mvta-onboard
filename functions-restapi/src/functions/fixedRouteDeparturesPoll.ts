@@ -10,7 +10,7 @@ import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchPulloutReports, mapPulloutReport } from "../lib/availPullout";
 import { agencyServiceDate, serviceDateAndGtfsSecondsToUtc } from "../lib/missedTripTime";
-import { recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
+import { feedHealthOutcome, recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
 
 app.timer("fixedRouteDeparturesPoll", {
   schedule: "0 */5 * * * *",
@@ -98,13 +98,27 @@ app.timer("fixedRouteDeparturesPoll", {
       }
     }
 
+    const outcome = feedHealthOutcome(reports.length, upsertedCount, "pullout reports");
+    if (outcome.kind === "failure") {
+      context.error(`Avail Pullout Reports poll: ${outcome.reason}`);
+      try {
+        await recordFeedFailure(pool, "avail_pullout", new Error(outcome.reason));
+      } catch (healthError) {
+        context.error("Failed to record Avail Pullout feed failure:", healthError);
+      }
+      return;
+    }
+
     try {
-      await recordFeedHealth(pool, "avail_pullout", reports.length, null, {
+      await recordFeedHealth(pool, "avail_pullout", outcome.entityCount, null, {
         startAt: serviceDateAndGtfsSecondsToUtc(pollServiceDate, 0) ?? new Date(),
         endAt: new Date(),
       });
     } catch (healthError) {
       context.error("Failed to update Avail Pullout feed health:", healthError);
+    }
+    if (outcome.unstoredCount > 0) {
+      context.warn(`Avail Pullout Reports poll: ${outcome.unstoredCount} of ${reports.length} reports were not stored.`);
     }
     context.log(`Avail Pullout Reports poll: ${reports.length} reports seen, ${upsertedCount} rows upserted.`);
   },

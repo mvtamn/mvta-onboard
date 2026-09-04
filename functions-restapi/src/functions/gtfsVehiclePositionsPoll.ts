@@ -13,7 +13,7 @@ import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchVehiclePositionFeed, mapVehiclePositionEntity } from "../lib/gtfsVehiclePositions";
 import { agencyServiceDate } from "../lib/missedTripTime";
-import { recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
+import { feedHealthOutcome, recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
 
 app.timer("gtfsVehiclePositionsPoll", {
   schedule: "0 */5 * * * *",
@@ -43,22 +43,16 @@ app.timer("gtfsVehiclePositionsPoll", {
     }
 
     const pool = await getPool();
-    try {
-      await recordFeedHealth(
-        pool,
-        "gtfs_vehicle_positions",
-        feed.Entities.length,
-        feed.Header?.Timestamp ?? null,
-      );
-    } catch (err) {
-      context.error("Failed to update VehiclePosition feed health:", err);
-    }
     const evidenceCheck = await pool.request().query<{ table_exists: number }>(`
       SELECT CASE WHEN OBJECT_ID('dbo.GtfsTripOperationalEvidence', 'U') IS NULL THEN 0 ELSE 1 END AS table_exists
     `);
     const evidenceTableExists = evidenceCheck.recordset[0]?.table_exists === 1;
     let updatedCount = 0;
     let evidenceCount = 0;
+    // mapVehiclePositionEntity returns null without a Trip, so every mapped
+    // entity is one this run was expected to record evidence for. A deadheading
+    // vehicle never reaches this count.
+    let evidenceEligible = 0;
 
     for (const entity of feed.Entities) {
       let mapped;
@@ -71,6 +65,7 @@ app.timer("gtfsVehiclePositionsPoll", {
       if (!mapped) continue;
 
       if (evidenceTableExists) {
+        evidenceEligible++;
         try {
           const observedAt = mapped.source_timestamp_at ?? new Date();
           const serviceDate = mapped.service_date ?? agencyServiceDate(observedAt).serviceDate;
@@ -163,6 +158,46 @@ app.timer("gtfsVehiclePositionsPoll", {
     );
     if (!evidenceTableExists) {
       context.warn("GtfsTripOperationalEvidence does not exist; apply migration 027 to capture missed-trip start evidence.");
+    }
+
+    // This ledger row is not just a delivery receipt. underwayEvidenceCoverage
+    // resolves it to decide whether the silent-no-show detector may treat
+    // missing evidence as a real no-show, so recording success here asserts
+    // that the evidence this run was supposed to write exists. It used to be
+    // recorded before the write loop ran, from the entity count, which asserted
+    // that regardless of whether a single evidence row landed - and a run whose
+    // evidence writes all failed would leave coverage proven while the table
+    // stood still, turning every unstarted trip into a manufactured no-show.
+    // That is the failure the coverage guard was added to prevent.
+    //
+    // Failing closed instead makes coverage unproven, so those trips are
+    // recorded as unknown_data_gap and wait for evidence. gtfs_vehicle_positions
+    // is only supporting for fixed_route_delay, so the delay stream keeps its
+    // reduced context rather than being invalidated.
+    const outcome = evidenceTableExists
+      ? feedHealthOutcome(evidenceEligible, evidenceCount, "vehicle positions")
+      : ({ kind: "health", entityCount: feed.Entities.length, unstoredCount: 0 } as const);
+    if (outcome.kind === "failure") {
+      context.error(`GTFS-RT VehiclePosition poll: ${outcome.reason}`);
+      try {
+        await recordFeedFailure(pool, "gtfs_vehicle_positions", new Error(outcome.reason));
+      } catch (healthError) {
+        context.error("Failed to record VehiclePosition feed failure:", healthError);
+      }
+      return;
+    }
+    if (outcome.unstoredCount > 0) {
+      context.warn(`GTFS-RT VehiclePosition poll: evidence was not recorded for ${outcome.unstoredCount} of ${evidenceEligible} positions.`);
+    }
+    try {
+      await recordFeedHealth(
+        pool,
+        "gtfs_vehicle_positions",
+        outcome.entityCount,
+        feed.Header?.Timestamp ?? null,
+      );
+    } catch (err) {
+      context.error("Failed to update VehiclePosition feed health:", err);
     }
   },
 });
