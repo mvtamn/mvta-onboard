@@ -35,6 +35,8 @@
     "AVAIL_AVL_REPORTS_API_KEY": "REPLACE_ME",
     "// note6": "AVAIL_PULLOUT_URL feeds Fixed Route Departures (fixedRouteDeparturesPoll.ts) - a second, distinct Avail360 API reusing the SAME AVAIL_AVL_REPORTS_API_KEY above, just a different path.",
     "AVAIL_PULLOUT_URL": "https://avail360-api.myavail.cloud/Pullout/v1/MVTA",
+    "// note6b": "GARAGE_DEPARTURE_VARIANCE_MINUTES is how late a pullout must be before complianceCandidatesPoll raises a GARAGE_DEPARTURE candidate for review. A run that never departed is always a candidate. Optional - omit for the 10-minute default from onboard-spare-integration-spec.md section 9.1.",
+    "GARAGE_DEPARTURE_VARIANCE_MINUTES": "10",
     "// note7": "AVAIL_OTP_MONTHLY_URL/AVAIL_MISSED_TRIPS_URL feed OTP Compliance's real OTP % and missed-trip incidents (otpMonthlyFeedPoll.ts / availMissedTripsPoll.ts, per OTP-Feed-Evaluation-and-Recommendation.md) - both reuse the SAME AVAIL_AVL_REPORTS_API_KEY above, just different paths.",
     "AVAIL_OTP_MONTHLY_URL": "https://avail360-api.myavail.cloud/OtpByRouteStopDayAgg/v1/MVTA",
     "AVAIL_MISSED_TRIPS_URL": "https://avail360-api.myavail.cloud/MissedTripsByRouteStopDay/v1/MVTA",
