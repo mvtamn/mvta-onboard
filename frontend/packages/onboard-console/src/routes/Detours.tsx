@@ -19,6 +19,7 @@ import { useAppDialog } from "../components/AppDialog.js";
 import { DetourOperationalRecord } from "../components/DetourOperationalRecord.js";
 import { DetourWorkflowHistorySection } from "../components/DetourWorkflowHistorySection.js";
 import { DetourAttachmentsSection } from "../components/DetourAttachments.js";
+import { DetourMap } from "../components/DetourMap.js";
 import { audiencePlan, communicationSubject, draftCommunicationText, mailtoLink, nextAudience } from "../lib/detourCommunicationDraft.js";
 import { dateLabel, dateTimeLabel, toDateInputValue } from "../lib/detourDates.js";
 
@@ -723,6 +724,7 @@ export function Detours() {
                                   : ""}
                               </p>
                             ) : null}
+                            {d.geometry_json ? <div style={{ marginTop: 12 }}><p className="field-label">Map</p><DetourMap value={d.geometry_json} onChange={() => undefined} readOnly height={260} /></div> : null}
                             <DetourAttachmentsSection detourId={d.id} canWrite={canWrite} />
                             <DetourWorkflowHistorySection detourId={d.id} />
                           </div>

@@ -74,6 +74,7 @@ import type {
   DetourCommunication,
   DetourHistoricalImportResult,
   DetourContractorNotification,
+  NearbyGtfsStop,
   DetourHistoricalImportRow,
   DetourWorkflowHistoryEntry,
   ContractorPerformanceStandard,
@@ -1100,6 +1101,12 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
         { method: "POST", body: JSON.stringify(input) },
         true,
       );
+    },
+
+    // GTFS stops within radius_m of a drawn GeoJSON shape, with serving
+    // routes. Suggestions for the detour map; writes nothing.
+    findStopsNear(geometry: unknown, radius_m = 100) {
+      return request<{ radius_m: number; stop_routes_indexed: boolean; stops: NearbyGtfsStop[] }>("/api/gtfs-stops/near", { method: "POST", body: JSON.stringify({ geometry, radius_m }) }, true);
     },
 
     getMapsToken() {

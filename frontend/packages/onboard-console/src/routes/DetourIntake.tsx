@@ -3,6 +3,7 @@ import { type CreateDetourIntakeInput, type DetourFulfillmentMode, type DetourIm
 import { api } from "../config.js";
 import { dateTimeLabel } from "../lib/detourDates.js";
 import { DETOUR_ATTACHMENT_ACCEPT, isImageAttachment } from "../components/DetourAttachments.js";
+import { DetourMap } from "../components/DetourMap.js";
 
 const MODES: { value: DetourFulfillmentMode; label: string; help: string }[] = [
   { value: "fixed_route_manual", label: "Manual fixed-route exception", help: "Operations and operators carry out the reviewed instructions manually." },
@@ -41,12 +42,14 @@ interface IntakeFormState {
   impact: "fixed_route" | "mobility"; serviceArea: string; instructions: string;
   fulfillment: DetourFulfillmentMode; audiences: string; channels: string;
   evidenceNotes: string; evidenceReference: string; segments: DetourSegmentInput[];
+  geometry: string | null;
 }
 
 const BLANK_FORM: IntakeFormState = {
   source: "", description: "", location: "", start: "", end: "", startTime: "", endTime: "", windowStatus: "pending",
   affectedStops: "", operationalImpacts: "", confirmationContact: "", impact: "fixed_route", serviceArea: "", instructions: "",
   fulfillment: "avail", audiences: "operators, operations management", channels: "email, radio", evidenceNotes: "", evidenceReference: "", segments: [],
+  geometry: null,
 };
 
 // Loads an existing record into the form for correction. The list already
@@ -64,6 +67,7 @@ function intakeToForm(row: DetourIntake): IntakeFormState {
     audiences: (row.notification_audiences ?? []).join(", "), channels: (row.notification_channels ?? []).join(", "),
     evidenceNotes: row.evidence_notes ?? "", evidenceReference: row.evidence_reference ?? "",
     segments: row.segments.map((segment) => ({ routes: segment.routes, directions: segment.directions ?? null })),
+    geometry: row.geometry_json ?? null,
   };
 }
 
@@ -77,6 +81,7 @@ function formToInput(f: IntakeFormState): CreateDetourIntakeInput {
     notification_audiences: f.audiences.split(",").map((item) => item.trim()).filter(Boolean),
     notification_channels: f.channels.split(",").map((item) => item.trim()).filter(Boolean),
     evidence_notes: f.evidenceNotes || null, evidence_reference: f.evidenceReference || null, segments: f.segments,
+    geometry_json: f.geometry,
   };
 }
 
@@ -217,6 +222,24 @@ export function DetourIntake() {
           </div>
         </div>
         <div className="form-section">
+          <h4>Map</h4><p>Draw where the closure is - a stop, a street, or an area - then find the GTFS stops it touches and add them, with the routes that serve them, to the affected service below. Optional; the drawing is carried onto the Detour at acceptance.</p>
+          <DetourMap
+            value={form.geometry}
+            onChange={(geometry) => set("geometry", geometry)}
+            onSuggest={({ stops, routes }) => {
+              const stopText = stops.map((s) => `${s.stop_name} (#${s.stop_id})`).join("; ");
+              const existingRoutes = new Set(form.segments.map((seg) => seg.routes.trim()).filter(Boolean));
+              const newSegments = routes.filter((r) => !existingRoutes.has(r)).map((r) => ({ routes: r, directions: null }));
+              setForm((current) => ({
+                ...current,
+                affectedStops: [current.affectedStops.trim(), stopText].filter(Boolean).join("; "),
+                segments: current.impact === "fixed_route" ? [...current.segments, ...newSegments] : current.segments,
+              }));
+              setNotice(`Added ${stops.length} stop${stops.length === 1 ? "" : "s"}${newSegments.length ? ` and ${newSegments.length} route segment${newSegments.length === 1 ? "" : "s"}` : ""} from the map.`);
+            }}
+          />
+        </div>
+        <div className="form-section">
           <h4>Affected service</h4><p>Choose the service type; the form will request only the operational details that apply.</p>
           <div className="form-grid">
             <label>Service impact<select value={form.impact} onChange={(e) => { const next = e.target.value as IntakeFormState["impact"]; setForm((current) => ({ ...current, impact: next, fulfillment: next === "mobility" ? "mobility_manual" : "avail" })); }}><option value="fixed_route">Fixed-route</option><option value="mobility">On-demand / mobility</option></select></label>
@@ -281,7 +304,7 @@ export function DetourIntake() {
         </table></div>
       )}
     </div>
-    {reviewing ? <div className="modal-overlay" role="presentation"><section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="detour-review-title"><div className="modal-card-header"><div><span className="eyebrow">Review Detour Intake</span><h2 id="detour-review-title">{reviewing.row.description}</h2></div><button className="btn-icon" aria-label="Close review" onClick={() => setReviewing(null)}>×</button></div><p className="muted">{reviewing.row.location || "Location not recorded"} · {reviewing.row.proposed_start_date || "No start date"} {reviewing.row.proposed_start_time || ""} → {reviewing.row.proposed_end_date || "open"} {reviewing.row.proposed_end_time || ""} · {reviewing.row.time_window_status || "pending"}</p><div className="intake-checklist"><strong>Operational details</strong><ul><li>{reviewing.row.affected_stops_and_stations || "No affected stops or stations recorded."}</li><li>{reviewing.row.operational_impacts || "No additional operational impacts recorded."}</li><li>{reviewing.row.confirmation_contact || "No confirmation contact recorded."}</li></ul></div><IntakeImages intakeId={reviewing.row.id} /><LikelyDuplicates row={reviewing.row} onPick={(match) => { setReviewing({ row: reviewing.row, action: "duplicate" }); setDuplicateTarget(match.id); setDuplicateKind(match.kind); }} />{reviewing.action === "accept" ? <div className="event-next-action"><div><span className="event-next-action-label">Acceptance boundary</span><strong>Make this same record authoritative</strong><p>Acceptance assigns the next fulfillment step. It does not enter Avail or publish communications.</p></div></div> : <>{reviewing.action === "duplicate" ? <label className="modal-field">Existing {duplicateKind === "intake" ? "intake" : "Detour"} ID<input value={duplicateTarget} onChange={(e) => { setDuplicateTarget(e.target.value); setDuplicateKind("detour"); }} placeholder="Pick a likely duplicate above, or paste the GUID of the existing Detour" autoFocus /></label> : null}<label className="modal-field">{reviewing.action === "needs_information" ? "Information still needed" : reviewing.action === "duplicate" ? "Why is this a duplicate?" : reviewing.action === "withdrawn" ? "Why is this report being withdrawn?" : "Rejection reason"}<textarea value={reviewNotes} onChange={(e) => setReviewNotes(e.target.value)} placeholder="Record the reason for this decision" autoFocus={reviewing.action !== "duplicate"} /></label></>}<div className="modal-actions"><button className="btn-sm" onClick={() => setReviewing(null)}>Cancel</button><button className="btn-primary" disabled={busy || (reviewing.action !== "accept" && !reviewNotes.trim()) || (reviewing.action === "duplicate" && !duplicateTarget.trim())} onClick={() => void submitReview()}>{reviewing.action === "accept" ? "Accept record" : reviewing.action === "needs_information" ? "Return for information" : reviewing.action === "duplicate" ? "Mark duplicate" : reviewing.action === "withdrawn" ? "Withdraw record" : "Reject record"}</button></div></section></div> : null}
+    {reviewing ? <div className="modal-overlay" role="presentation"><section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="detour-review-title"><div className="modal-card-header"><div><span className="eyebrow">Review Detour Intake</span><h2 id="detour-review-title">{reviewing.row.description}</h2></div><button className="btn-icon" aria-label="Close review" onClick={() => setReviewing(null)}>×</button></div><p className="muted">{reviewing.row.location || "Location not recorded"} · {reviewing.row.proposed_start_date || "No start date"} {reviewing.row.proposed_start_time || ""} → {reviewing.row.proposed_end_date || "open"} {reviewing.row.proposed_end_time || ""} · {reviewing.row.time_window_status || "pending"}</p><div className="intake-checklist"><strong>Operational details</strong><ul><li>{reviewing.row.affected_stops_and_stations || "No affected stops or stations recorded."}</li><li>{reviewing.row.operational_impacts || "No additional operational impacts recorded."}</li><li>{reviewing.row.confirmation_contact || "No confirmation contact recorded."}</li></ul></div><IntakeImages intakeId={reviewing.row.id} />{reviewing.row.geometry_json ? <DetourMap value={reviewing.row.geometry_json} onChange={() => undefined} readOnly height={240} /> : null}<LikelyDuplicates row={reviewing.row} onPick={(match) => { setReviewing({ row: reviewing.row, action: "duplicate" }); setDuplicateTarget(match.id); setDuplicateKind(match.kind); }} />{reviewing.action === "accept" ? <div className="event-next-action"><div><span className="event-next-action-label">Acceptance boundary</span><strong>Make this same record authoritative</strong><p>Acceptance assigns the next fulfillment step. It does not enter Avail or publish communications.</p></div></div> : <>{reviewing.action === "duplicate" ? <label className="modal-field">Existing {duplicateKind === "intake" ? "intake" : "Detour"} ID<input value={duplicateTarget} onChange={(e) => { setDuplicateTarget(e.target.value); setDuplicateKind("detour"); }} placeholder="Pick a likely duplicate above, or paste the GUID of the existing Detour" autoFocus /></label> : null}<label className="modal-field">{reviewing.action === "needs_information" ? "Information still needed" : reviewing.action === "duplicate" ? "Why is this a duplicate?" : reviewing.action === "withdrawn" ? "Why is this report being withdrawn?" : "Rejection reason"}<textarea value={reviewNotes} onChange={(e) => setReviewNotes(e.target.value)} placeholder="Record the reason for this decision" autoFocus={reviewing.action !== "duplicate"} /></label></>}<div className="modal-actions"><button className="btn-sm" onClick={() => setReviewing(null)}>Cancel</button><button className="btn-primary" disabled={busy || (reviewing.action !== "accept" && !reviewNotes.trim()) || (reviewing.action === "duplicate" && !duplicateTarget.trim())} onClick={() => void submitReview()}>{reviewing.action === "accept" ? "Accept record" : reviewing.action === "needs_information" ? "Return for information" : reviewing.action === "duplicate" ? "Mark duplicate" : reviewing.action === "withdrawn" ? "Withdraw record" : "Reject record"}</button></div></section></div> : null}
   </section>;
 }
 

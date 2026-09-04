@@ -8,6 +8,7 @@ export interface DetourIntakeSchemaFlags {
   duplicateLinksReady: boolean;   // migration 057
   completeFieldsReady: boolean;   // migration 056
   operationalFieldsReady: boolean; // migration 069
+  geometryReady?: boolean;         // migration 091
 }
 
 const BASE = [
@@ -32,5 +33,6 @@ export function detourIntakeSelectColumns(flags: DetourIntakeSchemaFlags): strin
     ...(flags.duplicateLinksReady ? DUPLICATE_LINKS : []),
     ...(flags.completeFieldsReady ? COMPLETE_FIELDS : []),
     ...(flags.operationalFieldsReady ? OPERATIONAL_FIELDS : []),
+    ...(flags.geometryReady ? ["i.geometry_json"] : []),
   ].join(", ");
 }

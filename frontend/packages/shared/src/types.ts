@@ -849,6 +849,9 @@ export interface Detour extends DetourReportFields {
   conflict_override_reason?: string | null;
   conflict_override_by?: string | null;
   conflict_override_at?: string | null;
+  // Drawn shape (GeoJSON Point/LineString/Polygon as a string), carried
+  // from intake at acceptance (migration 091).
+  geometry_json?: string | null;
   // Operational record carried over from Detour Intake at acceptance
   // (migrations 057 and 069). Optional because GET /detours omits each
   // group entirely when its columns are absent, the same way the reporting
@@ -945,6 +948,7 @@ export interface DetourIntake {
   notes?: string | null;
   // Present for open intakes; empty for decided ones.
   likely_duplicates?: DetourLikelyDuplicate[];
+  geometry_json?: string | null;
   created_by: string;
   created_at: string;
   updated_by: string | null;
@@ -974,6 +978,18 @@ export interface CreateDetourIntakeInput {
   evidence_notes?: string | null;
   evidence_reference?: string | null;
   notes?: string | null;
+  geometry_json?: string | null;
+}
+
+// A GTFS stop near a drawn detour shape (POST /gtfs-stops/near), with the
+// routes that serve it when GtfsStopRoutes has been populated.
+export interface NearbyGtfsStop {
+  stop_id: string;
+  stop_name: string;
+  stop_lat: number;
+  stop_lon: number;
+  distance_m: number;
+  routes: string[];
 }
 
 export type UpdateDetourInput = Partial<CreateDetourInput>;

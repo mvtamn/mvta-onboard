@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.85] - 2026-09-04
+
+- **Map drawing and nearby-stop suggestions for Detour Intake.** The intake form gains a map (Azure Maps, same token path as Event authoring) where the reporter draws a point, line, or area; the GeoJSON is stored on the intake (migration 091) and carried onto the Detour at acceptance. **Find nearby stops** calls `POST /gtfs-stops/near`, which returns GTFS stops within a chosen radius of the shape - exact point-to-shape distance over a bounding-box prefilter - with the routes serving each, from the new `GtfsStopRoutes` index the static GTFS sync now builds from `stop_times.txt`. Selected stops are appended to Affected stops and their routes become segments. The review dialog, Detours & Closures, and Detour Reports show the drawn shape read-only.
+
 ## [1.5.84] - 2026-09-04
 
 - **Conflict override on the authoritative Detour.** `GET /detours` now reports, for every open Detour, the other open Detours that share a route number or place word inside an overlapping window (`conflicts`) and a `conflict_status` of none / unresolved / overridden. Migration 090 adds the override columns; `POST /detours/{id}/conflict-override` records a required reason, the actor, and the conflicting ids, and writes a `manual_correction` history row so the warning and the decision stay together. The override covers exactly the conflicts known when it was recorded - a new conflict reopens the question. Confirming an Avail entry (`result: entered`) is refused with 409 while a conflict is unresolved; recording a failed or deferred attempt is always allowed. Detours & Closures shows the conflict with what it shares and an Override-with-reason action; Detour Reports shows it in the Readiness column and the expanded row and exports a Conflicts column.

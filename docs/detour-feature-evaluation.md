@@ -2,7 +2,7 @@
 
 **Evaluation date:** 2026-09-04 (supersedes the 2026-08-10 evaluation)  
 **Scope:** REST API, SQL migrations, staff console (Detours & Closures, Detour Intake, Detour Reports, Administration), Avail integration, and deployment notes.  
-**Tree evaluated:** branch `claude/intelligent-vaughan-fd0fc9` as proposed in PR #137 (console v1.5.84).
+**Tree evaluated:** branch `claude/intelligent-vaughan-fd0fc9` as proposed in PR #137 (console v1.5.85).
 
 **Verification:** `functions-restapi` builds clean and passes `npm test` with **455/455** (one pre-existing skip). The frontend workspace typechecks across shared, rider-app, and onboard-console; the onboard-console production build succeeds; `npm test` passes **156/156**. These are source, build, and unit checks. They do not prove that deployment-dependent resources or live Avail data are configured, and no browser session was run against a live API.
 
@@ -18,9 +18,9 @@ review that produced PR #137 found that most of the module's earlier gaps were
 data that was captured but never shown, and workflow states with no exit; those
 are closed.
 
-What remains missing is the outbound side: reviewed notification drafting with
-an explicit send to internal and contractor recipients, and the map-based
-intake aids. Attachments and the Avail feed remain deployment-dependent.
+What remains missing is delivery: a server-side sender so "published" can mean
+delivered rather than recorded. Attachments, the map, and the Avail feed remain
+deployment-dependent.
 
 ## Capability matrix
 
@@ -47,18 +47,20 @@ intake aids. Attachments and the Avail feed remain deployment-dependent.
 | Role separation | **Implemented** | Read / intake (admin) / write / delete separated server-side and mirrored in the console; import and re-review controls hidden from roles that would 403. |
 | Clone/re-establish | **Partially implemented** | Console pre-fills a new record and clears dates, sent flags, approval, and resolution. No backend clone endpoint, source linkage, or history row on the new record. |
 | Conflict override with reason | **Implemented** | `detourConflicts.ts` runs the same route/place/window matcher Detour to Detour for every open record; `POST /detours/{id}/conflict-override` (migration 090) records reason, actor, and the conflicting ids in the row and in workflow history; the override covers only the conflicts known at the time. Confirming an Avail entry is refused while a conflict is unresolved. Lexical, not geometric - stop IDs and geometry remain future work. |
-| Map drawing and nearby-stop detection | **Not implemented** | No detour geometry or GTFS nearby-stop workflow. |
+| Map drawing and nearby-stop detection | **Implemented; deployment-dependent** | Intake map (Azure Maps drawing tools) stores a GeoJSON Point/LineString/Polygon (migration 091) carried to the Detour; `POST /gtfs-stops/near` returns stops within a radius with serving routes from the new `GtfsStopRoutes` index; selections feed Affected stops and route segments. Read-only map on review, Detours & Closures, and Reports. Needs `AZURE_MAPS_CLIENT_ID` and a static GTFS sync run after 091 to populate the route index. |
 | Public rider publication | **Intentionally out of scope** | Rider-facing publication remains Avail/GTFS. |
 
 ## Operational caveats
 
-1. **Migrations 088, 089, and 090 must be applied to dev.** Until it runs, acceptance skips
+1. **Migrations 088 through 091 must be applied to dev.** Until it runs, acceptance skips
    the `location` column (guarded) and Detours promoted before this branch keep
    showing the closure location under "Riders directed." The migration also
    performs that backfill. Migration 089 seeds the contractor settings; until
    it runs the Administration section reports them as not seeded. Migration 090
    adds the conflict override columns; until it runs conflicts are still
-   reported but cannot be overridden and do not block Avail entry.
+   reported but cannot be overridden and do not block Avail entry. Migration 091
+   adds geometry columns and `GtfsStopRoutes`; run the static GTFS sync after
+   it so nearby-stop suggestions carry routes.
 2. **Attachments are unavailable until storage is provisioned.** Deploy the
    bicep module, set `DETOUR_IMAGES_STORAGE_ACCOUNT`, grant the Function App
    identity Blob Data Contributor, verify CORS.
@@ -99,9 +101,8 @@ intake aids. Attachments and the Avail feed remain deployment-dependent.
 
 ### Priority 3 — planned efficiency features
 
-- Stop-ID and geometry-based conflict detection to replace the lexical
-  matcher once map drawing exists.
-- Fixed-route map drawing and GTFS nearby-stop suggestions at intake.
+- Use the drawn geometry and `GtfsStopRoutes` for stop-ID-based conflict and
+  duplicate detection in place of the lexical matcher.
 - Server-side search and pagination once row volume justifies it.
 
 ## Change log for this evaluation
@@ -109,12 +110,12 @@ intake aids. Attachments and the Avail feed remain deployment-dependent.
 The 2026-08-10 evaluation listed conflict/duplicate warnings, notification
 drafts, and spreadsheet migration as not implemented, and did not cover
 communications, closure, historical import, re-review, or the intake queue.
-PR #137 (fourteen commits, v1.5.71–1.5.84) added the operational record read path,
+PR #137 (fifteen commits, v1.5.71–1.5.85) added the operational record read path,
 the needs-information workflow, re-review clearance, CSV/table parity, removal
 of twelve client methods with no server, workflow history and reason-code
 admin in the console, `Detours.location`, legacy-import listing and a real
 CSV parser, likely-duplicate detection, a testable intake column list, and
 type-aware attachment rendering, communications prefilled from the record's required
-audiences, contractor notification with a manual send path, and conflict override on the
-authoritative Detour.
+audiences, contractor notification with a manual send path, conflict override on the
+authoritative Detour, and map drawing with nearby-stop suggestions.
 This document reflects the tree after those changes.

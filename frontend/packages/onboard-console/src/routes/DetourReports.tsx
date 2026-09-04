@@ -25,6 +25,7 @@ import { availEntryLabel, communicationStatusLabel, createdByLabel, fulfillmentP
 import { DetourOperationalRecord } from "../components/DetourOperationalRecord.js";
 import { DetourWorkflowHistorySection } from "../components/DetourWorkflowHistorySection.js";
 import { DetourAttachmentsSection } from "../components/DetourAttachments.js";
+import { DetourMap } from "../components/DetourMap.js";
 
 // Detour Reports - Part B7 of detour-module-consolidated-plan.md.
 //
@@ -403,6 +404,7 @@ export function DetourReports() {
                             {/* Read-only: the reports page never edits, but
                                 the document that went out with a detour is
                                 part of the record a compliance reader needs. */}
+                            {d.geometry_json ? <div style={{ marginTop: 12 }}><p className="field-label">Map</p><DetourMap value={d.geometry_json} onChange={() => undefined} readOnly height={260} /></div> : null}
                             <DetourAttachmentsSection detourId={d.id} canWrite={false} />
                             <DetourWorkflowHistorySection detourId={d.id} />
                           </div>

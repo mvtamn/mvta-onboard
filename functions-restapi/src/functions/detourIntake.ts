@@ -41,8 +41,9 @@ app.http("detourIntakeList", {
       const req = pool.request();
       const where = INTAKE_STATUSES.includes(status as IntakeStatus) ? "WHERE i.status = @status" : "";
       if (where) req.input("status", sql.NVarChar(20), status);
-      const schema = await pool.request().query<{ duplicate_links_ready: number; complete_fields_ready: number; operational_fields_ready: number; detour_location_ready: number }>(`
+      const schema = await pool.request().query<{ duplicate_links_ready: number; complete_fields_ready: number; operational_fields_ready: number; detour_location_ready: number; geometry_ready: number }>(`
         SELECT CASE WHEN COL_LENGTH('dbo.Detours', 'location') IS NULL THEN 0 ELSE 1 END AS detour_location_ready,
+               CASE WHEN COL_LENGTH('dbo.DetourIntake', 'geometry_json') IS NULL OR COL_LENGTH('dbo.Detours', 'geometry_json') IS NULL THEN 0 ELSE 1 END AS geometry_ready,
                CASE WHEN COL_LENGTH('dbo.DetourIntake', 'duplicate_of_intake_id') IS NULL
                          OR COL_LENGTH('dbo.DetourIntake', 'duplicate_of_detour_id') IS NULL
                     THEN 0 ELSE 1 END AS duplicate_links_ready,
@@ -57,8 +58,9 @@ app.http("detourIntakeList", {
       const completeFieldsReady = schema.recordset[0]?.complete_fields_ready === 1;
       const operationalFieldsReady = schema.recordset[0]?.operational_fields_ready === 1;
       const detourLocationReady = schema.recordset[0]?.detour_location_ready === 1;
+      const geometryReady = schema.recordset[0]?.geometry_ready === 1;
       const result = await req.query(`
-        SELECT ${detourIntakeSelectColumns({ duplicateLinksReady, completeFieldsReady, operationalFieldsReady })}
+        SELECT ${detourIntakeSelectColumns({ duplicateLinksReady, completeFieldsReady, operationalFieldsReady, geometryReady })}
         FROM DetourIntake i ${where}
         ORDER BY i.created_at DESC
       `);
@@ -175,15 +177,17 @@ app.http("detourIntakeCreate", {
       req.input("evidence_notes", sql.NVarChar(2000), body.evidence_notes ?? null);
       req.input("evidence_reference", sql.NVarChar(1000), body.evidence_reference ?? null);
       req.input("created_by", sql.NVarChar(200), auth.principal.userDetails || "system");
+      const geometryReady = (await pool.request().query<{ ready: number }>("SELECT CASE WHEN COL_LENGTH('dbo.DetourIntake', 'geometry_json') IS NULL THEN 0 ELSE 1 END AS ready")).recordset[0]?.ready === 1;
+      req.input("geometry_json", sql.NVarChar(sql.MAX), body.geometry_json ?? null);
       const inserted = await req.query<{ id: string; created_at: Date }>(`
         INSERT INTO DetourIntake
           (detection_source, description, location, proposed_start_date, proposed_end_date, proposed_start_time, proposed_end_time, time_window_status, affected_stops_and_stations, operational_impacts, confirmation_contact,
            service_impact, service_area, action_instructions, proposed_fulfillment_mode,
-           notification_audiences, notification_channels, evidence_notes, evidence_reference, created_by)
+           notification_audiences, notification_channels, evidence_notes, evidence_reference, created_by${geometryReady ? ", geometry_json" : ""})
         OUTPUT INSERTED.id, INSERTED.created_at
         VALUES (@detection_source, @description, @location, @proposed_start_date, @proposed_end_date, @proposed_start_time, @proposed_end_time, @time_window_status, @affected_stops_and_stations, @operational_impacts, @confirmation_contact,
                 @service_impact, @service_area, @action_instructions, @proposed_fulfillment_mode,
-                @notification_audiences, @notification_channels, @evidence_notes, @evidence_reference, @created_by)
+                @notification_audiences, @notification_channels, @evidence_notes, @evidence_reference, @created_by${geometryReady ? ", @geometry_json" : ""})
       `);
       const intake = inserted.recordset[0];
       for (const [index, segment] of ((body.segments as Array<Record<string, unknown>> | undefined) ?? []).entries()) {
@@ -313,8 +317,10 @@ app.http("detourIntakeUpdate", {
         req.input("evidence_notes", sql.NVarChar(2000), body.evidence_notes ?? null);
         req.input("evidence_reference", sql.NVarChar(1000), body.evidence_reference ?? null);
         req.input("updated_by", sql.NVarChar(200), auth.principal.userDetails || "system");
+        const geometryReady = (await new sql.Request(tx).query<{ ready: number }>("SELECT CASE WHEN COL_LENGTH('dbo.DetourIntake', 'geometry_json') IS NULL THEN 0 ELSE 1 END AS ready")).recordset[0]?.ready === 1;
+        req.input("geometry_json", sql.NVarChar(sql.MAX), body.geometry_json ?? null);
         await req.query(`
-          UPDATE DetourIntake SET
+          UPDATE DetourIntake SET${geometryReady ? " geometry_json = @geometry_json," : ""}
             status = @status, detection_source = @detection_source, description = @description, location = @location,
             proposed_start_date = @proposed_start_date, proposed_end_date = @proposed_end_date,
             proposed_start_time = @proposed_start_time, proposed_end_time = @proposed_end_time, time_window_status = @time_window_status,
@@ -390,6 +396,8 @@ app.http("detourIntakePromote", {
         const locationReady = (await new sql.Request(tx).query<{ ready: number }>("SELECT CASE WHEN COL_LENGTH('dbo.Detours', 'location') IS NULL THEN 0 ELSE 1 END AS ready")).recordset[0]?.ready === 1;
         detourReq.input("riders_directed", sql.NVarChar(500), null);
         detourReq.input("location", sql.NVarChar(500), intake.location ?? null);
+        const geometryReady = (await new sql.Request(tx).query<{ ready: number }>("SELECT CASE WHEN COL_LENGTH('dbo.DetourIntake', 'geometry_json') IS NULL OR COL_LENGTH('dbo.Detours', 'geometry_json') IS NULL THEN 0 ELSE 1 END AS ready")).recordset[0]?.ready === 1;
+        detourReq.input("geometry_json", sql.NVarChar(sql.MAX), geometryReady ? intake.geometry_json ?? null : null);
         detourReq.input("start_date", sql.Date, body.start_date ?? intake.proposed_start_date ?? null);
         detourReq.input("end_date", sql.Date, body.end_date ?? intake.proposed_end_date ?? null);
         detourReq.input("start_time", sql.Time, intake.proposed_start_time ?? null);
@@ -416,13 +424,13 @@ app.http("detourIntakePromote", {
              lifecycle_state, workflow_owner, workflow_updated_by, workflow_updated_at, created_by,
              service_impact, service_area, action_instructions, notification_audiences,
              notification_channels, evidence_notes, evidence_reference, start_time, end_time, time_window_status,
-             affected_stops_and_stations, operational_impacts, confirmation_contact${locationReady ? ", location" : ""})
+             affected_stops_and_stations, operational_impacts, confirmation_contact${locationReady ? ", location" : ""}${geometryReady ? ", geometry_json" : ""})
           OUTPUT INSERTED.id, INSERTED.created_at
           VALUES (@id, @internal_number, @closure, @start_date, @end_date, @riders_directed, 'manual', @fulfillment_mode,
                   @lifecycle_state, @workflow_owner, @workflow_owner, SYSUTCDATETIME(), @created_by,
                   @service_impact, @service_area, @action_instructions, @notification_audiences,
                   @notification_channels, @evidence_notes, @evidence_reference, @start_time, @end_time, @time_window_status,
-                  @affected_stops_and_stations, @operational_impacts, @confirmation_contact${locationReady ? ", @location" : ""})
+                  @affected_stops_and_stations, @operational_impacts, @confirmation_contact${locationReady ? ", @location" : ""}${geometryReady ? ", @geometry_json" : ""})
         `);
         const detour = detourResult.recordset[0];
         const segmentsReq = new sql.Request(tx);
