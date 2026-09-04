@@ -937,7 +937,7 @@ export interface DetourLikelyDuplicate {
   status: string;
   start_date: string | null;
   end_date: string | null;
-  reasons: ("geometry" | "routes" | "location")[];
+  reasons: ("geometry" | "stops" | "routes" | "location")[];
   shared: string[];
 }
 

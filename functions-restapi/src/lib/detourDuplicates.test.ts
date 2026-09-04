@@ -75,3 +75,12 @@ test("map matches outrank route matches", () => {
   ]);
   assert.deepStrictEqual(matches.map((m) => m.id), ["map", "rt"]);
 });
+
+test("a shared GTFS stop is a likely duplicate, named by the lookup, ranked above routes", () => {
+  const withStops = { ...subject, place_text: "", route_texts: [], stop_ids: ["S1", "S2"] };
+  const matches = findLikelyDuplicates(withStops, [
+    candidate({ id: "rt", route_texts: ["460"], place_text: "" }),
+    candidate({ id: "stop", place_text: "", stop_ids: ["S2", "S7"] }),
+  ], (id) => ({ S2: "Cedar & 6th" } as Record<string, string>)[id] ?? `#${id}`);
+  assert.deepStrictEqual(matches.map((m) => [m.id, m.reasons, m.shared]), [["stop", ["stops"], ["Cedar & 6th"]]]);
+});

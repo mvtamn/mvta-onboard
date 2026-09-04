@@ -20,6 +20,9 @@ export interface DuplicateScope extends DateWindow {
   // Drawn shape when the record has one (migration 091). Two shapes within
   // GEOMETRY_MATCH_M of each other are the strongest signal there is.
   geometry?: DetourGeometry | null;
+  // GTFS stop ids the record touches (detourStops.ts): from its drawn
+  // shape and from "#id" markers in its affected-stops text.
+  stop_ids?: string[];
 }
 
 // Two closures drawn within this distance are treated as the same place.
@@ -31,7 +34,7 @@ export interface DuplicateCandidate extends DuplicateScope {
   status: string;
 }
 
-export type DuplicateReason = "geometry" | "routes" | "location";
+export type DuplicateReason = "geometry" | "stops" | "routes" | "location";
 
 export interface LikelyDuplicate {
   kind: "detour" | "intake";
@@ -84,7 +87,8 @@ function intersect<T>(a: Set<T>, b: Set<T>): T[] {
   return [...a].filter((item) => b.has(item));
 }
 
-export function findLikelyDuplicates(subject: DuplicateScope, candidates: DuplicateCandidate[]): LikelyDuplicate[] {
+export function findLikelyDuplicates(subject: DuplicateScope, candidates: DuplicateCandidate[], stopName: (id: string) => string = (id) => `#${id}`): LikelyDuplicate[] {
+  const subjectStops = new Set(subject.stop_ids ?? []);
   const subjectRoutes = routeTokens(subject.route_texts);
   const subjectPlace = placeTokens(subject.place_text);
   const found: LikelyDuplicate[] = [];
@@ -97,6 +101,8 @@ export function findLikelyDuplicates(subject: DuplicateScope, candidates: Duplic
       const metres = geometryDistance(subject.geometry, candidate.geometry);
       if (metres <= GEOMETRY_MATCH_M) { reasons.push("geometry"); shared.push(metres < 1 ? "same place on the map" : `${Math.round(metres)} m apart on the map`); }
     }
+    const stops = intersect(subjectStops, new Set(candidate.stop_ids ?? []));
+    if (stops.length > 0) { reasons.push("stops"); shared.push(...stops.slice(0, 5).map(stopName)); }
     const routes = intersect(subjectRoutes, routeTokens(candidate.route_texts));
     if (routes.length > 0) { reasons.push("routes"); shared.push(...routes); }
     const place = intersect(subjectPlace, placeTokens(candidate.place_text));
@@ -110,7 +116,7 @@ export function findLikelyDuplicates(subject: DuplicateScope, candidates: Duplic
       start_date: candidate.start_date, end_date: candidate.end_date, reasons, shared,
     });
   }
-  // Map matches first, then route matches, then by most evidence.
-  const rank = (m: LikelyDuplicate) => (m.reasons.includes("geometry") ? 2 : 0) + (m.reasons.includes("routes") ? 1 : 0);
+  // Map matches first, then shared stops, then routes, then by evidence.
+  const rank = (m: LikelyDuplicate) => (m.reasons.includes("geometry") ? 4 : 0) + (m.reasons.includes("stops") ? 2 : 0) + (m.reasons.includes("routes") ? 1 : 0);
   return found.sort((a, b) => rank(b) - rank(a) || b.shared.length - a.shared.length);
 }

@@ -18,6 +18,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.91",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Added",
+        items: [
+          "Likely-duplicate and conflict warnings now recognise two Detours that touch the same GTFS stop, from the map drawing or the stops added from it, and name the shared stops.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.90",
     date: "2026-09-04",
     sections: [

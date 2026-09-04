@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.91] - 2026-09-04
+
+- **Stop-ID matching for duplicates and conflicts.** Each record's GTFS stops are derived from its drawn shape (stops within 100 m) and from `#stop_id` markers in its affected-stops text - which is what the map's "add selected stops" writes - so two records that touch the same stop match even when their shapes are far apart or one was never drawn. Shared stops are named in the warning and rank between map matches and route matches. One `GtfsStops` read per list call; no migration.
+
 ## [1.5.90] - 2026-09-04
 
 - **Map-based matching for duplicates and conflicts.** When both records carry a drawn shape (migration 091), the likely-duplicate and conflict matcher now treats two shapes within 75 m of each other as the same place - shape-to-shape distance, zero when they touch or one contains the other - independent of how the closure was worded or which routes were listed. Map matches rank above route matches and report "n m apart on the map". Lexical route and place matching remains for records without a drawing. No migration.

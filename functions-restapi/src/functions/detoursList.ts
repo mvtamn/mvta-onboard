@@ -14,7 +14,7 @@ import { requireRole, DETOUR_READ_ROLES } from "../lib/auth";
 import { computeDetourStatus, toDateOnly, toTimeOnly, type DetourStatus } from "../lib/detourStatus";
 import { computeDetourReadiness } from "../lib/detourReadiness";
 import { contractorFromSettings, requiredAudiences, type ContractorNotification } from "../lib/detourContractor";
-import { conflictStatus, detourConflicts, loadDetourConflictScopes, parseOverrideIds } from "../lib/detourConflicts";
+import { conflictStatus, detourConflicts, detourStopNameLookup, loadDetourConflictScopes, parseOverrideIds } from "../lib/detourConflicts";
 
 interface DetourRow {
   id: string;
@@ -235,6 +235,7 @@ app.http("detoursList", {
       // matcher intake uses for likely duplicates. One scope load per call.
       const scopes = await loadDetourConflictScopes(pool);
       const scopeById = new Map(scopes.map((s) => [s.id, s]));
+      const stopName = await detourStopNameLookup(pool);
 
       const withStatus = detours.map((d) => ({
         ...d,
@@ -252,7 +253,7 @@ app.http("detoursList", {
         ...(hasGeometry ? { geometry_json: d.geometry_json ?? null } : {}),
         ...(() => {
           const scope = scopeById.get(d.id);
-          const conflicts = scope ? detourConflicts(scope, scopes) : [];
+          const conflicts = scope ? detourConflicts(scope, scopes, stopName) : [];
           const override = hasConflictOverride ? { reason: d.conflict_override_reason ?? null, by: d.conflict_override_by ?? null, at: d.conflict_override_at ?? null, ids: parseOverrideIds(d.conflict_override_ids) } : null;
           return {
             conflicts,
