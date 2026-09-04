@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.80] - 2026-09-04
+
+- **Make the intake list's schema guard actually degrade.** `GET /detour-intake` guarded its optional column groups (migrations 056, 057, 069) with inline template fragments that left a bare comma behind, so on any environment missing one of them the query read `i.created_at , , i.updated_by` and returned 500 instead of omitting the columns. The column list is now built by a pure function tested across all eight readiness combinations. No behavior change where every migration is present.
+
 ## [1.5.79] - 2026-09-04
 
 - **Detect likely duplicate intake (spec item 11).** `GET /detour-intake` now returns `likely_duplicates` for every open intake: non-closed Detours and other open intakes whose route numbers or place words overlap and whose operating windows overlap (open-ended windows overlap everything after their start). `lib/detourDuplicates.ts` is pure and tested - route identity is the number without direction suffix; place matching drops road-type, direction, and closure words, and a numbered street alone is not enough. The intake queue flags the count per row, the review dialog lists each match with the shared routes or words, and "Mark duplicate of this" sets the target - replacing the hand-pasted GUID. Detection warns; it never merges or rejects.

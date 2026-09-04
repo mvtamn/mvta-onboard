@@ -18,6 +18,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.80",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "The Detour Intake list no longer fails on an environment that is missing one of its optional migrations; it omits those columns instead.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.79",
     date: "2026-09-04",
     sections: [

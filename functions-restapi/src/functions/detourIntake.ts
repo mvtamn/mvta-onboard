@@ -8,6 +8,7 @@ import { allocateDetourNumber } from "../lib/detourNumberAllocator";
 import type { DetourFulfillmentMode } from "../lib/types";
 import { intakeReviewRefusal, intakeStatusAfterUpdate, isOpenIntakeStatus, type DetourIntakeStatus, type DetourIntakeReviewOutcome } from "../lib/detourIntakeTransitions";
 import { findLikelyDuplicates, type DuplicateCandidate } from "../lib/detourDuplicates";
+import { detourIntakeSelectColumns } from "../lib/detourIntakeColumns";
 import { toDateOnly as dateOnly } from "../lib/detourStatus";
 
 const INTAKE_STATUSES = ["pending_review", "needs_information", "accepted", "rejected", "duplicate", "withdrawn"] as const;
@@ -57,15 +58,7 @@ app.http("detourIntakeList", {
       const operationalFieldsReady = schema.recordset[0]?.operational_fields_ready === 1;
       const detourLocationReady = schema.recordset[0]?.detour_location_ready === 1;
       const result = await req.query(`
-        SELECT i.id, i.detection_source, i.description, i.location,
-               i.proposed_start_date, i.proposed_end_date, i.status,
-               i.decision_notes, i.reviewed_by, i.reviewed_at,
-               i.promoted_detour_id
-               ${duplicateLinksReady ? ", i.duplicate_of_intake_id, i.duplicate_of_detour_id" : ""},
-               i.created_by, i.created_at
-               ${completeFieldsReady ? ", i.service_impact, i.service_area, i.action_instructions, i.proposed_fulfillment_mode, i.notification_audiences, i.notification_channels, i.evidence_notes, i.evidence_reference" : ""},
-               ${operationalFieldsReady ? ", i.proposed_start_time, i.proposed_end_time, i.time_window_status, i.affected_stops_and_stations, i.operational_impacts, i.confirmation_contact" : ""},
-               i.updated_by, i.updated_at
+        SELECT ${detourIntakeSelectColumns({ duplicateLinksReady, completeFieldsReady, operationalFieldsReady })}
         FROM DetourIntake i ${where}
         ORDER BY i.created_at DESC
       `);
