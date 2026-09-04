@@ -2,7 +2,6 @@ import { Fragment, useEffect, useState } from "react";
 import {
   ApiError,
   DETOUR_STATUS_LABELS,
-  DETOUR_LIFECYCLE_LABELS,
   DETOUR_SEVERITY_LABELS,
   type Detour,
   type DetourStatus,
@@ -18,6 +17,7 @@ import {
   type DetourFilters,
 } from "../lib/detourSearch.js";
 import { dateLabel, dateTimeLabel } from "../lib/detourDates.js";
+import { availEntryLabel, communicationStatusLabel, createdByLabel, fulfillmentPathLabel, readinessLabel, sourceLabel, workflowLabel } from "../lib/detourLabels.js";
 import { DetourOperationalRecord } from "../components/DetourOperationalRecord.js";
 
 // Detour Reports - Part B7 of detour-module-consolidated-plan.md.
@@ -245,17 +245,17 @@ export function DetourReports() {
                       <td className="td-dim">{d.segments.map((s) => s.routes).join("; ") || "—"}</td>
                       <td className="td-dim">{dateLabel(d.start_date)} – {dateLabel(d.end_date)}</td>
                       <td><span className={`pill-sm ${STATUS_PILL[d.status]}`}>{DETOUR_STATUS_LABELS[d.status]}</span></td>
-                      <td className="td-dim">{d.fulfillment_mode === "avail" ? "Enter in Avail" : d.fulfillment_mode === "mobility_manual" ? "Mobility manual" : "Fixed-route manual"}</td>
-                      <td className="td-dim">{d.readiness === "ready_for_avail_entry" ? "Ready for Avail entry" : d.readiness === "avail_conflict" ? "Avail conflict" : d.readiness === "ready_for_manual_operations" ? "Ready for manual operations" : d.readiness === "closed" ? "Closed" : "Needs OCC review"}{d.review_status === "needs_review" ? " · Needs OCC re-review" : ""}</td>
+                      <td className="td-dim">{fulfillmentPathLabel(d)}</td>
+                      <td className="td-dim">{readinessLabel(d)}</td>
                       <td className="td-dim">{d.workflow_owner || "Unassigned"}</td>
-                      <td className="td-dim">{d.communication_status === "published" ? "Ready / published" : d.communication_status === "draft" ? "Draft in progress" : d.communication_status === "needs_communication" ? "Needs communication" : "Not recorded"}</td>
-                      <td className="td-dim">{d.lifecycle_state ? DETOUR_LIFECYCLE_LABELS[d.lifecycle_state] : "—"}</td>
+                      <td className="td-dim">{communicationStatusLabel(d)}</td>
+                      <td className="td-dim">{workflowLabel(d)}</td>
                       {reportingReady ? <td className="td-dim">{reasonLabelOf(d.reason_code)}</td> : null}
                       {reportingReady ? (
                         <td className="td-dim">{d.severity ? DETOUR_SEVERITY_LABELS[d.severity] : "—"}</td>
                       ) : null}
-                      <td className="td-dim">{d.source === "avail" ? "Avail sync" : d.created_by}</td>
-                      <td className="td-dim">{d.source === "avail" ? "Avail feed" : d.external_detour_id ? "OnBoard · Avail linked" : "OnBoard manual"}</td>
+                      <td className="td-dim">{createdByLabel(d)}</td>
+                      <td className="td-dim">{sourceLabel(d)}</td>
                     </tr>
                     {expandedId === d.id ? (
                       <tr>
@@ -292,8 +292,9 @@ export function DetourReports() {
                               </p>
                             ) : null}
                             {d.resolution_notes ? <p><b>Resolution:</b> {d.resolution_notes}</p> : null}
+                            {d.closure_reason ? <p><b>Closure reason:</b> {d.closure_reason}</p> : null}
                             {d.fulfillment_mode === "avail" ? (
-                              <p className="td-dim"><b>Avail:</b> {d.avail_entry_result?.replace("_", " ") || "Entry not recorded"}
+                              <p className="td-dim"><b>Avail:</b> {availEntryLabel(d)}
                                 {d.external_detour_id ? ` · ID ${d.external_detour_id}` : ""}
                                 {d.avail_last_seen_at ? ` · Last seen ${dateTimeLabel(d.avail_last_seen_at)}` : ""}
                               </p>
@@ -310,7 +311,7 @@ export function DetourReports() {
                               ) : null}
                             </p>
                             <p className="td-dim">
-                              Created by {d.source === "avail" ? "Avail sync" : d.created_by} on{" "}
+                              Created by {createdByLabel(d)} on{" "}
                               {dateTimeLabel(d.created_at)}
                               {d.updated_by ? ` · Last edited by ${d.updated_by} on ${dateTimeLabel(d.updated_at)}` : ""}
                             </p>

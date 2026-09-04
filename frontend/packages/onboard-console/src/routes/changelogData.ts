@@ -18,6 +18,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.74",
+    date: "2026-09-03",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "The Detour Reports CSV now carries every column the table shows - path, readiness, next owner, communications, workflow, closure reason, and Avail entry details - in the same order as the page.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.73",
     date: "2026-09-03",
     sections: [

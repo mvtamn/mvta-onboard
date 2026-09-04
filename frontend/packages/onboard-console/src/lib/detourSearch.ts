@@ -15,6 +15,7 @@ import {
   type DetourReasonCode,
 } from "@mvta/shared";
 import { toDateOnly } from "./detourDates.js";
+import { availEntryLabel, communicationStatusLabel, createdByLabel, fulfillmentPathLabel, readinessLabel, sourceLabel, workflowLabel } from "./detourLabels.js";
 
 export interface DetourFilters {
   search: string;
@@ -120,20 +121,26 @@ function csvCell(value: unknown): string {
   return `"${s.replace(/"/g, '""')}"`;
 }
 
+// Column order follows the Detour Reports table, then the expanded-row
+// detail, then the operational record - a reader comparing the export to
+// the screen finds things where they expect them.
 const CSV_HEADERS = [
-  "Internal ref", "Number", "Closure", "Status", "Start date", "End date",
-  "Reason", "Severity", "Routes", "Riders directed",
+  "Internal ref", "Number", "Closure", "Routes", "Start date", "End date", "Status",
+  "Path", "Readiness", "Next owner", "Communications", "Workflow",
+  "Reason", "Severity", "Created by", "Source",
+  "Riders directed",
   "Reported by", "Reported at", "Approved by", "Approved at",
   "Email sent", "Expired email sent", "Spare emailed",
   "Radio", "Dispatch board", "Social media",
-  "Resolution notes", "Re-review",
+  "Resolution notes", "Closure reason", "Re-review reason",
+  "Avail entry", "Avail detour ID", "Avail last seen",
+  "Created at", "Last edited by", "Last edited at",
   // Operational record carried from intake (migrations 057/069). Blank
   // for detours entered directly on the Detours page, which never had it.
   "Start time", "End time", "Window status", "Service impact", "Service area",
   "Affected stops and stations", "Action instructions", "Operational impacts",
   "Required audiences", "Required channels", "Confirmation contact",
   "Evidence notes", "Evidence reference",
-  "Source", "Created by", "Created at",
 ];
 
 export function detoursToCsv(detours: Detour[], reasonCodes: DetourReasonCode[] = []): string {
@@ -142,17 +149,24 @@ export function detoursToCsv(detours: Detour[], reasonCodes: DetourReasonCode[] 
       d.internal_number ?? "",
       d.number ?? "",
       d.closure,
-      DETOUR_STATUS_LABELS[d.status],
-      // Date-only, so Excel reads these as dates rather than as opaque
-      // timestamp text.
-      toDateOnly(d.start_date) ?? "",
-      toDateOnly(d.end_date) ?? "",
-      reasonLabel(d.reason_code, reasonCodes),
-      d.severity ? DETOUR_SEVERITY_LABELS[d.severity] : "",
       // Segments collapse into one cell - a CSV row is one detour, and
       // exploding to one row per segment would break the "one line per
       // detour" reading these exports get pasted into.
       d.segments.map((s) => s.routes).join("; "),
+      // Date-only, so Excel reads these as dates rather than as opaque
+      // timestamp text.
+      toDateOnly(d.start_date) ?? "",
+      toDateOnly(d.end_date) ?? "",
+      DETOUR_STATUS_LABELS[d.status],
+      fulfillmentPathLabel(d),
+      readinessLabel(d),
+      d.workflow_owner || "Unassigned",
+      communicationStatusLabel(d),
+      workflowLabel(d),
+      reasonLabel(d.reason_code, reasonCodes),
+      d.severity ? DETOUR_SEVERITY_LABELS[d.severity] : "",
+      createdByLabel(d),
+      sourceLabel(d),
       d.riders_directed ?? "",
       d.reported_by ?? "",
       d.reported_at ?? "",
@@ -165,7 +179,14 @@ export function detoursToCsv(detours: Detour[], reasonCodes: DetourReasonCode[] 
       d.dispatch_board_notified ? "Yes" : "No",
       d.social_media_notified ? "Yes" : "No",
       d.resolution_notes ?? "",
-      d.review_status === "needs_review" ? `Needs OCC re-review: ${d.review_reason ?? ""}` : "",
+      d.closure_reason ?? "",
+      d.review_status === "needs_review" ? d.review_reason ?? "" : "",
+      availEntryLabel(d),
+      d.external_detour_id ?? "",
+      d.avail_last_seen_at ?? "",
+      d.created_at,
+      d.updated_by ?? "",
+      d.updated_by ? d.updated_at : "",
       d.start_time ?? "",
       d.end_time ?? "",
       d.time_window_status ?? "",
@@ -179,9 +200,6 @@ export function detoursToCsv(detours: Detour[], reasonCodes: DetourReasonCode[] 
       d.confirmation_contact ?? "",
       d.evidence_notes ?? "",
       d.evidence_reference ?? "",
-      d.source === "avail" ? "Avail sync" : "Manual",
-      d.created_by,
-      d.created_at,
     ].map(csvCell).join(","),
   );
   return [CSV_HEADERS.map(csvCell).join(","), ...rows].join("\r\n");

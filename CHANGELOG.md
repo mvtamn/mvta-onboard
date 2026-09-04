@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.74] - 2026-09-03
+
+- **Make the Detour Reports CSV match the table.** The export was missing eight of the fifteen on-screen columns - fulfillment path, readiness, next owner, communications, workflow state, closure reason, Avail entry/ID/last-seen - and its column order followed the retired spreadsheet rather than the page. Columns now follow the table, then the expanded-row detail, then the operational record, and the table and CSV render every label through one shared function so they cannot drift. The expanded row also shows the closure reason.
+
 ## [1.5.73] - 2026-09-03
 
 - **Give "Needs OCC re-review" a way to clear.** Every material edit to a Detour raised the re-review flag and nothing could lower it. `POST /detours/{id}/review-complete` sets the record back to current and writes a `manual_correction` row to the workflow history with the reason the flag was raised and any reviewer notes. Detours & Closures offers "Mark review complete" beside the warning; Detour Reports shows the flag in the Readiness column and exports it in the CSV.
