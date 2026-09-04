@@ -343,6 +343,13 @@ export function Detours() {
     }
   }
 
+  async function completeReview(d: Detour) {
+    const notes = await prompt({ title: "Mark OCC re-review complete", description: d.review_reason ?? undefined, label: "Review notes", placeholder: "Optional - what was checked or changed", confirmLabel: "Review complete", multiline: true });
+    if (notes === null) return;
+    try { await api.completeDetourReview(d.id, notes.trim() || null); load(); }
+    catch (err) { setLoadError(err instanceof ApiError ? err.message : "Could not complete the review"); }
+  }
+
   async function closeDetour(d: Detour) {
     const reason = await prompt({ title: "Close detour", label: "Closure reason", placeholder: "Why is this detour being closed?", confirmLabel: "Close detour", multiline: true, required: true });
     if (!reason?.trim()) return;
@@ -591,7 +598,12 @@ export function Detours() {
                               <p><b>Next step:</b> {d.readiness === "ready_for_avail_entry" ? "Enter this detour in Avail" : d.readiness === "avail_conflict" ? "Resolve the Avail conflict" : d.readiness === "ready_for_manual_operations" ? "Ready for manual operations" : d.readiness === "needs_occ_review" ? "Needs OCC review" : "Closed"}</p>
                             ) : null}
                             {d.communication_status ? <p><b>Communications:</b> {d.communication_status.replace("_", " ")}</p> : null}
-                            {d.review_status === "needs_review" ? <p className="warn-note"><b>Needs OCC re-review:</b> {d.review_reason}</p> : null}
+                            {d.review_status === "needs_review" ? (
+                              <p className="warn-note">
+                                <b>Needs OCC re-review:</b> {d.review_reason}
+                                {canWrite ? <> <button className="btn-sm" onClick={() => completeReview(d)}>Mark review complete</button></> : null}
+                              </p>
+                            ) : null}
                             {canWrite && d.lifecycle_state !== "closed" ? <p><button className="btn-sm" onClick={() => closeDetour(d)}>Close detour</button></p> : null}
                             <DetourOperationalRecord detour={d} />
                             {d.fulfillment_mode === "avail" && d.avail_entry_result ? (

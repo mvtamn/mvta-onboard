@@ -126,7 +126,7 @@ const CSV_HEADERS = [
   "Reported by", "Reported at", "Approved by", "Approved at",
   "Email sent", "Expired email sent", "Spare emailed",
   "Radio", "Dispatch board", "Social media",
-  "Resolution notes",
+  "Resolution notes", "Re-review",
   // Operational record carried from intake (migrations 057/069). Blank
   // for detours entered directly on the Detours page, which never had it.
   "Start time", "End time", "Window status", "Service impact", "Service area",
@@ -165,6 +165,7 @@ export function detoursToCsv(detours: Detour[], reasonCodes: DetourReasonCode[] 
       d.dispatch_board_notified ? "Yes" : "No",
       d.social_media_notified ? "Yes" : "No",
       d.resolution_notes ?? "",
+      d.review_status === "needs_review" ? `Needs OCC re-review: ${d.review_reason ?? ""}` : "",
       d.start_time ?? "",
       d.end_time ?? "",
       d.time_window_status ?? "",

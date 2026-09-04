@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.73] - 2026-09-03
+
+- **Give "Needs OCC re-review" a way to clear.** Every material edit to a Detour raised the re-review flag and nothing could lower it. `POST /detours/{id}/review-complete` sets the record back to current and writes a `manual_correction` row to the workflow history with the reason the flag was raised and any reviewer notes. Detours & Closures offers "Mark review complete" beside the warning; Detour Reports shows the flag in the Readiness column and exports it in the CSV.
+
 ## [1.5.72] - 2026-09-03
 
 - **Stop "Needs information" from being a dead end.** An intake returned for information now stays open: Detour Intake shows it under its own tab with the reviewer's request, `PUT /detour-intake/{id}` updates the record and returns it to the OCC queue, and a reviewer can still withdraw, reject, or mark it duplicate. Open pending intakes can be edited in place; decided intakes are listed read-only with their decision, reviewer, and linked Detour or duplicate target. Review decisions on a record that has already been decided are refused with 409 instead of reporting "not found".

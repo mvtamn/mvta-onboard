@@ -770,6 +770,13 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<{ id: string; lifecycle_state: DetourLifecycleState; closure_reason: string }>(`/api/detours/${id}/close`, { method: "POST", body: JSON.stringify({ reason }) }, true);
     },
 
+    // Clears the needs_review flag detoursUpdate raises on material edits.
+    // The only way back to review_status = 'current'; audited in
+    // DetourWorkflowHistory.
+    completeDetourReview(id: string, notes?: string | null) {
+      return request<{ id: string; review_status: "current"; reviewed_by: string }>(`/api/detours/${id}/review-complete`, { method: "POST", body: JSON.stringify({ notes: notes ?? null }) }, true);
+    },
+
     deleteDetour(id: string) {
       return request<{ id: string; is_deleted: boolean }>(
         `/api/detours/${id}`,

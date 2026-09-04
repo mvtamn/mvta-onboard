@@ -18,6 +18,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.73",
+    date: "2026-09-03",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "A Detour flagged for OCC re-review after an edit can now be cleared. Mark review complete sits beside the warning on Detours & Closures, records who reviewed it in the workflow history, and Detour Reports shows and exports the flag.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.72",
     date: "2026-09-03",
     sections: [

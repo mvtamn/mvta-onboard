@@ -246,7 +246,7 @@ export function DetourReports() {
                       <td className="td-dim">{dateLabel(d.start_date)} – {dateLabel(d.end_date)}</td>
                       <td><span className={`pill-sm ${STATUS_PILL[d.status]}`}>{DETOUR_STATUS_LABELS[d.status]}</span></td>
                       <td className="td-dim">{d.fulfillment_mode === "avail" ? "Enter in Avail" : d.fulfillment_mode === "mobility_manual" ? "Mobility manual" : "Fixed-route manual"}</td>
-                      <td className="td-dim">{d.readiness === "ready_for_avail_entry" ? "Ready for Avail entry" : d.readiness === "avail_conflict" ? "Avail conflict" : d.readiness === "ready_for_manual_operations" ? "Ready for manual operations" : d.readiness === "closed" ? "Closed" : "Needs OCC review"}</td>
+                      <td className="td-dim">{d.readiness === "ready_for_avail_entry" ? "Ready for Avail entry" : d.readiness === "avail_conflict" ? "Avail conflict" : d.readiness === "ready_for_manual_operations" ? "Ready for manual operations" : d.readiness === "closed" ? "Closed" : "Needs OCC review"}{d.review_status === "needs_review" ? " · Needs OCC re-review" : ""}</td>
                       <td className="td-dim">{d.workflow_owner || "Unassigned"}</td>
                       <td className="td-dim">{d.communication_status === "published" ? "Ready / published" : d.communication_status === "draft" ? "Draft in progress" : d.communication_status === "needs_communication" ? "Needs communication" : "Not recorded"}</td>
                       <td className="td-dim">{d.lifecycle_state ? DETOUR_LIFECYCLE_LABELS[d.lifecycle_state] : "—"}</td>
