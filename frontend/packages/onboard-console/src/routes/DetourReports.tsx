@@ -18,6 +18,7 @@ import {
   type DetourFilters,
 } from "../lib/detourSearch.js";
 import { dateLabel, dateTimeLabel } from "../lib/detourDates.js";
+import { DetourOperationalRecord } from "../components/DetourOperationalRecord.js";
 
 // Detour Reports - Part B7 of detour-module-consolidated-plan.md.
 //
@@ -260,6 +261,7 @@ export function DetourReports() {
                       <tr>
                         <td colSpan={reportingReady ? 15 : 13}>
                           <div className="subcard" style={{ margin: "4px 0" }}>
+                            <DetourOperationalRecord detour={d} />
                             {d.riders_directed ? <p><b>Riders directed:</b> {d.riders_directed}</p> : null}
                             {d.segments.length === 0 ? (
                               <p className="muted">No route segments recorded.</p>

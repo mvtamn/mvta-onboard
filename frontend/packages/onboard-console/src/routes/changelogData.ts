@@ -18,6 +18,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.71",
+    date: "2026-09-03",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "Detours & Closures and Detour Reports now show the operational record an accepted intake carries — operating window, service impact, affected stops, action instructions, required audiences and channels, confirmation contact, and evidence. Search reaches these fields and the Reports CSV exports them.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.70",
     date: "2026-08-28",
     sections: [

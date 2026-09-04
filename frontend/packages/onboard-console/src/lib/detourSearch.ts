@@ -56,6 +56,14 @@ function haystack(d: Detour, reasonCodes: DetourReasonCode[]): string {
     d.reported_by,
     d.approved_by,
     d.resolution_notes,
+    d.action_instructions,
+    d.service_area,
+    d.affected_stops_and_stations,
+    d.operational_impacts,
+    d.confirmation_contact,
+    d.evidence_reference,
+    ...(d.notification_audiences ?? []),
+    ...(d.notification_channels ?? []),
     ...d.segments.flatMap((s) => [s.routes, s.directions]),
   ]
     .filter(Boolean)
@@ -118,7 +126,14 @@ const CSV_HEADERS = [
   "Reported by", "Reported at", "Approved by", "Approved at",
   "Email sent", "Expired email sent", "Spare emailed",
   "Radio", "Dispatch board", "Social media",
-  "Resolution notes", "Source", "Created by", "Created at",
+  "Resolution notes",
+  // Operational record carried from intake (migrations 057/069). Blank
+  // for detours entered directly on the Detours page, which never had it.
+  "Start time", "End time", "Window status", "Service impact", "Service area",
+  "Affected stops and stations", "Action instructions", "Operational impacts",
+  "Required audiences", "Required channels", "Confirmation contact",
+  "Evidence notes", "Evidence reference",
+  "Source", "Created by", "Created at",
 ];
 
 export function detoursToCsv(detours: Detour[], reasonCodes: DetourReasonCode[] = []): string {
@@ -150,6 +165,19 @@ export function detoursToCsv(detours: Detour[], reasonCodes: DetourReasonCode[] 
       d.dispatch_board_notified ? "Yes" : "No",
       d.social_media_notified ? "Yes" : "No",
       d.resolution_notes ?? "",
+      d.start_time ?? "",
+      d.end_time ?? "",
+      d.time_window_status ?? "",
+      d.service_impact ?? "",
+      d.service_area ?? "",
+      d.affected_stops_and_stations ?? "",
+      d.action_instructions ?? "",
+      d.operational_impacts ?? "",
+      (d.notification_audiences ?? []).join("; "),
+      (d.notification_channels ?? []).join("; "),
+      d.confirmation_contact ?? "",
+      d.evidence_notes ?? "",
+      d.evidence_reference ?? "",
       d.source === "avail" ? "Avail sync" : "Manual",
       d.created_by,
       d.created_at,

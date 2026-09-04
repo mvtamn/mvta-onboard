@@ -17,6 +17,7 @@ import { api } from "../config.js";
 import { resizeImageFile } from "../lib/imageResize.js";
 import { detourMatchesSearch } from "../lib/detourSearch.js";
 import { useAppDialog } from "../components/AppDialog.js";
+import { DetourOperationalRecord } from "../components/DetourOperationalRecord.js";
 import { dateLabel, dateTimeLabel, toDateInputValue } from "../lib/detourDates.js";
 
 const STATUS_TABS: { key: DetourStatus | "all"; label: string }[] = [
@@ -592,6 +593,7 @@ export function Detours() {
                             {d.communication_status ? <p><b>Communications:</b> {d.communication_status.replace("_", " ")}</p> : null}
                             {d.review_status === "needs_review" ? <p className="warn-note"><b>Needs OCC re-review:</b> {d.review_reason}</p> : null}
                             {canWrite && d.lifecycle_state !== "closed" ? <p><button className="btn-sm" onClick={() => closeDetour(d)}>Close detour</button></p> : null}
+                            <DetourOperationalRecord detour={d} />
                             {d.fulfillment_mode === "avail" && d.avail_entry_result ? (
                               <p><b>Avail entry:</b> {d.avail_entry_result.replace("_", " ")}
                                 {d.external_detour_id ? ` · ID ${d.external_detour_id}` : ""}

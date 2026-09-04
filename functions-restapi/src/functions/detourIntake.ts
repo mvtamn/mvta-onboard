@@ -2,7 +2,7 @@ import { app, type HttpRequest, type InvocationContext } from "@azure/functions"
 import { getPool, sql } from "../lib/db";
 import { DETOUR_INTAKE_ROLES, requireRole } from "../lib/auth";
 import { isGuid, validateCreateDetourIntake, validatePromoteDetourIntake, validateReviewDetourIntake } from "../lib/validation";
-import { toDateOnly } from "../lib/detourStatus";
+import { toDateOnly, toTimeOnly } from "../lib/detourStatus";
 import { detourNumberYear } from "../lib/detourNumbering";
 import { allocateDetourNumber } from "../lib/detourNumberAllocator";
 import type { DetourFulfillmentMode } from "../lib/types";
@@ -84,6 +84,8 @@ app.http("detourIntakeList", {
             ...row,
             proposed_start_date: toDateOnly(row.proposed_start_date),
             proposed_end_date: toDateOnly(row.proposed_end_date),
+            proposed_start_time: toTimeOnly(row.proposed_start_time),
+            proposed_end_time: toTimeOnly(row.proposed_end_time),
             notification_audiences: parseStringList(row.notification_audiences),
             notification_channels: parseStringList(row.notification_channels),
             segments: segmentsByIntake.get(row.id) ?? [],

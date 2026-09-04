@@ -816,6 +816,23 @@ export interface Detour extends DetourReportFields {
   review_status?: "current" | "needs_review";
   review_reason?: string | null;
   closure_reason?: string | null;
+  // Operational record carried over from Detour Intake at acceptance
+  // (migrations 057 and 069). Optional because GET /detours omits each
+  // group entirely when its columns are absent, the same way the reporting
+  // fields are handled. Times are HH:MM, dates YYYY-MM-DD.
+  action_instructions?: string | null;
+  notification_audiences?: string[];
+  notification_channels?: string[];
+  service_impact?: "fixed_route" | "mobility" | null;
+  service_area?: string | null;
+  evidence_notes?: string | null;
+  evidence_reference?: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
+  time_window_status?: "pending" | "estimated" | "confirmed" | null;
+  affected_stops_and_stations?: string | null;
+  operational_impacts?: string | null;
+  confirmation_contact?: string | null;
   segments: DetourSegment[];
 }
 

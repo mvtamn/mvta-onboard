@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.71] - 2026-09-03
+
+- **Show the operational record an accepted intake carries.** GET /detours now returns the fields acceptance writes onto the Detour — operating window times and status, service impact and area, affected stops, action instructions, operational impacts, required audiences and channels, confirmation contact, and evidence — instead of leaving them write-only. Detours & Closures and Detour Reports render them in the expanded row, search reaches them, and the Reports CSV exports them. TIME columns are serialized as HH:MM on both the detour and intake lists.
+
 ## [1.5.70] - 2026-08-28
 
 - **Rename the feed-health ledger to match what it holds.** Migration 086 renames `MissedTripFeedHealth` to `KpiFeedHealth`; it backs every KPI trust stream, not only missed trips. The application resolves the table name per call and accepts either, so the migration and the deployment can land in either order.

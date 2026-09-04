@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { computeDetourStatus, toDateOnly } from "./detourStatus";
+import { computeDetourStatus, toDateOnly, toTimeOnly } from "./detourStatus";
 
 const TODAY = "2026-08-10";
 
@@ -122,4 +122,22 @@ test("toDateOnly reduces every shape the driver can produce, and rejects junk", 
   assert.strictEqual(toDateOnly(""), null);
   assert.strictEqual(toDateOnly("not a date"), null);
   assert.strictEqual(toDateOnly(new Date("nonsense")), null);
+});
+
+test("toTimeOnly reduces the driver's 1970-pinned TIME Date to HH:MM", () => {
+  assert.strictEqual(toTimeOnly(new Date("1970-01-01T14:30:00.000Z")), "14:30");
+});
+
+test("toTimeOnly accepts HH:MM, HH:MM:SS, and ISO timestamp strings", () => {
+  assert.strictEqual(toTimeOnly("06:05"), "06:05");
+  assert.strictEqual(toTimeOnly("06:05:59"), "06:05");
+  assert.strictEqual(toTimeOnly("1970-01-01T22:15:00.000Z"), "22:15");
+});
+
+test("toTimeOnly returns null for empty, invalid, or non-time input", () => {
+  assert.strictEqual(toTimeOnly(null), null);
+  assert.strictEqual(toTimeOnly(undefined), null);
+  assert.strictEqual(toTimeOnly(""), null);
+  assert.strictEqual(toTimeOnly("noon"), null);
+  assert.strictEqual(toTimeOnly(new Date("garbage")), null);
 });

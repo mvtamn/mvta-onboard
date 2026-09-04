@@ -32,6 +32,20 @@ export function toDateOnly(value: Date | string | null | undefined): string | nu
   return /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : null;
 }
 
+// TIME columns come back from the driver as a Date pinned to 1970-01-01
+// UTC; only the wall-clock part means anything. Reduces that (or an
+// HH:MM[:SS] string) to HH:MM, which is what <input type="time"> and the
+// console's window labels both want.
+export function toTimeOnly(value: Date | string | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString().slice(11, 16);
+  }
+  if (typeof value !== "string") return null;
+  const m = /^(\d{2}:\d{2})(?::\d{2})?/.exec(value.includes("T") ? value.slice(value.indexOf("T") + 1) : value);
+  return m ? m[1] : null;
+}
+
 export interface DetourStatusInput {
   start_date: Date | string | null;
   end_date: Date | string | null;
