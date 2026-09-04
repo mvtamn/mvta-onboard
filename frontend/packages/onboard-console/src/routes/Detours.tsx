@@ -18,6 +18,7 @@ import { useAppDialog } from "../components/AppDialog.js";
 import { DetourOperationalRecord } from "../components/DetourOperationalRecord.js";
 import { DetourWorkflowHistorySection } from "../components/DetourWorkflowHistorySection.js";
 import { DetourAttachmentsSection } from "../components/DetourAttachments.js";
+import { audiencePlan, draftCommunicationText, nextAudience } from "../lib/detourCommunicationDraft.js";
 import { dateLabel, dateTimeLabel, toDateInputValue } from "../lib/detourDates.js";
 
 const STATUS_TABS: { key: DetourStatus | "all"; label: string }[] = [
@@ -619,7 +620,7 @@ export function Detours() {
                             {canWrite && d.fulfillment_mode === "avail" && d.lifecycle_state === "fulfillment_failed" ? (
                               <p><button className="btn-sm" onClick={() => useManualFallback(d)}>Use fixed-route manual exception</button></p>
                             ) : null}
-                            <DetourCommunicationsSection detourId={d.id} canWrite={canWrite} />
+                            <DetourCommunicationsSection detour={d} canWrite={canWrite} />
                             {numberYearMismatch(d.internal_number, d.start_date) ? (
                               <p className="warn-note">
                                 This detour's internal reference was issued for{" "}
@@ -716,39 +717,106 @@ export function Detours() {
   );
 }
 
-function DetourCommunicationsSection({ detourId, canWrite }: { detourId: string; canWrite: boolean }) {
+// Communications for one Detour. The intake named the audiences and
+// channels this record must reach; the composer works through that list
+// (detourCommunicationDraft.ts) instead of taking free text, because the
+// server clears "needs communication" only when every required audience
+// has a published communication under exactly that name. Free text is
+// still available for an audience the record did not anticipate.
+const OTHER = "__other__";
+function DetourCommunicationsSection({ detour, canWrite }: { detour: Detour; canWrite: boolean }) {
   const [communications, setCommunications] = useState<import("@mvta/shared").DetourCommunication[]>([]);
-  const [audience, setAudience] = useState("Operations");
-  const [channel, setChannel] = useState("email");
+  const [audienceChoice, setAudienceChoice] = useState<string>("");
+  const [audienceOther, setAudienceOther] = useState("");
+  const [channelChoice, setChannelChoice] = useState<string>("");
+  const [channelOther, setChannelOther] = useState("");
   const [recipients, setRecipients] = useState("");
   const [content, setContent] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const load = () => api.getDetourCommunications(detourId).then((r) => setCommunications(r.communications)).catch(() => setError("Could not load communications"));
-  useEffect(() => { void load(); }, [detourId]);
+  const [saving, setSaving] = useState(false);
+
+  const plan = audiencePlan(detour, communications);
+  const requiredChannels = detour.notification_channels ?? [];
+  const audience = audienceChoice === OTHER ? audienceOther.trim() : audienceChoice;
+  const channel = channelChoice === OTHER ? channelOther.trim() : channelChoice;
+
+  const load = () => api.getDetourCommunications(detour.id).then((r) => setCommunications(r.communications)).catch(() => setError("Could not load communications"));
+  useEffect(() => { void load(); }, [detour.id]);
+
+  // Open the composer on the next unmet audience whenever the plan changes
+  // and nothing has been chosen yet (first load, or after a publish that
+  // satisfied the current choice).
+  useEffect(() => {
+    if (audienceChoice && audienceChoice !== OTHER && plan.some((p) => p.audience === audienceChoice && p.progress !== "published")) return;
+    const next = nextAudience(plan);
+    if (next) { setAudienceChoice(next.audience); if (!channelChoice) setChannelChoice(next.channels[0] ?? OTHER); }
+    else if (!audienceChoice) { setAudienceChoice(plan.length ? plan[0].audience : OTHER); if (!channelChoice) setChannelChoice(requiredChannels[0] ?? OTHER); }
+  }, [communications, detour.notification_audiences, detour.notification_channels]);
+
+  function startDraft(forAudience: string) {
+    setAudienceChoice(forAudience);
+    if (!channelChoice || channelChoice === OTHER) setChannelChoice(requiredChannels[0] ?? OTHER);
+    setContent(draftCommunicationText(detour, forAudience));
+    setError(null);
+  }
+
   async function save() {
-    if (!content.trim()) return;
+    if (!audience || !channel || !content.trim()) return;
+    setSaving(true); setError(null);
     try {
-      await api.createDetourCommunication(detourId, { audience, channel, recipients: recipients || null, content });
+      await api.createDetourCommunication(detour.id, { audience, channel, recipients: recipients || null, content });
       setContent(""); setRecipients(""); await load();
     } catch (err) { setError(err instanceof ApiError ? err.message : "Could not save communication"); }
+    finally { setSaving(false); }
   }
   async function publish(id: string) {
-    try { await api.publishDetourCommunication(detourId, id); await load(); }
+    try { await api.publishDetourCommunication(detour.id, id); await load(); }
     catch (err) { setError(err instanceof ApiError ? err.message : "Could not publish communication"); }
   }
+
   return <div className="subcard" style={{ marginTop: "8px" }}>
     <b>Communications</b>{error ? <p className="error-text">{error}</p> : null}
+    {plan.length > 0 ? (
+      <div className="intake-checklist" aria-label="Required communications">
+        <strong>Required by the record</strong>
+        <ul>{plan.map((item) => <li key={item.audience}>
+          <span className={item.progress === "published" ? "ok-text" : item.progress === "draft" ? "" : "warn-note"}>
+            {item.progress === "published" ? "✓" : item.progress === "draft" ? "◐" : "○"} {item.audience}
+          </span>
+          <span className="td-dim"> — {item.progress === "published" ? "published" : item.progress === "draft" ? "draft saved, not published" : "nothing drafted"}{item.channels.length ? ` · via ${item.channels.join(", ")}` : ""}</span>
+          {canWrite && item.progress !== "published" ? <> <button type="button" className="btn-sm" onClick={() => startDraft(item.audience)}>{item.progress === "draft" ? "Draft another" : "Draft"}</button></> : null}
+        </li>)}</ul>
+      </div>
+    ) : <p className="td-dim">The record names no required audiences; communications here are recorded but do not change its communication status.</p>}
     {communications.map((communication) => <p key={communication.id}>
       <b>{communication.audience} · {communication.channel}:</b> {communication.status}
       {communication.recipients ? ` · ${communication.recipients}` : ""}
-      {canWrite && communication.status === "draft" ? <button className="btn-sm" onClick={() => publish(communication.id)}>Publish</button> : null}
+      {communication.published_by ? <span className="td-dim"> · {communication.published_by}{communication.published_at ? ` ${dateTimeLabel(communication.published_at)}` : ""}</span> : null}
+      {canWrite && communication.status === "draft" ? <> <button className="btn-sm" onClick={() => publish(communication.id)}>Publish</button></> : null}
     </p>)}
     {canWrite ? <div className="form-grid">
-      <label>Audience<input value={audience} onChange={(e) => setAudience(e.target.value)} /></label>
-      <label>Channel<input value={channel} onChange={(e) => setChannel(e.target.value)} /></label>
+      <label>Audience
+        <select value={audienceChoice} onChange={(e) => setAudienceChoice(e.target.value)}>
+          {plan.map((item) => <option key={item.audience} value={item.audience}>{item.audience}{item.progress === "published" ? " (published)" : ""}</option>)}
+          <option value={OTHER}>Other…</option>
+        </select>
+        {audienceChoice === OTHER ? <input value={audienceOther} onChange={(e) => setAudienceOther(e.target.value)} placeholder="Audience not named on the record" /> : null}
+      </label>
+      <label>Channel
+        <select value={channelChoice} onChange={(e) => setChannelChoice(e.target.value)}>
+          {requiredChannels.map((item) => <option key={item} value={item}>{item}</option>)}
+          <option value={OTHER}>Other…</option>
+        </select>
+        {channelChoice === OTHER ? <input value={channelOther} onChange={(e) => setChannelOther(e.target.value)} placeholder="email, radio, Teams…" /> : null}
+      </label>
       <label>Recipients<input value={recipients} onChange={(e) => setRecipients(e.target.value)} placeholder="Distribution list or team" /></label>
-      <label>Message<textarea value={content} onChange={(e) => setContent(e.target.value)} /></label>
-      <button className="btn-sm" onClick={save}>Save communication draft</button>
+      <label>Message
+        <textarea value={content} rows={6} onChange={(e) => setContent(e.target.value)} placeholder="Use Draft beside an audience to start from the record" />
+      </label>
+      <span>
+        <button type="button" className="btn-sm" onClick={() => setContent(draftCommunicationText(detour, audience || undefined))}>Fill from record</button>{" "}
+        <button className="btn-sm" disabled={saving || !audience || !channel || !content.trim()} onClick={save}>{saving ? "Saving…" : "Save communication draft"}</button>
+      </span>
     </div> : null}
   </div>;
 }

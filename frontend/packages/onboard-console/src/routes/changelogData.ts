@@ -18,6 +18,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.82",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Added",
+        items: [
+          "Detour communications now start from the record: a checklist of the audiences the intake required with their progress, a Draft button per audience that fills in audience, channel, and a message built from the Detour's details, and audience and channel choices limited to what the record names.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.81",
     date: "2026-09-04",
     sections: [
