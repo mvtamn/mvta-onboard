@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.78] - 2026-09-04
+
+- **Parse the legacy import like a spreadsheet, not a split on commas.** The importer split each line on `,` and assumed a fixed column order, so any closure containing a comma - most of them - shifted every following cell, and re-importing this page's own export corrupted it. `lib/legacyDetourImport.ts` parses CSV per RFC 4180 (quoted commas, doubled quotes, embedded line breaks, BOM, CRLF) and maps columns by header name with aliases covering the tracker's headings, the JSON field names, and the Reports export. Rows without closure text are skipped and reported by sheet row; unrecognised columns are kept on the row and named. Covered by 12 tests including an export round-trip.
+
 ## [1.5.77] - 2026-09-04
 
 - **Show what the legacy import actually imported.** `GET /detours/historical-imports` existed but nothing read it, so uploaded tracker rows were unreachable. Detour Reports now lists them under Legacy spreadsheet history, grouped by source file with the importer and date, and the page search covers them. The uploader is shown only to detour write roles, matching the server, rather than offering read-only users a control that 403s. The list endpoint returns named columns instead of `SELECT *`, keeping `raw_row_json` server-side.

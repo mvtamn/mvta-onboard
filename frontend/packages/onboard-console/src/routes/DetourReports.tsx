@@ -20,6 +20,7 @@ import {
   type DetourFilters,
 } from "../lib/detourSearch.js";
 import { dateLabel, dateTimeLabel } from "../lib/detourDates.js";
+import { parseLegacyImportFile } from "../lib/legacyDetourImport.js";
 import { availEntryLabel, communicationStatusLabel, createdByLabel, fulfillmentPathLabel, readinessLabel, sourceLabel, workflowLabel } from "../lib/detourLabels.js";
 import { DetourOperationalRecord } from "../components/DetourOperationalRecord.js";
 import { DetourWorkflowHistorySection } from "../components/DetourWorkflowHistorySection.js";
@@ -125,17 +126,23 @@ export function DetourReports() {
   }
 
   async function importLegacyFile(file: File) {
+    setImportMessage(null);
     try {
-      const text = await file.text();
-      const rows = file.name.toLowerCase().endsWith(".json") ? JSON.parse(text) : text.trim().split(/\r?\n/).slice(1).map((line) => {
-        const values = line.split(",");
-        return { reference: values[0], closure: values[1], service_date: values[2], routes: values[3], communication_audience: values[4], communication_channel: values[5], communication_recipients: values[6], communication_content: values.slice(7).join(",") };
-      });
-      const result = await api.importHistoricalDetours({ source_file: file.name, rows: Array.isArray(rows) ? rows : rows.rows });
-      setImportMessage(`Imported ${result.imported_rows} historical rows. They remain historical evidence and do not become approvals.`);
+      const parsed = parseLegacyImportFile(file.name, await file.text());
+      if (parsed.rows.length === 0) {
+        setImportMessage(parsed.skipped_rows.length ? `Nothing imported: none of the ${parsed.skipped_rows.length} rows in ${file.name} had closure text.` : `Nothing imported: ${file.name} has no data rows.`);
+        return;
+      }
+      const result = await api.importHistoricalDetours({ source_file: file.name, rows: parsed.rows });
+      const notes = [
+        `Imported ${result.imported_rows} historical rows from ${file.name}. They remain historical evidence and do not become approvals.`,
+        parsed.skipped_rows.length ? `Skipped ${parsed.skipped_rows.length} row${parsed.skipped_rows.length === 1 ? "" : "s"} with no closure text (sheet row${parsed.skipped_rows.length === 1 ? "" : "s"} ${parsed.skipped_rows.slice(0, 10).join(", ")}${parsed.skipped_rows.length > 10 ? "…" : ""}).` : null,
+        parsed.unmapped_columns.length ? `Kept unrecognised column${parsed.unmapped_columns.length === 1 ? "" : "s"} ${parsed.unmapped_columns.join(", ")} with each row but did not map them.` : null,
+      ].filter(Boolean);
+      setImportMessage(notes.join(" "));
       setShowLegacy(true);
       loadHistorical();
-    } catch (err) { setImportMessage(err instanceof ApiError ? err.message : "Could not import the historical file"); }
+    } catch (err) { setImportMessage(err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Could not import the historical file"); }
   }
 
   return (
@@ -234,6 +241,7 @@ export function DetourReports() {
             </button>
           </div>
           <p className="td-dim">Rows from the retired Excel tracker, kept as historical tracking and communication evidence. Imported rows are never treated as current approvals. The search box above reaches them.</p>
+          {canImport ? <p className="td-dim">Upload a CSV with a header row (columns are matched by name - closure is required; reference, service date, routes, audience, channel, recipients, content, and sent date are recognised) or a JSON array of rows.</p> : null}
           {canImport ? (
             <>
               <input type="file" accept=".csv,.json" onChange={(e) => { const file = e.target.files?.[0]; if (file) void importLegacyFile(file); }} />
