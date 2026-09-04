@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.74] - 2026-09-04
+
+- **Report feed health from what each poll stored, across the remaining pollers.** The stored-count rule added for Avail Pullout is now shared, and applied to Avail OTP Daily, OTP Monthly, Missed Trips, and GTFS-RT VehiclePositions. Each recorded the number of records fetched, so a run could fetch cleanly, fail every write, and still advance `last_success_at` at full volume while clearing the previous run's recorded failure.
+- **Stop an unmappable Avail Missed Trips fetch from erasing the months it reloads.** The reload deletes its target months before inserting, so a fetch whose reports all failed to map wiped months of retained evidence and reported a clean run. The retained rows are now held and the run is recorded as a failure.
+- **Do not let a VehiclePosition run with no recorded evidence prove no-show coverage.** Feed health was recorded before the evidence writes ran, from the entity count, so a poll whose evidence writes all failed still left coverage proven - and the silent-no-show detector would read missing evidence as real no-shows. Coverage now fails closed and those trips wait as `unknown_data_gap`.
+
 ## [1.5.73] - 2026-09-04
 
 - **Report Fixed Route Departures feed health from what was stored, not what was fetched.** The Avail Pullout poll recorded the number of reports the feed returned, so a run that fetched cleanly and then failed every upsert still advanced `last_success_at` at full volume and left the KPI reading Current with nothing behind it. The ledger now carries the stored count, which is what the trust contract reads. Storing nothing from a non-empty fetch is recorded as a feed failure rather than an empty success, so a total ingestion loss names itself; a partial loss stays a successful run, counted honestly and warned about. An empty fetch is unchanged - overnight polls return nothing by design and remain Current-but-empty per ADR 0027.

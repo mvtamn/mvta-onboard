@@ -18,6 +18,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.74",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "Feed health for OTP Daily, OTP Monthly, Avail Missed Trips and vehicle positions now reflects what each poll actually recorded rather than what the source returned, so a run that stores nothing is reported as a failure instead of a healthy one.",
+          "A missed-trip reload whose reports cannot be read no longer erases the months it was refreshing; the retained evidence is kept and the run is reported as a failure.",
+          "A vehicle-position poll that records no operational evidence no longer counts as proof that trip-start coverage was available, so trips with no evidence wait for data instead of being treated as no-shows.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.73",
     date: "2026-09-04",
     sections: [
