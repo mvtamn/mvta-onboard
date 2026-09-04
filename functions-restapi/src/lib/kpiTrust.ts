@@ -181,3 +181,21 @@ export function missedTripFeedDependencies(
   }
   return [...merged.values()].sort((a, b) => a.feed_name.localeCompare(b.feed_name));
 }
+
+// The freshness verdict for the one feed that can positively prove a
+// scheduled fixed-route trip actually started. The silent-no-show detector
+// infers a missed trip from the ABSENCE of vehicle-start evidence, so it must
+// be able to tell an absent trip from an absent feed - resolved here, against
+// the same fixed_route_missed_trips contract the trust banner shows, so the
+// detector and the banner cannot disagree about whether positions were usable.
+export function underwayEvidenceCoverage(
+  records: readonly KpiFeedHealth[],
+  now = new Date(),
+): KpiTrustDependency {
+  const resolved = resolveKpiTrust(records, now).fixed_route_missed_trips.dependencies.find(
+    (item) => item.feed_name === "gtfs_vehicle_positions",
+  );
+  // The contract declares it required, so this is unreachable; failing closed
+  // (treating coverage as unproven) is the safe reading if that ever changes.
+  return resolved ?? dependency("gtfs_vehicle_positions", true, undefined, undefined, now);
+}

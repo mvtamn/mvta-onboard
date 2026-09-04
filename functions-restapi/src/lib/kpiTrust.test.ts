@@ -1,6 +1,11 @@
 import assert from "node:assert";
 import { test } from "node:test";
-import { missedTripFeedDependencies, resolveKpiTrust, type KpiFeedHealth } from "./kpiTrust";
+import {
+  missedTripFeedDependencies,
+  resolveKpiTrust,
+  underwayEvidenceCoverage,
+  type KpiFeedHealth,
+} from "./kpiTrust";
 
 const now = new Date("2026-08-27T18:00:00.000Z");
 
@@ -192,4 +197,28 @@ test("a feed required by one missed-trip stream stays required after deduplicati
 
   assert.strictEqual(dependencies.find((d) => d.feed_name === "spare_requests")?.required, true);
   assert.strictEqual(dependencies.find((d) => d.feed_name === "gtfs_trip_updates")?.required, true);
+});
+
+test("underway evidence counts as proven only while the vehicle-position feed is current", () => {
+  const fresh = underwayEvidenceCoverage([health("gtfs_vehicle_positions", 3)], now);
+
+  assert.strictEqual(fresh.state, "current");
+  assert.strictEqual(fresh.required, true);
+  assert.strictEqual(fresh.stale_after_minutes, 15);
+});
+
+test("underway evidence is not proven when the vehicle-position feed is past its contract", () => {
+  // The silent-no-show detector reads absence of first_underway_at as "the
+  // trip never ran". Past the 15-minute contract that absence is the feed's,
+  // not the trip's.
+  const stale = underwayEvidenceCoverage([health("gtfs_vehicle_positions", 40)], now);
+
+  assert.strictEqual(stale.state, "stale");
+});
+
+test("underway evidence is not proven when the vehicle-position feed has never delivered", () => {
+  const missing = underwayEvidenceCoverage([health("gtfs_trip_updates", 3)], now);
+
+  assert.strictEqual(missing.state, "unavailable");
+  assert.strictEqual(missing.last_success_at, null);
 });
