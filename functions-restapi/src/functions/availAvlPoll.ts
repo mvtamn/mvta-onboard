@@ -14,7 +14,7 @@ import { detectEventGeofenceCrossings } from "../lib/eventGeofenceDetection";
 import { detectMonitoringAreaTests } from "../lib/monitoringAreaTest";
 import { detectionWindowSeconds, shouldAcceptObservation } from "../lib/eventProcessing";
 import { recordEventHealth, recordTelemetryDiagnostic } from "../lib/eventHealth";
-import { recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
+import { feedHealthOutcome, recordFeedFailure, recordFeedHealth, type FeedHealthOutcome } from "../lib/kpiFeedHealth";
 
 type PollPool = Awaited<ReturnType<typeof getPool>>;
 
@@ -65,6 +65,39 @@ async function claimPollLease(pool: Awaited<ReturnType<typeof getPool>>, moduleN
       AND (last_run_at IS NULL OR last_run_at <= DATEADD(SECOND, -@interval, SYSUTCDATETIME()));
   `);
   return lease.recordset.length > 0;
+}
+
+// What an Avail AVL run should write to the KPI feed-health ledger.
+//
+// reports.length asserted a full delivery whatever became of it, so a run that
+// fetched cleanly and then failed every MERGE still advanced last_success_at at
+// full volume and cleared the previous run's recorded failure. avail_avl is the
+// only required feed behind event_avl, and its two-minute contract is what
+// Event AVL monitoring trusts to say vehicle positions are live.
+//
+// The count that matters is what reached AvailAvlVehiclePositions, but the
+// shortfall against the fetched count is not all loss. shouldAcceptObservation
+// declines observations no newer than the row already held, which is correct
+// behaviour on a latest-state table rather than a failed write, so those are
+// subtracted before the shared rule is applied and a run can only be called
+// failed for attempts that genuinely did not land. That comparison is >=, so an
+// unchanged position is still written: declining every report means every one
+// arrived out of order, which is worth surfacing as an empty run rather than
+// hiding behind the fetched count.
+//
+// Reports carrying no usable position never become an attempt at all, so they
+// are judged separately. A delivery of nothing usable is a source failure, not
+// a quiet run - without this it would read as an attempt-free success.
+export function avlHealthOutcome(
+  reportCount: number,
+  mappedCount: number,
+  attemptedWrites: number,
+  storedCount: number,
+): FeedHealthOutcome {
+  if (reportCount > 0 && mappedCount === 0) {
+    return { kind: "failure", reason: `Fetched ${reportCount} AVL reports but none carried usable position data.` };
+  }
+  return feedHealthOutcome(attemptedWrites, storedCount, "AVL positions");
 }
 
 export function eventVehicleProjectionSql(): string {
@@ -159,6 +192,13 @@ app.timer("availAvlPoll", {
     `);
 
     let upsertedCount = 0;
+    // Kept apart because they mean different things to feed health: a report
+    // with no usable position and a MERGE that threw are losses, while
+    // shouldAcceptObservation declining an out-of-order observation is this
+    // poller doing its job on a latest-state table.
+    let mappedCount = 0;
+    let attemptedWrites = 0;
+    let staleSkips = 0;
     let coverageStartMs = Number.POSITIVE_INFINITY;
     let coverageEndMs = Number.NEGATIVE_INFINITY;
 
@@ -175,6 +215,7 @@ app.timer("availAvlPoll", {
         await safeDiagnostic(pool, "shared_avl_ingestion", "invalid_report", "Avail AVL report was missing usable position data.", Number(report.Vehicle));
         continue;
       }
+      mappedCount++;
       coverageStartMs = Math.min(coverageStartMs, mapped.report_timestamp.getTime());
       coverageEndMs = Math.max(coverageEndMs, mapped.report_timestamp.getTime());
       if (mapped.latitude < 43 || mapped.latitude > 46 || mapped.longitude < -95.5 || mapped.longitude > -92) {
@@ -185,7 +226,11 @@ app.timer("availAvlPoll", {
         const current = (await pool.request().input("vehicle_id", sql.Int, mapped.vehicle_id).query<{ report_timestamp: Date }>(
           "SELECT report_timestamp FROM AvailAvlVehiclePositions WHERE vehicle_id=@vehicle_id",
         )).recordset[0];
-        if (!shouldAcceptObservation(current, mapped)) continue;
+        if (!shouldAcceptObservation(current, mapped)) {
+          staleSkips++;
+          continue;
+        }
+        attemptedWrites++;
         const request = pool.request();
         request.input("vehicle_id", sql.Int, mapped.vehicle_id);
         request.input("route", sql.Int, mapped.route);
@@ -253,11 +298,25 @@ app.timer("availAvlPoll", {
 
     context.log(
       `Avail AVL Reports poll: ${reports.length} reports seen, ${upsertedCount} vehicles upserted, ` +
+      `${staleSkips} out-of-order observations declined, ` +
       `${eventDue ? "event projection due" : "event projection deferred"}.`,
     );
     if (sharedDue) {
+      const outcome = avlHealthOutcome(reports.length, mappedCount, attemptedWrites, upsertedCount);
+      if (outcome.kind === "failure") {
+        context.error(`Avail AVL Reports poll: ${outcome.reason}`);
+        try {
+          await recordFeedFailure(pool, "avail_avl", new Error(outcome.reason));
+        } catch (healthError) {
+          context.error("Failed to record Avail AVL feed failure:", healthError);
+        }
+        return;
+      }
+      if (outcome.unstoredCount > 0) {
+        context.warn(`Avail AVL Reports poll: ${outcome.unstoredCount} of ${attemptedWrites} attempted position writes did not land.`);
+      }
       try {
-        await recordFeedHealth(pool, "avail_avl", reports.length, null, {
+        await recordFeedHealth(pool, "avail_avl", outcome.entityCount, null, {
           // An empty successful request still covers the requested window.
           startAt: Number.isFinite(coverageStartMs) ? new Date(coverageStartMs) : twoMinutesAgo,
           endAt: Number.isFinite(coverageEndMs) ? new Date(coverageEndMs) : now,

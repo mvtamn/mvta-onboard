@@ -36,10 +36,12 @@ export async function feedHealthTable(pool: sql.ConnectionPool): Promise<FeedHea
 // An empty fetch is untouched: per ADR 0027 a successful run with no records is
 // Current-but-empty, not a fault.
 //
-// This rule only fits a poller whose skipped records are failures. Where a
-// poller deliberately skips records it had no reason to write - availAvlPoll
-// discarding a stale observation, or a position with no trip to attach to -
-// storedCount is not a loss count and this must not be used to call the run
+// `received` must therefore be the count this run intended to write, not the
+// count it fetched. Where a poller deliberately skips records it had no reason
+// to write - availAvlPoll declining an out-of-order observation, or a vehicle
+// position with no trip to attach to - those are subtracted first, so the
+// shortfall this reports is loss and nothing else. Passing a raw fetched count
+// through a poller that skips deliberately would call a healthy quiet run
 // failed.
 export type FeedHealthOutcome =
   | { kind: "failure"; reason: string }

@@ -18,6 +18,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.75",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "Event AVL feed health now reflects the vehicle positions actually recorded rather than the number the feed returned, and a poll that delivers nothing usable is reported as a failure. Positions the poller correctly declines as out of order are not counted against it.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.74",
     date: "2026-09-04",
     sections: [
