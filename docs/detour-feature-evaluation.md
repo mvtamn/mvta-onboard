@@ -2,7 +2,7 @@
 
 **Evaluation date:** 2026-09-04 (supersedes the 2026-08-10 evaluation)  
 **Scope:** REST API, SQL migrations, staff console (Detours & Closures, Detour Intake, Detour Reports, Administration), Avail integration, and deployment notes.  
-**Tree evaluated:** branch `claude/intelligent-vaughan-fd0fc9` as proposed in PR #137 (console v1.5.80).
+**Tree evaluated:** branch `claude/intelligent-vaughan-fd0fc9` as proposed in PR #137 (console v1.5.81).
 
 **Verification:** `functions-restapi` builds clean and passes `npm test` with **455/455** (one pre-existing skip). The frontend workspace typechecks across shared, rider-app, and onboard-console; the onboard-console production build succeeds; `npm test` passes **156/156**. These are source, build, and unit checks. They do not prove that deployment-dependent resources or live Avail data are configured, and no browser session was run against a live API.
 
@@ -43,7 +43,7 @@ intake aids. Attachments and the Avail feed remain deployment-dependent.
 | Communications (internal drafts) | **Partially implemented** | Per-detour communication drafts with audience/channel/recipients/content and a publish action; `communication_status` derived by comparing published audiences to the required list. No recipient-group model, no sender integration (email/Teams), no immutable sent-body snapshot, and the composer does not prefill from the required audiences. |
 | Contractor notification | **Not implemented** | Design B15: no contractor recipient list or send path. |
 | Avail Detours synchronization | **Implemented in source; live behavior unconfirmed** | 15-minute timer (`availDetoursSync.ts`), upsert by external DetourID, last-seen tracking, manual-edit protection. Live feed shape and non-zero behavior still need confirmation per `HANDOFF.md`. |
-| Image/document attachments | **Implemented in source; deployment-dependent** | Private Blob/SAS upload and read for detours and intake (`DetourImages`), daily purge timer. Storage account, app setting, RBAC, and CORS still need provisioning (`infra-phase1/modules/storage-detour-images.bicep`). The console's detour view renders every attachment as an `<img>`; PDFs accepted at intake show as broken images after acceptance. |
+| Image/document attachments | **Implemented in source; deployment-dependent** | Private Blob/SAS upload and read for detours and intake (`DetourImages`), daily purge timer. Images render as thumbnails and documents as file tiles on Detours & Closures (editable) and Detour Reports (read-only); the accept list matches intake. Storage account, app setting, RBAC, and CORS still need provisioning (`infra-phase1/modules/storage-detour-images.bicep`). |
 | Role separation | **Implemented** | Read / intake (admin) / write / delete separated server-side and mirrored in the console; import and re-review controls hidden from roles that would 403. |
 | Clone/re-establish | **Partially implemented** | Console pre-fills a new record and clears dates, sent flags, approval, and resolution. No backend clone endpoint, source linkage, or history row on the new record. |
 | Conflict override with reason | **Not implemented** | Duplicate detection warns at intake, but there is no per-stop/segment conflict check on the authoritative Detour and no recorded override reason. (Events have this; detours do not.) |
@@ -58,8 +58,7 @@ intake aids. Attachments and the Avail feed remain deployment-dependent.
    performs that backfill.
 2. **Attachments are unavailable until storage is provisioned.** Deploy the
    bicep module, set `DETOUR_IMAGES_STORAGE_ACCOUNT`, grant the Function App
-   identity Blob Data Contributor, verify CORS. Then fix the console's
-   attachment renderer for non-image files.
+   identity Blob Data Contributor, verify CORS.
 3. **The Avail timer is not proof of synchronization.** Inspect timer output
    for mapped records; an empty response is not evidence that no detours exist.
 4. **Reason categories and reporting fields are provisional** until reconciled
@@ -80,8 +79,7 @@ intake aids. Attachments and the Avail feed remain deployment-dependent.
 
 - Apply migration 088 to dev; confirm the `riders_directed` backfill on the
   promoted Detours.
-- Provision the attachment store and fix non-image rendering on the Detours
-  page (render PDFs/documents as links, accept them on upload).
+- Provision the attachment store and confirm upload, read, and purge end to end.
 - Confirm the Avail timer against live data and record the observed feed shape.
 - Reconcile reason categories and reporting fields with the MVTA form.
 
@@ -107,9 +105,10 @@ intake aids. Attachments and the Avail feed remain deployment-dependent.
 The 2026-08-10 evaluation listed conflict/duplicate warnings, notification
 drafts, and spreadsheet migration as not implemented, and did not cover
 communications, closure, historical import, re-review, or the intake queue.
-PR #137 (ten commits, v1.5.71–1.5.80) added the operational record read path,
+PR #137 (eleven commits, v1.5.71–1.5.81) added the operational record read path,
 the needs-information workflow, re-review clearance, CSV/table parity, removal
 of twelve client methods with no server, workflow history and reason-code
 admin in the console, `Detours.location`, legacy-import listing and a real
-CSV parser, likely-duplicate detection, and a testable intake column list.
+CSV parser, likely-duplicate detection, a testable intake column list, and
+type-aware attachment rendering.
 This document reflects the tree after those changes.
