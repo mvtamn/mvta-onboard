@@ -8,6 +8,7 @@ on:
       - ".github/workflows/frontend.yml"
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, closed]
     paths:
       - "frontend/**"
   workflow_dispatch:
@@ -17,6 +18,7 @@ permissions:
 
 jobs:
   build-and-deploy:
+    if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -73,3 +75,25 @@ jobs:
           # api.yml as a Function App, not as a Static Web Apps managed API -
           # so no api-skip input is needed (and the action has none).
           skip_app_build: true
+
+  close-pull-request:
+    # A PR build opens a staging environment on each SWA (one per app) that
+    # is never cleaned up otherwise, so they accumulate release over release
+    # until the SWA hits its max-staging-environments quota and every PR
+    # build starts failing at the deploy step (see PR #124). Closing the
+    # environment here when the PR closes/merges keeps that from recurring.
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - app: rider-app
+            token_secret: SWA_TOKEN_RIDERAPP
+          - app: onboard-console
+            token_secret: SWA_TOKEN_ONBOARD
+    steps:
+      - name: Close SWA staging environment (${{ matrix.app }})
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets[matrix.token_secret] }}
+          action: close

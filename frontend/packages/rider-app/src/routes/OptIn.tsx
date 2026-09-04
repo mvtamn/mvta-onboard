@@ -121,7 +121,11 @@ export function OptIn() {
           <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
           <span>
             I agree to receive automated service alerts from MVTA. Message and data rates may
-            apply. Reply STOP to unsubscribe, HELP for help.
+            apply. Reply STOP to unsubscribe, HELP for help. See MVTA&rsquo;s{" "}
+            <a href="https://www.mvta.com/policies/" target="_blank" rel="noopener noreferrer">
+              Privacy Policy &amp; Terms
+            </a>
+            .
           </span>
         </label>
 
