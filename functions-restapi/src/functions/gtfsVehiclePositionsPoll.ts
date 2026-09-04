@@ -13,7 +13,7 @@ import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchVehiclePositionFeed, mapVehiclePositionEntity } from "../lib/gtfsVehiclePositions";
 import { agencyServiceDate } from "../lib/missedTripTime";
-import { recordFeedHealth } from "../lib/kpiFeedHealth";
+import { recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
 
 app.timer("gtfsVehiclePositionsPoll", {
   schedule: "0 */5 * * * *",
@@ -28,7 +28,17 @@ app.timer("gtfsVehiclePositionsPoll", {
     try {
       feed = await fetchVehiclePositionFeed(feedUrl);
     } catch (err) {
+      // Returning without recording leaves the ledger on its last success, so
+      // a feed that has been failing for hours reads exactly like one that is
+      // merely between runs. gtfs_vehicle_positions is required by the
+      // fixed-route missed-trip contract, and it supplies the underway
+      // evidence that keeps a running trip from being called a no-show.
       context.error("Failed to fetch GTFS-RT VehiclePosition feed:", err);
+      try {
+        await recordFeedFailure(await getPool(), "gtfs_vehicle_positions", err);
+      } catch (healthError) {
+        context.error("Failed to record VehiclePosition feed failure:", healthError);
+      }
       return;
     }
 

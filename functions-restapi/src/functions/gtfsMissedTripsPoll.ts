@@ -40,7 +40,7 @@ import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchTripUpdateFeed, mapCanceledTrip, type CanceledTrip } from "../lib/gtfsTripUpdates";
 import { agencyServiceDate, serviceDateAndGtfsSecondsToUtc } from "../lib/missedTripTime";
-import { recordFeedHealth } from "../lib/kpiFeedHealth";
+import { recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
 
 const GRACE_MINUTES = 30; // ops definition: never-ran OR started >30 min late = missed
 const GRACE_SECONDS = GRACE_MINUTES * 60;
@@ -309,6 +309,11 @@ app.timer("gtfsMissedTripsPoll", {
       feed = await fetchTripUpdateFeed(feedUrl);
     } catch (err) {
       context.error("Failed to fetch GTFS-RT TripUpdate feed:", err);
+      try {
+        await recordFeedFailure(await getPool(), "gtfs_trip_updates", err);
+      } catch (healthError) {
+        context.error("Failed to record TripUpdate feed failure:", healthError);
+      }
       return;
     }
 

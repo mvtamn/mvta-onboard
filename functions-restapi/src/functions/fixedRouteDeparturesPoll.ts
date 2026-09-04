@@ -9,7 +9,7 @@
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchPulloutReports, mapPulloutReport } from "../lib/availPullout";
-import { recordFeedHealth } from "../lib/kpiFeedHealth";
+import { recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
 
 function serviceDateToday(): string {
   // UTC-based, same known simplification used elsewhere in this repo.
@@ -32,6 +32,11 @@ app.timer("fixedRouteDeparturesPoll", {
       reports = await fetchPulloutReports(baseUrl, apiKey);
     } catch (err) {
       context.error("Failed to fetch Avail Pullout Reports:", err);
+      try {
+        await recordFeedFailure(await getPool(), "avail_pullout", err);
+      } catch (healthError) {
+        context.error("Failed to record Avail Pullout feed failure:", healthError);
+      }
       return;
     }
 

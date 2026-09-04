@@ -11,7 +11,7 @@
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchAndParseStatic, resolveDirectionLabels } from "../lib/gtfsStatic";
-import { recordFeedHealth } from "../lib/kpiFeedHealth";
+import { recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
 
 app.timer("gtfsStopsSync", {
   schedule: "0 0 9 * * *",
@@ -28,6 +28,11 @@ app.timer("gtfsStopsSync", {
         await fetchAndParseStatic(feedUrl));
     } catch (err) {
       context.error("Failed to fetch/parse the static GTFS feed:", err);
+      try {
+        await recordFeedFailure(await getPool(), "gtfs_static", err);
+      } catch (healthError) {
+        context.error("Failed to record static GTFS feed failure:", healthError);
+      }
       return;
     }
     if (stops.length === 0 && trips.length === 0 && routes.length === 0) {
@@ -238,6 +243,13 @@ app.timer("gtfsStopsSync", {
         "Failed to refresh GtfsStops/GtfsTripDirections/GtfsRoutes/GtfsScheduledTrips:",
         err,
       );
+      // The rollback leaves yesterday's schedule in place, which the silent
+      // no-show detector will keep reading as today's expected service.
+      try {
+        await recordFeedFailure(pool, "gtfs_static", err);
+      } catch (healthError) {
+        context.error("Failed to record static GTFS feed failure:", healthError);
+      }
     }
   },
 });

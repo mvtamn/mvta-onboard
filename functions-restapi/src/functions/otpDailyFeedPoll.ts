@@ -15,7 +15,7 @@
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchOtpDailyReports, mapOtpDailyReport } from "../lib/otpDailyFeed";
-import { recordFeedHealth } from "../lib/kpiFeedHealth";
+import { recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
 
 const RETENTION_DAYS = 90;
 
@@ -48,6 +48,11 @@ app.timer("otpDailyFeedPoll", {
       reports = await fetchOtpDailyReports(baseUrl, apiKey, target, target);
     } catch (err) {
       context.error("Failed to fetch Avail OTP Daily reports:", err);
+      try {
+        await recordFeedFailure(await getPool(), "avail_otp_daily", err);
+      } catch (healthError) {
+        context.error("Failed to record Avail OTP Daily feed failure:", healthError);
+      }
       return;
     }
 
