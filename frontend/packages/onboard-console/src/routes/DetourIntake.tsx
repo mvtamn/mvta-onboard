@@ -316,10 +316,10 @@ function LikelyDuplicates({ row, onPick }: { row: DetourIntake; onPick: (match: 
   if (matches.length === 0) return <p className="muted">No likely duplicates found among open Detours and intake.</p>;
   return <div className="intake-checklist" role="region" aria-label="Likely duplicates">
     <strong>⚠ {matches.length} likely duplicate{matches.length === 1 ? "" : "s"}</strong>
-    <p className="td-subtle">Same {matches.some((m) => m.reasons.includes("routes")) ? "routes" : "location"} in an overlapping window. This is a warning for review; nothing is merged or rejected automatically.</p>
+    <p className="td-subtle">Same {matches.some((m) => m.reasons.includes("geometry")) ? "place on the map" : matches.some((m) => m.reasons.includes("routes")) ? "routes" : "location"} in an overlapping window. This is a warning for review; nothing is merged or rejected automatically.</p>
     <ul>{matches.map((match) => <li key={`${match.kind}-${match.id}`}>
       <strong>{match.label}</strong> <span className="td-subtle">({match.kind === "detour" ? "Detour" : "Intake"} · {match.status.replace(/_/g, " ")} · {match.start_date || "open"} → {match.end_date || "open"})</span>
-      <br /><span className="td-subtle">Shares {match.reasons.map((r) => r === "routes" ? "routes" : "location").join(" and ")}: {match.shared.join(", ")}</span>
+      <br /><span className="td-subtle">Shares {match.reasons.map((r) => r === "geometry" ? "map location" : r === "routes" ? "routes" : "location").join(" and ")}: {match.shared.join(", ")}</span>
       {" "}<button type="button" className="btn-sm" onClick={() => onPick(match)}>Mark duplicate of this</button>
     </li>)}</ul>
   </div>;

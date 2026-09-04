@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.90] - 2026-09-04
+
+- **Map-based matching for duplicates and conflicts.** When both records carry a drawn shape (migration 091), the likely-duplicate and conflict matcher now treats two shapes within 75 m of each other as the same place - shape-to-shape distance, zero when they touch or one contains the other - independent of how the closure was worded or which routes were listed. Map matches rank above route matches and report "n m apart on the map". Lexical route and place matching remains for records without a drawing. No migration.
+
 ## [1.5.89] - 2026-09-04
 
 - **Delivery receipts for emailed Detour communications.** Migration 093 adds per-recipient receipts: the dispatcher records each recipient as accepted with its ACS message id, and a new function-key-protected `POST /api/acs-email-events` endpoint on the dispatch app receives Azure Communication Services `EmailDeliveryReportReceived` events from Event Grid (handshake included), updates the matching receipt (delivered, bounced, suppressed, quarantined, filtered as spam, failed), and recomputes the communication: `delivered` only when every recipient's receipt is Delivered, partial or failed with the offending addresses named otherwise. "Accepted by provider" and "Delivered" are now distinct in the console, and the Sent copy on Detour Reports and Detours & Closures lists each recipient's receipt. Requires an Event Grid subscription from the ACS resource to the endpoint (portal step; the URL carries the function key).

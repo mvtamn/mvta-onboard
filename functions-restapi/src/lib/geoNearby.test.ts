@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { boundingBox, distanceToGeometry, validateDetourGeometry } from "./geoNearby";
+import { boundingBox, distanceToGeometry, geometryDistance, parseGeometryJson, validateDetourGeometry } from "./geoNearby";
 
 const MAIN: [number, number] = [-93.25, 44.83];
 
@@ -37,4 +37,22 @@ test("bounding box pads by metres in both axes", () => {
   const box = boundingBox({ type: "Point", coordinates: MAIN }, 100);
   assert.ok(box.maxLat - MAIN[1] > 0.0008 && box.maxLat - MAIN[1] < 0.001);
   assert.ok(box.maxLon - MAIN[0] > 0.0011 && box.maxLon - MAIN[0] < 0.0014);
+});
+
+test("geometry distance is zero for touching or containing shapes and vertex-based otherwise", () => {
+  const poly = { type: "Polygon" as const, coordinates: [[[-93.26, 44.82], [-93.24, 44.82], [-93.24, 44.84], [-93.26, 44.84], [-93.26, 44.82]]] as [number, number][][] };
+  const inside = { type: "Point" as const, coordinates: MAIN };
+  assert.equal(geometryDistance(poly, inside), 0);
+  assert.equal(geometryDistance(inside, poly), 0);
+  const lineA = { type: "LineString" as const, coordinates: [[-93.26, 44.83], [-93.24, 44.83]] as [number, number][] };
+  const lineB = { type: "LineString" as const, coordinates: [[-93.25, 44.831], [-93.25, 44.84]] as [number, number][] };
+  const d = geometryDistance(lineA, lineB);
+  assert.ok(d > 105 && d < 117, `got ${d}`);
+});
+
+test("parseGeometryJson tolerates null, junk, and invalid shapes", () => {
+  assert.equal(parseGeometryJson(null), null);
+  assert.equal(parseGeometryJson("{not json"), null);
+  assert.equal(parseGeometryJson(JSON.stringify({ type: "MultiPoint", coordinates: [] })), null);
+  assert.deepStrictEqual(parseGeometryJson(JSON.stringify({ type: "Point", coordinates: MAIN })), { type: "Point", coordinates: MAIN });
 });

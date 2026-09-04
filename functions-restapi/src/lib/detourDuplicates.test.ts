@@ -54,3 +54,24 @@ test("the subject never matches itself, and route matches sort first", () => {
   ]);
   assert.deepStrictEqual(matches.map((m) => m.id), ["rt", "loc"]);
 });
+
+test("two shapes drawn within the match distance are a likely duplicate even with nothing else in common", () => {
+  const here = { type: "Point" as const, coordinates: [-93.25, 44.83] as [number, number] };
+  const near = { type: "Point" as const, coordinates: [-93.2503, 44.83] as [number, number] }; // ~24 m
+  const far = { type: "Point" as const, coordinates: [-93.26, 44.83] as [number, number] };   // ~790 m
+  const withGeometry = { ...subject, place_text: "", route_texts: [], geometry: here };
+  const [match] = findLikelyDuplicates(withGeometry, [candidate({ id: "near", place_text: "", geometry: near }), candidate({ id: "far", place_text: "", geometry: far })]);
+  assert.ok(match && match.id === "near");
+  assert.deepStrictEqual(match.reasons, ["geometry"]);
+  assert.match(match.shared[0], /m apart on the map/);
+  assert.equal(findLikelyDuplicates(withGeometry, [candidate({ id: "far", place_text: "", geometry: far })]).length, 0);
+});
+
+test("map matches outrank route matches", () => {
+  const here = { type: "Point" as const, coordinates: [-93.25, 44.83] as [number, number] };
+  const matches = findLikelyDuplicates({ ...subject, geometry: here }, [
+    candidate({ id: "rt", route_texts: ["460"] }),
+    candidate({ id: "map", place_text: "", geometry: here }),
+  ]);
+  assert.deepStrictEqual(matches.map((m) => m.id), ["map", "rt"]);
+});

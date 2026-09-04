@@ -8,6 +8,7 @@
 // anywhere in the module), so the comparison runs once per list call
 // rather than as a query per row.
 import { dateWindowsOverlap, type DateWindow } from "./detourWorkflow";
+import { geometryDistance, type DetourGeometry } from "./geoNearby";
 
 export interface DuplicateScope extends DateWindow {
   id: string;
@@ -16,7 +17,13 @@ export interface DuplicateScope extends DateWindow {
   place_text: string;
   // Route/stop strings from segments, and the mobility service area.
   route_texts: string[];
+  // Drawn shape when the record has one (migration 091). Two shapes within
+  // GEOMETRY_MATCH_M of each other are the strongest signal there is.
+  geometry?: DetourGeometry | null;
 }
+
+// Two closures drawn within this distance are treated as the same place.
+export const GEOMETRY_MATCH_M = 75;
 
 export interface DuplicateCandidate extends DuplicateScope {
   kind: "detour" | "intake";
@@ -24,7 +31,7 @@ export interface DuplicateCandidate extends DuplicateScope {
   status: string;
 }
 
-export type DuplicateReason = "routes" | "location";
+export type DuplicateReason = "geometry" | "routes" | "location";
 
 export interface LikelyDuplicate {
   kind: "detour" | "intake";
@@ -86,6 +93,10 @@ export function findLikelyDuplicates(subject: DuplicateScope, candidates: Duplic
     if (!dateWindowsOverlap(subject, candidate)) continue;
     const reasons: DuplicateReason[] = [];
     const shared: string[] = [];
+    if (subject.geometry && candidate.geometry) {
+      const metres = geometryDistance(subject.geometry, candidate.geometry);
+      if (metres <= GEOMETRY_MATCH_M) { reasons.push("geometry"); shared.push(metres < 1 ? "same place on the map" : `${Math.round(metres)} m apart on the map`); }
+    }
     const routes = intersect(subjectRoutes, routeTokens(candidate.route_texts));
     if (routes.length > 0) { reasons.push("routes"); shared.push(...routes); }
     const place = intersect(subjectPlace, placeTokens(candidate.place_text));
@@ -99,6 +110,7 @@ export function findLikelyDuplicates(subject: DuplicateScope, candidates: Duplic
       start_date: candidate.start_date, end_date: candidate.end_date, reasons, shared,
     });
   }
-  // Route matches first, then by most evidence.
-  return found.sort((a, b) => (Number(b.reasons.includes("routes")) - Number(a.reasons.includes("routes"))) || b.shared.length - a.shared.length);
+  // Map matches first, then route matches, then by most evidence.
+  const rank = (m: LikelyDuplicate) => (m.reasons.includes("geometry") ? 2 : 0) + (m.reasons.includes("routes") ? 1 : 0);
+  return found.sort((a, b) => rank(b) - rank(a) || b.shared.length - a.shared.length);
 }

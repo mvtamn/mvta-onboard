@@ -8,6 +8,7 @@ import { allocateDetourNumber } from "../lib/detourNumberAllocator";
 import type { DetourFulfillmentMode } from "../lib/types";
 import { intakeReviewRefusal, intakeStatusAfterUpdate, isOpenIntakeStatus, type DetourIntakeStatus, type DetourIntakeReviewOutcome } from "../lib/detourIntakeTransitions";
 import { findLikelyDuplicates, type DuplicateCandidate } from "../lib/detourDuplicates";
+import { parseGeometryJson } from "../lib/geoNearby";
 import { detourIntakeSelectColumns } from "../lib/detourIntakeColumns";
 import { toDateOnly as dateOnly } from "../lib/detourStatus";
 
@@ -97,10 +98,11 @@ app.http("detourIntakeList", {
       const openIntake = intake.filter((row) => isOpenIntakeStatus(row.status));
       let likelyDuplicatesById = new Map<string, ReturnType<typeof findLikelyDuplicates>>();
       if (openIntake.length > 0) {
-        const detourRows = await pool.request().query<{ id: string; internal_number: string | null; number: string | null; closure: string; location: string | null; service_area: string | null; start_date: Date | null; end_date: Date | null; lifecycle_state: string | null; segment_routes: string | null }>(`
+        const detourRows = await pool.request().query<{ id: string; internal_number: string | null; number: string | null; closure: string; location: string | null; service_area: string | null; start_date: Date | null; end_date: Date | null; lifecycle_state: string | null; segment_routes: string | null; geometry_json: string | null }>(`
           SELECT d.id, ${completeFieldsReady ? "d.internal_number" : "NULL AS internal_number"}, d.number, d.closure,
                  ${detourLocationReady ? "d.location" : "NULL AS location"}, ${completeFieldsReady ? "d.service_area" : "NULL AS service_area"},
                  d.start_date, d.end_date, ${completeFieldsReady ? "d.lifecycle_state" : "NULL AS lifecycle_state"},
+                 ${geometryReady ? "d.geometry_json" : "NULL AS geometry_json"},
                  (SELECT STRING_AGG(s.routes, '; ') FROM DetourSegments s WHERE s.detour_id = d.id) AS segment_routes
           FROM Detours d
           WHERE d.is_deleted = 0 ${completeFieldsReady ? "AND (d.lifecycle_state IS NULL OR d.lifecycle_state <> 'closed')" : ""}
@@ -111,12 +113,14 @@ app.http("detourIntakeList", {
             place_text: [d.closure, d.location].filter(Boolean).join(" "),
             route_texts: [d.segment_routes, d.service_area].filter((v): v is string => Boolean(v)),
             start_date: dateOnly(d.start_date), end_date: dateOnly(d.end_date),
+            geometry: parseGeometryJson(d.geometry_json),
           })),
           ...openIntake.map((row) => ({
             kind: "intake" as const, id: row.id, label: row.description, status: row.status,
             place_text: [row.description, row.location].filter(Boolean).join(" "),
             route_texts: [...row.segments.map((s: { routes: string }) => s.routes), row.service_area].filter((v): v is string => Boolean(v)),
             start_date: row.proposed_start_date, end_date: row.proposed_end_date,
+            geometry: parseGeometryJson(row.geometry_json),
           })),
         ];
         likelyDuplicatesById = new Map(openIntake.map((row) => [row.id, findLikelyDuplicates({
@@ -124,6 +128,7 @@ app.http("detourIntakeList", {
           place_text: [row.description, row.location].filter(Boolean).join(" "),
           route_texts: [...row.segments.map((s: { routes: string }) => s.routes), row.service_area].filter((v): v is string => Boolean(v)),
           start_date: row.proposed_start_date, end_date: row.proposed_end_date,
+          geometry: parseGeometryJson(row.geometry_json),
         }, candidates)]));
       }
       return {

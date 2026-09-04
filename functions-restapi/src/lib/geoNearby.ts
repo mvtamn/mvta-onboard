@@ -79,3 +79,24 @@ export function boundingBox(geometry: DetourGeometry, paddingM: number): { minLo
   const dLon = dLat / Math.max(0.05, Math.cos((midLat * Math.PI) / 180));
   return { minLon: Math.min(...lons) - dLon, maxLon: Math.max(...lons) + dLon, minLat: Math.min(...lats) - dLat, maxLat: Math.max(...lats) + dLat };
 }
+
+// Metres between two drawn shapes: 0 when they touch or one contains the
+// other's vertex; otherwise the least vertex-to-shape distance in either
+// direction. Vertex sampling is exact for points, exact for line/polygon
+// pairs whose closest approach is at a vertex, and within a segment's
+// length otherwise - fine for "are these the same closure" at the radii
+// used here.
+export function geometryDistance(a: DetourGeometry, b: DetourGeometry): number {
+  const vertices = (g: DetourGeometry): Position[] => g.type === "Point" ? [g.coordinates] : g.type === "LineString" ? g.coordinates : g.coordinates.flat();
+  let best = Infinity;
+  for (const v of vertices(a)) best = Math.min(best, distanceToGeometry(v, b));
+  for (const v of vertices(b)) best = Math.min(best, distanceToGeometry(v, a));
+  return best;
+}
+
+// Stored geometry_json to a DetourGeometry, or null when absent or malformed.
+export function parseGeometryJson(text: string | null | undefined): DetourGeometry | null {
+  if (!text) return null;
+  try { const parsed = validateDetourGeometry(JSON.parse(text)); return "geometry" in parsed ? parsed.geometry : null; }
+  catch { return null; }
+}

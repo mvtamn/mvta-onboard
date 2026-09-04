@@ -2,7 +2,7 @@
 
 **Evaluation date:** 2026-09-04 (supersedes the 2026-08-10 evaluation)  
 **Scope:** REST API, SQL migrations, staff console (Detours & Closures, Detour Intake, Detour Reports, Administration), Avail integration, and deployment notes.  
-**Tree evaluated:** branch `claude/intelligent-vaughan-fd0fc9` as proposed in PR #137 (console v1.5.89).
+**Tree evaluated:** branch `claude/intelligent-vaughan-fd0fc9` as proposed in PR #137 (console v1.5.90).
 
 **Verification:** `functions-restapi` builds clean and passes `npm test` with **455/455** (one pre-existing skip). The frontend workspace typechecks across shared, rider-app, and onboard-console; the onboard-console production build succeeds; `npm test` passes **156/156**. These are source, build, and unit checks. They do not prove that deployment-dependent resources or live Avail data are configured, and no browser session was run against a live API.
 
@@ -34,7 +34,7 @@ map, email and Teams delivery, and the Avail feed remain deployment-dependent.
 | Detour Reports search/filter/export | **Implemented** | Read-only page; client-side search, status/reason/severity/source/date filters. CSV **matches the table** (table and export share `detourLabels.ts`; parity test). |
 | Legacy spreadsheet import | **Implemented** | `POST/GET /detours/historical-imports` (migration 060). RFC 4180 parser with header-name column mapping; rows listed and searchable on Reports; uploader shown to write roles only. Rows are evidence, never approvals. |
 | Preliminary intake | **Implemented** | Complete-record form; pending / needs-information / decided queues; edit, update-and-resubmit (`PUT /detour-intake/{id}`), withdraw, reject, duplicate; review decisions governed by a pure transition matrix. |
-| Likely-duplicate warnings | **Implemented** | `detourDuplicates.ts`: shared route number or place word inside an overlapping window, against non-closed Detours and other open intake. Warns and lets the reviewer pick the target; never merges or rejects. |
+| Likely-duplicate warnings | **Implemented** | `detourDuplicates.ts`: drawn shapes within 75 m, or a shared route number or place word, inside an overlapping window, against non-closed Detours and other open intake. Warns and lets the reviewer pick the target; never merges or rejects. |
 | Same-record acceptance | **Implemented** | Promotion keeps the intake id as the Detour id, re-parents supporting files, writes the operational record, allocates the internal number, records history. |
 | Fulfillment modes and workflow lifecycle | **Implemented** | `avail`, `fixed_route_manual`, `mobility_manual`; `approved → awaiting_fulfillment → fulfilled / fulfillment_failed → closed` with `canTransition`; readiness derived. Console actions: record Avail entry, manual fallback, close. |
 | OCC re-review after material edit | **Implemented** | Edits flag `review_status = needs_review`; `POST /detours/{id}/review-complete` clears it and writes a `manual_correction` history row. |
@@ -45,7 +45,7 @@ map, email and Teams delivery, and the Avail feed remain deployment-dependent.
 | Image/document attachments | **Implemented in source; deployment-dependent** | Private Blob/SAS upload and read for detours and intake (`DetourImages`), daily purge timer. Images render as thumbnails and documents as file tiles on Detours & Closures (editable) and Detour Reports (read-only); the accept list matches intake. Storage account, app setting, RBAC, and CORS still need provisioning (`infra-phase1/modules/storage-detour-images.bicep`). |
 | Role separation | **Implemented** | Read / intake (admin) / write / delete separated server-side and mirrored in the console; import and re-review controls hidden from roles that would 403. |
 | Clone/re-establish | **Partially implemented** | Console pre-fills a new record and clears dates, sent flags, approval, and resolution. No backend clone endpoint, source linkage, or history row on the new record. |
-| Conflict override with reason | **Implemented** | `detourConflicts.ts` runs the same route/place/window matcher Detour to Detour for every open record; `POST /detours/{id}/conflict-override` (migration 090) records reason, actor, and the conflicting ids in the row and in workflow history; the override covers only the conflicts known at the time. Confirming an Avail entry is refused while a conflict is unresolved. Lexical, not geometric - stop IDs and geometry remain future work. |
+| Conflict override with reason | **Implemented** | `detourConflicts.ts` runs the same route/place/window matcher Detour to Detour for every open record; `POST /detours/{id}/conflict-override` (migration 090) records reason, actor, and the conflicting ids in the row and in workflow history; the override covers only the conflicts known at the time. Confirming an Avail entry is refused while a conflict is unresolved. Records with a drawn shape also match geometrically: two shapes within 75 m are the same place, ranked above route matches. |
 | Map drawing and nearby-stop detection | **Implemented; deployment-dependent** | Intake map (Azure Maps drawing tools) stores a GeoJSON Point/LineString/Polygon (migration 091) carried to the Detour; `POST /gtfs-stops/near` returns stops within a radius with serving routes from the new `GtfsStopRoutes` index; selections feed Affected stops and route segments. Read-only map on review, Detours & Closures, and Reports. Needs `AZURE_MAPS_CLIENT_ID` and a static GTFS sync run after 091 to populate the route index. |
 | Public rider publication | **Intentionally out of scope** | Rider-facing publication remains Avail/GTFS. |
 
@@ -74,9 +74,10 @@ map, email and Teams delivery, and the Avail feed remain deployment-dependent.
 5. **Client-side search assumes a manageable row count.** Both pages load the
    full detour table (and Reports loads every imported legacy row). The seam to
    move server-side is `detourSearch.ts`; nothing else filters.
-6. **Duplicate and conflict detection are lexical.** They match route numbers
-   and place words, not stop IDs or geometry. A prompt for a reviewer, not a
-   guarantee - and a Detour with no segments or place words never conflicts.
+6. **Duplicate and conflict detection are lexical unless both records were
+   drawn.** Without shapes they match route numbers and place words, not stop
+   IDs. A prompt for a reviewer, not a guarantee - and a Detour with no
+   drawing, segments, or place words never conflicts.
 7. **Deployed code may lag source.** `HANDOFF.md` records earlier cases where a
    migration was applied before its code shipped. Confirm the deployed API and
    console versions before relying on any capability marked implemented here.
@@ -98,8 +99,8 @@ map, email and Teams delivery, and the Avail feed remain deployment-dependent.
 
 ### Priority 3 — planned efficiency features
 
-- Use the drawn geometry and `GtfsStopRoutes` for stop-ID-based conflict and
-  duplicate detection in place of the lexical matcher.
+- Stop-ID-based matching through `GtfsStopRoutes` for records whose shapes
+  are far apart but touch the same stops.
 - Server-side search and pagination once row volume justifies it.
 
 ## Change log for this evaluation
@@ -107,7 +108,7 @@ map, email and Teams delivery, and the Avail feed remain deployment-dependent.
 The 2026-08-10 evaluation listed conflict/duplicate warnings, notification
 drafts, and spreadsheet migration as not implemented, and did not cover
 communications, closure, historical import, re-review, or the intake queue.
-PR #137 (nineteen commits, v1.5.71–1.5.89) added the operational record read path,
+PR #137 (twenty commits, v1.5.71–1.5.90) added the operational record read path,
 the needs-information workflow, re-review clearance, CSV/table parity, removal
 of twelve client methods with no server, workflow history and reason-code
 admin in the console, `Detours.location`, legacy-import listing and a real
@@ -115,5 +116,6 @@ CSV parser, likely-duplicate detection, a testable intake column list, and
 type-aware attachment rendering, communications prefilled from the record's required
 audiences, contractor notification with a manual send path, conflict override on the
 authoritative Detour, map drawing with nearby-stop suggestions, and server-side
-email and Teams delivery with a sent snapshot, per-recipient receipts, and a delivery view on Reports.
+email and Teams delivery with a sent snapshot, per-recipient receipts, a delivery view on Reports, and map-based duplicate
+and conflict matching.
 This document reflects the tree after those changes.
