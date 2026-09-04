@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.87] - 2026-09-04
+
+- **Teams delivery for Detour communications.** A communication whose channel is Teams can be posted from the server: publish with `send` freezes the snapshot, posts an Adaptive Card (subject as heading, draft as body) to `TEAMS_DETOUR_WEBHOOK_URL` - its own Key Vault secret beside the event webhook, declared in `functionapp.bicep` - and records sent, failed (retryable, with transient classification), or skipped when no webhook is configured. Inline rather than queued: one webhook call, and the reviewer is waiting on the result. Detours & Closures shows Post to Teams beside Mark published.
+
 ## [1.5.86] - 2026-09-04
 
 - **Server-side email delivery for Detour communications.** Publishing with `send: true` freezes the subject, body, and recipients on the row (migration 092 - the immutable sent snapshot), marks delivery queued, and publishes `detour-communication-requested` to Service Bus; the dispatch app's new `dispatchDetourCommunication` trigger sends through Azure Communication Services per recipient and writes back sent / partially_sent / failed / skipped with the provider id or the failing addresses. A failed or skipped delivery returns the communication to a retryable state, and "published" for communication status now requires delivery to have succeeded or a human to have recorded a send. Detours & Closures gains Send email and Retry send beside Open in email and Mark published (sent elsewhere), with live delivery state on each communication. Guarded end to end: without the migration the endpoint refuses; without Service Bus the row reads "delivery not available"; without ACS the dispatcher reports skipped. The queue is declared in `infra-phase1/modules/servicebus.bicep`.

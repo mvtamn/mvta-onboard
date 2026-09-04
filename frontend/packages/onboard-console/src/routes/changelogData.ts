@@ -18,6 +18,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.87",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Added",
+        items: [
+          "Detour communications on the Teams channel can be posted from the server with Post to Teams; the post shows as Posted or names the failure, with Retry send.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.86",
     date: "2026-09-04",
     sections: [
