@@ -11,7 +11,7 @@
 // suggestedAlertsApprove flow as everything else in that queue.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { recordFeedHealth } from "../lib/kpiFeedHealth";
+import { recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
 import { loadKpiTrust } from "../lib/kpiTrustStore";
 import {
   fetchTripUpdateFeed,
@@ -265,6 +265,11 @@ app.timer("gtfsDelaysPoll", {
       feed = await fetchTripUpdateFeed(feedUrl);
     } catch (err) {
       context.error("Failed to fetch GTFS-RT TripUpdate feed:", err);
+      try {
+        await recordFeedFailure(await getPool(), "gtfs_trip_updates", err);
+      } catch (healthError) {
+        context.error("Failed to record TripUpdate feed failure:", healthError);
+      }
       return;
     }
 

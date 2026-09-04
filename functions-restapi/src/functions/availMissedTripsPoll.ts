@@ -17,7 +17,7 @@ import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool } from "../lib/db";
 import { fetchMissedTripReports, mapMissedTripReport, replaceMissedTripsForMonths } from "../lib/availMissedTripsFeed";
 import { serviceMonthOf, subtractMonths } from "../lib/otpMonthlyFeed";
-import { recordFeedHealth } from "../lib/kpiFeedHealth";
+import { recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
 
 const TRAILING_MONTHS = 3; // current + prior 2
 
@@ -44,6 +44,11 @@ app.timer("availMissedTripsPoll", {
       reports = await fetchMissedTripReports(baseUrl, apiKey, windowStart, now);
     } catch (err) {
       context.error("Failed to fetch Avail Missed Trips reports:", err);
+      try {
+        await recordFeedFailure(await getPool(), "avail_missed_trips", err);
+      } catch (healthError) {
+        context.error("Failed to record Avail Missed Trips feed failure:", healthError);
+      }
       return;
     }
 
@@ -65,7 +70,14 @@ app.timer("availMissedTripsPoll", {
         `Avail Missed Trips poll: ${reports.length} reports seen, ${mapped.length} rows reloaded across ${targetMonths.join(", ")}.`,
       );
     } catch (err) {
+      // A failed reload leaves the table holding the previous month's rows, so
+      // the ledger must not go on claiming a success it did not have.
       context.error(`Failed to refresh AvailMissedTripsRouteStopDay for ${targetMonths.join(", ")}:`, err);
+      try {
+        await recordFeedFailure(pool, "avail_missed_trips", err);
+      } catch (healthError) {
+        context.error("Failed to record Avail Missed Trips feed failure:", healthError);
+      }
       return;
     }
     try {
