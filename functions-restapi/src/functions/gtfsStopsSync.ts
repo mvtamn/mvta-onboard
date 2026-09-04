@@ -12,6 +12,11 @@ import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchAndParseStatic, resolveDirectionLabels } from "../lib/gtfsStatic";
 import { recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
+import { scheduleCoverage } from "../lib/gtfsScheduleHorizon";
+
+// Days of remaining coverage below which the sync warns while the schedule is
+// still valid, so an expiring feed is visible before it lapses.
+const SCHEDULE_HORIZON_WARNING_DAYS = 7;
 
 app.timer("gtfsStopsSync", {
   schedule: "0 0 9 * * *",
@@ -212,10 +217,43 @@ app.timer("gtfsStopsSync", {
       }
 
       await tx.commit();
-      try {
-        await recordFeedHealth(pool, "gtfs_static", stops.length + trips.length + routes.length, null, { startAt: new Date(), endAt: new Date() });
-      } catch (healthError) {
-        context.error("Failed to update static GTFS feed health:", healthError);
+
+      // A schedule that has run out is the one import failure that looks like
+      // a success: the feed parses, the tables load, and every subsequent day
+      // the silent-no-show detector finds no service and quietly does nothing
+      // (activeServiceIdsToday returns no ids, so detectSilentNoShows returns
+      // before doing any work). Recording a healthy ingestion for it would
+      // leave the KPI trust banner green over a detector that has stopped, so
+      // an expired schedule is recorded as a feed failure instead.
+      const coverage = scheduleTablesExist
+        ? scheduleCoverage(calendar, calendarDates, new Date())
+        : null;
+      if (coverage && !coverage.covered_today) {
+        const reason =
+          `The static GTFS schedule covers no service on ${coverage.service_date}. ` +
+          "Silent no-show detection cannot run until a schedule covering today is published.";
+        context.error(reason);
+        try {
+          await recordFeedFailure(pool, "gtfs_static", new Error(reason));
+        } catch (healthError) {
+          context.error("Failed to record expired static GTFS schedule:", healthError);
+        }
+      } else {
+        try {
+          await recordFeedHealth(pool, "gtfs_static", stops.length + trips.length + routes.length, null, { startAt: new Date(), endAt: new Date() });
+        } catch (healthError) {
+          context.error("Failed to update static GTFS feed health:", healthError);
+        }
+        // Leading indicator: the schedule still covers today but stops soon.
+        // Warning while it is still valid is the difference between renewing
+        // the feed and discovering the gap after detection has gone quiet.
+        if (coverage && coverage.days_covered_ahead <= SCHEDULE_HORIZON_WARNING_DAYS) {
+          context.warn(
+            `The static GTFS schedule runs out after ${coverage.last_covered_date} ` +
+              `(${coverage.days_covered_ahead} day(s) of service remaining). Silent no-show ` +
+              "detection will stop finding scheduled trips once it lapses.",
+          );
+        }
       }
       context.log(
         `GTFS static sync: refreshed ${stops.length} stops, ` +
