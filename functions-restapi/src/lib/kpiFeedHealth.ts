@@ -20,6 +20,42 @@ export async function feedHealthTable(pool: sql.ConnectionPool): Promise<FeedHea
   return result.recordset[0]?.table_name ?? null;
 }
 
+// What a completed ingestion run should write to this ledger.
+//
+// The ledger backs KPI trust, so its entity count has to describe what the
+// KPI's table actually holds, not what the source handed over. A poller that
+// records the fetched count can fetch cleanly, fail every write, and still
+// advance last_success_at at full volume - and because recordFeedHealth also
+// clears last_failure_at and last_failure_reason, it erases the previous run's
+// recorded failure on the way past.
+//
+// Storing nothing from a non-empty fetch is a failure, not an empty success:
+// taking the health path there is how a total ingestion loss stays invisible.
+// A partial loss stays a success - one malformed record must not discard a
+// good run - but it is counted honestly so callers can warn on the shortfall.
+// An empty fetch is untouched: per ADR 0027 a successful run with no records is
+// Current-but-empty, not a fault.
+//
+// This rule only fits a poller whose skipped records are failures. Where a
+// poller deliberately skips records it had no reason to write - availAvlPoll
+// discarding a stale observation, or a position with no trip to attach to -
+// storedCount is not a loss count and this must not be used to call the run
+// failed.
+export type FeedHealthOutcome =
+  | { kind: "failure"; reason: string }
+  | { kind: "health"; entityCount: number; unstoredCount: number };
+
+export function feedHealthOutcome(
+  received: number,
+  stored: number,
+  noun = "records",
+): FeedHealthOutcome {
+  if (received > 0 && stored === 0) {
+    return { kind: "failure", reason: `Fetched ${received} ${noun} but stored none.` };
+  }
+  return { kind: "health", entityCount: stored, unstoredCount: received - stored };
+}
+
 export async function recordFeedHealth(
   pool: sql.ConnectionPool,
   feedName: KpiFeedName,
