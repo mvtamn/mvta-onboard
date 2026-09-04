@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.81] - 2026-09-04
+
+- **Render detour attachments by type.** Detour Intake accepts PDFs and Office documents as evidence and acceptance re-parents them onto the Detour, but Detours & Closures rendered every attachment through `<img>`, so an accepted PDF showed as a broken tile and the attach control accepted images only. One `DetourAttachmentsSection` now shows images as thumbnails and documents as a labelled tile (type, size) that opens the file, accepts the same file types as intake, and also appears read-only on Detour Reports so the document that went out with a detour is part of the record. Intake's supporting-file list shows a thumbnail beside image links.
+
 ## [1.5.80] - 2026-09-04
 
 - **Make the intake list's schema guard actually degrade.** `GET /detour-intake` guarded its optional column groups (migrations 056, 057, 069) with inline template fragments that left a bare comma behind, so on any environment missing one of them the query read `i.created_at , , i.updated_by` and returned 500 instead of omitting the columns. The column list is now built by a pure function tested across all eight readiness combinations. No behavior change where every migration is present.

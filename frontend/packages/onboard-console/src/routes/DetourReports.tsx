@@ -24,6 +24,7 @@ import { parseLegacyImportFile } from "../lib/legacyDetourImport.js";
 import { availEntryLabel, communicationStatusLabel, createdByLabel, fulfillmentPathLabel, readinessLabel, sourceLabel, workflowLabel } from "../lib/detourLabels.js";
 import { DetourOperationalRecord } from "../components/DetourOperationalRecord.js";
 import { DetourWorkflowHistorySection } from "../components/DetourWorkflowHistorySection.js";
+import { DetourAttachmentsSection } from "../components/DetourAttachments.js";
 
 // Detour Reports - Part B7 of detour-module-consolidated-plan.md.
 //
@@ -392,6 +393,10 @@ export function DetourReports() {
                               {dateTimeLabel(d.created_at)}
                               {d.updated_by ? ` · Last edited by ${d.updated_by} on ${dateTimeLabel(d.updated_at)}` : ""}
                             </p>
+                            {/* Read-only: the reports page never edits, but
+                                the document that went out with a detour is
+                                part of the record a compliance reader needs. */}
+                            <DetourAttachmentsSection detourId={d.id} canWrite={false} />
                             <DetourWorkflowHistorySection detourId={d.id} />
                           </div>
                         </td>

@@ -18,6 +18,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.81",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "PDFs and documents attached to a Detour now show as a file tile that opens the document instead of a broken image, and can be attached after acceptance. Detour Reports shows a Detour's attachments read-only.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.80",
     date: "2026-09-04",
     sections: [

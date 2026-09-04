@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { type CreateDetourIntakeInput, type DetourFulfillmentMode, type DetourImage, type DetourIntake, type DetourIntakeStatus, type DetourLikelyDuplicate, type DetourSegmentInput } from "@mvta/shared";
 import { api } from "../config.js";
 import { dateTimeLabel } from "../lib/detourDates.js";
+import { DETOUR_ATTACHMENT_ACCEPT, isImageAttachment } from "../components/DetourAttachments.js";
 
 const MODES: { value: DetourFulfillmentMode; label: string; help: string }[] = [
   { value: "fixed_route_manual", label: "Manual fixed-route exception", help: "Operations and operators carry out the reviewed instructions manually." },
@@ -238,7 +239,7 @@ export function DetourIntake() {
         </div>
         <div className="form-section">
           <h4>Evidence</h4><p>Preserve the supporting record so the reviewer can verify the report.</p>
-          <div className="form-grid"><label className="form-grid-wide">Evidence notes<textarea value={form.evidenceNotes} onChange={(e) => set("evidenceNotes", e.target.value)} placeholder="What documentation supports this report?" /></label><label className="form-grid-wide">Evidence reference<input value={form.evidenceReference} onChange={(e) => set("evidenceReference", e.target.value)} placeholder="Case number or reference link" /></label><label className="form-grid-wide">Supporting files<input type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,text/plain" multiple onChange={(e) => setFiles(Array.from(e.target.files ?? []))} /><small>{files.length ? `${files.length} file${files.length === 1 ? "" : "s"} will be retained with this intake.` : editing ? "Files already attached stay with the record; add more here if needed." : "Attach the source email/PDF, maps, photos, or other supporting documents."}</small></label></div>
+          <div className="form-grid"><label className="form-grid-wide">Evidence notes<textarea value={form.evidenceNotes} onChange={(e) => set("evidenceNotes", e.target.value)} placeholder="What documentation supports this report?" /></label><label className="form-grid-wide">Evidence reference<input value={form.evidenceReference} onChange={(e) => set("evidenceReference", e.target.value)} placeholder="Case number or reference link" /></label><label className="form-grid-wide">Supporting files<input type="file" accept={DETOUR_ATTACHMENT_ACCEPT} multiple onChange={(e) => setFiles(Array.from(e.target.files ?? []))} /><small>{files.length ? `${files.length} file${files.length === 1 ? "" : "s"} will be retained with this intake.` : editing ? "Files already attached stay with the record; add more here if needed." : "Attach the source email/PDF, maps, photos, or other supporting documents."}</small></label></div>
           {editing ? <IntakeImages intakeId={editing.id} /> : null}
         </div>
         <div className="intake-checklist" aria-live="polite"><strong>{missing.length ? `${missing.length} items remaining before submission` : "Complete intake ready for submission"}</strong>{missing.length ? <ul>{missing.map((item) => <li key={item}>{item}</li>)}</ul> : <div className="is-complete">All required operational facts are present. OCC review starts after submission.</div>}</div>
@@ -306,5 +307,5 @@ function IntakeImages({ intakeId }: { intakeId: string }) {
   useEffect(() => { void api.getDetourIntakeImages(intakeId).then(({ images }) => setImages(images)).catch(() => setImages([])); }, [intakeId]);
   if (images === null) return <p className="muted">Loading supporting files…</p>;
   if (images.length === 0) return <p className="muted">No supporting files attached.</p>;
-  return <div className="intake-checklist"><strong>Supporting files</strong><ul>{images.map((image) => <li key={image.id}>{image.read_url ? <a href={image.read_url} target="_blank" rel="noreferrer">{image.file_name}</a> : image.file_name}</li>)}</ul></div>;
+  return <div className="intake-checklist"><strong>Supporting files</strong><ul>{images.map((image) => <li key={image.id}>{image.read_url ? <a href={image.read_url} target="_blank" rel="noreferrer">{isImageAttachment(image) ? <img src={image.read_url} alt="" style={{ height: 28, width: 28, objectFit: "cover", borderRadius: 4, verticalAlign: "middle", marginRight: 6 }} /> : null}{image.file_name}</a> : image.file_name}</li>)}</ul></div>;
 }
