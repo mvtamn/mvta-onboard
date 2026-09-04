@@ -99,6 +99,12 @@ app.timer("gtfsVehiclePositionsPoll", {
             WHEN MATCHED THEN UPDATE SET
               route_id = @route_id,
               vehicle_id = COALESCE(@vehicle_id, target.vehicle_id),
+              -- Sticky, like first_underway_at below. Setting this only in the
+              -- INSERT branch left it null on almost every row: the TripUpdate
+              -- poller usually creates the evidence row first (predictions
+              -- precede movement), so this MERGE lands here rather than there
+              -- and the column recorded nothing even while positions flowed.
+              first_vehicle_position_at = COALESCE(target.first_vehicle_position_at, @observed_at),
               last_vehicle_position_at = @observed_at,
               first_underway_at = CASE
                 WHEN target.first_underway_at IS NOT NULL THEN target.first_underway_at
