@@ -18,6 +18,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.73",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "A garage departure now becomes a reviewable occurrence only when the bus never left the garage or left more than ten minutes late, rather than whenever Avail marked the pullout window elapsed. Each occurrence says which of the two it was, so the Occurrence Log can be triaged at a glance.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.72",
     date: "2026-09-04",
     sections: [
