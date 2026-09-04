@@ -6,7 +6,9 @@ import { toDateOnly, toTimeOnly } from "../lib/detourStatus";
 import { detourNumberYear } from "../lib/detourNumbering";
 import { allocateDetourNumber } from "../lib/detourNumberAllocator";
 import type { DetourFulfillmentMode } from "../lib/types";
-import { intakeReviewRefusal, intakeStatusAfterUpdate, type DetourIntakeStatus, type DetourIntakeReviewOutcome } from "../lib/detourIntakeTransitions";
+import { intakeReviewRefusal, intakeStatusAfterUpdate, isOpenIntakeStatus, type DetourIntakeStatus, type DetourIntakeReviewOutcome } from "../lib/detourIntakeTransitions";
+import { findLikelyDuplicates, type DuplicateCandidate } from "../lib/detourDuplicates";
+import { toDateOnly as dateOnly } from "../lib/detourStatus";
 
 const INTAKE_STATUSES = ["pending_review", "needs_information", "accepted", "rejected", "duplicate", "withdrawn"] as const;
 type IntakeStatus = (typeof INTAKE_STATUSES)[number];
@@ -38,8 +40,9 @@ app.http("detourIntakeList", {
       const req = pool.request();
       const where = INTAKE_STATUSES.includes(status as IntakeStatus) ? "WHERE i.status = @status" : "";
       if (where) req.input("status", sql.NVarChar(20), status);
-      const schema = await pool.request().query<{ duplicate_links_ready: number; complete_fields_ready: number; operational_fields_ready: number }>(`
-        SELECT CASE WHEN COL_LENGTH('dbo.DetourIntake', 'duplicate_of_intake_id') IS NULL
+      const schema = await pool.request().query<{ duplicate_links_ready: number; complete_fields_ready: number; operational_fields_ready: number; detour_location_ready: number }>(`
+        SELECT CASE WHEN COL_LENGTH('dbo.Detours', 'location') IS NULL THEN 0 ELSE 1 END AS detour_location_ready,
+               CASE WHEN COL_LENGTH('dbo.DetourIntake', 'duplicate_of_intake_id') IS NULL
                          OR COL_LENGTH('dbo.DetourIntake', 'duplicate_of_detour_id') IS NULL
                     THEN 0 ELSE 1 END AS duplicate_links_ready,
                CASE WHEN COL_LENGTH('dbo.DetourIntake', 'service_impact') IS NULL
@@ -52,6 +55,7 @@ app.http("detourIntakeList", {
       const duplicateLinksReady = schema.recordset[0]?.duplicate_links_ready === 1;
       const completeFieldsReady = schema.recordset[0]?.complete_fields_ready === 1;
       const operationalFieldsReady = schema.recordset[0]?.operational_fields_ready === 1;
+      const detourLocationReady = schema.recordset[0]?.detour_location_ready === 1;
       const result = await req.query(`
         SELECT i.id, i.detection_source, i.description, i.location,
                i.proposed_start_date, i.proposed_end_date, i.status,
@@ -72,25 +76,65 @@ app.http("detourIntakeList", {
         ${where ? "WHERE i.status = @status" : ""}
         ORDER BY s.intake_id, s.sort_order
       `);
-      const segmentsByIntake = new Map<string, unknown[]>();
+      const segmentsByIntake = new Map<string, Array<{ routes: string; directions: string | null }>>();
       for (const segment of segments.recordset) {
         const list = segmentsByIntake.get(segment.intake_id) ?? [];
         list.push(segment);
         segmentsByIntake.set(segment.intake_id, list);
       }
+      const intake = result.recordset.map((row) => ({
+        ...row,
+        proposed_start_date: toDateOnly(row.proposed_start_date),
+        proposed_end_date: toDateOnly(row.proposed_end_date),
+        proposed_start_time: toTimeOnly(row.proposed_start_time),
+        proposed_end_time: toTimeOnly(row.proposed_end_time),
+        notification_audiences: parseStringList(row.notification_audiences),
+        notification_channels: parseStringList(row.notification_channels),
+        segments: segmentsByIntake.get(row.id) ?? [],
+      }));
+
+      // Likely duplicates for every open intake in the response, against
+      // every non-deleted, non-closed Detour and every other open intake.
+      // Only the open ones need it - a decided intake is not being reviewed.
+      // Computed here rather than per row so the queue shows the warning
+      // before the reviewer picks an action, at the cost of one extra
+      // Detours read per list call.
+      const openIntake = intake.filter((row) => isOpenIntakeStatus(row.status));
+      let likelyDuplicatesById = new Map<string, ReturnType<typeof findLikelyDuplicates>>();
+      if (openIntake.length > 0) {
+        const detourRows = await pool.request().query<{ id: string; internal_number: string | null; number: string | null; closure: string; location: string | null; service_area: string | null; start_date: Date | null; end_date: Date | null; lifecycle_state: string | null; segment_routes: string | null }>(`
+          SELECT d.id, ${completeFieldsReady ? "d.internal_number" : "NULL AS internal_number"}, d.number, d.closure,
+                 ${detourLocationReady ? "d.location" : "NULL AS location"}, ${completeFieldsReady ? "d.service_area" : "NULL AS service_area"},
+                 d.start_date, d.end_date, ${completeFieldsReady ? "d.lifecycle_state" : "NULL AS lifecycle_state"},
+                 (SELECT STRING_AGG(s.routes, '; ') FROM DetourSegments s WHERE s.detour_id = d.id) AS segment_routes
+          FROM Detours d
+          WHERE d.is_deleted = 0 ${completeFieldsReady ? "AND (d.lifecycle_state IS NULL OR d.lifecycle_state <> 'closed')" : ""}
+        `);
+        const candidates: DuplicateCandidate[] = [
+          ...detourRows.recordset.map((d) => ({
+            kind: "detour" as const, id: d.id, label: d.internal_number || d.number || d.closure, status: d.lifecycle_state ?? "recorded",
+            place_text: [d.closure, d.location].filter(Boolean).join(" "),
+            route_texts: [d.segment_routes, d.service_area].filter((v): v is string => Boolean(v)),
+            start_date: dateOnly(d.start_date), end_date: dateOnly(d.end_date),
+          })),
+          ...openIntake.map((row) => ({
+            kind: "intake" as const, id: row.id, label: row.description, status: row.status,
+            place_text: [row.description, row.location].filter(Boolean).join(" "),
+            route_texts: [...row.segments.map((s: { routes: string }) => s.routes), row.service_area].filter((v): v is string => Boolean(v)),
+            start_date: row.proposed_start_date, end_date: row.proposed_end_date,
+          })),
+        ];
+        likelyDuplicatesById = new Map(openIntake.map((row) => [row.id, findLikelyDuplicates({
+          id: row.id,
+          place_text: [row.description, row.location].filter(Boolean).join(" "),
+          route_texts: [...row.segments.map((s: { routes: string }) => s.routes), row.service_area].filter((v): v is string => Boolean(v)),
+          start_date: row.proposed_start_date, end_date: row.proposed_end_date,
+        }, candidates)]));
+      }
       return {
         status: 200,
         jsonBody: {
-          intake: result.recordset.map((row) => ({
-            ...row,
-            proposed_start_date: toDateOnly(row.proposed_start_date),
-            proposed_end_date: toDateOnly(row.proposed_end_date),
-            proposed_start_time: toTimeOnly(row.proposed_start_time),
-            proposed_end_time: toTimeOnly(row.proposed_end_time),
-            notification_audiences: parseStringList(row.notification_audiences),
-            notification_channels: parseStringList(row.notification_channels),
-            segments: segmentsByIntake.get(row.id) ?? [],
-          })),
+          intake: intake.map((row) => ({ ...row, likely_duplicates: likelyDuplicatesById.get(row.id) ?? [] })),
         },
       };
     } catch (err) {

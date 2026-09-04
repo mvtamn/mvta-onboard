@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { type CreateDetourIntakeInput, type DetourFulfillmentMode, type DetourImage, type DetourIntake, type DetourIntakeStatus, type DetourSegmentInput } from "@mvta/shared";
+import { type CreateDetourIntakeInput, type DetourFulfillmentMode, type DetourImage, type DetourIntake, type DetourIntakeStatus, type DetourLikelyDuplicate, type DetourSegmentInput } from "@mvta/shared";
 import { api } from "../config.js";
 import { dateTimeLabel } from "../lib/detourDates.js";
 
@@ -91,6 +91,9 @@ export function DetourIntake() {
   const [reviewing, setReviewing] = useState<{ row: DetourIntake; action: ReviewAction } | null>(null);
   const [reviewNotes, setReviewNotes] = useState("");
   const [duplicateTarget, setDuplicateTarget] = useState("");
+  // Which record type the duplicate target GUID names; picking a likely
+  // duplicate sets both, typing a GUID by hand assumes a Detour.
+  const [duplicateKind, setDuplicateKind] = useState<"detour" | "intake">("detour");
   const [files, setFiles] = useState<File[]>([]);
   const [savedIntakeId, setSavedIntakeId] = useState<string | null>(null);
 
@@ -155,7 +158,7 @@ export function DetourIntake() {
   }
 
   function openReview(row: DetourIntake, action: ReviewAction) {
-    setReviewing({ row, action }); setReviewNotes(""); setDuplicateTarget(""); setError(null);
+    setReviewing({ row, action }); setReviewNotes(""); setDuplicateTarget(""); setDuplicateKind("detour"); setError(null);
   }
 
   async function submitReview() {
@@ -173,7 +176,7 @@ export function DetourIntake() {
         await api.reviewDetourIntake(row.id, {
           status: action,
           decision_notes: reviewNotes.trim(),
-          ...(action === "duplicate" ? { duplicate_of_detour_id: duplicateTarget.trim() } : {}),
+          ...(action === "duplicate" ? (duplicateKind === "intake" ? { duplicate_of_intake_id: duplicateTarget.trim() } : { duplicate_of_detour_id: duplicateTarget.trim() }) : {}),
         });
       }
       setReviewing(null); await load();
@@ -255,7 +258,7 @@ export function DetourIntake() {
         <div className="table-wrap"><table className="data">
           <thead><tr><th>Situation</th><th>Window</th><th>Affected service</th><th>{tab === "decided" ? "Decision" : tab === "needs_information" ? "Information needed" : "Next path"}</th><th>Actions</th></tr></thead>
           <tbody>{visible.map((row) => <tr key={row.id}>
-            <td><strong>{row.description}</strong><br /><span className="td-subtle">{row.detection_source} · {row.location || "Location not recorded"}</span><br /><span className="td-subtle">{row.action_instructions || "Instructions missing"}</span>{tab === "pending_review" && row.decision_notes ? <><br /><span className="td-subtle">Resubmitted after: {row.decision_notes}</span></> : null}</td>
+            <td><strong>{row.description}</strong><br /><span className="td-subtle">{row.detection_source} · {row.location || "Location not recorded"}</span><br /><span className="td-subtle">{row.action_instructions || "Instructions missing"}</span>{tab === "pending_review" && row.decision_notes ? <><br /><span className="td-subtle">Resubmitted after: {row.decision_notes}</span></> : null}{row.likely_duplicates?.length ? <><br /><span className="warn-note">⚠ {row.likely_duplicates.length} likely duplicate{row.likely_duplicates.length === 1 ? "" : "s"} — review before deciding</span></> : null}</td>
             <td>{row.proposed_start_date || "—"} → {row.proposed_end_date || "open"}</td>
             <td>{row.service_impact === "mobility" ? row.service_area || "Mobility area missing" : row.segments.length ? row.segments.map((segment) => segment.routes).join("; ") : "Route segments missing"}</td>
             <td>{tab === "pending_review"
@@ -277,8 +280,25 @@ export function DetourIntake() {
         </table></div>
       )}
     </div>
-    {reviewing ? <div className="modal-overlay" role="presentation"><section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="detour-review-title"><div className="modal-card-header"><div><span className="eyebrow">Review Detour Intake</span><h2 id="detour-review-title">{reviewing.row.description}</h2></div><button className="btn-icon" aria-label="Close review" onClick={() => setReviewing(null)}>×</button></div><p className="muted">{reviewing.row.location || "Location not recorded"} · {reviewing.row.proposed_start_date || "No start date"} {reviewing.row.proposed_start_time || ""} → {reviewing.row.proposed_end_date || "open"} {reviewing.row.proposed_end_time || ""} · {reviewing.row.time_window_status || "pending"}</p><div className="intake-checklist"><strong>Operational details</strong><ul><li>{reviewing.row.affected_stops_and_stations || "No affected stops or stations recorded."}</li><li>{reviewing.row.operational_impacts || "No additional operational impacts recorded."}</li><li>{reviewing.row.confirmation_contact || "No confirmation contact recorded."}</li></ul></div><IntakeImages intakeId={reviewing.row.id} />{reviewing.action === "accept" ? <div className="event-next-action"><div><span className="event-next-action-label">Acceptance boundary</span><strong>Make this same record authoritative</strong><p>Acceptance assigns the next fulfillment step. It does not enter Avail or publish communications.</p></div></div> : <>{reviewing.action === "duplicate" ? <label className="modal-field">Existing Detour or intake ID<input value={duplicateTarget} onChange={(e) => setDuplicateTarget(e.target.value)} placeholder="GUID of the existing record" autoFocus /></label> : null}<label className="modal-field">{reviewing.action === "needs_information" ? "Information still needed" : reviewing.action === "duplicate" ? "Why is this a duplicate?" : reviewing.action === "withdrawn" ? "Why is this report being withdrawn?" : "Rejection reason"}<textarea value={reviewNotes} onChange={(e) => setReviewNotes(e.target.value)} placeholder="Record the reason for this decision" autoFocus={reviewing.action !== "duplicate"} /></label></>}<div className="modal-actions"><button className="btn-sm" onClick={() => setReviewing(null)}>Cancel</button><button className="btn-primary" disabled={busy || (reviewing.action !== "accept" && !reviewNotes.trim()) || (reviewing.action === "duplicate" && !duplicateTarget.trim())} onClick={() => void submitReview()}>{reviewing.action === "accept" ? "Accept record" : reviewing.action === "needs_information" ? "Return for information" : reviewing.action === "duplicate" ? "Mark duplicate" : reviewing.action === "withdrawn" ? "Withdraw record" : "Reject record"}</button></div></section></div> : null}
+    {reviewing ? <div className="modal-overlay" role="presentation"><section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="detour-review-title"><div className="modal-card-header"><div><span className="eyebrow">Review Detour Intake</span><h2 id="detour-review-title">{reviewing.row.description}</h2></div><button className="btn-icon" aria-label="Close review" onClick={() => setReviewing(null)}>×</button></div><p className="muted">{reviewing.row.location || "Location not recorded"} · {reviewing.row.proposed_start_date || "No start date"} {reviewing.row.proposed_start_time || ""} → {reviewing.row.proposed_end_date || "open"} {reviewing.row.proposed_end_time || ""} · {reviewing.row.time_window_status || "pending"}</p><div className="intake-checklist"><strong>Operational details</strong><ul><li>{reviewing.row.affected_stops_and_stations || "No affected stops or stations recorded."}</li><li>{reviewing.row.operational_impacts || "No additional operational impacts recorded."}</li><li>{reviewing.row.confirmation_contact || "No confirmation contact recorded."}</li></ul></div><IntakeImages intakeId={reviewing.row.id} /><LikelyDuplicates row={reviewing.row} onPick={(match) => { setReviewing({ row: reviewing.row, action: "duplicate" }); setDuplicateTarget(match.id); setDuplicateKind(match.kind); }} />{reviewing.action === "accept" ? <div className="event-next-action"><div><span className="event-next-action-label">Acceptance boundary</span><strong>Make this same record authoritative</strong><p>Acceptance assigns the next fulfillment step. It does not enter Avail or publish communications.</p></div></div> : <>{reviewing.action === "duplicate" ? <label className="modal-field">Existing {duplicateKind === "intake" ? "intake" : "Detour"} ID<input value={duplicateTarget} onChange={(e) => { setDuplicateTarget(e.target.value); setDuplicateKind("detour"); }} placeholder="Pick a likely duplicate above, or paste the GUID of the existing Detour" autoFocus /></label> : null}<label className="modal-field">{reviewing.action === "needs_information" ? "Information still needed" : reviewing.action === "duplicate" ? "Why is this a duplicate?" : reviewing.action === "withdrawn" ? "Why is this report being withdrawn?" : "Rejection reason"}<textarea value={reviewNotes} onChange={(e) => setReviewNotes(e.target.value)} placeholder="Record the reason for this decision" autoFocus={reviewing.action !== "duplicate"} /></label></>}<div className="modal-actions"><button className="btn-sm" onClick={() => setReviewing(null)}>Cancel</button><button className="btn-primary" disabled={busy || (reviewing.action !== "accept" && !reviewNotes.trim()) || (reviewing.action === "duplicate" && !duplicateTarget.trim())} onClick={() => void submitReview()}>{reviewing.action === "accept" ? "Accept record" : reviewing.action === "needs_information" ? "Return for information" : reviewing.action === "duplicate" ? "Mark duplicate" : reviewing.action === "withdrawn" ? "Withdraw record" : "Reject record"}</button></div></section></div> : null}
   </section>;
+}
+
+// The reviewer's duplicate warning. Lists what overlapped and why, with
+// the shared route numbers or place words, and lets the reviewer mark the
+// intake duplicate of one directly instead of finding and pasting its GUID.
+function LikelyDuplicates({ row, onPick }: { row: DetourIntake; onPick: (match: DetourLikelyDuplicate) => void }) {
+  const matches = row.likely_duplicates ?? [];
+  if (matches.length === 0) return <p className="muted">No likely duplicates found among open Detours and intake.</p>;
+  return <div className="intake-checklist" role="region" aria-label="Likely duplicates">
+    <strong>⚠ {matches.length} likely duplicate{matches.length === 1 ? "" : "s"}</strong>
+    <p className="td-subtle">Same {matches.some((m) => m.reasons.includes("routes")) ? "routes" : "location"} in an overlapping window. This is a warning for review; nothing is merged or rejected automatically.</p>
+    <ul>{matches.map((match) => <li key={`${match.kind}-${match.id}`}>
+      <strong>{match.label}</strong> <span className="td-subtle">({match.kind === "detour" ? "Detour" : "Intake"} · {match.status.replace(/_/g, " ")} · {match.start_date || "open"} → {match.end_date || "open"})</span>
+      <br /><span className="td-subtle">Shares {match.reasons.map((r) => r === "routes" ? "routes" : "location").join(" and ")}: {match.shared.join(", ")}</span>
+      {" "}<button type="button" className="btn-sm" onClick={() => onPick(match)}>Mark duplicate of this</button>
+    </li>)}</ul>
+  </div>;
 }
 
 function IntakeImages({ intakeId }: { intakeId: string }) {

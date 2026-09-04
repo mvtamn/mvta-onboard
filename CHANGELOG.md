@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.79] - 2026-09-04
+
+- **Detect likely duplicate intake (spec item 11).** `GET /detour-intake` now returns `likely_duplicates` for every open intake: non-closed Detours and other open intakes whose route numbers or place words overlap and whose operating windows overlap (open-ended windows overlap everything after their start). `lib/detourDuplicates.ts` is pure and tested - route identity is the number without direction suffix; place matching drops road-type, direction, and closure words, and a numbered street alone is not enough. The intake queue flags the count per row, the review dialog lists each match with the shared routes or words, and "Mark duplicate of this" sets the target - replacing the hand-pasted GUID. Detection warns; it never merges or rejects.
+
 ## [1.5.78] - 2026-09-04
 
 - **Parse the legacy import like a spreadsheet, not a split on commas.** The importer split each line on `,` and assumed a fixed column order, so any closure containing a comma - most of them - shifted every following cell, and re-importing this page's own export corrupted it. `lib/legacyDetourImport.ts` parses CSV per RFC 4180 (quoted commas, doubled quotes, embedded line breaks, BOM, CRLF) and maps columns by header name with aliases covering the tracker's headings, the JSON field names, and the Reports export. Rows without closure text are skipped and reported by sheet row; unrecognised columns are kept on the row and named. Covered by 12 tests including an export round-trip.

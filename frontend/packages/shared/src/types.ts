@@ -882,6 +882,21 @@ export interface CreateDetourInput extends DetourReportFields {
 }
 
 export type DetourIntakeStatus = "draft" | "pending_review" | "needs_information" | "accepted" | "rejected" | "duplicate" | "withdrawn";
+
+// An existing Detour or open intake whose route/location scope and
+// operating window overlap this intake's (detour-functionality-spec item
+// 11). A warning for the reviewer - never an automatic merge or rejection.
+export interface DetourLikelyDuplicate {
+  kind: "detour" | "intake";
+  id: string;
+  label: string;
+  status: string;
+  start_date: string | null;
+  end_date: string | null;
+  reasons: ("routes" | "location")[];
+  shared: string[];
+}
+
 export interface DetourIntake {
   id: string;
   detection_source: string;
@@ -912,6 +927,8 @@ export interface DetourIntake {
   evidence_notes?: string | null;
   evidence_reference?: string | null;
   notes?: string | null;
+  // Present for open intakes; empty for decided ones.
+  likely_duplicates?: DetourLikelyDuplicate[];
   created_by: string;
   created_at: string;
   updated_by: string | null;
