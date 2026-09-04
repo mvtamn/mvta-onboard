@@ -147,3 +147,15 @@ export interface UpdateDetourBody extends DetourReportBody {
   fulfillment_mode?: DetourFulfillmentMode;
   lifecycle_state?: DetourLifecycleState;
 }
+
+// Published Detour communication handed to the dispatch app for email
+// delivery (queue detour-communication-requested). The dispatcher sends
+// exactly this subject/body to exactly these recipients and writes the
+// outcome back to DetourCommunications.
+export interface DetourCommunicationRequestedEvent {
+  communication_id: string;
+  detour_id: string;
+  recipients: string[];
+  subject: string;
+  body: string;
+}

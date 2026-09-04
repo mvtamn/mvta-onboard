@@ -756,8 +756,10 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<DetourCommunication>(`/api/detours/${id}/communications`, { method: "POST", body: JSON.stringify(input) }, true);
     },
 
-    publishDetourCommunication(detourId: string, communicationId: string, outcome?: string) {
-      return request<DetourCommunication>(`/api/detours/${detourId}/communications/${communicationId}/publish`, { method: "POST", body: JSON.stringify({ outcome }) }, true);
+    // send=true asks the server to deliver by email and freezes the sent
+    // snapshot; otherwise publishing records a human send with `outcome`.
+    publishDetourCommunication(detourId: string, communicationId: string, outcome?: string, send = false) {
+      return request<DetourCommunication>(`/api/detours/${detourId}/communications/${communicationId}/publish`, { method: "POST", body: JSON.stringify({ outcome, send }) }, true);
     },
 
     getDetourHistoricalImports(importBatchId?: string) {

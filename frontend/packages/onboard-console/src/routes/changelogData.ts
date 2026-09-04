@@ -18,6 +18,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.86",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Added",
+        items: [
+          "Detour communications can be sent by email from the server. Send email freezes exactly what goes out, shows Sending, Delivered, or the failing addresses on the communication, and offers Retry send; Open in email and Mark published (sent elsewhere) remain for manual sends.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.85",
     date: "2026-09-04",
     sections: [

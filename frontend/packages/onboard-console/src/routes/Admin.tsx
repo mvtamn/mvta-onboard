@@ -606,7 +606,7 @@ export function DetourContractorSection() {
       <div className="panel-header">Detour contractor notification</div>
       <div className="panel-body">
         <p className="panel-desc">
-          The fixed-route contractor that must be notified of every fixed-route Detour. Once a name is set it appears as a required audience on Detours &amp; Closures with these recipients prefilled; staff send from their mail client and mark the communication published.
+          The fixed-route contractor that must be notified of every fixed-route Detour. Once a name is set it appears as a required audience on Detours &amp; Closures with these recipients prefilled. Send email delivers from the server when Azure Communication Services is configured for the dispatch app; otherwise staff send from their mail client and mark the communication published.
         </p>
         {error ? <p className="error-text">{error}</p> : null}
         {okMsg ? <p className="ok-text">{okMsg}</p> : null}

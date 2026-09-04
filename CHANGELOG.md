@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.86] - 2026-09-04
+
+- **Server-side email delivery for Detour communications.** Publishing with `send: true` freezes the subject, body, and recipients on the row (migration 092 - the immutable sent snapshot), marks delivery queued, and publishes `detour-communication-requested` to Service Bus; the dispatch app's new `dispatchDetourCommunication` trigger sends through Azure Communication Services per recipient and writes back sent / partially_sent / failed / skipped with the provider id or the failing addresses. A failed or skipped delivery returns the communication to a retryable state, and "published" for communication status now requires delivery to have succeeded or a human to have recorded a send. Detours & Closures gains Send email and Retry send beside Open in email and Mark published (sent elsewhere), with live delivery state on each communication. Guarded end to end: without the migration the endpoint refuses; without Service Bus the row reads "delivery not available"; without ACS the dispatcher reports skipped. The queue is declared in `infra-phase1/modules/servicebus.bicep`.
+
 ## [1.5.85] - 2026-09-04
 
 - **Map drawing and nearby-stop suggestions for Detour Intake.** The intake form gains a map (Azure Maps, same token path as Event authoring) where the reporter draws a point, line, or area; the GeoJSON is stored on the intake (migration 091) and carried onto the Detour at acceptance. **Find nearby stops** calls `POST /gtfs-stops/near`, which returns GTFS stops within a chosen radius of the shape - exact point-to-shape distance over a bounding-box prefilter - with the routes serving each, from the new `GtfsStopRoutes` index the static GTFS sync now builds from `stop_times.txt`. Selected stops are appended to Affected stops and their routes become segments. The review dialog, Detours & Closures, and Detour Reports show the drawn shape read-only.

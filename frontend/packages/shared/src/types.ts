@@ -702,11 +702,22 @@ export type DetourReadiness =
   | "needs_occ_review" | "ready_for_avail_entry" | "avail_conflict"
   | "ready_for_manual_operations" | "closed";
 export type DetourCommunicationStatus = "draft" | "published" | "failed";
+export type DetourCommunicationDeliveryStatus = "not_requested" | "queued" | "sent" | "partially_sent" | "failed" | "skipped";
 export interface DetourCommunication {
   id: string; detour_id: string; audience: string; channel: string;
   recipients: string | null; content: string; status: DetourCommunicationStatus;
   outcome: string | null; created_by: string; created_at: string;
   published_by: string | null; published_at: string | null;
+  // Server-side delivery (migration 092). sent_* is the frozen snapshot of
+  // what went out; content stays the editable draft.
+  delivery_status?: DetourCommunicationDeliveryStatus;
+  delivery_requested_at?: string | null;
+  delivery_completed_at?: string | null;
+  delivery_error?: string | null;
+  delivery_provider_id?: string | null;
+  sent_subject?: string | null;
+  sent_body?: string | null;
+  sent_recipients?: string | null;
 }
 // Contractor notification settings as GET /detours reports them
 // (AppSettings module 'detour', migration 089). name null = not configured.

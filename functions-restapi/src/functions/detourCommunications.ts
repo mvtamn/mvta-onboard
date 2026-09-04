@@ -2,6 +2,8 @@ import { app, type HttpRequest, type InvocationContext } from "@azure/functions"
 import { getPool, sql } from "../lib/db";
 import { DETOUR_READ_ROLES, DETOUR_WRITE_ROLES, requireRole } from "../lib/auth";
 import { isGuid, validateDetourCommunication } from "../lib/validation";
+import { publishDetourCommunicationRequested } from "../lib/events";
+import { parseRecipients } from "../lib/detourContractor";
 
 interface CommunicationRow { id: string; detour_id: string; audience: string; channel: string; recipients: string | null; content: string; status: "draft" | "published" | "failed"; outcome: string | null; created_by: string; created_at: Date; published_by: string | null; published_at: Date | null; }
 
@@ -51,10 +53,40 @@ app.http("detourCommunicationPublish", {
     if (!isGuid(id) || !isGuid(communicationId)) return { status: 400, jsonBody: { error: "ids must be GUIDs" } };
     let body: Record<string, unknown> = {};
     try { body = (await request.json()) as Record<string, unknown>; } catch { /* empty body is valid for publishing a saved draft */ }
+    // send=true asks the server to deliver by email (migration 092 +
+    // dispatch app). Without it, publishing records that a human sent the
+    // communication elsewhere, as before.
+    const send = body.send === true;
     try {
       const pool = await getPool();
-      const req = pool.request().input("id", sql.UniqueIdentifier, communicationId).input("detour_id", sql.UniqueIdentifier, id).input("published_by", sql.NVarChar(200), auth.principal.userDetails || "system").input("outcome", sql.NVarChar(500), body.outcome ?? "Published by Operations");
-      const result = await req.query<CommunicationRow>("UPDATE DetourCommunications SET status='published', published_by=@published_by, published_at=SYSUTCDATETIME(), outcome=@outcome WHERE id=@id AND detour_id=@detour_id AND status='draft'; SELECT * FROM DetourCommunications WHERE id=@id AND detour_id=@detour_id");
+      const actor = auth.principal.userDetails || "system";
+      const deliveryReady = send && (await pool.request().query<{ ready: number }>("SELECT CASE WHEN COL_LENGTH('dbo.DetourCommunications', 'delivery_status') IS NULL THEN 0 ELSE 1 END AS ready")).recordset[0]?.ready === 1;
+      if (send && !deliveryReady) return { status: 503, jsonBody: { error: "Server-side delivery is not configured (migration 092)" } };
+      if (send) {
+        const current = (await pool.request().input("id", sql.UniqueIdentifier, communicationId).input("detour_id", sql.UniqueIdentifier, id)
+          .query<CommunicationRow & { internal_number: string | null; number: string | null; closure: string }>("SELECT c.*, d.internal_number, d.number, d.closure FROM DetourCommunications c JOIN Detours d ON d.id = c.detour_id WHERE c.id=@id AND c.detour_id=@detour_id")).recordset[0];
+        if (!current) return { status: 404, jsonBody: { error: "Communication not found" } };
+        if (current.status !== "draft" && current.status !== "failed") return { status: 409, jsonBody: { error: "Only a draft or failed communication can be sent" } };
+        if (current.channel.toLowerCase() !== "email") return { status: 409, jsonBody: { error: "Server-side delivery is available for email communications only" } };
+        const recipients = parseRecipients(current.recipients);
+        if (recipients.length === 0) return { status: 409, jsonBody: { error: "Add at least one email recipient before sending" } };
+        const ref = current.internal_number || current.number;
+        const subject = `${ref ? `[${ref}] ` : ""}Detour: ${current.closure}`.slice(0, 500);
+        // Snapshot first, then enqueue: what went out is fixed before any
+        // delivery attempt, and the row shows "queued" until the dispatcher
+        // reports back.
+        await pool.request().input("id", sql.UniqueIdentifier, communicationId).input("actor", sql.NVarChar(200), actor).input("subject", sql.NVarChar(500), subject).input("body", sql.NVarChar(sql.MAX), current.content).input("recipients", sql.NVarChar(2000), recipients.join(", "))
+          .query("UPDATE DetourCommunications SET status='published', published_by=@actor, published_at=SYSUTCDATETIME(), outcome=NULL, delivery_status='queued', delivery_requested_at=SYSUTCDATETIME(), delivery_completed_at=NULL, delivery_error=NULL, delivery_provider_id=NULL, sent_subject=@subject, sent_body=@body, sent_recipients=@recipients WHERE id=@id");
+        const queued = await publishDetourCommunicationRequested({ communication_id: communicationId, detour_id: id, recipients, subject, body: current.content }, context);
+        if (!queued) {
+          await pool.request().input("id", sql.UniqueIdentifier, communicationId)
+            .query("UPDATE DetourCommunications SET delivery_status='skipped', delivery_completed_at=SYSUTCDATETIME(), delivery_error='Delivery service is not configured; send from your mail client and mark published', status='draft', published_by=NULL, published_at=NULL WHERE id=@id");
+        }
+        const after = (await pool.request().input("id", sql.UniqueIdentifier, communicationId).query<CommunicationRow>("SELECT * FROM DetourCommunications WHERE id=@id")).recordset[0];
+        return { status: queued ? 202 : 503, jsonBody: queued ? after : { error: "Delivery service is not configured; send from your mail client and mark published", communication: after } };
+      }
+      const req = pool.request().input("id", sql.UniqueIdentifier, communicationId).input("detour_id", sql.UniqueIdentifier, id).input("published_by", sql.NVarChar(200), actor).input("outcome", sql.NVarChar(500), body.outcome ?? "Published by Operations");
+      const result = await req.query<CommunicationRow>("UPDATE DetourCommunications SET status='published', published_by=@published_by, published_at=SYSUTCDATETIME(), outcome=@outcome WHERE id=@id AND detour_id=@detour_id AND status IN ('draft', 'failed'); SELECT * FROM DetourCommunications WHERE id=@id AND detour_id=@detour_id");
       const row = result.recordsets[1]?.[0] as CommunicationRow | undefined;
       if (!row) return { status: 409, jsonBody: { error: "Communication was not found or is already published" } };
       return { status: 200, jsonBody: row };

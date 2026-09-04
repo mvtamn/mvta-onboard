@@ -806,6 +806,11 @@ function DetourCommunicationsSection({ detour, contractor, canWrite }: { detour:
     } catch (err) { setError(err instanceof ApiError ? err.message : "Could not save communication"); }
     finally { setSaving(false); }
   }
+  async function sendByServer(communication: import("@mvta/shared").DetourCommunication) {
+    setError(null);
+    try { await api.publishDetourCommunication(detour.id, communication.id, undefined, true); await load(); }
+    catch (err) { setError(err instanceof ApiError ? err.message : "Could not send communication"); await load(); }
+  }
   async function publish(communication: import("@mvta/shared").DetourCommunication) {
     const outcome = communication.channel.toLowerCase() === "email" && communication.recipients
       ? `Sent by email to ${communication.recipients}`
@@ -833,9 +838,18 @@ function DetourCommunicationsSection({ detour, contractor, canWrite }: { detour:
       {communication.recipients ? ` · ${communication.recipients}` : ""}
       {communication.published_by ? <span className="td-dim"> · {communication.published_by}{communication.published_at ? ` ${dateTimeLabel(communication.published_at)}` : ""}</span> : null}
       {communication.status === "published" && communication.outcome ? <span className="td-dim"> · {communication.outcome}</span> : null}
-      {canWrite && communication.status === "draft" ? <>
-        {communication.channel.toLowerCase() === "email" && communication.recipients ? <> <a className="btn-sm" href={mailtoLink(communication.recipients.split(/[,;\s]+/).filter(Boolean), communicationSubject(detour), communication.content)}>Open in email</a></> : null}
-        {" "}<button className="btn-sm" onClick={() => publish(communication)}>Mark published</button>
+      {communication.delivery_status && communication.delivery_status !== "not_requested" ? (
+        <span className={communication.delivery_status === "sent" ? "ok-text" : communication.delivery_status === "queued" ? "td-dim" : "warn-note"}>
+          {" "}· {communication.delivery_status === "queued" ? "Sending…" : communication.delivery_status === "sent" ? `Delivered${communication.delivery_completed_at ? ` ${dateTimeLabel(communication.delivery_completed_at)}` : ""}` : communication.delivery_status === "partially_sent" ? "Partially delivered" : communication.delivery_status === "failed" ? "Delivery failed" : "Delivery not available"}
+          {communication.delivery_error ? ` — ${communication.delivery_error}` : ""}
+        </span>
+      ) : null}
+      {canWrite && (communication.status === "draft" || communication.status === "failed") ? <>
+        {communication.channel.toLowerCase() === "email" && communication.recipients ? <>
+          {" "}<button className="btn-sm" disabled={communication.delivery_status === "queued"} onClick={() => void sendByServer(communication)}>{communication.status === "failed" ? "Retry send" : "Send email"}</button>
+          {" "}<a className="btn-sm" href={mailtoLink(communication.recipients.split(/[,;\s]+/).filter(Boolean), communicationSubject(detour), communication.content)}>Open in email</a>
+        </> : null}
+        {" "}<button className="btn-sm" onClick={() => publish(communication)}>Mark published{communication.channel.toLowerCase() === "email" && communication.recipients ? " (sent elsewhere)" : ""}</button>
       </> : null}
     </p>)}
     {canWrite ? <div className="form-grid">
@@ -861,7 +875,7 @@ function DetourCommunicationsSection({ detour, contractor, canWrite }: { detour:
         <button type="button" className="btn-sm" onClick={() => setContent(draftCommunicationText(detour, audience || undefined))}>Fill from record</button>{" "}
         {emailable ? <><a className="btn-sm" href={mailtoLink(recipients.split(/[,;\s]+/).filter(Boolean), communicationSubject(detour), content)}>Open in email</a>{" "}</> : null}
         <button className="btn-sm" disabled={saving || !audience || !channel || !content.trim()} onClick={save}>{saving ? "Saving…" : "Save communication draft"}</button>
-        {selected?.contractor ? <span className="td-dim"> Save the draft, send it from your mail client, then mark it published.</span> : null}
+        {selected?.contractor ? <span className="td-dim"> Save the draft, then Send email delivers it from the server (or Open in email to send it yourself and mark it published).</span> : null}
       </span>
     </div> : null}
   </div>;
