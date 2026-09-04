@@ -57,6 +57,7 @@ function haystack(d: Detour, reasonCodes: DetourReasonCode[]): string {
     d.reported_by,
     d.approved_by,
     d.resolution_notes,
+    d.location,
     d.action_instructions,
     d.service_area,
     d.affected_stops_and_stations,
@@ -137,7 +138,7 @@ const CSV_HEADERS = [
   "Created at", "Last edited by", "Last edited at",
   // Operational record carried from intake (migrations 057/069). Blank
   // for detours entered directly on the Detours page, which never had it.
-  "Start time", "End time", "Window status", "Service impact", "Service area",
+  "Location", "Start time", "End time", "Window status", "Service impact", "Service area",
   "Affected stops and stations", "Action instructions", "Operational impacts",
   "Required audiences", "Required channels", "Confirmation contact",
   "Evidence notes", "Evidence reference",
@@ -187,6 +188,7 @@ export function detoursToCsv(detours: Detour[], reasonCodes: DetourReasonCode[] 
       d.created_at,
       d.updated_by ?? "",
       d.updated_by ? d.updated_at : "",
+      d.location ?? "",
       d.start_time ?? "",
       d.end_time ?? "",
       d.time_window_status ?? "",

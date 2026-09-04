@@ -23,7 +23,7 @@ function timeWindow(d: Detour): string | null {
 
 export function hasOperationalRecord(d: Detour): boolean {
   return Boolean(
-    d.action_instructions || d.notification_audiences?.length || d.notification_channels?.length ||
+    d.location || d.action_instructions || d.notification_audiences?.length || d.notification_channels?.length ||
     d.service_impact || d.service_area || d.affected_stops_and_stations || d.operational_impacts ||
     d.confirmation_contact || d.evidence_notes || d.evidence_reference || timeWindow(d),
   );
@@ -35,6 +35,7 @@ export function DetourOperationalRecord({ detour: d }: { detour: Detour }) {
   return (
     <div className="subcard" style={{ marginTop: 8 }}>
       <b>Operational record</b>
+      {d.location ? <p><b>Location:</b> {d.location}</p> : null}
       {d.action_instructions ? <p><b>Action instructions:</b> {d.action_instructions}</p> : null}
       {d.service_impact || d.service_area ? (
         <p className="td-dim">

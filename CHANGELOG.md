@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.76] - 2026-09-04
+
+- **Stop filing the closure location as "Riders directed".** Promotion wrote the intake's location - where the closure is - into `riders_directed`, whose meaning is where riders should go instead, so every accepted Detour read "Riders directed: 5th St closed…". Migration 088 adds `Detours.location`, moves the copied value across for every promoted Detour, and clears `riders_directed` only where it still equals the intake location. Promotion now writes `location` and leaves `riders_directed` for staff to record; the operational record and the Reports CSV show Location.
+
 ## [1.5.75] - 2026-09-03
 
 - **Retire the API client methods that had no server.** The shared client carried ten methods for `detour-attachments` (scanning, versions, report sharing) and `detour-intake-options` that no Azure Function ever implemented, plus an operations-report view and a generic workflow PATCH nothing called. They are removed, and `DetourImage` now describes exactly what `GET /detours/{id}/images` returns.

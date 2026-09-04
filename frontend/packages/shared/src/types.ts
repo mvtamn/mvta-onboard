@@ -821,6 +821,9 @@ export interface Detour extends DetourReportFields {
   // group entirely when its columns are absent, the same way the reporting
   // fields are handled. Times are HH:MM, dates YYYY-MM-DD.
   action_instructions?: string | null;
+  // Where the closure is (migration 088). Distinct from riders_directed,
+  // which is where riders go instead.
+  location?: string | null;
   notification_audiences?: string[];
   notification_channels?: string[];
   service_impact?: "fixed_route" | "mobility" | null;

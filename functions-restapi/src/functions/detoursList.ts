@@ -72,6 +72,7 @@ interface DetourRow {
   affected_stops_and_stations?: string | null;
   operational_impacts?: string | null;
   confirmation_contact?: string | null;
+  location?: string | null;
   communications_published?: number;
   communications_draft?: number;
   review_status?: "current" | "needs_review";
@@ -123,7 +124,7 @@ app.http("detoursList", {
       // a missing column fails even inside a CASE. Pre-migration the field
       // comes back undefined and the console falls back to hiding it, same
       // graceful-degradation pattern as every other un-run migration here.
-      const schemaCheck = await pool.request().query<{ has_column: number; reporting_ready: number; workflow_ready: number; avail_entry_ready: number; operational_fields: number; intake_fields: number; window_fields: number; communications_ready: number; review_ready: number }>(`
+      const schemaCheck = await pool.request().query<{ has_column: number; reporting_ready: number; workflow_ready: number; avail_entry_ready: number; operational_fields: number; intake_fields: number; location_field: number; window_fields: number; communications_ready: number; review_ready: number }>(`
         SELECT
           CASE WHEN COL_LENGTH('dbo.Detours', 'internal_number') IS NULL
                THEN 0 ELSE 1 END AS has_column,
@@ -140,6 +141,7 @@ app.http("detoursList", {
           ,CASE WHEN COL_LENGTH('dbo.Detours', 'service_impact') IS NULL
                      OR COL_LENGTH('dbo.Detours', 'evidence_reference') IS NULL
                 THEN 0 ELSE 1 END AS intake_fields
+          ,CASE WHEN COL_LENGTH('dbo.Detours', 'location') IS NULL THEN 0 ELSE 1 END AS location_field
           ,CASE WHEN COL_LENGTH('dbo.Detours', 'start_time') IS NULL
                      OR COL_LENGTH('dbo.Detours', 'confirmation_contact') IS NULL
                 THEN 0 ELSE 1 END AS window_fields
@@ -157,6 +159,7 @@ app.http("detoursList", {
       // here the intake record is write-only once accepted.
       const hasIntakeFields = schemaCheck.recordset[0]?.intake_fields === 1;
       const hasWindowFields = schemaCheck.recordset[0]?.window_fields === 1;
+      const hasLocation = schemaCheck.recordset[0]?.location_field === 1; // migration 088
       const hasCommunications = schemaCheck.recordset[0]?.communications_ready === 1;
       const hasReviewFields = schemaCheck.recordset[0]?.review_ready === 1;
 
@@ -175,6 +178,7 @@ app.http("detoursList", {
                ${hasOperationalFields ? ", notification_audiences, notification_channels, action_instructions" : ""}
                ${hasIntakeFields ? ", service_impact, service_area, evidence_notes, evidence_reference" : ""}
                ${hasWindowFields ? ", start_time, end_time, time_window_status, affected_stops_and_stations, operational_impacts, confirmation_contact" : ""}
+               ${hasLocation ? ", location" : ""}
                ${hasCommunications ? ", (SELECT COUNT(DISTINCT c.audience) FROM DetourCommunications c WHERE c.detour_id=Detours.id AND c.status='published') AS communications_published, (SELECT COUNT(*) FROM DetourCommunications c WHERE c.detour_id=Detours.id AND c.status='draft') AS communications_draft" : ""}
                ${hasReviewFields ? ", review_status, review_reason, closure_reason" : ""}
         FROM Detours
@@ -216,6 +220,7 @@ app.http("detoursList", {
         // Times reduce to HH:MM the same way the dates reduce to YYYY-MM-DD:
         // the driver's 1970-pinned Date would otherwise serialize as a full
         // ISO timestamp nobody can read as a time of day.
+        ...(hasLocation ? { location: d.location ?? null } : {}),
         ...(hasWindowFields ? { start_time: toTimeOnly(d.start_time), end_time: toTimeOnly(d.end_time), time_window_status: d.time_window_status ?? null, affected_stops_and_stations: d.affected_stops_and_stations ?? null, operational_impacts: d.operational_impacts ?? null, confirmation_contact: d.confirmation_contact ?? null } : {}),
         ...(hasCommunications ? {
           communications_published: d.communications_published ?? 0,
