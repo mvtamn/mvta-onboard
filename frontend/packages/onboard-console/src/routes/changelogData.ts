@@ -18,6 +18,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.73",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "Fixed Route Departures feed health now reflects the departures actually recorded rather than the number the feed returned, and a poll that stores nothing at all is reported as a feed failure instead of a healthy empty run.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.71",
     date: "2026-09-03",
     sections: [

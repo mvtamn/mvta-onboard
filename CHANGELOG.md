@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.73] - 2026-09-04
+
+- **Report Fixed Route Departures feed health from what was stored, not what was fetched.** The Avail Pullout poll recorded the number of reports the feed returned, so a run that fetched cleanly and then failed every upsert still advanced `last_success_at` at full volume and left the KPI reading Current with nothing behind it. The ledger now carries the stored count, which is what the trust contract reads. Storing nothing from a non-empty fetch is recorded as a feed failure rather than an empty success, so a total ingestion loss names itself; a partial loss stays a successful run, counted honestly and warned about. An empty fetch is unchanged - overnight polls return nothing by design and remain Current-but-empty per ADR 0027.
+
 ## [1.5.71] - 2026-09-03
 
 - **Key Fixed Route Departures to the agency service day, not the UTC poll clock.** The Avail Pullout endpoint carries no date, so the service date is derived - and it is part of the `(service_date, block, run)` key the poller MERGEs on. Deriving it in UTC re-keyed runs mid-service (the UTC day rolls over at 6/7pm local, while service runs to 10pm), inserting a duplicate row that double-counted the run in the late and expired pullout totals. Each row's service date now comes from that run's own scheduled garage times in America/Chicago, so every poll across the day lands on one key. The read window's cutoff is agency-local for the same reason.
