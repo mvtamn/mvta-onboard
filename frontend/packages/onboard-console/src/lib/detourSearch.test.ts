@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Detour } from "@mvta/shared";
-import { detoursToCsv, filterDetours, EMPTY_FILTERS } from "./detourSearch.js";
+import { detoursToCsv, filterDetours, historicalRowMatchesSearch, EMPTY_FILTERS } from "./detourSearch.js";
+import type { DetourHistoricalImportRow } from "@mvta/shared";
 import { communicationStatusLabel, fulfillmentPathLabel, readinessLabel, workflowLabel } from "./detourLabels.js";
 
 function detour(overrides: Partial<Detour> = {}): Detour {
@@ -66,5 +67,22 @@ describe("filterDetours", () => {
   it("drops undated rows once a start range is set", () => {
     const rows = [detour(), detour({ id: "d2", start_date: null })];
     expect(filterDetours(rows, { ...EMPTY_FILTERS, startFrom: "2026-01-01" }).map((d) => d.id)).toEqual(["d1"]);
+  });
+});
+
+describe("historicalRowMatchesSearch", () => {
+  const row: DetourHistoricalImportRow = {
+    id: "h1", import_batch_id: "b1", source_file: "tracker-2025.csv", source_row_number: 3,
+    historical_reference: "2025-014", closure: "Cedar Ave bridge closed", service_date: "2025-06-02", routes: "440, 442",
+    communication_audience: "Operators", communication_channel: "email", communication_recipients: "ops list", communication_content: "Use Nicollet",
+    communicated_at: null, imported_by: "compliance@mvta", imported_at: "2026-09-01T00:00:00.000Z",
+  };
+  it("matches every term across the legacy fields", () => {
+    expect(historicalRowMatchesSearch(row, "cedar 442")).toBe(true);
+    expect(historicalRowMatchesSearch(row, "nicollet")).toBe(true);
+    expect(historicalRowMatchesSearch(row, "cedar 460")).toBe(false);
+  });
+  it("matches everything on an empty search", () => {
+    expect(historicalRowMatchesSearch(row, "  ")).toBe(true);
   });
 });

@@ -710,6 +710,27 @@ export interface DetourCommunication {
 }
 export interface DetourHistoricalImportResult { import_batch_id: string; imported_rows: number; historical_only: true; }
 
+// One row of the legacy detour tracker as imported (GET
+// /detours/historical-imports). Historical evidence only - never a
+// Detour, never an approval. raw_row_json stays server-side.
+export interface DetourHistoricalImportRow {
+  id: string;
+  import_batch_id: string;
+  source_file: string;
+  source_row_number: number;
+  historical_reference: string | null;
+  closure: string;
+  service_date: string | null;
+  routes: string | null;
+  communication_audience: string | null;
+  communication_channel: string | null;
+  communication_recipients: string | null;
+  communication_content: string | null;
+  communicated_at: string | null;
+  imported_by: string;
+  imported_at: string;
+}
+
 export const DETOUR_LIFECYCLE_LABELS: Record<DetourLifecycleState, string> = {
   approved: "Needs OCC review",
   awaiting_fulfillment: "Awaiting fulfillment",

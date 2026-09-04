@@ -38,7 +38,7 @@ app.http("detourHistoricalImportList", {
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const batch = request.query.get("import_batch_id");
     if (batch && !isGuid(batch)) return { status: 400, jsonBody: { error: "import_batch_id must be a GUID" } };
-    try { const req = (await getPool()).request().input("batch", sql.UniqueIdentifier, batch || null); const result = await req.query("SELECT * FROM DetourHistoricalImports WHERE @batch IS NULL OR import_batch_id=@batch ORDER BY imported_at DESC, source_row_number"); return { status: 200, jsonBody: { historical_rows: result.recordset } }; }
+    try { const req = (await getPool()).request().input("batch", sql.UniqueIdentifier, batch || null); const result = await req.query("SELECT id, import_batch_id, source_file, source_row_number, historical_reference, closure, service_date, routes, communication_audience, communication_channel, communication_recipients, communication_content, communicated_at, imported_by, imported_at FROM DetourHistoricalImports WHERE @batch IS NULL OR import_batch_id=@batch ORDER BY imported_at DESC, source_row_number"); return { status: 200, jsonBody: { historical_rows: result.recordset } }; }
     catch (err) { context.error("GET detour historical imports failed:", err); return { status: 500, jsonBody: { error: "Internal server error" } }; }
   },
 });

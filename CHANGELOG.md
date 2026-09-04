@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.77] - 2026-09-04
+
+- **Show what the legacy import actually imported.** `GET /detours/historical-imports` existed but nothing read it, so uploaded tracker rows were unreachable. Detour Reports now lists them under Legacy spreadsheet history, grouped by source file with the importer and date, and the page search covers them. The uploader is shown only to detour write roles, matching the server, rather than offering read-only users a control that 403s. The list endpoint returns named columns instead of `SELECT *`, keeping `raw_row_json` server-side.
+
 ## [1.5.76] - 2026-09-04
 
 - **Stop filing the closure location as "Riders directed".** Promotion wrote the intake's location - where the closure is - into `riders_directed`, whose meaning is where riders should go instead, so every accepted Detour read "Riders directed: 5th St closed…". Migration 088 adds `Detours.location`, moves the copied value across for every promoted Detour, and clears `riders_directed` only where it still equals the intake location. Promotion now writes `location` and leaves `riders_directed` for staff to record; the operational record and the Reports CSV show Location.

@@ -4,14 +4,17 @@ import {
   DETOUR_STATUS_LABELS,
   DETOUR_SEVERITY_LABELS,
   type Detour,
+  type DetourHistoricalImportRow,
   type DetourStatus,
   type DetourSeverity,
   type DetourReasonCode,
 } from "@mvta/shared";
 import { api } from "../config.js";
+import { useAuth } from "../auth/AuthContext.js";
 import {
   EMPTY_FILTERS,
   filterDetours,
+  historicalRowMatchesSearch,
   detoursToCsv,
   downloadCsv,
   type DetourFilters,
@@ -47,7 +50,15 @@ const STATUS_PILL: Record<DetourStatus, string> = {
 };
 
 export function DetourReports() {
+  // The page is read-only, but the legacy import is a write (server:
+  // DETOUR_WRITE_ROLES). Same role mirror as Detours.tsx, so a viewer or
+  // compliance reader is not offered a control that will 403.
+  const { roles } = useAuth();
+  const canImport = roles.some((r) => r === "OCC.Publisher" || r === "OCC.Admin" || r === "OCC.Detour");
   const [detours, setDetours] = useState<Detour[] | null>(null);
+  const [historical, setHistorical] = useState<DetourHistoricalImportRow[] | null>(null);
+  const [historicalError, setHistoricalError] = useState<string | null>(null);
+  const [showLegacy, setShowLegacy] = useState(false);
   const [reasonCodes, setReasonCodes] = useState<DetourReasonCode[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filters, setFilters] = useState<DetourFilters>(EMPTY_FILTERS);
@@ -74,7 +85,15 @@ export function DetourReports() {
       .getDetourReasonCodes()
       .then((r) => setReasonCodes(r.reason_codes))
       .catch(() => setReasonCodes([]));
+    loadHistorical();
   }, []);
+
+  function loadHistorical() {
+    api
+      .getDetourHistoricalImports()
+      .then((r) => { setHistorical(r.historical_rows); setHistoricalError(null); })
+      .catch((err) => setHistoricalError(err instanceof ApiError ? err.message : "Could not load imported history."));
+  }
 
   // Same two-signal check as Detours.tsx - the B6 columns may not exist in
   // this environment yet, in which case those columns and filters are
@@ -89,6 +108,9 @@ export function DetourReports() {
   const historicalFilterSelected = filters.status !== "all" && filters.status !== "active" && filters.status !== "upcoming";
   const visible = detours ? filterDetours(detours, filters, reasonCodes).filter((d) => showHistory || historicalFilterSelected || d.status === "active" || d.status === "upcoming") : [];
   const filtersActive = JSON.stringify(filters) !== JSON.stringify(EMPTY_FILTERS);
+  // Only the free-text search applies to legacy rows - they carry none of
+  // the status/reason/severity/source vocabulary the other filters use.
+  const visibleHistorical = historical ? historical.filter((row) => historicalRowMatchesSearch(row, filters.search)) : [];
 
   function exportCsv() {
     // Exports what is on screen, not the whole table - the filters are the
@@ -111,6 +133,8 @@ export function DetourReports() {
       });
       const result = await api.importHistoricalDetours({ source_file: file.name, rows: Array.isArray(rows) ? rows : rows.rows });
       setImportMessage(`Imported ${result.imported_rows} historical rows. They remain historical evidence and do not become approvals.`);
+      setShowLegacy(true);
+      loadHistorical();
     } catch (err) { setImportMessage(err instanceof ApiError ? err.message : "Could not import the historical file"); }
   }
 
@@ -200,10 +224,54 @@ export function DetourReports() {
           </button>
         </div>
         <div className="subcard" style={{ marginBottom: 12 }}>
-          <b>Legacy spreadsheet history</b>
-          <p className="td-dim">Upload CSV or JSON rows to preserve historical tracking and communication evidence. Imported rows are never treated as current approvals.</p>
-          <input type="file" accept=".csv,.json" onChange={(e) => { const file = e.target.files?.[0]; if (file) void importLegacyFile(file); }} />
-          {importMessage ? <p className="td-dim">{importMessage}</p> : null}
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <b>Legacy spreadsheet history</b>
+            <span className="td-dim">
+              {historical === null ? "…" : `${visibleHistorical.length} of ${historical.length} imported rows`}
+            </span>
+            <button className="btn-sm" aria-expanded={showLegacy} onClick={() => setShowLegacy((current) => !current)}>
+              {showLegacy ? "Hide imported rows" : "Show imported rows"}
+            </button>
+          </div>
+          <p className="td-dim">Rows from the retired Excel tracker, kept as historical tracking and communication evidence. Imported rows are never treated as current approvals. The search box above reaches them.</p>
+          {canImport ? (
+            <>
+              <input type="file" accept=".csv,.json" onChange={(e) => { const file = e.target.files?.[0]; if (file) void importLegacyFile(file); }} />
+              {importMessage ? <p className="td-dim">{importMessage}</p> : null}
+            </>
+          ) : null}
+          {historicalError ? <p className="error-text">{historicalError}</p> : null}
+          {showLegacy && historical !== null ? (
+            visibleHistorical.length === 0 ? (
+              <p className="muted" style={{ marginTop: 8 }}>{historical.length === 0 ? "Nothing has been imported yet." : "No imported rows match this search."}</p>
+            ) : (
+              <table className="data" style={{ marginTop: 8 }}>
+                <thead>
+                  <tr><th>Source file</th><th>Row</th><th>Reference</th><th>Closure</th><th>Service date</th><th>Routes</th><th>Communication</th><th>Imported</th></tr>
+                </thead>
+                <tbody>
+                  {visibleHistorical.map((row) => (
+                    <tr key={row.id}>
+                      <td className="td-dim">{row.source_file}</td>
+                      <td className="td-dim">{row.source_row_number}</td>
+                      <td>{row.historical_reference || "—"}</td>
+                      <td>{row.closure}</td>
+                      <td className="td-dim">{row.service_date || "—"}</td>
+                      <td className="td-dim">{row.routes || "—"}</td>
+                      <td className="td-dim">
+                        {row.communication_audience || row.communication_channel
+                          ? `${row.communication_audience || "—"} · ${row.communication_channel || "—"}${row.communication_recipients ? ` · ${row.communication_recipients}` : ""}`
+                          : "—"}
+                        {row.communication_content ? <div>{row.communication_content}</div> : null}
+                        {row.communicated_at ? <div>{dateTimeLabel(row.communicated_at)}</div> : null}
+                      </td>
+                      <td className="td-dim">{row.imported_by} · {dateTimeLabel(row.imported_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )
+          ) : null}
         </div>
 
         {loadError ? <p className="error-text">{loadError}</p> : null}

@@ -11,6 +11,7 @@ import {
   DETOUR_STATUS_LABELS,
   DETOUR_SEVERITY_LABELS,
   type Detour,
+  type DetourHistoricalImportRow,
   type DetourStatus,
   type DetourReasonCode,
 } from "@mvta/shared";
@@ -83,6 +84,19 @@ export function detourMatchesSearch(
   const terms = search.toLowerCase().split(/\s+/).filter(Boolean);
   if (terms.length === 0) return true;
   const hay = haystack(d, reasonCodes);
+  return terms.every((t) => hay.includes(t));
+}
+
+// The Reports search box also reaches the legacy tracker rows, using the
+// same every-term-must-match rule, so one query covers the whole record.
+export function historicalRowMatchesSearch(row: DetourHistoricalImportRow, search: string): boolean {
+  const terms = search.toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return true;
+  const hay = [
+    row.historical_reference, row.closure, row.service_date, row.routes,
+    row.communication_audience, row.communication_channel, row.communication_recipients, row.communication_content,
+    row.source_file,
+  ].filter(Boolean).join(" ").toLowerCase();
   return terms.every((t) => hay.includes(t));
 }
 

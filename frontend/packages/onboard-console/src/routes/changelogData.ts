@@ -18,6 +18,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.77",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "Detour Reports now lists the legacy spreadsheet rows that have been imported, grouped by source file, and the search box reaches them. The import control appears only for staff who can record detours, instead of failing silently for read-only roles.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.76",
     date: "2026-09-04",
     sections: [
