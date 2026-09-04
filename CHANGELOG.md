@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.76] - 2026-09-04
+
+- **Give the shared GTFS-RT TripUpdate trust row a single writer.** `gtfsDelaysPoll` and `gtfsMissedTripsPoll` read the same feed on the same five-minute schedule and each wrote the `gtfs_trip_updates` ledger row itself, so whichever ran last silently won. They agreed only by coincidence, and the stored-count rule now applied across the other pollers would have had each counting its own table into one row. Both now read the feed through `readTripUpdateFeed`, which records the delivery once. The row describes delivery rather than what either poller stored, because the two write different tables and no single stored count could describe both.
+
 ## [1.5.75] - 2026-09-04
 
 - **Report Event AVL feed health from the positions that were stored.** `avail_avl` is the only required feed behind Event AVL monitoring, and its ledger row carried the number of reports fetched, so a run that fetched cleanly and then failed every write still advanced `last_success_at` at full volume and cleared the previous run's recorded failure. It now counts what reached the position table. Out-of-order observations that the poller correctly declines are excluded first, so a healthy quiet run is never called failed; a delivery carrying no usable position at all is now recorded as a source failure instead of an attempt-free success.

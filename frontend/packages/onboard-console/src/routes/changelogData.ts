@@ -18,6 +18,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.76",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "The two pollers that read the GTFS-RT trip update feed now record its health once, through one shared reader, instead of each writing the same trust record and overwriting the other.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.75",
     date: "2026-09-04",
     sections: [
