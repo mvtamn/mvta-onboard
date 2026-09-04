@@ -92,3 +92,67 @@ test("treats an unparseable timestamp as null rather than throwing", () => {
   assert.ok(mapped);
   assert.strictEqual(mapped!.pullout_actual, null);
 });
+
+// --- service-date key -----------------------------------------------------
+// The Pullout endpoint carries no date, so service_date is derived - and it is
+// part of the (service_date, block, run) MERGE key. Deriving it from the poll
+// clock in UTC re-keyed the same run mid-service (the UTC day rolls over at
+// 6/7pm agency-local, while service runs to 10pm), inserting a duplicate row
+// that double-counted the run in the late/expired totals.
+
+test("derives the service date from the run's scheduled pullout, in agency time", () => {
+  // 12:50Z on 2026-02-23 is 06:50 CST the same local day.
+  const mapped = mapPulloutReport(LATE_RELIEF);
+  assert.strictEqual(mapped!.service_date, "20260223");
+});
+
+test("keeps one service date for a run across polls that straddle the UTC rollover", () => {
+  const morningPoll = mapPulloutReport(LATE_RELIEF, new Date("2026-02-23T14:00:00Z")); // 08:00 CST
+  const eveningPoll = mapPulloutReport(LATE_RELIEF, new Date("2026-02-24T02:00:00Z")); // 20:00 CST, still 2/23 locally
+  assert.strictEqual(morningPoll!.service_date, "20260223");
+  assert.strictEqual(
+    eveningPoll!.service_date,
+    morningPoll!.service_date,
+    "an evening poll must MERGE onto the same key, not insert a second row",
+  );
+});
+
+test("anchors to the local date even when the scheduled pullout is a late-evening UTC value", () => {
+  // 2026-08-24T02:15:00Z is 21:15 CDT on 2026-08-23 - the UTC date has already
+  // advanced, the agency-local service date has not.
+  const mapped = mapPulloutReport({ ...LATE_RELIEF, Pullout_Scheduled: "2026-08-24T02:15:00Z" });
+  assert.strictEqual(mapped!.service_date, "20260823");
+});
+
+test("falls back through scheduled, then actual, then the poll clock", () => {
+  const noPulloutScheduled = mapPulloutReport({ ...LATE_RELIEF, Pullout_Scheduled: null });
+  assert.strictEqual(noPulloutScheduled!.service_date, "20260223", "falls back to Login_Scheduled");
+
+  const actualsOnly = mapPulloutReport({
+    ...LATE_RELIEF,
+    Checkin_Scheduled: null,
+    Login_Scheduled: null,
+    Pullout_Scheduled: null,
+  });
+  assert.strictEqual(actualsOnly!.service_date, "20260223", "falls back to Pullout_Actual");
+
+  const noTimes = mapPulloutReport(
+    {
+      ...LATE_RELIEF,
+      Checkin_Scheduled: null,
+      Checkin_Actual: null,
+      Login_Scheduled: null,
+      Login_Actual: null,
+      Pullout_Scheduled: null,
+      Pullout_Actual: null,
+    },
+    new Date("2026-02-24T02:00:00Z"),
+  );
+  assert.strictEqual(noTimes!.service_date, "20260223", "last resort is the poll clock, in agency time");
+});
+
+test("an unparseable scheduled pullout does not poison the service date", () => {
+  const mapped = mapPulloutReport({ ...LATE_RELIEF, Pullout_Scheduled: "not-a-date" });
+  assert.strictEqual(mapped!.pullout_scheduled, null);
+  assert.strictEqual(mapped!.service_date, "20260223");
+});

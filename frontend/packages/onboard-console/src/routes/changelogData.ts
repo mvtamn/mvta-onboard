@@ -18,6 +18,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.71",
+    date: "2026-09-03",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "Fixed Route Departures now records each run against the agency service day it belongs to. Evening polls previously filed a run under the next calendar day, so the same run could appear twice and be counted twice in the late and expired pullout totals.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.70",
     date: "2026-08-28",
     sections: [

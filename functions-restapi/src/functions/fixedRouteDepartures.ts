@@ -6,6 +6,7 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { agencyServiceDate } from "../lib/missedTripTime";
 
 const DEFAULT_TREND_DAYS = 14;
 
@@ -61,7 +62,9 @@ app.http("fixedRouteDeparturesList", {
       }
 
       const req = pool.request();
-      req.input("cutoff_date", sql.Char(8), cutoffDate(days));
+      // Agency-local, to match the service_date the poller stores - a UTC
+      // cutoff would move the window edge by a day for part of each day.
+      req.input("cutoff_date", sql.Char(8), agencyServiceDate(new Date(), -days).serviceDate);
       const result = await req.query<FixedRouteDepartureRow>(`
         SELECT service_date, block, run, checkin_scheduled, checkin_actual,
                login_scheduled, login_actual, pullout_scheduled, pullout_actual,
@@ -102,9 +105,3 @@ app.http("fixedRouteDeparturesList", {
     }
   },
 });
-
-function cutoffDate(days: number): string {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() - days);
-  return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}${String(d.getUTCDate()).padStart(2, "0")}`;
-}
