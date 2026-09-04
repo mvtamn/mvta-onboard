@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.88] - 2026-09-04
+
+- **Delivery view on Detour Reports.** Each expanded Detour lists its communications - audience, channel, recipients, who published and when, and delivery state - with a collapsed Sent copy showing the exact subject, recipients, body, and provider reference the server sent. Detours & Closures shows the same Sent copy beside its composer, and both pages render delivery state through one set of labels.
+
 ## [1.5.87] - 2026-09-04
 
 - **Teams delivery for Detour communications.** A communication whose channel is Teams can be posted from the server: publish with `send` freezes the snapshot, posts an Adaptive Card (subject as heading, draft as body) to `TEAMS_DETOUR_WEBHOOK_URL` - its own Key Vault secret beside the event webhook, declared in `functionapp.bicep` - and records sent, failed (retryable, with transient classification), or skipped when no webhook is configured. Inline rather than queued: one webhook call, and the reviewer is waiting on the result. Detours & Closures shows Post to Teams beside Mark published.

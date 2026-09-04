@@ -18,6 +18,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.88",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Added",
+        items: [
+          "Detour Reports shows each Detour's communications with delivery state and a Sent copy of exactly what went out; the same Sent copy appears on Detours & Closures.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.87",
     date: "2026-09-04",
     sections: [

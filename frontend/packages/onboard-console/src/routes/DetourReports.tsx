@@ -26,6 +26,7 @@ import { DetourOperationalRecord } from "../components/DetourOperationalRecord.j
 import { DetourWorkflowHistorySection } from "../components/DetourWorkflowHistorySection.js";
 import { DetourAttachmentsSection } from "../components/DetourAttachments.js";
 import { DetourMap } from "../components/DetourMap.js";
+import { DetourDeliveryRecord } from "../components/DetourDeliveryRecord.js";
 
 // Detour Reports - Part B7 of detour-module-consolidated-plan.md.
 //
@@ -405,6 +406,7 @@ export function DetourReports() {
                                 the document that went out with a detour is
                                 part of the record a compliance reader needs. */}
                             {d.geometry_json ? <div style={{ marginTop: 12 }}><p className="field-label">Map</p><DetourMap value={d.geometry_json} onChange={() => undefined} readOnly height={260} /></div> : null}
+                            <DetourDeliveryRecord detourId={d.id} />
                             <DetourAttachmentsSection detourId={d.id} canWrite={false} />
                             <DetourWorkflowHistorySection detourId={d.id} />
                           </div>

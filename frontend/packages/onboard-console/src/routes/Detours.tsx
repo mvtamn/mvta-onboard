@@ -20,6 +20,7 @@ import { DetourOperationalRecord } from "../components/DetourOperationalRecord.j
 import { DetourWorkflowHistorySection } from "../components/DetourWorkflowHistorySection.js";
 import { DetourAttachmentsSection } from "../components/DetourAttachments.js";
 import { DetourMap } from "../components/DetourMap.js";
+import { SentCopy, deliveryClass, deliveryLabel } from "../components/DetourDeliveryRecord.js";
 import { audiencePlan, communicationSubject, draftCommunicationText, mailtoLink, nextAudience } from "../lib/detourCommunicationDraft.js";
 import { dateLabel, dateTimeLabel, toDateInputValue } from "../lib/detourDates.js";
 
@@ -839,11 +840,12 @@ function DetourCommunicationsSection({ detour, contractor, canWrite }: { detour:
       {communication.published_by ? <span className="td-dim"> · {communication.published_by}{communication.published_at ? ` ${dateTimeLabel(communication.published_at)}` : ""}</span> : null}
       {communication.status === "published" && communication.outcome ? <span className="td-dim"> · {communication.outcome}</span> : null}
       {communication.delivery_status && communication.delivery_status !== "not_requested" ? (
-        <span className={communication.delivery_status === "sent" ? "ok-text" : communication.delivery_status === "queued" ? "td-dim" : "warn-note"}>
-          {" "}· {communication.delivery_status === "queued" ? "Sending…" : communication.delivery_status === "sent" ? `${communication.channel.trim().toLowerCase() === "teams" ? "Posted" : "Delivered"}${communication.delivery_completed_at ? ` ${dateTimeLabel(communication.delivery_completed_at)}` : ""}` : communication.delivery_status === "partially_sent" ? "Partially delivered" : communication.delivery_status === "failed" ? "Delivery failed" : "Delivery not available"}
+        <span className={deliveryClass(communication)}>
+          {" "}· {deliveryLabel(communication)}
           {communication.delivery_error ? ` — ${communication.delivery_error}` : ""}
         </span>
       ) : null}
+      <SentCopy communication={communication} />
       {canWrite && (communication.status === "draft" || communication.status === "failed") ? (() => {
         const ch = communication.channel.trim().toLowerCase();
         const serverSend = ch === "teams" || (ch === "email" && Boolean(communication.recipients));
