@@ -5,6 +5,11 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.75] - 2026-09-03
+
+- **Retire the API client methods that had no server.** The shared client carried ten methods for `detour-attachments` (scanning, versions, report sharing) and `detour-intake-options` that no Azure Function ever implemented, plus an operations-report view and a generic workflow PATCH nothing called. They are removed, and `DetourImage` now describes exactly what `GET /detours/{id}/images` returns.
+- **Surface the two detour backends that had no UI.** Detours & Closures and Detour Reports gain a Show history control on each expanded row, reading the append-only `DetourWorkflowHistory` (creation, transitions, Avail observations, corrections, fulfillment confirmation). Administration gains a Detour reason categories section for adding, relabeling, reordering, and retiring the codes that the Reporting fields and Reports filters use.
+
 ## [1.5.74] - 2026-09-03
 
 - **Make the Detour Reports CSV match the table.** The export was missing eight of the fifteen on-screen columns - fulfillment path, readiness, next owner, communications, workflow state, closure reason, Avail entry/ID/last-seen - and its column order followed the retired spreadsheet rather than the page. Columns now follow the table, then the expanded-row detail, then the operational record, and the table and CSV render every label through one shared function so they cannot drift. The expanded row also shows the closure reason.

@@ -19,6 +19,7 @@ import {
 import { dateLabel, dateTimeLabel } from "../lib/detourDates.js";
 import { availEntryLabel, communicationStatusLabel, createdByLabel, fulfillmentPathLabel, readinessLabel, sourceLabel, workflowLabel } from "../lib/detourLabels.js";
 import { DetourOperationalRecord } from "../components/DetourOperationalRecord.js";
+import { DetourWorkflowHistorySection } from "../components/DetourWorkflowHistorySection.js";
 
 // Detour Reports - Part B7 of detour-module-consolidated-plan.md.
 //
@@ -315,6 +316,7 @@ export function DetourReports() {
                               {dateTimeLabel(d.created_at)}
                               {d.updated_by ? ` · Last edited by ${d.updated_by} on ${dateTimeLabel(d.updated_at)}` : ""}
                             </p>
+                            <DetourWorkflowHistorySection detourId={d.id} />
                           </div>
                         </td>
                       </tr>

@@ -18,6 +18,7 @@ import { resizeImageFile } from "../lib/imageResize.js";
 import { detourMatchesSearch } from "../lib/detourSearch.js";
 import { useAppDialog } from "../components/AppDialog.js";
 import { DetourOperationalRecord } from "../components/DetourOperationalRecord.js";
+import { DetourWorkflowHistorySection } from "../components/DetourWorkflowHistorySection.js";
 import { dateLabel, dateTimeLabel, toDateInputValue } from "../lib/detourDates.js";
 
 const STATUS_TABS: { key: DetourStatus | "all"; label: string }[] = [
@@ -700,6 +701,7 @@ export function Detours() {
                               </p>
                             ) : null}
                             <DetourImagesSection detourId={d.id} canWrite={canWrite} />
+                            <DetourWorkflowHistorySection detourId={d.id} />
                           </div>
                         </td>
                       </tr>

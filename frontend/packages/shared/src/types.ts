@@ -924,7 +924,7 @@ export type UpdateDetourInput = Partial<CreateDetourInput>;
 // Detour image attachments - Part B3 of detour-and-event-module-
 // implementation-plan.md. Images never pass through the API directly -
 // upload/read both go through short-lived SAS URLs.
-export interface DetourAttachment {
+export interface DetourImage {
   id: string;
   detour_id: string | null;
   intake_id?: string | null;
@@ -936,22 +936,13 @@ export interface DetourAttachment {
   sort_order: number;
   uploaded_by: string;
   uploaded_at: string;
+  // Short-lived SAS read URL, null when storage is not configured.
   read_url: string | null;
-  availability_state: "quarantined" | "scanning" | "available" | "rejected" | "failed" | "purged";
-  content_sha256?: string | null;
-  scan_completed_at?: string | null;
-  scan_error?: string | null;
-  retention_purge_at?: string | null;
-  version_of?: string | null;
-  removed_at?: string | null;
-  report_shared?: boolean;
-  shared_by?: string | null;
-  shared_at?: string | null;
-  share_reason?: string | null;
 }
 
-/** Compatibility name for existing Detours image consumers. */
-export type DetourImage = DetourAttachment;
+/** Compatibility alias - the wider attachment contract (scanning, versions,
+ * report sharing) was never built server-side; DetourImages is the store. */
+export type DetourAttachment = DetourImage;
 
 export type DetourWorkflowHistoryEventType =
   | "created"
