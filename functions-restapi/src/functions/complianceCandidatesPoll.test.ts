@@ -46,10 +46,40 @@ test("a run with no scheduled pullout is not a candidate", () => {
   assert.match(garageDepartureCandidatePredicate(), /pullout_scheduled IS NOT NULL/);
 });
 
-test("keeps Avail's own status as the maturity gate", () => {
-  // The status is what says the pullout window has actually elapsed. Without it
-  // a scheduled-but-not-yet-departed run would read as "never departed", and
-  // the poll runs at 01:20 local - before the service day it would be judging.
+test("matches the statuses that say a departure was missed", () => {
+  // Missed Pullout and Missed Login are 408 runs that provably never left the
+  // garage, and neither matched the previous list.
   const predicate = garageDepartureCandidatePredicate();
-  assert.match(predicate, /pullout_status IN \('Late Relief','Expired Pullout'\)/);
+  for (const status of ["Missed Pullout", "Missed Login", "Expired Pullout", "Late Pullout"]) {
+    assert.match(predicate, new RegExp(`'${status}'`), `${status} must be a departure outcome`);
+  }
+});
+
+test("does not match a status the feed has never emitted", () => {
+  // 'Late Relief' headed the list and appears in no row of 22 days of data. It
+  // came from the one sample payload the fixtures were built from.
+  assert.doesNotMatch(garageDepartureCandidatePredicate(), /Late Relief/);
+});
+
+test("never treats a pull-in outcome as a departure", () => {
+  // Nearly 1,900 rows describe a run's RETURN to the garage, which means its
+  // departure already happened. Matching one would score a completed run.
+  const predicate = garageDepartureCandidatePredicate();
+  assert.doesNotMatch(predicate, /Pullin/);
+});
+
+test("leaves an unclassified run alone", () => {
+  // A blank status is a run Avail is still resolving - every blank row seen was
+  // from the current service day. The status list is the maturity gate: without
+  // it, a run whose pullout has not been judged yet would read as "never
+  // departed", and this poll runs at 01:20 local.
+  const predicate = garageDepartureCandidatePredicate();
+  assert.match(predicate, /pullout_status IN \(/, "an explicit list is what excludes unjudged runs");
+  assert.doesNotMatch(predicate, /''/, "a blank status must not be listed");
+});
+
+test("leaves On Route No Pullout for investigation rather than penalty", () => {
+  // Twelve of its thirteen rows have no departure, but the name says the
+  // vehicle IS running - a missing pullout record, not a missing departure.
+  assert.doesNotMatch(garageDepartureCandidatePredicate(), /On Route No Pullout/);
 });
