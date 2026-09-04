@@ -1,6 +1,6 @@
 import assert from "node:assert";
 import { test } from "node:test";
-import { resolveKpiTrust, type KpiFeedHealth } from "./kpiTrust";
+import { missedTripFeedDependencies, resolveKpiTrust, type KpiFeedHealth } from "./kpiTrust";
 
 const now = new Date("2026-08-27T18:00:00.000Z");
 
@@ -138,4 +138,58 @@ test("still reports a non-empty delivery of unknown vintage as unavailable", () 
   const trust = resolveKpiTrust([unknown, health("gtfs_static", 90)], now);
 
   assert.strictEqual(trust.fixed_route_delay.state, "unavailable");
+});
+
+test("missed-trip feed dependencies exclude feeds that detection does not depend on", () => {
+  const dependencies = missedTripFeedDependencies([
+    health("gtfs_trip_updates", 5),
+    health("gtfs_vehicle_positions", 5),
+    health("spare_requests", 5),
+    health("spare_slots", 5),
+    // All stale under the old flat rule, none a missed-trip dependency.
+    health("avail_otp_daily", 900),
+    health("avail_otp_monthly", 900),
+    health("avail_pullout", 900),
+    health("gtfs_static", 900),
+  ], now);
+
+  assert.deepStrictEqual(
+    dependencies.map((dependency) => dependency.feed_name),
+    ["avail_missed_trips", "gtfs_trip_updates", "gtfs_vehicle_positions", "spare_requests", "spare_slots"],
+  );
+});
+
+test("a daily missed-trip feed with no approved deadline is never reported stale", () => {
+  // avail_missed_trips polls once a day, so 17 hours is a healthy run. The old
+  // flat 15-minute rule called it stale on essentially every request.
+  const dependencies = missedTripFeedDependencies([health("avail_missed_trips", 17 * 60)], now);
+  const availMissedTrips = dependencies.find((dependency) => dependency.feed_name === "avail_missed_trips");
+
+  assert.strictEqual(availMissedTrips?.state, "current");
+  assert.strictEqual(availMissedTrips?.required, false);
+  assert.strictEqual(availMissedTrips?.stale_after_minutes, null);
+});
+
+test("a required missed-trip feed past its own contract is reported stale", () => {
+  const dependencies = missedTripFeedDependencies([
+    health("gtfs_trip_updates", 5),
+    health("gtfs_vehicle_positions", 5),
+    // Spare ingestion runs every 15 minutes; 12 hours without one is a real
+    // outage, and its 45-minute contract catches it where 15 would misjudge
+    // the daily feeds alongside it.
+    { ...health("spare_requests", 12 * 60, 0), source_timestamp_at: null },
+    { ...health("spare_slots", 12 * 60, 0), source_timestamp_at: null },
+  ], now);
+  const stale = dependencies.filter((dependency) => dependency.state === "stale");
+
+  assert.deepStrictEqual(stale.map((dependency) => dependency.feed_name), ["spare_requests", "spare_slots"]);
+  assert.strictEqual(stale.every((dependency) => dependency.required), true);
+  assert.strictEqual(stale[0].stale_after_minutes, 45);
+});
+
+test("a feed required by one missed-trip stream stays required after deduplication", () => {
+  const dependencies = missedTripFeedDependencies([health("spare_requests", 5), health("gtfs_trip_updates", 5)], now);
+
+  assert.strictEqual(dependencies.find((d) => d.feed_name === "spare_requests")?.required, true);
+  assert.strictEqual(dependencies.find((d) => d.feed_name === "gtfs_trip_updates")?.required, true);
 });

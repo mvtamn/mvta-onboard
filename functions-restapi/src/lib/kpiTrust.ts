@@ -149,3 +149,35 @@ export function resolveKpiTrust(records: readonly KpiFeedHealth[], now = new Dat
     Object.entries(CONTRACTS).map(([name, contract]) => [name, stream(contract, healthByFeed, now)]),
   ) as KpiTrust;
 }
+
+// The feed dependencies the two missed-trip streams declare, deduplicated and
+// resolved against the same contracts the KPI trust summary uses, so the
+// Missed Trips module and the trust banner above it cannot disagree about the
+// same feed.
+//
+// Missed Trips previously derived this itself from every row in the health
+// table, against a flat "stale after 15 minutes (35 for spare_)" rule. That
+// reported four daily feeds (gtfs_static, avail_missed_trips, avail_otp_daily,
+// avail_otp_monthly) as stale on essentially every request - they cannot pass a
+// 15-minute deadline - and warned about OTP and pullout feeds that say nothing
+// about whether an absent trip may be read as a no-show. A permanently-lit
+// warning is one staff learn to scroll past, which is exactly when a real
+// outage stops being visible. Feeds with no approved deadline are deliberately
+// never called stale here; see the contract_pending explanation above.
+export function missedTripFeedDependencies(
+  records: readonly KpiFeedHealth[],
+  now = new Date(),
+): KpiTrustDependency[] {
+  const trust = resolveKpiTrust(records, now);
+  const merged = new Map<KpiFeedName, KpiTrustDependency>();
+  for (const dependency of [
+    ...trust.fixed_route_missed_trips.dependencies,
+    ...trust.spare_missed_trips.dependencies,
+  ]) {
+    // Required in either stream wins: a feed that gates one of the two
+    // detection paths is required as far as this module is concerned.
+    const existing = merged.get(dependency.feed_name);
+    if (!existing?.required) merged.set(dependency.feed_name, dependency);
+  }
+  return [...merged.values()].sort((a, b) => a.feed_name.localeCompare(b.feed_name));
+}
