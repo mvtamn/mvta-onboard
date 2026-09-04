@@ -74,9 +74,20 @@ app.http("missedTripsList", {
       const limit = Number.isInteger(requestedLimit) ? Math.min(2000, Math.max(1, requestedLimit)) : 200;
       const requestedOffset = Number(request.query.get("offset") ?? "0");
       const offset = Number.isInteger(requestedOffset) ? Math.max(0, requestedOffset) : 0;
+      // The review queue excludes legacy_unverified rows. They were produced by
+      // the superseded detector - the one that compared agency-local schedule
+      // times against UTC and resolved any late arrival, however late - so
+      // their outcome is unknown rather than false, and nothing a reviewer can
+      // do recovers it: the evidence needed to decide them was never recorded.
+      // Leaving them in the queue buried the candidates that can be reviewed
+      // (543 items, of which about 526 were legacy at the time this was added),
+      // which is the state Phase 0 of plans/missed-trip-feature-finish-plan.md
+      // set out to avoid. They stay in the table for audit and are still
+      // returned by view=all; the queue reports how many it left out.
       const whereClause =
         view === "queue"
           ? "WHERE mmt.validation_status = 'unreviewed' AND mmt.status <> 'resolved'"
+            + " AND mmt.data_quality_status <> 'legacy_unverified'"
           : view === "history"
             ? "WHERE mmt.validation_status <> 'unreviewed' OR mmt.status = 'resolved'"
             : "";
@@ -122,13 +133,21 @@ app.http("missedTripsList", {
           COUNT(*) AS total_count,
           SUM(CASE WHEN status <> 'resolved' THEN 1 ELSE 0 END) AS active_count,
           SUM(CASE WHEN status = 'resolved' THEN 1 ELSE 0 END) AS resolved_count,
-          SUM(CASE WHEN validation_status = 'unreviewed' AND status <> 'resolved' THEN 1 ELSE 0 END) AS unreviewed_count,
-          SUM(CASE WHEN validation_status = 'unreviewed' AND status <> 'resolved' THEN 1 ELSE 0 END) AS queue_count,
+          -- Both must match the queue's own WHERE clause above, including the
+          -- legacy exclusion: these back the "Unreviewed" tile that sits over
+          -- the queue list, and a tile that counts rows the list omits is the
+          -- mismatch this endpoint's aggregates were introduced to remove.
+          SUM(CASE WHEN validation_status = 'unreviewed' AND status <> 'resolved'
+                    AND data_quality_status <> 'legacy_unverified' THEN 1 ELSE 0 END) AS unreviewed_count,
+          SUM(CASE WHEN validation_status = 'unreviewed' AND status <> 'resolved'
+                    AND data_quality_status <> 'legacy_unverified' THEN 1 ELSE 0 END) AS queue_count,
           SUM(CASE WHEN validation_status <> 'unreviewed' OR status = 'resolved' THEN 1 ELSE 0 END) AS history_count,
           SUM(CASE WHEN data_quality_status = 'legacy_unverified' THEN 1 ELSE 0 END) AS legacy_count,
           SUM(CASE WHEN validation_status = 'confirmed' THEN 1 ELSE 0 END) AS confirmed_count,
           SUM(CASE WHEN validation_status = 'false_positive' THEN 1 ELSE 0 END) AS false_positive_count,
-          COUNT(DISTINCT route_id) AS routes_affected_count,
+          -- Legacy rows excluded here too: a route counted only because the
+          -- superseded detector flagged it is not a route known to be affected.
+          COUNT(DISTINCT CASE WHEN data_quality_status <> 'legacy_unverified' THEN route_id END) AS routes_affected_count,
           MAX(last_checked_at) AS last_checked_at
         FROM MonitoredMissedTrips
       `);

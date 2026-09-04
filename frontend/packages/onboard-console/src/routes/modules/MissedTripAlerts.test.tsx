@@ -78,6 +78,31 @@ function feed(
   };
 }
 
+describe("Missed Trips legacy exclusion", () => {
+  it("reports how many legacy candidates the queue leaves out", async () => {
+    vi.mocked(api.getMissedTrips).mockResolvedValue({
+      missed_trips: [candidate("gtfs", "400")],
+      diagnostics: { ...diagnostics, legacy_unverified_count: 3518 },
+    });
+
+    render(<MissedTripAlerts />);
+
+    expect(await screen.findByText(/3,518 legacy candidates/)).toBeInTheDocument();
+  });
+
+  it("says nothing when no legacy candidates exist", async () => {
+    vi.mocked(api.getMissedTrips).mockResolvedValue({
+      missed_trips: [candidate("gtfs", "400")],
+      diagnostics: { ...diagnostics, legacy_unverified_count: 0 },
+    });
+
+    render(<MissedTripAlerts />);
+
+    expect(await screen.findByText("Spare feed enabled")).toBeInTheDocument();
+    expect(screen.queryByText(/legacy candidates/)).not.toBeInTheDocument();
+  });
+});
+
 describe("Missed Trips feed warning", () => {
   it("warns only about required feeds, naming each feed's own contract", async () => {
     vi.mocked(api.getMissedTrips).mockResolvedValue({

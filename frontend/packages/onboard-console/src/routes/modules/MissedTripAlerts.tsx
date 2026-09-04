@@ -641,6 +641,17 @@ function MissedTripsInvestigationPage({
         <RiskStat value={routesAffected} label="Routes affected" tone="accent" />
       </div>
 
+      {/* Excluded, not hidden: staff should know the queue is deliberately
+          narrower than the table, and why reviewing those rows is not the
+          remedy for them. */}
+      {mode === "queue" && !isPreview && (diagnostics?.legacy_unverified_count ?? 0) > 0 ? (
+        <p className="empty-note" style={{ padding: "0 4px 10px" }}>
+          {diagnostics!.legacy_unverified_count.toLocaleString()} legacy candidates from the superseded
+          detector are excluded from this queue. Their outcome is unknown rather than false — the evidence
+          needed to decide them was never recorded — so they are retained for audit instead of reviewed.
+        </p>
+      ) : null}
+
       {dataMode === "loading" ? (
         <div className="risk-empty-state"><strong>Loading missed trips…</strong></div>
       ) : dataMode === "error" ? (
