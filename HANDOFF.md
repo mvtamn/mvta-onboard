@@ -294,3 +294,33 @@ Only `demo_service_alerts.html` (the working, live-data-wired frontend) is inclu
 5. Wire `POST /messages` (and the retract endpoint, once built) to publish to the Service Bus queue on create/update, so the dispatch handler actually gets triggered
 6. Wire the rider opt-in mockup to the new endpoints
 7. End-to-end test: opt in with a real phone/email → post an announcement in OnBoard → confirm a real SMS/email arrives
+
+## Detour module — PR #137 status (2026-09-04)
+
+Migrations 088 through 093 HAVE BEEN RUN against the dev DB (2026-09-04) and
+verified: `Detours.location` (088, with the riders_directed backfill - 0 rows
+still carry the intake location), contractor settings seeded empty (089),
+conflict override columns (090), `geometry_json` on DetourIntake/Detours and
+the `GtfsStopRoutes` table (091), communication delivery/snapshot columns
+(092), and `DetourCommunicationReceipts` (093). The PR's code is NOT YET
+DEPLOYED; every handler guards on the columns, so the deployed build is
+unaffected by the schema being ahead.
+
+Still to do once the code deploys, none of it DB work:
+- Run the static GTFS sync once: `GtfsStopRoutes` is empty until it does, so
+  nearby-stop suggestions on the intake map show stops without routes.
+- Deploy `infra-phase1/modules/servicebus.bicep` for the new
+  `detour-communication-requested` queue (REST identity already holds
+  Sender, dispatch identity Receiver on the namespace).
+- Dispatch app: `ACS_ENDPOINT` / `ACS_EMAIL_FROM` (already required for
+  subscriber email; the same settings enable detour email).
+- REST app: `TEAMS_DETOUR_WEBHOOK_URL` from Key Vault secret
+  `teams-detour-webhook-url` (declared in functionapp.bicep beside the event
+  webhook).
+- Event Grid subscription on the ACS resource for
+  `Microsoft.Communication.EmailDeliveryReportReceived` events, endpoint
+  `https://<dispatch app>/api/acs-email-events?code=<function key>`. Until it
+  exists, emailed communications stop at "Accepted by provider".
+- Optional: set the contractor name and recipients under Administration ->
+  Service Configuration; until a name is set no contractor audience is
+  required.
