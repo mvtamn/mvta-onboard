@@ -87,7 +87,7 @@ app.http("missedTripsList", {
       const whereClause =
         view === "queue"
           ? "WHERE mmt.validation_status = 'unreviewed' AND mmt.status <> 'resolved'"
-            + " AND mmt.data_quality_status <> 'legacy_unverified'"
+            + " AND mmt.data_quality_status NOT IN ('legacy_unverified', 'unknown_data_gap')"
           : view === "history"
             ? "WHERE mmt.validation_status <> 'unreviewed' OR mmt.status = 'resolved'"
             : "";
@@ -124,6 +124,7 @@ app.http("missedTripsList", {
         queue_count: number;
         history_count: number;
         legacy_count: number;
+        data_gap_count: number;
         confirmed_count: number;
         false_positive_count: number;
         routes_affected_count: number;
@@ -138,16 +139,22 @@ app.http("missedTripsList", {
           -- the queue list, and a tile that counts rows the list omits is the
           -- mismatch this endpoint's aggregates were introduced to remove.
           SUM(CASE WHEN validation_status = 'unreviewed' AND status <> 'resolved'
-                    AND data_quality_status <> 'legacy_unverified' THEN 1 ELSE 0 END) AS unreviewed_count,
+                    AND data_quality_status NOT IN ('legacy_unverified', 'unknown_data_gap') THEN 1 ELSE 0 END) AS unreviewed_count,
           SUM(CASE WHEN validation_status = 'unreviewed' AND status <> 'resolved'
-                    AND data_quality_status <> 'legacy_unverified' THEN 1 ELSE 0 END) AS queue_count,
+                    AND data_quality_status NOT IN ('legacy_unverified', 'unknown_data_gap') THEN 1 ELSE 0 END) AS queue_count,
           SUM(CASE WHEN validation_status <> 'unreviewed' OR status = 'resolved' THEN 1 ELSE 0 END) AS history_count,
           SUM(CASE WHEN data_quality_status = 'legacy_unverified' THEN 1 ELSE 0 END) AS legacy_count,
+          -- Trips the detector could not decide because the vehicle-position
+          -- feed was not current when their grace deadline passed. Reported so
+          -- the console can say how much of the day went unmeasured instead of
+          -- silently under-counting.
+          SUM(CASE WHEN data_quality_status = 'unknown_data_gap' THEN 1 ELSE 0 END) AS data_gap_count,
           SUM(CASE WHEN validation_status = 'confirmed' THEN 1 ELSE 0 END) AS confirmed_count,
           SUM(CASE WHEN validation_status = 'false_positive' THEN 1 ELSE 0 END) AS false_positive_count,
           -- Legacy rows excluded here too: a route counted only because the
           -- superseded detector flagged it is not a route known to be affected.
-          COUNT(DISTINCT CASE WHEN data_quality_status <> 'legacy_unverified' THEN route_id END) AS routes_affected_count,
+          COUNT(DISTINCT CASE WHEN data_quality_status NOT IN ('legacy_unverified', 'unknown_data_gap')
+                    THEN route_id END) AS routes_affected_count,
           MAX(last_checked_at) AS last_checked_at
         FROM MonitoredMissedTrips
       `);
@@ -191,6 +198,7 @@ app.http("missedTripsList", {
             false_positive_count: total?.false_positive_count ?? 0,
             routes_affected_count: total?.routes_affected_count ?? 0,
             legacy_unverified_count: total?.legacy_count ?? 0,
+            unknown_data_gap_count: total?.data_gap_count ?? 0,
             last_checked_at: total?.last_checked_at?.toISOString() ?? null,
             silent_no_show_enabled: silentNoShowEnabled,
             schedule_detection_status: silentNoShowEnabled ? "experimental" : "paused",

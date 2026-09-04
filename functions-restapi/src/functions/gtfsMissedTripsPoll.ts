@@ -41,12 +41,70 @@ import { getPool, sql } from "../lib/db";
 import { fetchTripUpdateFeed, mapCanceledTrip, type CanceledTrip } from "../lib/gtfsTripUpdates";
 import { agencyServiceDate, serviceDateAndGtfsSecondsToUtc } from "../lib/missedTripTime";
 import { recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
+import { underwayEvidenceCoverage } from "../lib/kpiTrust";
+import { loadKpiFeedHealthRecords } from "../lib/kpiTrustStore";
 
 const GRACE_MINUTES = 30; // ops definition: never-ran OR started >30 min late = missed
 const GRACE_SECONDS = GRACE_MINUTES * 60;
 
 function silentNoShowEnabled(): boolean {
   return process.env.GTFS_SILENT_NO_SHOW_ENABLED?.trim().toLowerCase() === "true";
+}
+
+// Whether this poll can trust "no vehicle-start evidence" to mean "the trip
+// did not run". See resolveNoShowCoverage.
+type NoShowCoverage = {
+  proven: boolean;
+  reason: string;
+  gapStatusSupported: boolean;
+};
+
+// Silent-no-show detection is an inference from absence: a scheduled trip with
+// no positive vehicle-start evidence by its grace deadline is declared missed.
+// That inference is only valid while gtfs_vehicle_positions - the sole feed
+// that writes first_underway_at - was itself current. When it was stale, down,
+// or never delivered, every scheduled trip in the window looks identical to a
+// no-show, and flagging them turns an ingestion outage into a queue of
+// compliance findings no reviewer can disprove.
+//
+// Resolved against the shared fixed_route_missed_trips contract (the same one
+// the console's trust banner renders) rather than a local freshness rule, and
+// failing closed: an unreadable ledger counts as unproven coverage.
+async function resolveNoShowCoverage(
+  pool: sql.ConnectionPool,
+  context: InvocationContext,
+): Promise<NoShowCoverage> {
+  let proven = false;
+  let reason = "vehicle-position feed health could not be read";
+  try {
+    const positions = underwayEvidenceCoverage(await loadKpiFeedHealthRecords(pool));
+    proven = positions.state === "current";
+    reason = proven
+      ? ""
+      : `gtfs_vehicle_positions is ${positions.state}` +
+        (positions.last_success_at ? ` (last success ${positions.last_success_at})` : " (no successful ingestion recorded)");
+  } catch (err) {
+    context.error("Failed to resolve vehicle-position coverage for silent no-show detection:", err);
+  }
+
+  // Migration 087 widens the data_quality_status CHECK. Until it is applied,
+  // an undecidable trip cannot be recorded as one, so it is left untracked and
+  // re-examined next poll rather than mislabelled as a confirmed no-show.
+  let gapStatusSupported = false;
+  try {
+    const check = await pool.request().query<{ ok: number }>(`
+      SELECT CASE WHEN EXISTS (
+        SELECT 1 FROM sys.check_constraints
+        WHERE parent_object_id = OBJECT_ID('dbo.MonitoredMissedTrips')
+          AND CHARINDEX('unknown_data_gap', definition) > 0
+      ) THEN 1 ELSE 0 END AS ok
+    `);
+    gapStatusSupported = check.recordset[0]?.ok === 1;
+  } catch (err) {
+    context.error("Failed to check whether MonitoredMissedTrips accepts unknown_data_gap:", err);
+  }
+
+  return { proven, reason, gapStatusSupported };
 }
 
 async function alreadyTracked(pool: sql.ConnectionPool, tripId: string, serviceDate: string): Promise<boolean> {
@@ -152,6 +210,7 @@ async function detectSilentNoShows(
   pool: sql.ConnectionPool,
   context: InvocationContext,
   dayOffset: number,
+  coverage: NoShowCoverage,
 ): Promise<number> {
   const scheduleTablesExist = await pool.request().query<{ ok: number }>(`
     SELECT CASE
@@ -219,12 +278,21 @@ async function detectSilentNoShows(
   `);
 
   let flaggedCount = 0;
+  let recordedGaps = 0;
+  let unrecordableGaps = 0;
   for (const trip of candidateTrips.recordset) {
     const scheduledAt = serviceDateAndGtfsSecondsToUtc(serviceDate, trip.first_departure_seconds);
     if (!scheduledAt) continue;
     const graceDeadline = new Date(scheduledAt.getTime() + GRACE_SECONDS * 1000);
     if (graceDeadline.getTime() > now.getTime()) continue;
     if (trip.first_underway_at && trip.first_underway_at.getTime() <= graceDeadline.getTime()) continue;
+
+    // Undecidable, not missed: the feed that would have proven this trip ran
+    // was not current, so its silence says nothing about the trip.
+    if (!coverage.proven && !coverage.gapStatusSupported) {
+      unrecordableGaps++;
+      continue;
+    }
 
     try {
       const trackReq = pool.request();
@@ -233,6 +301,11 @@ async function detectSilentNoShows(
       trackReq.input("route_id", sql.NVarChar, trip.route_id);
       trackReq.input("scheduled_departure_at", sql.DateTime2, scheduledAt);
       trackReq.input("grace_deadline_at", sql.DateTime2, graceDeadline);
+      // A data-gap row is recorded, never escalated: it stays out of the review
+      // queue and the compliance tiles, and reconcileUnderwayEvidence still
+      // resolves it if the feed recovers and late evidence arrives.
+      trackReq.input("status", sql.NVarChar, coverage.proven ? "escalated" : "watching");
+      trackReq.input("data_quality_status", sql.NVarChar, coverage.proven ? "experimental" : "unknown_data_gap");
       await trackReq.query(`
         INSERT INTO MonitoredMissedTrips (
           trip_id, service_date, route_id, scheduled_departure_at, grace_deadline_at, status, detection_type,
@@ -240,14 +313,26 @@ async function detectSilentNoShows(
         )
         VALUES (
           @trip_id, @service_date, @route_id, @scheduled_departure_at, @grace_deadline_at,
-          'escalated', 'silent_no_show', 'gtfs-silent-v2', 'experimental'
+          @status, 'silent_no_show', 'gtfs-silent-v2', @data_quality_status
         )
       `);
-      flaggedCount++;
-      context.log(`Missed trip flagged for review (no-show): trip ${trip.trip_id} (route ${trip.route_id}, scheduled ${scheduledAt.toISOString()})`);
+      if (coverage.proven) {
+        flaggedCount++;
+        context.log(`Missed trip flagged for review (no-show): trip ${trip.trip_id} (route ${trip.route_id}, scheduled ${scheduledAt.toISOString()})`);
+      } else {
+        recordedGaps++;
+      }
     } catch (err) {
       context.error(`Failed to flag no-show for trip ${trip.trip_id}:`, err);
     }
+  }
+
+  if (!coverage.proven && (recordedGaps > 0 || unrecordableGaps > 0)) {
+    context.warn(
+      `Silent no-show detection could not decide ${recordedGaps + unrecordableGaps} scheduled trip(s) for ${serviceDate}: ` +
+        `${coverage.reason}. ${recordedGaps} recorded as unknown_data_gap, ` +
+        `${unrecordableGaps} left untracked (apply migration 087 to record them).`,
+    );
   }
   return flaggedCount;
 }
@@ -273,19 +358,24 @@ async function reconcileUnderwayEvidence(pool: sql.ConnectionPool, context: Invo
       INNER JOIN GtfsTripOperationalEvidence evidence
         ON evidence.trip_id = mmt.trip_id AND evidence.service_date = mmt.service_date
       WHERE mmt.detection_type = 'silent_no_show'
-        AND mmt.data_quality_status = 'experimental'
+        AND mmt.data_quality_status IN ('experimental', 'unknown_data_gap')
         AND mmt.status IN ('watching', 'escalated')
         AND evidence.first_underway_at IS NOT NULL
         AND evidence.first_underway_at <= mmt.grace_deadline_at;
 
       UPDATE mmt
       SET detected_late_arrival_at = evidence.first_underway_at,
+          -- Late evidence decides a trip the outage left undecidable: it did
+          -- run, past its grace deadline, which is a missed trip by the ops
+          -- definition. Promote it out of the data-gap bucket into the queue.
+          status = CASE WHEN mmt.data_quality_status = 'unknown_data_gap' THEN 'escalated' ELSE mmt.status END,
+          data_quality_status = CASE WHEN mmt.data_quality_status = 'unknown_data_gap' THEN 'experimental' ELSE mmt.data_quality_status END,
           last_checked_at = SYSUTCDATETIME()
       FROM MonitoredMissedTrips mmt
       INNER JOIN GtfsTripOperationalEvidence evidence
         ON evidence.trip_id = mmt.trip_id AND evidence.service_date = mmt.service_date
       WHERE mmt.detection_type = 'silent_no_show'
-        AND mmt.data_quality_status = 'experimental'
+        AND mmt.data_quality_status IN ('experimental', 'unknown_data_gap')
         AND mmt.status IN ('watching', 'escalated')
         AND evidence.first_underway_at > mmt.grace_deadline_at
         AND mmt.detected_late_arrival_at IS NULL;
@@ -346,9 +436,10 @@ app.timer("gtfsMissedTripsPoll", {
       // Both offsets run every poll - see the module header comment for why
       // "yesterday" needs rechecking too (late-evening and past-midnight
       // trips' grace deadlines fall after the calendar day rolls over).
+      const coverage = await resolveNoShowCoverage(pool, context);
       for (const dayOffset of [0, -1]) {
         try {
-          noShowCount += await detectSilentNoShows(pool, context, dayOffset);
+          noShowCount += await detectSilentNoShows(pool, context, dayOffset, coverage);
         } catch (err) {
           context.error(`Failed to run silent no-show detection (dayOffset=${dayOffset}):`, err);
         }
