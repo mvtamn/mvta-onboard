@@ -18,6 +18,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.72",
+    date: "2026-09-03",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "Fixed Route Departures no longer shows a zeroed summary under a \"Live data\" badge when its feed is not connected. An unconfigured feed, a missing history table, and an unreachable service now read as three distinct states, and the pullout counts are withheld until the source can actually support them.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.70",
     date: "2026-08-28",
     sections: [
