@@ -37,10 +37,10 @@
 // it a no-op once a trip is observed or already tracked) closes that gap
 // without needing a separate rollover job.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
-import { getPool, sql } from "../lib/db";
-import { fetchTripUpdateFeed, mapCanceledTrip, type CanceledTrip } from "../lib/gtfsTripUpdates";
+import { sql } from "../lib/db";
+import { readTripUpdateFeed } from "../lib/gtfsTripUpdateIngest";
+import { mapCanceledTrip, type CanceledTrip } from "../lib/gtfsTripUpdates";
 import { agencyServiceDate, serviceDateAndGtfsSecondsToUtc } from "../lib/missedTripTime";
-import { recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
 import { underwayEvidenceCoverage } from "../lib/kpiTrust";
 import { loadKpiFeedHealthRecords } from "../lib/kpiTrustStore";
 
@@ -394,30 +394,9 @@ app.timer("gtfsMissedTripsPoll", {
       return;
     }
 
-    let feed;
-    try {
-      feed = await fetchTripUpdateFeed(feedUrl);
-    } catch (err) {
-      context.error("Failed to fetch GTFS-RT TripUpdate feed:", err);
-      try {
-        await recordFeedFailure(await getPool(), "gtfs_trip_updates", err);
-      } catch (healthError) {
-        context.error("Failed to record TripUpdate feed failure:", healthError);
-      }
-      return;
-    }
-
-    const pool = await getPool();
-    try {
-      await recordFeedHealth(
-        pool,
-        "gtfs_trip_updates",
-        feed.Entities.length,
-        feed.Header?.Timestamp ?? null,
-      );
-    } catch (err) {
-      context.error("Failed to update TripUpdate feed health:", err);
-    }
+    const ingest = await readTripUpdateFeed(feedUrl, context);
+    if (!ingest) return;
+    const { feed, pool } = ingest;
     let canceledCount = 0;
 
     for (const entity of feed.Entities) {
