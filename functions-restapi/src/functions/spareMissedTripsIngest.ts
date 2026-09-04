@@ -283,13 +283,34 @@ app.timer("spareMissedTripsIngest", {
       const requests = await fetchUpdated<SpareRequestRecord>("/v1/requests", fromSeconds, nowSeconds, REQUEST_PAGE_SIZE, maxRows);
       const slots = await fetchSlotsForRequestDuties(requests, maxRows);
       const pool = await getPool();
+      // The on-demand wait-time monitor rides along on this ingest, but it is a
+      // separate concern with a separate dependency: storeOnDemandSpareRequest
+      // throws when no operational zone version is active, and that throw used
+      // to escape the loop and abandon the whole run. Missed-trip ingestion
+      // needs no zones at all, so a zone-configuration gap was taking down a
+      // pipeline that does not depend on it - the requests already upserted
+      // stayed, the slots never ran, and no health was recorded. That is the
+      // outage observed from 2026-09-03 08:02Z; #128 surfaced its reason.
+      //
+      // Zones are checked once here rather than per row: when they are absent
+      // the monitor cannot work for any request, and skipping it keeps Missed
+      // Trips ingesting. The gap is warned about every run so it stays visible
+      // rather than becoming a silent degradation.
       const activeZones = await loadActiveOperationalZones();
+      const zonesAvailable = activeZones.snapshot.zones.length > 0;
+      if (!zonesAvailable) {
+        context.warn(
+          "No active on-demand operational zones are available; skipping on-demand monitor updates for this run. " +
+            "Missed-trip ingestion continues. Activate a zone version in OnDemandOperationalZoneVersions to restore the monitor.",
+        );
+      }
       let requestWrites = 0;
       let slotWrites = 0;
       let monitorWrites = 0;
       for (const row of requests) {
         if (await upsertRequest(pool, row)) {
           requestWrites++;
+          if (!zonesAvailable) continue;
           const normalized = normalizeOnDemandSpareRequest(row);
           if (normalized && await storeOnDemandSpareRequest(normalized, activeZones)) monitorWrites++;
         }
