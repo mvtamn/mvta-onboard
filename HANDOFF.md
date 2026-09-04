@@ -309,11 +309,22 @@ unaffected by the schema being ahead.
 Still to do once the code deploys, none of it DB work:
 - Run the static GTFS sync once: `GtfsStopRoutes` is empty until it does, so
   nearby-stop suggestions on the intake map show stops without routes.
-- Deploy `infra-phase1/modules/servicebus.bicep` for the new
-  `detour-communication-requested` queue (REST identity already holds
-  Sender, dispatch identity Receiver on the namespace).
-- Dispatch app: `ACS_ENDPOINT` / `ACS_EMAIL_FROM` (already required for
-  subscriber email; the same settings enable detour email).
+- DONE 2026-09-04: `servicebus.bicep` deployed (manageRoleAssignments=false);
+  queue `detour-communication-requested` exists. NOT done: the namespace RBAC
+  the bicep declares - today only the REST identity holds Data Receiver; the
+  REST identity has NO Sender role and the dispatch identity has NO Receiver
+  role, so nothing publishes or consumes on any queue (pre-existing gap, see
+  servicebus.bicep header). Re-run with manageRoleAssignments=true (and
+  additionalReceiverPrincipalId empty, since that Receiver already exists) to
+  create them, then set `SERVICE_BUS_NAMESPACE=sb-mvta-onboard-dev.servicebus.windows.net`
+  on the REST app and `ServiceBusConnection__fullyQualifiedNamespace` (same
+  host) on the dispatch app.
+- Dispatch app: `ACS_ENDPOINT` SET 2026-09-04
+  (https://acs-mvta-onboard-dev.unitedstates.communication.azure.com).
+  `ACS_EMAIL_FROM` cannot be set yet: acs-mvta-onboard-dev has no linked email
+  domain and no Email Communication Service exists in the subscription. Provision
+  one (Azure-managed domain is the quick path: DoNotReply@<guid>.azurecomm.net),
+  link it to the ACS resource, then set ACS_EMAIL_FROM to that address.
 - REST app: `TEAMS_DETOUR_WEBHOOK_URL` from Key Vault secret
   `teams-detour-webhook-url` (declared in functionapp.bicep beside the event
   webhook).
