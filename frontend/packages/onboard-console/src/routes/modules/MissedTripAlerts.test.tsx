@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MissedTrip, MissedTripsDiagnostics } from "@mvta/shared";
 import { api } from "../../config.js";
-import { MissedTripAlerts } from "./MissedTripAlerts.js";
+import { agoLabel, MissedTripAlerts } from "./MissedTripAlerts.js";
 
 vi.mock("../../config.js", () => ({
   api: {
@@ -55,8 +55,9 @@ describe("Missed Trips Spare source visibility", () => {
 
     render(<MissedTripAlerts />);
 
-    expect(await screen.findByText("Spare feed enabled")).toBeInTheDocument();
-    expect(screen.getByText("1 Spare candidate in this view.")).toBeInTheDocument();
+    // The Spare candidate count now rides on the data line rather than holding
+    // a banner of its own, so it is matched as a substring of that line.
+    expect(await screen.findByText(/1 Spare candidate in this view\./)).toBeInTheDocument();
     await user.selectOptions(screen.getByLabelText("Filter by data source"), "spare");
 
     expect(screen.getByText("Spare · MVTA Connect")).toBeInTheDocument();
@@ -98,7 +99,7 @@ describe("Missed Trips legacy exclusion", () => {
 
     render(<MissedTripAlerts />);
 
-    expect(await screen.findByText("Spare feed enabled")).toBeInTheDocument();
+    expect(await screen.findByText(/Spare candidate/)).toBeInTheDocument();
     expect(screen.queryByText(/legacy candidates/)).not.toBeInTheDocument();
   });
 });
@@ -141,7 +142,36 @@ describe("Missed Trips feed warning", () => {
 
     render(<MissedTripAlerts />);
 
-    expect(await screen.findByText("Spare feed enabled")).toBeInTheDocument();
+    expect(await screen.findByText(/Spare candidate/)).toBeInTheDocument();
     expect(screen.queryByText("Feed warning")).not.toBeInTheDocument();
+  });
+});
+
+describe("agoLabel", () => {
+  it("keeps minutes below an hour", () => {
+    expect(agoLabel(0)).toBe("0 min ago");
+    expect(agoLabel(59)).toBe("59 min ago");
+  });
+
+  it("switches to hours and minutes past an hour", () => {
+    expect(agoLabel(60)).toBe("1h ago");
+    expect(agoLabel(250)).toBe("4h 10m ago");
+  });
+
+  it("rolls over to days at 24 hours instead of counting hours forever", () => {
+    // The reported defect: capping minutes at 60 while letting hours run free
+    // only moved the unbounded count up a tier, so an overnight row read
+    // "26h 14m ago" and a weekend one "73h 5m ago".
+    expect(agoLabel(24 * 60)).toBe("1d ago");
+    expect(agoLabel(26 * 60 + 14)).toBe("1d 2h ago");
+    expect(agoLabel(73 * 60 + 5)).toBe("3d 1h ago");
+  });
+
+  it("drops the hour part on a whole number of days", () => {
+    expect(agoLabel(48 * 60)).toBe("2d ago");
+  });
+
+  it("renders an em dash when there is no timestamp", () => {
+    expect(agoLabel(null)).toBe("—");
   });
 });

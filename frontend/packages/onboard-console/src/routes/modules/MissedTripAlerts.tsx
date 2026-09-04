@@ -27,12 +27,24 @@ function minutesAgo(value: string | null): number | null {
 // "250 min ago" doesn't read at a glance - once it's been over an hour,
 // switch to "4h 10m ago" (or "4h ago" on the hour) instead of letting the
 // raw minute count grow unbounded.
-function agoLabel(minutes: number | null): string {
+//
+// The hour tier needs the same ceiling for the same reason: capping minutes at
+// 60 while letting hours run free just moved the unbounded count up one tier,
+// so a row untouched overnight read "26h 14m ago" and one left over a weekend
+// "73h 5m ago". Rows here legitimately live for days - AGING_HOURS is 24 and
+// OVERDUE_HOURS 72 - so the day tier is the common case for anything overdue,
+// not an edge case.
+export function agoLabel(minutes: number | null): string {
   if (minutes === null) return "—";
   if (minutes < 60) return `${minutes} min ago`;
   const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  return mins === 0 ? `${hours}h ago` : `${hours}h ${mins}m ago`;
+  if (hours < 24) {
+    const mins = minutes % 60;
+    return mins === 0 ? `${hours}h ago` : `${hours}h ${mins}m ago`;
+  }
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  return remainingHours === 0 ? `${days}d ago` : `${days}d ${remainingHours}h ago`;
 }
 
 // Missed Trips feeds the Contractor Performance Assessment's MISSED_TRIPS_FR
@@ -609,7 +621,11 @@ function MissedTripsInvestigationPage({
                   : "Partial data"}
         </span>
         <span>
-          {liveMessage ?? `Authenticated missed-trip data loaded${diagnostics?.last_checked_at ? ` · last detector check ${agoLabel(minutesAgo(diagnostics.last_checked_at))}` : ""}.`}
+          {liveMessage ?? `Authenticated missed-trip data loaded${diagnostics?.last_checked_at ? ` · last detector check ${agoLabel(minutesAgo(diagnostics.last_checked_at))}` : ""}.${
+            dataMode === "live" && diagnostics?.spare_enabled
+              ? ` ${spareCandidates} Spare candidate${spareCandidates === 1 ? "" : "s"} in this ${mode === "queue" ? "view" : "history"}.`
+              : ""
+          }`}
         </span>
       </div>
       {blockingFeeds.length > 0 ? (
@@ -623,14 +639,15 @@ function MissedTripsInvestigationPage({
           </span>
         </div>
       ) : null}
-      {dataMode === "live" ? (
+      {dataMode === "live" && !diagnostics?.spare_enabled ? (
+        // Only the disabled state earns a banner of its own: it means on-demand
+        // trips are absent from this queue entirely, which changes what the
+        // counts mean. An enabled feed's candidate count is a fact about the
+        // current filter, so it rides along with the data line above instead of
+        // holding a row of its own.
         <div className="concept-banner" aria-label="Spare feed status">
-          <span className="concept-badge">{diagnostics?.spare_enabled ? "Spare feed enabled" : "Spare feed disabled"}</span>
-          <span>
-            {spareCandidates > 0
-              ? `${spareCandidates} Spare candidate${spareCandidates === 1 ? "" : "s"} in this ${mode === "queue" ? "view" : "history"}.`
-              : "No Spare missed-trip candidates are in this view."}
-          </span>
+          <span className="concept-badge">Spare feed disabled</span>
+          <span>On-demand trips are not included in this {mode === "queue" ? "view" : "history"}.</span>
         </div>
       ) : null}
 
