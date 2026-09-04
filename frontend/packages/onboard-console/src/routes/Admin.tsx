@@ -560,6 +560,78 @@ export function DetourReasonCodesSection() {
   );
 }
 
+
+// Contractor notification (design B15): the fixed-route contractor's name
+// and recipient addresses. Once a name is set, every fixed-route Detour
+// requires a published communication to that audience and the composer
+// prefills the recipients. There is no server-side sender; staff send
+// from their mail client and mark the communication published.
+export function DetourContractorSection() {
+  const [settings, setSettings] = useState<AppSettingRow[] | null>(null);
+  const [name, setName] = useState("");
+  const [recipients, setRecipients] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [okMsg, setOkMsg] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api.getAppSettings("detour")
+      .then(({ settings }) => {
+        setSettings(settings);
+        setName(settings.find((s) => s.setting_key === "contractor_name")?.setting_value ?? "");
+        setRecipients(settings.find((s) => s.setting_key === "contractor_recipients")?.setting_value ?? "");
+      })
+      .catch((err) => setError(err instanceof ApiError ? err.message : "Could not load contractor settings."));
+  }, []);
+
+  const configured = settings?.some((s) => s.setting_key === "contractor_name") ?? false;
+  const current = (key: string) => settings?.find((s) => s.setting_key === key)?.setting_value ?? "";
+  const dirty = name.trim() !== current("contractor_name") || recipients.trim() !== current("contractor_recipients");
+  const badAddresses = recipients.split(/[,;\s]+/).filter(Boolean).filter((a) => !a.includes("@"));
+
+  async function save() {
+    if (badAddresses.length) { setError(`Not email addresses: ${badAddresses.join(", ")}`); return; }
+    setSaving(true); setError(null); setOkMsg(null);
+    try {
+      const updatedName = await api.updateAppSetting("detour", "contractor_name", name.trim());
+      const updatedRecipients = await api.updateAppSetting("detour", "contractor_recipients", recipients.trim());
+      setSettings((prev) => (prev ?? []).map((s) => s.setting_key === "contractor_name" ? updatedName : s.setting_key === "contractor_recipients" ? updatedRecipients : s));
+      setOkMsg(name.trim() ? `Contractor set to ${name.trim()}; fixed-route Detours now require a communication to them.` : "Contractor cleared; no contractor audience is required.");
+    } catch (err) { setError(err instanceof ApiError ? err.message : "Could not save contractor settings."); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <>
+      <div className="panel-header">Detour contractor notification</div>
+      <div className="panel-body">
+        <p className="panel-desc">
+          The fixed-route contractor that must be notified of every fixed-route Detour. Once a name is set it appears as a required audience on Detours &amp; Closures with these recipients prefilled; staff send from their mail client and mark the communication published.
+        </p>
+        {error ? <p className="error-text">{error}</p> : null}
+        {okMsg ? <p className="ok-text">{okMsg}</p> : null}
+        {settings === null && !error ? <p className="muted">Loading…</p> : null}
+        {settings !== null && !configured ? <p className="muted">Contractor settings are not seeded in this environment (migration 089).</p> : null}
+        {configured ? (
+          <div className="field-grid">
+            <div>
+              <p className="field-label">Contractor name <span className="hint">(audience label; blank = none)</span></p>
+              <input className="f" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. SST" />
+            </div>
+            <div>
+              <p className="field-label">Recipient addresses <span className="hint">(comma-separated)</span></p>
+              <input className="f" value={recipients} onChange={(e) => setRecipients(e.target.value)} placeholder="dispatch@contractor.com, ops@contractor.com" />
+            </div>
+            <div style={{ alignSelf: "end" }}>
+              <button className="btn-post" disabled={saving || !dirty} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </>
+  );
+}
+
 export function Admin() {
   const [defaults, setDefaults] = useState<ExpirationDefault[] | null>(null);
   const [edits, setEdits] = useState<Record<string, string>>({});

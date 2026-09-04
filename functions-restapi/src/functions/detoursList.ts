@@ -13,6 +13,7 @@ import { getPool, sql } from "../lib/db";
 import { requireRole, DETOUR_READ_ROLES } from "../lib/auth";
 import { computeDetourStatus, toDateOnly, toTimeOnly, type DetourStatus } from "../lib/detourStatus";
 import { computeDetourReadiness } from "../lib/detourReadiness";
+import { contractorFromSettings, requiredAudiences, type ContractorNotification } from "../lib/detourContractor";
 
 interface DetourRow {
   id: string;
@@ -167,6 +168,16 @@ app.http("detoursList", {
         reason_code, severity, reported_by, reported_at, approved_by, approved_at,
         radio_notified, dispatch_board_notified, social_media_notified, resolution_notes`;
 
+      // Contractor notification settings (migration 089). Absent table or
+      // rows means no contractor is configured, which changes nothing.
+      let contractor: ContractorNotification = { name: null, recipients: [] };
+      try {
+        const settings = await pool.request().query<{ setting_key: string; setting_value: string }>(
+          "SELECT setting_key, setting_value FROM AppSettings WHERE module = 'detour' AND setting_key IN ('contractor_name', 'contractor_recipients')",
+        );
+        contractor = contractorFromSettings(settings.recordset);
+      } catch { /* AppSettings not present in this environment */ }
+
       const detoursResult = await pool.request().query<DetourRow>(`
         SELECT id, number, closure, start_date, end_date, is_monitor_only, riders_directed,
                email_sent, expired_email_sent, spare_emailed, source, external_detour_id,
@@ -222,11 +233,17 @@ app.http("detoursList", {
         // ISO timestamp nobody can read as a time of day.
         ...(hasLocation ? { location: d.location ?? null } : {}),
         ...(hasWindowFields ? { start_time: toTimeOnly(d.start_time), end_time: toTimeOnly(d.end_time), time_window_status: d.time_window_status ?? null, affected_stops_and_stations: d.affected_stops_and_stations ?? null, operational_impacts: d.operational_impacts ?? null, confirmation_contact: d.confirmation_contact ?? null } : {}),
-        ...(hasCommunications ? {
-          communications_published: d.communications_published ?? 0,
-          communications_draft: d.communications_draft ?? 0,
-          communication_status: (d.communications_published ?? 0) >= parseList(d.notification_audiences).length && parseList(d.notification_audiences).length > 0 ? "published" : (d.communications_draft ?? 0) > 0 ? "draft" : "needs_communication",
+        ...(hasOperationalFields || contractor.name ? {
+          required_audiences: requiredAudiences({ notification_audiences: parseList(d.notification_audiences), service_impact: d.service_impact ?? null }, contractor),
         } : {}),
+        ...(hasCommunications ? (() => {
+          const required = requiredAudiences({ notification_audiences: parseList(d.notification_audiences), service_impact: d.service_impact ?? null }, contractor);
+          return {
+            communications_published: d.communications_published ?? 0,
+            communications_draft: d.communications_draft ?? 0,
+            communication_status: (d.communications_published ?? 0) >= required.length && required.length > 0 ? "published" : (d.communications_draft ?? 0) > 0 ? "draft" : "needs_communication",
+          };
+        })() : {}),
         ...(hasReviewFields ? { review_status: d.review_status, review_reason: d.review_reason, closure_reason: d.closure_reason } : {}),
         readiness: hasWorkflowFields ? computeDetourReadiness(d.fulfillment_mode, d.lifecycle_state as any) : undefined,
         segments: segmentsByDetour.get(d.id) ?? [],
@@ -244,7 +261,7 @@ app.http("detoursList", {
         fulfillment_mode: d.fulfillment_mode ?? null, status: d.status,
         technical: { external_detour_id: d.external_detour_id, lifecycle_state: d.lifecycle_state, avail_entry_result: d.avail_entry_result },
       }));
-      return { status: 200, jsonBody: { detours: filtered, ...(operationsView ? { report: operationsReport } : {}) } };
+      return { status: 200, jsonBody: { detours: filtered, contractor_notification: contractor, ...(operationsView ? { report: operationsReport } : {}) } };
     } catch (err) {
       context.error("GET /detours failed:", err);
       return { status: 500, jsonBody: { error: "Internal server error" } };

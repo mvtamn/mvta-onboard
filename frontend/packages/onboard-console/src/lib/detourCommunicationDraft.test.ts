@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Detour, DetourCommunication } from "@mvta/shared";
-import { audiencePlan, draftCommunicationText, nextAudience } from "./detourCommunicationDraft.js";
+import { audiencePlan, communicationSubject, draftCommunicationText, mailtoLink, nextAudience } from "./detourCommunicationDraft.js";
 
 const detour = {
   internal_number: "MVTA-DET-2026-0012", number: null, closure: "Cedar Ave bridge closed", location: "Cedar Ave at 5th St",
@@ -26,6 +26,12 @@ describe("audiencePlan", () => {
     expect(nextAudience(audiencePlan(detour, [comm("Operators", "draft"), comm("Operations management", "published")]))?.audience).toBe("Operators");
     expect(nextAudience(audiencePlan(detour, [comm("Operators", "published"), comm("Operations management", "published")]))).toBeNull();
   });
+  it("uses the server's required list and marks the contractor as email-to-recipients", () => {
+    const plan = audiencePlan({ ...detour, required_audiences: ["Operators", "SST"] }, [], { name: "SST", recipients: ["ops@sst.com"] });
+    expect(plan.map((p) => p.audience)).toEqual(["Operators", "SST"]);
+    expect(plan[0].contractor).toBe(false);
+    expect(plan[1]).toMatchObject({ contractor: true, channels: ["email"], recipients: ["ops@sst.com"] });
+  });
   it("is empty when the record names no audiences", () => {
     expect(audiencePlan({ notification_audiences: [], notification_channels: [] }, [])).toEqual([]);
   });
@@ -45,5 +51,16 @@ describe("draftCommunicationText", () => {
   it("omits lines the record does not have and never emits a blank-dated closure as a date", () => {
     const text = draftCommunicationText({ ...detour, internal_number: null, location: null, start_date: null, end_date: null, start_time: null, end_time: null, time_window_status: null, segments: [], action_instructions: null, riders_directed: null, confirmation_contact: null });
     expect(text).toBe("Cedar Ave bridge closed\nWhen: Dates to be confirmed");
+  });
+});
+
+describe("mailtoLink and communicationSubject", () => {
+  it("builds a mailto with encoded recipients, subject, and body", () => {
+    const link = mailtoLink(["a@sst.com", "b@sst.com"], "Detour: 5th & Main", "Line 1\nLine 2");
+    expect(link.startsWith("mailto:a%40sst.com%2Cb%40sst.com?subject=Detour%3A%205th%20%26%20Main&body=Line%201%0ALine%202")).toBe(true);
+  });
+  it("prefixes the subject with the reference when there is one", () => {
+    expect(communicationSubject(detour)).toBe("[MVTA-DET-2026-0012] Detour: Cedar Ave bridge closed");
+    expect(communicationSubject({ internal_number: null, number: null, closure: "X" })).toBe("Detour: X");
   });
 });

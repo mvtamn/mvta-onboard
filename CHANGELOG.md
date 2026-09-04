@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.83] - 2026-09-04
+
+- **Contractor notification (design B15).** Migration 089 seeds two admin settings, `detour/contractor_name` and `detour/contractor_recipients`, editable under Administration → Service Configuration. Once a name is set, every fixed-route Detour (not mobility) requires a published communication to that audience: `GET /detours` returns `required_audiences` (the record's list plus the contractor) and measures `communication_status` against it, and reports the contractor settings alongside. On Detours & Closures the contractor appears in the required checklist as email-to-recipients, Draft prefills the addresses, and an **Open in email** link opens the staff member's mail client with recipients, subject, and body; marking the draft published records "Sent by email to …" as the outcome. There is deliberately no server-side sender - publishing records a human action.
+
 ## [1.5.82] - 2026-09-04
 
 - **Drive detour communications from the record's required audiences.** The composer took free-text audience and channel, while the server clears "needs communication" only when every audience the intake named has a published communication under exactly that string - so the status could only be cleared by guessing. The Communications section now shows a checklist of required audiences with their progress (nothing / draft / published) and channels, a Draft button per unmet audience that prefills audience, channel, and a message assembled from the operational record (reference, closure, location, window, routes, instructions, riders, impacts, turn-by-turn, contact), audience and channel selects limited to the record's list with an Other escape, and who published each communication and when. Pure prefill logic in `lib/detourCommunicationDraft.ts` with tests.

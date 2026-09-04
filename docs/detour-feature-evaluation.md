@@ -2,7 +2,7 @@
 
 **Evaluation date:** 2026-09-04 (supersedes the 2026-08-10 evaluation)  
 **Scope:** REST API, SQL migrations, staff console (Detours & Closures, Detour Intake, Detour Reports, Administration), Avail integration, and deployment notes.  
-**Tree evaluated:** branch `claude/intelligent-vaughan-fd0fc9` as proposed in PR #137 (console v1.5.82).
+**Tree evaluated:** branch `claude/intelligent-vaughan-fd0fc9` as proposed in PR #137 (console v1.5.83).
 
 **Verification:** `functions-restapi` builds clean and passes `npm test` with **455/455** (one pre-existing skip). The frontend workspace typechecks across shared, rider-app, and onboard-console; the onboard-console production build succeeds; `npm test` passes **156/156**. These are source, build, and unit checks. They do not prove that deployment-dependent resources or live Avail data are configured, and no browser session was run against a live API.
 
@@ -41,7 +41,7 @@ intake aids. Attachments and the Avail feed remain deployment-dependent.
 | OCC re-review after material edit | **Implemented** | Edits flag `review_status = needs_review`; `POST /detours/{id}/review-complete` clears it and writes a `manual_correction` history row. |
 | Workflow history | **Implemented** | Append-only `DetourWorkflowHistory`; visible behind "Show history" on both pages. |
 | Communications (internal drafts) | **Partially implemented** | Per-detour drafts with a publish action; `communication_status` derived by comparing published audiences to the required list. The composer works through the record's required audiences and channels (checklist with progress, per-audience Draft that prefills a message from the operational record, Other escape for unplanned audiences). No recipient-group model, no sender integration (email/Teams), and no immutable sent-body snapshot - "published" records a decision, not a delivery. |
-| Contractor notification | **Not implemented** | Design B15: no contractor recipient list or send path. |
+| Contractor notification | **Implemented (manual send)** | Design B15. Contractor name and recipients in AppSettings (migration 089, admin-editable); fixed-route Detours require a published communication to the contractor; the composer prefills recipients and offers an Open-in-email link; publishing records the outcome. No server-side sender - delivery is a human action from the staff member's mail client. |
 | Avail Detours synchronization | **Implemented in source; live behavior unconfirmed** | 15-minute timer (`availDetoursSync.ts`), upsert by external DetourID, last-seen tracking, manual-edit protection. Live feed shape and non-zero behavior still need confirmation per `HANDOFF.md`. |
 | Image/document attachments | **Implemented in source; deployment-dependent** | Private Blob/SAS upload and read for detours and intake (`DetourImages`), daily purge timer. Images render as thumbnails and documents as file tiles on Detours & Closures (editable) and Detour Reports (read-only); the accept list matches intake. Storage account, app setting, RBAC, and CORS still need provisioning (`infra-phase1/modules/storage-detour-images.bicep`). |
 | Role separation | **Implemented** | Read / intake (admin) / write / delete separated server-side and mirrored in the console; import and re-review controls hidden from roles that would 403. |
@@ -52,10 +52,11 @@ intake aids. Attachments and the Avail feed remain deployment-dependent.
 
 ## Operational caveats
 
-1. **Migration 088 must be applied to dev.** Until it runs, acceptance skips
+1. **Migrations 088 and 089 must be applied to dev.** Until it runs, acceptance skips
    the `location` column (guarded) and Detours promoted before this branch keep
    showing the closure location under "Riders directed." The migration also
-   performs that backfill.
+   performs that backfill. Migration 089 seeds the contractor settings; until
+   it runs the Administration section reports them as not seeded.
 2. **Attachments are unavailable until storage is provisioned.** Deploy the
    bicep module, set `DETOUR_IMAGES_STORAGE_ACCOUNT`, grant the Function App
    identity Blob Data Contributor, verify CORS.
@@ -85,7 +86,8 @@ intake aids. Attachments and the Avail feed remain deployment-dependent.
 
 ### Priority 2 — close the outbound workflow
 
-- A distinct contractor recipient list and drafting path (design B15).
+- A server-side sender (email/Teams) with an immutable sent-body snapshot, so
+  "published" can mean delivered rather than recorded.
 - An explicit send with a sender integration and an immutable sent-body
   snapshot; `communication_status` should derive from sends, not from drafts
   marked published.
@@ -104,11 +106,11 @@ intake aids. Attachments and the Avail feed remain deployment-dependent.
 The 2026-08-10 evaluation listed conflict/duplicate warnings, notification
 drafts, and spreadsheet migration as not implemented, and did not cover
 communications, closure, historical import, re-review, or the intake queue.
-PR #137 (twelve commits, v1.5.71–1.5.82) added the operational record read path,
+PR #137 (thirteen commits, v1.5.71–1.5.83) added the operational record read path,
 the needs-information workflow, re-review clearance, CSV/table parity, removal
 of twelve client methods with no server, workflow history and reason-code
 admin in the console, `Detours.location`, legacy-import listing and a real
 CSV parser, likely-duplicate detection, a testable intake column list, and
-type-aware attachment rendering, and communications prefilled from the record's
-required audiences.
+type-aware attachment rendering, communications prefilled from the record's required
+audiences, and contractor notification with a manual send path.
 This document reflects the tree after those changes.

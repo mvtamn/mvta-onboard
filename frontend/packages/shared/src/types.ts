@@ -708,6 +708,10 @@ export interface DetourCommunication {
   outcome: string | null; created_by: string; created_at: string;
   published_by: string | null; published_at: string | null;
 }
+// Contractor notification settings as GET /detours reports them
+// (AppSettings module 'detour', migration 089). name null = not configured.
+export interface DetourContractorNotification { name: string | null; recipients: string[]; }
+
 export interface DetourHistoricalImportResult { import_batch_id: string; imported_rows: number; historical_only: true; }
 
 // One row of the legacy detour tracker as imported (GET
@@ -846,6 +850,10 @@ export interface Detour extends DetourReportFields {
   // which is where riders go instead.
   location?: string | null;
   notification_audiences?: string[];
+  // Server-computed: notification_audiences plus the configured contractor
+  // on fixed-route Detours (migration 089). What communication_status is
+  // measured against.
+  required_audiences?: string[];
   notification_channels?: string[];
   service_impact?: "fixed_route" | "mobility" | null;
   service_area?: string | null;

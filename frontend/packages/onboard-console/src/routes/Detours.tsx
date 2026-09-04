@@ -8,6 +8,7 @@ import {
   type DetourStatus,
   type DetourSeverity,
   type DetourReasonCode,
+  type DetourContractorNotification,
   type CreateDetourInput,
   type DetourSegmentInput,
 } from "@mvta/shared";
@@ -18,7 +19,7 @@ import { useAppDialog } from "../components/AppDialog.js";
 import { DetourOperationalRecord } from "../components/DetourOperationalRecord.js";
 import { DetourWorkflowHistorySection } from "../components/DetourWorkflowHistorySection.js";
 import { DetourAttachmentsSection } from "../components/DetourAttachments.js";
-import { audiencePlan, draftCommunicationText, nextAudience } from "../lib/detourCommunicationDraft.js";
+import { audiencePlan, communicationSubject, draftCommunicationText, mailtoLink, nextAudience } from "../lib/detourCommunicationDraft.js";
 import { dateLabel, dateTimeLabel, toDateInputValue } from "../lib/detourDates.js";
 
 const STATUS_TABS: { key: DetourStatus | "all"; label: string }[] = [
@@ -207,6 +208,7 @@ export function Detours() {
   const canDelete = roles.some((r) => r === "OCC.Publisher" || r === "OCC.Admin");
 
   const [detours, setDetours] = useState<Detour[] | null>(null);
+  const [contractor, setContractor] = useState<DetourContractorNotification | null>(null);
   const [reasonCodes, setReasonCodes] = useState<DetourReasonCode[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [statusTab, setStatusTab] = useState<DetourStatus | "all">("active");
@@ -224,6 +226,7 @@ export function Detours() {
       .getDetours()
       .then((d) => {
         setDetours(d.detours);
+        setContractor(d.contractor_notification ?? null);
         setLoadError(null);
       })
       .catch((err) => {
@@ -620,7 +623,7 @@ export function Detours() {
                             {canWrite && d.fulfillment_mode === "avail" && d.lifecycle_state === "fulfillment_failed" ? (
                               <p><button className="btn-sm" onClick={() => useManualFallback(d)}>Use fixed-route manual exception</button></p>
                             ) : null}
-                            <DetourCommunicationsSection detour={d} canWrite={canWrite} />
+                            <DetourCommunicationsSection detour={d} contractor={contractor} canWrite={canWrite} />
                             {numberYearMismatch(d.internal_number, d.start_date) ? (
                               <p className="warn-note">
                                 This detour's internal reference was issued for{" "}
@@ -724,7 +727,7 @@ export function Detours() {
 // has a published communication under exactly that name. Free text is
 // still available for an audience the record did not anticipate.
 const OTHER = "__other__";
-function DetourCommunicationsSection({ detour, canWrite }: { detour: Detour; canWrite: boolean }) {
+function DetourCommunicationsSection({ detour, contractor, canWrite }: { detour: Detour; contractor: DetourContractorNotification | null; canWrite: boolean }) {
   const [communications, setCommunications] = useState<import("@mvta/shared").DetourCommunication[]>([]);
   const [audienceChoice, setAudienceChoice] = useState<string>("");
   const [audienceOther, setAudienceOther] = useState("");
@@ -735,7 +738,7 @@ function DetourCommunicationsSection({ detour, canWrite }: { detour: Detour; can
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const plan = audiencePlan(detour, communications);
+  const plan = audiencePlan(detour, communications, contractor);
   const requiredChannels = detour.notification_channels ?? [];
   const audience = audienceChoice === OTHER ? audienceOther.trim() : audienceChoice;
   const channel = channelChoice === OTHER ? channelOther.trim() : channelChoice;
@@ -753,9 +756,21 @@ function DetourCommunicationsSection({ detour, canWrite }: { detour: Detour; can
     else if (!audienceChoice) { setAudienceChoice(plan.length ? plan[0].audience : OTHER); if (!channelChoice) setChannelChoice(requiredChannels[0] ?? OTHER); }
   }, [communications, detour.notification_audiences, detour.notification_channels]);
 
+  const selected = plan.find((item) => item.audience === audienceChoice) ?? null;
+  const emailable = channel.toLowerCase() === "email" && recipients.trim() !== "" && content.trim() !== "";
+
   function startDraft(forAudience: string) {
+    const item = plan.find((p) => p.audience === forAudience);
     setAudienceChoice(forAudience);
-    if (!channelChoice || channelChoice === OTHER) setChannelChoice(requiredChannels[0] ?? OTHER);
+    if (item?.contractor) {
+      // The contractor is always reached by email at the configured
+      // addresses; the channel list on the record does not apply.
+      setChannelChoice(requiredChannels.some((c) => c.toLowerCase() === "email") ? requiredChannels.find((c) => c.toLowerCase() === "email")! : OTHER);
+      if (!requiredChannels.some((c) => c.toLowerCase() === "email")) setChannelOther("email");
+      setRecipients(item.recipients.join(", "));
+    } else if (!channelChoice || channelChoice === OTHER) {
+      setChannelChoice(requiredChannels[0] ?? OTHER);
+    }
     setContent(draftCommunicationText(detour, forAudience));
     setError(null);
   }
@@ -769,8 +784,11 @@ function DetourCommunicationsSection({ detour, canWrite }: { detour: Detour; can
     } catch (err) { setError(err instanceof ApiError ? err.message : "Could not save communication"); }
     finally { setSaving(false); }
   }
-  async function publish(id: string) {
-    try { await api.publishDetourCommunication(detour.id, id); await load(); }
+  async function publish(communication: import("@mvta/shared").DetourCommunication) {
+    const outcome = communication.channel.toLowerCase() === "email" && communication.recipients
+      ? `Sent by email to ${communication.recipients}`
+      : `Published via ${communication.channel}`;
+    try { await api.publishDetourCommunication(detour.id, communication.id, outcome); await load(); }
     catch (err) { setError(err instanceof ApiError ? err.message : "Could not publish communication"); }
   }
 
@@ -783,7 +801,7 @@ function DetourCommunicationsSection({ detour, canWrite }: { detour: Detour; can
           <span className={item.progress === "published" ? "ok-text" : item.progress === "draft" ? "" : "warn-note"}>
             {item.progress === "published" ? "✓" : item.progress === "draft" ? "◐" : "○"} {item.audience}
           </span>
-          <span className="td-dim"> — {item.progress === "published" ? "published" : item.progress === "draft" ? "draft saved, not published" : "nothing drafted"}{item.channels.length ? ` · via ${item.channels.join(", ")}` : ""}</span>
+          <span className="td-dim"> — {item.progress === "published" ? "published" : item.progress === "draft" ? "draft saved, not published" : "nothing drafted"}{item.contractor ? ` · contractor · email${item.recipients.length ? ` to ${item.recipients.join(", ")}` : " (no recipients configured - set them under Administration)"}` : item.channels.length ? ` · via ${item.channels.join(", ")}` : ""}</span>
           {canWrite && item.progress !== "published" ? <> <button type="button" className="btn-sm" onClick={() => startDraft(item.audience)}>{item.progress === "draft" ? "Draft another" : "Draft"}</button></> : null}
         </li>)}</ul>
       </div>
@@ -792,7 +810,11 @@ function DetourCommunicationsSection({ detour, canWrite }: { detour: Detour; can
       <b>{communication.audience} · {communication.channel}:</b> {communication.status}
       {communication.recipients ? ` · ${communication.recipients}` : ""}
       {communication.published_by ? <span className="td-dim"> · {communication.published_by}{communication.published_at ? ` ${dateTimeLabel(communication.published_at)}` : ""}</span> : null}
-      {canWrite && communication.status === "draft" ? <> <button className="btn-sm" onClick={() => publish(communication.id)}>Publish</button></> : null}
+      {communication.status === "published" && communication.outcome ? <span className="td-dim"> · {communication.outcome}</span> : null}
+      {canWrite && communication.status === "draft" ? <>
+        {communication.channel.toLowerCase() === "email" && communication.recipients ? <> <a className="btn-sm" href={mailtoLink(communication.recipients.split(/[,;\s]+/).filter(Boolean), communicationSubject(detour), communication.content)}>Open in email</a></> : null}
+        {" "}<button className="btn-sm" onClick={() => publish(communication)}>Mark published</button>
+      </> : null}
     </p>)}
     {canWrite ? <div className="form-grid">
       <label>Audience
@@ -815,7 +837,9 @@ function DetourCommunicationsSection({ detour, canWrite }: { detour: Detour; can
       </label>
       <span>
         <button type="button" className="btn-sm" onClick={() => setContent(draftCommunicationText(detour, audience || undefined))}>Fill from record</button>{" "}
+        {emailable ? <><a className="btn-sm" href={mailtoLink(recipients.split(/[,;\s]+/).filter(Boolean), communicationSubject(detour), content)}>Open in email</a>{" "}</> : null}
         <button className="btn-sm" disabled={saving || !audience || !channel || !content.trim()} onClick={save}>{saving ? "Saving…" : "Save communication draft"}</button>
+        {selected?.contractor ? <span className="td-dim"> Save the draft, send it from your mail client, then mark it published.</span> : null}
       </span>
     </div> : null}
   </div>;

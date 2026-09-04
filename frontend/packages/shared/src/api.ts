@@ -73,6 +73,7 @@ import type {
   DetourLifecycleState,
   DetourCommunication,
   DetourHistoricalImportResult,
+  DetourContractorNotification,
   DetourHistoricalImportRow,
   DetourWorkflowHistoryEntry,
   ContractorPerformanceStandard,
@@ -711,7 +712,7 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
 
     getDetours(status?: DetourStatus) {
       const suffix = status ? `?status=${status}` : "";
-      return request<{ detours: Detour[] }>(`/api/detours${suffix}`, {}, true);
+      return request<{ detours: Detour[]; contractor_notification?: DetourContractorNotification }>(`/api/detours${suffix}`, {}, true);
     },
 
     createDetour(input: CreateDetourInput) {

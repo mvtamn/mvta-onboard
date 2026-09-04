@@ -1,4 +1,4 @@
-import type { Detour, DetourCommunication } from "@mvta/shared";
+import type { Detour, DetourCommunication, DetourContractorNotification } from "@mvta/shared";
 import { dateLabel } from "./detourDates.js";
 
 // Prefill for the Detour communications composer.
@@ -18,6 +18,10 @@ export interface AudiencePlanItem {
   progress: AudienceProgress;
   // Channels required by the record. The composer defaults to the first.
   channels: string[];
+  // The configured fixed-route contractor: always by email, to the
+  // configured recipients.
+  contractor: boolean;
+  recipients: string[];
 }
 
 // Audience matching is case- and whitespace-insensitive, like a person
@@ -27,13 +31,29 @@ function key(value: string): string {
   return value.trim().toLowerCase();
 }
 
-export function audiencePlan(detour: Pick<Detour, "notification_audiences" | "notification_channels">, communications: DetourCommunication[]): AudiencePlanItem[] {
+// required_audiences is server-computed and includes the configured
+// contractor on fixed-route Detours; notification_audiences is the
+// fallback for a response from before migration 089.
+export function audiencePlan(detour: Pick<Detour, "notification_audiences" | "notification_channels" | "required_audiences">, communications: DetourCommunication[], contractor?: DetourContractorNotification | null): AudiencePlanItem[] {
   const channels = detour.notification_channels ?? [];
-  return (detour.notification_audiences ?? []).map((audience) => {
+  return (detour.required_audiences ?? detour.notification_audiences ?? []).map((audience) => {
     const mine = communications.filter((c) => key(c.audience) === key(audience));
     const progress: AudienceProgress = mine.some((c) => c.status === "published") ? "published" : mine.length > 0 ? "draft" : "none";
-    return { audience, progress, channels };
+    const isContractor = Boolean(contractor?.name && key(contractor.name) === key(audience));
+    return { audience, progress, channels: isContractor ? ["email"] : channels, contractor: isContractor, recipients: isContractor ? contractor!.recipients : [] };
   });
+}
+
+// A mailto: link carrying recipients, subject, and body, so a draft can be
+// sent from the staff member's own mail client. There is no server-side
+// sender; publishing records that this happened.
+export function mailtoLink(recipients: string[], subject: string, body: string): string {
+  return `mailto:${encodeURIComponent(recipients.join(","))}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+export function communicationSubject(detour: Pick<Detour, "internal_number" | "number" | "closure">): string {
+  const ref = detour.internal_number || detour.number;
+  return `${ref ? `[${ref}] ` : ""}Detour: ${detour.closure}`;
 }
 
 // The first required audience that has nothing published yet - what the
