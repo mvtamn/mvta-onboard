@@ -772,6 +772,12 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<{ id: string; lifecycle_state: DetourLifecycleState; closure_reason: string }>(`/api/detours/${id}/close`, { method: "POST", body: JSON.stringify({ reason }) }, true);
     },
 
+    // Records the reasoned authorisation to proceed despite the Detour's
+    // current conflicts; covers exactly the conflicts known at that moment.
+    overrideDetourConflict(id: string, reason: string) {
+      return request<{ id: string; conflict_status: "overridden"; conflict_override_reason: string; conflict_override_by: string }>(`/api/detours/${id}/conflict-override`, { method: "POST", body: JSON.stringify({ reason }) }, true);
+    },
+
     // Clears the needs_review flag detoursUpdate raises on material edits.
     // The only way back to review_status = 'current'; audited in
     // DetourWorkflowHistory.

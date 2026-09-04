@@ -371,6 +371,13 @@ export function DetourReports() {
                             ) : null}
                             {d.resolution_notes ? <p><b>Resolution:</b> {d.resolution_notes}</p> : null}
                             {d.closure_reason ? <p><b>Closure reason:</b> {d.closure_reason}</p> : null}
+                            {d.conflicts?.length ? (
+                              <p className={d.conflict_status === "overridden" ? "td-dim" : "warn-note"}>
+                                <b>{d.conflict_status === "overridden" ? "Conflict overridden" : "Conflict needs override"}:</b>{" "}
+                                {d.conflicts.map((c) => `${c.label} (${c.shared.join(", ")})`).join("; ")}
+                                {d.conflict_status === "overridden" ? ` — ${d.conflict_override_reason} · ${d.conflict_override_by}${d.conflict_override_at ? ` ${dateTimeLabel(d.conflict_override_at)}` : ""}` : ""}
+                              </p>
+                            ) : null}
                             {d.fulfillment_mode === "avail" ? (
                               <p className="td-dim"><b>Avail:</b> {availEntryLabel(d)}
                                 {d.external_detour_id ? ` · ID ${d.external_detour_id}` : ""}

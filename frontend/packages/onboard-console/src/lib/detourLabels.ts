@@ -14,13 +14,23 @@ export function fulfillmentPathLabel(d: Pick<Detour, "fulfillment_mode">): strin
   }
 }
 
-export function readinessLabel(d: Pick<Detour, "readiness" | "review_status">): string {
+export function readinessLabel(d: Pick<Detour, "readiness" | "review_status" | "conflict_status">): string {
   const base = d.readiness === "ready_for_avail_entry" ? "Ready for Avail entry"
     : d.readiness === "avail_conflict" ? "Avail conflict"
     : d.readiness === "ready_for_manual_operations" ? "Ready for manual operations"
     : d.readiness === "closed" ? "Closed"
     : "Needs OCC review";
-  return d.review_status === "needs_review" ? `${base} · Needs OCC re-review` : base;
+  const flags = [
+    d.review_status === "needs_review" ? "Needs OCC re-review" : null,
+    d.conflict_status === "unresolved" ? "Conflict needs override" : d.conflict_status === "overridden" ? "Conflict overridden" : null,
+  ].filter(Boolean);
+  return flags.length ? `${base} · ${flags.join(" · ")}` : base;
+}
+
+export function conflictLabel(d: Pick<Detour, "conflicts" | "conflict_status" | "conflict_override_reason">): string {
+  if (!d.conflicts?.length) return "";
+  const names = d.conflicts.map((c) => c.label).join("; ");
+  return d.conflict_status === "overridden" ? `Overridden (${d.conflict_override_reason ?? ""}): ${names}` : `Unresolved: ${names}`;
 }
 
 export function communicationStatusLabel(d: Pick<Detour, "communication_status">): string {

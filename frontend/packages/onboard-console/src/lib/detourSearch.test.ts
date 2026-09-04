@@ -40,6 +40,7 @@ describe("detoursToCsv", () => {
     expect(byHeader["Communications"]).toBe(communicationStatusLabel(d));
     expect(byHeader["Workflow"]).toBe(workflowLabel(d));
     expect(byHeader["Re-review reason"]).toBe("Dates changed");
+    expect(byHeader["Conflicts"]).toBe("");
     expect(byHeader["Routes"]).toBe("460 SB");
   });
 
@@ -84,5 +85,17 @@ describe("historicalRowMatchesSearch", () => {
   });
   it("matches everything on an empty search", () => {
     expect(historicalRowMatchesSearch(row, "  ")).toBe(true);
+  });
+});
+
+describe("conflict columns", () => {
+  it("labels unresolved and overridden conflicts and flags readiness", () => {
+    const conflicts = [{ kind: "detour" as const, id: "x", label: "MVTA-DET-2026-0003", status: "fulfilled", start_date: null, end_date: null, reasons: ["routes" as const], shared: ["460"] }];
+    const [header, unresolved] = detoursToCsv([detour({ conflicts, conflict_status: "unresolved" })]).split("\r\n").map(cells);
+    const col = header.indexOf("Conflicts");
+    expect(unresolved[col]).toBe("Unresolved: MVTA-DET-2026-0003");
+    expect(unresolved[header.indexOf("Readiness")]).toContain("Conflict needs override");
+    const [, overridden] = detoursToCsv([detour({ conflicts, conflict_status: "overridden", conflict_override_reason: "Different stops" })]).split("\r\n").map(cells);
+    expect(overridden[col]).toBe("Overridden (Different stops): MVTA-DET-2026-0003");
   });
 });

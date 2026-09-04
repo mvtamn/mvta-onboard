@@ -841,6 +841,14 @@ export interface Detour extends DetourReportFields {
   review_status?: "current" | "needs_review";
   review_reason?: string | null;
   closure_reason?: string | null;
+  // Other open Detours sharing a route or place inside this window, and
+  // whether a reasoned override covers all of them (migration 090). An
+  // unresolved conflict blocks confirming the Avail entry.
+  conflicts?: DetourLikelyDuplicate[];
+  conflict_status?: "none" | "unresolved" | "overridden";
+  conflict_override_reason?: string | null;
+  conflict_override_by?: string | null;
+  conflict_override_at?: string | null;
   // Operational record carried over from Detour Intake at acceptance
   // (migrations 057 and 069). Optional because GET /detours omits each
   // group entirely when its columns are absent, the same way the reporting

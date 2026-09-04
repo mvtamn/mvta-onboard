@@ -347,6 +347,14 @@ export function Detours() {
     }
   }
 
+  async function overrideConflict(d: Detour) {
+    const names = (d.conflicts ?? []).map((c) => `${c.label} (${c.shared.join(", ")})`).join("; ");
+    const reason = await prompt({ title: "Override detour conflict", description: `Conflicts with ${names}. Explain why this Detour should proceed anyway; the reason and the conflicts are kept in the audit.`, label: "Override reason", placeholder: "e.g. Different stops on the same route; both can run", confirmLabel: "Record override", multiline: true, required: true });
+    if (!reason?.trim()) return;
+    try { await api.overrideDetourConflict(d.id, reason.trim()); load(); }
+    catch (err) { setLoadError(err instanceof ApiError ? err.message : "Could not record the override"); }
+  }
+
   async function completeReview(d: Detour) {
     const notes = await prompt({ title: "Mark OCC re-review complete", description: d.review_reason ?? undefined, label: "Review notes", placeholder: "Optional - what was checked or changed", confirmLabel: "Review complete", multiline: true });
     if (notes === null) return;
@@ -602,6 +610,15 @@ export function Detours() {
                               <p><b>Next step:</b> {d.readiness === "ready_for_avail_entry" ? "Enter this detour in Avail" : d.readiness === "avail_conflict" ? "Resolve the Avail conflict" : d.readiness === "ready_for_manual_operations" ? "Ready for manual operations" : d.readiness === "needs_occ_review" ? "Needs OCC review" : "Closed"}</p>
                             ) : null}
                             {d.communication_status ? <p><b>Communications:</b> {d.communication_status.replace("_", " ")}</p> : null}
+                            {d.conflicts?.length ? (
+                              <p className={d.conflict_status === "overridden" ? "td-dim" : "warn-note"}>
+                                <b>{d.conflict_status === "overridden" ? "Conflict overridden:" : "Conflicts with another open Detour:"}</b>{" "}
+                                {d.conflicts.map((c) => `${c.label} · ${c.status.replace(/_/g, " ")} · ${c.start_date || "open"} → ${c.end_date || "open"} · shares ${c.shared.join(", ")}`).join("; ")}
+                                {d.conflict_status === "overridden"
+                                  ? ` — ${d.conflict_override_reason} (${d.conflict_override_by}${d.conflict_override_at ? `, ${dateTimeLabel(d.conflict_override_at)}` : ""})`
+                                  : canWrite ? <> <button className="btn-sm" onClick={() => overrideConflict(d)}>Override with reason</button></> : null}
+                              </p>
+                            ) : null}
                             {d.review_status === "needs_review" ? (
                               <p className="warn-note">
                                 <b>Needs OCC re-review:</b> {d.review_reason}
@@ -618,7 +635,10 @@ export function Detours() {
                             ) : null}
                             {canWrite && d.fulfillment_mode === "avail" &&
                               (d.lifecycle_state === "awaiting_fulfillment" || d.lifecycle_state === "fulfillment_failed") ? (
-                              <p><button className="btn-sm" onClick={() => recordAvailEntry(d)}>Record human Avail entry</button></p>
+                              <p>
+                                <button className="btn-sm" onClick={() => recordAvailEntry(d)}>Record human Avail entry</button>
+                                {d.conflict_status === "unresolved" ? <span className="td-dim"> Confirming the entry is blocked until the conflict above is overridden.</span> : null}
+                              </p>
                             ) : null}
                             {canWrite && d.fulfillment_mode === "avail" && d.lifecycle_state === "fulfillment_failed" ? (
                               <p><button className="btn-sm" onClick={() => useManualFallback(d)}>Use fixed-route manual exception</button></p>

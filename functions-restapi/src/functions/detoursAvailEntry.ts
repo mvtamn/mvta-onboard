@@ -2,6 +2,7 @@ import { app, type HttpRequest, type InvocationContext } from "@azure/functions"
 import { getPool, sql } from "../lib/db";
 import { DETOUR_WRITE_ROLES, requireRole } from "../lib/auth";
 import { isGuid, validateAvailEntryConfirmation } from "../lib/validation";
+import { conflictStatus, detourConflicts, loadDetourConflictScopes, parseOverrideIds } from "../lib/detourConflicts";
 
 type AvailEntryResult = "entered" | "conflict" | "not_entered";
 
@@ -51,6 +52,24 @@ app.http("detoursAvailEntry", {
       }
       if (current.lifecycle_state !== "awaiting_fulfillment" && current.lifecycle_state !== "fulfillment_failed") {
         return { status: 409, jsonBody: { error: `Cannot record Avail entry from ${current.lifecycle_state}` } };
+      }
+
+      // Confirming the Avail build is the point at which the Detour becomes
+      // real for riders, so an unresolved conflict with another open Detour
+      // must be overridden with a reason first. Recording a failed or
+      // deferred attempt is always allowed.
+      if (result === "entered") {
+        const conflictSchema = await pool.request().query<{ ready: number }>("SELECT CASE WHEN COL_LENGTH('dbo.Detours', 'conflict_override_reason') IS NULL THEN 0 ELSE 1 END AS ready");
+        if (conflictSchema.recordset[0]?.ready === 1) {
+          const scopes = await loadDetourConflictScopes(pool);
+          const subject = scopes.find((s) => s.id === id);
+          const conflicts = subject ? detourConflicts(subject, scopes) : [];
+          const overrideRow = (await pool.request().input("id", sql.UniqueIdentifier, id).query<{ conflict_override_reason: string | null; conflict_override_by: string | null; conflict_override_at: Date | null; conflict_override_ids: string | null }>("SELECT conflict_override_reason, conflict_override_by, conflict_override_at, conflict_override_ids FROM Detours WHERE id=@id")).recordset[0];
+          const status = conflictStatus(conflicts, overrideRow ? { reason: overrideRow.conflict_override_reason, by: overrideRow.conflict_override_by, at: overrideRow.conflict_override_at, ids: parseOverrideIds(overrideRow.conflict_override_ids) } : null);
+          if (status === "unresolved") {
+            return { status: 409, jsonBody: { error: `This Detour conflicts with ${conflicts.map((c) => c.label).join(", ")}. Record a conflict override with a reason before confirming the Avail entry.`, conflicts } };
+          }
+        }
       }
 
       const nextState = result === "entered" ? "fulfilled" : result === "conflict" ? "fulfillment_failed" : "awaiting_fulfillment";

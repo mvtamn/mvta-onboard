@@ -2,7 +2,7 @@
 
 **Evaluation date:** 2026-09-04 (supersedes the 2026-08-10 evaluation)  
 **Scope:** REST API, SQL migrations, staff console (Detours & Closures, Detour Intake, Detour Reports, Administration), Avail integration, and deployment notes.  
-**Tree evaluated:** branch `claude/intelligent-vaughan-fd0fc9` as proposed in PR #137 (console v1.5.83).
+**Tree evaluated:** branch `claude/intelligent-vaughan-fd0fc9` as proposed in PR #137 (console v1.5.84).
 
 **Verification:** `functions-restapi` builds clean and passes `npm test` with **455/455** (one pre-existing skip). The frontend workspace typechecks across shared, rider-app, and onboard-console; the onboard-console production build succeeds; `npm test` passes **156/156**. These are source, build, and unit checks. They do not prove that deployment-dependent resources or live Avail data are configured, and no browser session was run against a live API.
 
@@ -46,17 +46,19 @@ intake aids. Attachments and the Avail feed remain deployment-dependent.
 | Image/document attachments | **Implemented in source; deployment-dependent** | Private Blob/SAS upload and read for detours and intake (`DetourImages`), daily purge timer. Images render as thumbnails and documents as file tiles on Detours & Closures (editable) and Detour Reports (read-only); the accept list matches intake. Storage account, app setting, RBAC, and CORS still need provisioning (`infra-phase1/modules/storage-detour-images.bicep`). |
 | Role separation | **Implemented** | Read / intake (admin) / write / delete separated server-side and mirrored in the console; import and re-review controls hidden from roles that would 403. |
 | Clone/re-establish | **Partially implemented** | Console pre-fills a new record and clears dates, sent flags, approval, and resolution. No backend clone endpoint, source linkage, or history row on the new record. |
-| Conflict override with reason | **Not implemented** | Duplicate detection warns at intake, but there is no per-stop/segment conflict check on the authoritative Detour and no recorded override reason. (Events have this; detours do not.) |
+| Conflict override with reason | **Implemented** | `detourConflicts.ts` runs the same route/place/window matcher Detour to Detour for every open record; `POST /detours/{id}/conflict-override` (migration 090) records reason, actor, and the conflicting ids in the row and in workflow history; the override covers only the conflicts known at the time. Confirming an Avail entry is refused while a conflict is unresolved. Lexical, not geometric - stop IDs and geometry remain future work. |
 | Map drawing and nearby-stop detection | **Not implemented** | No detour geometry or GTFS nearby-stop workflow. |
 | Public rider publication | **Intentionally out of scope** | Rider-facing publication remains Avail/GTFS. |
 
 ## Operational caveats
 
-1. **Migrations 088 and 089 must be applied to dev.** Until it runs, acceptance skips
+1. **Migrations 088, 089, and 090 must be applied to dev.** Until it runs, acceptance skips
    the `location` column (guarded) and Detours promoted before this branch keep
    showing the closure location under "Riders directed." The migration also
    performs that backfill. Migration 089 seeds the contractor settings; until
-   it runs the Administration section reports them as not seeded.
+   it runs the Administration section reports them as not seeded. Migration 090
+   adds the conflict override columns; until it runs conflicts are still
+   reported but cannot be overridden and do not block Avail entry.
 2. **Attachments are unavailable until storage is provisioned.** Deploy the
    bicep module, set `DETOUR_IMAGES_STORAGE_ACCOUNT`, grant the Function App
    identity Blob Data Contributor, verify CORS.
@@ -68,8 +70,9 @@ intake aids. Attachments and the Avail feed remain deployment-dependent.
 5. **Client-side search assumes a manageable row count.** Both pages load the
    full detour table (and Reports loads every imported legacy row). The seam to
    move server-side is `detourSearch.ts`; nothing else filters.
-6. **Duplicate detection is lexical.** It matches route numbers and place
-   words, not stop IDs or geometry. It is a reviewer prompt, not a guarantee.
+6. **Duplicate and conflict detection are lexical.** They match route numbers
+   and place words, not stop IDs or geometry. A prompt for a reviewer, not a
+   guarantee - and a Detour with no segments or place words never conflicts.
 7. **Deployed code may lag source.** `HANDOFF.md` records earlier cases where a
    migration was applied before its code shipped. Confirm the deployed API and
    console versions before relying on any capability marked implemented here.
@@ -96,8 +99,8 @@ intake aids. Attachments and the Avail feed remain deployment-dependent.
 
 ### Priority 3 — planned efficiency features
 
-- Stop/segment conflict check on the authoritative Detour with a required,
-  audited override reason.
+- Stop-ID and geometry-based conflict detection to replace the lexical
+  matcher once map drawing exists.
 - Fixed-route map drawing and GTFS nearby-stop suggestions at intake.
 - Server-side search and pagination once row volume justifies it.
 
@@ -106,11 +109,12 @@ intake aids. Attachments and the Avail feed remain deployment-dependent.
 The 2026-08-10 evaluation listed conflict/duplicate warnings, notification
 drafts, and spreadsheet migration as not implemented, and did not cover
 communications, closure, historical import, re-review, or the intake queue.
-PR #137 (thirteen commits, v1.5.71–1.5.83) added the operational record read path,
+PR #137 (fourteen commits, v1.5.71–1.5.84) added the operational record read path,
 the needs-information workflow, re-review clearance, CSV/table parity, removal
 of twelve client methods with no server, workflow history and reason-code
 admin in the console, `Detours.location`, legacy-import listing and a real
 CSV parser, likely-duplicate detection, a testable intake column list, and
 type-aware attachment rendering, communications prefilled from the record's required
-audiences, and contractor notification with a manual send path.
+audiences, contractor notification with a manual send path, and conflict override on the
+authoritative Detour.
 This document reflects the tree after those changes.

@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.84] - 2026-09-04
+
+- **Conflict override on the authoritative Detour.** `GET /detours` now reports, for every open Detour, the other open Detours that share a route number or place word inside an overlapping window (`conflicts`) and a `conflict_status` of none / unresolved / overridden. Migration 090 adds the override columns; `POST /detours/{id}/conflict-override` records a required reason, the actor, and the conflicting ids, and writes a `manual_correction` history row so the warning and the decision stay together. The override covers exactly the conflicts known when it was recorded - a new conflict reopens the question. Confirming an Avail entry (`result: entered`) is refused with 409 while a conflict is unresolved; recording a failed or deferred attempt is always allowed. Detours & Closures shows the conflict with what it shares and an Override-with-reason action; Detour Reports shows it in the Readiness column and the expanded row and exports a Conflicts column.
+
 ## [1.5.83] - 2026-09-04
 
 - **Contractor notification (design B15).** Migration 089 seeds two admin settings, `detour/contractor_name` and `detour/contractor_recipients`, editable under Administration → Service Configuration. Once a name is set, every fixed-route Detour (not mobility) requires a published communication to that audience: `GET /detours` returns `required_audiences` (the record's list plus the contractor) and measures `communication_status` against it, and reports the contractor settings alongside. On Detours & Closures the contractor appears in the required checklist as email-to-recipients, Draft prefills the addresses, and an **Open in email** link opens the staff member's mail client with recipients, subject, and body; marking the draft published records "Sent by email to …" as the outcome. There is deliberately no server-side sender - publishing records a human action.

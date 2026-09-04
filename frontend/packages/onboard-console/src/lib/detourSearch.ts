@@ -16,7 +16,7 @@ import {
   type DetourReasonCode,
 } from "@mvta/shared";
 import { toDateOnly } from "./detourDates.js";
-import { availEntryLabel, communicationStatusLabel, createdByLabel, fulfillmentPathLabel, readinessLabel, sourceLabel, workflowLabel } from "./detourLabels.js";
+import { availEntryLabel, communicationStatusLabel, conflictLabel, createdByLabel, fulfillmentPathLabel, readinessLabel, sourceLabel, workflowLabel } from "./detourLabels.js";
 
 export interface DetourFilters {
   search: string;
@@ -147,7 +147,7 @@ const CSV_HEADERS = [
   "Reported by", "Reported at", "Approved by", "Approved at",
   "Email sent", "Expired email sent", "Spare emailed",
   "Radio", "Dispatch board", "Social media",
-  "Resolution notes", "Closure reason", "Re-review reason",
+  "Resolution notes", "Closure reason", "Re-review reason", "Conflicts",
   "Avail entry", "Avail detour ID", "Avail last seen",
   "Created at", "Last edited by", "Last edited at",
   // Operational record carried from intake (migrations 057/069). Blank
@@ -196,6 +196,7 @@ export function detoursToCsv(detours: Detour[], reasonCodes: DetourReasonCode[] 
       d.resolution_notes ?? "",
       d.closure_reason ?? "",
       d.review_status === "needs_review" ? d.review_reason ?? "" : "",
+      conflictLabel(d),
       availEntryLabel(d),
       d.external_detour_id ?? "",
       d.avail_last_seen_at ?? "",
