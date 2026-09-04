@@ -2,7 +2,7 @@
 
 **Evaluation date:** 2026-09-04 (supersedes the 2026-08-10 evaluation)  
 **Scope:** REST API, SQL migrations, staff console (Detours & Closures, Detour Intake, Detour Reports, Administration), Avail integration, and deployment notes.  
-**Tree evaluated:** branch `claude/intelligent-vaughan-fd0fc9` as proposed in PR #137 (console v1.5.88).
+**Tree evaluated:** branch `claude/intelligent-vaughan-fd0fc9` as proposed in PR #137 (console v1.5.89).
 
 **Verification:** `functions-restapi` builds clean and passes `npm test` with **455/455** (one pre-existing skip). The frontend workspace typechecks across shared, rider-app, and onboard-console; the onboard-console production build succeeds; `npm test` passes **156/156**. These are source, build, and unit checks. They do not prove that deployment-dependent resources or live Avail data are configured, and no browser session was run against a live API.
 
@@ -39,7 +39,7 @@ map, email and Teams delivery, and the Avail feed remain deployment-dependent.
 | Fulfillment modes and workflow lifecycle | **Implemented** | `avail`, `fixed_route_manual`, `mobility_manual`; `approved → awaiting_fulfillment → fulfilled / fulfillment_failed → closed` with `canTransition`; readiness derived. Console actions: record Avail entry, manual fallback, close. |
 | OCC re-review after material edit | **Implemented** | Edits flag `review_status = needs_review`; `POST /detours/{id}/review-complete` clears it and writes a `manual_correction` history row. |
 | Workflow history | **Implemented** | Append-only `DetourWorkflowHistory`; visible behind "Show history" on both pages. |
-| Communications (internal drafts and delivery) | **Implemented; delivery deployment-dependent** | Per-detour drafts work through the record's required audiences (checklist, per-audience prefill, Other escape). Publishing with send freezes subject/body/recipients on the row (migration 092), enqueues `detour-communication-requested`, and the dispatch app delivers by ACS email per recipient, writing back sent / partially sent / failed / skipped. `communication_status` counts only communications that were delivered or that a human marked published. Teams-channel communications post inline through `TEAMS_DETOUR_WEBHOOK_URL` (Adaptive Card; own Key Vault secret in `functionapp.bicep`). Needs the Service Bus queue (bicep) and `ACS_ENDPOINT`/`ACS_EMAIL_FROM` on the dispatch app for email, and the Teams secret for Teams; without them the console falls back to Open in email / Mark published. Radio remains a human channel. Detour Reports lists each communication with delivery state and the sent copy. |
+| Communications (internal drafts and delivery) | **Implemented; delivery deployment-dependent** | Per-detour drafts work through the record's required audiences (checklist, per-audience prefill, Other escape). Publishing with send freezes subject/body/recipients on the row (migration 092), enqueues `detour-communication-requested`, and the dispatch app delivers by ACS email per recipient, writing back sent / partially sent / failed / skipped. `communication_status` counts only communications that were delivered or that a human marked published. Teams-channel communications post inline through `TEAMS_DETOUR_WEBHOOK_URL` (Adaptive Card; own Key Vault secret in `functionapp.bicep`). Needs the Service Bus queue (bicep) and `ACS_ENDPOINT`/`ACS_EMAIL_FROM` on the dispatch app for email, and the Teams secret for Teams; without them the console falls back to Open in email / Mark published. Radio remains a human channel. Detour Reports lists each communication with delivery state and the sent copy. Per-recipient receipts (migration 093) arrive from ACS via Event Grid to the dispatch app's `/api/acs-email-events`; "Delivered" means every recipient's receipt is Delivered, "Accepted by provider" until then. Needs an Event Grid subscription on the ACS resource (portal). |
 | Contractor notification | **Implemented (manual send)** | Design B15. Contractor name and recipients in AppSettings (migration 089, admin-editable); fixed-route Detours require a published communication to the contractor; the composer prefills recipients and offers an Open-in-email link; publishing records the outcome. No server-side sender - delivery is a human action from the staff member's mail client. |
 | Avail Detours synchronization | **Implemented in source; live behavior unconfirmed** | 15-minute timer (`availDetoursSync.ts`), upsert by external DetourID, last-seen tracking, manual-edit protection. Live feed shape and non-zero behavior still need confirmation per `HANDOFF.md`. |
 | Image/document attachments | **Implemented in source; deployment-dependent** | Private Blob/SAS upload and read for detours and intake (`DetourImages`), daily purge timer. Images render as thumbnails and documents as file tiles on Detours & Closures (editable) and Detour Reports (read-only); the accept list matches intake. Storage account, app setting, RBAC, and CORS still need provisioning (`infra-phase1/modules/storage-detour-images.bicep`). |
@@ -51,7 +51,7 @@ map, email and Teams delivery, and the Avail feed remain deployment-dependent.
 
 ## Operational caveats
 
-1. **Migrations 088 through 092 must be applied to dev.** Until it runs, acceptance skips
+1. **Migrations 088 through 093 must be applied to dev.** Until it runs, acceptance skips
    the `location` column (guarded) and Detours promoted before this branch keep
    showing the closure location under "Riders directed." The migration also
    performs that backfill. Migration 089 seeds the contractor settings; until
@@ -61,6 +61,8 @@ map, email and Teams delivery, and the Avail feed remain deployment-dependent.
    adds geometry columns and `GtfsStopRoutes`; run the static GTFS sync after
    it so nearby-stop suggestions carry routes. Migration 092 adds delivery
    columns; until it runs Send email is refused and manual publish still works.
+   Migration 093 adds receipts; until it runs and the Event Grid subscription
+   exists, emailed communications stop at "Accepted by provider".
 2. **Attachments are unavailable until storage is provisioned.** Deploy the
    bicep module, set `DETOUR_IMAGES_STORAGE_ACCOUNT`, grant the Function App
    identity Blob Data Contributor, verify CORS.
@@ -91,9 +93,6 @@ map, email and Teams delivery, and the Avail feed remain deployment-dependent.
 
 ### Priority 2 — close the outbound workflow
 
-- Delivery receipts: ACS email delivery-status events (bounces, suppression)
-  written back to the sent record, so "Delivered" reflects the provider's
-  final word rather than acceptance.
 - Decide whether clone/re-establish needs a first-class endpoint with source
   linkage and a `created` history row on the new record.
 
@@ -108,7 +107,7 @@ map, email and Teams delivery, and the Avail feed remain deployment-dependent.
 The 2026-08-10 evaluation listed conflict/duplicate warnings, notification
 drafts, and spreadsheet migration as not implemented, and did not cover
 communications, closure, historical import, re-review, or the intake queue.
-PR #137 (eighteen commits, v1.5.71–1.5.88) added the operational record read path,
+PR #137 (nineteen commits, v1.5.71–1.5.89) added the operational record read path,
 the needs-information workflow, re-review clearance, CSV/table parity, removal
 of twelve client methods with no server, workflow history and reason-code
 admin in the console, `Detours.location`, legacy-import listing and a real
@@ -116,5 +115,5 @@ CSV parser, likely-duplicate detection, a testable intake column list, and
 type-aware attachment rendering, communications prefilled from the record's required
 audiences, contractor notification with a manual send path, conflict override on the
 authoritative Detour, map drawing with nearby-stop suggestions, and server-side
-email and Teams delivery with a sent snapshot and a delivery view on Reports.
+email and Teams delivery with a sent snapshot, per-recipient receipts, and a delivery view on Reports.
 This document reflects the tree after those changes.

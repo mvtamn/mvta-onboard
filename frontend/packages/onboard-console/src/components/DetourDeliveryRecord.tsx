@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ApiError, type DetourCommunication } from "@mvta/shared";
+import { ApiError, type DetourCommunication, type DetourCommunicationReceipt } from "@mvta/shared";
 import { api } from "../config.js";
 import { dateTimeLabel } from "../lib/detourDates.js";
 
@@ -12,7 +12,10 @@ export function deliveryLabel(c: DetourCommunication): string {
   const teams = c.channel.trim().toLowerCase() === "teams";
   switch (c.delivery_status) {
     case "queued": return "Sending…";
-    case "sent": return `${teams ? "Posted" : "Delivered"}${c.delivery_completed_at ? ` ${dateTimeLabel(c.delivery_completed_at)}` : ""}`;
+    // "sent" is provider acceptance; "delivered" is the provider's receipt
+    // for every recipient (Teams has no receipts, so Posted is final).
+    case "sent": return `${teams ? "Posted" : "Accepted by provider"}${c.delivery_completed_at ? ` ${dateTimeLabel(c.delivery_completed_at)}` : ""}`;
+    case "delivered": return `Delivered${c.delivery_completed_at ? ` ${dateTimeLabel(c.delivery_completed_at)}` : ""}`;
     case "partially_sent": return "Partially delivered";
     case "failed": return "Delivery failed";
     case "skipped": return "Delivery not available";
@@ -20,8 +23,21 @@ export function deliveryLabel(c: DetourCommunication): string {
   }
 }
 
+export function receiptLabel(status: DetourCommunicationReceipt["status"]): string {
+  switch (status) {
+    case "accepted": return "Accepted, awaiting receipt";
+    case "delivered": return "Delivered";
+    case "expanded": return "Delivered to list";
+    case "bounced": return "Bounced";
+    case "suppressed": return "Suppressed";
+    case "quarantined": return "Quarantined";
+    case "filtered_spam": return "Filtered as spam";
+    default: return "Failed";
+  }
+}
+
 export function deliveryClass(c: DetourCommunication): string {
-  if (c.delivery_status === "sent") return "ok-text";
+  if (c.delivery_status === "sent" || c.delivery_status === "delivered") return "ok-text";
   if (c.delivery_status === "partially_sent" || c.delivery_status === "failed" || c.delivery_status === "skipped" || c.status === "failed") return "warn-note";
   return "td-dim";
 }
@@ -38,7 +54,16 @@ export function SentCopy({ communication: c }: { communication: DetourCommunicat
         {c.sent_subject ? <p><b>Subject:</b> {c.sent_subject}</p> : null}
         {c.sent_recipients ? <p className="td-dim"><b>To:</b> {c.sent_recipients}</p> : null}
         <pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit", margin: 0 }}>{c.sent_body}</pre>
-        {c.delivery_provider_id ? <p className="td-dim" style={{ marginTop: 6 }}>Provider reference: {c.delivery_provider_id}</p> : null}
+        {c.receipts?.length ? (
+          <table className="data" style={{ marginTop: 6 }}>
+            <thead><tr><th>Recipient</th><th>Receipt</th><th>Reported</th></tr></thead>
+            <tbody>{c.receipts.map((r) => <tr key={r.id}>
+              <td>{r.recipient}</td>
+              <td><span className={r.status === "delivered" || r.status === "expanded" ? "ok-text" : r.status === "accepted" ? "td-dim" : "warn-note"}>{receiptLabel(r.status)}</span>{r.details ? <span className="td-dim"> · {r.details}</span> : null}</td>
+              <td className="td-dim">{r.reported_at ? dateTimeLabel(r.reported_at) : "—"}</td>
+            </tr>)}</tbody>
+          </table>
+        ) : c.delivery_provider_id ? <p className="td-dim" style={{ marginTop: 6 }}>Provider reference: {c.delivery_provider_id}</p> : null}
       </div>
     </details>
   );

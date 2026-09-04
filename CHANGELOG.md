@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.89] - 2026-09-04
+
+- **Delivery receipts for emailed Detour communications.** Migration 093 adds per-recipient receipts: the dispatcher records each recipient as accepted with its ACS message id, and a new function-key-protected `POST /api/acs-email-events` endpoint on the dispatch app receives Azure Communication Services `EmailDeliveryReportReceived` events from Event Grid (handshake included), updates the matching receipt (delivered, bounced, suppressed, quarantined, filtered as spam, failed), and recomputes the communication: `delivered` only when every recipient's receipt is Delivered, partial or failed with the offending addresses named otherwise. "Accepted by provider" and "Delivered" are now distinct in the console, and the Sent copy on Detour Reports and Detours & Closures lists each recipient's receipt. Requires an Event Grid subscription from the ACS resource to the endpoint (portal step; the URL carries the function key).
+
 ## [1.5.88] - 2026-09-04
 
 - **Delivery view on Detour Reports.** Each expanded Detour lists its communications - audience, channel, recipients, who published and when, and delivery state - with a collapsed Sent copy showing the exact subject, recipients, body, and provider reference the server sent. Detours & Closures shows the same Sent copy beside its composer, and both pages render delivery state through one set of labels.

@@ -702,7 +702,20 @@ export type DetourReadiness =
   | "needs_occ_review" | "ready_for_avail_entry" | "avail_conflict"
   | "ready_for_manual_operations" | "closed";
 export type DetourCommunicationStatus = "draft" | "published" | "failed";
-export type DetourCommunicationDeliveryStatus = "not_requested" | "queued" | "sent" | "partially_sent" | "failed" | "skipped";
+export type DetourCommunicationDeliveryStatus = "not_requested" | "queued" | "sent" | "delivered" | "partially_sent" | "failed" | "skipped";
+
+// Per-recipient delivery receipt (migration 093): accepted when ACS took
+// the message, then the provider's report - delivered, bounced, etc.
+export interface DetourCommunicationReceipt {
+  id: string;
+  communication_id: string;
+  recipient: string;
+  provider_message_id: string | null;
+  status: "accepted" | "delivered" | "bounced" | "suppressed" | "quarantined" | "filtered_spam" | "failed" | "expanded";
+  details: string | null;
+  reported_at: string | null;
+  updated_at: string;
+}
 export interface DetourCommunication {
   id: string; detour_id: string; audience: string; channel: string;
   recipients: string | null; content: string; status: DetourCommunicationStatus;
@@ -718,6 +731,7 @@ export interface DetourCommunication {
   sent_subject?: string | null;
   sent_body?: string | null;
   sent_recipients?: string | null;
+  receipts?: DetourCommunicationReceipt[];
 }
 // Contractor notification settings as GET /detours reports them
 // (AppSettings module 'detour', migration 089). name null = not configured.

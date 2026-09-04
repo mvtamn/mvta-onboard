@@ -38,12 +38,14 @@ app.serviceBusQueue("dispatchDetourCommunication", {
     const html = bodyAsHtml(event.body);
     const failures: string[] = [];
     const providerIds: string[] = [];
+    const accepted: Array<{ to: string; providerId: string | null }> = [];
     let skipped: string | null = null;
     for (const to of event.recipients) {
       try {
         const res = await sendEmail(to, event.subject, event.body, html, context);
         if (res.skipped) { skipped = res.skipped; break; }
-        if (res.sent) providerIds.push(res.providerId ?? ""); else failures.push(`${to}: provider reported failure`);
+        if (res.sent) { providerIds.push(res.providerId ?? ""); accepted.push({ to, providerId: res.providerId ?? null }); }
+        else failures.push(`${to}: provider reported failure`);
       } catch (err) {
         failures.push(`${to}: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -52,6 +54,21 @@ app.serviceBusQueue("dispatchDetourCommunication", {
     const error = skipped ? "Email delivery is not configured (ACS_ENDPOINT/ACS_EMAIL_FROM); send from your mail client and mark published" : failures.length ? failures.join("; ").slice(0, 1000) : null;
     context.log(`Detour communication ${event.communication_id}: ${status} (${providerIds.length}/${event.recipients.length} sent)`);
     const pool = await getPool();
+    // One receipt row per accepted recipient (migration 093), keyed by the
+    // provider message id so the Event Grid delivery report can find it.
+    const receiptsReady = (await pool.request().query<{ ready: number }>("SELECT CASE WHEN OBJECT_ID('dbo.DetourCommunicationReceipts', 'U') IS NULL THEN 0 ELSE 1 END AS ready")).recordset[0]?.ready === 1;
+    if (receiptsReady) {
+      await pool.request().input("id", sql.UniqueIdentifier, event.communication_id).query("DELETE FROM DetourCommunicationReceipts WHERE communication_id=@id");
+      for (const a of accepted) {
+        await pool.request().input("id", sql.UniqueIdentifier, event.communication_id).input("recipient", sql.NVarChar(320), a.to).input("provider", sql.NVarChar(200), a.providerId)
+          .query("INSERT INTO DetourCommunicationReceipts (communication_id, recipient, provider_message_id, status) VALUES (@id, @recipient, @provider, 'accepted')");
+      }
+      for (const f of failures) {
+        const to = f.split(":")[0];
+        await pool.request().input("id", sql.UniqueIdentifier, event.communication_id).input("recipient", sql.NVarChar(320), to).input("details", sql.NVarChar(1000), f.slice(to.length + 2))
+          .query("INSERT INTO DetourCommunicationReceipts (communication_id, recipient, status, details) VALUES (@id, @recipient, 'failed', @details)");
+      }
+    }
     await pool.request()
       .input("id", sql.UniqueIdentifier, event.communication_id)
       .input("status", sql.NVarChar(20), status)

@@ -19,7 +19,21 @@ app.http("detourCommunicationsList", {
       const pool = await getPool();
       const req = pool.request().input("detour_id", sql.UniqueIdentifier, id);
       const result = await req.query<CommunicationRow>("SELECT * FROM DetourCommunications WHERE detour_id=@detour_id ORDER BY created_at DESC");
-      return { status: 200, jsonBody: { communications: result.recordset } };
+      // Per-recipient receipts (migration 093) ride along when the table
+      // exists; the console shows them under the sent copy.
+      const receiptsReady = (await pool.request().query<{ ready: number }>("SELECT CASE WHEN OBJECT_ID('dbo.DetourCommunicationReceipts', 'U') IS NULL THEN 0 ELSE 1 END AS ready")).recordset[0]?.ready === 1;
+      const receiptsByCommunication = new Map<string, unknown[]>();
+      if (receiptsReady && result.recordset.length > 0) {
+        const receipts = await pool.request().input("detour_id", sql.UniqueIdentifier, id).query<{ communication_id: string }>(
+          "SELECT r.id, r.communication_id, r.recipient, r.provider_message_id, r.status, r.details, r.reported_at, r.updated_at FROM DetourCommunicationReceipts r JOIN DetourCommunications c ON c.id = r.communication_id WHERE c.detour_id=@detour_id ORDER BY r.recipient",
+        );
+        for (const receipt of receipts.recordset) {
+          const list = receiptsByCommunication.get(receipt.communication_id) ?? [];
+          list.push(receipt);
+          receiptsByCommunication.set(receipt.communication_id, list);
+        }
+      }
+      return { status: 200, jsonBody: { communications: result.recordset.map((row) => ({ ...row, receipts: receiptsByCommunication.get(row.id) ?? [] })) } };
     } catch (err) { context.error("GET detour communications failed:", err); return { status: 500, jsonBody: { error: "Internal server error" } }; }
   },
 });
