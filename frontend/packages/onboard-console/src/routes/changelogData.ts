@@ -18,7 +18,7 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
-    version: "1.5.91",
+    version: "1.5.94",
     date: "2026-09-04",
     sections: [
       {
@@ -30,7 +30,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.90",
+    version: "1.5.93",
     date: "2026-09-04",
     sections: [
       {
@@ -42,7 +42,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.89",
+    version: "1.5.92",
     date: "2026-09-04",
     sections: [
       {
@@ -54,7 +54,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.88",
+    version: "1.5.91",
     date: "2026-09-04",
     sections: [
       {
@@ -66,7 +66,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.87",
+    version: "1.5.90",
     date: "2026-09-04",
     sections: [
       {
@@ -78,7 +78,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.86",
+    version: "1.5.89",
     date: "2026-09-04",
     sections: [
       {
@@ -90,7 +90,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.85",
+    version: "1.5.88",
     date: "2026-09-04",
     sections: [
       {
@@ -102,7 +102,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.84",
+    version: "1.5.87",
     date: "2026-09-04",
     sections: [
       {
@@ -114,7 +114,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.83",
+    version: "1.5.86",
     date: "2026-09-04",
     sections: [
       {
@@ -126,7 +126,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.82",
+    version: "1.5.85",
     date: "2026-09-04",
     sections: [
       {
@@ -138,7 +138,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.81",
+    version: "1.5.84",
     date: "2026-09-04",
     sections: [
       {
@@ -150,7 +150,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.80",
+    version: "1.5.83",
     date: "2026-09-04",
     sections: [
       {
@@ -162,7 +162,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.79",
+    version: "1.5.82",
     date: "2026-09-04",
     sections: [
       {
@@ -174,7 +174,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.78",
+    version: "1.5.81",
     date: "2026-09-04",
     sections: [
       {
@@ -186,7 +186,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.77",
+    version: "1.5.80",
     date: "2026-09-04",
     sections: [
       {
@@ -198,7 +198,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.76",
+    version: "1.5.79",
     date: "2026-09-04",
     sections: [
       {
@@ -210,7 +210,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.75",
+    version: "1.5.78",
     date: "2026-09-03",
     sections: [
       {
@@ -223,7 +223,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.74",
+    version: "1.5.77",
     date: "2026-09-03",
     sections: [
       {
@@ -235,7 +235,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.73",
+    version: "1.5.76",
     date: "2026-09-03",
     sections: [
       {
@@ -247,7 +247,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.72",
+    version: "1.5.75",
     date: "2026-09-03",
     sections: [
       {
@@ -259,13 +259,59 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.71",
+    version: "1.5.74",
     date: "2026-09-03",
     sections: [
       {
         heading: "Fixed",
         items: [
           "Detours & Closures and Detour Reports now show the operational record an accepted intake carries — operating window, service impact, affected stops, action instructions, required audiences and channels, confirmation contact, and evidence. Search reaches these fields and the Reports CSV exports them.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.73",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "A garage departure now becomes a reviewable occurrence only when the bus never left the garage or left more than ten minutes late, rather than whenever Avail marked the pullout window elapsed. Each occurrence says which of the two it was, so the Occurrence Log can be triaged at a glance.",
+          "Garage-departure occurrences already raised under the previous rule are cleared from the Occurrence Log where the record shows the bus departed acceptably, each one keeping a note of why it was dismissed. Occurrences somebody has already reviewed are left as they are.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.72",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "Feed health across every ingestion feed now reflects what each poll actually recorded rather than what the source returned, so a poll that stores nothing is reported as a failure instead of a healthy run at full volume.",
+          "A vehicle-position poll that records no operational evidence no longer counts as proof that trip-start coverage was available, so trips with no evidence wait for data instead of being treated as no-shows.",
+          "A missed-trip reload whose reports cannot be read no longer erases the months it was refreshing; the retained evidence is kept and the run is reported as a failure.",
+        ],
+      },
+      {
+        heading: "Changed",
+        items: [
+          "The two pollers that read the GTFS-RT trip update feed now record its health once, through one shared reader, instead of each writing the same trust record and overwriting the other.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.71",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "Fixed Route Departures now records each run against the agency service day it belongs to. Evening polls previously filed a run under the next calendar day, so the same run could appear twice and be counted twice in the late and expired pullout totals.",
+          "Fixed Route Departures no longer shows a zeroed summary under a \"Live data\" badge when its feed is not connected. An unconfigured feed, a missing history table, and an unreachable service now read as three distinct states, and the pullout counts are withheld until the source can actually support them.",
         ],
       },
     ],

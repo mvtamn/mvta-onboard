@@ -10,11 +10,10 @@
 // auto-publishes to riders - escalated rows go through the same
 // suggestedAlertsApprove flow as everything else in that queue.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
-import { getPool, sql } from "../lib/db";
-import { recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
+import { sql } from "../lib/db";
+import { readTripUpdateFeed } from "../lib/gtfsTripUpdateIngest";
 import { loadKpiTrust } from "../lib/kpiTrustStore";
 import {
-  fetchTripUpdateFeed,
   mapTripUpdateEntity,
   severityForDelayMinutes,
   buildDepartureRiskDraftText,
@@ -260,20 +259,9 @@ app.timer("gtfsDelaysPoll", {
       return;
     }
 
-    let feed;
-    try {
-      feed = await fetchTripUpdateFeed(feedUrl);
-    } catch (err) {
-      context.error("Failed to fetch GTFS-RT TripUpdate feed:", err);
-      try {
-        await recordFeedFailure(await getPool(), "gtfs_trip_updates", err);
-      } catch (healthError) {
-        context.error("Failed to record TripUpdate feed failure:", healthError);
-      }
-      return;
-    }
-
-    const pool = await getPool();
+    const ingest = await readTripUpdateFeed(feedUrl, context);
+    if (!ingest) return;
+    const { feed, pool } = ingest;
     let escalatedCount = 0;
 
     const observedTableCheck = await pool.request().query<{ table_exists: number }>(`
@@ -340,13 +328,11 @@ app.timer("gtfsDelaysPoll", {
       context.error("Failed to clean up stale MonitoredTripDelays rows:", err);
     }
 
-    try {
-      // The trust record means this fetched feed was successfully processed,
-      // not merely that an HTTP response was received.
-      await recordFeedHealth(pool, "gtfs_trip_updates", feed.Entities.length, feed.Header?.Timestamp ?? null);
-    } catch (err) {
-      context.error("Failed to update TripUpdate feed health:", err);
-    }
+    // No feed-health record here: readTripUpdateFeed writes gtfs_trip_updates at
+    // delivery, once, for both pollers that read this feed. The comment this
+    // replaces claimed the row meant the feed had been "successfully processed",
+    // which it could not - gtfsMissedTripsPoll overwrote the row from its own
+    // fetch on the same five-minute schedule.
     context.log(
       `GTFS-RT TripUpdate poll: ${feed.Entities.length} entities seen, ${evidenceCount} evidence rows recorded, ` +
         `${escalatedCount} new suggested alerts escalated.`,

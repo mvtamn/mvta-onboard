@@ -230,6 +230,13 @@ CREATE TABLE garage_departure_metrics (
 ## 6. Computation Logic
 
 ### 6.1 Missed Trip evaluation
+
+> **Superseded in part by [ADR 0028](../docs/adr/0028-scope-garage-departure-to-one-source-per-service-type.md) (2026-09-03):** the
+> fixed-route garage-departure linkage described below is sourced from Avail's
+> `FixedRouteDepartures`, not from Spare's `garage_departure_metrics` —
+> `complianceCandidatesPoll` already implements it that way. Spare's garage-departure
+> work is scoped to on-demand duties. The rest of this section stands.
+
 Primary inputs now come from `spare_ridership_export` (pre-calculated lateness) joined to `spare_slots` (for condition 2) — **and now also `garage_departure_metrics`**, since a late garage departure is a common root cause of Condition 1 (late start) on fixed-route service specifically. A duty that pulls out late has a cascading effect on every scheduled stop downstream of it for that run, which is exactly the scenario MVTA's fixed-route standard (and this Missed Trip definition) is meant to catch — this ties the Garage Departure widget directly into Missed Trip reporting rather than leaving them as two disconnected metrics.
 
 ```
@@ -284,6 +291,11 @@ wait_time_min = trip_wait_sec / 60.0   -- direct from Ridership Export, no manua
 Exclude/flag rows with null `pickup_arrived_time` (never picked up) — show completion rate alongside the mean, don't silently drop from the average.
 
 ### 6.3 Garage Departure
+
+Scoped to on-demand duties per [ADR 0028](../docs/adr/0028-scope-garage-departure-to-one-source-per-service-type.md); fixed-route
+garage departure is measured from Avail Pullout (`FixedRouteDepartures`). A compliance
+occurrence raised from this path must carry its source system in `source_ref` so one
+physical departure cannot be scored twice against `GARAGE_DEPARTURE`.
 
 ```
 -- Primary: Slots record where type = 'startLocation' for the duty
@@ -442,4 +454,4 @@ New "Spare Service Metrics" section/tab alongside the existing OTP Compliance Mo
 9. **Threshold configurability** — should the 30-minute thresholds and garage departure variance threshold be hardcoded or admin-configurable (System Admin role) in OnBoard settings?
 10. **Ridership count definition** — confirm with OCC whether no-shows/cancellations should be fully excluded from the headline ridership number or shown as a secondary stat (spec currently assumes the latter); also confirm how "real-time" the running counter needs to feel (Option A poll-and-cache vs. Option B live push, §8.2) before committing to either build path.
 11. **Delay Reason entry workflow** — confirm this should be manually entered in OnBoard by OCC (User Admin role) per the current process, vs. sourced from an existing dispatch/AVL log if one already captures it; also confirm whether it should be a free-text field or a constrained dropdown (existing samples suggest a fairly small recurring set: Hot Swap, Tablet Connection, Late Check-In, Radio Issues, AVL Boot Delay — a dropdown would make the field more reportable over time).
-12. **Fixed-route classification field** — §6.1's garage-departure-to-Missed-Trip linkage is scoped to fixed-route service only, but the exact field/value to test on (`service_type = 'fixedRoute'`, a `serviceId` lookup against the existing Route Classification reference table, or something else in the Ridership Export) hasn't been confirmed against the live schema yet — verify before Claude Code implements the join, since applying this logic to on-demand trips would produce misleading root-cause attributions.
+12. **Fixed-route classification field** — *(reframed by [ADR 0028](../docs/adr/0028-scope-garage-departure-to-one-source-per-service-type.md): no longer a build blocker. Fixed-route garage delay comes from Avail, so this field is now a guard — if Spare duties do cover fixed-route service, they stay out of the compliance path.)* §6.1's garage-departure-to-Missed-Trip linkage is scoped to fixed-route service only, but the exact field/value to test on (`service_type = 'fixedRoute'`, a `serviceId` lookup against the existing Route Classification reference table, or something else in the Ridership Export) hasn't been confirmed against the live schema yet — verify before Claude Code implements the join, since applying this logic to on-demand trips would produce misleading root-cause attributions.

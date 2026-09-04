@@ -9,13 +9,8 @@
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchPulloutReports, mapPulloutReport } from "../lib/availPullout";
-import { recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
-
-function serviceDateToday(): string {
-  // UTC-based, same known simplification used elsewhere in this repo.
-  const now = new Date();
-  return `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, "0")}${String(now.getUTCDate()).padStart(2, "0")}`;
-}
+import { agencyServiceDate, serviceDateAndGtfsSecondsToUtc } from "../lib/missedTripTime";
+import { feedHealthOutcome, recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
 
 app.timer("fixedRouteDeparturesPoll", {
   schedule: "0 */5 * * * *",
@@ -41,7 +36,11 @@ app.timer("fixedRouteDeparturesPoll", {
     }
 
     const pool = await getPool();
-    const serviceDate = serviceDateToday();
+    // Only the feed-health window uses the poll clock; each row carries its
+    // own service date, derived from that run's garage times (see
+    // pulloutServiceDate) so the MERGE key survives the UTC date rollover
+    // that lands mid-service in agency-local time.
+    const pollServiceDate = agencyServiceDate(new Date()).serviceDate;
     let upsertedCount = 0;
 
     for (const report of reports) {
@@ -56,7 +55,7 @@ app.timer("fixedRouteDeparturesPoll", {
 
       try {
         const request = pool.request();
-        request.input("service_date", sql.Char(8), serviceDate);
+        request.input("service_date", sql.Char(8), mapped.service_date);
         request.input("block", sql.Int, mapped.block);
         request.input("run", sql.Int, mapped.run);
         request.input("checkin_scheduled", sql.DateTime2, mapped.checkin_scheduled);
@@ -99,13 +98,27 @@ app.timer("fixedRouteDeparturesPoll", {
       }
     }
 
+    const outcome = feedHealthOutcome(reports.length, upsertedCount, "pullout reports");
+    if (outcome.kind === "failure") {
+      context.error(`Avail Pullout Reports poll: ${outcome.reason}`);
+      try {
+        await recordFeedFailure(pool, "avail_pullout", new Error(outcome.reason));
+      } catch (healthError) {
+        context.error("Failed to record Avail Pullout feed failure:", healthError);
+      }
+      return;
+    }
+
     try {
-      await recordFeedHealth(pool, "avail_pullout", reports.length, null, {
-        startAt: new Date(`${serviceDate.slice(0, 4)}-${serviceDate.slice(4, 6)}-${serviceDate.slice(6, 8)}T00:00:00Z`),
+      await recordFeedHealth(pool, "avail_pullout", outcome.entityCount, null, {
+        startAt: serviceDateAndGtfsSecondsToUtc(pollServiceDate, 0) ?? new Date(),
         endAt: new Date(),
       });
     } catch (healthError) {
       context.error("Failed to update Avail Pullout feed health:", healthError);
+    }
+    if (outcome.unstoredCount > 0) {
+      context.warn(`Avail Pullout Reports poll: ${outcome.unstoredCount} of ${reports.length} reports were not stored.`);
     }
     context.log(`Avail Pullout Reports poll: ${reports.length} reports seen, ${upsertedCount} rows upserted.`);
   },

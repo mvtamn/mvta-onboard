@@ -26,7 +26,7 @@ import {
   subtractMonths,
   upsertOtpMonthlyReport,
 } from "../lib/otpMonthlyFeed";
-import { recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
+import { feedHealthOutcome, recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
 
 const TRAILING_MONTHS = 3; // current + prior 2
 
@@ -43,7 +43,8 @@ app.timer("otpMonthlyFeedPoll", {
     const now = new Date();
     const pool = await getPool();
 
-    let successfulReports = 0;
+    let receivedReports = 0;
+    let storedReports = 0;
     let completedFetches = 0;
     for (let i = 0; i < TRAILING_MONTHS; i++) {
       const targetDate = subtractMonths(now, i);
@@ -80,11 +81,28 @@ app.timer("otpMonthlyFeedPoll", {
       }
 
       context.log(`Avail OTP Monthly poll: ${reports.length} reports seen, ${upsertedCount} rows upserted for ${serviceMonth}.`);
-      successfulReports += reports.length;
+      receivedReports += reports.length;
+      storedReports += upsertedCount;
     }
     if (completedFetches === TRAILING_MONTHS) {
+      // The coverage guard above already withholds health when a month failed
+      // to fetch. This is the other half: every month fetched, and none of what
+      // came back could be stored.
+      const outcome = feedHealthOutcome(receivedReports, storedReports, "OTP Monthly reports");
+      if (outcome.kind === "failure") {
+        context.error(`Avail OTP Monthly poll: ${outcome.reason}`);
+        try {
+          await recordFeedFailure(pool, "avail_otp_monthly", new Error(outcome.reason));
+        } catch (healthError) {
+          context.error("Failed to record Avail OTP Monthly feed failure:", healthError);
+        }
+        return;
+      }
+      if (outcome.unstoredCount > 0) {
+        context.warn(`Avail OTP Monthly poll: ${outcome.unstoredCount} of ${receivedReports} reports were not stored.`);
+      }
       try {
-        await recordFeedHealth(pool, "avail_otp_monthly", successfulReports, null, {
+        await recordFeedHealth(pool, "avail_otp_monthly", outcome.entityCount, null, {
           startAt: subtractMonths(now, TRAILING_MONTHS - 1),
           endAt: now,
         });
