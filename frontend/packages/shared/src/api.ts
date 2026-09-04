@@ -68,6 +68,7 @@ import type {
   DetourAttachment,
   DetourImage,
   DetourIntake,
+  DetourIntakeStatus,
   CreateDetourIntakeInput,
   DetourFulfillmentMode,
   DetourLifecycleState,
@@ -905,6 +906,17 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<{ id: string; created_at: string }>(
         "/api/detour-intake",
         { method: "POST", body: JSON.stringify(input) },
+        true,
+      );
+    },
+
+    // Full-record replacement of an open intake. Saving an intake that was
+    // returned for information is its resubmission - the server moves it
+    // back to pending review and reports `resubmitted: true`.
+    updateDetourIntake(id: string, input: CreateDetourIntakeInput) {
+      return request<{ id: string; status: DetourIntakeStatus; resubmitted: boolean }>(
+        `/api/detour-intake/${id}`,
+        { method: "PUT", body: JSON.stringify(input) },
         true,
       );
     },

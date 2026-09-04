@@ -6,6 +6,7 @@ import { toDateOnly, toTimeOnly } from "../lib/detourStatus";
 import { detourNumberYear } from "../lib/detourNumbering";
 import { allocateDetourNumber } from "../lib/detourNumberAllocator";
 import type { DetourFulfillmentMode } from "../lib/types";
+import { intakeReviewRefusal, intakeStatusAfterUpdate, type DetourIntakeStatus, type DetourIntakeReviewOutcome } from "../lib/detourIntakeTransitions";
 
 const INTAKE_STATUSES = ["pending_review", "needs_information", "accepted", "rejected", "duplicate", "withdrawn"] as const;
 type IntakeStatus = (typeof INTAKE_STATUSES)[number];
@@ -189,8 +190,15 @@ app.http("detourIntakeReview", {
       if (body.status === "duplicate" && !duplicateLinksReady) {
         return { status: 503, jsonBody: { error: "Duplicate links are not configured" } };
       }
+      const currentReq = pool.request();
+      currentReq.input("id", sql.UniqueIdentifier, id);
+      const current = (await currentReq.query<{ status: DetourIntakeStatus }>("SELECT status FROM DetourIntake WHERE id = @id")).recordset[0];
+      if (!current) return { status: 404, jsonBody: { error: "Intake not found" } };
+      const refusal = intakeReviewRefusal(current.status, body.status as DetourIntakeReviewOutcome);
+      if (refusal) return { status: 409, jsonBody: { error: refusal } };
       const req = pool.request();
       req.input("id", sql.UniqueIdentifier, id);
+      req.input("current_status", sql.NVarChar(20), current.status);
       req.input("status", sql.NVarChar(20), body.status);
       req.input("decision_notes", sql.NVarChar(1000), body.decision_notes ?? null);
       if (duplicateLinksReady) {
@@ -204,12 +212,102 @@ app.http("detourIntakeReview", {
             ${duplicateLinksReady ? ", duplicate_of_intake_id = @duplicate_of_intake_id, duplicate_of_detour_id = @duplicate_of_detour_id" : ""},
             reviewed_by = @reviewed_by, reviewed_at = SYSUTCDATETIME(),
             updated_by = @reviewed_by, updated_at = SYSUTCDATETIME()
-        WHERE id = @id AND status = 'pending_review'
+        WHERE id = @id AND status = @current_status
       `);
-      if (!result.rowsAffected[0]) return { status: 404, jsonBody: { error: "Pending intake not found" } };
+      if (!result.rowsAffected[0]) return { status: 409, jsonBody: { error: "Intake changed while the decision was being saved; reload and try again" } };
       return { status: 200, jsonBody: { id, status: body.status } };
     } catch (err) {
       context.error("PATCH /detour-intake/{id} failed:", err);
+      return { status: 500, jsonBody: { error: "Internal server error" } };
+    }
+  },
+});
+
+
+// Full-record update of an open intake. Same contract as create, so the
+// console's form submits identically for a new report and a correction.
+// An intake returned for information goes back to the review queue on
+// save: the update IS the resubmission. The reviewer's decision_notes are
+// kept so the queue shows what was asked for alongside what came back.
+app.http("detourIntakeUpdate", {
+  route: "detour-intake/{id}",
+  methods: ["PUT"],
+  authLevel: "anonymous",
+  handler: async (request: HttpRequest, context: InvocationContext) => {
+    const auth = requireRole(request, DETOUR_INTAKE_ROLES);
+    if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
+    const id = request.params.id;
+    if (!isGuid(id)) return { status: 400, jsonBody: { error: "id must be a GUID" } };
+    let body: Record<string, unknown>;
+    try { body = await parseJson(request); } catch { return { status: 400, jsonBody: { error: "Request body must be valid JSON" } }; }
+    const errors = validateCreateDetourIntake(body);
+    if (errors.length) return { status: 400, jsonBody: { error: "Validation failed", details: errors } };
+    try {
+      const pool = await getPool();
+      const tx = new sql.Transaction(pool);
+      await tx.begin();
+      try {
+        const currentReq = new sql.Request(tx);
+        currentReq.input("id", sql.UniqueIdentifier, id);
+        const current = (await currentReq.query<{ status: DetourIntakeStatus }>("SELECT status FROM DetourIntake WHERE id = @id")).recordset[0];
+        if (!current) { await tx.rollback(); return { status: 404, jsonBody: { error: "Intake not found" } }; }
+        const nextStatus = intakeStatusAfterUpdate(current.status);
+        if (!nextStatus) { await tx.rollback(); return { status: 409, jsonBody: { error: `Intake is already ${current.status.replace("_", " ")} and can no longer be edited` } }; }
+        const req = new sql.Request(tx);
+        req.input("id", sql.UniqueIdentifier, id);
+        req.input("status", sql.NVarChar(20), nextStatus);
+        req.input("detection_source", sql.NVarChar(100), body.detection_source);
+        req.input("description", sql.NVarChar(1000), body.description);
+        req.input("location", sql.NVarChar(500), body.location ?? null);
+        req.input("proposed_start_date", sql.Date, body.proposed_start_date ?? null);
+        req.input("proposed_end_date", sql.Date, body.proposed_end_date ?? null);
+        req.input("proposed_start_time", sql.Time, body.proposed_start_time ?? null);
+        req.input("proposed_end_time", sql.Time, body.proposed_end_time ?? null);
+        req.input("time_window_status", sql.NVarChar(20), body.time_window_status);
+        req.input("affected_stops_and_stations", sql.NVarChar(2000), body.affected_stops_and_stations ?? null);
+        req.input("operational_impacts", sql.NVarChar(2000), body.operational_impacts ?? null);
+        req.input("confirmation_contact", sql.NVarChar(500), body.confirmation_contact ?? null);
+        req.input("service_impact", sql.NVarChar(20), body.service_impact);
+        req.input("service_area", sql.NVarChar(500), body.service_area ?? null);
+        req.input("action_instructions", sql.NVarChar(2000), body.action_instructions);
+        req.input("proposed_fulfillment_mode", sql.NVarChar(30), body.proposed_fulfillment_mode);
+        req.input("notification_audiences", sql.NVarChar(1000), JSON.stringify(body.notification_audiences));
+        req.input("notification_channels", sql.NVarChar(1000), JSON.stringify(body.notification_channels));
+        req.input("evidence_notes", sql.NVarChar(2000), body.evidence_notes ?? null);
+        req.input("evidence_reference", sql.NVarChar(1000), body.evidence_reference ?? null);
+        req.input("updated_by", sql.NVarChar(200), auth.principal.userDetails || "system");
+        await req.query(`
+          UPDATE DetourIntake SET
+            status = @status, detection_source = @detection_source, description = @description, location = @location,
+            proposed_start_date = @proposed_start_date, proposed_end_date = @proposed_end_date,
+            proposed_start_time = @proposed_start_time, proposed_end_time = @proposed_end_time, time_window_status = @time_window_status,
+            affected_stops_and_stations = @affected_stops_and_stations, operational_impacts = @operational_impacts, confirmation_contact = @confirmation_contact,
+            service_impact = @service_impact, service_area = @service_area, action_instructions = @action_instructions,
+            proposed_fulfillment_mode = @proposed_fulfillment_mode, notification_audiences = @notification_audiences, notification_channels = @notification_channels,
+            evidence_notes = @evidence_notes, evidence_reference = @evidence_reference,
+            updated_by = @updated_by, updated_at = SYSUTCDATETIME()
+          WHERE id = @id
+        `);
+        const clearReq = new sql.Request(tx);
+        clearReq.input("intake_id", sql.UniqueIdentifier, id);
+        await clearReq.query("DELETE FROM DetourIntakeSegments WHERE intake_id = @intake_id");
+        for (const [index, segment] of ((body.segments as Array<Record<string, unknown>> | undefined) ?? []).entries()) {
+          const segmentReq = new sql.Request(tx);
+          segmentReq.input("intake_id", sql.UniqueIdentifier, id);
+          segmentReq.input("routes", sql.NVarChar(200), segment.routes);
+          segmentReq.input("directions", sql.NVarChar, segment.directions ?? null);
+          segmentReq.input("sort_order", sql.Int, segment.sort_order ?? index);
+          await segmentReq.query(`INSERT INTO DetourIntakeSegments (intake_id, routes, directions, sort_order)
+            VALUES (@intake_id, @routes, @directions, @sort_order)`);
+        }
+        await tx.commit();
+        return { status: 200, jsonBody: { id, status: nextStatus, resubmitted: current.status === "needs_information" } };
+      } catch (err) {
+        await tx.rollback();
+        throw err;
+      }
+    } catch (err) {
+      context.error("PUT /detour-intake/{id} failed:", err);
       return { status: 500, jsonBody: { error: "Internal server error" } };
     }
   },

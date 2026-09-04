@@ -18,6 +18,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.72",
+    date: "2026-09-03",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "Detour Intake reports returned for information no longer disappear. They appear under a Needs information tab with OCC's request, can be updated and resubmitted for review, and can still be withdrawn, rejected, or marked duplicate. Pending reports can be edited in place, and decided reports are listed with their outcome.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.71",
     date: "2026-09-03",
     sections: [
