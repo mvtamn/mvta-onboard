@@ -6,6 +6,8 @@
 // The envelope shape is genuinely different from AVL Reports' - result.Pullout
 // (not result["AVL Reports"]), with RefreshTime/Property nested in a
 // result.results array rather than as sibling fields.
+import { agencyServiceDate } from "./missedTripTime";
+
 export interface AvailPulloutReport {
   Block: number;
   Run: number;
@@ -53,6 +55,7 @@ export async function fetchPulloutReports(
 }
 
 export interface MappedPullout {
+  service_date: string;
   block: number;
   run: number;
   checkin_scheduled: Date | null;
@@ -73,22 +76,65 @@ function parseNullableDate(value: string | null): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+// The Pullout endpoint takes no date segment - it always reports the
+// property's current service day - so the service date has to be derived, and
+// it is part of the (service_date, block, run) key the poller MERGEs on.
+// Deriving it from the poll clock in UTC broke that key: the UTC date rolls
+// over at 6/7pm agency-local, mid-service, so an evening poll re-INSERTED runs
+// already stored under the correct day and double-counted them. Anchor to the
+// run's own garage times in agency-local time instead. Scheduled times are
+// preferred over actuals (a run's service day is fixed by its schedule, not by
+// when it happened to leave), and garage times sit in the early morning, far
+// from local midnight, so every poll across the day derives the same date and
+// the MERGE stays idempotent. The poll clock is only a last resort for a report
+// carrying no usable timestamp at all.
+export function pulloutServiceDate(
+  report: Pick<
+    MappedPullout,
+    | "checkin_scheduled"
+    | "checkin_actual"
+    | "login_scheduled"
+    | "login_actual"
+    | "pullout_scheduled"
+    | "pullout_actual"
+  >,
+  now: Date = new Date(),
+): string {
+  const anchor =
+    report.pullout_scheduled ??
+    report.login_scheduled ??
+    report.checkin_scheduled ??
+    report.pullout_actual ??
+    report.login_actual ??
+    report.checkin_actual ??
+    now;
+  return agencyServiceDate(anchor).serviceDate;
+}
+
 // Guard clause, not a throw - a single malformed report shouldn't abort the
 // whole poll (same convention as mapAvlReport/mapVehiclePositionEntity).
-export function mapPulloutReport(report: AvailPulloutReport): MappedPullout | null {
+export function mapPulloutReport(
+  report: AvailPulloutReport,
+  now: Date = new Date(),
+): MappedPullout | null {
   if (typeof report.Block !== "number" || typeof report.Run !== "number") {
     return null;
   }
 
-  return {
-    block: report.Block,
-    run: report.Run,
+  const times = {
     checkin_scheduled: parseNullableDate(report.Checkin_Scheduled),
     checkin_actual: parseNullableDate(report.Checkin_Actual),
     login_scheduled: parseNullableDate(report.Login_Scheduled),
     login_actual: parseNullableDate(report.Login_Actual),
     pullout_scheduled: parseNullableDate(report.Pullout_Scheduled),
     pullout_actual: parseNullableDate(report.Pullout_Actual),
+  };
+
+  return {
+    service_date: pulloutServiceDate(times, now),
+    ...times,
+    block: report.Block,
+    run: report.Run,
     pullout_status: report.PulloutStatus ?? null,
     operator_name: report.OperatorName ?? null,
     logon_id: report.LogonID ?? null,

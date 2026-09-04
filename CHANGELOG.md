@@ -5,6 +5,11 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.71] - 2026-09-04
+
+- **Key Fixed Route Departures to the agency service day, not the UTC poll clock.** The Avail Pullout endpoint carries no date, so the service date is derived - and it is part of the `(service_date, block, run)` key the poller MERGEs on. Deriving it in UTC re-keyed runs mid-service (the UTC day rolls over at 6/7pm local, while service runs to 10pm), inserting a duplicate row that double-counted the run in the late and expired pullout totals and raised two `GARAGE_DEPARTURE` compliance candidates for one departure. Each row's service date now comes from that run's own scheduled garage times in America/Chicago, so every poll across the day lands on one key. The read window's cutoff is agency-local for the same reason.
+- **Stop reporting zero late pullouts from a source that was never switched on.** `GET /fixed-route-departures` answers 200 with an empty list whether the feed is unconfigured, its `FixedRouteDepartures` table is missing, or the window is genuinely quiet. The console read all three the same way and rendered "Live data" over a zeroed summary, so a module that had never recorded a departure claimed there were no late or expired pullouts. It now names the four states apart - not configured, not connected, unavailable, and live - and withholds the counts until the feed and its table are both live, per the Not-connected monitoring definition. A failed request no longer reads as a configuration problem.
+
 ## [1.5.70] - 2026-08-28
 
 - **Rename the feed-health ledger to match what it holds.** Migration 086 renames `MissedTripFeedHealth` to `KpiFeedHealth`; it backs every KPI trust stream, not only missed trips. The application resolves the table name per call and accepts either, so the migration and the deployment can land in either order.
