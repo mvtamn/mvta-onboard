@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.112] - 2026-09-05
+
+- **OTP Compliance administration moves into the Administration workspace.** The OTP module's own **Administration** and **Threshold Tuner** pages are gone from the Compliance tab; both now live at **Administration › OTP Compliance**, behind the same `OCC.Admin` gate as every other configuration surface. They were reachable by anyone with plain `OCC.Compliance` access even though the writes behind them are Admin-only server-side, so the pages offered edits that would 403 - and the settings they change (reason codes shown in Review Queue, the Weather page and Missed Trips; the early/late bias detection threshold) apply to every reviewer, not just the person editing. The new page carries all three reason-code tables, the historical feed backfill, and the threshold tuner with its preview-then-apply slider, which fetches the current month's stop rows itself and seeds from the saved threshold rather than the built-in 15% fallback. The OTP module keeps its six reviewer pages and still reads the threshold and reason codes this page maintains. No API changes.
+
 ## [1.5.111] - 2026-09-05
 
 - **Service Operations shows each role only what it can use.** The communications side - Dashboard, Overview, Compose, Active Service Alerts, Suggested Alerts - reads the API's staff roles, so users outside them (the SST desk's `OCC.TripStartVerify`, Compliance-only readers) used to see links and tabs that answered 403. Per ADR 0015 those links and tabs are now hidden for such roles, the group header stays only while at least one child is reachable, the Service Operations header reads "Monitoring workspace" for them, the communications routes are role-gated like every other, and "/" lands them on the Dispatch Log (or Compliance, or Detours) instead of a Dashboard built from data they cannot read. No API changes.
