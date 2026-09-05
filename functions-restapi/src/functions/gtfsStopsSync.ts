@@ -27,9 +27,9 @@ app.timer("gtfsStopsSync", {
       return;
     }
 
-    let stops, trips, routes, scheduledTrips, calendar, calendarDates;
+    let stops, trips, routes, scheduledTrips, calendar, calendarDates, stopRoutes;
     try {
-      ({ stops, trips, routes, scheduledTrips, calendar, calendarDates } =
+      ({ stops, trips, routes, scheduledTrips, calendar, calendarDates, stopRoutes } =
         await fetchAndParseStatic(feedUrl));
     } catch (err) {
       context.error("Failed to fetch/parse the static GTFS feed:", err);
@@ -134,6 +134,22 @@ app.timer("gtfsStopsSync", {
             )
           `);
         }
+      }
+
+      // GtfsStopRoutes (migration 091) - the stop-to-route index behind
+      // nearby-stop suggestions on the detour map. Bulk-loaded, since a
+      // feed produces tens of thousands of pairs.
+      const stopRoutesCheck = await new sql.Request(tx).query<{ table_exists: number }>(
+        "SELECT CASE WHEN OBJECT_ID('dbo.GtfsStopRoutes', 'U') IS NULL THEN 0 ELSE 1 END AS table_exists",
+      );
+      if (stopRoutesCheck.recordset[0]?.table_exists === 1) {
+        await new sql.Request(tx).query("TRUNCATE TABLE GtfsStopRoutes");
+        const table = new sql.Table("GtfsStopRoutes");
+        table.create = false;
+        table.columns.add("stop_id", sql.NVarChar(50), { nullable: false });
+        table.columns.add("route_id", sql.NVarChar(50), { nullable: false });
+        for (const link of stopRoutes) table.rows.add(link.stop_id, link.route_id);
+        if (stopRoutes.length > 0) await new sql.Request(tx).bulk(table);
       }
 
       const scheduleTableCheck = await new sql.Request(tx).query<{

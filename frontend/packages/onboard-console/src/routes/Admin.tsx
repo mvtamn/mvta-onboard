@@ -10,6 +10,7 @@ import {
   ROUTE_CATEGORY_LABELS,
   type GtfsRouteOption,
   type AppSettingRow,
+  type DetourReasonCode,
 } from "@mvta/shared";
 import { api } from "../config.js";
 import { useAppDialog } from "../components/AppDialog.js";
@@ -450,6 +451,187 @@ export function RouteClassificationSection() {
 // Admin - expiration defaults editor. These TTLs drive expires_at whenever a
 // message is created without an explicit expiration (expiration_source =
 // category_default). PATCH is OCC.Admin-only, enforced server-side.
+
+// Detour reason categories - the vocabulary behind the Reporting fields on
+// Detours & Closures and the Reason filter on Detour Reports. Codes are
+// never deleted: a retired code stays on the detours that used it, so it
+// is deactivated instead, which hides it from the entry form while the
+// Reports page keeps resolving its label. The code itself is fixed once
+// created (it is the stored value); only label, order, and active change.
+export function DetourReasonCodesSection() {
+  const [codes, setCodes] = useState<DetourReasonCode[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [okMsg, setOkMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [newCode, setNewCode] = useState("");
+  const [newLabel, setNewLabel] = useState("");
+  const [labels, setLabels] = useState<Record<string, string>>({});
+
+  function load() {
+    api.getDetourReasonCodes()
+      .then((r) => { setCodes(r.reason_codes); setError(null); })
+      .catch((err) => setError(err instanceof ApiError ? err.message : "Could not load reason categories."));
+  }
+  useEffect(load, []);
+
+  async function run(key: string, action: () => Promise<unknown>, done: string) {
+    setBusy(key); setError(null); setOkMsg(null);
+    try { await action(); setOkMsg(done); load(); }
+    catch (err) { setError(err instanceof ApiError ? err.message : "Update failed."); }
+    finally { setBusy(null); }
+  }
+
+  const trimmedCode = newCode.trim().toLowerCase().replace(/\s+/g, "_");
+  const nextOrder = codes ? Math.max(0, ...codes.map((c) => c.sort_order)) + 10 : 0;
+
+  async function create() {
+    if (!trimmedCode || !newLabel.trim()) return;
+    await run("new", () => api.createDetourReasonCode({ code: trimmedCode, label: newLabel.trim(), sort_order: nextOrder }), `Added ${newLabel.trim()}.`);
+    setNewCode(""); setNewLabel("");
+  }
+
+  function relabel(c: DetourReasonCode) {
+    const label = (labels[c.id] ?? "").trim();
+    if (!label || label === c.label) return;
+    void run(c.id, () => api.updateDetourReasonCode(c.id, { label }), `Renamed ${c.code} to ${label}.`).then(() => setLabels((prev) => ({ ...prev, [c.id]: "" })));
+  }
+
+  // Swap sort_order with the neighbour; two PATCHes, second only if the
+  // first succeeded, so a failure leaves at most one row moved and the
+  // reload shows exactly that.
+  function move(c: DetourReasonCode, direction: -1 | 1) {
+    if (!codes) return;
+    const index = codes.findIndex((item) => item.id === c.id);
+    const neighbour = codes[index + direction];
+    if (!neighbour) return;
+    void run(c.id, async () => {
+      await api.updateDetourReasonCode(c.id, { sort_order: neighbour.sort_order });
+      await api.updateDetourReasonCode(neighbour.id, { sort_order: c.sort_order });
+    }, `Moved ${c.label} ${direction < 0 ? "up" : "down"}.`);
+  }
+
+  return (
+    <>
+      <div className="panel-header">Detour reason categories</div>
+      <div className="panel-body">
+        <p className="panel-desc">
+          Categories offered under Reporting on Detours &amp; Closures and used to filter Detour Reports.
+          Retiring a category hides it from new entries; detours already categorized keep it.
+        </p>
+        {error ? <p className="error-text">{error}</p> : null}
+        {okMsg ? <p className="ok-text">{okMsg}</p> : null}
+        {codes === null && !error ? <p className="muted">Loading…</p> : null}
+        {codes ? (
+          <table className="data">
+            <thead>
+              <tr><th>Order</th><th>Code</th><th>Label</th><th>Status</th><th>New label</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+              {codes.map((c, i) => (
+                <tr key={c.id} className={c.is_active ? "" : "td-dim"}>
+                  <td>
+                    <button className="btn-sm" disabled={busy !== null || i === 0} aria-label={`Move ${c.label} up`} onClick={() => move(c, -1)}>↑</button>
+                    <button className="btn-sm" disabled={busy !== null || i === codes.length - 1} aria-label={`Move ${c.label} down`} onClick={() => move(c, 1)}>↓</button>
+                  </td>
+                  <td><code>{c.code}</code></td>
+                  <td>{c.label}</td>
+                  <td>{c.is_active ? "Active" : "Retired"}</td>
+                  <td><input className="f" value={labels[c.id] ?? ""} placeholder={c.label} onChange={(e) => setLabels((prev) => ({ ...prev, [c.id]: e.target.value }))} /></td>
+                  <td>
+                    <button className="btn-sm" disabled={busy !== null || !(labels[c.id] ?? "").trim()} onClick={() => relabel(c)}>Rename</button>
+                    <button className="btn-sm" disabled={busy !== null} onClick={() => void run(c.id, () => api.updateDetourReasonCode(c.id, { is_active: !c.is_active }), `${c.label} ${c.is_active ? "retired" : "reactivated"}.`)}>
+                      {c.is_active ? "Retire" : "Reactivate"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              <tr>
+                <td className="td-dim">{nextOrder}</td>
+                <td><input className="f" value={newCode} placeholder="e.g. utility_work" onChange={(e) => setNewCode(e.target.value)} /></td>
+                <td colSpan={3}><input className="f" value={newLabel} placeholder="Label shown to staff" onChange={(e) => setNewLabel(e.target.value)} /></td>
+                <td><button className="btn-post" disabled={busy !== null || !trimmedCode || !newLabel.trim()} onClick={() => void create()}>Add category</button></td>
+              </tr>
+            </tbody>
+          </table>
+        ) : null}
+        {codes && codes.length === 0 ? <p className="muted">No categories yet - migration 025 seeds the initial list.</p> : null}
+      </div>
+    </>
+  );
+}
+
+
+// Contractor notification (design B15): the fixed-route contractor's name
+// and recipient addresses. Once a name is set, every fixed-route Detour
+// requires a published communication to that audience and the composer
+// prefills the recipients. There is no server-side sender; staff send
+// from their mail client and mark the communication published.
+export function DetourContractorSection() {
+  const [settings, setSettings] = useState<AppSettingRow[] | null>(null);
+  const [name, setName] = useState("");
+  const [recipients, setRecipients] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [okMsg, setOkMsg] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api.getAppSettings("detour")
+      .then(({ settings }) => {
+        setSettings(settings);
+        setName(settings.find((s) => s.setting_key === "contractor_name")?.setting_value ?? "");
+        setRecipients(settings.find((s) => s.setting_key === "contractor_recipients")?.setting_value ?? "");
+      })
+      .catch((err) => setError(err instanceof ApiError ? err.message : "Could not load contractor settings."));
+  }, []);
+
+  const configured = settings?.some((s) => s.setting_key === "contractor_name") ?? false;
+  const current = (key: string) => settings?.find((s) => s.setting_key === key)?.setting_value ?? "";
+  const dirty = name.trim() !== current("contractor_name") || recipients.trim() !== current("contractor_recipients");
+  const badAddresses = recipients.split(/[,;\s]+/).filter(Boolean).filter((a) => !a.includes("@"));
+
+  async function save() {
+    if (badAddresses.length) { setError(`Not email addresses: ${badAddresses.join(", ")}`); return; }
+    setSaving(true); setError(null); setOkMsg(null);
+    try {
+      const updatedName = await api.updateAppSetting("detour", "contractor_name", name.trim());
+      const updatedRecipients = await api.updateAppSetting("detour", "contractor_recipients", recipients.trim());
+      setSettings((prev) => (prev ?? []).map((s) => s.setting_key === "contractor_name" ? updatedName : s.setting_key === "contractor_recipients" ? updatedRecipients : s));
+      setOkMsg(name.trim() ? `Contractor set to ${name.trim()}; fixed-route Detours now require a communication to them.` : "Contractor cleared; no contractor audience is required.");
+    } catch (err) { setError(err instanceof ApiError ? err.message : "Could not save contractor settings."); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <>
+      <div className="panel-header">Detour contractor notification</div>
+      <div className="panel-body">
+        <p className="panel-desc">
+          The fixed-route contractor that must be notified of every fixed-route Detour. Once a name is set it appears as a required audience on Detours &amp; Closures with these recipients prefilled. Send email delivers from the server when Azure Communication Services is configured for the dispatch app; otherwise staff send from their mail client and mark the communication published.
+        </p>
+        {error ? <p className="error-text">{error}</p> : null}
+        {okMsg ? <p className="ok-text">{okMsg}</p> : null}
+        {settings === null && !error ? <p className="muted">Loading…</p> : null}
+        {settings !== null && !configured ? <p className="muted">Contractor settings are not seeded in this environment (migration 089).</p> : null}
+        {configured ? (
+          <div className="field-grid">
+            <div>
+              <p className="field-label">Contractor name <span className="hint">(audience label; blank = none)</span></p>
+              <input className="f" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. SST" />
+            </div>
+            <div>
+              <p className="field-label">Recipient addresses <span className="hint">(comma-separated)</span></p>
+              <input className="f" value={recipients} onChange={(e) => setRecipients(e.target.value)} placeholder="dispatch@contractor.com, ops@contractor.com" />
+            </div>
+            <div style={{ alignSelf: "end" }}>
+              <button className="btn-post" disabled={saving || !dirty} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </>
+  );
+}
+
 export function Admin() {
   const [defaults, setDefaults] = useState<ExpirationDefault[] | null>(null);
   const [edits, setEdits] = useState<Record<string, string>>({});

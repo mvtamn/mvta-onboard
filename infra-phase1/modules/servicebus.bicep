@@ -104,6 +104,20 @@ resource confirmationQueue 'Microsoft.ServiceBus/namespaces/queues@2022-10-01-pr
   }
 }
 
+// Published Detour communications handed to the dispatch app for email
+// delivery (migration 092). Low volume, but each send names real
+// recipients, so dead-letter rather than drop.
+resource detourCommunicationQueue 'Microsoft.ServiceBus/namespaces/queues@2022-10-01-preview' = {
+  parent: serviceBusNamespace
+  name: 'detour-communication-requested'
+  properties: {
+    maxDeliveryCount: 5
+    lockDuration: 'PT2M'
+    defaultMessageTimeToLive: 'P2D'
+    deadLetteringOnMessageExpiration: true
+  }
+}
+
 resource eventGeofenceQueue 'Microsoft.ServiceBus/namespaces/queues@2022-10-01-preview' = {
   parent: serviceBusNamespace
   name: 'event-geofence-notifications'

@@ -18,6 +18,259 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.95",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Added",
+        items: [
+          "Likely-duplicate and conflict warnings now recognise two Detours that touch the same GTFS stop, from the map drawing or the stops added from it, and name the shared stops.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.94",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Added",
+        items: [
+          "Likely-duplicate and conflict warnings now recognise two Detours drawn at the same place on the map, whatever they were called or which routes were typed.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.93",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Added",
+        items: [
+          "Emailed Detour communications now show a per-recipient delivery receipt from the mail provider - Delivered, Bounced, Suppressed, Filtered as spam - and a communication reads Delivered only once every recipient is confirmed, with Accepted by provider until then.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.92",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Added",
+        items: [
+          "Detour Reports shows each Detour's communications with delivery state and a Sent copy of exactly what went out; the same Sent copy appears on Detours & Closures.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.91",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Added",
+        items: [
+          "Detour communications on the Teams channel can be posted from the server with Post to Teams; the post shows as Posted or names the failure, with Retry send.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.90",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Added",
+        items: [
+          "Detour communications can be sent by email from the server. Send email freezes exactly what goes out, shows Sending, Delivered, or the failing addresses on the communication, and offers Retry send; Open in email and Mark published (sent elsewhere) remain for manual sends.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.89",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Added",
+        items: [
+          "Detour Intake has a map: draw the closure as a point, line, or area, find the GTFS stops within a chosen distance, and add them and their routes to the intake in one step. The drawing stays with the Detour and shows on Detours & Closures and Detour Reports.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.88",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Added",
+        items: [
+          "Detours & Closures warns when a Detour overlaps another open Detour on the same route or place in the same window, and requires a recorded reason to proceed before the Avail entry can be confirmed. The reason and the conflicting Detours stay in the workflow history; Detour Reports shows and exports the conflict state.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.87",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Added",
+        items: [
+          "Contractor notification for Detours: Administration holds the fixed-route contractor's name and email recipients; once set, every fixed-route Detour lists the contractor as a required audience, Draft prefills the recipients, Open in email hands the message to your mail client, and marking it published records who it went to.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.86",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Added",
+        items: [
+          "Detour communications now start from the record: a checklist of the audiences the intake required with their progress, a Draft button per audience that fills in audience, channel, and a message built from the Detour's details, and audience and channel choices limited to what the record names.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.85",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "PDFs and documents attached to a Detour now show as a file tile that opens the document instead of a broken image, and can be attached after acceptance. Detour Reports shows a Detour's attachments read-only.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.84",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "The Detour Intake list no longer fails on an environment that is missing one of its optional migrations; it omits those columns instead.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.83",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Added",
+        items: [
+          "Detour Intake warns OCC about likely duplicates: open Detours and other open intake reports that share a route number or a street/landmark name inside an overlapping operating window. The review dialog lists them with what they share, and Mark duplicate of this fills the target in one click. Nothing is merged or rejected automatically.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.82",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "The legacy spreadsheet import on Detour Reports now reads real Excel CSVs: quoted commas, embedded quotes and line breaks, a BOM, and columns in any order matched by header name. It reports rows skipped for missing closure text and columns it kept but did not recognise, and a Detour Reports export can be re-imported intact.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.81",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "Detour Reports now lists the legacy spreadsheet rows that have been imported, grouped by source file, and the search box reaches them. The import control appears only for staff who can record detours, instead of failing silently for read-only roles.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.80",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "Accepting a Detour Intake no longer files the closure location as Riders directed. The Detour now carries its own Location, shown in the operational record and exported in the Reports CSV; existing promoted Detours are corrected by migration 088.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.79",
+    date: "2026-09-03",
+    sections: [
+      {
+        heading: "Added",
+        items: [
+          "Detours & Closures and Detour Reports show each Detour's workflow history - creation, workflow transitions, Avail observations, corrections, and fulfillment confirmation - behind a Show history control.",
+          "Administration can now manage Detour reason categories: add a code, relabel or reorder it, and retire it without losing the history that used it.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.78",
+    date: "2026-09-03",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "The Detour Reports CSV now carries every column the table shows - path, readiness, next owner, communications, workflow, closure reason, and Avail entry details - in the same order as the page.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.77",
+    date: "2026-09-03",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "A Detour flagged for OCC re-review after an edit can now be cleared. Mark review complete sits beside the warning on Detours & Closures, records who reviewed it in the workflow history, and Detour Reports shows and exports the flag.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.76",
+    date: "2026-09-03",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "Detour Intake reports returned for information no longer disappear. They appear under a Needs information tab with OCC's request, can be updated and resubmitted for review, and can still be withdrawn, rejected, or marked duplicate. Pending reports can be edited in place, and decided reports are listed with their outcome.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.75",
+    date: "2026-09-03",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "Detours & Closures and Detour Reports now show the operational record an accepted intake carries — operating window, service impact, affected stops, action instructions, required audiences and channels, confirmation contact, and evidence. Search reaches these fields and the Reports CSV exports them.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.74",
     date: "2026-09-04",
     sections: [

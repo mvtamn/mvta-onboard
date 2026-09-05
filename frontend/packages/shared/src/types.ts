@@ -702,13 +702,63 @@ export type DetourReadiness =
   | "needs_occ_review" | "ready_for_avail_entry" | "avail_conflict"
   | "ready_for_manual_operations" | "closed";
 export type DetourCommunicationStatus = "draft" | "published" | "failed";
+export type DetourCommunicationDeliveryStatus = "not_requested" | "queued" | "sent" | "delivered" | "partially_sent" | "failed" | "skipped";
+
+// Per-recipient delivery receipt (migration 093): accepted when ACS took
+// the message, then the provider's report - delivered, bounced, etc.
+export interface DetourCommunicationReceipt {
+  id: string;
+  communication_id: string;
+  recipient: string;
+  provider_message_id: string | null;
+  status: "accepted" | "delivered" | "bounced" | "suppressed" | "quarantined" | "filtered_spam" | "failed" | "expanded";
+  details: string | null;
+  reported_at: string | null;
+  updated_at: string;
+}
 export interface DetourCommunication {
   id: string; detour_id: string; audience: string; channel: string;
   recipients: string | null; content: string; status: DetourCommunicationStatus;
   outcome: string | null; created_by: string; created_at: string;
   published_by: string | null; published_at: string | null;
+  // Server-side delivery (migration 092). sent_* is the frozen snapshot of
+  // what went out; content stays the editable draft.
+  delivery_status?: DetourCommunicationDeliveryStatus;
+  delivery_requested_at?: string | null;
+  delivery_completed_at?: string | null;
+  delivery_error?: string | null;
+  delivery_provider_id?: string | null;
+  sent_subject?: string | null;
+  sent_body?: string | null;
+  sent_recipients?: string | null;
+  receipts?: DetourCommunicationReceipt[];
 }
+// Contractor notification settings as GET /detours reports them
+// (AppSettings module 'detour', migration 089). name null = not configured.
+export interface DetourContractorNotification { name: string | null; recipients: string[]; }
+
 export interface DetourHistoricalImportResult { import_batch_id: string; imported_rows: number; historical_only: true; }
+
+// One row of the legacy detour tracker as imported (GET
+// /detours/historical-imports). Historical evidence only - never a
+// Detour, never an approval. raw_row_json stays server-side.
+export interface DetourHistoricalImportRow {
+  id: string;
+  import_batch_id: string;
+  source_file: string;
+  source_row_number: number;
+  historical_reference: string | null;
+  closure: string;
+  service_date: string | null;
+  routes: string | null;
+  communication_audience: string | null;
+  communication_channel: string | null;
+  communication_recipients: string | null;
+  communication_content: string | null;
+  communicated_at: string | null;
+  imported_by: string;
+  imported_at: string;
+}
 
 export const DETOUR_LIFECYCLE_LABELS: Record<DetourLifecycleState, string> = {
   approved: "Needs OCC review",
@@ -816,6 +866,41 @@ export interface Detour extends DetourReportFields {
   review_status?: "current" | "needs_review";
   review_reason?: string | null;
   closure_reason?: string | null;
+  // Other open Detours sharing a route or place inside this window, and
+  // whether a reasoned override covers all of them (migration 090). An
+  // unresolved conflict blocks confirming the Avail entry.
+  conflicts?: DetourLikelyDuplicate[];
+  conflict_status?: "none" | "unresolved" | "overridden";
+  conflict_override_reason?: string | null;
+  conflict_override_by?: string | null;
+  conflict_override_at?: string | null;
+  // Drawn shape (GeoJSON Point/LineString/Polygon as a string), carried
+  // from intake at acceptance (migration 091).
+  geometry_json?: string | null;
+  // Operational record carried over from Detour Intake at acceptance
+  // (migrations 057 and 069). Optional because GET /detours omits each
+  // group entirely when its columns are absent, the same way the reporting
+  // fields are handled. Times are HH:MM, dates YYYY-MM-DD.
+  action_instructions?: string | null;
+  // Where the closure is (migration 088). Distinct from riders_directed,
+  // which is where riders go instead.
+  location?: string | null;
+  notification_audiences?: string[];
+  // Server-computed: notification_audiences plus the configured contractor
+  // on fixed-route Detours (migration 089). What communication_status is
+  // measured against.
+  required_audiences?: string[];
+  notification_channels?: string[];
+  service_impact?: "fixed_route" | "mobility" | null;
+  service_area?: string | null;
+  evidence_notes?: string | null;
+  evidence_reference?: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
+  time_window_status?: "pending" | "estimated" | "confirmed" | null;
+  affected_stops_and_stations?: string | null;
+  operational_impacts?: string | null;
+  confirmation_contact?: string | null;
   segments: DetourSegment[];
 }
 
@@ -841,6 +926,21 @@ export interface CreateDetourInput extends DetourReportFields {
 }
 
 export type DetourIntakeStatus = "draft" | "pending_review" | "needs_information" | "accepted" | "rejected" | "duplicate" | "withdrawn";
+
+// An existing Detour or open intake whose route/location scope and
+// operating window overlap this intake's (detour-functionality-spec item
+// 11). A warning for the reviewer - never an automatic merge or rejection.
+export interface DetourLikelyDuplicate {
+  kind: "detour" | "intake";
+  id: string;
+  label: string;
+  status: string;
+  start_date: string | null;
+  end_date: string | null;
+  reasons: ("geometry" | "stops" | "routes" | "location")[];
+  shared: string[];
+}
+
 export interface DetourIntake {
   id: string;
   detection_source: string;
@@ -871,6 +971,9 @@ export interface DetourIntake {
   evidence_notes?: string | null;
   evidence_reference?: string | null;
   notes?: string | null;
+  // Present for open intakes; empty for decided ones.
+  likely_duplicates?: DetourLikelyDuplicate[];
+  geometry_json?: string | null;
   created_by: string;
   created_at: string;
   updated_by: string | null;
@@ -900,6 +1003,18 @@ export interface CreateDetourIntakeInput {
   evidence_notes?: string | null;
   evidence_reference?: string | null;
   notes?: string | null;
+  geometry_json?: string | null;
+}
+
+// A GTFS stop near a drawn detour shape (POST /gtfs-stops/near), with the
+// routes that serve it when GtfsStopRoutes has been populated.
+export interface NearbyGtfsStop {
+  stop_id: string;
+  stop_name: string;
+  stop_lat: number;
+  stop_lon: number;
+  distance_m: number;
+  routes: string[];
 }
 
 export type UpdateDetourInput = Partial<CreateDetourInput>;
@@ -907,7 +1022,7 @@ export type UpdateDetourInput = Partial<CreateDetourInput>;
 // Detour image attachments - Part B3 of detour-and-event-module-
 // implementation-plan.md. Images never pass through the API directly -
 // upload/read both go through short-lived SAS URLs.
-export interface DetourAttachment {
+export interface DetourImage {
   id: string;
   detour_id: string | null;
   intake_id?: string | null;
@@ -919,22 +1034,13 @@ export interface DetourAttachment {
   sort_order: number;
   uploaded_by: string;
   uploaded_at: string;
+  // Short-lived SAS read URL, null when storage is not configured.
   read_url: string | null;
-  availability_state: "quarantined" | "scanning" | "available" | "rejected" | "failed" | "purged";
-  content_sha256?: string | null;
-  scan_completed_at?: string | null;
-  scan_error?: string | null;
-  retention_purge_at?: string | null;
-  version_of?: string | null;
-  removed_at?: string | null;
-  report_shared?: boolean;
-  shared_by?: string | null;
-  shared_at?: string | null;
-  share_reason?: string | null;
 }
 
-/** Compatibility name for existing Detours image consumers. */
-export type DetourImage = DetourAttachment;
+/** Compatibility alias - the wider attachment contract (scanning, versions,
+ * report sharing) was never built server-side; DetourImages is the store. */
+export type DetourAttachment = DetourImage;
 
 export type DetourWorkflowHistoryEventType =
   | "created"

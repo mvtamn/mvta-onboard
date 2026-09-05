@@ -11,8 +11,10 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { requireRole, DETOUR_READ_ROLES } from "../lib/auth";
-import { computeDetourStatus, toDateOnly, type DetourStatus } from "../lib/detourStatus";
+import { computeDetourStatus, toDateOnly, toTimeOnly, type DetourStatus } from "../lib/detourStatus";
 import { computeDetourReadiness } from "../lib/detourReadiness";
+import { contractorFromSettings, requiredAudiences, type ContractorNotification } from "../lib/detourContractor";
+import { conflictStatus, detourConflicts, detourStopNameLookup, loadDetourConflictScopes, parseOverrideIds } from "../lib/detourConflicts";
 
 interface DetourRow {
   id: string;
@@ -62,6 +64,22 @@ interface DetourRow {
   notification_audiences?: string | null;
   notification_channels?: string | null;
   action_instructions?: string | null;
+  service_impact?: "fixed_route" | "mobility" | null;
+  service_area?: string | null;
+  evidence_notes?: string | null;
+  evidence_reference?: string | null;
+  start_time?: Date | string | null;
+  end_time?: Date | string | null;
+  time_window_status?: "pending" | "estimated" | "confirmed" | null;
+  affected_stops_and_stations?: string | null;
+  operational_impacts?: string | null;
+  confirmation_contact?: string | null;
+  location?: string | null;
+  conflict_override_reason?: string | null;
+  conflict_override_by?: string | null;
+  conflict_override_at?: Date | null;
+  conflict_override_ids?: string | null;
+  geometry_json?: string | null;
   communications_published?: number;
   communications_draft?: number;
   review_status?: "current" | "needs_review";
@@ -113,7 +131,7 @@ app.http("detoursList", {
       // a missing column fails even inside a CASE. Pre-migration the field
       // comes back undefined and the console falls back to hiding it, same
       // graceful-degradation pattern as every other un-run migration here.
-      const schemaCheck = await pool.request().query<{ has_column: number; reporting_ready: number; workflow_ready: number; avail_entry_ready: number; operational_fields: number; communications_ready: number; review_ready: number }>(`
+      const schemaCheck = await pool.request().query<{ has_column: number; reporting_ready: number; workflow_ready: number; avail_entry_ready: number; operational_fields: number; intake_fields: number; location_field: number; conflict_field: number; geometry_field: number; window_fields: number; communications_ready: number; review_ready: number }>(`
         SELECT
           CASE WHEN COL_LENGTH('dbo.Detours', 'internal_number') IS NULL
                THEN 0 ELSE 1 END AS has_column,
@@ -127,6 +145,15 @@ app.http("detoursList", {
                     OR COL_LENGTH('dbo.Detours', 'avail_entry_confirmed_at') IS NULL
                THEN 0 ELSE 1 END AS avail_entry_ready
           ,CASE WHEN COL_LENGTH('dbo.Detours', 'notification_audiences') IS NULL THEN 0 ELSE 1 END AS operational_fields
+          ,CASE WHEN COL_LENGTH('dbo.Detours', 'service_impact') IS NULL
+                     OR COL_LENGTH('dbo.Detours', 'evidence_reference') IS NULL
+                THEN 0 ELSE 1 END AS intake_fields
+          ,CASE WHEN COL_LENGTH('dbo.Detours', 'location') IS NULL THEN 0 ELSE 1 END AS location_field
+          ,CASE WHEN COL_LENGTH('dbo.Detours', 'conflict_override_reason') IS NULL THEN 0 ELSE 1 END AS conflict_field
+          ,CASE WHEN COL_LENGTH('dbo.Detours', 'geometry_json') IS NULL THEN 0 ELSE 1 END AS geometry_field
+          ,CASE WHEN COL_LENGTH('dbo.Detours', 'start_time') IS NULL
+                     OR COL_LENGTH('dbo.Detours', 'confirmation_contact') IS NULL
+                THEN 0 ELSE 1 END AS window_fields
           ,CASE WHEN OBJECT_ID('dbo.DetourCommunications', 'U') IS NULL THEN 0 ELSE 1 END AS communications_ready
           ,CASE WHEN COL_LENGTH('dbo.Detours', 'review_status') IS NULL THEN 0 ELSE 1 END AS review_ready
       `);
@@ -135,12 +162,31 @@ app.http("detoursList", {
       const hasWorkflowFields = schemaCheck.recordset[0]?.workflow_ready === 1;
       const hasAvailEntryFields = schemaCheck.recordset[0]?.avail_entry_ready === 1;
       const hasOperationalFields = schemaCheck.recordset[0]?.operational_fields === 1;
+      // Migration 057 (service impact/area, action instructions, evidence)
+      // and migration 069 (operating window times, affected stops, impacts,
+      // contact). Promotion writes all of these; without selecting them
+      // here the intake record is write-only once accepted.
+      const hasIntakeFields = schemaCheck.recordset[0]?.intake_fields === 1;
+      const hasWindowFields = schemaCheck.recordset[0]?.window_fields === 1;
+      const hasLocation = schemaCheck.recordset[0]?.location_field === 1; // migration 088
+      const hasConflictOverride = schemaCheck.recordset[0]?.conflict_field === 1; // migration 090
+      const hasGeometry = schemaCheck.recordset[0]?.geometry_field === 1; // migration 091
       const hasCommunications = schemaCheck.recordset[0]?.communications_ready === 1;
       const hasReviewFields = schemaCheck.recordset[0]?.review_ready === 1;
 
       const REPORTING_COLUMNS = `
         reason_code, severity, reported_by, reported_at, approved_by, approved_at,
         radio_notified, dispatch_board_notified, social_media_notified, resolution_notes`;
+
+      // Contractor notification settings (migration 089). Absent table or
+      // rows means no contractor is configured, which changes nothing.
+      let contractor: ContractorNotification = { name: null, recipients: [] };
+      try {
+        const settings = await pool.request().query<{ setting_key: string; setting_value: string }>(
+          "SELECT setting_key, setting_value FROM AppSettings WHERE module = 'detour' AND setting_key IN ('contractor_name', 'contractor_recipients')",
+        );
+        contractor = contractorFromSettings(settings.recordset);
+      } catch { /* AppSettings not present in this environment */ }
 
       const detoursResult = await pool.request().query<DetourRow>(`
         SELECT id, number, closure, start_date, end_date, is_monitor_only, riders_directed,
@@ -151,6 +197,11 @@ app.http("detoursList", {
                ${hasWorkflowFields ? ", fulfillment_mode, lifecycle_state, workflow_owner, workflow_updated_by, workflow_updated_at, avail_build_confirmed_at" : ""}
                ${hasAvailEntryFields ? ", avail_entry_result, avail_entry_confirmed_by, avail_entry_confirmed_at" : ""}
                ${hasOperationalFields ? ", notification_audiences, notification_channels, action_instructions" : ""}
+               ${hasIntakeFields ? ", service_impact, service_area, evidence_notes, evidence_reference" : ""}
+               ${hasWindowFields ? ", start_time, end_time, time_window_status, affected_stops_and_stations, operational_impacts, confirmation_contact" : ""}
+               ${hasLocation ? ", location" : ""}
+               ${hasConflictOverride ? ", conflict_override_reason, conflict_override_by, conflict_override_at, conflict_override_ids" : ""}
+               ${hasGeometry ? ", geometry_json" : ""}
                ${hasCommunications ? ", (SELECT COUNT(DISTINCT c.audience) FROM DetourCommunications c WHERE c.detour_id=Detours.id AND c.status='published') AS communications_published, (SELECT COUNT(*) FROM DetourCommunications c WHERE c.detour_id=Detours.id AND c.status='draft') AS communications_draft" : ""}
                ${hasReviewFields ? ", review_status, review_reason, closure_reason" : ""}
         FROM Detours
@@ -180,6 +231,12 @@ app.http("detoursList", {
       // on the edit form, and range-filters on it - and an ISO timestamp
       // breaks all three (a date input silently rejects the value and
       // renders BLANK, so saving an edit would have wiped the dates).
+      // Detour-to-Detour conflicts for every open record, from the same
+      // matcher intake uses for likely duplicates. One scope load per call.
+      const scopes = await loadDetourConflictScopes(pool);
+      const scopeById = new Map(scopes.map((s) => [s.id, s]));
+      const stopName = await detourStopNameLookup(pool);
+
       const withStatus = detours.map((d) => ({
         ...d,
         start_date: toDateOnly(d.start_date),
@@ -187,12 +244,35 @@ app.http("detoursList", {
         status: computeDetourStatus(d),
         ...(hasWorkflowFields ? { fulfillment_mode: d.fulfillment_mode, lifecycle_state: d.lifecycle_state, workflow_owner: d.workflow_owner, workflow_updated_by: d.workflow_updated_by, workflow_updated_at: d.workflow_updated_at, avail_build_confirmed_at: d.avail_build_confirmed_at } : {}),
         ...(hasAvailEntryFields ? { avail_entry_result: d.avail_entry_result, avail_entry_confirmed_by: d.avail_entry_confirmed_by, avail_entry_confirmed_at: d.avail_entry_confirmed_at } : {}),
-        ...(hasOperationalFields ? { notification_audiences: d.notification_audiences, notification_channels: d.notification_channels } : {}),
-        ...(hasCommunications ? {
-          communications_published: d.communications_published ?? 0,
-          communications_draft: d.communications_draft ?? 0,
-          communication_status: (d.communications_published ?? 0) >= parseList(d.notification_audiences).length && parseList(d.notification_audiences).length > 0 ? "published" : (d.communications_draft ?? 0) > 0 ? "draft" : "needs_communication",
+        ...(hasOperationalFields ? { notification_audiences: parseList(d.notification_audiences), notification_channels: parseList(d.notification_channels), action_instructions: d.action_instructions ?? null } : {}),
+        ...(hasIntakeFields ? { service_impact: d.service_impact ?? null, service_area: d.service_area ?? null, evidence_notes: d.evidence_notes ?? null, evidence_reference: d.evidence_reference ?? null } : {}),
+        // Times reduce to HH:MM the same way the dates reduce to YYYY-MM-DD:
+        // the driver's 1970-pinned Date would otherwise serialize as a full
+        // ISO timestamp nobody can read as a time of day.
+        ...(hasLocation ? { location: d.location ?? null } : {}),
+        ...(hasGeometry ? { geometry_json: d.geometry_json ?? null } : {}),
+        ...(() => {
+          const scope = scopeById.get(d.id);
+          const conflicts = scope ? detourConflicts(scope, scopes, stopName) : [];
+          const override = hasConflictOverride ? { reason: d.conflict_override_reason ?? null, by: d.conflict_override_by ?? null, at: d.conflict_override_at ?? null, ids: parseOverrideIds(d.conflict_override_ids) } : null;
+          return {
+            conflicts,
+            conflict_status: conflictStatus(conflicts, override),
+            ...(hasConflictOverride ? { conflict_override_reason: d.conflict_override_reason ?? null, conflict_override_by: d.conflict_override_by ?? null, conflict_override_at: d.conflict_override_at ?? null } : {}),
+          };
+        })(),
+        ...(hasWindowFields ? { start_time: toTimeOnly(d.start_time), end_time: toTimeOnly(d.end_time), time_window_status: d.time_window_status ?? null, affected_stops_and_stations: d.affected_stops_and_stations ?? null, operational_impacts: d.operational_impacts ?? null, confirmation_contact: d.confirmation_contact ?? null } : {}),
+        ...(hasOperationalFields || contractor.name ? {
+          required_audiences: requiredAudiences({ notification_audiences: parseList(d.notification_audiences), service_impact: d.service_impact ?? null }, contractor),
         } : {}),
+        ...(hasCommunications ? (() => {
+          const required = requiredAudiences({ notification_audiences: parseList(d.notification_audiences), service_impact: d.service_impact ?? null }, contractor);
+          return {
+            communications_published: d.communications_published ?? 0,
+            communications_draft: d.communications_draft ?? 0,
+            communication_status: (d.communications_published ?? 0) >= required.length && required.length > 0 ? "published" : (d.communications_draft ?? 0) > 0 ? "draft" : "needs_communication",
+          };
+        })() : {}),
         ...(hasReviewFields ? { review_status: d.review_status, review_reason: d.review_reason, closure_reason: d.closure_reason } : {}),
         readiness: hasWorkflowFields ? computeDetourReadiness(d.fulfillment_mode, d.lifecycle_state as any) : undefined,
         segments: segmentsByDetour.get(d.id) ?? [],
@@ -210,7 +290,7 @@ app.http("detoursList", {
         fulfillment_mode: d.fulfillment_mode ?? null, status: d.status,
         technical: { external_detour_id: d.external_detour_id, lifecycle_state: d.lifecycle_state, avail_entry_result: d.avail_entry_result },
       }));
-      return { status: 200, jsonBody: { detours: filtered, ...(operationsView ? { report: operationsReport } : {}) } };
+      return { status: 200, jsonBody: { detours: filtered, contractor_notification: contractor, ...(operationsView ? { report: operationsReport } : {}) } };
     } catch (err) {
       context.error("GET /detours failed:", err);
       return { status: 500, jsonBody: { error: "Internal server error" } };

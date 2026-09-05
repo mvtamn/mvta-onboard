@@ -1,6 +1,7 @@
 // Validates input against the same rules as the database CHECK constraints
 // (sql/phase1-schema.sql), so bad input fails fast with a clear 400 error
 // instead of an opaque SQL constraint violation.
+import { validateDetourGeometry } from "./geoNearby";
 import {
   VALID_CATEGORIES,
   VALID_SEVERITIES,
@@ -597,6 +598,13 @@ export function validateCreateDetourIntake(body: UnknownBody): string[] {
     if (value !== undefined && value !== null && typeof value !== "string") errors.push(`${field} must be a string if provided`);
   }
   if (typeof body.action_instructions !== "string" || body.action_instructions.trim() === "") errors.push("action_instructions is required");
+  if (body.geometry_json !== undefined && body.geometry_json !== null) {
+    if (typeof body.geometry_json !== "string") errors.push("geometry_json must be a GeoJSON string if provided");
+    else {
+      try { const parsed = validateDetourGeometry(JSON.parse(body.geometry_json)); if ("error" in parsed) errors.push(`geometry_json: ${parsed.error}`); }
+      catch { errors.push("geometry_json must be valid JSON"); }
+    }
+  }
   for (const field of ["notification_audiences", "notification_channels"]) {
     if (!Array.isArray(body[field]) || body[field].length === 0 || body[field].some((item) => typeof item !== "string" || item.trim() === "")) {
       errors.push(`${field} must be a non-empty array of non-empty strings`);

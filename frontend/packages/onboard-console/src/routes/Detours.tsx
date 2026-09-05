@@ -8,15 +8,20 @@ import {
   type DetourStatus,
   type DetourSeverity,
   type DetourReasonCode,
+  type DetourContractorNotification,
   type CreateDetourInput,
   type DetourSegmentInput,
-  type DetourImage,
 } from "@mvta/shared";
 import { useAuth } from "../auth/AuthContext.js";
 import { api } from "../config.js";
-import { resizeImageFile } from "../lib/imageResize.js";
 import { detourMatchesSearch } from "../lib/detourSearch.js";
 import { useAppDialog } from "../components/AppDialog.js";
+import { DetourOperationalRecord } from "../components/DetourOperationalRecord.js";
+import { DetourWorkflowHistorySection } from "../components/DetourWorkflowHistorySection.js";
+import { DetourAttachmentsSection } from "../components/DetourAttachments.js";
+import { DetourMap } from "../components/DetourMap.js";
+import { SentCopy, deliveryClass, deliveryLabel } from "../components/DetourDeliveryRecord.js";
+import { audiencePlan, communicationSubject, draftCommunicationText, mailtoLink, nextAudience } from "../lib/detourCommunicationDraft.js";
 import { dateLabel, dateTimeLabel, toDateInputValue } from "../lib/detourDates.js";
 
 const STATUS_TABS: { key: DetourStatus | "all"; label: string }[] = [
@@ -205,6 +210,7 @@ export function Detours() {
   const canDelete = roles.some((r) => r === "OCC.Publisher" || r === "OCC.Admin");
 
   const [detours, setDetours] = useState<Detour[] | null>(null);
+  const [contractor, setContractor] = useState<DetourContractorNotification | null>(null);
   const [reasonCodes, setReasonCodes] = useState<DetourReasonCode[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [statusTab, setStatusTab] = useState<DetourStatus | "all">("active");
@@ -222,6 +228,7 @@ export function Detours() {
       .getDetours()
       .then((d) => {
         setDetours(d.detours);
+        setContractor(d.contractor_notification ?? null);
         setLoadError(null);
       })
       .catch((err) => {
@@ -340,6 +347,21 @@ export function Detours() {
     } catch (err) {
       setLoadError(err instanceof ApiError ? err.message : "Could not change fulfillment path");
     }
+  }
+
+  async function overrideConflict(d: Detour) {
+    const names = (d.conflicts ?? []).map((c) => `${c.label} (${c.shared.join(", ")})`).join("; ");
+    const reason = await prompt({ title: "Override detour conflict", description: `Conflicts with ${names}. Explain why this Detour should proceed anyway; the reason and the conflicts are kept in the audit.`, label: "Override reason", placeholder: "e.g. Different stops on the same route; both can run", confirmLabel: "Record override", multiline: true, required: true });
+    if (!reason?.trim()) return;
+    try { await api.overrideDetourConflict(d.id, reason.trim()); load(); }
+    catch (err) { setLoadError(err instanceof ApiError ? err.message : "Could not record the override"); }
+  }
+
+  async function completeReview(d: Detour) {
+    const notes = await prompt({ title: "Mark OCC re-review complete", description: d.review_reason ?? undefined, label: "Review notes", placeholder: "Optional - what was checked or changed", confirmLabel: "Review complete", multiline: true });
+    if (notes === null) return;
+    try { await api.completeDetourReview(d.id, notes.trim() || null); load(); }
+    catch (err) { setLoadError(err instanceof ApiError ? err.message : "Could not complete the review"); }
   }
 
   async function closeDetour(d: Detour) {
@@ -590,8 +612,23 @@ export function Detours() {
                               <p><b>Next step:</b> {d.readiness === "ready_for_avail_entry" ? "Enter this detour in Avail" : d.readiness === "avail_conflict" ? "Resolve the Avail conflict" : d.readiness === "ready_for_manual_operations" ? "Ready for manual operations" : d.readiness === "needs_occ_review" ? "Needs OCC review" : "Closed"}</p>
                             ) : null}
                             {d.communication_status ? <p><b>Communications:</b> {d.communication_status.replace("_", " ")}</p> : null}
-                            {d.review_status === "needs_review" ? <p className="warn-note"><b>Needs OCC re-review:</b> {d.review_reason}</p> : null}
+                            {d.conflicts?.length ? (
+                              <p className={d.conflict_status === "overridden" ? "td-dim" : "warn-note"}>
+                                <b>{d.conflict_status === "overridden" ? "Conflict overridden:" : "Conflicts with another open Detour:"}</b>{" "}
+                                {d.conflicts.map((c) => `${c.label} · ${c.status.replace(/_/g, " ")} · ${c.start_date || "open"} → ${c.end_date || "open"} · shares ${c.shared.join(", ")}`).join("; ")}
+                                {d.conflict_status === "overridden"
+                                  ? ` — ${d.conflict_override_reason} (${d.conflict_override_by}${d.conflict_override_at ? `, ${dateTimeLabel(d.conflict_override_at)}` : ""})`
+                                  : canWrite ? <> <button className="btn-sm" onClick={() => overrideConflict(d)}>Override with reason</button></> : null}
+                              </p>
+                            ) : null}
+                            {d.review_status === "needs_review" ? (
+                              <p className="warn-note">
+                                <b>Needs OCC re-review:</b> {d.review_reason}
+                                {canWrite ? <> <button className="btn-sm" onClick={() => completeReview(d)}>Mark review complete</button></> : null}
+                              </p>
+                            ) : null}
                             {canWrite && d.lifecycle_state !== "closed" ? <p><button className="btn-sm" onClick={() => closeDetour(d)}>Close detour</button></p> : null}
+                            <DetourOperationalRecord detour={d} />
                             {d.fulfillment_mode === "avail" && d.avail_entry_result ? (
                               <p><b>Avail entry:</b> {d.avail_entry_result.replace("_", " ")}
                                 {d.external_detour_id ? ` · ID ${d.external_detour_id}` : ""}
@@ -600,12 +637,15 @@ export function Detours() {
                             ) : null}
                             {canWrite && d.fulfillment_mode === "avail" &&
                               (d.lifecycle_state === "awaiting_fulfillment" || d.lifecycle_state === "fulfillment_failed") ? (
-                              <p><button className="btn-sm" onClick={() => recordAvailEntry(d)}>Record human Avail entry</button></p>
+                              <p>
+                                <button className="btn-sm" onClick={() => recordAvailEntry(d)}>Record human Avail entry</button>
+                                {d.conflict_status === "unresolved" ? <span className="td-dim"> Confirming the entry is blocked until the conflict above is overridden.</span> : null}
+                              </p>
                             ) : null}
                             {canWrite && d.fulfillment_mode === "avail" && d.lifecycle_state === "fulfillment_failed" ? (
                               <p><button className="btn-sm" onClick={() => useManualFallback(d)}>Use fixed-route manual exception</button></p>
                             ) : null}
-                            <DetourCommunicationsSection detourId={d.id} canWrite={canWrite} />
+                            <DetourCommunicationsSection detour={d} contractor={contractor} canWrite={canWrite} />
                             {numberYearMismatch(d.internal_number, d.start_date) ? (
                               <p className="warn-note">
                                 This detour's internal reference was issued for{" "}
@@ -685,7 +725,9 @@ export function Detours() {
                                   : ""}
                               </p>
                             ) : null}
-                            <DetourImagesSection detourId={d.id} canWrite={canWrite} />
+                            {d.geometry_json ? <div style={{ marginTop: 12 }}><p className="field-label">Map</p><DetourMap value={d.geometry_json} onChange={() => undefined} readOnly height={260} /></div> : null}
+                            <DetourAttachmentsSection detourId={d.id} canWrite={canWrite} />
+                            <DetourWorkflowHistorySection detourId={d.id} />
                           </div>
                         </td>
                       </tr>
@@ -701,139 +743,144 @@ export function Detours() {
   );
 }
 
-function DetourCommunicationsSection({ detourId, canWrite }: { detourId: string; canWrite: boolean }) {
+// Communications for one Detour. The intake named the audiences and
+// channels this record must reach; the composer works through that list
+// (detourCommunicationDraft.ts) instead of taking free text, because the
+// server clears "needs communication" only when every required audience
+// has a published communication under exactly that name. Free text is
+// still available for an audience the record did not anticipate.
+const OTHER = "__other__";
+function DetourCommunicationsSection({ detour, contractor, canWrite }: { detour: Detour; contractor: DetourContractorNotification | null; canWrite: boolean }) {
   const [communications, setCommunications] = useState<import("@mvta/shared").DetourCommunication[]>([]);
-  const [audience, setAudience] = useState("Operations");
-  const [channel, setChannel] = useState("email");
+  const [audienceChoice, setAudienceChoice] = useState<string>("");
+  const [audienceOther, setAudienceOther] = useState("");
+  const [channelChoice, setChannelChoice] = useState<string>("");
+  const [channelOther, setChannelOther] = useState("");
   const [recipients, setRecipients] = useState("");
   const [content, setContent] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const load = () => api.getDetourCommunications(detourId).then((r) => setCommunications(r.communications)).catch(() => setError("Could not load communications"));
-  useEffect(() => { void load(); }, [detourId]);
+  const [saving, setSaving] = useState(false);
+
+  const plan = audiencePlan(detour, communications, contractor);
+  const requiredChannels = detour.notification_channels ?? [];
+  const audience = audienceChoice === OTHER ? audienceOther.trim() : audienceChoice;
+  const channel = channelChoice === OTHER ? channelOther.trim() : channelChoice;
+
+  const load = () => api.getDetourCommunications(detour.id).then((r) => setCommunications(r.communications)).catch(() => setError("Could not load communications"));
+  useEffect(() => { void load(); }, [detour.id]);
+
+  // Open the composer on the next unmet audience whenever the plan changes
+  // and nothing has been chosen yet (first load, or after a publish that
+  // satisfied the current choice).
+  useEffect(() => {
+    if (audienceChoice && audienceChoice !== OTHER && plan.some((p) => p.audience === audienceChoice && p.progress !== "published")) return;
+    const next = nextAudience(plan);
+    if (next) { setAudienceChoice(next.audience); if (!channelChoice) setChannelChoice(next.channels[0] ?? OTHER); }
+    else if (!audienceChoice) { setAudienceChoice(plan.length ? plan[0].audience : OTHER); if (!channelChoice) setChannelChoice(requiredChannels[0] ?? OTHER); }
+  }, [communications, detour.notification_audiences, detour.notification_channels]);
+
+  const selected = plan.find((item) => item.audience === audienceChoice) ?? null;
+  const emailable = channel.toLowerCase() === "email" && recipients.trim() !== "" && content.trim() !== "";
+
+  function startDraft(forAudience: string) {
+    const item = plan.find((p) => p.audience === forAudience);
+    setAudienceChoice(forAudience);
+    if (item?.contractor) {
+      // The contractor is always reached by email at the configured
+      // addresses; the channel list on the record does not apply.
+      setChannelChoice(requiredChannels.some((c) => c.toLowerCase() === "email") ? requiredChannels.find((c) => c.toLowerCase() === "email")! : OTHER);
+      if (!requiredChannels.some((c) => c.toLowerCase() === "email")) setChannelOther("email");
+      setRecipients(item.recipients.join(", "));
+    } else if (!channelChoice || channelChoice === OTHER) {
+      setChannelChoice(requiredChannels[0] ?? OTHER);
+    }
+    setContent(draftCommunicationText(detour, forAudience));
+    setError(null);
+  }
+
   async function save() {
-    if (!content.trim()) return;
+    if (!audience || !channel || !content.trim()) return;
+    setSaving(true); setError(null);
     try {
-      await api.createDetourCommunication(detourId, { audience, channel, recipients: recipients || null, content });
+      await api.createDetourCommunication(detour.id, { audience, channel, recipients: recipients || null, content });
       setContent(""); setRecipients(""); await load();
     } catch (err) { setError(err instanceof ApiError ? err.message : "Could not save communication"); }
+    finally { setSaving(false); }
   }
-  async function publish(id: string) {
-    try { await api.publishDetourCommunication(detourId, id); await load(); }
+  async function sendByServer(communication: import("@mvta/shared").DetourCommunication) {
+    setError(null);
+    try { await api.publishDetourCommunication(detour.id, communication.id, undefined, true); await load(); }
+    catch (err) { setError(err instanceof ApiError ? err.message : "Could not send communication"); await load(); }
+  }
+  async function publish(communication: import("@mvta/shared").DetourCommunication) {
+    const outcome = communication.channel.toLowerCase() === "email" && communication.recipients
+      ? `Sent by email to ${communication.recipients}`
+      : `Published via ${communication.channel}`;
+    try { await api.publishDetourCommunication(detour.id, communication.id, outcome); await load(); }
     catch (err) { setError(err instanceof ApiError ? err.message : "Could not publish communication"); }
   }
+
   return <div className="subcard" style={{ marginTop: "8px" }}>
     <b>Communications</b>{error ? <p className="error-text">{error}</p> : null}
+    {plan.length > 0 ? (
+      <div className="intake-checklist" aria-label="Required communications">
+        <strong>Required by the record</strong>
+        <ul>{plan.map((item) => <li key={item.audience}>
+          <span className={item.progress === "published" ? "ok-text" : item.progress === "draft" ? "" : "warn-note"}>
+            {item.progress === "published" ? "✓" : item.progress === "draft" ? "◐" : "○"} {item.audience}
+          </span>
+          <span className="td-dim"> — {item.progress === "published" ? "published" : item.progress === "draft" ? "draft saved, not published" : "nothing drafted"}{item.contractor ? ` · contractor · email${item.recipients.length ? ` to ${item.recipients.join(", ")}` : " (no recipients configured - set them under Administration)"}` : item.channels.length ? ` · via ${item.channels.join(", ")}` : ""}</span>
+          {canWrite && item.progress !== "published" ? <> <button type="button" className="btn-sm" onClick={() => startDraft(item.audience)}>{item.progress === "draft" ? "Draft another" : "Draft"}</button></> : null}
+        </li>)}</ul>
+      </div>
+    ) : <p className="td-dim">The record names no required audiences; communications here are recorded but do not change its communication status.</p>}
     {communications.map((communication) => <p key={communication.id}>
       <b>{communication.audience} · {communication.channel}:</b> {communication.status}
       {communication.recipients ? ` · ${communication.recipients}` : ""}
-      {canWrite && communication.status === "draft" ? <button className="btn-sm" onClick={() => publish(communication.id)}>Publish</button> : null}
+      {communication.published_by ? <span className="td-dim"> · {communication.published_by}{communication.published_at ? ` ${dateTimeLabel(communication.published_at)}` : ""}</span> : null}
+      {communication.status === "published" && communication.outcome ? <span className="td-dim"> · {communication.outcome}</span> : null}
+      {communication.delivery_status && communication.delivery_status !== "not_requested" ? (
+        <span className={deliveryClass(communication)}>
+          {" "}· {deliveryLabel(communication)}
+          {communication.delivery_error ? ` — ${communication.delivery_error}` : ""}
+        </span>
+      ) : null}
+      <SentCopy communication={communication} />
+      {canWrite && (communication.status === "draft" || communication.status === "failed") ? (() => {
+        const ch = communication.channel.trim().toLowerCase();
+        const serverSend = ch === "teams" || (ch === "email" && Boolean(communication.recipients));
+        return <>
+          {serverSend ? <> {" "}<button className="btn-sm" disabled={communication.delivery_status === "queued"} onClick={() => void sendByServer(communication)}>{communication.status === "failed" ? "Retry send" : ch === "teams" ? "Post to Teams" : "Send email"}</button></> : null}
+          {ch === "email" && communication.recipients ? <> {" "}<a className="btn-sm" href={mailtoLink(communication.recipients.split(/[,;\s]+/).filter(Boolean), communicationSubject(detour), communication.content)}>Open in email</a></> : null}
+          {" "}<button className="btn-sm" onClick={() => publish(communication)}>Mark published{serverSend ? " (sent elsewhere)" : ""}</button>
+        </>;
+      })() : null}
     </p>)}
     {canWrite ? <div className="form-grid">
-      <label>Audience<input value={audience} onChange={(e) => setAudience(e.target.value)} /></label>
-      <label>Channel<input value={channel} onChange={(e) => setChannel(e.target.value)} /></label>
+      <label>Audience
+        <select value={audienceChoice} onChange={(e) => setAudienceChoice(e.target.value)}>
+          {plan.map((item) => <option key={item.audience} value={item.audience}>{item.audience}{item.progress === "published" ? " (published)" : ""}</option>)}
+          <option value={OTHER}>Other…</option>
+        </select>
+        {audienceChoice === OTHER ? <input value={audienceOther} onChange={(e) => setAudienceOther(e.target.value)} placeholder="Audience not named on the record" /> : null}
+      </label>
+      <label>Channel
+        <select value={channelChoice} onChange={(e) => setChannelChoice(e.target.value)}>
+          {requiredChannels.map((item) => <option key={item} value={item}>{item}</option>)}
+          <option value={OTHER}>Other…</option>
+        </select>
+        {channelChoice === OTHER ? <input value={channelOther} onChange={(e) => setChannelOther(e.target.value)} placeholder="email, radio, Teams…" /> : null}
+      </label>
       <label>Recipients<input value={recipients} onChange={(e) => setRecipients(e.target.value)} placeholder="Distribution list or team" /></label>
-      <label>Message<textarea value={content} onChange={(e) => setContent(e.target.value)} /></label>
-      <button className="btn-sm" onClick={save}>Save communication draft</button>
+      <label>Message
+        <textarea value={content} rows={6} onChange={(e) => setContent(e.target.value)} placeholder="Use Draft beside an audience to start from the record" />
+      </label>
+      <span>
+        <button type="button" className="btn-sm" onClick={() => setContent(draftCommunicationText(detour, audience || undefined))}>Fill from record</button>{" "}
+        {emailable ? <><a className="btn-sm" href={mailtoLink(recipients.split(/[,;\s]+/).filter(Boolean), communicationSubject(detour), content)}>Open in email</a>{" "}</> : null}
+        <button className="btn-sm" disabled={saving || !audience || !channel || !content.trim()} onClick={save}>{saving ? "Saving…" : "Save communication draft"}</button>
+        {selected?.contractor ? <span className="td-dim"> Save the draft, then Send email delivers it from the server (or Open in email to send it yourself and mark it published).</span> : null}
+      </span>
     </div> : null}
   </div>;
-}
-
-// Images upload directly to Blob Storage via a short-lived SAS URL -
-// nothing ever passes through this API's own request body. Same write
-// access tier as editing the detour itself (per the owner's decision).
-// Client-side resize (imageResize.ts) happens before the SAS request, so a
-// several-MB phone photo never gets uploaded at full size.
-function DetourImagesSection({ detourId, canWrite }: { detourId: string; canWrite: boolean }) {
-  const [images, setImages] = useState<DetourImage[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-
-  function load() {
-    api
-      .getDetourImages(detourId)
-      .then((d) => setImages(d.images))
-      .catch((err) => setError(err instanceof ApiError ? err.message : "Could not load images."));
-  }
-
-  useEffect(load, [detourId]);
-
-  async function handleFiles(fileList: FileList) {
-    setUploading(true);
-    setError(null);
-    try {
-      for (const rawFile of Array.from(fileList)) {
-        const file = await resizeImageFile(rawFile);
-        const { upload_url, blob_path } = await api.getDetourImageUploadUrl(detourId, file.name, file.type);
-        const putRes = await fetch(upload_url, {
-          method: "PUT",
-          headers: { "x-ms-blob-type": "BlockBlob", "Content-Type": file.type },
-          body: file,
-        });
-        if (!putRes.ok) throw new Error(`Upload to storage failed (${putRes.status})`);
-        await api.createDetourImage(detourId, {
-          blob_path,
-          file_name: file.name,
-          content_type: file.type,
-          size_bytes: file.size,
-        });
-      }
-      load();
-    } catch (err) {
-      setError(
-        err instanceof ApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : "Image upload failed.",
-      );
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  return (
-    <div style={{ marginTop: 12 }}>
-      <p className="field-label">Images</p>
-      {error ? <p className="error-text">{error}</p> : null}
-      {images === null && !error ? <p className="muted">Loading images…</p> : null}
-      {images && images.length === 0 ? <p className="td-dim">No images attached.</p> : null}
-      {images && images.length > 0 ? (
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-          {images.map((img) => (
-            <div key={img.id} style={{ textAlign: "center" }}>
-              {img.read_url ? (
-                <img
-                  src={img.read_url}
-                  alt={img.caption ?? img.file_name}
-                  title={img.caption ?? img.file_name}
-                  style={{ width: 90, height: 90, objectFit: "cover", borderRadius: 6, cursor: "pointer", border: "1px solid var(--border)" }}
-                  onClick={() => window.open(img.read_url!, "_blank", "noopener,noreferrer")}
-                />
-              ) : (
-                <div className="td-dim" style={{ width: 90, height: 90, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--border)", borderRadius: 6 }}>
-                  Not ready
-                </div>
-              )}
-              <div className="td-dim" style={{ fontSize: 11, marginTop: 3, maxWidth: 90, overflow: "hidden", textOverflow: "ellipsis" }}>
-                {img.caption ?? img.file_name}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : null}
-      {canWrite ? (
-        <label className="btn-sm" style={{ display: "inline-block", cursor: uploading ? "default" : "pointer" }}>
-          {uploading ? "Uploading…" : "+ Attach images"}
-          <input
-            type="file"
-            accept="image/*"
-            multiple
-            disabled={uploading}
-            style={{ display: "none" }}
-            onChange={(e) => e.target.files && handleFiles(e.target.files)}
-          />
-        </label>
-      ) : null}
-    </div>
-  );
 }

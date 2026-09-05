@@ -2,22 +2,31 @@ import { Fragment, useEffect, useState } from "react";
 import {
   ApiError,
   DETOUR_STATUS_LABELS,
-  DETOUR_LIFECYCLE_LABELS,
   DETOUR_SEVERITY_LABELS,
   type Detour,
+  type DetourHistoricalImportRow,
   type DetourStatus,
   type DetourSeverity,
   type DetourReasonCode,
 } from "@mvta/shared";
 import { api } from "../config.js";
+import { useAuth } from "../auth/AuthContext.js";
 import {
   EMPTY_FILTERS,
   filterDetours,
+  historicalRowMatchesSearch,
   detoursToCsv,
   downloadCsv,
   type DetourFilters,
 } from "../lib/detourSearch.js";
 import { dateLabel, dateTimeLabel } from "../lib/detourDates.js";
+import { parseLegacyImportFile } from "../lib/legacyDetourImport.js";
+import { availEntryLabel, communicationStatusLabel, createdByLabel, fulfillmentPathLabel, readinessLabel, sourceLabel, workflowLabel } from "../lib/detourLabels.js";
+import { DetourOperationalRecord } from "../components/DetourOperationalRecord.js";
+import { DetourWorkflowHistorySection } from "../components/DetourWorkflowHistorySection.js";
+import { DetourAttachmentsSection } from "../components/DetourAttachments.js";
+import { DetourMap } from "../components/DetourMap.js";
+import { DetourDeliveryRecord } from "../components/DetourDeliveryRecord.js";
 
 // Detour Reports - Part B7 of detour-module-consolidated-plan.md.
 //
@@ -45,7 +54,15 @@ const STATUS_PILL: Record<DetourStatus, string> = {
 };
 
 export function DetourReports() {
+  // The page is read-only, but the legacy import is a write (server:
+  // DETOUR_WRITE_ROLES). Same role mirror as Detours.tsx, so a viewer or
+  // compliance reader is not offered a control that will 403.
+  const { roles } = useAuth();
+  const canImport = roles.some((r) => r === "OCC.Publisher" || r === "OCC.Admin" || r === "OCC.Detour");
   const [detours, setDetours] = useState<Detour[] | null>(null);
+  const [historical, setHistorical] = useState<DetourHistoricalImportRow[] | null>(null);
+  const [historicalError, setHistoricalError] = useState<string | null>(null);
+  const [showLegacy, setShowLegacy] = useState(false);
   const [reasonCodes, setReasonCodes] = useState<DetourReasonCode[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filters, setFilters] = useState<DetourFilters>(EMPTY_FILTERS);
@@ -72,7 +89,15 @@ export function DetourReports() {
       .getDetourReasonCodes()
       .then((r) => setReasonCodes(r.reason_codes))
       .catch(() => setReasonCodes([]));
+    loadHistorical();
   }, []);
+
+  function loadHistorical() {
+    api
+      .getDetourHistoricalImports()
+      .then((r) => { setHistorical(r.historical_rows); setHistoricalError(null); })
+      .catch((err) => setHistoricalError(err instanceof ApiError ? err.message : "Could not load imported history."));
+  }
 
   // Same two-signal check as Detours.tsx - the B6 columns may not exist in
   // this environment yet, in which case those columns and filters are
@@ -87,6 +112,9 @@ export function DetourReports() {
   const historicalFilterSelected = filters.status !== "all" && filters.status !== "active" && filters.status !== "upcoming";
   const visible = detours ? filterDetours(detours, filters, reasonCodes).filter((d) => showHistory || historicalFilterSelected || d.status === "active" || d.status === "upcoming") : [];
   const filtersActive = JSON.stringify(filters) !== JSON.stringify(EMPTY_FILTERS);
+  // Only the free-text search applies to legacy rows - they carry none of
+  // the status/reason/severity/source vocabulary the other filters use.
+  const visibleHistorical = historical ? historical.filter((row) => historicalRowMatchesSearch(row, filters.search)) : [];
 
   function exportCsv() {
     // Exports what is on screen, not the whole table - the filters are the
@@ -101,15 +129,23 @@ export function DetourReports() {
   }
 
   async function importLegacyFile(file: File) {
+    setImportMessage(null);
     try {
-      const text = await file.text();
-      const rows = file.name.toLowerCase().endsWith(".json") ? JSON.parse(text) : text.trim().split(/\r?\n/).slice(1).map((line) => {
-        const values = line.split(",");
-        return { reference: values[0], closure: values[1], service_date: values[2], routes: values[3], communication_audience: values[4], communication_channel: values[5], communication_recipients: values[6], communication_content: values.slice(7).join(",") };
-      });
-      const result = await api.importHistoricalDetours({ source_file: file.name, rows: Array.isArray(rows) ? rows : rows.rows });
-      setImportMessage(`Imported ${result.imported_rows} historical rows. They remain historical evidence and do not become approvals.`);
-    } catch (err) { setImportMessage(err instanceof ApiError ? err.message : "Could not import the historical file"); }
+      const parsed = parseLegacyImportFile(file.name, await file.text());
+      if (parsed.rows.length === 0) {
+        setImportMessage(parsed.skipped_rows.length ? `Nothing imported: none of the ${parsed.skipped_rows.length} rows in ${file.name} had closure text.` : `Nothing imported: ${file.name} has no data rows.`);
+        return;
+      }
+      const result = await api.importHistoricalDetours({ source_file: file.name, rows: parsed.rows });
+      const notes = [
+        `Imported ${result.imported_rows} historical rows from ${file.name}. They remain historical evidence and do not become approvals.`,
+        parsed.skipped_rows.length ? `Skipped ${parsed.skipped_rows.length} row${parsed.skipped_rows.length === 1 ? "" : "s"} with no closure text (sheet row${parsed.skipped_rows.length === 1 ? "" : "s"} ${parsed.skipped_rows.slice(0, 10).join(", ")}${parsed.skipped_rows.length > 10 ? "…" : ""}).` : null,
+        parsed.unmapped_columns.length ? `Kept unrecognised column${parsed.unmapped_columns.length === 1 ? "" : "s"} ${parsed.unmapped_columns.join(", ")} with each row but did not map them.` : null,
+      ].filter(Boolean);
+      setImportMessage(notes.join(" "));
+      setShowLegacy(true);
+      loadHistorical();
+    } catch (err) { setImportMessage(err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Could not import the historical file"); }
   }
 
   return (
@@ -198,10 +234,55 @@ export function DetourReports() {
           </button>
         </div>
         <div className="subcard" style={{ marginBottom: 12 }}>
-          <b>Legacy spreadsheet history</b>
-          <p className="td-dim">Upload CSV or JSON rows to preserve historical tracking and communication evidence. Imported rows are never treated as current approvals.</p>
-          <input type="file" accept=".csv,.json" onChange={(e) => { const file = e.target.files?.[0]; if (file) void importLegacyFile(file); }} />
-          {importMessage ? <p className="td-dim">{importMessage}</p> : null}
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <b>Legacy spreadsheet history</b>
+            <span className="td-dim">
+              {historical === null ? "…" : `${visibleHistorical.length} of ${historical.length} imported rows`}
+            </span>
+            <button className="btn-sm" aria-expanded={showLegacy} onClick={() => setShowLegacy((current) => !current)}>
+              {showLegacy ? "Hide imported rows" : "Show imported rows"}
+            </button>
+          </div>
+          <p className="td-dim">Rows from the retired Excel tracker, kept as historical tracking and communication evidence. Imported rows are never treated as current approvals. The search box above reaches them.</p>
+          {canImport ? <p className="td-dim">Upload a CSV with a header row (columns are matched by name - closure is required; reference, service date, routes, audience, channel, recipients, content, and sent date are recognised) or a JSON array of rows.</p> : null}
+          {canImport ? (
+            <>
+              <input type="file" accept=".csv,.json" onChange={(e) => { const file = e.target.files?.[0]; if (file) void importLegacyFile(file); }} />
+              {importMessage ? <p className="td-dim">{importMessage}</p> : null}
+            </>
+          ) : null}
+          {historicalError ? <p className="error-text">{historicalError}</p> : null}
+          {showLegacy && historical !== null ? (
+            visibleHistorical.length === 0 ? (
+              <p className="muted" style={{ marginTop: 8 }}>{historical.length === 0 ? "Nothing has been imported yet." : "No imported rows match this search."}</p>
+            ) : (
+              <table className="data" style={{ marginTop: 8 }}>
+                <thead>
+                  <tr><th>Source file</th><th>Row</th><th>Reference</th><th>Closure</th><th>Service date</th><th>Routes</th><th>Communication</th><th>Imported</th></tr>
+                </thead>
+                <tbody>
+                  {visibleHistorical.map((row) => (
+                    <tr key={row.id}>
+                      <td className="td-dim">{row.source_file}</td>
+                      <td className="td-dim">{row.source_row_number}</td>
+                      <td>{row.historical_reference || "—"}</td>
+                      <td>{row.closure}</td>
+                      <td className="td-dim">{row.service_date || "—"}</td>
+                      <td className="td-dim">{row.routes || "—"}</td>
+                      <td className="td-dim">
+                        {row.communication_audience || row.communication_channel
+                          ? `${row.communication_audience || "—"} · ${row.communication_channel || "—"}${row.communication_recipients ? ` · ${row.communication_recipients}` : ""}`
+                          : "—"}
+                        {row.communication_content ? <div>{row.communication_content}</div> : null}
+                        {row.communicated_at ? <div>{dateTimeLabel(row.communicated_at)}</div> : null}
+                      </td>
+                      <td className="td-dim">{row.imported_by} · {dateTimeLabel(row.imported_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )
+          ) : null}
         </div>
 
         {loadError ? <p className="error-text">{loadError}</p> : null}
@@ -244,22 +325,23 @@ export function DetourReports() {
                       <td className="td-dim">{d.segments.map((s) => s.routes).join("; ") || "—"}</td>
                       <td className="td-dim">{dateLabel(d.start_date)} – {dateLabel(d.end_date)}</td>
                       <td><span className={`pill-sm ${STATUS_PILL[d.status]}`}>{DETOUR_STATUS_LABELS[d.status]}</span></td>
-                      <td className="td-dim">{d.fulfillment_mode === "avail" ? "Enter in Avail" : d.fulfillment_mode === "mobility_manual" ? "Mobility manual" : "Fixed-route manual"}</td>
-                      <td className="td-dim">{d.readiness === "ready_for_avail_entry" ? "Ready for Avail entry" : d.readiness === "avail_conflict" ? "Avail conflict" : d.readiness === "ready_for_manual_operations" ? "Ready for manual operations" : d.readiness === "closed" ? "Closed" : "Needs OCC review"}</td>
+                      <td className="td-dim">{fulfillmentPathLabel(d)}</td>
+                      <td className="td-dim">{readinessLabel(d)}</td>
                       <td className="td-dim">{d.workflow_owner || "Unassigned"}</td>
-                      <td className="td-dim">{d.communication_status === "published" ? "Ready / published" : d.communication_status === "draft" ? "Draft in progress" : d.communication_status === "needs_communication" ? "Needs communication" : "Not recorded"}</td>
-                      <td className="td-dim">{d.lifecycle_state ? DETOUR_LIFECYCLE_LABELS[d.lifecycle_state] : "—"}</td>
+                      <td className="td-dim">{communicationStatusLabel(d)}</td>
+                      <td className="td-dim">{workflowLabel(d)}</td>
                       {reportingReady ? <td className="td-dim">{reasonLabelOf(d.reason_code)}</td> : null}
                       {reportingReady ? (
                         <td className="td-dim">{d.severity ? DETOUR_SEVERITY_LABELS[d.severity] : "—"}</td>
                       ) : null}
-                      <td className="td-dim">{d.source === "avail" ? "Avail sync" : d.created_by}</td>
-                      <td className="td-dim">{d.source === "avail" ? "Avail feed" : d.external_detour_id ? "OnBoard · Avail linked" : "OnBoard manual"}</td>
+                      <td className="td-dim">{createdByLabel(d)}</td>
+                      <td className="td-dim">{sourceLabel(d)}</td>
                     </tr>
                     {expandedId === d.id ? (
                       <tr>
                         <td colSpan={reportingReady ? 15 : 13}>
                           <div className="subcard" style={{ margin: "4px 0" }}>
+                            <DetourOperationalRecord detour={d} />
                             {d.riders_directed ? <p><b>Riders directed:</b> {d.riders_directed}</p> : null}
                             {d.segments.length === 0 ? (
                               <p className="muted">No route segments recorded.</p>
@@ -290,8 +372,16 @@ export function DetourReports() {
                               </p>
                             ) : null}
                             {d.resolution_notes ? <p><b>Resolution:</b> {d.resolution_notes}</p> : null}
+                            {d.closure_reason ? <p><b>Closure reason:</b> {d.closure_reason}</p> : null}
+                            {d.conflicts?.length ? (
+                              <p className={d.conflict_status === "overridden" ? "td-dim" : "warn-note"}>
+                                <b>{d.conflict_status === "overridden" ? "Conflict overridden" : "Conflict needs override"}:</b>{" "}
+                                {d.conflicts.map((c) => `${c.label} (${c.shared.join(", ")})`).join("; ")}
+                                {d.conflict_status === "overridden" ? ` — ${d.conflict_override_reason} · ${d.conflict_override_by}${d.conflict_override_at ? ` ${dateTimeLabel(d.conflict_override_at)}` : ""}` : ""}
+                              </p>
+                            ) : null}
                             {d.fulfillment_mode === "avail" ? (
-                              <p className="td-dim"><b>Avail:</b> {d.avail_entry_result?.replace("_", " ") || "Entry not recorded"}
+                              <p className="td-dim"><b>Avail:</b> {availEntryLabel(d)}
                                 {d.external_detour_id ? ` · ID ${d.external_detour_id}` : ""}
                                 {d.avail_last_seen_at ? ` · Last seen ${dateTimeLabel(d.avail_last_seen_at)}` : ""}
                               </p>
@@ -308,10 +398,17 @@ export function DetourReports() {
                               ) : null}
                             </p>
                             <p className="td-dim">
-                              Created by {d.source === "avail" ? "Avail sync" : d.created_by} on{" "}
+                              Created by {createdByLabel(d)} on{" "}
                               {dateTimeLabel(d.created_at)}
                               {d.updated_by ? ` · Last edited by ${d.updated_by} on ${dateTimeLabel(d.updated_at)}` : ""}
                             </p>
+                            {/* Read-only: the reports page never edits, but
+                                the document that went out with a detour is
+                                part of the record a compliance reader needs. */}
+                            {d.geometry_json ? <div style={{ marginTop: 12 }}><p className="field-label">Map</p><DetourMap value={d.geometry_json} onChange={() => undefined} readOnly height={260} /></div> : null}
+                            <DetourDeliveryRecord detourId={d.id} />
+                            <DetourAttachmentsSection detourId={d.id} canWrite={false} />
+                            <DetourWorkflowHistorySection detourId={d.id} />
                           </div>
                         </td>
                       </tr>

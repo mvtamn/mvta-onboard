@@ -198,6 +198,37 @@ export function parseStopTimesCsv(csv: string): GtfsScheduledTripRow[] {
   }));
 }
 
+// Distinct (stop_id, route_id) pairs: every stop each route serves, from
+// stop_times.txt joined to trips.txt. Second pass over stop_times, kept
+// separate from parseStopTimesCsv so that function's one-row-per-trip
+// reduction stays simple. Memory is bounded by the number of distinct
+// pairs, not rows.
+export interface GtfsStopRouteRow { stop_id: string; route_id: string; }
+
+export function parseStopRouteLinksCsv(csv: string, trips: Pick<GtfsTripRow, "trip_id" | "route_id">[]): GtfsStopRouteRow[] {
+  const lines = csv.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (lines.length === 0) return [];
+  const header = parseCsvLine(lines[0]).map((h) => h.trim());
+  const tripIdx = header.indexOf("trip_id");
+  const stopIdx = header.indexOf("stop_id");
+  if (tripIdx === -1 || stopIdx === -1) throw new Error("stop_times.txt is missing required trip_id/stop_id columns");
+  const routeByTrip = new Map(trips.map((t) => [t.trip_id, t.route_id]));
+  const seen = new Set<string>();
+  const rows: GtfsStopRouteRow[] = [];
+  for (const line of lines.slice(1)) {
+    const cols = parseCsvLine(line);
+    const trip_id = cols[tripIdx]?.trim();
+    const stop_id = cols[stopIdx]?.trim();
+    const route_id = trip_id ? routeByTrip.get(trip_id) : undefined;
+    if (!stop_id || !route_id) continue;
+    const key = `${stop_id}\u0000${route_id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push({ stop_id, route_id });
+  }
+  return rows;
+}
+
 export interface GtfsCalendarRow {
   service_id: string;
   monday: boolean;
@@ -401,6 +432,7 @@ export interface GtfsStaticData {
   trips: GtfsTripRow[];
   routes: GtfsRouteRow[];
   scheduledTrips: GtfsScheduledTripRow[];
+  stopRoutes: GtfsStopRouteRow[];
   calendar: GtfsCalendarRow[];
   calendarDates: GtfsCalendarDateRow[];
 }
@@ -437,11 +469,15 @@ export async function fetchAndParseStatic(url: string): Promise<GtfsStaticData> 
   const calendarEntry = zip.getEntry("calendar.txt");
   const calendarDatesEntry = zip.getEntry("calendar_dates.txt");
 
+  const tripsCsv = tripsEntry.getData().toString("utf-8");
+  const stopTimesCsv = stopTimesEntry.getData().toString("utf-8");
+  const trips = parseTripsCsv(tripsCsv);
   return {
     stops: parseStopsCsv(stopsEntry.getData().toString("utf-8")),
-    trips: parseTripsCsv(tripsEntry.getData().toString("utf-8")),
+    trips,
     routes: parseRoutesCsv(routesEntry.getData().toString("utf-8")),
-    scheduledTrips: parseStopTimesCsv(stopTimesEntry.getData().toString("utf-8")),
+    scheduledTrips: parseStopTimesCsv(stopTimesCsv),
+    stopRoutes: parseStopRouteLinksCsv(stopTimesCsv, trips),
     calendar: calendarEntry ? parseCalendarCsv(calendarEntry.getData().toString("utf-8")) : [],
     calendarDates: calendarDatesEntry
       ? parseCalendarDatesCsv(calendarDatesEntry.getData().toString("utf-8"))

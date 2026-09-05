@@ -294,3 +294,47 @@ Only `demo_service_alerts.html` (the working, live-data-wired frontend) is inclu
 5. Wire `POST /messages` (and the retract endpoint, once built) to publish to the Service Bus queue on create/update, so the dispatch handler actually gets triggered
 6. Wire the rider opt-in mockup to the new endpoints
 7. End-to-end test: opt in with a real phone/email → post an announcement in OnBoard → confirm a real SMS/email arrives
+
+## Detour module — PR #137 status (2026-09-04)
+
+Migrations 088 through 093 HAVE BEEN RUN against the dev DB (2026-09-04) and
+verified: `Detours.location` (088, with the riders_directed backfill - 0 rows
+still carry the intake location), contractor settings seeded empty (089),
+conflict override columns (090), `geometry_json` on DetourIntake/Detours and
+the `GtfsStopRoutes` table (091), communication delivery/snapshot columns
+(092), and `DetourCommunicationReceipts` (093). The PR's code is NOT YET
+DEPLOYED; every handler guards on the columns, so the deployed build is
+unaffected by the schema being ahead.
+
+Still to do once the code deploys, none of it DB work:
+- Run the static GTFS sync once: `GtfsStopRoutes` is empty until it does, so
+  nearby-stop suggestions on the intake map show stops without routes.
+- DONE 2026-09-04: `servicebus.bicep` deployed twice - first for the queue
+  `detour-communication-requested`, then with manageRoleAssignments=true
+  (additionalReceiverPrincipalId empty, that Receiver pre-existed). The
+  namespace now holds REST identity = Sender + Receiver, dispatch identity =
+  Receiver. This was a pre-existing gap: before today nothing could publish or
+  consume on ANY queue. App settings set the same day:
+  `SERVICE_BUS_NAMESPACE=sb-mvta-onboard-dev.servicebus.windows.net` on the
+  REST app, `ServiceBusConnection__fullyQualifiedNamespace` (same host) on
+  the dispatch app.
+- DONE 2026-09-04: email sender provisioned. Email Communication Service
+  `acs-email-mvta-onboard-dev` (data location United States) with an
+  Azure-managed domain `93587da7-3b33-4e41-9473-e64bd57cb979.azurecomm.net`
+  (verified on creation), linked to `acs-mvta-onboard-dev`. Dispatch app:
+  `ACS_ENDPOINT=https://acs-mvta-onboard-dev.unitedstates.communication.azure.com`,
+  `ACS_EMAIL_FROM=DoNotReply@93587da7-3b33-4e41-9473-e64bd57cb979.azurecomm.net`.
+  DONE 2026-09-04: the dispatch identity (3ed1e6ac-eae2-4fc7-ae72-f28e2be6d235)
+  holds Contributor on acs-mvta-onboard-dev (ACS has no data-plane RBAC role;
+  acs.ts authenticates with DefaultAzureCredential). Email delivery is fully
+  provisioned in dev; it activates when the PR's dispatch code deploys.
+- REST app: `TEAMS_DETOUR_WEBHOOK_URL` from Key Vault secret
+  `teams-detour-webhook-url` (declared in functionapp.bicep beside the event
+  webhook).
+- Event Grid subscription on the ACS resource for
+  `Microsoft.Communication.EmailDeliveryReportReceived` events, endpoint
+  `https://<dispatch app>/api/acs-email-events?code=<function key>`. Until it
+  exists, emailed communications stop at "Accepted by provider".
+- Optional: set the contractor name and recipients under Administration ->
+  Service Configuration; until a name is set no contractor audience is
+  required.

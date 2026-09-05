@@ -10,7 +10,7 @@
 import { ServiceBusClient } from "@azure/service-bus";
 import { DefaultAzureCredential } from "@azure/identity";
 import type { InvocationContext } from "@azure/functions";
-import type { MessageCreatedEvent, ConfirmationRequestedEvent } from "./types";
+import type { MessageCreatedEvent, ConfirmationRequestedEvent, DetourCommunicationRequestedEvent } from "./types";
 
 let client: ServiceBusClient | null = null;
 
@@ -83,4 +83,12 @@ export function publishEventGeofenceNotification(crossingId: number, context?: I
     `event-crossing-${crossingId}`,
     context,
   );
+}
+
+// Publish a Detour communication for server-side email delivery. Returns
+// false when Service Bus is not configured or the publish failed - the
+// caller records that as "skipped" so the communication is not left
+// looking queued forever.
+export function publishDetourCommunicationRequested(event: DetourCommunicationRequestedEvent, context?: InvocationContext): Promise<boolean> {
+  return publish(process.env.SERVICE_BUS_DETOUR_COMMUNICATION_QUEUE || "detour-communication-requested", "detour-communication-requested", event, event.communication_id, context);
 }

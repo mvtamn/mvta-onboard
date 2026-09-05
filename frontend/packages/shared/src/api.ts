@@ -65,14 +65,17 @@ import type {
   OtpHistoricalBackfillInput,
   OtpHistoricalBackfillResponse,
   MapsTokenResponse,
-  DetourAttachment,
   DetourImage,
   DetourIntake,
+  DetourIntakeStatus,
   CreateDetourIntakeInput,
   DetourFulfillmentMode,
   DetourLifecycleState,
   DetourCommunication,
   DetourHistoricalImportResult,
+  DetourContractorNotification,
+  NearbyGtfsStop,
+  DetourHistoricalImportRow,
   DetourWorkflowHistoryEntry,
   ContractorPerformanceStandard,
   ContractorRecord,
@@ -710,11 +713,7 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
 
     getDetours(status?: DetourStatus) {
       const suffix = status ? `?status=${status}` : "";
-      return request<{ detours: Detour[] }>(`/api/detours${suffix}`, {}, true);
-    },
-
-    getOperationsDetourReport() {
-      return request<{ detours: Detour[]; report: Array<Record<string, unknown>> }>(`/api/detours?view=operations`, {}, true);
+      return request<{ detours: Detour[]; contractor_notification?: DetourContractorNotification }>(`/api/detours${suffix}`, {}, true);
     },
 
     createDetour(input: CreateDetourInput) {
@@ -757,8 +756,15 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<DetourCommunication>(`/api/detours/${id}/communications`, { method: "POST", body: JSON.stringify(input) }, true);
     },
 
-    publishDetourCommunication(detourId: string, communicationId: string, outcome?: string) {
-      return request<DetourCommunication>(`/api/detours/${detourId}/communications/${communicationId}/publish`, { method: "POST", body: JSON.stringify({ outcome }) }, true);
+    // send=true asks the server to deliver by email and freezes the sent
+    // snapshot; otherwise publishing records a human send with `outcome`.
+    publishDetourCommunication(detourId: string, communicationId: string, outcome?: string, send = false) {
+      return request<DetourCommunication>(`/api/detours/${detourId}/communications/${communicationId}/publish`, { method: "POST", body: JSON.stringify({ outcome, send }) }, true);
+    },
+
+    getDetourHistoricalImports(importBatchId?: string) {
+      const suffix = importBatchId ? `?import_batch_id=${encodeURIComponent(importBatchId)}` : "";
+      return request<{ historical_rows: DetourHistoricalImportRow[] }>(`/api/detours/historical-imports${suffix}`, {}, true);
     },
 
     importHistoricalDetours(input: { source_file: string; rows: Array<Record<string, unknown>> }) {
@@ -767,6 +773,19 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
 
     closeDetour(id: string, reason: string) {
       return request<{ id: string; lifecycle_state: DetourLifecycleState; closure_reason: string }>(`/api/detours/${id}/close`, { method: "POST", body: JSON.stringify({ reason }) }, true);
+    },
+
+    // Records the reasoned authorisation to proceed despite the Detour's
+    // current conflicts; covers exactly the conflicts known at that moment.
+    overrideDetourConflict(id: string, reason: string) {
+      return request<{ id: string; conflict_status: "overridden"; conflict_override_reason: string; conflict_override_by: string }>(`/api/detours/${id}/conflict-override`, { method: "POST", body: JSON.stringify({ reason }) }, true);
+    },
+
+    // Clears the needs_review flag detoursUpdate raises on material edits.
+    // The only way back to review_status = 'current'; audited in
+    // DetourWorkflowHistory.
+    completeDetourReview(id: string, notes?: string | null) {
+      return request<{ id: string; review_status: "current"; reviewed_by: string }>(`/api/detours/${id}/review-complete`, { method: "POST", body: JSON.stringify({ notes: notes ?? null }) }, true);
     },
 
     deleteDetour(id: string) {
@@ -846,65 +865,26 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<{ images: DetourImage[] }>(`/api/detour-intake/${intakeId}/images`, {}, true);
     },
 
-    getDetourAttachments(owner: { intake_id?: string; detour_id?: string }, options?: { include_private?: boolean }) {
-      const query = new URLSearchParams({ ...owner, ...(options?.include_private ? { include_private: "1" } : {}) }).toString();
-      return request<{ attachments: DetourAttachment[] }>(`/api/detour-attachments?${query}`, {}, true);
-    },
-
-    getDetourAttachmentReadiness() {
-      return request<{ configured: boolean }>("/api/detour-attachments/readiness", {}, true);
-    },
-
-    getDetourAttachmentUploadUrl(owner: { intake_id?: string; detour_id?: string }, file: { file_name: string; content_type: string; size_bytes: number }, options?: { attachment_id?: string; version_of?: string }) {
-      return request<{ attachment_id: string; upload_url: string; blob_path: string; availability_state: string }>(
-        "/api/detour-attachments/upload-url",
-        { method: "POST", body: JSON.stringify({ ...owner, ...file, ...options }) },
-        true,
-      );
-    },
-
-    createDetourAttachment(input: { intake_id?: string; detour_id?: string; attachment_id?: string; version_of?: string; blob_path: string; file_name: string; content_type: string; size_bytes: number; content_sha256?: string }) {
-      return request<DetourAttachment>(
-        "/api/detour-attachments",
-        { method: "POST", body: JSON.stringify(input) },
-        true,
-      );
-    },
-
-    removeDetourAttachment(id: string) {
-      return request<void>(`/api/detour-attachments/${id}`, { method: "DELETE" }, true);
-    },
-
-    shareDetourAttachment(id: string, reason: string) {
-      return request<{ id: string; report_shared: boolean }>(`/api/detour-attachments/${id}/share`, { method: "POST", body: JSON.stringify({ reason }) }, true);
-    },
-
-    unshareDetourAttachment(id: string, reason: string) {
-      return request<{ id: string; report_shared: boolean }>(`/api/detour-attachments/${id}/unshare`, { method: "POST", body: JSON.stringify({ reason }) }, true);
-    },
-
     getDetourIntake(status?: string) {
       const suffix = status ? `?status=${encodeURIComponent(status)}` : "";
       return request<{ intake: DetourIntake[] }>(`/api/detour-intake${suffix}`, {}, true);
-    },
-
-    getDetourIntakeOptions(type?: string) {
-      const suffix = type ? `?type=${encodeURIComponent(type)}` : "";
-      return request<{ options: Array<{ id: string; option_type: string; code: string; label: string; is_active: boolean; sort_order: number }> }>(`/api/detour-intake-options${suffix}`, {}, true);
-    },
-
-    createDetourIntakeOption(input: { option_type: string; code: string; label: string; sort_order?: number }) {
-      return request<{ id: string; option_type: string; code: string; label: string; is_active: boolean; sort_order: number }>("/api/detour-intake-options", { method: "POST", body: JSON.stringify(input) }, true);
-    },
-
-    updateDetourIntakeOption(id: string, input: { label?: string; is_active?: boolean; sort_order?: number }) {
-      return request<{ id: string; option_type: string; code: string; label: string; is_active: boolean; sort_order: number }>(`/api/detour-intake-options/${id}`, { method: "PATCH", body: JSON.stringify(input) }, true);
     },
 
     createDetourIntake(input: CreateDetourIntakeInput) {
       return request<{ id: string; created_at: string }>(
         "/api/detour-intake",
         { method: "POST", body: JSON.stringify(input) },
+        true,
+      );
+    },
+
+    // Full-record replacement of an open intake. Saving an intake that was
+    // returned for information is its resubmission - the server moves it
+    // back to pending review and reports `resubmitted: true`.
+    updateDetourIntake(id: string, input: CreateDetourIntakeInput) {
+      return request<{ id: string; status: DetourIntakeStatus; resubmitted: boolean }>(
+        `/api/detour-intake/${id}`,
+        { method: "PUT", body: JSON.stringify(input) },
         true,
       );
     },
@@ -929,14 +909,6 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<{ id: string; created_at: string; lifecycle_state: string }>(
         `/api/detour-intake/${id}/promote`,
         { method: "POST", body: JSON.stringify({ fulfillment_mode, ...dates }) },
-        true,
-      );
-    },
-
-    updateDetourWorkflow(id: string, lifecycle_state: DetourLifecycleState) {
-      return request<{ id: string; lifecycle_state: DetourLifecycleState }>(
-        `/api/detours/${id}/workflow`,
-        { method: "PATCH", body: JSON.stringify({ lifecycle_state }) },
         true,
       );
     },
@@ -1131,6 +1103,12 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
         { method: "POST", body: JSON.stringify(input) },
         true,
       );
+    },
+
+    // GTFS stops within radius_m of a drawn GeoJSON shape, with serving
+    // routes. Suggestions for the detour map; writes nothing.
+    findStopsNear(geometry: unknown, radius_m = 100) {
+      return request<{ radius_m: number; stop_routes_indexed: boolean; stops: NearbyGtfsStop[] }>("/api/gtfs-stops/near", { method: "POST", body: JSON.stringify({ geometry, radius_m }) }, true);
     },
 
     getMapsToken() {

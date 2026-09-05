@@ -5,6 +5,91 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.95] - 2026-09-04
+
+- **Stop-ID matching for duplicates and conflicts.** Each record's GTFS stops are derived from its drawn shape (stops within 100 m) and from `#stop_id` markers in its affected-stops text - which is what the map's "add selected stops" writes - so two records that touch the same stop match even when their shapes are far apart or one was never drawn. Shared stops are named in the warning and rank between map matches and route matches. One `GtfsStops` read per list call; no migration.
+
+## [1.5.94] - 2026-09-04
+
+- **Map-based matching for duplicates and conflicts.** When both records carry a drawn shape (migration 091), the likely-duplicate and conflict matcher now treats two shapes within 75 m of each other as the same place - shape-to-shape distance, zero when they touch or one contains the other - independent of how the closure was worded or which routes were listed. Map matches rank above route matches and report "n m apart on the map". Lexical route and place matching remains for records without a drawing. No migration.
+
+## [1.5.93] - 2026-09-04
+
+- **Delivery receipts for emailed Detour communications.** Migration 093 adds per-recipient receipts: the dispatcher records each recipient as accepted with its ACS message id, and a new function-key-protected `POST /api/acs-email-events` endpoint on the dispatch app receives Azure Communication Services `EmailDeliveryReportReceived` events from Event Grid (handshake included), updates the matching receipt (delivered, bounced, suppressed, quarantined, filtered as spam, failed), and recomputes the communication: `delivered` only when every recipient's receipt is Delivered, partial or failed with the offending addresses named otherwise. "Accepted by provider" and "Delivered" are now distinct in the console, and the Sent copy on Detour Reports and Detours & Closures lists each recipient's receipt. Requires an Event Grid subscription from the ACS resource to the endpoint (portal step; the URL carries the function key).
+
+## [1.5.92] - 2026-09-04
+
+- **Delivery view on Detour Reports.** Each expanded Detour lists its communications - audience, channel, recipients, who published and when, and delivery state - with a collapsed Sent copy showing the exact subject, recipients, body, and provider reference the server sent. Detours & Closures shows the same Sent copy beside its composer, and both pages render delivery state through one set of labels.
+
+## [1.5.91] - 2026-09-04
+
+- **Teams delivery for Detour communications.** A communication whose channel is Teams can be posted from the server: publish with `send` freezes the snapshot, posts an Adaptive Card (subject as heading, draft as body) to `TEAMS_DETOUR_WEBHOOK_URL` - its own Key Vault secret beside the event webhook, declared in `functionapp.bicep` - and records sent, failed (retryable, with transient classification), or skipped when no webhook is configured. Inline rather than queued: one webhook call, and the reviewer is waiting on the result. Detours & Closures shows Post to Teams beside Mark published.
+
+## [1.5.90] - 2026-09-04
+
+- **Server-side email delivery for Detour communications.** Publishing with `send: true` freezes the subject, body, and recipients on the row (migration 092 - the immutable sent snapshot), marks delivery queued, and publishes `detour-communication-requested` to Service Bus; the dispatch app's new `dispatchDetourCommunication` trigger sends through Azure Communication Services per recipient and writes back sent / partially_sent / failed / skipped with the provider id or the failing addresses. A failed or skipped delivery returns the communication to a retryable state, and "published" for communication status now requires delivery to have succeeded or a human to have recorded a send. Detours & Closures gains Send email and Retry send beside Open in email and Mark published (sent elsewhere), with live delivery state on each communication. Guarded end to end: without the migration the endpoint refuses; without Service Bus the row reads "delivery not available"; without ACS the dispatcher reports skipped. The queue is declared in `infra-phase1/modules/servicebus.bicep`.
+
+## [1.5.89] - 2026-09-04
+
+- **Map drawing and nearby-stop suggestions for Detour Intake.** The intake form gains a map (Azure Maps, same token path as Event authoring) where the reporter draws a point, line, or area; the GeoJSON is stored on the intake (migration 091) and carried onto the Detour at acceptance. **Find nearby stops** calls `POST /gtfs-stops/near`, which returns GTFS stops within a chosen radius of the shape - exact point-to-shape distance over a bounding-box prefilter - with the routes serving each, from the new `GtfsStopRoutes` index the static GTFS sync now builds from `stop_times.txt`. Selected stops are appended to Affected stops and their routes become segments. The review dialog, Detours & Closures, and Detour Reports show the drawn shape read-only.
+
+## [1.5.88] - 2026-09-04
+
+- **Conflict override on the authoritative Detour.** `GET /detours` now reports, for every open Detour, the other open Detours that share a route number or place word inside an overlapping window (`conflicts`) and a `conflict_status` of none / unresolved / overridden. Migration 090 adds the override columns; `POST /detours/{id}/conflict-override` records a required reason, the actor, and the conflicting ids, and writes a `manual_correction` history row so the warning and the decision stay together. The override covers exactly the conflicts known when it was recorded - a new conflict reopens the question. Confirming an Avail entry (`result: entered`) is refused with 409 while a conflict is unresolved; recording a failed or deferred attempt is always allowed. Detours & Closures shows the conflict with what it shares and an Override-with-reason action; Detour Reports shows it in the Readiness column and the expanded row and exports a Conflicts column.
+
+## [1.5.87] - 2026-09-04
+
+- **Contractor notification (design B15).** Migration 089 seeds two admin settings, `detour/contractor_name` and `detour/contractor_recipients`, editable under Administration → Service Configuration. Once a name is set, every fixed-route Detour (not mobility) requires a published communication to that audience: `GET /detours` returns `required_audiences` (the record's list plus the contractor) and measures `communication_status` against it, and reports the contractor settings alongside. On Detours & Closures the contractor appears in the required checklist as email-to-recipients, Draft prefills the addresses, and an **Open in email** link opens the staff member's mail client with recipients, subject, and body; marking the draft published records "Sent by email to …" as the outcome. There is deliberately no server-side sender - publishing records a human action.
+
+## [1.5.86] - 2026-09-04
+
+- **Drive detour communications from the record's required audiences.** The composer took free-text audience and channel, while the server clears "needs communication" only when every audience the intake named has a published communication under exactly that string - so the status could only be cleared by guessing. The Communications section now shows a checklist of required audiences with their progress (nothing / draft / published) and channels, a Draft button per unmet audience that prefills audience, channel, and a message assembled from the operational record (reference, closure, location, window, routes, instructions, riders, impacts, turn-by-turn, contact), audience and channel selects limited to the record's list with an Other escape, and who published each communication and when. Pure prefill logic in `lib/detourCommunicationDraft.ts` with tests.
+
+## [1.5.85] - 2026-09-04
+
+- **Render detour attachments by type.** Detour Intake accepts PDFs and Office documents as evidence and acceptance re-parents them onto the Detour, but Detours & Closures rendered every attachment through `<img>`, so an accepted PDF showed as a broken tile and the attach control accepted images only. One `DetourAttachmentsSection` now shows images as thumbnails and documents as a labelled tile (type, size) that opens the file, accepts the same file types as intake, and also appears read-only on Detour Reports so the document that went out with a detour is part of the record. Intake's supporting-file list shows a thumbnail beside image links.
+
+## [1.5.84] - 2026-09-04
+
+- **Make the intake list's schema guard actually degrade.** `GET /detour-intake` guarded its optional column groups (migrations 056, 057, 069) with inline template fragments that left a bare comma behind, so on any environment missing one of them the query read `i.created_at , , i.updated_by` and returned 500 instead of omitting the columns. The column list is now built by a pure function tested across all eight readiness combinations. No behavior change where every migration is present.
+
+## [1.5.83] - 2026-09-04
+
+- **Detect likely duplicate intake (spec item 11).** `GET /detour-intake` now returns `likely_duplicates` for every open intake: non-closed Detours and other open intakes whose route numbers or place words overlap and whose operating windows overlap (open-ended windows overlap everything after their start). `lib/detourDuplicates.ts` is pure and tested - route identity is the number without direction suffix; place matching drops road-type, direction, and closure words, and a numbered street alone is not enough. The intake queue flags the count per row, the review dialog lists each match with the shared routes or words, and "Mark duplicate of this" sets the target - replacing the hand-pasted GUID. Detection warns; it never merges or rejects.
+
+## [1.5.82] - 2026-09-04
+
+- **Parse the legacy import like a spreadsheet, not a split on commas.** The importer split each line on `,` and assumed a fixed column order, so any closure containing a comma - most of them - shifted every following cell, and re-importing this page's own export corrupted it. `lib/legacyDetourImport.ts` parses CSV per RFC 4180 (quoted commas, doubled quotes, embedded line breaks, BOM, CRLF) and maps columns by header name with aliases covering the tracker's headings, the JSON field names, and the Reports export. Rows without closure text are skipped and reported by sheet row; unrecognised columns are kept on the row and named. Covered by 12 tests including an export round-trip.
+
+## [1.5.81] - 2026-09-04
+
+- **Show what the legacy import actually imported.** `GET /detours/historical-imports` existed but nothing read it, so uploaded tracker rows were unreachable. Detour Reports now lists them under Legacy spreadsheet history, grouped by source file with the importer and date, and the page search covers them. The uploader is shown only to detour write roles, matching the server, rather than offering read-only users a control that 403s. The list endpoint returns named columns instead of `SELECT *`, keeping `raw_row_json` server-side.
+
+## [1.5.80] - 2026-09-04
+
+- **Stop filing the closure location as "Riders directed".** Promotion wrote the intake's location - where the closure is - into `riders_directed`, whose meaning is where riders should go instead, so every accepted Detour read "Riders directed: 5th St closed…". Migration 088 adds `Detours.location`, moves the copied value across for every promoted Detour, and clears `riders_directed` only where it still equals the intake location. Promotion now writes `location` and leaves `riders_directed` for staff to record; the operational record and the Reports CSV show Location.
+
+## [1.5.79] - 2026-09-03
+
+- **Retire the API client methods that had no server.** The shared client carried ten methods for `detour-attachments` (scanning, versions, report sharing) and `detour-intake-options` that no Azure Function ever implemented, plus an operations-report view and a generic workflow PATCH nothing called. They are removed, and `DetourImage` now describes exactly what `GET /detours/{id}/images` returns.
+- **Surface the two detour backends that had no UI.** Detours & Closures and Detour Reports gain a Show history control on each expanded row, reading the append-only `DetourWorkflowHistory` (creation, transitions, Avail observations, corrections, fulfillment confirmation). Administration gains a Detour reason categories section for adding, relabeling, reordering, and retiring the codes that the Reporting fields and Reports filters use.
+
+## [1.5.78] - 2026-09-03
+
+- **Make the Detour Reports CSV match the table.** The export was missing eight of the fifteen on-screen columns - fulfillment path, readiness, next owner, communications, workflow state, closure reason, Avail entry/ID/last-seen - and its column order followed the retired spreadsheet rather than the page. Columns now follow the table, then the expanded-row detail, then the operational record, and the table and CSV render every label through one shared function so they cannot drift. The expanded row also shows the closure reason.
+
+## [1.5.77] - 2026-09-03
+
+- **Give "Needs OCC re-review" a way to clear.** Every material edit to a Detour raised the re-review flag and nothing could lower it. `POST /detours/{id}/review-complete` sets the record back to current and writes a `manual_correction` row to the workflow history with the reason the flag was raised and any reviewer notes. Detours & Closures offers "Mark review complete" beside the warning; Detour Reports shows the flag in the Readiness column and exports it in the CSV.
+
+## [1.5.76] - 2026-09-03
+
+- **Stop "Needs information" from being a dead end.** An intake returned for information now stays open: Detour Intake shows it under its own tab with the reviewer's request, `PUT /detour-intake/{id}` updates the record and returns it to the OCC queue, and a reviewer can still withdraw, reject, or mark it duplicate. Open pending intakes can be edited in place; decided intakes are listed read-only with their decision, reviewer, and linked Detour or duplicate target. Review decisions on a record that has already been decided are refused with 409 instead of reporting "not found".
+
+## [1.5.75] - 2026-09-03
+
+- **Show the operational record an accepted intake carries.** GET /detours now returns the fields acceptance writes onto the Detour — operating window times and status, service impact and area, affected stops, action instructions, operational impacts, required audiences and channels, confirmation contact, and evidence — instead of leaving them write-only. Detours & Closures and Detour Reports render them in the expanded row, search reaches them, and the Reports CSV exports them. TIME columns are serialized as HH:MM on both the detour and intake lists.
+
 ## [1.5.74] - 2026-09-04
 
 - **Match the garage-departure statuses the feed actually emits.** The `GARAGE_DEPARTURE` rule looked for `Late Relief` and `Expired Pullout`. Across 22 service days the feed emitted eleven statuses and `Late Relief` was not among them - it came from the single sample payload the fixtures were built from. Meanwhile `Missed Pullout` (282 rows) and `Missed Login` (126), 408 runs that provably never left the garage, matched nothing, and `Late Pullout` (91, averaging nine minutes late) matched nothing either. The rule was wrong in both directions at once: raising occurrences for buses that departed on time while missing the ones that never departed. It now lists the four statuses that describe how a departure ended, and still requires the timestamps to show a missed or late departure. Pull-in statuses, which describe a run's return to the garage after it departed, can no longer reach a departure standard. A run Avail has not yet classified is left alone rather than penalised before it has been judged.

@@ -5,6 +5,7 @@ import {
   parseTripsCsv,
   parseRoutesCsv,
   parseStopTimesCsv,
+  parseStopRouteLinksCsv,
   parseCalendarCsv,
   parseCalendarDatesCsv,
   deriveDirectionLabel,
@@ -184,4 +185,12 @@ test("parseCalendarDatesCsv parses added and removed service exceptions", () => 
 test("parseCalendarDatesCsv skips rows with an invalid exception_type", () => {
   const csv = "service_id,date,exception_type\n43-v62,20260704,3\n";
   assert.deepStrictEqual(parseCalendarDatesCsv(csv), []);
+});
+
+test("parseStopRouteLinksCsv yields each stop/route pair once, via trips", () => {
+  const stopTimes = "trip_id,arrival_time,departure_time,stop_id,stop_sequence\nT1,06:00:00,06:00:00,S1,1\nT1,06:05:00,06:05:00,S2,2\nT2,07:00:00,07:00:00,S1,1\nT3,07:00:00,07:00:00,S9,1\nTX,08:00:00,08:00:00,S1,1\n";
+  const trips = [{ trip_id: "T1", route_id: "460" }, { trip_id: "T2", route_id: "460" }, { trip_id: "T3", route_id: "440" }];
+  assert.deepStrictEqual(parseStopRouteLinksCsv(stopTimes, trips), [
+    { stop_id: "S1", route_id: "460" }, { stop_id: "S2", route_id: "460" }, { stop_id: "S9", route_id: "440" },
+  ]);
 });
