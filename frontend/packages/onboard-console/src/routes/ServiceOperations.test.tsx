@@ -79,6 +79,15 @@ describe("Service Operations", () => {
     renderShell();
 
     expect(screen.getByRole("link", { name: "Service Risk & Quality" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Dispatch Log" })).toBeInTheDocument();
+  });
+
+  it("shows the Dispatch Log, but not Service Risk, to a Compliance reader", () => {
+    authState.roles = ["OCC.Compliance"];
+    renderShell();
+
+    expect(screen.getByRole("link", { name: "Dispatch Log" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Service Risk & Quality" })).not.toBeInTheDocument();
   });
 
   it("switches between Fixed Route and On-Demand risk views", async () => {

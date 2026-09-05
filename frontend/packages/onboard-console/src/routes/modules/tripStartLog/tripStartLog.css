@@ -1,0 +1,50 @@
+/* Dispatch Log module shell (plans/dispatch-log-spec.md §4.3). Everything
+   shared by the three views lives here: query bar, summary strip, view tabs,
+   the interim list, and the inspector. */
+.tsl-controls .tsl-date { background: var(--surface-bg); border: 1px solid var(--border-strong); border-radius: 7px; color: var(--text); font: inherit; font-size: 11.5px; padding: 5px 8px; }
+.tsl-controls .tsl-date-label { color: var(--text-dim); font-size: 12px; font-weight: 700; }
+
+.tsl-query { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.tsl-query input[type="search"] { background: var(--surface-bg); border: 1px solid var(--border-strong); border-radius: 7px; color: var(--text); flex: 1 1 220px; font: inherit; font-size: 12px; min-width: 160px; padding: 6px 9px; }
+.tsl-query select { background: var(--surface-bg); border: 1px solid var(--border-strong); border-radius: 7px; color: var(--text); font: inherit; font-size: 11.5px; padding: 6px 26px 6px 8px; }
+.tsl-scope { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 999px; overflow: hidden; }
+.tsl-scope button { background: var(--surface-bg); border: 0; color: var(--text-dim); cursor: pointer; font: inherit; font-size: 11px; font-weight: 800; padding: 6px 12px; }
+.tsl-scope button.active { background: var(--brand-green); color: #fff; }
+.tsl-scope button:focus-visible { outline: 2px solid var(--brand-green); outline-offset: -2px; }
+
+.tsl-summary { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); margin-bottom: 12px; }
+.tsl-stat { background: var(--surface-alt-bg); border: 1px solid var(--border); border-left-width: 4px; border-radius: 9px; display: grid; gap: 2px; padding: 9px 11px; }
+.tsl-stat strong { font-size: 19px; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.tsl-stat span { color: var(--text-muted); font-size: 10.5px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
+.tsl-stat.success { border-left-color: var(--success-text); }
+.tsl-stat.warning { border-left-color: var(--highlight-border); }
+.tsl-stat.danger { border-left-color: var(--danger-text); }
+.tsl-stat.muted { border-left-color: var(--text-muted); }
+.tsl-stat.accent { border-left-color: var(--pill-accent-fg); }
+.tsl-stat.attention strong { color: var(--danger-text); }
+
+.tsl-views { align-items: center; border-bottom: 1px solid var(--border); display: flex; gap: 2px; margin-bottom: 12px; }
+.tsl-views button { background: transparent; border: 0; border-bottom: 3px solid transparent; color: var(--text-muted); cursor: pointer; font: inherit; font-size: 12px; font-weight: 800; padding: 8px 11px 7px; }
+.tsl-views button:hover, .tsl-views button.active { border-bottom-color: var(--brand-green); color: var(--brand-green); }
+.tsl-views button:focus-visible { outline: 2px solid var(--brand-green); outline-offset: -2px; }
+.tsl-views .tsl-views-count { color: var(--text-muted); font-size: 11.5px; margin-left: auto; padding-right: 4px; }
+
+.tsl-table-wrap { overflow-x: auto; }
+table.data.tsl-table tbody tr { cursor: pointer; }
+table.data.tsl-table tbody tr:focus-visible { outline: 2px solid var(--brand-green); outline-offset: -2px; }
+table.data.tsl-table tbody tr.dim td { color: var(--text-muted); }
+table.data.tsl-table tbody tr.selected td { background: var(--highlight-bg); box-shadow: inset 3px 0 0 var(--highlight-border); }
+table.data.tsl-table td.tsl-clock { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tsl-initials { display: inline-block; font-weight: 800; letter-spacing: 0.04em; min-width: 2.2em; }
+.tsl-needs { color: var(--pill-warning-fg); font-size: 10.5px; font-weight: 800; }
+
+.tsl-inspector { background: var(--surface-alt-bg); border: 1px solid var(--border); border-radius: 10px; margin-top: 14px; padding: 13px 15px; }
+.tsl-inspector-head { align-items: baseline; display: flex; flex-wrap: wrap; gap: 6px 14px; margin-bottom: 8px; }
+.tsl-inspector-head h3 { font-size: 15px; margin: 0; }
+.tsl-inspector-head .tsl-inspector-sub { color: var(--text-muted); font-size: 11.5px; }
+.tsl-inspector dl { display: grid; gap: 6px 16px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin: 0; }
+.tsl-inspector dt { color: var(--text-muted); font-size: 10.5px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
+.tsl-inspector dd { font-size: 12.5px; margin: 2px 0 0; }
+.tsl-inspector-actions { align-items: center; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; padding-top: 10px; }
+.tsl-inspector-actions small { color: var(--text-muted); font-size: 11px; }
+.tsl-inspector-empty { color: var(--text-muted); font-size: 12px; margin: 0; }

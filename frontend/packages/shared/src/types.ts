@@ -1487,3 +1487,58 @@ export interface AssessmentReport { id: string; period_id: string; issuance_type
 export interface AssessmentCap { id: string; standard_name: string; status: string; trigger_reason: string; due_at: string }
 export interface AssessmentDispute { id: string; report_version: number; item_count: number; basis: string; status: string; outcome: string | null; submitted_at: string }
 export interface AssessmentEvidence { id: string; assessment_id: string; content_type: string; file_size_bytes: number; caption: string | null; content_sha256: string; visibility: "internal" | "contractor"; redaction_reason: string | null; uploaded_by: string; uploaded_at: string }
+
+// Dispatch Log (plans/dispatch-log-spec.md) - one row per service date and
+// revenue trip, materialized nightly from the GTFS schedule, read from
+// GET /trip-start-log. The API names are TripStart*, not DispatchLog*,
+// because "dispatch" in this repo means Teams message delivery; the console
+// keeps the product name the OCS desk uses.
+export type TripStartStatus = "on_time" | "late" | "missed" | "canceled" | "unknown";
+export type TripStartActualSource = "trip_update" | "vehicle_position" | "avail";
+export type TripStartObservation = "observed_on_time" | "observed_left_late" | "not_observed";
+
+export interface TripStartVerification {
+  observation: TripStartObservation;
+  verified_by: string;
+  verified_initials: string;
+  verified_at: string;
+  note: string | null;
+}
+
+export interface TripStartLogTrip {
+  service_date: string;
+  trip_id: string;
+  block_id: string | null;
+  route_id: string;
+  route_short_name: string | null;
+  direction_id: number | null;
+  direction_label: string | null;
+  origin_stop_id: string | null;
+  origin_stop_name: string | null;
+  /** GTFS seconds since the service day's midnight; may exceed 86400. */
+  scheduled_start_seconds: number;
+  scheduled_start_at: string;
+  /** On this date's verification list. A field, not a query parameter. */
+  in_rotation: boolean;
+  rotation_day: string | null;
+  actual_start_at: string | null;
+  actual_start_source: TripStartActualSource | null;
+  start_delay_seconds: number | null;
+  start_status: TripStartStatus;
+  verification: TripStartVerification | null;
+}
+
+export interface TripStartLogDiagnostics {
+  table_ready: boolean;
+  materialized: boolean;
+  trip_count: number;
+  rotation_count: number;
+  rotation_anchor_date: string | null;
+  week_offset: number | null;
+}
+
+export interface TripStartLogResponse {
+  service_date: string;
+  trips: TripStartLogTrip[];
+  diagnostics: TripStartLogDiagnostics;
+}

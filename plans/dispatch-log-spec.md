@@ -441,10 +441,12 @@ matter for contractor performance rather than just situational awareness.
 4. ~~**Where does it live?**~~ **Resolved by ADR 0015**, which groups
    communications and service-risk monitoring under Service Operations and
    keeps Compliance for assessment artifacts. The Dispatch Log is a live
-   monitoring tool, so it is a Service Operations tab, next to Missed Trips and
-   Fixed Route Departures. Nothing here is a compliance record until §7.1 puts
-   a verified observation on it, and even then it stays where the people who
-   use it during the day already are.
+   monitoring tool, so it is a Service Operations tab, next to Service Risk &
+   Quality (Missed Trips and Fixed Route Departures live on the Compliance
+   tab, which is the investigation side). Readers are the API's read roles:
+   staff plus `OCC.Compliance`. Nothing here is a compliance record until
+   §7.1 puts a verified observation on it, and even then it stays where the
+   people who use it during the day already are.
 
 ---
 
@@ -463,6 +465,15 @@ Nothing before step 5 depends on the open decisions in §7.
 2. **Module shell**: query bar, summary strip, view switcher, shared selection
    state and inspector. The container before any of the views, so all three
    inherit filtering and selection rather than each re-implementing it.
+   *Built 2026-09-05:* `routes/modules/tripStartLog/` in the console, at
+   `/service-operations/dispatch-log`. State and every derived read (filters,
+   sort, summary buckets, start OTP, awaiting-initials) are pure functions in
+   `tripStartLogState.ts`. Summary buckets are On time · Left late ≤5 · Late
+   over 5 · Missed · No actual · Canceled — `missed` and `no actual` kept
+   apart because one is a verdict and the other is absence of evidence, and
+   neither canceled nor no-actual counts toward start OTP. Until step 3 every
+   view shows the same interim row list so selection and the inspector work
+   end to end; the verify actions are present but disabled until step 6.
 3. **Grid view**, actuals shown, no verification column yet. Built as a reusable
    sortable table (§4.3).
 4. **Watch and Timeline views** over the same state. Independent of each other;

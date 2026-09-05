@@ -32,6 +32,7 @@ import { SuggestedAlerts } from "./routes/SuggestedAlerts.js";
 import { Subscribers } from "./routes/Subscribers.js";
 import { AuditLog } from "./routes/AuditLog.js";
 import { OccTools } from "./routes/OccTools.js";
+import { TripStartLog } from "./routes/modules/tripStartLog/TripStartLog.js";
 import { EventMonitoring } from "./routes/modules/EventMonitoring.js";
 import { DecisionMatrixAdmin } from "./routes/DecisionMatrixAdmin.js";
 import { EventPlanning } from "./routes/EventPlanning.js";
@@ -55,6 +56,10 @@ const ACCESS_MANAGEMENT = import.meta.env.VITE_ACCESS_ADMIN_FALLBACK === "true"
   ? ["OCC.AccessAdmin", "OCC.Admin"] as const
   : ["OCC.AccessAdmin"] as const;
 const OCC_TOOLS = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin"] as const;
+// Dispatch Log reads the same trip-start log the API serves to staff and
+// Compliance readers (TRIP_START_LOG_READ_ROLES); a live monitoring view,
+// so it sits under Service Operations per ADR 0015.
+const DISPATCH_LOG = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin", "OCC.Compliance"] as const;
 const EVENT_AVL = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin", "OCC.EventAVL"] as const;
 const COMPLIANCE = ["OCC.Compliance", "OCC.ComplianceManager", "OCC.Admin"] as const;
 // Read-only for OCC.Viewer, full create/edit/delete for Publisher/Admin (the
@@ -71,6 +76,7 @@ const PAGE_META: { match: (path: string) => boolean; title: string; sub: string 
   { match: (p) => p.startsWith("/service-operations/active") || p === "/active", title: "Active Service Alerts", sub: "Edit or retract currently active alerts" },
   { match: (p) => p.startsWith("/service-operations/suggested") || p === "/suggested", title: "Suggested Alerts", sub: "Review predictive delay and wait-time candidates" },
   { match: (p) => p.startsWith("/service-operations/risk"), title: "Service Risk & Quality", sub: "Investigate fixed-route and on-demand service risk" },
+  { match: (p) => p.startsWith("/service-operations/dispatch-log"), title: "Dispatch Log", sub: "Watch every revenue trip start against its schedule" },
   { match: (p) => p === "/service-operations", title: "Service Operations", sub: "Service-alert communications and operational monitoring" },
   { match: (p) => p === "/subscribers", title: "Subscribers", sub: "Opt-in totals and recent signups" },
   { match: (p) => p === "/audit", title: "Audit Log", sub: "Search every message ever posted" },
@@ -187,6 +193,7 @@ function AuthenticatedApp({ account, roles, signOut }: {
   const { theme, toggle } = useTheme();
   const isAdmin = roles.includes("OCC.Admin");
   const canSeeServiceRisk = roles.some((role) => (OCC_TOOLS as readonly string[]).includes(role));
+  const canSeeDispatchLog = roles.some((role) => (DISPATCH_LOG as readonly string[]).includes(role));
   const canManageAccess = roles.some((role) => (ACCESS_MANAGEMENT as readonly string[]).includes(role));
   const canSeeOccTools = roles.some((role) => (OCC_TOOLS as readonly string[]).includes(role));
   const isCompliance = isAdmin || roles.includes("OCC.Compliance") || roles.includes("OCC.ComplianceManager");
@@ -255,6 +262,7 @@ function AuthenticatedApp({ account, roles, signOut }: {
           <NavLink to="/service-operations/active" title="Active Service Alerts"><IconMessages /><span className="nav-label">Active Service Alerts</span></NavLink>
           <NavLink to="/service-operations/suggested" title="Suggested Alerts"><IconBell /><span className="nav-label">Suggested Alerts</span></NavLink>
           {canSeeServiceRisk && <NavLink to="/service-operations/risk" title="Service Risk & Quality"><IconWrench /><span className="nav-label">Service Risk &amp; Quality</span></NavLink>}
+          {canSeeDispatchLog && <NavLink to="/service-operations/dispatch-log" title="Dispatch Log"><IconClock /><span className="nav-label">Dispatch Log</span></NavLink>}
           {(isAdmin || isCompliance || canSeeDetours || canSeeOccTools) && (
             <section className="nav-group">
               <button className="nav-group-toggle" aria-expanded={specialistOpen} onClick={() => setSpecialistOpen((open) => !open)}>
@@ -369,6 +377,10 @@ function AuthenticatedApp({ account, roles, signOut }: {
                 <Route path="compose" element={<Compose onChanged={stats.refresh} />} />
                 <Route path="active" element={<ActiveMessages onChanged={stats.refresh} />} />
                 <Route path="suggested" element={<SuggestedAlerts onChanged={stats.refresh} />} />
+                <Route
+                  path="dispatch-log"
+                  element={<RequireRole allowed={[...DISPATCH_LOG]}><TripStartLog /></RequireRole>}
+                />
                 <Route
                   path="risk"
                   element={<RequireRole allowed={[...OCC_TOOLS]}><ServiceRiskQuality /></RequireRole>}
