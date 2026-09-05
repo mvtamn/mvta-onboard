@@ -53,5 +53,5 @@ export async function migrateDecisionMatrixLegacyCandidate(request: HttpRequest,
   return { status: 201, jsonBody: { legacy_procedure_id: procedureId, legacy_revision: revision, procedure_id: result.procedure_id, revision: result.revision, lifecycle_state: "Draft" } };
 }
 
-app.http("decisionMatrixLegacyCandidates", { route: "admin/decision-matrix/legacy-candidates", methods: ["GET"], authLevel: "anonymous", handler: listDecisionMatrixLegacyCandidates });
-app.http("decisionMatrixLegacyCandidateMigration", { route: "admin/decision-matrix/legacy-candidates/{procedureId}/{revision}/draft", methods: ["POST"], authLevel: "anonymous", handler: migrateDecisionMatrixLegacyCandidate });
+app.http("decisionMatrixLegacyCandidates", { route: "manage/decision-matrix/legacy-candidates", methods: ["GET"], authLevel: "anonymous", handler: listDecisionMatrixLegacyCandidates });
+app.http("decisionMatrixLegacyCandidateMigration", { route: "manage/decision-matrix/legacy-candidates/{procedureId}/{revision}/draft", methods: ["POST"], authLevel: "anonymous", handler: migrateDecisionMatrixLegacyCandidate });

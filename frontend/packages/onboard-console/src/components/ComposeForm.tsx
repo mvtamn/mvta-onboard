@@ -36,7 +36,7 @@ const AUTO_DRAFT_DEBOUNCE_MS = 1500;
 // New Announcement form per the approved dashboard mockup.
 // Expiration: explicit datetime wins (expiration_source=explicit); otherwise
 // the category's default TTL is applied (expiration_source=category_default),
-// fetched from /admin/expiration-defaults.
+// fetched from /manage/expiration-defaults.
 export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
   const { roles } = useAuth();
   const canPublish = roles.some((r) => r === "OCC.Publisher" || r === "OCC.Admin");

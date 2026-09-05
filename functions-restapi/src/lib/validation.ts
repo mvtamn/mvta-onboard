@@ -299,7 +299,7 @@ export function validateUpdateMessage(body: UnknownBody): string[] {
   return errors;
 }
 
-// PATCH /admin/expiration-defaults/{category}
+// PATCH /manage/expiration-defaults/{category}
 // TTL bounds: 5 minutes to 30 days - matches the operational range of the
 // seeded defaults (120 min .. 1440 min) with generous headroom.
 export const MIN_TTL_MINUTES = 5;

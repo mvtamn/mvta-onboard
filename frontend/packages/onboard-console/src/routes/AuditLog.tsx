@@ -13,7 +13,7 @@ const STATUS_PILL: Record<string, string> = {
 };
 
 // Audit Log - server-side tag/keyword search across ALL messages (any status)
-// via GET /admin/messages. Replaces the earlier client-side active-only filter.
+// via GET /manage/messages. Replaces the earlier client-side active-only filter.
 export function AuditLog() {
   const { roles } = useAuth();
   const { confirm } = useAppDialog();

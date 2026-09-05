@@ -32,5 +32,5 @@ export async function listDecisionMatrixAudit(request: HttpRequest, context: Inv
   } catch (error) { context.error("GET Decision Matrix audit failed", error); return { status: 500, jsonBody: { error: "Decision Matrix audit history is temporarily unavailable." } }; }
 }
 
-app.http("decisionMatrixGovernanceQueue", { route: "admin/decision-matrix/governance-queue", methods: ["GET"], authLevel: "anonymous", handler: listDecisionMatrixGovernanceQueue });
-app.http("decisionMatrixAudit", { route: "admin/decision-matrix/audit", methods: ["GET"], authLevel: "anonymous", handler: listDecisionMatrixAudit });
+app.http("decisionMatrixGovernanceQueue", { route: "manage/decision-matrix/governance-queue", methods: ["GET"], authLevel: "anonymous", handler: listDecisionMatrixGovernanceQueue });
+app.http("decisionMatrixAudit", { route: "manage/decision-matrix/audit", methods: ["GET"], authLevel: "anonymous", handler: listDecisionMatrixAudit });

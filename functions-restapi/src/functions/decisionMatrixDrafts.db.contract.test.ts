@@ -80,7 +80,7 @@ test("Decision Matrix Draft API persists ordered content, rejects stale saves, a
     if (!tables.recordset[0]?.tags) await applyMigration(contractPool, "migration-080-decision-matrix-search-and-match-rules.sql");
 
     const created = await createDecisionMatrixProcedureDraft(
-      requestFor("POST", "https://example.test/api/admin/decision-matrix/procedures", draft),
+      requestFor("POST", "https://example.test/api/manage/decision-matrix/procedures", draft),
       context,
     );
     assert.equal(created.status, 201);
@@ -95,7 +95,7 @@ test("Decision Matrix Draft API persists ordered content, rejects stale saves, a
     assert.equal(persisted.recordset[0]?.health_status, "Needs review");
 
     const read = await getDecisionMatrixProcedureDraft(
-      requestFor("GET", `https://example.test/api/admin/decision-matrix/procedures/${procedureId}/revisions/1`, undefined, { procedureId, revision: "1" }),
+      requestFor("GET", `https://example.test/api/manage/decision-matrix/procedures/${procedureId}/revisions/1`, undefined, { procedureId, revision: "1" }),
       context,
     );
     assert.equal(read.status, 200);
@@ -105,7 +105,7 @@ test("Decision Matrix Draft API persists ordered content, rejects stale saves, a
     assert.equal(readBody.document_references[0]?.health_status, "Needs review");
 
     const saved = await saveDecisionMatrixProcedureDraft(
-      requestFor("PUT", `https://example.test/api/admin/decision-matrix/procedures/${procedureId}/revisions/1`, { ...draft, concurrency_token: createdBody.concurrency_token }, { procedureId, revision: "1" }),
+      requestFor("PUT", `https://example.test/api/manage/decision-matrix/procedures/${procedureId}/revisions/1`, { ...draft, concurrency_token: createdBody.concurrency_token }, { procedureId, revision: "1" }),
       context,
     );
     assert.equal(saved.status, 200);
@@ -113,38 +113,38 @@ test("Decision Matrix Draft API persists ordered content, rejects stale saves, a
     assert.notEqual(savedBody.concurrency_token, createdBody.concurrency_token);
 
     const stale = await saveDecisionMatrixProcedureDraft(
-      requestFor("PUT", `https://example.test/api/admin/decision-matrix/procedures/${procedureId}/revisions/1`, { ...draft, concurrency_token: createdBody.concurrency_token }, { procedureId, revision: "1" }),
+      requestFor("PUT", `https://example.test/api/manage/decision-matrix/procedures/${procedureId}/revisions/1`, { ...draft, concurrency_token: createdBody.concurrency_token }, { procedureId, revision: "1" }),
       context,
     );
     assert.equal(stale.status, 409);
 
     const validDocument = async () => ({ health_status: "Valid" as const, observed_version: "3.0", observed_file_name: "SOP-OCC-CONTRACT.docx", observed_mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", reason: null });
     const review = await governDecisionMatrixProcedureRevision(
-      requestFor("POST", `https://example.test/api/admin/decision-matrix/procedures/${procedureId}/revisions/1/lifecycle`, { action: "submit_for_review", reason: "Ready for governance review." }, { procedureId, revision: "1" }),
+      requestFor("POST", `https://example.test/api/manage/decision-matrix/procedures/${procedureId}/revisions/1/lifecycle`, { action: "submit_for_review", reason: "Ready for governance review." }, { procedureId, revision: "1" }),
       context,
       validDocument,
     );
     assert.deepEqual(review.jsonBody, { procedure_id: procedureId, revision: 1, lifecycle_state: "Under review" });
     const approved = await governDecisionMatrixProcedureRevision(
-      requestFor("POST", `https://example.test/api/admin/decision-matrix/procedures/${procedureId}/revisions/1/lifecycle`, { action: "approve", reason: "Approved for immediate operational use." }, { procedureId, revision: "1" }),
+      requestFor("POST", `https://example.test/api/manage/decision-matrix/procedures/${procedureId}/revisions/1/lifecycle`, { action: "approve", reason: "Approved for immediate operational use." }, { procedureId, revision: "1" }),
       context,
       validDocument,
     );
     assert.deepEqual(approved.jsonBody, { procedure_id: procedureId, revision: 1, lifecycle_state: "Approved" });
 
     const cloned = await cloneDecisionMatrixProcedureDraft(
-      requestFor("POST", `https://example.test/api/admin/decision-matrix/procedures/${procedureId}/revisions`, { source_revision: 1 }, { procedureId }),
+      requestFor("POST", `https://example.test/api/manage/decision-matrix/procedures/${procedureId}/revisions`, { source_revision: 1 }, { procedureId }),
       context,
     );
     assert.equal(cloned.status, 201);
     const secondReview = await governDecisionMatrixProcedureRevision(
-      requestFor("POST", `https://example.test/api/admin/decision-matrix/procedures/${procedureId}/revisions/2/lifecycle`, { action: "submit_for_review", reason: "Updated revision is ready for review." }, { procedureId, revision: "2" }),
+      requestFor("POST", `https://example.test/api/manage/decision-matrix/procedures/${procedureId}/revisions/2/lifecycle`, { action: "submit_for_review", reason: "Updated revision is ready for review." }, { procedureId, revision: "2" }),
       context,
       validDocument,
     );
     assert.equal(secondReview.status, 200);
     const secondApproval = await governDecisionMatrixProcedureRevision(
-      requestFor("POST", `https://example.test/api/admin/decision-matrix/procedures/${procedureId}/revisions/2/lifecycle`, { action: "approve", reason: "Replacement approved." }, { procedureId, revision: "2" }),
+      requestFor("POST", `https://example.test/api/manage/decision-matrix/procedures/${procedureId}/revisions/2/lifecycle`, { action: "approve", reason: "Replacement approved." }, { procedureId, revision: "2" }),
       context,
       validDocument,
     );
@@ -161,7 +161,7 @@ test("Decision Matrix Draft API persists ordered content, rejects stale saves, a
     ]);
 
     const replacement = await createDecisionMatrixProcedureDraft(
-      requestFor("POST", "https://example.test/api/admin/decision-matrix/procedures", {
+      requestFor("POST", "https://example.test/api/manage/decision-matrix/procedures", {
         ...draft,
         procedure_id: replacementProcedureId,
         condition_key: `replacement-${randomUUID()}`,
@@ -173,21 +173,21 @@ test("Decision Matrix Draft API persists ordered content, rejects stale saves, a
       context,
     );
     assert.equal(replacement.status, 201);
-    assert.equal((await governDecisionMatrixProcedureRevision(requestFor("POST", `https://example.test/api/admin/decision-matrix/procedures/${replacementProcedureId}/revisions/1/lifecycle`, { action: "submit_for_review", reason: "Replacement is ready." }, { procedureId: replacementProcedureId, revision: "1" }), context, validDocument)).status, 200);
-    assert.equal((await governDecisionMatrixProcedureRevision(requestFor("POST", `https://example.test/api/admin/decision-matrix/procedures/${replacementProcedureId}/revisions/1/lifecycle`, { action: "approve", reason: "Replacement is approved." }, { procedureId: replacementProcedureId, revision: "1" }), context, validDocument)).status, 200);
+    assert.equal((await governDecisionMatrixProcedureRevision(requestFor("POST", `https://example.test/api/manage/decision-matrix/procedures/${replacementProcedureId}/revisions/1/lifecycle`, { action: "submit_for_review", reason: "Replacement is ready." }, { procedureId: replacementProcedureId, revision: "1" }), context, validDocument)).status, 200);
+    assert.equal((await governDecisionMatrixProcedureRevision(requestFor("POST", `https://example.test/api/manage/decision-matrix/procedures/${replacementProcedureId}/revisions/1/lifecycle`, { action: "approve", reason: "Replacement is approved." }, { procedureId: replacementProcedureId, revision: "1" }), context, validDocument)).status, 200);
     const retired = await governDecisionMatrixProcedureRevision(
-      requestFor("POST", `https://example.test/api/admin/decision-matrix/procedures/${procedureId}/revisions/2/lifecycle`, { action: "retire", reason: "Replacement is in effect.", replacement_procedure_id: replacementProcedureId, replacement_revision: 1 }, { procedureId, revision: "2" }),
+      requestFor("POST", `https://example.test/api/manage/decision-matrix/procedures/${procedureId}/revisions/2/lifecycle`, { action: "retire", reason: "Replacement is in effect.", replacement_procedure_id: replacementProcedureId, replacement_revision: 1 }, { procedureId, revision: "2" }),
       context,
       validDocument,
     );
     assert.deepEqual(retired.jsonBody, { procedure_id: procedureId, revision: 2, lifecycle_state: "Retired" });
     const withdrawn = await governDecisionMatrixProcedureRevision(
-      requestFor("POST", `https://example.test/api/admin/decision-matrix/procedures/${replacementProcedureId}/revisions/1/lifecycle`, { action: "withdraw", reason: "Guidance is unsafe.", confirm_withdrawal: true }, { procedureId: replacementProcedureId, revision: "1" }),
+      requestFor("POST", `https://example.test/api/manage/decision-matrix/procedures/${replacementProcedureId}/revisions/1/lifecycle`, { action: "withdraw", reason: "Guidance is unsafe.", confirm_withdrawal: true }, { procedureId: replacementProcedureId, revision: "1" }),
       context,
       validDocument,
     );
     assert.deepEqual(withdrawn.jsonBody, { procedure_id: replacementProcedureId, revision: 1, lifecycle_state: "Retired" });
-    assert.equal((await cloneDecisionMatrixProcedureDraft(requestFor("POST", `https://example.test/api/admin/decision-matrix/procedures/${replacementProcedureId}/revisions`, { source_revision: 1 }, { procedureId: replacementProcedureId }), context)).status, 201);
+    assert.equal((await cloneDecisionMatrixProcedureDraft(requestFor("POST", `https://example.test/api/manage/decision-matrix/procedures/${replacementProcedureId}/revisions`, { source_revision: 1 }, { procedureId: replacementProcedureId }), context)).status, 201);
   } finally {
     await contractPool.request().input("procedure_id", sql.NVarChar, procedureId).query("DELETE FROM Procedures WHERE procedure_id=@procedure_id").catch(() => undefined);
     await contractPool.request().input("procedure_id", sql.NVarChar, replacementProcedureId).query("DELETE FROM Procedures WHERE procedure_id=@procedure_id").catch(() => undefined);
