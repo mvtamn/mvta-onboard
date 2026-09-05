@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-05T15:16:40Z",
+  "generatedAt": "2026-09-05T15:23:46Z",
   "title": "Design System: MVTA OnBoard",
   "extensions": {
     "colorMeta": {
@@ -212,6 +212,150 @@
           "#9EB8CD",
           "#CDDFEC",
           "#F1F7FB"
+        ]
+      },
+      "tint-warning-bg": {
+        "role": "semantic-tint",
+        "displayName": "Warning Tint",
+        "canonical": "#FCEFD8",
+        "dark": "#3A2A15",
+        "tonalRamp": [
+          "#FCEFD8"
+        ]
+      },
+      "tint-warning-fg": {
+        "role": "semantic-tint",
+        "displayName": "Warning Ink",
+        "canonical": "#7A4A00",
+        "dark": "#F0B070",
+        "tonalRamp": [
+          "#7A4A00"
+        ]
+      },
+      "tint-danger-bg": {
+        "role": "semantic-tint",
+        "displayName": "Danger Tint",
+        "canonical": "#FBE0E0",
+        "dark": "#3A1F1F",
+        "tonalRamp": [
+          "#FBE0E0"
+        ]
+      },
+      "tint-danger-fg": {
+        "role": "semantic-tint",
+        "displayName": "Danger Ink",
+        "canonical": "#8A1F1F",
+        "dark": "#F0A0A0",
+        "tonalRamp": [
+          "#8A1F1F"
+        ]
+      },
+      "tint-accent-bg": {
+        "role": "semantic-tint",
+        "displayName": "Accent Tint",
+        "canonical": "#DCEAF8",
+        "dark": "#1A2A3A",
+        "tonalRamp": [
+          "#DCEAF8"
+        ]
+      },
+      "tint-accent-fg": {
+        "role": "semantic-tint",
+        "displayName": "Accent Ink",
+        "canonical": "#0B4C82",
+        "dark": "#8EC4F0",
+        "tonalRamp": [
+          "#0B4C82"
+        ]
+      },
+      "tint-success-bg": {
+        "role": "semantic-tint",
+        "displayName": "Success Tint",
+        "canonical": "#E3F0D4",
+        "dark": "#193B2C",
+        "tonalRamp": [
+          "#E3F0D4"
+        ]
+      },
+      "tint-success-fg": {
+        "role": "semantic-tint",
+        "displayName": "Success Ink",
+        "canonical": "#33530F",
+        "dark": "#8FD6AC",
+        "tonalRamp": [
+          "#33530F"
+        ]
+      },
+      "tint-muted-bg": {
+        "role": "semantic-tint",
+        "displayName": "Muted Tint",
+        "canonical": "#ECECEA",
+        "dark": "#243128",
+        "tonalRamp": [
+          "#ECECEA"
+        ]
+      },
+      "tint-muted-fg": {
+        "role": "semantic-tint",
+        "displayName": "Muted Ink",
+        "canonical": "#4F4F4F",
+        "dark": "#B0BAB3",
+        "tonalRamp": [
+          "#4F4F4F"
+        ]
+      },
+      "chip-evergreen-bg": {
+        "role": "semantic-tint",
+        "displayName": "Evergreen Chip",
+        "canonical": "#DCEDE6",
+        "dark": "#193B2C",
+        "tonalRamp": [
+          "#DCEDE6"
+        ]
+      },
+      "chip-evergreen-fg": {
+        "role": "semantic-tint",
+        "displayName": "Evergreen Chip Ink",
+        "canonical": "#00301F",
+        "dark": "#CDEEDD",
+        "tonalRamp": [
+          "#00301F"
+        ]
+      },
+      "highlight-bg": {
+        "role": "semantic-tint",
+        "displayName": "Highlight",
+        "canonical": "#FDF1E1",
+        "dark": "#3A2A15",
+        "tonalRamp": [
+          "#FDF1E1"
+        ]
+      },
+      "highlight-border": {
+        "role": "semantic-tint",
+        "displayName": "Highlight Border",
+        "canonical": "#FAAD60",
+        "dark": "#CC8A3D",
+        "tonalRamp": [
+          "#FAAD60"
+        ]
+      },
+      "live-dot": {
+        "role": "semantic-tint",
+        "displayName": "Live Dot",
+        "canonical": "#2FAE66",
+        "dark": "#2FAE66",
+        "tonalRamp": [
+          "#2FAE66"
+        ]
+      },
+      "datasource-border": {
+        "role": "semantic-tint",
+        "displayName": "Data-Source Border",
+        "canonical": "#D8E6DD",
+        "dark": "#25392F",
+        "tonalRamp": [
+          "#D8E6DD"
         ]
       }
     },
