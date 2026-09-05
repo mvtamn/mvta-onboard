@@ -344,6 +344,34 @@ Still to do, none of it DB work:
   assignment create` calls; the deployment identity cannot). The REST app's
   storage has only Blob Data Contributor - no Queue role - which the same
   what-if would add.
+
+INCIDENT 2026-09-05 01:09-01:28 UTC (REST API unreachable through Front
+Door, /api/health 504). Sequence: PR #148 merge -> push-to-main infra.yml
+ran stage 0 (re-applied network, private DNS, SQL, Key Vault deployments at
+01:09) and phase 1 (function app settings, restart at 01:14). From 01:10 the
+REST app's mssql connections to sql-mvta-dev failed (ECONNRESET, "Could not
+connect", "socket hang up", 15 s timeouts) while the database itself sat
+idle (CPU <10%, zero server-side failed connections) and DNS/TCP to the
+private endpoint were fine from the app's own environment - i.e. the app's
+connection pool was wedged, not the network. Every DB-bound request then
+held a connection for minutes; the Spare webhook (~200/2 min, chronic) and
+the pollers saturated the single B1 worker, so even the trivial health
+endpoint queued past Front Door's 30 s. Errors climbed 4 -> 4 -> 149 per
+5 min; nothing was self-healing. `az functionapp restart` on the REST app
+at 01:27:32 cleared it: health 200 in <1 s within seconds and stayed there.
+Lessons: (1) routine infra deploys restart the REST app and re-apply
+stage-0 network/DNS - expect a connection-reset window; (2) a wedged mssql
+pool does not recover on its own - restart the app rather than wait;
+(3) the workflow's post-infra smoke test failing with 504 is this, not a
+missing code deploy. Pre-existing and NOT caused by the deploy: ~4k Spare
+webhook 503s per 2 h all day ("No active on-demand operational zones"), and
+"The specified route conflicts with one or more built in routes" for the
+decisionMatrix*/expirationDefaults* functions on every host start.
+Dispatch app after PR #148: host indexes all four functions
+(acsEmailEvents, dispatchConfirmation, dispatchDetourCommunication,
+dispatchMessageCreated) and no listener failed to start after the 01:19
+restart; it still reports an unhealthy host health-check entry, consistent
+with the missing storage RBAC above.
 - DONE 2026-09-04: email sender provisioned. Email Communication Service
   `acs-email-mvta-onboard-dev` (data location United States) with an
   Azure-managed domain `93587da7-3b33-4e41-9473-e64bd57cb979.azurecomm.net`
