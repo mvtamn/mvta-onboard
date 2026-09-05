@@ -306,9 +306,16 @@ the `GtfsStopRoutes` table (091), communication delivery/snapshot columns
 DEPLOYED; every handler guards on the columns, so the deployed build is
 unaffected by the schema being ahead.
 
-Still to do once the code deploys, none of it DB work:
+PR #137 MERGED 2026-09-05 00:44 UTC (merge commit 72b6832, console v1.5.95).
+The push-to-main workflows all succeeded: Function Apps (REST + dispatch),
+Static Web Apps, infrastructure. The onboard console SWA serves 1.5.95.
+
+Still to do, none of it DB work:
 - Run the static GTFS sync once: `GtfsStopRoutes` is empty until it does, so
-  nearby-stop suggestions on the intake map show stops without routes.
+  nearby-stop suggestions on the intake map show stops without routes. The
+  timer fires daily at 09:00 UTC (gtfsStopsSync); to run it sooner, trigger it
+  from the portal (Functions > gtfsStopsSync > Test/Run) or POST
+  /admin/functions/gtfsStopsSync with the host master key.
 - DONE 2026-09-04: `servicebus.bicep` deployed twice - first for the queue
   `detour-communication-requested`, then with manageRoleAssignments=true
   (additionalReceiverPrincipalId empty, that Receiver pre-existed). The
@@ -318,6 +325,25 @@ Still to do once the code deploys, none of it DB work:
   `SERVICE_BUS_NAMESPACE=sb-mvta-onboard-dev.servicebus.windows.net` on the
   REST app, `ServiceBusConnection__fullyQualifiedNamespace` (same host) on
   the dispatch app.
+  CORRECTION 2026-09-05: those imperative settings (and ACS_ENDPOINT /
+  ACS_EMAIL_FROM on the dispatch app) were WIPED by the next push-to-main
+  infra deploy - infra.yml runs main-phase1.bicep and functionapp.bicep's
+  inline appSettings is the complete desired state. Fixed in the template:
+  the dispatch module now passes serviceBusNamespace, and acsEndpoint /
+  acsEmailFrom are template parameters set in phase1-dev.parameters.json.
+  events.ts also accepts ServiceBusConnection__fullyQualifiedNamespace (the
+  name the template declares) so REST publishes no longer depend on the
+  old SERVICE_BUS_NAMESPACE name.
+  ALSO FOUND: the dispatch identity has NO role on its own WebJobs storage
+  account (stmvtadispatchdevmvtajx4) - functionapp.bicep gates the storage
+  RBAC on manageRoleAssignments, which routine deploys leave false, and the
+  dispatch app was never provisioned with it. Every Service Bus listener on
+  the dispatch app failed to start with 403 AuthorizationPermissionMismatch.
+  Grant Storage Blob Data Owner + Storage Queue Data Contributor to
+  3ed1e6ac-eae2-4fc7-ae72-f28e2be6d235 on that account (two `az role
+  assignment create` calls; the deployment identity cannot). The REST app's
+  storage has only Blob Data Contributor - no Queue role - which the same
+  what-if would add.
 - DONE 2026-09-04: email sender provisioned. Email Communication Service
   `acs-email-mvta-onboard-dev` (data location United States) with an
   Azure-managed domain `93587da7-3b33-4e41-9473-e64bd57cb979.azurecomm.net`
