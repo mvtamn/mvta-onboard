@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { fetchPulloutReports, mapPulloutReport, type AvailPulloutReport } from "./availPullout";
+import {
+  fetchPulloutReports,
+  mapPulloutReport,
+  unknownPulloutStatuses,
+  type AvailPulloutReport,
+} from "./availPullout";
 
 // Fixtures shaped like the owner's sample Avail360 Pullout Reports payload.
 const LATE_RELIEF: AvailPulloutReport = {
@@ -155,4 +160,50 @@ test("an unparseable scheduled pullout does not poison the service date", () => 
   const mapped = mapPulloutReport({ ...LATE_RELIEF, Pullout_Scheduled: "not-a-date" });
   assert.strictEqual(mapped!.pullout_scheduled, null);
   assert.strictEqual(mapped!.service_date, "20260223");
+});
+
+// --- unknown status detection ----------------------------------------------
+// The compliance rule's status allowlist raises nothing for a value it does not
+// recognise, and does not error doing it. This is what makes that visible.
+
+function reportWithStatus(status: string | null): AvailPulloutReport {
+  return { ...LATE_RELIEF, PulloutStatus: status };
+}
+
+test("reports a status nothing accounts for", () => {
+  // The realistic failure: the vendor document writes 'Missed Check-in' and the
+  // feed sends its own spelling. The compliance IN-list misses it in silence.
+  assert.deepEqual(unknownPulloutStatuses([reportWithStatus("Missed Checkin")]), ["Missed Checkin"]);
+});
+
+test("stays quiet for every status the feed is known to send", () => {
+  const known = [
+    "Missed Pullout", "Missed Login", "Expired Pullout", "Late Pullout",
+    "On Time Pullout", "On Route No Pullout", "Late Relief",
+    "On Time Pullin", "Late Pullin", "Missed Pullin", "Waiting for Pullin",
+    "Missing Operator Assignment", "Missed Check-in", "Tripper",
+  ].map(reportWithStatus);
+  assert.deepEqual(unknownPulloutStatuses(known), []);
+});
+
+test("a case difference is not a finding", () => {
+  // The rule matches in SQL, whose collation is case-insensitive, so a value
+  // differing only in case still works. Reporting it would be noise.
+  assert.deepEqual(unknownPulloutStatuses([reportWithStatus("MISSED LOGIN")]), []);
+});
+
+test("a blank status is Avail still resolving a run, not an unknown one", () => {
+  assert.deepEqual(unknownPulloutStatuses([reportWithStatus(""), reportWithStatus(null)]), []);
+});
+
+test("reports each unrecognised value once, however many rows carry it", () => {
+  // 145 reports arrive every five minutes; one line per delivery, not per row.
+  const reports = [
+    reportWithStatus("Pullout Deferred"),
+    reportWithStatus("Pullout Deferred"),
+    reportWithStatus("  Pullout Deferred  "),
+    reportWithStatus("Yard Hold"),
+    reportWithStatus("Late Pullin"),
+  ];
+  assert.deepEqual(unknownPulloutStatuses(reports), ["Pullout Deferred", "Yard Hold"]);
 });
