@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.105] - 2026-09-05
+
+- **Stop listing garage-departure statuses MVTA's configuration cannot produce.** Avail confirmed that MVTA has no operator scheduling package, so it never ingests the data that raises `Missing Operator Assignment`, `Missing Vehicle Assignment`, `Invalid Vehicle Assignment`, `Duplicate Vehicle Assignment` or `Missed Check-in`. They are not rare here, they are unreachable, and since none has ever reached the feed there is no spelling to match on - Avail's guidance was to use the spelling the feed sends. They were listed on the reasoning that an allowlist which omits a status fails by going silent; that reasoning holds, but five strings that can never match read as coverage while providing none. They are removed from the compliance rule and from the poll's known-status set, so if MVTA later adopts a scheduling package and they begin arriving, the poll reports them with their real spellings instead of passing over them.
+
 ## [1.5.104] - 2026-09-05
 
 - **Detour Intake redesigned.** The form is now five numbered section cards (Situation, Map, Affected service, Instructions and communications, Evidence), each with a status pill, beside a sticky readiness rail that shows progress, links to every missing required field, and holds Submit. Every field shares one anatomy - label, required mark, control, always-present helper line - so validation never shifts the layout, and error styling appears only after a submit attempt. The operating window is one fieldset with a segmented status control; service impact is a two-card choice; route segments are a small table; affected stops and required audiences are removable tokens (each audience is one exact string, which is what communication status matches on); required channels are toggle chips over a known set with an Other escape; supporting files use a drop zone with per-file tiles. No API or data changes.

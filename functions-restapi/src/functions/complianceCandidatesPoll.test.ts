@@ -56,11 +56,11 @@ test("matches the statuses that say a departure was missed", () => {
   }
 });
 
-test("matches the Red conditions that stop a departure happening", () => {
-  // None has appeared in 22 days - two are suppressed by their own parameters
-  // until an administrator enables them. They are listed before they are seen
-  // because an allowlist that omits a status fails by going silent, which is
-  // how this rule once ignored 408 undeparted runs.
+test("does not match a status MVTA's configuration cannot produce", () => {
+  // Avail confirmed MVTA has no operator scheduling package, so it never
+  // ingests the data that raises these five. Listing them would read as
+  // coverage while providing none - none has ever reached the feed, so there is
+  // no spelling to match on either.
   const predicate = garageDepartureCandidatePredicate();
   for (const status of [
     "Missing Operator Assignment",
@@ -69,16 +69,16 @@ test("matches the Red conditions that stop a departure happening", () => {
     "Duplicate Vehicle Assignment",
     "Missed Check-in",
   ]) {
-    assert.match(predicate, new RegExp(`'${status}'`), `${status} must be a departure blocker`);
+    assert.doesNotMatch(predicate, new RegExp(status), `${status} is unreachable at MVTA`);
   }
 });
 
-test("still lets the timestamps decide for a status that outlives the pullout", () => {
-  // Invalid Vehicle Assignment "holds precedence even after pullout", so it can
-  // sit on a run that departed perfectly well. Listing it must not by itself
-  // raise anything - the departure evidence is what qualifies a row.
+test("lets the timestamps decide, never the status alone", () => {
+  // Expired Pullout is sticky: Avail confirmed it marks a failure to leave ON
+  // SCHEDULE, and 232 of 510 such rows carry a real departure. So the status
+  // cannot tell a late departure from no departure - only the timestamps can.
   const predicate = garageDepartureCandidatePredicate();
-  assert.match(predicate, /'Invalid Vehicle Assignment'/);
+  assert.match(predicate, /'Expired Pullout'/);
   assert.match(predicate, /pullout_actual IS NULL/);
   assert.match(
     predicate,

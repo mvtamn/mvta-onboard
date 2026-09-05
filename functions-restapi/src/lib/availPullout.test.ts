@@ -171,9 +171,21 @@ function reportWithStatus(status: string | null): AvailPulloutReport {
 }
 
 test("reports a status nothing accounts for", () => {
-  // The realistic failure: the vendor document writes 'Missed Check-in' and the
-  // feed sends its own spelling. The compliance IN-list misses it in silence.
-  assert.deepEqual(unknownPulloutStatuses([reportWithStatus("Missed Checkin")]), ["Missed Checkin"]);
+  assert.deepEqual(unknownPulloutStatuses([reportWithStatus("Pullout Deferred")]), ["Pullout Deferred"]);
+});
+
+test("reports a status MVTA's configuration cannot currently produce", () => {
+  // The event worth hearing about: an unreachable status becoming reachable
+  // because MVTA adopted an operator scheduling package. These five are absent
+  // from the known set precisely so that arrival is announced, with whatever
+  // spelling the feed actually uses, rather than assumed.
+  assert.deepEqual(
+    unknownPulloutStatuses([
+      reportWithStatus("Missing Operator Assignment"),
+      reportWithStatus("Missed Check-in"),
+    ]),
+    ["Missed Check-in", "Missing Operator Assignment"],
+  );
 });
 
 test("stays quiet for every status the feed is known to send", () => {
@@ -181,7 +193,7 @@ test("stays quiet for every status the feed is known to send", () => {
     "Missed Pullout", "Missed Login", "Expired Pullout", "Late Pullout",
     "On Time Pullout", "On Route No Pullout", "Late Relief",
     "On Time Pullin", "Late Pullin", "Missed Pullin", "Waiting for Pullin",
-    "Missing Operator Assignment", "Missed Check-in", "Tripper",
+    "Tripper", "Waiting for Pullout", "Late Login",
   ].map(reportWithStatus);
   assert.deepEqual(unknownPulloutStatuses(known), []);
 });
