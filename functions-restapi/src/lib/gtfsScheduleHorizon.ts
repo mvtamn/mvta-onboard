@@ -17,10 +17,39 @@
 // The coverage rule below is deliberately the same one activeServiceIdsToday
 // applies in SQL - a day is covered when a GtfsCalendar row runs on that
 // weekday within its date range and is not removed by an exception_type 2
-// override, or when a GtfsCalendarDates row adds it with exception_type 1. If
-// the two ever disagree, this reports coverage the detector does not have.
+// override, or when a GtfsCalendarDates row adds it with exception_type 1.
+// Both live in this file so they cannot drift apart: activeServiceIdsToday
+// is the SQL form (used by the missed-trip detector and the trip-start log
+// materializer), serviceDateIsCovered the pure form (used by the coverage
+// check and the rotation pools).
 import type { GtfsCalendarDateRow, GtfsCalendarRow } from "./gtfsStatic";
+import { sql } from "./db";
 import { agencyServiceDate } from "./missedTripTime";
+
+// The service_ids that run on one agency service date: GtfsCalendar rows
+// whose weekday flag is set and whose date range covers the day, minus
+// exception_type 2 removals, plus exception_type 1 additions. `dow` is the
+// lowercase weekday name agencyServiceDate() returns, interpolated as a
+// column name - it is never user input.
+export async function activeServiceIdsToday(pool: sql.ConnectionPool, serviceDate: string, dow: string): Promise<string[]> {
+  const req = pool.request();
+  req.input("service_date", sql.Char(8), serviceDate);
+  const result = await req.query<{ service_id: string }>(`
+    SELECT c.service_id
+    FROM GtfsCalendar c
+    WHERE c.${dow} = 1
+      AND @service_date BETWEEN c.start_date AND c.end_date
+      AND NOT EXISTS (
+        SELECT 1 FROM GtfsCalendarDates cd
+        WHERE cd.service_id = c.service_id AND cd.service_date = @service_date AND cd.exception_type = 2
+      )
+    UNION
+    SELECT cd.service_id
+    FROM GtfsCalendarDates cd
+    WHERE cd.service_date = @service_date AND cd.exception_type = 1
+  `);
+  return result.recordset.map((r) => r.service_id);
+}
 
 const DOW: readonly (keyof GtfsCalendarRow)[] = [
   "sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday",
@@ -40,7 +69,7 @@ export interface ScheduleCoverage {
   last_covered_date: string | null;
 }
 
-function serviceDateOffset(serviceDate: string, days: number): { date: string; dow: string } {
+export function serviceDateOffset(serviceDate: string, days: number): { date: string; dow: string } {
   const year = Number(serviceDate.slice(0, 4));
   const month = Number(serviceDate.slice(4, 6));
   const day = Number(serviceDate.slice(6, 8));

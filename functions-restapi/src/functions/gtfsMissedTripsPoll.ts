@@ -41,6 +41,7 @@ import { sql } from "../lib/db";
 import { readTripUpdateFeed } from "../lib/gtfsTripUpdateIngest";
 import { mapCanceledTrip, type CanceledTrip } from "../lib/gtfsTripUpdates";
 import { agencyServiceDate, serviceDateAndGtfsSecondsToUtc } from "../lib/missedTripTime";
+import { activeServiceIdsToday } from "../lib/gtfsScheduleHorizon";
 import { underwayEvidenceCoverage } from "../lib/kpiTrust";
 import { loadKpiFeedHealthRecords } from "../lib/kpiTrustStore";
 
@@ -176,26 +177,6 @@ interface ScheduledTripRow {
   route_id: string;
   first_departure_seconds: number;
   first_underway_at: Date | null;
-}
-
-async function activeServiceIdsToday(pool: sql.ConnectionPool, serviceDate: string, dow: string): Promise<string[]> {
-  const req = pool.request();
-  req.input("service_date", sql.Char(8), serviceDate);
-  const result = await req.query<{ service_id: string }>(`
-    SELECT c.service_id
-    FROM GtfsCalendar c
-    WHERE c.${dow} = 1
-      AND @service_date BETWEEN c.start_date AND c.end_date
-      AND NOT EXISTS (
-        SELECT 1 FROM GtfsCalendarDates cd
-        WHERE cd.service_id = c.service_id AND cd.service_date = @service_date AND cd.exception_type = 2
-      )
-    UNION
-    SELECT cd.service_id
-    FROM GtfsCalendarDates cd
-    WHERE cd.service_date = @service_date AND cd.exception_type = 1
-  `);
-  return result.recordset.map((r) => r.service_id);
 }
 
 // dayOffset 0 = "today" (catches trips whose 30-min grace deadline falls
