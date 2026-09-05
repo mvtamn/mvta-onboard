@@ -11,6 +11,7 @@ param planSku string = 'B1'
 param planTier string = 'Basic'
 param includeSpareApiKey bool = false
 param spareMissedTripsEnabled bool = false
+param gtfsSilentNoShowEnabled bool = false
 param spareMissedTripServiceIds string = ''
 param spareContractorFaultValues string = ''
 param complianceReportsStorageAccountName string = ''
@@ -146,6 +147,15 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'AVAIL_OTP_DAILY_URL', value: availOtpDailyUrl }
         { name: 'AVAIL_MISSED_TRIPS_URL', value: availMissedTripsUrl }
         { name: 'AVAIL_PULLOUT_URL', value: availPulloutUrl }
+        // Declared for the same reason as WEBSITE_RUN_FROM_PACKAGE above: a
+        // hand-set Portal value survives only until the next Bicep redeploy,
+        // because this list is the COMPLETE desired state. This flag gates
+        // schedule-based silent-no-show detection (gtfsMissedTripsPoll), and
+        // when it is dropped the detector falls back to explicit
+        // cancellations only - the console reports "Cancellation-only", but
+        // nothing else announces that the schedule-absence half has stopped.
+        // That is precisely what happened after it was enabled by hand.
+        { name: 'GTFS_SILENT_NO_SHOW_ENABLED', value: string(gtfsSilentNoShowEnabled) }
         // Key Vault reference, not a raw value - fixes the same class of
         // "wiped on redeploy" bug for the connection string specifically.
         { name: 'SQL_CONNECTION_STRING', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/sql-connection-string/)' }
