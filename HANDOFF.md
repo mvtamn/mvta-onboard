@@ -375,6 +375,26 @@ dispatchMessageCreated) and no listener failed to start after the 01:19
 restart; the unhealthy host health-check entry was azure.functions.webjobs.storage
 ("Unable to access AzureWebJobsStorage") and cleared once the storage RBAC
 above was granted and the app restarted at 02:04 UTC.
+INCIDENT 2026-09-05 ~15:30-17:30 UTC (REST API unreachable, /api/health 504,
+restart did NOT clear it). Not the 01:09 pattern. The B1 plan's single core
+climbed 33% -> 95% CPU between 09:00 and 16:00 with memory at 80-89%, and every
+poller's duration grew in step (availAvlPoll 1.6 s -> 34 s). The load was the
+Spare webhook receiver: ~5,000 deliveries/hour through the service day, nine in
+ten vehicleLocation, and since an operational zone became active each one ran a
+zones query plus a MERGE. Deliveries queued for minutes each on the shared
+ten-connection pool, hundreds sat in flight, and the worker pinned. The 16:08
+infra restart and a manual restart at 16:15 each bought minutes before the
+flood re-saturated it. Yesterday carried the same volume; the difference is
+active zones turning cheap 503s into database work. Fix: PR "Spare webhook
+receiver intake gate" (v1.5.110) - bounded in-flight work, per-delivery time
+budget, cool-down 503s, vehicleLocation coalescing, cached zones. Lessons:
+(4) a restart that does not stick means load, not a wedge - read plan CPU and
+AppRequests by Name before restarting again; (5) any receiver that does
+database work per delivery needs a bound below the pool size; (6) unsubscribe
+vehicleLocation at Spare if the receiver ever floods again - it is supporting
+context only. Also found: the dev SQL server has public network access enabled
+with a 0.0.0.0-255.255.255.255 firewall rule ("PowerAutomate"), contrary to
+lesson 7 above.
 - DONE 2026-09-04: email sender provisioned. Email Communication Service
   `acs-email-mvta-onboard-dev` (data location United States) with an
   Azure-managed domain `93587da7-3b33-4e41-9473-e64bd57cb979.azurecomm.net`
