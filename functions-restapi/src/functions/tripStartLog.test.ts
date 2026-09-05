@@ -20,6 +20,7 @@ const base = {
   actual_start_source: null,
   start_delay_seconds: null,
   start_status: null,
+  predicted_start_at: null,
   materialized_at: new Date("2026-09-07T09:30:00Z"),
   updated_at: new Date("2026-09-07T09:30:00Z"),
   observation: null,
