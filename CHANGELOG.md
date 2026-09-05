@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.102] - 2026-09-05
+
+- **Detour Intake redesigned.** The form is now five numbered section cards (Situation, Map, Affected service, Instructions and communications, Evidence), each with a status pill, beside a sticky readiness rail that shows progress, links to every missing required field, and holds Submit. Every field shares one anatomy - label, required mark, control, always-present helper line - so validation never shifts the layout, and error styling appears only after a submit attempt. The operating window is one fieldset with a segmented status control; service impact is a two-card choice; route segments are a small table; affected stops and required audiences are removable tokens (each audience is one exact string, which is what communication status matches on); required channels are toggle chips over a known set with an Other escape; supporting files use a drop zone with per-file tiles. No API or data changes.
+
 ## [1.5.101] - 2026-09-05
 
 - **Say so when Avail sends a pullout status nothing accounts for.** The garage-departure rule matches an allowlist of statuses, and a value missing from that list raises nothing without erroring - which is how it once ignored 408 runs that never left the garage while matching a status the feed has never sent. The Pullout poll now warns when a delivery contains a `PulloutStatus` this repo does not recognise, naming the values once per run. That covers a status Avail adds later, and the likelier case: five statuses were added from the vendor's document without ever being observed, and that document already spells one concept differently from the feed. Comparison ignores case, since the rule matches in SQL where case does not matter, and a blank status is treated as a run still being resolved rather than an unknown one.
