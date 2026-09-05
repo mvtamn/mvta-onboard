@@ -56,6 +56,46 @@ test("matches the statuses that say a departure was missed", () => {
   }
 });
 
+test("matches the Red conditions that stop a departure happening", () => {
+  // None has appeared in 22 days - two are suppressed by their own parameters
+  // until an administrator enables them. They are listed before they are seen
+  // because an allowlist that omits a status fails by going silent, which is
+  // how this rule once ignored 408 undeparted runs.
+  const predicate = garageDepartureCandidatePredicate();
+  for (const status of [
+    "Missing Operator Assignment",
+    "Missing Vehicle Assignment",
+    "Invalid Vehicle Assignment",
+    "Duplicate Vehicle Assignment",
+    "Missed Check-in",
+  ]) {
+    assert.match(predicate, new RegExp(`'${status}'`), `${status} must be a departure blocker`);
+  }
+});
+
+test("still lets the timestamps decide for a status that outlives the pullout", () => {
+  // Invalid Vehicle Assignment "holds precedence even after pullout", so it can
+  // sit on a run that departed perfectly well. Listing it must not by itself
+  // raise anything - the departure evidence is what qualifies a row.
+  const predicate = garageDepartureCandidatePredicate();
+  assert.match(predicate, /'Invalid Vehicle Assignment'/);
+  assert.match(predicate, /pullout_actual IS NULL/);
+  assert.match(
+    predicate,
+    /DATEDIFF\(SECOND, d\.pullout_scheduled, d\.pullout_actual\) > @variance_seconds/,
+  );
+});
+
+test("applies the same guards to every listed status", () => {
+  // The Red conditions are added to the list, not to a separate branch, so the
+  // settled-day and scheduled-pullout guards cover them too. A predicate that
+  // grew a second OR arm would let an unsettled row through.
+  const predicate = garageDepartureCandidatePredicate();
+  assert.equal(predicate.match(/pullout_status IN \(/g)?.length, 1, "one status list");
+  assert.equal(predicate.match(/service_date < @settled_before/g)?.length, 1, "one settled-day guard");
+  assert.equal(predicate.match(/pullout_scheduled IS NOT NULL/g)?.length, 1, "one schedule guard");
+});
+
 test("does not match a status the feed has never emitted", () => {
   // 'Late Relief' headed the list and appears in no row of 22 days of data. It
   // came from the one sample payload the fixtures were built from.

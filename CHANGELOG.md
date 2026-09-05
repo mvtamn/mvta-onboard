@@ -5,9 +5,13 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.98] - 2026-09-05
+## [1.5.99] - 2026-09-05
 
 - **Dispatch Log, step 2: the console module shell.** A new Dispatch Log tab under Service Operations (`/service-operations/dispatch-log`, staff roles plus Compliance) reads `GET /trip-start-log` for a chosen service date and refreshes on the fixed-route cadence. The shell is everything the three planned views share: a query bar (search, route, start status, All trips ⇄ Today's rotation, Clear only while a filter is set), a summary strip computed over the filtered rows (On time, Left late ≤5, Late over 5, Missed, No actual, Canceled, Start OTP, Awaiting initials - withheld until the day's log actually exists), a Grid / Watch / Timeline switcher, one shared selection, and a persistent inspector below the view with the verify affordance present but disabled until verification recording lands. Until the dedicated views are built every mode shows the same interim row list, so a trip can be selected from any of them. Real empty states for not connected (migration 094 missing), no log for the date, a failed request, and a filter that matches nothing. No API changes.
+
+## [1.5.98] - 2026-09-05
+
+- **Catch the Red conditions that stop a garage departure happening at all.** The `GARAGE_DEPARTURE` rule matched only the four statuses describing how a departure ended. Avail's table documents five more that prevent one: `Missing Operator Assignment`, `Missing Vehicle Assignment`, `Invalid Vehicle Assignment`, `Duplicate Vehicle Assignment` and `Missed Check-in`. None has appeared in 22 days - the first two are suppressed by their own parameters until an administrator enables them, and the rest are rare exceptions - so this changes nothing today. It is added because an allowlist that omits a status fails by going silent, which is how the rule previously ignored 408 runs that never left the garage while looking for a status the feed has never sent. The existing guards apply unchanged: the service day must be over, a pullout must have been scheduled, and the timestamps must show the run never departed or departed beyond the variance. That last point matters for `Invalid Vehicle Assignment`, which the vendor says "holds precedence even after pullout" and so can sit on a run that departed perfectly well.
 
 ## [1.5.97] - 2026-09-05
 
