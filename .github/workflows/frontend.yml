@@ -23,7 +23,14 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          # 22, not the 20 the build job uses: the test toolchain needs it.
+          # jsdom 30 declares `node ^22.22.2 || ^24.15.0 || >=26`, and the
+          # undici it pulls in needs >=22.19.0 for
+          # worker_threads.markAsUncloneable. npm ci does not enforce engines,
+          # so on Node 20 this installs happily and then every vitest worker
+          # dies loading jsdom. Building does not need it - vite is fine on 20 -
+          # so only this job moves.
+          node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
