@@ -137,49 +137,25 @@ const DEPARTURE_OUTCOME_STATUSES = [
   "Missed Login",
   "Expired Pullout",
   "Late Pullout",
-  // Red conditions that stop a departure happening at all. None has appeared in
-  // 22 days: the first two are suppressed by their own parameters unless an
-  // administrator enables them, and the rest are rare exceptions. They are
-  // listed anyway, because an allowlist that omits them fails by going SILENT -
-  // the same way this rule ignored 408 undeparted runs while looking for a
-  // status the feed has never sent. Adding them costs nothing today and closes
-  // the hole before somebody flips a parameter.
+  // Avail's table documents five more Red conditions that stop a departure
+  // happening - Missing Operator Assignment (2), Missing Vehicle Assignment (3),
+  // Invalid Vehicle Assignment (4), Duplicate Vehicle Assignment (5) and Missed
+  // Check-in (7). None is listed, and their absence is deliberate.
   //
-  // Each is safe under the guards below, for its own reason in the vendor's
-  // table:
+  // Avail confirmed on 2026-09-05 that MVTA has no operator scheduling package,
+  // so the vendor never ingests the data that raises any of them. They are not
+  // rare here, they are unreachable. Avail's guidance on which spelling to use
+  // was "use the spelling from the feed", and since none has ever reached the
+  // feed there is no spelling to match on.
   //
-  //   Missing Operator Assignment (2) and Missing Vehicle Assignment (3) take
-  //   precedence "until the pullout has expired", so a settled row still
-  //   carrying one is a run that had no operator or no vehicle and did not go.
-  //
-  //   Duplicate Vehicle Assignment (5) is cleared once "the vehicle has left the
-  //   yard, is active on route, or the pullout has expired", and Missed Check-in
-  //   (7) is "no longer displayed after an operator logs on, the vehicle pulls
-  //   out or the vehicle is on route". Either one surviving to the end of the
-  //   day means the vehicle never left.
-  //
-  //   Invalid Vehicle Assignment (4) is the exception: it "holds precedence even
-  //   after pullout", so it can sit on a run that departed perfectly well. That
-  //   is exactly why the timestamps, not the status, decide - a clean departure
-  //   under this status raises nothing.
-  //
-  // Missed Check-in (7) cannot fire at all today, and that is a data gap rather
-  // than a spelling one: it is defined against the SCHEDULED check-in time, and
-  // no source currently feeds operators' scheduled check-in times into OnBoard.
-  // It stays listed so the rule is already correct if that dataset arrives -
-  // but do not read its absence as evidence the list works.
-  //
-  // The spellings come from the vendor table and are unverified against the
-  // feed, since none has ever been observed. A mismatch here fails silently, so
-  // if one of these conditions is ever known to have occurred and no occurrence
-  // appeared, check the string before anything else. unknownPulloutStatuses in
-  // availPullout.ts now warns when the feed sends a value nothing accounts for,
-  // which is the symptom that used to be invisible.
-  "Missing Operator Assignment",
-  "Missing Vehicle Assignment",
-  "Invalid Vehicle Assignment",
-  "Duplicate Vehicle Assignment",
-  "Missed Check-in",
+  // They were briefly listed on the reasoning that an allowlist which omits a
+  // status fails by going silent. That reasoning holds - it is how this rule
+  // once ignored 408 undeparted runs - but listing five strings that can never
+  // match was the wrong remedy, because it reads as coverage while providing
+  // none. unknownPulloutStatuses in availPullout.ts is the right one: these
+  // statuses are absent from its known set too, so if MVTA ever adopts an
+  // operator scheduling package and they start arriving, the poll names them,
+  // with their real spellings, and they can be added on evidence.
 ] as const;
 
 // A garage departure is worth reviewing when a run whose departure has been

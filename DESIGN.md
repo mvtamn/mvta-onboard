@@ -16,6 +16,24 @@ colors:
   danger: "#8A1F1F"
   success: "#1F7A4C"
   information: "#0B4C82"
+  # Semantic tints: the pill / token / highlight pairs from styles.css. Light
+  # values are canonical here; dark-theme values are in the Colors prose.
+  tint-warning-bg: "#FCEFD8"
+  tint-warning-fg: "#7A4A00"
+  tint-danger-bg: "#FBE0E0"
+  tint-danger-fg: "#8A1F1F"
+  tint-accent-bg: "#DCEAF8"
+  tint-accent-fg: "#0B4C82"
+  tint-success-bg: "#E3F0D4"
+  tint-success-fg: "#33530F"
+  tint-muted-bg: "#ECECEA"
+  tint-muted-fg: "#4F4F4F"
+  chip-evergreen-bg: "#DCEDE6"
+  chip-evergreen-fg: "#00301F"
+  highlight-bg: "#FDF1E1"
+  highlight-border: "#FAAD60"
+  live-dot: "#2FAE66"
+  datasource-border: "#D8E6DD"
 typography:
   # The console ramp, as shipped in onboard-console/src/styles.css. Steps
   # are close together on purpose: operational density, hierarchy carried by
@@ -191,7 +209,25 @@ The palette combines civic evergreen with warm paper-like neutrals and a tightly
 - **Faint Ink** (#888888): breadcrumbs, metadata, and low-priority context.
 - **Working Border** (#DDD): ordinary separation; lighter and stronger neighboring border values may clarify density and state.
 
+### Semantic Tints
+
+Status pills, removable tokens, count chips, and highlighted rows use a background + foreground pair per role rather than a saturated fill. Each pair keeps AA contrast in both themes; the console swaps them under `[data-theme="dark"]`, so components reference the token, never the hex.
+
+| Role | Light bg / fg | Dark bg / fg | Used for |
+|---|---|---|---|
+| **Warning** | #FCEFD8 / #7A4A00 | #3A2A15 / #F0B070 | Monitor status, "n required left", re-review and conflict notes, likely-duplicate warnings |
+| **Danger** | #FBE0E0 / #8A1F1F | #3A1F1F / #F0A0A0 | Failed, expired-critical, destructive confirmations |
+| **Accent** | #DCEAF8 / #0B4C82 | #1A2A3A / #8EC4F0 | Upcoming status, informational counts |
+| **Success** | #E3F0D4 / #33530F | #193B2C / #8FD6AC | Active status, Complete section pills, delivered communications |
+| **Muted** | #ECECEA / #4F4F4F | #243128 / #B0BAB3 | Recently finished, Expired, Optional, decided records |
+| **Evergreen chip** | #DCEDE6 / #00301F | #193B2C / #CDEEDD | Removable tokens (audiences, stops), queue counts, step numbers |
+| **Highlight** | #FDF1E1 bg, #FAAD60 border | #3A2A15 / #CC8A3D | A row or card that needs the reader's attention now |
+
+Two singletons ride with them: **Live Dot** (#2FAE66) for the live-data indicator, and **Data-Source Border** (#D8E6DD) for feed-health cards.
+
 ### Named Rules
+
+**The Tint, Not Fill Rule.** A semantic state on a chip, pill, or row is shown as its tint pair. The saturated tertiary colors (Operational Red, Success Green, Information Blue) are for text, icons, borders, and focus - not for filling a badge.
 
 **The Signal, Not Decoration Rule.** Saturated orange, red, blue, and success green communicate a real state or action. They are not used to make an otherwise quiet screen more playful.
 

@@ -151,21 +151,27 @@ export function mapPulloutReport(
 // arriving here that nobody has accounted for is the first symptom, and without
 // this it is invisible until someone queries the table by hand.
 //
-// The first twenty are Avail's documented statuses, in their precedence order.
-// The four pull-in values after them are not in that document at all, and are
-// the reason it cannot be treated as complete: they are the largest group in
-// the feed. That gap is also why the spellings here are worth distrusting - the
-// document writes "Pull In At Risk" for a concept the feed sends as "Pullin",
-// so agreement between the two is not something to assume.
+// These are Avail's documented statuses in precedence order, minus five, plus
+// four the document omits.
+//
+// Left out on purpose: Missing Operator Assignment (2), Missing Vehicle
+// Assignment (3), Invalid Vehicle Assignment (4), Duplicate Vehicle Assignment
+// (5) and Missed Check-in (7). Avail confirmed on 2026-09-05 that MVTA has no
+// operator scheduling package, so it never ingests the data that raises them.
+// Calling them "known" would be the worse mistake of the two available: it
+// would keep this quiet for the one event worth hearing about, an unreachable
+// status becoming reachable because MVTA adopted a scheduling package. Absent
+// from this set, that arrival is reported, with the spelling the feed actually
+// uses.
+//
+// Added because the document omits them: the four pull-in values, the largest
+// group in the feed. Their absence is why the document cannot be treated as a
+// complete reference, and why the spellings here are worth distrusting - it
+// writes "Pull In At Risk" for a concept the feed sends as "Pullin".
 const KNOWN_PULLOUT_STATUSES = new Set(
   [
     "Tripper",
-    "Missing Operator Assignment",
-    "Missing Vehicle Assignment",
-    "Invalid Vehicle Assignment",
-    "Duplicate Vehicle Assignment",
     "Waiting for Check-in",
-    "Missed Check-in",
     "Late Check-in",
     "Waiting for Login",
     "Missed Login",
@@ -179,8 +185,8 @@ const KNOWN_PULLOUT_STATUSES = new Set(
     "On Time Relief",
     "Late Relief",
     "Pull In At Risk",
-    // Observed in the feed, absent from the document. Pull-in is the return
-    // leg, so none of these is departure evidence.
+    // Absent from the document. Pull-in is the return leg, so none of these is
+    // departure evidence.
     "On Time Pullin",
     "Late Pullin",
     "Missed Pullin",
