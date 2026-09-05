@@ -385,9 +385,14 @@ above was granted and the app restarted at 02:04 UTC.
   holds Contributor on acs-mvta-onboard-dev (ACS has no data-plane RBAC role;
   acs.ts authenticates with DefaultAzureCredential). Email delivery is fully
   provisioned in dev; it activates when the PR's dispatch code deploys.
-- REST app: `TEAMS_DETOUR_WEBHOOK_URL` from Key Vault secret
-  `teams-detour-webhook-url` (declared in functionapp.bicep beside the event
-  webhook).
+- DEFERRED BY OWNER (2026-09-05): Teams delivery for detour communications.
+  The owner plans to implement it last. The app setting
+  `TEAMS_DETOUR_WEBHOOK_URL` is already declared as a Key Vault reference to
+  `teams-detour-webhook-url`; until that secret exists the code treats the
+  unresolved reference as not configured (Post to Teams reads "delivery not
+  available", manual Mark published still works). To turn it on: create the
+  secret with the channel's incoming-webhook URL and restart the REST app.
+  Do not chase this as an open defect.
 - Event Grid subscription on the ACS resource for
   `Microsoft.Communication.EmailDeliveryReportReceived` events, endpoint
   `https://<dispatch app>/api/acs-email-events?code=<function key>`. Until it
