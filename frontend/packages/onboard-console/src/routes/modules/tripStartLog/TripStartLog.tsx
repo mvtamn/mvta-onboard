@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ApiError, type TripStartLogDiagnostics, type TripStartLogTrip } from "@mvta/shared";
+import { ApiError, type TripStartLogDiagnostics, type TripStartLogTrip, type TripStartVerificationAction } from "@mvta/shared";
 import { api } from "../../../config.js";
+import { useAuth } from "../../../auth/AuthContext.js";
+import { useAppDialog } from "../../../components/AppDialog.js";
 import { formatRefreshCountdown, useFixedRouteRefresh } from "../../../context/FixedRouteRefreshContext.js";
 import { TripStartLogInspector } from "./TripStartLogInspector.js";
 import { TripStartLogQueryBar } from "./TripStartLogQueryBar.js";
@@ -14,6 +16,8 @@ import {
   TRIP_START_VIEWS,
   agencyTodayServiceDate,
   applyFilters,
+  canVerify,
+  initialsFromAccount,
   filtersActive,
   inputToServiceDate,
   routeOptions,
@@ -65,6 +69,14 @@ export function TripStartLog() {
   const [message, setMessage] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
+
+  // Who may initial a cell (spec §7.1: SST OCS, plus Admin for corrections),
+  // and the initials the workbook cell will show for them.
+  const { roles, account } = useAuth();
+  const verifier = canVerify(roles);
+  const initials = initialsFromAccount(account?.name, account?.username);
+  const { prompt } = useAppDialog();
 
   const [view, setView] = useState<TripStartView>("grid");
   const [filters, setFilters] = useState<TripStartFilters>(EMPTY_FILTERS);
@@ -135,6 +147,39 @@ export function TripStartLog() {
 
   const state = loadState(diagnostics, loading, failed);
   const live = state === "live";
+
+  // One record per trip, written from whichever view the desk is in, so the
+  // views can never disagree about what was seen (spec §4.3).
+  async function recordVerification(tripId: string, action: TripStartVerificationAction, note: string | null = null) {
+    const trip = trips.find((t) => t.trip_id === tripId);
+    if (!trip) return;
+    setVerifyError(null);
+    try {
+      const { verification } = await api.recordTripStartVerification({
+        service_date: trip.service_date, trip_id: tripId, action, note, initials,
+      });
+      setTrips((current) => current.map((t) => (t.trip_id === tripId ? { ...t, verification } : t)));
+    } catch (err) {
+      setVerifyError(err instanceof ApiError ? `Could not record the verification: ${err.message}` : "Could not record the verification: the trip-start log service could not be reached.");
+    }
+  }
+
+  // The workbook's rule for a trip more than five minutes late is "leave the
+  // cell blank and follow late-route procedures". A disposition makes that
+  // explicit: the cell reads not observed, and the note says what was done.
+  async function recordDisposition(tripId: string) {
+    const note = await prompt({
+      title: "Record disposition",
+      description: "The cell stays blank, as the workbook rule says; the note records the procedure followed.",
+      label: "What was done",
+      placeholder: "e.g. Late-route procedure followed; dispatcher notified at 06:41",
+      multiline: true,
+      required: true,
+      confirmLabel: "Record disposition",
+    });
+    if (note === null) return;
+    await recordVerification(tripId, "not_observed", note);
+  }
 
   // The whole day as the API writes it, not the filtered view: the export
   // stands in for the workbook, and the workbook was the whole day.
@@ -216,6 +261,12 @@ export function TripStartLog() {
           <span>{exportError}</span>
         </div>
       ) : null}
+      {verifyError ? (
+        <div className="concept-banner" role="alert">
+          <span className="concept-badge">Verify</span>
+          <span>{verifyError}</span>
+        </div>
+      ) : null}
 
       {message ? (
         <div className="concept-banner" role="status">
@@ -285,6 +336,9 @@ export function TripStartLog() {
             isToday={isToday}
             selectedTripId={selectedTripId}
             onSelect={setSelectedTripId}
+            canVerify={verifier}
+            onVerify={(tripId, action) => void recordVerification(tripId, action)}
+            onDisposition={(tripId) => void recordDisposition(tripId)}
           />
         ) : view === "timeline" ? (
           <TripStartLogTimeline
@@ -301,12 +355,21 @@ export function TripStartLog() {
             onSortChange={(key, dir) => { setSortKey(key); setSortDir(dir); }}
             selectedTripId={selectedTripId}
             onSelect={setSelectedTripId}
+            canVerify={verifier}
+            onVerify={(tripId, action) => void recordVerification(tripId, action)}
           />
         )
         )}
       </div>
 
-      <TripStartLogInspector trip={selected} serviceDow={serviceDow} />
+      <TripStartLogInspector
+        trip={selected}
+        serviceDow={serviceDow}
+        canVerify={verifier}
+        initials={initials}
+        onVerify={(tripId, action) => void recordVerification(tripId, action)}
+        onDisposition={(tripId) => void recordDisposition(tripId)}
+      />
     </div>
   );
 }

@@ -1,12 +1,15 @@
-import type { TripStartLogTrip } from "@mvta/shared";
+import { useMemo } from "react";
+import type { TripStartLogTrip, TripStartVerificationAction } from "@mvta/shared";
 import { SortableTable, type SortableColumn } from "../../../components/SortableTable.js";
 import {
   bucketLabel,
   deltaLabel,
   gtfsClock,
+  nextVerifyAction,
   routeLabel,
   startBucket,
   timeLabel,
+  verifyActionLabel,
   type SortDir,
   type SortKey,
   type StartBucket,
@@ -19,6 +22,8 @@ interface Props {
   onSortChange: (key: SortKey, dir: SortDir) => void;
   selectedTripId: string | null;
   onSelect: (tripId: string) => void;
+  canVerify: boolean;
+  onVerify: (tripId: string, action: TripStartVerificationAction) => void;
 }
 
 const PILL: Record<StartBucket, string> = {
@@ -30,24 +35,45 @@ const PILL: Record<StartBucket, string> = {
   canceled: "pill-muted",
 };
 
+function verifiedContent(trip: TripStartLogTrip) {
+  return trip.verification ? (
+    <span className="tsl-initials" title={trip.verification.verified_by}>{trip.verification.verified_initials}</span>
+  ) : trip.in_rotation ? (
+    <span className="tsl-needs">Needs initials</span>
+  ) : (
+    <span className="td-dim">—</span>
+  );
+}
+
 // The spreadsheet reading of the day and the default view (spec §4.3): the
 // workbook's columns in the workbook's order, Verified pinned first, every
-// column sortable, rows outside today's rotation dimmed but present. The
-// Verified cell is read-only here; the one-click cycle through initials is
-// step 6, once who records verifications is decided.
-const COLUMNS: SortableColumn<TripStartLogTrip>[] = [
+// column sortable, rows outside today's rotation dimmed but present. For a
+// verifier the Verified cell is the workbook's one-click cycle - blank, on
+// time, left late, blank - showing the signed-in user's initials.
+function columns(canVerify: boolean, onVerify: (tripId: string, action: TripStartVerificationAction) => void): SortableColumn<TripStartLogTrip>[] {
+  return [
   {
     key: "verified",
     header: "Verified",
     sticky: true,
-    render: (trip) =>
-      trip.verification ? (
-        <span className="tsl-initials" title={trip.verification.verified_by}>{trip.verification.verified_initials}</span>
-      ) : trip.in_rotation ? (
-        <span className="tsl-needs">Needs initials</span>
-      ) : (
-        <span className="td-dim">—</span>
-      ),
+    render: (trip) => {
+      if (!canVerify) return verifiedContent(trip);
+      const action = nextVerifyAction(trip);
+      return (
+        <button
+          type="button"
+          className="tsl-verify-cell"
+          title={verifyActionLabel(action)}
+          aria-label={`${verifyActionLabel(action)} for route ${routeLabel(trip)} at ${gtfsClock(trip.scheduled_start_seconds)}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onVerify(trip.trip_id, action);
+          }}
+        >
+          {verifiedContent(trip)}
+        </button>
+      );
+    },
   },
   { key: "scheduled", header: "Scheduled", cellClassName: "tsl-clock", render: (trip) => gtfsClock(trip.scheduled_start_seconds) },
   { key: "actual", header: "Actual", cellClassName: "tsl-clock td-dim", render: (trip) => timeLabel(trip.actual_start_at) },
@@ -64,14 +90,16 @@ const COLUMNS: SortableColumn<TripStartLogTrip>[] = [
   { key: "route", header: "Route", render: (trip) => routeLabel(trip) },
   { key: "origin", header: "Origin stop", render: (trip) => trip.origin_stop_name ?? trip.origin_stop_id ?? "—" },
   { key: "direction", header: "Direction", render: (trip) => trip.direction_label ?? "—" },
-];
+  ];
+}
 
-export function TripStartLogGrid({ trips, sortKey, sortDir, onSortChange, selectedTripId, onSelect }: Props) {
+export function TripStartLogGrid({ trips, sortKey, sortDir, onSortChange, selectedTripId, onSelect, canVerify, onVerify }: Props) {
+  const cols = useMemo(() => columns(canVerify, onVerify), [canVerify, onVerify]);
   return (
     <SortableTable
       ariaLabel="Dispatch log trips"
       className="tsl-table"
-      columns={COLUMNS}
+      columns={cols}
       rows={trips}
       rowKey={(trip) => trip.trip_id}
       sortKey={sortKey}
