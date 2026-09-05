@@ -8,7 +8,7 @@
 // differs.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { fetchPulloutReports, mapPulloutReport } from "../lib/availPullout";
+import { fetchPulloutReports, mapPulloutReport, unknownPulloutStatuses } from "../lib/availPullout";
 import { agencyServiceDate, serviceDateAndGtfsSecondsToUtc } from "../lib/missedTripTime";
 import { feedHealthOutcome, recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
 
@@ -33,6 +33,19 @@ app.timer("fixedRouteDeparturesPoll", {
         context.error("Failed to record Avail Pullout feed failure:", healthError);
       }
       return;
+    }
+
+    // A status nobody has accounted for is the first symptom of the compliance
+    // rule going quiet: its allowlist raises nothing for a value it does not
+    // recognise, without erroring. Saying so here is what makes that visible
+    // before it costs a reporting period.
+    const unrecognised = unknownPulloutStatuses(reports);
+    if (unrecognised.length > 0) {
+      context.warn(
+        `Avail Pullout Reports poll: ${unrecognised.length} unrecognised PulloutStatus value(s): ` +
+          `${unrecognised.join(", ")}. Check them against DEPARTURE_OUTCOME_STATUSES in ` +
+          "complianceCandidatesPoll - a departure condition that is not listed there is ignored silently.",
+      );
     }
 
     const pool = await getPool();
