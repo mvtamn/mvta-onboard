@@ -190,12 +190,15 @@ actual_start_at         DATETIME2      NULL
 actual_start_source     NVARCHAR(20)   NULL    -- trip_update | vehicle_position | avail
 start_delay_seconds     INT            NULL
 start_status            NVARCHAR(20)   NULL    -- on_time | late | missed | canceled | unknown
+predicted_start_at      DATETIME2      NULL    -- last first-stop departure prediction (mig. 095)
+actuals_updated_at      DATETIME2      NULL    -- when the actuals poll last changed the row (mig. 095)
 materialized_at         DATETIME2
 updated_at              DATETIME2
 PRIMARY KEY (service_date, trip_id)
 ```
 
-Built as `migration-094-trip-start-log.sql` (2026-09-04, §8 step 1).
+Built as `migration-094-trip-start-log.sql` (2026-09-04, §8 step 1) and
+`migration-095-trip-start-predictions.sql` (2026-09-05, §8 step 5).
 
 `start_status` sources: `on_time` / `late` from `actual_start_at` against the
 5-minute rule; `canceled` from the TripUpdate `schedule_relationship`
@@ -261,7 +264,7 @@ under; only future days are re-dealt.
 | Piece | Shape |
 |---|---|
 | `tripStartLogMaterialize.ts` | Timer, **09:30 UTC** (`0 30 9 * * *`; 04:30 CDT / 03:30 CST). Must be scheduled in UTC: `gtfsStopsSync` runs at 09:00 UTC, and a "03:00 local" schedule lands *before* it for the eight months of daylight time, building the log from yesterday's schedule. Resolves active `service_id`s for the date, joins the schedule tables, computes `in_rotation` (§4.1), writes `TripStartLog`. Runs for today **and** tomorrow so the log exists before the first pullout. Near a service change tomorrow can have no active services: check `scheduleCoverage()` (`gtfsScheduleHorizon.ts`) first, and warn + skip rather than write an empty day that reads as "no service". |
-| `tripStartActualsPoll.ts` | Timer, 1-minute. Reads GTFS-RT TripUpdate and captures each trip's **first-stop** `StopTimeUpdate` departure as described in §5 — treated as a prediction until the first stop drops off the trip's update list, at which point the last value seen is frozen as the actual. Fills `actual_start_at` / `start_delay_seconds` / `start_status`. Falls back to `first_underway_at` when the first stop was never seen. Note this is a third consumer of a feed two pollers already share at a 5-minute cadence (`readTripUpdateFeed` writes the `gtfs_trip_updates` health row once per delivery); the 1-minute reader must not overwrite that health record with its own cadence. |
+| `tripStartActualsPoll.ts` | Timer, 1-minute. Reads GTFS-RT TripUpdate and captures each trip's **first-stop** `StopTimeUpdate` departure as described in §5. Measured behaviour (2026-09-05): the first stop stays in the list ~15 min after departure with a realised time, so it is read directly once it is behind the feed clock and kept current while it lingers; ahead of the clock it is a prediction, remembered in `predicted_start_at`; if the stop has dropped before a realised time was seen the last prediction stands in; a trip that never shows a first stop falls back to `first_underway_at` after the window, named `vehicle_position`. `missed` from `MonitoredMissedTrips`, `canceled` from `schedule_relationship`. Works today's and yesterday's rows. Fetches the feed directly rather than through `readTripUpdateFeed`, so the 1-minute cadence never rewrites the shared `gtfs_trip_updates` health row. Rule and tests: `lib/tripStartActuals.ts`. |
 | `GET /trip-start-log?date=` | Returns the service date's rows joined to verifications. One row per revenue trip, including `in_rotation` — the rotation is a field, not a query parameter. |
 | `POST /trip-start-log/verify` | Records one observation. Server-enforced role check. |
 | `GET /trip-start-log/export` | CSV, for parity with the workbook people will miss. |
@@ -378,10 +381,16 @@ size as the decision it has to inform. Options, cheapest first:
    within a minute of the event — good enough for a 5-minute rule, and far
    better than `first_underway_at`. `gtfsTripUpdates.ts` already parses the
    full `StopTimeUpdate` list; this is a targeted extension, not new plumbing.
-   **Prerequisite:** confirm empirically, on MVTA's feed, whether the first
-   stop drops off after departure or lingers with a realised time. If it
-   lingers, the capture is simpler and more precise than described here; if
-   it drops, the rule above stands.
+   **Prerequisite — done 2026-09-05.** Two samples of MVTA's feed a minute
+   apart (68 trips, 16 under way): a passed stop **lingers for about fifteen
+   minutes with a realised time** (every lingering first-stop time was under
+   900 s old, none older), then drops. Realised times were unchanged between
+   samples in seven of eight cases and revised once, earlier by ~6 min. Stop
+   sequences are non-contiguous (0, 60, 180, 540, 4020…), so the first stop
+   is matched by stop id, then by the schedule's stored first sequence. The
+   rule as built: read the realised time directly and keep it current while
+   it lingers; remember predictions; use the last prediction only if the
+   window was missed; fall back to vehicle evidence after the window.
 2. **Poll VehiclePositions every minute** instead of every 5. Straightforward,
    costs more invocations, still poll-bounded, and still carries the stop-two
    bias from §3 gap 2.
@@ -500,6 +509,12 @@ Nothing before step 5 depends on the open decisions in §7.
    on `first_underway_at`; this is the precision upgrade, and the ±5-minute
    error bar plus the stop-two bias make the ≤5-minute rule unreliable until
    it lands.
+   *Built 2026-09-05:* feed check done (§5); `lib/tripStartActuals.ts` holds
+   the rule with tests, `tripStartActualsPoll.ts` runs it every minute over
+   today's and yesterday's rows, migration 095 adds `predicted_start_at` and
+   `actuals_updated_at`. On time means under a minute late
+   (`ON_TIME_TOLERANCE_SECONDS = 59`); a minute or more is `late`, which the
+   console splits at five minutes.
 6. **Verification recording**, once §7.1 is decided. The UI already has the
    affordance in three places — this is the endpoint, the role check, and the
    audit trail.

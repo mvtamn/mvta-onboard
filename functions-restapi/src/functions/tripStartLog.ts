@@ -33,6 +33,7 @@ interface TripStartLogRow {
   actual_start_source: string | null;
   start_delay_seconds: number | null;
   start_status: string | null;
+  predicted_start_at: Date | null;
   materialized_at: Date;
   updated_at: Date;
   observation: string | null;
@@ -60,6 +61,8 @@ export interface TripStartLogTrip {
   actual_start_source: string | null;
   start_delay_seconds: number | null;
   start_status: string | null;
+  /** The feed's last first-stop departure prediction, until an actual exists. */
+  predicted_start_at: string | null;
   verification: {
     observation: string;
     verified_by: string;
@@ -89,6 +92,7 @@ export function shapeTrip(row: TripStartLogRow): TripStartLogTrip {
     // A trip with no realtime evidence is unknown, never on time (spec §6).
     start_delay_seconds: row.start_delay_seconds,
     start_status: row.start_status ?? "unknown",
+    predicted_start_at: row.predicted_start_at?.toISOString() ?? null,
     verification:
       row.observation && row.verified_by && row.verified_initials && row.verified_at
         ? {
@@ -144,6 +148,7 @@ app.http("tripStartLogGet", {
                l.scheduled_start_seconds, l.scheduled_start_at, l.in_rotation, l.rotation_day,
                l.actual_start_at, l.actual_start_source, l.start_delay_seconds, l.start_status,
                l.materialized_at, l.updated_at,
+               CASE WHEN COL_LENGTH('dbo.TripStartLog', 'predicted_start_at') IS NULL THEN NULL ELSE l.predicted_start_at END AS predicted_start_at,
                v.observation, v.verified_by, v.verified_initials, v.verified_at, v.note
         FROM TripStartLog l
         LEFT JOIN TripStartVerifications v

@@ -31,6 +31,7 @@ function trip(overrides: Partial<TripStartLogTrip> & { trip_id: string }): TripS
     actual_start_source: null,
     start_delay_seconds: null,
     start_status: "unknown",
+    predicted_start_at: null,
     verification: null,
     ...overrides,
   };

@@ -1525,6 +1525,8 @@ export interface TripStartLogTrip {
   actual_start_source: TripStartActualSource | null;
   start_delay_seconds: number | null;
   start_status: TripStartStatus;
+  /** The feed's last first-stop departure prediction, until an actual exists. */
+  predicted_start_at: string | null;
   verification: TripStartVerification | null;
 }
 
