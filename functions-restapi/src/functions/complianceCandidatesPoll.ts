@@ -1,6 +1,7 @@
 import { app, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { loadKpiTrust } from "../lib/kpiTrustStore";
+import { agencyServiceDate } from "../lib/missedTripTime";
 
 // How late a pullout must be before it is worth a contractor's review.
 //
@@ -33,9 +34,41 @@ export function garageDepartureVarianceSeconds(
 
 // The statuses that describe how a run's DEPARTURE ended.
 //
-// Avail's PulloutStatus is undocumented here, so this list is drawn from what
-// the feed actually emits. Over 22 service days it produced eleven values, and
-// they fall into three groups:
+// Avail's PulloutStatus is a precedence-ordered ladder: a pullout row shows the
+// single highest-precedence status that currently applies, so the value moves
+// as the run progresses. The vendor's own table settles what each one means and
+// corrects two readings this list was built on:
+//
+//   Missed Login (10) is NOT terminal. The Late Login note says a status "can
+//   change from Missed Login to either Waiting for Pullout or Late Login" - it
+//   means login has not happened YET.
+//
+//   Missed Pullout (14) is NOT terminal either: "no longer valid if the vehicle
+//   is detected on Route".
+//
+//   Expired Pullout (16) is the settled one, and says so: it "takes precedence
+//   over Missed Check In, Missed Log In, and Missed Pull Out after this timer
+//   has expired".
+//
+//   On Route No Pullout (17) means the vehicle IS running - "the driver did not
+//   log on before leaving the yard". A missing pullout RECORD, not a missing
+//   departure, which is why it stays out of this list.
+//
+//   Late Relief (19) is a mid-shift driver changeover, not a pullout at all. It
+//   headed this list for months and the feed has never emitted it.
+//
+// Two intermediate statuses are still listed, because 408 historical rows show
+// they are frequently where a run's day actually ends - Avail does not always
+// supersede them. What makes that safe is the settled-day guard below, not the
+// status: once the service day is over, the value has stopped moving.
+//
+// The feed also emits four pull-in values that this table does not document at
+// all - On Time Pullin, Late Pullin, Missed Pullin and Waiting for Pullin,
+// nearly 1,900 rows. They describe a run's RETURN, so its departure already
+// happened, and none of them are departure evidence.
+//
+// Over 22 service days the feed produced eleven values, and they fall into
+// three groups:
 //
 //   Departure outcomes, listed below - Missed Pullout (282 rows, none departed),
 //   Missed Login (126, none departed), Expired Pullout (510, 278 never departed
@@ -86,11 +119,29 @@ const DEPARTURE_OUTCOME_STATUSES = [
 export function garageDepartureCandidatePredicate(): string {
   const statuses = DEPARTURE_OUTCOME_STATUSES.map((status) => `'${status}'`).join(",");
   return `d.pullout_status IN (${statuses})
+            AND d.service_date < @settled_before
             AND d.pullout_scheduled IS NOT NULL
             AND (
               d.pullout_actual IS NULL
               OR DATEDIFF(SECOND, d.pullout_scheduled, d.pullout_actual) > @variance_seconds
             )`;
+}
+
+// A run is only judged once its service day is over.
+//
+// PulloutStatus moves as a run progresses, so reading it mid-day can catch a
+// value that has not settled: a run sitting at Missed Login this afternoon may
+// be Late Pullout by tonight. This poll runs at 01:20 agency-local, when the
+// current service date has barely begun and the previous one ended three hours
+// ago, so excluding the current date is what makes the intermediate statuses
+// above safe to act on.
+//
+// It matters more than a status list can. The MERGE that raises candidates only
+// inserts on no-match, so a candidate raised against an in-flight run is never
+// withdrawn when that run departs - the false positive would outlive the
+// condition that caused it and sit in the review queue for good.
+export function settledServiceDateExclusive(now: Date = new Date()): string {
+  return agencyServiceDate(now).serviceDate;
 }
 
 // Existing feed-specific review remains authoritative. This poller only copies
@@ -114,6 +165,7 @@ app.timer("complianceCandidatesPoll", {
       candidateRequest.input("allow_fixed_missed_trips", allowFixedMissedTrips ? 1 : 0);
       candidateRequest.input("allow_spare_missed_trips", allowSpareMissedTrips ? 1 : 0);
       candidateRequest.input("variance_seconds", sql.Int, garageDepartureVarianceSeconds());
+      candidateRequest.input("settled_before", sql.Char(8), settledServiceDateExclusive());
       const result = await candidateRequest.query<{ inserted: number }>(`
         DECLARE @contractor UNIQUEIDENTIFIER=(SELECT TOP 1 id FROM Contractors WHERE is_active=1 ORDER BY updated_at DESC);
         IF @contractor IS NULL THROW 50001,'No active contractor is configured.',1;

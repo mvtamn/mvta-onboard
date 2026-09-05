@@ -5,9 +5,13 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.96] - 2026-09-04
+## [1.5.97] - 2026-09-05
 
 - **Dispatch Log, step 1 of the build (backend only).** Migration 094 adds `TripStartLog` (one row per service date and revenue trip, a growing history that is never truncated) and `TripStartVerifications` (the human layer, empty until a later step), plus the `trip_start_log/rotation_anchor_date` setting. A new `tripStartLogMaterialize` timer at 09:30 UTC, after the 09:00 UTC schedule sync, writes today's and tomorrow's rows from the schedule tables: block, route sign, origin stop, direction, the resolved start instant, and the weekly verification rotation (fixed pool per rotation week, dealt in start-time order with a trip-id tie-break, shifted one day each week). It skips a day the imported schedule does not cover rather than write an empty one, seeds the anchor once from the schedule's earliest date when blank, and excludes routes classified SpecialEvent for the date. `GET /trip-start-log?date=YYYYMMDD` returns the day's rows joined to verifications for the same staff roles that read Fixed Route Departures. `activeServiceIdsToday` moved from the missed-trip poller to `gtfsScheduleHorizon.ts` so both share it. No actuals yet - every trip reads as `unknown` until spec §5 lands. No console changes.
+
+## [1.5.96] - 2026-09-05
+
+- **Judge a garage departure only once its service day is over.** Avail's status table shows `PulloutStatus` is a precedence-ordered ladder whose value moves as a run progresses: `Missed Login` can become `Waiting for Pullout` or `Late Login`, and `Missed Pullout` stops applying once the vehicle is detected on route. Both are intermediate, not verdicts. Because the candidate MERGE only inserts, an occurrence raised against a run that was merely mid-sequence would never be withdrawn once that run departed. The rule now only considers rows whose service day has ended - the poll runs at 01:20 agency-local, three hours after service closes, so the previous day's statuses have settled while the current day's are left alone. The vendor's precedence table is recorded alongside the status list, including why `On Route No Pullout` stays out of it: that status means the vehicle is running and the driver simply did not log on, so it is a missing pullout record rather than a missing departure.
 
 ## [1.5.95] - 2026-09-04
 
