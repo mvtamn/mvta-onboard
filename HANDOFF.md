@@ -306,9 +306,16 @@ the `GtfsStopRoutes` table (091), communication delivery/snapshot columns
 DEPLOYED; every handler guards on the columns, so the deployed build is
 unaffected by the schema being ahead.
 
-Still to do once the code deploys, none of it DB work:
+PR #137 MERGED 2026-09-05 00:44 UTC (merge commit 72b6832, console v1.5.95).
+The push-to-main workflows all succeeded: Function Apps (REST + dispatch),
+Static Web Apps, infrastructure. The onboard console SWA serves 1.5.95.
+
+Still to do, none of it DB work:
 - Run the static GTFS sync once: `GtfsStopRoutes` is empty until it does, so
-  nearby-stop suggestions on the intake map show stops without routes.
+  nearby-stop suggestions on the intake map show stops without routes. The
+  timer fires daily at 09:00 UTC (gtfsStopsSync); to run it sooner, trigger it
+  from the portal (Functions > gtfsStopsSync > Test/Run) or POST
+  /admin/functions/gtfsStopsSync with the host master key.
 - DONE 2026-09-04: `servicebus.bicep` deployed twice - first for the queue
   `detour-communication-requested`, then with manageRoleAssignments=true
   (additionalReceiverPrincipalId empty, that Receiver pre-existed). The
