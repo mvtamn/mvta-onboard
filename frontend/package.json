@@ -9,7 +9,7 @@
     "packages/onboard-console"
   ],
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.19.0"
   },
   "scripts": {
     "build": "npm run build:shared && npm run build --workspace @mvta/rider-app && npm run build --workspace @mvta/onboard-console",

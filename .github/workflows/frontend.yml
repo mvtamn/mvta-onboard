@@ -23,13 +23,12 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          # 22, not the 20 the build job uses: the test toolchain needs it.
-          # jsdom 30 declares `node ^22.22.2 || ^24.15.0 || >=26`, and the
-          # undici it pulls in needs >=22.19.0 for
-          # worker_threads.markAsUncloneable. npm ci does not enforce engines,
-          # so on Node 20 this installs happily and then every vitest worker
-          # dies loading jsdom. Building does not need it - vite is fine on 20 -
-          # so only this job moves.
+          # 22 is the workspace floor (frontend/package.json engines). The test
+          # toolchain is what set it: jsdom 30 declares
+          # `node ^22.22.2 || ^24.15.0 || >=26` and the undici it pulls in needs
+          # >=22.19.0 for worker_threads.markAsUncloneable. npm ci does not
+          # enforce engines, so Node 20 installs the tree happily and then every
+          # vitest worker dies loading jsdom.
           node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
@@ -78,7 +77,9 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          # Matches the test job and the workspace's engines floor, so nothing
+          # is ever built on a Node this repo declares unsupported.
+          node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
