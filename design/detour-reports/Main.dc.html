@@ -1,0 +1,555 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: -apple-system, "Segoe UI", Inter, Roboto, Arial, sans-serif; font-size: 13px; }
+    a { color: #00553d; text-decoration: none; }
+    a:hover { color: #003d2c; text-decoration: underline; }
+
+    .rt-root {
+      --page-bg: #edebe4; --surface-bg: #fff; --surface-alt-bg: #f6f5f1;
+      --border: #ddd; --border-strong: #ccc; --border-soft: #eee;
+      --text: #2c2c2a; --text-dim: #4f4f4f; --text-muted: #8a8a82;
+      --brand-green: #00553d; --brand-green-hover: #003d2c; --brand-green-text: #00553d;
+      --nav-bg: #00553d;
+      --danger-text: #8a1f1f; --success-text: #1f7a4c; --success-bg: #e3f0d4;
+      --live-dot: #2fae66; --table-stripe: #fafaf8;
+      --pill-warning-bg: #fcefd8; --pill-warning-fg: #7a4a00;
+      --pill-danger-bg: #fbe0e0; --pill-danger-fg: #8a1f1f;
+      --pill-accent-bg: #dceaf8; --pill-accent-fg: #0b4c82;
+      --pill-success-bg: #e3f0d4; --pill-success-fg: #33530f;
+      --pill-muted-bg: #ececea; --pill-muted-fg: #4f4f4f;
+      --chip-bg: #dcede6; --chip-fg: #00301f;
+      --highlight-bg: #fdf1e1; --highlight-border: #faad60;
+      --nav-item-fg: rgba(255,255,255,.85); --nav-item-fg-dim: rgba(255,255,255,.5);
+      --nav-item-hover-bg: rgba(255,255,255,.08); --nav-item-active-bg: rgba(255,255,255,.14);
+      --nav-border: rgba(255,255,255,.12);
+      --row-pad: 9px;
+    }
+    .rt-root[data-theme="dark"] {
+      --page-bg: #0b120e; --surface-bg: #152219; --surface-alt-bg: #16241d;
+      --border: #25392f; --border-strong: #2e4238; --border-soft: #1c2a23;
+      --text: #eef3f0; --text-dim: #c7d2cc; --text-muted: #8aa096;
+      --brand-green: #1c6b4f; --brand-green-hover: #175a42; --brand-green-text: #6fc9a0; --nav-bg: #0a1310;
+      --danger-text: #e08585; --success-text: #5fbf8f; --success-bg: #193b2c;
+      --table-stripe: #1a2a22;
+      --pill-warning-bg: #3a2a15; --pill-warning-fg: #f0b070;
+      --pill-danger-bg: #3a1f1f; --pill-danger-fg: #f0a0a0;
+      --pill-accent-bg: #1a2a3a; --pill-accent-fg: #8ec4f0;
+      --pill-success-bg: #193b2c; --pill-success-fg: #8fd6ac;
+      --pill-muted-bg: #243128; --pill-muted-fg: #b0bab3;
+      --chip-bg: #193b2c; --chip-fg: #cdeedd;
+      --highlight-bg: #3a2a15; --highlight-border: #cc8a3d;
+    }
+    .rt-root[data-density="compact"] { --row-pad: 6px; }
+
+    .rt-root, .rt-root * { box-sizing: border-box; }
+    .rt-root { width: 1440px; height: 900px; padding: 24px; background: var(--page-bg); color: var(--text); overflow: hidden; }
+    .rt-frame { background: var(--surface-bg); border-radius: 14px; overflow: hidden; border: 1px solid var(--border); box-shadow: 0 4px 16px rgba(0,0,0,.1); display: flex; height: 852px; }
+
+    /* ---- nav rail (unchanged from the shell) ---- */
+    .rt-nav { width: 232px; flex-shrink: 0; background: var(--nav-bg); display: flex; flex-direction: column; padding: 18px 14px; }
+    .rt-brand { display: flex; align-items: center; gap: 10px; padding: 6px 8px 22px; }
+    .rt-logo { background: rgba(255,255,255,.15); color: #fff; font-weight: bold; font-size: 12px; padding: 5px 9px; border-radius: 6px; letter-spacing: .5px; }
+    .rt-brand-text { color: #fff; font-weight: bold; font-size: 15px; line-height: 1.2; }
+    .rt-version { display: inline-flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 11px; color: var(--nav-item-fg-dim); }
+    .rt-version b { background: rgba(255,255,255,.14); border-radius: 999px; color: #fff; font-size: 10px; font-weight: 800; padding: 2px 6px; }
+    .rt-navlist { display: flex; flex-direction: column; gap: 2px; }
+    .rt-navlist a { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 6px; color: var(--nav-item-fg); font-size: 13.5px; font-weight: 500; text-decoration: none; }
+    .rt-navlist a svg { width: 16px; height: 16px; flex-shrink: 0; opacity: .85; }
+    .rt-navlist a:hover { background: var(--nav-item-hover-bg); text-decoration: none; color: var(--nav-item-fg); }
+    .rt-navlist a.active { background: var(--nav-item-active-bg); color: #fff; font-weight: 600; }
+    .rt-navlist a.active svg { opacity: 1; }
+    .rt-section { color: var(--nav-item-fg-dim); font-size: 10.5px; font-weight: 700; letter-spacing: .07em; padding: 16px 12px 6px; text-transform: uppercase; }
+    .rt-group { border-top: 1px solid rgba(255,255,255,.2); margin-top: 8px; padding-top: 6px; }
+    .rt-group-toggle { align-items: center; color: var(--nav-item-fg-dim); display: flex; font-size: 10.5px; font-weight: 800; justify-content: space-between; letter-spacing: .07em; padding: 8px 12px 6px; text-transform: uppercase; }
+    .rt-navspacer { flex: 1; }
+    .rt-navfoot { border-top: 1px solid var(--nav-border); padding-top: 14px; margin-top: 10px; }
+    .rt-navstatus { display: flex; align-items: center; gap: 7px; padding: 0 12px 10px; color: var(--nav-item-fg-dim); font-size: 12px; }
+    .rt-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--live-dot); display: inline-block; }
+
+    /* ---- content column ---- */
+    .rt-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .rt-topbar { background: var(--surface-bg); border-bottom: 1px solid var(--border); padding: 14px 22px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-shrink: 0; }
+    .rt-topbar h1 { font-size: 22px; font-weight: 800; color: var(--text); margin: 0; letter-spacing: -.01em; }
+    .rt-topbar .rt-sub { color: var(--text-muted); font-size: 12.5px; margin-top: 3px; }
+    .rt-topacts { display: flex; align-items: center; gap: 10px; }
+    .rt-user { display: flex; align-items: center; gap: 8px; background: var(--surface-alt-bg); border: 1px solid var(--border); color: var(--text); font-size: 12px; padding: 4px 12px 4px 4px; border-radius: 999px; }
+    .rt-avatar { width: 24px; height: 24px; border-radius: 50%; background: var(--brand-green); color: #fff; font-size: 10px; font-weight: 800; display: grid; place-items: center; }
+    .rt-iconbtn { width: 30px; height: 30px; border-radius: 50%; background: var(--surface-alt-bg); border: 0; color: var(--text-muted); display: grid; place-items: center; cursor: pointer; }
+    .rt-iconbtn svg { width: 16px; height: 16px; }
+
+    .rt-main { flex: 1; min-height: 0; overflow: hidden; padding: 22px 22px 0; display: flex; flex-direction: column; }
+    .rt-panel-header { background: var(--brand-green); color: #fff; padding: 12px 18px; border-radius: 10px 10px 0 0; font-size: 14.5px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; text-transform: uppercase; flex-shrink: 0; }
+    .rt-readonly { align-items: center; background: rgba(255,255,255,.16); border-radius: 999px; display: inline-flex; font-size: 10px; font-weight: 800; gap: 6px; letter-spacing: .06em; padding: 4px 10px; text-transform: uppercase; }
+    .rt-readonly svg { width: 12px; height: 12px; }
+    .rt-panel-body { border: 1px solid var(--border); border-top: none; border-radius: 0 0 10px 10px; padding: 14px 18px 0; background: var(--surface-bg); box-shadow: 0 2px 8px rgba(0,0,0,.04); flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    .rt-desc { font-size: 12px; color: var(--text-dim); margin: 0 0 12px; line-height: 1.5; }
+
+    /* ---- toolbar ---- */
+    .rt-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-shrink: 0; }
+    .rt-searchwrap { position: relative; flex: 1 1 auto; min-width: 0; }
+    .rt-searchwrap svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); width: 15px; height: 15px; color: var(--text-muted); pointer-events: none; }
+    .rt-search { width: 100%; padding: 8px 10px 8px 34px; border: 1px solid var(--border-strong); border-radius: 8px; font-size: 12.5px; font-family: inherit; background: var(--surface-bg); color: var(--text); }
+    .rt-search::placeholder { color: var(--text-muted); }
+    .rt-search:focus-visible { outline: 2px solid var(--brand-green); outline-offset: -1px; border-color: var(--brand-green); }
+    .rt-btn:focus-visible, .rt-fchip:focus-visible, .rt-clearall:focus-visible { outline: 2px solid var(--brand-green); outline-offset: 2px; }
+    .rt-tab:focus-visible, .rt-row:focus-visible { outline: 2px solid var(--brand-green); outline-offset: -2px; }
+    .rt-btn { align-items: center; background: var(--surface-bg); border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text); cursor: pointer; display: inline-flex; font: inherit; font-size: 11.5px; font-weight: 600; gap: 7px; padding: 7px 12px; white-space: nowrap; }
+    .rt-btn:hover { border-color: var(--brand-green); color: var(--brand-green-text); }
+    .rt-btn svg { width: 14px; height: 14px; }
+    .rt-btn.on { background: var(--brand-green); border-color: var(--brand-green); color: #fff; }
+    .rt-btn.primary { background: var(--brand-green); border-color: var(--brand-green); color: #fff; }
+    .rt-btn.primary:hover { background: var(--brand-green-hover); color: #fff; }
+    .rt-btn:disabled { opacity: .5; cursor: default; }
+    .rt-badge { background: var(--brand-green); border-radius: 999px; color: #fff; font-size: 10px; font-weight: 800; min-width: 17px; padding: 1px 5px; text-align: center; }
+    .rt-btn.on .rt-badge { background: rgba(255,255,255,.26); }
+
+    /* ---- filter drawer ---- */
+    .rt-filters { background: var(--surface-alt-bg); border: 1px solid var(--border); border-radius: 10px; display: grid; gap: 10px; grid-template-columns: repeat(5, minmax(0, 1fr)); margin-bottom: 10px; padding: 12px 14px; flex-shrink: 0; }
+    .rt-flabel { display: block; font-size: 11px; color: var(--text-dim); margin: 0 0 3px; font-weight: bold; }
+    .rt-f { width: 100%; padding: 7px 9px; border: 1px solid var(--border-strong); border-radius: 8px; font-size: 12px; font-family: inherit; background: var(--surface-bg); color: var(--text); }
+    .rt-chiprow { align-items: center; display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; flex-shrink: 0; }
+    .rt-fchip { align-items: center; background: var(--chip-bg); border: 0; border-radius: 16px; color: var(--chip-fg); cursor: pointer; display: inline-flex; font: inherit; font-size: 11px; font-weight: 600; gap: 6px; padding: 4px 8px 4px 10px; }
+    .rt-fchip .x { height: 11px; width: 11px; opacity: .65; }
+    .rt-fchip:hover .x { opacity: 1; }
+    .rt-clearall { background: none; border: 0; color: var(--text-muted); cursor: pointer; font: inherit; font-size: 11px; font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+    .rt-clearall:hover { color: var(--danger-text); }
+
+    /* ---- status tabs ---- */
+    .rt-tabs { align-items: center; border-bottom: 1px solid var(--border); display: flex; gap: 2px; margin-bottom: 10px; flex-shrink: 0; }
+    .rt-tab { background: transparent; border: 0; border-bottom: 3px solid transparent; color: var(--text-muted); cursor: pointer; display: inline-flex; align-items: center; gap: 7px; font: inherit; font-size: 12px; font-weight: 800; padding: 8px 11px 7px; }
+    .rt-tab:hover { color: var(--brand-green-text); border-bottom-color: color-mix(in srgb, var(--brand-green) 35%, transparent); }
+    .rt-tab.active { border-bottom-color: var(--brand-green); color: var(--brand-green-text); }
+    .rt-tab .n { background: var(--pill-muted-bg); border-radius: 999px; color: var(--pill-muted-fg); font-size: 10.5px; font-weight: 800; padding: 1px 7px; font-variant-numeric: tabular-nums; }
+    .rt-tab.active .n { background: var(--pill-success-bg); color: var(--pill-success-fg); }
+    .rt-tabcount { color: var(--text-muted); font-size: 11.5px; margin-left: auto; padding-right: 2px; font-variant-numeric: tabular-nums; }
+
+    /* ---- table (div grid: same paint as table.data) ---- */
+    .rt-tablewrap { border: 1px solid var(--border); border-radius: 10px; overflow: auto; background: var(--surface-bg); box-shadow: 0 2px 8px rgba(0,0,0,.04); flex: 1; min-height: 0; margin-bottom: 18px; }
+    .rt-grid { --cols: 88px minmax(0,2fr) 108px 150px 106px minmax(0,1.5fr) 122px 30px; min-width: 900px; }
+    .rt-head { background: var(--brand-green); color: #fff; display: grid; grid-template-columns: var(--cols); position: sticky; top: 0; z-index: 2; }
+    .rt-head > div { padding: 9px 12px; font-size: 11px; letter-spacing: .3px; font-weight: 700; }
+    .rt-rowwrap { border-bottom: 1px solid var(--border-soft); }
+    .rt-rowwrap.alt .rt-row { background: var(--table-stripe); }
+    .rt-row { display: grid; grid-template-columns: var(--cols); cursor: pointer; align-items: start; }
+    .rt-row:hover { background: color-mix(in srgb, var(--brand-green) 5%, var(--surface-bg)); }
+    .rt-rowwrap.open { box-shadow: inset 3px 0 0 var(--brand-green); background: var(--surface-alt-bg); }
+    .rt-rowwrap.open .rt-row { background: transparent; }
+    .rt-row > div { padding: var(--row-pad) 12px; font-size: 12.5px; color: var(--text); min-width: 0; }
+    .rt-row .dim { font-size: 11px; color: var(--text-dim); }
+    .rt-ref { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 11.5px; }
+    .rt-ref small { color: var(--text-muted); display: block; font-size: 10px; font-weight: 500; margin-top: 2px; }
+    .rt-closure { font-weight: 600; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .rt-dates { font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .rt-owner { color: var(--text-muted); display: block; font-size: 10.5px; margin-top: 2px; }
+    .rt-pill { font-size: 10.5px; font-weight: bold; padding: 3px 8px; border-radius: 10px; white-space: nowrap; display: inline-block; }
+    .rt-pill.success { background: var(--pill-success-bg); color: var(--pill-success-fg); }
+    .rt-pill.accent { background: var(--pill-accent-bg); color: var(--pill-accent-fg); }
+    .rt-pill.warning { background: var(--pill-warning-bg); color: var(--pill-warning-fg); }
+    .rt-pill.muted { background: var(--pill-muted-bg); color: var(--pill-muted-fg); }
+    .rt-pill.danger { background: var(--pill-danger-bg); color: var(--pill-danger-fg); }
+    .rt-flag { color: var(--pill-warning-fg); display: block; font-size: 10px; font-weight: 800; margin-top: 3px; }
+    .rt-flag.bad { color: var(--danger-text); }
+    .rt-chev { align-items: center; color: var(--text-muted); display: flex; justify-content: center; padding-top: 11px; }
+    .rt-chev svg { width: 14px; height: 14px; transition: transform .15s ease; }
+    .rt-rowwrap.open .rt-chev svg { transform: rotate(180deg); }
+    .rt-rowwrap.open .rt-chev { color: var(--brand-green-text); }
+
+    /* ---- expanded record ---- */
+    .rt-detail { padding: 4px 16px 16px 14px; background: var(--surface-alt-bg); }
+    .rt-detail-cols { display: grid; gap: 14px 26px; grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+    .rt-dl { display: grid; gap: 8px 18px; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); margin: 0; }
+    .rt-dl dt { color: var(--text-muted); font-size: 10.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+    .rt-dl dd { font-size: 12.5px; margin: 2px 0 0; color: var(--text); line-height: 1.4; }
+    .rt-dgroup h4 { color: var(--brand-green-text); font-size: 10px; font-weight: 900; letter-spacing: .08em; margin: 0 0 8px; text-transform: uppercase; }
+    .rt-notifs { align-items: center; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; padding-top: 11px; }
+    .rt-notifs > b { color: var(--text-muted); font-size: 10.5px; font-weight: 800; letter-spacing: .04em; margin-right: 4px; text-transform: uppercase; }
+    .rt-nchip { border-radius: 999px; font-size: 10.5px; font-weight: 700; padding: 3px 9px; }
+    .rt-nchip.yes { background: var(--success-bg); color: var(--success-text); }
+    .rt-nchip.no { background: var(--pill-muted-bg); color: var(--text-muted); }
+    .rt-records { border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 8px; margin-top: 11px; padding-top: 11px; }
+    .rt-record { align-items: center; background: var(--surface-bg); border: 1px solid var(--border); border-radius: 9px; display: inline-flex; gap: 8px; padding: 7px 11px; font-size: 11.5px; color: var(--text-dim); }
+    .rt-record svg { width: 14px; height: 14px; color: var(--brand-green-text); }
+    .rt-record b { color: var(--text); font-weight: 700; }
+    .rt-warn { background: var(--highlight-bg); border: 1px solid var(--highlight-border); border-radius: 9px; color: var(--text); font-size: 12px; line-height: 1.45; margin-top: 11px; padding: 9px 12px; }
+    .rt-prov { border-top: 1px solid var(--border); color: var(--text-muted); font-size: 11px; margin-top: 11px; padding-top: 10px; }
+
+    .rt-empty { align-items: center; color: var(--text-muted); display: flex; flex-direction: column; gap: 6px; justify-content: center; padding: 56px 20px; text-align: center; }
+    .rt-empty svg { color: var(--border-strong); height: 34px; width: 34px; }
+    .rt-empty b { color: var(--text-dim); font-size: 13.5px; }
+    .rt-empty span { font-size: 12px; }
+  </style>
+</helmet>
+
+<div class="rt-root" data-theme="{{theme}}" data-density="{{density}}">
+  <div class="rt-frame">
+
+    <aside class="rt-nav">
+      <div class="rt-brand">
+        <span class="rt-logo">MVTA</span>
+        <div>
+          <div class="rt-brand-text">OnBoard</div>
+          <div class="rt-version"><b>v1.5.107</b><span>What&#8217;s new</span></div>
+        </div>
+      </div>
+      <nav class="rt-navlist">
+        <a href="#"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect></svg><span>Dashboard</span></a>
+        <div class="rt-section">Service Operations</div>
+        <a href="#"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect></svg><span>Overview</span></a>
+        <a href="#"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg><span>Compose</span></a>
+        <a href="#"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg><span>Active Service Alerts</span></a>
+        <a href="#"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg><span>Suggested Alerts</span></a>
+        <a href="#"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.6 5.6L2 19l3 3 7.1-7.1a4 4 0 0 0 5.6-5.6l-2.8 2.8-2.1-2.1Z"></path></svg><span>Service Risk &amp; Quality</span></a>
+        <a href="#"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path></svg><span>Dispatch Log</span></a>
+        <section class="rt-group">
+          <div class="rt-group-toggle"><span>Specialist Operations</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:12px;height:12px"><path d="m6 15 6-6 6 6"></path></svg></div>
+          <a href="#"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17h4l3-11 3 11h4"></path><path d="M17 13l3 4-3 4"></path></svg><span>Detours &amp; Closures</span></a>
+          <a href="#"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17h4l3-11 3 11h4"></path><path d="M17 13l3 4-3 4"></path></svg><span>Detour Intake</span></a>
+          <a href="#" class="active"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path></svg><span>Detour Reports</span></a>
+          <a href="#"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.6 5.6L2 19l3 3 7.1-7.1a4 4 0 0 0 5.6-5.6l-2.8 2.8-2.1-2.1Z"></path></svg><span>OCC Tools</span></a>
+        </section>
+        <section class="rt-group">
+          <div class="rt-group-toggle"><span>Events</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:12px;height:12px"><path d="m9 6 6 6-6 6"></path></svg></div>
+        </section>
+        <section class="rt-group">
+          <div class="rt-group-toggle"><span>Compliance &amp; Assessment</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:12px;height:12px"><path d="m9 6 6 6-6 6"></path></svg></div>
+        </section>
+      </nav>
+      <div class="rt-navspacer"></div>
+      <div class="rt-navfoot">
+        <div class="rt-navstatus"><span class="rt-dot"></span><span>Console Live</span></div>
+      </div>
+    </aside>
+
+    <div class="rt-col">
+      <header class="rt-topbar">
+        <div>
+          <h1>Detour Reports</h1>
+          <div class="rt-sub">Search and export detour history &#8212; read-only</div>
+        </div>
+        <div class="rt-topacts">
+          <button class="rt-iconbtn" title="Theme"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8Z"></path></svg></button>
+          <div class="rt-user"><span class="rt-avatar">TF</span><span>T. Fant &#183; OCC.Detour</span></div>
+        </div>
+      </header>
+
+      <div class="rt-main">
+        <div class="rt-panel-header">
+          <span>Detour Reports</span>
+          <span class="rt-readonly"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>Read-only</span>
+        </div>
+        <div class="rt-panel-body">
+          <p class="rt-desc">Every detour and closure on record, searchable by any field. Entry and edits happen on <a href="#">Detours &amp; Closures</a>.</p>
+
+          <div class="rt-toolbar">
+            <div class="rt-searchwrap">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+              <input class="rt-search" type="search" aria-label="Search detours" value="{{search}}" onChange="{{onSearch}}" placeholder="Closure, route, detour number, staff name, location&#8230;">
+            </div>
+            <button class="rt-btn {{filterBtnCls}}" onClick="{{toggleFilters}}">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4 2v-8Z"></path></svg>
+              <span>Filters</span>
+              <sc-if value="{{hasFilters}}" hint-placeholder-val="{{ true }}"><span class="rt-badge">{{filterCount}}</span></sc-if>
+            </button>
+            <button class="rt-btn primary" onClick="{{noop}}">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"></path><path d="m8 12 4 4 4-4"></path><path d="M5 20h14"></path></svg>
+              <span>{{exportLabel}}</span>
+            </button>
+          </div>
+
+          <sc-if value="{{filtersOpen}}" hint-placeholder-val="{{ true }}">
+            <div class="rt-filters">
+              <div>
+                <label class="rt-flabel" for="rt-source">Source</label>
+                <select id="rt-source" class="rt-f" value="{{source}}" onChange="{{onSource}}">
+                  <option value="all">All sources</option>
+                  <option value="manual">Manual</option>
+                  <option value="avail">Avail sync</option>
+                </select>
+              </div>
+              <div>
+                <label class="rt-flabel" for="rt-reason">Reason category</label>
+                <select id="rt-reason" class="rt-f" value="{{reason}}" onChange="{{onReason}}">
+                  <option value="all">All reasons</option>
+                  <option value="construction">Construction</option>
+                  <option value="special_event">Special event</option>
+                  <option value="utility">Utility work</option>
+                  <option value="emergency">Emergency</option>
+                </select>
+              </div>
+              <div>
+                <label class="rt-flabel" for="rt-severity">Severity</label>
+                <select id="rt-severity" class="rt-f" value="{{severity}}" onChange="{{onSeverity}}">
+                  <option value="all">All severities</option>
+                  <option value="minor">Minor</option>
+                  <option value="moderate">Moderate</option>
+                  <option value="major">Major</option>
+                </select>
+              </div>
+              <div>
+                <label class="rt-flabel" for="rt-from">Starts on or after</label>
+                <input id="rt-from" class="rt-f" type="date" value="{{startFrom}}" onChange="{{onFrom}}">
+              </div>
+              <div>
+                <label class="rt-flabel" for="rt-to">Starts on or before</label>
+                <input id="rt-to" class="rt-f" type="date" value="{{startTo}}" onChange="{{onTo}}">
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{hasChips}}" hint-placeholder-val="{{ false }}">
+            <div class="rt-chiprow">
+              <sc-for list="{{chips}}" as="chip" hint-placeholder-count="2">
+                <button class="rt-fchip" onClick="{{chip.clear}}">{{chip.label}}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true" class="x"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+              </sc-for>
+              <button class="rt-clearall" onClick="{{clearAll}}">Clear all</button>
+            </div>
+          </sc-if>
+
+          <div class="rt-tabs">
+            <sc-for list="{{tabs}}" as="tab" hint-placeholder-count="6">
+              <button class="rt-tab {{tab.cls}}" onClick="{{tab.pick}}">{{tab.label}}<span class="n">{{tab.count}}</span></button>
+            </sc-for>
+            <span class="rt-tabcount">{{countLabel}}</span>
+          </div>
+
+          <div class="rt-tablewrap">
+            <div class="rt-grid">
+              <div class="rt-head">
+                <div>Internal ref</div><div>Closure</div><div>Routes</div><div>Dates</div>
+                <div>Status</div><div>Readiness &#183; owner</div><div>Communications</div><div></div>
+              </div>
+              <sc-for list="{{rows}}" as="row" hint-placeholder-count="6">
+                <div class="rt-rowwrap {{row.wrapCls}}">
+                  <div class="rt-row" onClick="{{row.toggle}}" onKeyDown="{{row.key}}" role="button" tabindex="0" aria-expanded="{{row.expanded}}">
+                    <div class="rt-ref">{{row.ref}}<small>{{row.number}}</small></div>
+                    <div><div class="rt-closure">{{row.closure}}</div></div>
+                    <div class="dim">{{row.routes}}</div>
+                    <div class="dim rt-dates">{{row.dates}}</div>
+                    <div><span class="rt-pill {{row.statusCls}}">{{row.status}}</span></div>
+                    <div class="dim">{{row.readiness}}<span class="rt-owner">{{row.owner}}</span><sc-if value="{{row.hasFlag}}" hint-placeholder-val="{{ false }}"><span class="rt-flag {{row.flagCls}}">{{row.flag}}</span></sc-if></div>
+                    <div><span class="rt-pill {{row.commsCls}}">{{row.comms}}</span></div>
+                    <div class="rt-chev"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></div>
+                  </div>
+                  <sc-if value="{{row.expanded}}" hint-placeholder-val="{{ false }}">
+                    <div class="rt-detail">
+                      <div class="rt-detail-cols">
+                        <div class="rt-dgroup">
+                          <h4>Operational record</h4>
+                          <dl class="rt-dl">
+                            <div><dt>Location</dt><dd>{{row.location}}</dd></div>
+                            <div><dt>Service area</dt><dd>{{row.area}}</dd></div>
+                            <div><dt>Affected stops</dt><dd>{{row.stops}}</dd></div>
+                            <div><dt>Segments</dt><dd>{{row.segments}}</dd></div>
+                            <div><dt>Action instructions</dt><dd>{{row.action}}</dd></div>
+                            <div><dt>Riders directed</dt><dd>{{row.riders}}</dd></div>
+                          </dl>
+                        </div>
+                        <div class="rt-dgroup">
+                          <h4>Classification &amp; provenance</h4>
+                          <dl class="rt-dl">
+                            <div><dt>Reason</dt><dd>{{row.reason}}</dd></div>
+                            <div><dt>Severity</dt><dd>{{row.severity}}</dd></div>
+                            <div><dt>Fulfillment path</dt><dd>{{row.path}}</dd></div>
+                            <div><dt>Workflow</dt><dd>{{row.workflow}}</dd></div>
+                            <div><dt>Reported by</dt><dd>{{row.reportedBy}}</dd></div>
+                            <div><dt>Approved by</dt><dd>{{row.approvedBy}}</dd></div>
+                          </dl>
+                        </div>
+                      </div>
+                      <div class="rt-notifs">
+                        <b>Notified</b>
+                        <span class="rt-nchip {{row.nEmail}}">Email</span>
+                        <span class="rt-nchip {{row.nExpired}}">Expired email</span>
+                        <span class="rt-nchip {{row.nSpare}}">Spare</span>
+                        <span class="rt-nchip {{row.nRadio}}">Radio</span>
+                        <span class="rt-nchip {{row.nBoard}}">Dispatch board</span>
+                        <span class="rt-nchip {{row.nSocial}}">Social media</span>
+                      </div>
+                      <sc-if value="{{row.hasConflict}}" hint-placeholder-val="{{ false }}">
+                        <p class="rt-warn"><b>{{row.conflictTitle}}:</b> {{row.conflictText}}</p>
+                      </sc-if>
+                      <div class="rt-records">
+                        <span class="rt-record"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16v12H4z"></path><path d="m4 7 8 6 8-6"></path></svg>Communication delivery <b>{{row.deliveries}}</b></span>
+                        <span class="rt-record"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v5h5"></path><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"></path></svg>Attachments <b>{{row.attachments}}</b></span>
+                        <span class="rt-record"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 2.6-6.3"></path><path d="M3 4v5h5"></path><path d="M12 7v5l3.5 2"></path></svg>Workflow history <b>{{row.history}}</b></span>
+                        <span class="rt-record"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 4-6 3v13l6-3 6 3 6-3V4l-6 3Z"></path><path d="M9 4v13M15 7v13"></path></svg>Map <b>{{row.mapLabel}}</b></span>
+                      </div>
+                      <p class="rt-prov">{{row.provenance}}</p>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-for>
+              <sc-if value="{{isEmpty}}" hint-placeholder-val="{{ false }}">
+                <div class="rt-empty">
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+                  <b>{{emptyTitle}}</b>
+                  <span>{{emptyHint}}</span>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light","section":"Display"},"density":{"editor":"enum","options":["comfortable","compact"],"default":"comfortable","section":"Display"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      status: "active",
+      search: "",
+      filtersOpen: false,
+      source: "all",
+      reason: "all",
+      severity: "all",
+      startFrom: "",
+      startTo: "",
+      expanded: null,
+    };
+  }
+
+  data() {
+    return [
+      { id: "d1", ref: "DTR-2025-0142", number: "#4471", closure: "Cedar Ave S at 140th St — water main repair", routes: "440, 442", dates: "Sep 2 – Sep 12, 2025", start: "2025-09-02", status: "active", readiness: "Ready for Avail entry", owner: "L. Ortega", comms: "Ready / published", commsCls: "ok", source: "manual", reason: "utility", severity: "moderate", location: "Cedar Ave S between 138th St and 142nd St", area: "Apple Valley · Rosemount", stops: "14 stops · 4 temporary", segments: "440 — Northbound, Southbound; 442 — Southbound", action: "Operate via 140th St W and Galaxie Ave; skip stops 3311–3318", riders: "Board at temporary flag stops on Galaxie Ave", path: "Enter in Avail", workflow: "Fulfilled", reportedBy: "M. Reyes · Sep 1, 2025 4:12 PM", approvedBy: "L. Ortega · Sep 1, 2025 5:40 PM", n: [1,0,1,1,1,1], deliveries: "2 receipts", attachments: "1 file", history: "6 events", mapLabel: "Drawn", conflict: null, provenance: "Created by m.reyes on Sep 1, 2025 4:12 PM · Last edited by l.ortega on Sep 3, 2025 8:05 AM" },
+      { id: "d2", ref: "DTR-2025-0139", number: "#4468", closure: "Nicollet Ave closed at 76th St — Nicollet Days festival", routes: "465", dates: "Sep 4 – Sep 7, 2025", start: "2025-09-04", status: "active", readiness: "Ready for manual operations", owner: "K. Mbeki", comms: "Needs communication", commsCls: "warn", source: "manual", reason: "special_event", severity: "major", location: "Nicollet Ave from 74th St to 78th St", area: "Richfield", stops: "9 stops · 2 closed", segments: "465 — Both directions", action: "Detour via Lyndale Ave and 77th St; no service on Nicollet", riders: "Use temporary stop at 77th St W and Lyndale Ave", path: "Fixed-route manual", workflow: "Awaiting fulfillment", reportedBy: "K. Mbeki · Aug 28, 2025 9:22 AM", approvedBy: "—", n: [1,0,0,1,0,0], deliveries: "1 receipt", attachments: "2 files", history: "4 events", mapLabel: "Drawn", conflict: null, provenance: "Created by k.mbeki on Aug 28, 2025 9:22 AM" },
+      { id: "d3", ref: "DTR-2025-0136", number: "#4465", closure: "Hwy 13 ramp closure at Yankee Doodle Rd", routes: "484, 489", dates: "Aug 28 – Sep 19, 2025", start: "2025-08-28", status: "active", readiness: "Needs OCC review", owner: "Unassigned", comms: "Draft in progress", commsCls: "warn", source: "avail", reason: "construction", severity: "moderate", location: "TH 13 westbound ramp to Yankee Doodle Rd", area: "Eagan", stops: "3 stops · 0 closed", segments: "484 — Westbound; 489 — Westbound", action: "Continue to Blackhawk Rd, return via Yankee Doodle Rd", riders: "No stop changes", path: "Enter in Avail", workflow: "Needs OCC review", reportedBy: "Avail sync · Aug 27, 2025 11:03 PM", approvedBy: "—", n: [0,0,0,1,1,0], deliveries: "0 receipts", attachments: "0 files", history: "3 events", mapLabel: "Not drawn", conflict: { title: "Conflict needs override", text: "DTR-2025-0119 I-35W lane shift at 98th St (shares route 465, Aug 28 – Sep 19)" }, provenance: "Created by Avail sync on Aug 27, 2025 11:03 PM" },
+      { id: "d4", ref: "DTR-2025-0131", number: "—", closure: "Burnsville Transit Station north lot resurfacing", routes: "444, 445, 446", dates: "Aug 25 – Sep 30, 2025", start: "2025-08-25", status: "active", readiness: "Ready for Avail entry", owner: "D. Hollis", comms: "Ready / published", commsCls: "ok", source: "manual", reason: "construction", severity: "minor", location: "Burnsville Transit Station, north parking deck", area: "Burnsville", stops: "1 station · 4 bays relocated", segments: "444, 445, 446 — All trips", action: "Board at bays 7–10 on the south side for the duration", riders: "Signage posted at the closed bays", path: "Enter in Avail", workflow: "Awaiting fulfillment", reportedBy: "D. Hollis · Aug 20, 2025 1:45 PM", approvedBy: "L. Ortega · Aug 21, 2025 8:15 AM", n: [1,0,1,1,1,1], deliveries: "3 receipts", attachments: "1 file", history: "7 events", mapLabel: "Drawn", conflict: null, provenance: "Created by d.hollis on Aug 20, 2025 1:45 PM · Last edited by d.hollis on Aug 24, 2025 3:30 PM" },
+      { id: "d5", ref: "DTR-2025-0145", number: "#4474", closure: "Kenrick Ave bridge deck repair", routes: "477", dates: "Sep 15 – Oct 3, 2025", start: "2025-09-15", status: "upcoming", readiness: "Needs OCC review", owner: "Unassigned", comms: "Not recorded", commsCls: "muted", source: "manual", reason: "construction", severity: "moderate", location: "Kenrick Ave over I-35, Lakeville", area: "Lakeville", stops: "5 stops · 1 closed", segments: "477 — Northbound, Southbound", action: "Detour via 162nd St W and Kenwood Trail", riders: "Stop 5521 closed for the duration", path: "Enter in Avail", workflow: "Needs OCC review", reportedBy: "M. Reyes · Sep 3, 2025 10:10 AM", approvedBy: "—", n: [0,0,0,0,0,0], deliveries: "0 receipts", attachments: "1 file", history: "2 events", mapLabel: "Not drawn", conflict: null, provenance: "Created by m.reyes on Sep 3, 2025 10:10 AM" },
+      { id: "d6", ref: "DTR-2025-0146", number: "—", closure: "Egan Dr detour for Eagan Fall Fest", routes: "470, 472", dates: "Sep 20 – Sep 21, 2025", start: "2025-09-20", status: "upcoming", readiness: "Ready for manual operations", owner: "K. Mbeki", comms: "Draft in progress", commsCls: "warn", source: "manual", reason: "special_event", severity: "minor", location: "Egan Dr between Pilot Knob Rd and Federal Dr", area: "Eagan", stops: "6 stops · 2 closed", segments: "470, 472 — Both directions", action: "Operate via Pilot Knob Rd and Yankee Doodle Rd both days", riders: "Temporary stop at Pilot Knob Rd and Central Pkwy", path: "Fixed-route manual", workflow: "Awaiting fulfillment", reportedBy: "K. Mbeki · Sep 2, 2025 2:31 PM", approvedBy: "—", n: [1,0,0,0,0,0], deliveries: "1 receipt", attachments: "0 files", history: "3 events", mapLabel: "Drawn", conflict: null, provenance: "Created by k.mbeki on Sep 2, 2025 2:31 PM" },
+      { id: "d7", ref: "DTR-2025-0147", number: "—", closure: "150th St W resurfacing — Apple Valley", routes: "476, 478", dates: "Oct 1 – Oct 24, 2025", start: "2025-10-01", status: "upcoming", readiness: "Needs OCC review", owner: "Unassigned", comms: "Not recorded", commsCls: "muted", source: "manual", reason: "construction", severity: "moderate", location: "150th St W from Cedar Ave to Pilot Knob Rd", area: "Apple Valley", stops: "11 stops · 3 closed", segments: "476 — Eastbound; 478 — Both directions", action: "Detour via 147th St W; stops relocated to Garden View Dr", riders: "Relocated stops signed one week ahead", path: "Enter in Avail", workflow: "Needs OCC review", reportedBy: "M. Reyes · Sep 4, 2025 8:55 AM", approvedBy: "—", n: [0,0,0,0,0,0], deliveries: "0 receipts", attachments: "0 files", history: "1 event", mapLabel: "Not drawn", conflict: null, provenance: "Created by m.reyes on Sep 4, 2025 8:55 AM" },
+      { id: "d8", ref: "DTR-2025-0128", number: "#4462", closure: "Marschall Rd signal replacement", routes: "490", dates: "Aug 11 – Sep 26, 2025", start: "2025-08-11", status: "monitor", readiness: "Avail conflict", owner: "D. Hollis", comms: "Ready / published", commsCls: "ok", source: "avail", reason: "utility", severity: "minor", location: "Marschall Rd at 12th Ave E, Shakopee", area: "Shakopee", stops: "4 stops · 0 closed", segments: "490 — Both directions", action: "Flaggers in place; expect up to 8 minutes of delay", riders: "No stop changes", path: "Enter in Avail", workflow: "Fulfillment failed", reportedBy: "Avail sync · Aug 10, 2025 6:20 PM", approvedBy: "D. Hollis · Aug 11, 2025 7:05 AM", n: [1,0,1,1,1,0], deliveries: "2 receipts", attachments: "0 files", history: "9 events", mapLabel: "Drawn", conflict: { title: "Conflict overridden", text: "DTR-2025-0126 Diffley Rd culvert replacement — different corridor, no shared stops · d.hollis Aug 12, 2025 9:14 AM" }, provenance: "Created by Avail sync on Aug 10, 2025 6:20 PM · Last edited by d.hollis on Aug 12, 2025 9:14 AM" },
+      { id: "d9", ref: "DTR-2025-0119", number: "#4453", closure: "I-35W lane shift at 98th St", routes: "465, 467", dates: "Jul 30 – Sep 30, 2025", start: "2025-07-30", status: "monitor", readiness: "Ready for Avail entry", owner: "L. Ortega", comms: "Ready / published", commsCls: "ok", source: "avail", reason: "construction", severity: "moderate", location: "I-35W northbound between 98th St and American Blvd", area: "Bloomington", stops: "2 stops · 0 closed", segments: "465, 467 — Northbound", action: "Allow 6 additional minutes northbound in the AM peak", riders: "No stop changes", path: "Enter in Avail", workflow: "Fulfilled", reportedBy: "Avail sync · Jul 29, 2025 3:40 PM", approvedBy: "L. Ortega · Jul 29, 2025 4:55 PM", n: [1,0,1,1,1,1], deliveries: "4 receipts", attachments: "1 file", history: "11 events", mapLabel: "Drawn", conflict: null, provenance: "Created by Avail sync on Jul 29, 2025 3:40 PM · Last edited by l.ortega on Aug 6, 2025 10:12 AM" },
+      { id: "d10", ref: "DTR-2025-0126", number: "#4460", closure: "Diffley Rd culvert replacement", routes: "480", dates: "Aug 4 – Aug 29, 2025", start: "2025-08-04", status: "recently_finished", readiness: "Closed", owner: "—", comms: "Ready / published", commsCls: "ok", source: "manual", reason: "utility", severity: "minor", location: "Diffley Rd east of Lexington Ave", area: "Eagan", stops: "3 stops · 1 closed", segments: "480 — Eastbound", action: "Detour via Lexington Ave and Wilderness Run Rd", riders: "Stop 4410 restored Aug 29", path: "Enter in Avail", workflow: "Closed", reportedBy: "D. Hollis · Jul 31, 2025 8:02 AM", approvedBy: "L. Ortega · Jul 31, 2025 11:30 AM", n: [1,1,1,1,1,0], deliveries: "3 receipts", attachments: "2 files", history: "12 events", mapLabel: "Drawn", conflict: null, provenance: "Created by d.hollis on Jul 31, 2025 8:02 AM · Last edited by d.hollis on Aug 29, 2025 4:45 PM" },
+      { id: "d11", ref: "DTR-2025-0124", number: "#4458", closure: "Washington Ave SE closure — UofM move-in", routes: "465", dates: "Aug 22 – Aug 26, 2025", start: "2025-08-22", status: "recently_finished", readiness: "Closed", owner: "—", comms: "Ready / published", commsCls: "ok", source: "manual", reason: "special_event", severity: "major", location: "Washington Ave SE from Oak St to Pleasant St", area: "Minneapolis", stops: "7 stops · 3 closed", segments: "465 — Both directions", action: "Operate via University Ave SE; use the Oak St temporary stop", riders: "Move-in signage at all closed stops", path: "Fixed-route manual", workflow: "Closed", reportedBy: "K. Mbeki · Aug 14, 2025 12:15 PM", approvedBy: "L. Ortega · Aug 15, 2025 9:00 AM", n: [1,1,1,1,1,1], deliveries: "5 receipts", attachments: "3 files", history: "14 events", mapLabel: "Drawn", conflict: null, provenance: "Created by k.mbeki on Aug 14, 2025 12:15 PM · Last edited by k.mbeki on Aug 26, 2025 6:20 PM" },
+      { id: "d12", ref: "DTR-2025-0108", number: "#4441", closure: "Cliff Rd mill and overlay", routes: "444", dates: "Jun 2 – Jul 18, 2025", start: "2025-06-02", status: "expired", readiness: "Closed", owner: "—", comms: "Ready / published", commsCls: "ok", source: "manual", reason: "construction", severity: "moderate", location: "Cliff Rd from Nicollet Ave to Portland Ave", area: "Burnsville", stops: "8 stops · 2 closed", segments: "444 — Both directions", action: "Detour via Nicollet Ave and 130th St", riders: "Stops restored Jul 18", path: "Enter in Avail", workflow: "Closed", reportedBy: "M. Reyes · May 22, 2025 10:40 AM", approvedBy: "L. Ortega · May 23, 2025 8:20 AM", n: [1,1,1,1,1,0], deliveries: "4 receipts", attachments: "1 file", history: "15 events", mapLabel: "Drawn", conflict: null, provenance: "Created by m.reyes on May 22, 2025 10:40 AM · Last edited by m.reyes on Jul 18, 2025 5:02 PM" },
+      { id: "d13", ref: "DTR-2025-0097", number: "#4429", closure: "Southcross Dr watermain break", routes: "445", dates: "May 14 – May 22, 2025", start: "2025-05-14", status: "expired", readiness: "Closed", owner: "—", comms: "Ready / published", commsCls: "ok", source: "manual", reason: "emergency", severity: "major", location: "Southcross Dr at Nicollet Ave", area: "Burnsville", stops: "4 stops · 2 closed", segments: "445 — Both directions", action: "Emergency detour via Burnsville Pkwy", riders: "Emergency alert issued same day", path: "Fixed-route manual", workflow: "Closed", reportedBy: "OCC dispatch · May 14, 2025 5:48 AM", approvedBy: "D. Hollis · May 14, 2025 6:05 AM", n: [1,1,1,1,1,1], deliveries: "6 receipts", attachments: "2 files", history: "18 events", mapLabel: "Drawn", conflict: null, provenance: "Created by occ.dispatch on May 14, 2025 5:48 AM · Last edited by d.hollis on May 22, 2025 2:10 PM" },
+      { id: "d14", ref: "DTR-2025-0089", number: "#4420", closure: "Hwy 77 bridge inspection — northbound", routes: "442, 484", dates: "Apr 7 – Apr 11, 2025", start: "2025-04-07", status: "expired", readiness: "Closed", owner: "—", comms: "Ready / published", commsCls: "ok", source: "avail", reason: "construction", severity: "minor", location: "TH 77 northbound over the Minnesota River", area: "Bloomington · Eagan", stops: "0 stops · 0 closed", segments: "442, 484 — Northbound", action: "Allow 5 additional minutes; no stop changes", riders: "No stop changes", path: "Enter in Avail", workflow: "Closed", reportedBy: "Avail sync · Apr 4, 2025 1:12 PM", approvedBy: "L. Ortega · Apr 4, 2025 3:30 PM", n: [1,1,0,1,1,0], deliveries: "2 receipts", attachments: "0 files", history: "8 events", mapLabel: "Not drawn", conflict: null, provenance: "Created by Avail sync on Apr 4, 2025 1:12 PM · Last edited by l.ortega on Apr 11, 2025 4:00 PM" },
+    ];
+  }
+
+  matches(d) {
+    const s = this.state;
+    const terms = s.search.toLowerCase().split(/\s+/).filter(Boolean);
+    const hay = [d.ref, d.number, d.closure, d.routes, d.location, d.area, d.owner, d.reason, d.severity, d.action, d.riders, d.reportedBy, d.approvedBy].join(" ").toLowerCase();
+    if (!terms.every((t) => hay.indexOf(t) !== -1)) return false;
+    if (s.source !== "all" && d.source !== s.source) return false;
+    if (s.reason !== "all" && d.reason !== s.reason) return false;
+    if (s.severity !== "all" && d.severity !== s.severity) return false;
+    if (s.startFrom && d.start < s.startFrom) return false;
+    if (s.startTo && d.start > s.startTo) return false;
+    return true;
+  }
+
+  statusPill(status) {
+    if (status === "active") return "success";
+    if (status === "upcoming") return "accent";
+    if (status === "monitor") return "warning";
+    return "muted";
+  }
+
+  labelOf(key, value) {
+    const maps = {
+      source: { all: "All sources", manual: "Manual", avail: "Avail sync" },
+      reason: { all: "All reasons", construction: "Construction", special_event: "Special event", utility: "Utility work", emergency: "Emergency" },
+      severity: { all: "All severities", minor: "Minor", moderate: "Moderate", major: "Major" },
+    };
+    return maps[key][value] || value;
+  }
+
+  renderVals() {
+    const s = this.state;
+    const all = this.data();
+    const pool = all.filter((d) => this.matches(d));
+    const statusLabels = { active: "Active", upcoming: "Upcoming", monitor: "Monitor", recently_finished: "Recently finished", expired: "Expired" };
+    const order = ["active", "upcoming", "monitor", "recently_finished", "expired"];
+
+    const tabs = order.map((id) => ({
+      id,
+      label: statusLabels[id],
+      count: pool.filter((d) => d.status === id).length,
+      cls: s.status === id ? "active" : "",
+      pick: () => this.setState({ status: id, expanded: null }),
+    }));
+    tabs.push({ id: "all", label: "All", count: pool.length, cls: s.status === "all" ? "active" : "", pick: () => this.setState({ status: "all", expanded: null }) });
+
+    const shown = s.status === "all" ? pool : pool.filter((d) => d.status === s.status);
+
+    const chips = [];
+    if (s.search) chips.push({ label: 'Search: "' + s.search + '"', clear: () => this.setState({ search: "" }) });
+    ["source", "reason", "severity"].forEach((key) => {
+      if (s[key] !== "all") chips.push({ label: this.labelOf(key, s[key]), clear: () => this.setState({ [key]: "all" }) });
+    });
+    if (s.startFrom) chips.push({ label: "From " + s.startFrom, clear: () => this.setState({ startFrom: "" }) });
+    if (s.startTo) chips.push({ label: "To " + s.startTo, clear: () => this.setState({ startTo: "" }) });
+
+    const filterCount = ["source", "reason", "severity"].filter((k) => s[k] !== "all").length + (s.startFrom ? 1 : 0) + (s.startTo ? 1 : 0);
+
+    const rows = shown.map((d, i) => {
+      const open = s.expanded === d.id;
+      const flag = d.conflict ? d.conflict.title : (d.readiness === "Needs OCC review" ? "Needs OCC review" : "");
+      const toggle = () => this.setState({ expanded: open ? null : d.id });
+      return {
+        id: d.id, ref: d.ref, number: d.number, closure: d.closure, routes: d.routes, dates: d.dates,
+        status: statusLabels[d.status], statusCls: this.statusPill(d.status),
+        readiness: d.readiness, owner: d.owner === "—" ? "No owner" : d.owner,
+        flag: flag, hasFlag: flag !== "", flagCls: d.conflict && d.conflict.title.indexOf("needs") !== -1 ? "bad" : "",
+        comms: d.comms, commsCls: d.commsCls === "ok" ? "success" : d.commsCls === "warn" ? "warning" : "muted",
+        wrapCls: (open ? "open" : "") + (i % 2 === 1 && !open ? " alt" : ""),
+        expanded: open,
+        toggle,
+        key: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } },
+        location: d.location, area: d.area, stops: d.stops, segments: d.segments, action: d.action, riders: d.riders,
+        reason: this.labelOf("reason", d.reason), severity: this.labelOf("severity", d.severity),
+        path: d.path, workflow: d.workflow, reportedBy: d.reportedBy, approvedBy: d.approvedBy,
+        nEmail: d.n[0] ? "yes" : "no", nExpired: d.n[1] ? "yes" : "no", nSpare: d.n[2] ? "yes" : "no",
+        nRadio: d.n[3] ? "yes" : "no", nBoard: d.n[4] ? "yes" : "no", nSocial: d.n[5] ? "yes" : "no",
+        hasConflict: !!d.conflict, conflictTitle: d.conflict ? d.conflict.title : "", conflictText: d.conflict ? d.conflict.text : "",
+        deliveries: d.deliveries, attachments: d.attachments, history: d.history, mapLabel: d.mapLabel,
+        provenance: d.provenance,
+      };
+    });
+
+    const activeTab = tabs.find((t) => t.id === s.status);
+    return {
+      theme: this.props.theme ?? "light",
+      density: this.props.density ?? "comfortable",
+      search: s.search,
+      onSearch: (e) => this.setState({ search: e.target.value, expanded: null }),
+      filtersOpen: s.filtersOpen,
+      toggleFilters: () => this.setState({ filtersOpen: !s.filtersOpen }),
+      filterBtnCls: s.filtersOpen ? "on" : "",
+      hasFilters: filterCount > 0,
+      filterCount: filterCount,
+      source: s.source, reason: s.reason, severity: s.severity, startFrom: s.startFrom, startTo: s.startTo,
+      onSource: (e) => this.setState({ source: e.target.value, expanded: null }),
+      onReason: (e) => this.setState({ reason: e.target.value, expanded: null }),
+      onSeverity: (e) => this.setState({ severity: e.target.value, expanded: null }),
+      onFrom: (e) => this.setState({ startFrom: e.target.value, expanded: null }),
+      onTo: (e) => this.setState({ startTo: e.target.value, expanded: null }),
+      chips, hasChips: chips.length > 0,
+      clearAll: () => this.setState({ search: "", source: "all", reason: "all", severity: "all", startFrom: "", startTo: "", expanded: null }),
+      tabs, rows,
+      countLabel: shown.length + " of " + all.length + " detours",
+      exportLabel: shown.length === 1 ? "Export 1 row" : "Export " + shown.length + " rows",
+      noop: () => undefined,
+      isEmpty: rows.length === 0,
+      emptyTitle: pool.length === 0 ? "Nothing matches this search" : "No " + (activeTab ? activeTab.label.toLowerCase() : "") + " detours match",
+      emptyHint: pool.length === 0 ? "Try fewer words, or clear the filters above." : "Other status tabs still have matches — the counts above show where.",
+    };
+  }
+}
+</script>
+</body>
+</html>

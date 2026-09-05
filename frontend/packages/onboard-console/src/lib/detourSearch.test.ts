@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Detour } from "@mvta/shared";
-import { detoursToCsv, filterDetours, historicalRowMatchesSearch, EMPTY_FILTERS } from "./detourSearch.js";
+import { detourExportHtml, detourExportTable, detoursToCsv, filterDetours, historicalRowMatchesSearch, EMPTY_FILTERS } from "./detourSearch.js";
 import type { DetourHistoricalImportRow } from "@mvta/shared";
 import { communicationStatusLabel, fulfillmentPathLabel, readinessLabel, workflowLabel } from "./detourLabels.js";
 
@@ -97,5 +97,41 @@ describe("conflict columns", () => {
     expect(unresolved[header.indexOf("Readiness")]).toContain("Conflict needs override");
     const [, overridden] = detoursToCsv([detour({ conflicts, conflict_status: "overridden", conflict_override_reason: "Different stops" })]).split("\r\n").map(cells);
     expect(overridden[col]).toBe("Overridden (Different stops): MVTA-DET-2026-0003");
+  });
+});
+
+// The Reports page paints its export preview from detourExportTable and
+// writes the file from detoursToCsv. If those two ever disagree the preview
+// becomes a lie about what was downloaded, so they are pinned together.
+describe("detourExportTable", () => {
+  it("is the table detoursToCsv serialises - same headers, same cells, same order", () => {
+    const rows = [detour(), detour({ id: "d2", closure: 'Bridge "A", closed', number: null })];
+    const table = detourExportTable(rows);
+    const lines = detoursToCsv(rows).split("\r\n").map(cells);
+    expect(table.headers).toEqual(lines[0]);
+    expect(table.rows).toEqual(lines.slice(1));
+  });
+
+  it("renders an absent value as an empty cell rather than the string null", () => {
+    const table = detourExportTable([detour({ number: null, riders_directed: null })]);
+    const byHeader = Object.fromEntries(table.headers.map((h, i) => [h, table.rows[0][i]]));
+    expect(byHeader["Number"]).toBe("");
+    expect(byHeader["Riders directed"]).toBe("");
+  });
+});
+
+describe("detourExportHtml", () => {
+  it("escapes closure text so a detour cannot inject markup into the browser view", () => {
+    const html = detourExportHtml("x.csv", detourExportTable([detour({ closure: '<script>alert("x")</script>' })]), "Active");
+    expect(html).not.toContain("<script>alert");
+    expect(html).toContain("&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;");
+  });
+
+  it("carries every exported row, not just the ones the dialog previews", () => {
+    const rows = Array.from({ length: 60 }, (_, i) => detour({ id: `d${i}`, closure: `Closure ${i}` }));
+    const html = detourExportHtml("x.csv", detourExportTable(rows), "Active");
+    expect(html).toContain("Closure 0");
+    expect(html).toContain("Closure 59");
+    expect(html).toContain("60 detours");
   });
 });
