@@ -42,6 +42,7 @@ function evidence(trust: KpiTrustStream): string | null {
 const STREAM_LABELS: Record<KpiTrustStreamName, string> = {
   fixed_route_delay: "Fixed route delays",
   fixed_route_departures: "Fixed route departures",
+  on_demand_departures: "On-demand departures",
   otp: "OTP",
   event_avl: "Event AVL",
   on_demand: "On-demand",

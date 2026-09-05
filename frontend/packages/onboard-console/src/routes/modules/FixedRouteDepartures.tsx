@@ -2,57 +2,22 @@ import { useEffect, useState } from "react";
 import { ApiError, type FixedRouteDeparture } from "@mvta/shared";
 import { api } from "../../config.js";
 import { KpiTrustSummary } from "./KpiTrustSummary.js";
+import {
+  badgeLabel,
+  dateTimeLabel,
+  deltaLabel,
+  monitoringState,
+  RiskStat,
+  type DepartureDiagnosticsBase,
+} from "./garageDepartures.shared.js";
 import "./serviceRisk.css";
 
 const DAY_OPTIONS = [7, 14, 30] as const;
 const DEFAULT_DAYS = 14;
 
-function dateTimeLabel(value: string | null): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-}
-
-function deltaLabel(seconds: number | null): string {
-  if (seconds === null) return "—";
-  const minutes = Math.round(seconds / 60);
-  if (minutes === 0) return "On time";
-  return minutes > 0 ? `+${minutes} min` : `${minutes} min`;
-}
-
-interface DepartureDiagnostics {
-  configured: boolean;
-  table_ready: boolean;
+interface DepartureDiagnostics extends DepartureDiagnosticsBase {
   late_count: number;
   expired_count: number;
-  avg_delta_seconds: number | null;
-  record_count: number;
-}
-
-type MonitoringState = "loading" | "unavailable" | "live" | "not_configured" | "not_connected";
-
-// Not-connected monitoring: a source that has not passed its activation gate
-// cannot make claims about departure compliance. An unconfigured feed and a
-// missing FixedRouteDepartures table are both that state - the API answers 200
-// with an empty list either way, so reading that list as "no late pullouts"
-// would report a silent zero for a module that has never been switched on.
-// The remedy differs, so the two are named separately even though both
-// suppress the summary. A failed request is not a not-connected source either:
-// nothing is known about the feed, so it says so rather than blaming
-// configuration.
-function monitoringState(diagnostics: DepartureDiagnostics | null, loading: boolean): MonitoringState {
-  if (!diagnostics) return loading ? "loading" : "unavailable";
-  if (!diagnostics.configured) return "not_configured";
-  if (!diagnostics.table_ready) return "not_connected";
-  return "live";
-}
-
-function badgeLabel(state: MonitoringState): string {
-  if (state === "live") return "Live data";
-  if (state === "loading") return "Checking";
-  if (state === "unavailable") return "Unavailable";
-  return "Not connected";
 }
 
 function statusClass(status: string | null): string {
@@ -61,13 +26,14 @@ function statusClass(status: string | null): string {
   return "pill-muted";
 }
 
-// Fixed Route Departures - Avail Pullout compliance tracking (Compliance
-// tab). Evaluates whether vehicles left the garage on schedule, using
-// Avail's own dispatch-side check-in/login/pullout timing - a more
+// Fixed Route view of Garage Departures - Avail Pullout compliance tracking
+// (Compliance tab). Evaluates whether vehicles left the garage on schedule,
+// using Avail's own dispatch-side check-in/login/pullout timing - a more
 // authoritative signal for garage-side lateness than anything inferred from
 // GTFS or AVL data. A growing historical log (not a live feed), so this
 // fetches on mount/range-change with a manual refresh, no auto-refresh
-// interval.
+// interval. The module head and the service-type switch live in
+// GarageDepartures.tsx.
 export function FixedRouteDepartures() {
   const [days, setDays] = useState<number>(DEFAULT_DAYS);
   const [departures, setDepartures] = useState<FixedRouteDeparture[] | null>(null);
@@ -115,19 +81,7 @@ export function FixedRouteDepartures() {
   const connected = state === "live";
 
   return (
-    <div className="risk-module">
-      <div className="risk-module-head">
-        <div>
-          <span className="risk-eyebrow">Compliance investigation</span>
-          <h2>Fixed Route Departures</h2>
-          <p>
-            Evaluates whether vehicles left the garage on schedule using Avail's own dispatch
-            check-in/login/pullout timing. Late and expired pullouts are logged permanently for
-            trend analysis.
-          </p>
-        </div>
-      </div>
-
+    <>
       <KpiTrustSummary stream="fixed_route_departures" />
 
       <div className="risk-refresh-bar" aria-label="Fixed route departures controls">
@@ -224,23 +178,6 @@ export function FixedRouteDepartures() {
           </tbody>
         </table>
       )}
-    </div>
-  );
-}
-
-function RiskStat({
-  value,
-  label,
-  tone,
-}: {
-  value: string | number;
-  label: string;
-  tone: "danger" | "warning" | "muted" | "accent";
-}) {
-  return (
-    <div className={`risk-stat ${tone}`}>
-      <strong>{value}</strong>
-      <span>{label}</span>
-    </div>
+    </>
   );
 }
