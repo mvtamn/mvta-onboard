@@ -26,6 +26,8 @@
     "SPARE_API_KEY": "REPLACE_ME",
     "SPARE_MISSED_TRIPS_ENABLED": "false",
     "SPARE_CONTRACTOR_FAULT_VALUES": "",
+    "// on-demand departures": "ON_DEMAND_DEPARTURES_ENABLED turns on onDemandDeparturesPoll, the Spare half of Garage Departures (ADR 0028). It measures the duties named by the missed-trip requests above, so it needs SPARE_API_KEY and inherits SPARE_MISSED_TRIP_SERVICE_IDS. Requires migration 096.",
+    "ON_DEMAND_DEPARTURES_ENABLED": "false",
     "// note3": "GTFS_RT_VEHICLE_URL feeds live position/occupancy (gtfsVehiclePositionsPoll.ts) - the third and final GTFS-RT feed type.",
     "GTFS_RT_VEHICLE_URL": "https://srv.mvta.com/infoPoint/GTFS-realtime.ashx?&Type=VehiclePosition&debug=true",
     "// note4": "ANTHROPIC_API_KEY powers Compose's rider-friendly summary drafting (messagesDraftSummary.ts / lib/anthropic.ts). Optional locally - drafting just returns a clear 'not configured' response without it.",

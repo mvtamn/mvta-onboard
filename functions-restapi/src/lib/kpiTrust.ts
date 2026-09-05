@@ -13,6 +13,7 @@ export type KpiFeedName =
   | "avail_missed_trips"
   | "spare_requests"
   | "spare_slots"
+  | "spare_duties"
   | "spare_on_demand_reconciliation";
 
 export interface KpiFeedHealth {
@@ -52,6 +53,16 @@ type Contract = { required: readonly DependencyContract[]; supporting?: readonly
 const CONTRACTS = {
   fixed_route_delay: { required: [{ feedName: "gtfs_trip_updates", staleAfterMinutes: 15 }, { feedName: "gtfs_static" }], supporting: [{ feedName: "gtfs_vehicle_positions", staleAfterMinutes: 15 }] },
   fixed_route_departures: { required: [{ feedName: "avail_pullout", staleAfterMinutes: 15 }] },
+  // The on-demand half of garage departure (ADR 0028). onDemandDeparturesPoll
+  // reads Spare duties every fifteen minutes, so 45 minutes is three missed
+  // runs, the same allowance the other Spare ingestion feeds get. It learns
+  // which duties exist from the requests ingest, so that feed is supporting
+  // evidence: without it the duty list goes quiet, but the duties it already
+  // knows keep being measured.
+  on_demand_departures: {
+    required: [{ feedName: "spare_duties", staleAfterMinutes: 45 }],
+    supporting: [{ feedName: "spare_requests", staleAfterMinutes: 45 }],
+  },
   otp: { required: [{ feedName: "avail_otp_monthly" }], supporting: [{ feedName: "avail_otp_daily" }] },
   event_avl: { required: [{ feedName: "avail_avl", staleAfterMinutes: 2 }] },
   // Only the hourly authoritative reconciliation can establish On-Demand

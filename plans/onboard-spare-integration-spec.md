@@ -292,6 +292,13 @@ Exclude/flag rows with null `pickup_arrived_time` (never picked up) — show com
 
 ### 6.3 Garage Departure
 
+> **Built 2026-09-05 (v1.5.107):** `onDemandDeparturesPoll` → `OnDemandDepartures`
+> (migration 096) → `GET /on-demand-departures` → the On-Demand view of the console's
+> Garage Departures module. The resolution below is implemented in
+> `functions-restapi/src/lib/onDemandDepartures.ts`; the scheduled time falls back to the
+> duty's `startRequestedTs` when no `startLocation` slot exists, and both sources are
+> recorded. Compliance candidates and delay-reason entry (§9.1, open item 11) are not yet built.
+
 Scoped to on-demand duties per [ADR 0028](../docs/adr/0028-scope-garage-departure-to-one-source-per-service-type.md); fixed-route
 garage departure is measured from Avail Pullout (`FixedRouteDepartures`). A compliance
 occurrence raised from this path must carry its source system in `source_ref` so one

@@ -53,6 +53,26 @@ export interface SpareSlotRecord {
   cancelledTs?: unknown;
 }
 
+// A driver/vehicle shift. Read for on-demand garage departure only: the
+// duty's requested start stands in for a scheduled departure when Spare has
+// no startLocation slot, and metrics.firstSeenInServiceAreaTs stands in for
+// the actual (onboard-spare-integration-spec.md section 6.3). Driver and
+// vehicle are ids, never names.
+export interface SpareDutyRecord {
+  id?: unknown;
+  updatedAt?: unknown;
+  identifier?: unknown;
+  driverId?: unknown;
+  vehicleId?: unknown;
+  status?: unknown;
+  startRequestedTs?: unknown;
+  endRequestedTs?: unknown;
+  metrics?: {
+    firstSeenInServiceAreaTs?: unknown;
+    lastSeenInServiceAreaTs?: unknown;
+  } | null;
+}
+
 export function spareString(value: unknown, maxLength = 256): string | null {
   return typeof value === "string" && value.trim() !== "" ? value.trim().slice(0, maxLength) : null;
 }
@@ -122,15 +142,30 @@ export async function fetchSparePage<T>(
   return page;
 }
 
-export async function fetchSpareRequest<T>(requestId: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
-  const response = await fetch(`${configuredBaseUrl()}/v1/requests/${encodeURIComponent(requestId)}`, {
+async function fetchSpareResource<T>(
+  collection: "/v1/requests" | "/v1/duties",
+  id: string,
+  timeoutMs: number,
+): Promise<T> {
+  const response = await fetch(`${configuredBaseUrl()}${collection}/${encodeURIComponent(id)}`, {
     headers: { Accept: "application/json", Authorization: `Bearer ${configuredToken()}` },
     signal: AbortSignal.timeout(timeoutMs),
   });
-  if (!response.ok) throw new Error(`Spare /v1/requests/{id} returned HTTP ${response.status}`);
+  if (!response.ok) throw new Error(`Spare ${collection}/{id} returned HTTP ${response.status}`);
   const value = await response.json();
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("Spare /v1/requests/{id} returned an unexpected payload");
+    throw new Error(`Spare ${collection}/{id} returned an unexpected payload`);
   }
   return value as T;
+}
+
+export function fetchSpareRequest<T>(requestId: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
+  return fetchSpareResource<T>("/v1/requests", requestId, timeoutMs);
+}
+
+// One duty by id. The duties list endpoint is confirmed to exist, but which
+// list filters it honours is not, so the departure poll reads each duty it
+// already knows about by id rather than guessing at a bulk filter.
+export function fetchSpareDuty(dutyId: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<SpareDutyRecord> {
+  return fetchSpareResource<SpareDutyRecord>("/v1/duties", dutyId, timeoutMs);
 }
