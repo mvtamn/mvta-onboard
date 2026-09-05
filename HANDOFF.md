@@ -402,3 +402,61 @@ above was granted and the app restarted at 02:04 UTC.
 - Optional: set the contractor name and recipients under Administration ->
   Service Configuration; until a name is set no contractor audience is
   required.
+
+## Decision Matrix — database and deployment status (2026-09-05)
+
+Migrations 076, 078, 079 and 080 have NO run record — not here, not anywhere
+in the repo. Every other applied migration is recorded (088 through 093 were
+verified against the dev DB on 2026-09-04), so treat these four as NOT RUN
+until someone confirms otherwise. The governed reference layer's code is all
+on main (issues #102 through #109, merged 25-26 August) and every table it
+reads or writes arrives in them:
+
+- `migration-076-procedure-drafts-and-document-references.sql` — `Procedures`,
+  `ProcedureRevisions`, `ProcedureCriteria`, `ProcedureImmediateActions`,
+  `ProcedureDocumentReferences`. The reader and all authoring need this one.
+- `migration-078-procedure-governance-audit.sql` — `ProcedureAuditEvents`.
+  Lifecycle transitions write to it, so approval fails without it.
+- `migration-079-decision-matrix-legacy-migrations.sql` — the read-only legacy
+  candidates carried over from migration-051.
+- `migration-080-decision-matrix-search-and-match-rules.sql` — Match Rules,
+  which is what Suggested Alerts and Service Risk recommendations read.
+
+Until 076 is applied, `GET /decision-matrix` answers 200 with
+`diagnostics.table_ready = false` and the console reads **Decision Matrix is
+not connected**, naming the migration (v1.5.107). Before that both a missing
+table and a genuine outage returned the same 500 "temporarily unavailable",
+which sent readers looking for an incident that wasn't happening. The reader
+needs no app setting beyond the database.
+
+Not blocking a read, but blocking everything past it:
+
+- **The document-health identity does not exist in any environment.**
+  `DECISION_MATRIX_HEALTH_CLIENT_ID` / `_SECRET` (the daily 05:00 UTC timer's
+  client-credentials identity) appear only in `local.settings.json.example` —
+  nothing in `infra-phase1` or the workflows provisions them. The timer
+  catches the missing setting, warns and returns, so it fails quietly. The
+  on-demand check and the rendition preview use the delegated/OBO path
+  (`AZURE_TENANT_ID`, `ONBOARD_API_CLIENT_ID`, `ONBOARD_API_CLIENT_SECRET`)
+  and degrade to "Needs review" and 401/502 respectively.
+- **Operations still owes the approved SharePoint site, drive and item IDs.**
+  The create-Draft endpoint requires all three plus expected version, file
+  name and MIME type, so no Procedure can be authored without them.
+- **No Procedure has been authored.** The migration-051 rows are read-only
+  candidates by design, converted one at a time; the admin workspace lists
+  them but has no migrate action yet, though
+  `POST /admin/decision-matrix/legacy-candidates/{id}/{rev}/draft` exists.
+
+WATCH THIS: the REST host logs "The specified route conflicts with one or
+more built in routes" for the `decisionMatrix*` functions on every start
+(recorded in the 2026-09-05 incident notes above). Every Decision Matrix
+governance endpoint is routed under `admin/...`. Whether they actually answer
+in the deployed app is UNVERIFIED — make one authenticated call to
+`/api/admin/decision-matrix/governance-queue` before assuming the authoring
+API is reachable at all.
+
+Order to bring it up: apply 076 (and 078, 079, 080), confirm the console stops
+saying not connected, provision the Graph identity, collect the SharePoint
+IDs, then migrate one legacy candidate end to end — draft, check documents,
+submit, approve, read it as a controller. That last step exercises the
+lifecycle, the audit trail, the health check and the reader in one pass.
