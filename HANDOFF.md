@@ -339,11 +339,13 @@ Still to do, none of it DB work:
   RBAC on manageRoleAssignments, which routine deploys leave false, and the
   dispatch app was never provisioned with it. Every Service Bus listener on
   the dispatch app failed to start with 403 AuthorizationPermissionMismatch.
-  Grant Storage Blob Data Owner + Storage Queue Data Contributor to
-  3ed1e6ac-eae2-4fc7-ae72-f28e2be6d235 on that account (two `az role
-  assignment create` calls; the deployment identity cannot). The REST app's
-  storage has only Blob Data Contributor - no Queue role - which the same
-  what-if would add.
+  DONE 2026-09-05 02:0x UTC: Storage Blob Data Owner + Storage Queue Data
+  Contributor granted to 3ed1e6ac-eae2-4fc7-ae72-f28e2be6d235 on that
+  account (user ran the two `az role assignment create` calls), dispatch app
+  restarted; the host health check (azure.functions.webjobs.storage) is
+  Healthy and all four functions index with no listener failures. The REST
+  app's storage has only Blob Data Contributor - no Queue role - which a
+  manageRoleAssignments=true what-if would add; harmless so far.
 
 INCIDENT 2026-09-05 01:09-01:28 UTC (REST API unreachable through Front
 Door, /api/health 504). Sequence: PR #148 merge -> push-to-main infra.yml
@@ -370,8 +372,9 @@ decisionMatrix*/expirationDefaults* functions on every host start.
 Dispatch app after PR #148: host indexes all four functions
 (acsEmailEvents, dispatchConfirmation, dispatchDetourCommunication,
 dispatchMessageCreated) and no listener failed to start after the 01:19
-restart; it still reports an unhealthy host health-check entry, consistent
-with the missing storage RBAC above.
+restart; the unhealthy host health-check entry was azure.functions.webjobs.storage
+("Unable to access AzureWebJobsStorage") and cleared once the storage RBAC
+above was granted and the app restarted at 02:04 UTC.
 - DONE 2026-09-04: email sender provisioned. Email Communication Service
   `acs-email-mvta-onboard-dev` (data location United States) with an
   Azure-managed domain `93587da7-3b33-4e41-9473-e64bd57cb979.azurecomm.net`
