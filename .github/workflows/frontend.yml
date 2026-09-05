@@ -102,7 +102,14 @@ jobs:
           npm run build:shared
           npm run build --workspace @mvta/${{ matrix.app }}
 
+      # Deploy only from main (or a manual dispatch). The SWA deployment
+      # tokens are not available to pull_request runs, so this step could only
+      # ever fail there - two permanent red checks on every frontend PR, plus a
+      # fail-fast cancellation that killed the sibling app's build before it
+      # finished. The guard sits on the step rather than the job so a PR still
+      # builds both apps and reports it; only the upload is skipped.
       - name: Deploy to SWA
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: Azure/static-web-apps-deploy@v1
         with:
           azure_static_web_apps_api_token: ${{ secrets[matrix.token_secret] }}
