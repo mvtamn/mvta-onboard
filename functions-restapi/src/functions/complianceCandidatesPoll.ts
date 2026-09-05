@@ -85,6 +85,13 @@ export function garageDepartureVarianceSeconds(
 // sound. Do not "fix" the apparent gap: the check above is what it costs to
 // find out there is no gap, and it comes back zero.
 //
+// The list stays an allowlist rather than a denylist for one reason: Tripper (1)
+// is a manually duplicated row whose other statuses the vendor calls
+// "questionable", and a denylist would have to remember to exclude it. An
+// allowlist excludes it by construction. The cost is that an unlisted status is
+// ignored in silence, which is why the Red conditions below are listed before
+// they are ever seen.
+//
 // Over 22 service days the feed produced eleven values, and they fall into
 // three groups:
 //
@@ -115,10 +122,46 @@ export function garageDepartureVarianceSeconds(
 // missing pullout RECORD rather than a missing departure. That is a data
 // question for Avail, not a contractor penalty.
 const DEPARTURE_OUTCOME_STATUSES = [
+  // How a departure ended.
   "Missed Pullout",
   "Missed Login",
   "Expired Pullout",
   "Late Pullout",
+  // Red conditions that stop a departure happening at all. None has appeared in
+  // 22 days: the first two are suppressed by their own parameters unless an
+  // administrator enables them, and the rest are rare exceptions. They are
+  // listed anyway, because an allowlist that omits them fails by going SILENT -
+  // the same way this rule ignored 408 undeparted runs while looking for a
+  // status the feed has never sent. Adding them costs nothing today and closes
+  // the hole before somebody flips a parameter.
+  //
+  // Each is safe under the guards below, for its own reason in the vendor's
+  // table:
+  //
+  //   Missing Operator Assignment (2) and Missing Vehicle Assignment (3) take
+  //   precedence "until the pullout has expired", so a settled row still
+  //   carrying one is a run that had no operator or no vehicle and did not go.
+  //
+  //   Duplicate Vehicle Assignment (5) is cleared once "the vehicle has left the
+  //   yard, is active on route, or the pullout has expired", and Missed Check-in
+  //   (7) is "no longer displayed after an operator logs on, the vehicle pulls
+  //   out or the vehicle is on route". Either one surviving to the end of the
+  //   day means the vehicle never left.
+  //
+  //   Invalid Vehicle Assignment (4) is the exception: it "holds precedence even
+  //   after pullout", so it can sit on a run that departed perfectly well. That
+  //   is exactly why the timestamps, not the status, decide - a clean departure
+  //   under this status raises nothing.
+  //
+  // The spellings come from the vendor table and are unverified against the
+  // feed, since none has ever been observed. A mismatch here fails silently, so
+  // if one of these conditions is ever known to have occurred and no occurrence
+  // appeared, check the string before anything else.
+  "Missing Operator Assignment",
+  "Missing Vehicle Assignment",
+  "Invalid Vehicle Assignment",
+  "Duplicate Vehicle Assignment",
+  "Missed Check-in",
 ] as const;
 
 // A garage departure is worth reviewing when a run whose departure has been
