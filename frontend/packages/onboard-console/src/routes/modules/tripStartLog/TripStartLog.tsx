@@ -6,9 +6,13 @@ import { TripStartLogInspector } from "./TripStartLogInspector.js";
 import { TripStartLogQueryBar } from "./TripStartLogQueryBar.js";
 import { TripStartLogSummary } from "./TripStartLogSummary.js";
 import { TripStartLogGrid } from "./TripStartLogGrid.js";
+import { TripStartLogTimeline } from "./TripStartLogTimeline.js";
+import { TripStartLogWatch } from "./TripStartLogWatch.js";
+import { useNow } from "./useNow.js";
 import {
   EMPTY_FILTERS,
   TRIP_START_VIEWS,
+  agencyTodayServiceDate,
   applyFilters,
   filtersActive,
   inputToServiceDate,
@@ -42,12 +46,6 @@ function dowOf(serviceDate: string): string | null {
   return ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"][date.getUTCDay()] ?? null;
 }
 
-// Watch and Timeline are step 4 of the build; until then they read the Grid.
-const VIEW_NOTE: Partial<Record<TripStartView, string>> = {
-  watch: "The Watch view (up next, needs disposition) is not built yet; the Grid is shown here meanwhile.",
-  timeline: "The Timeline view (one lane per block) is not built yet; the Grid is shown here meanwhile.",
-};
-
 // Dispatch Log - the OCS desk's record of whether each revenue trip started
 // on time, over data OnBoard already collects (plans/dispatch-log-spec.md).
 // This is the module shell: one query, one piece of state, and the pieces
@@ -77,6 +75,10 @@ export function TripStartLog() {
 
   const refresh = useFixedRouteRefresh();
   const requestedDate = useRef<string | null>(null);
+  // The Watch queue and the Timeline's marker share one clock. It only ticks
+  // while the day on screen is today; "now" means nothing on another date.
+  const isToday = serviceDate !== null && serviceDate === agencyTodayServiceDate(new Date());
+  const now = useNow(isToday ? 30_000 : null);
 
   function load(date: string | null, quiet = false) {
     if (!quiet) setLoading(true);
@@ -237,22 +239,32 @@ export function TripStartLog() {
             </span>
           </div>
         ) : (
-          <>
-            {VIEW_NOTE[view] ? (
-              <div className="concept-banner">
-                <span className="concept-badge">Interim</span>
-                <span>{VIEW_NOTE[view]}</span>
-              </div>
-            ) : null}
-            <TripStartLogGrid
-              trips={filtered}
-              sortKey={sortKey}
-              sortDir={sortDir}
-              onSortChange={(key, dir) => { setSortKey(key); setSortDir(dir); }}
-              selectedTripId={selectedTripId}
-              onSelect={setSelectedTripId}
-            />
-          </>
+          view === "watch" ? (
+          <TripStartLogWatch
+            trips={filtered}
+            serviceDate={serviceDate ?? ""}
+            now={now}
+            isToday={isToday}
+            selectedTripId={selectedTripId}
+            onSelect={setSelectedTripId}
+          />
+        ) : view === "timeline" ? (
+          <TripStartLogTimeline
+            trips={filtered}
+            now={isToday ? now : null}
+            selectedTripId={selectedTripId}
+            onSelect={setSelectedTripId}
+          />
+        ) : (
+          <TripStartLogGrid
+            trips={filtered}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onSortChange={(key, dir) => { setSortKey(key); setSortDir(dir); }}
+            selectedTripId={selectedTripId}
+            onSelect={setSelectedTripId}
+          />
+        )
         )}
       </div>
 
