@@ -6,7 +6,7 @@ import { api } from "../../../config.js";
 import { TripStartLog } from "./TripStartLog.js";
 
 vi.mock("../../../config.js", () => ({
-  api: { getTripStartLog: vi.fn() },
+  api: { getTripStartLog: vi.fn(), getTripStartLogCsv: vi.fn() },
 }));
 vi.mock("../../../context/FixedRouteRefreshContext.js", () => ({
   useFixedRouteRefresh: () => ({ lastCompletedAt: null, secondsLeft: 30, intervalMs: 30_000 }),
@@ -229,6 +229,43 @@ describe("Dispatch Log shell", () => {
 
     expect(await screen.findByText("No log for this date")).toBeInTheDocument();
     expect(api.getTripStartLog).toHaveBeenLastCalledWith("20260909");
+  });
+
+  it("exports the whole day as a CSV download, and only once the day's log exists", async () => {
+    vi.mocked(api.getTripStartLog).mockResolvedValueOnce(response([], { table_ready: false, materialized: false }));
+    render(<TripStartLog />);
+    await screen.findByText("Dispatch Log is not connected");
+    expect(screen.getByRole("button", { name: "⬇ Export CSV" })).toBeDisabled();
+    cleanup();
+
+    vi.mocked(api.getTripStartLog).mockResolvedValueOnce(response(DAY));
+    vi.mocked(api.getTripStartLogCsv).mockResolvedValueOnce(new Blob(["\uFEFFVerified,Day of Week\r\n"], { type: "text/csv" }));
+    const createObjectURL = vi.fn().mockReturnValue("blob:dispatch-log");
+    const revokeObjectURL = vi.fn();
+    Object.assign(URL, { createObjectURL, revokeObjectURL });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    render(<TripStartLog />);
+    const user = userEvent.setup();
+
+    await screen.findByRole("table", { name: "Dispatch log trips" });
+    await user.click(screen.getByRole("button", { name: "⬇ Export CSV" }));
+
+    expect(api.getTripStartLogCsv).toHaveBeenCalledWith("20260908");
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    expect(click).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:dispatch-log");
+    click.mockRestore();
+  });
+
+  it("says when the export could not be produced", async () => {
+    vi.mocked(api.getTripStartLog).mockResolvedValueOnce(response(DAY));
+    vi.mocked(api.getTripStartLogCsv).mockRejectedValueOnce(new ApiError(503, "not connected"));
+    render(<TripStartLog />);
+    const user = userEvent.setup();
+
+    await screen.findByRole("table", { name: "Dispatch log trips" });
+    await user.click(screen.getByRole("button", { name: "⬇ Export CSV" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Export failed: not connected");
   });
 
   it("names a failed request as unavailable rather than blaming the data", async () => {

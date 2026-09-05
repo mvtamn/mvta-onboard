@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.105] - 2026-09-05
+
+- **Dispatch Log, step 7: CSV export.** `GET /trip-start-log/export?date=YYYYMMDD` returns one service date as a UTF-8 CSV (byte-order mark and CRLF so Excel opens it cleanly) with the workbook's columns first, in the workbook's order - Verified, Day of Week, Start Time, Block, Route, Origin Stop Name, Direction - followed by what OnBoard adds: rotation membership, the observation and when it was recorded, scheduled and actual instants, the actual's source, the delta in minutes, start status, service date and trip id. Same readers as the JSON endpoint, and both now read the day through one shared loader so they cannot disagree. The Dispatch Log's controls bar gains an Export CSV button that downloads the whole day (the workbook was the whole day, not a filtered view), enabled once the day's log exists, with a plain message if the export fails. No migration.
+
 ## [1.5.104] - 2026-09-05
 
 - **Detour Intake redesigned.** The form is now five numbered section cards (Situation, Map, Affected service, Instructions and communications, Evidence), each with a status pill, beside a sticky readiness rail that shows progress, links to every missing required field, and holds Submit. Every field shares one anatomy - label, required mark, control, always-present helper line - so validation never shifts the layout, and error styling appears only after a submit attempt. The operating window is one fieldset with a segmented status control; service impact is a two-card choice; route segments are a small table; affected stops and required audiences are removable tokens (each audience is one exact string, which is what communication status matches on); required channels are toggle chips over a known set with an Other escape; supporting files use a drop zone with per-file tiles. No API or data changes.

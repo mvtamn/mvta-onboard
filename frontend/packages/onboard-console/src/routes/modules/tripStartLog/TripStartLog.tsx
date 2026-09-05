@@ -63,6 +63,8 @@ export function TripStartLog() {
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const [view, setView] = useState<TripStartView>("grid");
   const [filters, setFilters] = useState<TripStartFilters>(EMPTY_FILTERS);
@@ -134,6 +136,27 @@ export function TripStartLog() {
   const state = loadState(diagnostics, loading, failed);
   const live = state === "live";
 
+  // The whole day as the API writes it, not the filtered view: the export
+  // stands in for the workbook, and the workbook was the whole day.
+  async function exportCsv() {
+    if (!serviceDate) return;
+    setExporting(true);
+    setExportError(null);
+    try {
+      const blob = await api.getTripStartLogCsv(serviceDate);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `dispatch-log-${serviceDate}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setExportError(err instanceof ApiError ? `Export failed: ${err.message}` : "Export failed: the trip-start log service could not be reached.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   const routes = useMemo(() => routeOptions(trips), [trips]);
   const filtered = useMemo(() => sortTrips(applyFilters(trips, filters), sortKey, sortDir), [trips, filters, sortKey, sortDir]);
   const summary = useMemo(() => summarize(filtered), [filtered]);
@@ -177,7 +200,22 @@ export function TripStartLog() {
         <button className="btn-sm" disabled={loading} onClick={() => load(dateChoice)}>
           {loading ? "Refreshing…" : "↻ Refresh"}
         </button>
+        <button
+          className="btn-sm"
+          disabled={!live || exporting}
+          title={live ? "Download the whole day as a CSV workbook" : "Available once the day's log exists"}
+          onClick={() => void exportCsv()}
+        >
+          {exporting ? "Exporting…" : "⬇ Export CSV"}
+        </button>
       </div>
+
+      {exportError ? (
+        <div className="concept-banner" role="alert">
+          <span className="concept-badge">Export</span>
+          <span>{exportError}</span>
+        </div>
+      ) : null}
 
       {message ? (
         <div className="concept-banner" role="status">

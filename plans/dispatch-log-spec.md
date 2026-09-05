@@ -519,6 +519,15 @@ Nothing before step 5 depends on the open decisions in §7.
    affordance in three places — this is the endpoint, the role check, and the
    audit trail.
 7. **CSV export**, for parity with the workbook people will miss.
+   *Built 2026-09-05:* `GET /trip-start-log/export?date=` returns the day as
+   UTF-8 CSV (byte-order mark, CRLF) with the workbook's seven columns first
+   in the workbook's order — Verified · Day of Week · Start Time · Block ·
+   Route · Origin Stop Name · Direction — then what OnBoard adds (rotation,
+   observation, scheduled/actual instants, source, delta, status, trip id).
+   Same readers and the same loader as the JSON endpoint
+   (`lib/tripStartLogRead.ts`), so the two cannot disagree. The console's
+   controls bar gains an Export CSV button that downloads the whole day, not
+   the filtered view, because the workbook was the whole day.
 
 ---
 
