@@ -105,8 +105,20 @@ export async function tripStartLogTablesReady(pool: sql.ConnectionPool): Promise
   return check.recordset[0]?.ok === 1;
 }
 
+// Whether migration 095 has landed. T-SQL binds every column name before it
+// evaluates anything, so a CASE around l.predicted_start_at does not protect
+// a database that lacks the column - the whole SELECT fails to compile and
+// the console reads "Failed to read the trip-start log". Ask first instead.
+async function hasPredictedStartColumn(pool: sql.ConnectionPool): Promise<boolean> {
+  const check = await pool.request().query<{ ok: number }>(`
+    SELECT CASE WHEN COL_LENGTH('dbo.TripStartLog', 'predicted_start_at') IS NULL THEN 0 ELSE 1 END AS ok
+  `);
+  return check.recordset[0]?.ok === 1;
+}
+
 /** The day's trips in the workbook's order: scheduled start ascending, then trip id. */
 export async function loadTripStartLogDay(pool: sql.ConnectionPool, serviceDate: string): Promise<TripStartLogTrip[]> {
+  const predictedColumn = (await hasPredictedStartColumn(pool)) ? "l.predicted_start_at" : "CAST(NULL AS DATETIME2)";
   const req = pool.request();
   req.input("service_date", sql.Char(8), serviceDate);
   const result = await req.query<TripStartLogRow>(`
@@ -115,7 +127,7 @@ export async function loadTripStartLogDay(pool: sql.ConnectionPool, serviceDate:
            l.scheduled_start_seconds, l.scheduled_start_at, l.in_rotation, l.rotation_day,
            l.actual_start_at, l.actual_start_source, l.start_delay_seconds, l.start_status,
            l.materialized_at, l.updated_at,
-           CASE WHEN COL_LENGTH('dbo.TripStartLog', 'predicted_start_at') IS NULL THEN NULL ELSE l.predicted_start_at END AS predicted_start_at,
+           ${predictedColumn} AS predicted_start_at,
            v.observation, v.verified_by, v.verified_initials, v.verified_at, v.note
     FROM TripStartLog l
     LEFT JOIN TripStartVerifications v
