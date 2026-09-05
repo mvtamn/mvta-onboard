@@ -60,6 +60,12 @@ const OCC_TOOLS = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin"] as const;
 // Compliance readers (TRIP_START_LOG_READ_ROLES); a live monitoring view,
 // so it sits under Service Operations per ADR 0015.
 const DISPATCH_LOG = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin", "OCC.Compliance", "OCC.TripStartVerify"] as const;
+// The communications side of Service Operations - Overview, Compose, Active
+// Service Alerts, Suggested Alerts - reads the API's STAFF_READ_ROLES. Roles
+// outside it (Compliance-only, the SST desk's OCC.TripStartVerify) get a 403
+// from every call those pages make, so per ADR 0015 the links are hidden for
+// them and the group shows only the children they can reach.
+const COMMUNICATIONS = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin", "OCC.EventAVL"] as const;
 const EVENT_AVL = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin", "OCC.EventAVL"] as const;
 const COMPLIANCE = ["OCC.Compliance", "OCC.ComplianceManager", "OCC.Admin"] as const;
 // Read-only for OCC.Viewer, full create/edit/delete for Publisher/Admin (the
@@ -194,11 +200,19 @@ function AuthenticatedApp({ account, roles, signOut }: {
   const isAdmin = roles.includes("OCC.Admin");
   const canSeeServiceRisk = roles.some((role) => (OCC_TOOLS as readonly string[]).includes(role));
   const canSeeDispatchLog = roles.some((role) => (DISPATCH_LOG as readonly string[]).includes(role));
+  const canSeeCommunications = roles.some((role) => (COMMUNICATIONS as readonly string[]).includes(role));
   const canManageAccess = roles.some((role) => (ACCESS_MANAGEMENT as readonly string[]).includes(role));
   const canSeeOccTools = roles.some((role) => (OCC_TOOLS as readonly string[]).includes(role));
   const isCompliance = isAdmin || roles.includes("OCC.Compliance") || roles.includes("OCC.ComplianceManager");
   const canSeeDetours = roles.some((r) => (DETOURS as readonly string[]).includes(r));
   const canSeeEventAvl = roles.some((r) => (EVENT_AVL as readonly string[]).includes(r));
+  // Where a user without communications access lands instead of the
+  // Dashboard, which is built from the same data they cannot read.
+  const landing = canSeeCommunications ? null
+    : canSeeDispatchLog ? "/service-operations/dispatch-log"
+    : isCompliance ? "/compliance"
+    : canSeeDetours ? "/detours"
+    : null;
   const stats = useLiveStats();
   const location = useLocation();
   const meta = currentPageMeta(location.pathname);
@@ -255,12 +269,14 @@ function AuthenticatedApp({ account, roles, signOut }: {
         </div>
 
         <nav className="nav-list" id="primary-nav">
-          <NavLink to="/" end title="Dashboard"><IconDashboard /><span className="nav-label">Dashboard</span></NavLink>
-          <div className="nav-section-label">Service Operations</div>
-          <NavLink to="/service-operations" end title="Overview"><IconDashboard /><span className="nav-label">Overview</span></NavLink>
-          <NavLink to="/service-operations/compose" title="Compose"><IconCompose /><span className="nav-label">Compose</span></NavLink>
-          <NavLink to="/service-operations/active" title="Active Service Alerts"><IconMessages /><span className="nav-label">Active Service Alerts</span></NavLink>
-          <NavLink to="/service-operations/suggested" title="Suggested Alerts"><IconBell /><span className="nav-label">Suggested Alerts</span></NavLink>
+          {canSeeCommunications && <NavLink to="/" end title="Dashboard"><IconDashboard /><span className="nav-label">Dashboard</span></NavLink>}
+          {(canSeeCommunications || canSeeServiceRisk || canSeeDispatchLog) && <div className="nav-section-label">Service Operations</div>}
+          {canSeeCommunications && <>
+            <NavLink to="/service-operations" end title="Overview"><IconDashboard /><span className="nav-label">Overview</span></NavLink>
+            <NavLink to="/service-operations/compose" title="Compose"><IconCompose /><span className="nav-label">Compose</span></NavLink>
+            <NavLink to="/service-operations/active" title="Active Service Alerts"><IconMessages /><span className="nav-label">Active Service Alerts</span></NavLink>
+            <NavLink to="/service-operations/suggested" title="Suggested Alerts"><IconBell /><span className="nav-label">Suggested Alerts</span></NavLink>
+          </>}
           {canSeeServiceRisk && <NavLink to="/service-operations/risk" title="Service Risk & Quality"><IconWrench /><span className="nav-label">Service Risk &amp; Quality</span></NavLink>}
           {canSeeDispatchLog && <NavLink to="/service-operations/dispatch-log" title="Dispatch Log"><IconClock /><span className="nav-label">Dispatch Log</span></NavLink>}
           {(isAdmin || isCompliance || canSeeDetours || canSeeOccTools) && (
@@ -371,12 +387,12 @@ function AuthenticatedApp({ account, roles, signOut }: {
               previous route's error. */}
           <ErrorBoundary key={location.pathname}>
             <Routes>
-              <Route path="/" element={<Dashboard stats={stats} onChanged={stats.refresh} />} />
+              <Route path="/" element={landing ? <Navigate to={landing} replace /> : <Dashboard stats={stats} onChanged={stats.refresh} />} />
               <Route path="/service-operations" element={<ServiceOperations />}>
-                <Route index element={<ServiceOperationsOverview stats={stats} />} />
-                <Route path="compose" element={<Compose onChanged={stats.refresh} />} />
-                <Route path="active" element={<ActiveMessages onChanged={stats.refresh} />} />
-                <Route path="suggested" element={<SuggestedAlerts onChanged={stats.refresh} />} />
+                <Route index element={landing ? <Navigate to={landing} replace /> : <ServiceOperationsOverview stats={stats} />} />
+                <Route path="compose" element={<RequireRole allowed={[...COMMUNICATIONS]}><Compose onChanged={stats.refresh} /></RequireRole>} />
+                <Route path="active" element={<RequireRole allowed={[...COMMUNICATIONS]}><ActiveMessages onChanged={stats.refresh} /></RequireRole>} />
+                <Route path="suggested" element={<RequireRole allowed={[...COMMUNICATIONS]}><SuggestedAlerts onChanged={stats.refresh} /></RequireRole>} />
                 <Route
                   path="dispatch-log"
                   element={<RequireRole allowed={[...DISPATCH_LOG]}><TripStartLog /></RequireRole>}

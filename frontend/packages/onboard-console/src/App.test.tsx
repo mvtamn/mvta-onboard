@@ -14,6 +14,7 @@ vi.mock("./routes/AdminModules.js", () => ({
   AdminSubscribers: stub,
 }));
 vi.mock("./routes/modules/EventMonitoring.js", () => ({ EventMonitoring: stub }));
+vi.mock("./routes/modules/tripStartLog/TripStartLog.js", () => ({ TripStartLog: () => <p>Dispatch Log workspace</p> }));
 vi.mock("./hooks/useLiveStats.js", () => ({
   useLiveStats: vi.fn(),
   dataStateLabel: vi.fn(() => "Loading live data"),
@@ -63,6 +64,33 @@ describe("App authentication boundary", () => {
     // Workspace health belongs where the data is used, not in the topbar.
     expect(container.querySelector(".content-topbar")).toBeInTheDocument();
     expect(container.querySelector(".topbar-system-status")).toBeNull();
+  });
+
+  it("shows the SST desk only what it can use and lands it on the Dispatch Log", () => {
+    vi.mocked(useAuth).mockReturnValue({
+      account: { name: "SST Desk", username: "ocs@sst.test" },
+      roles: ["OCC.TripStartVerify"],
+      signIn: vi.fn(),
+      signOut: vi.fn(),
+    });
+    vi.mocked(useLiveStats).mockReturnValue({
+      activeCount: 0, activeMessages: [], lastMessageId: null, pending: [], subscribers: null,
+      syncedAt: null, ok: false, activeState: "unavailable", pendingState: "unavailable", overallState: "unavailable", refresh: vi.fn(),
+    } as never);
+
+    // Scoped to this render: the file does not clean up between tests, so the
+    // document also holds the Viewer-role shell from the test above.
+    const { container } = render(<MemoryRouter initialEntries={["/"]}><App /></MemoryRouter>);
+
+    const nav = container.querySelector("#primary-nav");
+    expect(nav).not.toBeNull();
+    const links = Array.from(nav!.querySelectorAll("a")).map((a) => a.textContent?.trim());
+    expect(links).toContain("Dispatch Log");
+    for (const hidden of ["Dashboard", "Overview", "Compose", "Active Service Alerts", "Suggested Alerts", "Service Risk & Quality"]) {
+      expect(links).not.toContain(hidden);
+    }
+    // "/" redirects to the one workspace this role can use.
+    expect(container).toHaveTextContent("Dispatch Log workspace");
   });
 
   it("does not start API-backed shell data while authentication is unavailable", () => {
