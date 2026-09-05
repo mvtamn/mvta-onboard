@@ -486,6 +486,15 @@ Nothing before step 5 depends on the open decisions in §7.
    show the Grid until step 4.
 4. **Watch and Timeline views** over the same state. Independent of each other;
    either can ship first.
+   *Built 2026-09-05:* `TripStartLogWatch.tsx` (Up next over the next 90
+   minutes with rotation trips flagged and everything else marked tracked;
+   Needs disposition ordered missed → late over 5 → no actual past the
+   5-minute mark, each with a disposition action that is disabled until step
+   6) and `TripStartLogTimeline.tsx` (one lane per block, hairline tick at the
+   scheduled minute, chip at the actual start, slip bar between, hollow chip
+   when there is no actual, `now` marker only when the day on screen is
+   today, scrolls inside its own container). Both read the shell's filtered
+   rows and selection. "Up next" is empty by design on any date but today.
 5. **First-stop actual-departure capture from TripUpdate** (§5, option 1),
    after the feed-behaviour check that option requires. Everything above works
    on `first_underway_at`; this is the precision upgrade, and the ±5-minute
