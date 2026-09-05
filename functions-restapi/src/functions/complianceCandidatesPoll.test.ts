@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   garageDepartureCandidatePredicate,
   garageDepartureVarianceSeconds,
+  settledServiceDateExclusive,
 } from "./complianceCandidatesPoll";
 
 test("defaults to the ten-minute variance the integration spec named", () => {
@@ -70,12 +71,28 @@ test("never treats a pull-in outcome as a departure", () => {
 
 test("leaves an unclassified run alone", () => {
   // A blank status is a run Avail is still resolving - every blank row seen was
-  // from the current service day. The status list is the maturity gate: without
-  // it, a run whose pullout has not been judged yet would read as "never
-  // departed", and this poll runs at 01:20 local.
+  // from the current service day.
   const predicate = garageDepartureCandidatePredicate();
   assert.match(predicate, /pullout_status IN \(/, "an explicit list is what excludes unjudged runs");
   assert.doesNotMatch(predicate, /''/, "a blank status must not be listed");
+});
+
+test("only judges a run once its service day is over", () => {
+  // PulloutStatus is a precedence ladder that moves as a run progresses: Avail
+  // documents that Missed Login can become Waiting for Pullout or Late Login,
+  // and that Missed Pullout stops applying once the vehicle is seen on route.
+  // Reading either mid-day catches a value that has not settled.
+  assert.match(garageDepartureCandidatePredicate(), /d\.service_date < @settled_before/);
+});
+
+test("excludes the current service day, in agency time", () => {
+  // 01:20 agency-local, when this poll runs. The UTC date has already rolled to
+  // the 5th; the service day that just ended is the 4th, and today's runs have
+  // barely started - so the boundary must be the local date, not the UTC one.
+  assert.equal(settledServiceDateExclusive(new Date("2026-09-05T06:20:00Z")), "20260905");
+  // 20:00 agency-local on the 4th: mid-service, UTC already on the 5th. A UTC
+  // boundary here would declare the in-flight day settled and judge it.
+  assert.equal(settledServiceDateExclusive(new Date("2026-09-05T01:00:00Z")), "20260904");
 });
 
 test("leaves On Route No Pullout for investigation rather than penalty", () => {
