@@ -3,7 +3,7 @@ import { ADMIN_ROLES, requireRole } from "../lib/auth";
 import { getPool, sql } from "../lib/db";
 
 app.http("decisionMatrixGovernance", {
-  route: "admin/decision-matrix/{procedureId}/{revision}",
+  route: "manage/decision-matrix/{procedureId}/{revision}",
   methods: ["PATCH"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {

@@ -10,7 +10,7 @@ function request(roles: string[], url: string, body?: unknown, userId = "admin-1
 }
 
 test("only an Admin can author Decision Matrix match rules", async () => {
-  const response = await createDecisionMatrixMatchRule(request(["OCC.Publisher"], "https://example.test/api/admin/decision-matrix/match-rules", { source_type: "SuggestedAlert" }), context);
+  const response = await createDecisionMatrixMatchRule(request(["OCC.Publisher"], "https://example.test/api/manage/decision-matrix/match-rules", { source_type: "SuggestedAlert" }), context);
   assert.equal(response.status, 403);
 });
 

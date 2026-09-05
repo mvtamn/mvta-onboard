@@ -11,7 +11,7 @@ function adminRequest(): HttpRequest {
   })).toString("base64");
   return new HttpRequest({
     method: "POST",
-    url: "https://example.test/api/admin/decision-matrix/sync",
+    url: "https://example.test/api/manage/decision-matrix/sync",
     headers: { "x-ms-client-principal": principal },
   });
 }
@@ -36,7 +36,7 @@ test("retired SharePoint import returns a diagnostic without reading or changing
     });
     assert.equal(fetchCalls, 0);
     assert.deepEqual(audit, [["Retired Decision Matrix SharePoint import attempted", {
-      route: "admin/decision-matrix/sync",
+      route: "manage/decision-matrix/sync",
       actor: "admin@mvta.com",
     }]]);
   } finally {

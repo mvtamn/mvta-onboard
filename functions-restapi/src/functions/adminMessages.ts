@@ -1,4 +1,4 @@
-// GET /admin/messages?tag=&q=&limit= - staff search across ALL messages
+// GET /manage/messages?tag=&q=&limit= - staff search across ALL messages
 // (any status, including expired/retracted) for the console's Audit Log tab.
 // Any staff role may read; never exposed publicly.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
@@ -8,7 +8,7 @@ import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
 const MAX_LIMIT = 200;
 
 app.http("adminMessages", {
-  route: "admin/messages",
+  route: "manage/messages",
   methods: ["GET"],
   authLevel: "anonymous", // authorization enforced via requireRole below
   handler: async (request: HttpRequest, context: InvocationContext) => {
@@ -77,7 +77,7 @@ app.http("adminMessages", {
 
       return { status: 200, jsonBody: { messages } };
     } catch (err) {
-      context.error("GET /admin/messages failed:", err);
+      context.error("GET /manage/messages failed:", err);
       return { status: 500, jsonBody: { error: "Internal server error" } };
     }
   },

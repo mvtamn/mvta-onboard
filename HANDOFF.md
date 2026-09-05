@@ -243,14 +243,14 @@ infra-phase1/                 — Bicep for Function Apps, Static Web Apps, Serv
 Only 3 of ~16 endpoints exist. Still to build:
 - `PATCH /messages/{id}` — edit/retract expiration
 - `POST /messages/{id}/retract`
-- `GET /admin/expiration-defaults`, `PATCH /admin/expiration-defaults/{category}`
+- `GET /manage/expiration-defaults`, `PATCH /manage/expiration-defaults/{category}`
 - `POST /subscribers` — rider opt-in (**needed for the SMS/email POC priority**)
 - `POST /subscribers/{id}/confirm` — SMS double opt-in confirmation
 - `GET /subscribers/{id}/confirm-email` — email confirmation link handler
 - `POST /subscribers/{id}/request-code`, `PATCH /subscribers/{id}` — preference changes with OTP
 - `POST /subscribers/webhook/inbound-sms` — STOP/HELP handling
 - `POST /subscribers/{id}/device-token`, `DELETE .../device-token/{id}` — push (Phase 2, lower priority right now)
-- `GET /admin/messages?tag=` — tag search
+- `GET /manage/messages?tag=` — tag search
 - `GET /suggested-alerts?status=pending`, `POST /suggested-alerts/{id}/approve`, `.../dismiss` — the human-review queue for predictive alerts (Phase 3, but keep the human-in-the-loop design principle in mind even when just planning this)
 - `POST /webhooks/sparelabs` — MVTA Connect (On-Demand) wait-time webhook (Phase 4)
 
