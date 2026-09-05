@@ -661,6 +661,12 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<TripStartLogResponse>(`/api/trip-start-log${suffix}`, {}, true);
     },
 
+    // The same day as CSV, for the workbook people are leaving behind. A Blob
+    // because the download needs the bearer token an <a href> cannot carry.
+    getTripStartLogCsv(serviceDate: string) {
+      return requestBlob(`/api/trip-start-log/export?date=${encodeURIComponent(serviceDate)}`);
+    },
+
     getFixedRouteDepartures(days?: number) {
       const suffix = days ? `?days=${days}` : "";
       return request<{

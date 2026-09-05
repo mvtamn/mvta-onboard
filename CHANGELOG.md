@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.106] - 2026-09-05
+
+- **Dispatch Log, step 7: CSV export.** `GET /trip-start-log/export?date=YYYYMMDD` returns one service date as a UTF-8 CSV (byte-order mark and CRLF so Excel opens it cleanly) with the workbook's columns first, in the workbook's order - Verified, Day of Week, Start Time, Block, Route, Origin Stop Name, Direction - followed by what OnBoard adds: rotation membership, the observation and when it was recorded, scheduled and actual instants, the actual's source, the delta in minutes, start status, service date and trip id. Same readers as the JSON endpoint, and both now read the day through one shared loader so they cannot disagree. The Dispatch Log's controls bar gains an Export CSV button that downloads the whole day (the workbook was the whole day, not a filtered view), enabled once the day's log exists, with a plain message if the export fails. No migration.
+
 ## [1.5.105] - 2026-09-05
 
 - **Stop listing garage-departure statuses MVTA's configuration cannot produce.** Avail confirmed that MVTA has no operator scheduling package, so it never ingests the data that raises `Missing Operator Assignment`, `Missing Vehicle Assignment`, `Invalid Vehicle Assignment`, `Duplicate Vehicle Assignment` or `Missed Check-in`. They are not rare here, they are unreachable, and since none has ever reached the feed there is no spelling to match on - Avail's guidance was to use the spelling the feed sends. They were listed on the reasoning that an allowlist which omits a status fails by going silent; that reasoning holds, but five strings that can never match read as coverage while providing none. They are removed from the compliance rule and from the poll's known-status set, so if MVTA later adopts a scheduling package and they begin arriving, the poll reports them with their real spellings instead of passing over them.
