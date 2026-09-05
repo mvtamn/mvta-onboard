@@ -5,6 +5,11 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.101] - 2026-09-05
+
+- **Say so when Avail sends a pullout status nothing accounts for.** The garage-departure rule matches an allowlist of statuses, and a value missing from that list raises nothing without erroring - which is how it once ignored 408 runs that never left the garage while matching a status the feed has never sent. The Pullout poll now warns when a delivery contains a `PulloutStatus` this repo does not recognise, naming the values once per run. That covers a status Avail adds later, and the likelier case: five statuses were added from the vendor's document without ever being observed, and that document already spells one concept differently from the feed. Comparison ignores case, since the rule matches in SQL where case does not matter, and a blank status is treated as a run still being resolved rather than an unknown one.
+- **Record that `Missed Check-in` cannot fire yet.** It is defined against the scheduled check-in time and no source feeds operators' scheduled check-in times into OnBoard, so its absence is a data gap rather than evidence the status list works.
+
 ## [1.5.100] - 2026-09-05
 
 - **Dispatch Log, step 3: the Grid view, on the console's first shared sortable table.** `SortableTable` (`components/SortableTable.tsx`) is a controlled-sort table with a sticky header inside its own scroll region, an optionally pinned first column, `aria-sort` on every header, click-to-sort that cycles ascending then descending, row selection, and keyboard row navigation (arrow keys, Home/End, Enter or Space to select) - the pieces every table in the console used to roll on its own. The Dispatch Log's Grid puts the workbook's columns on it with Verified pinned first, every column sortable including Verified (initialed rows, then rotation rows still owing initials, then the rest), default order scheduled start ascending, and rows outside today's rotation dimmed but present. Sort state lives in the module shell, so the order carries into the Watch and Timeline slots, which show the Grid until their own views are built. The interim row list is gone. No API changes.

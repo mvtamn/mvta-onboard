@@ -141,3 +141,70 @@ export function mapPulloutReport(
     vehicle_label: report.VehicleLabel ?? null,
   };
 }
+
+// Every PulloutStatus this repo knows how to reason about.
+//
+// The list matters because of how the compliance rule fails. Its status
+// allowlist raises nothing for a value it does not recognise - no error, no
+// row, just silence - which is how GARAGE_DEPARTURE ignored 408 runs that never
+// left the garage while matching a status the feed has never sent. A value
+// arriving here that nobody has accounted for is the first symptom, and without
+// this it is invisible until someone queries the table by hand.
+//
+// The first twenty are Avail's documented statuses, in their precedence order.
+// The four pull-in values after them are not in that document at all, and are
+// the reason it cannot be treated as complete: they are the largest group in
+// the feed. That gap is also why the spellings here are worth distrusting - the
+// document writes "Pull In At Risk" for a concept the feed sends as "Pullin",
+// so agreement between the two is not something to assume.
+const KNOWN_PULLOUT_STATUSES = new Set(
+  [
+    "Tripper",
+    "Missing Operator Assignment",
+    "Missing Vehicle Assignment",
+    "Invalid Vehicle Assignment",
+    "Duplicate Vehicle Assignment",
+    "Waiting for Check-in",
+    "Missed Check-in",
+    "Late Check-in",
+    "Waiting for Login",
+    "Missed Login",
+    "Late Login",
+    "Waiting for Pullout",
+    "On Time Pullout",
+    "Missed Pullout",
+    "Late Pullout",
+    "Expired Pullout",
+    "On Route No Pullout",
+    "On Time Relief",
+    "Late Relief",
+    "Pull In At Risk",
+    // Observed in the feed, absent from the document. Pull-in is the return
+    // leg, so none of these is departure evidence.
+    "On Time Pullin",
+    "Late Pullin",
+    "Missed Pullin",
+    "Waiting for Pullin",
+  ].map((status) => status.toLowerCase()),
+);
+
+// The distinct statuses in this delivery that nothing here accounts for.
+//
+// Compared case-insensitively because the compliance rule matches in SQL, whose
+// collation is too. A value that differs only in case still works there, so
+// warning about it would be noise; a value that differs in punctuation - the
+// realistic risk, "Missed Checkin" against the documented "Missed Check-in" -
+// does not work, and is reported.
+//
+// A blank status is not unknown. It is Avail still resolving a run, and every
+// blank row observed carried the current service date.
+export function unknownPulloutStatuses(reports: readonly AvailPulloutReport[]): string[] {
+  const unknown = new Map<string, string>();
+  for (const report of reports) {
+    const status = report.PulloutStatus?.trim();
+    if (!status) continue;
+    const key = status.toLowerCase();
+    if (!KNOWN_PULLOUT_STATUSES.has(key)) unknown.set(key, status);
+  }
+  return [...unknown.values()].sort();
+}

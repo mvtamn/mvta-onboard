@@ -153,10 +153,18 @@ const DEPARTURE_OUTCOME_STATUSES = [
   //   is exactly why the timestamps, not the status, decide - a clean departure
   //   under this status raises nothing.
   //
+  // Missed Check-in (7) cannot fire at all today, and that is a data gap rather
+  // than a spelling one: it is defined against the SCHEDULED check-in time, and
+  // no source currently feeds operators' scheduled check-in times into OnBoard.
+  // It stays listed so the rule is already correct if that dataset arrives -
+  // but do not read its absence as evidence the list works.
+  //
   // The spellings come from the vendor table and are unverified against the
   // feed, since none has ever been observed. A mismatch here fails silently, so
   // if one of these conditions is ever known to have occurred and no occurrence
-  // appeared, check the string before anything else.
+  // appeared, check the string before anything else. unknownPulloutStatuses in
+  // availPullout.ts now warns when the feed sends a value nothing accounts for,
+  // which is the symptom that used to be invisible.
   "Missing Operator Assignment",
   "Missing Vehicle Assignment",
   "Invalid Vehicle Assignment",
