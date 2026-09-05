@@ -18,7 +18,7 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
-    version: "1.5.94",
+    version: "1.5.95",
     date: "2026-09-04",
     sections: [
       {
@@ -30,7 +30,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.93",
+    version: "1.5.94",
     date: "2026-09-04",
     sections: [
       {
@@ -42,7 +42,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.92",
+    version: "1.5.93",
     date: "2026-09-04",
     sections: [
       {
@@ -54,7 +54,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.91",
+    version: "1.5.92",
     date: "2026-09-04",
     sections: [
       {
@@ -66,7 +66,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.90",
+    version: "1.5.91",
     date: "2026-09-04",
     sections: [
       {
@@ -78,7 +78,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.89",
+    version: "1.5.90",
     date: "2026-09-04",
     sections: [
       {
@@ -90,7 +90,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.88",
+    version: "1.5.89",
     date: "2026-09-04",
     sections: [
       {
@@ -102,7 +102,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.87",
+    version: "1.5.88",
     date: "2026-09-04",
     sections: [
       {
@@ -114,7 +114,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.86",
+    version: "1.5.87",
     date: "2026-09-04",
     sections: [
       {
@@ -126,7 +126,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.85",
+    version: "1.5.86",
     date: "2026-09-04",
     sections: [
       {
@@ -138,7 +138,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.84",
+    version: "1.5.85",
     date: "2026-09-04",
     sections: [
       {
@@ -150,7 +150,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.83",
+    version: "1.5.84",
     date: "2026-09-04",
     sections: [
       {
@@ -162,7 +162,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.82",
+    version: "1.5.83",
     date: "2026-09-04",
     sections: [
       {
@@ -174,7 +174,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.81",
+    version: "1.5.82",
     date: "2026-09-04",
     sections: [
       {
@@ -186,7 +186,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.80",
+    version: "1.5.81",
     date: "2026-09-04",
     sections: [
       {
@@ -198,7 +198,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.79",
+    version: "1.5.80",
     date: "2026-09-04",
     sections: [
       {
@@ -210,7 +210,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.78",
+    version: "1.5.79",
     date: "2026-09-03",
     sections: [
       {
@@ -223,7 +223,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.77",
+    version: "1.5.78",
     date: "2026-09-03",
     sections: [
       {
@@ -235,7 +235,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.76",
+    version: "1.5.77",
     date: "2026-09-03",
     sections: [
       {
@@ -247,7 +247,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.75",
+    version: "1.5.76",
     date: "2026-09-03",
     sections: [
       {
@@ -259,13 +259,25 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
-    version: "1.5.74",
+    version: "1.5.75",
     date: "2026-09-03",
     sections: [
       {
         heading: "Fixed",
         items: [
           "Detours & Closures and Detour Reports now show the operational record an accepted intake carries — operating window, service impact, affected stops, action instructions, required audiences and channels, confirmation contact, and evidence. Search reaches these fields and the Reports CSV exports them.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.74",
+    date: "2026-09-04",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "Garage-departure occurrences now cover the runs that never left the garage. The rule was looking for a status the feed never sends, and missed more than four hundred runs with no recorded departure. Statuses describing a bus returning to the garage can no longer be counted as departure failures, and a run the source has not finished classifying is left alone.",
         ],
       },
     ],

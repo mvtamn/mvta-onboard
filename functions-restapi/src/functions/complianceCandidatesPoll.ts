@@ -31,15 +31,61 @@ export function garageDepartureVarianceSeconds(
   return Math.round(minutes * 60);
 }
 
-// A garage departure is worth reviewing when the run had a scheduled pullout
-// and either never departed, or departed more than the variance late.
+// The statuses that describe how a run's DEPARTURE ended.
+//
+// Avail's PulloutStatus is undocumented here, so this list is drawn from what
+// the feed actually emits. Over 22 service days it produced eleven values, and
+// they fall into three groups:
+//
+//   Departure outcomes, listed below - Missed Pullout (282 rows, none departed),
+//   Missed Login (126, none departed), Expired Pullout (510, 278 never departed
+//   and the rest mostly a few minutes late) and Late Pullout (91, all departed,
+//   averaging 9 minutes late).
+//
+//   Pull-IN outcomes - On Time Pullin, Late Pullin, Missed Pullin, Waiting for
+//   Pullin. Nearly 1,900 rows describing a run's RETURN to the garage, which
+//   means its departure already happened. They are not departure evidence and
+//   must never reach a departure standard.
+//
+//   Not an outcome yet - On Time Pullout is a clean departure, and a blank
+//   status is a run Avail has not classified. Every blank row seen was from the
+//   current service day only, so blank means "still resolving", not "missed".
+//   Raising a candidate on one would penalise a run before Avail has finished
+//   judging it.
+//
+// 'Late Relief' used to head this list and appears in no row of 22 days of
+// data - it came from the single sample payload the fixtures were built from.
+// Meanwhile Missed Pullout and Missed Login, 408 runs that provably never left
+// the garage, matched nothing. The list was wrong in both directions at once,
+// which is why it is now grounded in the feed rather than in a sample.
+//
+// 'On Route No Pullout' is deliberately absent. Twelve of its thirteen rows
+// have no departure, but the name says the vehicle IS running, so it reads as a
+// missing pullout RECORD rather than a missing departure. That is a data
+// question for Avail, not a contractor penalty.
+const DEPARTURE_OUTCOME_STATUSES = [
+  "Missed Pullout",
+  "Missed Login",
+  "Expired Pullout",
+  "Late Pullout",
+] as const;
+
+// A garage departure is worth reviewing when a run whose departure has been
+// judged had a scheduled pullout and either never departed, or departed more
+// than the variance late.
+//
+// The status says the departure has been decided; the timestamps say what
+// happened. Neither alone is enough: the status alone called a bus that left
+// four minutes late a breach, and the timestamps alone would flag a run Avail
+// has not finished classifying.
 //
 // A row with no scheduled pullout is deliberately not a candidate. There is no
 // committed time to have missed, so it is a gap in the source rather than a
 // breach, and the repo already refuses to turn absent evidence into a finding
 // (see the unknown_data_gap handling in gtfsMissedTripsPoll).
 export function garageDepartureCandidatePredicate(): string {
-  return `d.pullout_status IN ('Late Relief','Expired Pullout')
+  const statuses = DEPARTURE_OUTCOME_STATUSES.map((status) => `'${status}'`).join(",");
+  return `d.pullout_status IN (${statuses})
             AND d.pullout_scheduled IS NOT NULL
             AND (
               d.pullout_actual IS NULL
