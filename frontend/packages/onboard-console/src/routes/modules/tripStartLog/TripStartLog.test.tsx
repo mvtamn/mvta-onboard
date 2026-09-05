@@ -129,6 +129,37 @@ describe("Dispatch Log shell", () => {
     expect(within(screen.getByRole("table", { name: "Dispatch log trips" })).getAllByRole("row").slice(1)).toHaveLength(3);
   });
 
+  it("sorts the grid from its headers and keeps the order when the view changes", async () => {
+    vi.mocked(api.getTripStartLog).mockResolvedValueOnce(response(DAY));
+    render(<TripStartLog />);
+    const user = userEvent.setup();
+
+    const table = await screen.findByRole("table", { name: "Dispatch log trips" });
+    expect(within(table).getByRole("columnheader", { name: /Scheduled/ })).toHaveAttribute("aria-sort", "ascending");
+    await user.click(within(table).getByRole("button", { name: "Route" }));
+    let rows = within(table).getAllByRole("row").slice(1);
+    expect(rows.map((r) => within(r).getAllByRole("cell")[6]?.textContent)).toEqual(["444", "460", "Orange LINK"]);
+    await user.click(within(table).getByRole("button", { name: "Route" }));
+    rows = within(table).getAllByRole("row").slice(1);
+    expect(rows[0]).toHaveTextContent("Orange LINK");
+
+    await user.click(screen.getByRole("tab", { name: "Watch" }));
+    const again = screen.getByRole("table", { name: "Dispatch log trips" });
+    expect(within(again).getAllByRole("row").slice(1)[0]).toHaveTextContent("Orange LINK");
+    expect(within(again).getByRole("columnheader", { name: /Route/ })).toHaveAttribute("aria-sort", "descending");
+  });
+
+  it("selects a row from the keyboard and the inspector follows", async () => {
+    vi.mocked(api.getTripStartLog).mockResolvedValueOnce(response(DAY));
+    render(<TripStartLog />);
+    const user = userEvent.setup();
+
+    const table = await screen.findByRole("table", { name: "Dispatch log trips" });
+    within(table).getAllByRole("row")[1]!.focus();
+    await user.keyboard("{ArrowDown}{Enter}");
+    expect(screen.getByRole("complementary", { name: "Trip details" })).toHaveTextContent("Route 460 · block 2 · 05:00");
+  });
+
   it("does not report a zeroed day when the log's tables are missing", async () => {
     vi.mocked(api.getTripStartLog).mockResolvedValueOnce(response([], { table_ready: false, materialized: false }));
     render(<TripStartLog />);

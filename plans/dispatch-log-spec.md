@@ -476,6 +476,14 @@ Nothing before step 5 depends on the open decisions in §7.
    end to end; the verify actions are present but disabled until step 6.
 3. **Grid view**, actuals shown, no verification column yet. Built as a reusable
    sortable table (§4.3).
+   *Built 2026-09-05:* `components/SortableTable.tsx` is the console's first
+   shared sortable table — controlled sort (the caller owns the order), sticky
+   header in its own scroll region, an optionally pinned first column,
+   `aria-sort` on every header, click-to-sort cycling asc → desc, row
+   selection, and keyboard row navigation (arrows, Home/End, Enter/Space).
+   `TripStartLogGrid.tsx` puts the workbook's columns on it with Verified
+   pinned; the Verified cell stays read-only until step 6. Watch and Timeline
+   show the Grid until step 4.
 4. **Watch and Timeline views** over the same state. Independent of each other;
    either can ship first.
 5. **First-stop actual-departure capture from TripUpdate** (§5, option 1),
