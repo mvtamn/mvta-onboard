@@ -158,7 +158,19 @@ const CSV_HEADERS = [
   "Evidence notes", "Evidence reference",
 ];
 
-export function detoursToCsv(detours: Detour[], reasonCodes: DetourReasonCode[] = []): string {
+// One detour, one row of already-stringified cells, in CSV_HEADERS order.
+// The Reports page's export preview renders this table directly rather than
+// re-parsing the CSV, so what a reader sees on screen and what lands in the
+// file cannot drift apart.
+export interface DetourExportTable {
+  headers: string[];
+  rows: string[][];
+}
+
+export function detourExportTable(
+  detours: Detour[],
+  reasonCodes: DetourReasonCode[] = [],
+): DetourExportTable {
   const rows = detours.map((d) =>
     [
       d.internal_number ?? "",
@@ -217,9 +229,14 @@ export function detoursToCsv(detours: Detour[], reasonCodes: DetourReasonCode[] 
       d.confirmation_contact ?? "",
       d.evidence_notes ?? "",
       d.evidence_reference ?? "",
-    ].map(csvCell).join(","),
+    ].map((value) => (value === null || value === undefined ? "" : String(value))),
   );
-  return [CSV_HEADERS.map(csvCell).join(","), ...rows].join("\r\n");
+  return { headers: CSV_HEADERS, rows };
+}
+
+export function detoursToCsv(detours: Detour[], reasonCodes: DetourReasonCode[] = []): string {
+  const { headers, rows } = detourExportTable(detours, reasonCodes);
+  return [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
 }
 
 export function downloadCsv(filename: string, csv: string): void {
@@ -232,4 +249,56 @@ export function downloadCsv(filename: string, csv: string): void {
   link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+// The same export as a standalone HTML document, so the file can be read in
+// a browser tab instead of only landing in Excel. Self-contained (inline
+// styles, no fetches) because it is handed to the browser as a blob URL,
+// which has no origin to load anything from.
+export function detourExportHtml(filename: string, table: DetourExportTable, scope: string): string {
+  const head = table.headers.map((h) => `<th>${escapeHtml(h)}</th>`).join("");
+  const body = table.rows
+    .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell) || "&#8212;"}</td>`).join("")}</tr>`)
+    .join("");
+  const rowLabel = `${table.rows.length} ${table.rows.length === 1 ? "detour" : "detours"} · ${table.headers.length} columns`;
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(filename)}</title>
+<style>
+  :root { color-scheme: light; }
+  body { background: #edebe4; color: #2c2c2a; font-family: -apple-system, "Segoe UI", Inter, Roboto, Arial, sans-serif; font-size: 13px; margin: 0; padding: 24px; }
+  header { margin-bottom: 14px; }
+  h1 { font-size: 19px; letter-spacing: -.01em; margin: 0 0 4px; }
+  .meta { color: #4f4f4f; font-size: 12px; margin: 0; }
+  .scope { color: #8a8a82; font-size: 12px; margin: 4px 0 0; }
+  .wrap { background: #fff; border: 1px solid #ddd; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,.04); max-height: calc(100vh - 130px); overflow: auto; }
+  /* 51 columns: size to content and scroll sideways rather than squeezing
+     every closure into a four-word column. */
+  table { border-collapse: separate; border-spacing: 0; font-size: 12px; min-width: 100%; width: max-content; }
+  th { background: #00553d; color: #fff; font-size: 11px; letter-spacing: .3px; padding: 9px 12px; position: sticky; text-align: left; top: 0; white-space: nowrap; }
+  td { border-bottom: 1px solid #eee; max-width: 46ch; padding: 8px 12px; vertical-align: top; }
+  tr:nth-child(even) td { background: #fafaf8; }
+  td:first-child { font-variant-numeric: tabular-nums; white-space: nowrap; }
+</style>
+</head>
+<body>
+<header>
+  <h1>${escapeHtml(filename)}</h1>
+  <p class="meta">${escapeHtml(rowLabel)}</p>
+  <p class="scope">${escapeHtml(scope)}</p>
+</header>
+<div class="wrap"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>
+</body>
+</html>`;
 }

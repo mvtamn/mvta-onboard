@@ -16,7 +16,45 @@ permissions:
   contents: read
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          # 22 is the workspace floor (frontend/package.json engines). The test
+          # toolchain is what set it: jsdom 30 declares
+          # `node ^22.22.2 || ^24.15.0 || >=26` and the undici it pulls in needs
+          # >=22.19.0 for worker_threads.markAsUncloneable. npm ci does not
+          # enforce engines, so Node 20 installs the tree happily and then every
+          # vitest worker dies loading jsdom.
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        working-directory: frontend
+        run: npm ci
+
+      # Both apps import @mvta/shared from its built dist, so typecheck and
+      # the test run need it compiled first - same order as the build job.
+      - name: Build shared
+        working-directory: frontend
+        run: npm run build:shared
+
+      - name: Typecheck
+        working-directory: frontend
+        run: npm run typecheck
+
+      # Root `npm test` fans out to every workspace with a test script
+      # (--if-present), which today is onboard-console's vitest suite.
+      - name: Unit tests
+        working-directory: frontend
+        run: npm test
+
   build-and-deploy:
+    needs: test
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -39,7 +77,9 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          # Matches the test job and the workspace's engines floor, so nothing
+          # is ever built on a Node this repo declares unsupported.
+          node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -62,7 +102,14 @@ jobs:
           npm run build:shared
           npm run build --workspace @mvta/${{ matrix.app }}
 
+      # Deploy only from main (or a manual dispatch). The SWA deployment
+      # tokens are not available to pull_request runs, so this step could only
+      # ever fail there - two permanent red checks on every frontend PR, plus a
+      # fail-fast cancellation that killed the sibling app's build before it
+      # finished. The guard sits on the step rather than the job so a PR still
+      # builds both apps and reports it; only the upload is skipped.
       - name: Deploy to SWA
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: Azure/static-web-apps-deploy@v1
         with:
           azure_static_web_apps_api_token: ${{ secrets[matrix.token_secret] }}

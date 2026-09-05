@@ -1,4 +1,4 @@
-import type { TripStartLogTrip } from "@mvta/shared";
+import type { TripStartLogTrip, TripStartVerificationAction } from "@mvta/shared";
 import {
   bucketLabel,
   dayLabel,
@@ -15,11 +15,18 @@ interface Props {
   trip: TripStartLogTrip | null;
   /** Lowercase weekday of the service date, for "on today's list". */
   serviceDow: string | null;
+  canVerify: boolean;
+  /** The initials the cell will show for the signed-in user. */
+  initials: string;
+  onVerify: (tripId: string, action: TripStartVerificationAction) => void;
+  onDisposition: (tripId: string) => void;
 }
+
+const NEEDS_ROLE = "Requires the Trip Start Verifier role";
 
 // The persistent panel below whichever view is open (spec §4.3). Selecting in
 // any view lands here, so the views never need detail panels of their own.
-export function TripStartLogInspector({ trip, serviceDow }: Props) {
+export function TripStartLogInspector({ trip, serviceDow, canVerify, initials, onVerify, onDisposition }: Props) {
   if (!trip) {
     return (
       <aside className="tsl-inspector" aria-label="Trip details">
@@ -67,12 +74,20 @@ export function TripStartLogInspector({ trip, serviceDow }: Props) {
           </dd>
         </div>
       </dl>
-      {/* The affordance is here now so the three views inherit it; the
-          endpoint, role check and audit trail are step 6 of the build. */}
+      {/* Writing from here updates the same record the Grid and Watch write,
+          so the views can never disagree (spec §4.3). */}
       <div className="tsl-inspector-actions" aria-label="Verify actions">
-        <button type="button" className="btn-sm" disabled title="Verification recording is not available yet">Observed on time</button>
-        <button type="button" className="btn-sm" disabled title="Verification recording is not available yet">Observed left late</button>
-        <small>Recording an observation arrives in a later step; the auto-computed status is shown beside it, never instead of it.</small>
+        <button type="button" className="btn-sm" disabled={!canVerify} title={canVerify ? undefined : NEEDS_ROLE} onClick={() => onVerify(trip.trip_id, "observed_on_time")}>Observed on time</button>
+        <button type="button" className="btn-sm" disabled={!canVerify} title={canVerify ? undefined : NEEDS_ROLE} onClick={() => onVerify(trip.trip_id, "observed_left_late")}>Observed left late</button>
+        <button type="button" className="btn-sm" disabled={!canVerify} title={canVerify ? "Leave the cell blank and record the procedure followed" : NEEDS_ROLE} onClick={() => onDisposition(trip.trip_id)}>Record disposition</button>
+        {trip.verification ? (
+          <button type="button" className="btn-sm" disabled={!canVerify} title={canVerify ? undefined : NEEDS_ROLE} onClick={() => onVerify(trip.trip_id, "clear")}>Clear</button>
+        ) : null}
+        <small>
+          {canVerify
+            ? `Recorded under your initials, ${initials}. The auto-computed status stays beside your observation, never instead of it.`
+            : "Recording is for the SST OCS desk; the auto-computed status is shown beside the observation, never instead of it."}
+        </small>
       </div>
     </aside>
   );

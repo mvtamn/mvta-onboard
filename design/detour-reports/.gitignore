@@ -1,0 +1,4 @@
+# The seeded canvas is a ~2.4 MB build output (the editor payload plus the
+# artboards). The artboards, canvas.json and this file are the source; re-seed
+# with the /design helper rather than committing the result.
+detour-reports-refresh.html

@@ -600,6 +600,26 @@ export interface FixedRouteDeparture {
   pullout_delta_seconds: number | null;
 }
 
+// The on-demand half of garage departure (ADR 0028): one row per Spare duty,
+// mirrored from functions-restapi/src/functions/onDemandDepartures.ts. Both
+// sources are named so a reader can tell a started slot from a vehicle merely
+// appearing in the service area. Driver and vehicle are Spare ids, not names.
+export interface OnDemandDeparture {
+  service_date: string;
+  duty_id: string;
+  duty_identifier: string | null;
+  driver_id: string | null;
+  vehicle_id: string | null;
+  duty_status: string | null;
+  departure_scheduled: string | null;
+  scheduled_source: "slots_startLocation" | "duties_startRequested" | null;
+  departure_actual: string | null;
+  departure_source: "slots_startLocation" | "duties_firstSeenInServiceArea" | null;
+  updated_at: string;
+  departure_delta_seconds: number | null;
+  no_departure: boolean;
+}
+
 // Avail's OTP Monthly By Route/Stop/Day of Week feed - real Attachment G
 // departure-adherence numbers, backing the OTP Compliance module's Route
 // Summary/Review Queue/Monthly Assessments pages (replacing that module's
@@ -1496,6 +1516,8 @@ export interface AssessmentEvidence { id: string; assessment_id: string; content
 export type TripStartStatus = "on_time" | "late" | "missed" | "canceled" | "unknown";
 export type TripStartActualSource = "trip_update" | "vehicle_position" | "avail";
 export type TripStartObservation = "observed_on_time" | "observed_left_late" | "not_observed";
+/** What a verifier can do to a cell: one of the observations, or clear it back to blank. */
+export type TripStartVerificationAction = TripStartObservation | "clear";
 
 export interface TripStartVerification {
   observation: TripStartObservation;

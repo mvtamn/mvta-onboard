@@ -23,6 +23,10 @@ const ROLE_PRESETS: { label: string; roles: AppRole[] }[] = [
   // preset of its own precisely because its boundary is the narrow one - it
   // is the only role where Edit shows but Delete does not.
   { label: "Detour", roles: ["OCC.Detour"] },
+  // SST OCS: the contractor desk that initials the Dispatch Log. Reads the
+  // log and records verifications, nothing else - worth a preset because it
+  // is the first role held by people outside MVTA's own OCC.
+  { label: "SST OCS", roles: ["OCC.TripStartVerify"] },
   { label: "No roles", roles: [] },
 ];
 

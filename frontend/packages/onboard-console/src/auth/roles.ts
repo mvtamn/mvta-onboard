@@ -11,6 +11,7 @@ export type AppRole =
   | "OCC.Compliance"
   | "OCC.ComplianceManager"
   | "OCC.Detour"
+  | "OCC.TripStartVerify"
   | "OCC.EventAVL"
   | "OCC.AccessAdmin"
   | "System.Ingestion";
@@ -36,6 +37,7 @@ export function roleLabel(role: string): string {
     "OCC.Compliance": "Compliance Reviewer",
     "OCC.ComplianceManager": "Compliance Manager",
     "OCC.Detour": "Detour Manager",
+    "OCC.TripStartVerify": "Trip Start Verifier",
     "OCC.AccessAdmin": "Access Administrator",
     "OCC.EventAVL": "Event AVL Manager",
     "OCC.DecisionMatrix": "Decision Matrix Viewer",

@@ -11,6 +11,7 @@ param planSku string = 'B1'
 param planTier string = 'Basic'
 param includeSpareApiKey bool = false
 param spareMissedTripsEnabled bool = false
+param onDemandDeparturesEnabled bool = false
 param gtfsSilentNoShowEnabled bool = false
 param spareMissedTripServiceIds string = ''
 param spareContractorFaultValues string = ''
@@ -211,6 +212,9 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'SPARE_CONTRACTOR_FAULT_VALUES', value: spareContractorFaultValues }
         { name: 'SPARE_MISSED_TRIP_LOOKBACK_MINUTES', value: '120' }
         { name: 'SPARE_MISSED_TRIP_MAX_ROWS', value: '10000' }
+        // On-demand garage departures (onDemandDeparturesPoll) read Spare duties
+        // named by the missed-trip requests above, so they share that scope.
+        { name: 'ON_DEMAND_DEPARTURES_ENABLED', value: string(onDemandDeparturesEnabled) }
       ] : [])
     }
   }

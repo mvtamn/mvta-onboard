@@ -1,6 +1,7 @@
 import { resolveOperationalZone, type OperationalZoneSnapshot } from "./onDemandOperationalZones";
 import { getPool, sql } from "./db";
 import type { NormalizedOnDemandRequest, SpareDutyMatchingUpdate, SpareDutyVehicleUpdate } from "./onDemandSpareMonitor";
+import { CachedValue } from "./spareWebhookIntake";
 
 type ActiveZoneRow = {
   id: string;
@@ -31,6 +32,18 @@ export async function loadActiveOperationalZones(): Promise<ActiveOperationalZon
     snapshot: { version: zones[0]?.version ?? "", zones },
     databaseIds: new Map(rows.recordset.map((row) => [row.external_location_id, row.id])),
   };
+}
+
+// The active zones change when a zone version is activated, which is rare
+// and deliberate; the webhook receiver was re-reading them for every one of
+// thousands of deliveries an hour. One read a minute is current enough for
+// monitoring, and a failed refresh serves the last good set rather than
+// failing every delivery in the meantime. Timers and reads that need the
+// very latest version keep calling loadActiveOperationalZones directly.
+const activeZonesCache = new CachedValue(loadActiveOperationalZones, 60_000);
+
+export function loadActiveOperationalZonesCached(): Promise<ActiveOperationalZones> {
+  return activeZonesCache.get();
 }
 
 export async function storeOnDemandSpareRequest(

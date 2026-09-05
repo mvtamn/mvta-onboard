@@ -1,4 +1,4 @@
-import type { TripStartLogTrip } from "@mvta/shared";
+import type { TripStartLogTrip, TripStartVerificationAction } from "@mvta/shared";
 import {
   DISPOSITION_LABEL,
   UP_NEXT_HORIZON_MINUTES,
@@ -18,7 +18,12 @@ interface Props {
   isToday: boolean;
   selectedTripId: string | null;
   onSelect: (tripId: string) => void;
+  canVerify: boolean;
+  onVerify: (tripId: string, action: TripStartVerificationAction) => void;
+  onDisposition: (tripId: string) => void;
 }
+
+const NEEDS_ROLE = "Requires the Trip Start Verifier role";
 
 const SEVERITY_PILL: Record<DispositionReason, string> = {
   missed: "pill-danger",
@@ -31,7 +36,7 @@ const SEVERITY_PILL: Record<DispositionReason, string> = {
 // needs a person to decide something. Reads the same filtered rows as the
 // other views; verify and disposition actions are step 6 and sit here
 // disabled so the layout is settled before they work.
-export function TripStartLogWatch({ trips, serviceDate, now, isToday, selectedTripId, onSelect }: Props) {
+export function TripStartLogWatch({ trips, serviceDate, now, isToday, selectedTripId, onSelect, canVerify, onVerify, onDisposition }: Props) {
   const upcoming = isToday ? upNext(trips, now) : [];
   const dispositions = needsDisposition(trips, now);
   const rotationDue = upcoming.filter((t) => t.in_rotation).length;
@@ -77,8 +82,8 @@ export function TripStartLogWatch({ trips, serviceDate, now, isToday, selectedTr
                       <span className="tsl-initials" title={trip.verification.verified_by}>{trip.verification.verified_initials}</span>
                     ) : (
                       <>
-                        <button type="button" className="btn-sm" disabled title="Verification recording is not available yet">On time</button>
-                        <button type="button" className="btn-sm" disabled title="Verification recording is not available yet">Left late</button>
+                        <button type="button" className="btn-sm" disabled={!canVerify} title={canVerify ? "Mark observed on time" : NEEDS_ROLE} onClick={() => onVerify(trip.trip_id, "observed_on_time")}>On time</button>
+                        <button type="button" className="btn-sm" disabled={!canVerify} title={canVerify ? "Mark observed left late" : NEEDS_ROLE} onClick={() => onVerify(trip.trip_id, "observed_left_late")}>Left late</button>
                       </>
                     )}
                   </span>
@@ -118,7 +123,11 @@ export function TripStartLogWatch({ trips, serviceDate, now, isToday, selectedTr
                   <span className="tsl-watch-route">Route {routeLabel(trip)} · block {trip.block_id ?? "—"}</span>
                 </button>
                 <span className="tsl-watch-actions">
-                  <button type="button" className="btn-sm" disabled title="Disposition recording arrives with verification recording">Record disposition</button>
+                  {trip.verification ? (
+                    <span className="tsl-initials" title={trip.verification.verified_by}>{trip.verification.verified_initials}</span>
+                  ) : (
+                    <button type="button" className="btn-sm" disabled={!canVerify} title={canVerify ? "Leave the cell blank and record the procedure followed" : NEEDS_ROLE} onClick={() => onDisposition(trip.trip_id)}>Record disposition</button>
+                  )}
                 </span>
               </li>
             ))}

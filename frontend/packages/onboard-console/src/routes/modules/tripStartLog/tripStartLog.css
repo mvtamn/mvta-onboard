@@ -31,6 +31,9 @@
 
 table.data.tsl-table tbody tr.dim td { color: var(--text-muted); }
 table.data.tsl-table td.tsl-clock { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tsl-verify-cell { background: transparent; border: 1px dashed transparent; border-radius: 6px; color: inherit; cursor: pointer; font: inherit; margin: -3px -6px; padding: 3px 6px; }
+.tsl-verify-cell:hover { border-color: var(--border-strong); background: var(--surface-bg); }
+.tsl-verify-cell:focus-visible { outline: 2px solid var(--brand-green); outline-offset: 1px; }
 .tsl-initials { display: inline-block; font-weight: 800; letter-spacing: 0.04em; min-width: 2.2em; }
 .tsl-needs { color: var(--pill-warning-fg); font-size: 10.5px; font-weight: 800; }
 

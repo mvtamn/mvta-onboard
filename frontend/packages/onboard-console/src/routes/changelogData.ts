@@ -18,7 +18,7 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
-    version: "1.5.107",
+    version: "1.5.113",
     date: "2026-09-05",
     sections: [
       {
@@ -27,6 +27,91 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
           "Decision Matrix: an empty Matrix now says which kind of empty it is - not connected, unavailable, nothing approved yet, or no match for your search - instead of reporting a database that has not been set up as a temporary outage.",
           "Decision Matrix: the severity rail on each Procedure row and card now shows the Procedure's severity - red for Stop service, orange for Restrict service, green for routine - instead of the same neutral colour for every one.",
         ],
+      },
+    ],
+  },
+  {
+    version: "1.5.112",
+    date: "2026-09-05",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "The Decision Matrix admin pages, the expiration-defaults editor, and the audit log's message search now reach the API on Azure. Their endpoints used a route prefix the Functions runtime reserves for itself, so they were never registered and returned 404; they have moved to a new prefix. Who can use them is unchanged.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.111",
+    date: "2026-09-05",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "The sidebar and Service Operations tabs now show only the pages your role can open. SST desk staff land on the Dispatch Log and no longer see Compose, Active Service Alerts, or Suggested Alerts.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.110",
+    date: "2026-09-05",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "The Spare webhook receiver now protects the rest of OnBoard: it limits how much database work deliveries can hold at once, refuses new deliveries briefly after a failure instead of queueing them, and records repeated vehicle sightings for a duty once a minute. Service Risk & Quality data is unchanged.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.109",
+    date: "2026-09-05",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Detour Reports opens on Active. Status is a tab bar with a count on each tab, replacing the status dropdown and the separate Show/Hide history toggle; the counts reflect whatever else you have narrowed to, and an empty tab tells you which status still has matches.",
+          "Search is now the main control on Detour Reports. Source, reason, severity and the date range sit behind a Filters button that shows how many are applied, and each one appears as a chip you can drop on its own. Clearing the filters keeps the status tab you are on.",
+          "The Detour Reports table shows seven columns instead of fifteen. Avail number, fulfillment path, workflow, reason, severity, source and who created or last edited the detour all moved into the row's expanded record, which is now a labelled grid. Rows open with a real button, so the record can be reached from the keyboard.",
+        ],
+      },
+      {
+        heading: "Added",
+        items: [
+          "Detour Reports previews an export before it downloads: the file name, how many detours and columns it contains, the filters it was taken under, and the rows themselves. From the preview you can download the CSV or open the same export as a page in a new browser tab.",
+        ],
+      },
+      {
+        heading: "Removed",
+        items: [
+          "The Legacy spreadsheet history panel on Detour Reports, including the CSV/JSON upload it contained. Rows imported previously are untouched, but the console no longer shows them or offers a way to import more.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.108",
+    date: "2026-09-05",
+    sections: [
+      {
+        heading: "Added",
+        items: [
+          "Garage Departures: the Compliance tab's Fixed Route Departures module is now Garage Departures with a Fixed Route / On-Demand switch. The On-Demand view tracks each Spare duty's start against its schedule, naming whether the start came from Spare's start-location slot or from the vehicle first appearing in the service area.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.107",
+    date: "2026-09-05",
+    sections: [
+      {
+        heading: "Added",
+        items: [
+          "Dispatch Log verifications can now be recorded: the SST OCS desk initials a trip's start from the Grid cell, the Watch queue, or the inspector, records a disposition with a note where a trip ran late, and can correct or clear an entry. Every change is kept in an audit trail.",        ],
       },
     ],
   },

@@ -26,6 +26,7 @@ param allowedCorsOrigins array = []
 
 @description('Enables bounded Spare Requests + Slots ingestion and missed-trip evaluation for the REST API.')
 param spareMissedTripsEnabled bool = false
+param onDemandDeparturesEnabled bool = false
 
 @description('Enables schedule-based silent-no-show detection in the REST API. False leaves gtfsMissedTripsPoll recording explicit GTFS-RT cancellations only.')
 param gtfsSilentNoShowEnabled bool = false
@@ -118,6 +119,7 @@ module restApiFunction 'modules/functionapp.bicep' = {
     includeSpareApiKey: true
     complianceReportsStorageAccountName: take('stmvtacompreport${environment}${cleanSuffix}', 24)
     spareMissedTripsEnabled: spareMissedTripsEnabled
+    onDemandDeparturesEnabled: onDemandDeparturesEnabled
     gtfsSilentNoShowEnabled: gtfsSilentNoShowEnabled
     spareMissedTripServiceIds: spareMissedTripServiceIds
     spareContractorFaultValues: spareContractorFaultValues

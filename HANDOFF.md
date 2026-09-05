@@ -243,14 +243,14 @@ infra-phase1/                 — Bicep for Function Apps, Static Web Apps, Serv
 Only 3 of ~16 endpoints exist. Still to build:
 - `PATCH /messages/{id}` — edit/retract expiration
 - `POST /messages/{id}/retract`
-- `GET /admin/expiration-defaults`, `PATCH /admin/expiration-defaults/{category}`
+- `GET /manage/expiration-defaults`, `PATCH /manage/expiration-defaults/{category}`
 - `POST /subscribers` — rider opt-in (**needed for the SMS/email POC priority**)
 - `POST /subscribers/{id}/confirm` — SMS double opt-in confirmation
 - `GET /subscribers/{id}/confirm-email` — email confirmation link handler
 - `POST /subscribers/{id}/request-code`, `PATCH /subscribers/{id}` — preference changes with OTP
 - `POST /subscribers/webhook/inbound-sms` — STOP/HELP handling
 - `POST /subscribers/{id}/device-token`, `DELETE .../device-token/{id}` — push (Phase 2, lower priority right now)
-- `GET /admin/messages?tag=` — tag search
+- `GET /manage/messages?tag=` — tag search
 - `GET /suggested-alerts?status=pending`, `POST /suggested-alerts/{id}/approve`, `.../dismiss` — the human-review queue for predictive alerts (Phase 3, but keep the human-in-the-loop design principle in mind even when just planning this)
 - `POST /webhooks/sparelabs` — MVTA Connect (On-Demand) wait-time webhook (Phase 4)
 
@@ -375,6 +375,26 @@ dispatchMessageCreated) and no listener failed to start after the 01:19
 restart; the unhealthy host health-check entry was azure.functions.webjobs.storage
 ("Unable to access AzureWebJobsStorage") and cleared once the storage RBAC
 above was granted and the app restarted at 02:04 UTC.
+INCIDENT 2026-09-05 ~15:30-17:30 UTC (REST API unreachable, /api/health 504,
+restart did NOT clear it). Not the 01:09 pattern. The B1 plan's single core
+climbed 33% -> 95% CPU between 09:00 and 16:00 with memory at 80-89%, and every
+poller's duration grew in step (availAvlPoll 1.6 s -> 34 s). The load was the
+Spare webhook receiver: ~5,000 deliveries/hour through the service day, nine in
+ten vehicleLocation, and since an operational zone became active each one ran a
+zones query plus a MERGE. Deliveries queued for minutes each on the shared
+ten-connection pool, hundreds sat in flight, and the worker pinned. The 16:08
+infra restart and a manual restart at 16:15 each bought minutes before the
+flood re-saturated it. Yesterday carried the same volume; the difference is
+active zones turning cheap 503s into database work. Fix: PR "Spare webhook
+receiver intake gate" (v1.5.110) - bounded in-flight work, per-delivery time
+budget, cool-down 503s, vehicleLocation coalescing, cached zones. Lessons:
+(4) a restart that does not stick means load, not a wedge - read plan CPU and
+AppRequests by Name before restarting again; (5) any receiver that does
+database work per delivery needs a bound below the pool size; (6) unsubscribe
+vehicleLocation at Spare if the receiver ever floods again - it is supporting
+context only. Also found: the dev SQL server has public network access enabled
+with a 0.0.0.0-255.255.255.255 firewall rule ("PowerAutomate"), contrary to
+lesson 7 above.
 - DONE 2026-09-04: email sender provisioned. Email Communication Service
   `acs-email-mvta-onboard-dev` (data location United States) with an
   Azure-managed domain `93587da7-3b33-4e41-9473-e64bd57cb979.azurecomm.net`
@@ -447,13 +467,15 @@ Not blocking a read, but blocking everything past it:
   them but has no migrate action yet, though
   `POST /admin/decision-matrix/legacy-candidates/{id}/{rev}/draft` exists.
 
-WATCH THIS: the REST host logs "The specified route conflicts with one or
-more built in routes" for the `decisionMatrix*` functions on every start
-(recorded in the 2026-09-05 incident notes above). Every Decision Matrix
-governance endpoint is routed under `admin/...`. Whether they actually answer
-in the deployed app is UNVERIFIED — make one authenticated call to
-`/api/admin/decision-matrix/governance-queue` before assuming the authoring
-API is reachable at all.
+RESOLVED 2026-09-05 by PR #178: the governance endpoints were unreachable in
+Azure. The REST host logged "The specified route conflicts with one or more
+built in routes" for the `decisionMatrix*` functions on every start - noted in
+the 2026-09-05 incident write-up above as background noise - because every one
+of them was routed under `admin/...`, a prefix the Functions runtime reserves.
+They never registered and returned 404, so no Admin could have authored a
+Procedure even with the tables in place. They now sit under `manage/...`;
+authorization is unchanged. Confirm with one authenticated call to
+`/api/manage/decision-matrix/governance-queue` once the migrations are in.
 
 Order to bring it up: apply 076 (and 078, 079, 080), confirm the console stops
 saying not connected, provision the Graph identity, collect the SharePoint

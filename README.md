@@ -92,5 +92,5 @@ and CI/CD.
 Pending (see task list / plan): **Azure Communication Services provisioning**
 (phone number + verified email domain — a portal step that unblocks live send),
 the confirmation-back endpoints (`confirm-email`, SMS code confirm,
-STOP/HELP webhook), and the `GET /admin/messages?tag=` backend for the console
+STOP/HELP webhook), and the `GET /manage/messages?tag=` backend for the console
 audit view.

@@ -82,6 +82,27 @@ describe("Service Operations", () => {
     expect(screen.getByRole("link", { name: "Dispatch Log" })).toBeInTheDocument();
   });
 
+  it("shows the SST desk role only the Dispatch Log, and no communications tabs it cannot use", () => {
+    authState.roles = ["OCC.TripStartVerify"];
+    renderShell();
+
+    expect(screen.getByRole("link", { name: "Dispatch Log" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Service Risk & Quality" })).not.toBeInTheDocument();
+    for (const name of ["Overview", "Compose", "Suggested Alerts", "Active Service Alerts"]) {
+      expect(screen.queryByRole("link", { name })).not.toBeInTheDocument();
+    }
+    expect(screen.getByText("Monitoring workspace")).toBeInTheDocument();
+    expect(screen.queryByText("Communications workspace")).not.toBeInTheDocument();
+  });
+
+  it("hides the communications tabs from a Compliance-only reader as well", () => {
+    authState.roles = ["OCC.Compliance"];
+    renderShell();
+
+    expect(screen.queryByRole("link", { name: "Compose" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Dispatch Log" })).toBeInTheDocument();
+  });
+
   it("shows the Dispatch Log, but not Service Risk, to a Compliance reader", () => {
     authState.roles = ["OCC.Compliance"];
     renderShell();

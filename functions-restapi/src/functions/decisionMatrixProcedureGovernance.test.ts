@@ -8,7 +8,7 @@ const context = { error: () => undefined } as unknown as InvocationContext;
 function requestFor(roles: string[], body: unknown, userId?: string) {
   return new HttpRequest({
     method: "POST",
-    url: "https://example.test/api/admin/decision-matrix/procedures/procedure-1/revisions/1/lifecycle",
+    url: "https://example.test/api/manage/decision-matrix/procedures/procedure-1/revisions/1/lifecycle",
     params: { procedureId: "procedure-1", revision: "1" },
     headers: { "content-type": "application/json", "x-ms-client-principal": Buffer.from(JSON.stringify({ userId, claims: roles.map((val) => ({ typ: "roles", val })) })).toString("base64") },
     body: { string: JSON.stringify(body) },

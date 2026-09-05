@@ -114,10 +114,10 @@ Implemented HTTP endpoints include:
 | `PATCH` | `/api/messages/{id}` | Publisher/Admin | Edit summary or expiration |
 | `POST` | `/api/messages/{id}/retract` | Publisher/Admin | Retract an active alert |
 | `POST` | `/api/subscribers` | Public | Create a pending rider subscription |
-| `GET` | `/api/admin/messages` | Staff | Search message history |
-| `GET` | `/api/admin/expiration-defaults` | Staff | List expiration defaults |
-| `PATCH` | `/api/admin/expiration-defaults/{category}` | Admin | Update an expiration default |
-| `GET` | `/api/admin/subscribers/summary` | Admin | View masked subscriber statistics |
+| `GET` | `/api/manage/messages` | Staff | Search message history |
+| `GET` | `/api/manage/expiration-defaults` | Staff | List expiration defaults |
+| `PATCH` | `/api/manage/expiration-defaults/{category}` | Admin | Update an expiration default |
+| `GET` | `/api/manage/subscribers/summary` | Admin | View masked subscriber statistics |
 | `GET` | `/api/suggested-alerts` | Staff | List suggested alerts |
 | `POST` | `/api/suggested-alerts/prepare` | Publisher/Admin/Ingestion | Create or reuse a reviewable risk draft |
 | `POST` | `/api/suggested-alerts/{id}/approve` | Publisher/Admin | Approve and publish a suggestion |

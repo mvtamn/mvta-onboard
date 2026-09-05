@@ -1,0 +1,56 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Detour Reports — page",
+      "is_interactive": true
+    },
+    {
+      "file": "Record.dc.html",
+      "x": 1560,
+      "y": 0,
+      "w": 1120,
+      "h": 980,
+      "title": "Expanded record"
+    },
+    {
+      "file": "States.dc.html",
+      "x": 0,
+      "y": 1120,
+      "w": 1120,
+      "h": 760,
+      "title": "Table states"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "what-changed",
+      "x": 0,
+      "y": -260,
+      "w": 700,
+      "text": "What changed on this page — now shipped in DetourReports.tsx (v1.5.108)\n\n1. Status is a tab bar with live counts, and ACTIVE is the default — no more \"all statuses\" plus a separate Show/Hide history toggle deciding the same thing twice. Each count reflects what the other filters already allow.\n2. Search is promoted to a full-width field; the other five filters moved behind a Filters button with a count badge, and every applied filter shows as a removable chip. Clearing the filters keeps the status tab.\n3. Fifteen columns became seven plus a disclosure control. Avail number, path, workflow, reason, severity, source and provenance moved into the expanded record — the CSV export still carries all 51 fields.\n4. The expanded record is a labelled definition grid instead of a stack of dim sentences.\n5. Rows disclose through a real button with aria-expanded, so the record is keyboard-reachable for the first time.\n\nThe detour data on these artboards is invented sample content — plausible MVTA corridors, not real records."
+    },
+    {
+      "id": "export-preview",
+      "x": 760,
+      "y": -260,
+      "w": 620,
+      "text": "Export, added after this canvas was drawn\n\nThe Export button now opens a preview before anything downloads: the file name, the row and column counts, the filters it was taken under, and the rows themselves. From there, Download CSV or Open in browser — the same export rendered as a standalone HTML page in a new tab.\n\nThe preview and the file are generated from one table (detourExportTable), so they cannot drift apart. See the shipped page rather than these artboards for that dialog."
+    },
+    {
+      "id": "legacy-removed",
+      "x": 1560,
+      "y": -260,
+      "w": 560,
+      "text": "Legacy spreadsheet history: removed\n\nThe whole subcard is gone — the imported-rows table, the Show/Hide toggle, and the CSV/JSON upload control that lived inside it.\n\nWorth knowing: that upload was the ONLY way to import retired-tracker rows. Removing the panel removes the import path from the console. The rows and POST /detours/historical-imports stay; nothing is deleted."
+    }
+  ],
+  "launch": {
+    "view": "focused",
+    "file": "Main.dc.html"
+  }
+}

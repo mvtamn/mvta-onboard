@@ -33,7 +33,10 @@ import type {
   Severity,
   AvailAvlVehicle,
   FixedRouteDeparture,
+  OnDemandDeparture,
   TripStartLogResponse,
+  TripStartVerification,
+  TripStartVerificationAction,
   OtpMonthlyStopRow,
   OtpDailyRow,
   OtpMonthlyRouteRollup,
@@ -228,6 +231,7 @@ export interface KpiTrustStream {
 export type KpiTrustStreamName =
   | "fixed_route_delay"
   | "fixed_route_departures"
+  | "on_demand_departures"
   | "otp"
   | "event_avl"
   | "on_demand"
@@ -424,16 +428,16 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       if (filters?.q) qs.set("q", filters.q);
       if (filters?.limit) qs.set("limit", String(filters.limit));
       const suffix = qs.toString() ? `?${qs.toString()}` : "";
-      return request<{ messages: AdminMessage[] }>(`/api/admin/messages${suffix}`, {}, true);
+      return request<{ messages: AdminMessage[] }>(`/api/manage/messages${suffix}`, {}, true);
     },
 
     getExpirationDefaults() {
-      return request<{ defaults: ExpirationDefault[] }>("/api/admin/expiration-defaults", {}, true);
+      return request<{ defaults: ExpirationDefault[] }>("/api/manage/expiration-defaults", {}, true);
     },
 
     updateExpirationDefault(category: string, default_ttl_minutes: number) {
       return request<ExpirationDefault>(
-        `/api/admin/expiration-defaults/${category}`,
+        `/api/manage/expiration-defaults/${category}`,
         { method: "PATCH", body: JSON.stringify({ default_ttl_minutes }) },
         true,
       );
@@ -441,7 +445,7 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
 
     getSubscribersSummary() {
       return request<{ summary: SubscribersSummary; recent?: MaskedSubscriber[] }>(
-        "/api/admin/subscribers/summary",
+        "/api/manage/subscribers/summary",
         {},
         true,
       );
@@ -474,40 +478,40 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     },
 
     getDecisionMatrixMatchRules() {
-      return request<{ match_rules: DecisionMatrixMatchRule[] }>("/api/admin/decision-matrix/match-rules", {}, true);
+      return request<{ match_rules: DecisionMatrixMatchRule[] }>("/api/manage/decision-matrix/match-rules", {}, true);
     },
 
     createDecisionMatrixMatchRule(input: Omit<DecisionMatrixMatchRule, "match_rule_id">) {
-      return request<DecisionMatrixMatchRule>("/api/admin/decision-matrix/match-rules", { method: "POST", body: JSON.stringify(input) }, true);
+      return request<DecisionMatrixMatchRule>("/api/manage/decision-matrix/match-rules", { method: "POST", body: JSON.stringify(input) }, true);
     },
 
     updateDecisionMatrixMatchRule(matchRuleId: string, input: Partial<Omit<DecisionMatrixMatchRule, "match_rule_id">>) {
-      return request<DecisionMatrixMatchRule>(`/api/admin/decision-matrix/match-rules/${encodeURIComponent(matchRuleId)}`, { method: "PUT", body: JSON.stringify(input) }, true);
+      return request<DecisionMatrixMatchRule>(`/api/manage/decision-matrix/match-rules/${encodeURIComponent(matchRuleId)}`, { method: "PUT", body: JSON.stringify(input) }, true);
     },
 
     getDecisionMatrixGovernanceQueue() {
-      return request<{ procedures: DecisionMatrixGovernanceProcedure[] }>("/api/admin/decision-matrix/governance-queue", {}, true);
+      return request<{ procedures: DecisionMatrixGovernanceProcedure[] }>("/api/manage/decision-matrix/governance-queue", {}, true);
     },
 
     getDecisionMatrixAudit() {
-      return request<{ audit_events: DecisionMatrixAuditEvent[] }>("/api/admin/decision-matrix/audit", {}, true);
+      return request<{ audit_events: DecisionMatrixAuditEvent[] }>("/api/manage/decision-matrix/audit", {}, true);
     },
 
     governDecisionMatrixProcedureRevision(procedureId: string, revision: number, input: { action: "submit_for_review" | "return_to_draft" | "approve" | "retire" | "withdraw"; reason: string; replacement_procedure_id?: string; replacement_revision?: number; confirm_withdrawal?: boolean }) {
-      return request<{ procedure_id: string; revision: number; lifecycle_state: string }>(`/api/admin/decision-matrix/procedures/${encodeURIComponent(procedureId)}/revisions/${revision}/lifecycle`, { method: "POST", body: JSON.stringify(input) }, { delegatedSharePoint: true });
+      return request<{ procedure_id: string; revision: number; lifecycle_state: string }>(`/api/manage/decision-matrix/procedures/${encodeURIComponent(procedureId)}/revisions/${revision}/lifecycle`, { method: "POST", body: JSON.stringify(input) }, { delegatedSharePoint: true });
     },
 
     checkDecisionMatrixProcedureReferences(procedureId: string, revision: number) {
-      return request<{ document_references: Array<{ reference_id: string; health_status: string; reason: string | null }> }>(`/api/admin/decision-matrix/procedures/${encodeURIComponent(procedureId)}/revisions/${revision}/document-references/check`, { method: "POST" }, { delegatedSharePoint: true });
+      return request<{ document_references: Array<{ reference_id: string; health_status: string; reason: string | null }> }>(`/api/manage/decision-matrix/procedures/${encodeURIComponent(procedureId)}/revisions/${revision}/document-references/check`, { method: "POST" }, { delegatedSharePoint: true });
     },
 
     getDecisionMatrixLegacyCandidates() {
-      return request<{ candidates: Array<{ procedure_id: string; revision: number; condition: string; mapping_status: string }> }>("/api/admin/decision-matrix/legacy-candidates", {}, true);
+      return request<{ candidates: Array<{ procedure_id: string; revision: number; condition: string; mapping_status: string }> }>("/api/manage/decision-matrix/legacy-candidates", {}, true);
     },
 
     createDecisionMatrixProcedureDraft(input: ProcedureDraftInput) {
       return request<ProcedureDraftSaveResult>(
-        "/api/admin/decision-matrix/procedures",
+        "/api/manage/decision-matrix/procedures",
         { method: "POST", body: JSON.stringify(input) },
         true,
       );
@@ -515,7 +519,7 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
 
     getDecisionMatrixProcedureDraft(procedureId: string, revision: number) {
       return request<ProcedureDraft>(
-        `/api/admin/decision-matrix/procedures/${encodeURIComponent(procedureId)}/revisions/${revision}`,
+        `/api/manage/decision-matrix/procedures/${encodeURIComponent(procedureId)}/revisions/${revision}`,
         {},
         true,
       );
@@ -523,7 +527,7 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
 
     cloneDecisionMatrixProcedureDraft(procedureId: string, sourceRevision: number) {
       return request<ProcedureDraftSaveResult & { cloned_from_revision: number }>(
-        `/api/admin/decision-matrix/procedures/${encodeURIComponent(procedureId)}/revisions`,
+        `/api/manage/decision-matrix/procedures/${encodeURIComponent(procedureId)}/revisions`,
         { method: "POST", body: JSON.stringify({ source_revision: sourceRevision }) },
         true,
       );
@@ -531,7 +535,7 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
 
     saveDecisionMatrixProcedureDraft(procedureId: string, revision: number, input: ProcedureDraftInput) {
       return request<ProcedureDraftSaveResult>(
-        `/api/admin/decision-matrix/procedures/${encodeURIComponent(procedureId)}/revisions/${revision}`,
+        `/api/manage/decision-matrix/procedures/${encodeURIComponent(procedureId)}/revisions/${revision}`,
         { method: "PUT", body: JSON.stringify(input) },
         true,
       );
@@ -539,7 +543,7 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
 
     governDecisionMatrix(procedureId: string, revision: number, action: "approve" | "retire", reason?: string) {
       return request<{ procedure_id: string; revision: number; approval_state: string; trust_state: string }>(
-        `/api/admin/decision-matrix/${encodeURIComponent(procedureId)}/${revision}`,
+        `/api/manage/decision-matrix/${encodeURIComponent(procedureId)}/${revision}`,
         { method: "PATCH", body: JSON.stringify({ action, reason }) },
         true,
       );
@@ -668,6 +672,16 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return requestBlob(`/api/trip-start-log/export?date=${encodeURIComponent(serviceDate)}`);
     },
 
+    // Record what a person saw at a trip's start (OCC.TripStartVerify or
+    // Admin). Returns the cell as it now stands; null when cleared.
+    recordTripStartVerification(input: { service_date: string; trip_id: string; action: TripStartVerificationAction; note?: string | null; initials?: string | null }) {
+      return request<{ verification: TripStartVerification | null }>(
+        "/api/trip-start-log/verify",
+        { method: "POST", body: JSON.stringify(input) },
+        true,
+      );
+    },
+
     getFixedRouteDepartures(days?: number) {
       const suffix = days ? `?days=${days}` : "";
       return request<{
@@ -681,6 +695,24 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
           avg_delta_seconds: number | null;
         };
       }>(`/api/fixed-route-departures${suffix}`, {}, true);
+    },
+
+    // The on-demand counterpart: Spare duty departures, same window and the
+    // same diagnostics shape plus the variance allowance the counts used.
+    getOnDemandDepartures(days?: number) {
+      const suffix = days ? `?days=${days}` : "";
+      return request<{
+        departures: OnDemandDeparture[];
+        diagnostics: {
+          configured: boolean;
+          table_ready: boolean;
+          record_count: number;
+          late_count: number;
+          no_departure_count: number;
+          avg_delta_seconds: number | null;
+          variance_seconds: number;
+        };
+      }>(`/api/on-demand-departures${suffix}`, {}, true);
     },
 
     getOtpMonthly(month?: string) {

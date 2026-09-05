@@ -1,0 +1,140 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: -apple-system, "Segoe UI", Inter, Roboto, Arial, sans-serif; font-size: 13px; }
+    a { color: #00553d; text-decoration: none; }
+    a:hover { color: #003d2c; text-decoration: underline; }
+    .st-root {
+      --page-bg: #edebe4; --surface-bg: #fff; --surface-alt-bg: #f6f5f1;
+      --border: #ddd; --border-strong: #ccc; --border-soft: #eee;
+      --text: #2c2c2a; --text-dim: #4f4f4f; --text-muted: #8a8a82;
+      --brand-green: #00553d; --brand-green-text: #00553d;
+      --danger-text: #8a1f1f;
+      --pill-danger-bg: #fbe0e0;
+      --pill-muted-bg: #ececea; --pill-muted-fg: #4f4f4f;
+      --chip-bg: #dcede6; --chip-fg: #00301f;
+      --skel: #ebe9e3;
+    }
+    .st-root[data-theme="dark"] {
+      --page-bg: #0b120e; --surface-bg: #152219; --surface-alt-bg: #16241d;
+      --border: #25392f; --border-strong: #2e4238; --border-soft: #1c2a23;
+      --text: #eef3f0; --text-dim: #c7d2cc; --text-muted: #8aa096;
+      --brand-green-text: #6fc9a0; --danger-text: #e08585;
+      --pill-danger-bg: #3a1f1f;
+      --pill-muted-bg: #243128; --pill-muted-fg: #b0bab3;
+      --chip-bg: #193b2c; --chip-fg: #cdeedd;
+      --skel: #1e2e26;
+    }
+    .st-root, .st-root * { box-sizing: border-box; }
+    .st-root { width: 1120px; min-height: 760px; padding: 26px; background: var(--page-bg); color: var(--text); }
+    .st-kicker { color: var(--text-muted); font-size: 10.5px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; margin: 0 0 14px; }
+    .st-grid { display: grid; gap: 16px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .st-card { background: var(--surface-bg); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.04); display: flex; flex-direction: column; overflow: hidden; }
+    .st-caption { border-bottom: 1px solid var(--border-soft); color: var(--text-dim); font-size: 11px; font-weight: 800; letter-spacing: .05em; padding: 9px 14px; text-transform: uppercase; background: var(--surface-alt-bg); }
+    .st-body { flex: 1; padding: 34px 22px 30px; }
+    .st-empty { align-items: center; display: flex; flex-direction: column; gap: 8px; text-align: center; }
+    .st-empty svg { color: var(--border-strong); height: 36px; width: 36px; }
+    .st-empty b { color: var(--text-dim); font-size: 14px; }
+    .st-empty p { color: var(--text-muted); font-size: 12px; line-height: 1.5; margin: 0; max-width: 30ch; }
+    .st-actions { display: flex; gap: 8px; margin-top: 6px; }
+    .st-btn { background: var(--surface-bg); border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text); cursor: pointer; font: inherit; font-size: 11.5px; font-weight: 600; padding: 6px 12px; }
+    .st-btn:hover { border-color: var(--brand-green); color: var(--brand-green-text); }
+    .st-btn.primary { background: var(--brand-green); border-color: var(--brand-green); color: #fff; }
+    .st-error { align-items: center; display: flex; flex-direction: column; gap: 8px; text-align: center; }
+    .st-error svg { color: var(--danger-text); height: 34px; width: 34px; }
+    .st-error b { color: var(--danger-text); font-size: 14px; }
+    .st-error p { color: var(--text-muted); font-size: 12px; line-height: 1.5; margin: 0; max-width: 32ch; }
+    .st-code { background: var(--pill-muted-bg); border-radius: 6px; color: var(--pill-muted-fg); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; padding: 3px 7px; }
+    .st-skel-head { background: var(--brand-green); border-radius: 8px 8px 0 0; height: 30px; margin: -6px -6px 0; }
+    .st-skel-rows { display: grid; gap: 1px; }
+    .st-skel-row { display: grid; gap: 10px; grid-template-columns: 58px minmax(0,1fr) 46px 62px; padding: 11px 6px; border-bottom: 1px solid var(--border-soft); }
+    .st-bar { background: var(--skel); border-radius: 4px; height: 9px; animation: st-pulse 1.4s ease-in-out infinite; }
+    .st-skel-row:nth-child(2) .st-bar { animation-delay: .12s; }
+    .st-skel-row:nth-child(3) .st-bar { animation-delay: .24s; }
+    .st-skel-row:nth-child(4) .st-bar { animation-delay: .36s; }
+    .st-skel-row:nth-child(5) .st-bar { animation-delay: .48s; }
+    @keyframes st-pulse { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
+    .st-note { color: var(--text-muted); font-size: 11.5px; line-height: 1.55; margin: 16px 0 0; }
+  </style>
+</helmet>
+
+<div class="st-root" data-theme="{{theme}}">
+  <p class="st-kicker">Table states</p>
+  <div class="st-grid">
+
+    <div class="st-card">
+      <div class="st-caption">No match in this tab</div>
+      <div class="st-body">
+        <div class="st-empty">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+          <b>No active detours match</b>
+          <p>Other status tabs still have matches &#8212; the counts above show where.</p>
+          <div class="st-actions">
+            <button class="st-btn">Clear filters</button>
+            <button class="st-btn primary">See every status</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="st-card">
+      <div class="st-caption">Nothing on record</div>
+      <div class="st-body">
+        <div class="st-empty">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17h4l3-11 3 11h4"></path><path d="M17 13l3 4-3 4"></path></svg>
+          <b>No detours on record yet</b>
+          <p>Detours appear here as soon as they are entered on Detours &amp; Closures, or synced from Avail.</p>
+          <div class="st-actions">
+            <button class="st-btn">Open Detours &amp; Closures</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="st-card">
+      <div class="st-caption">Service unreachable</div>
+      <div class="st-body">
+        <div class="st-error">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20Z"></path><path d="M12 10v4"></path><path d="M12 17.2h.01"></path></svg>
+          <b>Could not load detours</b>
+          <p>The detour service did not respond. Nothing has changed &#8212; try again in a moment.</p>
+          <span class="st-code">503 &#183; detours/list</span>
+          <div class="st-actions">
+            <button class="st-btn primary">Retry</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <p class="st-kicker" style="margin: 24px 0 14px;">Loading</p>
+  <div class="st-card" style="padding: 6px;">
+    <div class="st-skel-head"></div>
+    <div class="st-skel-rows">
+      <div class="st-skel-row"><span class="st-bar"></span><span class="st-bar" style="width: 72%"></span><span class="st-bar"></span><span class="st-bar"></span></div>
+      <div class="st-skel-row"><span class="st-bar"></span><span class="st-bar" style="width: 54%"></span><span class="st-bar"></span><span class="st-bar"></span></div>
+      <div class="st-skel-row"><span class="st-bar"></span><span class="st-bar" style="width: 81%"></span><span class="st-bar"></span><span class="st-bar"></span></div>
+      <div class="st-skel-row"><span class="st-bar"></span><span class="st-bar" style="width: 63%"></span><span class="st-bar"></span><span class="st-bar"></span></div>
+      <div class="st-skel-row" style="border-bottom: 0;"><span class="st-bar"></span><span class="st-bar" style="width: 44%"></span><span class="st-bar"></span><span class="st-bar"></span></div>
+    </div>
+  </div>
+  <p class="st-note">The table keeps its own height while loading, so the toolbar and status tabs never jump when the rows land. Today the page swaps between a bare &#8220;Loading&#8230;&#8221; line and a full table, which moves everything below it.</p>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light","section":"Display"},"$preview":{"width":1120,"height":760}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? "light" };
+  }
+}
+</script>
+</body>
+</html>

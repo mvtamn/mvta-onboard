@@ -20,6 +20,7 @@ Register these app-role values on each environment's OnBoard application:
 - `OCC.Compliance`
 - `OCC.ComplianceManager`
 - `OCC.Detour`
+- `OCC.TripStartVerify` (SST OCS desk: reads the Dispatch Log and records trip-start verifications, nothing else; contractor staff, so its security group is separate from MVTA's own)
 - `System.Ingestion` (applications only)
 - `OCC.AccessAdmin` (access-management control plane)
 

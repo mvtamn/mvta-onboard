@@ -149,7 +149,8 @@ OCC Tools currently includes:
 - On-Demand Quality
 - Speed Alerts
 
-OTP Compliance, Missed Trips, and Fixed Route Departures were moved out of
+OTP Compliance, Missed Trips, and Garage Departures (Fixed Route from Avail
+Pullout, On-Demand from Spare duties, per ADR 0028) were moved out of
 OCC Tools into their own **Compliance** tab, gated by a dedicated
 `OCC.Compliance` role (in addition to `OCC.Admin`) so compliance-investigation
 access can be granted independently of full OCC Tools access.
@@ -330,10 +331,10 @@ only; it never publishes.
 | `PATCH` | `/api/messages/{id}` | Publisher/Admin | Edit summary or expiration |
 | `POST` | `/api/messages/{id}/retract` | Publisher/Admin | Retract |
 | `POST` | `/api/subscribers` | Public | Create pending subscription |
-| `GET` | `/api/admin/messages` | Staff | Search message history |
-| `GET` | `/api/admin/expiration-defaults` | Staff | List defaults |
-| `PATCH` | `/api/admin/expiration-defaults/{category}` | Admin | Update default |
-| `GET` | `/api/admin/subscribers/summary` | Admin | Masked statistics |
+| `GET` | `/api/manage/messages` | Staff | Search message history |
+| `GET` | `/api/manage/expiration-defaults` | Staff | List defaults |
+| `PATCH` | `/api/manage/expiration-defaults/{category}` | Admin | Update default |
+| `GET` | `/api/manage/subscribers/summary` | Admin | Masked statistics |
 | `GET` | `/api/suggested-alerts` | Staff | List suggestions |
 | `POST` | `/api/suggested-alerts/prepare` | Publisher/Admin/Ingestion | Prepare or reuse draft |
 | `POST` | `/api/suggested-alerts/{id}/approve` | Publisher/Admin | Approve and publish |

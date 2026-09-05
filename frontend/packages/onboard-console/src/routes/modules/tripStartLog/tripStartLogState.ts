@@ -2,7 +2,7 @@
 // (plans/dispatch-log-spec.md §4.3). The three views - Grid, Watch, Timeline -
 // are presentation over these same rows: filtering, sorting, the summary and
 // the selection all live here so no view can disagree with another.
-import type { TripStartLogTrip } from "@mvta/shared";
+import type { TripStartLogTrip, TripStartVerificationAction } from "@mvta/shared";
 
 export type TripStartView = "grid" | "watch" | "timeline";
 
@@ -368,4 +368,44 @@ export function hourMarks(range: TimelineRange): number[] {
 
 export function hourLabel(atMs: number): string {
   return new Date(atMs).toLocaleTimeString([], { hour: "numeric" });
+}
+
+// --- verification (spec §8 step 6) ---------------------------------------------
+
+export const VERIFY_ROLES = ["OCC.TripStartVerify", "OCC.Admin"] as const;
+
+export function canVerify(roles: readonly string[]): boolean {
+  return roles.some((role) => (VERIFY_ROLES as readonly string[]).includes(role));
+}
+
+/** The workbook cell's one-click cycle: blank -> on time -> left late -> blank. */
+export function nextVerifyAction(trip: Pick<TripStartLogTrip, "verification">): TripStartVerificationAction {
+  switch (trip.verification?.observation) {
+    case undefined:
+      return "observed_on_time";
+    case "observed_on_time":
+      return "observed_left_late";
+    default:
+      return "clear";
+  }
+}
+
+export function verifyActionLabel(action: TripStartVerificationAction): string {
+  return ({
+    observed_on_time: "Mark observed on time",
+    observed_left_late: "Mark observed left late",
+    not_observed: "Mark not observed",
+    clear: "Clear the verification",
+  } as Record<TripStartVerificationAction, string>)[action];
+}
+
+/** Initials the way the workbook shows them: display name first, sign-in name second. */
+export function initialsFromAccount(name: string | undefined, username: string | undefined): string {
+  const words = (name ?? "").trim().split(/\s+/).filter((w) => /\p{L}/u.test(w));
+  const ordered = (name ?? "").includes(",") && words.length > 1 ? [...words.slice(1), words[0]!] : words;
+  const fromName = ordered.map((w) => w.replace(/[^\p{L}]/gu, "").charAt(0).toUpperCase()).join("");
+  if (fromName) return fromName.slice(0, 10);
+  const local = (username ?? "").split("@")[0] ?? "";
+  const fromLogin = local.split(/[._-]+/).filter(Boolean).map((w) => w.charAt(0).toUpperCase()).join("");
+  return fromLogin.slice(0, 10) || "?";
 }
