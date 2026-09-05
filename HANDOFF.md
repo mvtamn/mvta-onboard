@@ -393,10 +393,12 @@ above was granted and the app restarted at 02:04 UTC.
   available", manual Mark published still works). To turn it on: create the
   secret with the channel's incoming-webhook URL and restart the REST app.
   Do not chase this as an open defect.
-- Event Grid subscription on the ACS resource for
-  `Microsoft.Communication.EmailDeliveryReportReceived` events, endpoint
-  `https://<dispatch app>/api/acs-email-events?code=<function key>`. Until it
-  exists, emailed communications stop at "Accepted by provider".
+- DONE 2026-09-05 03:09 UTC: Event Grid subscription `detour-email-receipts`
+  on acs-mvta-onboard-dev for EmailDeliveryReportReceived -> the dispatch
+  app's /api/acs-email-events (function key in the URL); validation handshake
+  answered 200. Microsoft.EventGrid had to be registered in the subscription
+  first. Note the portal's Test/Run on the REST app cannot be used (inbound is
+  Front Door only); the dispatch app has no such restriction.
 - Optional: set the contractor name and recipients under Administration ->
   Service Configuration; until a name is set no contractor audience is
   required.
