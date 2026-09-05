@@ -32,6 +32,12 @@ param availPulloutUrl string = ''
 @description('Service Bus namespace used by the Event AVL notification trigger. Empty disables its identity-based connection setting.')
 param serviceBusNamespace string = ''
 
+@description('Azure Communication Services endpoint for the dispatch app (email/SMS senders). Empty leaves ACS unconfigured and the senders no-op.')
+param acsEndpoint string = ''
+
+@description('Verified ACS email sender address, e.g. DoNotReply@<domain>.azurecomm.net. Empty leaves email sending unconfigured.')
+param acsEmailFrom string = ''
+
 @description('Configure Easy Auth for this app. Disable for background-only Function Apps with no HTTP surface.')
 param enableEasyAuth bool = true
 
@@ -163,6 +169,15 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         // Azure Functions resolves this identity-based connection using the
         // app's system-assigned managed identity; no SAS secret is used.
         { name: 'ServiceBusConnection__fullyQualifiedNamespace', value: '${serviceBusNamespace}.servicebus.windows.net' }
+      ] : [], !empty(acsEndpoint) ? [
+        // Declared here because this list is the complete desired state: an
+        // ACS endpoint set with `az functionapp config appsettings set` was
+        // wiped by the next routine infra deploy (2026-09-05). Identity-based
+        // (DefaultAzureCredential); the app's identity needs Contributor on
+        // the ACS resource, which is granted outside this template.
+        { name: 'ACS_ENDPOINT', value: acsEndpoint }
+      ] : [], !empty(acsEmailFrom) ? [
+        { name: 'ACS_EMAIL_FROM', value: acsEmailFrom }
       ] : [], enableAccessManagement ? [
         { name: 'AZURE_TENANT_ID', value: subscription().tenantId }
         { name: 'ONBOARD_API_CLIENT_ID', value: aadClientId }

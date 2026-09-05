@@ -9,7 +9,12 @@ import { formatTeamsWebhookPayload, isTransientNotificationFailure } from "./eve
 export const DETOUR_TEAMS_WEBHOOK_ENV = "TEAMS_DETOUR_WEBHOOK_URL";
 
 export function detourTeamsWebhookUrl(env: NodeJS.ProcessEnv = process.env): string | null {
-  return env[DETOUR_TEAMS_WEBHOOK_ENV]?.trim() || null;
+  const value = env[DETOUR_TEAMS_WEBHOOK_ENV]?.trim() || null;
+  // functionapp.bicep sets this as a Key Vault reference. Until the secret
+  // exists, App Service hands the app the literal reference string, which
+  // is not a URL and must read as "not configured", not as a failed post.
+  if (!value || value.startsWith("@Microsoft.KeyVault(")) return null;
+  return value;
 }
 
 // Adaptive Card: the subject as a heading, the body as one wrapped block.

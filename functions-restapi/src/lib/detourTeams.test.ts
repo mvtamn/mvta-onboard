@@ -13,6 +13,7 @@ test("the Teams card leads with the subject and keeps the body as one wrapped bl
 
 test("delivery is skipped without a webhook, sent on 2xx, failed otherwise with transient classification", async () => {
   assert.deepStrictEqual((await deliverDetourToTeams("s", "b", {})).status, "skipped");
+  assert.deepStrictEqual((await deliverDetourToTeams("s", "b", { TEAMS_DETOUR_WEBHOOK_URL: "@Microsoft.KeyVault(SecretUri=https://kv/secrets/teams-detour-webhook-url/)" })).status, "skipped");
   const ok = await deliverDetourToTeams("s", "b", { TEAMS_DETOUR_WEBHOOK_URL: "https://example/hook" }, async () => new Response("1", { status: 200 }));
   assert.equal(ok.status, "sent");
   const throttled = await deliverDetourToTeams("s", "b", { TEAMS_DETOUR_WEBHOOK_URL: "https://example/hook" }, async () => new Response(null, { status: 429 }));

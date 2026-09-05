@@ -16,7 +16,11 @@ let client: ServiceBusClient | null = null;
 
 function getClient(): ServiceBusClient | null {
   if (client) return client;
-  const namespace = process.env.SERVICE_BUS_NAMESPACE; // e.g. sb-mvta-onboard-dev.servicebus.windows.net
+  // functionapp.bicep declares ServiceBusConnection__fullyQualifiedNamespace
+  // (the identity-based connection the triggers use); SERVICE_BUS_NAMESPACE
+  // is the older name and is kept as an override. Reading only the old name
+  // meant publishes silently skipped on every routine infra deploy.
+  const namespace = process.env.SERVICE_BUS_NAMESPACE || process.env.ServiceBusConnection__fullyQualifiedNamespace; // e.g. sb-mvta-onboard-dev.servicebus.windows.net
   if (!namespace) return null;
   client = new ServiceBusClient(namespace, new DefaultAzureCredential());
   return client;

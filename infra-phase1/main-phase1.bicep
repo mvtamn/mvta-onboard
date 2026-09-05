@@ -40,6 +40,12 @@ param wafSku string = 'Standard_AzureFrontDoor'
 @description('Create RBAC assignments during first-time provisioning. Keep false for routine deployments when the deployment identity lacks roleAssignments/write.')
 param manageRoleAssignments bool = false
 
+@description('Azure Communication Services endpoint used by the dispatch app for email. Empty leaves ACS unconfigured.')
+param acsEndpoint string = ''
+
+@description('Verified ACS email sender address for the dispatch app. Empty leaves email sending unconfigured.')
+param acsEmailFrom string = ''
+
 @description('Tenant-specific OnBoard enterprise-app, role, and group identifiers as AccessEnvironmentConfig JSON. Empty leaves Access Management disabled.')
 param accessManagementConfigJson string = ''
 
@@ -144,6 +150,14 @@ module dispatchFunction 'modules/functionapp.bicep' = {
     enableEasyAuth: false
     frontDoorId: frontDoorId
     allowedCorsOrigins: allowedCorsOrigins
+    // The dispatch app CONSUMES every queue (message-created, confirmation,
+    // detour-communication-requested) through this identity-based
+    // connection. It was never passed here, so the Service Bus triggers had
+    // no connection setting and every listener failed to start.
+    serviceBusNamespace: 'sb-mvta-onboard-${environment}'
+    acsEndpoint: acsEndpoint
+    acsEmailFrom: acsEmailFrom
+    manageRoleAssignments: manageRoleAssignments
   }
 }
 
