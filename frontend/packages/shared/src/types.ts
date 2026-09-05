@@ -1516,6 +1516,8 @@ export interface AssessmentEvidence { id: string; assessment_id: string; content
 export type TripStartStatus = "on_time" | "late" | "missed" | "canceled" | "unknown";
 export type TripStartActualSource = "trip_update" | "vehicle_position" | "avail";
 export type TripStartObservation = "observed_on_time" | "observed_left_late" | "not_observed";
+/** What a verifier can do to a cell: one of the observations, or clear it back to blank. */
+export type TripStartVerificationAction = TripStartObservation | "clear";
 
 export interface TripStartVerification {
   observation: TripStartObservation;

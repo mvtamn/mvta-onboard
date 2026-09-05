@@ -8,7 +8,7 @@
 // roles that read Fixed Route Departures read this.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
-import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { requireRole, TRIP_START_LOG_READ_ROLES } from "../lib/auth";
 import { agencyServiceDate } from "../lib/missedTripTime";
 import { isValidServiceDate, rotationWeekOffset } from "../lib/tripStartRotation";
 import { loadTripStartLogDay, tripStartLogTablesReady } from "../lib/tripStartLogRead";
@@ -18,7 +18,9 @@ import { readRotationAnchor } from "./tripStartLogMaterialize";
 // the CSV export; re-exported so existing imports keep working.
 export { shapeTrip, type TripStartLogTrip } from "../lib/tripStartLogRead";
 
-export const TRIP_START_LOG_READ_ROLES = [...STAFF_READ_ROLES, "OCC.Compliance"];
+// Read roles live in lib/auth.ts beside the verify roles; re-exported for the
+// export endpoint and tests.
+export { TRIP_START_LOG_READ_ROLES } from "../lib/auth";
 
 app.http("tripStartLogGet", {
   route: "trip-start-log",

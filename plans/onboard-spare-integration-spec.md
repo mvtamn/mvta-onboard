@@ -292,7 +292,7 @@ Exclude/flag rows with null `pickup_arrived_time` (never picked up) — show com
 
 ### 6.3 Garage Departure
 
-> **Built 2026-09-05 (v1.5.107):** `onDemandDeparturesPoll` → `OnDemandDepartures`
+> **Built 2026-09-05 (v1.5.108):** `onDemandDeparturesPoll` → `OnDemandDepartures`
 > (migration 096) → `GET /on-demand-departures` → the On-Demand view of the console's
 > Garage Departures module. The resolution below is implemented in
 > `functions-restapi/src/lib/onDemandDepartures.ts`; the scheduled time falls back to the

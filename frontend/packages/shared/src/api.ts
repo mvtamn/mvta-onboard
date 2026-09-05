@@ -35,6 +35,8 @@ import type {
   FixedRouteDeparture,
   OnDemandDeparture,
   TripStartLogResponse,
+  TripStartVerification,
+  TripStartVerificationAction,
   OtpMonthlyStopRow,
   OtpDailyRow,
   OtpMonthlyRouteRollup,
@@ -667,6 +669,16 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     // because the download needs the bearer token an <a href> cannot carry.
     getTripStartLogCsv(serviceDate: string) {
       return requestBlob(`/api/trip-start-log/export?date=${encodeURIComponent(serviceDate)}`);
+    },
+
+    // Record what a person saw at a trip's start (OCC.TripStartVerify or
+    // Admin). Returns the cell as it now stands; null when cleared.
+    recordTripStartVerification(input: { service_date: string; trip_id: string; action: TripStartVerificationAction; note?: string | null; initials?: string | null }) {
+      return request<{ verification: TripStartVerification | null }>(
+        "/api/trip-start-log/verify",
+        { method: "POST", body: JSON.stringify(input) },
+        true,
+      );
     },
 
     getFixedRouteDepartures(days?: number) {

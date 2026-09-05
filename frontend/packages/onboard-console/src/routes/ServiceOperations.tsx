@@ -9,7 +9,7 @@ function hasServiceRiskAccess(roles: string[]): boolean {
 
 // Same readers as the API's trip-start log: staff roles plus Compliance.
 function hasDispatchLogAccess(roles: string[]): boolean {
-  return hasServiceRiskAccess(roles) || roles.includes("OCC.Compliance");
+  return hasServiceRiskAccess(roles) || roles.includes("OCC.Compliance") || roles.includes("OCC.TripStartVerify");
 }
 
 export function ServiceOperations() {

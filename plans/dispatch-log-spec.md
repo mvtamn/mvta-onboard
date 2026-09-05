@@ -208,7 +208,10 @@ poller uses); `missed` from a `MonitoredMissedTrips` row for the trip;
 `on_time`.
 
 **`TripStartVerifications`** — the human layer, kept separate so an operator's
-observation is never overwritten by a poller.
+observation is never overwritten by a poller. One row per trip, upserted so a
+cell can be corrected; **`TripStartVerificationEvents`** (migration 096) is
+the append-only record of every change to it — previous and new observation,
+who, initials, note, when.
 
 ```
 service_date       CHAR(8)
@@ -424,7 +427,10 @@ matter for contractor performance rather than just situational awareness.
 
 ## 7. Open decisions
 
-1. **Who records verifications?** SST OCS staff do this today in shared Excel.
+1. ~~**Who records verifications?**~~ **Decided 2026-09-05 (Ty): SST OCS
+   staff record them**, through OnBoard, under the additive
+   `OCC.TripStartVerify` role described below (built as §8 step 6). Original
+   framing kept for the record: SST OCS staff do this today in shared Excel.
    Giving them console accounts is a real access-management change (there is no
    contractor-facing operational role today — every role in `auth.ts` is
    `OCC.*` or `System.Ingestion`, and assessment contractors are isolated for a
@@ -518,6 +524,20 @@ Nothing before step 5 depends on the open decisions in §7.
 6. **Verification recording**, once §7.1 is decided. The UI already has the
    affordance in three places — this is the endpoint, the role check, and the
    audit trail.
+   *Built 2026-09-05:* `POST /trip-start-log/verify` (`{ service_date,
+   trip_id, action, note?, initials? }`, action ∈ observed_on_time ·
+   observed_left_late · not_observed · clear) behind `TRIP_START_VERIFY_ROLES`
+   = `OCC.TripStartVerify` + Admin; `OCC.TripStartVerify` also joins the read
+   roles and the console's nav. The current observation is upserted in
+   `TripStartVerifications`; every change is appended to
+   `TripStartVerificationEvents` (migration 096) as the audit trail. In the
+   console the Grid's Verified cell is the workbook's one-click cycle (blank →
+   on time → left late → blank) under the signed-in user's initials, the
+   Watch's rotation items carry On time / Left late, and "Record disposition"
+   (Watch and inspector) prompts for a note and records `not_observed` — the
+   workbook's "leave blank and follow late-route procedures" made explicit.
+   Read-only roles see the same buttons disabled. Entra: register the role
+   (runbook updated) and assign SST OCS staff before anyone can record.
 7. **CSV export**, for parity with the workbook people will miss.
    *Built 2026-09-05:* `GET /trip-start-log/export?date=` returns the day as
    UTF-8 CSV (byte-order mark, CRLF) with the workbook's seven columns first
