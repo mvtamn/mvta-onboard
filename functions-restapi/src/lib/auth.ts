@@ -120,6 +120,15 @@ export const DETOUR_DELETE_ROLES = PUBLISH_ROLES;
 // it previously had attachment writes without detour edit access, which
 // contradicted that rule.
 export const DETOUR_ATTACHMENT_WRITE_ROLES = DETOUR_WRITE_ROLES;
+// Dispatch Log role sets (owner decision, 2026-09-05: SST OCS staff record
+// verifications). OCC.TripStartVerify is a dedicated, ADDITIVE role for the
+// contractor desk on the OCC.Detour pattern: it reads the trip-start log and
+// records observations, and nothing else. It must be registered as an
+// appRole and assigned per user before anyone holds it; the existing staff
+// roles keep the read access they already had. Admin may record too, for
+// corrections - a verification is an observation and stays a human act.
+export const TRIP_START_LOG_READ_ROLES = [...STAFF_READ_ROLES, "OCC.Compliance", "OCC.TripStartVerify"];
+export const TRIP_START_VERIFY_ROLES = ["OCC.TripStartVerify", ...ADMIN_ROLES];
 
 export function requireRole(request: HttpRequest, allowedRoles: string[]): AuthResult {
   const principal = getCallerPrincipal(request);

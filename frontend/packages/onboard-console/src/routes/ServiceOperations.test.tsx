@@ -82,6 +82,14 @@ describe("Service Operations", () => {
     expect(screen.getByRole("link", { name: "Dispatch Log" })).toBeInTheDocument();
   });
 
+  it("shows the SST desk role only the Dispatch Log", () => {
+    authState.roles = ["OCC.TripStartVerify"];
+    renderShell();
+
+    expect(screen.getByRole("link", { name: "Dispatch Log" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Service Risk & Quality" })).not.toBeInTheDocument();
+  });
+
   it("shows the Dispatch Log, but not Service Risk, to a Compliance reader", () => {
     authState.roles = ["OCC.Compliance"];
     renderShell();

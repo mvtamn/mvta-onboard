@@ -4,6 +4,9 @@ import {
   EMPTY_FILTERS,
   agencyTodayServiceDate,
   applyFilters,
+  canVerify,
+  initialsFromAccount,
+  nextVerifyAction,
   hourMarks,
   needsDisposition,
   timelineLanes,
@@ -185,5 +188,28 @@ describe("timeline", () => {
     expect(hourMarks(range)).toHaveLength(6);
     expect(timelineX(new Date("2026-09-08T09:30:00Z").getTime(), range, 100)).toBe(150);
     expect(timelineRange([])).toBeNull();
+  });
+});
+
+describe("verification", () => {
+  it("cycles the cell the way the workbook does and clears anything else", () => {
+    const v = (observation: "observed_on_time" | "observed_left_late" | "not_observed") => ({ verification: { observation, verified_by: "x", verified_initials: "JD", verified_at: "2026-09-08T08:21:00Z", note: null } });
+    expect(nextVerifyAction({ verification: null })).toBe("observed_on_time");
+    expect(nextVerifyAction(v("observed_on_time"))).toBe("observed_left_late");
+    expect(nextVerifyAction(v("observed_left_late"))).toBe("clear");
+    expect(nextVerifyAction(v("not_observed"))).toBe("clear");
+  });
+
+  it("lets the SST desk role and Admin record, and no one else", () => {
+    expect(canVerify(["OCC.TripStartVerify"])).toBe(true);
+    expect(canVerify(["OCC.Admin"])).toBe(true);
+    expect(canVerify(["OCC.Viewer", "OCC.Compliance", "OCC.Publisher"])).toBe(false);
+  });
+
+  it("derives workbook initials from the account", () => {
+    expect(initialsFromAccount("Tyre Fant", "tyre.fant@mvta.com")).toBe("TF");
+    expect(initialsFromAccount("Doe, Jane", "x@y")).toBe("JD");
+    expect(initialsFromAccount(undefined, "jane.doe@sst.example")).toBe("JD");
+    expect(initialsFromAccount(undefined, undefined)).toBe("?");
   });
 });

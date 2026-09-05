@@ -59,7 +59,7 @@ const OCC_TOOLS = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin"] as const;
 // Dispatch Log reads the same trip-start log the API serves to staff and
 // Compliance readers (TRIP_START_LOG_READ_ROLES); a live monitoring view,
 // so it sits under Service Operations per ADR 0015.
-const DISPATCH_LOG = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin", "OCC.Compliance"] as const;
+const DISPATCH_LOG = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin", "OCC.Compliance", "OCC.TripStartVerify"] as const;
 const EVENT_AVL = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin", "OCC.EventAVL"] as const;
 const COMPLIANCE = ["OCC.Compliance", "OCC.ComplianceManager", "OCC.Admin"] as const;
 // Read-only for OCC.Viewer, full create/edit/delete for Publisher/Admin (the

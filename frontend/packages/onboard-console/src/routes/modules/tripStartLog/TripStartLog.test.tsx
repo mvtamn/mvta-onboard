@@ -6,8 +6,14 @@ import { api } from "../../../config.js";
 import { TripStartLog } from "./TripStartLog.js";
 
 vi.mock("../../../config.js", () => ({
-  api: { getTripStartLog: vi.fn(), getTripStartLogCsv: vi.fn() },
+  api: { getTripStartLog: vi.fn(), getTripStartLogCsv: vi.fn(), recordTripStartVerification: vi.fn() },
 }));
+// Viewer by default: every existing expectation about disabled verify
+// buttons holds; the verification tests switch to the SST desk role.
+const authState = { roles: ["OCC.Viewer"] as string[], account: { name: "Test User", username: "test.user@sst.example" }, signIn: vi.fn(), signOut: vi.fn() };
+vi.mock("../../../auth/AuthContext.js", () => ({ useAuth: () => authState }));
+const promptMock = vi.fn();
+vi.mock("../../../components/AppDialog.js", () => ({ useAppDialog: () => ({ prompt: promptMock, confirm: vi.fn() }) }));
 vi.mock("../../../context/FixedRouteRefreshContext.js", () => ({
   useFixedRouteRefresh: () => ({ lastCompletedAt: null, secondsLeft: 30, intervalMs: 30_000 }),
   formatRefreshCountdown: (s: number) => `${s}s`,
@@ -62,7 +68,12 @@ const DAY = [
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  authState.roles = ["OCC.Viewer"];
 });
+
+function verified(observation: "observed_on_time" | "observed_left_late" | "not_observed", note: string | null = null) {
+  return { observation, verified_by: "test.user@sst.example", verified_initials: "TU", verified_at: "2026-09-08T08:21:00Z", note };
+}
 
 function stat(label: string): string {
   const strip = screen.getByLabelText("Dispatch log summary");
@@ -266,6 +277,83 @@ describe("Dispatch Log shell", () => {
     await screen.findByRole("table", { name: "Dispatch log trips" });
     await user.click(screen.getByRole("button", { name: "⬇ Export CSV" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Export failed: not connected");
+  });
+
+  it("lets the SST desk cycle the Verified cell - blank, on time, left late, blank - under their initials", async () => {
+    authState.roles = ["OCC.TripStartVerify"];
+    vi.mocked(api.getTripStartLog).mockResolvedValueOnce(response(DAY));
+    vi.mocked(api.recordTripStartVerification)
+      .mockResolvedValueOnce({ verification: verified("observed_on_time") })
+      .mockResolvedValueOnce({ verification: verified("observed_left_late") })
+      .mockResolvedValueOnce({ verification: null });
+    render(<TripStartLog />);
+    const user = userEvent.setup();
+
+    const table = await screen.findByRole("table", { name: "Dispatch log trips" });
+    const cell = () => within(table).getByRole("button", { name: /for route 444 at 03:20/ });
+    expect(cell()).toHaveAccessibleName(/Mark observed on time/);
+    await user.click(cell());
+    expect(api.recordTripStartVerification).toHaveBeenLastCalledWith({ service_date: "20260908", trip_id: "t1", action: "observed_on_time", note: null, initials: "TU" });
+    expect(within(table).getAllByRole("row")[1]).toHaveTextContent("TU");
+    expect(cell()).toHaveAccessibleName(/Mark observed left late/);
+    await user.click(cell());
+    expect(api.recordTripStartVerification).toHaveBeenLastCalledWith(expect.objectContaining({ action: "observed_left_late" }));
+    expect(cell()).toHaveAccessibleName(/Clear the verification/);
+    await user.click(cell());
+    expect(api.recordTripStartVerification).toHaveBeenLastCalledWith(expect.objectContaining({ action: "clear" }));
+    expect(within(table).getAllByRole("row")[1]).toHaveTextContent("Needs initials");
+    // The cell click never changes the selection.
+    expect(screen.getByRole("complementary", { name: "Trip details" })).toHaveTextContent(/Select a trip/);
+  });
+
+  it("keeps recording out of reach for roles that only read", async () => {
+    vi.mocked(api.getTripStartLog).mockResolvedValueOnce(response(DAY));
+    render(<TripStartLog />);
+    const user = userEvent.setup();
+    const table = await screen.findByRole("table", { name: "Dispatch log trips" });
+    expect(within(table).queryByRole("button", { name: /Mark observed/ })).not.toBeInTheDocument();
+    await user.click(within(table).getByText("Orange LINK"));
+    const inspector = screen.getByRole("complementary", { name: "Trip details" });
+    expect(within(inspector).getByRole("button", { name: "Observed on time" })).toBeDisabled();
+    expect(within(inspector).getByRole("button", { name: "Record disposition" })).toBeDisabled();
+    expect(inspector).toHaveTextContent("Recording is for the SST OCS desk");
+  });
+
+  it("records a disposition as not observed with the note the prompt collected", async () => {
+    authState.roles = ["OCC.TripStartVerify"];
+    const lateOverFive = trip({
+      trip_id: "t4", block_id: "4", route_short_name: "477", scheduled_start_seconds: 6 * 3600 + 30 * 60,
+      scheduled_start_at: "2026-09-08T11:30:00Z", actual_start_at: "2026-09-08T11:42:00Z", actual_start_source: "vehicle_position",
+      start_status: "late", start_delay_seconds: 720, in_rotation: true, rotation_day: "tuesday",
+    });
+    vi.mocked(api.getTripStartLog).mockResolvedValueOnce(response([...DAY, lateOverFive]));
+    promptMock.mockResolvedValueOnce("Late-route procedure followed; dispatcher notified 06:41");
+    vi.mocked(api.recordTripStartVerification).mockResolvedValueOnce({ verification: verified("not_observed", "Late-route procedure followed; dispatcher notified 06:41") });
+    render(<TripStartLog />);
+    const user = userEvent.setup();
+
+    await screen.findByRole("table", { name: "Dispatch log trips" });
+    await user.click(screen.getByRole("tab", { name: "Watch" }));
+    const dispositions = screen.getByRole("list", { name: "Needs disposition" });
+    await user.click(within(dispositions).getByRole("button", { name: "Record disposition" }));
+    expect(promptMock).toHaveBeenCalledWith(expect.objectContaining({ title: "Record disposition", required: true }));
+    expect(api.recordTripStartVerification).toHaveBeenCalledWith({
+      service_date: "20260908", trip_id: "t4", action: "not_observed", note: "Late-route procedure followed; dispatcher notified 06:41", initials: "TU",
+    });
+    // Once recorded, the item shows the initials instead of the action.
+    expect(within(screen.getByRole("list", { name: "Needs disposition" })).getByText("TU")).toBeInTheDocument();
+  });
+
+  it("says when a verification could not be recorded and leaves the cell as it was", async () => {
+    authState.roles = ["OCC.Admin"];
+    vi.mocked(api.getTripStartLog).mockResolvedValueOnce(response(DAY));
+    vi.mocked(api.recordTripStartVerification).mockRejectedValueOnce(new ApiError(503, "not connected"));
+    render(<TripStartLog />);
+    const user = userEvent.setup();
+    const table = await screen.findByRole("table", { name: "Dispatch log trips" });
+    await user.click(within(table).getByRole("button", { name: /for route 444 at 03:20/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not record the verification: not connected");
+    expect(within(table).getAllByRole("row")[1]).toHaveTextContent("Needs initials");
   });
 
   it("names a failed request as unavailable rather than blaming the data", async () => {
