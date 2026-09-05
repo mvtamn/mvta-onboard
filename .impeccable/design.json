@@ -1,45 +1,321 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-09T02:27:37Z",
+  "generatedAt": "2026-09-05T15:16:40Z",
   "title": "Design System: MVTA OnBoard",
   "extensions": {
     "colorMeta": {
-      "mvta-evergreen": { "role": "primary", "displayName": "MVTA Evergreen", "canonical": "#00553D", "tonalRamp": ["#001A12", "#003326", "#00553D", "#24725B", "#4F8F7A", "#83AD9E", "#BDD4CB", "#EEF6F2"] },
-      "mvta-evergreen-deep": { "role": "primary", "displayName": "Deep Evergreen", "canonical": "#003D2C", "tonalRamp": ["#00140E", "#00291D", "#003D2C", "#286452", "#568B78", "#88B2A1", "#BDD8CD", "#F0F7F4"] },
-      "signal-amber": { "role": "secondary", "displayName": "Signal Amber", "canonical": "#F78E1E", "tonalRamp": ["#3E1A00", "#713500", "#A95100", "#DC6C05", "#F78E1E", "#FFB463", "#FFD6A5", "#FFF4E5"] },
-      "warm-operations-canvas": { "role": "neutral", "displayName": "Warm Operations Canvas", "canonical": "#F3F2ED", "tonalRamp": ["#24231F", "#44423D", "#66645E", "#89867F", "#ACA9A2", "#CFCDC6", "#E6E4DE", "#F3F2ED"] },
-      "console-canvas": { "role": "neutral", "displayName": "Console Canvas", "canonical": "#EDEBE4", "tonalRamp": ["#24231F", "#43413C", "#625F59", "#817E77", "#A09D95", "#C0BDB5", "#D9D6CE", "#EDEBE4"] },
-      "surface": { "role": "neutral", "displayName": "Surface White", "canonical": "#FFFFFF", "tonalRamp": ["#262626", "#4A4A4A", "#707070", "#969696", "#BDBDBD", "#D9D9D9", "#EEEEEE", "#FFFFFF"] },
-      "surface-alt": { "role": "neutral", "displayName": "Alternate Surface", "canonical": "#F6F5F1", "tonalRamp": ["#252420", "#46443F", "#686660", "#8B8982", "#AFACA5", "#D1CFC8", "#E8E6E0", "#F6F5F1"] },
-      "ink": { "role": "neutral", "displayName": "Operations Ink", "canonical": "#2C2C2A", "tonalRamp": ["#181817", "#2C2C2A", "#4A4A47", "#696965", "#898984", "#ABABA5", "#D2D2CC", "#F4F4F1"] },
-      "ink-muted": { "role": "neutral", "displayName": "Muted Ink", "canonical": "#4F4F4F", "tonalRamp": ["#191919", "#303030", "#4F4F4F", "#707070", "#929292", "#B5B5B5", "#D8D8D8", "#F5F5F5"] },
-      "ink-faint": { "role": "neutral", "displayName": "Faint Ink", "canonical": "#888888", "tonalRamp": ["#202020", "#424242", "#666666", "#888888", "#AAAAAA", "#C8C8C8", "#E2E2E2", "#F7F7F7"] },
-      "border": { "role": "neutral", "displayName": "Working Border", "canonical": "#DDD", "tonalRamp": ["#222222", "#454545", "#686868", "#8B8B8B", "#AEAEAE", "#C9C9C9", "#DDDDDD", "#F4F4F4"] },
-      "danger": { "role": "tertiary", "displayName": "Operational Red", "canonical": "#8A1F1F", "tonalRamp": ["#2B0808", "#571111", "#8A1F1F", "#AF4545", "#CC7474", "#E3A5A5", "#F2D0D0", "#FFF2F2"] },
-      "success": { "role": "tertiary", "displayName": "Success Green", "canonical": "#1F7A4C", "tonalRamp": ["#082617", "#104B2E", "#1F7A4C", "#4A9870", "#77B695", "#A5D3B9", "#D1EBDD", "#F0FAF4"] },
-      "information": { "role": "tertiary", "displayName": "Information Blue", "canonical": "#0B4C82", "tonalRamp": ["#03182A", "#062F50", "#0B4C82", "#3A6F9B", "#6B93B4", "#9EB8CD", "#CDDFEC", "#F1F7FB"] }
+      "mvta-evergreen": {
+        "role": "primary",
+        "displayName": "MVTA Evergreen",
+        "canonical": "#00553D",
+        "tonalRamp": [
+          "#001A12",
+          "#003326",
+          "#00553D",
+          "#24725B",
+          "#4F8F7A",
+          "#83AD9E",
+          "#BDD4CB",
+          "#EEF6F2"
+        ]
+      },
+      "mvta-evergreen-deep": {
+        "role": "primary",
+        "displayName": "Deep Evergreen",
+        "canonical": "#003D2C",
+        "tonalRamp": [
+          "#00140E",
+          "#00291D",
+          "#003D2C",
+          "#286452",
+          "#568B78",
+          "#88B2A1",
+          "#BDD8CD",
+          "#F0F7F4"
+        ]
+      },
+      "signal-amber": {
+        "role": "secondary",
+        "displayName": "Signal Amber",
+        "canonical": "#F78E1E",
+        "tonalRamp": [
+          "#3E1A00",
+          "#713500",
+          "#A95100",
+          "#DC6C05",
+          "#F78E1E",
+          "#FFB463",
+          "#FFD6A5",
+          "#FFF4E5"
+        ]
+      },
+      "warm-operations-canvas": {
+        "role": "neutral",
+        "displayName": "Warm Operations Canvas",
+        "canonical": "#F3F2ED",
+        "tonalRamp": [
+          "#24231F",
+          "#44423D",
+          "#66645E",
+          "#89867F",
+          "#ACA9A2",
+          "#CFCDC6",
+          "#E6E4DE",
+          "#F3F2ED"
+        ]
+      },
+      "console-canvas": {
+        "role": "neutral",
+        "displayName": "Console Canvas",
+        "canonical": "#EDEBE4",
+        "tonalRamp": [
+          "#24231F",
+          "#43413C",
+          "#625F59",
+          "#817E77",
+          "#A09D95",
+          "#C0BDB5",
+          "#D9D6CE",
+          "#EDEBE4"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Surface White",
+        "canonical": "#FFFFFF",
+        "tonalRamp": [
+          "#262626",
+          "#4A4A4A",
+          "#707070",
+          "#969696",
+          "#BDBDBD",
+          "#D9D9D9",
+          "#EEEEEE",
+          "#FFFFFF"
+        ]
+      },
+      "surface-alt": {
+        "role": "neutral",
+        "displayName": "Alternate Surface",
+        "canonical": "#F6F5F1",
+        "tonalRamp": [
+          "#252420",
+          "#46443F",
+          "#686660",
+          "#8B8982",
+          "#AFACA5",
+          "#D1CFC8",
+          "#E8E6E0",
+          "#F6F5F1"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Operations Ink",
+        "canonical": "#2C2C2A",
+        "tonalRamp": [
+          "#181817",
+          "#2C2C2A",
+          "#4A4A47",
+          "#696965",
+          "#898984",
+          "#ABABA5",
+          "#D2D2CC",
+          "#F4F4F1"
+        ]
+      },
+      "ink-muted": {
+        "role": "neutral",
+        "displayName": "Muted Ink",
+        "canonical": "#4F4F4F",
+        "tonalRamp": [
+          "#191919",
+          "#303030",
+          "#4F4F4F",
+          "#707070",
+          "#929292",
+          "#B5B5B5",
+          "#D8D8D8",
+          "#F5F5F5"
+        ]
+      },
+      "ink-faint": {
+        "role": "neutral",
+        "displayName": "Faint Ink",
+        "canonical": "#888888",
+        "tonalRamp": [
+          "#202020",
+          "#424242",
+          "#666666",
+          "#888888",
+          "#AAAAAA",
+          "#C8C8C8",
+          "#E2E2E2",
+          "#F7F7F7"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Working Border",
+        "canonical": "#DDD",
+        "tonalRamp": [
+          "#222222",
+          "#454545",
+          "#686868",
+          "#8B8B8B",
+          "#AEAEAE",
+          "#C9C9C9",
+          "#DDDDDD",
+          "#F4F4F4"
+        ]
+      },
+      "danger": {
+        "role": "tertiary",
+        "displayName": "Operational Red",
+        "canonical": "#8A1F1F",
+        "tonalRamp": [
+          "#2B0808",
+          "#571111",
+          "#8A1F1F",
+          "#AF4545",
+          "#CC7474",
+          "#E3A5A5",
+          "#F2D0D0",
+          "#FFF2F2"
+        ]
+      },
+      "success": {
+        "role": "tertiary",
+        "displayName": "Success Green",
+        "canonical": "#1F7A4C",
+        "tonalRamp": [
+          "#082617",
+          "#104B2E",
+          "#1F7A4C",
+          "#4A9870",
+          "#77B695",
+          "#A5D3B9",
+          "#D1EBDD",
+          "#F0FAF4"
+        ]
+      },
+      "information": {
+        "role": "tertiary",
+        "displayName": "Information Blue",
+        "canonical": "#0B4C82",
+        "tonalRamp": [
+          "#03182A",
+          "#062F50",
+          "#0B4C82",
+          "#3A6F9B",
+          "#6B93B4",
+          "#9EB8CD",
+          "#CDDFEC",
+          "#F1F7FB"
+        ]
+      }
     },
     "typographyMeta": {
-      "headline": { "displayName": "Console Headline", "purpose": "Compact console page titles." },
-      "title": { "displayName": "Rider Title", "purpose": "Public-facing page titles in MVTA Evergreen." },
-      "body": { "displayName": "Operational Body", "purpose": "Instructions, descriptions, alert copy, and data context." },
-      "label": { "displayName": "Operational Label", "purpose": "Navigation groups, fields, tables, and compact status metadata." }
+      "headline": {
+        "displayName": "Console Headline",
+        "purpose": "Compact console page titles."
+      },
+      "title": {
+        "displayName": "Rider Title",
+        "purpose": "Public-facing page titles in MVTA Evergreen."
+      },
+      "body": {
+        "displayName": "Operational Body",
+        "purpose": "Instructions, descriptions, alert copy, and data context."
+      },
+      "label": {
+        "displayName": "Field Label",
+        "purpose": "Form-grid and intake field labels (12px/700, ink-muted)."
+      },
+      "subtitle": {
+        "displayName": "Card Subtitle",
+        "purpose": "Lead line of an intro card or workspace heading (16px/700)."
+      },
+      "section-title": {
+        "displayName": "Panel Header",
+        "purpose": "Evergreen uppercase panel and section headers (14.5px/700)."
+      },
+      "control": {
+        "displayName": "Control Text",
+        "purpose": "Inputs, selects, textareas, table cells, and primary button labels (12.5px)."
+      },
+      "small": {
+        "displayName": "Small Body",
+        "purpose": "Panel descriptions, checklist items, section descriptions (12px)."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "Helper lines under fields, metadata, td-subtle (11px)."
+      },
+      "caption-label": {
+        "displayName": "Caption Label",
+        "purpose": "Table headers, chips, small buttons (11px/700)."
+      },
+      "micro-label": {
+        "displayName": "Micro Label",
+        "purpose": "Navigation group labels and dense status summaries (10.5px/700, tracked, uppercase)."
+      },
+      "eyebrow": {
+        "displayName": "Eyebrow",
+        "purpose": "Evergreen kicker above a card or dialog title (10px/900, tracked, uppercase)."
+      }
     },
     "shadows": [
-      { "name": "quiet-surface", "value": "0 1px 3px rgba(0, 0, 0, 0.04)", "purpose": "Small data and status cards." },
-      { "name": "working-panel", "value": "0 2px 8px rgba(0, 0, 0, 0.04)", "purpose": "Panels and recurring operational containers." },
-      { "name": "application-frame", "value": "0 4px 16px rgba(0, 0, 0, 0.10)", "purpose": "The console shell and substantial workspaces." },
-      { "name": "elevated-sign-in", "value": "0 20px 50px rgba(0, 0, 0, 0.25)", "purpose": "The isolated authentication card only." }
+      {
+        "name": "quiet-surface",
+        "value": "0 1px 3px rgba(0, 0, 0, 0.04)",
+        "purpose": "Small data and status cards."
+      },
+      {
+        "name": "working-panel",
+        "value": "0 2px 8px rgba(0, 0, 0, 0.04)",
+        "purpose": "Panels and recurring operational containers."
+      },
+      {
+        "name": "application-frame",
+        "value": "0 4px 16px rgba(0, 0, 0, 0.10)",
+        "purpose": "The console shell and substantial workspaces."
+      },
+      {
+        "name": "elevated-sign-in",
+        "value": "0 20px 50px rgba(0, 0, 0, 0.25)",
+        "purpose": "The isolated authentication card only."
+      }
     ],
     "motion": [
-      { "name": "quick-state", "value": "150ms ease", "purpose": "Compact navigation and state transitions." },
-      { "name": "refresh-pulse", "value": "1s ease-in-out infinite", "purpose": "Live refresh activity indicator." }
+      {
+        "name": "quick-state",
+        "value": "150ms ease",
+        "purpose": "Compact navigation and state transitions."
+      },
+      {
+        "name": "refresh-pulse",
+        "value": "1s ease-in-out infinite",
+        "purpose": "Live refresh activity indicator."
+      }
     ],
     "breakpoints": [
-      { "name": "compact", "value": "600px" },
-      { "name": "form-collapse", "value": "760px" },
-      { "name": "module-collapse", "value": "850px" },
-      { "name": "wide-module-collapse", "value": "1050px" }
+      {
+        "name": "compact",
+        "value": "600px"
+      },
+      {
+        "name": "form-collapse",
+        "value": "760px"
+      },
+      {
+        "name": "module-collapse",
+        "value": "850px"
+      },
+      {
+        "name": "wide-module-collapse",
+        "value": "1050px"
+      }
     ]
   },
   "components": [
@@ -60,11 +336,11 @@
       "css": ".ds-btn-secondary { background:#fff; color:#2C2C2A; border:1px solid #CCC; border-radius:8px; padding:8px 12px; font:700 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; cursor:pointer; transition:border-color 150ms ease,color 150ms ease; } .ds-btn-secondary:hover { border-color:#00553D; color:#00553D; } .ds-btn-secondary:focus-visible { outline:3px solid rgba(0,85,61,.15); outline-offset:1px; }"
     },
     {
-      "name": "Operational Input",
+      "name": "Operational Field",
       "kind": "input",
-      "description": "Compact, explicit data entry with an evergreen focus state.",
-      "html": "<label class=\"ds-field\"><span>Category</span><input value=\"Service delay\" aria-label=\"Category\"></label>",
-      "css": ".ds-field { display:grid; gap:4px; color:#4F4F4F; font:700 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; } .ds-field input { background:#fff; color:#2C2C2A; border:1px solid #CCC; border-radius:8px; padding:8px 10px; font:400 12.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; } .ds-field input:hover { border-color:#9A9A96; } .ds-field input:focus-visible { outline:0; border-color:#00553D; box-shadow:0 0 0 3px rgba(0,85,61,.15); }"
+      "description": "Label, required mark, 12.5px control, and an always-present 11px helper line so validation never shifts the layout.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">Detection source <span class=\"ds-req\">*</span></span><input value=\"Contractor field report\" /><span class=\"ds-help\">Who reported it.</span></label>",
+      "css": ".ds-field { display:grid; gap:5px; color:#4F4F4F; font:700 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; } .ds-field .ds-req { color:#8A1F1F; } .ds-field input { background:#fff; color:#2C2C2A; border:1px solid #CCC; border-radius:8px; padding:9px 10px; font-family:inherit; font-size:12.5px; font-weight:400; line-height:1.4; width:100%; box-sizing:border-box; } .ds-field input:hover { border-color:#9A9A96; } .ds-field input:focus-visible { outline:0; border-color:#00553D; box-shadow:0 0 0 3px rgba(0,85,61,0.16); } .ds-field .ds-help { color:#8A8A82; font-size:11px; font-weight:400; line-height:1.4; min-height:15px; }"
     },
     {
       "name": "Console Navigation Item",
@@ -102,6 +378,22 @@
       "description": "A clear public alert container with restrained metadata and readable copy.",
       "html": "<article class=\"ds-alert-card\"><div><span class=\"ds-alert-badge\">Delay</span><strong>Route 442</strong></div><p>Service is delayed. Allow extra travel time.</p><small>Updated 8:42 AM</small></article>",
       "css": ".ds-alert-card { width:340px; padding:16px 18px; color:#2C2C2A; background:#fff; border:1px solid #EEE; border-radius:10px; font-family:Arial, Helvetica, sans-serif; } .ds-alert-card>div { display:flex; align-items:center; gap:8px; } .ds-alert-badge { padding:4px 10px; border-radius:999px; background:#FCEFD8; color:#7A4A00; font-size:11px; font-weight:700; } .ds-alert-card strong { color:#4F4F4F; font-size:12px; } .ds-alert-card p { margin:10px 0; font-size:14px; line-height:1.5; } .ds-alert-card small { color:#888; font-size:12px; } .ds-alert-card:focus-within { outline:3px solid rgba(0,85,61,.15); outline-offset:2px; }"
+    },
+    {
+      "name": "Removable Token",
+      "kind": "chip",
+      "refersTo": null,
+      "description": "One exact list entry (an audience, a stop) inside a token input; 16px radius, evergreen tint, inline remove.",
+      "html": "<span class=\"ds-token\">Operators <button class=\"ds-token-x\" aria-label=\"Remove Operators\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\"><path d=\"M6 6l12 12M18 6L6 18\"/></svg></button></span>",
+      "css": ".ds-token { display:inline-flex; align-items:center; gap:6px; background:#DCEDE6; color:#00301F; border-radius:16px; padding:4px 8px 4px 9px; font:700 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; } .ds-token-x { display:inline-flex; align-items:center; background:transparent; border:0; color:inherit; cursor:pointer; padding:0; } .ds-token-x:hover { color:#8A1F1F; } .ds-token-x:focus-visible { outline:2px solid #00553D; outline-offset:2px; border-radius:6px; }"
+    },
+    {
+      "name": "Toggle Chip",
+      "kind": "chip",
+      "refersTo": null,
+      "description": "A fixed-set option that toggles on and off (required channels); selected is the evergreen fill, same anatomy as the console tab switch.",
+      "html": "<span class=\"ds-chips\"><button class=\"ds-chip\" aria-pressed=\"true\">Email</button><button class=\"ds-chip\" aria-pressed=\"false\">Teams</button><button class=\"ds-chip ds-chip-add\" aria-pressed=\"false\">+ Other</button></span>",
+      "css": ".ds-chips { display:inline-flex; gap:8px; } .ds-chip { display:inline-flex; align-items:center; gap:6px; background:#fff; color:#4F4F4F; border:1px solid #CCC; border-radius:8px; padding:8px 12px; cursor:pointer; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size:12px; font-weight:700; line-height:1; } .ds-chip[aria-pressed=\"true\"] { background:#00553D; border-color:#00553D; color:#fff; } .ds-chip:hover { border-color:#00553D; } .ds-chip-add { border-style:dashed; color:#8A8A82; } .ds-chip:focus-visible { outline:2px solid #00553D; outline-offset:2px; }"
     }
   ],
   "narrative": {
@@ -116,10 +408,26 @@
       "Light and dark console themes preserve the same hierarchy and brand logic."
     ],
     "rules": [
-      { "name": "The Signal, Not Decoration Rule", "body": "Saturated orange, red, blue, and success green communicate a real state or action. They are not used to make an otherwise quiet screen more playful.", "section": "colors" },
-      { "name": "The Evergreen Anchor Rule", "body": "Every major surface retains a clear MVTA Evergreen anchor through navigation, headings, primary action, or panel structure; do not scatter equal-strength accents across the same view.", "section": "colors" },
-      { "name": "The Read-It-Once Rule", "body": "Use direct labels, concise sentences, and visible state language. Type styling may establish priority but must never make operational or rider copy harder to parse.", "section": "typography" },
-      { "name": "The Flat-by-Default Rule", "body": "Use tonal layers and borders before adding shadow. Shadow confirms hierarchy; it does not create atmosphere.", "section": "elevation" }
+      {
+        "name": "The Signal, Not Decoration Rule",
+        "body": "Saturated orange, red, blue, and success green communicate a real state or action. They are not used to make an otherwise quiet screen more playful.",
+        "section": "colors"
+      },
+      {
+        "name": "The Evergreen Anchor Rule",
+        "body": "Every major surface retains a clear MVTA Evergreen anchor through navigation, headings, primary action, or panel structure; do not scatter equal-strength accents across the same view.",
+        "section": "colors"
+      },
+      {
+        "name": "The Read-It-Once Rule",
+        "body": "Use direct labels, concise sentences, and visible state language. Type styling may establish priority but must never make operational or rider copy harder to parse.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-by-Default Rule",
+        "body": "Use tonal layers and borders before adding shadow. Shadow confirms hierarchy; it does not create atmosphere.",
+        "section": "elevation"
+      }
     ],
     "dos": [
       "Do use MVTA Evergreen as the stable identity and primary-action anchor.",
