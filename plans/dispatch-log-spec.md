@@ -1,12 +1,17 @@
 # Dispatch Log — feature spec
 
 Status: draft for review. Written 2026-08-18; §4.3 revised 2026-08-20 after Ty
-settled the UI as three views over one dataset. Source material: Ty ↔ Corrina
-Gumphrey email thread 2026-08-18, plus two workbooks in `OTP/`:
+settled the UI as three views over one dataset; revised 2026-09-04 after a
+repo review checked every claim against the code (see §9 for what changed).
+Source material: Ty ↔ Corrina Gumphrey email thread 2026-08-18, plus two
+workbooks in an `OTP/` folder that lives **outside this repo** (SharePoint
+material; ask Ty for a copy — the counts in §2 cannot be re-derived from the
+repo alone):
 
 - `9. Dispatch Log_20260908.xlsx` — the **raw scheduling-system export** ("the
   Dispatch Log from the Service Info SharePoint"), 3 sheets: Weekday / Friday /
-  Weekend.
+  Weekend. The date in the filename is presumably the service change the export
+  describes (8 Sept 2026), not the export date — it post-dates this document.
 - `Copy of Dispatch Log Template 810 Service Change.xlsx` — the **working
   template** Corrina hand-derives from it, 4 sheets: Weekday / Weekend, plus
   one per-week sheet (`8-10 - 8-16`, `8-17 - 8-23`).
@@ -115,10 +120,10 @@ Nearly the whole schedule side is built and running.
 | Block | `GtfsScheduledTrips.block_id` (mig. 027), parsed from `trips.txt` |
 | Route display name | `GtfsRoutes.route_short_name` (mig. 010) |
 | Direction | `GtfsTripDirections.direction_id` / `direction_label` (mig. 007) |
-| Which trips run on a given date | `GtfsCalendar` + `GtfsCalendarDates`, plus `activeServiceIdsToday()` in `gtfsMissedTripsPoll.ts` |
+| Which trips run on a given date | `GtfsCalendar` + `GtfsCalendarDates`, plus `activeServiceIdsToday()` in `gtfsMissedTripsPoll.ts` (module-private today — see §4.2) |
 | Service-date / GTFS-time → UTC | `missedTripTime.ts` (`serviceDateAndGtfsSecondsToUtc`, `agencyServiceDate`) — DST-correct |
 | Nightly static refresh | `gtfsStopsSync.ts`, 09:00 UTC daily |
-| **Actual trip start** | `GtfsTripOperationalEvidence.first_underway_at` (mig. 027) — set when a VehiclePosition reports `current_stop_sequence > first_stop_sequence` |
+| **Actual trip start** | `GtfsTripOperationalEvidence.first_underway_at` (mig. 027) — set when a VehiclePosition reports `current_stop_sequence > first_stop_sequence`, i.e. when the bus is already reported at or past stop **two** |
 | Cancellations / no-shows | `MonitoredMissedTrips` + `gtfsMissedTripsPoll.ts` |
 | Garage pullout actuals | `FixedRouteDepartures` (Avail, mig. 013) — authoritative for pullout, not for first revenue stop |
 
@@ -131,10 +136,14 @@ plus a small amount of new storage for the human layer.
    (Optibus) concept encoded in that system's `Route Id`. GTFS `route_id` will
    not carry it. Either drop the column, or import it from the SharePoint
    export as reference data.
-2. **Actual-start precision.** `first_underway_at` is a *detection* time from a
-   **5-minute** poll (`gtfsVehiclePositionsPoll.ts`). The entire business rule
-   turns on a 5-minute threshold, so a 5-minute poll cannot reliably tell
-   "on time" from "5 minutes late." See §5.
+2. **Actual-start precision and bias.** `first_underway_at` is a *detection*
+   time from a **5-minute** poll (`gtfsVehiclePositionsPoll.ts`). The entire
+   business rule turns on a 5-minute threshold, so a 5-minute poll cannot
+   reliably tell "on time" from "5 minutes late." It is also **biased late**,
+   not just imprecise: the flag is set only once the reported stop sequence
+   exceeds the first stop, so it records the bus reaching stop two, not
+   leaving stop one. On a long first link that bias alone flips an on-time
+   departure to "late". See §5.
 3. **History is destructible.** `gtfsStopsSync` does a full `TRUNCATE` +
    reload. Once a service change lands, a past date's log cannot be
    reconstructed from `GtfsScheduledTrips`. The log must snapshot per service
@@ -145,13 +154,26 @@ plus a small amount of new storage for the human layer.
 
 ## 4. Proposed design
 
+**Naming.** The product name stays *Dispatch Log* — it is what the OCS desk
+calls the workbook. Technical identifiers do **not** use the word `dispatch`,
+because in this repo it already means Teams message delivery
+(`functions-dispatch`, `dispatchMessageCreated`, `dispatchConfirmation`). A
+`DispatchLogTrips` table or a `/dispatch-log` route would read as a message
+delivery log. Tables and routes below are therefore `TripStart*` /
+`/trip-start-log`. `docs/agents/domain.md` carries the same distinction.
+
 ### 4.1 Data model (new migration)
 
-**`DispatchLogTrips`** — one row per (service date, revenue trip), materialized
+Number it **094 or later**. `main` ends at 088, but 089–093 exist on the
+unmerged detour branch and were applied to the dev database on 2026-09-04, so
+anything lower collides.
+
+**`TripStartLog`** — one row per (service date, revenue trip), materialized
 nightly. A growing historical log; never truncated.
 
 ```
-service_date            CHAR(8)        -- YYYYMMDD
+service_date            CHAR(8)        -- YYYYMMDD; matches FixedRouteDepartures. GtfsTripOperationalEvidence
+                                       -- stores the same value as NVARCHAR(20): CAST explicitly when joining.
 trip_id                 NVARCHAR(100)
 block_id                NVARCHAR(100)  NULL
 route_id                NVARCHAR(50)
@@ -162,7 +184,7 @@ origin_stop_id          NVARCHAR(100)  NULL
 origin_stop_name        NVARCHAR(200)  NULL   -- snapshot
 scheduled_start_seconds INT                    -- GTFS seconds, >86400 allowed
 scheduled_start_at      DATETIME2              -- resolved UTC instant
-in_rotation             BIT                    -- on today's verification list
+in_rotation             BIT                    -- on today's verification list (snapshot, see below)
 actual_start_at         DATETIME2      NULL
 actual_start_source     NVARCHAR(20)   NULL    -- trip_update | vehicle_position | avail
 start_delay_seconds     INT            NULL
@@ -170,7 +192,14 @@ start_status            NVARCHAR(20)   NULL    -- on_time | late | missed | canc
 PRIMARY KEY (service_date, trip_id)
 ```
 
-**`DispatchLogVerifications`** — the human layer, kept separate so an operator's
+`start_status` sources: `on_time` / `late` from `actual_start_at` against the
+5-minute rule; `canceled` from the TripUpdate `schedule_relationship`
+(`mapCanceledTrip` in `gtfsTripUpdates.ts`, the same path the missed-trip
+poller uses); `missed` from a `MonitoredMissedTrips` row for the trip;
+`unknown` when the trip has no realtime evidence at all. Never default to
+`on_time`.
+
+**`TripStartVerifications`** — the human layer, kept separate so an operator's
 observation is never overwritten by a poller.
 
 ```
@@ -184,25 +213,56 @@ note               NVARCHAR(500)  NULL
 PRIMARY KEY (service_date, trip_id)
 ```
 
-Rotation is **computed, not stored**: `weekOffset` derives from weeks elapsed
-since the service-change start date, so no per-week table is needed and the
-assignment is reproducible for any date.
+**Rotation.** The workbook deals a *fixed* pool by index for the whole
+service change. Rebuilding the pool from each date's active `service_id`s
+would break that — Friday's trip set differs from Mon–Thu, so every index
+shifts and the "each trip once per week" guarantee is lost. The pool must be
+defined once per service change:
+
+- **Pool membership.** Weekday pool = every trip in `GtfsScheduledTrips`
+  whose service runs on at least one of Mon–Fri (from `GtfsCalendar`, plus
+  type-1 `GtfsCalendarDates` additions). Weekend pool = the same for Sat/Sun.
+  A trip can be in both pools; that matches the workbook, which lists it on
+  both sheets.
+- **Order.** Sort by `(first_departure_seconds, trip_id)`. The `trip_id`
+  tie-break is what makes the assignment reproducible; start time alone is
+  not unique.
+- **Anchor.** `rotation_anchor_date` is the service-change start date, stored
+  in `AppSettings` (`module = 'trip_start_log'`), seeded from the smallest
+  `GtfsCalendar.start_date` among the services active on the first
+  materialized day and updated when the nightly sync sees a new service
+  change. It is a setting, not a derivation, so a mid-change GTFS republish
+  cannot silently restart the rotation.
+- **Assignment.** `weekOffset = floor(days(service_date − anchor) / 7)`;
+  weekday trip *i* is assigned `[Mon..Fri][(i + weekOffset) % 5]`, weekend
+  trip *i* `[Sat, Sun][(i + weekOffset) % 2]`. `in_rotation` is true when the
+  assigned day equals the service date's day **and the trip is actually
+  active that date**. That second clause is what removes the Friday problem
+  in §2: a Mon–Thu-only trip dealt to Friday is simply not asked for that
+  week, instead of appearing on the log as a trip that never runs.
+
+`in_rotation` is written at materialization and treated as a snapshot. If the
+anchor or pool later changes, past days keep the assignment they were logged
+under; only future days are re-dealt.
 
 ### 4.2 Backend
 
 | Piece | Shape |
 |---|---|
-| `dispatchLogMaterialize.ts` | Timer, ~03:00 local (after `gtfsStopsSync`). Resolves active `service_id`s for the date, joins the schedule tables, computes `in_rotation`, writes `DispatchLogTrips`. Runs for today **and** tomorrow so the log exists before the first pullout. |
-| `dispatchLogActualsPoll.ts` | Timer, 1-minute. Reads GTFS-RT TripUpdate, extracts each trip's **first-stop** `StopTimeUpdate` departure, fills `actual_start_at` / `start_delay_seconds` / `start_status`. Falls back to `first_underway_at` when TripUpdate has no first-stop entry. |
-| `GET /dispatch-log?date=` | Returns the service date's rows joined to verifications. One row per revenue trip, including `in_rotation` — the rotation is a field, not a query parameter. |
-| `POST /dispatch-log/verify` | Records one observation. Server-enforced role check. |
-| `GET /dispatch-log/export` | CSV, for parity with the workbook people will miss. |
+| `tripStartLogMaterialize.ts` | Timer, **09:30 UTC** (`0 30 9 * * *`; 04:30 CDT / 03:30 CST). Must be scheduled in UTC: `gtfsStopsSync` runs at 09:00 UTC, and a "03:00 local" schedule lands *before* it for the eight months of daylight time, building the log from yesterday's schedule. Resolves active `service_id`s for the date, joins the schedule tables, computes `in_rotation` (§4.1), writes `TripStartLog`. Runs for today **and** tomorrow so the log exists before the first pullout. Near a service change tomorrow can have no active services: check `scheduleCoverage()` (`gtfsScheduleHorizon.ts`) first, and warn + skip rather than write an empty day that reads as "no service". |
+| `tripStartActualsPoll.ts` | Timer, 1-minute. Reads GTFS-RT TripUpdate and captures each trip's **first-stop** `StopTimeUpdate` departure as described in §5 — treated as a prediction until the first stop drops off the trip's update list, at which point the last value seen is frozen as the actual. Fills `actual_start_at` / `start_delay_seconds` / `start_status`. Falls back to `first_underway_at` when the first stop was never seen. Note this is a third consumer of a feed two pollers already share at a 5-minute cadence (`readTripUpdateFeed` writes the `gtfs_trip_updates` health row once per delivery); the 1-minute reader must not overwrite that health record with its own cadence. |
+| `GET /trip-start-log?date=` | Returns the service date's rows joined to verifications. One row per revenue trip, including `in_rotation` — the rotation is a field, not a query parameter. |
+| `POST /trip-start-log/verify` | Records one observation. Server-enforced role check. |
+| `GET /trip-start-log/export` | CSV, for parity with the workbook people will miss. |
 
-Reuse throughout: `activeServiceIdsToday()`, `serviceDateAndGtfsSecondsToUtc()`,
-`agencyServiceDate()` — all already written and tested.
+Reuse throughout: `serviceDateAndGtfsSecondsToUtc()` and `agencyServiceDate()`
+are exported from `missedTripTime.ts` and tested. `activeServiceIdsToday()` is
+**not** exported — it is a module-private function in `gtfsMissedTripsPoll.ts`
+— so step 1 of §8 starts by lifting it into a lib. `gtfsScheduleHorizon.ts`
+already mirrors its coverage rule and is the natural home.
 
 **One endpoint, not three.** The three views in §4.3 are presentation over a
-single `GET /dispatch-log?date=` returning one row per revenue trip for the
+single `GET /trip-start-log?date=` returning one row per revenue trip for the
 service date. Filtering, sorting, grouping by block and selection all stay
 client-side — a day is under a thousand rows, so there is no case for
 per-view queries, and any server-side split would let the views disagree.
@@ -237,7 +297,7 @@ The spreadsheet reading, and the default.
   every column, keyboard row navigation.
 - Default sort: scheduled start ascending — matches the workbook.
 - Columns: `Verified · Scheduled · Actual · Δ · Status · Block · Route ·
-  Origin Stop · Direction` (+ `Alternative` only if §3.1 is resolved).
+  Origin Stop · Direction` (+ `Alternative` only if §7.3 is resolved).
 - `Verified` is a one-click cell cycling unverified → on time → left late,
   showing the signed-in user's initials exactly like the workbook.
 - Rows outside today's rotation are dimmed but present — the whole day is
@@ -292,13 +352,28 @@ The rule is a 5-minute threshold. The current actual-start signal
 (`first_underway_at`) comes from a 5-minute poll, so its error bar is the same
 size as the decision it has to inform. Options, cheapest first:
 
-1. **Capture the first stop's departure from GTFS-RT TripUpdate** (recommended).
-   `StopTimeUpdate.Departure.Time`/`.Delay` for the trip's first
-   `stop_sequence` is a *reported* time with second-level precision, independent
-   of how often we poll. `gtfsTripUpdates.ts` already parses the full
-   `StopTimeUpdate` list; this is a targeted extension, not new plumbing.
+1. **Capture the first stop's departure from GTFS-RT TripUpdate** (recommended,
+   with a caveat). `StopTimeUpdate.Departure.Time`/`.Delay` for the trip's
+   first `stop_sequence` carries second-level precision, but it is a
+   **prediction until the departure happens, and producers usually drop a
+   stop from the list once it is passed** — the repo's own mapper relies on
+   exactly that, treating the lowest remaining `StopSequence` as the *next*
+   stop (`mapTripUpdateEntity` in `gtfsTripUpdates.ts`). So the value is not
+   independent of poll cadence: a 5-minute reader will mostly see a forecast
+   for stop one and then see stop one vanish. The capture rule is therefore
+   *poll every minute; keep the latest first-stop value; freeze it as the
+   actual the first time the first stop is absent from that trip's list*. The
+   frozen value is the producer's last prediction before departure, typically
+   within a minute of the event — good enough for a 5-minute rule, and far
+   better than `first_underway_at`. `gtfsTripUpdates.ts` already parses the
+   full `StopTimeUpdate` list; this is a targeted extension, not new plumbing.
+   **Prerequisite:** confirm empirically, on MVTA's feed, whether the first
+   stop drops off after departure or lingers with a realised time. If it
+   lingers, the capture is simpler and more precise than described here; if
+   it drops, the rule above stands.
 2. **Poll VehiclePositions every minute** instead of every 5. Straightforward,
-   costs more invocations, still poll-bounded.
+   costs more invocations, still poll-bounded, and still carries the stop-two
+   bias from §3 gap 2.
 3. **Use the Avail AVL feed** (`availAvlPoll.ts`, every 15 seconds — by far the
    most precise source available). Highest fidelity; needs the AVL record
    matched to a GTFS trip, which is real work.
@@ -312,10 +387,12 @@ matter for contractor performance rather than just situational awareness.
 
 ## 6. Honest limitations to carry into the build
 
-- **`Alternative` cannot come from GTFS.** Unresolved until §3.1 is decided.
-- **Friday service differs** from Mon–Thu; a single weekday pool will
-  occasionally schedule a verification for a trip that does not run that day.
-  Splitting Friday into its own pool fixes it and matches the source export.
+- **`Alternative` cannot come from GTFS.** Unresolved until §7.3 is decided.
+- **Friday service differs** from Mon–Thu. The workbook's single weekday pool
+  occasionally asks for a trip that does not run that day; the materialized
+  log never does (§4.1, `in_rotation` requires the trip to be active), but the
+  trip dealt to Friday is then simply skipped that week. Splitting Friday into
+  its own pool would verify it instead, and matches the source export.
 - **`Route` is the display sign, not `route_id`.** `route_short_name` is the
   right GTFS field; confirm it renders `Orange LINK` and not `425`.
 - **GTFS-RT coverage is not universal.** Any trip absent from the realtime feed
@@ -329,10 +406,16 @@ matter for contractor performance rather than just situational awareness.
 
 1. **Who records verifications?** SST OCS staff do this today in shared Excel.
    Giving them console accounts is a real access-management change (there is no
-   contractor-facing operational role today — assessment contractors are
-   isolated for a different purpose). Alternatives: MVTA OCC records it, or the
-   verification column is dropped entirely because the actual start times make
-   it redundant.
+   contractor-facing operational role today — every role in `auth.ts` is
+   `OCC.*` or `System.Ingestion`, and assessment contractors are isolated for a
+   different purpose). If they do get access, the precedent is `OCC.Detour`:
+   a dedicated, **additive** app role for one workflow, registered on the app
+   registration and assigned per user, with the existing roles keeping the
+   access they already had. An `OCC.TripStartVerify` role on the same pattern
+   grants the `POST …/verify` endpoint and nothing else; the runbook is
+   `docs/runbooks/access-management-entra.md`. Alternatives: MVTA OCC records
+   it, or the verification column is dropped entirely because the actual
+   start times make it redundant.
 2. **Keep the weekly rotation?** It exists because a person had to build the
    workbook by hand. Once every trip's actual start is captured automatically,
    sampling one-fifth of trips per day buys nothing on the measurement side —
@@ -344,9 +427,13 @@ matter for contractor performance rather than just situational awareness.
    the dataset does not.
 3. **`Alternative` column** — drop it, or import the SharePoint export as
    reference data to preserve it?
-4. **Where does it live?** Compliance tab (next to OTP / Missed Trips /
-   Fixed Route Departures), Service Operations (it is a live monitoring tool,
-   not a compliance artifact), or its own top-level nav entry?
+4. ~~**Where does it live?**~~ **Resolved by ADR 0015**, which groups
+   communications and service-risk monitoring under Service Operations and
+   keeps Compliance for assessment artifacts. The Dispatch Log is a live
+   monitoring tool, so it is a Service Operations tab, next to Missed Trips and
+   Fixed Route Departures. Nothing here is a compliance record until §7.1 puts
+   a verified observation on it, and even then it stays where the people who
+   use it during the day already are.
 
 ---
 
@@ -354,8 +441,9 @@ matter for contractor performance rather than just situational awareness.
 
 Nothing before step 5 depends on the open decisions in §7.
 
-1. **Migration + nightly materialization + `GET /dispatch-log`** — read-only,
-   from data already flowing. Provable end to end without any new feed work.
+1. **Lift `activeServiceIdsToday()` into a lib, then migration (094+) +
+   nightly materialization + `GET /trip-start-log`** — read-only, from data
+   already flowing. Provable end to end without any new feed work.
 2. **Module shell**: query bar, summary strip, view switcher, shared selection
    state and inspector. The container before any of the views, so all three
    inherit filtering and selection rather than each re-implementing it.
@@ -363,10 +451,44 @@ Nothing before step 5 depends on the open decisions in §7.
    sortable table (§4.3).
 4. **Watch and Timeline views** over the same state. Independent of each other;
    either can ship first.
-5. **First-stop actual-departure capture from TripUpdate** (§5.1). Everything
-   above works on `first_underway_at`; this is the precision upgrade, and the
-   ±5-minute error bar makes the ≤5-minute rule unreliable until it lands.
+5. **First-stop actual-departure capture from TripUpdate** (§5, option 1),
+   after the feed-behaviour check that option requires. Everything above works
+   on `first_underway_at`; this is the precision upgrade, and the ±5-minute
+   error bar plus the stop-two bias make the ≤5-minute rule unreliable until
+   it lands.
 6. **Verification recording**, once §7.1 is decided. The UI already has the
    affordance in three places — this is the endpoint, the role check, and the
    audit trail.
 7. **CSV export**, for parity with the workbook people will miss.
+
+---
+
+## 9. Revision log
+
+**2026-09-04** — repo review against `main` at `f5e11e8`. Every table, column,
+migration and poll cadence cited in §3 was confirmed. Corrections made:
+
+- Materialization timer moved to 09:30 UTC; "03:00 local" preceded
+  `gtfsStopsSync` during daylight time (§4.2).
+- §5 option 1 rewritten: first-stop `StopTimeUpdate`s are predictions that
+  drop off once passed, so capture needs the 1-minute poll and a freeze rule,
+  plus an empirical check of the feed (§5, §4.2).
+- `first_underway_at` documented as biased late (fires at stop two), not only
+  imprecise (§3 gap 2, §5).
+- Rotation fully specified: fixed pool per service change, `(start, trip_id)`
+  order, anchor date in `AppSettings`, `in_rotation` requires the trip to be
+  active that date (§4.1). This also closes the Friday inconsistency (§2, §6).
+- Technical identifiers renamed `TripStart*` / `/trip-start-log`; `dispatch`
+  already means Teams message delivery in this repo (§4). Product name
+  unchanged.
+- Migration numbering set to 094+ (§4.1). `service_date` type reconciled with
+  the evidence table (§4.1). `start_status` sources stated (§4.1). Tomorrow's
+  materialization guarded by `scheduleCoverage()` (§4.2).
+- `activeServiceIdsToday()` noted as module-private; lifting it is now step 1
+  of §8.
+- §7.4 resolved by ADR 0015 (Service Operations). §7.1 given the `OCC.Detour`
+  additive-role precedent.
+- Cross-references `§3.1` / `§5.1` fixed; source workbooks flagged as outside
+  the repo; export filename date explained.
+- Feature added to the roadmap (`MVTA_ONBOARD_MANUAL.md` §20,
+  `plans/ROADMAP.md`) and the `dispatch` distinction to `docs/agents/domain.md`.

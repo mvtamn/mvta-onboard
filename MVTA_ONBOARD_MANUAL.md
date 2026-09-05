@@ -1106,6 +1106,8 @@ real, currently open operational gap, not a resolved item.
 7. Build route health, headway, bunching, cancellation, and feed-quality
    monitoring.
 8. Add a live operations map.
+9. Replace the OCS desk's hand-kept Dispatch Log workbook with a trip-start
+   log over data OnBoard already collects (`plans/dispatch-log-spec.md`).
 
 ### Later
 
