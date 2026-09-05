@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.96] - 2026-09-05
+
+- **Judge a garage departure only once its service day is over.** Avail's status table shows `PulloutStatus` is a precedence-ordered ladder whose value moves as a run progresses: `Missed Login` can become `Waiting for Pullout` or `Late Login`, and `Missed Pullout` stops applying once the vehicle is detected on route. Both are intermediate, not verdicts. Because the candidate MERGE only inserts, an occurrence raised against a run that was merely mid-sequence would never be withdrawn once that run departed. The rule now only considers rows whose service day has ended - the poll runs at 01:20 agency-local, three hours after service closes, so the previous day's statuses have settled while the current day's are left alone. The vendor's precedence table is recorded alongside the status list, including why `On Route No Pullout` stays out of it: that status means the vehicle is running and the driver simply did not log on, so it is a missing pullout record rather than a missing departure.
+
 ## [1.5.95] - 2026-09-04
 
 - **Stop-ID matching for duplicates and conflicts.** Each record's GTFS stops are derived from its drawn shape (stops within 100 m) and from `#stop_id` markers in its affected-stops text - which is what the map's "add selected stops" writes - so two records that touch the same stop match even when their shapes are far apart or one was never drawn. Shared stops are named in the warning and rank between map matches and route matches. One `GtfsStops` read per list call; no migration.
