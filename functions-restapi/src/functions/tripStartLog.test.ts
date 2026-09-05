@@ -59,5 +59,6 @@ test("carries the human observation as its own object when one exists", () => {
 test("the same staff roles that read Fixed Route Departures read the log", () => {
   assert.ok(TRIP_START_LOG_READ_ROLES.includes("OCC.Viewer"));
   assert.ok(TRIP_START_LOG_READ_ROLES.includes("OCC.Compliance"));
+  assert.ok(TRIP_START_LOG_READ_ROLES.includes("OCC.TripStartVerify"), "the contractor desk must be able to read what it verifies");
   assert.ok(!TRIP_START_LOG_READ_ROLES.includes("System.Ingestion"));
 });

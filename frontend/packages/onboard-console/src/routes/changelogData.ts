@@ -18,7 +18,7 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
-    version: "1.5.108",
+    version: "1.5.109",
     date: "2026-09-05",
     sections: [
       {
@@ -39,6 +39,30 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
         heading: "Removed",
         items: [
           "The Legacy spreadsheet history panel on Detour Reports, including the CSV/JSON upload it contained. Rows imported previously are untouched, but the console no longer shows them or offers a way to import more.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.108",
+    date: "2026-09-05",
+    sections: [
+      {
+        heading: "Added",
+        items: [
+          "Garage Departures: the Compliance tab's Fixed Route Departures module is now Garage Departures with a Fixed Route / On-Demand switch. The On-Demand view tracks each Spare duty's start against its schedule, naming whether the start came from Spare's start-location slot or from the vehicle first appearing in the service area.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.107",
+    date: "2026-09-05",
+    sections: [
+      {
+        heading: "Added",
+        items: [
+          "Dispatch Log verifications can now be recorded: the SST OCS desk initials a trip's start from the Grid cell, the Watch queue, or the inspector, records a disposition with a note where a trip ran late, and can correct or clear an entry. Every change is kept in an audit trail.",
         ],
       },
     ],

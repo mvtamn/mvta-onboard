@@ -33,7 +33,10 @@ import type {
   Severity,
   AvailAvlVehicle,
   FixedRouteDeparture,
+  OnDemandDeparture,
   TripStartLogResponse,
+  TripStartVerification,
+  TripStartVerificationAction,
   OtpMonthlyStopRow,
   OtpDailyRow,
   OtpMonthlyRouteRollup,
@@ -227,6 +230,7 @@ export interface KpiTrustStream {
 export type KpiTrustStreamName =
   | "fixed_route_delay"
   | "fixed_route_departures"
+  | "on_demand_departures"
   | "otp"
   | "event_avl"
   | "on_demand"
@@ -667,6 +671,16 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return requestBlob(`/api/trip-start-log/export?date=${encodeURIComponent(serviceDate)}`);
     },
 
+    // Record what a person saw at a trip's start (OCC.TripStartVerify or
+    // Admin). Returns the cell as it now stands; null when cleared.
+    recordTripStartVerification(input: { service_date: string; trip_id: string; action: TripStartVerificationAction; note?: string | null; initials?: string | null }) {
+      return request<{ verification: TripStartVerification | null }>(
+        "/api/trip-start-log/verify",
+        { method: "POST", body: JSON.stringify(input) },
+        true,
+      );
+    },
+
     getFixedRouteDepartures(days?: number) {
       const suffix = days ? `?days=${days}` : "";
       return request<{
@@ -680,6 +694,24 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
           avg_delta_seconds: number | null;
         };
       }>(`/api/fixed-route-departures${suffix}`, {}, true);
+    },
+
+    // The on-demand counterpart: Spare duty departures, same window and the
+    // same diagnostics shape plus the variance allowance the counts used.
+    getOnDemandDepartures(days?: number) {
+      const suffix = days ? `?days=${days}` : "";
+      return request<{
+        departures: OnDemandDeparture[];
+        diagnostics: {
+          configured: boolean;
+          table_ready: boolean;
+          record_count: number;
+          late_count: number;
+          no_departure_count: number;
+          avg_delta_seconds: number | null;
+          variance_seconds: number;
+        };
+      }>(`/api/on-demand-departures${suffix}`, {}, true);
     },
 
     getOtpMonthly(month?: string) {

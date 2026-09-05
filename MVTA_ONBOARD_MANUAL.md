@@ -149,7 +149,8 @@ OCC Tools currently includes:
 - On-Demand Quality
 - Speed Alerts
 
-OTP Compliance, Missed Trips, and Fixed Route Departures were moved out of
+OTP Compliance, Missed Trips, and Garage Departures (Fixed Route from Avail
+Pullout, On-Demand from Spare duties, per ADR 0028) were moved out of
 OCC Tools into their own **Compliance** tab, gated by a dedicated
 `OCC.Compliance` role (in addition to `OCC.Admin`) so compliance-investigation
 access can be granted independently of full OCC Tools access.
