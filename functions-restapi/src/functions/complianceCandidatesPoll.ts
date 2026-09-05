@@ -64,8 +64,26 @@ export function garageDepartureVarianceSeconds(
 //
 // The feed also emits four pull-in values that this table does not document at
 // all - On Time Pullin, Late Pullin, Missed Pullin and Waiting for Pullin,
-// nearly 1,900 rows. They describe a run's RETURN, so its departure already
+// nearly 2,000 rows. They mirror the pullout ladder for the other end of the
+// run: a pull-in is the vehicle returning to the depot, so its departure already
 // happened, and none of them are departure evidence.
+//
+// Reading only the latest status looks like it should lose the departure
+// outcome of every run that got far enough to come back - most of them, since
+// pull-in rows outnumber pullout rows. It does not, and the reason is worth
+// keeping: precedence does not just order the ladder, it makes a bad rung
+// STICK. A run that departs late keeps Late Pullout (15) or Expired Pullout
+// (16) even after it pulls in, because those outrank the pull-in values;
+// only a clean departure advances to a pull-in status.
+//
+// That was measured, not assumed. Of 1,952 pull-in rows, the number carrying a
+// departure more than the variance late is zero, and the worst hidden case is
+// six minutes - inside the variance, so it would be dismissed even if it were
+// visible. Three have no departure at all, which is 0.15% and is noise.
+//
+// So matching on status is sound here, and this is the property that makes it
+// sound. Do not "fix" the apparent gap: the check above is what it costs to
+// find out there is no gap, and it comes back zero.
 //
 // Over 22 service days the feed produced eleven values, and they fall into
 // three groups:
