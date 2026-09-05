@@ -17,6 +17,9 @@ colors:
   success: "#1F7A4C"
   information: "#0B4C82"
 typography:
+  # The console ramp, as shipped in onboard-console/src/styles.css. Steps
+  # are close together on purpose: operational density, hierarchy carried by
+  # weight and placement. Counts are approximate uses in the stylesheet.
   headline:
     fontFamily: '-apple-system, "Segoe UI", Inter, Roboto, Arial, sans-serif'
     fontSize: "22px"
@@ -29,25 +32,76 @@ typography:
     fontWeight: 700
     lineHeight: 1.2
     letterSpacing: "normal"
+  subtitle:
+    fontFamily: '-apple-system, "Segoe UI", Inter, Roboto, Arial, sans-serif'
+    fontSize: "16px"
+    fontWeight: 700
+    lineHeight: 1.3
+    letterSpacing: "normal"
+  section-title:
+    fontFamily: '-apple-system, "Segoe UI", Inter, Roboto, Arial, sans-serif'
+    fontSize: "14.5px"
+    fontWeight: 700
+    lineHeight: 1.2
+    letterSpacing: "0.02em"
   body:
     fontFamily: '-apple-system, "Segoe UI", Inter, Roboto, Arial, sans-serif'
     fontSize: "13px"
     fontWeight: 400
     lineHeight: 1.5
     letterSpacing: "normal"
+  control:
+    fontFamily: '-apple-system, "Segoe UI", Inter, Roboto, Arial, sans-serif'
+    fontSize: "12.5px"
+    fontWeight: 400
+    lineHeight: 1.4
+    letterSpacing: "normal"
+  small:
+    fontFamily: '-apple-system, "Segoe UI", Inter, Roboto, Arial, sans-serif'
+    fontSize: "12px"
+    fontWeight: 400
+    lineHeight: 1.45
+    letterSpacing: "normal"
   label:
+    fontFamily: '-apple-system, "Segoe UI", Inter, Roboto, Arial, sans-serif'
+    fontSize: "12px"
+    fontWeight: 700
+    lineHeight: 1.3
+    letterSpacing: "normal"
+  caption:
+    fontFamily: '-apple-system, "Segoe UI", Inter, Roboto, Arial, sans-serif'
+    fontSize: "11px"
+    fontWeight: 400
+    lineHeight: 1.4
+    letterSpacing: "normal"
+  caption-label:
     fontFamily: '-apple-system, "Segoe UI", Inter, Roboto, Arial, sans-serif'
     fontSize: "11px"
     fontWeight: 700
     lineHeight: 1.2
+    letterSpacing: "0.03em"
+  micro-label:
+    fontFamily: '-apple-system, "Segoe UI", Inter, Roboto, Arial, sans-serif'
+    fontSize: "10.5px"
+    fontWeight: 700
+    lineHeight: 1.2
     letterSpacing: "0.07em"
+  eyebrow:
+    fontFamily: '-apple-system, "Segoe UI", Inter, Roboto, Arial, sans-serif'
+    fontSize: "10px"
+    fontWeight: 900
+    lineHeight: 1.2
+    letterSpacing: "0.08em"
 rounded:
   compact: "4px"
   control: "6px"
+  compact-action: "7px"
   action: "8px"
+  tile: "9px"
   card: "10px"
   frame: "12px"
   shell: "14px"
+  chip: "16px"
   pill: "999px"
 spacing:
   xs: "4px"
@@ -153,11 +207,18 @@ The palette combines civic evergreen with warm paper-like neutrals and a tightly
 
 ### Hierarchy
 
+The console ramp is deliberately tight - 10, 10.5, 11, 12, 12.5, 13, 14.5, 16, 22 and 24px - because it is an operational tool read at a desk, not a marketing page. Hierarchy comes from weight, color (ink / ink-muted / ink-faint), and placement more than from size. The steps, in the order they appear in `styles.css`:
+
 - **Headline** (800, 22px, approximately 1.2): console page titles; compact but unmistakable.
 - **Title** (700, 24px, approximately 1.2): rider-facing page titles in MVTA Evergreen.
-- **Section Title** (700, 14.5–19px): panel headers, sign-in headings, and major module sections.
-- **Body** (400, 13–14px, 1.4–1.5): instructions, alert content, form help, and operational descriptions.
-- **Label** (700, 10.5–12px, up to 0.07em, often uppercase): navigation groups, table headers, field labels, status summaries, and metadata.
+- **Subtitle** (700, 16px): the lead line of an intro card or a workspace heading.
+- **Section Title** (700, 14.5px, uppercase, 0.02em): evergreen panel headers; 15–19px for sign-in and major module headings.
+- **Body** (400, 13px, 1.5): instructions, alert content, and operational descriptions; 13.5–14px in the rider app.
+- **Control** (400, 12.5px, 1.4): every input, select, textarea, table cell, and primary button label.
+- **Small** (400, 12px, 1.45) and **Label** (700, 12px): form-grid labels, panel descriptions, checklist items, section descriptions.
+- **Caption** (400, 11px) and **Caption Label** (700, 11px, 0.03em): helper lines under fields, table headers, chips, small buttons, metadata (`td-subtle`).
+- **Micro Label** (700, 10.5px, 0.07em, uppercase): navigation group labels and dense status summaries.
+- **Eyebrow** (900, 10px, 0.08em, uppercase, evergreen): the kicker above a card or dialog title.
 
 ### Named Rules
 
@@ -190,7 +251,7 @@ The system is flat and tonally layered by default. Canvas, surface, alternate-su
 
 ## Shapes
 
-Corners are softly practical: 6–8px for controls, 9–12px for cards and workspaces, and 14px for the console shell. Four-pixel radii remain appropriate for dense tables and compact tools. Full pills are reserved for filters, compact statuses, user identity, and segmented controls. Circles are limited to avatars, live indicators, and icon-only toggles.
+Corners are softly practical: 6–8px for controls (8px for inputs and primary actions, 7px for small secondary buttons, 6px for navigation items), 9–12px for tiles, cards and workspaces (10px is the common card and panel radius), and 14px for the console shell. Four-pixel radii remain appropriate for dense tables and compact tools. Tokens and chips use a 16px radius - a true pill at their 22–24px height - and `999px` pills are reserved for filters, compact statuses, user identity, and segmented controls. Circles are limited to avatars, live indicators, step numbers, and icon-only toggles.
 
 Borders are one pixel and quiet at rest, strengthening or changing color for focus, selection, error, and review state. Selected operational rows may use a 3–4px inset or left-edge signal rather than a larger shadow.
 
@@ -208,7 +269,7 @@ Components should feel compact, dependable, and unmistakably actionable.
 
 ### Chips
 
-- **Style:** quiet warm-neutral fill for filters; semantic tinted fills for status; 10.5–13px bold or medium text; pill geometry.
+- **Style:** quiet warm-neutral fill for filters; semantic tinted fills for status; the `chip-bg` / `chip-fg` evergreen tint for removable tokens and counts; 10.5–13px bold or medium text; 16px radius for tokens and status chips, full pill for filters.
 - **State:** selected filters become MVTA Evergreen with white text. Semantic chips preserve their assigned warning, danger, information, success, or muted role.
 
 ### Cards / Containers
@@ -221,7 +282,7 @@ Components should feel compact, dependable, and unmistakably actionable.
 
 ### Inputs / Fields
 
-- **Style:** surface background, one-pixel border, 6–8px radius, 8–12px padding, and inherited UI typography.
+- **Style:** surface background, one-pixel `border-strong` border, 8px radius, 9px 10px padding, 12.5px inherited UI type; textareas 84px minimum height. Field labels are 12px bold ink-muted with a 5px gap; helper lines are 11px ink-faint and are always present so validation never shifts the layout.
 - **Focus:** evergreen border with a restrained `0 0 0 3px rgba(0, 85, 61, 0.15)` ring where the module defines one.
 - **Error / Disabled:** operational red for error text and borders; disabled controls remain legible and visibly inactive.
 
