@@ -33,6 +33,7 @@ import type {
   Severity,
   AvailAvlVehicle,
   FixedRouteDeparture,
+  TripStartLogResponse,
   OtpMonthlyStopRow,
   OtpDailyRow,
   OtpMonthlyRouteRollup,
@@ -651,6 +652,13 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
         vehicles: AvailAvlVehicle[];
         diagnostics: { configured: boolean; table_ready: boolean; vehicle_count: number; last_report_at: string | null };
       }>("/api/avail-avl", {}, true);
+    },
+
+    // Dispatch Log: one service date's revenue trips with their verification
+    // rotation and (later) actual starts. Omit the date for today, agency-local.
+    getTripStartLog(serviceDate?: string) {
+      const suffix = serviceDate ? `?date=${encodeURIComponent(serviceDate)}` : "";
+      return request<TripStartLogResponse>(`/api/trip-start-log${suffix}`, {}, true);
     },
 
     getFixedRouteDepartures(days?: number) {
