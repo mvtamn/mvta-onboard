@@ -185,12 +185,17 @@ origin_stop_name        NVARCHAR(200)  NULL   -- snapshot
 scheduled_start_seconds INT                    -- GTFS seconds, >86400 allowed
 scheduled_start_at      DATETIME2              -- resolved UTC instant
 in_rotation             BIT                    -- on today's verification list (snapshot, see below)
+rotation_day            NVARCHAR(10)   NULL    -- the weekday this trip is dealt to this week
 actual_start_at         DATETIME2      NULL
 actual_start_source     NVARCHAR(20)   NULL    -- trip_update | vehicle_position | avail
 start_delay_seconds     INT            NULL
 start_status            NVARCHAR(20)   NULL    -- on_time | late | missed | canceled | unknown
+materialized_at         DATETIME2
+updated_at              DATETIME2
 PRIMARY KEY (service_date, trip_id)
 ```
+
+Built as `migration-094-trip-start-log.sql` (2026-09-04, §8 step 1).
 
 `start_status` sources: `on_time` / `late` from `actual_start_at` against the
 5-minute rule; `canceled` from the TripUpdate `schedule_relationship`
@@ -219,20 +224,26 @@ would break that — Friday's trip set differs from Mon–Thu, so every index
 shifts and the "each trip once per week" guarantee is lost. The pool must be
 defined once per service change:
 
-- **Pool membership.** Weekday pool = every trip in `GtfsScheduledTrips`
-  whose service runs on at least one of Mon–Fri (from `GtfsCalendar`, plus
-  type-1 `GtfsCalendarDates` additions). Weekend pool = the same for Sat/Sun.
-  A trip can be in both pools; that matches the workbook, which lists it on
-  both sheets.
+- **Pool membership.** Decided per *rotation week* (the 7 days from
+  `anchor + 7 × weekOffset`), not per date. Weekday pool = every trip in
+  `GtfsScheduledTrips` whose service runs on at least one Mon–Fri date in
+  that window (from `GtfsCalendar`, plus type-1 `GtfsCalendarDates`
+  additions, minus type-2 removals). Weekend pool = the same for the Sat/Sun
+  dates. Scoping to the week is what keeps a *future* service change's trips
+  out of the current pool when the static feed carries both. A trip can be in
+  both pools; that matches the workbook, which lists it on both sheets.
 - **Order.** Sort by `(first_departure_seconds, trip_id)`. The `trip_id`
   tie-break is what makes the assignment reproducible; start time alone is
   not unique.
 - **Anchor.** `rotation_anchor_date` is the service-change start date, stored
-  in `AppSettings` (`module = 'trip_start_log'`), seeded from the smallest
-  `GtfsCalendar.start_date` among the services active on the first
-  materialized day and updated when the nightly sync sees a new service
-  change. It is a setting, not a derivation, so a mid-change GTFS republish
-  cannot silently restart the rotation.
+  in `AppSettings` (`module = 'trip_start_log'`). It is a setting, not a
+  derivation, so a mid-change GTFS republish cannot silently restart the
+  rotation — which also means a new service change is a deliberate edit of
+  the setting, not something the sync detects. The only automatic write is a
+  one-time seed when the value is blank: the earliest `GtfsCalendar.start_date`,
+  or, because MVTA's feed publishes service through `calendar_dates.txt`
+  alone, the earliest type-1 `GtfsCalendarDates.service_date`. The seed is
+  logged as a warning to confirm.
 - **Assignment.** `weekOffset = floor(days(service_date − anchor) / 7)`;
   weekday trip *i* is assigned `[Mon..Fri][(i + weekOffset) % 5]`, weekend
   trip *i* `[Sat, Sun][(i + weekOffset) % 2]`. `in_rotation` is true when the
@@ -444,6 +455,11 @@ Nothing before step 5 depends on the open decisions in §7.
 1. **Lift `activeServiceIdsToday()` into a lib, then migration (094+) +
    nightly materialization + `GET /trip-start-log`** — read-only, from data
    already flowing. Provable end to end without any new feed work.
+   *Built 2026-09-04:* `gtfsScheduleHorizon.ts` (helper), `migration-094`,
+   `tripStartLogMaterialize.ts`, `tripStartLog.ts`, rotation in
+   `tripStartRotation.ts`. The materializer also excludes routes actively
+   classified `SpecialEvent` on the date, the same rule as the silent-no-show
+   detector, so an overridden base-schedule trip is not listed as a phantom.
 2. **Module shell**: query bar, summary strip, view switcher, shared selection
    state and inspector. The container before any of the views, so all three
    inherit filtering and selection rather than each re-implementing it.
