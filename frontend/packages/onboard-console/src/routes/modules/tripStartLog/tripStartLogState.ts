@@ -110,7 +110,7 @@ export function applyFilters(trips: readonly TripStartLogTrip[], filters: TripSt
   });
 }
 
-export type SortKey = "scheduled" | "actual" | "delta" | "status" | "block" | "route" | "origin" | "direction";
+export type SortKey = "verified" | "scheduled" | "actual" | "delta" | "status" | "block" | "route" | "origin" | "direction";
 export type SortDir = "asc" | "desc";
 
 function compareNullable(a: string | number | null, b: string | number | null): number {
@@ -123,6 +123,9 @@ function compareNullable(a: string | number | null, b: string | number | null): 
 
 function sortValue(trip: TripStartLogTrip, key: SortKey): string | number | null {
   switch (key) {
+    // Initialed rows first by initials, then rotation rows still owing them,
+    // then everything not on the list.
+    case "verified": return trip.verification ? `0 ${trip.verification.verified_initials}` : trip.in_rotation ? "1" : null;
     case "scheduled": return trip.scheduled_start_seconds;
     case "actual": return trip.actual_start_at;
     case "delta": return trip.start_delay_seconds;

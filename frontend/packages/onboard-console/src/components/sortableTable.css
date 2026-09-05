@@ -1,0 +1,21 @@
+/* Shared sortable table: sticky header inside its own scroll region, an
+   optionally pinned first column, sort buttons in the header, selectable rows.
+   Builds on table.data from styles.css. */
+.sortable-table-scroll { overflow: auto; border-radius: 8px; }
+table.sortable-table { min-width: 0; }
+table.sortable-table thead th { position: sticky; top: 0; z-index: 2; white-space: nowrap; }
+table.sortable-table th.sticky-col, table.sortable-table td.sticky-col { position: sticky; left: 0; }
+table.sortable-table thead th.sticky-col { z-index: 3; }
+table.sortable-table tbody td.sticky-col { z-index: 1; background: var(--surface-bg); box-shadow: 1px 0 0 var(--border-soft); }
+table.sortable-table tbody tr:nth-child(even) td.sticky-col { background: var(--table-stripe); }
+table.sortable-table tbody tr.selected td.sticky-col { background: var(--highlight-bg); }
+
+.sortable-table-sort { align-items: center; background: transparent; border: 0; color: inherit; cursor: pointer; display: inline-flex; font: inherit; font-size: 11px; gap: 5px; letter-spacing: 0.3px; padding: 0; }
+.sortable-table-sort:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 3px; }
+.sortable-table-arrow { font-size: 9px; opacity: 0.55; }
+th.sorted .sortable-table-arrow { opacity: 1; }
+
+table.sortable-table tbody tr[tabindex] { cursor: pointer; }
+table.sortable-table tbody tr:focus-visible { outline: 2px solid var(--brand-green); outline-offset: -2px; }
+table.sortable-table tbody tr.selected td { background: var(--highlight-bg); box-shadow: inset 3px 0 0 var(--highlight-border); }
+table.sortable-table tbody tr.selected td.sticky-col { box-shadow: inset 3px 0 0 var(--highlight-border), 1px 0 0 var(--border-soft); }

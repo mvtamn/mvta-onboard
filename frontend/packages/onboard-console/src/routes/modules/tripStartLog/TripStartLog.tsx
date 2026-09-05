@@ -5,7 +5,7 @@ import { formatRefreshCountdown, useFixedRouteRefresh } from "../../../context/F
 import { TripStartLogInspector } from "./TripStartLogInspector.js";
 import { TripStartLogQueryBar } from "./TripStartLogQueryBar.js";
 import { TripStartLogSummary } from "./TripStartLogSummary.js";
-import { TripStartLogTable } from "./TripStartLogTable.js";
+import { TripStartLogGrid } from "./TripStartLogGrid.js";
 import {
   EMPTY_FILTERS,
   TRIP_START_VIEWS,
@@ -42,10 +42,10 @@ function dowOf(serviceDate: string): string | null {
   return ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"][date.getUTCDay()] ?? null;
 }
 
-const VIEW_NOTE: Record<TripStartView, string> = {
-  grid: "The sortable grid arrives with the next build step; this is the interim reading of the same rows.",
-  watch: "The Watch view (up next, needs disposition) is not built yet; the same rows are listed here meanwhile.",
-  timeline: "The Timeline view (one lane per block) is not built yet; the same rows are listed here meanwhile.",
+// Watch and Timeline are step 4 of the build; until then they read the Grid.
+const VIEW_NOTE: Partial<Record<TripStartView, string>> = {
+  watch: "The Watch view (up next, needs disposition) is not built yet; the Grid is shown here meanwhile.",
+  timeline: "The Timeline view (one lane per block) is not built yet; the Grid is shown here meanwhile.",
 };
 
 // Dispatch Log - the OCS desk's record of whether each revenue trip started
@@ -69,10 +69,11 @@ export function TripStartLog() {
   const [view, setView] = useState<TripStartView>("grid");
   const [filters, setFilters] = useState<TripStartFilters>(EMPTY_FILTERS);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
-  // Sort state lives in the shell so the Grid can own the header UI later
-  // without owning the order the other views read.
-  const [sortKey] = useState<SortKey>("scheduled");
-  const [sortDir] = useState<SortDir>("asc");
+  // Sort state lives in the shell: the Grid owns the header UI, the shell
+  // owns the order every view reads. Default is the workbook's - scheduled
+  // start ascending.
+  const [sortKey, setSortKey] = useState<SortKey>("scheduled");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   const refresh = useFixedRouteRefresh();
   const requestedDate = useRef<string | null>(null);
@@ -237,11 +238,20 @@ export function TripStartLog() {
           </div>
         ) : (
           <>
-            <div className="concept-banner">
-              <span className="concept-badge">Interim</span>
-              <span>{VIEW_NOTE[view]}</span>
-            </div>
-            <TripStartLogTable trips={filtered} selectedTripId={selectedTripId} onSelect={setSelectedTripId} />
+            {VIEW_NOTE[view] ? (
+              <div className="concept-banner">
+                <span className="concept-badge">Interim</span>
+                <span>{VIEW_NOTE[view]}</span>
+              </div>
+            ) : null}
+            <TripStartLogGrid
+              trips={filtered}
+              sortKey={sortKey}
+              sortDir={sortDir}
+              onSortChange={(key, dir) => { setSortKey(key); setSortDir(dir); }}
+              selectedTripId={selectedTripId}
+              onSelect={setSelectedTripId}
+            />
           </>
         )}
       </div>
