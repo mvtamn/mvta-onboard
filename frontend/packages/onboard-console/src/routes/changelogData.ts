@@ -18,13 +18,37 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
-    version: "1.5.102",
+    version: "1.5.104",
     date: "2026-09-05",
     sections: [
       {
         heading: "Changed",
         items: [
           "Detour Intake is redesigned: numbered section cards with status, a sticky readiness rail that links to whatever is still missing, one consistent field layout with helper text, a segmented operating-window control, service-impact choice cards, a route-segment table, token inputs for stops and audiences, channel chips, and a drop zone for supporting files.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.103",
+    date: "2026-09-05",
+    sections: [
+      {
+        heading: "Added",
+        items: [
+          "Dispatch Log rows now fill in each trip's actual start time from the realtime feed within a minute of departure, with on-time, left-late, late-over-five, missed, and canceled read from it. Trips without realtime coverage still read No actual.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.102",
+    date: "2026-09-05",
+    sections: [
+      {
+        heading: "Added",
+        items: [
+          "Dispatch Log Watch view: what is due in the next 90 minutes with rotation trips flagged, and what needs a disposition ordered by severity. Timeline view: one lane per block showing each trip's scheduled and actual start, with a now marker on the live day.",
         ],
       },
     ],

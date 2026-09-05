@@ -68,6 +68,16 @@ export function garageDepartureVarianceSeconds(
 // run: a pull-in is the vehicle returning to the depot, so its departure already
 // happened, and none of them are departure evidence.
 //
+// Their absence from this standard is a SCOPE decision, not a technical one,
+// and the distinction is worth stating because the data invites the opposite
+// conclusion: 877 of those rows are late returns, and finding that number with
+// no standard attached to it reads like an oversight. It is not. The agreement
+// measures the pull-out; a late return is observable but not a performance
+// measure today. If the agency later expands its standards to cover returns,
+// the evidence is already being collected and this is where that would hook in
+// - as its own standard, not by widening a departure rule to match a status
+// that describes the wrong end of the run.
+//
 // Reading only the latest status looks like it should lose the departure
 // outcome of every run that got far enough to come back - most of them, since
 // pull-in rows outnumber pullout rows. It does not, and the reason is worth

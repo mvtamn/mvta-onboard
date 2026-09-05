@@ -5,9 +5,17 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.102] - 2026-09-05
+## [1.5.104] - 2026-09-05
 
 - **Detour Intake redesigned.** The form is now five numbered section cards (Situation, Map, Affected service, Instructions and communications, Evidence), each with a status pill, beside a sticky readiness rail that shows progress, links to every missing required field, and holds Submit. Every field shares one anatomy - label, required mark, control, always-present helper line - so validation never shifts the layout, and error styling appears only after a submit attempt. The operating window is one fieldset with a segmented status control; service impact is a two-card choice; route segments are a small table; affected stops and required audiences are removable tokens (each audience is one exact string, which is what communication status matches on); required channels are toggle chips over a known set with an Other escape; supporting files use a drop zone with per-file tiles. No API or data changes.
+
+## [1.5.103] - 2026-09-05
+
+- **Dispatch Log, step 5: actual start times from GTFS-RT (backend only).** The feed check the spec required was done first: MVTA's TripUpdate feed keeps a passed stop in a trip's list for about fifteen minutes with a realised time, revises it occasionally, then drops it, and its stop sequences are not contiguous. A new `tripStartActualsPoll` timer reads the feed every minute and, for today's and yesterday's `TripStartLog` rows, records each trip's first-stop departure once it is behind the feed clock (source `trip_update`), keeping it current while it lingers; remembers the departure prediction beforehand (migration 095 adds `predicted_start_at` and `actuals_updated_at`) so the last prediction can stand in if the realised window was missed; falls back to vehicle-position evidence after the window, named `vehicle_position`; and marks `missed` from the missed-trip detector and `canceled` from the feed. Under a minute late reads on time; a minute or more is late, which the console already splits at five minutes. The poll fetches the feed directly so its cadence never rewrites the shared feed-health row. `GET /trip-start-log` now also returns `predicted_start_at`. Requires migration 095 on dev.
+
+## [1.5.102] - 2026-09-05
+
+- **Dispatch Log, step 4: the Watch and Timeline views.** Watch is the live monitoring the desk does: *Up next* lists every trip due in the next 90 minutes, rotation trips flagged with inline verify actions (disabled until verification recording lands) and the rest marked tracked, because the rotation alone is too sparse to drive a queue; *Needs disposition* lists missed trips, trips late beyond five minutes, and trips past due with no realtime evidence, ordered by severity then by how long they have waited, each with a disposition action instead of a blank cell. Timeline shows how lateness moves along a block: one lane per block, a hairline tick at the scheduled minute, the chip at the actual start with a slip bar spanning the gap, a hollow chip where there is no actual, and a *now* marker when the day on screen is today. Both views read the shell's filtered rows and shared selection, so narrowing to a route collapses the timeline to the blocks that serve it and a chip picked there is the row highlighted in the Grid. The Watch queue follows the live clock and says so on any other date. No API changes.
 
 ## [1.5.101] - 2026-09-05
 

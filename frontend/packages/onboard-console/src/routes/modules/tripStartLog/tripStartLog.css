@@ -44,3 +44,48 @@ table.data.tsl-table td.tsl-clock { font-variant-numeric: tabular-nums; white-sp
 .tsl-inspector-actions { align-items: center; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; padding-top: 10px; }
 .tsl-inspector-actions small { color: var(--text-muted); font-size: 11px; }
 .tsl-inspector-empty { color: var(--text-muted); font-size: 12px; margin: 0; }
+
+/* Watch */
+.tsl-watch { display: grid; gap: 14px; }
+.tsl-watch-section { min-width: 0; }
+.tsl-watch-head { align-items: baseline; display: flex; flex-wrap: wrap; gap: 6px 12px; margin-bottom: 8px; }
+.tsl-watch-head h3 { font-size: 14px; margin: 0; }
+.tsl-watch-head span { color: var(--text-muted); font-size: 11.5px; }
+.tsl-watch-list { display: grid; gap: 6px; list-style: none; margin: 0; padding: 0; }
+.tsl-watch-item { align-items: center; background: var(--surface-alt-bg); border: 1px solid var(--border); border-left-width: 4px; border-radius: 9px; display: flex; flex-wrap: wrap; gap: 8px 12px; padding: 6px 10px 6px 8px; }
+.tsl-watch-item.rotation { border-left-color: var(--pill-accent-fg); }
+.tsl-watch-item.selected { background: var(--highlight-bg); border-color: var(--highlight-border); }
+.tsl-watch-main { align-items: baseline; background: transparent; border: 0; color: var(--text); cursor: pointer; display: flex; flex: 1 1 260px; flex-wrap: wrap; font: inherit; font-size: 12.5px; gap: 6px 12px; min-width: 0; padding: 4px 2px; text-align: left; }
+.tsl-watch-main:focus-visible { outline: 2px solid var(--brand-green); outline-offset: 2px; border-radius: 6px; }
+.tsl-watch-main .tsl-clock { font-variant-numeric: tabular-nums; font-weight: 800; }
+.tsl-watch-route { font-weight: 600; }
+.tsl-watch-origin { color: var(--text-muted); font-size: 11.5px; }
+.tsl-watch-actions { align-items: center; display: inline-flex; gap: 6px; margin-left: auto; }
+
+/* Timeline: scrolls inside its own container, never the page body. */
+.tsl-timeline { border: 1px solid var(--border); border-radius: 10px; overflow-x: auto; position: relative; }
+.tsl-timeline-inner { padding: 8px 12px 12px 0; position: relative; }
+.tsl-timeline-axis { height: 18px; position: relative; }
+.tsl-hour { color: var(--text-muted); font-size: 10.5px; position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+.tsl-lanes { display: grid; gap: 4px; list-style: none; margin: 0; padding: 0; }
+.tsl-lane { align-items: center; display: grid; grid-template-columns: 96px auto; }
+.tsl-lane-label { color: var(--text-dim); font-size: 11px; font-weight: 800; padding-left: 10px; white-space: nowrap; }
+.tsl-track { background: var(--surface-alt-bg); border-radius: 6px; height: 30px; position: relative; }
+.tsl-gridline { border-left: 1px solid var(--border-soft); bottom: 0; position: absolute; top: 0; }
+.tsl-tick { border-left: 1px solid var(--text-dim); bottom: 3px; position: absolute; top: 3px; }
+.tsl-slip { height: 6px; opacity: 0.55; position: absolute; top: 12px; }
+.tsl-slip.success { background: var(--success-text); }
+.tsl-slip.warning { background: var(--highlight-border); }
+.tsl-slip.danger { background: var(--danger-text); }
+.tsl-slip.muted { background: var(--text-muted); }
+.tsl-chip { border: 1.5px solid transparent; border-radius: 999px; cursor: pointer; font: inherit; font-size: 10.5px; font-weight: 800; line-height: 1; padding: 4px 7px; position: absolute; top: 5px; transform: translateX(-50%); white-space: nowrap; }
+.tsl-chip.success { background: var(--pill-success-bg); color: var(--pill-success-fg); }
+.tsl-chip.warning { background: var(--pill-warning-bg); color: var(--pill-warning-fg); }
+.tsl-chip.danger { background: var(--pill-danger-bg); color: var(--pill-danger-fg); }
+.tsl-chip.muted { background: var(--pill-muted-bg); color: var(--pill-muted-fg); }
+.tsl-chip.hollow { background: var(--surface-bg); border-style: dashed; border-color: currentColor; }
+.tsl-chip.rotation { box-shadow: 0 0 0 2px var(--pill-accent-fg); }
+.tsl-chip.selected { border-color: var(--highlight-border); box-shadow: 0 0 0 3px var(--highlight-bg); z-index: 2; }
+.tsl-chip:focus-visible { outline: 2px solid var(--brand-green); outline-offset: 2px; }
+.tsl-now { border-left: 2px solid var(--danger-text); bottom: 12px; pointer-events: none; position: absolute; top: 8px; }
+.tsl-now span { background: var(--danger-text); border-radius: 3px; color: #fff; font-size: 9.5px; font-weight: 800; left: -2px; padding: 1px 5px; position: absolute; top: -2px; }

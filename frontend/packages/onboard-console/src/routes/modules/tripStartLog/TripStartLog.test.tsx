@@ -31,6 +31,7 @@ function trip(overrides: Partial<TripStartLogTrip> & { trip_id: string }): TripS
     actual_start_source: null,
     start_delay_seconds: null,
     start_status: "unknown",
+    predicted_start_at: null,
     verification: null,
     ...overrides,
   };
@@ -143,10 +144,47 @@ describe("Dispatch Log shell", () => {
     rows = within(table).getAllByRole("row").slice(1);
     expect(rows[0]).toHaveTextContent("Orange LINK");
 
-    await user.click(screen.getByRole("tab", { name: "Watch" }));
+    // The order belongs to the shell: leaving and returning to the Grid keeps it.
+    await user.click(screen.getByRole("tab", { name: "Timeline" }));
+    expect(screen.getByRole("figure", { name: "Trip starts by block" })).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "Grid" }));
     const again = screen.getByRole("table", { name: "Dispatch log trips" });
     expect(within(again).getAllByRole("row").slice(1)[0]).toHaveTextContent("Orange LINK");
     expect(within(again).getByRole("columnheader", { name: /Route/ })).toHaveAttribute("aria-sort", "descending");
+  });
+
+  it("shows the Watch and Timeline views over the same filtered rows and selection", async () => {
+    const lateOverFive = trip({
+      trip_id: "t4", block_id: "4", route_short_name: "477", scheduled_start_seconds: 6 * 3600 + 30 * 60,
+      scheduled_start_at: "2026-09-08T11:30:00Z", actual_start_at: "2026-09-08T11:42:00Z", actual_start_source: "vehicle_position",
+      start_status: "late", start_delay_seconds: 720, in_rotation: true, rotation_day: "tuesday",
+    });
+    vi.mocked(api.getTripStartLog).mockResolvedValueOnce(response([...DAY, lateOverFive]));
+    render(<TripStartLog />);
+    const user = userEvent.setup();
+
+    await screen.findByRole("table", { name: "Dispatch log trips" });
+    await user.click(screen.getByRole("tab", { name: "Watch" }));
+    // 2026-09-08 is not today, so the queue says so; dispositions still apply.
+    expect(screen.getByText("Not the live day")).toBeInTheDocument();
+    const dispositions = screen.getByRole("list", { name: "Needs disposition" });
+    const items = within(dispositions).getAllByRole("listitem");
+    expect(items).toHaveLength(1); // left late within five minutes is a verification, not a disposition
+    expect(items[0]).toHaveTextContent("Late over 5 · +12 min");
+    expect(items[0]).toHaveTextContent("Route 477");
+    expect(within(items[0]!).getByRole("button", { name: "Record disposition" })).toBeDisabled();
+    await user.click(within(items[0]!).getByRole("button", { name: /Route 477/ }));
+    expect(screen.getByRole("complementary", { name: "Trip details" })).toHaveTextContent("Route 477 · block 4 · 06:30");
+
+    await user.click(screen.getByRole("tab", { name: "Timeline" }));
+    const figure = screen.getByRole("figure", { name: "Trip starts by block" });
+    expect(within(figure).getAllByRole("listitem")).toHaveLength(4); // one lane per block
+    expect(within(figure).getByRole("button", { name: /Route 477/ })).toHaveAttribute("aria-pressed", "true");
+    expect(within(figure).queryByLabelText("Now")).not.toBeInTheDocument();
+
+    // Filtering collapses the timeline to the blocks that still qualify.
+    await user.click(screen.getByRole("button", { name: "Today's rotation" }));
+    expect(within(screen.getByRole("figure", { name: "Trip starts by block" })).getAllByRole("listitem")).toHaveLength(3);
   });
 
   it("selects a row from the keyboard and the inspector follows", async () => {
