@@ -324,12 +324,10 @@ Still to do once the code deploys, none of it DB work:
   (verified on creation), linked to `acs-mvta-onboard-dev`. Dispatch app:
   `ACS_ENDPOINT=https://acs-mvta-onboard-dev.unitedstates.communication.azure.com`,
   `ACS_EMAIL_FROM=DoNotReply@93587da7-3b33-4e41-9473-e64bd57cb979.azurecomm.net`.
-  STILL NEEDED: acs.ts authenticates with the dispatch app's managed identity
-  (DefaultAzureCredential), and the dispatch identity
-  (3ed1e6ac-eae2-4fc7-ae72-f28e2be6d235) holds NO role on the ACS resource.
-  ACS has no data-plane RBAC role; identity-based send needs Contributor on
-  acs-mvta-onboard-dev. Until granted, sends fail with an authorization error
-  and the communication reads "Delivery failed" with Retry send.
+  DONE 2026-09-04: the dispatch identity (3ed1e6ac-eae2-4fc7-ae72-f28e2be6d235)
+  holds Contributor on acs-mvta-onboard-dev (ACS has no data-plane RBAC role;
+  acs.ts authenticates with DefaultAzureCredential). Email delivery is fully
+  provisioned in dev; it activates when the PR's dispatch code deploys.
 - REST app: `TEAMS_DETOUR_WEBHOOK_URL` from Key Vault secret
   `teams-detour-webhook-url` (declared in functionapp.bicep beside the event
   webhook).
