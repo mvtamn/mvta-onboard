@@ -23,6 +23,7 @@ describe("Administration navigation", () => {
     expect(screen.getByRole("link", { name: "Service Configuration" })).toHaveAttribute("href", "/admin/service");
     expect(screen.getByRole("link", { name: "Service Standards" })).toHaveAttribute("href", "/admin/service-standards");
     expect(screen.getByRole("link", { name: "Integrations & Data Health" })).toHaveAttribute("href", "/admin/integrations");
+    expect(screen.getByRole("link", { name: "OTP Compliance" })).toHaveAttribute("href", "/admin/otp-compliance");
     expect(screen.getByRole("link", { name: "Governance & Audit" })).toHaveAttribute("href", "/admin/governance");
   });
 
@@ -33,5 +34,6 @@ describe("Administration navigation", () => {
     expect(screen.getByRole("link", { name: "Governance & Audit" })).toBeVisible();
     expect(screen.queryByRole("link", { name: "Event Administration" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Service Configuration" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "OTP Compliance" })).not.toBeInTheDocument();
   });
 });

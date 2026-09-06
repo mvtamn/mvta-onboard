@@ -34,6 +34,11 @@ source discriminator and no per-source gate. Adding a second feed without that
 shape would let one physical departure raise two occurrences against the same
 scored standard.
 
+Implemented 2026-09-06 (v1.5.113): `complianceCandidatesPoll` emits
+`FixedRouteDepartures:avail_pullout:...` and `OnDemandDepartures:spare_duties:...`,
+migration 097 rewrote the earlier bare references, and each feed is gated on
+its own KPI trust stream.
+
 Delay reason belongs to the concept, not to a feed. It is operator-entered in
 OnBoard because neither Avail nor Spare carries it, so it attaches to the
 garage-departure record whichever source measured the departure.

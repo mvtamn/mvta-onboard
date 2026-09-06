@@ -18,7 +18,7 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
-    version: "1.5.113",
+    version: "1.5.116",
     date: "2026-09-05",
     sections: [
       {
@@ -26,6 +26,43 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
         items: [
           "Decision Matrix: an empty Matrix now says which kind of empty it is - not connected, unavailable, nothing approved yet, or no match for your search - instead of reporting a database that has not been set up as a temporary outage.",
           "Decision Matrix: the severity rail on each Procedure row and card now shows the Procedure's severity - red for Stop service, orange for Restrict service, green for routine - instead of the same neutral colour for every one.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.115",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Added",
+        items: [
+          "On-demand wait monitoring can now tell which service area a request came from. The MVTA Connect zone boundaries are imported from the published service-area file and put into force deliberately, so a change to the boundaries is a reviewed step rather than something that happens overnight. Until now no boundaries were loaded at all, and every on-demand request was recorded without a zone.",
+          "Administrators can review imported zone boundary versions and see which one is in force, when it was put into force, and by whom.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.114",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "OTP Compliance's Administration and Threshold Tuner pages moved out of the Compliance tab and into Administration \u203a OTP Compliance, where only Operations Administrators can reach them. Reason codes, the early/late bias detection threshold and its preview slider, and the historical feed backfill are all on that one page. Reviewers keep every other OTP page unchanged.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.113",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Added",
+        items: [
+          "Garage-departure compliance candidates now cover on-demand duties as well as fixed-route runs. A duty that never departed, or departed later than the variance allowance, on a settled service day becomes a candidate for review, described with which Spare source measured it. Each source is checked against its feed health first.",
         ],
       },
     ],
