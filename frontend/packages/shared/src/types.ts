@@ -633,7 +633,19 @@ export interface OnDemandDeparture {
   updated_at: string;
   departure_delta_seconds: number | null;
   no_departure: boolean;
+  // Judged by the compliance candidate rule (functions-restapi/src/lib/
+  // onDemandDepartureOutcome.ts): late and no_departure are what reach the
+  // assessment queue; the rest say why a row did not.
+  outcome: OnDemandDepartureOutcome;
 }
+
+export type OnDemandDepartureOutcome =
+  | "late"
+  | "no_departure"
+  | "departed"
+  | "cancelled"
+  | "no_schedule"
+  | "not_settled";
 
 // Avail's OTP Monthly By Route/Stop/Day of Week feed - real Attachment G
 // departure-adherence numbers, backing the OTP Compliance module's Route
