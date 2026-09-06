@@ -18,27 +18,113 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
-    version: "1.5.114",
-    date: "2026-09-05",
+    version: "1.5.121",
+    date: "2026-09-06",
     sections: [
       {
         heading: "Changed",
         items: [
-          "Garage Departures (On-Demand) now reads like the Fixed Route view: duties grouped by service day, driver, or vehicle, a Flagged-only filter, a per-day strip, dates as weekday and date, Central times with where each time came from underneath, and Spare driver, vehicle and duty ids shown as short references with the full id on hover.",
-          "On-Demand counts and the average delta are taken over judged duties only; cancelled and not-yet-due duties are shown as such and left out of the percentages.",
+          "Garage Departures (On-Demand) now reads like the Fixed Route view: duties grouped by service day, driver, or vehicle, a Flagged-only filter, a per-day strip, dates as weekday and date, Central times with where each time came from underneath, and Spare driver ids shown as short references with the full id on hover.",
+          "On-Demand duties are judged the way the compliance candidate rule judges them, once their service day is over; today's duties are marked Not settled, and cancelled duties are left out of the counts.",
         ],
       },
     ],
   },
   {
-    version: "1.5.113",
-    date: "2026-09-05",
+    version: "1.5.120",
+    date: "2026-09-06",
     sections: [
       {
         heading: "Changed",
         items: [
           "Garage Departures (Fixed Route) now judges every run the way the compliance candidate rule does and shows that Outcome beside Avail's status; the cards count no-departure and late-over-allowance runs on settled days only, and today's runs are marked Not settled.",
           "Fixed Route rows are grouped by service day, operator, or vehicle, with a Reviewable-only filter and a per-day strip of reviewable departures. Dates read as weekday and date, times are Central, operators show as a name with their badge, and blanks say what is missing.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.119",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "The Audit Log's message search works again. An older message stored its channels in a format the search could not read, and one such row failed the whole search; the same reading is now tolerant everywhere messages are listed, including the rider-facing active alerts.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.118",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Garage Departures, On-Demand: the Vehicle column now shows the fleet number instead of Spare's internal vehicle id. The id is still available on hover.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.117",
+    date: "2026-09-05",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Decision Matrix: an empty Matrix now says which kind of empty it is - not connected, unavailable, nothing approved yet, or no match for your search - instead of reporting a database that has not been set up as a temporary outage.",
+          "Decision Matrix: the severity rail on each Procedure row and card now shows the Procedure's severity - red for Stop service, orange for Restrict service, green for routine - instead of the same neutral colour for every one.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.116",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "The KPI trust banners have moved from the top of each monitoring module to Administration > Integrations & Data Health, where every stream is shown together above Feed health. Each banner is now named for the module it covers. Stale-data guards inside the modules are unchanged.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.115",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Added",
+        items: [
+          "On-demand wait monitoring can now tell which service area a request came from. The MVTA Connect zone boundaries are imported from the published service-area file and put into force deliberately, so a change to the boundaries is a reviewed step rather than something that happens overnight. Until now no boundaries were loaded at all, and every on-demand request was recorded without a zone.",
+          "Administrators can review imported zone boundary versions and see which one is in force, when it was put into force, and by whom.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.114",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "OTP Compliance's Administration and Threshold Tuner pages moved out of the Compliance tab and into Administration \u203a OTP Compliance, where only Operations Administrators can reach them. Reason codes, the early/late bias detection threshold and its preview slider, and the historical feed backfill are all on that one page. Reviewers keep every other OTP page unchanged.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.113",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Added",
+        items: [
+          "Garage-departure compliance candidates now cover on-demand duties as well as fixed-route runs. A duty that never departed, or departed later than the variance allowance, on a settled service day becomes a candidate for review, described with which Spare source measured it. Each source is checked against its feed health first.",
         ],
       },
     ],
@@ -124,8 +210,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
       {
         heading: "Added",
         items: [
-          "Dispatch Log verifications can now be recorded: the SST OCS desk initials a trip's start from the Grid cell, the Watch queue, or the inspector, records a disposition with a note where a trip ran late, and can correct or clear an entry. Every change is kept in an audit trail.",
-        ],
+          "Dispatch Log verifications can now be recorded: the SST OCS desk initials a trip's start from the Grid cell, the Watch queue, or the inspector, records a disposition with a note where a trip ran late, and can correct or clear an entry. Every change is kept in an audit trail.",        ],
       },
     ],
   },

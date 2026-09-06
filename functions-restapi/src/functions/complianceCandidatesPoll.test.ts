@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  departureSourceAllowed,
+  fixedRouteDepartureSourceRefSql,
   garageDepartureCandidatePredicate,
   garageDepartureVarianceSeconds,
+  onDemandDepartureCandidatePredicate,
+  onDemandDepartureSourceRefSql,
   settledServiceDateExclusive,
 } from "./complianceCandidatesPoll";
 
@@ -139,4 +143,37 @@ test("leaves On Route No Pullout for investigation rather than penalty", () => {
   // Twelve of its thirteen rows have no departure, but the name says the
   // vehicle IS running - a missing pullout record, not a missing departure.
   assert.doesNotMatch(garageDepartureCandidatePredicate(), /On Route No Pullout/);
+});
+
+
+test("an on-demand duty qualifies only when settled, scheduled, not cancelled, and undeparted or late", () => {
+  const predicate = onDemandDepartureCandidatePredicate();
+  assert.match(predicate, /d\.service_date < @settled_before/, "judged only once its day is over");
+  assert.match(predicate, /departure_scheduled IS NOT NULL/, "no committed start means a gap, not a breach");
+  assert.match(predicate, /LOWER\(ISNULL\(d\.duty_status, N''\)\) <> N'cancelled'/, "a cancelled duty had no departure to make");
+  assert.match(predicate, /departure_actual IS NULL/, "a duty that never departed is a candidate");
+  assert.match(
+    predicate,
+    /DATEDIFF\(SECOND, d\.departure_scheduled, d\.departure_actual\) > @variance_seconds/,
+    "a departed duty is only a candidate beyond the same variance as fixed route",
+  );
+});
+
+test("source references name their source system so one departure cannot score twice", () => {
+  // ADR 0028. Migration 097 rewrote the pre-existing fixed-route references
+  // into this shape; the on-demand one is keyed by duty id alone because a
+  // duty is one departure however its service date is later revised.
+  assert.match(fixedRouteDepartureSourceRefSql(), /^CONCAT\(N'FixedRouteDepartures:avail_pullout:',d\.service_date,N'\|',d\.block,N'\|',d\.run\)$/);
+  assert.match(onDemandDepartureSourceRefSql(), /^CONCAT\(N'OnDemandDepartures:spare_duties:',d\.duty_id\)$/);
+});
+
+test("a departure feed raises candidates when current or current-but-empty, and never otherwise", () => {
+  // The poll runs at 01:20 agency-local, when a departures feed has had
+  // nothing to report for hours; that quiet is not distrust. Stale, absent, or
+  // unknown is, because a candidate is never withdrawn.
+  assert.equal(departureSourceAllowed("current"), true);
+  assert.equal(departureSourceAllowed("current_but_empty"), true);
+  assert.equal(departureSourceAllowed("stale"), false);
+  assert.equal(departureSourceAllowed("unavailable"), false);
+  assert.equal(departureSourceAllowed(undefined), false);
 });

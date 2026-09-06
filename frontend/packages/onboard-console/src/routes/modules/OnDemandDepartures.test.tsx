@@ -5,17 +5,18 @@ import { api } from "../../config.js";
 import { OnDemandDepartures } from "./OnDemandDepartures.js";
 
 const departure: OnDemandDeparture = {
-  service_date: "20260905",
+  service_date: "20260904",
   duty_id: "duty-1",
   duty_identifier: "D-101",
   driver_id: "drv-1",
   vehicle_id: "veh-7",
+  vehicle_identifier: "1188",
   duty_status: "inProgress",
-  departure_scheduled: "2026-09-05T12:00:00Z",
+  departure_scheduled: "2026-09-04T12:00:00Z",
   scheduled_source: "slots_startLocation",
-  departure_actual: "2026-09-05T12:14:00Z",
+  departure_actual: "2026-09-04T12:14:00Z",
   departure_source: "slots_startLocation",
-  updated_at: "2026-09-05T12:20:00Z",
+  updated_at: "2026-09-04T12:20:00Z",
   departure_delta_seconds: 840,
   no_departure: false,
   outcome: "late",
@@ -30,7 +31,7 @@ function diagnostics(overrides: Partial<{
   no_departure_count: number;
   avg_delta_seconds: number | null;
   variance_seconds: number;
-  today_service_date: string;
+  settled_before: string;
 }> = {}) {
   return {
     configured: true,
@@ -41,7 +42,7 @@ function diagnostics(overrides: Partial<{
     no_departure_count: 0,
     avg_delta_seconds: null,
     variance_seconds: 600,
-    today_service_date: "20260905",
+    settled_before: "20260905",
     ...overrides,
   };
 }
@@ -116,6 +117,8 @@ describe("On-Demand Departures", () => {
           duty_id: "9e0f4b2c-6a8d-4e1f-b3c5-7d9e1f3a5b7c",
           duty_identifier: null,
           driver_id: null,
+          vehicle_id: "veh-8",
+          vehicle_identifier: null,
           scheduled_source: "duties_startRequested",
           departure_actual: null,
           departure_source: null,
@@ -130,7 +133,7 @@ describe("On-Demand Departures", () => {
     render(<OnDemandDepartures />);
 
     // The day is a band, times are Central with their source underneath.
-    expect(await screen.findByText("Sat, Sep 5, 2026")).toBeInTheDocument();
+    expect(await screen.findByText("Fri, Sep 4, 2026")).toBeInTheDocument();
     expect(screen.getByText("D-101")).toBeInTheDocument();
     expect(screen.getAllByText("7:00 AM").length).toBe(2);
     expect(screen.getByText("7:14 AM")).toBeInTheDocument();
@@ -146,6 +149,11 @@ describe("On-Demand Departures", () => {
     expect(screen.getByText("duty 9e0f4b2c…")).toHaveAttribute("title", "9e0f4b2c-6a8d-4e1f-b3c5-7d9e1f3a5b7c");
     expect(screen.getByText("drv-1…")).toHaveAttribute("title", "drv-1");
     expect(screen.getByText("No driver on duty")).toBeInTheDocument();
+    // The fleet number shows when known, with Spare's id on hover; the id's
+    // short reference stands in when it is not.
+    expect(screen.getByText("1188")).toHaveAttribute("title", "Spare vehicle veh-7");
+    expect(screen.getByText("veh-8…")).toHaveAttribute("title", "veh-8");
+    expect(screen.queryByText("veh-7")).not.toBeInTheDocument();
     expect(screen.queryByText("20260905")).not.toBeInTheDocument();
     expect(summaryValue("Late over 10 min")).toBe("1");
     expect(summaryValue("No departure recorded")).toBe("1");

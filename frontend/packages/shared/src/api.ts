@@ -101,6 +101,7 @@ import type {
   OnBoardAccessReconciliationReport,
   OnDemandServiceStandardPolicy,
   OnDemandServiceStandardAudit,
+  DecisionMatrixDiagnostics,
 } from "./types.js";
 
 export interface TokenRequestOptions {
@@ -458,7 +459,7 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       const query = new URLSearchParams();
       if (filters?.q) query.set("q", filters.q);
       const suffix = query.toString() ? `?${query.toString()}` : "";
-      return request<{ procedures: DecisionMatrixReaderProcedure[] }>(
+      return request<{ procedures: DecisionMatrixReaderProcedure[]; diagnostics: DecisionMatrixDiagnostics }>(
         `/api/decision-matrix${suffix}`,
         {},
         true,
@@ -714,7 +715,7 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
           no_departure_count: number;
           avg_delta_seconds: number | null;
           variance_seconds: number;
-          today_service_date: string;
+          settled_before: string;
         };
       }>(`/api/on-demand-departures${suffix}`, {}, true);
     },

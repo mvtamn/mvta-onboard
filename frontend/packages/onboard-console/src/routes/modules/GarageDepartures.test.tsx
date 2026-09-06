@@ -28,7 +28,7 @@ describe("Garage Departures", () => {
     });
     vi.mocked(api.getOnDemandDepartures).mockResolvedValue({
       departures: [],
-      diagnostics: { configured: false, table_ready: false, record_count: 0, judged_count: 0, late_count: 0, no_departure_count: 0, avg_delta_seconds: null, variance_seconds: 600, today_service_date: "20260905" },
+      diagnostics: { configured: false, table_ready: false, record_count: 0, judged_count: 0, late_count: 0, no_departure_count: 0, avg_delta_seconds: null, variance_seconds: 600, settled_before: "20260905" },
     });
 
     render(<GarageDepartures />);
@@ -211,6 +211,7 @@ function dutyRow(overrides: Partial<OnDemandDeparture>): OnDemandDeparture {
     duty_identifier: "OD-2198",
     driver_id: "3f9a2c1e-7b40-4d1a-9e6c-0a1b2c3d4e5f",
     vehicle_id: "e5a1c3d7-2b4f-4a6c-9d8e-1f2a3b4c5d6e",
+    vehicle_identifier: "1188",
     duty_status: "completed",
     departure_scheduled: "2026-09-04T11:00:00Z",
     scheduled_source: "slots_startLocation",
@@ -229,7 +230,8 @@ const DUTY_ROWS: OnDemandDeparture[] = [
   dutyRow({ duty_id: "a2", duty_identifier: "OD-2199", driver_id: "c4e2a9f0-1d3b-4c5e-8f7a-9b0c1d2e3f4a", departure_actual: "2026-09-04T11:09:00Z", departure_delta_seconds: 9 * 60, outcome: "departed" }),
   dutyRow({ duty_id: "a3", duty_identifier: "OD-2203", driver_id: null, departure_actual: null, departure_source: null, departure_delta_seconds: null, no_departure: true, outcome: "no_departure" }),
   dutyRow({ service_date: "20260903", duty_id: "a4", duty_identifier: "OD-2180", departure_actual: "2026-09-03T11:22:00Z", departure_delta_seconds: 22 * 60, outcome: "late" }),
-  dutyRow({ service_date: "20260905", duty_id: "a5", duty_identifier: "OD-2211", duty_status: "scheduled", departure_actual: null, departure_source: null, departure_delta_seconds: null, outcome: "pending" }),
+  dutyRow({ service_date: "20260905", duty_id: "a5", duty_identifier: "OD-2211", duty_status: "scheduled", departure_actual: null, departure_source: null, departure_delta_seconds: null, outcome: "not_settled" }),
+  dutyRow({ duty_id: "a6", duty_identifier: "OD-2204", vehicle_id: "9c7b5a3d-1e2f-4c4b-8a6d-5e4f3a2b1c0d", vehicle_identifier: null, departure_actual: "2026-09-04T11:03:00Z", departure_delta_seconds: 3 * 60, outcome: "departed" }),
 ];
 
 describe("On-Demand display helpers", () => {
@@ -243,15 +245,21 @@ describe("On-Demand display helpers", () => {
     const groups = groupDuties(DUTY_ROWS, "date", "20260905");
     expect(groups.map((g) => g.key)).toEqual(["20260905", "20260904", "20260903"]);
     expect(groups[0]).toMatchObject({ title: "Sat, Sep 5, 2026", open: true });
-    expect(groups[1]).toMatchObject({ open: false, lateCount: 1, noDepartureCount: 1, departedCount: 2, avgDeltaSeconds: 13 * 60 });
-    expect(groups[1].rows.map((r) => r.outcome)).toEqual(["no_departure", "late", "departed"]);
+    expect(groups[1]).toMatchObject({ open: false, lateCount: 1, noDepartureCount: 1, departedCount: 3, avgDeltaSeconds: Math.round((17 + 9 + 3) * 60 / 3) });
+    expect(groups[1].rows.map((r) => r.outcome)).toEqual(["no_departure", "late", "departed", "departed"]);
   });
 
   it("groups duties by driver reference with the most flagged first", () => {
     const groups = groupDuties(DUTY_ROWS, "operator", "20260905");
     expect(groups[0]).toMatchObject({ title: "Driver 3f9a2c1e…", reference: "3f9a2c1e-7b40-4d1a-9e6c-0a1b2c3d4e5f", lateCount: 2 });
-    expect(groups[0].rows.map((r) => r.service_date)).toEqual(["20260905", "20260904", "20260903"]);
+    expect(groups[0].rows.map((r) => r.service_date)).toEqual(["20260905", "20260904", "20260904", "20260903"]);
     expect(groups.map((g) => g.title)).toContain("No driver on duty");
+  });
+
+  it("groups duties by vehicle on the fleet number when Spare gave one, else the id", () => {
+    const groups = groupDuties(DUTY_ROWS, "vehicle", "20260905");
+    expect(groups[0]).toMatchObject({ title: "Vehicle 1188", reference: "e5a1c3d7-2b4f-4a6c-9d8e-1f2a3b4c5d6e" });
+    expect(groups.map((g) => g.title)).toContain("Vehicle 9c7b5a3d…");
   });
 
   it("counts flagged duties per day in the window", () => {

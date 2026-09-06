@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ApiError, type OnDemandDeparture, type OnDemandDepartureOutcome } from "@mvta/shared";
 import { api } from "../../config.js";
-import { KpiTrustSummary } from "./KpiTrustSummary.js";
 import {
   agencyTimeLabel,
   badgeLabel,
@@ -29,21 +28,21 @@ interface DepartureDiagnostics extends DepartureDiagnosticsBase {
   late_count: number;
   no_departure_count: number;
   variance_seconds: number;
-  today_service_date: string;
+  settled_before: string;
 }
 
-// The outcome is judged by the API; this says how each reads. No compliance
-// candidate is raised from on-demand duties yet (ADR 0028), so late is amber
-// - a duty staff review - rather than the fixed-route view's red, which is a
-// run the contractor is asked about. No departure is red in both: it is the
-// same fact whichever feed measured it.
+// The outcome is judged by the API with the compliance candidate rule (the
+// on-demand half of GARAGE_DEPARTURE since ADR 0028's source discriminator
+// landed); this only says how each judgement reads. Late and no-departure are
+// the two the candidate poll raises, and share the danger tint because they
+// are the same kind of fact - a duty the contractor will be asked about.
 const OUTCOMES: Record<OnDemandDepartureOutcome, { label: string; pill: string; rank: number; flagged: boolean }> = {
   no_departure: { label: "No departure", pill: "pill-danger", rank: 0, flagged: true },
-  late: { label: "Late", pill: "pill-warning", rank: 1, flagged: true },
+  late: { label: "Late", pill: "pill-danger", rank: 1, flagged: true },
   no_schedule: { label: "No schedule", pill: "pill-muted", rank: 2, flagged: false },
-  departed: { label: "Departed", pill: "pill-muted", rank: 3, flagged: false },
-  pending: { label: "Not due yet", pill: "pill-accent", rank: 4, flagged: false },
-  cancelled: { label: "Cancelled", pill: "pill-muted", rank: 5, flagged: false },
+  departed: { label: "Within allowance", pill: "pill-muted", rank: 3, flagged: false },
+  cancelled: { label: "Cancelled", pill: "pill-muted", rank: 4, flagged: false },
+  not_settled: { label: "Not settled", pill: "pill-accent", rank: 5, flagged: false },
 };
 
 export function isFlagged(outcome: OnDemandDepartureOutcome): boolean {
@@ -112,7 +111,11 @@ export function groupDuties(rows: OnDemandDeparture[], groupBy: DepartureGroupBy
       return { key: date, title: serviceDayLabel(date), reference: null, open: date >= today, ...summarize(members), rows: members };
     });
   }
-  const keyOf = groupBy === "operator" ? (r: OnDemandDeparture) => r.driver_id ?? "" : (r: OnDemandDeparture) => r.vehicle_id ?? "";
+  // A vehicle groups by its fleet number when Spare gave one (migration 099),
+  // else by its Spare id; a driver only ever has an id.
+  const keyOf = groupBy === "operator"
+    ? (r: OnDemandDeparture) => r.driver_id ?? ""
+    : (r: OnDemandDeparture) => r.vehicle_identifier ?? r.vehicle_id ?? "";
   const noun = groupBy === "operator" ? "Driver" : "Vehicle";
   const keys = [...new Set(rows.map(keyOf))];
   return keys
@@ -120,10 +123,11 @@ export function groupDuties(rows: OnDemandDeparture[], groupBy: DepartureGroupBy
       const members = rows
         .filter((r) => keyOf(r) === key)
         .sort((a, b) => b.service_date.localeCompare(a.service_date) || byScheduled(a, b));
+      const fleet = groupBy === "vehicle" && members[0]?.vehicle_identifier === key;
       return {
         key,
-        title: key ? `${noun} ${shortRef(key)}` : `No ${noun.toLowerCase()} on duty`,
-        reference: key || null,
+        title: !key ? `No ${noun.toLowerCase()} on duty` : fleet ? `Vehicle ${key}` : `${noun} ${shortRef(key)}`,
+        reference: !key ? null : fleet ? (members[0]?.vehicle_id ?? null) : key,
         open: false,
         ...summarize(members),
         rows: members,
@@ -149,7 +153,7 @@ const COLUMNS: Record<string, { label: string; hint: string; className?: string 
   date: { label: "Service day", hint: "Central" },
   duty: { label: "Duty", hint: "Spare identifier" },
   operator: { label: "Operator", hint: "Spare driver ref" },
-  vehicle: { label: "Vehicle", hint: "Spare vehicle ref" },
+  vehicle: { label: "Vehicle", hint: "fleet no." },
   scheduled: { label: "Scheduled", hint: "and its source", className: "td-num" },
   actual: { label: "Actual", hint: "and its source", className: "td-num" },
   delta: { label: "Delta", hint: "", className: "td-num" },
@@ -211,7 +215,7 @@ export function OnDemandDepartures() {
   const state = monitoringState(diagnostics, loading);
   const connected = state === "live";
   const varianceMinutes = diagnostics ? Math.round(diagnostics.variance_seconds / 60) : null;
-  const today = diagnostics?.today_service_date ?? "";
+  const today = diagnostics?.settled_before ?? "";
 
   const visible = useMemo(
     () => (departures ?? []).filter((d) => show === "all" || isFlagged(d.outcome)),
@@ -232,8 +236,6 @@ export function OnDemandDepartures() {
 
   return (
     <>
-      <KpiTrustSummary stream="on_demand_departures" />
-
       <div className="risk-refresh-bar" aria-label="On-demand departures controls">
         <label htmlFor="odd-days">Window</label>
         <select id="odd-days" value={days} onChange={(e) => setDays(Number(e.target.value))}>
@@ -251,7 +253,7 @@ export function OnDemandDepartures() {
           {loading ? "Refreshing…" : "↻ Refresh"}
         </button>
         <span className="departures-bar-note">
-          Times are Central.{varianceMinutes !== null ? <> Allowance <strong>{varianceMinutes} min</strong>.</> : null} Not yet a scored standard (ADR 0028).
+          Times are Central.{varianceMinutes !== null ? <> Allowance <strong>{varianceMinutes} min</strong>.</> : null}
         </span>
       </div>
 
@@ -286,7 +288,7 @@ export function OnDemandDepartures() {
         <RiskStat
           value={connected ? diagnostics!.record_count : "—"}
           label="Duties in window"
-          detail={connected ? `${diagnostics!.judged_count} judged · ${undecided} not due, cancelled or unscheduled` : undefined}
+          detail={connected ? `${diagnostics!.judged_count} judged · ${undecided} not settled, cancelled or unscheduled` : undefined}
           tone="accent"
         />
       </div>
@@ -296,7 +298,7 @@ export function OnDemandDepartures() {
           title="Late and undeparted duties by service day"
           daily={daily}
           lateLegend={`Late over ${varianceMinutes} min`}
-          openLegend="Today, still moving"
+          openLegend="Today, not settled"
         />
       ) : null}
 
@@ -352,7 +354,7 @@ export function OnDemandDepartures() {
             </table>
           </div>
           <p className="departures-foot">
-            Spare identifies drivers and vehicles by id only. Until a Spare driver and vehicle directory is synced, each shows as the first eight characters of its id, in full on hover, so two duties for the same driver can at least be recognised as the same driver.
+            Outcome applies the rule the compliance candidate poll uses: a settled duty with a scheduled start that never departed, or departed more than the allowance late, is raised for review. Spare identifies drivers by id only; until a driver directory is synced, a driver shows as the first eight characters of its id, in full on hover, so two duties for the same driver can at least be recognised as the same driver.
           </p>
         </>
       )}
@@ -363,7 +365,7 @@ export function OnDemandDepartures() {
 function GroupRows({ group, groupBy, columns }: { group: DutyGroup; groupBy: DepartureGroupBy; columns: string[] }) {
   const flagged = group.lateCount + group.noDepartureCount;
   const meta = groupBy === "date" && group.open
-    ? `${group.rows.length} duties so far · some not yet due`
+    ? `${group.rows.length} duties so far · judged once the service day is over`
     : `${group.rows.length} duties · ${flagged} flagged${group.noDepartureCount ? ` (${group.noDepartureCount} no departure)` : ""} · ${avgLabel(group.avgDeltaSeconds)}`;
   return (
     <>
@@ -373,7 +375,7 @@ function GroupRows({ group, groupBy, columns }: { group: DutyGroup; groupBy: Dep
             <strong>{group.title}</strong>
             {group.reference ? <span className="mono-ref">{group.reference}</span> : null}
             <span>{meta}</span>
-            {groupBy === "date" && group.open ? <span className="pill-sm pill-accent">In progress</span> : null}
+            {groupBy === "date" && group.open ? <span className="pill-sm pill-accent">Not settled</span> : null}
             {groupBy !== "date" && flagged >= 2 ? <span className="pill-sm pill-warning">Repeat</span> : null}
           </div>
         </td>
@@ -402,9 +404,13 @@ function DutyCell({ column, departure: d }: { column: string; departure: OnDeman
         ? <td><span className="mono-ref" title={d.driver_id}>{shortRef(d.driver_id)}</span></td>
         : <td><span className="td-absent">No driver on duty</span></td>;
     case "vehicle":
-      return d.vehicle_id
-        ? <td><span className="mono-ref" title={d.vehicle_id}>{shortRef(d.vehicle_id)}</span></td>
-        : <td><span className="td-absent">No vehicle on duty</span></td>;
+      // The fleet number when Spare gave one, with the Spare id on hover;
+      // the id's short reference stands in when it did not.
+      return d.vehicle_identifier
+        ? <td><span className="td-fleet" title={d.vehicle_id ? `Spare vehicle ${d.vehicle_id}` : undefined}>{d.vehicle_identifier}</span></td>
+        : d.vehicle_id
+          ? <td><span className="mono-ref" title={d.vehicle_id}>{shortRef(d.vehicle_id)}</span></td>
+          : <td><span className="td-absent">No vehicle on duty</span></td>;
     case "scheduled": {
       const source = scheduledSourceLabel(d.scheduled_source);
       return (

@@ -217,9 +217,9 @@ export interface DecisionMatrixProcedure {
 }
 
 export interface DecisionMatrixDiagnostics {
+  /** False when migration 076's Procedure tables are absent: not connected, not an outage. */
   table_ready: boolean;
-  source: string;
-  include_history?: boolean;
+  procedure_count: number;
 }
 
 export interface DecisionMatrixCandidate extends Pick<DecisionMatrixProcedure, "procedure_id" | "revision" | "condition" | "condition_key" | "criteria" | "severity" | "severity_meaning" | "immediate_actions" | "tags" | "document_type" | "document_code" | "source_url" | "trust_state"> {
@@ -622,6 +622,9 @@ export interface OnDemandDeparture {
   duty_identifier: string | null;
   driver_id: string | null;
   vehicle_id: string | null;
+  // Spare's vehicle identifier: the fleet number. Null until migration 099
+  // or when Spare has no identifier for the vehicle.
+  vehicle_identifier: string | null;
   duty_status: string | null;
   departure_scheduled: string | null;
   scheduled_source: "slots_startLocation" | "duties_startRequested" | null;
@@ -630,7 +633,9 @@ export interface OnDemandDeparture {
   updated_at: string;
   departure_delta_seconds: number | null;
   no_departure: boolean;
-  // Judged by the API (functions-restapi/src/lib/onDemandDepartureOutcome.ts).
+  // Judged by the compliance candidate rule (functions-restapi/src/lib/
+  // onDemandDepartureOutcome.ts): late and no_departure are what reach the
+  // assessment queue; the rest say why a row did not.
   outcome: OnDemandDepartureOutcome;
 }
 
@@ -638,9 +643,9 @@ export type OnDemandDepartureOutcome =
   | "late"
   | "no_departure"
   | "departed"
-  | "pending"
   | "cancelled"
-  | "no_schedule";
+  | "no_schedule"
+  | "not_settled";
 
 // Avail's OTP Monthly By Route/Stop/Day of Week feed - real Attachment G
 // departure-adherence numbers, backing the OTP Compliance module's Route

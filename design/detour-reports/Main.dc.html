@@ -85,10 +85,9 @@
     .rt-iconbtn { width: 30px; height: 30px; border-radius: 50%; background: var(--surface-alt-bg); border: 0; color: var(--text-muted); display: grid; place-items: center; cursor: pointer; }
     .rt-iconbtn svg { width: 16px; height: 16px; }
 
-    .rt-main { flex: 1; min-height: 0; overflow: hidden; padding: 22px 22px 0; display: flex; flex-direction: column; }
+    .rt-main { flex: 1; min-height: 0; overflow: hidden; padding: 22px 22px 0; display: flex; flex-direction: column; position: relative; }
     .rt-panel-header { background: var(--brand-green); color: #fff; padding: 12px 18px; border-radius: 10px 10px 0 0; font-size: 14.5px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; text-transform: uppercase; flex-shrink: 0; }
-    .rt-readonly { align-items: center; background: rgba(255,255,255,.16); border-radius: 999px; display: inline-flex; font-size: 10px; font-weight: 800; gap: 6px; letter-spacing: .06em; padding: 4px 10px; text-transform: uppercase; }
-    .rt-readonly svg { width: 12px; height: 12px; }
+    .rt-chip { background: var(--chip-bg); color: var(--chip-fg); font-size: 11px; font-weight: 400; padding: 3px 9px; border-radius: 16px; display: inline-block; text-transform: none; }
     .rt-panel-body { border: 1px solid var(--border); border-top: none; border-radius: 0 0 10px 10px; padding: 14px 18px 0; background: var(--surface-bg); box-shadow: 0 2px 8px rgba(0,0,0,.04); flex: 1; min-height: 0; display: flex; flex-direction: column; }
     .rt-desc { font-size: 12px; color: var(--text-dim); margin: 0 0 12px; line-height: 1.5; }
 
@@ -181,6 +180,29 @@
     .rt-warn { background: var(--highlight-bg); border: 1px solid var(--highlight-border); border-radius: 9px; color: var(--text); font-size: 12px; line-height: 1.45; margin-top: 11px; padding: 9px 12px; }
     .rt-prov { border-top: 1px solid var(--border); color: var(--text-muted); font-size: 11px; margin-top: 11px; padding-top: 10px; }
 
+    /* Export preview - the console's .modal-overlay / .modal-card with the
+       page's own .dr-preview-* additions. */
+    .rt-overlay { position: absolute; inset: 0; background: rgba(10,22,16,.58); display: flex; justify-content: center; padding: 60px 20px 20px; z-index: 20; }
+    .rt-modal { background: var(--surface-bg); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 18px 50px rgba(0,0,0,.28); display: flex; flex-direction: column; max-height: 100%; padding: 22px 24px; width: 100%; max-width: 1000px; }
+    .rt-modal-head { align-items: flex-start; display: flex; gap: 16px; justify-content: space-between; }
+    .rt-modal-head h2 { color: var(--text); font-size: 19px; margin: 5px 0 0; }
+    .rt-eyebrow { color: var(--brand-green-text); font-size: 10px; font-weight: 900; letter-spacing: .08em; }
+    .rt-close { background: var(--surface-alt-bg); border: 0; border-radius: 50%; color: var(--text-muted); cursor: pointer; font-size: 20px; height: 30px; line-height: 20px; width: 30px; }
+    .rt-close:hover { color: var(--text); }
+    .rt-pmeta { align-items: baseline; color: var(--text-dim); display: flex; flex-wrap: wrap; font-size: 12px; gap: 4px 12px; margin: 12px 0 0; }
+    .rt-pfile { color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; font-weight: 700; }
+    .rt-pscope { color: var(--text-dim); font-size: 12px; margin: 6px 0 0; }
+    .rt-ptable { border: 1px solid var(--border); border-radius: 10px; flex: 1; margin-top: 14px; min-height: 0; overflow: hidden; }
+    .rt-phead { background: var(--brand-green); color: #fff; display: grid; grid-template-columns: 132px 66px minmax(0,1fr) 92px 84px 84px 68px 108px; }
+    .rt-phead > div { font-size: 11px; letter-spacing: .3px; font-weight: 700; padding: 9px 10px; white-space: nowrap; }
+    .rt-prow { display: grid; grid-template-columns: 132px 66px minmax(0,1fr) 92px 84px 84px 68px 108px; border-bottom: 1px solid var(--border-soft); }
+    .rt-prow:nth-child(even) { background: var(--table-stripe); }
+    .rt-prow > div { font-size: 11.5px; padding: 8px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rt-prow > div:first-child { font-variant-numeric: tabular-nums; }
+    .rt-pnote { color: var(--text-dim); font-size: 11.5px; margin: 8px 0 0; }
+    .rt-pactions { align-items: center; border-top: 1px solid var(--border-soft); display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; padding-top: 14px; }
+    .rt-pactions .rt-spacer { flex: 1; }
+
     .rt-empty { align-items: center; color: var(--text-muted); display: flex; flex-direction: column; gap: 6px; justify-content: center; padding: 56px 20px; text-align: center; }
     .rt-empty svg { color: var(--border-strong); height: 34px; width: 34px; }
     .rt-empty b { color: var(--text-dim); font-size: 13.5px; }
@@ -196,7 +218,7 @@
         <span class="rt-logo">MVTA</span>
         <div>
           <div class="rt-brand-text">OnBoard</div>
-          <div class="rt-version"><b>v1.5.107</b><span>What&#8217;s new</span></div>
+          <div class="rt-version"><b>v1.5.109</b><span>What&#8217;s new</span></div>
         </div>
       </div>
       <nav class="rt-navlist">
@@ -243,7 +265,7 @@
       <div class="rt-main">
         <div class="rt-panel-header">
           <span>Detour Reports</span>
-          <span class="rt-readonly"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>Read-only</span>
+          <span class="rt-chip">Read-only</span>
         </div>
         <div class="rt-panel-body">
           <p class="rt-desc">Every detour and closure on record, searchable by any field. Entry and edits happen on <a href="#">Detours &amp; Closures</a>.</p>
@@ -258,7 +280,7 @@
               <span>Filters</span>
               <sc-if value="{{hasFilters}}" hint-placeholder-val="{{ true }}"><span class="rt-badge">{{filterCount}}</span></sc-if>
             </button>
-            <button class="rt-btn primary" onClick="{{noop}}">
+            <button class="rt-btn primary" onClick="{{openPreview}}">
               <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"></path><path d="m8 12 4 4 4-4"></path><path d="M5 20h14"></path></svg>
               <span>{{exportLabel}}</span>
             </button>
@@ -324,12 +346,12 @@
             <div class="rt-grid">
               <div class="rt-head">
                 <div>Internal ref</div><div>Closure</div><div>Routes</div><div>Dates</div>
-                <div>Status</div><div>Readiness &#183; owner</div><div>Communications</div><div></div>
+                <div>Status</div><div>Readiness &amp; owner</div><div>Communications</div><div></div>
               </div>
               <sc-for list="{{rows}}" as="row" hint-placeholder-count="6">
                 <div class="rt-rowwrap {{row.wrapCls}}">
                   <div class="rt-row" onClick="{{row.toggle}}" onKeyDown="{{row.key}}" role="button" tabindex="0" aria-expanded="{{row.expanded}}">
-                    <div class="rt-ref">{{row.ref}}<small>{{row.number}}</small></div>
+                    <div class="rt-ref">{{row.ref}}<sc-if value="{{row.hasNumber}}" hint-placeholder-val="{{ true }}"><small>{{row.number}}</small></sc-if></div>
                     <div><div class="rt-closure">{{row.closure}}</div></div>
                     <div class="dim">{{row.routes}}</div>
                     <div class="dim rt-dates">{{row.dates}}</div>
@@ -399,6 +421,50 @@
 
         </div>
       </div>
+
+      <sc-if value="{{previewOpen}}" hint-placeholder-val="{{ false }}">
+        <div class="rt-overlay">
+          <div class="rt-modal">
+            <div class="rt-modal-head">
+              <div>
+                <span class="rt-eyebrow">EXPORT</span>
+                <h2>Detour export preview</h2>
+              </div>
+              <button class="rt-close" onClick="{{closePreview}}">&#215;</button>
+            </div>
+            <p class="rt-pmeta">
+              <span class="rt-pfile">{{previewFile}}</span>
+              <span>{{previewMeta}}</span>
+            </p>
+            <p class="rt-pscope">{{previewScope}}</p>
+            <div class="rt-ptable">
+              <div class="rt-phead">
+                <div>Internal ref</div><div>Number</div><div>Closure</div><div>Routes</div>
+                <div>Start date</div><div>End date</div><div>Status</div><div>Path</div>
+              </div>
+              <sc-for list="{{previewRows}}" as="pr" hint-placeholder-count="4">
+                <div class="rt-prow">
+                  <div>{{pr.ref}}</div><div>{{pr.number}}</div><div>{{pr.closure}}</div><div>{{pr.routes}}</div>
+                  <div>{{pr.start}}</div><div>{{pr.end}}</div><div>{{pr.status}}</div><div>{{pr.path}}</div>
+                </div>
+              </sc-for>
+            </div>
+            <p class="rt-pnote">{{previewNote}}</p>
+            <div class="rt-pactions">
+              <span class="rt-spacer"></span>
+              <button class="rt-btn" onClick="{{closePreview}}">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"></path><path d="M20 4 11 13"></path><path d="M18 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5"></path></svg>
+                <span>Open in browser</span>
+              </button>
+              <button class="rt-btn" onClick="{{closePreview}}">Close</button>
+              <button class="rt-btn primary" onClick="{{closePreview}}">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"></path><path d="m8 12 4 4 4-4"></path><path d="M5 20h14"></path></svg>
+                <span>Download CSV</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </sc-if>
     </div>
   </div>
 </div>
@@ -417,6 +483,7 @@ class Component extends DCLogic {
       startFrom: "",
       startTo: "",
       expanded: null,
+      previewOpen: false,
     };
   }
 
@@ -437,6 +504,12 @@ class Component extends DCLogic {
       { id: "d13", ref: "DTR-2025-0097", number: "#4429", closure: "Southcross Dr watermain break", routes: "445", dates: "May 14 – May 22, 2025", start: "2025-05-14", status: "expired", readiness: "Closed", owner: "—", comms: "Ready / published", commsCls: "ok", source: "manual", reason: "emergency", severity: "major", location: "Southcross Dr at Nicollet Ave", area: "Burnsville", stops: "4 stops · 2 closed", segments: "445 — Both directions", action: "Emergency detour via Burnsville Pkwy", riders: "Emergency alert issued same day", path: "Fixed-route manual", workflow: "Closed", reportedBy: "OCC dispatch · May 14, 2025 5:48 AM", approvedBy: "D. Hollis · May 14, 2025 6:05 AM", n: [1,1,1,1,1,1], deliveries: "6 receipts", attachments: "2 files", history: "18 events", mapLabel: "Drawn", conflict: null, provenance: "Created by occ.dispatch on May 14, 2025 5:48 AM · Last edited by d.hollis on May 22, 2025 2:10 PM" },
       { id: "d14", ref: "DTR-2025-0089", number: "#4420", closure: "Hwy 77 bridge inspection — northbound", routes: "442, 484", dates: "Apr 7 – Apr 11, 2025", start: "2025-04-07", status: "expired", readiness: "Closed", owner: "—", comms: "Ready / published", commsCls: "ok", source: "avail", reason: "construction", severity: "minor", location: "TH 77 northbound over the Minnesota River", area: "Bloomington · Eagan", stops: "0 stops · 0 closed", segments: "442, 484 — Northbound", action: "Allow 5 additional minutes; no stop changes", riders: "No stop changes", path: "Enter in Avail", workflow: "Closed", reportedBy: "Avail sync · Apr 4, 2025 1:12 PM", approvedBy: "L. Ortega · Apr 4, 2025 3:30 PM", n: [1,1,0,1,1,0], deliveries: "2 receipts", attachments: "0 files", history: "8 events", mapLabel: "Not drawn", conflict: null, provenance: "Created by Avail sync on Apr 4, 2025 1:12 PM · Last edited by l.ortega on Apr 11, 2025 4:00 PM" },
     ];
+  }
+
+  endIso(d) {
+    const tail = d.dates.split(" – ")[1];
+    const parsed = new Date(tail + " UTC");
+    return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
   }
 
   matches(d) {
@@ -487,7 +560,7 @@ class Component extends DCLogic {
     const shown = s.status === "all" ? pool : pool.filter((d) => d.status === s.status);
 
     const chips = [];
-    if (s.search) chips.push({ label: 'Search: "' + s.search + '"', clear: () => this.setState({ search: "" }) });
+    if (s.search) chips.push({ label: '“' + s.search + '”', clear: () => this.setState({ search: "" }) });
     ["source", "reason", "severity"].forEach((key) => {
       if (s[key] !== "all") chips.push({ label: this.labelOf(key, s[key]), clear: () => this.setState({ [key]: "all" }) });
     });
@@ -501,7 +574,7 @@ class Component extends DCLogic {
       const flag = d.conflict ? d.conflict.title : (d.readiness === "Needs OCC review" ? "Needs OCC review" : "");
       const toggle = () => this.setState({ expanded: open ? null : d.id });
       return {
-        id: d.id, ref: d.ref, number: d.number, closure: d.closure, routes: d.routes, dates: d.dates,
+        id: d.id, ref: d.ref, number: d.number, hasNumber: d.number !== "—", closure: d.closure, routes: d.routes, dates: d.dates,
         status: statusLabels[d.status], statusCls: this.statusPill(d.status),
         readiness: d.readiness, owner: d.owner === "—" ? "No owner" : d.owner,
         flag: flag, hasFlag: flag !== "", flagCls: d.conflict && d.conflict.title.indexOf("needs") !== -1 ? "bad" : "",
@@ -543,10 +616,20 @@ class Component extends DCLogic {
       tabs, rows,
       countLabel: shown.length + " of " + all.length + " detours",
       exportLabel: shown.length === 1 ? "Export 1 row" : "Export " + shown.length + " rows",
-      noop: () => undefined,
+      previewOpen: s.previewOpen,
+      openPreview: () => this.setState({ previewOpen: true }),
+      closePreview: () => this.setState({ previewOpen: false }),
+      previewFile: "mvta-detours-2026-09-05.csv",
+      previewMeta: shown.length + (shown.length === 1 ? " detour" : " detours") + " · 51 columns",
+      previewScope: (s.status === "all" ? "All statuses" : statusLabels[s.status]) + (chips.length ? " · " + chips.map((c) => c.label).join(" · ") : ""),
+      previewNote: "This is the whole file — every row and column it will contain. The first eight columns are shown; the rest scroll sideways.",
+      previewRows: shown.map((d) => ({
+        ref: d.ref, number: d.number, closure: d.closure, routes: d.routes,
+        start: d.start, end: this.endIso(d), status: statusLabels[d.status], path: d.path,
+      })),
       isEmpty: rows.length === 0,
       emptyTitle: pool.length === 0 ? "Nothing matches this search" : "No " + (activeTab ? activeTab.label.toLowerCase() : "") + " detours match",
-      emptyHint: pool.length === 0 ? "Try fewer words, or clear the filters above." : "Other status tabs still have matches — the counts above show where.",
+      emptyHint: pool.length === 0 ? "Try fewer words, or clear the filters above." : "Other statuses still have matches — the counts on the tabs show where.",
     };
   }
 }

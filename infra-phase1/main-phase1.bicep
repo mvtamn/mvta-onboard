@@ -64,6 +64,8 @@ param gtfsRtTripUpdateUrl string = 'https://srv.mvta.com/infoPoint/GTFS-realtime
 
 @description('GTFS static schedule archive used for stop reference and silent no-show detection.')
 param gtfsStaticUrl string = 'https://mvta-dispatch.myavail.cloud/opensilvermyavailserver/files/gtfs/google_transit.zip'
+param onDemandZoneFlexUrl string = ''
+param onDemandOperationalZoneIds string = ''
 
 @description('GTFS-Realtime VehiclePosition feed used for fixed-route vehicle monitoring.')
 param gtfsRtVehicleUrl string = 'https://srv.mvta.com/infoPoint/GTFS-realtime.ashx?&Type=VehiclePosition&debug=true'
@@ -130,6 +132,8 @@ module restApiFunction 'modules/functionapp.bicep' = {
     privilegedAuthContext: privilegedAuthContext
     gtfsRtTripUpdateUrl: gtfsRtTripUpdateUrl
     gtfsStaticUrl: gtfsStaticUrl
+    onDemandZoneFlexUrl: onDemandZoneFlexUrl
+    onDemandOperationalZoneIds: onDemandOperationalZoneIds
     gtfsRtVehicleUrl: gtfsRtVehicleUrl
     gtfsRtAlertUrl: gtfsRtAlertUrl
     availAvlReportsUrl: availAvlReportsUrl

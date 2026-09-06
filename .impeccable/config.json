@@ -1,0 +1,26 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "frontend/packages/onboard-console/src/routes/modules/decisionMatrix.css"
+        ],
+        "createdAt": "2026-09-05T17:15:00.964Z",
+        "reason": "The left rail on .dmx .row encodes Procedure severity (Stop service / Restrict service / routine), not decoration; wired up in 5af8f8d."
+      },
+      {
+        "rule": "border-accent-on-rounded",
+        "value": "*",
+        "files": [
+          "frontend/packages/onboard-console/src/routes/modules/decisionMatrix.css"
+        ],
+        "createdAt": "2026-09-05T17:15:06.342Z",
+        "reason": "The top rail on .dmx .card is the same severity encoding as the row's left rail; wired up in 5af8f8d."
+      }
+    ]
+  }
+}

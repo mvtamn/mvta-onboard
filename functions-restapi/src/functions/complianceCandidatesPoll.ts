@@ -1,5 +1,6 @@
 import { app, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
+import type { KpiTrustState } from "../lib/kpiTrust";
 import { loadKpiTrust } from "../lib/kpiTrustStore";
 import { agencyServiceDate } from "../lib/missedTripTime";
 import { DEPARTURE_OUTCOME_STATUSES } from "../lib/fixedRouteDepartureOutcome";
@@ -180,6 +181,51 @@ export function garageDepartureCandidatePredicate(): string {
             )`;
 }
 
+// The on-demand half of the same rule (ADR 0028: one concept, one source per
+// service type). Spare has no status ladder; a duty is judged on its
+// timestamps alone once its day is settled: a scheduled start that either
+// never produced a departure from either source, or was departed more than the
+// variance late. A cancelled duty had no departure to make. A duty with no
+// scheduled start is a gap in the source, not a breach, for the same reason as
+// the fixed-route rule above.
+export function onDemandDepartureCandidatePredicate(): string {
+  return `d.service_date < @settled_before
+            AND d.departure_scheduled IS NOT NULL
+            AND LOWER(ISNULL(d.duty_status, N'')) <> N'cancelled'
+            AND (
+              d.departure_actual IS NULL
+              OR DATEDIFF(SECOND, d.departure_scheduled, d.departure_actual) > @variance_seconds
+            )`;
+}
+
+// Source references name the source system, per ADR 0028, so one physical
+// departure can never be raised twice against GARAGE_DEPARTURE: the fixed
+// route reference says avail_pullout and the on-demand one says spare_duties,
+// and migration 097 rewrote the pre-existing fixed-route references into this
+// shape. Both are SQL expressions over a row aliased d.
+export const FIXED_ROUTE_DEPARTURE_SOURCE = "avail_pullout";
+export const ON_DEMAND_DEPARTURE_SOURCE = "spare_duties";
+
+export function fixedRouteDepartureSourceRefSql(): string {
+  return `CONCAT(N'FixedRouteDepartures:${FIXED_ROUTE_DEPARTURE_SOURCE}:',d.service_date,N'|',d.block,N'|',d.run)`;
+}
+
+export function onDemandDepartureSourceRefSql(): string {
+  // Keyed by duty id alone: OnDemandDepartures holds one row per duty, and a
+  // duty is one departure however its service date is later revised.
+  return `CONCAT(N'OnDemandDepartures:${ON_DEMAND_DEPARTURE_SOURCE}:',d.duty_id)`;
+}
+
+// The per-source gate the ADR asks for. A departure feed that is not
+// trustworthy must not raise candidates, because a candidate is never
+// withdrawn. Unlike the missed-trip gates, current-but-empty passes: this poll
+// runs at 01:20 agency-local, when a departures feed has legitimately had
+// nothing to report for hours, and that quiet is not a reason to distrust
+// yesterday's settled rows.
+export function departureSourceAllowed(state: KpiTrustState | undefined): boolean {
+  return state === "current" || state === "current_but_empty";
+}
+
 // A run is only judged once its service day is over.
 //
 // PulloutStatus moves as a run progresses, so reading it mid-day can catch a
@@ -208,15 +254,27 @@ app.timer("complianceCandidatesPoll", {
       const trust = await loadKpiTrust(pool);
       const allowFixedMissedTrips = trust.fixed_route_missed_trips.state === "current";
       const allowSpareMissedTrips = trust.spare_missed_trips.state === "current";
-      const ready = await pool.request().query<{ ready: number }>(`
+      const allowFixedRouteDepartures = departureSourceAllowed(trust.fixed_route_departures?.state);
+      const allowOnDemandDepartures = departureSourceAllowed(trust.on_demand_departures?.state);
+      const ready = await pool.request().query<{ ready: number; on_demand_ready: number }>(`
         SELECT CASE WHEN OBJECT_ID('dbo.ComplianceOccurrences','U') IS NOT NULL
           AND OBJECT_ID('dbo.MonitoredMissedTrips','U') IS NOT NULL
-          AND OBJECT_ID('dbo.FixedRouteDepartures','U') IS NOT NULL THEN 1 ELSE 0 END ready
+          AND OBJECT_ID('dbo.FixedRouteDepartures','U') IS NOT NULL THEN 1 ELSE 0 END ready,
+          CASE WHEN OBJECT_ID('dbo.OnDemandDepartures','U') IS NOT NULL THEN 1 ELSE 0 END on_demand_ready
       `);
       if (!ready.recordset[0]?.ready) { context.warn("Compliance candidate tables are not ready; migration 030 may be pending."); return; }
+      // The on-demand table arrives with migration 096; until it exists the
+      // Spare half is simply absent, which ADR 0028 says is the right reading
+      // of a departure with no source for its service type.
+      const onDemandReady = ready.recordset[0]?.on_demand_ready === 1;
+      if (!onDemandReady) context.warn("OnDemandDepartures is missing (migration 096); on-demand garage departures raise no candidates.");
+      if (!allowFixedRouteDepartures) context.warn(`Fixed-route departures feed is ${trust.fixed_route_departures?.state ?? "unknown"}; no fixed-route garage-departure candidates this run.`);
+      if (onDemandReady && !allowOnDemandDepartures) context.warn(`On-demand departures feed is ${trust.on_demand_departures?.state ?? "unknown"}; no on-demand garage-departure candidates this run.`);
       const candidateRequest = pool.request();
       candidateRequest.input("allow_fixed_missed_trips", allowFixedMissedTrips ? 1 : 0);
       candidateRequest.input("allow_spare_missed_trips", allowSpareMissedTrips ? 1 : 0);
+      candidateRequest.input("allow_fixed_route_departures", allowFixedRouteDepartures ? 1 : 0);
+      candidateRequest.input("allow_on_demand_departures", onDemandReady && allowOnDemandDepartures ? 1 : 0);
       candidateRequest.input("variance_seconds", sql.Int, garageDepartureVarianceSeconds());
       candidateRequest.input("settled_before", sql.Char(8), settledServiceDateExclusive());
       const result = await candidateRequest.query<{ inserted: number }>(`
@@ -248,10 +306,30 @@ app.timer("complianceCandidatesPoll", {
             CONCAT(N'Garage departure ',d.pullout_status,N' — block ',d.block,N', run ',d.run,N' — ',
               CASE WHEN d.pullout_actual IS NULL THEN N'no departure recorded'
                 ELSE CONCAT(N'departed ',DATEDIFF(MINUTE,d.pullout_scheduled,d.pullout_actual),N' min late') END) description,
-            CONCAT(N'FixedRouteDepartures:',d.service_date,N'|',d.block,N'|',d.run) source_ref
+            ${fixedRouteDepartureSourceRefSql()} source_ref
           FROM FixedRouteDepartures d CROSS JOIN ContractorPerformanceStandards standard
-          WHERE standard.code='GARAGE_DEPARTURE'
+          WHERE standard.code='GARAGE_DEPARTURE' AND @allow_fixed_route_departures=1
             AND ${garageDepartureCandidatePredicate()}
+            AND CONVERT(date,d.service_date,112) BETWEEN @agreement_start AND @agreement_end
+        ) source ON target.source_ref=source.source_ref
+        WHEN NOT MATCHED THEN INSERT(standard_id,contractor_id,service_date,quantity,description,source,source_ref,review_status,attribution,created_by)
+          VALUES(source.standard_id,source.contractor_id,source.service_date,source.quantity,source.description,'auto_candidate',source.source_ref,'candidate','undetermined','complianceCandidatesPoll')
+        OUTPUT inserted.id INTO @inserted;
+
+        IF @allow_on_demand_departures=1
+        MERGE ComplianceOccurrences WITH(HOLDLOCK) target
+        USING (
+          SELECT standard.id standard_id,@contractor contractor_id,d.service_date,1 quantity,
+            CONCAT(N'Garage departure — on-demand duty ',ISNULL(d.duty_identifier,d.duty_id),N' — ',
+              CASE WHEN d.departure_actual IS NULL THEN N'no departure recorded'
+                ELSE CONCAT(N'departed ',DATEDIFF(MINUTE,d.departure_scheduled,d.departure_actual),N' min late') END,
+              CASE d.departure_source WHEN N'slots_startLocation' THEN N' (start slot)'
+                WHEN N'duties_firstSeenInServiceArea' THEN N' (first seen in service area)' ELSE N'' END,
+              CASE d.scheduled_source WHEN N'duties_startRequested' THEN N'; schedule from the duty''s requested start' ELSE N'' END) description,
+            ${onDemandDepartureSourceRefSql()} source_ref
+          FROM OnDemandDepartures d CROSS JOIN ContractorPerformanceStandards standard
+          WHERE standard.code='GARAGE_DEPARTURE'
+            AND ${onDemandDepartureCandidatePredicate()}
             AND CONVERT(date,d.service_date,112) BETWEEN @agreement_start AND @agreement_end
         ) source ON target.source_ref=source.source_ref
         WHEN NOT MATCHED THEN INSERT(standard_id,contractor_id,service_date,quantity,description,source,source_ref,review_status,attribution,created_by)

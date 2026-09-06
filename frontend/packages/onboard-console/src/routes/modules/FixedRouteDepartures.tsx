@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ApiError, type FixedRouteDeparture, type FixedRouteDepartureOutcome } from "@mvta/shared";
 import { api } from "../../config.js";
-import { KpiTrustSummary } from "./KpiTrustSummary.js";
 import {
   agencyTimeLabel,
   badgeLabel,
@@ -233,8 +232,6 @@ export function FixedRouteDepartures() {
 
   return (
     <>
-      <KpiTrustSummary stream="fixed_route_departures" />
-
       <div className="risk-refresh-bar" aria-label="Fixed route departures controls">
         <label htmlFor="frd-days">Window</label>
         <select id="frd-days" value={days} onChange={(e) => setDays(Number(e.target.value))}>

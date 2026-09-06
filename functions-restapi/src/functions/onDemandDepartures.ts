@@ -4,16 +4,17 @@
 // diagnostics shape so the console reads both through one state model. Same
 // readers; visibility only - all writes come from onDemandDeparturesPoll.ts.
 // Accepts an optional ?days= query param to scope the trend window (default 14).
-// Every row carries an outcome (lib/onDemandDepartureOutcome.ts) and the
-// diagnostics count by it, with the allowance they used and the agency's
-// current service date so the console can lay the window out by day.
+// Every row carries an outcome judged by the same rule the compliance
+// candidate poll raises occurrences from (lib/onDemandDepartureOutcome.ts),
+// and the diagnostics count by it, with the allowance and the settled-day
+// boundary they used.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
 import { agencyServiceDate } from "../lib/missedTripTime";
 import { onDemandDeparturesEnabled } from "../lib/onDemandDepartures";
 import { isJudged, onDemandDepartureOutcome, type OnDemandDepartureOutcome } from "../lib/onDemandDepartureOutcome";
-import { garageDepartureVarianceSeconds } from "./complianceCandidatesPoll";
+import { garageDepartureVarianceSeconds, settledServiceDateExclusive } from "./complianceCandidatesPoll";
 
 const DEFAULT_TREND_DAYS = 14;
 
@@ -23,6 +24,7 @@ interface OnDemandDepartureRow {
   duty_identifier: string | null;
   driver_id: string | null;
   vehicle_id: string | null;
+  vehicle_identifier: string | null;
   duty_status: string | null;
   departure_scheduled: Date | null;
   scheduled_source: string | null;
@@ -49,17 +51,22 @@ app.http("onDemandDeparturesList", {
     const daysParam = Number(request.query.get("days"));
     const days = Number.isFinite(daysParam) && daysParam > 0 ? Math.min(daysParam, 365) : DEFAULT_TREND_DAYS;
     const varianceSeconds = garageDepartureVarianceSeconds();
+    const settledBefore = settledServiceDateExclusive();
 
     try {
       const pool = await getPool();
-      const tableCheck = await pool.request().query<{ table_exists: number }>(`
-        SELECT CASE WHEN OBJECT_ID('dbo.OnDemandDepartures', 'U') IS NULL THEN 0 ELSE 1 END AS table_exists
+      const tableCheck = await pool.request().query<{ table_exists: number; with_vehicle_identifier: number }>(`
+        SELECT CASE WHEN OBJECT_ID('dbo.OnDemandDepartures', 'U') IS NULL THEN 0 ELSE 1 END AS table_exists,
+               CASE WHEN COL_LENGTH('dbo.OnDemandDepartures', 'vehicle_identifier') IS NULL THEN 0 ELSE 1 END AS with_vehicle_identifier
       `);
+      // Before migration 099 the fleet number is simply absent.
+      const vehicleIdentifierSql = tableCheck.recordset[0]?.with_vehicle_identifier === 1
+        ? "vehicle_identifier" : "CAST(NULL AS NVARCHAR(64)) AS vehicle_identifier";
       const configured = onDemandDeparturesEnabled() && Boolean(process.env.SPARE_API_KEY?.trim());
       const empty = {
         configured, table_ready: false, record_count: 0, judged_count: 0, late_count: 0, no_departure_count: 0,
         avg_delta_seconds: null as number | null, variance_seconds: varianceSeconds,
-        today_service_date: agencyServiceDate(new Date()).serviceDate,
+        settled_before: settledBefore,
       };
       if (tableCheck.recordset[0]?.table_exists !== 1) {
         return { status: 200, jsonBody: { departures: [], diagnostics: empty } };
@@ -70,7 +77,7 @@ app.http("onDemandDeparturesList", {
       req.input("cutoff_date", sql.Char(8), agencyServiceDate(new Date(), -days).serviceDate);
       req.input("variance_seconds", sql.Int, varianceSeconds);
       const result = await req.query<OnDemandDepartureRow>(`
-        SELECT service_date, duty_id, duty_identifier, driver_id, vehicle_id, duty_status,
+        SELECT service_date, duty_id, duty_identifier, driver_id, vehicle_id, ${vehicleIdentifierSql}, duty_status,
                departure_scheduled, scheduled_source, departure_actual, departure_source, updated_at,
                CASE WHEN departure_scheduled IS NOT NULL AND departure_actual IS NOT NULL
                  THEN DATEDIFF(SECOND, departure_scheduled, departure_actual) ELSE NULL END AS departure_delta_seconds,
@@ -83,7 +90,7 @@ app.http("onDemandDeparturesList", {
       `);
       const departures: Array<OnDemandDepartureRow & { outcome: OnDemandDepartureOutcome }> = result.recordset.map((row) => ({
         ...row,
-        outcome: onDemandDepartureOutcome(row, varianceSeconds),
+        outcome: onDemandDepartureOutcome(row, varianceSeconds, settledBefore),
       }));
       const judged = departures.filter((d) => isJudged(d.outcome));
       const withDelta = judged.filter((d) => d.departure_delta_seconds !== null);
