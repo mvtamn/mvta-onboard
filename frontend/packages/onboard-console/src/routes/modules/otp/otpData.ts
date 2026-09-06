@@ -83,8 +83,6 @@ export const PAGE_META: Record<string, { title: string; sub: string }> = {
   weather: { title: "Weather Exclusions", sub: "Log and track weather/emergency service day exclusions" },
   monthly: { title: "Monthly Assessments", sub: "Locked OTP snapshots used for contractor assessment" },
   audit: { title: "Audit Stream", sub: "Full history of exclusion rule and finalization actions" },
-  admin: { title: "Administration", sub: "Reason codes, roles, and detection thresholds" },
-  tuner: { title: "Threshold Tuner", sub: "Preview candidate detection sensitivity changes" },
 };
 
 // Official OTP % for a route, excluding stops approved for exclusion.
@@ -110,16 +108,16 @@ export function computeOfficialPct(r: RouteRow, candidates: Candidate[], statuse
 // obvious flag point (same convention as SpeedAlerts.tsx's fixed 50 mph
 // threshold), not a tuned statistical model. This is now the fallback
 // default only - the real, admin-editable value lives in OtpSettings
-// (otpSettings.ts) and is fetched at runtime; the Threshold Tuner page lets
-// staff preview a different value before applying it.
+// (otpSettings.ts) and is fetched at runtime; Administration > OTP
+// Compliance lets an OCC.Admin preview a different value before applying it.
 export const DEFAULT_EARLY_LATE_BIAS_THRESHOLD = 0.15;
 
 // Builds the Review Queue's candidate list from a live OTP Monthly feed
 // pull - any stop/route/day-of-week row whose early or late share exceeds
 // `threshold`. The feed has no per-record average-seconds-variance figure,
 // so it's a placeholder here. `threshold` is a parameter (not the module
-// constant above) so the Threshold Tuner can preview a different value
-// against the same already-fetched stop rows with no new fetch.
+// constant above) so the admin threshold tuner can preview a different
+// value against the same already-fetched stop rows with no new fetch.
 export function deriveCandidatesFromLive(
   stops: OtpMonthlyStopRow[],
   threshold: number = DEFAULT_EARLY_LATE_BIAS_THRESHOLD,
