@@ -51,5 +51,25 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: ["./src/setupTests.ts"],
+    // vitest's 5s default is a poor fit for this suite. The heaviest tests
+    // here drive twenty-odd user-event interactions against a large component
+    // tree, and every test file pays for its own jsdom (the run reports 30-40s
+    // of `environment` against a ~10s wall clock, because 39 files build one
+    // each in parallel). That work does not merely get slower under load, it
+    // gets slower per test while the budget stays fixed: measured on an idle
+    // 8-core machine, EventResourceMapEditor's "starts a new rule" test takes
+    // ~700ms, and with the workers oversubscribed 2x it takes 2.4-3.9s. CI
+    // runners have fewer and slower cores than that, which is why three
+    // different tests have intermittently died on "Test timed out in 5000ms"
+    // while passing when their file is run alone.
+    //
+    // 15s restores the margin the default assumed. It does not hide a hung
+    // test: a query that never settles still fails on testing-library's own
+    // 1s waitFor timeout long before this one, so what this changes is only
+    // whether a slow-but-progressing test is killed mid-flight.
+    //
+    // Do not "fix" this by switching pools instead - `pool: "threads"` builds
+    // jsdom in worker threads and takes this suite from ~33s to ~1060s.
+    testTimeout: 15000,
   },
 });
