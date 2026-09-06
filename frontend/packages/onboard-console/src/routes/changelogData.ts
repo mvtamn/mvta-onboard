@@ -18,13 +18,25 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
-    version: "1.5.113",
-    date: "2026-09-05",
+    version: "1.5.114",
+    date: "2026-09-06",
     sections: [
       {
         heading: "Changed",
         items: [
           "OTP Compliance's Administration and Threshold Tuner pages moved out of the Compliance tab and into Administration \u203a OTP Compliance, where only Operations Administrators can reach them. Reason codes, the early/late bias detection threshold and its preview slider, and the historical feed backfill are all on that one page. Reviewers keep every other OTP page unchanged.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.113",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Added",
+        items: [
+          "Garage-departure compliance candidates now cover on-demand duties as well as fixed-route runs. A duty that never departed, or departed later than the variance allowance, on a settled service day becomes a candidate for review, described with which Spare source measured it. Each source is checked against its feed health first.",
         ],
       },
     ],
