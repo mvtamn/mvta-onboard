@@ -18,7 +18,7 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
-    version: "1.5.128",
+    version: "1.5.129",
     date: "2026-09-06",
     sections: [
       {
@@ -33,6 +33,18 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
         heading: "Changed",
         items: [
           "On-demand monitoring can now be switched on through infrastructure configuration instead of a Portal setting that the next deployment removed. It remains off; nothing about On-Demand Service Quality changes yet.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.128",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Older messages now store their channels, tags and route lists in the same format as new ones, so every screen that lists messages reads them the same way. Nothing changes in what you see.",
         ],
       },
     ],
