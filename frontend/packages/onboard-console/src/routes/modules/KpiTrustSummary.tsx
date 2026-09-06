@@ -37,18 +37,25 @@ function evidence(trust: KpiTrustStream): string | null {
   return ingestionLabel(oldestRequiredIngestion([trust]));
 }
 
-// Streams are named for the contract, not for a reader. A module showing two
-// of them printed the same sentence twice with nothing to tell them apart.
+// Streams are named for the contract, not for a reader. The banners are shown
+// together on the Admin Integrations & Data Health page, away from the module
+// each stream backs, so every label has to say which module it is about on its
+// own: two streams labelled "On-demand" would be indistinguishable there.
 const STREAM_LABELS: Record<KpiTrustStreamName, string> = {
   fixed_route_delay: "Fixed route delays",
   fixed_route_departures: "Fixed route departures",
   on_demand_departures: "On-demand departures",
   otp: "OTP",
   event_avl: "Event AVL",
-  on_demand: "On-demand",
-  fixed_route_missed_trips: "Fixed route",
-  spare_missed_trips: "On-demand",
+  on_demand: "On-demand wait times",
+  fixed_route_missed_trips: "Fixed route missed trips",
+  spare_missed_trips: "On-demand missed trips",
 };
+
+// Every stream the console knows about, in the order the labels list them.
+// The Admin page passes this so a stream added to the contract map shows up
+// there without a second list to keep in step.
+export const KPI_TRUST_STREAMS = Object.keys(STREAM_LABELS) as KpiTrustStreamName[];
 
 export function KpiTrustSummary({ stream }: { stream: KpiTrustStreamName | KpiTrustStreamName[] }) {
   const names = Array.isArray(stream) ? stream : [stream];
