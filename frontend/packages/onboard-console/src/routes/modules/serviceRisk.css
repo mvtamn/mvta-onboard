@@ -179,6 +179,36 @@
   padding: 8px 10px;
 }
 
+/* A trust banner carries a severity, and until now it did not show one: the
+   modifier classes KpiTrustSummary emits had no rule, so an "unavailable"
+   feed and an informational note were the same accent blue. The tones match
+   kpiTrustStateTone, which the Feed Health table already reads. */
+.concept-banner.kpi-trust.current_but_empty,
+.concept-banner.kpi-trust.stale {
+  background: var(--pill-warning-bg);
+  border-color: color-mix(in srgb, var(--pill-warning-fg) 25%, transparent);
+  color: var(--pill-warning-fg);
+}
+
+.concept-banner.kpi-trust.unavailable {
+  background: var(--pill-danger-bg);
+  border-color: color-mix(in srgb, var(--pill-danger-fg) 25%, transparent);
+  color: var(--pill-danger-fg);
+}
+
+.concept-banner.kpi-trust.current {
+  background: var(--pill-success-bg);
+  border-color: color-mix(in srgb, var(--pill-success-fg) 25%, transparent);
+  color: var(--pill-success-fg);
+}
+
+/* The badge is a filled chip whose own color is the surface, so it cannot
+   read its ground from currentColor - it has to be told each tone. */
+.concept-banner.kpi-trust.current_but_empty .concept-badge,
+.concept-banner.kpi-trust.stale .concept-badge { background: var(--pill-warning-fg); }
+.concept-banner.kpi-trust.unavailable .concept-badge { background: var(--pill-danger-fg); }
+.concept-banner.kpi-trust.current .concept-badge { background: var(--pill-success-fg); }
+
 .risk-refresh-bar {
   align-items: center;
   background: var(--surface-alt-bg);

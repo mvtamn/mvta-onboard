@@ -173,3 +173,23 @@ export class CachedValue<T> {
     this.loadedAt = Number.NEGATIVE_INFINITY;
   }
 }
+
+// Reports a recurring condition at most once per interval. A configuration
+// gap that every delivery meets is worth saying once a minute; saying it per
+// delivery makes the diagnostic itself the flood - the missing-zone throw the
+// receiver used to take was logged 11,581 times in a day on dev.
+export class PeriodicLog {
+  private lastAt = Number.NEGATIVE_INFINITY;
+  private readonly now: () => number;
+
+  constructor(private readonly intervalMs: number, now?: () => number) {
+    this.now = now ?? Date.now;
+  }
+
+  shouldReport(): boolean {
+    const at = this.now();
+    if (at - this.lastAt < this.intervalMs) return false;
+    this.lastAt = at;
+    return true;
+  }
+}

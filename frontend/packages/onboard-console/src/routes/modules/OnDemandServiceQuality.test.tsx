@@ -75,6 +75,48 @@ describe("On-Demand Risk investigation workspace", () => {
     expect(screen.queryByText("No on-demand wait risks")).not.toBeInTheDocument();
   });
 
+  it("withholds the summary counts rather than reporting zero risks from an unconnected monitor", async () => {
+    vi.mocked(api.getOnDemandRisks).mockResolvedValueOnce({
+      risks: [],
+      diagnostics: {
+        state: "not_connected",
+        last_authoritative_reconciliation_at: null,
+        latest_source_update_at: null,
+        active_request_count: null,
+        reconciliation_interval_minutes: 60,
+        degraded_after_minutes: 90,
+      },
+    });
+
+    render(<MemoryRouter><OnDemandServiceQuality /></MemoryRouter>);
+
+    const summary = await screen.findByLabelText("On-demand service quality summary");
+    expect(within(summary).getAllByText("—")).toHaveLength(4);
+    expect(within(summary).queryByText("0")).not.toBeInTheDocument();
+    expect(within(summary).queryByText("0 min")).not.toBeInTheDocument();
+  });
+
+  it("reports zero over standard when a successful reconciliation found no active service", async () => {
+    vi.mocked(api.getOnDemandRisks).mockResolvedValueOnce({
+      risks: [],
+      diagnostics: {
+        state: "no_active_service",
+        last_authoritative_reconciliation_at: "2026-08-24T00:30:00Z",
+        latest_source_update_at: "2026-08-24T00:29:00Z",
+        active_request_count: 0,
+        reconciliation_interval_minutes: 60,
+        degraded_after_minutes: 90,
+      },
+    });
+
+    render(<MemoryRouter><OnDemandServiceQuality /></MemoryRouter>);
+
+    const summary = await screen.findByLabelText("On-demand service quality summary");
+    expect(within(summary).queryByText("—")).not.toBeInTheDocument();
+    expect(within(summary).getAllByText("0")).toHaveLength(3);
+    expect(within(summary).getByText("0 min")).toBeInTheDocument();
+  });
+
   it("distinguishes an expired sign-in from an empty monitoring result", async () => {
     vi.mocked(api.getOnDemandRisks).mockRejectedValueOnce(new ApiError(401, "Not authenticated"));
 
