@@ -15,6 +15,7 @@ import { isGuid, validatePrepareSuggestedAlert } from "../lib/validation";
 import { publishMessageCreated } from "../lib/events";
 import { loadKpiTrust } from "../lib/kpiTrustStore";
 import type { Category, PrepareSuggestedAlertBody, Severity } from "../lib/types";
+import { parseStringList } from "../lib/stringList";
 
 interface SuggestedAlertRow {
   alert_id: string;
@@ -284,8 +285,8 @@ app.http("suggestedAlertsList", {
       const result = await sqlRequest.query<SuggestedAlertRow>(query);
       const alerts = result.recordset.map((row) => ({
         ...row,
-        routes_affected: row.routes_affected ? (JSON.parse(row.routes_affected) as string[]) : [],
-        zones_affected: row.zones_affected ? (JSON.parse(row.zones_affected) as string[]) : [],
+        routes_affected: parseStringList(row.routes_affected),
+        zones_affected: parseStringList(row.zones_affected),
         detail: row.detail ? (JSON.parse(row.detail) as Record<string, unknown>) : null,
       }));
       return { status: 200, jsonBody: { alerts } };

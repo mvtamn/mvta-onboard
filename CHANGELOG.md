@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.119] - 2026-09-06
+
+- **The Audit Log's message search no longer fails on a legacy row.** `GET /manage/messages` answered 500 on dev the first day its route was reachable: one Messages row stores `channels` as `web,sms` rather than the JSON array every current writer produces, and `JSON.parse` on it threw inside the row map, taking the whole result with it. The same parse sat in the public active-messages feed and the suggested-alerts list, so a legacy row could have blanked rider-facing alerts too. All list-valued Messages columns (channels, tags, routes_affected, stops_affected, zones_affected) are now read through one lenient parser (`lib/stringList.ts`): a JSON array is parsed as before, anything else is split on commas, and nothing throws. No schema or API shape changes.
+
 ## [1.5.118] - 2026-09-06
 
 - **Fleet numbers in the On-Demand departures view.** The Vehicle column showed Spare's opaque vehicle id while the fixed-route view shows Avail's fleet label. `onDemandDeparturesPoll` now resolves each vehicle's identifier - Spare's name for the fleet number, the spec's Vehicle Report Label - through `GET /v1/vehicles/{id}`, once per vehicle per day with a failed read remembered for an hour, and records it in `OnDemandDepartures.vehicle_identifier` (migration 099). `GET /on-demand-departures` returns it, and the view shows the number with Spare's id on hover, falling back to the id until the number is known. Not personal data: it names the bus, not the driver. Requires migration 099 on dev; until then departures are recorded without the label and the poll says so.
