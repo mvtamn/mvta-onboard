@@ -14,7 +14,8 @@ export type KpiFeedName =
   | "spare_requests"
   | "spare_slots"
   | "spare_duties"
-  | "spare_on_demand_reconciliation";
+  | "spare_on_demand_reconciliation"
+  | "on_demand_zones";
 
 export interface KpiFeedHealth {
   feed_name: KpiFeedName;
@@ -69,9 +70,20 @@ const CONTRACTS = {
   // currency, and it runs independently of missed-trip activation. The Spare
   // ingestion feeds stay supporting evidence so SPARE_MISSED_TRIPS_ENABLED
   // cannot decide whether On-Demand risk is trustworthy.
+  // Zone geometry is supporting rather than required: without it the monitor
+  // records every request as unzoned instead of reporting nothing, so its
+  // absence reduces the result rather than invalidating it. It carries no
+  // staleness deadline because a service area that has not changed in a year is
+  // correct, not stale - only a never-imported feed is a fault, and that shows
+  // as unavailable. Supporting dependencies do not set contract_pending, so
+  // declaring it here does not put the On-Demand stream back into review.
   on_demand: {
     required: [{ feedName: "spare_on_demand_reconciliation", staleAfterMinutes: ON_DEMAND_DEGRADED_AFTER_MINUTES }],
-    supporting: [{ feedName: "spare_requests", staleAfterMinutes: 45 }, { feedName: "spare_slots", staleAfterMinutes: 45 }],
+    supporting: [
+      { feedName: "spare_requests", staleAfterMinutes: 45 },
+      { feedName: "spare_slots", staleAfterMinutes: 45 },
+      { feedName: "on_demand_zones" },
+    ],
   },
   // Avail Missed Trips is retrospective evidence for both missed-trip streams:
   // it explains reduced context without invalidating a current result, so it is

@@ -47,6 +47,7 @@ import { Changelog } from "./routes/Changelog.js";
 import { AdminLayout } from "./components/AdminLayout.js";
 import { OnDemandServiceStandardsAdmin } from "./routes/OnDemandServiceStandardsAdmin.js";
 import { AdminAccess, AdminEventAdministration, AdminGovernance, AdminIntegrations, AdminServiceConfiguration, AdminSubscribers } from "./routes/AdminModules.js";
+import { OtpComplianceAdmin } from "./routes/OtpComplianceAdmin.js";
 import { CHANGELOG_ENTRIES } from "./routes/changelogData.js";
 import { FixedRouteRefreshProvider } from "./context/FixedRouteRefreshContext.js";
 import { OperatorIdentity } from "./components/OperatorIdentity.js";
@@ -321,6 +322,7 @@ function AuthenticatedApp({ account, roles, signOut }: {
                 {isAdmin && <NavLink to="/admin/service" title="Service Configuration"><IconWrench /><span className="nav-label">Service Configuration</span></NavLink>}
                 {isAdmin && <NavLink to="/admin/integrations" title="Integrations & Data Health"><IconWrench /><span className="nav-label">Integrations &amp; Data Health</span></NavLink>}
                 {isAdmin && <NavLink to="/admin/decision-matrix" title="Decision Matrix"><IconWrench /><span className="nav-label">Decision Matrix</span></NavLink>}
+                {isAdmin && <NavLink to="/admin/otp-compliance" title="OTP Compliance"><IconWrench /><span className="nav-label">OTP Compliance</span></NavLink>}
                 {canManageAccess && <NavLink to="/admin/governance" title="Governance & Audit"><IconClock /><span className="nav-label">Governance &amp; Audit</span></NavLink>}
               </div> : null}
             </>}
@@ -440,6 +442,7 @@ function AuthenticatedApp({ account, roles, signOut }: {
                 <Route path="integrations" element={<RequireRole allowed={[...ADMIN]}><AdminIntegrations /></RequireRole>} />
                 <Route path="service-standards" element={<RequireRole allowed={[...ADMIN]}><OnDemandServiceStandardsAdmin /></RequireRole>} />
                 <Route path="decision-matrix" element={<RequireRole allowed={[...ADMIN]}><DecisionMatrixAdmin /></RequireRole>} />
+                <Route path="otp-compliance" element={<RequireRole allowed={[...ADMIN]}><OtpComplianceAdmin /></RequireRole>} />
                 <Route path="governance" element={<RequireRole allowed={[...ACCESS_MANAGEMENT]}><AdminGovernance /></RequireRole>} />
                 <Route path="subscribers" element={<RequireRole allowed={[...ACCESS_MANAGEMENT]}><AdminSubscribers /></RequireRole>} />
               </Route>

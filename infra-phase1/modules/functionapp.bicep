@@ -23,6 +23,8 @@ param accessAdminFallback bool = false
 param privilegedAuthContext string = 'c1'
 param gtfsRtTripUpdateUrl string = ''
 param gtfsStaticUrl string = ''
+param onDemandZoneFlexUrl string = ''
+param onDemandOperationalZoneIds string = ''
 param gtfsRtVehicleUrl string = ''
 param gtfsRtAlertUrl string = ''
 param availAvlReportsUrl string = ''
@@ -157,6 +159,16 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         // nothing else announces that the schedule-absence half has stopped.
         // That is precisely what happened after it was enabled by hand.
         { name: 'GTFS_SILENT_NO_SHOW_ENABLED', value: string(gtfsSilentNoShowEnabled) }
+        // The GTFS-Flex archive the on-demand wait monitor resolves pickups
+        // against (onDemandZonesSync). Declared here for the same reason as the
+        // flag above: unset, the importer skips every run and the monitor has
+        // no geometry to resolve against.
+        { name: 'ON_DEMAND_ZONE_FLEX_URL', value: onDemandZoneFlexUrl }
+        // Which GTFS-Flex location ids are Operational zones rather than the
+        // reference boundaries the same feed carries. Empty means the two-zone
+        // pilot set compiled into the importer; set it to adopt a third zone or
+        // an upstream location-id rename without a code change.
+        { name: 'ON_DEMAND_OPERATIONAL_ZONE_IDS', value: onDemandOperationalZoneIds }
         // Key Vault reference, not a raw value - fixes the same class of
         // "wiped on redeploy" bug for the connection string specifically.
         { name: 'SQL_CONNECTION_STRING', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/sql-connection-string/)' }
