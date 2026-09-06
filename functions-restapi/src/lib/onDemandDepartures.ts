@@ -11,7 +11,7 @@
 //
 // Pure: the poll fetches and stores, this decides. Nothing here touches PII -
 // driver and vehicle are ids.
-import { spareString, spareTimestamp, type SpareDutyRecord, type SpareSlotRecord } from "./spareApi";
+import { spareString, spareTimestamp, type SpareDutyRecord, type SpareSlotRecord, type SpareVehicleRecord } from "./spareApi";
 
 export type OnDemandScheduledSource = "slots_startLocation" | "duties_startRequested";
 export type OnDemandDepartureSource = "slots_startLocation" | "duties_firstSeenInServiceArea";
@@ -94,4 +94,45 @@ export function resolveOnDemandDeparture(
     slotId: slot ? spareString(slot.id, 64) : null,
     sourceUpdatedAt: newest(spareTimestamp(duty.updatedAt), slot ? spareTimestamp(slot.updatedAt) : null),
   };
+}
+
+// Resolves a Spare vehicle id to its fleet number, remembering the answer.
+//
+// A vehicle serves many duties and its identifier does not change, so one
+// read per vehicle per day is plenty; without the memory the poll would ask
+// Spare the same question for every duty of every run. A failed read is
+// remembered too, for a shorter while, so an outage at Spare costs one call
+// per vehicle per hour rather than one per duty per run - and the departure
+// is still stored, with the id and no label, because the label is a
+// convenience and the departure is the record.
+export class VehicleLabelResolver {
+  private readonly labels = new Map<string, { label: string | null; at: number }>();
+  private readonly now: () => number;
+
+  constructor(
+    private readonly fetch: (vehicleId: string) => Promise<SpareVehicleRecord>,
+    private readonly ttlMs = 24 * 60 * 60_000,
+    private readonly failureTtlMs = 60 * 60_000,
+    now?: () => number,
+  ) {
+    this.now = now ?? Date.now;
+  }
+
+  async label(vehicleId: string): Promise<string | null> {
+    const at = this.now();
+    const known = this.labels.get(vehicleId);
+    if (known && at - known.at < (known.label === null ? this.failureTtlMs : this.ttlMs)) return known.label;
+    let label: string | null = null;
+    try {
+      label = spareString((await this.fetch(vehicleId)).identifier, 64);
+    } catch {
+      label = null;
+    }
+    this.labels.set(vehicleId, { label, at });
+    return label;
+  }
+
+  get size(): number {
+    return this.labels.size;
+  }
 }

@@ -12,8 +12,6 @@ vi.mock("../../config.js", () => ({
     getMissedTrips: vi.fn(),
     getMissedTripReviews: vi.fn().mockResolvedValue({ reviews: [] }),
     validateMissedTrip: vi.fn(),
-    // The module renders KpiTrustSummary, which reads this.
-    getKpiTrust: vi.fn().mockResolvedValue({ checked_at: "2026-08-24T00:00:00Z", streams: {} }),
   },
 }));
 

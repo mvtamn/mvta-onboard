@@ -9,7 +9,6 @@ import {
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext.js";
 import { api } from "../../config.js";
-import { KpiTrustSummary } from "./KpiTrustSummary.js";
 import {
   confidenceClass,
   riskActionsDisabled,
@@ -302,8 +301,6 @@ export function OnDemandServiceQuality() {
           />
         </div>
       </div>
-
-      <KpiTrustSummary stream="on_demand" />
 
       <div className="concept-banner">
         <span className="concept-badge">{trainingMode ? "Training" : monitoringLabel(dataMode, diagnostics)}</span>

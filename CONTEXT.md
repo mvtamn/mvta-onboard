@@ -1384,9 +1384,11 @@ _Avoid_: one-hour rule, source connection test
 
 **KPI trust view**:
 The operator-facing presentation of KPI feed dependencies and the resulting
-KPI trust state. The Admin view compares all dependencies; each KPI view
-states its own trust state at the point of operational use.
-_Avoid_: raw feed log, hidden technical diagnostic
+KPI trust state. It lives on the Admin Integrations & Data Health page, where
+every KPI source stream's trust state is stated together, above the feed
+connection checks; the KPI modules themselves carry no trust banner. A stale
+stream still gates the actions that rely on it inside its module.
+_Avoid_: raw feed log, hidden technical diagnostic, per-module banner
 
 **KPI trust authority**:
 The separation in which Administrators maintain KPI dependencies and

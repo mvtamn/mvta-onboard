@@ -12,9 +12,6 @@
   color: var(--text);
   font-family: inherit;
 }
-.dmx .dochead { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 3px solid var(--brand-green); }
-.dmx .dochead .agency { color: var(--brand-green); font-weight: bold; font-size: 14px; letter-spacing: 0.02em; }
-.dmx .dochead .doctitle { color: var(--text-dim); font-size: 13px; }
 .dmx-hero { padding: 24px 0 16px; }
 .dmx-hero h1 { color: var(--brand-green); font-size: 24px; margin: 0 0 8px; }
 .dmx-hero p { color: var(--text-dim); margin: 0; max-width: 640px; font-size: 14px; line-height: 1.55; }
@@ -66,7 +63,6 @@
 .dmx .card .ctags span { font-size: 10px; color: var(--text-dim); border: 1px solid var(--text-dim); padding: 1px 7px; border-radius: 9px; }
 .dmx .card-foot { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--border-soft); display: flex; justify-content: space-between; align-items: center; }
 .dmx-empty { text-align: center; padding: 60px 20px; color: var(--text-dim); border: 1px dashed var(--border-strong); border-radius: 4px; margin-top: 20px; }
-.dmx .docfoot { margin-top: 36px; border-top: 3px solid var(--brand-green); padding: 12px 0; display: flex; justify-content: space-between; font-size: 11px; color: var(--text-dim); }
 
 /* QRG (Quick Reference Guide) view - mirrors the printed field guide's own
    section/subsection/table layout. Each subsection renders as its own
@@ -85,7 +81,6 @@
 .dmx .qrg-ref-cell { text-align: center; white-space: nowrap; }
 
 .dmx-eyebrow { display: block; color: var(--brand-green); font-size: 11px; font-weight: 700; letter-spacing: .08em; margin-bottom: 6px; }
-.dmx-context { border-left: 4px solid var(--brand-green); padding: 8px 12px; background: var(--surface-alt-bg); }
 .dmx-matches { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-top: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-alt-bg); color: var(--text-dim); font-size: 12px; }
 .dmx-matches strong { color: var(--text); }
 .dmx-matches span { padding-left: 12px; border-left: 1px solid var(--border); }
