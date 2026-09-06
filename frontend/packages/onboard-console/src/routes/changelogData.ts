@@ -18,6 +18,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.117",
+    date: "2026-09-05",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Decision Matrix: an empty Matrix now says which kind of empty it is - not connected, unavailable, nothing approved yet, or no match for your search - instead of reporting a database that has not been set up as a temporary outage.",
+          "Decision Matrix: the severity rail on each Procedure row and card now shows the Procedure's severity - red for Stop service, orange for Restrict service, green for routine - instead of the same neutral colour for every one.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.116",
     date: "2026-09-06",
     sections: [
@@ -147,8 +160,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
       {
         heading: "Added",
         items: [
-          "Dispatch Log verifications can now be recorded: the SST OCS desk initials a trip's start from the Grid cell, the Watch queue, or the inspector, records a disposition with a note where a trip ran late, and can correct or clear an entry. Every change is kept in an audit trail.",
-        ],
+          "Dispatch Log verifications can now be recorded: the SST OCS desk initials a trip's start from the Grid cell, the Watch queue, or the inspector, records a disposition with a note where a trip ran late, and can correct or clear an entry. Every change is kept in an audit trail.",        ],
       },
     ],
   },
