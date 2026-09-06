@@ -124,6 +124,9 @@ Implemented HTTP endpoints include:
 | `POST` | `/api/suggested-alerts/{id}/dismiss` | Publisher/Admin | Dismiss a suggestion |
 | `GET` | `/api/trip-delays` | Staff | Read current and predicted fixed-route departure risk |
 | `GET` | `/api/on-demand-risks` | Staff | Read active on-demand wait-risk records |
+| `GET` | `/api/manage/on-demand-zones` | Staff | List imported operational zone versions and which is active |
+| `POST` | `/api/manage/on-demand-zones/import` | Admin | Import a GTFS-Flex archive as an inactive zone version |
+| `POST` | `/api/manage/on-demand-zones/{versionId}/activate` | Admin | Activate one imported zone version |
 
 Authorization is enforced server-side by reading the Easy Auth
 `x-ms-client-principal` header and checking Entra application roles.
