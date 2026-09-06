@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.126] - 2026-09-06
+
+- **Migration 101: the list-valued Messages columns hold JSON arrays, all of them.** `routes_affected`, `stops_affected`, `zones_affected`, `tags` and `channels` are declared JSON arrays and every current writer stores one, but rows from before that convention hold a comma-separated string (`web,sms`) - the row that failed the Audit Log search in v1.5.119. The readers tolerate both shapes since then; this migration retires the old one so the schema comment is true again. Each legacy value is split on commas, trimmed, JSON-escaped and re-joined in its original order; blank strings become NULL, which already meant "none". Values that are already arrays are untouched, and the script reports the per-column count before and after (the after row must read all zeros). Re-runnable. No code changes; requires migration 101 on dev.
+
 ## [1.5.125] - 2026-09-06
 
 - **The Subscribers admin page no longer crashes on an empty table.** `GET /manage/subscribers/summary` computes four of its five figures with `SUM(CASE ...)`, and SQL Server returns NULL for a SUM over zero rows, so with no subscribers on dev the API sent `sms_confirmed: null` (and friends) against a contract that promises numbers. The page's stat cards called `toLocaleString()` on the first null and the route fell into the console's "This view needs to be tried again" screen. The query now coalesces each figure to 0, the handler normalises the row through `lib/subscribersSummary.ts` so the contract holds whatever the table contains, and the cards default a missing value to 0 so an unexpected null can never take the route down again. Found in the same post-#178 smoke test as the Audit Log fix: the endpoint had never returned a real response before. No API shape or schema changes.
