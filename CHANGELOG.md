@@ -5,9 +5,13 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.126] - 2026-09-06
+## [1.5.127] - 2026-09-06
 
 - **Migration 101: the list-valued Messages columns hold JSON arrays, all of them.** `routes_affected`, `stops_affected`, `zones_affected`, `tags` and `channels` are declared JSON arrays and every current writer stores one, but rows from before that convention hold a comma-separated string (`web,sms`) - the row that failed the Audit Log search in v1.5.119. The readers tolerate both shapes since then; this migration retires the old one so the schema comment is true again. Each legacy value is split on commas, trimmed, JSON-escaped and re-joined in its original order; blank strings become NULL, which already meant "none". Values that are already arrays are untouched, and the script reports the per-column count before and after (the after row must read all zeros). Re-runnable. No code changes; requires migration 101 on dev.
+
+## [1.5.126] - 2026-09-06
+
+- **Fleet numbers and driver names are backfilled onto earlier on-demand departures.** Migrations 099 and 100 added the label columns, but the poll's working set only revisits today's, yesterday's and still-undeparted duties, so every row stored before them kept its ids. `onDemandDeparturesPoll` now ends each run with a bounded backfill: the newest 300 rows of the last 60 days that carry a vehicle id without a fleet number or a driver id without a name or identifier are labelled through the same once-a-day-per-id resolvers, touching only the label columns. It runs after the feed's health is recorded, so a backfill failure is logged and never reads as a failed departures feed. At MVTA's volumes the whole window is labelled within a few runs. No migration.
 
 ## [1.5.125] - 2026-09-06
 

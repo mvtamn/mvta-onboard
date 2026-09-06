@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { driverLabelFrom, DriverLabelResolver, resolveOnDemandDeparture, startLocationSlot, VehicleLabelResolver } from "./onDemandDepartures";
+import { driverLabelFrom, DriverLabelResolver, labelsToBackfill, resolveOnDemandDeparture, startLocationSlot, VehicleLabelResolver } from "./onDemandDepartures";
 
 const T0 = 1_788_000_000; // an arbitrary epoch-seconds base
 
@@ -125,4 +125,14 @@ test("a driver is read once per ttl and a failed read is remembered briefly", as
   assert.equal(await failing.label("drv-9"), null);
   assert.equal(await failing.label("drv-9"), null);
   assert.equal(failures, 1, "the failure is remembered");
+});
+
+test("a stored departure is backfilled only for the labels it lacks and the columns that exist", () => {
+  const bare = { driver_id: "drv-1", vehicle_id: "veh-1", vehicle_identifier: null, driver_name: null, driver_identifier: null };
+  assert.deepEqual(labelsToBackfill(bare, true, true), { vehicle: true, driver: true });
+  assert.deepEqual(labelsToBackfill(bare, false, true), { vehicle: false, driver: true }, "no vehicle column before migration 099");
+  assert.deepEqual(labelsToBackfill(bare, true, false), { vehicle: true, driver: false }, "no driver columns before migration 100");
+  assert.deepEqual(labelsToBackfill({ ...bare, vehicle_identifier: "1188", driver_name: "Delacroix, Amir" }, true, true), { vehicle: false, driver: false });
+  assert.deepEqual(labelsToBackfill({ ...bare, driver_name: null, driver_identifier: "144" }, true, true).driver, false, "an identifier alone is a label");
+  assert.deepEqual(labelsToBackfill({ ...bare, driver_id: null, vehicle_id: null }, true, true), { vehicle: false, driver: false }, "nothing to ask Spare about");
 });

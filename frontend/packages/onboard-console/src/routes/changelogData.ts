@@ -18,13 +18,25 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
-    version: "1.5.126",
+    version: "1.5.127",
     date: "2026-09-06",
     sections: [
       {
         heading: "Changed",
         items: [
           "Older messages now store their channels, tags and route lists in the same format as new ones, so every screen that lists messages reads them the same way. Nothing changes in what you see.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.126",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Garage Departures, On-Demand: earlier days' duties now pick up their fleet number and driver name too, a batch per poll run, so the whole window reads the same way.",
         ],
       },
     ],

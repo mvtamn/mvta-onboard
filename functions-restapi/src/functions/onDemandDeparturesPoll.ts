@@ -17,7 +17,7 @@ import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { feedHealthOutcome, recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
 import { agencyServiceDate, serviceDateAndGtfsSecondsToUtc } from "../lib/missedTripTime";
-import { DriverLabelResolver, onDemandDeparturesEnabled, resolveOnDemandDeparture, VehicleLabelResolver, type DriverLabel, type ResolvedOnDemandDeparture } from "../lib/onDemandDepartures";
+import { DriverLabelResolver, labelsToBackfill, onDemandDeparturesEnabled, resolveOnDemandDeparture, VehicleLabelResolver, type DriverLabel, type ResolvedOnDemandDeparture, type StoredDepartureLabels } from "../lib/onDemandDepartures";
 import { fetchSpareDriver, fetchSpareDuty, fetchSparePage, fetchSpareVehicle, type SpareDutyRecord, type SpareSlotRecord } from "../lib/spareApi";
 
 const DUTY_CONCURRENCY = 8;
@@ -32,6 +32,14 @@ const MAX_DUTIES_PER_RUN = 400;
 // process.
 const vehicleLabels = new VehicleLabelResolver(fetchSpareVehicle);
 const driverLabels = new DriverLabelResolver(fetchSpareDriver);
+
+// Rows stored before migrations 099 and 100 carry ids and no labels, and the
+// working set never revisits a departed duty, so they would stay that way.
+// Each run also labels a bounded batch of the newest such rows inside the
+// console's longest window. Labels are conveniences, not source facts, so
+// the update touches only the label columns and ignores source_updated_at.
+const LABEL_BACKFILL_ROWS = 300;
+const LABEL_BACKFILL_DAYS = 60;
 
 async function fetchStartLocationSlots(dutyId: string): Promise<SpareSlotRecord[]> {
   const page = await fetchSparePage<SpareSlotRecord>("/v1/slots", new URLSearchParams({
@@ -135,6 +143,59 @@ async function upsert(
   `);
 }
 
+type BackfillRow = StoredDepartureLabels & { duty_id: string };
+
+export async function backfillLabels(
+  pool: sql.ConnectionPool,
+  withVehicleIdentifier: boolean,
+  withDriverLabel: boolean,
+  resolvers: { vehicle: (id: string) => Promise<string | null>; driver: (id: string) => Promise<DriverLabel | null> } = {
+    vehicle: (id) => vehicleLabels.label(id),
+    driver: (id) => driverLabels.label(id),
+  },
+): Promise<{ examined: number; labelled: number }> {
+  if (!withVehicleIdentifier && !withDriverLabel) return { examined: 0, labelled: 0 };
+  const wanting: string[] = [];
+  if (withVehicleIdentifier) wanting.push("(vehicle_id IS NOT NULL AND vehicle_identifier IS NULL)");
+  if (withDriverLabel) wanting.push("(driver_id IS NOT NULL AND driver_name IS NULL AND driver_identifier IS NULL)");
+  const vehicleColumn = withVehicleIdentifier ? "vehicle_identifier" : "CAST(NULL AS NVARCHAR(64)) AS vehicle_identifier";
+  const driverColumns = withDriverLabel
+    ? "driver_name, driver_identifier"
+    : "CAST(NULL AS NVARCHAR(128)) AS driver_name, CAST(NULL AS NVARCHAR(64)) AS driver_identifier";
+  const request = pool.request();
+  request.input("since", sql.Char(8), agencyServiceDate(new Date(), -LABEL_BACKFILL_DAYS).serviceDate);
+  request.input("cap", sql.Int, LABEL_BACKFILL_ROWS);
+  const result = await request.query<BackfillRow>(`
+    SELECT TOP (@cap) duty_id, driver_id, vehicle_id, ${vehicleColumn}, ${driverColumns}
+    FROM OnDemandDepartures
+    WHERE service_date >= @since AND (${wanting.join(" OR ")})
+    ORDER BY service_date DESC, duty_id
+  `);
+  let labelled = 0;
+  for (const row of result.recordset) {
+    const wants = labelsToBackfill(row, withVehicleIdentifier, withDriverLabel);
+    const sets: string[] = [];
+    const update = pool.request();
+    update.input("duty_id", sql.NVarChar(64), row.duty_id);
+    if (wants.vehicle && row.vehicle_id) {
+      const label = await resolvers.vehicle(row.vehicle_id);
+      if (label) { update.input("vehicle_identifier", sql.NVarChar(64), label); sets.push("vehicle_identifier = @vehicle_identifier"); }
+    }
+    if (wants.driver && row.driver_id) {
+      const label = await resolvers.driver(row.driver_id);
+      if (label) {
+        update.input("driver_name", sql.NVarChar(128), label.name);
+        update.input("driver_identifier", sql.NVarChar(64), label.identifier);
+        sets.push("driver_name = @driver_name", "driver_identifier = @driver_identifier");
+      }
+    }
+    if (sets.length === 0) continue;
+    await update.query(`UPDATE OnDemandDepartures SET ${sets.join(", ")} WHERE duty_id = @duty_id`);
+    labelled++;
+  }
+  return { examined: result.recordset.length, labelled };
+}
+
 app.timer("onDemandDeparturesPoll", {
   // Offset from the missed-trips ingest (2/15) so a run sees the requests
   // that ingest just stored.
@@ -222,6 +283,17 @@ app.timer("onDemandDeparturesPoll", {
         context.error("Failed to record on-demand departures feed failure:", healthError);
       }
       throw err;
+    }
+
+    // After the feed's health is settled: a label backfill that fails must
+    // not read as a departures feed that failed.
+    try {
+      const backfill = await backfillLabels(pool, withVehicleIdentifier, withDriverLabel);
+      if (backfill.examined > 0) {
+        context.log(`On-demand departures label backfill: ${backfill.examined} rows examined, ${backfill.labelled} labelled (newest first, last ${LABEL_BACKFILL_DAYS} days).`);
+      }
+    } catch (err) {
+      context.warn(`On-demand departures label backfill failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   },
 });
