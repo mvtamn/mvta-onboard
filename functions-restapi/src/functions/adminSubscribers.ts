@@ -5,6 +5,7 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
 import { requireRole, STAFF_READ_ROLES, ADMIN_ROLES, getCallerPrincipal } from "../lib/auth";
+import { summaryFromCounts } from "../lib/subscribersSummary";
 
 function maskPhone(phone: string | null): string | null {
   if (!phone) return null;
@@ -40,14 +41,14 @@ app.http("adminSubscribersSummary", {
       }>(`
         SELECT
           COUNT(*) AS total,
-          SUM(CASE WHEN phone_number IS NOT NULL AND status = 'confirmed' THEN 1 ELSE 0 END) AS sms_confirmed,
-          SUM(CASE WHEN email IS NOT NULL AND email_status = 'confirmed' THEN 1 ELSE 0 END) AS email_confirmed,
-          SUM(CASE WHEN status = 'pending_confirmation' THEN 1 ELSE 0 END) AS pending,
-          SUM(CASE WHEN status = 'opted_out' THEN 1 ELSE 0 END) AS opted_out
+          COALESCE(SUM(CASE WHEN phone_number IS NOT NULL AND status = 'confirmed' THEN 1 ELSE 0 END), 0) AS sms_confirmed,
+          COALESCE(SUM(CASE WHEN email IS NOT NULL AND email_status = 'confirmed' THEN 1 ELSE 0 END), 0) AS email_confirmed,
+          COALESCE(SUM(CASE WHEN status = 'pending_confirmation' THEN 1 ELSE 0 END), 0) AS pending,
+          COALESCE(SUM(CASE WHEN status = 'opted_out' THEN 1 ELSE 0 END), 0) AS opted_out
         FROM Subscribers
       `);
 
-      const summary = counts.recordset[0];
+      const summary = summaryFromCounts(counts.recordset[0]);
       const jsonBody: Record<string, unknown> = { summary };
 
       // Recent list is Admin-only and PII-masked.
