@@ -194,3 +194,26 @@ export class DriverLabelResolver {
     return this.cache.size;
   }
 }
+
+// Which labels a stored departure still lacks and could be given. A row
+// whose driver record has neither name nor identifier keeps being asked
+// about, which costs one cached Spare read per driver per day and nothing
+// more; a row with no id at all is never asked about.
+export interface StoredDepartureLabels {
+  driver_id: string | null;
+  vehicle_id: string | null;
+  vehicle_identifier: string | null;
+  driver_name: string | null;
+  driver_identifier: string | null;
+}
+
+export function labelsToBackfill(
+  row: StoredDepartureLabels,
+  withVehicleIdentifier: boolean,
+  withDriverLabel: boolean,
+): { vehicle: boolean; driver: boolean } {
+  return {
+    vehicle: withVehicleIdentifier && row.vehicle_id !== null && row.vehicle_identifier === null,
+    driver: withDriverLabel && row.driver_id !== null && row.driver_name === null && row.driver_identifier === null,
+  };
+}

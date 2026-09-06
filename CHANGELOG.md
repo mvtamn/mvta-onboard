@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.126] - 2026-09-06
+
+- **Fleet numbers and driver names are backfilled onto earlier on-demand departures.** Migrations 099 and 100 added the label columns, but the poll's working set only revisits today's, yesterday's and still-undeparted duties, so every row stored before them kept its ids. `onDemandDeparturesPoll` now ends each run with a bounded backfill: the newest 300 rows of the last 60 days that carry a vehicle id without a fleet number or a driver id without a name or identifier are labelled through the same once-a-day-per-id resolvers, touching only the label columns. It runs after the feed's health is recorded, so a backfill failure is logged and never reads as a failed departures feed. At MVTA's volumes the whole window is labelled within a few runs. No migration.
+
 ## [1.5.125] - 2026-09-06
 
 - **The Subscribers admin page no longer crashes on an empty table.** `GET /manage/subscribers/summary` computes four of its five figures with `SUM(CASE ...)`, and SQL Server returns NULL for a SUM over zero rows, so with no subscribers on dev the API sent `sms_confirmed: null` (and friends) against a contract that promises numbers. The page's stat cards called `toLocaleString()` on the first null and the route fell into the console's "This view needs to be tried again" screen. The query now coalesces each figure to 0, the handler normalises the row through `lib/subscribersSummary.ts` so the contract holds whatever the table contains, and the cards default a missing value to 0 so an unexpected null can never take the route down again. Found in the same post-#178 smoke test as the Audit Log fix: the endpoint had never returned a real response before. No API shape or schema changes.
