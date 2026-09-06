@@ -5,10 +5,14 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.128] - 2026-09-05
+## [1.5.129] - 2026-09-05
 
 - **Release notes are one file per release, not one list everyone edits.** `changelogData.ts` was a 1,200-line array that every branch appended to at the top, so two branches open in the same release window always conflicted there, whatever they had actually changed - eight consecutive pull requests did, none of them over code, and main carries a commit (`244c6f0`) whose entire purpose was splitting two entries that had been merged into one. Each release is now its own file under `src/routes/changelog/`, collected with `import.meta.glob` and sorted by the `version` inside it; the filename has no effect on ordering. Two branches adding a release now write two different paths and merge without anyone arbitrating. The 126 existing entries were migrated mechanically and checked to produce a byte-identical list, order included. New files are named after the change rather than the version - `changelog/README.md` explains why: a name like `v1-5-128.ts` collides, because both branches read the same main and both believe 1.5.128 is next.
 - **The build version now comes from `CHANGELOG.md` rather than the entry list.** `import.meta.glob` is rewritten by vite when it transforms application code, not when esbuild bundles `vite.config.ts`, so the config can no longer import the assembled entries - it reads the newest `## [x.y.z]` heading from the markdown instead. `changelogData.test.ts` already asserted the markdown and the entries name the same newest release, so the two cannot drift.
+
+## [1.5.128] - 2026-09-06
+
+- **Migration 101: the list-valued Messages columns hold JSON arrays, all of them.** `routes_affected`, `stops_affected`, `zones_affected`, `tags` and `channels` are declared JSON arrays and every current writer stores one, but rows from before that convention hold a comma-separated string (`web,sms`) - the row that failed the Audit Log search in v1.5.119. The readers tolerate both shapes since then; this migration retires the old one so the schema comment is true again. Each legacy value is split on commas, trimmed, JSON-escaped and re-joined in its original order; blank strings become NULL, which already meant "none". Values that are already arrays are untouched, and the script reports the per-column count before and after (the after row must read all zeros). Re-runnable. No code changes; requires migration 101 on dev.
 
 ## [1.5.127] - 2026-09-05
 
