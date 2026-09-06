@@ -5,9 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.124] - 2026-09-06
+## [1.5.125] - 2026-09-06
 
 - **The Subscribers admin page no longer crashes on an empty table.** `GET /manage/subscribers/summary` computes four of its five figures with `SUM(CASE ...)`, and SQL Server returns NULL for a SUM over zero rows, so with no subscribers on dev the API sent `sms_confirmed: null` (and friends) against a contract that promises numbers. The page's stat cards called `toLocaleString()` on the first null and the route fell into the console's "This view needs to be tried again" screen. The query now coalesces each figure to 0, the handler normalises the row through `lib/subscribersSummary.ts` so the contract holds whatever the table contains, and the cards default a missing value to 0 so an unexpected null can never take the route down again. Found in the same post-#178 smoke test as the Audit Log fix: the endpoint had never returned a real response before. No API shape or schema changes.
+
+## [1.5.124] - 2026-09-06
+
 - **Driver names in the On-Demand departures view, and no more empty Duty column.** The Operator column showed Spare's opaque driver id while the fixed-route view names its operators, and the Duty column showed a fallback id on every row because MVTA's duties carry no identifier in Spare. `onDemandDeparturesPoll` now resolves each driver once through `GET /v1/drivers/{id}`, the way it resolves fleet numbers, and records the name in the fixed-route feed's "Last, First" order plus Spare's driver identifier when the agency keeps one, in `OnDemandDepartures.driver_name` and `driver_identifier` (migration 100). This reverses the ids-only stance of v1.5.108 for drivers, on the reasoning that reviewing garage departures is reviewing an operator's departures and the fixed-route view already names them; contact details are never read. `GET /on-demand-departures` returns both, and the view shows the name with the identifier beside it as a badge and the Spare id on hover, grouping by driver under the name; a driver the poll has not resolved yet still shows as the short reference. The Duty column is left out when no duty in view has a Spare identifier, and every row carries its Spare duty id on hover for lookup. Requires migration 100 on dev; until then departures are recorded without names and the poll says so.
 
 ## [1.5.123] - 2026-09-05
