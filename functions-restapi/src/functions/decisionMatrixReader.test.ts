@@ -11,16 +11,22 @@ function readerRequest(): HttpRequest {
   return new HttpRequest({ method: "GET", url: "https://example.test/api/decision-matrix", headers: { "x-ms-client-principal": principal } });
 }
 
+// The readiness probe asks sys.tables for the names it bound, so the fake
+// counts the @tN parameters it was given and reports them all present or all
+// absent - the two states the reader distinguishes.
 async function withPool(tablesPresent: boolean, run: () => Promise<void>) {
   const originalGetPool = db.getPool;
   Object.defineProperty(db, "getPool", { configurable: true, value: async () => ({
-    request: () => ({
-      input() { return this; },
-      async query(statement: string) {
-        if (statement.includes("OBJECT_ID")) return { recordset: [{ ok: tablesPresent ? 1 : 0 }] };
-        return { recordset: [] };
-      },
-    }),
+    request: () => {
+      const asked: string[] = [];
+      return {
+        input(name: string, _type: unknown, value: unknown) { if (/^t\d+$/.test(name)) asked.push(String(value)); return this; },
+        async query(statement: string) {
+          if (statement.includes("sys.tables")) return { recordset: [{ present: tablesPresent ? asked.length : 0 }] };
+          return { recordset: [] };
+        },
+      };
+    },
   }) });
   try { await run(); } finally { Object.defineProperty(db, "getPool", { configurable: true, value: originalGetPool }); }
 }

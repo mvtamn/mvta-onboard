@@ -2,6 +2,7 @@ import { app, type HttpRequest, type InvocationContext } from "@azure/functions"
 import { OnBehalfOfCredential } from "@azure/identity";
 import { DECISION_MATRIX_READ_ROLES, requireRole } from "../lib/auth";
 import { getPool, sql } from "../lib/db";
+import { DECISION_MATRIX_SURFACES, surfaceReady } from "../lib/decisionMatrixReadiness";
 
 type RevisionRow = { procedure_id: string; revision: number; condition_key: string; condition: string; severity: string; severity_meaning: string; owner_team: string; owner_contact: string | null; effective_at: Date; next_review_at: Date; tags_json: string };
 type CriterionRow = { procedure_id: string; revision: number; criterion_id: string; criterion_kind: string; criterion_text: string };
@@ -15,17 +16,10 @@ export function isInlineImageMime(mime: string): boolean { return mime.toLowerCa
 // failed, and the difference matters to whoever is looking: one is fixed by
 // running a migration, the other by investigating an outage. Reporting both
 // as "temporarily unavailable" - which is what a bare catch did - sends the
-// reader looking for a problem that isn't there.
+// reader looking for a problem that isn't there. The table list now lives in
+// lib/decisionMatrixReadiness, shared with the four admin surfaces.
 export async function decisionMatrixTablesReady(pool: sql.ConnectionPool): Promise<boolean> {
-  const check = await pool.request().query<{ ok: number }>(`
-    SELECT CASE WHEN OBJECT_ID('dbo.Procedures', 'U') IS NOT NULL
-                 AND OBJECT_ID('dbo.ProcedureRevisions', 'U') IS NOT NULL
-                 AND OBJECT_ID('dbo.ProcedureCriteria', 'U') IS NOT NULL
-                 AND OBJECT_ID('dbo.ProcedureImmediateActions', 'U') IS NOT NULL
-                 AND OBJECT_ID('dbo.ProcedureDocumentReferences', 'U') IS NOT NULL
-      THEN 1 ELSE 0 END AS ok
-  `);
-  return check.recordset[0]?.ok === 1;
+  return surfaceReady(pool, DECISION_MATRIX_SURFACES.reader);
 }
 function tags(value: string): string[] { try { const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed.filter((tag): tag is string => typeof tag === "string") : []; } catch { return []; } }
 function key(row: { procedure_id: string; revision: number }) { return `${row.procedure_id}:${row.revision}`; }

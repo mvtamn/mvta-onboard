@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { ADMIN_ROLES, DECISION_MATRIX_READ_ROLES, requireRole } from "../lib/auth";
 import { getPool, sql } from "../lib/db";
+import { DECISION_MATRIX_SURFACES, surfaceReady } from "../lib/decisionMatrixReadiness";
 
 const SOURCES = new Set(["SuggestedAlert", "ServiceRisk"]);
 type MatchRuleInput = { source_type?: unknown; source_qualifier?: unknown; procedure_id?: unknown; priority?: unknown; explanation?: unknown; is_active?: unknown };
@@ -31,10 +32,12 @@ function stableAdmin(request: HttpRequest) {
 
 export async function listDecisionMatrixMatchRules(request: HttpRequest, context: InvocationContext) {
   const auth = stableAdmin(request); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
+  const surface = DECISION_MATRIX_SURFACES.matchRules;
   try {
     const pool = await getPool();
+    if (!(await surfaceReady(pool, surface))) return { status: 200, jsonBody: { match_rules: [], diagnostics: { table_ready: false, required_migration: surface.migration } } };
     const result = await pool.request().query("SELECT match_rule_id,source_type,source_qualifier,procedure_id,priority,explanation,is_active,created_at,created_by,updated_at,updated_by FROM ProcedureMatchRules ORDER BY source_type,source_qualifier,priority");
-    return { status: 200, jsonBody: { match_rules: result.recordset } };
+    return { status: 200, jsonBody: { match_rules: result.recordset, diagnostics: { table_ready: true, required_migration: surface.migration } } };
   } catch (error) { context.error("GET Decision Matrix Match Rules failed", error); return { status: 500, jsonBody: { error: "Decision Matrix Match Rules are temporarily unavailable." } }; }
 }
 
