@@ -11,7 +11,7 @@ export async function retiredDecisionMatrixSync(
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
 
   context.warn("Retired Decision Matrix SharePoint import attempted", {
-    route: "admin/decision-matrix/sync",
+    route: "manage/decision-matrix/sync",
     actor: auth.principal.userDetails ?? auth.principal.userId ?? "unknown",
   });
   return {
@@ -24,7 +24,7 @@ export async function retiredDecisionMatrixSync(
 }
 
 app.http("decisionMatrixSync", {
-  route: "admin/decision-matrix/sync",
+  route: "manage/decision-matrix/sync",
   methods: ["POST"],
   authLevel: "anonymous",
   handler: retiredDecisionMatrixSync,

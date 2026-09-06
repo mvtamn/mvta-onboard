@@ -1,6 +1,6 @@
 // Expiration defaults admin (architecture doc Section 9):
-//   GET  /admin/expiration-defaults              - any staff role
-//   PATCH /admin/expiration-defaults/{category}  - Admin only
+//   GET  /manage/expiration-defaults              - any staff role
+//   PATCH /manage/expiration-defaults/{category}  - Admin only
 // The ExpirationDefaults table is seeded by phase1-schema.sql; these defaults
 // drive expires_at when a message is created without an explicit expiration.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
@@ -9,7 +9,7 @@ import { requireRole, STAFF_READ_ROLES, ADMIN_ROLES } from "../lib/auth";
 import { validateExpirationDefault, VALID_CATEGORIES } from "../lib/validation";
 
 app.http("expirationDefaultsList", {
-  route: "admin/expiration-defaults",
+  route: "manage/expiration-defaults",
   methods: ["GET"],
   authLevel: "anonymous", // authorization enforced via requireRole below
   handler: async (request: HttpRequest, context: InvocationContext) => {
@@ -27,14 +27,14 @@ app.http("expirationDefaultsList", {
       }>(`SELECT category, default_ttl_minutes, updated_by, updated_at FROM ExpirationDefaults ORDER BY category`);
       return { status: 200, jsonBody: { defaults: result.recordset } };
     } catch (err) {
-      context.error("GET /admin/expiration-defaults failed:", err);
+      context.error("GET /manage/expiration-defaults failed:", err);
       return { status: 500, jsonBody: { error: "Internal server error" } };
     }
   },
 });
 
 app.http("expirationDefaultsUpdate", {
-  route: "admin/expiration-defaults/{category}",
+  route: "manage/expiration-defaults/{category}",
   methods: ["PATCH"],
   authLevel: "anonymous", // authorization enforced via requireRole below
   handler: async (request: HttpRequest, context: InvocationContext) => {
@@ -83,7 +83,7 @@ app.http("expirationDefaultsUpdate", {
       }
       return { status: 200, jsonBody: result.recordset[0] };
     } catch (err) {
-      context.error("PATCH /admin/expiration-defaults failed:", err);
+      context.error("PATCH /manage/expiration-defaults failed:", err);
       return { status: 500, jsonBody: { error: "Internal server error" } };
     }
   },

@@ -1,4 +1,4 @@
-// GET /admin/subscribers/summary - subscriber counts for the console sidebar
+// GET /manage/subscribers/summary - subscriber counts for the console sidebar
 // and Subscribers tab. Any staff role gets the counts; ONLY Admins also get
 // the recent-signups list, and even that is PII-masked (last-4 phone, masked
 // email) - full contact details never leave the API.
@@ -19,7 +19,7 @@ function maskEmail(email: string | null): string | null {
 }
 
 app.http("adminSubscribersSummary", {
-  route: "admin/subscribers/summary",
+  route: "manage/subscribers/summary",
   methods: ["GET"],
   authLevel: "anonymous", // authorization enforced via requireRole below
   handler: async (request: HttpRequest, context: InvocationContext) => {
@@ -78,7 +78,7 @@ app.http("adminSubscribersSummary", {
 
       return { status: 200, jsonBody };
     } catch (err) {
-      context.error("GET /admin/subscribers/summary failed:", err);
+      context.error("GET /manage/subscribers/summary failed:", err);
       return { status: 500, jsonBody: { error: "Internal server error" } };
     }
   },

@@ -76,7 +76,7 @@ export async function listDecisionMatrixRecommendations(request: HttpRequest, co
   } catch (error) { context.error("GET Decision Matrix recommendations failed", error); return { status: 500, jsonBody: { error: "Decision Matrix recommendations are temporarily unavailable." } }; }
 }
 
-app.http("decisionMatrixMatchRules", { route: "admin/decision-matrix/match-rules", methods: ["GET"], authLevel: "anonymous", handler: listDecisionMatrixMatchRules });
-app.http("decisionMatrixMatchRulesCreate", { route: "admin/decision-matrix/match-rules", methods: ["POST"], authLevel: "anonymous", handler: createDecisionMatrixMatchRule });
-app.http("decisionMatrixMatchRulesUpdate", { route: "admin/decision-matrix/match-rules/{matchRuleId}", methods: ["PUT"], authLevel: "anonymous", handler: updateDecisionMatrixMatchRule });
+app.http("decisionMatrixMatchRules", { route: "manage/decision-matrix/match-rules", methods: ["GET"], authLevel: "anonymous", handler: listDecisionMatrixMatchRules });
+app.http("decisionMatrixMatchRulesCreate", { route: "manage/decision-matrix/match-rules", methods: ["POST"], authLevel: "anonymous", handler: createDecisionMatrixMatchRule });
+app.http("decisionMatrixMatchRulesUpdate", { route: "manage/decision-matrix/match-rules/{matchRuleId}", methods: ["PUT"], authLevel: "anonymous", handler: updateDecisionMatrixMatchRule });
 app.http("decisionMatrixRecommendations", { route: "decision-matrix/recommendations", methods: ["GET"], authLevel: "anonymous", handler: listDecisionMatrixRecommendations });

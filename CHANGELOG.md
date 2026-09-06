@@ -5,9 +5,13 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.112] - 2026-09-05
+## [1.5.113] - 2026-09-05
 
 - **OTP Compliance administration moves into the Administration workspace.** The OTP module's own **Administration** and **Threshold Tuner** pages are gone from the Compliance tab; both now live at **Administration › OTP Compliance**, behind the same `OCC.Admin` gate as every other configuration surface. They were reachable by anyone with plain `OCC.Compliance` access even though the writes behind them are Admin-only server-side, so the pages offered edits that would 403 - and the settings they change (reason codes shown in Review Queue, the Weather page and Missed Trips; the early/late bias detection threshold) apply to every reviewer, not just the person editing. The new page carries all three reason-code tables, the historical feed backfill, and the threshold tuner with its preview-then-apply slider, which fetches the current month's stop rows itself and seeds from the saved threshold rather than the built-in 15% fallback. The OTP module keeps its six reviewer pages and still reads the threshold and reason codes this page maintains. No API changes.
+
+## [1.5.112] - 2026-09-05
+
+- **The console's admin API endpoints are reachable on Azure for the first time.** Nineteen HTTP functions - Decision Matrix authoring, governance, match rules, legacy-candidate migration, and the retired sync stub; expiration defaults; admin message search; the subscriber summary - declared routes under `admin/`. Azure Functions reserves that prefix for its own runtime endpoints, so at every host start the runtime logged "The specified route conflicts with one or more built in routes" for each of them and never registered them; on `func-mvta-restapi-dev` they have answered 404 since they were added (the local emulator is more lenient, which is why this was not caught). Every one of those routes now lives under `manage/` (`/api/manage/decision-matrix/...`, `/api/manage/expiration-defaults`, `/api/manage/messages`, `/api/manage/subscribers/summary`), and the shared API client, tests, and docs follow. Authorization is unchanged: the role checks live in each handler via `requireRole`, not in the path. The Decision Matrix admin pages, the expiration-defaults editor, and the audit log's message search should be smoke-tested on dev after deploy, since this is the first deploy on which they can succeed.
 
 ## [1.5.111] - 2026-09-05
 

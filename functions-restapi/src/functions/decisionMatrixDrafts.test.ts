@@ -12,7 +12,7 @@ function requestFor(roles: string[], body: unknown): HttpRequest {
   })).toString("base64");
   return new HttpRequest({
     method: "POST",
-    url: "https://example.test/api/admin/decision-matrix/procedures",
+    url: "https://example.test/api/manage/decision-matrix/procedures",
     headers: { "content-type": "application/json", "x-ms-client-principal": principal },
     body: { string: JSON.stringify(body) },
   });
@@ -96,7 +96,7 @@ test("a stale Draft save is rejected before its ordered content is replaced", as
   Object.defineProperty(db.sql, "Transaction", { configurable: true, value: StaleTransaction });
   const request = new HttpRequest({
     method: "PUT",
-    url: "https://example.test/api/admin/decision-matrix/procedures/draft-vehicle-collision/revisions/1",
+    url: "https://example.test/api/manage/decision-matrix/procedures/draft-vehicle-collision/revisions/1",
     params: { procedureId: "draft-vehicle-collision", revision: "1" },
     headers: { "content-type": "application/json", "x-ms-client-principal": Buffer.from(JSON.stringify({ userId: "admin-1", claims: [{ typ: "roles", val: "OCC.Admin" }] })).toString("base64") },
     body: { string: JSON.stringify({ ...completeDraft, concurrency_token: "0x0000000000000001" }) },
@@ -171,7 +171,7 @@ test("an Admin can read a Draft with ordered content and independently reported 
   }) });
   const request = new HttpRequest({
     method: "GET",
-    url: "https://example.test/api/admin/decision-matrix/procedures/draft-vehicle-collision/revisions/1",
+    url: "https://example.test/api/manage/decision-matrix/procedures/draft-vehicle-collision/revisions/1",
     params: { procedureId: "draft-vehicle-collision", revision: "1" },
     headers: { "x-ms-client-principal": Buffer.from(JSON.stringify({ claims: [{ typ: "roles", val: "OCC.Admin" }] })).toString("base64") },
   });
@@ -223,7 +223,7 @@ test("an Admin clones a Procedure Revision before changing its document referenc
   Object.defineProperty(db.sql, "Transaction", { configurable: true, value: CloneTransaction });
   const request = new HttpRequest({
     method: "POST",
-    url: "https://example.test/api/admin/decision-matrix/procedures/draft-vehicle-collision/revisions",
+    url: "https://example.test/api/manage/decision-matrix/procedures/draft-vehicle-collision/revisions",
     params: { procedureId: "draft-vehicle-collision" },
     headers: { "content-type": "application/json", "x-ms-client-principal": Buffer.from(JSON.stringify({ userId: "admin-1", claims: [{ typ: "roles", val: "OCC.Admin" }] })).toString("base64") },
     body: { string: JSON.stringify({ source_revision: 1 }) },

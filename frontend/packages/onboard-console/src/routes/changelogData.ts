@@ -18,13 +18,25 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
-    version: "1.5.112",
+    version: "1.5.113",
     date: "2026-09-05",
     sections: [
       {
         heading: "Changed",
         items: [
           "OTP Compliance's Administration and Threshold Tuner pages moved out of the Compliance tab and into Administration \u203a OTP Compliance, where only Operations Administrators can reach them. Reason codes, the early/late bias detection threshold and its preview slider, and the historical feed backfill are all on that one page. Reviewers keep every other OTP page unchanged.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.112",
+    date: "2026-09-05",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "The Decision Matrix admin pages, the expiration-defaults editor, and the audit log's message search now reach the API on Azure. Their endpoints used a route prefix the Functions runtime reserves for itself, so they were never registered and returned 404; they have moved to a new prefix. Who can use them is unchanged.",
         ],
       },
     ],

@@ -162,8 +162,8 @@ export async function checkDecisionMatrixProcedureReferences(request: HttpReques
   catch (error) { context.error("Decision Matrix document check failed", error); return { status: 500, jsonBody: { error: "Document references could not be checked." } }; }
 }
 
-app.http("decisionMatrixProcedureLifecycle", { route: "admin/decision-matrix/procedures/{procedureId}/revisions/{revision}/lifecycle", methods: ["POST"], authLevel: "anonymous", handler: governDecisionMatrixProcedureRevision });
-app.http("decisionMatrixProcedureDocumentCheck", { route: "admin/decision-matrix/procedures/{procedureId}/revisions/{revision}/document-references/check", methods: ["POST"], authLevel: "anonymous", handler: checkDecisionMatrixProcedureReferences });
+app.http("decisionMatrixProcedureLifecycle", { route: "manage/decision-matrix/procedures/{procedureId}/revisions/{revision}/lifecycle", methods: ["POST"], authLevel: "anonymous", handler: governDecisionMatrixProcedureRevision });
+app.http("decisionMatrixProcedureDocumentCheck", { route: "manage/decision-matrix/procedures/{procedureId}/revisions/{revision}/document-references/check", methods: ["POST"], authLevel: "anonymous", handler: checkDecisionMatrixProcedureReferences });
 app.timer("decisionMatrixDocumentHealth", { schedule: "0 0 5 * * *", handler: async (_timer: Timer, context: InvocationContext) => {
   let checker: DocumentReferenceChecker;
   try { checker = dailyChecker(); }

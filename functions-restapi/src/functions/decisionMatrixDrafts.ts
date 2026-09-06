@@ -383,7 +383,7 @@ export async function getDecisionMatrixProcedureDraft(request: HttpRequest, cont
   }
 }
 
-app.http("decisionMatrixProcedureDraftsCreate", { route: "admin/decision-matrix/procedures", methods: ["POST"], authLevel: "anonymous", handler: createDecisionMatrixProcedureDraft });
-app.http("decisionMatrixProcedureDraftsClone", { route: "admin/decision-matrix/procedures/{procedureId}/revisions", methods: ["POST"], authLevel: "anonymous", handler: cloneDecisionMatrixProcedureDraft });
-app.http("decisionMatrixProcedureDraftsGet", { route: "admin/decision-matrix/procedures/{procedureId}/revisions/{revision}", methods: ["GET"], authLevel: "anonymous", handler: getDecisionMatrixProcedureDraft });
-app.http("decisionMatrixProcedureDraftsSave", { route: "admin/decision-matrix/procedures/{procedureId}/revisions/{revision}", methods: ["PUT"], authLevel: "anonymous", handler: saveDecisionMatrixProcedureDraft });
+app.http("decisionMatrixProcedureDraftsCreate", { route: "manage/decision-matrix/procedures", methods: ["POST"], authLevel: "anonymous", handler: createDecisionMatrixProcedureDraft });
+app.http("decisionMatrixProcedureDraftsClone", { route: "manage/decision-matrix/procedures/{procedureId}/revisions", methods: ["POST"], authLevel: "anonymous", handler: cloneDecisionMatrixProcedureDraft });
+app.http("decisionMatrixProcedureDraftsGet", { route: "manage/decision-matrix/procedures/{procedureId}/revisions/{revision}", methods: ["GET"], authLevel: "anonymous", handler: getDecisionMatrixProcedureDraft });
+app.http("decisionMatrixProcedureDraftsSave", { route: "manage/decision-matrix/procedures/{procedureId}/revisions/{revision}", methods: ["PUT"], authLevel: "anonymous", handler: saveDecisionMatrixProcedureDraft });
