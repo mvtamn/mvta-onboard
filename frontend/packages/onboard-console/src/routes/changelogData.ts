@@ -18,7 +18,7 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
-    version: "1.5.119",
+    version: "1.5.120",
     date: "2026-09-05",
     sections: [
       {
@@ -26,6 +26,18 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
         items: [
           "Administration \u203a Decision Matrix now says which database migration each part of the page is waiting on, instead of one message that blanked the whole workspace. It tells apart a database that has not been set up from a genuine fault, and a section that fails no longer hides the sections that are working.",
           "The Create Draft and Add rule forms are hidden until the tables they write to exist, rather than accepting entries that could only fail on submit.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.119",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "The Audit Log's message search works again. An older message stored its channels in a format the search could not read, and one such row failed the whole search; the same reading is now tolerant everywhere messages are listed, including the rider-facing active alerts.",
         ],
       },
     ],

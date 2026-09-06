@@ -5,10 +5,14 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.119] - 2026-09-05
+## [1.5.120] - 2026-09-05
 
 - **The Decision Matrix admin workspace says which migration it is waiting on, per surface.** Administration › Decision Matrix read four endpoints through one `Promise.all` with one `catch`, so any single problem printed "Decision Matrix governance data could not be loaded." and blanked all four sections. That message was wrong in both directions: it called an unmigrated database an outage, and it hid three working surfaces when one failed. The four surfaces are backed by four different migrations — governance queue and authoring by 076, audit history by 078, legacy candidates by 079 (with 051's rows), Match Rules by 080 — so "not connected" was never one condition here. `GET manage/decision-matrix/governance-queue`, `/audit`, `/match-rules` and `/legacy-candidates` now probe for their own tables and answer 200 with `diagnostics.table_ready` and `diagnostics.required_migration`, the migration number coming from the server because that is where the table lists live. The console reads them independently: a header banner distinguishes **not connected** (nothing has run) from **partly connected**, naming only the migrations actually missing, and each section reports its own state in place. A surface that genuinely fails now says so as a fault worth investigating, and no longer takes its neighbours down with it. The Create Draft and Add rule forms are withheld rather than offered when their tables are absent, since submitting either could only 500. No migration; no change to any surface once its tables exist.
 - **Recorded that migration 079 has in fact run on dev.** A table listing shows `DecisionMatrixLegacyMigrations`, which only 079 creates — so the HANDOFF note claiming all four Decision Matrix migrations were unrun was wrong, and the missing run records prove nothing either way. The note is corrected; 076, 078 and 080 remain genuinely unconfirmed.
+
+## [1.5.119] - 2026-09-06
+
+- **The Audit Log's message search no longer fails on a legacy row.** `GET /manage/messages` answered 500 on dev the first day its route was reachable: one Messages row stores `channels` as `web,sms` rather than the JSON array every current writer produces, and `JSON.parse` on it threw inside the row map, taking the whole result with it. The same parse sat in the public active-messages feed and the suggested-alerts list, so a legacy row could have blanked rider-facing alerts too. All list-valued Messages columns (channels, tags, routes_affected, stops_affected, zones_affected) are now read through one lenient parser (`lib/stringList.ts`): a JSON array is parsed as before, anything else is split on commas, and nothing throws. No schema or API shape changes.
 
 ## [1.5.118] - 2026-09-06
 

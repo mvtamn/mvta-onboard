@@ -4,6 +4,7 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { parseStringList } from "../lib/stringList";
 
 const MAX_LIMIT = 200;
 
@@ -65,9 +66,9 @@ app.http("adminMessages", {
         summary: row.summary || row.raw_text.substring(0, 200),
         category: row.category,
         severity: row.severity,
-        tags: row.tags ? (JSON.parse(row.tags) as string[]) : [],
-        routes_affected: row.routes_affected ? (JSON.parse(row.routes_affected) as string[]) : [],
-        channels: row.channels ? (JSON.parse(row.channels) as string[]) : [],
+        tags: parseStringList(row.tags),
+        routes_affected: parseStringList(row.routes_affected),
+        channels: parseStringList(row.channels),
         status: row.status,
         created_by: row.created_by,
         created_at: row.created_at,
