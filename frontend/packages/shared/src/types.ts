@@ -222,6 +222,18 @@ export interface DecisionMatrixDiagnostics {
   procedure_count: number;
 }
 
+/**
+ * The Decision Matrix admin workspace reads four surfaces whose tables arrive
+ * in four different migrations, so each reports its own readiness and names
+ * the migration that would fix it. The server supplies the migration number
+ * because that is where the table lists live.
+ */
+export interface DecisionMatrixSurfaceDiagnostics {
+  /** False when this surface's tables are absent: not connected, not an outage. */
+  table_ready: boolean;
+  required_migration: string;
+}
+
 export interface DecisionMatrixCandidate extends Pick<DecisionMatrixProcedure, "procedure_id" | "revision" | "condition" | "condition_key" | "criteria" | "severity" | "severity_meaning" | "immediate_actions" | "tags" | "document_type" | "document_code" | "source_url" | "trust_state"> {
   match_reason: string;
 }
