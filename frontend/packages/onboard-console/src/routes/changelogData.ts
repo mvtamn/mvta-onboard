@@ -18,7 +18,7 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
-    version: "1.5.127",
+    version: "1.5.128",
     date: "2026-09-06",
     sections: [
       {
@@ -33,6 +33,18 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
         heading: "Changed",
         items: [
           "On-demand monitoring can now be switched on through infrastructure configuration instead of a Portal setting that the next deployment removed. It remains off; nothing about On-Demand Service Quality changes yet.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.127",
+    date: "2026-09-05",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Internal: the console's version number now comes from this changelog's newest entry rather than being kept in a second file, so the version shown in the footer and the \u201cWhat\u2019s new\u201d panel can no longer disagree with the release notes.",
         ],
       },
     ],

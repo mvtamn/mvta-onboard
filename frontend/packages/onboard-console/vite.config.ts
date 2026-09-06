@@ -1,11 +1,22 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { CHANGELOG_ENTRIES } from "./src/routes/changelogData.js";
 
-// Read once at build time so the UI's displayed version can never drift from
-// package.json (see CHANGELOG.md for what each version actually changed).
-const pkg = JSON.parse(readFileSync(fileURLToPath(new URL("./package.json", import.meta.url)), "utf-8"));
+// The newest changelog entry IS the version. It used to be package.json's
+// `version`, hand-bumped in every branch, which made one line the whole repo
+// had to agree on before anything could merge: eight consecutive pull requests
+// conflicted on it, and twice two branches picked the same number and git
+// merged them silently because both sides wrote identical text. Reading it
+// from the changelog removes the second copy, so there is nothing left to
+// drift, and the number now lives in the file that already had to be edited to
+// describe the release. package.json's version field is no longer the product
+// version - see changelogData.test.ts, which fails on a duplicate or
+// out-of-order version rather than letting one through. Two branches can still
+// pick the same next number, since both read the same main; that now fails CI
+// instead of merging quietly.
+const version = CHANGELOG_ENTRIES[0]?.version;
+if (!version) throw new Error("CHANGELOG_ENTRIES is empty: the console has no version to display.");
 
 // Served behind Front Door at /console/* (confirmed live: route-onboard's
 // rsConsoleV2 rule set strips the /console prefix via UrlRewrite before
@@ -18,10 +29,15 @@ const pkg = JSON.parse(readFileSync(fileURLToPath(new URL("./package.json", impo
 export default defineConfig({
   base: "/console/",
   define: {
-    __APP_VERSION__: JSON.stringify(pkg.version),
+    __APP_VERSION__: JSON.stringify(version),
   },
   plugins: [react()],
   server: {
+    // The repo root sits one level above this workspace, so vite's default
+    // file allowlist stops short of CHANGELOG.md. changelogData.test.ts reads
+    // it to check the two changelogs still agree on the newest release, which
+    // is now also the build version.
+    fs: { allow: [fileURLToPath(new URL("../../../", import.meta.url))] },
     port: process.env.PORT ? Number(process.env.PORT) : 5174,
     proxy: {
       "/api": {
