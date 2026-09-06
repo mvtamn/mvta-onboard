@@ -1,0 +1,214 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: -apple-system, "Segoe UI", Inter, Roboto, Arial, sans-serif; font-size: 13px; }
+    a { color: #00553d; text-decoration: none; }
+    a:hover { color: #003d2c; text-decoration: underline; }
+
+    .gd-root {
+      --page-bg: #edebe4; --surface-bg: #fff; --surface-alt-bg: #f6f5f1;
+      --border: #ddd; --border-strong: #ccc; --border-soft: #eee;
+      --text: #2c2c2a; --text-dim: #4f4f4f; --text-muted: #8a8a82;
+      --brand-green: #00553d; --brand-green-hover: #003d2c; --brand-green-text: #00553d;
+      --danger-text: #8a1f1f; --success-text: #1f7a4c; --success-bg: #e3f0d4;
+      --live-dot: #2fae66; --table-stripe: #fafaf8;
+      --pill-warning-bg: #fcefd8; --pill-warning-fg: #7a4a00;
+      --pill-danger-bg: #fbe0e0; --pill-danger-fg: #8a1f1f;
+      --pill-accent-bg: #dceaf8; --pill-accent-fg: #0b4c82;
+      --pill-success-bg: #e3f0d4; --pill-success-fg: #33530f;
+      --pill-muted-bg: #ececea; --pill-muted-fg: #4f4f4f;
+      --chip-bg: #dcede6; --chip-fg: #00301f;
+      --highlight-bg: #fdf1e1; --highlight-border: #faad60;
+    }
+    .gd-root[data-theme="dark"] {
+      --page-bg: #0b120e; --surface-bg: #152219; --surface-alt-bg: #16241d;
+      --border: #25392f; --border-strong: #2e4238; --border-soft: #1c2a23;
+      --text: #eef3f0; --text-dim: #c7d2cc; --text-muted: #8aa096;
+      --brand-green-text: #6fc9a0;
+      --danger-text: #e08585; --success-text: #5fbf8f; --success-bg: #193b2c;
+      --table-stripe: #1a2a22;
+      --pill-warning-bg: #3a2a15; --pill-warning-fg: #f0b070;
+      --pill-danger-bg: #3a1f1f; --pill-danger-fg: #f0a0a0;
+      --pill-accent-bg: #1a2a3a; --pill-accent-fg: #8ec4f0;
+      --pill-success-bg: #193b2c; --pill-success-fg: #8fd6ac;
+      --pill-muted-bg: #243128; --pill-muted-fg: #b0bab3;
+      --chip-bg: #193b2c; --chip-fg: #cdeedd;
+      --highlight-bg: #3a2a15; --highlight-border: #cc8a3d;
+    }
+    .gd-root, .gd-root * { box-sizing: border-box; }
+    .gd-root { width: 1200px; background: var(--surface-bg); color: var(--text); padding: 20px 22px; }
+
+    /* ---- module head (serviceRisk.css) ---- */
+    .risk-module { color: var(--text); }
+    .risk-module-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 14px; }
+    .risk-module-head h2 { margin: 2px 0 4px; font-size: 21px; line-height: 1.2; letter-spacing: -0.02em; font-weight: bold; }
+    .risk-module-head p { color: var(--text-muted); margin: 0; line-height: 1.5; max-width: 640px; font-size: 13px; }
+    .risk-eyebrow { color: var(--brand-green-text); display: block; font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+
+    /* ---- service switch (styles.css .occ-switch.small) ---- */
+    .occ-switch { display: flex; gap: 6px; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border-soft); flex-wrap: wrap; }
+    .occ-switch button { font: inherit; font-size: 11px; font-weight: bold; padding: 5px 12px; border: 1px solid var(--border-strong); border-radius: 999px; background: var(--surface-bg); color: var(--text-dim); cursor: pointer; }
+    .occ-switch button.active { background: var(--brand-green); border-color: var(--brand-green); color: #fff; }
+
+    /* ---- trust banner ---- */
+    .concept-banner { align-items: center; background: var(--pill-accent-bg); border: 1px solid color-mix(in srgb, var(--pill-accent-fg) 25%, transparent); border-radius: 8px; color: var(--pill-accent-fg); display: flex; font-size: 11.5px; gap: 9px; margin-bottom: 14px; padding: 8px 10px; }
+    .concept-badge { background: var(--pill-accent-fg); border-radius: 999px; color: var(--surface-bg); flex-shrink: 0; font-size: 9px; font-weight: 800; letter-spacing: 0.06em; padding: 3px 7px; text-transform: uppercase; }
+
+    /* ---- controls bar ---- */
+    .risk-refresh-bar { align-items: center; background: var(--surface-alt-bg); border: 1px solid var(--border); border-radius: 9px; display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; padding: 8px 10px; }
+    .risk-refresh-bar label { color: var(--text-dim); font-size: 10.5px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
+    .risk-refresh-bar .sel { background: var(--surface-bg); border: 1px solid var(--border-strong); border-radius: 7px; color: var(--text); font-size: 11.5px; padding: 6px 28px 6px 8px; position: relative; display: inline-flex; align-items: center; }
+    .risk-refresh-bar .sel svg { position: absolute; right: 8px; top: 50%; margin-top: -6px; }
+    .seg { background: var(--surface-alt-bg); border: 1px solid var(--border); border-radius: 9px; display: flex; padding: 3px; }
+    .seg button { background: transparent; border: 0; border-radius: 6px; color: var(--text-dim); cursor: pointer; font: inherit; font-size: 11px; font-weight: 700; padding: 5px 10px; }
+    .seg button.active { background: var(--surface-bg); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08); color: var(--brand-green-text); }
+    .btn-sm { font: inherit; font-size: 11px; padding: 5px 11px; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--surface-bg); cursor: pointer; color: var(--text); display: inline-flex; align-items: center; gap: 5px; }
+    .bar-note { color: var(--text-muted); flex: 1; font-size: 11px; min-width: 170px; text-align: right; }
+    .bar-note strong { color: var(--text-dim); font-weight: 700; }
+
+    /* ---- summary ---- */
+    .risk-stat-grid { display: grid; gap: 9px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 14px; }
+    .risk-stat { background: var(--surface-bg); border: 1px solid var(--border); border-left: 4px solid var(--border-strong); border-radius: 8px; display: flex; flex-direction: column; min-width: 0; padding: 10px 12px; }
+    .risk-stat.danger { border-left-color: var(--danger-text); }
+    .risk-stat.warning { border-left-color: var(--highlight-border); }
+    .risk-stat.accent { border-left-color: var(--pill-accent-fg); }
+    .risk-stat.muted { border-left-color: var(--text-muted); }
+    .risk-stat strong { font-size: 20px; letter-spacing: -0.02em; }
+    .risk-stat span { color: var(--text-muted); font-size: 10.5px; margin-top: 2px; }
+    .risk-stat small { color: var(--text-muted); font-size: 10px; margin-top: 5px; }
+
+    /* ---- trend strip (new) ---- */
+    .trend { background: var(--surface-bg); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 14px; padding: 12px 14px 10px; }
+    .trend-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+    .trend-head h4 { font-size: 11px; margin: 0; font-weight: 700; }
+    .trend-legend { display: flex; gap: 12px; color: var(--text-muted); font-size: 10px; }
+    .trend-legend span { display: inline-flex; align-items: center; gap: 5px; }
+    .trend-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; }
+    .trend-bars { display: grid; grid-template-columns: repeat(14, minmax(0, 1fr)); gap: 6px; align-items: end; }
+    .trend-day { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+    .trend-col { display: flex; flex-direction: column; justify-content: flex-end; height: 64px; width: 100%; border-bottom: 1px solid var(--border-strong); }
+    .trend-col .bar { width: 100%; }
+    .trend-col .bar.late { background: var(--highlight-border); }
+    .trend-col .bar.nodep { background: var(--danger-text); }
+    .trend-day.open .trend-col .bar { opacity: 0.35; }
+    .trend-n { font-size: 10.5px; font-weight: 700; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+    .trend-day.open .trend-n { color: var(--text-muted); font-weight: 400; }
+    .trend-lbl { font-size: 9.5px; color: var(--text-muted); white-space: nowrap; }
+    .trend-day.weekend .trend-lbl { color: var(--text-dim); font-weight: 700; }
+
+    /* ---- table (styles.css table.data) ---- */
+    table.data { min-width: 760px; width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12.5px; }
+    table.data th { background: var(--brand-green); color: #fff; text-align: left; padding: 9px 12px; font-size: 11px; letter-spacing: 0.3px; font-weight: bold; white-space: nowrap; }
+    table.data th:first-child { border-top-left-radius: 8px; }
+    table.data th:last-child { border-top-right-radius: 8px; }
+    table.data th small { display: block; font-weight: 400; opacity: 0.8; font-size: 9.5px; letter-spacing: 0.02em; margin-top: 1px; }
+    table.data td { padding: 9px 12px; border-bottom: 1px solid var(--border-soft); color: var(--text); vertical-align: middle; }
+    table.data tr:nth-child(even) td { background: var(--table-stripe); }
+    table.data tr.band td { background: var(--surface-alt-bg); border-bottom: 1px solid var(--border-strong); border-top: 1px solid var(--border-strong); padding: 7px 12px; }
+    .band-line { display: flex; align-items: center; gap: 10px; }
+    .band-line strong { font-size: 12px; }
+    .band-line span { color: var(--text-muted); font-size: 10.5px; }
+    .band-line .mono-ref { font-size: 11px; }
+    .td-dim { font-size: 11px; color: var(--text-dim); }
+    .td-subtle { color: var(--text-muted); display: block; font-size: 11px; margin-top: 2px; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    th.num { text-align: right; }
+    .over { color: var(--danger-text); font-weight: 700; }
+    .fleet { font-variant-numeric: tabular-nums; font-weight: 700; }
+    .mono-ref { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 0.85em; color: var(--text-muted); }
+    .name .mono-ref { margin-left: 6px; }
+    .absent { color: var(--text-muted); font-style: italic; }
+    .pill-sm { font-size: 10.5px; font-weight: bold; padding: 3px 8px; border-radius: 10px; white-space: nowrap; display: inline-block; }
+    .pill-warning { background: var(--pill-warning-bg); color: var(--pill-warning-fg); }
+    .pill-danger { background: var(--pill-danger-bg); color: var(--pill-danger-fg); }
+    .pill-accent { background: var(--pill-accent-bg); color: var(--pill-accent-fg); }
+    .pill-success { background: var(--pill-success-bg); color: var(--pill-success-fg); }
+    .pill-muted { background: var(--pill-muted-bg); color: var(--pill-muted-fg); }
+    .foot { color: var(--text-muted); font-size: 11px; margin: 8px 0 0; line-height: 1.5; }
+    .sheet { width: 1200px; background: var(--page-bg); padding: 24px; }
+    .sheet-head { margin-bottom: 16px; }
+    .sheet-head h2 { margin: 2px 0 4px; font-size: 21px; letter-spacing: -0.02em; }
+    .sheet-head p { color: var(--text-muted); margin: 0; max-width: 760px; line-height: 1.5; }
+    .cmp { display: grid; grid-template-columns: 150px 300px 300px minmax(0, 1fr); gap: 0; background: var(--surface-bg); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    .cmp-h { background: var(--surface-alt-bg); border-bottom: 1px solid var(--border); color: var(--text-muted); font-size: 9.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; padding: 9px 14px; }
+    .cmp-c { border-bottom: 1px solid var(--border-soft); padding: 12px 14px; display: flex; flex-direction: column; justify-content: center; gap: 4px; min-height: 66px; }
+    .cmp-c.field { font-weight: 700; font-size: 12px; }
+    .cmp-c.field small { color: var(--text-muted); font-weight: 400; font-size: 10.5px; }
+    .cmp-c.why { color: var(--text-dim); font-size: 11.5px; line-height: 1.45; }
+    .cell { display: inline-flex; align-items: center; gap: 6px; padding: 9px 12px; border: 1px solid var(--border-soft); border-radius: 6px; background: var(--surface-bg); font-size: 12.5px; align-self: flex-start; }
+    .cell.striped { background: var(--table-stripe); }
+    .cell .sub { display: block; }
+    .cell.stack { flex-direction: column; align-items: flex-start; gap: 2px; }
+    .th { display: inline-block; background: var(--brand-green); color: #fff; font-size: 11px; font-weight: bold; letter-spacing: 0.3px; padding: 5px 9px; border-radius: 5px; align-self: flex-start; }
+    .th small { display: block; font-weight: 400; opacity: 0.8; font-size: 9.5px; }
+  </style>
+</helmet>
+<div class="gd-root sheet" data-theme="light">
+  <div class="sheet-head">
+    <span class="risk-eyebrow">Garage Departures · display review</span>
+    <h2>Dates, operators and vehicles: shipped cell vs proposed cell</h2>
+    <p>Each row is one table cell as the console renders it today, beside the proposed rendering. Values are invented sample content shaped like the real feeds.</p>
+  </div>
+
+  <div class="cmp">
+    <div class="cmp-h">Field</div>
+    <div class="cmp-h">Shipped today</div>
+    <div class="cmp-h">Proposed</div>
+    <div class="cmp-h">Why</div>
+
+    <div class="cmp-c field">Date<small>both views</small></div>
+    <div class="cmp-c"><span class="cell td-dim">20260904</span></div>
+    <div class="cmp-c"><span class="cell"><strong style="font-size: 12px;">Fri, Sep 4, 2026</strong><span style="color: #8a8a82; font-size: 10.5px;">88 runs · 4 reviewable</span></span></div>
+    <div class="cmp-c why">The raw CHAR(8) service date is printed as stored. Missed Trips and the Dispatch Log already format it (weekday, month, day, year). As a band row it is read once per day, the weekday makes weekend service visible, and per-day counts give the trend at a glance.</div>
+
+    <div class="cmp-c field">Scheduled / Actual<small>both views</small></div>
+    <div class="cmp-c"><span class="cell td-dim">Sep 4, 4:58 AM</span></div>
+    <div class="cmp-c"><span class="cell num td-dim">4:58 AM</span></div>
+    <div class="cmp-c why">Month and day repeat in every cell while the Date column already carries them. Time alone, right-aligned with tabular numerals, scans as a column. Formatting must use the agency zone (America/Chicago, as the Dispatch Log does); today it uses the viewer's browser zone, so a reviewer outside Central sees times that disagree with the service date.</div>
+
+    <div class="cmp-c field">Operator<small>Fixed Route</small></div>
+    <div class="cmp-c"><span class="cell">DELACROIX, AMIR -144</span></div>
+    <div class="cmp-c"><span class="cell name">Delacroix, Amir <span class="mono-ref">#144</span></span></div>
+    <div class="cmp-c why">Avail sends LAST, FIRST -badge in capitals. Splitting the badge into a monospace reference keeps the name readable and the badge findable, and gives the Operator grouping a stable key. Blank stays honest: "No operator on record" in muted italic rather than a dash.</div>
+
+    <div class="cmp-c field">Operator<small>On-Demand</small></div>
+    <div class="cmp-c"><span class="cell td-dim" style="font-size: 11px;">3f9a2c1e-7b40-4d1a-9e6c-0a1b2c3d4e5f</span></div>
+    <div class="cmp-c"><span class="cell"><span class="mono-ref">3f9a2c1e…</span></span></div>
+    <div class="cmp-c why">Spare duties carry driverId only, never a name. A 36-character id in a column headed "Driver" cannot be scanned or compared. An eight-character reference with the full id on hover makes repeats recognisable; the header says what it is. A name needs a Spare driver directory sync, listed as a build item.</div>
+
+    <div class="cmp-c field">Vehicle<small>Fixed Route</small></div>
+    <div class="cmp-c"><span class="cell">1910</span></div>
+    <div class="cmp-c"><span class="cell"><span class="fleet">1910</span></span></div>
+    <div class="cmp-c why">The fleet number is already right. Bold tabular numerals make it read as an identifier rather than a quantity, and the Vehicle grouping turns it into a repeat-offender view for maintenance-driven lateness.</div>
+
+    <div class="cmp-c field">Vehicle<small>On-Demand</small></div>
+    <div class="cmp-c"><span class="cell td-dim" style="font-size: 11px;">e5a1c3d7-2b4f-4a6c-9d8e-1f2a3b4c5d6e</span></div>
+    <div class="cmp-c"><span class="cell"><span class="mono-ref">e5a1c3d7…</span></span></div>
+    <div class="cmp-c why">Same problem and same treatment as the on-demand driver. Spare vehicles have an identifier and licence plate in the vehicle resource; the trips report already joins them, so a sync is a small build.</div>
+
+    <div class="cmp-c field">Duty<small>On-Demand</small></div>
+    <div class="cmp-c"><span class="cell">9e0f4b2c-6a8d-4e1f-b3c5-7d9e1f3a5b7c</span></div>
+    <div class="cmp-c"><span class="cell"><span class="mono-ref">duty 9e0f4b2c…</span></span></div>
+    <div class="cmp-c why">The identifier falls back to the raw duty id with nothing to say it did. The fallback is labelled and shortened so it cannot be mistaken for a Spare duty identifier.</div>
+
+    <div class="cmp-c field">Delta<small>both views</small></div>
+    <div class="cmp-c"><span class="cell">+18 min</span></div>
+    <div class="cmp-c"><span class="cell num over">+18 min</span></div>
+    <div class="cmp-c why">Right-aligned, tabular, and red only when over the 10-minute allowance, which the header states. Early departures show a real minus sign. Zero shows "0 min" rather than "On time", because the allowance, not zero, is the standard.</div>
+
+    <div class="cmp-c field">Status → Outcome<small>Fixed Route</small></div>
+    <div class="cmp-c" style="gap: 6px;"><span class="cell"><span class="pill-sm pill-muted">Missed Pullout</span></span><span class="td-subtle" style="font-size: 10.5px;">counts as neither late nor expired</span></div>
+    <div class="cmp-c" style="gap: 6px;"><span class="cell" style="gap: 8px;"><span class="pill-sm pill-danger">Missed Pullout</span><span class="pill-sm pill-danger">No departure</span></span></div>
+    <div class="cmp-c why">The shipped view colours only Expired Pullout and Late Relief. Missed Pullout, Missed Login and Late Pullout render grey, and Late Relief, which is a mid-shift changeover Avail has never emitted, is what the "Late pullouts" card counts. Outcome applies the candidate rule instead: settled day, scheduled pullout, no actual or over allowance.</div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

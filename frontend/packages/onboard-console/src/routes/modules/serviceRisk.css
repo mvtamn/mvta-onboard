@@ -903,3 +903,130 @@
   font-size: 0.85em;
   color: var(--text-muted);
 }
+
+/* Garage Departures, Fixed Route view - rows grouped under a band per
+   service day (or per operator / vehicle), a per-day strip of reviewable
+   departures above the table, and cell treatments for the identifiers:
+   right-aligned tabular numerals for times and deltas, the operator's badge
+   as a monospace reference beside the name, the fleet number bold, and an
+   absent value said in words rather than a dash. */
+.risk-stat small {
+  color: var(--text-muted);
+  font-size: 10px;
+  margin-top: 5px;
+}
+
+.departures-bar-note {
+  color: var(--text-muted);
+  flex: 1;
+  font-size: 11px;
+  min-width: 170px;
+  text-align: right;
+}
+
+.departures-bar-note strong { color: var(--text-dim); }
+
+.departure-trend {
+  background: var(--surface-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 14px;
+  padding: 12px 14px 10px;
+}
+
+.departure-trend-head {
+  align-items: baseline;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.departure-trend-head h4 { font-size: 11px; margin: 0; }
+
+.departure-trend-legend {
+  color: var(--text-muted);
+  display: flex;
+  font-size: 10px;
+  gap: 12px;
+}
+
+.departure-trend-legend span { align-items: center; display: inline-flex; gap: 5px; }
+.departure-trend-legend i { border-radius: 2px; display: inline-block; height: 9px; width: 9px; }
+.departure-trend-legend i.late { background: var(--highlight-border); }
+.departure-trend-legend i.nodep { background: var(--danger-text); }
+.departure-trend-legend i.open { opacity: 0.35; }
+
+.departure-trend-bars {
+  align-items: end;
+  display: grid;
+  gap: 6px;
+}
+
+.departure-trend-day {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.departure-trend-col {
+  border-bottom: 1px solid var(--border-strong);
+  display: flex;
+  flex-direction: column;
+  height: 64px;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.departure-trend-col .bar { width: 100%; }
+.departure-trend-col .bar.late { background: var(--highlight-border); }
+.departure-trend-col .bar.nodep { background: var(--danger-text); }
+.departure-trend-day.open .departure-trend-col .bar { opacity: 0.35; }
+
+.departure-trend-n {
+  color: var(--text-dim);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.departure-trend-day.open .departure-trend-n { color: var(--text-muted); font-weight: 400; }
+.departure-trend-lbl { color: var(--text-muted); font-size: 9.5px; white-space: nowrap; }
+.departure-trend-day.weekend .departure-trend-lbl { color: var(--text-dim); font-weight: 700; }
+
+.departures-table-scroll { overflow-x: auto; }
+.departures-table th { white-space: nowrap; }
+.departures-table th small {
+  display: block;
+  font-size: 9.5px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  margin-top: 1px;
+  opacity: 0.8;
+}
+
+.departures-table tr.departure-band td {
+  background: var(--surface-alt-bg);
+  border-bottom: 1px solid var(--border-strong);
+  border-top: 1px solid var(--border-strong);
+  padding: 7px 12px;
+}
+
+.departure-band-line { align-items: center; display: flex; gap: 10px; }
+.departure-band-line strong { font-size: 12px; }
+.departure-band-line > span { color: var(--text-muted); font-size: 10.5px; }
+.departure-band-line .mono-ref { font-size: 11px; }
+
+.departures-table .td-num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.departures-table .td-over { color: var(--danger-text); font-weight: 700; }
+.departures-table .td-fleet { font-variant-numeric: tabular-nums; font-weight: 700; }
+.departures-table .td-absent { color: var(--text-muted); font-style: italic; }
+.departures-table .td-name .mono-ref { margin-left: 6px; }
+
+.departures-foot {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 8px 0 0;
+}
