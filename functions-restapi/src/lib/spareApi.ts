@@ -81,6 +81,15 @@ export interface SpareVehicleRecord {
   licensePlate?: unknown;
 }
 
+// A driver, read for a display label only: the name, and the identifier if
+// the agency keeps one in Spare. Contact details are never read.
+export interface SpareDriverRecord {
+  id?: unknown;
+  identifier?: unknown;
+  firstName?: unknown;
+  lastName?: unknown;
+}
+
 export function spareString(value: unknown, maxLength = 256): string | null {
   return typeof value === "string" && value.trim() !== "" ? value.trim().slice(0, maxLength) : null;
 }
@@ -151,7 +160,7 @@ export async function fetchSparePage<T>(
 }
 
 async function fetchSpareResource<T>(
-  collection: "/v1/requests" | "/v1/duties" | "/v1/vehicles",
+  collection: "/v1/requests" | "/v1/duties" | "/v1/vehicles" | "/v1/drivers",
   id: string,
   timeoutMs: number,
 ): Promise<T> {
@@ -180,4 +189,8 @@ export function fetchSpareDuty(dutyId: string, timeoutMs = DEFAULT_TIMEOUT_MS): 
 
 export function fetchSpareVehicle(vehicleId: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<SpareVehicleRecord> {
   return fetchSpareResource<SpareVehicleRecord>("/v1/vehicles", vehicleId, timeoutMs);
+}
+
+export function fetchSpareDriver(driverId: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<SpareDriverRecord> {
+  return fetchSpareResource<SpareDriverRecord>("/v1/drivers", driverId, timeoutMs);
 }

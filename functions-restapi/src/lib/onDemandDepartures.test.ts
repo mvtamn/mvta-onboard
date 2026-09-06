@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolveOnDemandDeparture, startLocationSlot, VehicleLabelResolver } from "./onDemandDepartures";
+import { driverLabelFrom, DriverLabelResolver, resolveOnDemandDeparture, startLocationSlot, VehicleLabelResolver } from "./onDemandDepartures";
 
 const T0 = 1_788_000_000; // an arbitrary epoch-seconds base
 
@@ -100,4 +100,29 @@ test("a failed vehicle read yields no label, is remembered briefly, and never th
 test("a vehicle without an identifier is stored as unlabelled, not as its id", async () => {
   const resolver = new VehicleLabelResolver(async (id) => ({ id }));
   assert.equal(await resolver.label("veh-2"), null);
+});
+
+test("a driver label is the name in Last, First order with the identifier when Spare keeps one", () => {
+  assert.deepEqual(driverLabelFrom({ id: "d1", firstName: " Amir ", lastName: "Delacroix", identifier: "144" }), { name: "Delacroix, Amir", identifier: "144" });
+  assert.deepEqual(driverLabelFrom({ id: "d2", firstName: "Amir" }), { name: "Amir", identifier: null });
+  assert.deepEqual(driverLabelFrom({ id: "d3", identifier: "302" }), { name: null, identifier: "302" });
+  assert.equal(driverLabelFrom({ id: "d4" }), null, "a record with neither name nor identifier is no label");
+});
+
+test("a driver is read once per ttl and a failed read is remembered briefly", async () => {
+  let at = 1_000_000;
+  const calls: string[] = [];
+  const resolver = new DriverLabelResolver(async (id) => { calls.push(id); return { id, firstName: "Amir", lastName: "Delacroix" }; }, 60_000, 10_000, () => at);
+  assert.deepEqual(await resolver.label("drv-1"), { name: "Delacroix, Amir", identifier: null });
+  await resolver.label("drv-1");
+  assert.deepEqual(calls, ["drv-1"], "the second duty for the same driver costs no call");
+  at += 60_001;
+  await resolver.label("drv-1");
+  assert.deepEqual(calls, ["drv-1", "drv-1"], "re-read once the ttl has passed");
+
+  let failures = 0;
+  const failing = new DriverLabelResolver(async () => { failures++; throw new Error("HTTP 404"); }, 60_000, 10_000, () => at);
+  assert.equal(await failing.label("drv-9"), null);
+  assert.equal(await failing.label("drv-9"), null);
+  assert.equal(failures, 1, "the failure is remembered");
 });

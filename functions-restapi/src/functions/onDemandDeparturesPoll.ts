@@ -17,8 +17,8 @@ import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { feedHealthOutcome, recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
 import { agencyServiceDate, serviceDateAndGtfsSecondsToUtc } from "../lib/missedTripTime";
-import { onDemandDeparturesEnabled, resolveOnDemandDeparture, VehicleLabelResolver, type ResolvedOnDemandDeparture } from "../lib/onDemandDepartures";
-import { fetchSpareDuty, fetchSparePage, fetchSpareVehicle, type SpareDutyRecord, type SpareSlotRecord } from "../lib/spareApi";
+import { DriverLabelResolver, onDemandDeparturesEnabled, resolveOnDemandDeparture, VehicleLabelResolver, type DriverLabel, type ResolvedOnDemandDeparture } from "../lib/onDemandDepartures";
+import { fetchSpareDriver, fetchSpareDuty, fetchSparePage, fetchSpareVehicle, type SpareDutyRecord, type SpareSlotRecord } from "../lib/spareApi";
 
 const DUTY_CONCURRENCY = 8;
 // A duty has one start-location slot; a handful allows for re-planning.
@@ -28,8 +28,10 @@ const START_SLOT_LIMIT = 20;
 // against a runaway working set, not a sizing.
 const MAX_DUTIES_PER_RUN = 400;
 
-// Fleet numbers, remembered across runs for the life of the process.
+// Fleet numbers and driver names, remembered across runs for the life of the
+// process.
 const vehicleLabels = new VehicleLabelResolver(fetchSpareVehicle);
+const driverLabels = new DriverLabelResolver(fetchSpareDriver);
 
 async function fetchStartLocationSlots(dutyId: string): Promise<SpareSlotRecord[]> {
   const page = await fetchSparePage<SpareSlotRecord>("/v1/slots", new URLSearchParams({
@@ -88,14 +90,19 @@ async function upsert(
   serviceDate: string,
   vehicleIdentifier: string | null,
   withVehicleIdentifier: boolean,
+  driverLabel: DriverLabel | null,
+  withDriverLabel: boolean,
 ): Promise<void> {
   const request = pool.request();
   request.input("vehicle_identifier", sql.NVarChar(64), vehicleIdentifier);
-  // Until migration 099 lands the column does not exist; the departure is
-  // still recorded, without its label.
-  const labelUpdate = withVehicleIdentifier ? "vehicle_identifier = @vehicle_identifier," : "";
-  const labelColumn = withVehicleIdentifier ? ", vehicle_identifier" : "";
-  const labelValue = withVehicleIdentifier ? ", @vehicle_identifier" : "";
+  request.input("driver_name", sql.NVarChar(128), driverLabel?.name ?? null);
+  request.input("driver_identifier", sql.NVarChar(64), driverLabel?.identifier ?? null);
+  // Until migrations 099 and 100 land their columns do not exist; the
+  // departure is still recorded, without its labels.
+  const labelUpdate = (withVehicleIdentifier ? "vehicle_identifier = @vehicle_identifier," : "")
+    + (withDriverLabel ? " driver_name = @driver_name, driver_identifier = @driver_identifier," : "");
+  const labelColumn = (withVehicleIdentifier ? ", vehicle_identifier" : "") + (withDriverLabel ? ", driver_name, driver_identifier" : "");
+  const labelValue = (withVehicleIdentifier ? ", @vehicle_identifier" : "") + (withDriverLabel ? ", @driver_name, @driver_identifier" : "");
   request.input("duty_id", sql.NVarChar(64), departure.dutyId);
   request.input("service_date", sql.Char(8), serviceDate);
   request.input("duty_identifier", sql.NVarChar(64), departure.dutyIdentifier);
@@ -138,10 +145,11 @@ app.timer("onDemandDeparturesPoll", {
       return;
     }
     const pool = await getPool();
-    const ready = await pool.request().query<{ ready: number; with_vehicle_identifier: number }>(`
+    const ready = await pool.request().query<{ ready: number; with_vehicle_identifier: number; with_driver_label: number }>(`
       SELECT CASE WHEN OBJECT_ID('dbo.OnDemandDepartures','U') IS NOT NULL
         AND OBJECT_ID('dbo.SpareMissedTripSource','U') IS NOT NULL THEN 1 ELSE 0 END ready,
-        CASE WHEN COL_LENGTH('dbo.OnDemandDepartures','vehicle_identifier') IS NULL THEN 0 ELSE 1 END with_vehicle_identifier
+        CASE WHEN COL_LENGTH('dbo.OnDemandDepartures','vehicle_identifier') IS NULL THEN 0 ELSE 1 END with_vehicle_identifier,
+        CASE WHEN COL_LENGTH('dbo.OnDemandDepartures','driver_name') IS NULL THEN 0 ELSE 1 END with_driver_label
     `);
     if (!ready.recordset[0]?.ready) {
       context.warn("On-demand departures tables are not ready; migration 096 (and 028) may be pending.");
@@ -149,6 +157,8 @@ app.timer("onDemandDeparturesPoll", {
     }
     const withVehicleIdentifier = ready.recordset[0]?.with_vehicle_identifier === 1;
     if (!withVehicleIdentifier) context.warn("OnDemandDepartures has no vehicle_identifier column (migration 099); fleet numbers are not recorded.");
+    const withDriverLabel = ready.recordset[0]?.with_driver_label === 1;
+    if (!withDriverLabel) context.warn("OnDemandDepartures has no driver_name column (migration 100); driver names are not recorded.");
 
     // Guarded as a whole, like the missed-trips ingest: a throw must land in
     // the health ledger as a failure, never leave it frozen on a stale success.
@@ -173,7 +183,8 @@ app.timer("onDemandDeparturesPoll", {
           const serviceDate = departureServiceDate(departure);
           if (!serviceDate) { undated++; continue; }
           const vehicleIdentifier = withVehicleIdentifier && departure.vehicleId ? await vehicleLabels.label(departure.vehicleId) : null;
-          await upsert(pool, departure, serviceDate, vehicleIdentifier, withVehicleIdentifier);
+          const driverLabel = withDriverLabel && departure.driverId ? await driverLabels.label(departure.driverId) : null;
+          await upsert(pool, departure, serviceDate, vehicleIdentifier, withVehicleIdentifier, driverLabel, withDriverLabel);
           stored++;
           const updatedAt = departure.sourceUpdatedAt ? Math.floor(departure.sourceUpdatedAt.getTime() / 1000) : 0;
           maxSourceUpdatedAt = Math.max(maxSourceUpdatedAt, updatedAt);
