@@ -26,7 +26,7 @@ Built on 2026-09-06:
   disk, sharing every code path with the timer.
 - `ON_DEMAND_OPERATIONAL_ZONE_IDS` replaces the hardcoded zone set, defaulting
   to the pilot two.
-- Migration 097 — `activated_by` / `activated_at`.
+- Migration 098 — `activated_by` / `activated_at`.
 - Both settings declared in `infra-phase1` rather than the Portal.
 
 How the three decisions were settled:
@@ -54,7 +54,7 @@ Two things to know before switching a source on:
   same release with the intake gate and a one-minute zone cache, so the path is
   no longer the one that failed — but the first activation is the moment that
   mitigation is first exercised under real load.
-- Migration 097 must be applied for activation to be attributed. Without it
+- Migration 098 must be applied for activation to be attributed. Without it
   activation still works — the columns are read only once they exist — but who
   put a version into force is recoverable only from Function App logs.
 

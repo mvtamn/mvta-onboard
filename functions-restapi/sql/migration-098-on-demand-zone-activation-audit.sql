@@ -1,4 +1,4 @@
--- Migration 097: record who put a zone version into force.
+-- Migration 098: record who put a zone version into force.
 --
 -- OnDemandOperationalZoneVersions (migration 074) records imported_by, but
 -- importing is the harmless half. Activating is what changes the boundaries a
@@ -12,7 +12,7 @@
 -- and inventing a value for those rows would fabricate an audit trail.
 
 IF OBJECT_ID('dbo.OnDemandOperationalZoneVersions', 'U') IS NULL
-  THROW 50097, 'Migration 097 requires OnDemandOperationalZoneVersions (migration 074).', 1;
+  THROW 50098, 'Migration 098 requires OnDemandOperationalZoneVersions (migration 074).', 1;
 GO
 
 IF COL_LENGTH('dbo.OnDemandOperationalZoneVersions', 'activated_by') IS NULL
@@ -23,4 +23,4 @@ IF COL_LENGTH('dbo.OnDemandOperationalZoneVersions', 'activated_at') IS NULL
   ALTER TABLE dbo.OnDemandOperationalZoneVersions ADD activated_at DATETIME2 NULL;
 GO
 
-PRINT 'Migration 097 applied: on-demand zone version activation is attributed.';
+PRINT 'Migration 098 applied: on-demand zone version activation is attributed.';

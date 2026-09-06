@@ -18,6 +18,31 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.114",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Added",
+        items: [
+          "On-demand wait monitoring can now tell which service area a request came from. The MVTA Connect zone boundaries are imported from the published service-area file and put into force deliberately, so a change to the boundaries is a reviewed step rather than something that happens overnight. Until now no boundaries were loaded at all, and every on-demand request was recorded without a zone.",
+          "Administrators can review imported zone boundary versions and see which one is in force, when it was put into force, and by whom.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.113",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Added",
+        items: [
+          "Garage-departure compliance candidates now cover on-demand duties as well as fixed-route runs. A duty that never departed, or departed later than the variance allowance, on a settled service day becomes a candidate for review, described with which Spare source measured it. Each source is checked against its feed health first.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.112",
     date: "2026-09-05",
     sections: [
