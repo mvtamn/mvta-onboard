@@ -1,6 +1,7 @@
 # On-Demand Operational Zone Importer — Scope
 
-Date: 2026-09-05
+Date: 2026-09-05. **Implemented 2026-09-06**; see the status section below for
+what was built and which decision is still open.
 
 Inputs:
 
@@ -8,6 +9,50 @@ Inputs:
 - `functions-restapi/src/lib/onDemandOperationalZones.ts` and its tests
 - `functions-restapi/src/lib/onDemandSpareMonitorStore.ts`
 - Live `dev` state on 2026-09-05: `OnDemandOperationalZoneVersions` has **zero rows**
+
+## Status: implemented, pending a source URL
+
+Built on 2026-09-06:
+
+- `lib/onDemandZoneImport.ts` — fetch (60s timeout), `source_sha256` over the
+  raw archive, transactional version-and-zone insert, and the activation swap.
+- `functions/onDemandZonesSync.ts` — daily 09:30 timer, gated on
+  `ON_DEMAND_ZONE_FLEX_URL`, recording `on_demand_zones` feed health.
+- `functions/onDemandZoneVersions.ts` — `GET` to review imported versions,
+  admin `POST` to activate one.
+- `on_demand_zones` added to the On-Demand KPI trust contract as a supporting
+  dependency.
+- `ON_DEMAND_OPERATIONAL_ZONE_IDS` replaces the hardcoded zone set, defaulting
+  to the pilot two.
+- Both settings declared in `infra-phase1` rather than the Portal.
+
+How the three decisions were settled:
+
+1. **Source** — a published GTFS-Flex URL polled daily, the `gtfsStopsSync`
+   shape. **The URL itself is still unknown**: it is not documented anywhere in
+   this repository, so the Bicep parameter is empty and the importer skips every
+   run with a warning until Operations supplies one. This is the only thing
+   between the current state and a working monitor.
+2. **Activation** — import automatically, activate explicitly, with one
+   exception: an import made while no version is active activates itself.
+   Deliberate activation exists to stop geometry being swapped under a live
+   monitor; with nothing active there is no live geometry to protect, and
+   requiring a manual step for the first import would only extend the outage.
+3. **Hardcoded zone list** — moved to configuration, keeping the fail-closed
+   count check. A feed that silently lost a zone must still stop the import.
+
+Two things to know before switching a source on:
+
+- Activation is when load changes. Release 1.5.110 records the Spare webhook
+  receiver taking the app down once an operational zone was active, because
+  every delivery re-read the zones and ran a MERGE. That was mitigated in the
+  same release with the intake gate and a one-minute zone cache, so the path is
+  no longer the one that failed — but the first activation is the moment that
+  mitigation is first exercised under real load.
+- There is no activation audit. `OnDemandOperationalZoneVersions` records
+  `imported_by` but has no column for who activated a version, so the endpoint
+  logs the actor rather than storing it. Adding that column is worth a separate
+  change.
 
 ## Why this exists
 
