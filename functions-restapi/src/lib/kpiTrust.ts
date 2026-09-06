@@ -175,8 +175,8 @@ export function resolveKpiTrust(records: readonly KpiFeedHealth[], now = new Dat
 
 // The feed dependencies the two missed-trip streams declare, deduplicated and
 // resolved against the same contracts the KPI trust summary uses, so the
-// Missed Trips module and the trust banner above it cannot disagree about the
-// same feed.
+// Missed Trips module and the trust banner on the Admin Integrations & Data
+// Health page cannot disagree about the same feed.
 //
 // Missed Trips previously derived this itself from every row in the health
 // table, against a flat "stale after 15 minutes (35 for spare_)" rule. That
@@ -209,8 +209,8 @@ export function missedTripFeedDependencies(
 // scheduled fixed-route trip actually started. The silent-no-show detector
 // infers a missed trip from the ABSENCE of vehicle-start evidence, so it must
 // be able to tell an absent trip from an absent feed - resolved here, against
-// the same fixed_route_missed_trips contract the trust banner shows, so the
-// detector and the banner cannot disagree about whether positions were usable.
+// the same fixed_route_missed_trips contract the Admin trust banner shows, so
+// the detector and the banner cannot disagree about whether positions were usable.
 export function underwayEvidenceCoverage(
   records: readonly KpiFeedHealth[],
   now = new Date(),
