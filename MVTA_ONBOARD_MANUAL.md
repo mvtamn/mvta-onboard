@@ -159,8 +159,11 @@ Event Monitoring and Decision Matrix still use static or limited datasets
 (part of Event Monitoring is now live - see below). OTP Compliance is now
 **partially live**: Route Summary, Review Queue, and Monthly Assessments read
 real Avail OTP Monthly / Missed Trips feed data once configured, falling back
-to sample data otherwise; its Audit Stream, Administration, and Threshold
-Tuner pages, and the Dashboard trend chart, remain "coming soon" placeholders.
+to sample data otherwise; its Audit Stream page and Dashboard trend chart
+remain "coming soon" placeholders. Its administration - reason codes, the
+early/late bias detection threshold and its preview tuner, and the historical
+feed backfill - is not in this tab at all: it lives at **Administration > OTP
+Compliance**, `OCC.Admin` only, since those settings apply to every reviewer.
 Fixed Route Risk uses GTFS monitoring data when authenticated. On-Demand
 Quality becomes live when an approved vendor adapter populates its monitoring
 table.
@@ -686,9 +689,11 @@ narrower schema does now exist and feed part of the console (see
 Summary, Review Queue, and Monthly Assessments pages read real Avail OTP
 Monthly/Missed Trips feed data once the feed is configured and has rows,
 falling back to sample data otherwise - its Dashboard trend chart and Audit
-Stream/Administration/Threshold Tuner pages remain mock/"coming soon." Do not
-describe OTP Compliance as fully live, and do not assume the exclusion-
-governance schema above exists, until that gap closes.
+Stream page remain mock/"coming soon," and its administration surfaces (reason
+codes, detection threshold and tuner, historical backfill) moved to
+Administration > OTP Compliance. Do not describe OTP Compliance as fully live,
+and do not assume the exclusion-governance schema above exists, until that gap
+closes.
 
 Key specifics from that design, useful when it is eventually built:
 
