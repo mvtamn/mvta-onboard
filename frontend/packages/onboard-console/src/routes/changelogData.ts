@@ -25,6 +25,10 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
         heading: "Fixed",
         items: [
           "The Subscribers page in Administration opens again when there are no subscribers yet. It showed the \"try this view again\" screen because the counts arrived empty instead of as zeros.",
+        heading: "Changed",
+        items: [
+          "Garage Departures, On-Demand: the Operator column now shows the driver's name, with Spare's driver identifier beside it and the Spare id on hover, once the poll has looked the driver up. Grouping by operator uses the name.",
+          "Garage Departures, On-Demand: the Duty column is hidden when no duty in view has a Spare identifier; each row keeps its Spare duty id on hover.",
         ],
       },
     ],
