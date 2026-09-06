@@ -165,6 +165,17 @@ export interface DriverLabel {
   identifier: string | null;
 }
 
+// What a driver record looked like, without its values: which keys it had
+// and whether each name field was set, blank or absent. Logged by the poll
+// the first time a shape yields no name, so a Spare payload that keeps the
+// name somewhere else can be seen in App Insights rather than guessed at.
+export function driverRecordShape(record: SpareDriverRecord): string {
+  const state = (key: keyof SpareDriverRecord) =>
+    !(key in record) ? "absent" : spareString(record[key], 64) ? "set" : "blank";
+  const keys = Object.keys(record).sort().join(",");
+  return `keys=[${keys}] firstName=${state("firstName")} lastName=${state("lastName")} identifier=${state("identifier")}`;
+}
+
 export function driverLabelFrom(record: SpareDriverRecord): DriverLabel | null {
   const first = spareString(record.firstName, 64);
   const last = spareString(record.lastName, 64);

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { driverLabelFrom, DriverLabelResolver, labelsToBackfill, resolveOnDemandDeparture, startLocationSlot, VehicleLabelResolver } from "./onDemandDepartures";
+import { driverLabelFrom, DriverLabelResolver, driverRecordShape, labelsToBackfill, resolveOnDemandDeparture, startLocationSlot, VehicleLabelResolver } from "./onDemandDepartures";
 
 const T0 = 1_788_000_000; // an arbitrary epoch-seconds base
 
@@ -135,4 +135,11 @@ test("a stored departure is backfilled only for the labels it lacks and the colu
   assert.deepEqual(labelsToBackfill({ ...bare, vehicle_identifier: "1188", driver_name: "Delacroix, Amir" }, true, true), { vehicle: false, driver: false });
   assert.deepEqual(labelsToBackfill({ ...bare, driver_name: null, driver_identifier: "144" }, true, true).driver, false, "an identifier alone is a label");
   assert.deepEqual(labelsToBackfill({ ...bare, driver_id: null, vehicle_id: null }, true, true), { vehicle: false, driver: false }, "nothing to ask Spare about");
+});
+
+test("a driver record's shape names its keys and the state of each name field, never a value", () => {
+  const shape = driverRecordShape({ id: "d1", identifier: "144", firstName: "", lastName: "Delacroix", email: "x@y" } as never);
+  assert.equal(shape, "keys=[email,firstName,id,identifier,lastName] firstName=blank lastName=set identifier=set");
+  assert.equal(driverRecordShape({ id: "d2" }), "keys=[id] firstName=absent lastName=absent identifier=absent");
+  assert.ok(!shape.includes("Delacroix") && !shape.includes("x@y"));
 });
