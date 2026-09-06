@@ -598,7 +598,19 @@ export interface FixedRouteDeparture {
   vehicle_label: string | null;
   updated_at: string;
   pullout_delta_seconds: number | null;
+  // Judged by the compliance candidate rule (functions-restapi/src/lib/
+  // fixedRouteDepartureOutcome.ts): late and no_departure are what reach the
+  // assessment queue; the rest say why a row did not.
+  outcome: FixedRouteDepartureOutcome;
 }
+
+export type FixedRouteDepartureOutcome =
+  | "late"
+  | "no_departure"
+  | "departed"
+  | "unresolved"
+  | "no_schedule"
+  | "not_settled";
 
 // The on-demand half of garage departure (ADR 0028): one row per Spare duty,
 // mirrored from functions-restapi/src/functions/onDemandDepartures.ts. Both
@@ -621,7 +633,19 @@ export interface OnDemandDeparture {
   updated_at: string;
   departure_delta_seconds: number | null;
   no_departure: boolean;
+  // Judged by the compliance candidate rule (functions-restapi/src/lib/
+  // onDemandDepartureOutcome.ts): late and no_departure are what reach the
+  // assessment queue; the rest say why a row did not.
+  outcome: OnDemandDepartureOutcome;
 }
+
+export type OnDemandDepartureOutcome =
+  | "late"
+  | "no_departure"
+  | "departed"
+  | "cancelled"
+  | "no_schedule"
+  | "not_settled";
 
 // Avail's OTP Monthly By Route/Stop/Day of Week feed - real Attachment G
 // departure-adherence numbers, backing the OTP Compliance module's Route

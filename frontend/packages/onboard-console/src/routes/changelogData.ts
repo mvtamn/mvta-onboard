@@ -18,13 +18,51 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
-    version: "1.5.119",
+    version: "1.5.122",
     date: "2026-09-06",
     sections: [
       {
         heading: "Changed",
         items: [
           "Administration > Integrations & Data Health is rebuilt. A summary strip answers first: how many KPI streams are current, how many feeds are reachable, and the oldest required ingestion. Each KPI stream is a card naming the module it gates, with its required and supporting dependencies as rows when something is wrong and as compact chips when it is current, sorted attention-first. Feed checks are a table with the failure reason under its row, and Check feeds is a proper button.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.121",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Garage Departures (On-Demand) now reads like the Fixed Route view: duties grouped by service day, driver, or vehicle, a Flagged-only filter, a per-day strip, dates as weekday and date, Central times with where each time came from underneath, and Spare driver ids shown as short references with the full id on hover.",
+          "On-Demand duties are judged the way the compliance candidate rule judges them, once their service day is over; today's duties are marked Not settled, and cancelled duties are left out of the counts.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.120",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Garage Departures (Fixed Route) now judges every run the way the compliance candidate rule does and shows that Outcome beside Avail's status; the cards count no-departure and late-over-allowance runs on settled days only, and today's runs are marked Not settled.",
+          "Fixed Route rows are grouped by service day, operator, or vehicle, with a Reviewable-only filter and a per-day strip of reviewable departures. Dates read as weekday and date, times are Central, operators show as a name with their badge, and blanks say what is missing.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.119",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "The Audit Log's message search works again. An older message stored its channels in a format the search could not read, and one such row failed the whole search; the same reading is now tolerant everywhere messages are listed, including the rider-facing active alerts.",
         ],
       },
     ],
