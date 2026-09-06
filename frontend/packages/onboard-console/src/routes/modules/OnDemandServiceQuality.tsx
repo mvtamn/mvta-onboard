@@ -264,6 +264,17 @@ export function OnDemandServiceQuality() {
     }
   }
 
+  // A count is a claim about service, and an empty list is only evidence of no
+  // risk when a source actually said so. While the monitor is unconnected, or
+  // still loading, or the sign-in has expired, there are no records to count -
+  // and "0 Predicted over standard" then reads as an all-clear the console has
+  // no basis for. A successful reconciliation reporting no active service, and
+  // last-known records held from a degraded source, are real claims and do
+  // count. This is the same rule as the empty states below, applied to the
+  // summary that sits above them.
+  const hasRiskClaim = isPreview
+    || (dataMode === "live" && diagnostics?.state !== "not_connected");
+  const stat = (value: number) => (hasRiskClaim ? value : "—");
   const predictedPoor = risks.filter((risk) => risk.predictedWaitMinutes > standardFor(risk)).length;
   const currentlyPoor = risks.filter((risk) => risk.currentWaitMinutes > standardFor(risk)).length;
   const unassigned = risks.filter((risk) => risk.vehicle === null).length;
@@ -299,10 +310,10 @@ export function OnDemandServiceQuality() {
       </div>
 
       <div className="risk-stat-grid" aria-label="On-demand service quality summary">
-        <RiskStat value={predictedPoor} label="Predicted over standard" tone="warning" />
-        <RiskStat value={currentlyPoor} label="Currently over standard" tone="danger" />
-        <RiskStat value={unassigned} label="Unassigned at risk" tone="muted" />
-        <RiskStat value={`${median} min`} label="Median predicted wait" tone="accent" />
+        <RiskStat value={stat(predictedPoor)} label="Predicted over standard" tone="warning" />
+        <RiskStat value={stat(currentlyPoor)} label="Currently over standard" tone="danger" />
+        <RiskStat value={stat(unassigned)} label="Unassigned at risk" tone="muted" />
+        <RiskStat value={hasRiskClaim ? `${median} min` : "—"} label="Median predicted wait" tone="accent" />
       </div>
 
       {dataMode === "loading" && !trainingMode ? (

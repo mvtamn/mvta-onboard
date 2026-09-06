@@ -11,6 +11,8 @@ param planSku string = 'B1'
 param planTier string = 'Basic'
 param includeSpareApiKey bool = false
 param spareMissedTripsEnabled bool = false
+param onDemandMonitoringEnabled bool = false
+param onDemandMonitoringServiceIds string = ''
 param onDemandDeparturesEnabled bool = false
 param gtfsSilentNoShowEnabled bool = false
 param spareMissedTripServiceIds string = ''
@@ -227,6 +229,24 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         // On-demand garage departures (onDemandDeparturesPoll) read Spare duties
         // named by the missed-trip requests above, so they share that scope.
         { name: 'ON_DEMAND_DEPARTURES_ENABLED', value: string(onDemandDeparturesEnabled) }
+        // The activation gate for on-demand service-quality monitoring. It is
+        // read by both onDemandSpareReconcile and the /on-demand-risks read
+        // contract, so unset means the hourly reconciliation never runs, the
+        // spare_on_demand_reconciliation feed never records a success, and OCC
+        // reports Not connected. Declared here because this list is the
+        // COMPLETE desired state: set by hand, it is removed by the next
+        // routine infra deploy, which is how ACS_ENDPOINT was lost on
+        // 2026-09-05. Deliberately independent of SPARE_MISSED_TRIPS_ENABLED -
+        // ADR 0026 separates the two so a missed-trip policy change cannot
+        // decide whether on-demand risk is trustworthy.
+        { name: 'ON_DEMAND_MONITORING_ENABLED', value: string(onDemandMonitoringEnabled) }
+        // Which Spare services the hourly reconciliation reads. Empty means
+        // every service the API key can see, which is why this ships alongside
+        // the flag rather than after it: enabling monitoring without a scope
+        // would reconcile services that are not MVTA Connect. Deliberately not
+        // defaulted to SPARE_MISSED_TRIP_SERVICE_IDS, which is missed-trip
+        // policy and must not silently become monitoring policy.
+        { name: 'ON_DEMAND_MONITORING_SERVICE_IDS', value: onDemandMonitoringServiceIds }
       ] : [])
     }
   }
