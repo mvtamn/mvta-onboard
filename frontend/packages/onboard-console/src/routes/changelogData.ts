@@ -18,6 +18,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.114",
+    date: "2026-09-05",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Garage Departures (On-Demand) now reads like the Fixed Route view: duties grouped by service day, driver, or vehicle, a Flagged-only filter, a per-day strip, dates as weekday and date, Central times with where each time came from underneath, and Spare driver, vehicle and duty ids shown as short references with the full id on hover.",
+          "On-Demand counts and the average delta are taken over judged duties only; cancelled and not-yet-due duties are shown as such and left out of the percentages.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.113",
     date: "2026-09-05",
     sections: [

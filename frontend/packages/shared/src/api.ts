@@ -709,10 +709,12 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
           configured: boolean;
           table_ready: boolean;
           record_count: number;
+          judged_count: number;
           late_count: number;
           no_departure_count: number;
           avg_delta_seconds: number | null;
           variance_seconds: number;
+          today_service_date: string;
         };
       }>(`/api/on-demand-departures${suffix}`, {}, true);
     },

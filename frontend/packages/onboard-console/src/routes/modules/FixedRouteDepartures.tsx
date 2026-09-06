@@ -5,20 +5,23 @@ import { KpiTrustSummary } from "./KpiTrustSummary.js";
 import {
   agencyTimeLabel,
   badgeLabel,
+  dailyCounts,
   deltaMinutesLabel,
+  DepartureTrend,
+  GroupByToggle,
   monitoringState,
   operatorParts,
   RiskStat,
   serviceDayLabel,
-  serviceDaysEnding,
+  type DailyCounts,
   type DepartureDiagnosticsBase,
+  type DepartureGroupBy,
 } from "./garageDepartures.shared.js";
 import "./serviceRisk.css";
 
 const DAY_OPTIONS = [7, 14, 30] as const;
 const DEFAULT_DAYS = 14;
 
-export type DepartureGroupBy = "date" | "operator" | "vehicle";
 type Show = "all" | "reviewable";
 
 interface DepartureDiagnostics extends DepartureDiagnosticsBase {
@@ -129,32 +132,9 @@ export function groupDepartures(rows: FixedRouteDeparture[], groupBy: DepartureG
     .sort((a, b) => (b.lateCount + b.noDepartureCount) - (a.lateCount + a.noDepartureCount) || a.title.localeCompare(b.title));
 }
 
-export interface DailyReviewable {
-  date: string;
-  late: number;
-  noDeparture: number;
-  settled: boolean;
-}
-
-// One entry per service day in the window, including days with no rows, so
-// the strip's spacing is calendar time and a quiet day shows as quiet.
-export function dailyReviewable(rows: FixedRouteDeparture[], settledBefore: string, days: number): DailyReviewable[] {
-  return serviceDaysEnding(settledBefore, days).map((date) => ({
-    date,
-    late: rows.filter((r) => r.service_date === date && r.outcome === "late").length,
-    noDeparture: rows.filter((r) => r.service_date === date && r.outcome === "no_departure").length,
-    settled: date < settledBefore,
-  }));
-}
-
-function dayTick(date: string): string {
-  const d = new Date(`${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T12:00:00`);
-  return Number.isNaN(d.getTime()) ? date.slice(6, 8) : d.toLocaleDateString("en-US", { weekday: "short" }).slice(0, 2) + " " + d.getDate();
-}
-
-function isWeekend(date: string): boolean {
-  const d = new Date(`${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T12:00:00`);
-  return d.getDay() === 0 || d.getDay() === 6;
+// Reviewable departures per service day in the window.
+export function dailyReviewable(rows: FixedRouteDeparture[], settledBefore: string, days: number): DailyCounts[] {
+  return dailyCounts(rows, settledBefore, days, (r) => (r.outcome === "late" || r.outcome === "no_departure" ? r.outcome : null));
 }
 
 function percent(part: number, whole: number): string {
@@ -248,7 +228,6 @@ export function FixedRouteDepartures() {
     () => (departures && diagnostics ? dailyReviewable(departures, diagnostics.settled_before, days) : []),
     [departures, diagnostics, days],
   );
-  const dailyMax = Math.max(1, ...daily.map((d) => d.late + d.noDeparture));
   const columns = columnsFor(groupBy);
   const todayCount = diagnostics ? diagnostics.record_count - diagnostics.settled_count : 0;
 
@@ -263,20 +242,7 @@ export function FixedRouteDepartures() {
             <option value={d} key={d}>Last {d} days</option>
           ))}
         </select>
-        <label id="frd-group-label">Group by</label>
-        <div className="risk-view-toggle risk-view-toggle-sm" role="tablist" aria-labelledby="frd-group-label">
-          {([["date", "Service day"], ["operator", "Operator"], ["vehicle", "Vehicle"]] as const).map(([key, label]) => (
-            <button
-              key={key}
-              role="tab"
-              aria-selected={groupBy === key}
-              className={groupBy === key ? "active" : ""}
-              onClick={() => setGroupBy(key)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <GroupByToggle id="frd-group" value={groupBy} onChange={setGroupBy} />
         <label htmlFor="frd-show">Show</label>
         <select id="frd-show" value={show} onChange={(e) => setShow(e.target.value as Show)}>
           <option value="all">All runs</option>
@@ -328,32 +294,12 @@ export function FixedRouteDepartures() {
       </div>
 
       {connected && departures && departures.length > 0 ? (
-        <div className="departure-trend" aria-label="Reviewable departures by service day">
-          <div className="departure-trend-head">
-            <h4>Reviewable departures by service day</h4>
-            <div className="departure-trend-legend">
-              <span><i className="nodep"></i>No departure</span>
-              <span><i className="late"></i>Late over {varianceMinutes} min</span>
-              <span><i className="late open"></i>Today, not settled</span>
-            </div>
-          </div>
-          <div className="departure-trend-bars" style={{ gridTemplateColumns: `repeat(${daily.length}, minmax(0, 1fr))` }}>
-            {daily.map((day) => (
-              <div
-                key={day.date}
-                className={`departure-trend-day${day.settled ? "" : " open"}${isWeekend(day.date) ? " weekend" : ""}`}
-                title={`${serviceDayLabel(day.date)}: ${day.noDeparture} no departure, ${day.late} late${day.settled ? "" : " (not settled)"}`}
-              >
-                <div className="departure-trend-col">
-                  <div className="bar late" style={{ height: `${Math.round((day.late / dailyMax) * 62)}px` }}></div>
-                  <div className="bar nodep" style={{ height: `${Math.round((day.noDeparture / dailyMax) * 62)}px` }}></div>
-                </div>
-                <span className="departure-trend-n">{day.late + day.noDeparture}</span>
-                <span className="departure-trend-lbl">{dayTick(day.date)}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+        <DepartureTrend
+          title="Reviewable departures by service day"
+          daily={daily}
+          lateLegend={`Late over ${varianceMinutes} min`}
+          openLegend="Today, not settled"
+        />
       ) : null}
 
       {state === "loading" ? (

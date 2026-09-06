@@ -1,10 +1,11 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../config.js";
-import { type FixedRouteDeparture } from "@mvta/shared";
+import { type FixedRouteDeparture, type OnDemandDeparture } from "@mvta/shared";
 import { GarageDepartures } from "./GarageDepartures.js";
 import { dailyReviewable, groupDepartures, statusPill } from "./FixedRouteDepartures.js";
-import { agencyTimeLabel, deltaMinutesLabel, operatorParts, serviceDayLabel, serviceDaysEnding } from "./garageDepartures.shared.js";
+import { dailyFlagged, groupDuties } from "./OnDemandDepartures.js";
+import { agencyTimeLabel, deltaMinutesLabel, operatorParts, serviceDayLabel, serviceDaysEnding, shortRef } from "./garageDepartures.shared.js";
 
 vi.mock("../../config.js", () => ({
   api: {
@@ -27,7 +28,7 @@ describe("Garage Departures", () => {
     });
     vi.mocked(api.getOnDemandDepartures).mockResolvedValue({
       departures: [],
-      diagnostics: { configured: false, table_ready: false, record_count: 0, late_count: 0, no_departure_count: 0, avg_delta_seconds: null, variance_seconds: 600 },
+      diagnostics: { configured: false, table_ready: false, record_count: 0, judged_count: 0, late_count: 0, no_departure_count: 0, avg_delta_seconds: null, variance_seconds: 600, today_service_date: "20260905" },
     });
 
     render(<GarageDepartures />);
@@ -200,5 +201,65 @@ describe("Fixed Route view", () => {
     expect(screen.queryByText("Within allowance")).not.toBeInTheDocument();
     expect(screen.queryByText("Okafor, Denise")).not.toBeInTheDocument();
     expect(screen.getAllByText("Late").length).toBeGreaterThan(0);
+  });
+});
+
+function dutyRow(overrides: Partial<OnDemandDeparture>): OnDemandDeparture {
+  return {
+    service_date: "20260904",
+    duty_id: "a1",
+    duty_identifier: "OD-2198",
+    driver_id: "3f9a2c1e-7b40-4d1a-9e6c-0a1b2c3d4e5f",
+    vehicle_id: "e5a1c3d7-2b4f-4a6c-9d8e-1f2a3b4c5d6e",
+    duty_status: "completed",
+    departure_scheduled: "2026-09-04T11:00:00Z",
+    scheduled_source: "slots_startLocation",
+    departure_actual: "2026-09-04T11:17:00Z",
+    departure_source: "slots_startLocation",
+    updated_at: "2026-09-04T12:00:00Z",
+    departure_delta_seconds: 17 * 60,
+    no_departure: false,
+    outcome: "late",
+    ...overrides,
+  };
+}
+
+const DUTY_ROWS: OnDemandDeparture[] = [
+  dutyRow({}),
+  dutyRow({ duty_id: "a2", duty_identifier: "OD-2199", driver_id: "c4e2a9f0-1d3b-4c5e-8f7a-9b0c1d2e3f4a", departure_actual: "2026-09-04T11:09:00Z", departure_delta_seconds: 9 * 60, outcome: "departed" }),
+  dutyRow({ duty_id: "a3", duty_identifier: "OD-2203", driver_id: null, departure_actual: null, departure_source: null, departure_delta_seconds: null, no_departure: true, outcome: "no_departure" }),
+  dutyRow({ service_date: "20260903", duty_id: "a4", duty_identifier: "OD-2180", departure_actual: "2026-09-03T11:22:00Z", departure_delta_seconds: 22 * 60, outcome: "late" }),
+  dutyRow({ service_date: "20260905", duty_id: "a5", duty_identifier: "OD-2211", duty_status: "scheduled", departure_actual: null, departure_source: null, departure_delta_seconds: null, outcome: "pending" }),
+];
+
+describe("On-Demand display helpers", () => {
+  it("shortens a Spare id to a recognisable reference", () => {
+    expect(shortRef("3f9a2c1e-7b40-4d1a-9e6c-0a1b2c3d4e5f")).toBe("3f9a2c1e…");
+    expect(shortRef("  ")).toBeNull();
+    expect(shortRef(null)).toBeNull();
+  });
+
+  it("groups duties by service day newest first, attention first inside a day, today marked open", () => {
+    const groups = groupDuties(DUTY_ROWS, "date", "20260905");
+    expect(groups.map((g) => g.key)).toEqual(["20260905", "20260904", "20260903"]);
+    expect(groups[0]).toMatchObject({ title: "Sat, Sep 5, 2026", open: true });
+    expect(groups[1]).toMatchObject({ open: false, lateCount: 1, noDepartureCount: 1, departedCount: 2, avgDeltaSeconds: 13 * 60 });
+    expect(groups[1].rows.map((r) => r.outcome)).toEqual(["no_departure", "late", "departed"]);
+  });
+
+  it("groups duties by driver reference with the most flagged first", () => {
+    const groups = groupDuties(DUTY_ROWS, "operator", "20260905");
+    expect(groups[0]).toMatchObject({ title: "Driver 3f9a2c1e…", reference: "3f9a2c1e-7b40-4d1a-9e6c-0a1b2c3d4e5f", lateCount: 2 });
+    expect(groups[0].rows.map((r) => r.service_date)).toEqual(["20260905", "20260904", "20260903"]);
+    expect(groups.map((g) => g.title)).toContain("No driver on duty");
+  });
+
+  it("counts flagged duties per day in the window", () => {
+    const daily = dailyFlagged(DUTY_ROWS, "20260905", 3);
+    expect(daily).toEqual([
+      { date: "20260903", late: 1, noDeparture: 0, settled: true },
+      { date: "20260904", late: 1, noDeparture: 1, settled: true },
+      { date: "20260905", late: 0, noDeparture: 0, settled: false },
+    ]);
   });
 });

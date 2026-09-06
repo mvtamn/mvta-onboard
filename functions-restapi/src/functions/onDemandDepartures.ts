@@ -4,11 +4,15 @@
 // diagnostics shape so the console reads both through one state model. Same
 // readers; visibility only - all writes come from onDemandDeparturesPoll.ts.
 // Accepts an optional ?days= query param to scope the trend window (default 14).
+// Every row carries an outcome (lib/onDemandDepartureOutcome.ts) and the
+// diagnostics count by it, with the allowance they used and the agency's
+// current service date so the console can lay the window out by day.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
 import { agencyServiceDate } from "../lib/missedTripTime";
 import { onDemandDeparturesEnabled } from "../lib/onDemandDepartures";
+import { isJudged, onDemandDepartureOutcome, type OnDemandDepartureOutcome } from "../lib/onDemandDepartureOutcome";
 import { garageDepartureVarianceSeconds } from "./complianceCandidatesPoll";
 
 const DEFAULT_TREND_DAYS = 14;
@@ -53,8 +57,9 @@ app.http("onDemandDeparturesList", {
       `);
       const configured = onDemandDeparturesEnabled() && Boolean(process.env.SPARE_API_KEY?.trim());
       const empty = {
-        configured, table_ready: false, record_count: 0, late_count: 0, no_departure_count: 0,
+        configured, table_ready: false, record_count: 0, judged_count: 0, late_count: 0, no_departure_count: 0,
         avg_delta_seconds: null as number | null, variance_seconds: varianceSeconds,
+        today_service_date: agencyServiceDate(new Date()).serviceDate,
       };
       if (tableCheck.recordset[0]?.table_exists !== 1) {
         return { status: 200, jsonBody: { departures: [], diagnostics: empty } };
@@ -76,8 +81,12 @@ app.http("onDemandDeparturesList", {
         WHERE service_date >= @cutoff_date
         ORDER BY service_date DESC, departure_scheduled, duty_id
       `);
-      const departures = result.recordset;
-      const withDelta = departures.filter((d) => d.departure_delta_seconds !== null);
+      const departures: Array<OnDemandDepartureRow & { outcome: OnDemandDepartureOutcome }> = result.recordset.map((row) => ({
+        ...row,
+        outcome: onDemandDepartureOutcome(row, varianceSeconds),
+      }));
+      const judged = departures.filter((d) => isJudged(d.outcome));
+      const withDelta = judged.filter((d) => d.departure_delta_seconds !== null);
       const avgDeltaSeconds = withDelta.length > 0
         ? Math.round(withDelta.reduce((sum, d) => sum + (d.departure_delta_seconds ?? 0), 0) / withDelta.length)
         : null;
@@ -90,8 +99,9 @@ app.http("onDemandDeparturesList", {
             ...empty,
             table_ready: true,
             record_count: departures.length,
-            late_count: departures.filter((d) => (d.departure_delta_seconds ?? 0) > varianceSeconds).length,
-            no_departure_count: departures.filter((d) => d.no_departure).length,
+            judged_count: judged.length,
+            late_count: judged.filter((d) => d.outcome === "late").length,
+            no_departure_count: judged.filter((d) => d.outcome === "no_departure").length,
             avg_delta_seconds: avgDeltaSeconds,
           },
         },
