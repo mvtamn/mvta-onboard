@@ -73,6 +73,14 @@ export interface SpareDutyRecord {
   } | null;
 }
 
+// A vehicle, read for its identifier only: Spare's name for the fleet number
+// (the Ridership Export's vehicleIdentifier). The plate is not needed.
+export interface SpareVehicleRecord {
+  id?: unknown;
+  identifier?: unknown;
+  licensePlate?: unknown;
+}
+
 export function spareString(value: unknown, maxLength = 256): string | null {
   return typeof value === "string" && value.trim() !== "" ? value.trim().slice(0, maxLength) : null;
 }
@@ -143,7 +151,7 @@ export async function fetchSparePage<T>(
 }
 
 async function fetchSpareResource<T>(
-  collection: "/v1/requests" | "/v1/duties",
+  collection: "/v1/requests" | "/v1/duties" | "/v1/vehicles",
   id: string,
   timeoutMs: number,
 ): Promise<T> {
@@ -168,4 +176,8 @@ export function fetchSpareRequest<T>(requestId: string, timeoutMs = DEFAULT_TIME
 // already knows about by id rather than guessing at a bulk filter.
 export function fetchSpareDuty(dutyId: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<SpareDutyRecord> {
   return fetchSpareResource<SpareDutyRecord>("/v1/duties", dutyId, timeoutMs);
+}
+
+export function fetchSpareVehicle(vehicleId: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<SpareVehicleRecord> {
+  return fetchSpareResource<SpareVehicleRecord>("/v1/vehicles", vehicleId, timeoutMs);
 }
