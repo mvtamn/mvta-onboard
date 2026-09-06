@@ -17,8 +17,8 @@ import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { feedHealthOutcome, recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
 import { agencyServiceDate, serviceDateAndGtfsSecondsToUtc } from "../lib/missedTripTime";
-import { onDemandDeparturesEnabled, resolveOnDemandDeparture, type ResolvedOnDemandDeparture } from "../lib/onDemandDepartures";
-import { fetchSpareDuty, fetchSparePage, type SpareDutyRecord, type SpareSlotRecord } from "../lib/spareApi";
+import { onDemandDeparturesEnabled, resolveOnDemandDeparture, VehicleLabelResolver, type ResolvedOnDemandDeparture } from "../lib/onDemandDepartures";
+import { fetchSpareDuty, fetchSparePage, fetchSpareVehicle, type SpareDutyRecord, type SpareSlotRecord } from "../lib/spareApi";
 
 const DUTY_CONCURRENCY = 8;
 // A duty has one start-location slot; a handful allows for re-planning.
@@ -27,6 +27,9 @@ const START_SLOT_LIMIT = 20;
 // actual. Well above a day of MVTA Connect duties; the cap is a safety stop
 // against a runaway working set, not a sizing.
 const MAX_DUTIES_PER_RUN = 400;
+
+// Fleet numbers, remembered across runs for the life of the process.
+const vehicleLabels = new VehicleLabelResolver(fetchSpareVehicle);
 
 async function fetchStartLocationSlots(dutyId: string): Promise<SpareSlotRecord[]> {
   const page = await fetchSparePage<SpareSlotRecord>("/v1/slots", new URLSearchParams({
@@ -79,8 +82,20 @@ async function workingSet(pool: sql.ConnectionPool): Promise<string[]> {
   return result.recordset.map((row) => row.duty_id);
 }
 
-async function upsert(pool: sql.ConnectionPool, departure: ResolvedOnDemandDeparture, serviceDate: string): Promise<void> {
+async function upsert(
+  pool: sql.ConnectionPool,
+  departure: ResolvedOnDemandDeparture,
+  serviceDate: string,
+  vehicleIdentifier: string | null,
+  withVehicleIdentifier: boolean,
+): Promise<void> {
   const request = pool.request();
+  request.input("vehicle_identifier", sql.NVarChar(64), vehicleIdentifier);
+  // Until migration 099 lands the column does not exist; the departure is
+  // still recorded, without its label.
+  const labelUpdate = withVehicleIdentifier ? "vehicle_identifier = @vehicle_identifier," : "";
+  const labelColumn = withVehicleIdentifier ? ", vehicle_identifier" : "";
+  const labelValue = withVehicleIdentifier ? ", @vehicle_identifier" : "";
   request.input("duty_id", sql.NVarChar(64), departure.dutyId);
   request.input("service_date", sql.Char(8), serviceDate);
   request.input("duty_identifier", sql.NVarChar(64), departure.dutyIdentifier);
@@ -99,16 +114,16 @@ async function upsert(pool: sql.ConnectionPool, departure: ResolvedOnDemandDepar
     WHEN MATCHED AND (target.source_updated_at IS NULL OR @source_updated_at IS NULL OR @source_updated_at >= target.source_updated_at)
       THEN UPDATE SET
         service_date = @service_date, duty_identifier = @duty_identifier,
-        driver_id = @driver_id, vehicle_id = @vehicle_id, duty_status = @duty_status,
+        driver_id = @driver_id, vehicle_id = @vehicle_id, ${labelUpdate} duty_status = @duty_status,
         departure_scheduled = @departure_scheduled, scheduled_source = @scheduled_source,
         departure_actual = @departure_actual, departure_source = @departure_source,
         slot_id = @slot_id, source_updated_at = @source_updated_at, updated_at = SYSUTCDATETIME()
     WHEN NOT MATCHED THEN INSERT (
       duty_id, service_date, duty_identifier, driver_id, vehicle_id, duty_status,
-      departure_scheduled, scheduled_source, departure_actual, departure_source, slot_id, source_updated_at
+      departure_scheduled, scheduled_source, departure_actual, departure_source, slot_id, source_updated_at${labelColumn}
     ) VALUES (
       @duty_id, @service_date, @duty_identifier, @driver_id, @vehicle_id, @duty_status,
-      @departure_scheduled, @scheduled_source, @departure_actual, @departure_source, @slot_id, @source_updated_at
+      @departure_scheduled, @scheduled_source, @departure_actual, @departure_source, @slot_id, @source_updated_at${labelValue}
     );
   `);
 }
@@ -123,14 +138,17 @@ app.timer("onDemandDeparturesPoll", {
       return;
     }
     const pool = await getPool();
-    const ready = await pool.request().query<{ ready: number }>(`
+    const ready = await pool.request().query<{ ready: number; with_vehicle_identifier: number }>(`
       SELECT CASE WHEN OBJECT_ID('dbo.OnDemandDepartures','U') IS NOT NULL
-        AND OBJECT_ID('dbo.SpareMissedTripSource','U') IS NOT NULL THEN 1 ELSE 0 END ready
+        AND OBJECT_ID('dbo.SpareMissedTripSource','U') IS NOT NULL THEN 1 ELSE 0 END ready,
+        CASE WHEN COL_LENGTH('dbo.OnDemandDepartures','vehicle_identifier') IS NULL THEN 0 ELSE 1 END with_vehicle_identifier
     `);
     if (!ready.recordset[0]?.ready) {
       context.warn("On-demand departures tables are not ready; migration 096 (and 028) may be pending.");
       return;
     }
+    const withVehicleIdentifier = ready.recordset[0]?.with_vehicle_identifier === 1;
+    if (!withVehicleIdentifier) context.warn("OnDemandDepartures has no vehicle_identifier column (migration 099); fleet numbers are not recorded.");
 
     // Guarded as a whole, like the missed-trips ingest: a throw must land in
     // the health ledger as a failure, never leave it frozen on a stale success.
@@ -154,7 +172,8 @@ app.timer("onDemandDeparturesPoll", {
           if (!departure) continue;
           const serviceDate = departureServiceDate(departure);
           if (!serviceDate) { undated++; continue; }
-          await upsert(pool, departure, serviceDate);
+          const vehicleIdentifier = withVehicleIdentifier && departure.vehicleId ? await vehicleLabels.label(departure.vehicleId) : null;
+          await upsert(pool, departure, serviceDate, vehicleIdentifier, withVehicleIdentifier);
           stored++;
           const updatedAt = departure.sourceUpdatedAt ? Math.floor(departure.sourceUpdatedAt.getTime() / 1000) : 0;
           maxSourceUpdatedAt = Math.max(maxSourceUpdatedAt, updatedAt);

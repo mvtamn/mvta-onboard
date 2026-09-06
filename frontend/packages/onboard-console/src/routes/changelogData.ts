@@ -18,6 +18,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "1.5.118",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Garage Departures, On-Demand: the Vehicle column now shows the fleet number instead of Spare's internal vehicle id. The id is still available on hover.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.117",
     date: "2026-09-05",
     sections: [

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolveOnDemandDeparture, startLocationSlot } from "./onDemandDepartures";
+import { resolveOnDemandDeparture, startLocationSlot, VehicleLabelResolver } from "./onDemandDepartures";
 
 const T0 = 1_788_000_000; // an arbitrary epoch-seconds base
 
@@ -71,4 +71,33 @@ test("ignores cancelled start slots and picks the earliest remaining one", () =>
 
 test("refuses a duty without an id", () => {
   assert.equal(resolveOnDemandDeparture({ identifier: "D-1" }, []), null);
+});
+
+test("resolves a vehicle's fleet number once and remembers it", async () => {
+  let at = 1_000_000;
+  const calls: string[] = [];
+  const resolver = new VehicleLabelResolver(async (id) => { calls.push(id); return { id, identifier: " 1188 " }; }, 60_000, 10_000, () => at);
+  assert.equal(await resolver.label("veh-1"), "1188");
+  assert.equal(await resolver.label("veh-1"), "1188");
+  assert.deepEqual(calls, ["veh-1"], "the second duty on the same vehicle costs no call");
+  at += 60_001;
+  assert.equal(await resolver.label("veh-1"), "1188");
+  assert.deepEqual(calls, ["veh-1", "veh-1"], "re-read once the ttl has passed");
+});
+
+test("a failed vehicle read yields no label, is remembered briefly, and never throws", async () => {
+  let at = 1_000_000;
+  let calls = 0;
+  const resolver = new VehicleLabelResolver(async () => { calls++; throw new Error("HTTP 404"); }, 60_000, 10_000, () => at);
+  assert.equal(await resolver.label("veh-9"), null);
+  assert.equal(await resolver.label("veh-9"), null);
+  assert.equal(calls, 1, "the failure is remembered");
+  at += 10_001;
+  assert.equal(await resolver.label("veh-9"), null);
+  assert.equal(calls, 2, "and retried after the shorter failure ttl");
+});
+
+test("a vehicle without an identifier is stored as unlabelled, not as its id", async () => {
+  const resolver = new VehicleLabelResolver(async (id) => ({ id }));
+  assert.equal(await resolver.label("veh-2"), null);
 });

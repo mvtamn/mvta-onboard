@@ -10,6 +10,7 @@ const departure: OnDemandDeparture = {
   duty_identifier: "D-101",
   driver_id: "drv-1",
   vehicle_id: "veh-7",
+  vehicle_identifier: "1188",
   duty_status: "inProgress",
   departure_scheduled: "2026-09-05T12:00:00Z",
   scheduled_source: "slots_startLocation",
@@ -110,6 +111,8 @@ describe("On-Demand Departures", () => {
           ...departure,
           duty_id: "duty-2",
           duty_identifier: null,
+          vehicle_id: "veh-8",
+          vehicle_identifier: null,
           scheduled_source: "duties_startRequested",
           departure_actual: null,
           departure_source: null,
@@ -129,6 +132,11 @@ describe("On-Demand Departures", () => {
     // departed says so instead of showing a blank delta.
     expect(screen.getByText("duty-2")).toBeInTheDocument();
     expect(screen.getByText("No departure")).toBeInTheDocument();
+    // The fleet number shows when known, with Spare's id on hover; the id
+    // stands in when it is not.
+    expect(screen.getByText("1188")).toHaveAttribute("title", "Spare vehicle veh-7");
+    expect(screen.getByText("veh-8")).toBeInTheDocument();
+    expect(screen.queryByText("veh-7")).not.toBeInTheDocument();
     expect(screen.getByText(/requested start because Spare has no start-location slot/)).toBeInTheDocument();
     expect(summaryValue("Late over 10 min")).toBe("1");
     expect(summaryValue("No departure recorded")).toBe("1");
