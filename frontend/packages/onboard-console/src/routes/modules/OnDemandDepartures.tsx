@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { ApiError, type OnDemandDeparture } from "@mvta/shared";
 import { api } from "../../config.js";
-import { KpiTrustSummary } from "./KpiTrustSummary.js";
 import {
   badgeLabel,
   dateTimeLabel,
@@ -89,8 +88,6 @@ export function OnDemandDepartures() {
 
   return (
     <>
-      <KpiTrustSummary stream="on_demand_departures" />
-
       <div className="risk-refresh-bar" aria-label="On-demand departures controls">
         <label htmlFor="odd-days">Window</label>
         <select id="odd-days" value={days} onChange={(e) => setDays(Number(e.target.value))}>

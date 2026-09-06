@@ -22,7 +22,6 @@ import {
   useFixedRouteRefresh,
 } from "../../context/FixedRouteRefreshContext.js";
 import { LiveDelays } from "./LiveDelays.js";
-import { KpiTrustSummary } from "./KpiTrustSummary.js";
 import {
   FIXED_ROUTE_RISKS,
   type FixedRouteRisk,
@@ -423,8 +422,6 @@ export function FixedRouteServiceRisk() {
       />
 
       <FixedRouteRefreshControls />
-
-      <KpiTrustSummary stream="fixed_route_delay" />
 
       <div className="concept-banner">
         <span className="concept-badge">

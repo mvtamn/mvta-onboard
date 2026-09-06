@@ -11,7 +11,6 @@ import {
   type OtpHistoricalBackfillResponse,
 } from "@mvta/shared";
 import { api } from "../../../config.js";
-import { KpiTrustSummary } from "../KpiTrustSummary.js";
 import {
   DATA,
   computeOfficialPct,
@@ -425,8 +424,6 @@ export function OtpModule() {
       <p className="panel-desc" style={{ marginBottom: 10 }}>
         <b>{meta.title}.</b> {meta.sub}
       </p>
-
-      <KpiTrustSummary stream="otp" />
 
       <div className="concept-banner" style={{ flexWrap: "wrap", gap: 10 }}>
         <span className="concept-badge">{usingLiveOtp ? "Live data" : "Preview data"}</span>
