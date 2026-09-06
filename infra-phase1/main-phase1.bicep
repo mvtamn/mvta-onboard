@@ -28,6 +28,12 @@ param allowedCorsOrigins array = []
 param spareMissedTripsEnabled bool = false
 param onDemandDeparturesEnabled bool = false
 
+@description('Enables the hourly authoritative on-demand reconciliation and the /on-demand-risks read contract. False leaves Service Risk & Quality reporting Not connected.')
+param onDemandMonitoringEnabled bool = false
+
+@description('Optional comma-separated Spare service IDs the on-demand reconciliation reads. Empty reconciles every service the API key can see.')
+param onDemandMonitoringServiceIds string = ''
+
 @description('Enables schedule-based silent-no-show detection in the REST API. False leaves gtfsMissedTripsPoll recording explicit GTFS-RT cancellations only.')
 param gtfsSilentNoShowEnabled bool = false
 
@@ -122,6 +128,8 @@ module restApiFunction 'modules/functionapp.bicep' = {
     complianceReportsStorageAccountName: take('stmvtacompreport${environment}${cleanSuffix}', 24)
     spareMissedTripsEnabled: spareMissedTripsEnabled
     onDemandDeparturesEnabled: onDemandDeparturesEnabled
+    onDemandMonitoringEnabled: onDemandMonitoringEnabled
+    onDemandMonitoringServiceIds: onDemandMonitoringServiceIds
     gtfsSilentNoShowEnabled: gtfsSilentNoShowEnabled
     spareMissedTripServiceIds: spareMissedTripServiceIds
     spareContractorFaultValues: spareContractorFaultValues

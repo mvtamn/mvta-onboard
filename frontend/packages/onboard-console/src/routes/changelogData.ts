@@ -18,15 +18,121 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
-    version: "1.5.119",
+    version: "1.5.127",
     date: "2026-09-06",
     sections: [
       {
         heading: "Fixed",
         items: [
           "On-Demand Service Quality no longer shows zeros while its monitor is not connected, your sign-in has expired, or the page is still loading. The four summary tiles read \u2014 in those states, because no source has reported anything to count. A reconciliation that found no active service still reads 0.",
-          "A feed-trust banner now shows how serious it is: amber when a feed is stale or reporting nothing, red when it is unavailable, green when it is current. Every state used to be the same blue.",
+          "A feed-trust banner on Integrations & Data Health now shows how serious it is: amber when a feed is stale or reporting nothing, red when it is unavailable, green when it is current. Every state used to be the same blue.",
           "The Spare webhook receiver no longer refuses deliveries because on-demand operational zones are unconfigured. It skips the on-demand monitor update, accepts the delivery, and reports the configuration gap once a minute.",
+        ],
+      },
+      {
+        heading: "Changed",
+        items: [
+          "On-demand monitoring can now be switched on through infrastructure configuration instead of a Portal setting that the next deployment removed. It remains off; nothing about On-Demand Service Quality changes yet.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.126",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Garage Departures, On-Demand: earlier days' duties now pick up their fleet number and driver name too, a batch per poll run, so the whole window reads the same way.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.125",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "The Subscribers page in Administration opens again when there are no subscribers yet. It showed the \"try this view again\" screen because the counts arrived empty instead of as zeros.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.124",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Garage Departures, On-Demand: the Operator column now shows the driver's name, with Spare's driver identifier beside it and the Spare id on hover, once the poll has looked the driver up. Grouping by operator uses the name.",
+          "Garage Departures, On-Demand: the Duty column is hidden when no duty in view has a Spare identifier; each row keeps its Spare duty id on hover.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.123",
+    date: "2026-09-05",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Administration \u203a Decision Matrix now says which database migration each part of the page is waiting on, instead of one message that blanked the whole workspace. It tells apart a database that has not been set up from a genuine fault, and a section that fails no longer hides the sections that are working.",
+          "The Create Draft and Add rule forms are hidden until the tables they write to exist, rather than accepting entries that could only fail on submit.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.122",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Administration > Integrations & Data Health is rebuilt. A summary strip answers first: how many KPI streams are current, how many feeds are reachable, and the oldest required ingestion. Each KPI stream is a card naming the module it gates, with its required and supporting dependencies as rows when something is wrong and as compact chips when it is current, sorted attention-first. Feed checks are a table with the failure reason under its row, and Check feeds is a proper button.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.121",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Garage Departures (On-Demand) now reads like the Fixed Route view: duties grouped by service day, driver, or vehicle, a Flagged-only filter, a per-day strip, dates as weekday and date, Central times with where each time came from underneath, and Spare driver ids shown as short references with the full id on hover.",
+          "On-Demand duties are judged the way the compliance candidate rule judges them, once their service day is over; today's duties are marked Not settled, and cancelled duties are left out of the counts.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.120",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Garage Departures (Fixed Route) now judges every run the way the compliance candidate rule does and shows that Outcome beside Avail's status; the cards count no-departure and late-over-allowance runs on settled days only, and today's runs are marked Not settled.",
+          "Fixed Route rows are grouped by service day, operator, or vehicle, with a Reviewable-only filter and a per-day strip of reviewable departures. Dates read as weekday and date, times are Central, operators show as a name with their badge, and blanks say what is missing.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.119",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "The Audit Log's message search works again. An older message stored its channels in a format the search could not read, and one such row failed the whole search; the same reading is now tolerant everywhere messages are listed, including the rider-facing active alerts.",
         ],
       },
     ],

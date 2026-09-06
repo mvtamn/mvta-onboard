@@ -4,21 +4,16 @@ import { AccessManagement } from "./AccessManagement.js";
 import { AuditLog } from "./AuditLog.js";
 import { EventResourceMapEditor } from "./EventResourceMapEditor.js";
 import { Subscribers } from "./Subscribers.js";
-import { FeedHealth } from "./modules/FeedHealth.js";
-import { KPI_TRUST_STREAMS, KpiTrustSummary } from "./modules/KpiTrustSummary.js";
+import { IntegrationsHealth } from "./modules/IntegrationsHealth.js";
 
 export function AdminAccess() { return <AccessManagement />; }
 export function AdminServiceConfiguration() { return <><Admin /><DetourReasonCodesSection /><DetourContractorSection /></>; }
-// The KPI trust banners live here, and only here: one place an administrator
-// reads every stream's state, instead of one banner at the top of each module.
+// KPI trust lives here, and only here: one place an administrator reads every
+// stream's state, instead of a banner at the top of each module.
 export function AdminIntegrations() {
   return <>
     <div className="panel-header">Integrations &amp; Data Health</div>
-    <div className="panel-body">
-      <p className="panel-desc">Verify upstream feeds and inspect the health of runtime integrations.</p>
-      <KpiTrustSummary stream={KPI_TRUST_STREAMS} />
-      <FeedHealth />
-    </div>
+    <div className="panel-body"><IntegrationsHealth /></div>
   </>;
 }
 export function AdminGovernance() { return <AuditLog />; }

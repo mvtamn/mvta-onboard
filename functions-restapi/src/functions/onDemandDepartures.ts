@@ -4,12 +4,17 @@
 // diagnostics shape so the console reads both through one state model. Same
 // readers; visibility only - all writes come from onDemandDeparturesPoll.ts.
 // Accepts an optional ?days= query param to scope the trend window (default 14).
+// Every row carries an outcome judged by the same rule the compliance
+// candidate poll raises occurrences from (lib/onDemandDepartureOutcome.ts),
+// and the diagnostics count by it, with the allowance and the settled-day
+// boundary they used.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
 import { agencyServiceDate } from "../lib/missedTripTime";
 import { onDemandDeparturesEnabled } from "../lib/onDemandDepartures";
-import { garageDepartureVarianceSeconds } from "./complianceCandidatesPoll";
+import { isJudged, onDemandDepartureOutcome, type OnDemandDepartureOutcome } from "../lib/onDemandDepartureOutcome";
+import { garageDepartureVarianceSeconds, settledServiceDateExclusive } from "./complianceCandidatesPoll";
 
 const DEFAULT_TREND_DAYS = 14;
 
@@ -20,6 +25,8 @@ interface OnDemandDepartureRow {
   driver_id: string | null;
   vehicle_id: string | null;
   vehicle_identifier: string | null;
+  driver_name: string | null;
+  driver_identifier: string | null;
   duty_status: string | null;
   departure_scheduled: Date | null;
   scheduled_source: string | null;
@@ -46,20 +53,26 @@ app.http("onDemandDeparturesList", {
     const daysParam = Number(request.query.get("days"));
     const days = Number.isFinite(daysParam) && daysParam > 0 ? Math.min(daysParam, 365) : DEFAULT_TREND_DAYS;
     const varianceSeconds = garageDepartureVarianceSeconds();
+    const settledBefore = settledServiceDateExclusive();
 
     try {
       const pool = await getPool();
-      const tableCheck = await pool.request().query<{ table_exists: number; with_vehicle_identifier: number }>(`
+      const tableCheck = await pool.request().query<{ table_exists: number; with_vehicle_identifier: number; with_driver_label: number }>(`
         SELECT CASE WHEN OBJECT_ID('dbo.OnDemandDepartures', 'U') IS NULL THEN 0 ELSE 1 END AS table_exists,
-               CASE WHEN COL_LENGTH('dbo.OnDemandDepartures', 'vehicle_identifier') IS NULL THEN 0 ELSE 1 END AS with_vehicle_identifier
+               CASE WHEN COL_LENGTH('dbo.OnDemandDepartures', 'vehicle_identifier') IS NULL THEN 0 ELSE 1 END AS with_vehicle_identifier,
+               CASE WHEN COL_LENGTH('dbo.OnDemandDepartures', 'driver_name') IS NULL THEN 0 ELSE 1 END AS with_driver_label
       `);
-      // Before migration 099 the fleet number is simply absent.
+      // Before migration 099 the fleet number is simply absent, and before
+      // migration 100 the driver's name is.
       const vehicleIdentifierSql = tableCheck.recordset[0]?.with_vehicle_identifier === 1
         ? "vehicle_identifier" : "CAST(NULL AS NVARCHAR(64)) AS vehicle_identifier";
+      const driverLabelSql = tableCheck.recordset[0]?.with_driver_label === 1
+        ? "driver_name, driver_identifier" : "CAST(NULL AS NVARCHAR(128)) AS driver_name, CAST(NULL AS NVARCHAR(64)) AS driver_identifier";
       const configured = onDemandDeparturesEnabled() && Boolean(process.env.SPARE_API_KEY?.trim());
       const empty = {
-        configured, table_ready: false, record_count: 0, late_count: 0, no_departure_count: 0,
+        configured, table_ready: false, record_count: 0, judged_count: 0, late_count: 0, no_departure_count: 0,
         avg_delta_seconds: null as number | null, variance_seconds: varianceSeconds,
+        settled_before: settledBefore,
       };
       if (tableCheck.recordset[0]?.table_exists !== 1) {
         return { status: 200, jsonBody: { departures: [], diagnostics: empty } };
@@ -70,7 +83,7 @@ app.http("onDemandDeparturesList", {
       req.input("cutoff_date", sql.Char(8), agencyServiceDate(new Date(), -days).serviceDate);
       req.input("variance_seconds", sql.Int, varianceSeconds);
       const result = await req.query<OnDemandDepartureRow>(`
-        SELECT service_date, duty_id, duty_identifier, driver_id, vehicle_id, ${vehicleIdentifierSql}, duty_status,
+        SELECT service_date, duty_id, duty_identifier, driver_id, vehicle_id, ${vehicleIdentifierSql}, ${driverLabelSql}, duty_status,
                departure_scheduled, scheduled_source, departure_actual, departure_source, updated_at,
                CASE WHEN departure_scheduled IS NOT NULL AND departure_actual IS NOT NULL
                  THEN DATEDIFF(SECOND, departure_scheduled, departure_actual) ELSE NULL END AS departure_delta_seconds,
@@ -81,8 +94,12 @@ app.http("onDemandDeparturesList", {
         WHERE service_date >= @cutoff_date
         ORDER BY service_date DESC, departure_scheduled, duty_id
       `);
-      const departures = result.recordset;
-      const withDelta = departures.filter((d) => d.departure_delta_seconds !== null);
+      const departures: Array<OnDemandDepartureRow & { outcome: OnDemandDepartureOutcome }> = result.recordset.map((row) => ({
+        ...row,
+        outcome: onDemandDepartureOutcome(row, varianceSeconds, settledBefore),
+      }));
+      const judged = departures.filter((d) => isJudged(d.outcome));
+      const withDelta = judged.filter((d) => d.departure_delta_seconds !== null);
       const avgDeltaSeconds = withDelta.length > 0
         ? Math.round(withDelta.reduce((sum, d) => sum + (d.departure_delta_seconds ?? 0), 0) / withDelta.length)
         : null;
@@ -95,8 +112,9 @@ app.http("onDemandDeparturesList", {
             ...empty,
             table_ready: true,
             record_count: departures.length,
-            late_count: departures.filter((d) => (d.departure_delta_seconds ?? 0) > varianceSeconds).length,
-            no_departure_count: departures.filter((d) => d.no_departure).length,
+            judged_count: judged.length,
+            late_count: judged.filter((d) => d.outcome === "late").length,
+            no_departure_count: judged.filter((d) => d.outcome === "no_departure").length,
             avg_delta_seconds: avgDeltaSeconds,
           },
         },

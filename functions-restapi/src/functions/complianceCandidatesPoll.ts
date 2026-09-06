@@ -3,6 +3,7 @@ import { getPool, sql } from "../lib/db";
 import type { KpiTrustState } from "../lib/kpiTrust";
 import { loadKpiTrust } from "../lib/kpiTrustStore";
 import { agencyServiceDate } from "../lib/missedTripTime";
+import { DEPARTURE_OUTCOME_STATUSES } from "../lib/fixedRouteDepartureOutcome";
 
 // How late a pullout must be before it is worth a contractor's review.
 //
@@ -132,32 +133,29 @@ export function garageDepartureVarianceSeconds(
 // have no departure, but the name says the vehicle IS running, so it reads as a
 // missing pullout RECORD rather than a missing departure. That is a data
 // question for Avail, not a contractor penalty.
-const DEPARTURE_OUTCOME_STATUSES = [
-  // How a departure ended.
-  "Missed Pullout",
-  "Missed Login",
-  "Expired Pullout",
-  "Late Pullout",
-  // Avail's table documents five more Red conditions that stop a departure
-  // happening - Missing Operator Assignment (2), Missing Vehicle Assignment (3),
-  // Invalid Vehicle Assignment (4), Duplicate Vehicle Assignment (5) and Missed
-  // Check-in (7). None is listed, and their absence is deliberate.
-  //
-  // Avail confirmed on 2026-09-05 that MVTA has no operator scheduling package,
-  // so the vendor never ingests the data that raises any of them. They are not
-  // rare here, they are unreachable. Avail's guidance on which spelling to use
-  // was "use the spelling from the feed", and since none has ever reached the
-  // feed there is no spelling to match on.
-  //
-  // They were briefly listed on the reasoning that an allowlist which omits a
-  // status fails by going silent. That reasoning holds - it is how this rule
-  // once ignored 408 undeparted runs - but listing five strings that can never
-  // match was the wrong remedy, because it reads as coverage while providing
-  // none. unknownPulloutStatuses in availPullout.ts is the right one: these
-  // statuses are absent from its known set too, so if MVTA ever adopts an
-  // operator scheduling package and they start arriving, the poll names them,
-  // with their real spellings, and they can be added on evidence.
-] as const;
+// The list itself lives in lib/fixedRouteDepartureOutcome.ts so that GET
+// /fixed-route-departures judges each row by the same rule this poll raises
+// candidates from; the reasoning stays here.
+//
+// Avail's table documents five more Red conditions that stop a departure
+// happening - Missing Operator Assignment (2), Missing Vehicle Assignment (3),
+// Invalid Vehicle Assignment (4), Duplicate Vehicle Assignment (5) and Missed
+// Check-in (7). None is listed, and their absence is deliberate.
+//
+// Avail confirmed on 2026-09-05 that MVTA has no operator scheduling package,
+// so the vendor never ingests the data that raises any of them. They are not
+// rare here, they are unreachable. Avail's guidance on which spelling to use
+// was "use the spelling from the feed", and since none has ever reached the
+// feed there is no spelling to match on.
+//
+// They were briefly listed on the reasoning that an allowlist which omits a
+// status fails by going silent. That reasoning holds - it is how this rule
+// once ignored 408 undeparted runs - but listing five strings that can never
+// match was the wrong remedy, because it reads as coverage while providing
+// none. unknownPulloutStatuses in availPullout.ts is the right one: these
+// statuses are absent from its known set too, so if MVTA ever adopts an
+// operator scheduling package and they start arriving, the poll names them,
+// with their real spellings, and they can be added on evidence.
 
 // A garage departure is worth reviewing when a run whose departure has been
 // judged had a scheduled pullout and either never departed, or departed more

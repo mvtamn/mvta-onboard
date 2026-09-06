@@ -222,6 +222,18 @@ export interface DecisionMatrixDiagnostics {
   procedure_count: number;
 }
 
+/**
+ * The Decision Matrix admin workspace reads four surfaces whose tables arrive
+ * in four different migrations, so each reports its own readiness and names
+ * the migration that would fix it. The server supplies the migration number
+ * because that is where the table lists live.
+ */
+export interface DecisionMatrixSurfaceDiagnostics {
+  /** False when this surface's tables are absent: not connected, not an outage. */
+  table_ready: boolean;
+  required_migration: string;
+}
+
 export interface DecisionMatrixCandidate extends Pick<DecisionMatrixProcedure, "procedure_id" | "revision" | "condition" | "condition_key" | "criteria" | "severity" | "severity_meaning" | "immediate_actions" | "tags" | "document_type" | "document_code" | "source_url" | "trust_state"> {
   match_reason: string;
 }
@@ -598,7 +610,19 @@ export interface FixedRouteDeparture {
   vehicle_label: string | null;
   updated_at: string;
   pullout_delta_seconds: number | null;
+  // Judged by the compliance candidate rule (functions-restapi/src/lib/
+  // fixedRouteDepartureOutcome.ts): late and no_departure are what reach the
+  // assessment queue; the rest say why a row did not.
+  outcome: FixedRouteDepartureOutcome;
 }
+
+export type FixedRouteDepartureOutcome =
+  | "late"
+  | "no_departure"
+  | "departed"
+  | "unresolved"
+  | "no_schedule"
+  | "not_settled";
 
 // The on-demand half of garage departure (ADR 0028): one row per Spare duty,
 // mirrored from functions-restapi/src/functions/onDemandDepartures.ts. Both
@@ -613,6 +637,11 @@ export interface OnDemandDeparture {
   // Spare's vehicle identifier: the fleet number. Null until migration 099
   // or when Spare has no identifier for the vehicle.
   vehicle_identifier: string | null;
+  // The driver's name in "Last, First" order and Spare's driver identifier,
+  // from Spare's driver record. Null until migration 100, until the poll has
+  // resolved the driver, or when Spare has no name for them.
+  driver_name: string | null;
+  driver_identifier: string | null;
   duty_status: string | null;
   departure_scheduled: string | null;
   scheduled_source: "slots_startLocation" | "duties_startRequested" | null;
@@ -621,7 +650,19 @@ export interface OnDemandDeparture {
   updated_at: string;
   departure_delta_seconds: number | null;
   no_departure: boolean;
+  // Judged by the compliance candidate rule (functions-restapi/src/lib/
+  // onDemandDepartureOutcome.ts): late and no_departure are what reach the
+  // assessment queue; the rest say why a row did not.
+  outcome: OnDemandDepartureOutcome;
 }
+
+export type OnDemandDepartureOutcome =
+  | "late"
+  | "no_departure"
+  | "departed"
+  | "cancelled"
+  | "no_schedule"
+  | "not_settled";
 
 // Avail's OTP Monthly By Route/Stop/Day of Week feed - real Attachment G
 // departure-adherence numbers, backing the OTP Compliance module's Route

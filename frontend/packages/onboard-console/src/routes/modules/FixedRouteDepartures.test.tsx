@@ -20,23 +20,30 @@ const departure: FixedRouteDeparture = {
   vehicle_label: "1910",
   updated_at: "2026-02-23T13:00:00Z",
   pullout_delta_seconds: 175,
+  outcome: "departed",
 };
 
 function diagnostics(overrides: Partial<{
   configured: boolean;
   table_ready: boolean;
   record_count: number;
+  settled_count: number;
   late_count: number;
-  expired_count: number;
+  no_departure_count: number;
   avg_delta_seconds: number | null;
+  variance_seconds: number;
+  settled_before: string;
 }> = {}) {
   return {
     configured: true,
     table_ready: true,
     record_count: 0,
+    settled_count: 0,
     late_count: 0,
-    expired_count: 0,
+    no_departure_count: 0,
     avg_delta_seconds: null,
+    variance_seconds: 600,
+    settled_before: "20260224",
     ...overrides,
   };
 }
@@ -76,9 +83,9 @@ describe("Fixed Route Departures", () => {
     expect(screen.queryByText("Live data")).not.toBeInTheDocument();
     expect(screen.queryByText("No departures tracked")).not.toBeInTheDocument();
 
-    expect(summaryValue("Expired pullouts")).toBe("—");
-    expect(summaryValue("Late pullouts")).toBe("—");
-    expect(summaryValue("Tracked in window")).toBe("—");
+    expect(summaryValue("No departure")).toBe("—");
+    expect(summaryValue("Late over 10 min")).toBe("—");
+    expect(summaryValue("Runs tracked")).toBe("—");
   });
 
   it("separates an unconfigured feed from a connected one with no records", async () => {
@@ -90,7 +97,7 @@ describe("Fixed Route Departures", () => {
     render(<FixedRouteDepartures />);
 
     expect(await screen.findByText("Departure monitoring is not configured")).toBeInTheDocument();
-    expect(summaryValue("Late pullouts")).toBe("—");
+    expect(summaryValue("Late over 10 min")).toBe("—");
   });
 
   it("reports a genuine zero once the feed and its table are both live", async () => {
@@ -104,22 +111,27 @@ describe("Fixed Route Departures", () => {
     expect(await screen.findByText("No departures tracked")).toBeInTheDocument();
     expect(screen.getByText("Live data")).toBeInTheDocument();
     // A connected source that ran and found nothing has earned the zero.
-    expect(summaryValue("Late pullouts")).toBe("0");
-    expect(summaryValue("Expired pullouts")).toBe("0");
+    expect(summaryValue("Late over 10 min")).toBe("0");
+    expect(summaryValue("No departure")).toBe("0");
   });
 
   it("renders recorded departures with their counts", async () => {
     vi.mocked(api.getFixedRouteDepartures).mockResolvedValueOnce({
       departures: [departure],
-      diagnostics: diagnostics({ record_count: 1, late_count: 1, avg_delta_seconds: 175 }),
+      diagnostics: diagnostics({ record_count: 1, settled_count: 1, late_count: 1, avg_delta_seconds: 175 }),
     });
 
     render(<FixedRouteDepartures />);
 
-    expect(await screen.findByText("HAWTHORNE, PORSCHE -144")).toBeInTheDocument();
+    // The operator reads as a name with the badge beside it; Avail's status
+    // is shown as emitted, with the judged outcome beside it.
+    expect(await screen.findByText("Hawthorne, Porsche")).toBeInTheDocument();
+    expect(screen.getByText("#144")).toBeInTheDocument();
     expect(screen.getByText("Late Relief")).toBeInTheDocument();
-    expect(summaryValue("Late pullouts")).toBe("1");
-    expect(summaryValue("Tracked in window")).toBe("1");
+    expect(screen.getByText("Within allowance")).toBeInTheDocument();
+    expect(screen.getByText("Mon, Feb 23, 2026")).toBeInTheDocument();
+    expect(summaryValue("Late over 10 min")).toBe("1");
+    expect(summaryValue("Runs tracked")).toBe("1");
   });
 
   it("does not blame configuration when the service cannot be reached", async () => {
@@ -130,6 +142,7 @@ describe("Fixed Route Departures", () => {
     expect(await screen.findByText("Departure history unavailable")).toBeInTheDocument();
     expect(screen.queryByText("Departure monitoring is not configured")).not.toBeInTheDocument();
     expect(screen.getByText("Unavailable")).toBeInTheDocument();
-    expect(summaryValue("Late pullouts")).toBe("—");
+    // With no diagnostics the allowance is unknown, so the label cannot name it.
+    expect(summaryValue("Late over allowance")).toBe("—");
   });
 });

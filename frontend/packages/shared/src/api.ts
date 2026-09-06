@@ -102,6 +102,7 @@ import type {
   OnDemandServiceStandardPolicy,
   OnDemandServiceStandardAudit,
   DecisionMatrixDiagnostics,
+  DecisionMatrixSurfaceDiagnostics,
 } from "./types.js";
 
 export interface TokenRequestOptions {
@@ -478,7 +479,7 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     },
 
     getDecisionMatrixMatchRules() {
-      return request<{ match_rules: DecisionMatrixMatchRule[] }>("/api/manage/decision-matrix/match-rules", {}, true);
+      return request<{ match_rules: DecisionMatrixMatchRule[]; diagnostics: DecisionMatrixSurfaceDiagnostics }>("/api/manage/decision-matrix/match-rules", {}, true);
     },
 
     createDecisionMatrixMatchRule(input: Omit<DecisionMatrixMatchRule, "match_rule_id">) {
@@ -490,11 +491,11 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     },
 
     getDecisionMatrixGovernanceQueue() {
-      return request<{ procedures: DecisionMatrixGovernanceProcedure[] }>("/api/manage/decision-matrix/governance-queue", {}, true);
+      return request<{ procedures: DecisionMatrixGovernanceProcedure[]; diagnostics: DecisionMatrixSurfaceDiagnostics }>("/api/manage/decision-matrix/governance-queue", {}, true);
     },
 
     getDecisionMatrixAudit() {
-      return request<{ audit_events: DecisionMatrixAuditEvent[] }>("/api/manage/decision-matrix/audit", {}, true);
+      return request<{ audit_events: DecisionMatrixAuditEvent[]; diagnostics: DecisionMatrixSurfaceDiagnostics }>("/api/manage/decision-matrix/audit", {}, true);
     },
 
     governDecisionMatrixProcedureRevision(procedureId: string, revision: number, input: { action: "submit_for_review" | "return_to_draft" | "approve" | "retire" | "withdraw"; reason: string; replacement_procedure_id?: string; replacement_revision?: number; confirm_withdrawal?: boolean }) {
@@ -506,7 +507,7 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     },
 
     getDecisionMatrixLegacyCandidates() {
-      return request<{ candidates: Array<{ procedure_id: string; revision: number; condition: string; mapping_status: string }> }>("/api/manage/decision-matrix/legacy-candidates", {}, true);
+      return request<{ candidates: Array<{ procedure_id: string; revision: number; condition: string; mapping_status: string }>; diagnostics: DecisionMatrixSurfaceDiagnostics }>("/api/manage/decision-matrix/legacy-candidates", {}, true);
     },
 
     createDecisionMatrixProcedureDraft(input: ProcedureDraftInput) {
@@ -690,9 +691,12 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
           configured: boolean;
           table_ready: boolean;
           record_count: number;
+          settled_count: number;
           late_count: number;
-          expired_count: number;
+          no_departure_count: number;
           avg_delta_seconds: number | null;
+          variance_seconds: number;
+          settled_before: string;
         };
       }>(`/api/fixed-route-departures${suffix}`, {}, true);
     },
@@ -707,10 +711,12 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
           configured: boolean;
           table_ready: boolean;
           record_count: number;
+          judged_count: number;
           late_count: number;
           no_departure_count: number;
           avg_delta_seconds: number | null;
           variance_seconds: number;
+          settled_before: string;
         };
       }>(`/api/on-demand-departures${suffix}`, {}, true);
     },

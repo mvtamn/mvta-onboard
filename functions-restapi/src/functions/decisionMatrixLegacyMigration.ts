@@ -1,6 +1,7 @@
 import { app, HttpRequest, type InvocationContext } from "@azure/functions";
 import { ADMIN_ROLES, requireRole } from "../lib/auth";
 import { getPool, sql } from "../lib/db";
+import { DECISION_MATRIX_SURFACES, surfaceReady } from "../lib/decisionMatrixReadiness";
 import { createDecisionMatrixProcedureDraft } from "./decisionMatrixDrafts";
 
 type LegacyCandidate = { procedure_id: string; revision: number; condition_key: string; condition: string; criteria: string; severity: string; severity_meaning: string | null; immediate_actions_json: string; document_type: string; document_code: string; source_url: string | null; source_revision: string | null; owner: string | null; effective_at: Date | null; next_review_at: Date | null };
@@ -9,13 +10,15 @@ const reviewedFieldNames = ["condition", "criteria", "immediate_actions", "sever
 export async function listDecisionMatrixLegacyCandidates(request: HttpRequest, context: InvocationContext) {
   const auth = requireRole(request, ADMIN_ROLES);
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
+  const surface = DECISION_MATRIX_SURFACES.legacyCandidates;
   try {
     const pool = await getPool();
+    if (!(await surfaceReady(pool, surface))) return { status: 200, jsonBody: { candidates: [], diagnostics: { table_ready: false, required_migration: surface.migration } } };
     const result = await pool.request().query<LegacyCandidate & { mapping_outcome: string | null; governed_procedure_id: string | null; governed_revision: number | null }>(`
       SELECT l.procedure_id,l.revision,l.condition_key,l.condition,l.criteria,l.severity,l.severity_meaning,l.immediate_actions_json,l.document_type,l.document_code,l.source_url,l.source_revision,l.owner,l.effective_at,l.next_review_at,m.mapping_outcome,m.governed_procedure_id,m.governed_revision
       FROM DecisionMatrixProcedures l LEFT JOIN DecisionMatrixLegacyMigrations m ON m.legacy_procedure_id=l.procedure_id AND m.legacy_revision=l.revision
       ORDER BY l.condition,l.revision DESC`);
-    return { status: 200, jsonBody: { candidates: result.recordset.map((candidate) => ({ ...candidate, migration: candidate.mapping_outcome ? { outcome: candidate.mapping_outcome, procedure_id: candidate.governed_procedure_id, revision: candidate.governed_revision } : null })) } };
+    return { status: 200, jsonBody: { candidates: result.recordset.map((candidate) => ({ ...candidate, migration: candidate.mapping_outcome ? { outcome: candidate.mapping_outcome, procedure_id: candidate.governed_procedure_id, revision: candidate.governed_revision } : null })), diagnostics: { table_ready: true, required_migration: surface.migration } } };
   } catch (error) { context.error("Decision Matrix legacy candidate list failed", error); return { status: 500, jsonBody: { error: "Legacy Decision Matrix candidates are temporarily unavailable." } }; }
 }
 

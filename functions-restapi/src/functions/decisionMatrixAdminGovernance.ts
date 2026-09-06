@@ -1,6 +1,7 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { ADMIN_ROLES, requireRole } from "../lib/auth";
 import { getPool } from "../lib/db";
+import { DECISION_MATRIX_SURFACES, surfaceReady } from "../lib/decisionMatrixReadiness";
 
 function requireAdmin(request: HttpRequest) {
   const auth = requireRole(request, ADMIN_ROLES);
@@ -9,8 +10,10 @@ function requireAdmin(request: HttpRequest) {
 
 export async function listDecisionMatrixGovernanceQueue(request: HttpRequest, context: InvocationContext) {
   const denied = requireAdmin(request); if (denied) return denied;
+  const surface = DECISION_MATRIX_SURFACES.governance;
   try {
     const pool = await getPool();
+    if (!(await surfaceReady(pool, surface))) return { status: 200, jsonBody: { procedures: [], diagnostics: { table_ready: false, required_migration: surface.migration } } };
     const result = await pool.request().query(`
       SELECT p.procedure_id,p.condition_key,p.condition,r.revision,r.lifecycle_state,r.next_review_at,
         CASE WHEN r.next_review_at < SYSUTCDATETIME() THEN 1 ELSE 0 END AS review_overdue,
@@ -19,16 +22,18 @@ export async function listDecisionMatrixGovernanceQueue(request: HttpRequest, co
       FROM Procedures p JOIN ProcedureRevisions r ON r.procedure_id=p.procedure_id
       WHERE r.lifecycle_state IN ('Draft','Under review','Approved')
       ORDER BY CASE WHEN r.lifecycle_state='Under review' THEN 0 WHEN r.next_review_at<SYSUTCDATETIME() THEN 1 ELSE 2 END,p.condition,r.revision DESC`);
-    return { status: 200, jsonBody: { procedures: result.recordset } };
+    return { status: 200, jsonBody: { procedures: result.recordset, diagnostics: { table_ready: true, required_migration: surface.migration } } };
   } catch (error) { context.error("GET Decision Matrix governance queue failed", error); return { status: 500, jsonBody: { error: "Decision Matrix governance queue is temporarily unavailable." } }; }
 }
 
 export async function listDecisionMatrixAudit(request: HttpRequest, context: InvocationContext) {
   const denied = requireAdmin(request); if (denied) return denied;
+  const surface = DECISION_MATRIX_SURFACES.audit;
   try {
     const pool = await getPool();
+    if (!(await surfaceReady(pool, surface))) return { status: 200, jsonBody: { audit_events: [], diagnostics: { table_ready: false, required_migration: surface.migration } } };
     const result = await pool.request().query(`SELECT TOP 250 event_id,procedure_id,revision,event_type,actor,reason,details_json,occurred_at FROM ProcedureAuditEvents ORDER BY occurred_at DESC`);
-    return { status: 200, jsonBody: { audit_events: result.recordset } };
+    return { status: 200, jsonBody: { audit_events: result.recordset, diagnostics: { table_ready: true, required_migration: surface.migration } } };
   } catch (error) { context.error("GET Decision Matrix audit failed", error); return { status: 500, jsonBody: { error: "Decision Matrix audit history is temporarily unavailable." } }; }
 }
 
