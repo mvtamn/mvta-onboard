@@ -18,7 +18,7 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
-    version: "1.5.121",
+    version: "1.5.122",
     date: "2026-09-05",
     sections: [
       {
@@ -26,6 +26,19 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
         items: [
           "Administration \u203a Decision Matrix now says which database migration each part of the page is waiting on, instead of one message that blanked the whole workspace. It tells apart a database that has not been set up from a genuine fault, and a section that fails no longer hides the sections that are working.",
           "The Create Draft and Add rule forms are hidden until the tables they write to exist, rather than accepting entries that could only fail on submit.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.121",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Garage Departures (On-Demand) now reads like the Fixed Route view: duties grouped by service day, driver, or vehicle, a Flagged-only filter, a per-day strip, dates as weekday and date, Central times with where each time came from underneath, and Spare driver ids shown as short references with the full id on hover.",
+          "On-Demand duties are judged the way the compliance candidate rule judges them, once their service day is over; today's duties are marked Not settled, and cancelled duties are left out of the counts.",
         ],
       },
     ],

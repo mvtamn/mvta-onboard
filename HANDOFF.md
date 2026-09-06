@@ -438,7 +438,7 @@ said first — was wrong. The listing was alphabetical and cut off in the D
 range, so it says nothing either way about 076, 078 and 080, whose tables all
 sort under P. Rather than guess, read it off the console: the Administration ›
 Decision Matrix workspace now reports each surface separately and names the
-migration each one needs (v1.5.121). Do not write a run record from that
+migration each one needs (v1.5.122). Do not write a run record from that
 screen alone — confirm against the database before recording one here.
 
 The governed reference layer's code is all on main (issues #102 through #109,
@@ -461,7 +461,7 @@ table and a genuine outage returned the same 500 "temporarily unavailable",
 which sent readers looking for an incident that wasn't happening. The reader
 needs no app setting beyond the database.
 
-The four admin surfaces do the same as of v1.5.121, and they do it
+The four admin surfaces do the same as of v1.5.122, and they do it
 independently, because their tables arrive in four different migrations:
 governance queue and authoring need 076, audit history 078, legacy candidates
 079 (plus 051), Match Rules 080. Each answers 200 with `diagnostics.table_ready`

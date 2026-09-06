@@ -3,20 +3,6 @@
 // on-demand views read their sources through the same state model and speak
 // the same labels; only the source and its columns differ.
 
-export function dateTimeLabel(value: string | null): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-}
-
-export function deltaLabel(seconds: number | null): string {
-  if (seconds === null) return "—";
-  const minutes = Math.round(seconds / 60);
-  if (minutes === 0) return "On time";
-  return minutes > 0 ? `+${minutes} min` : `${minutes} min`;
-}
-
 export interface DepartureDiagnosticsBase {
   configured: boolean;
   table_ready: boolean;
@@ -70,7 +56,7 @@ export function RiskStat({
   );
 }
 
-// --- Fixed Route helpers ----------------------------------------------------
+// --- Display helpers --------------------------------------------------------
 // Service dates are agency-local CHAR(8) values and pullout instants are UTC
 // ISO strings; both are shown in the agency's own zone so a reviewer outside
 // Central sees the same day and time the poll recorded, and the same calendar
@@ -132,4 +118,111 @@ export function deltaMinutesLabel(seconds: number | null): string {
   const minutes = Math.round(seconds / 60);
   if (minutes === 0) return "0 min";
   return minutes > 0 ? `+${minutes} min` : `−${Math.abs(minutes)} min`;
+}
+
+// Spare identifies drivers, vehicles and duties by id only. The first eight
+// characters are enough to tell two rows for the same driver apart on a page;
+// the full id rides on the element's title for lookup.
+export function shortRef(id: string | null): string | null {
+  const trimmed = id?.trim();
+  return trimmed ? `${trimmed.slice(0, 8)}…` : null;
+}
+
+// --- Per-day strip -----------------------------------------------------------
+export interface DailyCounts {
+  date: string;
+  late: number;
+  noDeparture: number;
+  // The day is over; its counts are final. Today's are still moving.
+  settled: boolean;
+}
+
+// One entry per service day in the window ending today, including days with
+// no rows, so the strip's spacing is calendar time and a quiet day shows as
+// quiet. `classify` says which rows count, and as what.
+export function dailyCounts<T extends { service_date: string }>(
+  rows: readonly T[],
+  today: string,
+  days: number,
+  classify: (row: T) => "late" | "no_departure" | null,
+): DailyCounts[] {
+  return serviceDaysEnding(today, days).map((date) => {
+    const day = rows.filter((r) => r.service_date === date);
+    return {
+      date,
+      late: day.filter((r) => classify(r) === "late").length,
+      noDeparture: day.filter((r) => classify(r) === "no_departure").length,
+      settled: date < today,
+    };
+  });
+}
+
+function dayTick(date: string): string {
+  const d = new Date(`${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T12:00:00`);
+  return Number.isNaN(d.getTime()) ? date.slice(6, 8) : `${d.toLocaleDateString("en-US", { weekday: "short" }).slice(0, 2)} ${d.getDate()}`;
+}
+
+function isWeekend(date: string): boolean {
+  const d = new Date(`${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T12:00:00`);
+  return d.getDay() === 0 || d.getDay() === 6;
+}
+
+export function DepartureTrend({
+  title,
+  daily,
+  lateLegend,
+  openLegend,
+}: {
+  title: string;
+  daily: DailyCounts[];
+  lateLegend: string;
+  openLegend: string;
+}) {
+  const max = Math.max(1, ...daily.map((d) => d.late + d.noDeparture));
+  return (
+    <div className="departure-trend" aria-label={title}>
+      <div className="departure-trend-head">
+        <h4>{title}</h4>
+        <div className="departure-trend-legend">
+          <span><i className="nodep"></i>No departure</span>
+          <span><i className="late"></i>{lateLegend}</span>
+          <span><i className="late open"></i>{openLegend}</span>
+        </div>
+      </div>
+      <div className="departure-trend-bars" style={{ gridTemplateColumns: `repeat(${daily.length}, minmax(0, 1fr))` }}>
+        {daily.map((day) => (
+          <div
+            key={day.date}
+            className={`departure-trend-day${day.settled ? "" : " open"}${isWeekend(day.date) ? " weekend" : ""}`}
+            title={`${serviceDayLabel(day.date)}: ${day.noDeparture} no departure, ${day.late} late${day.settled ? "" : " (still moving)"}`}
+          >
+            <div className="departure-trend-col">
+              <div className="bar late" style={{ height: `${Math.round((day.late / max) * 62)}px` }}></div>
+              <div className="bar nodep" style={{ height: `${Math.round((day.noDeparture / max) * 62)}px` }}></div>
+            </div>
+            <span className="departure-trend-n">{day.late + day.noDeparture}</span>
+            <span className="departure-trend-lbl">{dayTick(day.date)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// The Group by control both views share.
+export type DepartureGroupBy = "date" | "operator" | "vehicle";
+
+export function GroupByToggle({ id, value, onChange }: { id: string; value: DepartureGroupBy; onChange: (next: DepartureGroupBy) => void }) {
+  return (
+    <>
+      <label id={`${id}-label`}>Group by</label>
+      <div className="risk-view-toggle risk-view-toggle-sm" role="tablist" aria-labelledby={`${id}-label`}>
+        {([["date", "Service day"], ["operator", "Operator"], ["vehicle", "Vehicle"]] as const).map(([key, label]) => (
+          <button key={key} role="tab" aria-selected={value === key} className={value === key ? "active" : ""} onClick={() => onChange(key)}>
+            {label}
+          </button>
+        ))}
+      </div>
+    </>
+  );
 }
