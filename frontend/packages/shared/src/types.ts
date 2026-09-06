@@ -610,6 +610,9 @@ export interface OnDemandDeparture {
   duty_identifier: string | null;
   driver_id: string | null;
   vehicle_id: string | null;
+  // Spare's vehicle identifier: the fleet number. Null until migration 099
+  // or when Spare has no identifier for the vehicle.
+  vehicle_identifier: string | null;
   duty_status: string | null;
   departure_scheduled: string | null;
   scheduled_source: "slots_startLocation" | "duties_startRequested" | null;

@@ -172,7 +172,12 @@ export function OnDemandDepartures() {
                   <td className="td-dim">{d.service_date}</td>
                   <td>{d.duty_identifier ?? d.duty_id}</td>
                   <td className="td-dim">{d.driver_id ?? "—"}</td>
-                  <td className="td-dim">{d.vehicle_id ?? "—"}</td>
+                  {/* The fleet number, as the fixed-route view shows Avail's
+                      vehicle label; Spare's opaque id stays available on hover
+                      and stands in until the number is known. */}
+                  <td className={d.vehicle_identifier ? undefined : "td-dim"} title={d.vehicle_identifier && d.vehicle_id ? `Spare vehicle ${d.vehicle_id}` : undefined}>
+                    {d.vehicle_identifier ?? d.vehicle_id ?? "—"}
+                  </td>
                   <td className="td-dim" title={d.scheduled_source === "duties_startRequested" ? "From the duty's requested start; no start-location slot" : undefined}>
                     {dateTimeLabel(d.departure_scheduled)}
                     {d.scheduled_source === "duties_startRequested" ? " *" : ""}
