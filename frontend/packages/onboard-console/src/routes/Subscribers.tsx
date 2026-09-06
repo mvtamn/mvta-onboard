@@ -44,7 +44,7 @@ export function Subscribers() {
             {cards.map((c) => (
               <div className="stat-card" key={c.label} style={{ borderLeftColor: c.color }}>
                 <div className="stat-label">{c.label}</div>
-                <div className="stat-value">{c.value.toLocaleString()}</div>
+                <div className="stat-value">{(c.value ?? 0).toLocaleString()}</div>
                 <div className="stat-sub">{c.sub}</div>
               </div>
             ))}
