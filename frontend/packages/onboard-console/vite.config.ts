@@ -1,31 +1,25 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { CHANGELOG_ENTRIES } from "./src/routes/changelogData.js";
 
-// The newest changelog entry IS the version. It used to be package.json's
-// `version`, hand-bumped in every branch, which made one line the whole repo
-// had to agree on before anything could merge: eight consecutive pull requests
-// conflicted on it, and twice two branches picked the same number and git
-// merged them silently because both sides wrote identical text. Reading it
-// from the changelog removes the second copy, so there is nothing left to
-// drift, and the number now lives in the file that already had to be edited to
-// describe the release. package.json's version field is no longer the product
-// version - see changelogData.test.ts, which fails on a duplicate or
-// out-of-order version rather than letting one through. Two branches can still
-// pick the same next number, since both read the same main; that now fails CI
-// instead of merging quietly.
-const version = CHANGELOG_ENTRIES[0]?.version;
-if (!version) throw new Error("CHANGELOG_ENTRIES is empty: the console has no version to display.");
+// The newest release heading in CHANGELOG.md is the version. It used to be
+// package.json's `version`, hand-bumped in every branch, which made one line
+// the whole repo had to agree on before anything could merge: eight
+// consecutive pull requests conflicted on it, and twice two branches picked the
+// same number and git merged them silently because both sides wrote identical
+// text.
+//
+// It is read from the markdown rather than from CHANGELOG_ENTRIES because the
+// entries are now assembled with `import.meta.glob`, which vite rewrites when
+// it transforms application code - not when esbuild bundles this config file.
+// Importing them here would hand Node an `import.meta.glob` call that nothing
+// has transformed. changelogData.test.ts asserts the markdown and the entries
+// name the same newest release, so the two sources cannot drift apart.
+const CHANGELOG = fileURLToPath(new URL("../../../CHANGELOG.md", import.meta.url));
+const version = readFileSync(CHANGELOG, "utf-8").match(/^## \[(\d+(?:\.\d+)*)\]/m)?.[1];
+if (!version) throw new Error(`No released version heading found in ${CHANGELOG}: the console has no version to display.`);
 
-// Served behind Front Door at /console/* (confirmed live: route-onboard's
-// rsConsoleV2 rule set strips the /console prefix via UrlRewrite before
-// forwarding to this SWA's origin, which serves plain /assets/*). Because the
-// rewrite happens server-side at the edge, the BROWSER-facing asset URLs must
-// stay /console/assets/* so Front Door's own route pattern matches them - this
-// base is what's actually correct for production. Direct access to the bare
-// SWA hostname (bypassing Front Door) is NOT a supported path and will 404 on
-// assets; always test via the Front Door endpoint.
 export default defineConfig({
   base: "/console/",
   define: {
