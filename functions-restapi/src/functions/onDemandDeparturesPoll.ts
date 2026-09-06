@@ -17,7 +17,7 @@ import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { feedHealthOutcome, recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
 import { agencyServiceDate, serviceDateAndGtfsSecondsToUtc } from "../lib/missedTripTime";
-import { DriverLabelResolver, labelsToBackfill, onDemandDeparturesEnabled, resolveOnDemandDeparture, VehicleLabelResolver, type DriverLabel, type ResolvedOnDemandDeparture, type StoredDepartureLabels } from "../lib/onDemandDepartures";
+import { driverLabelFrom, DriverLabelResolver, driverRecordShape, labelsToBackfill, onDemandDeparturesEnabled, resolveOnDemandDeparture, VehicleLabelResolver, type DriverLabel, type ResolvedOnDemandDeparture, type StoredDepartureLabels } from "../lib/onDemandDepartures";
 import { fetchSpareDriver, fetchSpareDuty, fetchSparePage, fetchSpareVehicle, type SpareDutyRecord, type SpareSlotRecord } from "../lib/spareApi";
 
 const DUTY_CONCURRENCY = 8;
@@ -31,7 +31,39 @@ const MAX_DUTIES_PER_RUN = 400;
 // Fleet numbers and driver names, remembered across runs for the life of the
 // process.
 const vehicleLabels = new VehicleLabelResolver(fetchSpareVehicle);
-const driverLabels = new DriverLabelResolver(fetchSpareDriver);
+
+// Driver records that came back without a name, by shape (keys and which
+// name fields were set), so each run can report a shape it has not seen
+// before. Names are wanted and their absence is the thing to explain; the
+// values themselves are never logged.
+const unnamedDriverShapes = new Map<string, number>();
+const reportedDriverShapes = new Set<string>();
+const driverLabels = new DriverLabelResolver(async (driverId) => {
+  const record = await fetchSpareDriver(driverId);
+  if (!driverLabelFrom(record)?.name) {
+    const shape = driverRecordShape(record);
+    unnamedDriverShapes.set(shape, (unnamedDriverShapes.get(shape) ?? 0) + 1);
+  }
+  return record;
+});
+
+// How many rows in the console's window carry each label, for the run log.
+async function labelCoverage(pool: sql.ConnectionPool, withVehicleIdentifier: boolean, withDriverLabel: boolean): Promise<string> {
+  const request = pool.request();
+  request.input("since", sql.Char(8), agencyServiceDate(new Date(), -30).serviceDate);
+  const vehicle = withVehicleIdentifier ? "SUM(CASE WHEN vehicle_identifier IS NOT NULL THEN 1 ELSE 0 END)" : "NULL";
+  const name = withDriverLabel ? "SUM(CASE WHEN driver_name IS NOT NULL THEN 1 ELSE 0 END)" : "NULL";
+  const identifier = withDriverLabel ? "SUM(CASE WHEN driver_identifier IS NOT NULL THEN 1 ELSE 0 END)" : "NULL";
+  const result = await request.query<{ rows: number; with_driver: number; with_vehicle: number; fleet: number | null; named: number | null; identified: number | null }>(`
+    SELECT COUNT(*) AS rows,
+      SUM(CASE WHEN driver_id IS NOT NULL THEN 1 ELSE 0 END) AS with_driver,
+      SUM(CASE WHEN vehicle_id IS NOT NULL THEN 1 ELSE 0 END) AS with_vehicle,
+      ${vehicle} AS fleet, ${name} AS named, ${identifier} AS identified
+    FROM OnDemandDepartures WHERE service_date >= @since
+  `);
+  const c = result.recordset[0];
+  return `${c.rows} rows in 30 days: ${c.with_driver} with a driver id, ${c.named ?? "n/a"} named, ${c.identified ?? "n/a"} with a driver identifier; ${c.with_vehicle} with a vehicle id, ${c.fleet ?? "n/a"} with a fleet number`;
+}
 
 // Rows stored before migrations 099 and 100 carry ids and no labels, and the
 // working set never revisits a departed duty, so they would stay that way.
@@ -289,11 +321,14 @@ app.timer("onDemandDeparturesPoll", {
     // not read as a departures feed that failed.
     try {
       const backfill = await backfillLabels(pool, withVehicleIdentifier, withDriverLabel);
-      if (backfill.examined > 0) {
-        context.log(`On-demand departures label backfill: ${backfill.examined} rows examined, ${backfill.labelled} labelled (newest first, last ${LABEL_BACKFILL_DAYS} days).`);
-      }
+      context.log(`On-demand departures label backfill: ${backfill.examined} rows examined, ${backfill.labelled} labelled (newest first, last ${LABEL_BACKFILL_DAYS} days). Coverage: ${await labelCoverage(pool, withVehicleIdentifier, withDriverLabel)}.`);
     } catch (err) {
       context.warn(`On-demand departures label backfill failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    for (const [shape, count] of unnamedDriverShapes) {
+      if (reportedDriverShapes.has(shape)) continue;
+      reportedDriverShapes.add(shape);
+      context.warn(`On-demand departures: ${count} Spare driver record(s) carried no name; shape ${shape}.`);
     }
   },
 });
