@@ -18,7 +18,7 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
-    version: "1.5.120",
+    version: "1.5.121",
     date: "2026-09-05",
     sections: [
       {
@@ -26,6 +26,19 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
         items: [
           "Administration \u203a Decision Matrix now says which database migration each part of the page is waiting on, instead of one message that blanked the whole workspace. It tells apart a database that has not been set up from a genuine fault, and a section that fails no longer hides the sections that are working.",
           "The Create Draft and Add rule forms are hidden until the tables they write to exist, rather than accepting entries that could only fail on submit.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.120",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Garage Departures (Fixed Route) now judges every run the way the compliance candidate rule does and shows that Outcome beside Avail's status; the cards count no-departure and late-over-allowance runs on settled days only, and today's runs are marked Not settled.",
+          "Fixed Route rows are grouped by service day, operator, or vehicle, with a Reviewable-only filter and a per-day strip of reviewable departures. Dates read as weekday and date, times are Central, operators show as a name with their badge, and blanks say what is missing.",
         ],
       },
     ],

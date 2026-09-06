@@ -691,9 +691,12 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
           configured: boolean;
           table_ready: boolean;
           record_count: number;
+          settled_count: number;
           late_count: number;
-          expired_count: number;
+          no_departure_count: number;
           avg_delta_seconds: number | null;
+          variance_seconds: number;
+          settled_before: string;
         };
       }>(`/api/fixed-route-departures${suffix}`, {}, true);
     },
