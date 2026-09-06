@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { CachedValue, ContractSchemaLog, IntakeGate, VehicleWriteCoalescer } from "./spareWebhookIntake";
+import { CachedValue, ContractSchemaLog, IntakeGate, PeriodicLog, VehicleWriteCoalescer } from "./spareWebhookIntake";
 
 function clock(start = 1_000_000) {
   let at = start;
@@ -92,4 +92,16 @@ test("cached value reloads after the ttl and serves the last good value when a r
 test("cached value fails through when there is nothing to serve", async () => {
   const cached = new CachedValue(async () => { throw new Error("db down"); }, 60_000);
   await assert.rejects(cached.get(), /db down/);
+});
+
+test("a recurring condition is reported once per interval, not once per delivery", () => {
+  const c = clock();
+  const log = new PeriodicLog(60_000, c.now);
+  assert.equal(log.shouldReport(), true);
+  for (let delivery = 0; delivery < 500; delivery++) {
+    c.tick(100);
+    assert.equal(log.shouldReport(), false);
+  }
+  c.tick(60_000);
+  assert.equal(log.shouldReport(), true);
 });

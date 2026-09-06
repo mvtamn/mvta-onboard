@@ -10,9 +10,15 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { hasSpareWebhookAuthorization, spareWebhookEventType, spareWebhookSchema } from "../lib/spareWebhookPolicy";
 import { normalizeOnDemandSpareRequest, normalizeSpareDutyMatchingStatus, normalizeSpareEtaUpdates, normalizeSpareVehicleLocation } from "../lib/onDemandSpareMonitor";
-import { loadActiveOperationalZonesCached, storeOnDemandSpareRequest, storeSpareDutyMatching, storeSpareDutyVehicle } from "../lib/onDemandSpareMonitorStore";
+import {
+  type ActiveOperationalZones,
+  loadActiveOperationalZonesCached,
+  storeOnDemandSpareRequest,
+  storeSpareDutyMatching,
+  storeSpareDutyVehicle,
+} from "../lib/onDemandSpareMonitorStore";
 import { fetchSpareRequest, type SpareRequestRecord } from "../lib/spareApi";
-import { ContractSchemaLog, IntakeGate, VehicleWriteCoalescer } from "../lib/spareWebhookIntake";
+import { ContractSchemaLog, IntakeGate, PeriodicLog, VehicleWriteCoalescer } from "../lib/spareWebhookIntake";
 
 // Four of the pool's ten connections at most; the pollers behind the KPI
 // feeds need the rest. Eight seconds is generous for one MERGE on a healthy
@@ -22,6 +28,8 @@ const gate = new IntakeGate({ maxInFlight: 4, budgetMs: 8_000, cooldownMs: 15_00
 // A duty's vehicle is re-recorded at most once a minute unless it changes.
 const vehicleWrites = new VehicleWriteCoalescer(60_000);
 const contractLog = new ContractSchemaLog();
+// The zone gap is reported once a minute; see hasActiveZones.
+const zoneGapLog = new PeriodicLog(60_000);
 
 const UNAVAILABLE = {
   status: 503,
@@ -77,7 +85,9 @@ app.http("onDemandSpareWebhook", {
       const normalized = normalizeOnDemandSpareRequest((data ?? {}) as SpareRequestRecord);
       if (!normalized) return { status: 202, jsonBody: { status: "accepted" } };
       return respond(await gate.run(async () => {
-        await storeOnDemandSpareRequest(normalized, await loadActiveOperationalZonesCached());
+        const activeZones = await loadActiveOperationalZonesCached();
+        if (!hasActiveZones(activeZones, context)) return;
+        await storeOnDemandSpareRequest(normalized, activeZones);
       }), context, eventType);
     }
 
@@ -89,6 +99,9 @@ app.http("onDemandSpareWebhook", {
     if (updates.length === 0) return { status: 202, jsonBody: { status: "accepted" } };
     return respond(await gate.run(async () => {
       const activeZones = await loadActiveOperationalZonesCached();
+      // Checked before the outbound reads: without zones their results have
+      // nowhere to go, and each one costs a Spare API call.
+      if (!hasActiveZones(activeZones, context)) return;
       for (const update of updates) {
         const record = await fetchSpareRequest<SpareRequestRecord>(update.requestId);
         const normalized = normalizeOnDemandSpareRequest(record);
@@ -97,6 +110,25 @@ app.http("onDemandSpareWebhook", {
     }), context, eventType);
   },
 });
+
+// A missing active zone version is a configuration gap, not a transient
+// fault: the next delivery will meet it too. storeOnDemandSpareRequest throws
+// on it, which the gate could only read as a failure, and every failure armed
+// the fifteen-second cool-down - which then refused vehicleLocation and
+// dutyMatchingStatus deliveries that need no zones at all. On dev that shed
+// roughly two of every five deliveries all day while the console still read
+// Not connected. Skip the monitor write and accept the delivery instead;
+// spareMissedTripsIngest already guards its own run the same way.
+function hasActiveZones(zones: ActiveOperationalZones, context: InvocationContext): boolean {
+  if (zones.snapshot.zones.length > 0) return true;
+  if (zoneGapLog.shouldReport()) {
+    context.warn(
+      "No active on-demand operational zones are available; skipping on-demand monitor updates. " +
+        "Activate a zone version in OnDemandOperationalZoneVersions to restore the monitor.",
+    );
+  }
+  return false;
+}
 
 function respond(
   outcome: Awaited<ReturnType<IntakeGate["run"]>>,
