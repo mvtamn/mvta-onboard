@@ -3,6 +3,7 @@
 // endpoint. Optional filters: ?channel=, ?route=, ?zone=
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
+import { parseStringList } from "../lib/stringList";
 
 interface MessageRow {
   message_id: string;
@@ -64,10 +65,10 @@ app.http("messagesActive", {
         summary: row.summary || row.raw_text.substring(0, 200),
         category: row.category,
         severity: row.severity,
-        routes_affected: row.routes_affected ? (JSON.parse(row.routes_affected) as string[]) : [],
-        stops_affected: row.stops_affected ? (JSON.parse(row.stops_affected) as string[]) : [],
-        zones_affected: row.zones_affected ? (JSON.parse(row.zones_affected) as string[]) : [],
-        channels: row.channels ? (JSON.parse(row.channels) as string[]) : [],
+        routes_affected: parseStringList(row.routes_affected),
+        stops_affected: parseStringList(row.stops_affected),
+        zones_affected: parseStringList(row.zones_affected),
+        channels: parseStringList(row.channels),
         expires_at: row.expires_at,
         created_at: row.created_at,
       }));
