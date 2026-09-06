@@ -17,8 +17,8 @@ import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { feedHealthOutcome, recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
 import { agencyServiceDate, serviceDateAndGtfsSecondsToUtc } from "../lib/missedTripTime";
-import { onDemandDeparturesEnabled, resolveOnDemandDeparture, VehicleLabelResolver, type ResolvedOnDemandDeparture } from "../lib/onDemandDepartures";
-import { fetchSpareDuty, fetchSparePage, fetchSpareVehicle, type SpareDutyRecord, type SpareSlotRecord } from "../lib/spareApi";
+import { DriverLabelResolver, labelsToBackfill, onDemandDeparturesEnabled, resolveOnDemandDeparture, VehicleLabelResolver, type DriverLabel, type ResolvedOnDemandDeparture, type StoredDepartureLabels } from "../lib/onDemandDepartures";
+import { fetchSpareDriver, fetchSpareDuty, fetchSparePage, fetchSpareVehicle, type SpareDutyRecord, type SpareSlotRecord } from "../lib/spareApi";
 
 const DUTY_CONCURRENCY = 8;
 // A duty has one start-location slot; a handful allows for re-planning.
@@ -28,8 +28,18 @@ const START_SLOT_LIMIT = 20;
 // against a runaway working set, not a sizing.
 const MAX_DUTIES_PER_RUN = 400;
 
-// Fleet numbers, remembered across runs for the life of the process.
+// Fleet numbers and driver names, remembered across runs for the life of the
+// process.
 const vehicleLabels = new VehicleLabelResolver(fetchSpareVehicle);
+const driverLabels = new DriverLabelResolver(fetchSpareDriver);
+
+// Rows stored before migrations 099 and 100 carry ids and no labels, and the
+// working set never revisits a departed duty, so they would stay that way.
+// Each run also labels a bounded batch of the newest such rows inside the
+// console's longest window. Labels are conveniences, not source facts, so
+// the update touches only the label columns and ignores source_updated_at.
+const LABEL_BACKFILL_ROWS = 300;
+const LABEL_BACKFILL_DAYS = 60;
 
 async function fetchStartLocationSlots(dutyId: string): Promise<SpareSlotRecord[]> {
   const page = await fetchSparePage<SpareSlotRecord>("/v1/slots", new URLSearchParams({
@@ -88,14 +98,19 @@ async function upsert(
   serviceDate: string,
   vehicleIdentifier: string | null,
   withVehicleIdentifier: boolean,
+  driverLabel: DriverLabel | null,
+  withDriverLabel: boolean,
 ): Promise<void> {
   const request = pool.request();
   request.input("vehicle_identifier", sql.NVarChar(64), vehicleIdentifier);
-  // Until migration 099 lands the column does not exist; the departure is
-  // still recorded, without its label.
-  const labelUpdate = withVehicleIdentifier ? "vehicle_identifier = @vehicle_identifier," : "";
-  const labelColumn = withVehicleIdentifier ? ", vehicle_identifier" : "";
-  const labelValue = withVehicleIdentifier ? ", @vehicle_identifier" : "";
+  request.input("driver_name", sql.NVarChar(128), driverLabel?.name ?? null);
+  request.input("driver_identifier", sql.NVarChar(64), driverLabel?.identifier ?? null);
+  // Until migrations 099 and 100 land their columns do not exist; the
+  // departure is still recorded, without its labels.
+  const labelUpdate = (withVehicleIdentifier ? "vehicle_identifier = @vehicle_identifier," : "")
+    + (withDriverLabel ? " driver_name = @driver_name, driver_identifier = @driver_identifier," : "");
+  const labelColumn = (withVehicleIdentifier ? ", vehicle_identifier" : "") + (withDriverLabel ? ", driver_name, driver_identifier" : "");
+  const labelValue = (withVehicleIdentifier ? ", @vehicle_identifier" : "") + (withDriverLabel ? ", @driver_name, @driver_identifier" : "");
   request.input("duty_id", sql.NVarChar(64), departure.dutyId);
   request.input("service_date", sql.Char(8), serviceDate);
   request.input("duty_identifier", sql.NVarChar(64), departure.dutyIdentifier);
@@ -128,6 +143,59 @@ async function upsert(
   `);
 }
 
+type BackfillRow = StoredDepartureLabels & { duty_id: string };
+
+export async function backfillLabels(
+  pool: sql.ConnectionPool,
+  withVehicleIdentifier: boolean,
+  withDriverLabel: boolean,
+  resolvers: { vehicle: (id: string) => Promise<string | null>; driver: (id: string) => Promise<DriverLabel | null> } = {
+    vehicle: (id) => vehicleLabels.label(id),
+    driver: (id) => driverLabels.label(id),
+  },
+): Promise<{ examined: number; labelled: number }> {
+  if (!withVehicleIdentifier && !withDriverLabel) return { examined: 0, labelled: 0 };
+  const wanting: string[] = [];
+  if (withVehicleIdentifier) wanting.push("(vehicle_id IS NOT NULL AND vehicle_identifier IS NULL)");
+  if (withDriverLabel) wanting.push("(driver_id IS NOT NULL AND driver_name IS NULL AND driver_identifier IS NULL)");
+  const vehicleColumn = withVehicleIdentifier ? "vehicle_identifier" : "CAST(NULL AS NVARCHAR(64)) AS vehicle_identifier";
+  const driverColumns = withDriverLabel
+    ? "driver_name, driver_identifier"
+    : "CAST(NULL AS NVARCHAR(128)) AS driver_name, CAST(NULL AS NVARCHAR(64)) AS driver_identifier";
+  const request = pool.request();
+  request.input("since", sql.Char(8), agencyServiceDate(new Date(), -LABEL_BACKFILL_DAYS).serviceDate);
+  request.input("cap", sql.Int, LABEL_BACKFILL_ROWS);
+  const result = await request.query<BackfillRow>(`
+    SELECT TOP (@cap) duty_id, driver_id, vehicle_id, ${vehicleColumn}, ${driverColumns}
+    FROM OnDemandDepartures
+    WHERE service_date >= @since AND (${wanting.join(" OR ")})
+    ORDER BY service_date DESC, duty_id
+  `);
+  let labelled = 0;
+  for (const row of result.recordset) {
+    const wants = labelsToBackfill(row, withVehicleIdentifier, withDriverLabel);
+    const sets: string[] = [];
+    const update = pool.request();
+    update.input("duty_id", sql.NVarChar(64), row.duty_id);
+    if (wants.vehicle && row.vehicle_id) {
+      const label = await resolvers.vehicle(row.vehicle_id);
+      if (label) { update.input("vehicle_identifier", sql.NVarChar(64), label); sets.push("vehicle_identifier = @vehicle_identifier"); }
+    }
+    if (wants.driver && row.driver_id) {
+      const label = await resolvers.driver(row.driver_id);
+      if (label) {
+        update.input("driver_name", sql.NVarChar(128), label.name);
+        update.input("driver_identifier", sql.NVarChar(64), label.identifier);
+        sets.push("driver_name = @driver_name", "driver_identifier = @driver_identifier");
+      }
+    }
+    if (sets.length === 0) continue;
+    await update.query(`UPDATE OnDemandDepartures SET ${sets.join(", ")} WHERE duty_id = @duty_id`);
+    labelled++;
+  }
+  return { examined: result.recordset.length, labelled };
+}
+
 app.timer("onDemandDeparturesPoll", {
   // Offset from the missed-trips ingest (2/15) so a run sees the requests
   // that ingest just stored.
@@ -138,10 +206,11 @@ app.timer("onDemandDeparturesPoll", {
       return;
     }
     const pool = await getPool();
-    const ready = await pool.request().query<{ ready: number; with_vehicle_identifier: number }>(`
+    const ready = await pool.request().query<{ ready: number; with_vehicle_identifier: number; with_driver_label: number }>(`
       SELECT CASE WHEN OBJECT_ID('dbo.OnDemandDepartures','U') IS NOT NULL
         AND OBJECT_ID('dbo.SpareMissedTripSource','U') IS NOT NULL THEN 1 ELSE 0 END ready,
-        CASE WHEN COL_LENGTH('dbo.OnDemandDepartures','vehicle_identifier') IS NULL THEN 0 ELSE 1 END with_vehicle_identifier
+        CASE WHEN COL_LENGTH('dbo.OnDemandDepartures','vehicle_identifier') IS NULL THEN 0 ELSE 1 END with_vehicle_identifier,
+        CASE WHEN COL_LENGTH('dbo.OnDemandDepartures','driver_name') IS NULL THEN 0 ELSE 1 END with_driver_label
     `);
     if (!ready.recordset[0]?.ready) {
       context.warn("On-demand departures tables are not ready; migration 096 (and 028) may be pending.");
@@ -149,6 +218,8 @@ app.timer("onDemandDeparturesPoll", {
     }
     const withVehicleIdentifier = ready.recordset[0]?.with_vehicle_identifier === 1;
     if (!withVehicleIdentifier) context.warn("OnDemandDepartures has no vehicle_identifier column (migration 099); fleet numbers are not recorded.");
+    const withDriverLabel = ready.recordset[0]?.with_driver_label === 1;
+    if (!withDriverLabel) context.warn("OnDemandDepartures has no driver_name column (migration 100); driver names are not recorded.");
 
     // Guarded as a whole, like the missed-trips ingest: a throw must land in
     // the health ledger as a failure, never leave it frozen on a stale success.
@@ -173,7 +244,8 @@ app.timer("onDemandDeparturesPoll", {
           const serviceDate = departureServiceDate(departure);
           if (!serviceDate) { undated++; continue; }
           const vehicleIdentifier = withVehicleIdentifier && departure.vehicleId ? await vehicleLabels.label(departure.vehicleId) : null;
-          await upsert(pool, departure, serviceDate, vehicleIdentifier, withVehicleIdentifier);
+          const driverLabel = withDriverLabel && departure.driverId ? await driverLabels.label(departure.driverId) : null;
+          await upsert(pool, departure, serviceDate, vehicleIdentifier, withVehicleIdentifier, driverLabel, withDriverLabel);
           stored++;
           const updatedAt = departure.sourceUpdatedAt ? Math.floor(departure.sourceUpdatedAt.getTime() / 1000) : 0;
           maxSourceUpdatedAt = Math.max(maxSourceUpdatedAt, updatedAt);
@@ -211,6 +283,17 @@ app.timer("onDemandDeparturesPoll", {
         context.error("Failed to record on-demand departures feed failure:", healthError);
       }
       throw err;
+    }
+
+    // After the feed's health is settled: a label backfill that fails must
+    // not read as a departures feed that failed.
+    try {
+      const backfill = await backfillLabels(pool, withVehicleIdentifier, withDriverLabel);
+      if (backfill.examined > 0) {
+        context.log(`On-demand departures label backfill: ${backfill.examined} rows examined, ${backfill.labelled} labelled (newest first, last ${LABEL_BACKFILL_DAYS} days).`);
+      }
+    } catch (err) {
+      context.warn(`On-demand departures label backfill failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   },
 });

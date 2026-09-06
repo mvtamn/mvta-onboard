@@ -18,13 +18,50 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
-    version: "1.5.124",
+    version: "1.5.127",
     date: "2026-09-05",
     sections: [
       {
         heading: "Changed",
         items: [
           "Internal: the console's version number now comes from this changelog's newest entry rather than being kept in a second file, so the version shown in the footer and the \u201cWhat\u2019s new\u201d panel can no longer disagree with the release notes.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.126",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Garage Departures, On-Demand: earlier days' duties now pick up their fleet number and driver name too, a batch per poll run, so the whole window reads the same way.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.125",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Fixed",
+        items: [
+          "The Subscribers page in Administration opens again when there are no subscribers yet. It showed the \"try this view again\" screen because the counts arrived empty instead of as zeros.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.124",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Garage Departures, On-Demand: the Operator column now shows the driver's name, with Spare's driver identifier beside it and the Spare id on hover, once the poll has looked the driver up. Grouping by operator uses the name.",
+          "Garage Departures, On-Demand: the Duty column is hidden when no duty in view has a Spare identifier; each row keeps its Spare duty id on hover.",
         ],
       },
     ],
