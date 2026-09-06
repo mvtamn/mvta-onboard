@@ -11,6 +11,8 @@ const departure: OnDemandDeparture = {
   driver_id: "drv-1",
   vehicle_id: "veh-7",
   vehicle_identifier: "1188",
+  driver_name: "Hawthorne, Porsche",
+  driver_identifier: "144",
   duty_status: "inProgress",
   departure_scheduled: "2026-09-04T12:00:00Z",
   scheduled_source: "slots_startLocation",
@@ -117,6 +119,8 @@ describe("On-Demand Departures", () => {
           duty_id: "9e0f4b2c-6a8d-4e1f-b3c5-7d9e1f3a5b7c",
           duty_identifier: null,
           driver_id: null,
+          driver_name: null,
+          driver_identifier: null,
           vehicle_id: "veh-8",
           vehicle_identifier: null,
           scheduled_source: "duties_startRequested",
@@ -147,8 +151,14 @@ describe("On-Demand Departures", () => {
     // with no identifier says it is showing its id, and a blank says what
     // is missing.
     expect(screen.getByText("duty 9e0f4b2c…")).toHaveAttribute("title", "9e0f4b2c-6a8d-4e1f-b3c5-7d9e1f3a5b7c");
-    expect(screen.getByText("drv-1…")).toHaveAttribute("title", "drv-1");
+    // The driver reads as a name with the Spare identifier beside it and the
+    // Spare id on hover, the way the fixed-route view shows a badge.
+    expect(screen.getByText("Hawthorne, Porsche")).toHaveAttribute("title", "Spare driver drv-1");
+    expect(screen.getByText("#144")).toBeInTheDocument();
+    expect(screen.queryByText("drv-1…")).not.toBeInTheDocument();
     expect(screen.getByText("No driver on duty")).toBeInTheDocument();
+    // The Spare duty id rides on the row for lookup.
+    expect(screen.getByText("D-101").closest("tr")).toHaveAttribute("title", "Spare duty duty-1");
     // The fleet number shows when known, with Spare's id on hover; the id's
     // short reference stands in when it is not.
     expect(screen.getByText("1188")).toHaveAttribute("title", "Spare vehicle veh-7");
@@ -170,5 +180,22 @@ describe("On-Demand Departures", () => {
     expect(screen.queryByText("Departure monitoring is not configured")).not.toBeInTheDocument();
     // No diagnostics came back, so the tile cannot name the allowance either.
     expect(summaryValue("Late over allowance")).toBe("—");
+  });
+});
+
+describe("On-Demand Departures duty column", () => {
+  it("is left out when no duty in view has a Spare identifier, and a driver without a name shows as a reference", async () => {
+    vi.mocked(api.getOnDemandDepartures).mockResolvedValueOnce({
+      departures: [{ ...departure, duty_identifier: null, driver_name: null, driver_identifier: null }],
+      diagnostics: diagnostics({ record_count: 1, judged_count: 1, late_count: 1, avg_delta_seconds: 840 }),
+    });
+
+    render(<OnDemandDepartures />);
+
+    expect(await screen.findByText("Fri, Sep 4, 2026")).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: /Duty/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/^duty duty-1/)).not.toBeInTheDocument();
+    expect(screen.getByText("drv-1…")).toHaveAttribute("title", "drv-1");
+    expect(screen.getByText("7:14 AM").closest("tr")).toHaveAttribute("title", "Spare duty duty-1");
   });
 });

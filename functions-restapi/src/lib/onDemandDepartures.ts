@@ -9,9 +9,11 @@
 // weaker evidence than a slot the driver actually started, and a reader
 // deciding whether to raise it with a contractor needs to know which it was.
 //
-// Pure: the poll fetches and stores, this decides. Nothing here touches PII -
-// driver and vehicle are ids.
-import { spareString, spareTimestamp, type SpareDutyRecord, type SpareSlotRecord, type SpareVehicleRecord } from "./spareApi";
+// Pure: the poll fetches and stores, this decides. The departure itself
+// carries ids only; the label resolvers below turn a vehicle id into its
+// fleet number and a driver id into a name, the way the fixed-route feed
+// already names its operators, so that the two views read alike.
+import { spareString, spareTimestamp, type SpareDriverRecord, type SpareDutyRecord, type SpareSlotRecord, type SpareVehicleRecord } from "./spareApi";
 
 export type OnDemandScheduledSource = "slots_startLocation" | "duties_startRequested";
 export type OnDemandDepartureSource = "slots_startLocation" | "duties_firstSeenInServiceArea";
@@ -96,43 +98,99 @@ export function resolveOnDemandDeparture(
   };
 }
 
-// Resolves a Spare vehicle id to its fleet number, remembering the answer.
-//
-// A vehicle serves many duties and its identifier does not change, so one
-// read per vehicle per day is plenty; without the memory the poll would ask
-// Spare the same question for every duty of every run. A failed read is
-// remembered too, for a shorter while, so an outage at Spare costs one call
-// per vehicle per hour rather than one per duty per run - and the departure
-// is still stored, with the id and no label, because the label is a
-// convenience and the departure is the record.
-export class VehicleLabelResolver {
-  private readonly labels = new Map<string, { label: string | null; at: number }>();
+// Remembers a label per Spare id so the poll does not ask Spare the same
+// question for every duty of every run. A failed read is remembered too, for
+// a shorter while, so an outage at Spare costs one call per id per hour
+// rather than one per duty per run - and the departure is still stored, with
+// the id and no label, because the label is a convenience and the departure
+// is the record.
+class LabelCache<L> {
+  private readonly labels = new Map<string, { label: L | null; at: number }>();
   private readonly now: () => number;
 
   constructor(
-    private readonly fetch: (vehicleId: string) => Promise<SpareVehicleRecord>,
-    private readonly ttlMs = 24 * 60 * 60_000,
-    private readonly failureTtlMs = 60 * 60_000,
+    private readonly ttlMs: number,
+    private readonly failureTtlMs: number,
     now?: () => number,
   ) {
     this.now = now ?? Date.now;
   }
 
-  async label(vehicleId: string): Promise<string | null> {
+  async get(id: string, read: () => Promise<L | null>): Promise<L | null> {
     const at = this.now();
-    const known = this.labels.get(vehicleId);
+    const known = this.labels.get(id);
     if (known && at - known.at < (known.label === null ? this.failureTtlMs : this.ttlMs)) return known.label;
-    let label: string | null = null;
+    let label: L | null = null;
     try {
-      label = spareString((await this.fetch(vehicleId)).identifier, 64);
+      label = await read();
     } catch {
       label = null;
     }
-    this.labels.set(vehicleId, { label, at });
+    this.labels.set(id, { label, at });
     return label;
   }
 
   get size(): number {
     return this.labels.size;
+  }
+}
+
+// Resolves a Spare vehicle id to its fleet number.
+export class VehicleLabelResolver {
+  private readonly cache: LabelCache<string>;
+
+  constructor(
+    private readonly fetch: (vehicleId: string) => Promise<SpareVehicleRecord>,
+    ttlMs = 24 * 60 * 60_000,
+    failureTtlMs = 60 * 60_000,
+    now?: () => number,
+  ) {
+    this.cache = new LabelCache<string>(ttlMs, failureTtlMs, now);
+  }
+
+  label(vehicleId: string): Promise<string | null> {
+    return this.cache.get(vehicleId, async () => spareString((await this.fetch(vehicleId)).identifier, 64));
+  }
+
+  get size(): number {
+    return this.cache.size;
+  }
+}
+
+// What the console shows for a driver: the name in the fixed-route feed's
+// "Last, First" order, and Spare's driver identifier when the agency keeps
+// one (the counterpart of Avail's badge). A record with neither is no label.
+export interface DriverLabel {
+  name: string | null;
+  identifier: string | null;
+}
+
+export function driverLabelFrom(record: SpareDriverRecord): DriverLabel | null {
+  const first = spareString(record.firstName, 64);
+  const last = spareString(record.lastName, 64);
+  const name = last && first ? `${last}, ${first}` : last ?? first;
+  const identifier = spareString(record.identifier, 64);
+  return name || identifier ? { name, identifier } : null;
+}
+
+// Resolves a Spare driver id to its label, once per driver per day.
+export class DriverLabelResolver {
+  private readonly cache: LabelCache<DriverLabel>;
+
+  constructor(
+    private readonly fetch: (driverId: string) => Promise<SpareDriverRecord>,
+    ttlMs = 24 * 60 * 60_000,
+    failureTtlMs = 60 * 60_000,
+    now?: () => number,
+  ) {
+    this.cache = new LabelCache<DriverLabel>(ttlMs, failureTtlMs, now);
+  }
+
+  label(driverId: string): Promise<DriverLabel | null> {
+    return this.cache.get(driverId, async () => driverLabelFrom(await this.fetch(driverId)));
+  }
+
+  get size(): number {
+    return this.cache.size;
   }
 }

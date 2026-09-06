@@ -113,6 +113,10 @@ export function groupDuties(rows: OnDemandDeparture[], groupBy: DepartureGroupBy
   }
   // A vehicle groups by its fleet number when Spare gave one (migration 099),
   // else by its Spare id; a driver only ever has an id.
+  // A driver groups by Spare id (stable even before the name is known) and
+  // is titled by name once the poll has resolved it, the identifier beside
+  // it as the fixed-route view shows a badge. A vehicle groups by its fleet
+  // number when Spare gave one (migration 099), else by its Spare id.
   const keyOf = groupBy === "operator"
     ? (r: OnDemandDeparture) => r.driver_id ?? ""
     : (r: OnDemandDeparture) => r.vehicle_identifier ?? r.vehicle_id ?? "";
@@ -123,11 +127,21 @@ export function groupDuties(rows: OnDemandDeparture[], groupBy: DepartureGroupBy
       const members = rows
         .filter((r) => keyOf(r) === key)
         .sort((a, b) => b.service_date.localeCompare(a.service_date) || byScheduled(a, b));
-      const fleet = groupBy === "vehicle" && members[0]?.vehicle_identifier === key;
+      const first = members[0];
+      const fleet = groupBy === "vehicle" && first?.vehicle_identifier === key;
+      const driverName = groupBy === "operator" ? (members.find((r) => r.driver_name)?.driver_name ?? null) : null;
+      const driverIdentifier = groupBy === "operator" ? (members.find((r) => r.driver_identifier)?.driver_identifier ?? null) : null;
+      let title: string;
+      let reference: string | null;
+      if (!key) { title = `No ${noun.toLowerCase()} on duty`; reference = null; }
+      else if (fleet) { title = `Vehicle ${key}`; reference = first?.vehicle_id ?? null; }
+      else if (driverName) { title = driverName; reference = driverIdentifier ? `#${driverIdentifier}` : key; }
+      else if (driverIdentifier) { title = `Driver #${driverIdentifier}`; reference = key; }
+      else { title = `${noun} ${shortRef(key)}`; reference = key; }
       return {
         key,
-        title: !key ? `No ${noun.toLowerCase()} on duty` : fleet ? `Vehicle ${key}` : `${noun} ${shortRef(key)}`,
-        reference: !key ? null : fleet ? (members[0]?.vehicle_id ?? null) : key,
+        title,
+        reference,
         open: false,
         ...summarize(members),
         rows: members,
@@ -152,7 +166,7 @@ function avgLabel(seconds: number | null): string {
 const COLUMNS: Record<string, { label: string; hint: string; className?: string }> = {
   date: { label: "Service day", hint: "Central" },
   duty: { label: "Duty", hint: "Spare identifier" },
-  operator: { label: "Operator", hint: "Spare driver ref" },
+  operator: { label: "Operator", hint: "Spare driver" },
   vehicle: { label: "Vehicle", hint: "fleet no." },
   scheduled: { label: "Scheduled", hint: "and its source", className: "td-num" },
   actual: { label: "Actual", hint: "and its source", className: "td-num" },
@@ -160,8 +174,13 @@ const COLUMNS: Record<string, { label: string; hint: string; className?: string 
   outcome: { label: "Outcome", hint: "" },
 };
 
-function columnsFor(groupBy: DepartureGroupBy): string[] {
-  return ["date", "duty", "operator", "vehicle", "scheduled", "actual", "delta", "outcome"].filter((key) => key !== groupBy);
+// The Duty column exists for Spare's duty identifier. MVTA's duties carry
+// none, so when no duty in view has one the column would be a row of
+// fallback ids saying nothing a reader can use; it is left out and the Spare
+// duty id rides on the row for lookup instead.
+export function columnsFor(groupBy: DepartureGroupBy, withDutyIdentifiers: boolean): string[] {
+  return ["date", "duty", "operator", "vehicle", "scheduled", "actual", "delta", "outcome"]
+    .filter((key) => key !== groupBy && (key !== "duty" || withDutyIdentifiers));
 }
 
 // On-Demand view of Garage Departures - Spare duty start tracking
@@ -223,7 +242,7 @@ export function OnDemandDepartures() {
   );
   const groups = useMemo(() => groupDuties(visible, groupBy, today), [visible, groupBy, today]);
   const daily = useMemo(() => (departures && today ? dailyFlagged(departures, today, days) : []), [departures, today, days]);
-  const columns = columnsFor(groupBy);
+  const columns = columnsFor(groupBy, visible.some((d) => Boolean(d.duty_identifier)));
 
   // How the actuals were measured, for the reader who wants to know how much
   // of the average rests on Spare's own record versus an inference.
@@ -354,7 +373,7 @@ export function OnDemandDepartures() {
             </table>
           </div>
           <p className="departures-foot">
-            Outcome applies the rule the compliance candidate poll uses: a settled duty with a scheduled start that never departed, or departed more than the allowance late, is raised for review. Spare identifies drivers by id only; until a driver directory is synced, a driver shows as the first eight characters of its id, in full on hover, so two duties for the same driver can at least be recognised as the same driver.
+            Outcome applies the rule the compliance candidate poll uses: a settled duty with a scheduled start that never departed, or departed more than the allowance late, is raised for review. Driver names come from Spare's driver record and are filled in by the poll; a driver it has not resolved yet shows as the first eight characters of the Spare id, in full on hover.
           </p>
         </>
       )}
@@ -381,7 +400,7 @@ function GroupRows({ group, groupBy, columns }: { group: DutyGroup; groupBy: Dep
         </td>
       </tr>
       {group.rows.map((d) => (
-        <tr key={d.duty_id}>
+        <tr key={d.duty_id} title={`Spare duty ${d.duty_id}`}>
           {columns.map((key) => (
             <DutyCell key={key} column={key} departure={d} />
           ))}
@@ -400,6 +419,17 @@ function DutyCell({ column, departure: d }: { column: string; departure: OnDeman
         ? <td><span className="td-fleet">{d.duty_identifier}</span></td>
         : <td><span className="mono-ref" title={d.duty_id}>duty {shortRef(d.duty_id)}</span></td>;
     case "operator":
+      // The name once the poll has resolved it, with Spare's identifier as
+      // the badge and its id on hover; the id's short reference until then.
+      if (d.driver_name) {
+        return (
+          <td className="td-name" title={d.driver_id ? `Spare driver ${d.driver_id}` : undefined}>
+            {d.driver_name}
+            {d.driver_identifier ? <span className="mono-ref">#{d.driver_identifier}</span> : null}
+          </td>
+        );
+      }
+      if (d.driver_identifier) return <td className="td-name" title={d.driver_id ? `Spare driver ${d.driver_id}` : undefined}><span className="mono-ref">#{d.driver_identifier}</span></td>;
       return d.driver_id
         ? <td><span className="mono-ref" title={d.driver_id}>{shortRef(d.driver_id)}</span></td>
         : <td><span className="td-absent">No driver on duty</span></td>;

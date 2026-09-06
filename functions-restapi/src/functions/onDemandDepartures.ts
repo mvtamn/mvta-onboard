@@ -25,6 +25,8 @@ interface OnDemandDepartureRow {
   driver_id: string | null;
   vehicle_id: string | null;
   vehicle_identifier: string | null;
+  driver_name: string | null;
+  driver_identifier: string | null;
   duty_status: string | null;
   departure_scheduled: Date | null;
   scheduled_source: string | null;
@@ -55,13 +57,17 @@ app.http("onDemandDeparturesList", {
 
     try {
       const pool = await getPool();
-      const tableCheck = await pool.request().query<{ table_exists: number; with_vehicle_identifier: number }>(`
+      const tableCheck = await pool.request().query<{ table_exists: number; with_vehicle_identifier: number; with_driver_label: number }>(`
         SELECT CASE WHEN OBJECT_ID('dbo.OnDemandDepartures', 'U') IS NULL THEN 0 ELSE 1 END AS table_exists,
-               CASE WHEN COL_LENGTH('dbo.OnDemandDepartures', 'vehicle_identifier') IS NULL THEN 0 ELSE 1 END AS with_vehicle_identifier
+               CASE WHEN COL_LENGTH('dbo.OnDemandDepartures', 'vehicle_identifier') IS NULL THEN 0 ELSE 1 END AS with_vehicle_identifier,
+               CASE WHEN COL_LENGTH('dbo.OnDemandDepartures', 'driver_name') IS NULL THEN 0 ELSE 1 END AS with_driver_label
       `);
-      // Before migration 099 the fleet number is simply absent.
+      // Before migration 099 the fleet number is simply absent, and before
+      // migration 100 the driver's name is.
       const vehicleIdentifierSql = tableCheck.recordset[0]?.with_vehicle_identifier === 1
         ? "vehicle_identifier" : "CAST(NULL AS NVARCHAR(64)) AS vehicle_identifier";
+      const driverLabelSql = tableCheck.recordset[0]?.with_driver_label === 1
+        ? "driver_name, driver_identifier" : "CAST(NULL AS NVARCHAR(128)) AS driver_name, CAST(NULL AS NVARCHAR(64)) AS driver_identifier";
       const configured = onDemandDeparturesEnabled() && Boolean(process.env.SPARE_API_KEY?.trim());
       const empty = {
         configured, table_ready: false, record_count: 0, judged_count: 0, late_count: 0, no_departure_count: 0,
@@ -77,7 +83,7 @@ app.http("onDemandDeparturesList", {
       req.input("cutoff_date", sql.Char(8), agencyServiceDate(new Date(), -days).serviceDate);
       req.input("variance_seconds", sql.Int, varianceSeconds);
       const result = await req.query<OnDemandDepartureRow>(`
-        SELECT service_date, duty_id, duty_identifier, driver_id, vehicle_id, ${vehicleIdentifierSql}, duty_status,
+        SELECT service_date, duty_id, duty_identifier, driver_id, vehicle_id, ${vehicleIdentifierSql}, ${driverLabelSql}, duty_status,
                departure_scheduled, scheduled_source, departure_actual, departure_source, updated_at,
                CASE WHEN departure_scheduled IS NOT NULL AND departure_actual IS NOT NULL
                  THEN DATEDIFF(SECOND, departure_scheduled, departure_actual) ELSE NULL END AS departure_delta_seconds,
