@@ -26,7 +26,6 @@ vi.mock("../config.js", () => ({ api: {
   runOtpHistoricalBackfill: vi.fn(),
 } }));
 
-vi.mock("./modules/KpiTrustSummary.js", () => ({ KpiTrustSummary: () => null }));
 
 describe("OTP compliance administration", () => {
   afterEach(cleanup);

@@ -386,7 +386,7 @@ ten-connection pool, hundreds sat in flight, and the worker pinned. The 16:08
 infra restart and a manual restart at 16:15 each bought minutes before the
 flood re-saturated it. Yesterday carried the same volume; the difference is
 active zones turning cheap 503s into database work. Fix: PR "Spare webhook
-receiver intake gate" (v1.5.110) - bounded in-flight work, per-delivery time
+receiver intake gate" (v1.5.123) - bounded in-flight work, per-delivery time
 budget, cool-down 503s, vehicleLocation coalescing, cached zones. Lessons:
 (4) a restart that does not stick means load, not a wedge - read plan CPU and
 AppRequests by Name before restarting again; (5) any receiver that does
@@ -438,7 +438,7 @@ said first — was wrong. The listing was alphabetical and cut off in the D
 range, so it says nothing either way about 076, 078 and 080, whose tables all
 sort under P. Rather than guess, read it off the console: the Administration ›
 Decision Matrix workspace now reports each surface separately and names the
-migration each one needs (v1.5.122). Do not write a run record from that
+migration each one needs (v1.5.123). Do not write a run record from that
 screen alone — confirm against the database before recording one here.
 
 The governed reference layer's code is all on main (issues #102 through #109,
@@ -456,7 +456,7 @@ merged 25-26 August) and every table it reads or writes arrives in them:
 
 Until 076 is applied, `GET /decision-matrix` answers 200 with
 `diagnostics.table_ready = false` and the console reads **Decision Matrix is
-not connected**, naming the migration (v1.5.113). Before that both a missing
+not connected**, naming the migration (v1.5.123). Before that both a missing
 table and a genuine outage returned the same 500 "temporarily unavailable",
 which sent readers looking for an incident that wasn't happening. The reader
 needs no app setting beyond the database.
