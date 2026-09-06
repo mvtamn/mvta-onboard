@@ -30,6 +30,17 @@ export interface ZoneImportResult {
   activated: boolean;
 }
 
+// Migration 097 adds activated_by/activated_at. Resolving support per call
+// keeps activation working whichever of the migration and the deployment lands
+// first, rather than failing on a column that is not there yet.
+export async function activationAuditSupported(pool: sql.ConnectionPool): Promise<boolean> {
+  const result = await pool.request().query<{ supported: number }>(`
+    SELECT CASE WHEN COL_LENGTH('dbo.OnDemandOperationalZoneVersions', 'activated_by') IS NULL
+      THEN 0 ELSE 1 END AS supported
+  `);
+  return result.recordset[0]?.supported === 1;
+}
+
 export function sourceSha256(archive: Buffer): string {
   return createHash("sha256").update(archive).digest("hex");
 }
@@ -78,6 +89,7 @@ export async function importOperationalZoneVersion(
     };
   }
 
+  const auditSupported = await activationAuditSupported(pool);
   const transaction = new sql.Transaction(pool);
   await transaction.begin();
   try {
@@ -115,11 +127,13 @@ export async function importOperationalZoneVersion(
     // holds it. UPDLOCK/HOLDLOCK makes the check and the write one decision
     // rather than two, so a concurrent import cannot read "nothing active"
     // twice and have the second write fail on the index.
+    const auditColumns = auditSupported ? ", activated_by = @imported_by, activated_at = SYSUTCDATETIME()" : "";
     const activation = await new sql.Request(transaction)
       .input("id", sql.UniqueIdentifier, versionId)
+      .input("imported_by", sql.NVarChar(200), importedBy)
       .query<{ activated: number }>(`
         UPDATE dbo.OnDemandOperationalZoneVersions
-        SET is_active = 1
+        SET is_active = 1${auditColumns}
         WHERE id = @id AND NOT EXISTS (
           SELECT 1 FROM dbo.OnDemandOperationalZoneVersions WITH (UPDLOCK, HOLDLOCK) WHERE is_active = 1
         );
@@ -151,6 +165,7 @@ export type ZoneActivationResult =
 export async function activateOperationalZoneVersion(
   pool: sql.ConnectionPool,
   versionId: string,
+  actor: string,
 ): Promise<ZoneActivationResult> {
   const target = await pool.request()
     .input("id", sql.UniqueIdentifier, versionId)
@@ -166,14 +181,18 @@ export async function activateOperationalZoneVersion(
   // having none at all, and would do it while reporting success.
   if (row.zone_count === 0) return { kind: "no_zones" };
 
+  const auditColumns = await activationAuditSupported(pool)
+    ? ", activated_by = @actor, activated_at = SYSUTCDATETIME()"
+    : "";
   const transaction = new sql.Transaction(pool);
   await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
   try {
     await new sql.Request(transaction)
       .input("id", sql.UniqueIdentifier, versionId)
+      .input("actor", sql.NVarChar(200), actor)
       .query(`
         UPDATE dbo.OnDemandOperationalZoneVersions SET is_active = 0 WHERE is_active = 1 AND id <> @id;
-        UPDATE dbo.OnDemandOperationalZoneVersions SET is_active = 1 WHERE id = @id;
+        UPDATE dbo.OnDemandOperationalZoneVersions SET is_active = 1${auditColumns} WHERE id = @id;
       `);
     await transaction.commit();
   } catch (err) {

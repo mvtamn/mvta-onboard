@@ -22,17 +22,22 @@ Built on 2026-09-06:
   admin `POST` to activate one.
 - `on_demand_zones` added to the On-Demand KPI trust contract as a supporting
   dependency.
+- `scripts/importOnDemandZones.ts` — one-off manual seed from an archive on
+  disk, sharing every code path with the timer.
 - `ON_DEMAND_OPERATIONAL_ZONE_IDS` replaces the hardcoded zone set, defaulting
   to the pilot two.
+- Migration 097 — `activated_by` / `activated_at`.
 - Both settings declared in `infra-phase1` rather than the Portal.
 
 How the three decisions were settled:
 
-1. **Source** — a published GTFS-Flex URL polled daily, the `gtfsStopsSync`
-   shape. **The URL itself is still unknown**: it is not documented anywhere in
-   this repository, so the Bicep parameter is empty and the importer skips every
-   run with a warning until Operations supplies one. This is the only thing
-   between the current state and a working monitor.
+1. **Source** — decided 2026-09-06: **a one-off manual load**, because the
+   published URL is not known and finding it would block the monitor
+   indefinitely. `importOnDemandZones.ts` seeds from an archive on disk. The
+   daily poller is built and stays dormant while `ON_DEMAND_ZONE_FLEX_URL` is
+   empty, so setting that variable later is a settings change, not a code
+   change. The acknowledged cost of the manual route is that the next revision
+   needs someone to remember to run it — which is what setting the URL fixes.
 2. **Activation** — import automatically, activate explicitly, with one
    exception: an import made while no version is active activates itself.
    Deliberate activation exists to stop geometry being swapped under a live
@@ -49,10 +54,9 @@ Two things to know before switching a source on:
   same release with the intake gate and a one-minute zone cache, so the path is
   no longer the one that failed — but the first activation is the moment that
   mitigation is first exercised under real load.
-- There is no activation audit. `OnDemandOperationalZoneVersions` records
-  `imported_by` but has no column for who activated a version, so the endpoint
-  logs the actor rather than storing it. Adding that column is worth a separate
-  change.
+- Migration 097 must be applied for activation to be attributed. Without it
+  activation still works — the columns are read only once they exist — but who
+  put a version into force is recoverable only from Function App logs.
 
 ## Why this exists
 

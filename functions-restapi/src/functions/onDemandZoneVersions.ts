@@ -9,7 +9,7 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
 import { ADMIN_ROLES, requireRole, STAFF_READ_ROLES } from "../lib/auth";
-import { activateOperationalZoneVersion } from "../lib/onDemandZoneImport";
+import { activateOperationalZoneVersion, activationAuditSupported } from "../lib/onDemandZoneImport";
 import { isGuid } from "../lib/validation";
 
 app.http("onDemandZoneVersions", {
@@ -22,8 +22,15 @@ app.http("onDemandZoneVersions", {
     try {
       const pool = await getPool();
       if (request.method === "GET") {
+        // Migration 097's attribution columns are selected only once they
+        // exist, so this listing answers on a database the migration has not
+        // reached yet rather than failing on an unknown column.
+        const attribution = await activationAuditSupported(pool)
+          ? "v.activated_by, v.activated_at,"
+          : "CAST(NULL AS NVARCHAR(200)) AS activated_by, CAST(NULL AS DATETIME2) AS activated_at,";
         const versions = await pool.request().query(`
           SELECT v.id, v.feed_version, v.source_sha256, v.is_active, v.imported_at, v.imported_by,
+            ${attribution}
             (SELECT COUNT(*) FROM dbo.OnDemandOperationalZones z WHERE z.zone_version_id = v.id) AS zone_count
           FROM dbo.OnDemandOperationalZoneVersions v
           ORDER BY v.imported_at DESC
@@ -38,7 +45,8 @@ app.http("onDemandZoneVersions", {
         return { status: 400, jsonBody: { error: "version_id must be a version identifier" } };
       }
 
-      const result = await activateOperationalZoneVersion(pool, versionId);
+      const actor = auth.principal.userDetails || "unknown";
+      const result = await activateOperationalZoneVersion(pool, versionId, actor);
       if (result.kind === "not_found") {
         return { status: 404, jsonBody: { error: "Zone version not found" } };
       }
@@ -51,12 +59,9 @@ app.http("onDemandZoneVersions", {
           jsonBody: { error: "That zone version has no zones; activating it would leave the monitor without geometry." },
         };
       }
-      // OnDemandOperationalZoneVersions records who imported a version but has
-      // no column for who activated it, so the actor is logged rather than
-      // stored. Adding an activation audit column is worth doing separately.
       context.log(
         `On-demand zone version ${versionId} (feed version ${result.feedVersion}, ${result.zoneCount} zones) ` +
-          `activated by ${auth.principal.userDetails || "unknown"}.`,
+          `activated by ${actor}.`,
       );
       return {
         status: 200,

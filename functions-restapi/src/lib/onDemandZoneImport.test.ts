@@ -54,12 +54,13 @@ test("refuses to activate a version that has no zones", async () => {
   const result = await activateOperationalZoneVersion(
     fakePool([[{ feed_version: "zone-feed-v2", is_active: false, zone_count: 0 }]]),
     "22222222-2222-2222-2222-222222222222",
+    "ops@mvta.example",
   );
   assert.equal(result.kind, "no_zones");
 });
 
 test("reports an unknown version rather than silently doing nothing", async () => {
-  const result = await activateOperationalZoneVersion(fakePool([[]]), "33333333-3333-3333-3333-333333333333");
+  const result = await activateOperationalZoneVersion(fakePool([[]]), "33333333-3333-3333-3333-333333333333", "ops@mvta.example");
   assert.equal(result.kind, "not_found");
 });
 
@@ -67,6 +68,7 @@ test("activating the already-active version does not disturb it", async () => {
   const result = await activateOperationalZoneVersion(
     fakePool([[{ feed_version: "zone-feed-v1", is_active: true, zone_count: 2 }]]),
     "44444444-4444-4444-4444-444444444444",
+    "ops@mvta.example",
   );
   assert.equal(result.kind, "already_active");
 });
