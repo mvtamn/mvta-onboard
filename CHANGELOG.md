@@ -5,9 +5,14 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.127] - 2026-09-06
+## [1.5.128] - 2026-09-06
 
 - **Migration 101: the list-valued Messages columns hold JSON arrays, all of them.** `routes_affected`, `stops_affected`, `zones_affected`, `tags` and `channels` are declared JSON arrays and every current writer stores one, but rows from before that convention hold a comma-separated string (`web,sms`) - the row that failed the Audit Log search in v1.5.119. The readers tolerate both shapes since then; this migration retires the old one so the schema comment is true again. Each legacy value is split on commas, trimmed, JSON-escaped and re-joined in its original order; blank strings become NULL, which already meant "none". Values that are already arrays are untouched, and the script reports the per-column count before and after (the after row must read all zeros). Re-runnable. No code changes; requires migration 101 on dev.
+
+## [1.5.127] - 2026-09-05
+
+- **The console's version stops being a line every branch has to fight over.** Eight consecutive pull requests conflicted on `frontend/packages/onboard-console/package.json`'s `version` and on the changelogs above it - never once on code. Twice the worse thing happened instead: two branches picked the same number, wrote identical text, and git merged them with no conflict at all, so a duplicate version reached main and was caught only because someone went looking. The number now has one home. `vite.config.ts` reads `CHANGELOG_ENTRIES[0].version` - the newest entry in the file that already had to be edited to describe the release - and `package.json`'s `version` is set to `0.0.0` and is no longer the product version; nothing in CI or the workflows ever read it. One file to edit per release instead of two, and the displayed version can no longer disagree with the "What's new in v..." entry beside it.
+- **A duplicate or out-of-order version now fails the build.** `changelogData.test.ts` checks that every version is unique, that releases are listed newest first, that versions are numeric - the newest one is now the build version - and that `CHANGELOG.md` and `changelogData.ts` agree on what the newest release is. Two branches choosing the same number is still possible, because both read the same main; it is no longer silent. This is the check that would have caught both duplicates that shipped.
 
 ## [1.5.126] - 2026-09-06
 
