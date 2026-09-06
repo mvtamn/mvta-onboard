@@ -9,6 +9,24 @@ type ActionRow = { procedure_id: string; revision: number; action_id: string; ac
 type ReferenceRow = { procedure_id: string; revision: number; reference_id: string; document_type: string; is_primary: boolean; document_code: string; expected_file_name: string; expected_mime_type: string; web_url: string; health_status: "Valid" | "Needs review" | "Unavailable"; checked_at: Date | null; health_reason: string | null };
 
 export function isInlineImageMime(mime: string): boolean { return mime.toLowerCase() === "image/png" || mime.toLowerCase() === "image/jpeg"; }
+
+// The reader's five tables all arrive together in migration 076. A database
+// that has not been migrated is a different condition from a query that
+// failed, and the difference matters to whoever is looking: one is fixed by
+// running a migration, the other by investigating an outage. Reporting both
+// as "temporarily unavailable" - which is what a bare catch did - sends the
+// reader looking for a problem that isn't there.
+export async function decisionMatrixTablesReady(pool: sql.ConnectionPool): Promise<boolean> {
+  const check = await pool.request().query<{ ok: number }>(`
+    SELECT CASE WHEN OBJECT_ID('dbo.Procedures', 'U') IS NOT NULL
+                 AND OBJECT_ID('dbo.ProcedureRevisions', 'U') IS NOT NULL
+                 AND OBJECT_ID('dbo.ProcedureCriteria', 'U') IS NOT NULL
+                 AND OBJECT_ID('dbo.ProcedureImmediateActions', 'U') IS NOT NULL
+                 AND OBJECT_ID('dbo.ProcedureDocumentReferences', 'U') IS NOT NULL
+      THEN 1 ELSE 0 END AS ok
+  `);
+  return check.recordset[0]?.ok === 1;
+}
 function tags(value: string): string[] { try { const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed.filter((tag): tag is string => typeof tag === "string") : []; } catch { return []; } }
 function key(row: { procedure_id: string; revision: number }) { return `${row.procedure_id}:${row.revision}`; }
 function isHealthyPrimary(reference: Pick<ReferenceRow, "is_primary" | "health_status" | "document_type">) { return reference.is_primary && reference.health_status === "Valid" && (reference.document_type === "SOP" || reference.document_type === "Reference"); }
@@ -18,7 +36,9 @@ export async function listDecisionMatrix(request: HttpRequest, context: Invocati
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   const query = request.query.get("q")?.trim().slice(0, 200);
   try {
-    const pool = await getPool(); const list = pool.request();
+    const pool = await getPool();
+    if (!(await decisionMatrixTablesReady(pool))) return { status: 200, jsonBody: { procedures: [], diagnostics: { table_ready: false, procedure_count: 0 } } };
+    const list = pool.request();
     if (query) list.input("q", sql.NVarChar, `%${query}%`);
     const revisions = await list.query<RevisionRow>(`
       SELECT p.procedure_id,r.revision,p.condition_key,p.condition,r.severity,r.severity_meaning,r.owner_team,r.owner_contact,r.effective_at,r.next_review_at,ISNULL(r.tags_json,'[]') tags_json
@@ -26,7 +46,7 @@ export async function listDecisionMatrix(request: HttpRequest, context: Invocati
       ${query ? `AND (p.condition_key LIKE @q OR p.condition LIKE @q OR r.tags_json LIKE @q OR EXISTS(SELECT 1 FROM ProcedureCriteria c WHERE c.procedure_id=r.procedure_id AND c.revision=r.revision AND c.criterion_text LIKE @q) OR EXISTS(SELECT 1 FROM ProcedureImmediateActions a WHERE a.procedure_id=r.procedure_id AND a.revision=r.revision AND a.instruction LIKE @q) OR EXISTS(SELECT 1 FROM ProcedureDocumentReferences d WHERE d.procedure_id=r.procedure_id AND d.revision=r.revision AND (d.document_code LIKE @q OR d.expected_file_name LIKE @q)))` : ""}
       ORDER BY p.condition,r.revision DESC`);
     const wanted = new Set(revisions.recordset.map(key));
-    if (!wanted.size) return { status: 200, jsonBody: { procedures: [] } };
+    if (!wanted.size) return { status: 200, jsonBody: { procedures: [], diagnostics: { table_ready: true, procedure_count: 0 } } };
     const [criteria, actions, references] = await Promise.all([
       pool.request().query<CriterionRow>("SELECT c.procedure_id,c.revision,c.criterion_id,c.criterion_kind,c.criterion_text FROM ProcedureCriteria c JOIN ProcedureRevisions r ON r.procedure_id=c.procedure_id AND r.revision=c.revision WHERE r.lifecycle_state='Approved' ORDER BY c.sort_order"),
       pool.request().query<ActionRow>("SELECT a.procedure_id,a.revision,a.action_id,a.action_kind,a.instruction FROM ProcedureImmediateActions a JOIN ProcedureRevisions r ON r.procedure_id=a.procedure_id AND r.revision=a.revision WHERE r.lifecycle_state='Approved' ORDER BY a.sort_order"),
@@ -36,10 +56,11 @@ export async function listDecisionMatrix(request: HttpRequest, context: Invocati
     for (const row of criteria.recordset) if (wanted.has(key(row))) groupedCriteria.set(key(row), [...(groupedCriteria.get(key(row)) ?? []), row]);
     for (const row of actions.recordset) if (wanted.has(key(row))) groupedActions.set(key(row), [...(groupedActions.get(key(row)) ?? []), row]);
     for (const row of references.recordset) if (wanted.has(key(row))) groupedReferences.set(key(row), [...(groupedReferences.get(key(row)) ?? []), row]);
-    return { status: 200, jsonBody: { procedures: revisions.recordset.map((revision) => {
+    const procedures = revisions.recordset.map((revision) => {
       const referenceRows = groupedReferences.get(key(revision)) ?? [];
       return { ...revision, tags: tags(revision.tags_json), criteria: (groupedCriteria.get(key(revision)) ?? []).map(({ criterion_id, criterion_kind, criterion_text }) => ({ id: criterion_id, kind: criterion_kind, text: criterion_text })), immediate_actions: (groupedActions.get(key(revision)) ?? []).map(({ action_id, action_kind, instruction }) => ({ id: action_id, kind: action_kind, instruction })), document_references: referenceRows.map(({ procedure_id, revision: _revision, ...reference }) => ({ ...reference, source_available: isHealthyPrimary(reference), inline_preview_available: (reference.document_type === "QRG" || reference.document_type === "Visual rendition") && reference.health_status === "Valid" && isInlineImageMime(reference.expected_mime_type) })) };
-    }) } };
+    });
+    return { status: 200, jsonBody: { procedures, diagnostics: { table_ready: true, procedure_count: procedures.length } } };
   } catch (error) { context.error("GET /decision-matrix failed", error); return { status: 500, jsonBody: { error: "Decision Matrix content is temporarily unavailable." } }; }
 }
 

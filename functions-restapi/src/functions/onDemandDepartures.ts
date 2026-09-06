@@ -19,6 +19,7 @@ interface OnDemandDepartureRow {
   duty_identifier: string | null;
   driver_id: string | null;
   vehicle_id: string | null;
+  vehicle_identifier: string | null;
   duty_status: string | null;
   departure_scheduled: Date | null;
   scheduled_source: string | null;
@@ -48,9 +49,13 @@ app.http("onDemandDeparturesList", {
 
     try {
       const pool = await getPool();
-      const tableCheck = await pool.request().query<{ table_exists: number }>(`
-        SELECT CASE WHEN OBJECT_ID('dbo.OnDemandDepartures', 'U') IS NULL THEN 0 ELSE 1 END AS table_exists
+      const tableCheck = await pool.request().query<{ table_exists: number; with_vehicle_identifier: number }>(`
+        SELECT CASE WHEN OBJECT_ID('dbo.OnDemandDepartures', 'U') IS NULL THEN 0 ELSE 1 END AS table_exists,
+               CASE WHEN COL_LENGTH('dbo.OnDemandDepartures', 'vehicle_identifier') IS NULL THEN 0 ELSE 1 END AS with_vehicle_identifier
       `);
+      // Before migration 099 the fleet number is simply absent.
+      const vehicleIdentifierSql = tableCheck.recordset[0]?.with_vehicle_identifier === 1
+        ? "vehicle_identifier" : "CAST(NULL AS NVARCHAR(64)) AS vehicle_identifier";
       const configured = onDemandDeparturesEnabled() && Boolean(process.env.SPARE_API_KEY?.trim());
       const empty = {
         configured, table_ready: false, record_count: 0, late_count: 0, no_departure_count: 0,
@@ -65,7 +70,7 @@ app.http("onDemandDeparturesList", {
       req.input("cutoff_date", sql.Char(8), agencyServiceDate(new Date(), -days).serviceDate);
       req.input("variance_seconds", sql.Int, varianceSeconds);
       const result = await req.query<OnDemandDepartureRow>(`
-        SELECT service_date, duty_id, duty_identifier, driver_id, vehicle_id, duty_status,
+        SELECT service_date, duty_id, duty_identifier, driver_id, vehicle_id, ${vehicleIdentifierSql}, duty_status,
                departure_scheduled, scheduled_source, departure_actual, departure_source, updated_at,
                CASE WHEN departure_scheduled IS NOT NULL AND departure_actual IS NOT NULL
                  THEN DATEDIFF(SECOND, departure_scheduled, departure_actual) ELSE NULL END AS departure_delta_seconds,

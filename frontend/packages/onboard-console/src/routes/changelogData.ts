@@ -18,14 +18,26 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
-    version: "1.5.113",
-    date: "2026-09-05",
+    version: "1.5.119",
+    date: "2026-09-06",
     sections: [
       {
         heading: "Changed",
         items: [
           "Garage Departures (Fixed Route) now judges every run the way the compliance candidate rule does and shows that Outcome beside Avail's status; the cards count no-departure and late-over-allowance runs on settled days only, and today's runs are marked Not settled.",
           "Fixed Route rows are grouped by service day, operator, or vehicle, with a Reviewable-only filter and a per-day strip of reviewable departures. Dates read as weekday and date, times are Central, operators show as a name with their badge, and blanks say what is missing.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "1.5.118",
+    date: "2026-09-06",
+    sections: [
+      {
+        heading: "Changed",
+        items: [
+          "Garage Departures, On-Demand: the Vehicle column now shows the fleet number instead of Spare's internal vehicle id. The id is still available on hover.",
         ],
       },
     ],
@@ -111,8 +123,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
       {
         heading: "Added",
         items: [
-          "Dispatch Log verifications can now be recorded: the SST OCS desk initials a trip's start from the Grid cell, the Watch queue, or the inspector, records a disposition with a note where a trip ran late, and can correct or clear an entry. Every change is kept in an audit trail.",
-        ],
+          "Dispatch Log verifications can now be recorded: the SST OCS desk initials a trip's start from the Grid cell, the Watch queue, or the inspector, records a disposition with a note where a trip ran late, and can correct or clear an entry. Every change is kept in an audit trail.",        ],
       },
     ],
   },
