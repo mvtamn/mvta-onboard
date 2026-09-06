@@ -46,13 +46,6 @@ export function loadActiveOperationalZonesCached(): Promise<ActiveOperationalZon
   return activeZonesCache.get();
 }
 
-// Activating a zone version is the one moment the cached set is knowably
-// wrong. Other workers still wait out the minute, but the one that served the
-// activation does not have to.
-export function invalidateActiveOperationalZonesCache(): void {
-  activeZonesCache.invalidate();
-}
-
 export async function storeOnDemandSpareRequest(
   input: NormalizedOnDemandRequest,
   activeZones: ActiveOperationalZones,

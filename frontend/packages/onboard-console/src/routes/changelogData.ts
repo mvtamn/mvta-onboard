@@ -18,18 +18,6 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
-    version: "1.5.114",
-    date: "2026-09-05",
-    sections: [
-      {
-        heading: "Added",
-        items: [
-          "MVTA Connect operational zones can now be imported and activated. Administrators upload the GTFS-Flex archive, review the version it creates, then activate it \u2014 two separate steps, so importing never changes the geometry live monitoring is using. On-Demand Service Quality still needs its monitoring setting enabled before it reports risk.",
-        ],
-      },
-    ],
-  },
-  {
     version: "1.5.113",
     date: "2026-09-05",
     sections: [
