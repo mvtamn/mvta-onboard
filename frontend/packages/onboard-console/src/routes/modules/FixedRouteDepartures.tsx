@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ApiError, type FixedRouteDeparture, type FixedRouteDepartureOutcome } from "@mvta/shared";
 import { api } from "../../config.js";
+import { useAuth } from "../../auth/AuthContext.js";
 import {
   agencyTimeLabel,
   badgeLabel,
@@ -9,6 +10,8 @@ import {
   DepartureTrend,
   GroupByToggle,
   monitoringState,
+  OccurrenceCell,
+  type OccurrenceReviewHandlers,
   operatorParts,
   RiskStat,
   serviceDayLabel,
@@ -154,10 +157,14 @@ const COLUMNS: Record<string, { label: string; hint: string; className?: string 
   delta: { label: "Delta", hint: "", className: "td-num" },
   status: { label: "Avail status", hint: "as emitted" },
   outcome: { label: "Outcome", hint: "contract rule" },
+  // The outcome says what the rule judged; this says what a reviewer did with
+  // it. Without the second column a late pullout showed as late here forever
+  // and nothing on the page said whether anyone had charged it.
+  assessment: { label: "Assessment", hint: "occurrence" },
 };
 
 function columnsFor(groupBy: DepartureGroupBy): string[] {
-  const all = ["date", "block", "operator", "vehicle", "scheduled", "actual", "delta", "status", "outcome"];
+  const all = ["date", "block", "operator", "vehicle", "scheduled", "actual", "delta", "status", "outcome", "assessment"];
   return all.filter((key) => key !== groupBy);
 }
 
@@ -170,6 +177,7 @@ function columnsFor(groupBy: DepartureGroupBy): string[] {
 // interval. The module head and the service-type switch live in
 // GarageDepartures.tsx.
 export function FixedRouteDepartures() {
+  const { roles } = useAuth();
   const [days, setDays] = useState<number>(DEFAULT_DAYS);
   const [groupBy, setGroupBy] = useState<DepartureGroupBy>("date");
   const [show, setShow] = useState<Show>("all");
@@ -229,6 +237,30 @@ export function FixedRouteDepartures() {
   );
   const columns = columnsFor(groupBy);
   const todayCount = diagnostics ? diagnostics.record_count - diagnostics.settled_count : 0;
+
+  // Settling an occurrence from here is the same PATCH the Performance
+  // Assessment module's queue makes; reloading afterwards is what moves the
+  // row's pill, since the state lives on the occurrence, not in this view.
+  const [reviewing, setReviewing] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const review: OccurrenceReviewHandlers = {
+    busy: reviewing,
+    canReview: roles.includes("OCC.Compliance") || roles.includes("OCC.ComplianceManager")
+      || roles.includes("OCC.Publisher") || roles.includes("OCC.Admin"),
+    onReview: (occurrenceId, attribution) => {
+      setReviewing(true);
+      setReviewError(null);
+      void api.reviewComplianceOccurrence(
+        occurrenceId,
+        attribution === "contractor_error" ? "confirmed" : "dismissed",
+        attribution,
+        attribution === "contractor_error" ? undefined : `Attributed as ${attribution} from Garage Departures.`,
+      )
+        .then(() => load())
+        .catch(() => setReviewError("The occurrence could not be updated."))
+        .finally(() => setReviewing(false));
+    },
+  };
 
   return (
     <>
@@ -331,6 +363,7 @@ export function FixedRouteDepartures() {
         </div>
       ) : (
         <>
+          {reviewError ? <p className="risk-action-error">{reviewError}</p> : null}
           <div className="departures-table-scroll">
             <table className="data departures-table">
               <thead>
@@ -345,7 +378,7 @@ export function FixedRouteDepartures() {
               </thead>
               <tbody>
                 {groups.map((group) => (
-                  <GroupRows key={group.key} group={group} groupBy={groupBy} columns={columns} />
+                  <GroupRows key={group.key} group={group} groupBy={groupBy} columns={columns} review={review} />
                 ))}
               </tbody>
             </table>
@@ -359,7 +392,7 @@ export function FixedRouteDepartures() {
   );
 }
 
-function GroupRows({ group, groupBy, columns }: { group: DepartureGroup; groupBy: DepartureGroupBy; columns: string[] }) {
+function GroupRows({ group, groupBy, columns, review }: { group: DepartureGroup; groupBy: DepartureGroupBy; columns: string[]; review: OccurrenceReviewHandlers }) {
   const reviewable = group.lateCount + group.noDepartureCount;
   const meta = groupBy === "date" && !group.settled
     ? `${group.rows.length} runs so far · Avail is still classifying today`
@@ -380,7 +413,7 @@ function GroupRows({ group, groupBy, columns }: { group: DepartureGroup; groupBy
       {group.rows.map((d) => (
         <tr key={`${d.service_date}-${d.block}-${d.run}`}>
           {columns.map((key) => (
-            <DepartureCell key={key} column={key} departure={d} />
+            <DepartureCell key={key} column={key} departure={d} review={review} />
           ))}
         </tr>
       ))}
@@ -388,7 +421,7 @@ function GroupRows({ group, groupBy, columns }: { group: DepartureGroup; groupBy
   );
 }
 
-function DepartureCell({ column, departure: d }: { column: string; departure: FixedRouteDeparture }) {
+function DepartureCell({ column, departure: d, review }: { column: string; departure: FixedRouteDeparture; review: OccurrenceReviewHandlers }) {
   switch (column) {
     case "date":
       return <td className="td-dim">{serviceDayLabel(d.service_date)}</td>;
@@ -421,6 +454,8 @@ function DepartureCell({ column, departure: d }: { column: string; departure: Fi
       const o = OUTCOMES[d.outcome];
       return <td><span className={`pill-sm ${o.pill}`}>{o.label}</span></td>;
     }
+    case "assessment":
+      return <OccurrenceCell link={d} serviceDate={d.service_date} busy={review.busy} canReview={review.canReview} onReview={review.onReview} />;
     default:
       return <td></td>;
   }

@@ -4,7 +4,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../config.js";
 import { OnDemandDepartures } from "./OnDemandDepartures.js";
 
+// The departure views read roles to decide whether the reviewer may settle an
+// occurrence from the row. These tests render the view directly, outside the
+// app's provider tree, so the roles come from here.
+vi.mock("../../auth/AuthContext.js", () => ({ useAuth: () => ({ roles: ["OCC.Compliance"] }) }));
+
+
 const departure: OnDemandDeparture = {
+    occurrence_id: null, occurrence_review_status: null, occurrence_attribution: null,
+    occurrence_service_month: null, occurrence_period_status: null,
+
   service_date: "20260904",
   duty_id: "duty-1",
   duty_identifier: "D-101",
