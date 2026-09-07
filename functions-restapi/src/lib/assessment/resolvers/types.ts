@@ -1,4 +1,5 @@
 import type { Transaction } from "mssql";
+import type { MeasurementSource } from "../measurementSource";
 
 // What measuring one standard for one month produces.
 //
@@ -46,6 +47,8 @@ export interface RegisteredResolver {
   description: string;
   /** Which standard type this resolver can serve. */
   appliesTo: "threshold" | "occurrence";
+  /** The measurement source kind a standard must declare to use it. */
+  source: MeasurementSource;
   resolve?: ThresholdResolver;
 }
 

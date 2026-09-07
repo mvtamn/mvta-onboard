@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   AgreementStandardAssignment, AgreementStandardInput, ContractorPerformanceStandard, ContractorRecord,
   ContractorStandardTier, PerformanceAgreementRecord,
-  PerformanceStandardInput, RegisteredResolver,
+  KnownSourceSystem, PerformanceStandardInput, RegisteredResolver, StandardMeasurementSource,
   StandardTierInput,
 } from "@mvta/shared";
 import {
   BAND_RANGES, bandRangeOf, boundsForRange, boundToInput, CATALOG_UNITS, describeBand,
-  inputToBound, isRatioUnit, ladderWarnings, PENALTY_BASES, qualifierLabel,
+  inputToBound, isAutomated, isRatioUnit, ladderWarnings, PENALTY_BASES, qualifierLabel, sourceLabel,
   TIER_LABELS, unitNoun, type BandRange,
 } from "./performanceStandardsVocabulary.js";
 import { api } from "../config.js";
@@ -46,10 +46,19 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "assignment", label: "Assignment" },
 ];
 
+// The four ways a month's figure arrives, in the order an administrator is
+// most likely to want them.
+const MEASUREMENT_SOURCES: { value: StandardMeasurementSource; label: string; hint: string }[] = [
+  { value: "manual_entry", label: "Entered by hand", hint: "Somebody types the month's figure in." },
+  { value: "structured_import", label: "Transcribed from another system", hint: "Read off another system's structured report and entered here." },
+  { value: "api_feed", label: "Ingested from a feed", hint: "A feed this application reads directly." },
+  { value: "onboard_compliance", label: "Raised by OnBoard compliance", hint: "Occurrences OnBoard raises from its own modules." },
+];
+
 const EMPTY_STANDARD: PerformanceStandardInput = {
   code: "", name: "", description: "", standard_type: "occurrence", priority: "Medium",
   is_scored: true, is_safety_critical: false, direction: "lower_is_better", unit_label: "occurrences",
-  measurement_source: "manual", resolver_key: "", data_source_note: "", responsible_team: "",
+  measurement_source: "manual_entry", resolver_key: null, source_system: null, data_source_note: "", responsible_team: "",
   assigned_to: "", cap_rule_note: "", sort_order: 0, effective_start_date: today(), effective_end_date: null,
 };
 
@@ -59,7 +68,8 @@ function standardToInput(standard: ContractorPerformanceStandard): PerformanceSt
     standard_type: standard.standard_type, priority: standard.priority,
     is_scored: standard.is_scored, is_safety_critical: standard.is_safety_critical ?? false,
     direction: standard.direction ?? "lower_is_better", unit_label: standard.unit_label,
-    measurement_source: standard.measurement_source ?? "manual", resolver_key: standard.resolver_key ?? "",
+    measurement_source: standard.measurement_source ?? "manual_entry",
+    resolver_key: standard.resolver_key ?? null, source_system: standard.source_system ?? null,
     data_source_note: standard.data_source_note ?? "", responsible_team: standard.responsible_team ?? "",
     assigned_to: standard.assigned_to ?? "", cap_rule_note: standard.cap_rule_note ?? "",
     sort_order: standard.sort_order ?? 0, effective_start_date: standard.effective_start_date ?? today(),
@@ -78,6 +88,7 @@ export function PerformanceStandardsAdmin() {
   const [assignments, setAssignments] = useState<AgreementStandardAssignment[]>([]);
   const [contractors, setContractors] = useState<ContractorRecord[]>([]);
   const [resolvers, setResolvers] = useState<RegisteredResolver[]>([]);
+  const [sourceSystems, setSourceSystems] = useState<KnownSourceSystem[]>([]);
   const [agreementId, setAgreementId] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [draft, setDraft] = useState<PerformanceStandardInput | null>(null);
@@ -98,6 +109,7 @@ export function PerformanceStandardsAdmin() {
       setAgreements(catalog.agreements);
       setAssignments(catalog.assignments);
       setResolvers(catalog.resolvers ?? []);
+      setSourceSystems(catalog.source_systems ?? []);
       setContractors(contractorList.contractors);
       setReady(catalog.diagnostics.table_ready && catalog.diagnostics.assignments_ready);
       setAgreementId((current) => current || catalog.agreements.find((a) => a.is_active)?.id || catalog.agreements[0]?.id || "");
@@ -167,8 +179,8 @@ export function PerformanceStandardsAdmin() {
       const assignment = assignmentFor.get(standard.id);
       if (filter === "scored" && !assignment?.is_scored) return false;
       if (filter === "unassigned" && assignment) return false;
-      if (filter === "auto" && standard.measurement_source !== "auto") return false;
-      if (filter === "manual" && standard.measurement_source === "auto") return false;
+      if (filter === "auto" && !isAutomated(standard.measurement_source)) return false;
+      if (filter === "manual" && isAutomated(standard.measurement_source)) return false;
       if (!needle) return true;
       return `${standard.name} ${standard.code} ${standard.unit_label}`.toLowerCase().includes(needle);
     });
@@ -253,8 +265,8 @@ export function PerformanceStandardsAdmin() {
                     <span className={`standards-state ${state.toLowerCase()}`}>{state}</span>
                     <small>
                       {standard.standard_type === "occurrence" ? "Counted events" : "Monthly value"}
-                      {" · "}{standard.measurement_source === "auto" ? "automatic" : "by hand"}
-                      {standard.measurement_source === "auto" && !standard.resolver_key ? " · no resolver" : ""}
+                      {" · "}{sourceLabel(standard.measurement_source, standard.source_system)}
+                      {isAutomated(standard.measurement_source) && !standard.resolver_key ? " · no resolver" : ""}
                     </small>
                   </span>
                 </button>
@@ -309,7 +321,7 @@ export function PerformanceStandardsAdmin() {
 
             <div className="standards-tab-body">
               {tab === "details" && draft && <StandardEditor
-                draft={draft} setDraft={setDraft} standardId={selectedId} canEdit={isAdmin} busy={busy} resolvers={resolvers}
+                draft={draft} setDraft={setDraft} standardId={selectedId} canEdit={isAdmin} busy={busy} resolvers={resolvers} sourceSystems={sourceSystems}
                 onCancel={() => { setDraft(null); setSelectedId(""); }}
                 onSave={(id, input) => void run(() => api.putPerformanceStandard(id, input), `${input.name} saved.`)}
               />}
@@ -503,20 +515,24 @@ function AgreementPanel({ agreements, contractors, agreementId, busy, canEdit, o
   </section>;
 }
 
-function StandardEditor({ draft, setDraft, standardId, canEdit, busy, resolvers, onCancel, onSave }: {
+function StandardEditor({ draft, setDraft, standardId, canEdit, busy, resolvers, sourceSystems, onCancel, onSave }: {
   draft: PerformanceStandardInput; setDraft: (next: PerformanceStandardInput) => void; standardId: string;
-  canEdit: boolean; busy: boolean; resolvers: RegisteredResolver[];
+  canEdit: boolean; busy: boolean; resolvers: RegisteredResolver[]; sourceSystems: KnownSourceSystem[];
   onCancel: () => void; onSave: (id: string, input: PerformanceStandardInput) => void;
 }) {
   const isNew = standardId === "new";
   const set = <K extends keyof PerformanceStandardInput>(key: K, value: PerformanceStandardInput[K]) => setDraft({ ...draft, [key]: value });
-  // Only the resolvers that can serve this kind of standard: a threshold needs
-  // one that measures a monthly value, an occurrence standard names the intake
-  // that raises its rows. The server enforces the same pairing.
-  const usable = resolvers.filter((resolver) => resolver.applies_to === draft.standard_type);
+  // Only the resolvers that serve this source kind AND this standard type: a
+  // feed measures a monthly value, an OnBoard intake raises occurrence rows.
+  // The server enforces the same pairing.
+  const automated = draft.measurement_source === "api_feed" || draft.measurement_source === "onboard_compliance";
+  const usable = resolvers.filter((resolver) =>
+    resolver.source === draft.measurement_source && resolver.applies_to === draft.standard_type);
   const chosen = resolvers.find((resolver) => resolver.key === draft.resolver_key);
-  const autoWithoutResolver = draft.measurement_source === "auto"
+  const missingResolver = automated
     && (!draft.resolver_key?.trim() || !usable.some((resolver) => resolver.key === draft.resolver_key));
+  const missingSourceSystem = draft.measurement_source === "structured_import" && !draft.source_system?.trim();
+  const incomplete = missingResolver || missingSourceSystem;
 
   return <section className="assessment-card standards-editor">
     <div className="assessment-section-head">
@@ -563,22 +579,53 @@ function StandardEditor({ draft, setDraft, standardId, canEdit, busy, resolvers,
           <input value={draft.unit_label} disabled={!canEdit} autoFocus placeholder="Name the unit" onChange={(event) => set("unit_label", event.target.value)} />}
         <small>Percent is stored as a ratio and shown as a percentage everywhere.</small>
       </label>
-      <label><span>Measurement</span>
-        <select value={draft.measurement_source} disabled={!canEdit} onChange={(event) => set("measurement_source", event.target.value as PerformanceStandardInput["measurement_source"])}>
-          <option value="manual">Entered by hand each month</option>
-          <option value="auto">Measured automatically from a feed</option>
+      <label><span>Where the figure comes from</span>
+        <select
+          value={draft.measurement_source} disabled={!canEdit}
+          onChange={(event) => {
+            const next = event.target.value as StandardMeasurementSource;
+            // Clearing the fields the new kind does not use: a leftover
+            // resolver on a hand-entered standard reads as automated to anyone
+            // scanning the catalog, and the server refuses it anyway.
+            setDraft({
+              ...draft,
+              measurement_source: next,
+              resolver_key: next === "api_feed" || next === "onboard_compliance" ? draft.resolver_key ?? null : null,
+              source_system: next === "structured_import" ? draft.source_system ?? null : null,
+            });
+          }}
+        >
+          {MEASUREMENT_SOURCES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
         </select>
+        <small>{MEASUREMENT_SOURCES.find((option) => option.value === draft.measurement_source)?.hint}</small>
       </label>
-      {draft.measurement_source === "auto" && <label><span>Measured by</span>
+      {draft.measurement_source === "structured_import" && <label><span>Source system</span>
+        <select
+          value={sourceSystems.some((system) => system.value === draft.source_system) || !draft.source_system ? draft.source_system ?? "" : "__other"}
+          disabled={!canEdit}
+          onChange={(event) => set("source_system", event.target.value === "__other" ? "" : event.target.value || null)}
+        >
+          <option value="">Select the system…</option>
+          {sourceSystems.map((system) => <option key={system.value} value={system.value}>{system.label}</option>)}
+          <option value="__other">Another system…</option>
+        </select>
+        {draft.source_system !== null && !sourceSystems.some((system) => system.value === draft.source_system) &&
+          <input value={draft.source_system ?? ""} disabled={!canEdit} placeholder="Name the system" onChange={(event) => set("source_system", event.target.value)} />}
+        <small>
+          {sourceSystems.find((system) => system.value === draft.source_system)?.description
+            ?? "Names who to chase when the month's figure is missing."}
+        </small>
+      </label>}
+      {automated && <label><span>Measured by</span>
         <select value={draft.resolver_key ?? ""} disabled={!canEdit} onChange={(event) => set("resolver_key", event.target.value || null)}>
           <option value="">Select what measures it…</option>
           {usable.map((resolver) => <option key={resolver.key} value={resolver.key}>{resolver.label}</option>)}
         </select>
-        {chosen && chosen.applies_to === draft.standard_type && <small>{chosen.description}</small>}
-        {autoWithoutResolver && <small className="standards-flag">
+        {chosen && chosen.source === draft.measurement_source && chosen.applies_to === draft.standard_type && <small>{chosen.description}</small>}
+        {missingResolver && <small className="standards-flag">
           {usable.length
             ? "Pick what measures this standard. Without it the month is reported as not assessable rather than scored."
-            : `Nothing registered can measure a ${draft.standard_type === "threshold" ? "monthly-value" : "counted-events"} standard automatically. Enter it by hand instead.`}
+            : `Nothing registered serves a ${draft.standard_type === "threshold" ? "monthly-value" : "counted-events"} standard from this source. Enter it by hand instead.`}
         </small>}
       </label>}
       <label><span>Responsible team</span><input value={draft.responsible_team ?? ""} disabled={!canEdit} onChange={(event) => set("responsible_team", event.target.value)} /></label>
@@ -594,7 +641,7 @@ function StandardEditor({ draft, setDraft, standardId, canEdit, busy, resolvers,
     </div>
     {canEdit && <button
       className="btn-primary"
-      disabled={busy || !draft.code || !draft.name.trim() || !draft.unit_label.trim() || autoWithoutResolver}
+      disabled={busy || !draft.code || !draft.name.trim() || !draft.unit_label.trim() || incomplete}
       onClick={() => onSave(isNew ? crypto.randomUUID() : standardId, draft)}
     >{isNew ? "Add standard" : "Save standard"}</button>}
   </section>;

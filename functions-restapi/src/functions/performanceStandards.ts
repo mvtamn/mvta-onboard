@@ -2,6 +2,7 @@ import { app, type HttpRequest, type InvocationContext } from "@azure/functions"
 import { ADMIN_ROLES, COMPLIANCE_READ_ROLES, requireRole } from "../lib/auth";
 import { getPool, sql } from "../lib/db";
 import { RESOLVERS } from "../lib/assessment/resolvers";
+import { KNOWN_SOURCE_SYSTEMS } from "../lib/assessment/measurementSource";
 import { agreementScope } from "../lib/assessment/schemaScope";
 import { isGuid, validatePerformanceStandard, validateStandardTierLadder } from "../lib/validation";
 
@@ -31,7 +32,7 @@ app.http("performanceStandardsList", {
         SELECT CASE WHEN OBJECT_ID('dbo.ContractorPerformanceStandards','U') IS NULL THEN 0 ELSE 1 END ready
       `);
       if (!ready.recordset[0]?.ready) {
-        return { status: 200, jsonBody: { standards: [], tiers: [], agreements: [], assignments: [], resolvers: [], diagnostics: { table_ready: false, assignments_ready: false } } };
+        return { status: 200, jsonBody: { standards: [], tiers: [], agreements: [], assignments: [], resolvers: [], source_systems: [], diagnostics: { table_ready: false, assignments_ready: false } } };
       }
       // Migration 102 may not have run yet; the catalog still reads correctly
       // without it, so the page degrades to the agency-wide view rather than
@@ -59,7 +60,8 @@ app.http("performanceStandardsList", {
           // to rather than a text box. Served from code, not from the
           // database: it is the set of resolvers this deployment has, which is
           // exactly what a saved resolver_key has to match.
-          resolvers: RESOLVERS.map(({ key, label, description, appliesTo }) => ({ key, label, description, applies_to: appliesTo })),
+          resolvers: RESOLVERS.map(({ key, label, description, appliesTo, source }) => ({ key, label, description, applies_to: appliesTo, source })),
+          source_systems: KNOWN_SOURCE_SYSTEMS.map(({ value, label, description }) => ({ value, label, description })),
           diagnostics: { table_ready: true, assignments_ready: assignmentsReady },
         },
       };
@@ -109,6 +111,7 @@ app.http("performanceStandardPut", {
       req.input("unit", sql.NVarChar(50), String(body.unit_label).trim());
       req.input("source", sql.NVarChar(20), body.measurement_source);
       req.input("resolver", sql.NVarChar(50), body.resolver_key ?? null);
+      req.input("source_system", sql.NVarChar(100), body.source_system ?? null);
       req.input("data_note", sql.NVarChar(1000), body.data_source_note ?? null);
       req.input("team", sql.NVarChar(200), body.responsible_team ?? null);
       req.input("assigned", sql.NVarChar(200), body.assigned_to ?? null);
@@ -122,13 +125,13 @@ app.http("performanceStandardPut", {
         USING (SELECT @id id) source ON target.id=source.id
         WHEN MATCHED THEN UPDATE SET name=@name,description=@description,standard_type=@type,priority=@priority,
           is_scored=@scored,is_safety_critical=@safety,direction=@direction,unit_label=@unit,measurement_source=@source,
-          resolver_key=@resolver,data_source_note=@data_note,responsible_team=@team,assigned_to=@assigned,
+          resolver_key=@resolver,source_system=@source_system,data_source_note=@data_note,responsible_team=@team,assigned_to=@assigned,
           cap_rule_note=@cap_note,sort_order=@sort,effective_start_date=@start,effective_end_date=@end,
           updated_by=@actor,updated_at=SYSUTCDATETIME()
         WHEN NOT MATCHED THEN INSERT(id,code,name,description,standard_type,priority,is_scored,is_safety_critical,direction,
-          unit_label,measurement_source,resolver_key,data_source_note,responsible_team,assigned_to,cap_rule_note,sort_order,
+          unit_label,measurement_source,resolver_key,source_system,data_source_note,responsible_team,assigned_to,cap_rule_note,sort_order,
           effective_start_date,effective_end_date,updated_by)
-          VALUES(@id,@code,@name,@description,@type,@priority,@scored,@safety,@direction,@unit,@source,@resolver,@data_note,
+          VALUES(@id,@code,@name,@description,@type,@priority,@scored,@safety,@direction,@unit,@source,@resolver,@source_system,@data_note,
             @team,@assigned,@cap_note,@sort,@start,@end,@actor);
       `);
       return { status: 200, jsonBody: { id } };

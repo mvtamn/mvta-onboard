@@ -129,8 +129,10 @@ export interface PerformanceStandardInput {
   direction: import("./types.js").StandardDirection;
   unit_label: string;
   measurement_source: import("./types.js").StandardMeasurementSource;
-  /** Required when measurement_source is "auto": names the resolver that measures it. */
+  /** Required for a feed or OnBoard-compliance standard: names what measures it. */
   resolver_key?: string | null;
+  /** Required for a structured import: the external system it is transcribed from. */
+  source_system?: string | null;
   data_source_note?: string | null;
   responsible_team?: string | null;
   assigned_to?: string | null;
@@ -1232,6 +1234,7 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
         agreements: import("./types.js").PerformanceAgreementRecord[];
         assignments: import("./types.js").AgreementStandardAssignment[];
         resolvers: import("./types.js").RegisteredResolver[];
+        source_systems: import("./types.js").KnownSourceSystem[];
         diagnostics: { table_ready: boolean; assignments_ready: boolean };
       }>("/api/performance-standards", {}, true);
     },

@@ -5,6 +5,16 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.140] - 2026-09-07
+
+- **Migration 104: `measurement_source` names where a figure comes from, in the four ways it arrives.** `'auto'` covered both an external feed this application ingests and occurrences OnBoard raises from its own compliance modules - yet only the first has a resolver to call, which is the confusion the registry had to model around with `appliesTo`. `'manual'` covered both a figure somebody knows and one transcribed from another system's structured report, which has a named source, a schema, and a route to becoming a feed later. Now `api_feed`, `onboard_compliance`, `manual_entry` and `structured_import`, with `source_system` on the one kind that has one (constrained so it cannot be set on the others).
+- **Conversion makes no judgement about which standards come from Nexus or M5.** `'auto'` splits on `standard_type` - what actually distinguished the two cases in practice - and every `'manual'` row becomes `manual_entry`. Reclassifying a standard as `structured_import` and naming its system is a data edit on Administration › Performance Standards, because it is a contract and reporting fact rather than something a migration should guess.
+- **Existing `AssessmentPeriodStandards` snapshots are deliberately left in the old vocabulary.** They record what a finalized month was scored under; `normalizeMeasurementSource` reads both, so an issued period still computes the number it was issued with. Rewriting them would restate history to match a vocabulary that did not exist when the month was scored.
+- **The registry declares which source kind each entry serves**, and the validator enforces the pairing in both directions: `MISSED_TRIPS_FR` is an OnBoard intake and can no longer be attached to a standard claiming to read a feed. A hand-entered standard naming a resolver is refused too - nothing would ever call it, and it reads as automated to anyone scanning the catalog.
+- **A threshold standard sourced from `onboard_compliance` is reported not assessable with the reason named.** OnBoard raises occurrence rows, not a monthly figure, so there is nothing for the tier ladder to match.
+- **The monthly figures form now lists both hand-entered kinds.** It filtered on `'manual'`; without this, reclassifying a standard as transcribed from Nexus or M5 would have quietly removed it from the form somebody enters it on.
+
+
 ## [1.5.139] - 2026-09-07
 
 - **Performance Standards is a master-detail workspace.** The catalog was a table with the editors stacked underneath it, so selecting a standard pushed the thing being edited below the fold and every change meant scrolling down to the form and back up to the list. List and detail now sit side by side, both `position: sticky` and capped at `calc(100vh - 24px)`, so the page scrolls only far enough to bring the workspace up and from then on each pane scrolls inside itself.
