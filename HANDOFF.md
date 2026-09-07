@@ -471,6 +471,25 @@ migrations named, instead of blanking the whole workspace.
 
 Not blocking a read, but blocking everything past it:
 
+- **No SharePoint permission is consented at all — the delegated path cannot
+  work either (found 2026-09-06).** The OnBoard application's consented
+  delegated scopes are entirely identity and directory permissions: `User.*`,
+  `GroupMember.*`, `Application.Read.All`, `AppRoleAssignment.ReadWrite.All`,
+  `AuditLog.Read.All`, plus `openid`/`profile`/`email`/`offline_access`. There
+  is no `Sites.Read.All`, no `Files.Read.All`, no `Sites.Selected`, and no
+  application-role grant of any kind. `createGraphDocumentChecker` requests
+  `https://graph.microsoft.com/.default`, which resolves to the union of what
+  is already consented and requests nothing new, so Graph answers 403 to every
+  drive-item call and the checker maps it to `health_status: "Unavailable"`
+  with "SharePoint did not make the document available to this Admin." Every
+  document reference would read Unavailable regardless of the document's real
+  state, and the rendition preview fails the same way. This has never been hit
+  because no Procedure has been authored, so no reference has ever been
+  checked. The note below about missing timer credentials is true but is only
+  part of it: the delegated/OBO path that was supposed to degrade to "Needs
+  review" is hard-blocked one layer lower. Provisioning steps are in
+  `docs/runbooks/decision-matrix-sharepoint-documents.md`; they require a
+  tenant administrator and cannot be done from this repository.
 - **The document-health identity does not exist in any environment.**
   `DECISION_MATRIX_HEALTH_CLIENT_ID` / `_SECRET` (the daily 05:00 UTC timer's
   client-credentials identity) appear only in `local.settings.json.example` —
