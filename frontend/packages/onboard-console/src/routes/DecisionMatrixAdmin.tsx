@@ -11,7 +11,7 @@ function date(value: string | null) { return value ? new Date(value).toLocaleDat
 // an unmigrated database an outage, and it blanked all four sections when only
 // one of them was in trouble. Each surface now carries its own state, and one
 // failure no longer hides the three that answered.
-type SurfaceState = "loading" | "ready" | "not_connected" | "unavailable";
+type SurfaceState = "loading" | "ready" | "not_connected" | "unavailable" | "signed_out";
 type Surface = { state: SurfaceState; migration: string | null };
 const LOADING: Surface = { state: "loading", migration: null };
 
@@ -20,8 +20,16 @@ const LOADING: Surface = { state: "loading", migration: null };
 // queue reads.
 const READER_MIGRATION = "076";
 
+// A 401 is not this workspace's problem to describe: it means the request never
+// carried an identity, so nothing was asked of the database at all. Saying "the
+// database is reachable" - which this used to, in every failure - sent an Admin
+// looking for an outage when their sign-in had simply lapsed.
+function isSignedOut(reason: unknown): boolean {
+  return reason instanceof ApiError && reason.status === 401;
+}
+
 function settled(result: PromiseSettledResult<{ diagnostics: DecisionMatrixSurfaceDiagnostics }>): Surface {
-  if (result.status === "rejected") return { state: "unavailable", migration: null };
+  if (result.status === "rejected") return { state: isSignedOut(result.reason) ? "signed_out" : "unavailable", migration: null };
   const { table_ready, required_migration } = result.value.diagnostics;
   return { state: table_ready ? "ready" : "not_connected", migration: required_migration };
 }
@@ -34,7 +42,8 @@ function missingMigrations(surfaces: Surface[]): string[] {
 function SurfaceNotice({ surface, label }: { surface: Surface; label: string }) {
   if (surface.state === "loading") return <p className="dmx-empty" role="status">Loading {label}…</p>;
   if (surface.state === "not_connected") return <div className="dmx-state dmx-state-warning" role="status"><strong>Not connected.</strong> This environment's database has no {label} tables, so there is nothing to show yet{surface.migration ? `. Apply migration ${surface.migration}` : ""}.</div>;
-  if (surface.state === "unavailable") return <div className="dmx-state dmx-state-error" role="alert">The {label} could not be loaded. The database is reachable, so this is a fault worth investigating rather than a missing migration.</div>;
+  if (surface.state === "signed_out") return null;
+  if (surface.state === "unavailable") return <div className="dmx-state dmx-state-error" role="alert">The {label} could not be loaded. This is a fault worth investigating: the request reached the API and failed there, rather than finding a table missing.</div>;
   return null;
 }
 
@@ -48,15 +57,18 @@ export function DecisionMatrixAdmin() {
     setRuleSurface(settled(ruleResult)); setRules(ruleResult.status === "fulfilled" ? ruleResult.value.match_rules : []);
     setCandidateSurface(settled(migrationResult)); setCandidates(migrationResult.status === "fulfilled" ? migrationResult.value.candidates : []);
     setProcedures(readerResult.status === "fulfilled" ? readerResult.value.procedures : []);
-    setReaderSurface(readerResult.status === "rejected" ? { state: "unavailable", migration: null } : readerResult.value.diagnostics.table_ready ? { state: "ready", migration: READER_MIGRATION } : { state: "not_connected", migration: READER_MIGRATION });
+    setReaderSurface(readerResult.status === "rejected" ? { state: isSignedOut(readerResult.reason) ? "signed_out" : "unavailable", migration: null } : readerResult.value.diagnostics.table_ready ? { state: "ready", migration: READER_MIGRATION } : { state: "not_connected", migration: READER_MIGRATION });
   }
   useEffect(() => { void refresh(); }, []);
   const surfaces = [governance, auditSurface, ruleSurface, readerSurface, candidateSurface];
   const missing = missingMigrations(surfaces);
   const disconnected = surfaces.every((surface) => surface.state === "not_connected");
+  // A lapsed sign-in explains every panel at once, so it is said once, at the top.
+  const signedOut = surfaces.some((surface) => surface.state === "signed_out");
   return <div className="dmx dmx-admin-workspace">
     <header className="dmx-hero"><span className="dmx-eyebrow">Administration · Decision Matrix</span><h1>Procedure governance</h1><p>Author Drafts, review lifecycle evidence, check SharePoint document references, and inspect audit history. Controller reading remains in OCC Tools.</p></header>
-    {missing.length ? <div className="dmx-state dmx-state-warning" role="status"><strong>{disconnected ? "Decision Matrix is not connected." : "Decision Matrix is partly connected."}</strong> This environment's database is missing the tables from migration{missing.length === 1 ? "" : "s"} {missing.join(", ")}. Each section below says whether its own tables are present; the ones that are keep working.</div> : null}
+    {signedOut ? <div className="dmx-state dmx-state-warning" role="alert"><strong>Your sign-in has expired.</strong> Reload the page to sign in again. Nothing below could be read, and nothing is wrong with the Decision Matrix.</div> : null}
+    {!signedOut && missing.length ? <div className="dmx-state dmx-state-warning" role="status"><strong>{disconnected ? "Decision Matrix is not connected." : "Decision Matrix is partly connected."}</strong> This environment's database is missing the tables from migration{missing.length === 1 ? "" : "s"} {missing.join(", ")}. Each section below says whether its own tables are present; the ones that are keep working.</div> : null}
     <button className="btn-sm" type="button" onClick={() => void refresh()}>Refresh governance data</button>
     <DraftEntry surface={governance} onCreated={refresh} />
     <section className="dmx-admin"><h2>Operational review queue</h2><SurfaceNotice surface={governance} label="governance queue" />{governance.state === "ready" ? (queue.length ? <div className="dmx-admin-table"><table className="data"><thead><tr><th>Procedure</th><th>State</th><th>Review</th><th>Document health</th><th>Actions</th></tr></thead><tbody>{queue.map((item) => <GovernanceRow key={`${item.procedure_id}-${item.revision}`} item={item} onChanged={refresh} />)}</tbody></table></div> : <p className="dmx-empty">No Procedure revision is awaiting a governance decision.</p>) : null}</section>
