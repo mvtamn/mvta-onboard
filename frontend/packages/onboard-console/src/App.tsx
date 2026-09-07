@@ -48,6 +48,7 @@ import { AdminLayout } from "./components/AdminLayout.js";
 import { OnDemandServiceStandardsAdmin } from "./routes/OnDemandServiceStandardsAdmin.js";
 import { AdminAccess, AdminEventAdministration, AdminGovernance, AdminIntegrations, AdminServiceConfiguration, AdminSubscribers } from "./routes/AdminModules.js";
 import { OtpComplianceAdmin } from "./routes/OtpComplianceAdmin.js";
+import { PerformanceStandardsAdmin } from "./routes/PerformanceStandardsAdmin.js";
 import { CHANGELOG_ENTRIES } from "./routes/changelogData.js";
 import { FixedRouteRefreshProvider } from "./context/FixedRouteRefreshContext.js";
 import { OperatorIdentity } from "./components/OperatorIdentity.js";
@@ -111,6 +112,11 @@ const PAGE_META: { match: (path: string) => boolean; title: string; sub: string 
     match: (p) => p.startsWith("/performance-assessment"),
     title: "Performance Assessment",
     sub: "Monthly performance standards scoring, evidence, review, and issuance",
+  },
+  {
+    match: (p) => p.startsWith("/admin/performance-standards"),
+    title: "Performance Standards",
+    sub: "The Attachment G standards catalog, tier bands, and Agreement assignment",
   },
   { match: (p) => p === "/changelog", title: "Changelog", sub: "Version history" },
 ];
@@ -323,6 +329,7 @@ function AuthenticatedApp({ account, roles, signOut }: {
                 {isAdmin && <NavLink to="/admin/integrations" title="Integrations & Data Health"><IconWrench /><span className="nav-label">Integrations &amp; Data Health</span></NavLink>}
                 {isAdmin && <NavLink to="/admin/decision-matrix" title="Decision Matrix"><IconWrench /><span className="nav-label">Decision Matrix</span></NavLink>}
                 {isAdmin && <NavLink to="/admin/otp-compliance" title="OTP Compliance"><IconWrench /><span className="nav-label">OTP Compliance</span></NavLink>}
+                {isAdmin && <NavLink to="/admin/performance-standards" title="Performance Standards"><IconAssessment /><span className="nav-label">Performance Standards</span></NavLink>}
                 {canManageAccess && <NavLink to="/admin/governance" title="Governance & Audit"><IconClock /><span className="nav-label">Governance &amp; Audit</span></NavLink>}
               </div> : null}
             </>}
@@ -443,6 +450,7 @@ function AuthenticatedApp({ account, roles, signOut }: {
                 <Route path="service-standards" element={<RequireRole allowed={[...ADMIN]}><OnDemandServiceStandardsAdmin /></RequireRole>} />
                 <Route path="decision-matrix" element={<RequireRole allowed={[...ADMIN]}><DecisionMatrixAdmin /></RequireRole>} />
                 <Route path="otp-compliance" element={<RequireRole allowed={[...ADMIN]}><OtpComplianceAdmin /></RequireRole>} />
+                <Route path="performance-standards" element={<RequireRole allowed={[...ADMIN]}><PerformanceStandardsAdmin /></RequireRole>} />
                 <Route path="governance" element={<RequireRole allowed={[...ACCESS_MANAGEMENT]}><AdminGovernance /></RequireRole>} />
                 <Route path="subscribers" element={<RequireRole allowed={[...ACCESS_MANAGEMENT]}><AdminSubscribers /></RequireRole>} />
               </Route>

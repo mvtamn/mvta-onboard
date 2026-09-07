@@ -1,0 +1,11 @@
+{
+  // The tests, compiled away from the deployed app (see tsconfig.json).
+  // Sources are emitted here too, because the tests import them; dist-test is
+  // a throwaway tree that is never packaged or deployed.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist-test"
+  },
+  "include": ["src"],
+  "exclude": []
+}

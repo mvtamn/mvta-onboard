@@ -22,6 +22,10 @@ interface MissedTripRow {
   first_seen_watching_at: Date;
   last_checked_at: Date;
   validation_status: string;
+  occurrence_review_status?: string | null;
+  occurrence_attribution?: string | null;
+  occurrence_service_month?: string | null;
+  occurrence_period_status?: string | null;
   reason_code: string | null;
   validated_by: string | null;
   validated_at: Date | null;
@@ -91,6 +95,29 @@ app.http("missedTripsList", {
           : view === "history"
             ? "WHERE mmt.validation_status <> 'unreviewed' OR mmt.status = 'resolved'"
             : "";
+      // Where each reviewed trip ended up in the performance assessment. The
+      // join is by source_ref, the same string occurrenceIntake.ts and the
+      // candidate poll both build, and it is written as a correlated subquery
+      // guarded by OBJECT_ID so an environment without the assessment tables
+      // returns the list unchanged rather than failing.
+      const occurrencesReady = await pool.request().query<{ ready: number }>(`
+        SELECT CASE WHEN OBJECT_ID('dbo.ComplianceOccurrences','U') IS NULL THEN 0 ELSE 1 END ready
+      `);
+      const occurrenceColumns = occurrencesReady.recordset[0]?.ready
+        ? `,
+               occ.review_status AS occurrence_review_status,
+               occ.attribution AS occurrence_attribution,
+               occ.service_month AS occurrence_service_month,
+               period.status AS occurrence_period_status`
+        : "";
+      const occurrenceJoin = occurrencesReady.recordset[0]?.ready
+        ? `
+        LEFT JOIN ComplianceOccurrences occ
+          ON occ.source_ref = CONCAT(N'MonitoredMissedTrips:', ISNULL(mmt.source_system, N'gtfs'), N':',
+                                     ISNULL(mmt.source_record_id, mmt.trip_id), N'|', mmt.service_date)
+        LEFT JOIN AssessmentPeriods period
+          ON period.contractor_id = occ.contractor_id AND period.service_month = occ.service_month`
+        : "";
       const listReq = pool.request();
       listReq.input("offset", sql.Int, offset);
       listReq.input("limit", sql.Int, limit);
@@ -103,11 +130,11 @@ app.http("missedTripsList", {
                mmt.source_system, mmt.source_record_id,
                sme.condition_late_start, sme.condition_superseded, sme.condition_late_arrival,
                sme.start_delay_seconds, sme.arrival_delay_seconds,
-               td.direction_label
+               td.direction_label${occurrenceColumns}
         FROM MonitoredMissedTrips mmt
         LEFT JOIN GtfsTripDirections td ON td.trip_id = mmt.trip_id
         LEFT JOIN SpareMissedTripEvaluations sme
-          ON mmt.source_system = 'spare' AND sme.request_id = mmt.source_record_id
+          ON mmt.source_system = 'spare' AND sme.request_id = mmt.source_record_id${occurrenceJoin}
         ${whereClause}
         ORDER BY
           CASE mmt.validation_status WHEN 'unreviewed' THEN 0 ELSE 1 END,

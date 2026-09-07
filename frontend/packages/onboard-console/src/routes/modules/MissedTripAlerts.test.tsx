@@ -35,6 +35,8 @@ function candidate(source_system: "spare" | "gtfs", route_id: string): MissedTri
     data_quality_status: "source_verified", source_system, source_record_id: `${source_system}-record`,
     condition_late_start: source_system === "spare", condition_superseded: false,
     condition_late_arrival: false, start_delay_seconds: null, arrival_delay_seconds: null, direction_label: null,
+    occurrence_review_status: null, occurrence_attribution: null,
+    occurrence_service_month: null, occurrence_period_status: null,
   };
 }
 

@@ -13,5 +13,16 @@
     "sourceMap": true,
     "declaration": false
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Tests are not part of the deployed app. package.json's `main` is
+  // `dist/src/functions/*.js`, a glob the Functions host expands at every
+  // start, and a compiled `*.test.js` sitting beside a function matched it -
+  // so node:test ran inside the worker on every host start and printed its
+  // results into the app's logs. Excluding tests here means there is nothing
+  // for that glob to pick up, which does not depend on the host's glob
+  // dialect the way an exclusion pattern in `main` would.
+  //
+  // tsconfig.test.json compiles them instead, to dist-test, and `npm test`
+  // runs them from there.
+  "exclude": ["**/*.test.ts"]
 }

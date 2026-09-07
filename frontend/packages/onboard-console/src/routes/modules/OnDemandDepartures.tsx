@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ApiError, type OnDemandDeparture, type OnDemandDepartureOutcome } from "@mvta/shared";
 import { api } from "../../config.js";
+import { useAuth } from "../../auth/AuthContext.js";
 import {
   agencyTimeLabel,
   badgeLabel,
@@ -9,6 +10,8 @@ import {
   DepartureTrend,
   GroupByToggle,
   monitoringState,
+  OccurrenceCell,
+  type OccurrenceReviewHandlers,
   RiskStat,
   serviceDayLabel,
   shortRef,
@@ -72,6 +75,10 @@ export interface DutyGroup {
   key: string;
   title: string;
   reference: string | null;
+  // The full Spare id behind the group, for hover. The band shows a short
+  // reference instead: a 36-character id printed beside a driver's name
+  // crowds out the name, which is the thing being read.
+  referenceTitle: string | null;
   open: boolean;
   lateCount: number;
   noDepartureCount: number;
@@ -108,7 +115,7 @@ export function groupDuties(rows: OnDemandDeparture[], groupBy: DepartureGroupBy
       const members = rows
         .filter((r) => r.service_date === date)
         .sort((a, b) => OUTCOMES[a.outcome].rank - OUTCOMES[b.outcome].rank || byScheduled(a, b));
-      return { key: date, title: serviceDayLabel(date), reference: null, open: date >= today, ...summarize(members), rows: members };
+      return { key: date, title: serviceDayLabel(date), reference: null, referenceTitle: null, open: date >= today, ...summarize(members), rows: members };
     });
   }
   // A vehicle groups by its fleet number when Spare gave one (migration 099),
@@ -131,17 +138,24 @@ export function groupDuties(rows: OnDemandDeparture[], groupBy: DepartureGroupBy
       const fleet = groupBy === "vehicle" && first?.vehicle_identifier === key;
       const driverName = groupBy === "operator" ? (members.find((r) => r.driver_name)?.driver_name ?? null) : null;
       const driverIdentifier = groupBy === "operator" ? (members.find((r) => r.driver_identifier)?.driver_identifier ?? null) : null;
+      // Grouped by fleet number the key is the number itself, so the Spare
+      // id has to come off a row; grouped by anything else the key IS the
+      // Spare id.
+      const spareId = (fleet ? first?.vehicle_id : key) || null;
       let title: string;
       let reference: string | null;
       if (!key) { title = `No ${noun.toLowerCase()} on duty`; reference = null; }
-      else if (fleet) { title = `Vehicle ${key}`; reference = first?.vehicle_id ?? null; }
-      else if (driverName) { title = driverName; reference = driverIdentifier ? `#${driverIdentifier}` : key; }
-      else if (driverIdentifier) { title = `Driver #${driverIdentifier}`; reference = key; }
-      else { title = `${noun} ${shortRef(key)}`; reference = key; }
+      else if (fleet) { title = `Vehicle ${key}`; reference = shortRef(spareId); }
+      else if (driverName) { title = driverName; reference = driverIdentifier ? `#${driverIdentifier}` : shortRef(spareId); }
+      else if (driverIdentifier) { title = `Driver #${driverIdentifier}`; reference = shortRef(spareId); }
+      // The title already carries the short reference; a second copy beside
+      // it would say the same thing twice.
+      else { title = `${noun} ${shortRef(key)}`; reference = null; }
       return {
         key,
         title,
         reference,
+        referenceTitle: spareId ? `Spare ${noun.toLowerCase()} ${spareId}` : null,
         open: false,
         ...summarize(members),
         rows: members,
@@ -172,6 +186,8 @@ const COLUMNS: Record<string, { label: string; hint: string; className?: string 
   actual: { label: "Actual", hint: "and its source", className: "td-num" },
   delta: { label: "Delta", hint: "", className: "td-num" },
   outcome: { label: "Outcome", hint: "" },
+  // What a reviewer did with the outcome, as opposed to what the rule judged.
+  assessment: { label: "Assessment", hint: "occurrence" },
 };
 
 // The Duty column exists for Spare's duty identifier. MVTA's duties carry
@@ -179,7 +195,7 @@ const COLUMNS: Record<string, { label: string; hint: string; className?: string 
 // fallback ids saying nothing a reader can use; it is left out and the Spare
 // duty id rides on the row for lookup instead.
 export function columnsFor(groupBy: DepartureGroupBy, withDutyIdentifiers: boolean): string[] {
-  return ["date", "duty", "operator", "vehicle", "scheduled", "actual", "delta", "outcome"]
+  return ["date", "duty", "operator", "vehicle", "scheduled", "actual", "delta", "outcome", "assessment"]
     .filter((key) => key !== groupBy && (key !== "duty" || withDutyIdentifiers));
 }
 
@@ -189,6 +205,7 @@ export function columnsFor(groupBy: DepartureGroupBy, withDutyIdentifiers: boole
 // its first sighting in the service area. Same growing-log shape as the fixed
 // route view, so it fetches on mount/range-change with a manual refresh.
 export function OnDemandDepartures() {
+  const { roles } = useAuth();
   const [days, setDays] = useState<number>(DEFAULT_DAYS);
   const [groupBy, setGroupBy] = useState<DepartureGroupBy>("date");
   const [show, setShow] = useState<Show>("all");
@@ -243,6 +260,29 @@ export function OnDemandDepartures() {
   const groups = useMemo(() => groupDuties(visible, groupBy, today), [visible, groupBy, today]);
   const daily = useMemo(() => (departures && today ? dailyFlagged(departures, today, days) : []), [departures, today, days]);
   const columns = columnsFor(groupBy, visible.some((d) => Boolean(d.duty_identifier)));
+
+  // Same PATCH the Performance Assessment module's occurrence queue makes, so
+  // a duty settled here and one settled there are indistinguishable after.
+  const [reviewing, setReviewing] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const review: OccurrenceReviewHandlers = {
+    busy: reviewing,
+    canReview: roles.includes("OCC.Compliance") || roles.includes("OCC.ComplianceManager")
+      || roles.includes("OCC.Publisher") || roles.includes("OCC.Admin"),
+    onReview: (occurrenceId, attribution) => {
+      setReviewing(true);
+      setReviewError(null);
+      void api.reviewComplianceOccurrence(
+        occurrenceId,
+        attribution === "contractor_error" ? "confirmed" : "dismissed",
+        attribution,
+        attribution === "contractor_error" ? undefined : `Attributed as ${attribution} from Garage Departures.`,
+      )
+        .then(() => load())
+        .catch(() => setReviewError("The occurrence could not be updated."))
+        .finally(() => setReviewing(false));
+    },
+  };
 
   // How the actuals were measured, for the reader who wants to know how much
   // of the average rests on Spare's own record versus an inference.
@@ -353,6 +393,7 @@ export function OnDemandDepartures() {
         </div>
       ) : (
         <>
+          {reviewError ? <p className="risk-action-error">{reviewError}</p> : null}
           <div className="departures-table-scroll">
             <table className="data departures-table">
               <thead>
@@ -367,7 +408,7 @@ export function OnDemandDepartures() {
               </thead>
               <tbody>
                 {groups.map((group) => (
-                  <GroupRows key={group.key} group={group} groupBy={groupBy} columns={columns} />
+                  <GroupRows key={group.key} group={group} groupBy={groupBy} columns={columns} review={review} />
                 ))}
               </tbody>
             </table>
@@ -381,7 +422,7 @@ export function OnDemandDepartures() {
   );
 }
 
-function GroupRows({ group, groupBy, columns }: { group: DutyGroup; groupBy: DepartureGroupBy; columns: string[] }) {
+function GroupRows({ group, groupBy, columns, review }: { group: DutyGroup; groupBy: DepartureGroupBy; columns: string[]; review: OccurrenceReviewHandlers }) {
   const flagged = group.lateCount + group.noDepartureCount;
   const meta = groupBy === "date" && group.open
     ? `${group.rows.length} duties so far · judged once the service day is over`
@@ -391,8 +432,8 @@ function GroupRows({ group, groupBy, columns }: { group: DutyGroup; groupBy: Dep
       <tr className="departure-band">
         <td colSpan={columns.length}>
           <div className="departure-band-line">
-            <strong>{group.title}</strong>
-            {group.reference ? <span className="mono-ref">{group.reference}</span> : null}
+            <strong title={group.referenceTitle ?? undefined}>{group.title}</strong>
+            {group.reference ? <span className="mono-ref" title={group.referenceTitle ?? undefined}>{group.reference}</span> : null}
             <span>{meta}</span>
             {groupBy === "date" && group.open ? <span className="pill-sm pill-accent">Not settled</span> : null}
             {groupBy !== "date" && flagged >= 2 ? <span className="pill-sm pill-warning">Repeat</span> : null}
@@ -402,7 +443,7 @@ function GroupRows({ group, groupBy, columns }: { group: DutyGroup; groupBy: Dep
       {group.rows.map((d) => (
         <tr key={d.duty_id} title={`Spare duty ${d.duty_id}`}>
           {columns.map((key) => (
-            <DutyCell key={key} column={key} departure={d} />
+            <DutyCell key={key} column={key} departure={d} review={review} />
           ))}
         </tr>
       ))}
@@ -410,7 +451,7 @@ function GroupRows({ group, groupBy, columns }: { group: DutyGroup; groupBy: Dep
   );
 }
 
-function DutyCell({ column, departure: d }: { column: string; departure: OnDemandDeparture }) {
+function DutyCell({ column, departure: d, review }: { column: string; departure: OnDemandDeparture; review: OccurrenceReviewHandlers }) {
   switch (column) {
     case "date":
       return <td className="td-dim">{serviceDayLabel(d.service_date)}</td>;
@@ -465,6 +506,8 @@ function DutyCell({ column, departure: d }: { column: string; departure: OnDeman
       const o = OUTCOMES[d.outcome];
       return <td><span className={`pill-sm ${o.pill}`}>{o.label}</span></td>;
     }
+    case "assessment":
+      return <OccurrenceCell link={d} serviceDate={d.service_date} busy={review.busy} canReview={review.canReview} onReview={review.onReview} />;
     default:
       return <td></td>;
   }

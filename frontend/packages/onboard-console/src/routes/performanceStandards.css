@@ -1,0 +1,56 @@
+/* Administration > Performance Standards. Builds on assessment.css so the
+   catalog reads the same here as it does in the Performance Assessment
+   module's read-only view; only what is unique to editing lives here. */
+.standards-notice{padding:12px 14px;border-radius:9px;background:#dcfce7;color:#166534}
+.standards-selected>td{background:#eef7f3}
+.standards-flag{display:block;color:#9a3412;font-weight:700}
+.standards-override{display:inline-block;margin-bottom:3px;padding:2px 8px;border-radius:999px;background:#e0e7ff;color:#3730a3;font-size:.7rem;font-weight:700}
+.standards-hint{color:#64748b;font-size:.8rem}
+.standards-toggle{display:flex;align-items:center;gap:8px;white-space:nowrap}
+.standards-toggle input{width:18px;height:18px}
+.standards-agreement-select{display:grid;gap:6px;max-width:520px}
+.standards-agreement-select>span{color:#526175;font-size:.76rem;font-weight:700}
+.standards-agreement-select select{min-height:40px;border:1px solid #c8d4df;border-radius:8px;background:#fff;padding:8px 10px;color:#172033}
+.standards-editor{display:grid;gap:16px}
+.standards-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;align-items:start}
+.standards-grid label{display:grid;gap:6px}
+.standards-grid label>span{color:#526175;font-size:.76rem;font-weight:700}
+.standards-grid input,.standards-grid select,.standards-grid textarea{min-height:40px;border:1px solid #c8d4df;border-radius:8px;background:#fff;padding:8px 10px;color:#172033;font:inherit}
+.standards-grid small{color:#64748b}
+.standards-wide{grid-column:1/-1}
+.standards-scope{display:flex;gap:12px;flex-wrap:wrap}
+.standards-scope label{display:grid;gap:6px}
+.standards-scope label>span{color:#526175;font-size:.76rem;font-weight:700}
+.standards-scope select,.standards-scope input{min-height:40px;border:1px solid #c8d4df;border-radius:8px;background:#fff;padding:8px 10px;color:#172033}
+.standards-tier-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+@media(max-width:620px){.standards-grid{grid-template-columns:1fr}}
+
+/* Penalty bands are cards, not table rows: each one is a small rule with its
+   own criteria and charge, and the fields it needs change with the criteria. */
+.standards-bands{display:grid;gap:14px}
+.standards-band{border:1px solid #dbe3ec;border-radius:11px;background:#fbfcfd;padding:14px;display:grid;gap:12px}
+.standards-band-head{display:flex;align-items:end;justify-content:space-between;gap:12px}
+.standards-band-criteria,.standards-band-penalty{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;align-items:end}
+.standards-band label{display:grid;gap:6px}
+.standards-band label>span{color:#526175;font-size:.76rem;font-weight:700}
+.standards-band select,.standards-band input{min-height:38px;border:1px solid #c8d4df;border-radius:8px;background:#fff;padding:7px 10px;color:#172033;font:inherit}
+.standards-band small{color:#64748b}
+.standards-band .contractor-active{align-self:end;padding-bottom:9px}
+.standards-band .contractor-active input{min-height:auto;width:18px;height:18px}
+/* Amount and bound inputs carry their unit inline, so a percentage band cannot
+   be read as a ratio or the other way round. */
+.standards-measure{display:flex;align-items:center;gap:6px;border:1px solid #c8d4df;border-radius:8px;background:#fff;padding:0 10px}
+.standards-measure input{border:0;padding:7px 0;min-height:36px;width:100%}
+.standards-measure input:focus{outline:none}
+.standards-measure>span{color:#64748b;font-size:.82rem;font-weight:600;white-space:nowrap}
+.standards-band-readout{margin:0;padding:9px 12px;border-radius:8px;background:#eef4f1;color:#0f3d31;font-size:.85rem;font-weight:600}
+/* The catalog table's band list: one line per band, label then sentence. */
+.standards-band-list{list-style:none;margin:0;padding:0;display:grid;gap:4px;min-width:280px}
+.standards-band-list li{display:flex;align-items:baseline;gap:7px}
+.standards-band-list .assessment-tier{flex:none}
+/* assessment.css capitalizes every word of a tier pill, which suited the raw
+   "tier1"/"meets" values. These labels are sentences, so "Meets the standard"
+   must not become "Meets The Standard". */
+.standards-band-list .assessment-tier,.standards-band .assessment-tier{text-transform:none}
+.standards-band-list small{color:#475569}
+@media(max-width:620px){.standards-band-criteria,.standards-band-penalty{grid-template-columns:1fr}}

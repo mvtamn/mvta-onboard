@@ -105,7 +105,12 @@ describe("EventPlanning", () => {
   it("loads and shows the selected Event once data resolves", async () => {
     mockApiData({ events: [makeEvent()] });
     renderEventPlanning(["/console/event-planning?event=evt1"]);
-    expect(await screen.findByRole("combobox", { name: "Selected Event" })).toHaveValue("evt1");
+    // The combobox is in the first commit with nothing in it, and the ?event=
+    // selection only lands once getEvents resolves, so awaiting the element
+    // and asserting its value in the same breath reads the empty select
+    // whenever the fetch has not settled yet. Poll the value instead.
+    const selector = await screen.findByRole("combobox", { name: "Selected Event" });
+    await waitFor(() => expect(selector).toHaveValue("evt1"));
   });
 
   it("renames the selected Event", async () => {

@@ -30,7 +30,7 @@ export interface ZoneImportResult {
   activated: boolean;
 }
 
-// Migration 097 adds activated_by/activated_at. Resolving support per call
+// Migration 098 adds activated_by/activated_at. Resolving support per call
 // keeps activation working whichever of the migration and the deployment lands
 // first, rather than failing on a column that is not there yet.
 export async function activationAuditSupported(pool: sql.ConnectionPool): Promise<boolean> {

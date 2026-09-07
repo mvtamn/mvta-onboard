@@ -1,3 +1,5 @@
+import type { AssessmentPeriodStatus, OccurrenceAttribution, OccurrenceReviewStatus } from "@mvta/shared";
+
 // What the two Garage Departures views share. Garage departure is one concept
 // with one source per service type (ADR 0028), so the fixed-route and
 // on-demand views read their sources through the same state model and speak
@@ -224,5 +226,103 @@ export function GroupByToggle({ id, value, onChange }: { id: string; value: Depa
         ))}
       </div>
     </>
+  );
+}
+
+// --- Where a departure landed in the performance assessment ---
+//
+// A departure view used to say only what the rule judged: this run was late,
+// this duty never departed. It said nothing about whether anyone had charged
+// it, and the reviewer who would decide that worked in a different module off
+// a queue that named the run by a source_ref string. These two pieces close
+// that: the row says where it went, and the reviewer settles it here.
+
+// What a view hands the cell so it can settle an occurrence: whether a write
+// is already in flight, whether this user may decide, and the write itself.
+export interface OccurrenceReviewHandlers {
+  busy: boolean;
+  canReview: boolean;
+  onReview: (occurrenceId: string, attribution: OccurrenceAttribution) => void;
+}
+
+export interface OccurrenceLink {
+  occurrence_id: string | null;
+  occurrence_review_status: OccurrenceReviewStatus | null;
+  occurrence_attribution: OccurrenceAttribution | null;
+  occurrence_service_month: string | null;
+  occurrence_period_status: AssessmentPeriodStatus | null;
+}
+
+export function serviceMonthLabel(yyyymm: string | null, fallbackServiceDate: string): string {
+  const month = yyyymm ?? fallbackServiceDate.slice(0, 6);
+  if (!/^\d{6}$/.test(month)) return month;
+  const date = new Date(Number(month.slice(0, 4)), Number(month.slice(4, 6)) - 1, 1);
+  return date.toLocaleDateString([], { month: "long", year: "numeric" });
+}
+
+export function occurrenceSummary(link: OccurrenceLink, serviceDate: string):
+  { label: string; detail: string; tone: "counted" | "pending" | "excluded" | "none" } {
+  const month = serviceMonthLabel(link.occurrence_service_month, serviceDate);
+  if (!link.occurrence_review_status) {
+    return { label: "Not raised", detail: "No performance-assessment occurrence exists for this departure.", tone: "none" };
+  }
+  if (link.occurrence_review_status === "candidate") {
+    return { label: "Awaiting review", detail: `Raised against the ${month} assessment. It is not charged until someone says whose error it was.`, tone: "pending" };
+  }
+  if (link.occurrence_review_status === "dismissed") {
+    const because = link.occurrence_attribution === "excusable" ? "an excusable delay"
+      : link.occurrence_attribution === "mvta_directed" ? "MVTA-directed" : "dismissed on review";
+    return { label: "Recorded, not charged", detail: `In the ${month} assessment as ${because}.`, tone: "excluded" };
+  }
+  const closed = link.occurrence_period_status === "finalized" || link.occurrence_period_status === "issued";
+  return {
+    label: `Counted in ${month}`,
+    detail: closed
+      ? `Charged to the contractor in the ${month} assessment, which is now ${link.occurrence_period_status}.`
+      : `Charged to the contractor in the ${month} assessment.`,
+    tone: "counted",
+  };
+}
+
+// The attribution decision, taken on the departure itself.
+//
+// It is the same PATCH the Performance Assessment module's occurrence queue
+// makes, so a duty settled here and one settled there are indistinguishable
+// afterwards - this is a second place to answer the question, not a second
+// answer to it. A finalized or issued month is not offered: that document is
+// already in front of the contractor, and restating it is a manager reopening
+// the period, never a side effect of someone reviewing a departure.
+//
+// Sized for a table cell: the pill carries the state and the buttons appear
+// only while there is a decision left to make.
+export function OccurrenceCell({ link, serviceDate, busy, canReview, onReview }: {
+  link: OccurrenceLink;
+  serviceDate: string;
+  busy: boolean;
+  canReview: boolean;
+  onReview: (occurrenceId: string, attribution: OccurrenceAttribution) => void;
+}) {
+  const summary = occurrenceSummary(link, serviceDate);
+  const closed = link.occurrence_period_status === "finalized" || link.occurrence_period_status === "issued";
+  const pending = link.occurrence_review_status === "candidate";
+  return (
+    <td className="td-occurrence">
+      <span
+        className={`pill-sm ${summary.tone === "counted" ? "pill-danger" : summary.tone === "pending" ? "pill-warning" : "pill-muted"}`}
+        title={summary.detail}
+      >
+        {summary.label}
+      </span>
+      {link.occurrence_id && canReview && pending && !closed ? (
+        <div className="td-occurrence-actions">
+          <button className="btn-xs" disabled={busy} title="Charge this departure to the contractor in that month's assessment"
+            onClick={() => onReview(link.occurrence_id!, "contractor_error")}>Charge</button>
+          <button className="btn-xs" disabled={busy} title="Record it against the month without charging a penalty"
+            onClick={() => onReview(link.occurrence_id!, "excusable")}>Excusable</button>
+          <button className="btn-xs" disabled={busy} title="MVTA-directed: record it without charging a penalty"
+            onClick={() => onReview(link.occurrence_id!, "mvta_directed")}>MVTA</button>
+        </div>
+      ) : null}
+    </td>
   );
 }

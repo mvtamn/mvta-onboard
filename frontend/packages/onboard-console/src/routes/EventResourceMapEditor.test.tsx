@@ -39,8 +39,18 @@ describe("EventResourceMapEditor", () => {
 
     render(<MemoryRouter><AppDialogProvider><EventResourceMapEditor /></AppDialogProvider></MemoryRouter>);
     const user = userEvent.setup();
+    // The select is in the first commit holding only its placeholder option,
+    // and the areas appear when getEventGeofences resolves. Waiting on the
+    // select itself - which is what `waitFor(() => expect(area)
+    // .toBeInTheDocument())` did here - returns before any data has landed, so
+    // every step below was racing the fetch and only passed because the poll
+    // happened to let the mock's promise flush first. Wait for an option out of
+    // the response instead: that is the signal the data actually arrived. It
+    // has to be scoped to this select - the Monitoring Area test manager above
+    // renders its own picker from the same geofences, so an unscoped query for
+    // the "Area A" option matches two elements.
     const area = document.getElementById("event-geofence-rule-select") as HTMLSelectElement;
-    await waitFor(() => expect(area).toBeInTheDocument());
+    await waitFor(() => expect(within(area).getByRole("option", { name: "Area A" })).toBeInTheDocument());
     await user.selectOptions(area, "area-a");
     await user.click(await screen.findByRole("button", { name: "Edit" }));
     await user.selectOptions(area, "area-b");
