@@ -1231,6 +1231,7 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
         standards: ContractorPerformanceStandard[]; tiers: ContractorStandardTier[];
         agreements: import("./types.js").PerformanceAgreementRecord[];
         assignments: import("./types.js").AgreementStandardAssignment[];
+        resolvers: import("./types.js").RegisteredResolver[];
         diagnostics: { table_ready: boolean; assignments_ready: boolean };
       }>("/api/performance-standards", {}, true);
     },

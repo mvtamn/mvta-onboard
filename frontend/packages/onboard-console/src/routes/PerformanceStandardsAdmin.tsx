@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   AgreementStandardAssignment, AgreementStandardInput, ContractorPerformanceStandard, ContractorRecord,
-  ContractorStandardTier, PerformanceAgreementRecord, PerformanceStandardInput,
+  ContractorStandardTier, PerformanceAgreementRecord, PerformanceStandardInput, RegisteredResolver,
   StandardTierInput,
 } from "@mvta/shared";
 import {
@@ -65,6 +65,7 @@ export function PerformanceStandardsAdmin() {
   const [agreements, setAgreements] = useState<PerformanceAgreementRecord[]>([]);
   const [assignments, setAssignments] = useState<AgreementStandardAssignment[]>([]);
   const [contractors, setContractors] = useState<ContractorRecord[]>([]);
+  const [resolvers, setResolvers] = useState<RegisteredResolver[]>([]);
   const [agreementId, setAgreementId] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [draft, setDraft] = useState<PerformanceStandardInput | null>(null);
@@ -81,6 +82,7 @@ export function PerformanceStandardsAdmin() {
       setTiers(catalog.tiers);
       setAgreements(catalog.agreements);
       setAssignments(catalog.assignments);
+      setResolvers(catalog.resolvers ?? []);
       setContractors(contractorList.contractors);
       setReady(catalog.diagnostics.table_ready && catalog.diagnostics.assignments_ready);
       setAgreementId((current) => current || catalog.agreements.find((a) => a.is_active)?.id || catalog.agreements[0]?.id || "");
@@ -210,7 +212,7 @@ export function PerformanceStandardsAdmin() {
 
         {draft && <StandardEditor
           key={selectedId}
-          draft={draft} setDraft={setDraft} standardId={selectedId} canEdit={isAdmin} busy={busy}
+          draft={draft} setDraft={setDraft} standardId={selectedId} canEdit={isAdmin} busy={busy} resolvers={resolvers}
           onCancel={() => { setDraft(null); setSelectedId(""); }}
           onSave={(id, input) => void run(() => api.putPerformanceStandard(id, input), `${input.code} saved.`)}
         />}
@@ -328,13 +330,20 @@ function AgreementPanel({ agreements, contractors, agreementId, busy, canEdit, o
   </section>;
 }
 
-function StandardEditor({ draft, setDraft, standardId, canEdit, busy, onCancel, onSave }: {
+function StandardEditor({ draft, setDraft, standardId, canEdit, busy, resolvers, onCancel, onSave }: {
   draft: PerformanceStandardInput; setDraft: (next: PerformanceStandardInput) => void; standardId: string;
-  canEdit: boolean; busy: boolean; onCancel: () => void; onSave: (id: string, input: PerformanceStandardInput) => void;
+  canEdit: boolean; busy: boolean; resolvers: RegisteredResolver[];
+  onCancel: () => void; onSave: (id: string, input: PerformanceStandardInput) => void;
 }) {
   const isNew = standardId === "new";
   const set = <K extends keyof PerformanceStandardInput>(key: K, value: PerformanceStandardInput[K]) => setDraft({ ...draft, [key]: value });
-  const autoWithoutResolver = draft.measurement_source === "auto" && !draft.resolver_key?.trim();
+  // Only the resolvers that can serve this kind of standard: a threshold needs
+  // one that measures a monthly value, an occurrence standard names the intake
+  // that raises its rows. The server enforces the same pairing.
+  const usable = resolvers.filter((resolver) => resolver.applies_to === draft.standard_type);
+  const chosen = resolvers.find((resolver) => resolver.key === draft.resolver_key);
+  const autoWithoutResolver = draft.measurement_source === "auto"
+    && (!draft.resolver_key?.trim() || !usable.some((resolver) => resolver.key === draft.resolver_key));
 
   return <section className="assessment-card standards-editor">
     <div className="assessment-section-head">
@@ -387,10 +396,18 @@ function StandardEditor({ draft, setDraft, standardId, canEdit, busy, onCancel, 
           <option value="auto">Measured automatically from a feed</option>
         </select>
       </label>
-      <label><span>Resolver key</span>
-        <input value={draft.resolver_key ?? ""} disabled={!canEdit || draft.measurement_source !== "auto"} onChange={(event) => set("resolver_key", event.target.value)} placeholder="OTP_FIXED_ROUTE" />
-        {autoWithoutResolver && <small className="standards-flag">An automated standard needs a resolver key, or the month scores as "no data" and reads like a clean month.</small>}
-      </label>
+      {draft.measurement_source === "auto" && <label><span>Measured by</span>
+        <select value={draft.resolver_key ?? ""} disabled={!canEdit} onChange={(event) => set("resolver_key", event.target.value || null)}>
+          <option value="">Select what measures it…</option>
+          {usable.map((resolver) => <option key={resolver.key} value={resolver.key}>{resolver.label}</option>)}
+        </select>
+        {chosen && chosen.applies_to === draft.standard_type && <small>{chosen.description}</small>}
+        {autoWithoutResolver && <small className="standards-flag">
+          {usable.length
+            ? "Pick what measures this standard. Without it the month is reported as not assessable rather than scored."
+            : `Nothing registered can measure a ${draft.standard_type === "threshold" ? "monthly-value" : "counted-events"} standard automatically. Enter it by hand instead.`}
+        </small>}
+      </label>}
       <label><span>Responsible team</span><input value={draft.responsible_team ?? ""} disabled={!canEdit} onChange={(event) => set("responsible_team", event.target.value)} /></label>
       <label><span>Assigned to</span><input value={draft.assigned_to ?? ""} disabled={!canEdit} onChange={(event) => set("assigned_to", event.target.value)} /></label>
       <label><span>Effective from</span><input type="date" value={toInputDate(draft.effective_start_date)} disabled={!canEdit} onChange={(event) => set("effective_start_date", toServiceDate(event.target.value))} /></label>

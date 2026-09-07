@@ -8,6 +8,7 @@ import {
   VALID_EXPIRATION_SOURCES,
   VALID_CONSENT_SOURCES,
 } from "./types";
+import { findResolver, resolverKeys } from "./assessment/resolvers";
 
 // Match the NVARCHAR column sizes in sql/phase1-schema.sql so oversized input
 // fails fast with a clear 400 here instead of an opaque SQL truncation 500.
@@ -1107,11 +1108,24 @@ export function validatePerformanceStandard(body: UnknownBody): string[] {
       errors.push("effective_end_date must not precede effective_start_date");
     }
   }
-  // An automated standard names the resolver that measures it. Without one the
-  // compute silently falls through to manual entry and scores the month as
-  // "no data", which reads as a clean month rather than a misconfiguration.
-  if (body.measurement_source === "auto" && (typeof body.resolver_key !== "string" || !body.resolver_key.trim())) {
-    errors.push("resolver_key is required when measurement_source is auto");
+  // An automated standard names the resolver that measures it, and the name
+  // has to be one the registry actually answers to. An unregistered key does
+  // not fall through to manual entry - the compute reports the standard as not
+  // assessable and names the misconfiguration - but it is far cheaper to
+  // refuse the typo here than to discover it at month-end close.
+  if (body.measurement_source === "auto") {
+    if (typeof body.resolver_key !== "string" || !body.resolver_key.trim()) {
+      errors.push("resolver_key is required when measurement_source is auto");
+    } else {
+      const resolver = findResolver(body.resolver_key);
+      if (!resolver) {
+        errors.push(`resolver_key must name a registered resolver: ${resolverKeys().join(", ")}`);
+      } else if (body.standard_type === "threshold" && resolver.appliesTo !== "threshold") {
+        errors.push(`${resolver.key} raises occurrences and cannot measure a threshold standard's monthly value`);
+      } else if (body.standard_type === "occurrence" && resolver.appliesTo !== "occurrence") {
+        errors.push(`${resolver.key} measures a monthly value and cannot feed an occurrence standard`);
+      }
+    }
   }
   optionalText(body.resolver_key, 50, "resolver_key", errors);
   optionalText(body.description, 2000, "description", errors);

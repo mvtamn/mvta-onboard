@@ -14,21 +14,51 @@
 // agreement, and tier ladders have no agreement dimension. After it, the
 // agreement decides. Neither path is a degraded guess - the pre-102 answer is
 // simply the only one the schema can express.
-import type { ConnectionPool } from "mssql";
+import type { ConnectionPool, Transaction } from "mssql";
+import { sql } from "../db";
 
 export interface AgreementScope {
   /** migration 102 has run: assignments and tier overrides are available. */
   scoped: boolean;
+  /** migration 103 has run: the period snapshot carries the resolver that measured it. */
+  snapshotsResolver: boolean;
 }
 
-export async function agreementScope(pool: ConnectionPool): Promise<AgreementScope> {
-  const result = await pool.request().query<{ scoped: number }>(`
+const SCOPE_QUERY = `
     SELECT CONVERT(int, CASE
       WHEN OBJECT_ID('dbo.AgreementStandards','U') IS NOT NULL
        AND COL_LENGTH('dbo.ContractorStandardTiers','agreement_id') IS NOT NULL
-      THEN 1 ELSE 0 END) scoped
-  `);
-  return { scoped: result.recordset[0]?.scoped === 1 };
+      THEN 1 ELSE 0 END) scoped,
+      CONVERT(int, CASE WHEN COL_LENGTH('dbo.AssessmentPeriodStandards','resolver_key') IS NULL THEN 0 ELSE 1 END) snapshots_resolver
+`;
+
+interface ScopeRow { scoped: number; snapshots_resolver: number }
+
+function toScope(row: ScopeRow | undefined): AgreementScope {
+  return { scoped: row?.scoped === 1, snapshotsResolver: row?.snapshots_resolver === 1 };
+}
+
+export async function agreementScope(pool: ConnectionPool): Promise<AgreementScope> {
+  const result = await pool.request().query<ScopeRow>(SCOPE_QUERY);
+  return toScope(result.recordset[0]);
+}
+
+// The same question from inside a transaction. assessPeriod already holds one
+// and must not open a second connection to ask, or the check would read a
+// different session's view of the schema mid-compute.
+export async function agreementScopeIn(tx: Transaction): Promise<AgreementScope> {
+  const result = await new sql.Request(tx).query<ScopeRow>(SCOPE_QUERY);
+  return toScope(result.recordset[0]);
+}
+
+// The resolver column the period snapshot carries, or the catalog's own value
+// when migration 103 has not run yet. Falling back to the catalog is a
+// behaviour change only in the window before the migration, and it matches
+// what the compute did when it ignored resolver_key entirely.
+export function periodResolverKeySql(scope: AgreementScope): string {
+  return scope.snapshotsResolver
+    ? "resolver_key"
+    : "(SELECT c.resolver_key FROM ContractorPerformanceStandards c WHERE c.id=AssessmentPeriodStandards.standard_id) resolver_key";
 }
 
 // How many standards this agreement scores for the month. Pre-102 there is no

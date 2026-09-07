@@ -28,11 +28,42 @@ test("a threshold standard validates the same way", () => {
 });
 
 test("an automated standard must name the resolver that measures it", () => {
-  // Without one the compute falls through to manual entry, finds nothing, and
-  // scores the month as "no data" - which reads as a clean month.
+  // Without one the compute reports the standard not assessable and names the
+  // misconfiguration, but refusing the save is far cheaper than finding it at
+  // month-end close.
   const errors = validatePerformanceStandard({ ...standard, measurement_source: "auto" });
   assert.ok(errors.some((error) => error.includes("resolver_key is required")));
-  assert.deepStrictEqual(validatePerformanceStandard({ ...standard, measurement_source: "auto", resolver_key: "SHELTER_CLEANING" }), []);
+});
+
+test("the resolver named has to be one the registry answers to", () => {
+  // resolver_key was free text for as long as nothing read it. A typo now
+  // fails here rather than silently producing a standard nothing measures.
+  const errors = validatePerformanceStandard({ ...standard, measurement_source: "auto", resolver_key: "SHELTER_CLEANING" });
+  assert.ok(errors.some((error) => error.includes("must name a registered resolver")));
+  assert.deepStrictEqual(
+    validatePerformanceStandard({ ...standard, measurement_source: "auto", resolver_key: "MISSED_TRIPS_FR" }),
+    [],
+  );
+});
+
+test("a resolver cannot be attached to the kind of standard it cannot serve", () => {
+  // OTP_FIXED_ROUTE measures a monthly value; MISSED_TRIPS_FR raises
+  // occurrences. Crossing them produces a standard whose compute can never
+  // find a number, which is exactly the failure the registry exists to stop.
+  const occurrenceWithMeasurer = validatePerformanceStandard({
+    ...standard, standard_type: "occurrence", measurement_source: "auto", resolver_key: "OTP_FIXED_ROUTE",
+  });
+  assert.ok(occurrenceWithMeasurer.some((error) => error.includes("cannot feed an occurrence standard")));
+
+  const thresholdWithIntake = validatePerformanceStandard({
+    ...standard, standard_type: "threshold", direction: "higher_is_better", unit_label: "percent",
+    measurement_source: "auto", resolver_key: "MISSED_TRIPS_FR",
+  });
+  assert.ok(thresholdWithIntake.some((error) => error.includes("cannot measure a threshold standard")));
+});
+
+test("a manual standard is unaffected by the registry", () => {
+  assert.deepStrictEqual(validatePerformanceStandard({ ...standard, measurement_source: "manual" }), []);
 });
 
 test("a code that operational SQL could not match is rejected", () => {
