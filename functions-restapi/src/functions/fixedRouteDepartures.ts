@@ -15,7 +15,7 @@ import { getPool, sql } from "../lib/db";
 import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
 import { agencyServiceDate } from "../lib/missedTripTime";
 import { fixedRouteDepartureOutcome, type FixedRouteDepartureOutcome } from "../lib/fixedRouteDepartureOutcome";
-import { garageDepartureVarianceSeconds, settledServiceDateExclusive } from "./complianceCandidatesPoll";
+import { fixedRouteDepartureSourceRefSql, garageDepartureVarianceSeconds, settledServiceDateExclusive } from "./complianceCandidatesPoll";
 
 const DEFAULT_TREND_DAYS = 14;
 
@@ -35,6 +35,13 @@ interface FixedRouteDepartureRow {
   vehicle_label: string | null;
   updated_at: Date;
   pullout_delta_seconds: number | null;
+  // Null when migration 030 has not run, when no occurrence was raised (the
+  // row is not a candidate), or when the date falls outside the Agreement.
+  occurrence_id?: string | null;
+  occurrence_review_status?: string | null;
+  occurrence_attribution?: string | null;
+  occurrence_service_month?: string | null;
+  occurrence_period_status?: string | null;
 }
 
 interface FixedRouteDepartureDiagnostics {
@@ -87,22 +94,46 @@ app.http("fixedRouteDeparturesList", {
         return { status: 200, jsonBody: { departures: [], diagnostics: empty } };
       }
 
+      const occurrencesCheck = await pool.request().query<{ ready: number }>(`
+        SELECT CASE WHEN OBJECT_ID('dbo.ComplianceOccurrences','U') IS NULL THEN 0 ELSE 1 END ready
+      `);
+      const occurrencesReady = occurrencesCheck.recordset[0]?.ready === 1;
+
       const req = pool.request();
       // Agency-local, to match the service_date the poller stores - a UTC
       // cutoff would move the window edge by a day for part of each day.
       req.input("cutoff_date", sql.Char(8), agencyServiceDate(new Date(), -days).serviceDate);
       // Newest day first, then block and run; the console groups by day and
       // orders within a day itself, so the rows arrive in one stable order.
+      // Where each row landed in the performance assessment, joined on the
+      // same source_ref the candidate poll writes. A row's outcome says what
+      // the rule judged; this says what a reviewer did about it, which is the
+      // question the view could not answer before - a late pullout showed as
+      // late here and nothing said whether anyone had charged it.
+      const occurrenceColumns = occurrencesReady
+        ? `,
+               occ.id AS occurrence_id,
+               occ.review_status AS occurrence_review_status,
+               occ.attribution AS occurrence_attribution,
+               occ.service_month AS occurrence_service_month,
+               period.status AS occurrence_period_status`
+        : "";
+      const occurrenceJoin = occurrencesReady
+        ? `
+        LEFT JOIN ComplianceOccurrences occ ON occ.source_ref = ${fixedRouteDepartureSourceRefSql()}
+        LEFT JOIN AssessmentPeriods period
+          ON period.contractor_id = occ.contractor_id AND period.service_month = occ.service_month`
+        : "";
       const result = await req.query<FixedRouteDepartureRow>(`
-        SELECT service_date, block, run, checkin_scheduled, checkin_actual,
-               login_scheduled, login_actual, pullout_scheduled, pullout_actual,
-               pullout_status, operator_name, logon_id, vehicle_label, updated_at,
-               CASE WHEN pullout_scheduled IS NOT NULL AND pullout_actual IS NOT NULL
-                 THEN DATEDIFF(SECOND, pullout_scheduled, pullout_actual)
-                 ELSE NULL END AS pullout_delta_seconds
-        FROM FixedRouteDepartures
-        WHERE service_date >= @cutoff_date
-        ORDER BY service_date DESC, block, run
+        SELECT d.service_date, d.block, d.run, d.checkin_scheduled, d.checkin_actual,
+               d.login_scheduled, d.login_actual, d.pullout_scheduled, d.pullout_actual,
+               d.pullout_status, d.operator_name, d.logon_id, d.vehicle_label, d.updated_at,
+               CASE WHEN d.pullout_scheduled IS NOT NULL AND d.pullout_actual IS NOT NULL
+                 THEN DATEDIFF(SECOND, d.pullout_scheduled, d.pullout_actual)
+                 ELSE NULL END AS pullout_delta_seconds${occurrenceColumns}
+        FROM FixedRouteDepartures d${occurrenceJoin}
+        WHERE d.service_date >= @cutoff_date
+        ORDER BY d.service_date DESC, d.block, d.run
       `);
       const departures: Array<FixedRouteDepartureRow & { outcome: FixedRouteDepartureOutcome }> = result.recordset.map((row) => ({
         ...row,

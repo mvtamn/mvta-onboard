@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ApiError, type GtfsRouteOption, type MissedTrip, type MissedTripReview, type MissedTripsDiagnostics, type MissedTripsMonthlySummaryRow, type OtpReasonCode } from "@mvta/shared";
+import { ApiError, type GtfsRouteOption, type MissedTrip, type MissedTripReview, type MissedTripsDiagnostics, type MissedTripsMonthlySummaryRow, type OccurrenceAttribution, type OtpReasonCode } from "@mvta/shared";
+import { Link } from "react-router-dom";
 import { api } from "../../config.js";
 import { MISSED_TRIP_ALERTS, type MissedTripAlert } from "./missedTrips.data.js";
 import "./serviceRisk.css";
@@ -136,6 +137,45 @@ function fromMissedTrip(trip: MissedTrip): MissedTripAlert {
     conditionLateArrival: trip.condition_late_arrival,
     startDelaySeconds: trip.start_delay_seconds,
     arrivalDelaySeconds: trip.arrival_delay_seconds,
+    occurrenceReviewStatus: trip.occurrence_review_status,
+    occurrenceAttribution: trip.occurrence_attribution,
+    occurrenceServiceMonth: trip.occurrence_service_month,
+    occurrencePeriodStatus: trip.occurrence_period_status,
+  };
+}
+
+// What a reviewed trip's assessment state is, in the reviewer's words. This is
+// the answer to "where did my decision go", which the module could not
+// previously give: confirming a trip raised nothing visible, and the occurrence
+// it eventually produced lived in a different module behind a second review.
+export function assessmentOutcome(alert: MissedTripAlert): { label: string; detail: string; tone: "counted" | "pending" | "excluded" } | null {
+  if (alert.validationStatus === "unreviewed") return null;
+  const month = alert.occurrenceServiceMonth ? formatServiceMonth(alert.occurrenceServiceMonth) : formatServiceMonth(alert.serviceDate.slice(0, 6));
+  if (alert.validationStatus === "false_positive") {
+    return { label: "Not assessed", detail: "Recorded as a false positive, so it is not a missed trip to charge.", tone: "excluded" };
+  }
+  if (!alert.occurrenceReviewStatus) {
+    return {
+      label: "Not linked",
+      detail: `Confirmed, but no performance-assessment occurrence exists for ${month}. The service date may fall outside the active Agreement, or the month may already be finalized.`,
+      tone: "pending",
+    };
+  }
+  if (alert.occurrenceReviewStatus === "candidate") {
+    return { label: "Awaiting attribution", detail: `Raised against the ${month} assessment, waiting on whose error it was before it can be charged.`, tone: "pending" };
+  }
+  if (alert.occurrenceReviewStatus === "dismissed") {
+    const because = alert.occurrenceAttribution === "excusable" ? "an excusable delay"
+      : alert.occurrenceAttribution === "mvta_directed" ? "MVTA-directed" : "dismissed on review";
+    return { label: "Recorded, not charged", detail: `In the ${month} assessment as ${because}, so it carries no penalty.`, tone: "excluded" };
+  }
+  const finalized = alert.occurrencePeriodStatus === "finalized" || alert.occurrencePeriodStatus === "issued";
+  return {
+    label: `Counted in ${month}`,
+    detail: finalized
+      ? `Charged to the contractor in the ${month} assessment, which is now ${alert.occurrencePeriodStatus}.`
+      : `Charged to the contractor in the ${month} assessment. The period recomputes to include it.`,
+    tone: "counted",
   };
 }
 
@@ -302,8 +342,14 @@ function MissedTripsInvestigationPage({
   const [selectedId, setSelectedId] = useState(MISSED_TRIP_ALERTS[0].id);
   const [notesDraft, setNotesDraft] = useState("");
   const [reasonDraft, setReasonDraft] = useState("");
+  // Attachment G's second question, asked at the same sitting as the first.
+  // "undetermined" is the honest default: it raises the occurrence and leaves
+  // the attribution to the Performance Assessment queue, which is exactly what
+  // the candidate poll used to do on its own.
+  const [attributionDraft, setAttributionDraft] = useState<OccurrenceAttribution>("contractor_error");
   const [validating, setValidating] = useState(false);
   const [validateError, setValidateError] = useState<string | null>(null);
+  const [assessmentNotice, setAssessmentNotice] = useState<string | null>(null);
   const [previewValidations, setPreviewValidations] = useState<
     Record<string, Pick<MissedTripAlert, "validationStatus" | "reasonCode" | "validatedBy" | "validatedAt" | "notes">>
   >({});
@@ -490,13 +536,18 @@ function MissedTripsInvestigationPage({
     }
     setValidating(true);
     try {
-      await api.validateMissedTrip({
+      const result = await api.validateMissedTrip({
         trip_id: alert.tripId,
         service_date: alert.serviceDate,
         validation_status: validationStatus,
         notes: notesDraft || undefined,
         reason_code: reasonDraft,
+        attribution: validationStatus === "confirmed" ? attributionDraft : undefined,
       });
+      // The review committed either way. When the assessment side could not
+      // take it - no Agreement, a closed month - say so here rather than
+      // leaving the reviewer to discover it in another module, or not at all.
+      setAssessmentNotice(result.assessment.linked ? null : result.assessment.explanation);
       load();
     } catch (err) {
       setValidateError(err instanceof ApiError ? err.message : "The review could not be saved.");
@@ -547,8 +598,11 @@ function MissedTripsInvestigationPage({
       onReasonChange={setReasonDraft}
       notesDraft={notesDraft}
       onNotesChange={setNotesDraft}
+      attributionDraft={attributionDraft}
+      onAttributionChange={setAttributionDraft}
       validating={validating}
       validateError={validateError}
+      assessmentNotice={assessmentNotice}
       reviews={reviews}
       onValidate={(status) => void validate(selected, status)}
     />
@@ -897,8 +951,11 @@ function MissedTripDetail({
   onReasonChange,
   notesDraft,
   onNotesChange,
+  attributionDraft,
+  onAttributionChange,
   validating,
   validateError,
+  assessmentNotice,
   reviews,
   onValidate,
 }: {
@@ -909,12 +966,16 @@ function MissedTripDetail({
   onReasonChange: (value: string) => void;
   notesDraft: string;
   onNotesChange: (value: string) => void;
+  attributionDraft: OccurrenceAttribution;
+  onAttributionChange: (value: OccurrenceAttribution) => void;
   validating: boolean;
   validateError: string | null;
+  assessmentNotice: string | null;
   reviews: MissedTripReview[];
   onValidate: (status: "confirmed" | "false_positive") => void;
 }) {
   const reviewed = alert.validationStatus !== "unreviewed";
+  const outcome = assessmentOutcome(alert);
 
   return (
     <aside className="risk-detail missed-trip-detail" aria-label={`${routeLabel(alert.route, routesById, alert.sourceSystem)} missed trip detail`}>
@@ -998,7 +1059,33 @@ function MissedTripDetail({
           onChange={(event) => onNotesChange(event.target.value)}
           placeholder="e.g. Confirmed via dispatch log - vehicle never left the garage."
         />
+
+        {/* Confirming a trip charges it to the contractor unless someone says
+            otherwise, so the "otherwise" is asked here rather than deferred to
+            a second review in another module. Only contractor error carries a
+            penalty; the other three record the event without charging it. */}
+        <label htmlFor="missed-trip-attribution" className="field-label">Attribution</label>
+        <select
+          id="missed-trip-attribution"
+          className="f"
+          value={attributionDraft}
+          onChange={(event) => onAttributionChange(event.target.value as OccurrenceAttribution)}
+        >
+          <option value="contractor_error">Contractor error — charge it to the assessment</option>
+          <option value="excusable">Excusable delay — record it, do not charge</option>
+          <option value="mvta_directed">MVTA-directed — record it, do not charge</option>
+          <option value="undetermined">Undetermined — leave it for the assessment queue</option>
+        </select>
+        <p className="risk-unknown">
+          {attributionDraft === "contractor_error"
+            ? `Confirming adds this to the ${formatServiceMonth(alert.serviceDate.slice(0, 6))} performance assessment as a charged occurrence.`
+            : attributionDraft === "undetermined"
+              ? "Confirming raises the occurrence but leaves whose error it was to the Performance Assessment module."
+              : "Confirming records the occurrence against the month without charging a penalty."}
+        </p>
+
         {validateError ? <p className="risk-action-error">{validateError}</p> : null}
+        {assessmentNotice ? <p className="risk-unknown">{assessmentNotice}</p> : null}
         <div className="risk-actions">
           <button className="btn-primary" disabled={validating || !reasonDraft} onClick={() => onValidate("confirmed")}>
             {validating ? "Saving…" : "Confirm missed trip"}
@@ -1008,6 +1095,19 @@ function MissedTripDetail({
           </button>
         </div>
       </div>
+
+      {outcome ? (
+        <div className="risk-detail-section">
+          <div className="risk-section-title-row">
+            <h4>Performance assessment</h4>
+            <span className={`pill-sm ${outcome.tone === "counted" ? "pill-danger" : outcome.tone === "pending" ? "pill-warning" : "pill-muted"}`}>
+              {outcome.label}
+            </span>
+          </div>
+          <p className="risk-unknown">{outcome.detail}</p>
+          <Link className="btn-sm" to="/performance-assessment">Open Performance Assessment</Link>
+        </div>
+      ) : null}
 
       {reviews.length > 0 ? (
         <div className="risk-detail-section">

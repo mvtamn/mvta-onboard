@@ -428,7 +428,28 @@ export interface MissedTrip {
   // NB/SB/EB/WB from GtfsTripDirections, same convention as TripDelay.direction_label -
   // null when the trip isn't in that reference table or no direction could be determined.
   direction_label: string | null;
+  // Where this trip ended up in the contractor performance assessment, joined
+  // by source_ref. All null when it has not been reviewed, when the assessment
+  // tables are absent, or when the trip falls outside the active Agreement.
+  occurrence_review_status: OccurrenceReviewStatus | null;
+  occurrence_attribution: OccurrenceAttribution | null;
+  occurrence_service_month: string | null;
+  occurrence_period_status: AssessmentPeriodStatus | null;
 }
+
+export type OccurrenceReviewStatus = "candidate" | "confirmed" | "dismissed";
+// Attachment G's second question about a confirmed observation: whose fault.
+// contractor_error is the only value that charges a penalty; excusable and
+// mvta_directed record the event without charging it; undetermined leaves it
+// for the Performance Assessment module's occurrence queue to settle.
+export type OccurrenceAttribution = "contractor_error" | "excusable" | "mvta_directed" | "undetermined";
+
+// What POST /missed-trips/validate reports about the assessment side. The link
+// never fails the review: whether a trip was missed is a fact about service and
+// does not stop being true because no Agreement exists or the month is closed.
+export type MissedTripAssessmentLink =
+  | { linked: true; occurrence_id: string; service_month: string; review_status: OccurrenceReviewStatus; standard_code: string }
+  | { linked: false; reason: string; explanation: string };
 
 export interface ValidateMissedTripInput {
   trip_id: string;
@@ -436,6 +457,13 @@ export interface ValidateMissedTripInput {
   validation_status: "confirmed" | "false_positive";
   notes?: string;
   reason_code: string;
+  /**
+   * Whose error this was, decided at the moment of review. Omitted means
+   * "undetermined": the occurrence is raised but waits in the Performance
+   * Assessment module's queue for the attribution decision. Must be omitted or
+   * "undetermined" on a false positive - there is no occurrence to attribute.
+   */
+  attribution?: OccurrenceAttribution;
 }
 
 export interface MissedTripReview {
@@ -594,7 +622,7 @@ export interface AvailAvlVehicle {
 // Avail's Pullout Reports API - garage-side departure compliance (check-in/
 // login/pullout timing, scheduled vs actual). A growing historical log, not
 // a live-position feed - backs the Fixed Route Departures Compliance module.
-export interface FixedRouteDeparture {
+export interface FixedRouteDeparture extends OccurrenceLinkFields {
   service_date: string;
   block: number;
   run: number;
@@ -616,6 +644,18 @@ export interface FixedRouteDeparture {
   outcome: FixedRouteDepartureOutcome;
 }
 
+// Where a compliance observation landed in the performance assessment, joined
+// by source_ref. Shared by missed trips and both garage-departure feeds
+// because the question and the answer are the same in all three.
+export interface OccurrenceLinkFields {
+  occurrence_id: string | null;
+  occurrence_review_status: OccurrenceReviewStatus | null;
+  occurrence_attribution: OccurrenceAttribution | null;
+  occurrence_service_month: string | null;
+  occurrence_period_status: AssessmentPeriodStatus | null;
+}
+
+
 export type FixedRouteDepartureOutcome =
   | "late"
   | "no_departure"
@@ -628,7 +668,7 @@ export type FixedRouteDepartureOutcome =
 // mirrored from functions-restapi/src/functions/onDemandDepartures.ts. Both
 // sources are named so a reader can tell a started slot from a vehicle merely
 // appearing in the service area. Driver and vehicle are Spare ids, not names.
-export interface OnDemandDeparture {
+export interface OnDemandDeparture extends OccurrenceLinkFields {
   service_date: string;
   duty_id: string;
   duty_identifier: string | null;
@@ -1574,7 +1614,17 @@ export interface AgreementStandardAssignment {
 export interface ContractorRecord { id: string; name: string; contract_start_date: string; contract_end_date: string | null; is_active: boolean }
 export interface AssessmentPeriod { id: string; contractor_id: string; contractor_name: string; service_month: string; status: AssessmentPeriodStatus; input_revision: number; computed_revision: number | null; proposed_total: number; final_total: number | null }
 export interface PeriodKpiAssessment { id: string; period_id: string; standard_id: string; code: string; name: string; standard_type: string; priority: string; metric_display: string; target_display?: string; variance_pct?: number | null; tier_label: AssessmentTierLabel; assessment_outcome?: AssessmentTierLabel | "not_assessable" | null; occurrence_count: number; base_amount?: number; relief_amount?: number; escalation_multiplier?: number; proposed_amount: number; final_amount: number | null; manager_action: ManagerAssessmentAction; manager_reason: string | null; recommended_action?: Exclude<ManagerAssessmentAction,"pending"> | null; recommended_amount?: number | null; cap_required?: boolean; cap_reason?: string | null; consecutive_months_below?: number; data_completeness_pct: number | null }
-export interface ComplianceOccurrence { id: string; standard_id: string; standard_code: string; standard_name: string; contractor_id: string; contractor_name: string; service_date: string; quantity: number; description: string; source: string; review_status: string; attribution: string }
+export interface ComplianceOccurrence {
+  id: string; standard_id: string; standard_code: string; standard_name: string;
+  contractor_id: string; contractor_name: string; service_date: string; quantity: number;
+  description: string; source: string; review_status: string; attribution: string;
+  // The observation this was raised from, e.g.
+  // "MonitoredMissedTrips:gtfs:<trip>|<date>" or
+  // "FixedRouteDepartures:avail_pullout:<date>|<block>|<run>". The console
+  // shows the readable tail so a reviewer can find the row in Compliance;
+  // occurrenceSourceLabel() in the assessment module does the parsing.
+  source_ref?: string | null;
+}
 export interface ManualMetricEntry { id: string; standard_id: string; standard_code: string; standard_name: string; contractor_id: string; contractor_name: string; service_month: string; metric_value: number; source_note: string; entered_by: string; entered_at: string }
 // A band in a standard's tier ladder. agreement_id NULL is the agency catalog
 // default; a row naming an agreement overrides the whole ladder for that

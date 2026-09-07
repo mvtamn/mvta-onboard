@@ -174,10 +174,15 @@ ORDER BY c.is_active DESC, c.name;
    CAP flag, direction, unit, team and assignee, with add-a-standard for both
    occurrence and threshold types. The Assessment module's Standards tab stays
    read-only and links here.
-4. **Cross-module links** — a "View in Performance Assessment" action on
-   confirmed missed trips and garage departures; a candidate-count banner on
-   Compliance; and a reverse drill-through that resolves `source_ref` back to the
-   trip or departure row from KPI Detail and the Occurrence Log.
+4. **Cross-module links** — ✅ built. Confirming a missed trip raises its
+   occurrence in the same transaction and asks for attribution at the same
+   sitting (`lib/assessment/occurrenceIntake.ts`); a false positive retracts an
+   occurrence already raised. Both Garage Departures views carry an Assessment
+   column with inline Charge / Excusable / MVTA-directed. Missed Trips shows a
+   reviewed trip's outcome and links into Performance Assessment. The Occurrence
+   Log resolves `source_ref` back to the trip or block/run and links to
+   Compliance. The link never fails a review, and never mutates a finalized
+   month.
 5. **Resolver registry** — make `resolver_key` real: a keyed map of resolvers in
    `lib/assessment/`, with `measurement_source='auto'` and an unknown key failing
    the compute loudly instead of falling through to manual entry.

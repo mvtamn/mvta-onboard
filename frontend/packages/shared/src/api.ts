@@ -86,6 +86,8 @@ import type {
   AssessmentPeriod,
   PeriodKpiAssessment,
   ComplianceOccurrence,
+  OccurrenceAttribution,
+  OccurrenceReviewStatus,
   ContractorStandardTier,
   ManualMetricEntry,
   ManagerAssessmentAction,
@@ -686,7 +688,10 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     },
 
     validateMissedTrip(input: ValidateMissedTripInput) {
-      return request<{ trip_id: string; service_date: string; validation_status: string; reason_code: string | null }>(
+      return request<{
+        trip_id: string; service_date: string; validation_status: string; reason_code: string | null;
+        assessment: import("./types.js").MissedTripAssessmentLink;
+      }>(
         "/api/missed-trips/validate",
         { method: "POST", body: JSON.stringify(input) },
         true,
@@ -1315,7 +1320,11 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     getComplianceOccurrences() {
       return request<{ occurrences: ComplianceOccurrence[]; diagnostics: { table_ready: boolean } }>("/api/compliance-occurrences", {}, true);
     },
-    reviewComplianceOccurrence(id: string, review_status: "candidate" | "confirmed" | "dismissed", attribution: "contractor_error" | "excusable" | "mvta_directed" | "undetermined", dismiss_reason?: string) {
+    // Settle one occurrence: whether it counts, and whose error it was. Backs
+    // both the Performance Assessment module's occurrence queue and the inline
+    // review on the garage-departure views, so a duty reviewed in Compliance
+    // and one reviewed in Assessment take the same path.
+    reviewComplianceOccurrence(id: string, review_status: OccurrenceReviewStatus, attribution: OccurrenceAttribution, dismiss_reason?: string) {
       return request<{ id: string }>(`/api/compliance-occurrences/${id}`, { method: "PATCH", body: JSON.stringify({ review_status, attribution, dismiss_reason }) }, true);
     },
     getManualMetrics() {

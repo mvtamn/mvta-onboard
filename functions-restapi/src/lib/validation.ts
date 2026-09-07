@@ -132,6 +132,7 @@ const E164_RE = /^\+[1-9]\d{7,14}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const VALID_MISSED_TRIP_VALIDATION_STATUSES = ["confirmed", "false_positive"] as const;
+export const VALID_OCCURRENCE_ATTRIBUTIONS = ["contractor_error", "excusable", "mvta_directed", "undetermined"] as const;
 export const MAX_MISSED_TRIP_NOTES_LENGTH = 1000; // MonitoredMissedTrips.notes NVARCHAR(1000)
 
 export const MAX_DRAFT_RAW_TEXT_LENGTH = 4000; // generous ceiling on what gets sent to the Claude API
@@ -183,6 +184,17 @@ export function validateMissedTripValidation(body: UnknownBody): string[] {
     body.reason_code.length > MAX_REASON_CODE_LENGTH
   ) {
     errors.push(`reason_code is required and must be at most ${MAX_REASON_CODE_LENGTH} characters`);
+  }
+  // Attribution decides whether a confirmed trip is charged to the contractor,
+  // relieved, or left for the assessment queue to settle. Optional so callers
+  // predating it keep working - absent means "undetermined", which is the
+  // candidate state the poll used to produce.
+  if (body.attribution !== undefined && !includes(VALID_OCCURRENCE_ATTRIBUTIONS, body.attribution)) {
+    errors.push(`attribution must be one of: ${VALID_OCCURRENCE_ATTRIBUTIONS.join(", ")}`);
+  }
+  // A false positive is not a missed trip, so there is nothing to attribute.
+  if (body.validation_status === "false_positive" && body.attribution !== undefined && body.attribution !== "undetermined") {
+    errors.push("attribution cannot be set on a false positive - there is no occurrence to attribute");
   }
 
   return errors;

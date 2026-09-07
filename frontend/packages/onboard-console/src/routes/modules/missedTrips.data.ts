@@ -1,3 +1,5 @@
+import type { AssessmentPeriodStatus, OccurrenceAttribution, OccurrenceReviewStatus } from "@mvta/shared";
+
 export type MissedTripAlertStatus = "watching" | "escalated" | "resolved";
 export type MissedTripValidationStatus = "unreviewed" | "confirmed" | "false_positive";
 
@@ -40,6 +42,12 @@ export interface MissedTripAlert {
   conditionLateArrival: boolean | null;
   startDelaySeconds: number | null;
   arrivalDelaySeconds: number | null;
+  // Where this trip landed in the contractor performance assessment. Null
+  // until it is reviewed, or when it falls outside the active Agreement.
+  occurrenceReviewStatus: OccurrenceReviewStatus | null;
+  occurrenceAttribution: OccurrenceAttribution | null;
+  occurrenceServiceMonth: string | null;
+  occurrencePeriodStatus: AssessmentPeriodStatus | null;
 }
 
 // Preview-only fallback shown when the console can't reach the authenticated
@@ -73,6 +81,7 @@ export const MISSED_TRIP_ALERTS: MissedTripAlert[] = [
     conditionLateArrival: null,
     startDelaySeconds: null,
     arrivalDelaySeconds: null,
+    occurrenceReviewStatus: null, occurrenceAttribution: null, occurrenceServiceMonth: null, occurrencePeriodStatus: null,
   },
   {
     id: "preview-440-1",
@@ -101,5 +110,6 @@ export const MISSED_TRIP_ALERTS: MissedTripAlert[] = [
     conditionLateArrival: null,
     startDelaySeconds: null,
     arrivalDelaySeconds: null,
+    occurrenceReviewStatus: null, occurrenceAttribution: null, occurrenceServiceMonth: null, occurrencePeriodStatus: null,
   },
 ];
