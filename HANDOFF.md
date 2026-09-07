@@ -521,3 +521,50 @@ saying not connected, provision the Graph identity, collect the SharePoint
 IDs, then migrate one legacy candidate end to end — draft, check documents,
 submit, approve, read it as a controller. That last step exercises the
 lifecycle, the audit trail, the health check and the reader in one pass.
+
+## On-Demand operational zones — status (2026-09-07)
+
+**No zone version has ever been active.** `OnDemandOperationalZoneVersions` is
+empty in dev, so `loadActiveOperationalZones` returns an empty set and the
+on-demand wait monitor resolves every pickup against nothing. The evidence is
+continuous: `onDemandSpareWebhook` logged the gap 1,395 times over the 30 hours
+to 2026-09-07 02:20 UTC (once a minute through the service day), and
+`spareMissedTripsIngest` 119 times (once per quarter-hour run).
+
+The importer landed in PRs #184/#185 and is complete — parser, transactional
+write, first-import activation, `GET`/`POST /api/on-demand-zone-versions`,
+`ON_DEMAND_OPERATIONAL_ZONE_IDS`, migration 098's activation attribution. Two
+things stop it running, neither of them code:
+
+- **`ON_DEMAND_ZONE_FLEX_URL` is unset**, so `onDemandZonesSync` skips every
+  run — confirmed at 2026-09-06 09:30 UTC. No published GTFS-Flex URL is known
+  for MVTA Connect. MVTA's fixed-route `google_transit.zip` is not it: eleven
+  files, no `locations.geojson`.
+- **Nobody has run the hand-seeding script**, which exists for exactly this
+  case. Note that `scripts/importOnDemandZones.ts` connects with
+  `SQL_CONNECTION_STRING`, and the dev SQL server now has
+  `publicNetworkAccess: Disabled` (the 0.0.0.0-255.255.255.255 "PowerAutomate"
+  rule is gone; one client-IP rule remains). It therefore cannot be run from a
+  laptop — run it from inside the VNet. The REST app is the practical place:
+  Linux `NODE|24`, VNet-integrated, `WEBSITE_RUN_FROM_PACKAGE=1`, and the
+  compiled script ships in the deployment package at
+  `dist/src/scripts/importOnDemandZones.js`. That in-container path is reasoned
+  from the deployment shape, not yet executed.
+
+Steps are in `docs/runbooks/on-demand-operational-zones.md`. What is missing is
+the archive itself, which Operations owes: a GTFS-Flex `.zip` from Spare or
+MVTA containing `locations.geojson`, `feed_info.txt` with a `feed_version`, and
+both pilot zones (`location_id__b413a052-...` Apple Valley,
+`location_id__ad56cc1c-...` Shakopee - Prior Lake). An archive missing either
+is refused by design.
+
+Zones are a prerequisite, not the switch. The monitor also needs
+`ON_DEMAND_MONITORING_ENABLED=true` (declared in Bicep by PR #181, currently
+`false`; set `ON_DEMAND_MONITORING_SERVICE_IDS` at the same time, since empty
+reconciles every Spare service the API key can see) and one successful
+`onDemandSpareReconcile` run.
+
+Unrelated but worth correcting when someone is next in these files: comments in
+`lib/onDemandZoneImport.ts` and `functions/onDemandZoneVersions.ts` call the
+attribution columns "migration 097". It was renumbered to **098** on merge; 097
+is the garage-departure source discriminator.
