@@ -8,7 +8,8 @@ import {
   VALID_EXPIRATION_SOURCES,
   VALID_CONSENT_SOURCES,
 } from "./types";
-import { findResolver, resolverKeys } from "./assessment/resolvers";
+import { findResolver, resolversForSource } from "./assessment/resolvers";
+import { MEASUREMENT_SOURCES } from "./assessment/measurementSource";
 
 // Match the NVARCHAR column sizes in sql/phase1-schema.sql so oversized input
 // fails fast with a clear 400 here instead of an opaque SQL truncation 500.
@@ -1069,7 +1070,7 @@ export function validateDetourIntakeAttachment(body: UnknownBody): string[] {
 export const VALID_STANDARD_TYPES = ["occurrence", "threshold"] as const;
 export const VALID_STANDARD_PRIORITIES = ["High", "Medium", "Low", "NA"] as const;
 export const VALID_STANDARD_DIRECTIONS = ["higher_is_better", "lower_is_better"] as const;
-export const VALID_MEASUREMENT_SOURCES = ["auto", "manual"] as const;
+export const VALID_MEASUREMENT_SOURCES = MEASUREMENT_SOURCES;
 export const VALID_TIER_LABELS = ["meets", "warning", "tier1", "tier2"] as const;
 export const VALID_PENALTY_BASES = ["none", "flat", "per_unit", "per_unit_per_day", "per_day", "per_week"] as const;
 
@@ -1094,7 +1095,7 @@ export function validatePerformanceStandard(body: UnknownBody): string[] {
   if (!VALID_STANDARD_TYPES.includes(body.standard_type as never)) errors.push("standard_type must be occurrence or threshold");
   if (!VALID_STANDARD_PRIORITIES.includes(body.priority as never)) errors.push("priority must be High, Medium, Low or NA");
   if (!VALID_STANDARD_DIRECTIONS.includes(body.direction as never)) errors.push("direction must be higher_is_better or lower_is_better");
-  if (!VALID_MEASUREMENT_SOURCES.includes(body.measurement_source as never)) errors.push("measurement_source must be auto or manual");
+  if (!VALID_MEASUREMENT_SOURCES.includes(body.measurement_source as never)) errors.push(`measurement_source must be one of: ${VALID_MEASUREMENT_SOURCES.join(", ")}`);
   if (typeof body.unit_label !== "string" || !body.unit_label.trim() || body.unit_label.length > 50) {
     errors.push("unit_label is required and must be at most 50 characters");
   }
@@ -1108,25 +1109,43 @@ export function validatePerformanceStandard(body: UnknownBody): string[] {
       errors.push("effective_end_date must not precede effective_start_date");
     }
   }
-  // An automated standard names the resolver that measures it, and the name
-  // has to be one the registry actually answers to. An unregistered key does
-  // not fall through to manual entry - the compute reports the standard as not
-  // assessable and names the misconfiguration - but it is far cheaper to
-  // refuse the typo here than to discover it at month-end close.
-  if (body.measurement_source === "auto") {
+  // What each source kind requires. The rules differ because the kinds differ:
+  // only the two automated ones have anything to call, and only a structured
+  // import has a system to name.
+  const source = body.measurement_source;
+  if (source === "api_feed" || source === "onboard_compliance") {
+    const usable = resolversForSource(String(source));
     if (typeof body.resolver_key !== "string" || !body.resolver_key.trim()) {
-      errors.push("resolver_key is required when measurement_source is auto");
+      errors.push(`resolver_key is required when measurement_source is ${String(source)}`);
     } else {
       const resolver = findResolver(body.resolver_key);
       if (!resolver) {
-        errors.push(`resolver_key must name a registered resolver: ${resolverKeys().join(", ")}`);
-      } else if (body.standard_type === "threshold" && resolver.appliesTo !== "threshold") {
-        errors.push(`${resolver.key} raises occurrences and cannot measure a threshold standard's monthly value`);
-      } else if (body.standard_type === "occurrence" && resolver.appliesTo !== "occurrence") {
-        errors.push(`${resolver.key} measures a monthly value and cannot feed an occurrence standard`);
+        errors.push(`resolver_key must name a registered resolver: ${usable.map((entry) => entry.key).join(", ") || "none are registered for this source"}`);
+      } else if (resolver.source !== source) {
+        errors.push(`${resolver.key} is a ${resolver.source} measurement and cannot serve a ${String(source)} standard`);
+      } else if (resolver.appliesTo !== body.standard_type) {
+        errors.push(resolver.appliesTo === "occurrence"
+          ? `${resolver.key} raises occurrences and cannot measure a threshold standard's monthly value`
+          : `${resolver.key} measures a monthly value and cannot feed an occurrence standard`);
       }
     }
+  } else if (body.resolver_key !== undefined && body.resolver_key !== null && String(body.resolver_key).trim() !== "") {
+    // A hand-entered standard naming a resolver reads as automated to anyone
+    // scanning the catalog, and nothing would ever call it.
+    errors.push("resolver_key is only meaningful for a feed or an OnBoard compliance standard");
   }
+
+  // Only a structured import has a source system, and it has to have one -
+  // it is the difference between that kind and plain manual entry, and it
+  // names who to chase when the month's figure is missing.
+  if (source === "structured_import") {
+    if (typeof body.source_system !== "string" || !body.source_system.trim()) {
+      errors.push("source_system is required when the figure is transcribed from another system");
+    }
+  } else if (body.source_system !== undefined && body.source_system !== null && String(body.source_system).trim() !== "") {
+    errors.push("source_system applies only to a standard transcribed from another system");
+  }
+  optionalText(body.source_system, 100, "source_system", errors);
   optionalText(body.resolver_key, 50, "resolver_key", errors);
   optionalText(body.description, 2000, "description", errors);
   optionalText(body.data_source_note, 1000, "data_source_note", errors);

@@ -14,7 +14,7 @@ const AGREEMENT = {
 const OTP = {
   id: "50000000-0000-4000-8000-000000000001", code: "OTP_FIXED_ROUTE", name: "On-Time Performance (Fixed Route)",
   standard_type: "threshold" as const, priority: "High" as const, is_scored: true, is_safety_critical: false,
-  direction: "higher_is_better" as const, unit_label: "percent", measurement_source: "auto" as const,
+  direction: "higher_is_better" as const, unit_label: "percent", measurement_source: "api_feed" as const,
   resolver_key: "OTP_FIXED_ROUTE", sort_order: 26, effective_start_date: "20250101", effective_end_date: null,
 };
 const ORPHAN = {
@@ -27,8 +27,13 @@ const TIERS = [
 ];
 
 const RESOLVERS = [
-  { key: "OTP_FIXED_ROUTE", label: "Avail monthly on-time performance", description: "Fixed-route departures from Avail's monthly OTP feed.", applies_to: "threshold" as const },
-  { key: "MISSED_TRIPS_FR", label: "Confirmed missed trips", description: "Occurrences raised from MonitoredMissedTrips once confirmed.", applies_to: "occurrence" as const },
+  { key: "OTP_FIXED_ROUTE", label: "Avail monthly on-time performance", description: "Fixed-route departures from Avail's monthly OTP feed.", applies_to: "threshold" as const, source: "api_feed" as const },
+  { key: "MISSED_TRIPS_FR", label: "Confirmed missed trips", description: "Occurrences raised from MonitoredMissedTrips once confirmed.", applies_to: "occurrence" as const, source: "onboard_compliance" as const },
+];
+
+const SOURCE_SYSTEMS = [
+  { value: "Nexus", label: "Nexus (Trackit)", description: "Customer contacts and operator conduct complaints." },
+  { value: "Asset Works M5", label: "Asset Works M5", description: "Fleet maintenance, road calls and vehicle availability." },
 ];
 
 const putAgreementStandards = vi.fn().mockResolvedValue({ id: AGREEMENT.id, assignment_count: 1 });
@@ -59,7 +64,7 @@ describe("Performance Standards administration", () => {
   beforeEach(() => {
     roles = ["OCC.Admin"];
     catalog = {
-      standards: [ORPHAN, OTP], tiers: TIERS, agreements: [AGREEMENT], resolvers: RESOLVERS,
+      standards: [ORPHAN, OTP], tiers: TIERS, agreements: [AGREEMENT], resolvers: RESOLVERS, source_systems: SOURCE_SYSTEMS,
       assignments: [{ id: "g1", agreement_id: AGREEMENT.id, standard_id: OTP.id, is_scored: true, effective_start_date: "20250101", effective_end_date: null, assignment_note: null }],
       diagnostics: { table_ready: true, assignments_ready: true },
     };
@@ -74,7 +79,7 @@ describe("Performance Standards administration", () => {
     // on it - but it is no longer the first thing a reader has to decode.
     expect(within(row).getByText("OTP_FIXED_ROUTE")).toHaveClass("mono-ref");
     expect(within(row).getByText("Scored")).toBeInTheDocument();
-    expect(within(row).getByText(/Monthly value · automatic/)).toBeInTheDocument();
+    expect(within(row).getByText(/Monthly value · from a feed/)).toBeInTheDocument();
   });
 
   it("keeps the list and the detail in their own scroll areas", async () => {
@@ -207,6 +212,56 @@ describe("Performance Standards administration", () => {
     const options = within(screen.getByLabelText(/Measured by/)).getAllByRole("option").map((o) => o.textContent);
     expect(options).toContain("Avail monthly on-time performance");
     expect(options).not.toContain("Confirmed missed trips");
+  });
+
+  it("offers the four ways a figure actually arrives", async () => {
+    view();
+    fireEvent.click(await screen.findByText("New standard"));
+    const options = within(screen.getByLabelText(/Where the figure comes from/)).getAllByRole("option").map((o) => o.textContent);
+    expect(options).toEqual([
+      "Entered by hand",
+      "Transcribed from another system",
+      "Ingested from a feed",
+      "Raised by OnBoard compliance",
+    ]);
+  });
+
+  it("asks which system a transcribed figure comes from, and will not save without it", async () => {
+    // The difference between this and plain manual entry is provenance: it
+    // names who to chase when the month's figure is missing.
+    view();
+    fireEvent.click(await screen.findByText("New standard"));
+    fireEvent.change(screen.getByLabelText(/Where the figure comes from/), { target: { value: "structured_import" } });
+    const system = screen.getByLabelText(/Source system/);
+    expect(within(system).getAllByRole("option").map((o) => o.textContent))
+      .toEqual(["Select the system…", "Nexus (Trackit)", "Asset Works M5", "Another system…"]);
+    expect(screen.getByRole("button", { name: "Add standard" })).toBeDisabled();
+
+    fireEvent.change(system, { target: { value: "Nexus" } });
+    expect(screen.getByText(/operator conduct complaints/i)).toBeInTheDocument();
+  });
+
+  it("clears the fields a source kind does not use when it changes", async () => {
+    // A leftover resolver on a hand-entered standard reads as automated to
+    // anyone scanning the catalog, and the server refuses it anyway.
+    view();
+    await open("OTP_FIXED_ROUTE", "Details");
+    expect(screen.getByLabelText(/Measured by/)).toHaveValue("OTP_FIXED_ROUTE");
+    fireEvent.change(screen.getByLabelText(/Where the figure comes from/), { target: { value: "manual_entry" } });
+    expect(screen.queryByLabelText(/Measured by/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save standard" }));
+    expect(putPerformanceStandard).toHaveBeenCalledWith(OTP.id, expect.objectContaining({
+      measurement_source: "manual_entry", resolver_key: null, source_system: null,
+    }));
+  });
+
+  it("offers only resolvers belonging to the chosen source kind", async () => {
+    // A feed the app ingests and occurrences OnBoard raises itself used to be
+    // the same value; MISSED_TRIPS_FR must not be offered as a feed.
+    view();
+    await open("OTP_FIXED_ROUTE", "Details");
+    fireEvent.change(screen.getByLabelText(/Where the figure comes from/), { target: { value: "onboard_compliance" } });
+    expect(screen.getByText(/Nothing registered serves a monthly-value standard from this source/)).toBeInTheDocument();
   });
 
   it("hides the resolver picker entirely for a hand-entered standard", async () => {

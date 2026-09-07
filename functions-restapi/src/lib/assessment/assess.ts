@@ -7,6 +7,8 @@ import { matchTier } from "./tiers";
 import { splitAssessmentInput } from "./input";
 import { agreementScopeIn, periodResolverKeySql } from "./schemaScope";
 import { resolveAutomatedThreshold, resolveManualMetric } from "./resolvers";
+import { isHandEntered, normalizeMeasurementSource } from "./measurementSource";
+import { notMeasurable } from "./resolvers/types";
 import type { StandardDirection, StandardTier, TierLabel } from "./types";
 
 interface PeriodRow { id: string; contractor_id: string; service_month: string; input_revision: number; status: string }
@@ -23,16 +25,25 @@ function severity(label: TierLabel): number {
 
 // Measure one threshold standard for the period.
 //
-// Which resolver runs is data: the period's snapshotted resolver_key, looked up
-// in the registry. An automated standard whose key is missing or unregistered
-// comes back not-measurable with the reason named, rather than silently falling
-// through to manual entry and scoring the month "no data" - which on a
-// scorecard reads like a clean month rather than a standard nobody can measure.
+// Routed by where the number comes from, normalized because a period
+// snapshotted before migration 104 carries the old two-value vocabulary and
+// still has to compute to the same answer it was finalized with.
+//
+// An unregistered or absent resolver does not fall through to hand-entered
+// figures. That was the old behaviour and the worst available one: the compute
+// found nothing there either, scored the month "no data", and a scorecard
+// reading "no data" looks like a quiet month rather than a standard nobody can
+// measure.
 async function resolveThreshold(tx: Transaction, standard: StandardRow, contractorId: string, month: string) {
   const context = { tx, contractorId, month, standardCode: standard.code };
-  return standard.measurement_source === "auto"
-    ? resolveAutomatedThreshold(standard.resolver_key, context)
-    : resolveManualMetric(context, standard.id);
+  const source = normalizeMeasurementSource(standard.measurement_source, standard.standard_type);
+  if (isHandEntered(source)) return resolveManualMetric(context, standard.id);
+  if (source === "onboard_compliance") {
+    // OnBoard raises occurrences, which are rows rather than a monthly figure.
+    // A threshold standard declaring this source has no number to read.
+    return notMeasurable(`${standard.code} is measured from OnBoard compliance occurrences, which cannot produce a monthly value. Change it to a feed or a hand-entered figure.`);
+  }
+  return resolveAutomatedThreshold(standard.resolver_key, context);
 }
 
 export async function assessPeriod(tx: Transaction, periodId: string): Promise<void> {

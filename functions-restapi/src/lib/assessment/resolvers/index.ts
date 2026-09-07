@@ -32,6 +32,7 @@ export const RESOLVERS: RegisteredResolver[] = [
     label: "Avail monthly on-time performance",
     description: "Fixed-route departures from Avail's monthly OTP feed, excluding special-event routes and approved stop exclusions.",
     appliesTo: "threshold",
+    source: "api_feed",
     resolve: resolveOtpFixedRoute,
   },
   {
@@ -39,12 +40,14 @@ export const RESOLVERS: RegisteredResolver[] = [
     label: "Confirmed missed trips",
     description: "Occurrences raised from MonitoredMissedTrips once a reviewer confirms the trip, from both the GTFS and Spare pipelines.",
     appliesTo: "occurrence",
+    source: "onboard_compliance",
   },
   {
     key: "GARAGE_DEPARTURE",
     label: "Late and missed garage departures",
     description: "Occurrences raised from Avail pullouts and Spare duties that departed past the variance allowance or not at all.",
     appliesTo: "occurrence",
+    source: "onboard_compliance",
   },
 ];
 
@@ -56,6 +59,10 @@ export function findResolver(key: string | null | undefined): RegisteredResolver
 
 export function resolverKeys(): string[] {
   return RESOLVERS.map((resolver) => resolver.key);
+}
+
+export function resolversForSource(source: string): RegisteredResolver[] {
+  return RESOLVERS.filter((resolver) => resolver.source === source);
 }
 
 // Measure one automated threshold standard.

@@ -1578,7 +1578,11 @@ export type ManagerAssessmentAction = "pending" | "confirmed" | "adjusted" | "wa
 export type StandardType = "occurrence" | "threshold";
 export type StandardPriority = "High" | "Medium" | "Low" | "NA";
 export type StandardDirection = "higher_is_better" | "lower_is_better";
-export type StandardMeasurementSource = "auto" | "manual";
+// Where a standard's number comes from. Four kinds, because the two the schema
+// carried before migration 104 each covered two different situations: a feed
+// the app ingests versus occurrences OnBoard raises itself, and a figure
+// somebody knows versus one transcribed from another system's report.
+export type StandardMeasurementSource = "api_feed" | "onboard_compliance" | "manual_entry" | "structured_import";
 export type StandardPenaltyBasis = "none" | "flat" | "per_unit" | "per_unit_per_day" | "per_day" | "per_week";
 
 // One Attachment G standard in the agency catalog (migration 030). The catalog
@@ -1589,6 +1593,8 @@ export interface ContractorPerformanceStandard {
   priority: StandardPriority; is_scored: boolean; is_safety_critical?: boolean;
   direction?: StandardDirection; unit_label: string;
   measurement_source?: StandardMeasurementSource; resolver_key?: string | null;
+  /** The external system a structured import is transcribed from; null otherwise. */
+  source_system?: string | null;
   data_source_note?: string | null; responsible_team?: string | null; assigned_to?: string | null;
   cap_rule_note?: string | null; sort_order?: number;
   effective_start_date?: string; effective_end_date?: string | null;
@@ -1604,7 +1610,12 @@ export interface RegisteredResolver {
   description: string;
   /** "threshold" measures a monthly value; "occurrence" names the intake that raises rows. */
   applies_to: "threshold" | "occurrence";
+  /** The measurement source kind a standard must declare to use this resolver. */
+  source: StandardMeasurementSource;
 }
+
+// An external system MVTA transcribes a monthly figure from.
+export interface KnownSourceSystem { value: string; label: string; description: string }
 
 // A contract term. One active agreement per contractor (migration 102).
 export interface PerformanceAgreementRecord {
