@@ -22,7 +22,7 @@ app.http("onDemandZoneVersions", {
     try {
       const pool = await getPool();
       if (request.method === "GET") {
-        // Migration 097's attribution columns are selected only once they
+        // Migration 098's attribution columns are selected only once they
         // exist, so this listing answers on a database the migration has not
         // reached yet rather than failing on an unknown column.
         const attribution = await activationAuditSupported(pool)

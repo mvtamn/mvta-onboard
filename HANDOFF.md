@@ -563,8 +563,3 @@ Zones are a prerequisite, not the switch. The monitor also needs
 `false`; set `ON_DEMAND_MONITORING_SERVICE_IDS` at the same time, since empty
 reconciles every Spare service the API key can see) and one successful
 `onDemandSpareReconcile` run.
-
-Unrelated but worth correcting when someone is next in these files: comments in
-`lib/onDemandZoneImport.ts` and `functions/onDemandZoneVersions.ts` call the
-attribution columns "migration 097". It was renumbered to **098** on merge; 097
-is the garage-departure source discriminator.
