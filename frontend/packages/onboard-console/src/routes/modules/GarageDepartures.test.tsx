@@ -265,15 +265,31 @@ describe("On-Demand display helpers", () => {
 
   it("groups duties by driver reference with the most flagged first", () => {
     const groups = groupDuties(DUTY_ROWS, "operator", "20260905");
-    expect(groups[0]).toMatchObject({ title: "Delacroix, Amir", reference: "#144", lateCount: 2 });
-    expect(groups.map((g) => g.title)).toContain("Driver c4e2a9f0…");
+    // The name leads, the Spare identifier is the badge beside it, and the
+    // full Spare id is hover text rather than 36 characters of the band.
+    expect(groups[0]).toMatchObject({
+      title: "Delacroix, Amir",
+      reference: "#144",
+      referenceTitle: "Spare driver 3f9a2c1e-7b40-4d1a-9e6c-0a1b2c3d4e5f",
+      lateCount: 2,
+    });
+    // A driver Spare has neither named nor numbered is the short reference
+    // once, in the title, with nothing repeated beside it.
+    expect(groups.find((g) => g.title === "Driver c4e2a9f0…")).toMatchObject({
+      reference: null,
+      referenceTitle: "Spare driver c4e2a9f0-1d3b-4c5e-8f7a-9b0c1d2e3f4a",
+    });
     expect(groups[0].rows.map((r) => r.service_date)).toEqual(["20260905", "20260904", "20260904", "20260903"]);
     expect(groups.map((g) => g.title)).toContain("No driver on duty");
   });
 
   it("groups duties by vehicle on the fleet number when Spare gave one, else the id", () => {
     const groups = groupDuties(DUTY_ROWS, "vehicle", "20260905");
-    expect(groups[0]).toMatchObject({ title: "Vehicle 1188", reference: "e5a1c3d7-2b4f-4a6c-9d8e-1f2a3b4c5d6e" });
+    expect(groups[0]).toMatchObject({
+      title: "Vehicle 1188",
+      reference: "e5a1c3d7…",
+      referenceTitle: "Spare vehicle e5a1c3d7-2b4f-4a6c-9d8e-1f2a3b4c5d6e",
+    });
     expect(groups.map((g) => g.title)).toContain("Vehicle 9c7b5a3d…");
   });
 

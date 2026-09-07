@@ -75,6 +75,10 @@ export interface DutyGroup {
   key: string;
   title: string;
   reference: string | null;
+  // The full Spare id behind the group, for hover. The band shows a short
+  // reference instead: a 36-character id printed beside a driver's name
+  // crowds out the name, which is the thing being read.
+  referenceTitle: string | null;
   open: boolean;
   lateCount: number;
   noDepartureCount: number;
@@ -111,7 +115,7 @@ export function groupDuties(rows: OnDemandDeparture[], groupBy: DepartureGroupBy
       const members = rows
         .filter((r) => r.service_date === date)
         .sort((a, b) => OUTCOMES[a.outcome].rank - OUTCOMES[b.outcome].rank || byScheduled(a, b));
-      return { key: date, title: serviceDayLabel(date), reference: null, open: date >= today, ...summarize(members), rows: members };
+      return { key: date, title: serviceDayLabel(date), reference: null, referenceTitle: null, open: date >= today, ...summarize(members), rows: members };
     });
   }
   // A vehicle groups by its fleet number when Spare gave one (migration 099),
@@ -134,17 +138,24 @@ export function groupDuties(rows: OnDemandDeparture[], groupBy: DepartureGroupBy
       const fleet = groupBy === "vehicle" && first?.vehicle_identifier === key;
       const driverName = groupBy === "operator" ? (members.find((r) => r.driver_name)?.driver_name ?? null) : null;
       const driverIdentifier = groupBy === "operator" ? (members.find((r) => r.driver_identifier)?.driver_identifier ?? null) : null;
+      // Grouped by fleet number the key is the number itself, so the Spare
+      // id has to come off a row; grouped by anything else the key IS the
+      // Spare id.
+      const spareId = (fleet ? first?.vehicle_id : key) || null;
       let title: string;
       let reference: string | null;
       if (!key) { title = `No ${noun.toLowerCase()} on duty`; reference = null; }
-      else if (fleet) { title = `Vehicle ${key}`; reference = first?.vehicle_id ?? null; }
-      else if (driverName) { title = driverName; reference = driverIdentifier ? `#${driverIdentifier}` : key; }
-      else if (driverIdentifier) { title = `Driver #${driverIdentifier}`; reference = key; }
-      else { title = `${noun} ${shortRef(key)}`; reference = key; }
+      else if (fleet) { title = `Vehicle ${key}`; reference = shortRef(spareId); }
+      else if (driverName) { title = driverName; reference = driverIdentifier ? `#${driverIdentifier}` : shortRef(spareId); }
+      else if (driverIdentifier) { title = `Driver #${driverIdentifier}`; reference = shortRef(spareId); }
+      // The title already carries the short reference; a second copy beside
+      // it would say the same thing twice.
+      else { title = `${noun} ${shortRef(key)}`; reference = null; }
       return {
         key,
         title,
         reference,
+        referenceTitle: spareId ? `Spare ${noun.toLowerCase()} ${spareId}` : null,
         open: false,
         ...summarize(members),
         rows: members,
@@ -421,8 +432,8 @@ function GroupRows({ group, groupBy, columns, review }: { group: DutyGroup; grou
       <tr className="departure-band">
         <td colSpan={columns.length}>
           <div className="departure-band-line">
-            <strong>{group.title}</strong>
-            {group.reference ? <span className="mono-ref">{group.reference}</span> : null}
+            <strong title={group.referenceTitle ?? undefined}>{group.title}</strong>
+            {group.reference ? <span className="mono-ref" title={group.referenceTitle ?? undefined}>{group.reference}</span> : null}
             <span>{meta}</span>
             {groupBy === "date" && group.open ? <span className="pill-sm pill-accent">Not settled</span> : null}
             {groupBy !== "date" && flagged >= 2 ? <span className="pill-sm pill-warning">Repeat</span> : null}
