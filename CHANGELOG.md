@@ -5,6 +5,16 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.139] - 2026-09-07
+
+- **Performance Standards is a master-detail workspace.** The catalog was a table with the editors stacked underneath it, so selecting a standard pushed the thing being edited below the fold and every change meant scrolling down to the form and back up to the list. List and detail now sit side by side, both `position: sticky` and capped at `calc(100vh - 24px)`, so the page scrolls only far enough to bring the workspace up and from then on each pane scrolls inside itself.
+- **A submenu per standard: Details, Penalty bands, Assignment.** One long form became three sections. The governing bands stay visible in the detail header whichever section is open, because verifying them is usually why the page was opened. Bands and Assignment are disabled for a standard that has not been saved yet.
+- **The catalog is searchable and filterable** - scored on this Agreement, not assigned, measured automatically, entered by hand - and each row leads with the standard's name, its assignment state, and whether anything measures it.
+- **Assignment moved out of the catalog row** into its own section with effective dates and a note. Unassigning stays an end date rather than a deletion: a month that already scored the standard has to keep resolving what it scored.
+- **DELETE /performance-standards/{id}**, refused with 409 when the standard is referenced by a compliance occurrence, a hand-entered figure or an assessment period - naming which, and pointing at retirement instead. Tiers and Agreement assignments go with it, since they describe the standard rather than recording anything scored. A Retire action prefills an end date for the case delete cannot serve.
+- **The Performance Agreement collapses to one line** unless it is being edited; it was 240px of static explanation above the work.
+
+
 ## [1.5.138] - 2026-09-07
 
 - **`resolver_key` is real: the compute keys on it, and the console picks from a registry.** The column has existed since migration 030 and was referenced by no code at all - `assess.ts` branched on `standard.code === "OTP_FIXED_ROUTE"`, so the catalog advertised a resolver registry that did not exist and an automated standard meant editing the compute rather than adding a row. `lib/assessment/resolvers/` now holds the entries, the OTP measurement moved into one, and `GET /performance-standards` serves the registry so the console offers the keys this deployment actually answers to.
