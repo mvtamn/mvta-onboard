@@ -1,4 +1,8 @@
--- Migration 096: On-Demand Departures (Spare duty start tracking).
+-- Migration 096b: On-Demand Departures (Spare duty start tracking).
+--
+-- Suffixed because two branches both took 096 on 2026-09-05. 096a is the
+-- Dispatch Log's verification audit trail, which reached main first. Both
+-- are applied on dev; see 096a for why neither was renumbered to the end.
 --
 -- The on-demand half of garage departure. ADR 0028 scopes the concept to one
 -- source per service type: Avail Pullout (FixedRouteDepartures, migration 013)
@@ -47,4 +51,4 @@ IF NOT EXISTS (
   CREATE INDEX IX_OnDemandDepartures_ServiceDate ON dbo.OnDemandDepartures (service_date, departure_scheduled);
 GO
 
-PRINT 'Migration 096 applied: OnDemandDepartures created.';
+PRINT 'Migration 096b applied: OnDemandDepartures created.';

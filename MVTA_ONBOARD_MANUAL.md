@@ -379,7 +379,7 @@ July 26, 2026.
 
 The table above is the phase-1 set only. The full ordered list is the contents
 of `functions-restapi/sql/`, which now runs past migration 100; garage
-departures depend on 013 (`FixedRouteDepartures`), 096 (`OnDemandDepartures`),
+departures depend on 013 (`FixedRouteDepartures`), 096b (`OnDemandDepartures`),
 097 (compliance source discriminator), 099 (Spare fleet number), and 100
 (Spare driver name).
 

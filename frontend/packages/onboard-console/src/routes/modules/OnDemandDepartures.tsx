@@ -225,7 +225,7 @@ export function OnDemandDepartures() {
           !diag.configured
             ? "Spare duty departures are not enabled yet (ON_DEMAND_DEPARTURES_ENABLED and SPARE_API_KEY)."
             : !diag.table_ready
-              ? "Departure history is not connected: OnDemandDepartures is missing, so no duty has been recorded yet. Apply migration 096."
+              ? "Departure history is not connected: OnDemandDepartures is missing, so no duty has been recorded yet. Apply migration 096b."
               : rows.length === 0
                 ? "Feed enabled but no duty departures have been logged yet in this window."
                 : null,

@@ -1,6 +1,6 @@
 -- Migration 100: the driver's name on an on-demand departure.
 --
--- OnDemandDepartures (migration 096) stores Spare's driver id, an opaque key,
+-- OnDemandDepartures (migration 096b) stores Spare's driver id, an opaque key,
 -- and the console showed it as such while the fixed-route view shows Avail's
 -- operator name and badge. Reviewing garage departures is reviewing an
 -- operator's departures, so the two views should name them alike.
@@ -14,7 +14,7 @@
 -- Re-runnable. Run once against the live database (see HANDOFF section 5.7).
 
 IF OBJECT_ID('dbo.OnDemandDepartures', 'U') IS NULL
-  THROW 50100, 'Migration 100 requires OnDemandDepartures (migration 096).', 1;
+  THROW 50100, 'Migration 100 requires OnDemandDepartures (migration 096b).', 1;
 GO
 
 IF COL_LENGTH('dbo.OnDemandDepartures', 'driver_name') IS NULL
