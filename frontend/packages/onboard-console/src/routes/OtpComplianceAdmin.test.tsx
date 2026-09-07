@@ -45,10 +45,17 @@ describe("OTP compliance administration", () => {
   it("seeds the tuner slider from the saved threshold, not the built-in default", async () => {
     render(<OtpComplianceAdmin />);
 
+    // "Currently applied" renders straight from the fetched threshold, but the
+    // slider follows it from an effect, so it is still showing the 15% default
+    // in the commit that first paints "Currently applied (25%)". Reading the
+    // slider synchronously off the back of that await is a race - it passed
+    // only when the effect's re-render happened to flush inside the findBy
+    // poll. Await the seeded values themselves; the point of the test is that
+    // they arrive at all.
     expect(await screen.findByText("Currently applied (25%)")).toBeInTheDocument();
-    expect(screen.getByText("Preview threshold: 25.0%")).toBeInTheDocument();
+    expect(await screen.findByText("Preview threshold: 25.0%")).toBeInTheDocument();
     // Only the 44.1%-late stop clears a 25% early/late share.
-    expect(screen.getByText("At preview threshold (25.0%)")).toBeInTheDocument();
+    expect(await screen.findByText("At preview threshold (25.0%)")).toBeInTheDocument();
   });
 
   it("no longer offers Administration or Threshold Tuner inside the OTP module", async () => {
