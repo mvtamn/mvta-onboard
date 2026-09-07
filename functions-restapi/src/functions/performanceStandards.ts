@@ -233,3 +233,72 @@ app.http("performanceStandardTiersPut", {
     }
   },
 });
+
+app.http("performanceStandardDelete", {
+  route: "performance-standards/{id}",
+  methods: ["DELETE"],
+  authLevel: "anonymous",
+  handler: async (request: HttpRequest, context: InvocationContext) => {
+    const auth = requireRole(request, ADMIN_ROLES);
+    if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
+    const id = request.params.id;
+    if (!isGuid(id)) return { status: 400, jsonBody: { error: "Invalid standard id" } };
+
+    const pool = await getPool();
+    const tx = new sql.Transaction(pool);
+    try {
+      await tx.begin();
+      const standardReq = new sql.Request(tx);
+      standardReq.input("id", sql.UniqueIdentifier, id);
+      const standard = await standardReq.query<{ code: string; name: string }>(`SELECT code,name FROM ContractorPerformanceStandards WITH (UPDLOCK,HOLDLOCK) WHERE id=@id`);
+      if (!standard.recordset[0]) { await tx.rollback(); return { status: 404, jsonBody: { error: "Standard not found" } }; }
+
+      // Deleting is only ever for a standard nobody has measured against. Once
+      // an occurrence, a hand-entered figure or a period snapshot names it,
+      // removing the row would orphan a scored month - and a month that was
+      // issued to the contractor has to keep resolving what produced its
+      // numbers. Retiring with an effective_end_date is the answer there, and
+      // the error says so rather than leaving the administrator guessing.
+      const usesReq = new sql.Request(tx);
+      usesReq.input("id", sql.UniqueIdentifier, id);
+      const uses = await usesReq.query<{ occurrences: number; metrics: number; periods: number }>(`
+        SELECT
+          (SELECT COUNT(*) FROM ComplianceOccurrences WHERE standard_id=@id) occurrences,
+          (SELECT COUNT(*) FROM ManualMetricEntries WHERE standard_id=@id) metrics,
+          (SELECT COUNT(*) FROM AssessmentPeriodStandards WHERE standard_id=@id) periods
+      `);
+      const used = uses.recordset[0];
+      const blocking = [
+        used.occurrences && `${used.occurrences} compliance occurrence${used.occurrences === 1 ? "" : "s"}`,
+        used.metrics && `${used.metrics} monthly figure${used.metrics === 1 ? "" : "s"}`,
+        used.periods && `${used.periods} assessment period${used.periods === 1 ? "" : "s"}`,
+      ].filter(Boolean);
+      if (blocking.length) {
+        await tx.rollback();
+        return {
+          status: 409,
+          jsonBody: {
+            error: `${standard.recordset[0].name} has been assessed against and cannot be deleted: it is referenced by ${blocking.join(", ")}. Retire it with an end date instead, which stops it scoring future months while keeping the ones it already scored intact.`,
+            references: used,
+          },
+        };
+      }
+
+      // Tiers and agreement assignments describe the standard rather than
+      // recording anything scored, so they go with it.
+      const purge = new sql.Request(tx);
+      purge.input("id", sql.UniqueIdentifier, id);
+      await purge.query(`
+        IF OBJECT_ID('dbo.AgreementStandards','U') IS NOT NULL DELETE FROM AgreementStandards WHERE standard_id=@id;
+        DELETE FROM ContractorStandardTiers WHERE standard_id=@id;
+        DELETE FROM ContractorPerformanceStandards WHERE id=@id;
+      `);
+      await tx.commit();
+      return { status: 200, jsonBody: { id, code: standard.recordset[0].code } };
+    } catch (error) {
+      try { await tx.rollback(); } catch { /* the transaction is already resolved */ }
+      context.error("DELETE /performance-standards/{id} failed", error);
+      return { status: 500, jsonBody: { error: "Internal server error" } };
+    }
+  },
+});

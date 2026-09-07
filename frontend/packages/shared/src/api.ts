@@ -1247,6 +1247,12 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<{ standard_id: string; agreement_id: string | null; effective_start_date: string; tier_count: number }>(
         `/api/performance-standards/${id}/tiers`, { method: "PUT", body: JSON.stringify(input) }, true);
     },
+    // Only ever succeeds for a standard nothing has been assessed against;
+    // one that has scored a month is retired with an end date instead, and the
+    // 409 says which references blocked it.
+    deletePerformanceStandard(id: string) {
+      return request<{ id: string; code: string }>(`/api/performance-standards/${id}`, { method: "DELETE" }, true);
+    },
     getPerformanceAgreements() {
       return request<{
         agreements: import("./types.js").PerformanceAgreementRecord[];
