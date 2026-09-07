@@ -51,13 +51,23 @@ describe("Performance Standards administration", () => {
   });
   afterEach(cleanup);
 
-  it("shows each standard's governing band, not just its penalty amount", async () => {
+  it("states each band as a sentence, not as two raw bounds", async () => {
     render(<PerformanceStandardsAdmin />);
-    // The read-only page this replaces showed "tier1: $1,500" and nothing
-    // about the 75-80% band that triggers it, so a manager could not verify
-    // the number from the console.
-    expect(await screen.findByText(/tier1 75…80: \$1,500 flat/)).toBeInTheDocument();
-    expect(screen.getByText(/meets 85…–: no penalty/)).toBeInTheDocument();
+    // The page this replaces showed "tier1 75…80: $1,500 flat", which leaves a
+    // reader to work out which end is inclusive and what "flat" multiplies by.
+    expect(await screen.findByText("75% to under 80% → $1,500 for the month")).toBeInTheDocument();
+    expect(screen.getByText("85% or above → no penalty")).toBeInTheDocument();
+    expect(screen.getByText("Tier 1 penalty")).toBeInTheDocument();
+  });
+
+  it("leads with the standard's name and keeps its code as a reference", async () => {
+    render(<PerformanceStandardsAdmin />);
+    const row = (await screen.findByText("On-Time Performance (Fixed Route)")).closest("tr")!;
+    // The code still has to be findable - resolvers and operational SQL match
+    // on it - but it is no longer the first thing a reader has to decode.
+    expect(within(row).getByText("OTP_FIXED_ROUTE")).toHaveClass("mono-ref");
+    expect(within(row).getByText("Monthly value")).toBeInTheDocument();
+    expect(within(row).getByText(/percent · higher is better/)).toBeInTheDocument();
   });
 
   it("names an automated standard that has no resolver behind it", async () => {
@@ -111,7 +121,7 @@ describe("Performance Standards administration", () => {
     fireEvent.click(await screen.findByText("OTP_FIXED_ROUTE"));
     const effective = screen.getByText("Effective from", { selector: ".standards-scope span" }).closest("label")!;
     fireEvent.change(within(effective).getByDisplayValue(/\d{4}-\d{2}-\d{2}/), { target: { value: "2026-07-01" } });
-    fireEvent.click(screen.getByText("Save tier bands"));
+    fireEvent.click(screen.getByText("Save penalty bands"));
     expect(putStandardTiers).toHaveBeenCalledWith(OTP.id, expect.objectContaining({
       agreement_id: null, effective_start_date: "20260701",
     }));
@@ -121,9 +131,67 @@ describe("Performance Standards administration", () => {
     render(<PerformanceStandardsAdmin />);
     fireEvent.click(await screen.findByText("OTP_FIXED_ROUTE"));
     fireEvent.change(screen.getByDisplayValue("85"), { target: { value: "88" } });
-    fireEvent.click(screen.getByText("Save tier bands"));
+    fireEvent.click(screen.getByText("Save penalty bands"));
     const ladder = putStandardTiers.mock.calls[0][1] as { tiers: { bound_low: number | null }[] };
     expect(ladder.tiers[0].bound_low).toBeCloseTo(0.88);
+  });
+
+  it("edits a band by criteria rather than by two unlabelled bounds", async () => {
+    render(<PerformanceStandardsAdmin />);
+    fireEvent.click(await screen.findByText("OTP_FIXED_ROUTE"));
+    const criteria = screen.getAllByLabelText("Applies when the value is");
+    // The seeded OTP ladder: 85%+ meets, 75-80 is tier 1.
+    expect(criteria[0]).toHaveValue("at_or_above");
+    expect(criteria[1]).toHaveValue("between");
+    // "Up to, not including" is the whole point - bound_high is exclusive, and
+    // two boxes labelled From and To never said so.
+    expect(screen.getAllByLabelText(/Up to, not including/)[0]).toBeInTheDocument();
+  });
+
+  it("clears the bound a criteria change stops using", async () => {
+    // A leftover upper bound would keep narrowing a band the administrator
+    // believes they widened to everything at or above a number.
+    render(<PerformanceStandardsAdmin />);
+    fireEvent.click(await screen.findByText("OTP_FIXED_ROUTE"));
+    const criteria = screen.getAllByLabelText("Applies when the value is");
+    fireEvent.change(criteria[1], { target: { value: "at_or_above" } });
+    fireEvent.click(screen.getByText("Save penalty bands"));
+    const ladder = putStandardTiers.mock.calls[0][1] as { tiers: { bound_low: number | null; bound_high: number | null }[] };
+    // The 75-80% band becomes "75% or above": the low bound it already had is
+    // kept, the upper one it no longer uses is cleared.
+    expect(ladder.tiers[1].bound_high).toBeNull();
+    expect(ladder.tiers[1].bound_low).toBeCloseTo(0.75);
+  });
+
+  it("offers the condition codes the catalog already uses, on the standards that can match one", async () => {
+    // A free-text qualifier that matches no occurrence scores nothing, silently.
+    const occurrenceStandard = { ...ORPHAN, id: "50000000-0000-4000-8000-000000000003", code: "MISSED_TRIPS_FR", name: "Missed Trips", standard_type: "occurrence" as const, unit_label: "occurrences", resolver_key: "MISSED_TRIPS_FR" };
+    catalog = {
+      ...catalog, standards: [occurrenceStandard, OTP],
+      tiers: [...TIERS, { ...TIERS[1], id: "t3", standard_id: occurrenceStandard.id, tier_order: 1, bound_low: null, bound_high: null, qualifier_code: "LAST_TRIP_OF_DAY" }],
+    };
+    render(<PerformanceStandardsAdmin />);
+    fireEvent.click(await screen.findByText("MISSED_TRIPS_FR"));
+    expect(screen.getAllByLabelText(/Condition/)[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Only when: Last trip of day").length).toBeGreaterThan(0);
+  });
+
+  it("offers no condition on a monthly-value standard, where one could never match", async () => {
+    // assess.ts matches a threshold band with no qualifier, and matchTier then
+    // considers unqualified bands only - so a condition here would build a band
+    // that silently never scores.
+    render(<PerformanceStandardsAdmin />);
+    fireEvent.click(await screen.findByText("OTP_FIXED_ROUTE"));
+    expect(screen.queryByLabelText(/Condition/)).not.toBeInTheDocument();
+  });
+
+  it("names a gap between bands before the ladder is saved", async () => {
+    // Attachment G's own bands are not always contiguous, so this warns rather
+    // than blocks - but an unintended gap scores a month at the wrong tier.
+    render(<PerformanceStandardsAdmin />);
+    fireEvent.click(await screen.findByText("OTP_FIXED_ROUTE"));
+    fireEvent.change(screen.getAllByLabelText(/From \(included\)/)[0], { target: { value: "60" } });
+    expect(await screen.findByText(/Nothing scores between/)).toBeInTheDocument();
   });
 
   it("lets a non-administrator read the catalog but change nothing", async () => {
@@ -153,9 +221,10 @@ describe("Performance Standards administration", () => {
     catalog = { ...catalog, agreements: [], assignments: [], diagnostics: { table_ready: true, assignments_ready: false } };
     render(<PerformanceStandardsAdmin />);
     fireEvent.click(await screen.findByText("OTP_FIXED_ROUTE"));
-    expect(screen.queryByText("Save tier bands")).not.toBeInTheDocument();
+    expect(screen.queryByText("Save penalty bands")).not.toBeInTheDocument();
     // The bands stay readable - the point is that the month's numbers can
-    // still be verified, only not changed.
-    expect(screen.getByText(/tier1 75…80: \$1,500 flat/)).toBeInTheDocument();
+    // still be verified, only not changed. The sentence appears twice by
+    // design: once in the catalog row, once as the editor's readout.
+    expect(screen.getAllByText("75% to under 80% → $1,500 for the month").length).toBe(2);
   });
 });

@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   AgreementStandardAssignment, AgreementStandardInput, ContractorPerformanceStandard, ContractorRecord,
-  ContractorStandardTier, PerformanceAgreementRecord, PerformanceStandardInput, StandardPenaltyBasis,
+  ContractorStandardTier, PerformanceAgreementRecord, PerformanceStandardInput,
   StandardTierInput,
 } from "@mvta/shared";
+import {
+  BAND_RANGES, bandRangeOf, boundsForRange, boundToInput, CATALOG_UNITS, describeBand,
+  inputToBound, isRatioUnit, ladderWarnings, PENALTY_BASES, qualifierLabel,
+  TIER_LABELS, unitNoun, type BandRange,
+} from "./performanceStandardsVocabulary.js";
 import { api } from "../config.js";
 import { useAuth } from "../auth/AuthContext.js";
 import "./modules/assessment/assessment.css";
@@ -23,28 +28,12 @@ import "./performanceStandards.css";
 // version; periods already opened scored against their own snapshot and do not
 // move.
 
-const PENALTY_BASES: StandardPenaltyBasis[] = ["none", "flat", "per_unit", "per_unit_per_day", "per_day", "per_week"];
-const TIER_LABELS = ["meets", "warning", "tier1", "tier2"] as const;
-
-const money = (value: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
 const toInputDate = (value: string | null | undefined) => {
   const digits = value?.replace(/\D/g, "") ?? "";
   return digits.length === 8 ? `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}` : "";
 };
 const toServiceDate = (value: string) => value.replace(/-/g, "");
 const today = () => toServiceDate(new Date().toISOString().slice(0, 10));
-
-// A percentage standard stores its bands as ratios (0.85), because that is what
-// the resolvers compute. Operators think in percent, so the editor converts at
-// the edge and nowhere else.
-const isRatioUnit = (standard: ContractorPerformanceStandard) => standard.unit_label === "percent" || standard.unit_label === "%";
-const boundIn = (value: number | null, ratio: boolean) => value === null ? "" : String(ratio ? Number((value * 100).toFixed(4)) : value);
-const boundOut = (value: string, ratio: boolean): number | null => {
-  if (value.trim() === "") return null;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return null;
-  return ratio ? parsed / 100 : parsed;
-};
 
 const EMPTY_STANDARD: PerformanceStandardInput = {
   code: "", name: "", description: "", standard_type: "occurrence", priority: "Medium",
@@ -104,6 +93,14 @@ export function PerformanceStandardsAdmin() {
 
   const selected = standards.find((standard) => standard.id === selectedId) ?? null;
   const agreement = agreements.find((record) => record.id === agreementId) ?? null;
+  // Condition codes are a small, contract-derived vocabulary (LAST_TRIP_OF_DAY,
+  // REPORTING_LATE). Offering the ones in use as a picker keeps a new band
+  // matching occurrences that already carry the marker, instead of a typo that
+  // silently matches nothing.
+  const knownQualifiers = useMemo(
+    () => [...new Set(tiers.map((tier) => tier.qualifier_code).filter((code): code is string => Boolean(code)))].sort(),
+    [tiers],
+  );
   const assignmentFor = useMemo(() => {
     const index = new Map<string, AgreementStandardAssignment>();
     for (const row of assignments) if (row.agreement_id === agreementId) index.set(row.standard_id, row);
@@ -162,15 +159,21 @@ export function PerformanceStandardsAdmin() {
           <div className="assessment-table-wrap">
             <table className="data">
               <thead><tr>
-                <th>Code / standard</th><th>Type</th><th>Priority</th><th>Source</th>
-                <th>Tier bands</th><th>Scored here</th>
+                <th>Standard</th><th>Measures</th><th>Priority</th><th>Source</th>
+                <th>Penalty bands</th><th>Scored here</th>
               </tr></thead>
               <tbody>
                 {standards.map((standard) => {
                   const assignment = assignmentFor.get(standard.id);
                   return <tr key={standard.id} className={`assessment-clickable${standard.id === selectedId ? " standards-selected" : ""}`} onClick={() => edit(standard)}>
-                    <td><strong>{standard.code}</strong><small>{standard.name}</small></td>
-                    <td>{standard.standard_type}</td>
+                    <td>
+                      <strong>{standard.name}</strong>
+                      <small className="mono-ref">{standard.code}</small>
+                    </td>
+                    <td>
+                      {standard.standard_type === "occurrence" ? "Counted events" : "Monthly value"}
+                      <small>{standard.unit_label}{standard.direction === "higher_is_better" ? " · higher is better" : " · lower is better"}</small>
+                    </td>
                     <td>{standard.priority}</td>
                     <td>
                       {standard.measurement_source ?? "manual"}
@@ -192,7 +195,7 @@ export function PerformanceStandardsAdmin() {
                               assignment_note: assignment?.assignment_note ?? null,
                             };
                             void run(() => api.putAgreementStandards(agreement.id, [next]),
-                              `${standard.code} is ${event.target.checked ? "now scored" : "no longer scored"} on this Agreement.`);
+                              `${standard.name} is ${event.target.checked ? "now scored" : "no longer scored"} on this Agreement.`);
                           }}
                         />
                         <span>{assignment ? (assignment.is_scored ? "Scored" : "Dormant") : "Unassigned"}</span>
@@ -215,6 +218,7 @@ export function PerformanceStandardsAdmin() {
         {selected && <TierEditor
           key={`tiers-${selected.id}-${agreementId}`}
           standard={selected} tiers={tiers} agreement={agreement} canEdit={isAdmin && ready} busy={busy}
+          knownQualifiers={knownQualifiers}
           onSave={(input) => void run(() => api.putStandardTiers(selected.id, input), `${selected.code} tier bands saved.`)}
         />}
       </div>
@@ -235,17 +239,15 @@ function resolveLadder(standard: ContractorPerformanceStandard, tiers: Contracto
 
 function TierSummary({ standard, tiers, agreementId }: { standard: ContractorPerformanceStandard; tiers: ContractorStandardTier[]; agreementId: string }) {
   const { ladder, source } = resolveLadder(standard, tiers, agreementId);
-  if (!ladder.length) return <small className="standards-flag">no bands configured</small>;
-  const ratio = isRatioUnit(standard);
+  if (!ladder.length) return <small className="standards-flag">No bands configured</small>;
   return <>
     {source === "agreement" && <small className="standards-override">Agreement override</small>}
-    <small>{ladder.map((tier) => {
-      const low = tier.bound_low === null ? "" : boundIn(tier.bound_low, ratio);
-      const high = tier.bound_high === null ? "" : boundIn(tier.bound_high, ratio);
-      const band = low || high ? ` ${low || "–"}…${high || "–"}` : "";
-      const charge = tier.penalty_basis === "none" ? "no penalty" : `${money(Number(tier.penalty_amount))} ${tier.penalty_basis.replaceAll("_", " ")}`;
-      return `${tier.tier_label}${band}: ${charge}${tier.triggers_cap ? " · CAP" : ""}`;
-    }).join(" · ")}</small>
+    <ul className="standards-band-list">
+      {ladder.map((tier) => <li key={tier.id}>
+        <span className={`assessment-tier ${tier.tier_label}`}>{TIER_LABELS.find((t) => t.value === tier.tier_label)?.label ?? tier.tier_label}</span>
+        <small>{describeBand(tier, standard)}</small>
+      </li>)}
+    </ul>
   </>;
 }
 
@@ -338,8 +340,8 @@ function StandardEditor({ draft, setDraft, standardId, canEdit, busy, onCancel, 
     <div className="assessment-section-head">
       <div>
         <span className="assessment-eyebrow">{isNew ? "New standard" : "Edit standard"}</span>
-        <h3>{isNew ? "Add a performance standard" : draft.code}</h3>
-        <p>An occurrence standard counts events and charges per event. A threshold standard measures a monthly value against bands.</p>
+        <h3>{isNew ? "Add a performance standard" : draft.name || draft.code}</h3>
+        <p>A counted-events standard charges per event as it happens. A monthly-value standard measures one number for the month against bands.</p>
       </div>
       <button className="assessment-manage" onClick={onCancel}>Close</button>
     </div>
@@ -349,9 +351,10 @@ function StandardEditor({ draft, setDraft, standardId, canEdit, busy, onCancel, 
         {!isNew && <small>A standard's code is referenced by resolvers and operational SQL, so it cannot be changed. Retire this one and add a replacement instead.</small>}
       </label>
       <label><span>Name</span><input value={draft.name} disabled={!canEdit} onChange={(event) => set("name", event.target.value)} /></label>
-      <label><span>Type</span>
+      <label><span>What it measures</span>
         <select value={draft.standard_type} disabled={!canEdit} onChange={(event) => set("standard_type", event.target.value as PerformanceStandardInput["standard_type"])}>
-          <option value="occurrence">Occurrence-based</option><option value="threshold">Threshold-based</option>
+          <option value="occurrence">Counted events — each one is logged and charged</option>
+          <option value="threshold">Monthly value — one number scored against bands</option>
         </select>
       </label>
       <label><span>Priority</span>
@@ -359,15 +362,29 @@ function StandardEditor({ draft, setDraft, standardId, canEdit, busy, onCancel, 
           {["High", "Medium", "Low", "NA"].map((value) => <option key={value} value={value}>{value}</option>)}
         </select>
       </label>
-      <label><span>Direction</span>
+      <label><span>Good performance is</span>
         <select value={draft.direction} disabled={!canEdit} onChange={(event) => set("direction", event.target.value as PerformanceStandardInput["direction"])}>
-          <option value="lower_is_better">Lower is better</option><option value="higher_is_better">Higher is better</option>
+          <option value="lower_is_better">Fewer / lower — a rising number is worse</option>
+          <option value="higher_is_better">More / higher — a falling number is worse</option>
         </select>
       </label>
-      <label><span>Unit</span><input value={draft.unit_label} disabled={!canEdit} onChange={(event) => set("unit_label", event.target.value)} placeholder="occurrences, percent, miles" /></label>
+      <label><span>Unit</span>
+        <select
+          value={CATALOG_UNITS.some((unit) => unit.value === draft.unit_label) ? draft.unit_label : "__custom"}
+          disabled={!canEdit}
+          onChange={(event) => set("unit_label", event.target.value === "__custom" ? "" : event.target.value)}
+        >
+          {CATALOG_UNITS.map((unit) => <option key={unit.value} value={unit.value}>{unit.label}</option>)}
+          <option value="__custom">Something else…</option>
+        </select>
+        {!CATALOG_UNITS.some((unit) => unit.value === draft.unit_label) &&
+          <input value={draft.unit_label} disabled={!canEdit} autoFocus placeholder="Name the unit" onChange={(event) => set("unit_label", event.target.value)} />}
+        <small>Percent is stored as a ratio and shown as a percentage everywhere.</small>
+      </label>
       <label><span>Measurement</span>
         <select value={draft.measurement_source} disabled={!canEdit} onChange={(event) => set("measurement_source", event.target.value as PerformanceStandardInput["measurement_source"])}>
-          <option value="manual">Manual entry</option><option value="auto">Automated resolver</option>
+          <option value="manual">Entered by hand each month</option>
+          <option value="auto">Measured automatically from a feed</option>
         </select>
       </label>
       <label><span>Resolver key</span>
@@ -393,12 +410,12 @@ function StandardEditor({ draft, setDraft, standardId, canEdit, busy, onCancel, 
   </section>;
 }
 
-function TierEditor({ standard, tiers, agreement, canEdit, busy, onSave }: {
+function TierEditor({ standard, tiers, agreement, canEdit, busy, knownQualifiers, onSave }: {
   standard: ContractorPerformanceStandard; tiers: ContractorStandardTier[]; agreement: PerformanceAgreementRecord | null;
-  canEdit: boolean; busy: boolean;
+  canEdit: boolean; busy: boolean; knownQualifiers: string[];
   onSave: (input: { agreement_id: string | null; effective_start_date: string; tiers: StandardTierInput[] }) => void;
 }) {
-  const ratio = isRatioUnit(standard);
+  const unit = standard.unit_label;
   const [scope, setScope] = useState<"catalog" | "agreement">("catalog");
   const [effective, setEffective] = useState(toInputDate(today()));
   const scopeId = scope === "agreement" ? agreement?.id ?? null : null;
@@ -415,16 +432,17 @@ function TierEditor({ standard, tiers, agreement, canEdit, busy, onSave }: {
 
   const update = (index: number, patch: Partial<StandardTierInput>) =>
     setLadder(ladder.map((tier, position) => position === index ? { ...tier, ...patch } : tier));
+  const warnings = ladderWarnings(ladder.map((tier) => ({ ...tier, tier_label: tier.tier_label })), unit);
 
   return <section className="assessment-card standards-editor">
     <div className="assessment-section-head">
       <div>
-        <span className="assessment-eyebrow">Tier bands</span>
-        <h3>{standard.code} penalty ladder</h3>
+        <span className="assessment-eyebrow">{standard.name}</span>
+        <h3>Penalty bands</h3>
         <p>
           {standard.standard_type === "threshold"
-            ? `Bands are read against the month's measured value in ${standard.unit_label}. A band with no lower bound runs to negative infinity; no upper bound runs to infinity.`
-            : "Each confirmed occurrence is matched to a band. A qualifier code narrows a band to occurrences carrying that qualifier."}
+            ? `Each band is matched against the month's measured value in ${unit}. The lower bound counts as inside the band; the upper bound does not.`
+            : `Each confirmed occurrence is matched to a band. A band with no value range covers every ${unitNoun(unit)}; add a condition to narrow one to occurrences carrying a marker.`}
         </p>
       </div>
       <div className="standards-scope">
@@ -440,35 +458,101 @@ function TierEditor({ standard, tiers, agreement, canEdit, busy, onSave }: {
 
     {scope === "agreement" && <div className="standards-hint">An Agreement ladder replaces the catalog ladder for this standard entirely — every band, not just the ones set here.</div>}
 
-    <div className="assessment-table-wrap">
-      <table className="data">
-        <thead><tr>
-          <th>Band</th><th>From ({ratio ? "%" : standard.unit_label})</th><th>To</th><th>Qualifier</th>
-          <th>Charge</th><th>Amount</th><th>CAP</th><th />
-        </tr></thead>
-        <tbody>
-          {ladder.map((tier, index) => <tr key={index}>
-            <td><select value={tier.tier_label} disabled={!canEdit} onChange={(event) => update(index, { tier_label: event.target.value as StandardTierInput["tier_label"] })}>
-              {TIER_LABELS.map((label) => <option key={label} value={label}>{label}</option>)}
-            </select></td>
-            <td><input inputMode="decimal" value={boundIn(tier.bound_low, ratio)} disabled={!canEdit} onChange={(event) => update(index, { bound_low: boundOut(event.target.value, ratio) })} placeholder="none" /></td>
-            <td><input inputMode="decimal" value={boundIn(tier.bound_high, ratio)} disabled={!canEdit} onChange={(event) => update(index, { bound_high: boundOut(event.target.value, ratio) })} placeholder="none" /></td>
-            <td><input value={tier.qualifier_code ?? ""} disabled={!canEdit} onChange={(event) => update(index, { qualifier_code: event.target.value || null })} placeholder="—" /></td>
-            <td><select value={tier.penalty_basis} disabled={!canEdit} onChange={(event) => update(index, { penalty_basis: event.target.value as StandardPenaltyBasis })}>
-              {PENALTY_BASES.map((basis) => <option key={basis} value={basis}>{basis.replaceAll("_", " ")}</option>)}
-            </select></td>
-            <td><input type="number" min={0} step={50} value={tier.penalty_amount} disabled={!canEdit || tier.penalty_basis === "none"} onChange={(event) => update(index, { penalty_amount: Number(event.target.value) })} /></td>
-            <td><input type="checkbox" checked={tier.triggers_cap} disabled={!canEdit} onChange={(event) => update(index, { triggers_cap: event.target.checked })} /></td>
-            <td>{canEdit && <button className="assessment-link-button" onClick={() => setLadder(ladder.filter((_, position) => position !== index))}>Remove</button>}</td>
-          </tr>)}
-          {!ladder.length && <tr><td colSpan={8}><small>No bands. A scored standard with no bands charges nothing.</small></td></tr>}
-        </tbody>
-      </table>
+    <div className="standards-bands">
+      {ladder.map((tier, index) => {
+        const range = bandRangeOf(tier);
+        const setRange = (next: BandRange) => update(index, boundsForRange(next, tier.bound_low, tier.bound_high));
+        return <div className="standards-band" key={index}>
+          <div className="standards-band-head">
+            <label><span>Outcome</span>
+              <select value={tier.tier_label} disabled={!canEdit} onChange={(event) => update(index, { tier_label: event.target.value as StandardTierInput["tier_label"] })}>
+                {TIER_LABELS.map((label) => <option key={label.value} value={label.value}>{label.label}</option>)}
+              </select>
+            </label>
+            {canEdit && <button className="assessment-link-button" onClick={() => setLadder(ladder.filter((_, position) => position !== index))}>Remove band</button>}
+          </div>
+
+          <div className="standards-band-criteria">
+            <label><span>Applies when the value is</span>
+              <select value={range} disabled={!canEdit} onChange={(event) => setRange(event.target.value as BandRange)}>
+                {BAND_RANGES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+            {(range === "at_or_above" || range === "between") && <label>
+              <span>{range === "between" ? "From (included)" : "At or above"}</span>
+              <div className="standards-measure">
+                <input inputMode="decimal" value={boundToInput(tier.bound_low, unit)} disabled={!canEdit}
+                  onChange={(event) => update(index, { bound_low: inputToBound(event.target.value, unit) })} />
+                <span>{isRatioUnit(unit) ? "%" : unit}</span>
+              </div>
+            </label>}
+            {(range === "under" || range === "between") && <label>
+              <span>Up to, not including</span>
+              <div className="standards-measure">
+                <input inputMode="decimal" value={boundToInput(tier.bound_high, unit)} disabled={!canEdit}
+                  onChange={(event) => update(index, { bound_high: inputToBound(event.target.value, unit) })} />
+                <span>{isRatioUnit(unit) ? "%" : unit}</span>
+              </div>
+            </label>}
+            {/* Only occurrence standards can carry a condition. assess.ts
+                matches a threshold band with matchTier(tiers, value, direction)
+                and no qualifier, and matchTier then considers unqualified bands
+                only - so a condition on a monthly-value standard produces a
+                band that can never score. Offering the control there would be
+                offering a silent dead end. */}
+            {standard.standard_type === "occurrence" && <label><span>Condition</span>
+              <select value={tier.qualifier_code ?? ""} disabled={!canEdit}
+                onChange={(event) => update(index, { qualifier_code: event.target.value || null })}>
+                <option value="">Any {unitNoun(unit)}</option>
+                {knownQualifiers.map((code) => <option key={code} value={code}>Only when: {qualifierLabel(code)}</option>)}
+              </select>
+              <small>A condition narrows this band to occurrences carrying that marker.</small>
+            </label>}
+          </div>
+
+          <div className="standards-band-penalty">
+            <label><span>Charge</span>
+              <select value={tier.penalty_basis} disabled={!canEdit} onChange={(event) => update(index, {
+                penalty_basis: event.target.value as StandardTierInput["penalty_basis"],
+                penalty_amount: event.target.value === "none" ? 0 : tier.penalty_amount,
+              })}>
+                {PENALTY_BASES.map((basis) => <option key={basis.value} value={basis.value}>{basis.label}</option>)}
+              </select>
+              <small>{PENALTY_BASES.find((basis) => basis.value === tier.penalty_basis)?.hint}</small>
+            </label>
+            {tier.penalty_basis !== "none" && <label><span>Amount</span>
+              <div className="standards-measure">
+                <span>$</span>
+                <input type="number" min={0} step={50} value={tier.penalty_amount} disabled={!canEdit}
+                  onChange={(event) => update(index, { penalty_amount: Number(event.target.value) })} />
+              </div>
+            </label>}
+            <label className="contractor-active">
+              <input type="checkbox" checked={tier.triggers_cap} disabled={!canEdit} onChange={(event) => update(index, { triggers_cap: event.target.checked })} />
+              <span>Requires a corrective action plan</span>
+            </label>
+          </div>
+
+          {/* The band restated from the values as saved, so the exclusive upper
+              bound and the qualifier are legible before anyone commits money to
+              them. */}
+          <p className="standards-band-readout">{describeBand(tier, standard)}</p>
+        </div>;
+      })}
+      {!ladder.length && <div className="standards-hint">No bands. A scored standard with no bands charges nothing.</div>}
     </div>
 
+    {warnings.length > 0 && <div className="assessment-warning">
+      {warnings.map((warning) => <div key={warning}>{warning}</div>)}
+    </div>}
+
     {canEdit && <div className="standards-tier-actions">
-      <button className="assessment-manage" onClick={() => setLadder([...ladder, { tier_label: "tier1", bound_low: null, bound_high: null, qualifier_code: null, penalty_basis: "per_unit", penalty_amount: 500, triggers_cap: false, notes: null }])}>Add band</button>
-      <button className="btn-primary" disabled={busy || !ladder.length || !effective} onClick={() => onSave({ agreement_id: scopeId, effective_start_date: toServiceDate(effective), tiers: ladder })}>Save tier bands</button>
+      <button className="assessment-manage" onClick={() => setLadder([...ladder, {
+        tier_label: "tier1", bound_low: null, bound_high: null, qualifier_code: null,
+        penalty_basis: standard.standard_type === "occurrence" ? "per_unit" : "flat",
+        penalty_amount: 500, triggers_cap: false, notes: null,
+      }])}>Add band</button>
+      <button className="btn-primary" disabled={busy || !ladder.length || !effective} onClick={() => onSave({ agreement_id: scopeId, effective_start_date: toServiceDate(effective), tiers: ladder })}>Save penalty bands</button>
       <small className="standards-hint">Saving writes a new ladder version effective from this date. Assessment periods already opened keep the bands they were opened with.</small>
     </div>}
   </section>;
