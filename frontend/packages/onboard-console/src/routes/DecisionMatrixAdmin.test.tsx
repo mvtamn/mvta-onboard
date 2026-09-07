@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
+import { ApiError } from "@mvta/shared";
 import { DecisionMatrixAdmin } from "./DecisionMatrixAdmin.js";
 
 vi.mock("../config.js", () => ({ api: { getDecisionMatrixGovernanceQueue: vi.fn(), getDecisionMatrixAudit: vi.fn(), getDecisionMatrixMatchRules: vi.fn(), getDecisionMatrix: vi.fn(), getDecisionMatrixLegacyCandidates: vi.fn() } }));
@@ -68,5 +69,30 @@ describe("Decision Matrix administration", () => {
     expect(await screen.findByRole("button", { name: "Create Draft" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add rule" })).toBeInTheDocument();
     expect(screen.getByText(/No approved Procedure exists yet/i)).toBeInTheDocument();
+  });
+
+  it("names an expired sign-in once, instead of blaming the database in five places", async () => {
+    // What dev actually did on 2026-09-06: silent token renewal failed, every
+    // request went out without an identity, and every endpoint answered 401.
+    const expired = new ApiError(401, "Not authenticated.");
+    vi.mocked(api.getDecisionMatrixGovernanceQueue).mockRejectedValue(expired);
+    vi.mocked(api.getDecisionMatrixAudit).mockRejectedValue(expired);
+    vi.mocked(api.getDecisionMatrixMatchRules).mockRejectedValue(expired);
+    vi.mocked(api.getDecisionMatrixLegacyCandidates).mockRejectedValue(expired);
+    vi.mocked(api.getDecisionMatrix).mockRejectedValue(expired);
+    render(<DecisionMatrixAdmin />);
+    expect(await screen.findByText(/Your sign-in has expired/i)).toBeInTheDocument();
+    // Said once, not once per panel.
+    expect(screen.getAllByText(/Your sign-in has expired/i)).toHaveLength(1);
+    // And never described as a database fault.
+    expect(screen.queryByText(/fault worth investigating/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/not connected/i)).not.toBeInTheDocument();
+  });
+
+  it("still calls a genuine server fault a fault", async () => {
+    vi.mocked(api.getDecisionMatrixAudit).mockRejectedValue(new ApiError(500, "Decision Matrix audit history is temporarily unavailable."));
+    render(<DecisionMatrixAdmin />);
+    expect(await screen.findByText(/fault worth investigating/i)).toBeInTheDocument();
+    expect(screen.queryByText(/sign-in has expired/i)).not.toBeInTheDocument();
   });
 });
