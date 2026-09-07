@@ -14,7 +14,7 @@ import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
 import { agencyServiceDate } from "../lib/missedTripTime";
 import { onDemandDeparturesEnabled } from "../lib/onDemandDepartures";
 import { isJudged, onDemandDepartureOutcome, type OnDemandDepartureOutcome } from "../lib/onDemandDepartureOutcome";
-import { garageDepartureVarianceSeconds, settledServiceDateExclusive } from "./complianceCandidatesPoll";
+import { garageDepartureVarianceSeconds, onDemandDepartureSourceRefSql, settledServiceDateExclusive } from "./complianceCandidatesPoll";
 
 const DEFAULT_TREND_DAYS = 14;
 
@@ -38,6 +38,13 @@ interface OnDemandDepartureRow {
   // departure recorded from either source. The same shape as a fixed-route
   // run with no pullout actual.
   no_departure: boolean;
+  // Where this duty landed in the performance assessment; null when no
+  // occurrence was raised or migration 030 has not run.
+  occurrence_id?: string | null;
+  occurrence_review_status?: string | null;
+  occurrence_attribution?: string | null;
+  occurrence_service_month?: string | null;
+  occurrence_period_status?: string | null;
 }
 
 app.http("onDemandDeparturesList", {
@@ -65,9 +72,9 @@ app.http("onDemandDeparturesList", {
       // Before migration 099 the fleet number is simply absent, and before
       // migration 100 the driver's name is.
       const vehicleIdentifierSql = tableCheck.recordset[0]?.with_vehicle_identifier === 1
-        ? "vehicle_identifier" : "CAST(NULL AS NVARCHAR(64)) AS vehicle_identifier";
+        ? "d.vehicle_identifier" : "CAST(NULL AS NVARCHAR(64)) AS vehicle_identifier";
       const driverLabelSql = tableCheck.recordset[0]?.with_driver_label === 1
-        ? "driver_name, driver_identifier" : "CAST(NULL AS NVARCHAR(128)) AS driver_name, CAST(NULL AS NVARCHAR(64)) AS driver_identifier";
+        ? "d.driver_name, d.driver_identifier" : "CAST(NULL AS NVARCHAR(128)) AS driver_name, CAST(NULL AS NVARCHAR(64)) AS driver_identifier";
       const configured = onDemandDeparturesEnabled() && Boolean(process.env.SPARE_API_KEY?.trim());
       const empty = {
         configured, table_ready: false, record_count: 0, judged_count: 0, late_count: 0, no_departure_count: 0,
@@ -78,21 +85,41 @@ app.http("onDemandDeparturesList", {
         return { status: 200, jsonBody: { departures: [], diagnostics: empty } };
       }
 
+      const occurrencesCheck = await pool.request().query<{ ready: number }>(`
+        SELECT CASE WHEN OBJECT_ID('dbo.ComplianceOccurrences','U') IS NULL THEN 0 ELSE 1 END ready
+      `);
+      const occurrencesReady = occurrencesCheck.recordset[0]?.ready === 1;
+      // Joined on the same source_ref the candidate poll writes, so a duty's
+      // review state here is the one the assessment scores.
+      const occurrenceColumns = occurrencesReady
+        ? `,
+               occ.id AS occurrence_id, occ.review_status AS occurrence_review_status,
+               occ.attribution AS occurrence_attribution, occ.service_month AS occurrence_service_month,
+               period.status AS occurrence_period_status`
+        : "";
+      const occurrenceJoin = occurrencesReady
+        ? `
+        LEFT JOIN ComplianceOccurrences occ ON occ.source_ref = ${onDemandDepartureSourceRefSql()}
+        LEFT JOIN AssessmentPeriods period
+          ON period.contractor_id = occ.contractor_id AND period.service_month = occ.service_month`
+        : "";
+
       const req = pool.request();
       // Agency-local, to match the service_date the poll stores.
       req.input("cutoff_date", sql.Char(8), agencyServiceDate(new Date(), -days).serviceDate);
       req.input("variance_seconds", sql.Int, varianceSeconds);
       const result = await req.query<OnDemandDepartureRow>(`
-        SELECT service_date, duty_id, duty_identifier, driver_id, vehicle_id, ${vehicleIdentifierSql}, ${driverLabelSql}, duty_status,
-               departure_scheduled, scheduled_source, departure_actual, departure_source, updated_at,
-               CASE WHEN departure_scheduled IS NOT NULL AND departure_actual IS NOT NULL
-                 THEN DATEDIFF(SECOND, departure_scheduled, departure_actual) ELSE NULL END AS departure_delta_seconds,
-               CAST(CASE WHEN departure_actual IS NULL AND departure_scheduled IS NOT NULL
-                 AND DATEADD(SECOND, @variance_seconds, departure_scheduled) < SYSUTCDATETIME()
-                 AND ISNULL(duty_status, '') <> 'cancelled' THEN 1 ELSE 0 END AS BIT) AS no_departure
-        FROM OnDemandDepartures
-        WHERE service_date >= @cutoff_date
-        ORDER BY service_date DESC, departure_scheduled, duty_id
+        SELECT d.service_date, d.duty_id, d.duty_identifier, d.driver_id, d.vehicle_id,
+               ${vehicleIdentifierSql}, ${driverLabelSql}, d.duty_status,
+               d.departure_scheduled, d.scheduled_source, d.departure_actual, d.departure_source, d.updated_at,
+               CASE WHEN d.departure_scheduled IS NOT NULL AND d.departure_actual IS NOT NULL
+                 THEN DATEDIFF(SECOND, d.departure_scheduled, d.departure_actual) ELSE NULL END AS departure_delta_seconds,
+               CAST(CASE WHEN d.departure_actual IS NULL AND d.departure_scheduled IS NOT NULL
+                 AND DATEADD(SECOND, @variance_seconds, d.departure_scheduled) < SYSUTCDATETIME()
+                 AND ISNULL(d.duty_status, '') <> 'cancelled' THEN 1 ELSE 0 END AS BIT) AS no_departure${occurrenceColumns}
+        FROM OnDemandDepartures d${occurrenceJoin}
+        WHERE d.service_date >= @cutoff_date
+        ORDER BY d.service_date DESC, d.departure_scheduled, d.duty_id
       `);
       const departures: Array<OnDemandDepartureRow & { outcome: OnDemandDepartureOutcome }> = result.recordset.map((row) => ({
         ...row,

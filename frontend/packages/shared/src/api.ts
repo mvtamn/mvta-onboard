@@ -86,6 +86,8 @@ import type {
   AssessmentPeriod,
   PeriodKpiAssessment,
   ComplianceOccurrence,
+  OccurrenceAttribution,
+  OccurrenceReviewStatus,
   ContractorStandardTier,
   ManualMetricEntry,
   ManagerAssessmentAction,
@@ -112,6 +114,59 @@ export interface TokenRequestOptions {
 }
 
 export type TokenProvider = (options?: TokenRequestOptions) => Promise<string | null>;
+
+// Request bodies for the performance standards administration endpoints. They
+// mirror the server validators in functions-restapi/src/lib/validation.ts, so a
+// body that typechecks here is one the API accepts.
+export interface PerformanceStandardInput {
+  code: string;
+  name: string;
+  description?: string | null;
+  standard_type: import("./types.js").StandardType;
+  priority: import("./types.js").StandardPriority;
+  is_scored: boolean;
+  is_safety_critical: boolean;
+  direction: import("./types.js").StandardDirection;
+  unit_label: string;
+  measurement_source: import("./types.js").StandardMeasurementSource;
+  /** Required when measurement_source is "auto": names the resolver that measures it. */
+  resolver_key?: string | null;
+  data_source_note?: string | null;
+  responsible_team?: string | null;
+  assigned_to?: string | null;
+  cap_rule_note?: string | null;
+  sort_order: number;
+  effective_start_date: string;
+  effective_end_date?: string | null;
+}
+
+export interface StandardTierInput {
+  tier_label: import("./types.js").AssessmentTierLabel;
+  bound_low: number | null;
+  bound_high: number | null;
+  qualifier_code?: string | null;
+  penalty_basis: import("./types.js").StandardPenaltyBasis;
+  penalty_amount: number;
+  triggers_cap: boolean;
+  notes?: string | null;
+}
+
+export interface PerformanceAgreementInput {
+  contractor_id: string;
+  starts_on: string;
+  ends_on: string;
+  validation_business_days: number;
+  retention_years: number;
+  is_active: boolean;
+}
+
+export interface AgreementStandardInput {
+  standard_id: string;
+  is_scored: boolean;
+  effective_start_date: string;
+  effective_end_date?: string | null;
+  assignment_note?: string | null;
+}
 
 export interface ApiClientOptions {
   baseUrl: string;
@@ -633,7 +688,10 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     },
 
     validateMissedTrip(input: ValidateMissedTripInput) {
-      return request<{ trip_id: string; service_date: string; validation_status: string; reason_code: string | null }>(
+      return request<{
+        trip_id: string; service_date: string; validation_status: string; reason_code: string | null;
+        assessment: import("./types.js").MissedTripAssessmentLink;
+      }>(
         "/api/missed-trips/validate",
         { method: "POST", body: JSON.stringify(input) },
         true,
@@ -1169,7 +1227,38 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     },
 
     getPerformanceStandards() {
-      return request<{ standards: ContractorPerformanceStandard[]; tiers: ContractorStandardTier[]; diagnostics: { table_ready: boolean } }>("/api/performance-standards", {}, true);
+      return request<{
+        standards: ContractorPerformanceStandard[]; tiers: ContractorStandardTier[];
+        agreements: import("./types.js").PerformanceAgreementRecord[];
+        assignments: import("./types.js").AgreementStandardAssignment[];
+        diagnostics: { table_ready: boolean; assignments_ready: boolean };
+      }>("/api/performance-standards", {}, true);
+    },
+    // Create or amend a catalog standard. The id is caller-generated, so adding
+    // a standard and editing one are the same call.
+    putPerformanceStandard(id: string, input: PerformanceStandardInput) {
+      return request<{ id: string }>(`/api/performance-standards/${id}`, { method: "PUT", body: JSON.stringify(input) }, true);
+    },
+    // Replace a standard's tier ladder from effective_start_date onward. Pass
+    // agreement_id to write an agreement-specific override, or null for the
+    // agency default.
+    putStandardTiers(id: string, input: { agreement_id: string | null; effective_start_date: string; tiers: StandardTierInput[] }) {
+      return request<{ standard_id: string; agreement_id: string | null; effective_start_date: string; tier_count: number }>(
+        `/api/performance-standards/${id}/tiers`, { method: "PUT", body: JSON.stringify(input) }, true);
+    },
+    getPerformanceAgreements() {
+      return request<{
+        agreements: import("./types.js").PerformanceAgreementRecord[];
+        assignments: import("./types.js").AgreementStandardAssignment[];
+        diagnostics: { table_ready: boolean };
+      }>("/api/performance-agreements", {}, true);
+    },
+    putPerformanceAgreement(id: string, input: PerformanceAgreementInput) {
+      return request<{ id: string }>(`/api/performance-agreements/${id}`, { method: "PUT", body: JSON.stringify(input) }, true);
+    },
+    putAgreementStandards(id: string, assignments: AgreementStandardInput[]) {
+      return request<{ id: string; assignment_count: number }>(
+        `/api/performance-agreements/${id}/standards`, { method: "PUT", body: JSON.stringify({ assignments }) }, true);
     },
     getContractors() {
       return request<{ contractors: ContractorRecord[]; diagnostics: { table_ready: boolean } }>("/api/contractors", {}, true);
@@ -1231,7 +1320,11 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     getComplianceOccurrences() {
       return request<{ occurrences: ComplianceOccurrence[]; diagnostics: { table_ready: boolean } }>("/api/compliance-occurrences", {}, true);
     },
-    reviewComplianceOccurrence(id: string, review_status: "candidate" | "confirmed" | "dismissed", attribution: "contractor_error" | "excusable" | "mvta_directed" | "undetermined", dismiss_reason?: string) {
+    // Settle one occurrence: whether it counts, and whose error it was. Backs
+    // both the Performance Assessment module's occurrence queue and the inline
+    // review on the garage-departure views, so a duty reviewed in Compliance
+    // and one reviewed in Assessment take the same path.
+    reviewComplianceOccurrence(id: string, review_status: OccurrenceReviewStatus, attribution: OccurrenceAttribution, dismiss_reason?: string) {
       return request<{ id: string }>(`/api/compliance-occurrences/${id}`, { method: "PATCH", body: JSON.stringify({ review_status, attribution, dismiss_reason }) }, true);
     },
     getManualMetrics() {

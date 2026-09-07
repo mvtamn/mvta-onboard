@@ -1060,3 +1060,12 @@
   line-height: 1.5;
   margin: 8px 0 0;
 }
+
+/* Garage Departures: where a row landed in the performance assessment, and
+   the attribution decision taken on the row itself. */
+.td-occurrence{white-space:nowrap}
+.td-occurrence-actions{display:flex;gap:4px;margin-top:4px}
+.btn-xs{border:1px solid #c8d4df;background:#fff;border-radius:6px;padding:2px 7px;font-size:.72rem;font-weight:600;color:#334155;cursor:pointer}
+.btn-xs:hover:not(:disabled){background:#eef7f3;border-color:#9bb8ae;color:#075f49}
+.btn-xs:disabled{opacity:.5;cursor:default}
+.departure-occurrence{display:grid;gap:6px}

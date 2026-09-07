@@ -720,6 +720,37 @@ Key specifics from that design, useful when it is eventually built:
   Performance & Compliance Manager vs. COO/Transportation Manager) -
   unresolved as of this writing.
 
+### Where the performance standards live
+
+The Attachment G standards catalog - all 26 standards, their priorities, units,
+measurement sources and penalty tier bands - is data in the application, edited
+at **Administration > Performance Standards**, not values compiled into code.
+Attachment G reserves the right to modify a threshold by contract amendment, and
+a threshold that can only be changed by a developer is one MVTA does not
+actually control.
+
+Three rules govern that page, and they follow directly from Section 19.1:
+
+1. **A band changes because the contract says so, never because it is
+   convenient.** The page records who changed what and when; the reason belongs
+   in the amendment, and the amendment is what authorizes the edit.
+2. **A standard is assigned to an Agreement, not to the agency.** A Performance
+   Agreement names the contractor, the term, and which standards that contractor
+   is held to over which months. An Agreement may carry its own tier bands,
+   which then replace the catalog's for that Agreement entirely - all bands or
+   none, never a mixture.
+3. **Editing a band never rewrites a scored month.** Saving a tier ladder
+   creates a new dated version; every assessment period keeps the snapshot of
+   the rules it was opened with, hashed, so a finalized month recomputes to the
+   number it was issued with. To restate a closed month, reopen the period with
+   a logged reason - the same rule as the exclusion layer above.
+
+Adding a standard is permitted and expected: the catalog covers Attachment G as
+written, and MVTA may hold a contractor to measures the exhibit does not name.
+A standard measured automatically must name the resolver that measures it, or
+the month scores as "no data" - which on a scorecard reads like a clean month
+rather than a misconfiguration.
+
 ## 18. Safety and special-event direction
 
 ### Speed monitoring

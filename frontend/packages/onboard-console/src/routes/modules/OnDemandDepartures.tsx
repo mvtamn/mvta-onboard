@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ApiError, type OnDemandDeparture, type OnDemandDepartureOutcome } from "@mvta/shared";
 import { api } from "../../config.js";
+import { useAuth } from "../../auth/AuthContext.js";
 import {
   agencyTimeLabel,
   badgeLabel,
@@ -9,6 +10,8 @@ import {
   DepartureTrend,
   GroupByToggle,
   monitoringState,
+  OccurrenceCell,
+  type OccurrenceReviewHandlers,
   RiskStat,
   serviceDayLabel,
   shortRef,
@@ -172,6 +175,8 @@ const COLUMNS: Record<string, { label: string; hint: string; className?: string 
   actual: { label: "Actual", hint: "and its source", className: "td-num" },
   delta: { label: "Delta", hint: "", className: "td-num" },
   outcome: { label: "Outcome", hint: "" },
+  // What a reviewer did with the outcome, as opposed to what the rule judged.
+  assessment: { label: "Assessment", hint: "occurrence" },
 };
 
 // The Duty column exists for Spare's duty identifier. MVTA's duties carry
@@ -179,7 +184,7 @@ const COLUMNS: Record<string, { label: string; hint: string; className?: string 
 // fallback ids saying nothing a reader can use; it is left out and the Spare
 // duty id rides on the row for lookup instead.
 export function columnsFor(groupBy: DepartureGroupBy, withDutyIdentifiers: boolean): string[] {
-  return ["date", "duty", "operator", "vehicle", "scheduled", "actual", "delta", "outcome"]
+  return ["date", "duty", "operator", "vehicle", "scheduled", "actual", "delta", "outcome", "assessment"]
     .filter((key) => key !== groupBy && (key !== "duty" || withDutyIdentifiers));
 }
 
@@ -189,6 +194,7 @@ export function columnsFor(groupBy: DepartureGroupBy, withDutyIdentifiers: boole
 // its first sighting in the service area. Same growing-log shape as the fixed
 // route view, so it fetches on mount/range-change with a manual refresh.
 export function OnDemandDepartures() {
+  const { roles } = useAuth();
   const [days, setDays] = useState<number>(DEFAULT_DAYS);
   const [groupBy, setGroupBy] = useState<DepartureGroupBy>("date");
   const [show, setShow] = useState<Show>("all");
@@ -243,6 +249,29 @@ export function OnDemandDepartures() {
   const groups = useMemo(() => groupDuties(visible, groupBy, today), [visible, groupBy, today]);
   const daily = useMemo(() => (departures && today ? dailyFlagged(departures, today, days) : []), [departures, today, days]);
   const columns = columnsFor(groupBy, visible.some((d) => Boolean(d.duty_identifier)));
+
+  // Same PATCH the Performance Assessment module's occurrence queue makes, so
+  // a duty settled here and one settled there are indistinguishable after.
+  const [reviewing, setReviewing] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const review: OccurrenceReviewHandlers = {
+    busy: reviewing,
+    canReview: roles.includes("OCC.Compliance") || roles.includes("OCC.ComplianceManager")
+      || roles.includes("OCC.Publisher") || roles.includes("OCC.Admin"),
+    onReview: (occurrenceId, attribution) => {
+      setReviewing(true);
+      setReviewError(null);
+      void api.reviewComplianceOccurrence(
+        occurrenceId,
+        attribution === "contractor_error" ? "confirmed" : "dismissed",
+        attribution,
+        attribution === "contractor_error" ? undefined : `Attributed as ${attribution} from Garage Departures.`,
+      )
+        .then(() => load())
+        .catch(() => setReviewError("The occurrence could not be updated."))
+        .finally(() => setReviewing(false));
+    },
+  };
 
   // How the actuals were measured, for the reader who wants to know how much
   // of the average rests on Spare's own record versus an inference.
@@ -353,6 +382,7 @@ export function OnDemandDepartures() {
         </div>
       ) : (
         <>
+          {reviewError ? <p className="risk-action-error">{reviewError}</p> : null}
           <div className="departures-table-scroll">
             <table className="data departures-table">
               <thead>
@@ -367,7 +397,7 @@ export function OnDemandDepartures() {
               </thead>
               <tbody>
                 {groups.map((group) => (
-                  <GroupRows key={group.key} group={group} groupBy={groupBy} columns={columns} />
+                  <GroupRows key={group.key} group={group} groupBy={groupBy} columns={columns} review={review} />
                 ))}
               </tbody>
             </table>
@@ -381,7 +411,7 @@ export function OnDemandDepartures() {
   );
 }
 
-function GroupRows({ group, groupBy, columns }: { group: DutyGroup; groupBy: DepartureGroupBy; columns: string[] }) {
+function GroupRows({ group, groupBy, columns, review }: { group: DutyGroup; groupBy: DepartureGroupBy; columns: string[]; review: OccurrenceReviewHandlers }) {
   const flagged = group.lateCount + group.noDepartureCount;
   const meta = groupBy === "date" && group.open
     ? `${group.rows.length} duties so far · judged once the service day is over`
@@ -402,7 +432,7 @@ function GroupRows({ group, groupBy, columns }: { group: DutyGroup; groupBy: Dep
       {group.rows.map((d) => (
         <tr key={d.duty_id} title={`Spare duty ${d.duty_id}`}>
           {columns.map((key) => (
-            <DutyCell key={key} column={key} departure={d} />
+            <DutyCell key={key} column={key} departure={d} review={review} />
           ))}
         </tr>
       ))}
@@ -410,7 +440,7 @@ function GroupRows({ group, groupBy, columns }: { group: DutyGroup; groupBy: Dep
   );
 }
 
-function DutyCell({ column, departure: d }: { column: string; departure: OnDemandDeparture }) {
+function DutyCell({ column, departure: d, review }: { column: string; departure: OnDemandDeparture; review: OccurrenceReviewHandlers }) {
   switch (column) {
     case "date":
       return <td className="td-dim">{serviceDayLabel(d.service_date)}</td>;
@@ -465,6 +495,8 @@ function DutyCell({ column, departure: d }: { column: string; departure: OnDeman
       const o = OUTCOMES[d.outcome];
       return <td><span className={`pill-sm ${o.pill}`}>{o.label}</span></td>;
     }
+    case "assessment":
+      return <OccurrenceCell link={d} serviceDate={d.service_date} busy={review.busy} canReview={review.canReview} onReview={review.onReview} />;
     default:
       return <td></td>;
   }

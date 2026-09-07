@@ -7,6 +7,12 @@ import { dailyReviewable, groupDepartures, statusPill } from "./FixedRouteDepart
 import { dailyFlagged, groupDuties } from "./OnDemandDepartures.js";
 import { agencyTimeLabel, deltaMinutesLabel, operatorParts, serviceDayLabel, serviceDaysEnding, shortRef } from "./garageDepartures.shared.js";
 
+// The departure views read roles to decide whether the reviewer may settle an
+// occurrence from the row. These tests render the view directly, outside the
+// app's provider tree, so the roles come from here.
+vi.mock("../../auth/AuthContext.js", () => ({ useAuth: () => ({ roles: ["OCC.Compliance"] }) }));
+
+
 vi.mock("../../config.js", () => ({
   api: {
     getFixedRouteDepartures: vi.fn(),
@@ -53,6 +59,9 @@ describe("Garage Departures", () => {
 // (Sep 4) and one that is not (Sep 5, "today").
 function fixedRow(overrides: Partial<FixedRouteDeparture>): FixedRouteDeparture {
   return {
+    occurrence_id: null, occurrence_review_status: null, occurrence_attribution: null,
+    occurrence_service_month: null, occurrence_period_status: null,
+
     service_date: "20260904",
     block: 1305,
     run: 2,
@@ -206,6 +215,9 @@ describe("Fixed Route view", () => {
 
 function dutyRow(overrides: Partial<OnDemandDeparture>): OnDemandDeparture {
   return {
+    occurrence_id: null, occurrence_review_status: null, occurrence_attribution: null,
+    occurrence_service_month: null, occurrence_period_status: null,
+
     service_date: "20260904",
     duty_id: "a1",
     duty_identifier: "OD-2198",
