@@ -168,6 +168,13 @@ Fixed Route Risk uses GTFS monitoring data when authenticated. On-Demand
 Quality becomes live when an approved vendor adapter populates its monitoring
 table.
 
+Garage Departures is live for both service types and reads real data in each:
+Avail Pullout Reports for fixed route, Spare duties for on-demand. Every row
+carries an outcome judged by the same rule that raises the contract's
+`GARAGE_DEPARTURE` candidates, and rows can be grouped by service day,
+operator, or vehicle to show a pattern rather than a list. Section 17 covers
+the rule, the sources, and how operators and vehicles are identified.
+
 Route Classification (Admin page) lets staff mark a RouteID as fixed-route,
 special-event, or on-demand - no Avail feed carries that distinction itself.
 Event Monitoring's "Event bus positions (live)" panel filters Avail AVL
@@ -344,6 +351,8 @@ only; it never publishes.
 | `POST` | `/api/suggested-alerts/{id}/dismiss` | Publisher/Admin | Dismiss |
 | `GET` | `/api/trip-delays` | Staff | Fixed-route departure risks |
 | `GET` | `/api/on-demand-risks` | Staff | On-demand wait risks |
+| `GET` | `/api/fixed-route-departures` | Staff or Compliance | Avail pullout departure history |
+| `GET` | `/api/on-demand-departures` | Staff or Compliance | Spare duty departure history |
 
 Staff authorization is enforced server-side using the Easy Auth
 `x-ms-client-principal` header. Client-side role checks improve the interface
@@ -367,6 +376,12 @@ Apply the base schema and migrations in order:
 
 Migrations 008 and 009 were reported applied by the project owner on
 July 26, 2026.
+
+The table above is the phase-1 set only. The full ordered list is the contents
+of `functions-restapi/sql/`, which now runs past migration 100; garage
+departures depend on 013 (`FixedRouteDepartures`), 096 (`OnDemandDepartures`),
+097 (compliance source discriminator), 099 (Spare fleet number), and 100
+(Spare driver name).
 
 There is no automated migration runner or schema-version table. Never deploy
 code that writes new columns before the corresponding migration succeeds.
@@ -719,6 +734,70 @@ Key specifics from that design, useful when it is eventually built:
   stop exclusions versus weather-day exclusions (proposed split: Ops
   Performance & Compliance Manager vs. COO/Transportation Manager) -
   unresolved as of this writing.
+
+### Garage departures
+
+A garage departure is the departure of an assigned vehicle from its garage or
+start location, measured as the variance between its scheduled and actual
+departure. ADR 0028
+(`docs/adr/0028-scope-garage-departure-to-one-source-per-service-type.md`)
+makes it one concept with **one source per service type**, never both: Avail's
+Pullout Reports measure fixed route (`FixedRouteDepartures`), and Spare's
+start-location slot measures on-demand duties (`OnDemandDepartures`), falling
+back to the duty's requested start and its first sighting in the service area
+when Spare has no slot. A departure with no source for its service type is
+absent rather than inferred from the other feed.
+
+Both feeds now raise `GARAGE_DEPARTURE` candidates into the assessment queue.
+Each candidate's `source_ref` names the source system - `avail_pullout` or
+`spare_duties` - so one physical departure cannot be scored twice, and each
+feed is gated on its own KPI trust stream.
+
+**One rule, in one place.** A departure is reviewable when its service day is
+over, it had a scheduled departure, and it either never departed or departed
+more than the allowance late. The allowance is
+`GARAGE_DEPARTURE_VARIANCE_MINUTES`, ten minutes by default. Fixed route adds
+one condition: Avail must have settled the run into a departure outcome
+(`Missed Pullout`, `Missed Login`, `Expired Pullout`, `Late Pullout`). The
+pull-in statuses and `On Route No Pullout` describe the other end of the run,
+or a missing pullout record rather than a missing departure, and are
+deliberately excluded. On-demand excludes cancelled duties, which had no
+departure to make.
+
+That rule lives in `lib/fixedRouteDepartureOutcome.ts` and
+`lib/onDemandDepartureOutcome.ts`, and both the candidate poll and the console's
+read endpoints apply it. The two used to be able to disagree, and did: the
+module's "late" count was keyed to a status the feed has never emitted, so it
+read zero forever while runs that never left the garage showed as unremarkable.
+A number on this screen must mean the same thing as a candidate in the queue.
+
+**Why the service day must be over.** Avail's `PulloutStatus` is a
+precedence-ordered ladder that moves as a run progresses, so a run sitting at
+`Missed Login` this afternoon may be `Late Pullout` tonight. The candidate
+MERGE only inserts, so a candidate raised against an in-flight run would never
+be withdrawn once the run departed. Today's rows are labelled **Not settled**
+and are counted apart from the judged ones.
+
+**Reading the module.** Both views group rows under a band per service day,
+operator, or vehicle; the last two are ordered worst-first and flag a repeat,
+so a pattern in one operator or one bus is visible without exporting anything.
+Service days read as a weekday and date, times are agency-local
+(America/Chicago) and time-only, and the delta is signed and marked only when
+it passes the allowance. Avail's status keeps its own column, shown as the
+vendor emits it, beside an Outcome column carrying the judgement - the status
+is evidence and never decides the outcome by itself.
+
+**Identifying the operator and the vehicle.** Avail sends the operator as
+`LAST, FIRST -badge`, shown as a cased name with the badge as a reference.
+Spare carries ids only, so the departures poll resolves each one once a day and
+stores the result: the vehicle's fleet number and the driver's name in the same
+`Last, First` order. MVTA's Spare driver records carry no identifier of their
+own, so an on-demand operator shows a shortened Spare id beside the name rather
+than a badge, and the Duty column is omitted entirely when no duty in view has
+a Spare duty identifier - MVTA's duties do not. Each poll run also backfills a
+bounded batch of older rows that predate those columns, and logs how many rows
+in the last thirty days carry each label, so a gap in naming is visible in the
+logs rather than only on screen.
 
 ### Where the performance standards live
 
