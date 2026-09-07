@@ -214,7 +214,7 @@ export function PerformanceStandardsAdmin() {
 
         {selected && <TierEditor
           key={`tiers-${selected.id}-${agreementId}`}
-          standard={selected} tiers={tiers} agreement={agreement} canEdit={isAdmin} busy={busy}
+          standard={selected} tiers={tiers} agreement={agreement} canEdit={isAdmin && ready} busy={busy}
           onSave={(input) => void run(() => api.putStandardTiers(selected.id, input), `${selected.code} tier bands saved.`)}
         />}
       </div>

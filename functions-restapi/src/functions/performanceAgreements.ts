@@ -1,6 +1,7 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { ADMIN_ROLES, COMPLIANCE_READ_ROLES, requireRole } from "../lib/auth";
 import { getPool, sql } from "../lib/db";
+import { agreementScope } from "../lib/assessment/schemaScope";
 import { isGuid, validateAgreementStandardAssignments, validatePerformanceAgreement } from "../lib/validation";
 
 // Performance agreements, and the standards each one assigns.
@@ -18,11 +19,11 @@ import { isGuid, validateAgreementStandardAssignments, validatePerformanceAgreem
 // so a new term starts held to what MVTA scores today and is then edited. The
 // seeded rows are ordinary rows; nothing downstream distinguishes them.
 
+// One definition of "migration 102 has run", shared with the period snapshot
+// and the tier editor - three places that must agree, or the console would
+// offer an assignment the snapshot then ignores.
 async function agreementsReady(pool: Awaited<ReturnType<typeof getPool>>): Promise<boolean> {
-  const check = await pool.request().query<{ ready: number }>(`
-    SELECT CASE WHEN OBJECT_ID('dbo.PerformanceAgreements','U') IS NULL OR OBJECT_ID('dbo.AgreementStandards','U') IS NULL THEN 0 ELSE 1 END ready
-  `);
-  return Boolean(check.recordset[0]?.ready);
+  return (await agreementScope(pool)).scoped;
 }
 
 app.http("performanceAgreementsList", {

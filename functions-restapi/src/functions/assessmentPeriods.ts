@@ -1,5 +1,6 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { assessPeriod } from "../lib/assessment/assess";
+import { agreementScope, assignedStandardCountSql, periodStandardSourceSql, periodTierScopeSql } from "../lib/assessment/schemaScope";
 import { COMPLIANCE_MANAGER_ROLES, COMPLIANCE_READ_ROLES, COMPLIANCE_WRITE_ROLES, requireRole } from "../lib/auth";
 import { getPool, sql } from "../lib/db";
 import { loadKpiTrust } from "../lib/kpiTrustStore";
@@ -30,6 +31,10 @@ app.http("assessmentPeriodsOpen", {
     if (!isGuid(body.contractor_id) || !isServiceMonth(body.service_month)) return { status: 400, jsonBody: { error: "contractor_id and service_month are required" } };
     try {
       const pool = await getPool();
+      // Composed against what this database actually has: before migration 102
+      // there is no per-agreement assignment, and the period snapshots the
+      // agency catalog exactly as it did before this feature existed.
+      const scope = await agreementScope(pool);
       const req = pool.request(); req.input("contractor", sql.UniqueIdentifier, body.contractor_id); req.input("month", sql.Char(6), body.service_month);
       // The agreement, plus how many standards it actually assigns for this
       // month. A period whose agreement assigns nothing would open, snapshot an
@@ -37,15 +42,16 @@ app.http("assessmentPeriodsOpen", {
       // month - so it is refused here rather than produced.
       const contractor = await req.query<{ id: string; agreement_id: string; assigned: number }>(`
         SELECT c.id,a.id agreement_id,
-          (SELECT COUNT(*) FROM AgreementStandards ags
-            WHERE ags.agreement_id=a.id AND ags.is_scored=1
-              AND ags.effective_start_date<=CONCAT(@month,'01')
-              AND (ags.effective_end_date IS NULL OR ags.effective_end_date>=CONCAT(@month,'01'))) assigned
+          ${assignedStandardCountSql(scope)} assigned
         FROM Contractors c JOIN PerformanceAgreements a ON a.contractor_id=c.id AND a.is_active=1
         WHERE c.id=@contractor AND c.is_active=1
           AND CONCAT(@month,'01') BETWEEN CONVERT(char(8),a.starts_on,112) AND CONVERT(char(8),a.ends_on,112)`);
       if (!contractor.recordset[0]) return { status: 404, jsonBody: { error: "Current Agreement not found for this Assessment Period" } };
-      if (!contractor.recordset[0].assigned) return { status: 400, jsonBody: { error: "No performance standards are assigned to this Agreement for this month. Assign them under Administration > Performance Standards." } };
+      if (!contractor.recordset[0].assigned) {
+        return { status: 400, jsonBody: { error: scope.scoped
+          ? "No performance standards are assigned to this Agreement for this month. Assign them under Administration > Performance Standards."
+          : "No performance standards are marked as scored in the catalog for this month." } };
+      }
       const write = pool.request(); write.input("contractor", sql.UniqueIdentifier, body.contractor_id); write.input("month", sql.Char(6), body.service_month);
       write.input("agreement", sql.UniqueIdentifier, contractor.recordset[0].agreement_id);
       const result = await write.query<{ id: string }>(`
@@ -56,23 +62,17 @@ app.http("assessmentPeriodsOpen", {
         BEGIN
           INSERT AssessmentPeriodStandards(period_id,standard_id,code,name,standard_type,priority,direction,is_safety_critical,measurement_source,sort_order)
             SELECT @period,s.id,s.code,s.name,s.standard_type,s.priority,s.direction,s.is_safety_critical,s.measurement_source,s.sort_order
-            FROM ContractorPerformanceStandards s
-            JOIN AgreementStandards ags ON ags.standard_id=s.id AND ags.agreement_id=@agreement
-            WHERE ags.is_scored=1 AND ags.effective_start_date<=CONCAT(@month,'01')
-              AND (ags.effective_end_date IS NULL OR ags.effective_end_date>=CONCAT(@month,'01'));
+            ${periodStandardSourceSql(scope)};
           -- Tier precedence (migration 102): an agreement's own tier rows
           -- govern the whole ladder for that standard, or none of it. Blending
           -- an override with catalog defaults would produce bands nobody wrote.
+          -- Pre-102 every row is a catalog default and the clause is empty.
           INSERT AssessmentPeriodTiers
             SELECT @period,t.standard_id,t.tier_order,t.tier_label,t.bound_low,t.bound_high,t.qualifier_code,t.penalty_basis,t.penalty_amount,t.triggers_cap
             FROM ContractorStandardTiers t
             JOIN AssessmentPeriodStandards s ON s.period_id=@period AND s.standard_id=t.standard_id
             WHERE t.effective_start_date<=CONCAT(@month,'01') AND (t.effective_end_date IS NULL OR t.effective_end_date>=CONCAT(@month,'01'))
-              AND (t.agreement_id=@agreement OR (t.agreement_id IS NULL AND NOT EXISTS(
-                    SELECT 1 FROM ContractorStandardTiers o
-                    WHERE o.standard_id=t.standard_id AND o.agreement_id=@agreement
-                      AND o.effective_start_date<=CONCAT(@month,'01')
-                      AND (o.effective_end_date IS NULL OR o.effective_end_date>=CONCAT(@month,'01')))));
+              ${periodTierScopeSql(scope)};
           DECLARE @rules NVARCHAR(MAX)=(SELECT s.*,JSON_QUERY((SELECT t.* FROM AssessmentPeriodTiers t WHERE t.period_id=s.period_id AND t.standard_id=s.standard_id ORDER BY t.tier_order FOR JSON PATH)) tiers FROM AssessmentPeriodStandards s WHERE s.period_id=@period ORDER BY s.sort_order FOR JSON PATH);
           UPDATE AssessmentPeriods SET rule_set_json=@rules,rule_set_sha256=CONVERT(char(64),HASHBYTES('SHA2_256',@rules),2) WHERE id=@period;
         END;

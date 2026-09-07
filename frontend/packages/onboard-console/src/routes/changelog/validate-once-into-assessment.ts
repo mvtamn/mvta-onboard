@@ -16,6 +16,7 @@ const entry: ChangelogEntry = {
     {
       heading: "Fixed",
       items: [
+        "The console and its API keep working before migration 102 is applied. Opening an assessment period would previously have failed outright until the schema was updated; it now snapshots the agency catalog exactly as it did before this feature existed, and the parts that genuinely need the new schema — Agreement assignment and tier-band editing — say so and stay inert rather than offering an action that fails.",
         "A review is never blocked or lost because the assessment side is not ready. Whether a trip was missed is a fact about service; when no Performance Agreement covers the date, the standard is not scored on that Agreement, or the month is already finalized, the review still saves and the console says which of those happened rather than failing silently.",
         "A finalized or issued month is never changed as a side effect of reviewing an observation. Restating one stays a manager reopening the period with a logged reason.",
       ],

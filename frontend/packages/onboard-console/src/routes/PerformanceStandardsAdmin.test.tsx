@@ -145,4 +145,17 @@ describe("Performance Standards administration", () => {
     render(<PerformanceStandardsAdmin />);
     expect(await screen.findByText(/Migration 102 has not been applied/)).toBeInTheDocument();
   });
+
+  it("does not offer a tier edit the write path would refuse before migration 102", async () => {
+    // Tier rows carry their scope in a column that migration adds, so the
+    // server 409s. Offering the button anyway would make the warning banner
+    // look advisory.
+    catalog = { ...catalog, agreements: [], assignments: [], diagnostics: { table_ready: true, assignments_ready: false } };
+    render(<PerformanceStandardsAdmin />);
+    fireEvent.click(await screen.findByText("OTP_FIXED_ROUTE"));
+    expect(screen.queryByText("Save tier bands")).not.toBeInTheDocument();
+    // The bands stay readable - the point is that the month's numbers can
+    // still be verified, only not changed.
+    expect(screen.getByText(/tier1 75…80: \$1,500 flat/)).toBeInTheDocument();
+  });
 });

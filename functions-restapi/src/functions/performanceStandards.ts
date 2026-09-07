@@ -1,6 +1,7 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { ADMIN_ROLES, COMPLIANCE_READ_ROLES, requireRole } from "../lib/auth";
 import { getPool, sql } from "../lib/db";
+import { agreementScope } from "../lib/assessment/schemaScope";
 import { isGuid, validatePerformanceStandard, validateStandardTierLadder } from "../lib/validation";
 
 // The Attachment G standards catalog and its tier ladders.
@@ -25,17 +26,19 @@ app.http("performanceStandardsList", {
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     try {
       const pool = await getPool();
-      const ready = await pool.request().query<{ ready: number; assignments_ready: number }>(`
-        SELECT CASE WHEN OBJECT_ID('dbo.ContractorPerformanceStandards','U') IS NULL THEN 0 ELSE 1 END ready,
-               CASE WHEN OBJECT_ID('dbo.AgreementStandards','U') IS NULL THEN 0 ELSE 1 END assignments_ready
+      const ready = await pool.request().query<{ ready: number }>(`
+        SELECT CASE WHEN OBJECT_ID('dbo.ContractorPerformanceStandards','U') IS NULL THEN 0 ELSE 1 END ready
       `);
       if (!ready.recordset[0]?.ready) {
         return { status: 200, jsonBody: { standards: [], tiers: [], agreements: [], assignments: [], diagnostics: { table_ready: false, assignments_ready: false } } };
       }
       // Migration 102 may not have run yet; the catalog still reads correctly
       // without it, so the page degrades to the agency-wide view rather than
-      // failing. diagnostics.assignments_ready is what the console keys on.
-      const assignmentsReady = Boolean(ready.recordset[0]?.assignments_ready);
+      // failing. diagnostics.assignments_ready is what the console keys on, and
+      // it comes from the same helper the tier editor and the period snapshot
+      // use - a half-applied migration must not let the page offer an edit the
+      // write path then refuses.
+      const assignmentsReady = (await agreementScope(pool)).scoped;
       const [standards, tiers, agreements, assignments] = await Promise.all([
         pool.request().query(`SELECT * FROM ContractorPerformanceStandards ORDER BY sort_order`),
         pool.request().query(`SELECT * FROM ContractorStandardTiers ORDER BY standard_id, tier_order`),
@@ -148,6 +151,14 @@ app.http("performanceStandardTiersPut", {
     const tiers = body.tiers as Record<string, unknown>[];
 
     const pool = await getPool();
+    // A tier row carries its scope in ContractorStandardTiers.agreement_id,
+    // which migration 102 adds. Refusing here with the migration named beats
+    // failing on an unknown column, and matches what the agreement endpoints
+    // already do - editing bands is a new capability, so there is nothing to
+    // fall back to.
+    if (!(await agreementScope(pool)).scoped) {
+      return { status: 409, jsonBody: { error: "Migration 102 has not been applied to this database yet, so tier bands cannot be edited here." } };
+    }
     const tx = new sql.Transaction(pool);
     try {
       await tx.begin();
