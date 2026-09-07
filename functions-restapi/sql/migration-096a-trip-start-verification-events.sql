@@ -1,4 +1,10 @@
--- Migration 096: the Dispatch Log's verification audit trail
+-- Migration 096a: the Dispatch Log's verification audit trail
+--
+-- Suffixed because two branches both took 096 on 2026-09-05 and neither
+-- number could be reused without misplacing the other in the sequence.
+-- This one reached main first; 096b is On-Demand Departures. Both are
+-- applied on dev. Do not renumber either to a free number at the end - it
+-- would claim they ran after 097-102, which they did not.
 -- (plans/dispatch-log-spec.md §8 step 6; §7.1 decided 2026-09-05 - SST OCS
 -- staff record verifications through OnBoard).
 --
@@ -8,7 +14,7 @@
 -- what note. Append-only; nothing updates or deletes rows here.
 
 IF OBJECT_ID('dbo.TripStartVerifications', 'U') IS NULL
-  THROW 50096, 'Migration 096 requires TripStartVerifications (migration 094).', 1;
+  THROW 50096, 'Migration 096a requires TripStartVerifications (migration 094).', 1;
 GO
 
 IF OBJECT_ID('dbo.TripStartVerificationEvents', 'U') IS NULL
@@ -31,4 +37,4 @@ BEGIN
 END;
 GO
 
-PRINT 'Migration 096 applied: TripStartVerificationEvents is present.';
+PRINT 'Migration 096a applied: TripStartVerificationEvents is present.';

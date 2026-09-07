@@ -245,7 +245,7 @@ app.timer("onDemandDeparturesPoll", {
         CASE WHEN COL_LENGTH('dbo.OnDemandDepartures','driver_name') IS NULL THEN 0 ELSE 1 END with_driver_label
     `);
     if (!ready.recordset[0]?.ready) {
-      context.warn("On-demand departures tables are not ready; migration 096 (and 028) may be pending.");
+      context.warn("On-demand departures tables are not ready; migration 096b (and 028) may be pending.");
       return;
     }
     const withVehicleIdentifier = ready.recordset[0]?.with_vehicle_identifier === 1;
