@@ -1,6 +1,7 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { ADMIN_ROLES, COMPLIANCE_READ_ROLES, requireRole } from "../lib/auth";
 import { getPool, sql } from "../lib/db";
+import { RESOLVERS } from "../lib/assessment/resolvers";
 import { agreementScope } from "../lib/assessment/schemaScope";
 import { isGuid, validatePerformanceStandard, validateStandardTierLadder } from "../lib/validation";
 
@@ -30,7 +31,7 @@ app.http("performanceStandardsList", {
         SELECT CASE WHEN OBJECT_ID('dbo.ContractorPerformanceStandards','U') IS NULL THEN 0 ELSE 1 END ready
       `);
       if (!ready.recordset[0]?.ready) {
-        return { status: 200, jsonBody: { standards: [], tiers: [], agreements: [], assignments: [], diagnostics: { table_ready: false, assignments_ready: false } } };
+        return { status: 200, jsonBody: { standards: [], tiers: [], agreements: [], assignments: [], resolvers: [], diagnostics: { table_ready: false, assignments_ready: false } } };
       }
       // Migration 102 may not have run yet; the catalog still reads correctly
       // without it, so the page degrades to the agency-wide view rather than
@@ -54,6 +55,11 @@ app.http("performanceStandardsList", {
         jsonBody: {
           standards: standards.recordset, tiers: tiers.recordset,
           agreements: agreements.recordset, assignments: assignments.recordset,
+          // The registry, so the console offers the keys the compute answers
+          // to rather than a text box. Served from code, not from the
+          // database: it is the set of resolvers this deployment has, which is
+          // exactly what a saved resolver_key has to match.
+          resolvers: RESOLVERS.map(({ key, label, description, appliesTo }) => ({ key, label, description, applies_to: appliesTo })),
           diagnostics: { table_ready: true, assignments_ready: assignmentsReady },
         },
       };

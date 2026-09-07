@@ -25,6 +25,11 @@ const TIERS = [
   { id: "t2", standard_id: OTP.id, agreement_id: null, tier_order: 3, tier_label: "tier1" as const, bound_low: 0.75, bound_high: 0.8, qualifier_code: null, penalty_basis: "flat" as const, penalty_amount: 1500, triggers_cap: false, notes: null, effective_start_date: "20250101", effective_end_date: null },
 ];
 
+const RESOLVERS = [
+  { key: "OTP_FIXED_ROUTE", label: "Avail monthly on-time performance", description: "Fixed-route departures from Avail's monthly OTP feed.", applies_to: "threshold" as const },
+  { key: "MISSED_TRIPS_FR", label: "Confirmed missed trips", description: "Occurrences raised from MonitoredMissedTrips once confirmed.", applies_to: "occurrence" as const },
+];
+
 const putAgreementStandards = vi.fn().mockResolvedValue({ id: AGREEMENT.id, assignment_count: 1 });
 const putPerformanceStandard = vi.fn().mockResolvedValue({ id: OTP.id });
 const putStandardTiers = vi.fn().mockResolvedValue({ standard_id: OTP.id, agreement_id: null, effective_start_date: "20260101", tier_count: 2 });
@@ -43,7 +48,7 @@ describe("Performance Standards administration", () => {
   beforeEach(() => {
     roles = ["OCC.Admin"];
     catalog = {
-      standards: [ORPHAN, OTP], tiers: TIERS, agreements: [AGREEMENT],
+      standards: [ORPHAN, OTP], tiers: TIERS, agreements: [AGREEMENT], resolvers: RESOLVERS,
       assignments: [{ id: "g1", agreement_id: AGREEMENT.id, standard_id: OTP.id, is_scored: true, effective_start_date: "20250101", effective_end_date: null, assignment_note: null }],
       diagnostics: { table_ready: true, assignments_ready: true },
     };
@@ -108,6 +113,40 @@ describe("Performance Standards administration", () => {
     render(<PerformanceStandardsAdmin />);
     fireEvent.click(await screen.findByText("FLEET_AVAIL_SHORT"));
     expect(screen.getByText("Save standard", { selector: "button" })).toBeDisabled();
+  });
+
+  it("picks what measures a standard from the registry, not from a text box", async () => {
+    // resolver_key was free text for as long as nothing read it. The compute
+    // keys on it now, so a typo would produce a standard nothing measures.
+    render(<PerformanceStandardsAdmin />);
+    fireEvent.click(await screen.findByText("OTP_FIXED_ROUTE"));
+    const picker = screen.getByLabelText(/Measured by/);
+    expect(picker).toHaveValue("OTP_FIXED_ROUTE");
+    expect(screen.getByText(/Fixed-route departures from Avail/)).toBeInTheDocument();
+  });
+
+  it("offers only the resolvers that can serve this kind of standard", async () => {
+    // MISSED_TRIPS_FR raises occurrences; it cannot produce a monthly value,
+    // and the server rejects the pairing too.
+    render(<PerformanceStandardsAdmin />);
+    fireEvent.click(await screen.findByText("OTP_FIXED_ROUTE"));
+    const options = within(screen.getByLabelText(/Measured by/)).getAllByRole("option").map((o) => o.textContent);
+    expect(options).toContain("Avail monthly on-time performance");
+    expect(options).not.toContain("Confirmed missed trips");
+  });
+
+  it("says so when nothing registered can measure the standard automatically", async () => {
+    render(<PerformanceStandardsAdmin />);
+    fireEvent.click(await screen.findByText("Add standard"));
+    // A new standard defaults to counted events, entered by hand.
+    fireEvent.change(screen.getByLabelText(/Measurement/), { target: { value: "auto" } });
+    expect(await screen.findByText(/Pick what measures this standard/)).toBeInTheDocument();
+  });
+
+  it("hides the resolver picker entirely for a hand-entered standard", async () => {
+    render(<PerformanceStandardsAdmin />);
+    fireEvent.click(await screen.findByText("Add standard"));
+    expect(screen.queryByLabelText(/Measured by/)).not.toBeInTheDocument();
   });
 
   it("keeps a standard's code fixed once operational SQL can reference it", async () => {

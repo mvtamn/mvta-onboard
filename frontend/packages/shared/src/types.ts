@@ -1595,6 +1595,17 @@ export interface ContractorPerformanceStandard {
   updated_by?: string; updated_at?: string;
 }
 
+// One entry in the measurement registry the compute keys on. Served from the
+// API rather than hardcoded in the console, because what a saved resolver_key
+// must match is the set of resolvers the deployed backend actually has.
+export interface RegisteredResolver {
+  key: string;
+  label: string;
+  description: string;
+  /** "threshold" measures a monthly value; "occurrence" names the intake that raises rows. */
+  applies_to: "threshold" | "occurrence";
+}
+
 // A contract term. One active agreement per contractor (migration 102).
 export interface PerformanceAgreementRecord {
   id: string; contractor_id: string; contractor_name?: string; starts_on: string; ends_on: string;

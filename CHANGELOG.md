@@ -5,6 +5,14 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.138] - 2026-09-07
+
+- **`resolver_key` is real: the compute keys on it, and the console picks from a registry.** The column has existed since migration 030 and was referenced by no code at all - `assess.ts` branched on `standard.code === "OTP_FIXED_ROUTE"`, so the catalog advertised a resolver registry that did not exist and an automated standard meant editing the compute rather than adding a row. `lib/assessment/resolvers/` now holds the entries, the OTP measurement moved into one, and `GET /performance-standards` serves the registry so the console offers the keys this deployment actually answers to.
+- **The registry carries two kinds, because `resolver_key` means two things.** A `threshold` entry measures one number for the month. An `occurrence` entry names the intake that raises `ComplianceOccurrences` (the candidate poll, or a reviewer confirming one) and has nothing to call at compute time - the rows already exist and `assess.ts` aggregates them. Modelling both keeps the key checkable instead of free text, and stops a measuring function being hung on a row with no value to measure. Crossing them is refused in both directions, server and console.
+- **An automated standard pointing at an unregistered key is not assessable, and says which key was wrong.** It used to fall through to `ManualMetricEntries`, find nothing, and score "no data" - on a scorecard, indistinguishable from a clean month. `not_assessable` is the loud path: it makes the period partial and needs an authorized exception before finalizing.
+- **Migration 103: `AssessmentPeriodStandards` snapshots `resolver_key`.** The snapshot already froze code, type, direction, unit and measurement source so a later catalog edit cannot change what a finalized month was scored against; the resolver was the one part it did not carry, which did not matter while nothing read the column. It does now - repointing a standard would otherwise silently change how an issued month recomputes. Existing `rule_set_sha256` values are deliberately not rewritten: they hash what was actually snapshotted, and back-dating them would forge the record rather than complete it. Guarded like migration 102, so the code runs before the migration does.
+
+
 ## [1.5.137] - 2026-09-07
 
 - **Performance Standards leads with the standard, not its code.** The row showed `OTP_FIXED_ROUTE` in caps with the name beneath it; it now shows "On-Time Performance (Fixed Route)" with the code as a quiet mono reference, plus what the standard measures in words - counted events or a monthly value, its unit, and which direction is good. The code stays visible because resolvers, the candidate poll and migration 088's dismissal rule all match on the literal string.
