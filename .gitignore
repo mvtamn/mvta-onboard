@@ -10,6 +10,7 @@ infra-*/parameters/*.local.json
 # Dependencies & build output
 node_modules/
 dist/
+dist-test/
 bin/
 obj/
 *.tsbuildinfo
