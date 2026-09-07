@@ -1535,10 +1535,40 @@ export type AssessmentPeriodStatus = "open" | "in_review" | "in_validation" | "s
 export type AssessmentTierLabel = "meets" | "warning" | "tier1" | "tier2";
 export type ManagerAssessmentAction = "pending" | "confirmed" | "adjusted" | "waived";
 
+export type StandardType = "occurrence" | "threshold";
+export type StandardPriority = "High" | "Medium" | "Low" | "NA";
+export type StandardDirection = "higher_is_better" | "lower_is_better";
+export type StandardMeasurementSource = "auto" | "manual";
+export type StandardPenaltyBasis = "none" | "flat" | "per_unit" | "per_unit_per_day" | "per_day" | "per_week";
+
+// One Attachment G standard in the agency catalog (migration 030). The catalog
+// is the library of what MVTA can hold a contractor to; AgreementStandards says
+// which of them a given contractor is actually held to this term.
 export interface ContractorPerformanceStandard {
-  id: string; code: string; name: string; standard_type: "occurrence" | "threshold";
-  priority: "High" | "Medium" | "Low" | "NA"; is_scored: boolean; unit_label: string;
-  measurement_source?: "auto" | "manual"; responsible_team?: string | null; assigned_to?: string | null;
+  id: string; code: string; name: string; description?: string | null; standard_type: StandardType;
+  priority: StandardPriority; is_scored: boolean; is_safety_critical?: boolean;
+  direction?: StandardDirection; unit_label: string;
+  measurement_source?: StandardMeasurementSource; resolver_key?: string | null;
+  data_source_note?: string | null; responsible_team?: string | null; assigned_to?: string | null;
+  cap_rule_note?: string | null; sort_order?: number;
+  effective_start_date?: string; effective_end_date?: string | null;
+  updated_by?: string; updated_at?: string;
+}
+
+// A contract term. One active agreement per contractor (migration 102).
+export interface PerformanceAgreementRecord {
+  id: string; contractor_id: string; contractor_name?: string; starts_on: string; ends_on: string;
+  validation_business_days: number; retention_years: number; is_active: boolean;
+  scored_standard_count?: number;
+}
+
+// Which catalog standards this agreement scores, over which months. Unassigning
+// is is_scored=0 or an effective_end_date - rows are never deleted, because a
+// period that already scored a standard must keep resolving the row it scored.
+export interface AgreementStandardAssignment {
+  id: string; agreement_id: string; standard_id: string; is_scored: boolean;
+  effective_start_date: string; effective_end_date: string | null;
+  assignment_note: string | null; updated_by?: string; updated_at?: string;
 }
 
 export interface ContractorRecord { id: string; name: string; contract_start_date: string; contract_end_date: string | null; is_active: boolean }
@@ -1546,7 +1576,16 @@ export interface AssessmentPeriod { id: string; contractor_id: string; contracto
 export interface PeriodKpiAssessment { id: string; period_id: string; standard_id: string; code: string; name: string; standard_type: string; priority: string; metric_display: string; target_display?: string; variance_pct?: number | null; tier_label: AssessmentTierLabel; assessment_outcome?: AssessmentTierLabel | "not_assessable" | null; occurrence_count: number; base_amount?: number; relief_amount?: number; escalation_multiplier?: number; proposed_amount: number; final_amount: number | null; manager_action: ManagerAssessmentAction; manager_reason: string | null; recommended_action?: Exclude<ManagerAssessmentAction,"pending"> | null; recommended_amount?: number | null; cap_required?: boolean; cap_reason?: string | null; consecutive_months_below?: number; data_completeness_pct: number | null }
 export interface ComplianceOccurrence { id: string; standard_id: string; standard_code: string; standard_name: string; contractor_id: string; contractor_name: string; service_date: string; quantity: number; description: string; source: string; review_status: string; attribution: string }
 export interface ManualMetricEntry { id: string; standard_id: string; standard_code: string; standard_name: string; contractor_id: string; contractor_name: string; service_month: string; metric_value: number; source_note: string; entered_by: string; entered_at: string }
-export interface ContractorStandardTier { id: string; standard_id: string; tier_order: number; tier_label: AssessmentTierLabel; bound_low: number | null; bound_high: number | null; penalty_basis: string; penalty_amount: number; triggers_cap: boolean; notes: string | null }
+// A band in a standard's tier ladder. agreement_id NULL is the agency catalog
+// default; a row naming an agreement overrides the whole ladder for that
+// agreement (migration 102 - an override governs all bands or none).
+export interface ContractorStandardTier {
+  id: string; standard_id: string; agreement_id?: string | null; tier_order: number;
+  tier_label: AssessmentTierLabel; bound_low: number | null; bound_high: number | null;
+  qualifier_code?: string | null; penalty_basis: StandardPenaltyBasis; penalty_amount: number;
+  triggers_cap: boolean; notes: string | null;
+  effective_start_date?: string; effective_end_date?: string | null;
+}
 export interface AssessmentReport { id: string; period_id: string; issuance_type: "preliminary" | "final"; version: number; content_sha256: string; issued_at: string | null; dispute_deadline_at: string | null }
 export interface AssessmentCap { id: string; standard_name: string; status: string; trigger_reason: string; due_at: string }
 export interface AssessmentDispute { id: string; report_version: number; item_count: number; basis: string; status: string; outcome: string | null; submitted_at: string }

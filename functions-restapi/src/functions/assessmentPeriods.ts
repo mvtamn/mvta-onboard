@@ -31,8 +31,21 @@ app.http("assessmentPeriodsOpen", {
     try {
       const pool = await getPool();
       const req = pool.request(); req.input("contractor", sql.UniqueIdentifier, body.contractor_id); req.input("month", sql.Char(6), body.service_month);
-      const contractor = await req.query<{ id: string; agreement_id: string }>(`SELECT c.id,a.id agreement_id FROM Contractors c JOIN PerformanceAgreements a ON a.contractor_id=c.id AND a.is_active=1 WHERE c.id=@contractor AND c.is_active=1 AND CONCAT(@month,'01') BETWEEN CONVERT(char(8),a.starts_on,112) AND CONVERT(char(8),a.ends_on,112)`);
+      // The agreement, plus how many standards it actually assigns for this
+      // month. A period whose agreement assigns nothing would open, snapshot an
+      // empty rule set, and compute a $0 assessment that looks like a clean
+      // month - so it is refused here rather than produced.
+      const contractor = await req.query<{ id: string; agreement_id: string; assigned: number }>(`
+        SELECT c.id,a.id agreement_id,
+          (SELECT COUNT(*) FROM AgreementStandards ags
+            WHERE ags.agreement_id=a.id AND ags.is_scored=1
+              AND ags.effective_start_date<=CONCAT(@month,'01')
+              AND (ags.effective_end_date IS NULL OR ags.effective_end_date>=CONCAT(@month,'01'))) assigned
+        FROM Contractors c JOIN PerformanceAgreements a ON a.contractor_id=c.id AND a.is_active=1
+        WHERE c.id=@contractor AND c.is_active=1
+          AND CONCAT(@month,'01') BETWEEN CONVERT(char(8),a.starts_on,112) AND CONVERT(char(8),a.ends_on,112)`);
       if (!contractor.recordset[0]) return { status: 404, jsonBody: { error: "Current Agreement not found for this Assessment Period" } };
+      if (!contractor.recordset[0].assigned) return { status: 400, jsonBody: { error: "No performance standards are assigned to this Agreement for this month. Assign them under Administration > Performance Standards." } };
       const write = pool.request(); write.input("contractor", sql.UniqueIdentifier, body.contractor_id); write.input("month", sql.Char(6), body.service_month);
       write.input("agreement", sql.UniqueIdentifier, contractor.recordset[0].agreement_id);
       const result = await write.query<{ id: string }>(`
@@ -41,8 +54,25 @@ app.http("assessmentPeriodsOpen", {
         DECLARE @period UNIQUEIDENTIFIER=(SELECT TOP 1 id FROM AssessmentPeriods WHERE contractor_id=@contractor AND service_month=@month ORDER BY assessment_revision DESC);
         IF NOT EXISTS(SELECT 1 FROM AssessmentPeriodStandards WHERE period_id=@period)
         BEGIN
-          INSERT AssessmentPeriodStandards(period_id,standard_id,code,name,standard_type,priority,direction,is_safety_critical,measurement_source,sort_order) SELECT @period,id,code,name,standard_type,priority,direction,is_safety_critical,measurement_source,sort_order FROM ContractorPerformanceStandards WHERE is_scored=1;
-          INSERT AssessmentPeriodTiers SELECT @period,t.standard_id,t.tier_order,t.tier_label,t.bound_low,t.bound_high,t.qualifier_code,t.penalty_basis,t.penalty_amount,t.triggers_cap FROM ContractorStandardTiers t JOIN AssessmentPeriodStandards s ON s.period_id=@period AND s.standard_id=t.standard_id WHERE t.effective_start_date<=CONCAT(@month,'01') AND (t.effective_end_date IS NULL OR t.effective_end_date>=CONCAT(@month,'01'));
+          INSERT AssessmentPeriodStandards(period_id,standard_id,code,name,standard_type,priority,direction,is_safety_critical,measurement_source,sort_order)
+            SELECT @period,s.id,s.code,s.name,s.standard_type,s.priority,s.direction,s.is_safety_critical,s.measurement_source,s.sort_order
+            FROM ContractorPerformanceStandards s
+            JOIN AgreementStandards ags ON ags.standard_id=s.id AND ags.agreement_id=@agreement
+            WHERE ags.is_scored=1 AND ags.effective_start_date<=CONCAT(@month,'01')
+              AND (ags.effective_end_date IS NULL OR ags.effective_end_date>=CONCAT(@month,'01'));
+          -- Tier precedence (migration 102): an agreement's own tier rows
+          -- govern the whole ladder for that standard, or none of it. Blending
+          -- an override with catalog defaults would produce bands nobody wrote.
+          INSERT AssessmentPeriodTiers
+            SELECT @period,t.standard_id,t.tier_order,t.tier_label,t.bound_low,t.bound_high,t.qualifier_code,t.penalty_basis,t.penalty_amount,t.triggers_cap
+            FROM ContractorStandardTiers t
+            JOIN AssessmentPeriodStandards s ON s.period_id=@period AND s.standard_id=t.standard_id
+            WHERE t.effective_start_date<=CONCAT(@month,'01') AND (t.effective_end_date IS NULL OR t.effective_end_date>=CONCAT(@month,'01'))
+              AND (t.agreement_id=@agreement OR (t.agreement_id IS NULL AND NOT EXISTS(
+                    SELECT 1 FROM ContractorStandardTiers o
+                    WHERE o.standard_id=t.standard_id AND o.agreement_id=@agreement
+                      AND o.effective_start_date<=CONCAT(@month,'01')
+                      AND (o.effective_end_date IS NULL OR o.effective_end_date>=CONCAT(@month,'01')))));
           DECLARE @rules NVARCHAR(MAX)=(SELECT s.*,JSON_QUERY((SELECT t.* FROM AssessmentPeriodTiers t WHERE t.period_id=s.period_id AND t.standard_id=s.standard_id ORDER BY t.tier_order FOR JSON PATH)) tiers FROM AssessmentPeriodStandards s WHERE s.period_id=@period ORDER BY s.sort_order FOR JSON PATH);
           UPDATE AssessmentPeriods SET rule_set_json=@rules,rule_set_sha256=CONVERT(char(64),HASHBYTES('SHA2_256',@rules),2) WHERE id=@period;
         END;

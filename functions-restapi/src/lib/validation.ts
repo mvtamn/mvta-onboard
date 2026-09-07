@@ -1048,4 +1048,147 @@ export function validateDetourIntakeAttachment(body: UnknownBody): string[] {
   return intakeAttachmentMetadataErrors(body, validateCreateDetourImage(body));
 }
 
+// Performance standards administration (migration 030 catalog, migration 102
+// agreement assignment). Column ceilings come from those two migrations; the
+// enumerations come from the CHECK constraints on ContractorPerformanceStandards
+// and ContractorStandardTiers, so a value that passes here cannot be rejected
+// by the database instead.
+export const VALID_STANDARD_TYPES = ["occurrence", "threshold"] as const;
+export const VALID_STANDARD_PRIORITIES = ["High", "Medium", "Low", "NA"] as const;
+export const VALID_STANDARD_DIRECTIONS = ["higher_is_better", "lower_is_better"] as const;
+export const VALID_MEASUREMENT_SOURCES = ["auto", "manual"] as const;
+export const VALID_TIER_LABELS = ["meets", "warning", "tier1", "tier2"] as const;
+export const VALID_PENALTY_BASES = ["none", "flat", "per_unit", "per_unit_per_day", "per_day", "per_week"] as const;
+
+// Standard codes are referenced by resolvers and by operational SQL by literal
+// value, so they are restricted to the shape those references assume rather
+// than to whatever fits the column.
+const STANDARD_CODE_RE = /^[A-Z][A-Z0-9_]{2,49}$/;
+
+function optionalText(value: unknown, max: number, field: string, errors: string[]): void {
+  if (value === undefined || value === null) return;
+  if (typeof value !== "string" || value.length > max) errors.push(`${field} must be a string of at most ${max} characters`);
+}
+
+export function validatePerformanceStandard(body: UnknownBody): string[] {
+  const errors: string[] = [];
+  if (typeof body.code !== "string" || !STANDARD_CODE_RE.test(body.code)) {
+    errors.push("code must be 3-50 characters of A-Z, 0-9 and underscore, starting with a letter");
+  }
+  if (typeof body.name !== "string" || !body.name.trim() || body.name.length > 200) {
+    errors.push("name is required and must be at most 200 characters");
+  }
+  if (!VALID_STANDARD_TYPES.includes(body.standard_type as never)) errors.push("standard_type must be occurrence or threshold");
+  if (!VALID_STANDARD_PRIORITIES.includes(body.priority as never)) errors.push("priority must be High, Medium, Low or NA");
+  if (!VALID_STANDARD_DIRECTIONS.includes(body.direction as never)) errors.push("direction must be higher_is_better or lower_is_better");
+  if (!VALID_MEASUREMENT_SOURCES.includes(body.measurement_source as never)) errors.push("measurement_source must be auto or manual");
+  if (typeof body.unit_label !== "string" || !body.unit_label.trim() || body.unit_label.length > 50) {
+    errors.push("unit_label is required and must be at most 50 characters");
+  }
+  if (typeof body.is_scored !== "boolean") errors.push("is_scored must be a boolean");
+  if (typeof body.is_safety_critical !== "boolean") errors.push("is_safety_critical must be a boolean");
+  if (!Number.isInteger(body.sort_order) || Number(body.sort_order) < 0) errors.push("sort_order must be a non-negative integer");
+  if (!isServiceDate(body.effective_start_date)) errors.push("effective_start_date must be YYYYMMDD");
+  if (body.effective_end_date !== null && body.effective_end_date !== undefined) {
+    if (!isServiceDate(body.effective_end_date)) errors.push("effective_end_date must be YYYYMMDD or null");
+    else if (isServiceDate(body.effective_start_date) && String(body.effective_end_date) < String(body.effective_start_date)) {
+      errors.push("effective_end_date must not precede effective_start_date");
+    }
+  }
+  // An automated standard names the resolver that measures it. Without one the
+  // compute silently falls through to manual entry and scores the month as
+  // "no data", which reads as a clean month rather than a misconfiguration.
+  if (body.measurement_source === "auto" && (typeof body.resolver_key !== "string" || !body.resolver_key.trim())) {
+    errors.push("resolver_key is required when measurement_source is auto");
+  }
+  optionalText(body.resolver_key, 50, "resolver_key", errors);
+  optionalText(body.description, 2000, "description", errors);
+  optionalText(body.data_source_note, 1000, "data_source_note", errors);
+  optionalText(body.cap_rule_note, 1000, "cap_rule_note", errors);
+  optionalText(body.responsible_team, 200, "responsible_team", errors);
+  optionalText(body.assigned_to, 200, "assigned_to", errors);
+  return errors;
+}
+
+// A tier ladder is replaced whole, never row by row: the bands are only
+// meaningful relative to each other, and a half-applied edit would leave a gap
+// or an overlap that scores real money.
+export function validateStandardTierLadder(body: UnknownBody): string[] {
+  const errors: string[] = [];
+  if (body.agreement_id !== null && body.agreement_id !== undefined && !isGuid(body.agreement_id)) {
+    errors.push("agreement_id must be a GUID or null for the agency default ladder");
+  }
+  if (!isServiceDate(body.effective_start_date)) errors.push("effective_start_date must be YYYYMMDD");
+  const tiers = body.tiers;
+  if (!Array.isArray(tiers)) return [...errors, "tiers must be an array"];
+  if (!tiers.length) errors.push("a tier ladder must hold at least one tier");
+  if (tiers.length > 20) errors.push("a tier ladder may hold at most 20 tiers");
+  tiers.forEach((raw, index) => {
+    const tier = raw as UnknownBody;
+    const at = `tiers[${index}]`;
+    if (!VALID_TIER_LABELS.includes(tier.tier_label as never)) errors.push(`${at}.tier_label must be meets, warning, tier1 or tier2`);
+    if (!VALID_PENALTY_BASES.includes(tier.penalty_basis as never)) errors.push(`${at}.penalty_basis must be one of ${VALID_PENALTY_BASES.join(", ")}`);
+    if (typeof tier.penalty_amount !== "number" || !Number.isFinite(tier.penalty_amount) || tier.penalty_amount < 0) {
+      errors.push(`${at}.penalty_amount must be a non-negative number`);
+    }
+    if (tier.penalty_basis === "none" && Number(tier.penalty_amount) !== 0) {
+      errors.push(`${at}.penalty_amount must be 0 when penalty_basis is none`);
+    }
+    if (tier.penalty_basis !== "none" && Number(tier.penalty_amount) === 0) {
+      errors.push(`${at} charges nothing but names a penalty basis; use penalty_basis none for a band that carries no penalty`);
+    }
+    if (typeof tier.triggers_cap !== "boolean") errors.push(`${at}.triggers_cap must be a boolean`);
+    const low = tier.bound_low, high = tier.bound_high;
+    if (low !== null && low !== undefined && typeof low !== "number") errors.push(`${at}.bound_low must be a number or null`);
+    if (high !== null && high !== undefined && typeof high !== "number") errors.push(`${at}.bound_high must be a number or null`);
+    if (typeof low === "number" && typeof high === "number" && low >= high) {
+      errors.push(`${at}.bound_low must be below bound_high`);
+    }
+    optionalText(tier.qualifier_code, 50, `${at}.qualifier_code`, errors);
+    optionalText(tier.notes, 1000, `${at}.notes`, errors);
+  });
+  return errors;
+}
+
+export function validatePerformanceAgreement(body: UnknownBody): string[] {
+  const errors: string[] = [];
+  if (!isGuid(body.contractor_id)) errors.push("contractor_id must be a GUID");
+  if (!isServiceDate(body.starts_on)) errors.push("starts_on must be YYYYMMDD");
+  if (!isServiceDate(body.ends_on)) errors.push("ends_on must be YYYYMMDD");
+  if (isServiceDate(body.starts_on) && isServiceDate(body.ends_on) && String(body.ends_on) < String(body.starts_on)) {
+    errors.push("ends_on must not precede starts_on");
+  }
+  if (!Number.isInteger(body.validation_business_days) || Number(body.validation_business_days) < 1 || Number(body.validation_business_days) > 30) {
+    errors.push("validation_business_days must be an integer between 1 and 30");
+  }
+  if (!Number.isInteger(body.retention_years) || Number(body.retention_years) < 1 || Number(body.retention_years) > 25) {
+    errors.push("retention_years must be an integer between 1 and 25");
+  }
+  if (typeof body.is_active !== "boolean") errors.push("is_active must be a boolean");
+  return errors;
+}
+
+export function validateAgreementStandardAssignments(body: UnknownBody): string[] {
+  const errors: string[] = [];
+  const assignments = body.assignments;
+  if (!Array.isArray(assignments)) return ["assignments must be an array"];
+  if (!assignments.length) errors.push("assignments must name at least one standard");
+  if (assignments.length > 200) errors.push("assignments may hold at most 200 standards");
+  assignments.forEach((raw, index) => {
+    const assignment = raw as UnknownBody;
+    const at = `assignments[${index}]`;
+    if (!isGuid(assignment.standard_id)) errors.push(`${at}.standard_id must be a GUID`);
+    if (typeof assignment.is_scored !== "boolean") errors.push(`${at}.is_scored must be a boolean`);
+    if (!isServiceDate(assignment.effective_start_date)) errors.push(`${at}.effective_start_date must be YYYYMMDD`);
+    if (assignment.effective_end_date !== null && assignment.effective_end_date !== undefined) {
+      if (!isServiceDate(assignment.effective_end_date)) errors.push(`${at}.effective_end_date must be YYYYMMDD or null`);
+      else if (isServiceDate(assignment.effective_start_date) && String(assignment.effective_end_date) < String(assignment.effective_start_date)) {
+        errors.push(`${at}.effective_end_date must not precede effective_start_date`);
+      }
+    }
+    optionalText(assignment.assignment_note, 1000, `${at}.assignment_note`, errors);
+  });
+  return errors;
+}
+
 export { VALID_CATEGORIES, VALID_SEVERITIES, VALID_EXPIRATION_SOURCES, VALID_CONSENT_SOURCES };
