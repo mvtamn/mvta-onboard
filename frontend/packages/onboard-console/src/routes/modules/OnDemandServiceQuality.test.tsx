@@ -63,6 +63,7 @@ describe("On-Demand Risk investigation workspace", () => {
         last_authoritative_reconciliation_at: null,
         latest_source_update_at: null,
         active_request_count: null,
+        monitored_request_count: null,
         reconciliation_interval_minutes: 60,
         degraded_after_minutes: 90,
       },
@@ -83,6 +84,7 @@ describe("On-Demand Risk investigation workspace", () => {
         last_authoritative_reconciliation_at: null,
         latest_source_update_at: null,
         active_request_count: null,
+        monitored_request_count: null,
         reconciliation_interval_minutes: 60,
         degraded_after_minutes: 90,
       },
@@ -104,6 +106,7 @@ describe("On-Demand Risk investigation workspace", () => {
         last_authoritative_reconciliation_at: "2026-08-24T00:30:00Z",
         latest_source_update_at: "2026-08-24T00:29:00Z",
         active_request_count: 0,
+        monitored_request_count: 0,
         reconciliation_interval_minutes: 60,
         degraded_after_minutes: 90,
       },
@@ -134,6 +137,7 @@ describe("On-Demand Risk investigation workspace", () => {
         last_authoritative_reconciliation_at: null,
         latest_source_update_at: null,
         active_request_count: null,
+        monitored_request_count: null,
         reconciliation_interval_minutes: 60,
         degraded_after_minutes: 90,
       },
@@ -158,6 +162,7 @@ describe("On-Demand Risk investigation workspace", () => {
         last_authoritative_reconciliation_at: "2026-08-24T00:00:00Z",
         latest_source_update_at: "2026-08-24T00:00:00Z",
         active_request_count: 0,
+        monitored_request_count: 0,
         reconciliation_interval_minutes: 60,
         degraded_after_minutes: 90,
       },
@@ -194,6 +199,7 @@ describe("On-Demand Risk investigation workspace", () => {
         last_authoritative_reconciliation_at: "2026-08-24T00:30:00Z",
         latest_source_update_at: "2026-08-24T00:29:00Z",
         active_request_count: 1,
+        monitored_request_count: 1,
         reconciliation_interval_minutes: 60,
         degraded_after_minutes: 90,
       },
@@ -215,6 +221,40 @@ describe("On-Demand Risk investigation workspace", () => {
     expect(vi.mocked(api.prepareSuggestedAlert).mock.calls[0][0]).not.toHaveProperty("stale_data_acknowledgement_reason");
   });
 
+  it("says what population the exception list was drawn from", async () => {
+    vi.mocked(api.getOnDemandRisks).mockResolvedValueOnce({
+      risks: [liveRisk],
+      diagnostics: {
+        state: "current",
+        last_authoritative_reconciliation_at: "2026-08-24T00:30:00Z",
+        latest_source_update_at: "2026-08-24T00:29:00Z",
+        active_request_count: 40,
+        monitored_request_count: 40,
+        reconciliation_interval_minutes: 60,
+        degraded_after_minutes: 90,
+      },
+    });
+
+    render(<MemoryRouter><OnDemandServiceQuality /></MemoryRouter>);
+
+    // One exception out of forty monitored requests reads very differently
+    // from "1 trip", which is what a filtered list said before.
+    expect(await screen.findByText("1 of 40 monitored")).toBeInTheDocument();
+    expect(screen.queryByText("1 trips")).not.toBeInTheDocument();
+  });
+
+  it("does not compare against a monitored population in a training scenario", async () => {
+    vi.mocked(api.getOnDemandRisks).mockRejectedValueOnce(new ApiError(500, "unavailable"));
+
+    render(<MemoryRouter><OnDemandServiceQuality /></MemoryRouter>);
+    await screen.findByText(/Preview mode/);
+
+    // Preview scenarios are wholly at-risk by construction, so there is no
+    // wider population to be a subset of.
+    expect(screen.getByText(/trips$/)).toBeInTheDocument();
+    expect(screen.queryByText(/of \d+ monitored/)).not.toBeInTheDocument();
+  });
+
   it("keeps an observed overdue request distinct from a projected Watch", async () => {
     // Both are below the 25-minute standard, and the forecast alone would
     // qualify as a Watch; the passed Pickup commitment is the observed fact.
@@ -228,6 +268,7 @@ describe("On-Demand Risk investigation workspace", () => {
         last_authoritative_reconciliation_at: "2026-08-24T00:30:00Z",
         latest_source_update_at: "2026-08-24T00:29:00Z",
         active_request_count: 2,
+        monitored_request_count: 2,
         reconciliation_interval_minutes: 60,
         degraded_after_minutes: 90,
       },

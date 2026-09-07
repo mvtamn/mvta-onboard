@@ -559,6 +559,9 @@ export interface OnDemandRiskDiagnostics {
   last_authoritative_reconciliation_at: string | null;
   latest_source_update_at: string | null;
   active_request_count: number | null;
+  // Active requests the monitor is watching, of which `risks` carries only the
+  // ones at or approaching their standard. Null while monitoring is off.
+  monitored_request_count: number | null;
   reconciliation_interval_minutes: number;
   degraded_after_minutes: number;
 }
