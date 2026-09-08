@@ -1601,6 +1601,14 @@ export interface ContractorPerformanceStandard {
   data_source_note?: string | null; responsible_team?: string | null; assigned_to?: string | null;
   cap_rule_note?: string | null; sort_order?: number;
   effective_start_date?: string; effective_end_date?: string | null;
+  /** The figure the contract states as the standard, distinct from the bands. */
+  target_value?: number | null;
+  target_display?: string | null;
+  /** Whether bands match one occurrence's quantity or its position in the month. */
+  band_scope?: "per_occurrence" | "running_count" | null;
+  /** Corrective action when more than N occurrences fall in any rolling W days. */
+  cap_window_days?: number | null;
+  cap_window_threshold?: number | null;
   updated_by?: string; updated_at?: string;
 }
 
@@ -1661,6 +1669,18 @@ export interface ComplianceOccurrence {
   // shows the readable tail so a reviewer can find the row in Compliance;
   // occurrenceSourceLabel() in the assessment module does the parsing.
   source_ref?: string | null;
+  /**
+   * A reviewer's figure for a penalty the contract states as a range rather
+   * than a number - damage reimbursement, say. Null on a ranged band means the
+   * month is still waiting on it.
+   */
+  assessed_amount?: number | null;
+  assessed_amount_note?: string | null;
+  assessed_by?: string | null;
+  assessed_at?: string | null;
+  /** The band's bounds, when the contract states a range for this standard. */
+  penalty_amount_min?: number | null;
+  penalty_amount_max?: number | null;
 }
 export interface ManualMetricEntry { id: string; standard_id: string; standard_code: string; standard_name: string; contractor_id: string; contractor_name: string; service_month: string; metric_value: number; source_note: string; entered_by: string; entered_at: string }
 // A band in a standard's tier ladder. agreement_id NULL is the agency catalog
@@ -1670,6 +1690,8 @@ export interface ContractorStandardTier {
   id: string; standard_id: string; agreement_id?: string | null; tier_order: number;
   tier_label: AssessmentTierLabel; bound_low: number | null; bound_high: number | null;
   qualifier_code?: string | null; penalty_basis: StandardPenaltyBasis; penalty_amount: number;
+  /** Both set means the contract states a range and a reviewer enters the figure. */
+  penalty_amount_min?: number | null; penalty_amount_max?: number | null;
   triggers_cap: boolean; notes: string | null;
   effective_start_date?: string; effective_end_date?: string | null;
 }

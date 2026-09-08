@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import {
-  assignedStandardCountSql, periodResolverKeySql, periodStandardSourceSql, periodTierScopeSql,
+  assignedStandardCountSql, periodResolverKeySql, periodStandardSnapshotColumns, periodStandardSourceSql,
+  periodTierCopyColumns, periodTierScopeSql, periodTierSnapshotColumns,
 } from "./assessment/schemaScope";
 
 // The application deploys on merge; migration 102 is a separate manual step
@@ -9,8 +10,8 @@ import {
 // moments every one of these has to compose SQL the older schema can parse -
 // an unknown object or column fails at parse time and takes the whole batch
 // with it, so no runtime guard inside the SQL could save it.
-const scoped = { scoped: true, snapshotsResolver: true };
-const unscoped = { scoped: false, snapshotsResolver: false };
+const scoped = { scoped: true, snapshotsResolver: true, penaltyScaling: true, snapshotsSeverity: true };
+const unscoped = { scoped: false, snapshotsResolver: false, penaltyScaling: false, snapshotsSeverity: false };
 
 test("before migration 102 nothing names AgreementStandards", () => {
   for (const sql of [assignedStandardCountSql(unscoped), periodStandardSourceSql(unscoped), periodTierScopeSql(unscoped)]) {
@@ -59,7 +60,7 @@ test("the assigned-standard count falls back to the catalog's scored set", () =>
 test("before migration 103 the resolver comes from the catalog, not the snapshot", () => {
   // AssessmentPeriodStandards.resolver_key does not exist yet, so naming it
   // would fail the whole batch at parse time.
-  const sql = periodResolverKeySql({ scoped: true, snapshotsResolver: false });
+  const sql = periodResolverKeySql({ ...scoped, snapshotsResolver: false });
   assert.ok(!/^resolver_key$/.test(sql));
   assert.ok(sql.includes("FROM ContractorPerformanceStandards"));
 });
@@ -67,5 +68,35 @@ test("before migration 103 the resolver comes from the catalog, not the snapshot
 test("after migration 103 the period's own snapshot decides how it was measured", () => {
   // The point of snapshotting it: repointing a standard at a different
   // resolver must not change how an already-issued month recomputes.
-  assert.strictEqual(periodResolverKeySql({ scoped: true, snapshotsResolver: true }), "resolver_key");
+  assert.strictEqual(periodResolverKeySql({ ...scoped }), "resolver_key");
+});
+
+test("the tier snapshot names its columns, so a new column cannot break the insert", () => {
+  // This insert had no column list, so it depended on the physical column
+  // order of AssessmentPeriodTiers - and migration 105's severity_order would
+  // then have failed every attempt to open a period on a column-count
+  // mismatch. Naming them makes a later column inert until this list says so.
+  const before = periodTierSnapshotColumns({ ...unscoped });
+  assert.ok(!before.columns.includes("severity_order"));
+  assert.ok(!before.columns.includes("penalty_amount_min"));
+  assert.strictEqual(before.columns.split(",").length, before.select.split(",").length);
+
+  const after = periodTierSnapshotColumns({ ...scoped });
+  assert.ok(after.columns.includes("severity_order"));
+  assert.ok(after.columns.includes("penalty_amount_min"));
+  assert.strictEqual(after.columns.split(",").length, after.select.split(",").length);
+});
+
+test("the reopen copy carries exactly what the snapshot holds", () => {
+  // A column dropped here is silently lost when a period is reopened - which
+  // is how a reopened month could have scored against a different ladder.
+  assert.ok(periodTierCopyColumns({ ...scoped }).includes("severity_order"));
+  assert.ok(periodTierCopyColumns({ ...scoped }).includes("penalty_amount_max"));
+  assert.ok(!periodTierCopyColumns({ ...unscoped }).includes("severity_order"));
+});
+
+test("the standard snapshot carries the target only once migration 107 has run", () => {
+  assert.ok(!periodStandardSnapshotColumns({ ...unscoped }).includes("target_value"));
+  assert.ok(periodStandardSnapshotColumns({ ...scoped }).includes("target_value"));
+  assert.ok(periodStandardSnapshotColumns({ ...scoped }).includes("cap_window_days"));
 });
