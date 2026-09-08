@@ -220,6 +220,7 @@ MIGRATIONS=(
   "migration-107-penalty-scaling.sql"
   "migration-108-team-and-owner-lists.sql"
   "migration-109-window-modes-and-staffing-split.sql"
+  "migration-110-standard-category.sql"
 )
 
 # Each migration's landing check: a query returning 1 when it is present.
@@ -232,6 +233,7 @@ CHECK_LABELS=(
   "107 · standard targets, ranged band amounts, assessed occurrence amounts"
   "108 · responsible_team and assigned_to reference values"
   "109 · cap_window_mode + the four Operator Staffing standards"
+  "110 · ContractorPerformanceStandards.category + the category list"
 )
 CHECK_QUERIES=(
   "SELECT COUNT(*) FROM sys.columns WHERE object_id=OBJECT_ID('dbo.AssessmentPeriodStandards') AND name='resolver_key'"
@@ -241,8 +243,20 @@ CHECK_QUERIES=(
   "SELECT CASE WHEN COL_LENGTH('dbo.ContractorPerformanceStandards','target_value') IS NOT NULL AND COL_LENGTH('dbo.ContractorStandardTiers','penalty_amount_min') IS NOT NULL AND COL_LENGTH('dbo.ComplianceOccurrences','assessed_amount') IS NOT NULL AND COL_LENGTH('dbo.PeriodKpiAssessments','awaiting_amount_count') IS NOT NULL THEN 1 ELSE 0 END"
   "SELECT CASE WHEN EXISTS(SELECT 1 FROM dbo.ReferenceValues WHERE domain='responsible_team') AND EXISTS(SELECT 1 FROM dbo.ReferenceValues WHERE domain='assigned_to') THEN 1 ELSE 0 END"
   "SELECT CASE WHEN COL_LENGTH('dbo.ContractorPerformanceStandards','cap_window_mode') IS NOT NULL AND EXISTS(SELECT 1 FROM sys.check_constraints WHERE name='CK_CPS_CapWindowMode') AND (SELECT COUNT(*) FROM dbo.ContractorPerformanceStandards WHERE code IN ('OPERATOR_STAFFING_LEVEL','PIVOT_COVERAGE','PIVOT_MISUSE','UNQUALIFIED_OPERATOR')) = 4 THEN 1 ELSE 0 END"
+  "SELECT CASE WHEN COL_LENGTH('dbo.ContractorPerformanceStandards','category') IS NOT NULL AND EXISTS(SELECT 1 FROM dbo.ReferenceValues WHERE domain='category') THEN 1 ELSE 0 END"
 )
-CHECK_EXPECTED=("1" "1" "1" "5" "1" "1" "1")
+CHECK_EXPECTED=("1" "1" "1" "5" "1" "1" "1" "1")
+
+# The four arrays are keyed by position, and nothing else notices when they
+# drift. One short CHECK_QUERIES and every migration after the gap is verified
+# against the wrong query - which reports a migration that applied cleanly as
+# one that did not land, or worse, the reverse.
+if [ ${#CHECK_LABELS[@]} -ne ${#MIGRATIONS[@]} ] \
+  || [ ${#CHECK_QUERIES[@]} -ne ${#MIGRATIONS[@]} ] \
+  || [ ${#CHECK_EXPECTED[@]} -ne ${#MIGRATIONS[@]} ]; then
+  echo "apply-dev-migrations: MIGRATIONS (${#MIGRATIONS[@]}), CHECK_LABELS (${#CHECK_LABELS[@]}), CHECK_QUERIES (${#CHECK_QUERIES[@]}) and CHECK_EXPECTED (${#CHECK_EXPECTED[@]}) must be the same length." >&2
+  exit 2
+fi
 
 # Set when this wizard opens the firewall itself, so stage 6 knows what to undo.
 ADDED_FIREWALL_RULE=""
