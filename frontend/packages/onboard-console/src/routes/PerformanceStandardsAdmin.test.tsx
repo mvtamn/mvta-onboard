@@ -355,6 +355,91 @@ describe("Performance Standards administration", () => {
     expect(putPerformanceStandard).toHaveBeenCalledWith(OTP.id, expect.objectContaining({ category: null }));
   });
 
+  // The contract's stated target. Before this it had nowhere to live, so an
+  // issued report read "Configured bands" where the target belongs.
+  it("shows a percentage target as a percentage, not as the ratio it is stored as", async () => {
+    catalog = { ...catalog, standards: [ORPHAN, { ...OTP, target_value: 0.85 }] };
+    view();
+    await open("OTP_FIXED_ROUTE");
+    const field = screen.getByText("Contract target").closest("label")!;
+    expect(within(field).getAllByDisplayValue("85").length).toBeGreaterThan(0);
+    // And on the ladder summary, where a reader looks for it.
+    expect(screen.getByText(/Target: 85%/)).toBeInTheDocument();
+  });
+
+  it("prefers the phrase somebody wrote over the figure", async () => {
+    catalog = { ...catalog, standards: [ORPHAN, { ...OTP, target_value: 0.85, target_display: "85% or above" }] };
+    view();
+    await open("OTP_FIXED_ROUTE");
+    expect(screen.getByText(/Target: 85% or above/)).toBeInTheDocument();
+  });
+
+  it("offers the phrase field only once there is a target to phrase", async () => {
+    view();
+    await open("OTP_FIXED_ROUTE");
+    expect(screen.queryByText("Reads on a report as")).not.toBeInTheDocument();
+    const field = screen.getByText("Contract target").closest("label")!;
+    fireEvent.change(within(field).getAllByRole("textbox")[0], { target: { value: "85" } });
+    expect(screen.getByText("Reads on a report as")).toBeInTheDocument();
+  });
+
+  it("saves a percentage target as the ratio the bands are stored in", async () => {
+    view();
+    await open("OTP_FIXED_ROUTE");
+    const field = screen.getByText("Contract target").closest("label")!;
+    fireEvent.change(within(field).getAllByRole("textbox")[0], { target: { value: "85" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save standard" }));
+    expect(putPerformanceStandard).toHaveBeenCalledWith(OTP.id, expect.objectContaining({ target_value: 0.85 }));
+  });
+
+  it("drops the phrase when the target it described is cleared", async () => {
+    // A phrase with no target behind it reads on a report as a figure the
+    // system knows, when nothing knows it. The server refuses it too.
+    catalog = { ...catalog, standards: [ORPHAN, { ...OTP, target_value: 0.85, target_display: "85% or above" }] };
+    view();
+    await open("OTP_FIXED_ROUTE");
+    const field = screen.getByText("Contract target").closest("label")!;
+    fireEvent.change(within(field).getAllByRole("textbox")[0], { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save standard" }));
+    expect(putPerformanceStandard).toHaveBeenCalledWith(OTP.id, expect.objectContaining({
+      target_value: null, target_display: null,
+    }));
+  });
+
+  // Which number a band is matched against.
+  it("offers band scope only for a counted-events standard", async () => {
+    view();
+    await open("OTP_FIXED_ROUTE");
+    // OTP is a monthly value: it is scored on one figure, so there is no
+    // position-in-the-month for a band to match.
+    expect(screen.queryByRole("radio", { name: /position in the month/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("radio", { name: /Counted events/ }));
+    expect(screen.getByRole("radio", { name: /position in the month/ })).toBeInTheDocument();
+  });
+
+  it("saves a count-scaled band scope", async () => {
+    catalog = { ...catalog, standards: [ORPHAN, { ...OTP, standard_type: "occurrence" as const, resolver_key: null, measurement_source: "manual_entry" as const }] };
+    view();
+    await open("OTP_FIXED_ROUTE");
+    fireEvent.click(screen.getByRole("radio", { name: /position in the month/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Save standard" }));
+    expect(putPerformanceStandard).toHaveBeenCalledWith(OTP.id, expect.objectContaining({ band_scope: "running_count" }));
+  });
+
+  it("resets the band scope when a standard becomes a monthly value", async () => {
+    catalog = { ...catalog, standards: [ORPHAN, { ...OTP, standard_type: "occurrence" as const, band_scope: "running_count" as const, resolver_key: null, measurement_source: "manual_entry" as const }] };
+    view();
+    await open("OTP_FIXED_ROUTE");
+    fireEvent.click(screen.getByRole("radio", { name: /Monthly value/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Save standard" }));
+    // Left as running_count it would be a setting the page no longer shows
+    // and the compute never reads. The server refuses that combination.
+    expect(putPerformanceStandard).toHaveBeenCalledWith(OTP.id, expect.objectContaining({
+      standard_type: "threshold", band_scope: "per_occurrence",
+    }));
+  });
+
   it("will not open bands or assignment for a standard that does not exist yet", async () => {
     view();
     fireEvent.click(await screen.findByText("New standard"));

@@ -134,18 +134,25 @@ app.http("performanceStandardPut", {
       // Same reason as the window: a column the schema lacks fails the MERGE at
       // parse time, so category is composed in rather than bound outright.
       if (scope.categorised) req.input("category", sql.NVarChar(50), body.category ?? null);
+      if (scope.penaltyScaling) {
+        req.input("target_value", sql.Float, typeof body.target_value === "number" ? body.target_value : null);
+        req.input("target_display", sql.NVarChar(100), body.target_display ?? null);
+        // NOT NULL with a default in migration 107, so an omitted scope means
+        // per_occurrence rather than a null the column will not take.
+        req.input("band_scope", sql.NVarChar(20), body.band_scope === "running_count" ? "running_count" : "per_occurrence");
+      }
       const guardedSet = [
-        scope.penaltyScaling ? "cap_window_threshold=@cap_threshold,cap_window_days=@cap_days" : "",
+        scope.penaltyScaling ? "cap_window_threshold=@cap_threshold,cap_window_days=@cap_days,target_value=@target_value,target_display=@target_display,band_scope=@band_scope" : "",
         scope.windowModes ? "cap_window_mode=@cap_mode" : "",
         scope.categorised ? "category=@category" : "",
       ].filter(Boolean).join(",");
       const guardedColumns = [
-        scope.penaltyScaling ? "cap_window_threshold,cap_window_days" : "",
+        scope.penaltyScaling ? "cap_window_threshold,cap_window_days,target_value,target_display,band_scope" : "",
         scope.windowModes ? "cap_window_mode" : "",
         scope.categorised ? "category" : "",
       ].filter(Boolean).join(",");
       const guardedValues = [
-        scope.penaltyScaling ? "@cap_threshold,@cap_days" : "",
+        scope.penaltyScaling ? "@cap_threshold,@cap_days,@target_value,@target_display,@band_scope" : "",
         scope.windowModes ? "@cap_mode" : "",
         scope.categorised ? "@category" : "",
       ].filter(Boolean).join(",");
