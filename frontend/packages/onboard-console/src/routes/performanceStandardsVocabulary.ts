@@ -1,5 +1,5 @@
 import type {
-  ContractorPerformanceStandard, ContractorStandardTier, ReferenceValue,
+  CapWindowMode, ContractorPerformanceStandard, ContractorStandardTier, ReferenceValue,
   StandardMeasurementSource, StandardPenaltyBasis,
 } from "@mvta/shared";
 
@@ -274,3 +274,32 @@ export const FALLBACK_PRIORITIES: readonly VocabularyOption[] = [
   { value: "High", label: "High" }, { value: "Medium", label: "Medium" },
   { value: "Low", label: "Low" }, { value: "NA", label: "Not applicable" },
 ];
+
+
+// The corrective-action window read back as the sentence it means.
+//
+// Three fields describe one rule, and the two modes differ in a way the fields
+// do not show: a rolling window never resets, a calendar quarter resets on 1
+// January, 1 April, 1 July and 1 October. An administrator choosing between
+// them is choosing what happens to a count that straddles a quarter boundary,
+// so the sentence says so rather than repeating the numbers back.
+export function capWindowSentence(standard: {
+  cap_window_mode?: CapWindowMode | null;
+  cap_window_days?: number | null;
+  cap_window_threshold?: number | null;
+}): string {
+  const mode = standard.cap_window_mode;
+  if (!mode) return "No corrective action window: occurrences are charged as they happen.";
+  const threshold = standard.cap_window_threshold;
+  const count = typeof threshold === "number" && threshold > 0
+    ? `More than ${threshold} ${threshold === 1 ? "occurrence" : "occurrences"}`
+    : "Once the threshold is set, more occurrences than it allows";
+  if (mode === "calendar_quarter") {
+    return `${count} within one calendar quarter owes corrective action. The count restarts on 1 January, 1 April, 1 July and 1 October.`;
+  }
+  const days = standard.cap_window_days;
+  if (typeof days !== "number" || days < 1) {
+    return `${count} within a rolling window owes corrective action. Set the number of days the window covers.`;
+  }
+  return `${count} in any ${days} consecutive days owes corrective action. The window never resets, so a count can straddle a month or a quarter.`;
+}

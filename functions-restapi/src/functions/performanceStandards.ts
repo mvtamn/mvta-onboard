@@ -116,6 +116,33 @@ app.http("performanceStandardPut", {
       req.input("team", sql.NVarChar(200), body.responsible_team ?? null);
       req.input("assigned", sql.NVarChar(200), body.assigned_to ?? null);
       req.input("cap_note", sql.NVarChar(1000), body.cap_rule_note ?? null);
+      // The corrective-action window only exists in a database that has had
+      // migrations 107 and 109. Naming a column the schema lacks fails at parse
+      // time and takes the whole MERGE with it, so the columns are composed in
+      // rather than bound unconditionally. The scope flags read the snapshot
+      // tables those same migrations alter, which move together with the
+      // catalog's own columns.
+      const scope = await agreementScope(pool);
+      const capMode = scope.windowModes ? (body.cap_window_mode ?? null) : null;
+      const capThreshold = scope.penaltyScaling && body.cap_window_mode ? (body.cap_window_threshold ?? null) : null;
+      const capDays = scope.penaltyScaling && body.cap_window_mode === "rolling_days" ? (body.cap_window_days ?? null) : null;
+      if (scope.penaltyScaling) {
+        req.input("cap_threshold", sql.Int, capThreshold);
+        req.input("cap_days", sql.Int, capDays);
+      }
+      if (scope.windowModes) req.input("cap_mode", sql.NVarChar(20), capMode);
+      const capSet = [
+        scope.penaltyScaling ? "cap_window_threshold=@cap_threshold,cap_window_days=@cap_days" : "",
+        scope.windowModes ? "cap_window_mode=@cap_mode" : "",
+      ].filter(Boolean).join(",");
+      const capColumns = [
+        scope.penaltyScaling ? "cap_window_threshold,cap_window_days" : "",
+        scope.windowModes ? "cap_window_mode" : "",
+      ].filter(Boolean).join(",");
+      const capValues = [
+        scope.penaltyScaling ? "@cap_threshold,@cap_days" : "",
+        scope.windowModes ? "@cap_mode" : "",
+      ].filter(Boolean).join(",");
       req.input("sort", sql.Int, body.sort_order);
       req.input("start", sql.Char(8), body.effective_start_date);
       req.input("end", sql.Char(8), body.effective_end_date ?? null);
@@ -127,12 +154,12 @@ app.http("performanceStandardPut", {
           is_scored=@scored,is_safety_critical=@safety,direction=@direction,unit_label=@unit,measurement_source=@source,
           resolver_key=@resolver,source_system=@source_system,data_source_note=@data_note,responsible_team=@team,assigned_to=@assigned,
           cap_rule_note=@cap_note,sort_order=@sort,effective_start_date=@start,effective_end_date=@end,
-          updated_by=@actor,updated_at=SYSUTCDATETIME()
+          ${capSet ? `${capSet},` : ""}updated_by=@actor,updated_at=SYSUTCDATETIME()
         WHEN NOT MATCHED THEN INSERT(id,code,name,description,standard_type,priority,is_scored,is_safety_critical,direction,
           unit_label,measurement_source,resolver_key,source_system,data_source_note,responsible_team,assigned_to,cap_rule_note,sort_order,
-          effective_start_date,effective_end_date,updated_by)
+          effective_start_date,effective_end_date,${capColumns ? `${capColumns},` : ""}updated_by)
           VALUES(@id,@code,@name,@description,@type,@priority,@scored,@safety,@direction,@unit,@source,@resolver,@source_system,@data_note,
-            @team,@assigned,@cap_note,@sort,@start,@end,@actor);
+            @team,@assigned,@cap_note,@sort,@start,@end,${capValues ? `${capValues},` : ""}@actor);
       `);
       return { status: 200, jsonBody: { id } };
     } catch (error) {

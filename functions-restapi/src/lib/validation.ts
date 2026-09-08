@@ -1074,6 +1074,7 @@ export const VALID_STANDARD_DIRECTIONS = ["higher_is_better", "lower_is_better"]
 export const VALID_MEASUREMENT_SOURCES = MEASUREMENT_SOURCES;
 export const VALID_TIER_LABELS = ["meets", "warning", "tier1", "tier2"] as const;
 export const VALID_PENALTY_BASES = ["none", "flat", "per_unit", "per_unit_per_day", "per_day", "per_week"] as const;
+export const VALID_CAP_WINDOW_MODES = ["rolling_days", "calendar_quarter"] as const;
 
 // Standard codes are referenced by resolvers and by operational SQL by literal
 // value, so they are restricted to the shape those references assume rather
@@ -1153,6 +1154,45 @@ export function validatePerformanceStandard(body: UnknownBody): string[] {
   optionalText(body.cap_rule_note, 1000, "cap_rule_note", errors);
   optionalText(body.responsible_team, 200, "responsible_team", errors);
   optionalText(body.assigned_to, 200, "assigned_to", errors);
+  errors.push(...capWindowErrors(body));
+  return errors;
+}
+
+// The corrective-action window, checked as one thing rather than three fields.
+//
+// A window is either wholly absent or wholly present. The halves are useless
+// on their own and dangerous together: a threshold with no mode has nothing to
+// count over and never trips, a mode with no threshold has nothing to trip on,
+// and either reads from the catalog as a rule that is configured. Migration
+// 109's CHECK enforces the mode/days pairing at the table; this returns the
+// same refusal as a sentence, before a round trip to find out.
+function capWindowErrors(body: UnknownBody): string[] {
+  const errors: string[] = [];
+  const mode = body.cap_window_mode;
+  const days = body.cap_window_days;
+  const threshold = body.cap_window_threshold;
+  const given = (value: unknown) => value !== undefined && value !== null && value !== "";
+
+  if (!given(mode)) {
+    if (given(days) || given(threshold)) {
+      errors.push("cap_window_mode is required when a corrective-action window is configured");
+    }
+    return errors;
+  }
+  if (!VALID_CAP_WINDOW_MODES.includes(mode as never)) {
+    return [`cap_window_mode must be one of: ${VALID_CAP_WINDOW_MODES.join(", ")}`];
+  }
+  if (!Number.isInteger(threshold) || Number(threshold) < 1) {
+    errors.push("cap_window_threshold must be a whole number of at least 1 when a window is set");
+  }
+  // A day count beside a calendar quarter is a number nothing reads: the
+  // quarter's own bounds decide the window. Storing one invites a later reader
+  // to believe it means something.
+  if (mode === "calendar_quarter") {
+    if (given(days)) errors.push("cap_window_days does not apply to a calendar-quarter window");
+  } else if (!Number.isInteger(days) || Number(days) < 1 || Number(days) > 3650) {
+    errors.push("cap_window_days must be a whole number of days between 1 and 3650 for a rolling window");
+  }
   return errors;
 }
 

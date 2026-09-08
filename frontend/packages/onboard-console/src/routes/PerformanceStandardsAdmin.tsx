@@ -2,11 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   AgreementStandardAssignment, AgreementStandardInput, ContractorPerformanceStandard,
   ContractorStandardTier, PerformanceAgreementRecord,
-  KnownSourceSystem, PerformanceStandardInput, ReferenceValue, RegisteredResolver, StandardMeasurementSource,
+  CapWindowMode, KnownSourceSystem, PerformanceStandardInput, ReferenceValue, RegisteredResolver, StandardMeasurementSource,
   StandardTierInput,
 } from "@mvta/shared";
 import {
-  BAND_RANGES, bandRangeOf, boundsForRange, boundToInput, describeBand,
+  BAND_RANGES, bandRangeOf, boundsForRange, boundToInput, capWindowSentence, describeBand,
   FALLBACK_PENALTY_BASES, FALLBACK_PRIORITIES, FALLBACK_TIER_LABELS, FALLBACK_UNITS,
   inputToBound, isAutomated, isRatioUnit, ladderWarnings, optionsFor, qualifierLabel, sourceLabel,
   TIER_LABELS, unitNoun, withCurrent, type BandRange, type VocabularyOption,
@@ -65,11 +65,25 @@ const MEASUREMENT_SOURCES: { value: StandardMeasurementSource; label: string; hi
   { value: "onboard_compliance", label: "Raised by OnBoard compliance", hint: "Occurrences OnBoard raises from its own modules." },
 ];
 
+// How a corrective-action window counts. "None" is a real choice and the
+// default: most standards charge per occurrence and escalate nothing.
+//
+// The two counting modes are not interchangeable. Three cases in December and
+// three in January breach a calendar-quarter rule never, and a rolling
+// ninety-day rule almost certainly - so the picker asks rather than assuming,
+// and the hints say what each one does at a boundary.
+const CAP_WINDOW_MODES: { value: CapWindowMode | ""; label: string; hint: string }[] = [
+  { value: "", label: "No window", hint: "Occurrences are charged as they happen and nothing escalates." },
+  { value: "rolling_days", label: "Rolling days", hint: "Counts back a fixed number of days from any point. Never resets." },
+  { value: "calendar_quarter", label: "Calendar quarter", hint: "Counts within Jan-Mar, Apr-Jun, and so on. The count restarts each quarter." },
+];
+
 const EMPTY_STANDARD: PerformanceStandardInput = {
   code: "", name: "", description: "", standard_type: "occurrence", priority: "Medium",
   is_scored: true, is_safety_critical: false, direction: "lower_is_better", unit_label: "occurrences",
   measurement_source: "manual_entry", resolver_key: null, source_system: null, data_source_note: "", responsible_team: "",
-  assigned_to: "", cap_rule_note: "", sort_order: 0, effective_start_date: today(), effective_end_date: null,
+  assigned_to: "", cap_rule_note: "", cap_window_mode: null, cap_window_days: null, cap_window_threshold: null,
+  sort_order: 0, effective_start_date: today(), effective_end_date: null,
 };
 
 function standardToInput(standard: ContractorPerformanceStandard): PerformanceStandardInput {
@@ -82,6 +96,9 @@ function standardToInput(standard: ContractorPerformanceStandard): PerformanceSt
     resolver_key: standard.resolver_key ?? null, source_system: standard.source_system ?? null,
     data_source_note: standard.data_source_note ?? "", responsible_team: standard.responsible_team ?? "",
     assigned_to: standard.assigned_to ?? "", cap_rule_note: standard.cap_rule_note ?? "",
+    cap_window_mode: standard.cap_window_mode ?? null,
+    cap_window_days: standard.cap_window_days ?? null,
+    cap_window_threshold: standard.cap_window_threshold ?? null,
     sort_order: standard.sort_order ?? 0, effective_start_date: standard.effective_start_date ?? today(),
     effective_end_date: standard.effective_end_date ?? null,
   };
@@ -654,7 +671,52 @@ function StandardEditor({ draft, setDraft, standardId, canEdit, busy, resolvers,
         <small>Shown under the standard's name in the catalog list, clamped to two lines with the rest on hover.</small>
       </label>
       <label className="standards-wide"><span>Data source note</span><textarea rows={2} value={draft.data_source_note ?? ""} disabled={!canEdit} onChange={(event) => set("data_source_note", event.target.value)} placeholder="Which feed, which filter, and any definition the contract settles." /></label>
-      <label className="standards-wide"><span>CAP rule note</span><textarea rows={2} value={draft.cap_rule_note ?? ""} disabled={!canEdit} onChange={(event) => set("cap_rule_note", event.target.value)} /></label>
+      <fieldset className="standards-choice standards-wide">
+        <legend>Corrective action window</legend>
+        <div className="standards-choice-cards">
+          {CAP_WINDOW_MODES.map((option) => (
+            <label key={option.value || "none"} className={(draft.cap_window_mode ?? "") === option.value ? "selected" : ""}>
+              <input
+                type="radio" name="cap-window-mode" value={option.value} disabled={!canEdit}
+                checked={(draft.cap_window_mode ?? "") === option.value}
+                onChange={() => {
+                  // Each mode keeps only the fields it reads. A day count left
+                  // beside a calendar quarter is a number nothing uses, and a
+                  // threshold left behind with no window would be stored as a
+                  // rule that never trips; migration 109's CHECK refuses both.
+                  const mode = option.value === "" ? null : option.value;
+                  setDraft({
+                    ...draft,
+                    cap_window_mode: mode,
+                    cap_window_days: mode === "rolling_days" ? draft.cap_window_days ?? 90 : null,
+                    cap_window_threshold: mode ? draft.cap_window_threshold ?? 3 : null,
+                  });
+                }}
+              />
+              <strong>{option.label}</strong>
+              <small>{option.hint}</small>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      {draft.cap_window_mode && <label><span>More than</span>
+        <input
+          type="number" min={1} step={1} value={draft.cap_window_threshold ?? ""} disabled={!canEdit}
+          onChange={(event) => set("cap_window_threshold", event.target.value === "" ? null : Number(event.target.value))}
+        />
+        <small>Occurrences in the window before corrective action is owed. The window trips above this count, not at it.</small>
+      </label>}
+      {draft.cap_window_mode === "rolling_days" && <label><span>Within</span>
+        <input
+          type="number" min={1} max={3650} step={1} value={draft.cap_window_days ?? ""} disabled={!canEdit}
+          onChange={(event) => set("cap_window_days", event.target.value === "" ? null : Number(event.target.value))}
+        />
+        <small>Days the count reaches back over, from any point. 90 is a rolling quarter; it is not the same rule as a calendar quarter.</small>
+      </label>}
+      {draft.cap_window_mode && <p className="standards-wide standards-hint">{capWindowSentence(draft)}</p>}
+      <label className="standards-wide"><span>CAP rule note</span><textarea rows={2} value={draft.cap_rule_note ?? ""} disabled={!canEdit} onChange={(event) => set("cap_rule_note", event.target.value)} />
+        <small>What the contract says in words. The window above is what the scoring engine reads.</small>
+      </label>
     </div>
     {canEdit && <button
       className="btn-primary"

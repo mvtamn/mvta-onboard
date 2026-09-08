@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AssessmentTierLabel } from "@mvta/shared";
 import {
-  bandRangeOf, boundsForRange, boundToInput, describeBand, describePenalty, describeRange,
+  bandRangeOf, boundsForRange, boundToInput, capWindowSentence, describeBand, describePenalty, describeRange,
   inputToBound, ladderWarnings, qualifierLabel, unitNoun,
 } from "./performanceStandardsVocabulary.js";
 
@@ -132,5 +132,40 @@ describe("warning about a ladder that will not score as intended", () => {
       { tier_label: "tier2", bound_low: null, bound_high: null, qualifier_code: "LAST_TRIP_OF_DAY" },
     ];
     expect(ladderWarnings(withQualified, "occurrences")).toEqual([]);
+  });
+});
+
+
+describe("capWindowSentence", () => {
+  it("says nothing escalates when there is no window", () => {
+    expect(capWindowSentence({})).toContain("No corrective action window");
+    expect(capWindowSentence({ cap_window_mode: null })).toContain("charged as they happen");
+  });
+
+  it("spells out a rolling window's length and that it never resets", () => {
+    const sentence = capWindowSentence({ cap_window_mode: "rolling_days", cap_window_days: 90, cap_window_threshold: 3 });
+    expect(sentence).toContain("More than 3 occurrences in any 90 consecutive days");
+    expect(sentence).toContain("never resets");
+  });
+
+  // The whole reason the mode is recorded: the two rules differ at a quarter
+  // boundary, so the sentence has to say which boundary applies.
+  it("names the dates a calendar quarter restarts on", () => {
+    const sentence = capWindowSentence({ cap_window_mode: "calendar_quarter", cap_window_threshold: 3 });
+    expect(sentence).toContain("within one calendar quarter");
+    expect(sentence).toContain("1 January");
+    expect(sentence).not.toContain("consecutive days");
+  });
+
+  it("reads as singular for a threshold of one", () => {
+    expect(capWindowSentence({ cap_window_mode: "calendar_quarter", cap_window_threshold: 1 }))
+      .toContain("More than 1 occurrence within");
+  });
+
+  it("asks for the missing half rather than stating a rule it cannot describe", () => {
+    expect(capWindowSentence({ cap_window_mode: "rolling_days", cap_window_threshold: 3 }))
+      .toContain("Set the number of days");
+    expect(capWindowSentence({ cap_window_mode: "rolling_days", cap_window_days: 90 }))
+      .toContain("Once the threshold is set");
   });
 });
