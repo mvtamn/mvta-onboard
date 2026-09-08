@@ -137,6 +137,15 @@ export interface PerformanceStandardInput {
   responsible_team?: string | null;
   assigned_to?: string | null;
   cap_rule_note?: string | null;
+  /**
+   * The corrective-action window, or no window at all. A threshold without a
+   * mode, or either without the other, is refused rather than half-stored: a
+   * count with nothing to count it over never trips, which reads as a rule that
+   * is configured when it is not.
+   */
+  cap_window_mode?: import("./types.js").CapWindowMode | null;
+  cap_window_days?: number | null;
+  cap_window_threshold?: number | null;
   sort_order: number;
   effective_start_date: string;
   effective_end_date?: string | null;

@@ -225,6 +225,74 @@ describe("Performance Standards administration", () => {
     }));
   });
 
+  // The corrective-action window. Until now the only way to set one was SQL,
+  // and the mode migration 109 added had no control at all.
+  it("offers no window by default, and says nothing escalates", async () => {
+    view();
+    await open("OTP_FIXED_ROUTE");
+    expect(screen.getByRole("radio", { name: /No window/ })).toBeChecked();
+    // The day count and threshold are not merely blank - they are absent,
+    // because there is no window for them to describe.
+    expect(screen.queryByText("More than")).not.toBeInTheDocument();
+    expect(screen.queryByText("Within")).not.toBeInTheDocument();
+  });
+
+  it("asks for a length only for a rolling window", async () => {
+    view();
+    await open("OTP_FIXED_ROUTE");
+    fireEvent.click(screen.getByRole("radio", { name: /Rolling days/ }));
+    expect(screen.getByText("Within")).toBeInTheDocument();
+    expect(screen.getByText("More than")).toBeInTheDocument();
+
+    // A calendar quarter's bounds are the quarter's own, so a day count beside
+    // one is a number nothing reads. Migration 109's CHECK refuses to store it.
+    fireEvent.click(screen.getByRole("radio", { name: /Calendar quarter/ }));
+    expect(screen.queryByText("Within")).not.toBeInTheDocument();
+    expect(screen.getByText("More than")).toBeInTheDocument();
+  });
+
+  it("saves a rolling window as its three fields", async () => {
+    view();
+    await open("OTP_FIXED_ROUTE");
+    fireEvent.click(screen.getByRole("radio", { name: /Rolling days/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Save standard" }));
+    expect(putPerformanceStandard).toHaveBeenCalledWith(OTP.id, expect.objectContaining({
+      cap_window_mode: "rolling_days", cap_window_days: 90, cap_window_threshold: 3,
+    }));
+  });
+
+  it("drops the day count when the window becomes a calendar quarter", async () => {
+    catalog = { ...catalog, standards: [ORPHAN, { ...OTP, cap_window_mode: "calendar_quarter", cap_window_threshold: 3 }] };
+    view();
+    await open("OTP_FIXED_ROUTE");
+    expect(screen.getByRole("radio", { name: /Calendar quarter/ })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Save standard" }));
+    expect(putPerformanceStandard).toHaveBeenCalledWith(OTP.id, expect.objectContaining({
+      cap_window_mode: "calendar_quarter", cap_window_days: null, cap_window_threshold: 3,
+    }));
+  });
+
+  it("clears the whole window when it is turned off", async () => {
+    catalog = { ...catalog, standards: [ORPHAN, { ...OTP, cap_window_mode: "rolling_days", cap_window_days: 90, cap_window_threshold: 3 }] };
+    view();
+    await open("OTP_FIXED_ROUTE");
+    fireEvent.click(screen.getByRole("radio", { name: /No window/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Save standard" }));
+    // A threshold left behind with no mode would store as a rule that never
+    // trips, which reads from the catalog as one that is configured.
+    expect(putPerformanceStandard).toHaveBeenCalledWith(OTP.id, expect.objectContaining({
+      cap_window_mode: null, cap_window_days: null, cap_window_threshold: null,
+    }));
+  });
+
+  it("reads the configured window back as a sentence", async () => {
+    catalog = { ...catalog, standards: [ORPHAN, { ...OTP, cap_window_mode: "calendar_quarter", cap_window_threshold: 3 }] };
+    view();
+    await open("OTP_FIXED_ROUTE");
+    expect(screen.getByText(/More than 3 occurrences within one calendar quarter/)).toBeInTheDocument();
+    expect(screen.getByText(/restarts on 1 January/)).toBeInTheDocument();
+  });
+
   it("will not open bands or assignment for a standard that does not exist yet", async () => {
     view();
     fireEvent.click(await screen.findByText("New standard"));

@@ -1588,6 +1588,12 @@ export type StandardDirection = "higher_is_better" | "lower_is_better";
 export type StandardMeasurementSource = "api_feed" | "onboard_compliance" | "manual_entry" | "structured_import";
 export type StandardPenaltyBasis = "none" | "flat" | "per_unit" | "per_unit_per_day" | "per_day" | "per_week";
 
+// How a corrective-action window counts (migration 109). The two are not
+// versions of each other: three cases in December and three in January breach
+// a calendar-quarter rule never and a rolling ninety-day rule almost certainly,
+// so which one a contract means is recorded rather than inferred.
+export type CapWindowMode = "rolling_days" | "calendar_quarter";
+
 // One Attachment G standard in the agency catalog (migration 030). The catalog
 // is the library of what MVTA can hold a contractor to; AgreementStandards says
 // which of them a given contractor is actually held to this term.
@@ -1606,8 +1612,11 @@ export interface ContractorPerformanceStandard {
   target_display?: string | null;
   /** Whether bands match one occurrence's quantity or its position in the month. */
   band_scope?: "per_occurrence" | "running_count" | null;
-  /** Corrective action when more than N occurrences fall in any rolling W days. */
+  /** How a corrective-action window counts: over rolling days, or per calendar quarter. */
+  cap_window_mode?: CapWindowMode | null;
+  /** The window's length, in days. Set for rolling_days and null for a calendar quarter. */
   cap_window_days?: number | null;
+  /** Occurrences above which the window trips. Null means no corrective-action window. */
   cap_window_threshold?: number | null;
   updated_by?: string; updated_at?: string;
 }

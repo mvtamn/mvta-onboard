@@ -5,6 +5,13 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.156] - 2026-09-08
+
+- **The corrective-action window is configurable from the console.** Migration 107 gave a standard a window and 109 gave it two ways to count, but neither ever had a control: setting one meant a hand-written `UPDATE`, and `cap_window_mode` was unreachable from the API entirely — the standards handler did not read or write any of the three fields. The editor now offers no window, a rolling number of days, or a calendar quarter, with the occurrence count that trips it, and reads the configured rule back as a sentence naming the dates a calendar quarter restarts on. That sentence is the point: the two modes differ only at a boundary, and the numbers alone do not show which one a reader is looking at.
+- **The window is stored whole or not at all.** Choosing a calendar quarter clears the day count, because the quarter's own bounds decide the window and a leftover number invites a later reader to believe it is read. Turning the window off clears the threshold, because a count with nothing to count it over never trips and reads from the catalog as a rule that is configured. The server refuses each half-configured shape by name rather than storing it, matching migration 109's own CHECK.
+- **The write path degrades where the migrations have not run.** The three columns are composed into the MERGE only when the schema has them: naming a missing column fails at parse time and takes the whole statement with it, so an environment still on pre-107 saves everything else exactly as before.
+- **Fixed a literal `\u2014` in three changelog entries** where an em dash belonged.
+
 ## [1.5.155] - 2026-09-08
 
 - **Migration 108: responsible team and assigned owner become lists.** Both were free text on `ContractorPerformanceStandards`, typed once per standard and checked against nothing - which is how the seeded catalog holds "Safety", "Safety / Training" and "Safety / Customer Service", three teams or one team spelled three ways, with nothing in the product able to tell. They join `ReferenceValues` as OWNED domains: add, rename, reorder and retire from Administration › Performance Assessment › Lists. The scoring engine branches on neither, so neither needs the system-row guardrail.

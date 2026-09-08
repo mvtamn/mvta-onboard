@@ -197,3 +197,66 @@ test("an empty assignment list is refused rather than silently doing nothing", (
   assert.ok(validateAgreementStandardAssignments({ assignments: [] }).length);
   assert.ok(validateAgreementStandardAssignments({ assignments: "all" }).length);
 });
+
+// The corrective-action window. Three fields describe one rule, and the halves
+// are worse than useless apart: a threshold with no mode never trips, and a
+// mode with no threshold has nothing to trip on. Either reads from the catalog
+// as a rule that is configured.
+test("a standard with no corrective-action window validates", () => {
+  assert.deepStrictEqual(validatePerformanceStandard(standard), []);
+  assert.deepStrictEqual(validatePerformanceStandard({
+    ...standard, cap_window_mode: null, cap_window_days: null, cap_window_threshold: null,
+  }), []);
+});
+
+test("a rolling window validates with a length and a threshold", () => {
+  assert.deepStrictEqual(validatePerformanceStandard({
+    ...standard, cap_window_mode: "rolling_days", cap_window_days: 90, cap_window_threshold: 3,
+  }), []);
+});
+
+test("a calendar quarter validates with a threshold and no day count", () => {
+  assert.deepStrictEqual(validatePerformanceStandard({
+    ...standard, cap_window_mode: "calendar_quarter", cap_window_threshold: 3,
+  }), []);
+});
+
+test("a day count beside a calendar quarter is refused, not ignored", () => {
+  const errors = validatePerformanceStandard({
+    ...standard, cap_window_mode: "calendar_quarter", cap_window_days: 90, cap_window_threshold: 3,
+  });
+  assert.ok(errors.some((error) => error.includes("cap_window_days does not apply")), errors.join("; "));
+});
+
+test("a rolling window without a length is refused", () => {
+  const errors = validatePerformanceStandard({
+    ...standard, cap_window_mode: "rolling_days", cap_window_threshold: 3,
+  });
+  assert.ok(errors.some((error) => error.includes("cap_window_days must be")), errors.join("; "));
+});
+
+test("a window without a threshold is refused rather than stored as one that never trips", () => {
+  const errors = validatePerformanceStandard({
+    ...standard, cap_window_mode: "rolling_days", cap_window_days: 90,
+  });
+  assert.ok(errors.some((error) => error.includes("cap_window_threshold must be")), errors.join("; "));
+});
+
+test("a threshold with no mode is refused", () => {
+  const errors = validatePerformanceStandard({ ...standard, cap_window_threshold: 3 });
+  assert.ok(errors.some((error) => error.includes("cap_window_mode is required")), errors.join("; "));
+});
+
+test("an unrecognised window mode names the two that exist", () => {
+  const errors = validatePerformanceStandard({
+    ...standard, cap_window_mode: "rolling_months", cap_window_threshold: 3,
+  });
+  assert.deepStrictEqual(errors, ["cap_window_mode must be one of: rolling_days, calendar_quarter"]);
+});
+
+test("a zero threshold is refused: every occurrence would trip it", () => {
+  const errors = validatePerformanceStandard({
+    ...standard, cap_window_mode: "calendar_quarter", cap_window_threshold: 0,
+  });
+  assert.ok(errors.some((error) => error.includes("cap_window_threshold must be")), errors.join("; "));
+});
