@@ -6,45 +6,49 @@
 .standards-page{padding:24px;display:grid;gap:16px;align-content:start}
 .standards-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
 .standards-head h2{margin:2px 0 0}
-.standards-head p{margin:5px 0 0;color:#64748b;max-width:70ch}
+.standards-head p{margin:5px 0 0;color:var(--text-muted);max-width:70ch}
 .standards-workspace{display:grid;gap:14px;align-items:start;grid-template-columns:minmax(300px,.85fr) minmax(420px,1.15fr)}
-.standards-list,.standards-detail{background:#fff;border:1px solid #dbe3ec;border-radius:11px;box-shadow:0 2px 8px #1720330a;min-width:0;overflow:hidden}
+.standards-list,.standards-detail{background:var(--surface-bg);border:1px solid var(--border);border-radius:11px;box-shadow:0 2px 8px rgba(0,0,0,.04);min-width:0;overflow:hidden}
 /* Both panes stick and are capped against the viewport, not against a guessed
    offset from the top of the document. The page scrolls just far enough to
    bring the workspace up, and from then on the list and the detail scroll
    inside themselves - so selecting a standard can never push the thing being
    edited below the fold. */
 .standards-list,.standards-detail{position:sticky;top:12px;display:grid;grid-template-rows:auto auto 1fr;max-height:calc(100vh - 24px)}
-.standards-list-toolbar{display:flex;gap:8px;padding:12px;border-bottom:1px solid #e6ecf2}
-.standards-list-toolbar input,.standards-list-toolbar select{min-height:36px;border:1px solid #c8d4df;border-radius:8px;background:#fff;padding:6px 10px;color:#172033;font:inherit}
+.standards-list-toolbar{display:flex;gap:8px;padding:12px;border-bottom:1px solid var(--border-soft)}
+.standards-list-toolbar input,.standards-list-toolbar select{min-height:36px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface-bg);padding:6px 10px;color:var(--text);font:inherit}
 .standards-list-toolbar input{flex:1 1 auto;min-width:0}
-.standards-list-meta{padding:8px 12px;color:#64748b;font-size:.78rem;border-bottom:1px solid #eef2f6}
+.standards-list-meta{padding:8px 12px;color:var(--text-muted);font-size:.78rem;border-bottom:1px solid var(--border-soft)}
 .standards-rows{list-style:none;margin:0;padding:6px;overflow-y:auto;display:grid;gap:2px;align-content:start}
 .standards-row{width:100%;display:grid;gap:4px;text-align:left;border:1px solid transparent;border-radius:9px;background:transparent;padding:9px 10px;cursor:pointer;font:inherit;color:inherit}
-.standards-row:hover{background:#f4faf7}
-.standards-row.selected{background:#eef7f3;border-color:#9bb8ae}
+.standards-row:hover{background:var(--surface-alt-bg)}
+.standards-row.selected{background:var(--chip-bg);border-color:var(--brand-green)}
 .standards-row-name{display:grid;gap:2px}
+/* Two lines, then an ellipsis; the full text is on the element's title, so
+   hovering a truncated description shows all of it without the row growing. */
+.standards-row-description{color:var(--text-dim);display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.standards-row-description.is-empty{color:var(--text-muted);font-style:italic}
 .standards-row-name strong{font-size:.9rem;line-height:1.25}
 .standards-row-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.standards-row-meta small{color:#64748b}
+.standards-row-meta small{color:var(--text-muted)}
 .standards-state{border-radius:999px;padding:2px 8px;font-size:.7rem;font-weight:700}
-.standards-state.scored{background:#dcfce7;color:#166534}
-.standards-state.dormant{background:#fef3c7;color:#92400e}
-.standards-state.unassigned{background:#eef2f6;color:#52627a}
-.standards-list-empty{padding:24px;text-align:center;color:#64748b}
-.standards-detail-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid #e6ecf2}
+.standards-state.scored{background:var(--pill-success-bg);color:var(--pill-success-fg)}
+.standards-state.dormant{background:var(--pill-warning-bg);color:var(--pill-warning-fg)}
+.standards-state.unassigned{background:var(--pill-muted-bg);color:var(--text-dim)}
+.standards-list-empty{padding:24px;text-align:center;color:var(--text-muted)}
+.standards-detail-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border-soft)}
 .standards-detail-head h3{margin:0}
 .standards-detail-actions{display:flex;gap:8px;flex:none}
-.standards-danger{border-color:#e6b3b3;color:#991b1b}
-.standards-danger:hover:not(:disabled){background:#fef2f2}
+.standards-danger{border-color:var(--danger-text);color:var(--danger-text)}
+.standards-danger:hover:not(:disabled){background:var(--pill-danger-bg)}
 .standards-detail-bands{margin-top:8px}
-.standards-detail-empty{padding:48px 24px;text-align:center;color:#64748b;display:grid;gap:6px;align-content:center}
-.standards-detail-empty strong{color:#172033}
+.standards-detail-empty{padding:48px 24px;text-align:center;color:var(--text-muted);display:grid;gap:6px;align-content:center}
+.standards-detail-empty strong{color:var(--text)}
 /* The submenu. */
-.standards-tabs{display:flex;gap:6px;padding:10px 12px;border-bottom:1px solid #e6ecf2;overflow-x:auto}
-.standards-tabs button{white-space:nowrap;border:1px solid transparent;border-radius:8px;background:#f1f5f9;padding:7px 12px;color:#334155;font:inherit;cursor:pointer}
-.standards-tabs button:hover:not(:disabled){background:#e5edea}
-.standards-tabs button.active{background:#075f49;border-color:#075f49;color:#fff;font-weight:700}
+.standards-tabs{display:flex;gap:6px;padding:10px 12px;border-bottom:1px solid var(--border-soft);overflow-x:auto}
+.standards-tabs button{white-space:nowrap;border:1px solid transparent;border-radius:8px;background:var(--surface-alt-bg);padding:7px 12px;color:var(--text-dim);font:inherit;cursor:pointer}
+.standards-tabs button:hover:not(:disabled){background:var(--surface-alt-bg)}
+.standards-tabs button.active{background:var(--brand-green);border-color:var(--brand-green);color:#fff;font-weight:700}
 .standards-tabs button:disabled{opacity:.45;cursor:default}
 .standards-tab-body{overflow-y:auto;padding:16px}
 /* The tab bodies reuse the card editors, minus their own frame - the detail
@@ -52,9 +56,9 @@
 .standards-tab-body .assessment-card{border:0;box-shadow:none;padding:0;background:transparent}
 /* The Agreement is context, not the task: one line until it is being changed,
    so the workspace starts as near the top of the viewport as it can. */
-.standards-agreement-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 14px;border:1px solid #cddfd8;border-radius:10px;background:#f8fcfa}
-.standards-agreement-bar select{min-height:36px;border:1px solid #c8d4df;border-radius:8px;background:#fff;padding:6px 10px;color:#172033;font:inherit;flex:1 1 260px;min-width:0}
-.standards-agreement-bar>span{color:#08765a;font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;flex:none}
+.standards-agreement-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 14px;border:1px solid var(--datasource-border);border-radius:10px;background:var(--surface-alt-bg)}
+.standards-agreement-bar select{min-height:36px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface-bg);padding:6px 10px;color:var(--text);font:inherit;flex:1 1 260px;min-width:0}
+.standards-agreement-bar>span{color:var(--brand-green-text);font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;flex:none}
 @media(max-width:1000px){
   .standards-workspace{grid-template-columns:1fr}
   .standards-list,.standards-detail{position:static;max-height:none}
@@ -64,46 +68,46 @@
 /* Administration > Performance Standards. Builds on assessment.css so the
    catalog reads the same here as it does in the Performance Assessment
    module's read-only view; only what is unique to editing lives here. */
-.standards-notice{padding:12px 14px;border-radius:9px;background:#dcfce7;color:#166534}
-.standards-flag{display:block;color:#9a3412;font-weight:700}
-.standards-override{display:inline-block;margin-bottom:3px;padding:2px 8px;border-radius:999px;background:#e0e7ff;color:#3730a3;font-size:.7rem;font-weight:700}
-.standards-hint{color:#64748b;font-size:.8rem}
+.standards-notice{padding:12px 14px;border-radius:9px;background:var(--pill-success-bg);color:var(--pill-success-fg)}
+.standards-flag{display:block;color:var(--pill-warning-fg);font-weight:700}
+.standards-override{display:inline-block;margin-bottom:3px;padding:2px 8px;border-radius:999px;background:var(--pill-accent-bg);color:var(--pill-accent-fg);font-size:.7rem;font-weight:700}
+.standards-hint{color:var(--text-muted);font-size:.8rem}
 .standards-agreement-select{display:grid;gap:6px;max-width:520px}
-.standards-agreement-select>span{color:#526175;font-size:.76rem;font-weight:700}
-.standards-agreement-select select{min-height:40px;border:1px solid #c8d4df;border-radius:8px;background:#fff;padding:8px 10px;color:#172033}
+.standards-agreement-select>span{color:var(--text-dim);font-size:.76rem;font-weight:700}
+.standards-agreement-select select{min-height:40px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface-bg);padding:8px 10px;color:var(--text)}
 .standards-editor{display:grid;gap:16px}
 .standards-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;align-items:start}
 .standards-grid label{display:grid;gap:6px}
-.standards-grid label>span{color:#526175;font-size:.76rem;font-weight:700}
-.standards-grid input,.standards-grid select,.standards-grid textarea{min-height:40px;border:1px solid #c8d4df;border-radius:8px;background:#fff;padding:8px 10px;color:#172033;font:inherit}
-.standards-grid small{color:#64748b}
+.standards-grid label>span{color:var(--text-dim);font-size:.76rem;font-weight:700}
+.standards-grid input,.standards-grid select,.standards-grid textarea{min-height:40px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface-bg);padding:8px 10px;color:var(--text);font:inherit}
+.standards-grid small{color:var(--text-muted)}
 .standards-wide{grid-column:1/-1}
 .standards-scope{display:flex;gap:12px;flex-wrap:wrap}
 .standards-scope label{display:grid;gap:6px}
-.standards-scope label>span{color:#526175;font-size:.76rem;font-weight:700}
-.standards-scope select,.standards-scope input{min-height:40px;border:1px solid #c8d4df;border-radius:8px;background:#fff;padding:8px 10px;color:#172033}
+.standards-scope label>span{color:var(--text-dim);font-size:.76rem;font-weight:700}
+.standards-scope select,.standards-scope input{min-height:40px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface-bg);padding:8px 10px;color:var(--text)}
 .standards-tier-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 @media(max-width:620px){.standards-grid{grid-template-columns:1fr}}
 
 /* Penalty bands are cards, not table rows: each one is a small rule with its
    own criteria and charge, and the fields it needs change with the criteria. */
 .standards-bands{display:grid;gap:14px}
-.standards-band{border:1px solid #dbe3ec;border-radius:11px;background:#fbfcfd;padding:14px;display:grid;gap:12px}
+.standards-band{border:1px solid var(--border);border-radius:11px;background:var(--surface-alt-bg);padding:14px;display:grid;gap:12px}
 .standards-band-head{display:flex;align-items:end;justify-content:space-between;gap:12px}
 .standards-band-criteria,.standards-band-penalty{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;align-items:end}
 .standards-band label{display:grid;gap:6px}
-.standards-band label>span{color:#526175;font-size:.76rem;font-weight:700}
-.standards-band select,.standards-band input{min-height:38px;border:1px solid #c8d4df;border-radius:8px;background:#fff;padding:7px 10px;color:#172033;font:inherit}
-.standards-band small{color:#64748b}
+.standards-band label>span{color:var(--text-dim);font-size:.76rem;font-weight:700}
+.standards-band select,.standards-band input{min-height:38px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface-bg);padding:7px 10px;color:var(--text);font:inherit}
+.standards-band small{color:var(--text-muted)}
 .standards-band .contractor-active{align-self:end;padding-bottom:9px}
 .standards-band .contractor-active input{min-height:auto;width:18px;height:18px}
 /* Amount and bound inputs carry their unit inline, so a percentage band cannot
    be read as a ratio or the other way round. */
-.standards-measure{display:flex;align-items:center;gap:6px;border:1px solid #c8d4df;border-radius:8px;background:#fff;padding:0 10px}
+.standards-measure{display:flex;align-items:center;gap:6px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface-bg);padding:0 10px}
 .standards-measure input{border:0;padding:7px 0;min-height:36px;width:100%}
 .standards-measure input:focus{outline:none}
-.standards-measure>span{color:#64748b;font-size:.82rem;font-weight:600;white-space:nowrap}
-.standards-band-readout{margin:0;padding:9px 12px;border-radius:8px;background:#eef4f1;color:#0f3d31;font-size:.85rem;font-weight:600}
+.standards-measure>span{color:var(--text-muted);font-size:.82rem;font-weight:600;white-space:nowrap}
+.standards-band-readout{margin:0;padding:9px 12px;border-radius:8px;background:var(--chip-bg);color:var(--chip-fg);font-size:.85rem;font-weight:600}
 /* The catalog table's band list: one line per band, label then sentence. */
 .standards-band-list{list-style:none;margin:0;padding:0;display:grid;gap:4px;min-width:280px}
 .standards-band-list li{display:flex;align-items:baseline;gap:7px}
@@ -112,5 +116,26 @@
    "tier1"/"meets" values. These labels are sentences, so "Meets the standard"
    must not become "Meets The Standard". */
 .standards-band-list .assessment-tier,.standards-band .assessment-tier{text-transform:none}
-.standards-band-list small{color:#475569}
+.standards-band-list small{color:var(--text-dim)}
 @media(max-width:620px){.standards-band-criteria,.standards-band-penalty{grid-template-columns:1fr}}
+
+/* Choice controls: a decision with consequences is shown as cards carrying
+   those consequences, not hidden inside a closed select. Real radios, so
+   arrow-key navigation and screen readers work without ARIA of our own. */
+.standards-choice{border:0;margin:0;padding:0;min-width:0;display:grid;gap:6px}
+.standards-choice legend{padding:0;color:var(--text-dim);font-size:.76rem;font-weight:700}
+.standards-choice input{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0,0,0,0)}
+.standards-choice label{display:grid;gap:3px;align-content:start;border:1px solid var(--border-strong);border-radius:9px;background:var(--surface-bg);padding:9px 11px;cursor:pointer}
+.standards-choice label:hover{border-color:var(--brand-green)}
+.standards-choice label.selected{border-color:var(--brand-green);background:var(--chip-bg);box-shadow:inset 0 0 0 1px var(--brand-green)}
+.standards-choice label.selected strong{color:var(--chip-fg)}
+.standards-choice strong{font-size:.82rem;line-height:1.25}
+.standards-choice small{color:var(--text-muted);font-size:.72rem;line-height:1.35}
+.standards-choice label:has(input:focus-visible){outline:3px solid color-mix(in srgb,var(--brand-green) 22%,transparent);outline-offset:2px}
+.standards-choice-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px}
+.standards-segmented>div{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+/* A percentage band gets a slider beside its number; other units do not -
+   see BoundField for why. The number stays the authoritative field. */
+.standards-bound{display:grid;gap:6px}
+.standards-slider{width:100%;accent-color:var(--brand-green);margin:0}
+.standards-bound.has-slider .standards-measure{margin-bottom:1px}

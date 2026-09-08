@@ -54,9 +54,17 @@ vi.mock("../config.js", () => ({ api: {
 
 const view = () => render(<AppDialogProvider><PerformanceStandardsAdmin /></AppDialogProvider>);
 
-// Pick a standard from the catalog list, then open one of its submenu sections.
-async function open(name: string, tab?: "Details" | "Penalty bands" | "Assignment") {
-  fireEvent.click(await screen.findByText(name));
+// Rows are chosen by name now - the code is an identifier, not something a
+// reader scans for - so tests name the standard they mean and this maps the
+// code they refer to it by.
+const NAMES: Record<string, string> = {
+  OTP_FIXED_ROUTE: "On-Time Performance (Fixed Route)",
+  FLEET_AVAIL_SHORT: "Fleet Availability Short-Term",
+  MISSED_TRIPS_FR: "Missed Trips",
+};
+
+async function open(code: string, tab?: "Details" | "Penalty bands" | "Assignment") {
+  fireEvent.click(await screen.findByText(NAMES[code] ?? code));
   if (tab) fireEvent.click(screen.getByRole("button", { name: tab }));
 }
 
@@ -72,14 +80,50 @@ describe("Performance Standards administration", () => {
   });
   afterEach(cleanup);
 
-  it("lists standards by name, keeping the code as a reference", async () => {
+  it("describes a standard in the list rather than showing its code", async () => {
+    catalog = { ...catalog, standards: [ORPHAN, { ...OTP, description: "Departure adherence across all fixed routes, measured against the monthly Avail feed." }] };
     view();
     const row = (await screen.findByText("On-Time Performance (Fixed Route)")).closest("button")!;
-    // The code still has to be findable - resolvers and operational SQL match
-    // on it - but it is no longer the first thing a reader has to decode.
-    expect(within(row).getByText("OTP_FIXED_ROUTE")).toHaveClass("mono-ref");
+    // The code is an identifier for resolvers and SQL, not something a reader
+    // scanning the catalog needs.
+    expect(within(row).queryByText("OTP_FIXED_ROUTE")).not.toBeInTheDocument();
+    expect(within(row).getByText(/Departure adherence across all fixed routes/)).toBeInTheDocument();
     expect(within(row).getByText("Scored")).toBeInTheDocument();
     expect(within(row).getByText(/Monthly value · from a feed/)).toBeInTheDocument();
+  });
+
+  it("carries the whole description on hover, however long it is", async () => {
+    // The row clamps to two lines so one long description cannot set the
+    // height of every row; the title attribute keeps the rest reachable.
+    const description = "Departure adherence across all fixed routes, measured against the monthly Avail feed, excluding special-event service and any stop exclusion an approver has signed off.";
+    catalog = { ...catalog, standards: [{ ...OTP, description }] };
+    view();
+    const row = (await screen.findByText("On-Time Performance (Fixed Route)")).closest("button")!;
+    expect(within(row).getByTitle(description)).toBeInTheDocument();
+  });
+
+  it("says when a standard has no description yet rather than showing a blank row", async () => {
+    // Every one of the 26 seeded standards is currently in this state:
+    // migration 030 never populated the column.
+    view();
+    const row = (await screen.findByText("On-Time Performance (Fixed Route)")).closest("button")!;
+    expect(within(row).getByText("No description yet")).toBeInTheDocument();
+  });
+
+  it("keeps the code on the detail header, where the standard is named", async () => {
+    view();
+    await open("OTP_FIXED_ROUTE");
+    const detail = document.querySelector(".standards-detail-head")!;
+    expect(within(detail as HTMLElement).getByText("OTP_FIXED_ROUTE")).toHaveClass("mono-ref");
+  });
+
+  it("still finds a standard by code when searching", async () => {
+    // Searching by code stays useful even though the row does not show one.
+    view();
+    await screen.findByText("On-Time Performance (Fixed Route)");
+    fireEvent.change(screen.getByLabelText("Search standards"), { target: { value: "OTP_FIXED" } });
+    expect(screen.getByText("On-Time Performance (Fixed Route)")).toBeInTheDocument();
+    expect(screen.queryByText("Fleet Availability Short-Term")).not.toBeInTheDocument();
   });
 
   it("keeps the list and the detail in their own scroll areas", async () => {
@@ -217,13 +261,13 @@ describe("Performance Standards administration", () => {
   it("offers the four ways a figure actually arrives", async () => {
     view();
     fireEvent.click(await screen.findByText("New standard"));
-    const options = within(screen.getByLabelText(/Where the figure comes from/)).getAllByRole("option").map((o) => o.textContent);
-    expect(options).toEqual([
-      "Entered by hand",
-      "Transcribed from another system",
-      "Ingested from a feed",
-      "Raised by OnBoard compliance",
+    // Cards rather than a dropdown: each option shows the consequence of
+    // picking it, so the choice is not hidden behind a closed select.
+    const group = screen.getByRole("group", { name: "Where the figure comes from" });
+    expect(within(group).getAllByRole("radio").map((r) => r.getAttribute("value"))).toEqual([
+      "manual_entry", "structured_import", "api_feed", "onboard_compliance",
     ]);
+    expect(within(group).getByText("Somebody types the month's figure in.")).toBeInTheDocument();
   });
 
   it("asks which system a transcribed figure comes from, and will not save without it", async () => {
@@ -231,7 +275,7 @@ describe("Performance Standards administration", () => {
     // names who to chase when the month's figure is missing.
     view();
     fireEvent.click(await screen.findByText("New standard"));
-    fireEvent.change(screen.getByLabelText(/Where the figure comes from/), { target: { value: "structured_import" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Transcribed from another system/ }));
     const system = screen.getByLabelText(/Source system/);
     expect(within(system).getAllByRole("option").map((o) => o.textContent))
       .toEqual(["Select the system…", "Nexus (Trackit)", "Asset Works M5", "Another system…"]);
@@ -247,7 +291,7 @@ describe("Performance Standards administration", () => {
     view();
     await open("OTP_FIXED_ROUTE", "Details");
     expect(screen.getByLabelText(/Measured by/)).toHaveValue("OTP_FIXED_ROUTE");
-    fireEvent.change(screen.getByLabelText(/Where the figure comes from/), { target: { value: "manual_entry" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Entered by hand/ }));
     expect(screen.queryByLabelText(/Measured by/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Save standard" }));
     expect(putPerformanceStandard).toHaveBeenCalledWith(OTP.id, expect.objectContaining({
@@ -260,7 +304,7 @@ describe("Performance Standards administration", () => {
     // the same value; MISSED_TRIPS_FR must not be offered as a feed.
     view();
     await open("OTP_FIXED_ROUTE", "Details");
-    fireEvent.change(screen.getByLabelText(/Where the figure comes from/), { target: { value: "onboard_compliance" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Raised by OnBoard compliance/ }));
     expect(screen.getByText(/Nothing registered serves a monthly-value standard from this source/)).toBeInTheDocument();
   });
 
@@ -312,10 +356,35 @@ describe("Performance Standards administration", () => {
   it("writes percentage bands back as the ratios the resolvers compute", async () => {
     view();
     await open("OTP_FIXED_ROUTE", "Penalty bands");
-    fireEvent.change(screen.getByDisplayValue("85"), { target: { value: "88" } });
+    // The number field and its slider both read 85, so target the number one.
+    const number = screen.getAllByRole("textbox").find((input) => (input as HTMLInputElement).value === "85")!;
+    fireEvent.change(number, { target: { value: "88" } });
     fireEvent.click(screen.getByText("Save penalty bands"));
     const ladder = putStandardTiers.mock.calls[0][1] as { tiers: { bound_low: number | null }[] };
     expect(ladder.tiers[0].bound_low).toBeCloseTo(0.88);
+  });
+
+  it("pairs a percentage bound with a slider, and leaves other units alone", async () => {
+    // A percentage runs 0-100 on a shared scale and Attachment G's thresholds
+    // sit on round numbers, so dragging is genuinely faster. Miles between road
+    // calls has no such scale - a 0-100 track would be meaningless there.
+    view();
+    await open("OTP_FIXED_ROUTE", "Penalty bands");
+    const sliders = screen.getAllByRole("slider");
+    expect(sliders.length).toBeGreaterThan(0);
+    fireEvent.change(sliders[0], { target: { value: "90" } });
+    fireEvent.click(screen.getByText("Save penalty bands"));
+    const ladder = putStandardTiers.mock.calls[0][1] as { tiers: { bound_low: number | null }[] };
+    expect(ladder.tiers[0].bound_low).toBeCloseTo(0.9);
+  });
+
+  it("gives a non-percentage bound no slider", async () => {
+    const miles = { ...OTP, id: "50000000-0000-4000-8000-000000000009", code: "AVG_MILES_ROAD_CALLS", name: "Average Miles Between Road Calls", unit_label: "miles", measurement_source: "manual_entry" as const, resolver_key: null };
+    catalog = { ...catalog, standards: [miles], tiers: [{ ...TIERS[1], standard_id: miles.id, bound_low: 10000, bound_high: 11000 }] };
+    view();
+    fireEvent.click(await screen.findByText("Average Miles Between Road Calls"));
+    fireEvent.click(screen.getByRole("button", { name: "Penalty bands" }));
+    expect(screen.queryByRole("slider")).not.toBeInTheDocument();
   });
 
   it("names a gap between bands before the ladder is saved", async () => {
