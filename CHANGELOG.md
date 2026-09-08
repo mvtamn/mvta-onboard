@@ -5,6 +5,13 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.151] - 2026-09-08
+
+- **Migration 108: responsible team and assigned owner become lists.** Both were free text on `ContractorPerformanceStandards`, typed once per standard and checked against nothing - which is how the seeded catalog holds "Safety", "Safety / Training" and "Safety / Customer Service", three teams or one team spelled three ways, with nothing in the product able to tell. They join `ReferenceValues` as OWNED domains: add, rename, reorder and retire from Administration › Performance Assessment › Lists. The scoring engine branches on neither, so neither needs the system-row guardrail.
+- **Seeded from what the catalog already holds**, not from a list invented in the migration - every distinct value in use becomes a row, trimmed and de-duplicated, so nothing a standard currently says is lost and the first edit is a rename.
+- **A value the list has not caught up with is kept, not dropped.** A standard naming a team nobody has added yet still shows that team, and a new one can be entered while editing rather than requiring a trip to another page mid-edit.
+- **Noted for whoever curates these:** several `assigned_to` values name more than one person - "Corrina/Maurice", "Rob/Cody/Jason". They are seeded verbatim because losing them would be worse, but they are several owners in one string and the column cannot express that. Splitting ownership into its own table is a larger change and is deliberately not made here.
+
 ## [1.5.149] - 2026-09-08
 
 - **Performance assessment setup is four sections under Administration, grouped but independent.** Contractors, Agreements, Standards and Lists were stacked inside other screens: contractors behind a `Manage contractors` toggle in the assessment module, agreements as a strip above the standards catalog, lists behind a second toggle beside it. Each is one job on one body of work, and burying three of them inside the fourth made each harder to find than it needed to be. `AdminLayout` gained group support - consecutive links sharing a `group` render under one heading, and a page cannot join a group by accident because the order lives in one array.
