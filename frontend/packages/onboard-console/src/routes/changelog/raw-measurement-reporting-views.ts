@@ -19,7 +19,7 @@ const entry: ChangelogEntry = {
         "A missed trip that could not be judged because a feed was down is published as exactly that, rather than counted as a missed trip. So is one detected before the timezone correction and kept only for audit.",
         "A garage departure carries the review decision OnBoard actually made about it — raised, confirmed, or dismissed with the reason — instead of the report deciding for itself what counts as late. The lateness threshold and the end-of-service-day rule stay in one place, so changing them cannot leave a report reading the old rule.",
         "Sub-monthly OTP trending is marked as unofficial on every row. Its field mapping has never been confirmed against a live Avail response and it keeps only 90 days, so it can inform a trend but cannot quietly become a compliance figure.",
-        "Operator and driver names are left out of the reporting views. The standard measures the contractor's performance rather than an individual's, and the console still shows names to authorized staff.",
+        "Garage departures name the operator or driver, from whichever source the departure came from, alongside the identifier already carried. A late pullout is investigated by talking to whoever was on it, and an identifier alone sends the reader back to the console to find out who that was.",
       ],
     },
   ],

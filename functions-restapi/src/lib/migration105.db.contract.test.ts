@@ -29,7 +29,9 @@ import { parseConnectionString, sql } from "./db";
 //   rather than restated, so the two cannot drift apart.
 //
 //   The UNION ALL must actually carry both sources, with each source's
-//   private columns NULL on the other side rather than mistyped.
+//   private columns NULL on the other side rather than mistyped - and the
+//   conformed ones, OperatorName especially, must read from the right column
+//   on each side, which a report cannot tell from a NULL.
 const connectionString = process.env.DECISION_MATRIX_TEST_SQL_CONNECTION_STRING;
 
 // Yesterday and today in agency-local terms: the settled/unsettled boundary
@@ -239,8 +241,8 @@ test("migration 105 reporting views expose the raw OTP, missed-trip and garage-d
     assert.ok(missed.every((r) => r.ServiceDate instanceof Date));
 
     // --- Garage departures: one grain, two sources.
-    const departures = (await pool.request().query<{ ServiceType: string; SourceSystem: string; DepartureLabel: string; Block: number | null; DutyId: string | null; DepartureDeltaSeconds: number | null; IsSettled: boolean; IsCandidate: boolean; IsAssessed: boolean; OccurrenceReviewStatus: string | null; ActualSource: string | null; SourceRef: string }>(
-      "SELECT ServiceType, SourceSystem, DepartureLabel, Block, DutyId, DepartureDeltaSeconds, IsSettled, IsCandidate, IsAssessed, OccurrenceReviewStatus, ActualSource, SourceRef FROM dbo.vw_GarageDeparture ORDER BY SourceRef",
+    const departures = (await pool.request().query<{ ServiceType: string; SourceSystem: string; DepartureLabel: string; Block: number | null; DutyId: string | null; DepartureDeltaSeconds: number | null; IsSettled: boolean; IsCandidate: boolean; IsAssessed: boolean; OccurrenceReviewStatus: string | null; ActualSource: string | null; OperatorRef: string | null; OperatorName: string | null; SourceRef: string }>(
+      "SELECT ServiceType, SourceSystem, DepartureLabel, Block, DutyId, DepartureDeltaSeconds, IsSettled, IsCandidate, IsAssessed, OccurrenceReviewStatus, ActualSource, OperatorRef, OperatorName, SourceRef FROM dbo.vw_GarageDeparture ORDER BY SourceRef",
     )).recordset;
     assert.equal(departures.length, 5);
     const byLabel = Object.fromEntries(departures.map((r) => [r.DepartureLabel, r]));
@@ -265,11 +267,17 @@ test("migration 105 reporting views expose the raw OTP, missed-trip and garage-d
     assert.equal(byLabel["Duty AM-1"].OccurrenceReviewStatus, "dismissed");
     assert.equal(byLabel["Duty AM-2"].IsCandidate, false);
 
-    // No personal names anywhere in the departure view.
-    const columns = (await pool.request().query<{ name: string }>(
-      "SELECT name FROM sys.columns WHERE object_id = OBJECT_ID('dbo.vw_GarageDeparture')",
-    )).recordset.map((r) => r.name);
-    assert.ok(!columns.some((column) => /name$/i.test(column)), columns.join(","));
+    // OperatorName is one column over two sources: Avail's operator_name for a
+    // pullout, Spare's driver_name for a duty. Getting this wrong is invisible
+    // in a report - the column is populated either way, just always NULL on
+    // one half of the departures.
+    assert.equal(byLabel["Block 12 / run 3"].OperatorName, "Doe, Jane");
+    assert.equal(byLabel["Duty AM-1"].OperatorName, "Ann, Alice");
+    // A duty Spare has no driver for is NULL, not blank.
+    assert.equal(byLabel["Duty AM-2"].OperatorName, null);
+    // The identifier travels with the name: Avail's logon, Spare's driver id.
+    assert.equal(byLabel["Block 12 / run 3"].OperatorRef, "4412");
+    assert.equal(byLabel["Duty AM-1"].OperatorRef, "drv-7");
 
     // --- The occurrence join can only work if SourceRef is byte-identical to
     // what the candidate poll writes. Run the poll's own expressions.

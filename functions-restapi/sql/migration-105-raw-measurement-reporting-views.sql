@@ -44,13 +44,21 @@
 --    travels with every row, so a dashboard cannot silently mix it into a
 --    compliance figure.
 --
--- No personal names. FixedRouteDepartures.operator_name and
--- OnDemandDepartures.driver_name are omitted; the views carry logon_id and
--- driver_identifier instead. The standard measures the contractor's
--- performance, not an individual operator's, and a BI dataset shared beyond
--- the console is the wrong place for the difference to stop mattering. The
--- identifiers still support drill-through in OnBoard, which does show names to
--- authorized staff.
+-- The person is named. vw_GarageDeparture carries OperatorName - Avail's
+-- operator_name for a pullout, Spare's driver_name for a duty - alongside the
+-- OperatorRef identifier, because a late pullout is investigated by talking to
+-- whoever was on it, and a report that can only say "logon 4412" sends the
+-- reader back to the console to find out who that was. It is the same name the
+-- console already shows authorized staff, reaching the same people through a
+-- different tool.
+--
+-- What that obliges: the reporting login is a second door onto employee names,
+-- so it is granted on views and denied on the base tables (below), and a
+-- dataset built from these views inherits whatever sharing the workspace has.
+-- A published scorecard aimed at the contractor is not the place for it - the
+-- standard measures the contractor, not an individual - so keep OperatorName
+-- to the investigation pages, and drop the column from the dataset entirely if
+-- the report is ever shared outward.
 --
 -- Re-runnable (CREATE OR ALTER throughout). Run once against the live database
 -- (private endpoint - see HANDOFF section 5.7).
@@ -274,6 +282,7 @@ departure AS (
     d.login_actual LoginActualAt,
     CONVERT(nvarchar(64), d.vehicle_label) VehicleRef,
     CONVERT(nvarchar(64), d.logon_id) OperatorRef,
+    CONVERT(nvarchar(200), d.operator_name) OperatorName,
     d.first_seen_at FirstSeenAt,
     d.updated_at UpdatedAt
   FROM dbo.FixedRouteDepartures d
@@ -300,6 +309,10 @@ departure AS (
     CONVERT(datetime2, NULL),
     CONVERT(nvarchar(64), d.vehicle_identifier),
     CONVERT(nvarchar(64), d.driver_identifier),
+    -- Spare's driver_name is "Last, First"; Avail's operator_name is whatever
+    -- the pullout feed carries. One column, two source formats - a report that
+    -- groups on it should group on OperatorRef and label with this.
+    CONVERT(nvarchar(200), d.driver_name),
     d.first_seen_at,
     d.updated_at
   FROM dbo.OnDemandDepartures d
@@ -338,6 +351,7 @@ SELECT
   d.LoginActualAt,
   d.VehicleRef,
   d.OperatorRef,
+  d.OperatorName,
   occurrence.id OccurrenceId,
   occurrence.review_status OccurrenceReviewStatus,
   occurrence.attribution OccurrenceAttribution,
