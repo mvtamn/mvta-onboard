@@ -1035,6 +1035,25 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 /* Generic stat-card row, reused wherever a handful of stat-cards sit side by
    side (Subscribers tab, OTP dashboard, etc). */
 .stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+.stat-card {
+  background: var(--surface-alt-bg);
+  border: 1px solid var(--border);
+  /* Callers that care about severity pass their own borderLeftColor inline
+     (Subscribers.tsx, the OTP dashboard). Until now those inline colors had
+     no border to color: .stat-card and its three children had no rule at
+     all anywhere in the console, so every card in every .stat-grid rendered
+     as three bare stacked divs. */
+  border-left: 4px solid var(--border-strong);
+  border-radius: 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 12px 14px;
+}
+.stat-label { color: var(--text-muted); font-size: 10px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; }
+.stat-value { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; }
+.stat-sub { color: var(--text-dim); font-size: 11.5px; }
 
 /* Light normalization so embedded OCC modules sit inside the shell without
    fighting it: kill their page-level backgrounds, inherit the console font. */

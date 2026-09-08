@@ -409,29 +409,35 @@ export function OtpModule() {
         ))}
       </div>
 
-      <p className="panel-desc" style={{ marginBottom: 10 }}>
-        <b>{meta.title}.</b> {meta.sub}
-      </p>
-
-      <div className="concept-banner" style={{ flexWrap: "wrap", gap: 10 }}>
-        <span className="concept-badge">{usingLiveOtp ? "Live data" : "Preview data"}</span>
-        <span>
-          {usingLiveOtp
-            ? `Avail OTP Monthly feed - ${formatServiceMonth(liveOtp!.diagnostics.service_month)}, ${liveOtp!.diagnostics.record_count} stop/day rows.`
-            : loadError ?? `Avail OTP Monthly feed has no rows for ${selectedMonth} yet - showing sample data.`}
-        </span>
-        <label style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
-          Service month
-          <input
-            className="f"
-            type="month"
-            style={{ width: 150 }}
-            value={toMonthInputValue(selectedMonth)}
-            max={toMonthInputValue(currentServiceMonth())}
-            onChange={(e) => e.target.value && setSelectedMonth(fromMonthInputValue(e.target.value))}
-          />
-        </label>
+      <div className="otp-head">
+        <div className="otp-head-titles">
+          <div className="otp-eyebrow">OTP Compliance</div>
+          <h1>{meta.title}</h1>
+          <p>{meta.sub}</p>
+        </div>
+        <div className="otp-head-controls">
+          <span className={`otp-source-pill ${usingLiveOtp ? "live" : "preview"}`}>
+            <i />
+            {usingLiveOtp ? "Live data" : "Preview data"}
+          </span>
+          <label>
+            Service month
+            <input
+              className="f"
+              type="month"
+              value={toMonthInputValue(selectedMonth)}
+              max={toMonthInputValue(currentServiceMonth())}
+              onChange={(e) => e.target.value && setSelectedMonth(fromMonthInputValue(e.target.value))}
+            />
+          </label>
+        </div>
       </div>
+
+      <p className="otp-provenance">
+        {usingLiveOtp
+          ? `Avail OTP Monthly feed \u00b7 ${formatServiceMonth(liveOtp!.diagnostics.service_month)} \u00b7 ${liveOtp!.diagnostics.record_count.toLocaleString()} stop/day rows \u00b7 contract target ${Math.round(liveOtp!.diagnostics.target * 1000) / 10}%`
+          : loadError ?? `Avail OTP Monthly feed has no rows for ${formatServiceMonth(selectedMonth)} yet - showing sample data.`}
+      </p>
       {actionError ? <p className="error-text">{actionError}</p> : null}
 
       {page === "dashboard" && (
@@ -441,7 +447,8 @@ export function OtpModule() {
           statuses={statuses}
           weatherCount={dateExclusions.length}
           liveRoutesBelowTarget={usingLiveOtp ? liveOtp!.diagnostics.routes_below_target : null}
-          targetPct={(usingLiveOtp ? liveOtp!.diagnostics.target : 0.85) * 100}
+          targetPct={Math.round((usingLiveOtp ? liveOtp!.diagnostics.target : 0.85) * 1000) / 10}
+          serviceMonth={serviceMonth ?? selectedMonth}
         />
       )}
       {page === "queue" && (
@@ -479,6 +486,7 @@ function DashboardPage({
   weatherCount,
   liveRoutesBelowTarget,
   targetPct,
+  serviceMonth,
 }: {
   routeRows: RouteRow[];
   candidateSource: Candidate[];
@@ -486,35 +494,87 @@ function DashboardPage({
   weatherCount: number;
   liveRoutesBelowTarget: number | null;
   targetPct: number;
+  serviceMonth: string | null;
 }) {
   const approved = statuses.filter((s) => s === "approved").length;
   const rejected = statuses.filter((s) => s === "rejected").length;
   const pending = statuses.length - approved - rejected;
   const below =
     liveRoutesBelowTarget ?? routeRows.filter((r) => computeOfficialPct(r, candidateSource, statuses) < targetPct).length;
+  const monthLabel = serviceMonth ? formatServiceMonth(serviceMonth) : "this month";
+  // Tone is semantic, not decorative: a card only goes warning/danger when
+  // its number is something a reviewer has to act on. Zero pending and zero
+  // routes below target are the good states, and read as muted.
   const cards = [
-    { label: "Pending review", value: pending, sub: "Candidate stops", color: "#F78E1E" },
-    { label: "Approved", value: approved, sub: "Active exclusion rules", color: "#00553D" },
-    { label: `Routes below ${targetPct}%`, value: below, sub: "Official departure OTP", color: "#8A1F1F" },
-    { label: "Weather exclusions", value: weatherCount, sub: "Logged this year", color: "#417B68" },
+    {
+      label: "Pending review",
+      value: pending,
+      unit: pending === 1 ? "candidate stop" : "candidate stops",
+      note: pending > 0 ? `Awaiting a decision for ${monthLabel}` : `Nothing left to decide for ${monthLabel}`,
+      tone: pending > 0 ? "warning" : "success",
+    },
+    {
+      label: "Approved",
+      value: approved,
+      unit: approved === 1 ? "exclusion rule" : "exclusion rules",
+      note: "Applied to official departure OTP",
+      tone: "success",
+    },
+    {
+      label: "Routes below target",
+      value: below,
+      unit: `of ${routeRows.length} routes`,
+      note: `Official departure OTP under ${targetPct}%`,
+      tone: below > 0 ? "danger" : "success",
+    },
+    {
+      label: "Weather exclusions",
+      value: weatherCount,
+      unit: weatherCount === 1 ? "service day" : "service days",
+      note: "Logged to date",
+      tone: "muted",
+    },
   ];
   return (
     <>
-      <div className="stat-grid">
+      <div className="otp-stat-grid">
         {cards.map((c) => (
-          <div className="stat-card" key={c.label} style={{ borderLeftColor: c.color }}>
-            <div className="stat-label">{c.label}</div>
-            <div className="stat-value">{c.value}</div>
-            <div className="stat-sub">{c.sub}</div>
+          <div className={`otp-stat ${c.tone}`} key={c.label}>
+            <div className="otp-stat-head">
+              <i />
+              <span className="otp-eyebrow muted">{c.label}</span>
+            </div>
+            <div className="otp-stat-figure">
+              <strong>{c.value}</strong>
+              <span>{c.unit}</span>
+            </div>
+            <div className="otp-stat-note">{c.note}</div>
           </div>
         ))}
       </div>
-      <OtpTrendChart />
+      <OtpTrendChart targetPct={targetPct} />
     </>
   );
 }
 
-function OtpTrendChart() {
+const TREND_PLOT_HEIGHT = 200;
+
+function TrendDeltaIcon({ direction }: { direction: "up" | "down" }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {direction === "up" ? <path d="M12 19V5" /> : <path d="M12 5v14" />}
+      {direction === "up" ? <path d="M5 12l7-7 7 7" /> : <path d="M5 12l7 7 7-7" />}
+    </svg>
+  );
+}
+
+// targetPct is the contract target the rest of the module already reads off
+// the feed's diagnostics, as a whole percentage. It used to be a literal 85
+// in here, so if the target ever moved the chart and the "Routes below
+// target" card above it would have disagreed silently. It arrives rounded
+// because the wire value is a fraction and 0.85 * 100 is 85.00000000000001,
+// which both the card label and the target line render as text.
+function OtpTrendChart({ targetPct }: { targetPct: number }) {
   const [trend, setTrend] = useState<OtpMonthlyTrendPoint[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -536,31 +596,138 @@ function OtpTrendChart() {
     );
   }
 
+  const points = trend.map((t) => ({
+    ...t,
+    pct: t.pct_ontime !== null ? Math.round(t.pct_ontime * 1000) / 10 : null,
+  }));
+  const withData = points.filter((p): p is typeof p & { pct: number } => p.pct !== null);
+  const latest = points[points.length - 1];
+  const previous = points.length > 1 ? points[points.length - 2] : null;
+  const delta = latest.pct !== null && previous?.pct != null ? Math.round((latest.pct - previous.pct) * 10) / 10 : null;
+  const atTarget = withData.filter((p) => p.pct >= targetPct).length;
+  const average =
+    withData.length > 0
+      ? Math.round((withData.reduce((sum, p) => sum + p.pct, 0) / withData.length) * 10) / 10
+      : null;
+  const worstGap =
+    withData.length > 0 ? Math.round((targetPct - Math.min(...withData.map((p) => p.pct))) * 10) / 10 : null;
+
   return (
     <div className="subcard">
-      <h2 style={{ marginTop: 0 }}>Agency-wide OTP % trend</h2>
-      <div className="otp-trend-chart">
-        {trend.map((t) => {
-          const pct = t.pct_ontime !== null ? Math.round(t.pct_ontime * 1000) / 10 : null;
-          return (
-            <div className="otp-trend-bar-col" key={t.service_month}>
-              <div className="otp-trend-bar-track">
-                <div
-                  className={`otp-trend-bar ${pct !== null && pct < 85 ? "below" : "meets"}`}
-                  style={{ height: `${pct ?? 0}%` }}
-                  title={pct !== null ? `${pct}%` : "no data"}
-                />
-              </div>
-              <div className="otp-trend-bar-label">{pct !== null ? `${pct}%` : "—"}</div>
-              <div className="otp-trend-bar-month td-dim">{formatServiceMonth(t.service_month)}</div>
-            </div>
-          );
-        })}
+      <div className="otp-trend-head">
+        <div>
+          <div className="otp-eyebrow">Contract performance</div>
+          <h2>Agency-wide OTP % trend</h2>
+          <p>Last {points.length} service months, official departure OTP</p>
+        </div>
+        <div className="otp-trend-legend">
+          <span><i className="meets" />At or above target</span>
+          <span><i className="below" />Below target</span>
+          <span><i className="target" />Target {targetPct}%</span>
+        </div>
       </div>
-      <p className="td-dim" style={{ marginTop: 8 }}>
-        Percent only - no penalty-dollar figure is shown until a real contract penalty rate is
-        available.
-      </p>
+
+      <div className="otp-trend-body">
+        <div className="otp-trend-plot-wrap">
+          <div className="otp-trend-axes">
+            <div className="otp-trend-yaxis" aria-hidden="true">
+              <span style={{ top: -6 }}>100</span>
+              <span style={{ top: TREND_PLOT_HEIGHT * 0.25 - 6 }}>75</span>
+              <span style={{ top: TREND_PLOT_HEIGHT * 0.5 - 6 }}>50</span>
+              <span style={{ top: TREND_PLOT_HEIGHT * 0.75 - 6 }}>25</span>
+              <span style={{ bottom: -6 }}>0</span>
+            </div>
+            <div className="otp-trend-plot">
+              {[0, 0.25, 0.5, 0.75].map((f) => (
+                <div className="otp-trend-gridline" key={f} style={{ top: TREND_PLOT_HEIGHT * f }} />
+              ))}
+              <div className="otp-trend-band" style={{ bottom: (targetPct / 100) * TREND_PLOT_HEIGHT }} />
+              <div className="otp-trend-target" style={{ bottom: (targetPct / 100) * TREND_PLOT_HEIGHT }} />
+              <div className="otp-trend-bars">
+                {points.map((p, i) => {
+                  const meets = p.pct !== null && p.pct >= targetPct;
+                  const current = i === points.length - 1;
+                  return (
+                    <div className="otp-trend-bar-col" key={p.service_month}>
+                      <span className={`otp-trend-bar-value ${p.pct === null ? "nodata" : meets ? "meets" : "below"}`}>
+                        {p.pct !== null ? `${p.pct}%` : "—"}
+                      </span>
+                      <div
+                        className={`otp-trend-bar ${meets ? "meets" : "below"}${current ? " current" : ""}`}
+                        style={{ height: ((p.pct ?? 0) / 100) * TREND_PLOT_HEIGHT }}
+                        title={p.pct !== null ? `${formatServiceMonth(p.service_month)}: ${p.pct}%` : "no data"}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+          <div className="otp-trend-months">
+            {points.map((p, i) => (
+              <div
+                className={`otp-trend-month${i === points.length - 1 ? " current" : ""}`}
+                key={p.service_month}
+              >
+                {formatServiceMonth(p.service_month)}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="otp-trend-rail">
+          <div className="otp-trend-current">
+            <span className="otp-eyebrow muted">Latest service month</span>
+            <div className="otp-trend-current-figure">
+              <strong className={latest.pct !== null && latest.pct >= targetPct ? "meets" : "below"}>
+                {latest.pct !== null ? `${latest.pct}%` : "—"}
+              </strong>
+              <span>on time</span>
+            </div>
+            {delta !== null && previous ? (
+              <div className={`otp-trend-delta ${delta > 0 ? "up" : delta < 0 ? "down" : "flat"}`}>
+                {delta !== 0 ? <TrendDeltaIcon direction={delta > 0 ? "up" : "down"} /> : null}
+                {delta === 0
+                  ? `Level with ${formatServiceMonth(previous.service_month)}`
+                  : `${Math.abs(delta)} pts vs ${formatServiceMonth(previous.service_month)}`}
+              </div>
+            ) : null}
+          </div>
+
+          <hr />
+
+          <div className="otp-trend-facts">
+            <div className="otp-trend-fact">
+              <span>Months at or above target</span>
+              <strong>{atTarget} of {points.length}</strong>
+            </div>
+            <div className="otp-trend-fact">
+              <span>Average across the window</span>
+              <strong>{average !== null ? `${average}%` : "—"}</strong>
+            </div>
+            <div className="otp-trend-fact">
+              <span>Gap to target, worst month</span>
+              <strong className={worstGap !== null && worstGap > 0 ? "danger" : undefined}>
+                {worstGap !== null ? (worstGap > 0 ? `${worstGap} pts` : "none") : "—"}
+              </strong>
+            </div>
+          </div>
+
+          <hr />
+
+          <div className="otp-trend-footnote">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 11v5" />
+              <path d="M12 7.5h.01" />
+            </svg>
+            <span>
+              Percent only - no penalty-dollar figure is shown until a real contract penalty rate is
+              available.
+            </span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
