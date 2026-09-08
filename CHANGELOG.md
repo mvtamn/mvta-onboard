@@ -5,6 +5,14 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.153] - 2026-09-08
+
+- **Performance assessment setup is four sections under Administration, grouped but independent.** Contractors, Agreements, Standards and Lists were stacked inside other screens: contractors behind a `Manage contractors` toggle in the assessment module, agreements as a strip above the standards catalog, lists behind a second toggle beside it. Each is one job on one body of work, and burying three of them inside the fourth made each harder to find than it needed to be. `AdminLayout` gained group support - consecutive links sharing a `group` render under one heading, and a page cannot join a group by accident because the order lives in one array.
+- **A contractor is edited on its own.** It outlives any one contract term - the same record carries across a re-procurement - so its identity should not depend on which term happens to be open.
+- **An Agreement is edited on its own, and every term is listed.** The strip it replaces only ever showed the active one, so a previous term was invisible even though the assessment history references it. Contract number and standards exhibit are edited here.
+- **The standards catalog consumes the Agreement rather than editing it.** It shows which Agreement assignments are read against, cites that Agreement's exhibit, and links to the Agreements section.
+- **Performance Standards is in Administration's own side navigation.** It was added to the main menu when it shipped and never to `AdminLayout`, so anyone who opened Administration and read down the list could not find it. `/admin/performance-standards` redirects to `/admin/performance/standards`, since the old path shipped and people have it.
+
 ## [1.5.152] - 2026-09-08
 
 - **Migration 107: targets, count-scaled bands, ranged amounts and rolling CAP windows.** The tier model handled four of the contract's penalty shapes and quietly could not express the rest; each gap below is a real standard in the seeded catalog.

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
-  AgreementStandardAssignment, AgreementStandardInput, ContractorPerformanceStandard, ContractorRecord,
+  AgreementStandardAssignment, AgreementStandardInput, ContractorPerformanceStandard,
   ContractorStandardTier, PerformanceAgreementRecord,
   KnownSourceSystem, PerformanceStandardInput, ReferenceValue, RegisteredResolver, StandardMeasurementSource,
   StandardTierInput,
@@ -11,6 +11,7 @@ import {
   inputToBound, isAutomated, isRatioUnit, ladderWarnings, optionsFor, qualifierLabel, sourceLabel,
   TIER_LABELS, unitNoun, withCurrent, type BandRange, type VocabularyOption,
 } from "./performanceStandardsVocabulary.js";
+import { Link } from "react-router-dom";
 import { api } from "../config.js";
 import { useAppDialog } from "../components/AppDialog.js";
 import { useAuth } from "../auth/AuthContext.js";
@@ -95,11 +96,9 @@ export function PerformanceStandardsAdmin() {
   const [tiers, setTiers] = useState<ContractorStandardTier[]>([]);
   const [agreements, setAgreements] = useState<PerformanceAgreementRecord[]>([]);
   const [assignments, setAssignments] = useState<AgreementStandardAssignment[]>([]);
-  const [contractors, setContractors] = useState<ContractorRecord[]>([]);
   const [resolvers, setResolvers] = useState<RegisteredResolver[]>([]);
   const [sourceSystems, setSourceSystems] = useState<KnownSourceSystem[]>([]);
   const [referenceValues, setReferenceValues] = useState<ReferenceValue[]>([]);
-  const [showLists, setShowLists] = useState(false);
   const [agreementId, setAgreementId] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [draft, setDraft] = useState<PerformanceStandardInput | null>(null);
@@ -114,8 +113,8 @@ export function PerformanceStandardsAdmin() {
   const load = useCallback(async () => {
     try {
       setError("");
-      const [catalog, contractorList, reference] = await Promise.all([
-        api.getPerformanceStandards(), api.getContractors(),
+      const [catalog, reference] = await Promise.all([
+        api.getPerformanceStandards(),
         // Absent before migration 105; the pickers fall back to their built-in
         // lists rather than rendering empty.
         api.getReferenceValues().catch(() => ({ values: [] as ReferenceValue[] })),
@@ -127,7 +126,6 @@ export function PerformanceStandardsAdmin() {
       setResolvers(catalog.resolvers ?? []);
       setSourceSystems(catalog.source_systems ?? []);
       setReferenceValues(reference.values ?? []);
-      setContractors(contractorList.contractors);
       setReady(catalog.diagnostics.table_ready && catalog.diagnostics.assignments_ready);
       setAgreementId((current) => current || catalog.agreements.find((a) => a.is_active)?.id || catalog.agreements[0]?.id || "");
     } catch (caught) {
@@ -241,9 +239,6 @@ export function PerformanceStandardsAdmin() {
           <p>The contractor performance standards catalog, its penalty bands, and which standards each Agreement holds the contractor to.</p>
         </div>
         <div className="standards-head-actions">
-          {isAdmin && <button className="btn-sm" disabled={busy} onClick={() => setShowLists((open) => !open)}>
-            {showLists ? "Close lists" : "Manage lists"}
-          </button>}
           {isAdmin && <button className="btn-primary" disabled={busy} onClick={addStandard}>New standard</button>}
         </div>
       </div>
@@ -253,17 +248,9 @@ export function PerformanceStandardsAdmin() {
       {error && <div className="assessment-error">{error}</div>}
       {notice && <div className="standards-notice">{notice}</div>}
 
-      {showLists && <ReferenceValuesPanel
-        values={referenceValues} busy={busy} canEdit={isAdmin}
-        onSave={(id, input) => void run(() => api.putReferenceValue(id, input), `${input.label} saved.`)}
-        onDelete={(value) => void run(() => api.deleteReferenceValue(value.id), `${value.label} deleted.`)}
-      />}
-
-      <AgreementPanel
-        agreements={agreements} contractors={contractors} agreementId={agreementId} busy={busy} canEdit={isAdmin}
-        onSelect={setAgreementId}
-        onSave={(id, input) => void run(() => api.putPerformanceAgreement(id, input), "Agreement saved.")}
-      />
+      {/* The Agreement is the context assignments are read in, not something
+          edited here - that is its own section now. */}
+      <AgreementBar agreements={agreements} agreementId={agreementId} onSelect={setAgreementId} />
 
       {/* List and detail side by side, each scrolling in its own right, so
           picking a standard does not push the thing being edited off the
@@ -393,148 +380,6 @@ export function PerformanceStandardsAdmin() {
   </>;
 }
 
-const DOMAIN_TITLES: { domain: string; title: string; blurb: string }[] = [
-  { domain: "unit", title: "Units", blurb: "What a standard is measured in." },
-  { domain: "priority", title: "Priorities", blurb: "How a standard is ranked for attention." },
-  { domain: "condition_code", title: "Conditions", blurb: "Markers that narrow a penalty band to some occurrences." },
-  { domain: "source_system", title: "Source systems", blurb: "Where a transcribed figure is read from." },
-  { domain: "responsible_team", title: "Responsible teams", blurb: "Who is chased when a figure is missing." },
-  { domain: "tier_label", title: "Tier labels", blurb: "What each band of the ladder is called, and which outranks which." },
-  { domain: "penalty_basis", title: "Charge bases", blurb: "What a penalty amount is multiplied by." },
-  { domain: "measurement_source", title: "Measurement sources", blurb: "The four ways a month's figure arrives." },
-  { domain: "standard_type", title: "Standard types", blurb: "Counted events, or a monthly value." },
-  { domain: "direction", title: "Directions", blurb: "Which way is good performance." },
-];
-
-// The lists behind every picker.
-//
-// Two classes, and the difference is visible rather than mysterious: an owned
-// list takes new values; a system list is what the scoring engine branches on,
-// so its labels and order are MVTA's and its values are not. computePenalty
-// switches exhaustively over the charge bases - one invented here would have no
-// arithmetic and the month would fail to compute. The server refuses it too;
-// this only makes the refusal predictable.
-function ReferenceValuesPanel({ values, busy, canEdit, onSave, onDelete }: {
-  values: ReferenceValue[]; busy: boolean; canEdit: boolean;
-  onSave: (id: string, input: { domain: string; value: string; label: string; description?: string | null; sort_order?: number; severity_order?: number | null; is_active?: boolean }) => void;
-  onDelete: (value: ReferenceValue) => void;
-}) {
-  const [domain, setDomain] = useState("unit");
-  const [newValue, setNewValue] = useState("");
-  const [newLabel, setNewLabel] = useState("");
-  const rows = values.filter((row) => row.domain === domain)
-    .slice().sort((left, right) => left.sort_order - right.sort_order || left.label.localeCompare(right.label));
-  const meta = DOMAIN_TITLES.find((entry) => entry.domain === domain);
-  const systemList = rows.some((row) => row.is_system);
-
-  if (!values.length) {
-    return <section className="contractor-setup">
-      <div className="assessment-section-head"><div>
-        <span className="assessment-eyebrow">Vocabulary</span>
-        <h3>Lists</h3>
-        <p>Migration 105 has not been applied to this database, so the pickers are using their built-in lists and there is nothing to edit yet.</p>
-      </div></div>
-    </section>;
-  }
-
-  return <section className="contractor-setup">
-    <div className="assessment-section-head">
-      <div>
-        <span className="assessment-eyebrow">Vocabulary</span>
-        <h3>Lists behind the pickers</h3>
-        <p>{meta?.blurb}</p>
-      </div>
-      <select aria-label="List" value={domain} onChange={(event) => setDomain(event.target.value)}>
-        {DOMAIN_TITLES.map((entry) => <option key={entry.domain} value={entry.domain}>{entry.title}</option>)}
-      </select>
-    </div>
-
-    {systemList && <div className="standards-hint">
-      The scoring engine branches on these values, so they can be renamed, reordered and retired but not added to or deleted. The label is what the console shows; the value is what the code matches on.
-    </div>}
-
-    <div className="assessment-table-wrap">
-      <table className="data">
-        <thead><tr>
-          <th>Label</th><th>Value</th><th>Order</th>
-          {domain === "tier_label" && <th>Outranks</th>}
-          <th>In use</th><th />
-        </tr></thead>
-        <tbody>
-          {rows.map((row) => <tr key={row.id}>
-            <td>
-              <input
-                aria-label={`Label for ${row.value}`} defaultValue={row.label} disabled={!canEdit || busy}
-                onBlur={(event) => {
-                  const label = event.target.value.trim();
-                  if (label && label !== row.label) onSave(row.id, { ...row, label });
-                }}
-              />
-              {row.description && <small>{row.description}</small>}
-            </td>
-            <td><code className="mono-ref">{row.value}</code></td>
-            <td>
-              <input
-                type="number" min={0} aria-label={`Order for ${row.value}`} defaultValue={row.sort_order}
-                disabled={!canEdit || busy}
-                onBlur={(event) => {
-                  const sort = Number(event.target.value);
-                  if (Number.isInteger(sort) && sort !== row.sort_order) onSave(row.id, { ...row, sort_order: sort });
-                }}
-              />
-            </td>
-            {domain === "tier_label" && <td>
-              {/* Ranking, not money: which band wins when several match one
-                  observation. Safe to edit, and snapshotted per period so a
-                  reordering cannot restate a finalized month. */}
-              <input
-                type="number" min={0} aria-label={`Rank for ${row.value}`} defaultValue={row.severity_order ?? 0}
-                disabled={!canEdit || busy}
-                onBlur={(event) => {
-                  const severity = Number(event.target.value);
-                  if (Number.isInteger(severity) && severity !== row.severity_order) onSave(row.id, { ...row, severity_order: severity });
-                }}
-              />
-            </td>}
-            <td>
-              <label className="standards-toggle">
-                <input
-                  type="checkbox" checked={row.is_active} disabled={!canEdit || busy}
-                  onChange={(event) => onSave(row.id, { ...row, is_active: event.target.checked })}
-                />
-                <span>{row.is_active ? "Offered" : "Retired"}</span>
-              </label>
-            </td>
-            <td>
-              {canEdit && !row.is_system && <button className="assessment-link-button" disabled={busy} onClick={() => onDelete(row)}>Delete</button>}
-            </td>
-          </tr>)}
-        </tbody>
-      </table>
-    </div>
-
-    {canEdit && !systemList && <div className="standards-new-value">
-      <label><span>New value</span>
-        <input value={newValue} placeholder="stored value" onChange={(event) => setNewValue(event.target.value)} />
-      </label>
-      <label><span>Label</span>
-        <input value={newLabel} placeholder="what the console shows" onChange={(event) => setNewLabel(event.target.value)} />
-      </label>
-      <button
-        className="btn-primary"
-        disabled={busy || !newValue.trim() || !newLabel.trim()}
-        onClick={() => {
-          onSave(crypto.randomUUID(), {
-            domain, value: newValue.trim(), label: newLabel.trim(),
-            sort_order: rows.length + 1, is_active: true,
-          });
-          setNewValue(""); setNewLabel("");
-        }}
-      >Add to {meta?.title.toLowerCase()}</button>
-    </div>}
-  </section>;
-}
-
 // One standard's place on the selected Agreement. Separated from the catalog
 // row because assignment is a fact about a contract term, not about the
 // standard: the same standard can be scored on one Agreement and dormant on
@@ -615,109 +460,26 @@ function TierSummary({ standard, tiers, agreementId, vocab }: { standard: Contra
   </>;
 }
 
-function AgreementPanel({ agreements, contractors, agreementId, busy, canEdit, onSelect, onSave }: {
-  agreements: PerformanceAgreementRecord[]; contractors: ContractorRecord[]; agreementId: string; busy: boolean; canEdit: boolean;
-  onSelect: (id: string) => void;
-  onSave: (id: string, input: { contractor_id: string; starts_on: string; ends_on: string; validation_business_days: number; retention_years: number; is_active: boolean; contract_number: string | null; exhibit_reference: string | null }) => void;
+function AgreementBar({ agreements, agreementId, onSelect }: {
+  agreements: PerformanceAgreementRecord[]; agreementId: string; onSelect: (id: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState("");
-  const current = agreements.find((record) => record.id === agreementId) ?? null;
-  const [contractorId, setContractorId] = useState("");
-  const [starts, setStarts] = useState("");
-  const [ends, setEnds] = useState("");
-  const [contractNumber, setContractNumber] = useState("");
-  const [exhibit, setExhibit] = useState("");
-  const [validationDays, setValidationDays] = useState(5);
-  const [retention, setRetention] = useState(7);
-  const [active, setActive] = useState(true);
-
-  function beginEdit(record: PerformanceAgreementRecord | null) {
-    setEditing(record?.id ?? "new");
-    setContractorId(record?.contractor_id ?? contractors.find((c) => c.is_active)?.id ?? "");
-    setStarts(toInputDate(record?.starts_on) || toInputDate(today()));
-    setEnds(toInputDate(record?.ends_on));
-    setContractNumber(record?.contract_number ?? "");
-    setExhibit(record?.exhibit_reference ?? "");
-    setValidationDays(record?.validation_business_days ?? 5);
-    setRetention(record?.retention_years ?? 7);
-    setActive(record?.is_active ?? true);
-    setOpen(true);
-  }
-
-  // Collapsed to one line while nothing is being changed: the Agreement is the
-  // context the catalog is read in, not the task, and 240px of static
-  // explanation above the workspace is 240px the list and editor do not get.
-  if (!open && agreements.length > 0) {
-    return <div className="standards-agreement-bar">
-      <span>Agreement</span>
-      <select value={agreementId} onChange={(event) => onSelect(event.target.value)}>
-        {agreements.map((record) => <option key={record.id} value={record.id}>
-          {record.contractor_name ?? "Contractor"} · {toInputDate(record.starts_on)} to {toInputDate(record.ends_on)}{record.is_active ? "" : " (inactive)"}
-        </option>)}
-      </select>
-      {current?.exhibit_reference && <span className="standards-exhibit">{current.exhibit_reference}</span>}
-      {canEdit && <button className="btn-sm" disabled={busy} onClick={() => beginEdit(current)}>Edit Agreement</button>}
+  if (!agreements.length) {
+    return <div className="assessment-warning">
+      No Performance Agreement exists, so no standard can be assigned and no assessment period can be opened.
+      Create one under <Link to="/admin/performance/agreements">Agreements</Link>.
     </div>;
   }
-
-  return <section className="contractor-setup">
-    <div className="assessment-section-head">
-      <div>
-        <span className="assessment-eyebrow">Contract term</span>
-        <h3>Performance Agreement</h3>
-        <p>An Agreement is what binds a contractor to a set of standards for a term. Assessment periods and the candidate poll both refuse to run without an active one.</p>
-      </div>
-      {canEdit && <button className="assessment-manage" disabled={busy} onClick={() => (open ? setOpen(false) : beginEdit(current))}>{open ? "Close" : current ? "Edit Agreement" : "Create Agreement"}</button>}
-    </div>
-
-    {agreements.length === 0
-      ? <div className="assessment-warning">No Performance Agreement exists. Until one does, no assessment period can be opened and the compliance candidate poll fails on every run. {canEdit ? "Create one below." : "Ask an Administrator to create one."}</div>
-      : <label className="standards-agreement-select">
-          <span>Agreement</span>
-          <select value={agreementId} onChange={(event) => onSelect(event.target.value)}>
-            {agreements.map((record) => <option key={record.id} value={record.id}>
-              {record.contractor_name ?? "Contractor"} · {toInputDate(record.starts_on)} to {toInputDate(record.ends_on)}{record.is_active ? "" : " (inactive)"}
-            </option>)}
-          </select>
-        </label>}
-
-    {open && canEdit && <div className="contractor-form">
-      <label><span>Contractor</span>
-        <select value={contractorId} onChange={(event) => setContractorId(event.target.value)}>
-          <option value="">Select a contractor</option>
-          {contractors.map((contractor) => <option key={contractor.id} value={contractor.id}>{contractor.name}</option>)}
-        </select>
-        {!contractors.length && <small>No contractor records exist. Add one under Performance Assessment &gt; Manage contractors first.</small>}
-      </label>
-      <label><span>Contract number</span>
-        <input value={contractNumber} onChange={(event) => setContractNumber(event.target.value)} placeholder="e.g. RFP 2025-07" />
-      </label>
-      <label><span>Standards exhibit</span>
-        <input value={exhibit} onChange={(event) => setExhibit(event.target.value)} placeholder="e.g. Attachment G v2" />
-        <small>What this contract calls the document these standards come from. Shown wherever the console cites it.</small>
-      </label>
-      <label><span>Term start</span><input type="date" value={starts} onChange={(event) => setStarts(event.target.value)} /></label>
-      <label><span>Term end</span><input type="date" value={ends} onChange={(event) => setEnds(event.target.value)} /></label>
-      <label><span>Validation window (business days)</span><input type="number" min={1} max={30} value={validationDays} onChange={(event) => setValidationDays(Number(event.target.value))} /></label>
-      <label><span>Record retention (years)</span><input type="number" min={1} max={25} value={retention} onChange={(event) => setRetention(Number(event.target.value))} /></label>
-      <label className="contractor-active"><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /><span>Current Agreement for this contractor</span></label>
-      <button
-        className="btn-primary"
-        disabled={busy || !contractorId || !starts || !ends}
-        onClick={() => {
-          onSave(editing === "new" ? crypto.randomUUID() : editing, {
-            contractor_id: contractorId, starts_on: toServiceDate(starts), ends_on: toServiceDate(ends),
-            contract_number: contractNumber.trim() || null, exhibit_reference: exhibit.trim() || null,
-            validation_business_days: validationDays, retention_years: retention, is_active: active,
-          });
-          setOpen(false);
-        }}
-      >{editing === "new" ? "Create Agreement" : "Save Agreement"}</button>
-      {editing !== "new" && <button className="assessment-manage" disabled={busy} onClick={() => beginEdit(null)}>Start a new Agreement instead</button>}
-      {editing === "new" && <small className="standards-hint">A new Agreement inherits every standard in the catalog, scored as the catalog scores it. Adjust the assignments below afterwards.</small>}
-    </div>}
-  </section>;
+  const current = agreements.find((record) => record.id === agreementId);
+  return <div className="standards-agreement-bar">
+    <span>Agreement</span>
+    <select aria-label="Agreement" value={agreementId} onChange={(event) => onSelect(event.target.value)}>
+      {agreements.map((record) => <option key={record.id} value={record.id}>
+        {record.contractor_name ?? "Contractor"} · {toInputDate(record.starts_on)} to {toInputDate(record.ends_on)}{record.is_active ? "" : " (inactive)"}
+      </option>)}
+    </select>
+    {current?.exhibit_reference && <span className="standards-exhibit">{current.exhibit_reference}</span>}
+    <Link className="btn-sm" to="/admin/performance/agreements">Edit Agreement</Link>
+  </div>;
 }
 
 function StandardEditor({ draft, setDraft, standardId, canEdit, busy, resolvers, vocab, onCancel, onSave }: {

@@ -36,4 +36,15 @@ describe("Administration navigation", () => {
     expect(screen.queryByRole("link", { name: "Service Configuration" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "OTP Compliance" })).not.toBeInTheDocument();
   });
+  it("groups the performance-assessment sections under one heading", () => {
+    // Four separate jobs on one body of work: who the contractor is, what they
+    // are contracted to, what they are held to, and the vocabulary behind it.
+    renderLayout(["OCC.Admin"]);
+    expect(screen.getByText("Performance Assessment")).toBeInTheDocument();
+    for (const label of ["Contractors", "Agreements", "Standards", "Lists"]) {
+      expect(screen.getByRole("link", { name: label })).toBeInTheDocument();
+    }
+    // Ungrouped pages keep their flat position rather than joining a group.
+    expect(screen.getByRole("link", { name: "Decision Matrix" })).toBeInTheDocument();
+  });
 });
