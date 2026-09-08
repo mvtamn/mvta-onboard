@@ -97,12 +97,12 @@ different threshold. This is the core of the request.
 
 **B. The schema hard-forbids a second contractor.**
 `CREATE UNIQUE INDEX UX_PA_Active ON PerformanceAgreements(is_active) WHERE
-is_active = 1` (migration-032:26) is filtered on `is_active` *alone*, so exactly
+is_active = 1` (migration-032b:26) is filtered on `is_active` *alone*, so exactly
 one active agreement can exist system-wide. Any multi-contractor or overlapping-
 amendment future starts by dropping this index.
 
 **C. Nothing in the application ever creates a `PerformanceAgreement`.**
-The only insert is migration-032's one-time backfill, guarded by `NOT EXISTS
+The only insert is migration-032b's one-time backfill, guarded by `NOT EXISTS
 (SELECT 1 FROM PerformanceAgreements)`. If `Contractors` was empty when that
 migration ran, adding a contractor through the console's "Manage contractors"
 panel produces a contractor with **no agreement** — after which

@@ -89,7 +89,7 @@ app.http("performanceStandardPut", {
       const pool = await getPool();
       const existing = await (() => { const req = pool.request(); req.input("id", sql.UniqueIdentifier, id); return req.query<StandardRow>(`SELECT id,code FROM ContractorPerformanceStandards WHERE id=@id`); })();
       // A standard's code is a public identifier: resolvers, the candidate poll
-      // and migration 088's dismissal rule all match on the literal string.
+      // and migration 088a's dismissal rule all match on the literal string.
       // Renaming one would silently detach it from its own measurements, so an
       // existing standard keeps the code it was created with.
       if (existing.recordset[0] && existing.recordset[0].code !== body.code) {

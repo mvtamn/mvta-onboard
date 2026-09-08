@@ -87,7 +87,7 @@ map, email and Teams delivery, and the Avail feed remain deployment-dependent.
 
 ### Priority 1 — operational trust
 
-- Apply migration 088 to dev; confirm the `riders_directed` backfill on the
+- Apply migration 088b to dev; confirm the `riders_directed` backfill on the
   promoted Detours.
 - Provision the attachment store and confirm upload, read, and purge end to end.
 - Confirm the Avail timer against live data and record the observed feed shape.

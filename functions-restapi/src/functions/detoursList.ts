@@ -163,12 +163,12 @@ app.http("detoursList", {
       const hasAvailEntryFields = schemaCheck.recordset[0]?.avail_entry_ready === 1;
       const hasOperationalFields = schemaCheck.recordset[0]?.operational_fields === 1;
       // Migration 057 (service impact/area, action instructions, evidence)
-      // and migration 069 (operating window times, affected stops, impacts,
+      // and migration 069b (operating window times, affected stops, impacts,
       // contact). Promotion writes all of these; without selecting them
       // here the intake record is write-only once accepted.
       const hasIntakeFields = schemaCheck.recordset[0]?.intake_fields === 1;
       const hasWindowFields = schemaCheck.recordset[0]?.window_fields === 1;
-      const hasLocation = schemaCheck.recordset[0]?.location_field === 1; // migration 088
+      const hasLocation = schemaCheck.recordset[0]?.location_field === 1; // migration 088b
       const hasConflictOverride = schemaCheck.recordset[0]?.conflict_field === 1; // migration 090
       const hasGeometry = schemaCheck.recordset[0]?.geometry_field === 1; // migration 091
       const hasCommunications = schemaCheck.recordset[0]?.communications_ready === 1;

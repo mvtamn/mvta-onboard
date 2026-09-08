@@ -16,6 +16,35 @@ interface InterventionRow {
   resolved_by: string | null;
 }
 
+// Exported so onDemandInterventions.db.contract.test.ts runs this exact
+// statement against a real SQL Server. Which rows this selects is what the
+// cadence change turns on: too wide and a five-minute run is unaffordable, too
+// narrow and a recovery is never noticed.
+export const INTERVENTION_CANDIDATE_QUERY = `
+    SELECT m.trip_id AS request_id, m.zone_id,
+      CASE WHEN m.wait_started_at < SYSUTCDATETIME() THEN DATEDIFF(MINUTE, m.wait_started_at, SYSUTCDATETIME()) ELSE 0 END AS current_wait_minutes,
+      CASE WHEN m.predicted_pickup_at IS NULL THEN NULL WHEN m.predicted_pickup_at > m.wait_started_at THEN DATEDIFF(MINUTE, m.wait_started_at, m.predicted_pickup_at) ELSE 0 END AS predicted_wait_minutes,
+      COALESCE(o.minutes, p.default_minutes, 25) AS service_standard_minutes
+    FROM dbo.MonitoredOnDemandWaits m
+    LEFT JOIN dbo.OnDemandServiceStandardPolicy p ON p.id = 1
+    LEFT JOIN dbo.OnDemandZoneServiceStandardOverrides o ON o.external_location_id = m.zone_id
+      AND o.revoked_at IS NULL AND o.effective_at <= SYSUTCDATETIME() AND SYSUTCDATETIME() < o.expires_at
+    WHERE m.monitor_state = 'active'
+      AND m.last_polled_at >= @covered_since
+      -- A healthy request with no intervention on file needs no decision: the
+      -- old loop still spent two round trips on each one, which is what made
+      -- running this more than hourly look expensive. Breaching, forecast to
+      -- breach, or already on file - anything else is left alone.
+      AND (
+        CASE WHEN m.wait_started_at < SYSUTCDATETIME() THEN DATEDIFF(MINUTE, m.wait_started_at, SYSUTCDATETIME()) ELSE 0 END
+          > COALESCE(o.minutes, p.default_minutes, 25)
+        OR ISNULL(CASE WHEN m.predicted_pickup_at IS NULL THEN NULL WHEN m.predicted_pickup_at > m.wait_started_at
+            THEN DATEDIFF(MINUTE, m.wait_started_at, m.predicted_pickup_at) ELSE 0 END, 0)
+          > COALESCE(o.minutes, p.default_minutes, 25)
+        OR EXISTS (SELECT 1 FROM dbo.OnDemandServiceQualityInterventions i WHERE i.request_id = m.trip_id)
+      );
+  `;
+
 export function onDemandInterventionDecision(
   priorProjectedBreachCount: number,
   currentWaitMinutes: number,
@@ -91,24 +120,29 @@ async function ensureSuggestedAlert(pool: sql.ConnectionPool, candidate: Candida
   }
 }
 
-export async function reconcileOnDemandInterventions(
+// `coveredSince` is the last successful authoritative reconciliation. Only
+// requests the monitor has seen at or after it are evaluated - a row nothing
+// has confirmed since is not evidence of anything now. The hourly
+// reconciliation stamps last_polled_at on every request it reads, and the
+// webhook stamps it again between runs, so this replaces the in-memory set of
+// authoritative ids the hourly path used to pass: same population, expressed
+// where a five-minute evaluation can also use it.
+//
+// Called from onDemandInterventionsEvaluate every five minutes as well as from
+// the hourly reconciliation. It used to run only hourly, which made the plan's
+// "creates one Suggested Alert immediately" on an observed breach mean up to an
+// hour, and a projected breach - needing two consecutive evaluations - up to
+// two hours, against a service standard of twenty-five minutes. The draft
+// arrived after the trip it described had finished.
+export async function evaluateOnDemandInterventions(
   pool: sql.ConnectionPool,
-  reconciledAt: Date,
-  authoritativeRequestIds: ReadonlySet<string>,
+  evaluatedAt: Date,
+  coveredSince: Date,
 ): Promise<void> {
-  const candidates = await pool.request().query<Candidate>(`
-    SELECT m.trip_id AS request_id, m.zone_id,
-      CASE WHEN m.wait_started_at < SYSUTCDATETIME() THEN DATEDIFF(MINUTE, m.wait_started_at, SYSUTCDATETIME()) ELSE 0 END AS current_wait_minutes,
-      CASE WHEN m.predicted_pickup_at IS NULL THEN NULL WHEN m.predicted_pickup_at > m.wait_started_at THEN DATEDIFF(MINUTE, m.wait_started_at, m.predicted_pickup_at) ELSE 0 END AS predicted_wait_minutes,
-      COALESCE(o.minutes, p.default_minutes, 25) AS service_standard_minutes
-    FROM dbo.MonitoredOnDemandWaits m
-    LEFT JOIN dbo.OnDemandServiceStandardPolicy p ON p.id = 1
-    LEFT JOIN dbo.OnDemandZoneServiceStandardOverrides o ON o.external_location_id = m.zone_id
-      AND o.revoked_at IS NULL AND o.effective_at <= SYSUTCDATETIME() AND SYSUTCDATETIME() < o.expires_at
-    WHERE m.monitor_state = 'active';
-  `);
+  const candidateQuery = pool.request();
+  candidateQuery.input("covered_since", sql.DateTime2, coveredSince);
+  const candidates = await candidateQuery.query<Candidate>(INTERVENTION_CANDIDATE_QUERY);
   for (const candidate of candidates.recordset) {
-    if (!authoritativeRequestIds.has(candidate.request_id)) continue;
     const request = pool.request();
     request.input("request_id", sql.NVarChar(100), candidate.request_id);
     const existing = await request.query<InterventionRow>(`
@@ -127,7 +161,7 @@ export async function reconcileOnDemandInterventions(
       const keepResolved = pool.request();
       keepResolved.input("request_id", sql.NVarChar(100), candidate.request_id);
       keepResolved.input("projected_count", sql.Int, projectedCount);
-      keepResolved.input("reconciled_at", sql.DateTime2, reconciledAt);
+      keepResolved.input("reconciled_at", sql.DateTime2, evaluatedAt);
       await keepResolved.query(`
         UPDATE dbo.OnDemandServiceQualityInterventions
         SET projected_breach_count = @projected_count, last_authoritative_at = @reconciled_at, updated_at = SYSUTCDATETIME()
@@ -140,18 +174,18 @@ export async function reconcileOnDemandInterventions(
       if (prior?.status === "open") {
         const resolve = pool.request();
         resolve.input("request_id", sql.NVarChar(100), candidate.request_id);
-        resolve.input("reconciled_at", sql.DateTime2, reconciledAt);
+        resolve.input("reconciled_at", sql.DateTime2, evaluatedAt);
         await resolve.query(`
           UPDATE dbo.OnDemandServiceQualityInterventions
           SET status = 'resolved', resolved_at = @reconciled_at, resolved_by = 'System.Ingestion',
-            resolution_reason = 'Recovered in authoritative reconciliation.', last_authoritative_at = @reconciled_at, updated_at = SYSUTCDATETIME()
+            resolution_reason = 'Recovered before review.', last_authoritative_at = @reconciled_at, updated_at = SYSUTCDATETIME()
           WHERE request_id = @request_id;
         `);
       } else {
         const update = pool.request();
         update.input("request_id", sql.NVarChar(100), candidate.request_id);
         update.input("projected_count", sql.Int, projectedCount);
-        update.input("reconciled_at", sql.DateTime2, reconciledAt);
+        update.input("reconciled_at", sql.DateTime2, evaluatedAt);
         await update.query(`
           UPDATE dbo.OnDemandServiceQualityInterventions
           SET projected_breach_count = @projected_count, last_authoritative_at = @reconciled_at, updated_at = SYSUTCDATETIME()
@@ -166,7 +200,7 @@ export async function reconcileOnDemandInterventions(
     upsert.input("request_id", sql.NVarChar(100), candidate.request_id);
     upsert.input("projected_count", sql.Int, projectedCount);
     upsert.input("alert_id", sql.UniqueIdentifier, alertId);
-    upsert.input("reconciled_at", sql.DateTime2, reconciledAt);
+    upsert.input("reconciled_at", sql.DateTime2, evaluatedAt);
     await upsert.query(`
       MERGE dbo.OnDemandServiceQualityInterventions WITH (HOLDLOCK) AS target
       USING (SELECT @request_id AS request_id) AS source ON target.request_id = source.request_id
@@ -183,10 +217,10 @@ export async function reconcileOnDemandInterventions(
   }
 
   const resolveTerminal = pool.request();
-  resolveTerminal.input("reconciled_at", sql.DateTime2, reconciledAt);
+  resolveTerminal.input("reconciled_at", sql.DateTime2, evaluatedAt);
   await resolveTerminal.query(`
     UPDATE i SET status = 'resolved', resolved_at = @reconciled_at, resolved_by = 'System.Ingestion',
-      resolution_reason = 'The request became terminal in authoritative reconciliation.',
+      resolution_reason = 'The request became terminal.',
       last_authoritative_at = @reconciled_at, updated_at = SYSUTCDATETIME()
     FROM dbo.OnDemandServiceQualityInterventions i
     JOIN dbo.MonitoredOnDemandWaits m ON m.trip_id = i.request_id
