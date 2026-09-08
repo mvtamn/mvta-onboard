@@ -17,8 +17,25 @@ export interface WindowedOccurrence {
   quantity: number;
 }
 
+// How the window is counted.
+//
+// rolling_days      any span of N days, sliding. "More than 5 in a rolling 30
+//                   days" catches a run that straddles a month end, which is
+//                   the point of writing the rule that way.
+// calendar_quarter  Jan-Mar, Apr-Jun, Jul-Sep, Oct-Dec. "3+ repeat cases per
+//                   quarter" means the quarter as the contract's own reporting
+//                   period, and the count resets at the boundary.
+//
+// The two genuinely differ, and not only at the edges: three cases in December
+// and three in January breach a calendar-quarter rule never, and a rolling
+// 90-day rule almost certainly. Which one the contract means is a reading of
+// the contract, so it is recorded per standard rather than assumed.
+export type CapWindowMode = "rolling_days" | "calendar_quarter";
+
 export interface CapWindowRule {
-  windowDays: number;
+  mode?: CapWindowMode;
+  /** Required for rolling_days; ignored for calendar_quarter. */
+  windowDays?: number;
   threshold: number;
 }
 
@@ -51,15 +68,52 @@ function toServiceDate(time: number): string {
 // triggers. Each occurrence's own date ends a window looking back windowDays,
 // inclusive of both ends, because that is how a person reading the contract
 // counts it.
+function quarterOf(serviceDate: string): { year: number; quarter: number } {
+  const year = Number(serviceDate.slice(0, 4));
+  return { year, quarter: Math.floor((Number(serviceDate.slice(4, 6)) - 1) / 3) + 1 };
+}
+
+function quarterBounds(year: number, quarter: number): { startedOn: string; endedOn: string } {
+  const firstMonth = (quarter - 1) * 3 + 1;
+  const lastMonth = firstMonth + 2;
+  const lastDay = new Date(Date.UTC(year, lastMonth, 0)).getUTCDate();
+  return {
+    startedOn: `${year}${String(firstMonth).padStart(2, "0")}01`,
+    endedOn: `${year}${String(lastMonth).padStart(2, "0")}${String(lastDay).padStart(2, "0")}`,
+  };
+}
+
+// The first calendar quarter whose count exceeds the threshold.
+function findCalendarQuarterBreach(
+  ordered: readonly WindowedOccurrence[],
+  threshold: number,
+): CapWindowBreach | null {
+  const counts = new Map<string, number>();
+  for (const occurrence of ordered) {
+    const { year, quarter } = quarterOf(occurrence.serviceDate);
+    const key = `${year}-${quarter}`;
+    const count = (counts.get(key) ?? 0) + Math.max(1, Math.round(occurrence.quantity || 1));
+    counts.set(key, count);
+    if (count > threshold) {
+      const bounds = quarterBounds(year, quarter);
+      return { ...bounds, count };
+    }
+  }
+  return null;
+}
+
 export function findCapWindowBreach(
   occurrences: readonly WindowedOccurrence[],
   rule: CapWindowRule,
 ): CapWindowBreach | null {
-  if (!(rule.windowDays > 0) || !(rule.threshold > 0)) return null;
+  if (!(rule.threshold > 0)) return null;
+  const mode = rule.mode ?? "rolling_days";
+  if (mode === "rolling_days" && !(rule.windowDays && rule.windowDays > 0)) return null;
   const ordered = [...occurrences]
     .filter((occurrence) => /^\d{8}$/.test(occurrence.serviceDate))
     .sort((left, right) => left.serviceDate.localeCompare(right.serviceDate));
-  const spanMs = (rule.windowDays - 1) * 24 * 60 * 60 * 1000;
+  if (mode === "calendar_quarter") return findCalendarQuarterBreach(ordered, rule.threshold);
+  const spanMs = ((rule.windowDays ?? 0) - 1) * 24 * 60 * 60 * 1000;
 
   for (let end = 0; end < ordered.length; end += 1) {
     const endTime = toDate(ordered[end].serviceDate);
@@ -79,5 +133,8 @@ export function findCapWindowBreach(
 }
 
 export function describeCapWindowBreach(breach: CapWindowBreach, rule: CapWindowRule): string {
-  return `${breach.count} occurrences between ${breach.startedOn} and ${breach.endedOn} exceed the ${rule.threshold} tolerated in any ${rule.windowDays} days.`;
+  const period = (rule.mode ?? "rolling_days") === "calendar_quarter"
+    ? "that calendar quarter"
+    : `any ${rule.windowDays} days`;
+  return `${breach.count} occurrences between ${breach.startedOn} and ${breach.endedOn} exceed the ${rule.threshold} tolerated in ${period}.`;
 }
