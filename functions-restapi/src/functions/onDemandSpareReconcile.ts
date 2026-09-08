@@ -4,7 +4,7 @@
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool } from "../lib/db";
 import { recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
-import { reconcileOnDemandInterventions } from "../lib/onDemandInterventions";
+import { evaluateOnDemandInterventions } from "../lib/onDemandInterventions";
 import { onDemandMonitoringEnabled } from "../lib/onDemandMonitoringHealth";
 import { normalizeOnDemandSpareRequest } from "../lib/onDemandSpareMonitor";
 import {
@@ -86,7 +86,11 @@ app.timer("onDemandSpareReconcile", {
       latestSourceUpdateAt,
       activeRequestCount: activeRequestIds.size,
     });
-    await reconcileOnDemandInterventions(pool, reconciledAt, activeRequestIds);
+    // Evaluated here too, on the freshest possible state, rather than waiting
+    // up to five minutes for onDemandInterventionsEvaluate. Both callers share
+    // one implementation and one debounce, so a breach seen by both is still
+    // two observations of a sustained condition, not a shortcut past it.
+    await evaluateOnDemandInterventions(pool, reconciledAt, reconciledAt);
     try {
       // This complete source read - not the missed-trip ingestion - is what
       // makes On-Demand KPI trust current. A zero-active reconciliation still
