@@ -43,3 +43,16 @@ called afterwards:
 
 Console output (`PRINT`), error text (`THROW`) and comments describe the file
 and are renamed with it.
+
+## Applying a batch to dev
+
+`scripts/apply-dev-migrations.sh` walks the whole path: it checks the firewall
+and public access on the dev server, prompts for the admin password (Key Vault
+is private-only, so it cannot be fetched), runs each file in order, reads the
+schema back to confirm each one landed, and reverts only the network changes it
+made. Edit the `MIGRATIONS` array for a later batch.
+
+It relies on every migration it lists being re-runnable, since it has no way to
+tell which have already been applied - a second pass has to be a no-op. Say so
+in the header of any migration you add to it, and apply a non-re-runnable one by
+hand instead.
