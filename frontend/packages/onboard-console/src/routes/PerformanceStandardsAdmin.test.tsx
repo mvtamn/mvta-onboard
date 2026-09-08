@@ -39,9 +39,22 @@ const SOURCE_SYSTEMS = [
 const putAgreementStandards = vi.fn().mockResolvedValue({ id: AGREEMENT.id, assignment_count: 1 });
 const putPerformanceStandard = vi.fn().mockResolvedValue({ id: OTP.id });
 const deletePerformanceStandard = vi.fn();
+const putReferenceValue = vi.fn().mockResolvedValue({ id: "r1" });
+const deleteReferenceValue = vi.fn().mockResolvedValue({ id: "r1" });
+
+// The lists behind the pickers, as migration 105 seeds them.
+const REFERENCE_VALUES = [
+  { id: "r-unit-pct", domain: "unit", value: "percent", label: "Percent (%)", description: null, sort_order: 1, severity_order: null, is_active: true, is_system: false },
+  { id: "r-unit-occ", domain: "unit", value: "occurrences", label: "Occurrences", description: null, sort_order: 2, severity_order: null, is_active: true, is_system: false },
+  { id: "r-cond-last", domain: "condition_code", value: "LAST_TRIP_OF_DAY", label: "Last trip of the service day", description: null, sort_order: 1, severity_order: null, is_active: true, is_system: false },
+  { id: "r-tier-meets", domain: "tier_label", value: "meets", label: "Meets the standard", description: null, sort_order: 1, severity_order: 0, is_active: true, is_system: true },
+  { id: "r-tier-1", domain: "tier_label", value: "tier1", label: "Tier 1 penalty", description: null, sort_order: 3, severity_order: 2, is_active: true, is_system: true },
+  { id: "r-basis-flat", domain: "penalty_basis", value: "flat", label: "Flat amount for the month", description: "Charged once.", sort_order: 2, severity_order: null, is_active: true, is_system: true },
+];
 const putStandardTiers = vi.fn().mockResolvedValue({ standard_id: OTP.id, agreement_id: null, effective_start_date: "20260101", tier_count: 2 });
 
 let catalog: Record<string, unknown>;
+let referenceValues: { values: unknown[]; diagnostics?: { table_ready: boolean } };
 vi.mock("../config.js", () => ({ api: {
   getPerformanceStandards: () => Promise.resolve(catalog),
   getContractors: () => Promise.resolve({ contractors: [{ id: "c0000000-0000-4000-8000-000000000001", name: "Transit Operator", contract_start_date: "20250101", contract_end_date: null, is_active: true }], diagnostics: { table_ready: true } }),
@@ -49,6 +62,9 @@ vi.mock("../config.js", () => ({ api: {
   putPerformanceStandard: (...args: unknown[]) => putPerformanceStandard(...args),
   putStandardTiers: (...args: unknown[]) => putStandardTiers(...args),
   deletePerformanceStandard: (...args: unknown[]) => deletePerformanceStandard(...args),
+  getReferenceValues: () => Promise.resolve(referenceValues),
+  putReferenceValue: (...args: unknown[]) => putReferenceValue(...args),
+  deleteReferenceValue: (...args: unknown[]) => deleteReferenceValue(...args),
   putPerformanceAgreement: vi.fn().mockResolvedValue({ id: "a0000000-0000-4000-8000-000000000001" }),
 } }));
 
@@ -71,6 +87,7 @@ async function open(code: string, tab?: "Details" | "Penalty bands" | "Assignmen
 describe("Performance Standards administration", () => {
   beforeEach(() => {
     roles = ["OCC.Admin"];
+    referenceValues = { values: REFERENCE_VALUES, diagnostics: { table_ready: true } };
     catalog = {
       standards: [ORPHAN, OTP], tiers: TIERS, agreements: [AGREEMENT], resolvers: RESOLVERS, source_systems: SOURCE_SYSTEMS,
       assignments: [{ id: "g1", agreement_id: AGREEMENT.id, standard_id: OTP.id, is_scored: true, effective_start_date: "20250101", effective_end_date: null, assignment_note: null }],
@@ -405,7 +422,7 @@ describe("Performance Standards administration", () => {
     view();
     await open("MISSED_TRIPS_FR", "Penalty bands");
     expect(screen.getAllByLabelText(/Condition/)[0]).toBeInTheDocument();
-    expect(screen.getAllByText("Only when: Last trip of day").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Only when: Last trip of the service day").length).toBeGreaterThan(0);
   });
 
   it("offers no condition on a monthly-value standard, where one could never match", async () => {
@@ -414,6 +431,92 @@ describe("Performance Standards administration", () => {
     view();
     await open("OTP_FIXED_ROUTE", "Penalty bands");
     expect(screen.queryByLabelText(/Condition/)).not.toBeInTheDocument();
+  });
+
+  it("draws its pickers from the database, not from a literal list", async () => {
+    // A tier renamed in the vocabulary shows that name in the band editor.
+    referenceValues = {
+      values: REFERENCE_VALUES.map((row) => row.value === "tier1" ? { ...row, label: "Level 1 Liquidated Damages" } : row),
+      diagnostics: { table_ready: true },
+    };
+    view();
+    await open("OTP_FIXED_ROUTE", "Penalty bands");
+    expect(screen.getAllByText("Level 1 Liquidated Damages").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Tier 1 penalty")).not.toBeInTheDocument();
+  });
+
+  it("falls back to its built-in lists before migration 105", async () => {
+    // The page still renders every picker in an unmigrated environment.
+    referenceValues = { values: [], diagnostics: { table_ready: false } };
+    view();
+    await open("OTP_FIXED_ROUTE", "Penalty bands");
+    expect(screen.getAllByText("Tier 1 penalty").length).toBeGreaterThan(0);
+  });
+
+  it("offers a condition the vocabulary defines, before any band uses it", async () => {
+    // Conditions used to be derived from tiers that already carried one, so
+    // the first band with a new condition could never be created here.
+    const occurrenceStandard = { ...ORPHAN, id: "50000000-0000-4000-8000-000000000004", code: "MISSED_TRIPS_FR", name: "Missed Trips", standard_type: "occurrence" as const, unit_label: "occurrences", resolver_key: "MISSED_TRIPS_FR", measurement_source: "onboard_compliance" as const };
+    catalog = { ...catalog, standards: [occurrenceStandard], tiers: [{ ...TIERS[1], standard_id: occurrenceStandard.id, bound_low: null, bound_high: null, qualifier_code: null }] };
+    view();
+    await open("MISSED_TRIPS_FR", "Penalty bands");
+    expect(screen.getByText("Only when: Last trip of the service day")).toBeInTheDocument();
+  });
+
+  it("edits a list from the console", async () => {
+    view();
+    fireEvent.click(await screen.findByText("Manage lists"));
+    fireEvent.blur(screen.getByLabelText("Label for percent"), { target: { value: "Percentage" } });
+    expect(putReferenceValue).toHaveBeenCalledWith("r-unit-pct", expect.objectContaining({
+      domain: "unit", value: "percent", label: "Percentage",
+    }));
+  });
+
+  it("will not let a charge basis be invented or deleted", async () => {
+    // computePenalty switches exhaustively over the bases with a `never`
+    // check, so one added here would have no arithmetic at all.
+    view();
+    fireEvent.click(await screen.findByText("Manage lists"));
+    fireEvent.change(screen.getByLabelText("List"), { target: { value: "penalty_basis" } });
+    expect(screen.getByText(/cannot be renamed or moved|branches on these values/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Add to/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+  });
+
+  it("lets a system value be relabelled and reordered, which is the point", async () => {
+    view();
+    fireEvent.click(await screen.findByText("Manage lists"));
+    fireEvent.change(screen.getByLabelText("List"), { target: { value: "tier_label" } });
+    fireEvent.blur(screen.getByLabelText("Label for tier1"), { target: { value: "Level 1 Liquidated Damages" } });
+    expect(putReferenceValue).toHaveBeenCalledWith("r-tier-1", expect.objectContaining({
+      value: "tier1", label: "Level 1 Liquidated Damages",
+    }));
+  });
+
+  it("ranks tiers as data, so a fifth tier needs no code change", async () => {
+    view();
+    fireEvent.click(await screen.findByText("Manage lists"));
+    fireEvent.change(screen.getByLabelText("List"), { target: { value: "tier_label" } });
+    fireEvent.blur(screen.getByLabelText("Rank for tier1"), { target: { value: "5" } });
+    expect(putReferenceValue).toHaveBeenCalledWith("r-tier-1", expect.objectContaining({ severity_order: 5 }));
+  });
+
+  it("adds a value to a list MVTA owns", async () => {
+    view();
+    fireEvent.click(await screen.findByText("Manage lists"));
+    fireEvent.change(screen.getByLabelText("List"), { target: { value: "source_system" } });
+    fireEvent.change(screen.getByPlaceholderText("stored value"), { target: { value: "Trapeze" } });
+    fireEvent.change(screen.getByPlaceholderText("what the console shows"), { target: { value: "Trapeze OPS" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Add to source systems$/ }));
+    expect(putReferenceValue).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
+      domain: "source_system", value: "Trapeze", label: "Trapeze OPS",
+    }));
+  });
+
+  it("names the governing exhibit from the Agreement, not from the product", async () => {
+    catalog = { ...catalog, agreements: [{ ...AGREEMENT, exhibit_reference: "Attachment G v2", contract_number: "RFP 2025-07" }] };
+    view();
+    expect(await screen.findByText("Attachment G v2")).toBeInTheDocument();
   });
 
   it("lets a non-administrator read the catalog but change nothing", async () => {

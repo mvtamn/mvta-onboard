@@ -116,7 +116,7 @@ const PAGE_META: { match: (path: string) => boolean; title: string; sub: string 
   {
     match: (p) => p.startsWith("/admin/performance-standards"),
     title: "Performance Standards",
-    sub: "The Attachment G standards catalog, tier bands, and Agreement assignment",
+    sub: "The contractor performance standards catalog, tier bands, and Agreement assignment",
   },
   { match: (p) => p === "/changelog", title: "Changelog", sub: "Version history" },
 ];

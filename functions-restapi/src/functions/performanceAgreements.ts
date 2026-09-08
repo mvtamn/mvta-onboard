@@ -94,15 +94,18 @@ app.http("performanceAgreementPut", {
       write.input("validation_days", sql.Int, body.validation_business_days);
       write.input("retention", sql.Int, body.retention_years);
       write.input("active", sql.Bit, body.is_active);
+      write.input("contract_number", sql.NVarChar(100), body.contract_number ?? null);
+      write.input("exhibit_reference", sql.NVarChar(200), body.exhibit_reference ?? null);
       write.input("actor", sql.NVarChar(200), auth.principal.userDetails ?? "onboard-console");
       const result = await write.query<{ created: number }>(`
         DECLARE @existed BIT = CASE WHEN EXISTS(SELECT 1 FROM PerformanceAgreements WHERE id=@id) THEN 1 ELSE 0 END;
         MERGE PerformanceAgreements WITH (HOLDLOCK) target
         USING (SELECT @id id) source ON target.id=source.id
         WHEN MATCHED THEN UPDATE SET contractor_id=@contractor,starts_on=CONVERT(date,@starts,112),ends_on=CONVERT(date,@ends,112),
-          validation_business_days=@validation_days,retention_years=@retention,is_active=@active
-        WHEN NOT MATCHED THEN INSERT(id,contractor_id,starts_on,ends_on,validation_business_days,retention_years,is_active,created_by)
-          VALUES(@id,@contractor,CONVERT(date,@starts,112),CONVERT(date,@ends,112),@validation_days,@retention,@active,@actor);
+          validation_business_days=@validation_days,retention_years=@retention,is_active=@active,
+          contract_number=@contract_number,exhibit_reference=@exhibit_reference
+        WHEN NOT MATCHED THEN INSERT(id,contractor_id,starts_on,ends_on,validation_business_days,retention_years,is_active,contract_number,exhibit_reference,created_by)
+          VALUES(@id,@contractor,CONVERT(date,@starts,112),CONVERT(date,@ends,112),@validation_days,@retention,@active,@contract_number,@exhibit_reference,@actor);
         SELECT CONVERT(int, 1 - @existed) created;
       `);
       const created = Boolean(result.recordset[0]?.created);
