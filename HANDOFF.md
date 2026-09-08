@@ -522,44 +522,102 @@ IDs, then migrate one legacy candidate end to end — draft, check documents,
 submit, approve, read it as a controller. That last step exercises the
 lifecycle, the audit trail, the health check and the reader in one pass.
 
-## On-Demand operational zones — status (2026-09-07)
+## On-Demand service-quality monitor — status (2026-09-08)
 
-**No zone version has ever been active.** `OnDemandOperationalZoneVersions` is
-empty in dev, so `loadActiveOperationalZones` returns an empty set and the
-on-demand wait monitor resolves every pickup against nothing. The evidence is
-continuous: `onDemandSpareWebhook` logged the gap 1,395 times over the 30 hours
-to 2026-09-07 02:20 UTC (once a minute through the service day), and
-`spareMissedTripsIngest` 119 times (once per quarter-hour run).
+**The monitor is off and has never run against real data.** Everything code can
+do is done; what remains needs decisions and an artefact from Operations. Read
+this before touching Service Risk & Quality — several paths below are written,
+merged and deployed but have never executed in production.
 
-The importer landed in PRs #184/#185 and is complete — parser, transactional
-write, first-import activation, `GET`/`POST /api/on-demand-zone-versions`,
-`ON_DEMAND_OPERATIONAL_ZONE_IDS`, migration 098's activation attribution. Two
-things stop it running, neither of them code:
+### Fixed in the 2026-09-06/07 review
 
-- **`ON_DEMAND_ZONE_FLEX_URL` is unset**, so `onDemandZonesSync` skips every
-  run — confirmed at 2026-09-06 09:30 UTC. No published GTFS-Flex URL is known
-  for MVTA Connect. MVTA's fixed-route `google_transit.zip` is not it: eleven
-  files, no `locations.geojson`.
-- **Nobody has run the hand-seeding script**, which exists for exactly this
-  case. Note that `scripts/importOnDemandZones.ts` connects with
-  `SQL_CONNECTION_STRING`, and the dev SQL server now has
-  `publicNetworkAccess: Disabled` (the 0.0.0.0-255.255.255.255 "PowerAutomate"
-  rule is gone; one client-IP rule remains). It therefore cannot be run from a
-  laptop — run it from inside the VNet. The REST app is the practical place:
-  Linux `NODE|24`, VNet-integrated, `WEBSITE_RUN_FROM_PACKAGE=1`, and the
-  compiled script ships in the deployment package at
-  `dist/src/scripts/importOnDemandZones.js`. That in-container path is reasoned
-  from the deployment shape, not yet executed.
+| PR | What it fixed |
+| --- | --- |
+| #181 | Webhook zone guard; summary tiles no longer claiming zero risk from no source; trust-banner severity; `ON_DEMAND_MONITORING_ENABLED` declared in Bicep |
+| #202 | `docs/runbooks/on-demand-operational-zones.md` |
+| #210 | `GET /on-demand-risks` returns risks, not every active request |
+| #214 | Interventions evaluated every five minutes instead of hourly |
 
-Steps are in `docs/runbooks/on-demand-operational-zones.md`. What is missing is
-the archive itself, which Operations owes: a GTFS-Flex `.zip` from Spare or
-MVTA containing `locations.geojson`, `feed_info.txt` with a `feed_version`, and
-both pilot zones (`location_id__b413a052-...` Apple Valley,
-`location_id__ad56cc1c-...` Shakopee - Prior Lake). An archive missing either
-is refused by design.
+The webhook fix is the one with a measured before and after. It was shedding
+36-42% of Spare deliveries because a missing zone version made
+`storeOnDemandSpareRequest` throw, and every throw armed the intake gate's
+fifteen-second cool-down, which then refused `vehicleLocation` and
+`dutyMatchingStatus` deliveries that need no zones at all. In the 24 hours to
+2026-09-08 04:10 UTC: **65,475 deliveries, 104 shed (0.16%)** - and all 104 fall
+in three ten-minute windows that match the function-app deploys at 21:49,
+23:09 and 23:10 UTC exactly. That is the gate doing its job while the host
+restarts, not the old cascade.
 
-Zones are a prerequisite, not the switch. The monitor also needs
-`ON_DEMAND_MONITORING_ENABLED=true` (declared in Bicep by PR #181, currently
-`false`; set `ON_DEMAND_MONITORING_SERVICE_IDS` at the same time, since empty
-reconciles every Spare service the API key can see) and one successful
-`onDemandSpareReconcile` run.
+### What is still blocking, and who owns it
+
+1. **The GTFS-Flex archive - Operations.** No zone version has ever been
+   active; `onDemandSpareWebhook` was still logging the gap at 04:02 UTC today
+   (1,475 warnings in 24 h, once a minute through the service day). The
+   importer is complete (#184/#185) but has nothing to import.
+   `ON_DEMAND_ZONE_FLEX_URL` is unset so `onDemandZonesSync` skips every run,
+   and no published GTFS-Flex URL is known for MVTA Connect - MVTA's
+   fixed-route `google_transit.zip` is not it (eleven files, no
+   `locations.geojson`). The archive needs `locations.geojson`, a
+   `feed_info.txt` carrying `feed_version`, and both pilot zones
+   (`location_id__b413a052-...` Apple Valley, `location_id__ad56cc1c-...`
+   Shakopee - Prior Lake). One missing zone fails the import by design.
+
+2. **The decision to switch monitoring on - project owner.** The activation
+   gate in `plans/service-risk-quality-trust-implementation-plan.md` has six
+   items; four have no recorded evidence anywhere in this repo: approved source
+   owner and contract, confirmed non-PII field mapping and pickup-commitment
+   semantics, authenticated webhook delivery verified, and a live controlled
+   breach that creates one internal Suggested Alert and sends no rider
+   communication. Nothing in the code checks these; they are a judgement.
+
+### Activation sequence, once both are in hand
+
+1. Seed the zone version and activate it - `docs/runbooks/on-demand-operational-zones.md`.
+   Note `scripts/importOnDemandZones.ts` needs `SQL_CONNECTION_STRING` and dev
+   SQL has `publicNetworkAccess: Disabled`, so it cannot run from a laptop; the
+   runbook routes it through the REST app's container, a path reasoned from the
+   deployment shape and **not yet executed by anyone**.
+2. Set `onDemandMonitoringEnabled: true` **and**
+   `onDemandMonitoringServiceIds` together in
+   `infra-phase1/parameters/phase1-dev.parameters.json`, then deploy. Empty
+   service ids reconcile every Spare service the API key can see, not just
+   MVTA Connect. Do not set either with `az functionapp config appsettings
+   set`: that appSettings block is complete desired state.
+3. Wait for one successful `onDemandSpareReconcile` (hourly, on the hour). That
+   is what records `spare_on_demand_reconciliation` feed health and moves the
+   On-Demand KPI trust banner off `unavailable`.
+4. Watch a live controlled breach end to end. This is gate item 6 and the one
+   no amount of testing substitutes for.
+
+### Inert until then - written, deployed, never executed in production
+
+- `onDemandSpareReconcile` returns immediately while the flag is false, so the
+  authoritative read, the health record and `reconcileOnDemandInterventions`
+  have never run against Spare.
+- `onDemandInterventionsEvaluate` (#214) fires on schedule and returns
+  immediately - confirmed running, 3 runs to 04:10 UTC today - but has never
+  evaluated a candidate.
+- The `/on-demand-risks` filter (#210) has never served a non-empty result: the
+  endpoint returns `[]` while the flag is false.
+- No Suggested Alert has ever been created from an on-demand wait.
+- Migration 098's applied state on dev is **unverified**. It is not a hard
+  prerequisite - `activationAuditSupported()` probes for the column per call -
+  but without it an activation records no actor.
+
+The SQL behind the last two is covered by contract tests that run against a
+real SQL Server in the `decision-matrix-contract` job
+(`onDemandRisks.db.contract.test.ts`, `onDemandInterventions.db.contract.test.ts`).
+Those pin the queries; they do not stand in for a live service day.
+
+### Known open, not scheduled
+
+- The risk predicate exists twice: SQL in `onDemandRisks.ts` and `waitState` in
+  `OnDemandServiceQuality.tsx`, hand-synced with comments pointing at each
+  other. They cannot share code - `functions-restapi` is a separate npm project
+  from the frontend workspaces.
+- The projected-breach debounce is count-based (two consecutive evaluations),
+  so it is coupled to the five-minute cadence. A duration-based rule would need
+  a `projected_breach_since` column and a migration. Revisit if the interval
+  changes.
+- Requests ingested while no zone version was active were recorded without a
+  zone and are not retrospectively reclassified.
