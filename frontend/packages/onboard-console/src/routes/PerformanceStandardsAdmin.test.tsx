@@ -470,6 +470,43 @@ describe("Performance Standards administration", () => {
     expect(await screen.findByText("Attachment G v2")).toBeInTheDocument();
   });
 
+  it("picks the responsible team and the owner from lists, not free text", async () => {
+    // Both were typed once per standard and checked against nothing, which is
+    // how "Safety", "Safety / Training" and "Safety / Customer Service" ended
+    // up in the catalog as three teams or one team spelled three ways.
+    catalog = { ...catalog, standards: [{ ...OTP, responsible_team: "Operations Control", assigned_to: "Rob" }] };
+    referenceValues = { values: [
+      ...REFERENCE_VALUES,
+      { id: "r-team-ops", domain: "responsible_team", value: "Operations Control", label: "Operations Control", description: null, sort_order: 1, severity_order: null, is_active: true, is_system: false },
+      { id: "r-own-rob", domain: "assigned_to", value: "Rob", label: "Rob", description: null, sort_order: 1, severity_order: null, is_active: true, is_system: false },
+    ], diagnostics: { table_ready: true } };
+    view();
+    await open("OTP_FIXED_ROUTE", "Details");
+    expect(screen.getByLabelText(/Responsible team/)).toHaveValue("Operations Control");
+    expect(screen.getByLabelText(/Assigned to/)).toHaveValue("Rob");
+  });
+
+  it("keeps a value the list has not caught up with, rather than dropping it", async () => {
+    // A standard naming a team nobody has added to the list yet must not
+    // silently lose it the next time someone opens the standard.
+    catalog = { ...catalog, standards: [{ ...OTP, responsible_team: "Contracted Services", assigned_to: null }] };
+    view();
+    await open("OTP_FIXED_ROUTE", "Details");
+    expect(screen.getByLabelText(/Responsible team/)).toHaveValue("Contracted Services");
+  });
+
+  it("offers a way to name a team the list does not have yet", async () => {
+    catalog = { ...catalog, standards: [{ ...OTP, responsible_team: null, assigned_to: null }] };
+    view();
+    await open("OTP_FIXED_ROUTE", "Details");
+    fireEvent.change(screen.getByLabelText(/Responsible team/), { target: { value: "__other" } });
+    fireEvent.change(screen.getByPlaceholderText("Name the responsible team"), { target: { value: "Contracted Services" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save standard" }));
+    expect(putPerformanceStandard).toHaveBeenCalledWith(OTP.id, expect.objectContaining({
+      responsible_team: "Contracted Services",
+    }));
+  });
+
   it("lets a non-administrator read the catalog but change nothing", async () => {
     roles = ["OCC.Compliance"];
     view();

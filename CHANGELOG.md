@@ -5,6 +5,13 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.155] - 2026-09-08
+
+- **Migration 108: responsible team and assigned owner become lists.** Both were free text on `ContractorPerformanceStandards`, typed once per standard and checked against nothing - which is how the seeded catalog holds "Safety", "Safety / Training" and "Safety / Customer Service", three teams or one team spelled three ways, with nothing in the product able to tell. They join `ReferenceValues` as OWNED domains: add, rename, reorder and retire from Administration › Performance Assessment › Lists. The scoring engine branches on neither, so neither needs the system-row guardrail.
+- **Seeded from what the catalog already holds**, not from a list invented in the migration - every distinct value in use becomes a row, trimmed and de-duplicated, so nothing a standard currently says is lost and the first edit is a rename.
+- **A value the list has not caught up with is kept, not dropped.** A standard naming a team nobody has added yet still shows that team, and a new one can be entered while editing rather than requiring a trip to another page mid-edit.
+- **Noted for whoever curates these:** several `assigned_to` values name more than one person - "Corrina/Maurice", "Rob/Cody/Jason". They are seeded verbatim because losing them would be worse, but they are several owners in one string and the column cannot express that. Splitting ownership into its own table is a larger change and is deliberately not made here.
+
 ## [1.5.154] - 2026-09-08
 
 - **Migration 109: a corrective-action window says how it counts.** Migration 107 gave the rule a rolling length in days; contracts write both kinds, and "3+ repeat cases per quarter" is not a rolling ninety days. Three cases in December and three in January breach a calendar-quarter rule never and a rolling 90-day rule almost certainly, so treating either as an approximation of the other scores a corrective action that is not owed, or misses one that is. `cap_window_mode` records which, constrained so a rolling window carries a length and a calendar quarter does not. Windows configured before this are marked `rolling_days`, which is what the code already did.
