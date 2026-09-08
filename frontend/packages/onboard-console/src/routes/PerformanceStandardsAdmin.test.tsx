@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import { AppDialogProvider } from "../components/AppDialog.js";
 import { PerformanceStandardsAdmin } from "./PerformanceStandardsAdmin.js";
 
@@ -68,7 +69,7 @@ vi.mock("../config.js", () => ({ api: {
   putPerformanceAgreement: vi.fn().mockResolvedValue({ id: "a0000000-0000-4000-8000-000000000001" }),
 } }));
 
-const view = () => render(<AppDialogProvider><PerformanceStandardsAdmin /></AppDialogProvider>);
+const view = () => render(<MemoryRouter><AppDialogProvider><PerformanceStandardsAdmin /></AppDialogProvider></MemoryRouter>);
 
 // Rows are chosen by name now - the code is an identifier, not something a
 // reader scans for - so tests name the standard they mean and this maps the
@@ -461,56 +462,6 @@ describe("Performance Standards administration", () => {
     view();
     await open("MISSED_TRIPS_FR", "Penalty bands");
     expect(screen.getByText("Only when: Last trip of the service day")).toBeInTheDocument();
-  });
-
-  it("edits a list from the console", async () => {
-    view();
-    fireEvent.click(await screen.findByText("Manage lists"));
-    fireEvent.blur(screen.getByLabelText("Label for percent"), { target: { value: "Percentage" } });
-    expect(putReferenceValue).toHaveBeenCalledWith("r-unit-pct", expect.objectContaining({
-      domain: "unit", value: "percent", label: "Percentage",
-    }));
-  });
-
-  it("will not let a charge basis be invented or deleted", async () => {
-    // computePenalty switches exhaustively over the bases with a `never`
-    // check, so one added here would have no arithmetic at all.
-    view();
-    fireEvent.click(await screen.findByText("Manage lists"));
-    fireEvent.change(screen.getByLabelText("List"), { target: { value: "penalty_basis" } });
-    expect(screen.getByText(/cannot be renamed or moved|branches on these values/)).toBeInTheDocument();
-    expect(screen.queryByText(/^Add to/)).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
-  });
-
-  it("lets a system value be relabelled and reordered, which is the point", async () => {
-    view();
-    fireEvent.click(await screen.findByText("Manage lists"));
-    fireEvent.change(screen.getByLabelText("List"), { target: { value: "tier_label" } });
-    fireEvent.blur(screen.getByLabelText("Label for tier1"), { target: { value: "Level 1 Liquidated Damages" } });
-    expect(putReferenceValue).toHaveBeenCalledWith("r-tier-1", expect.objectContaining({
-      value: "tier1", label: "Level 1 Liquidated Damages",
-    }));
-  });
-
-  it("ranks tiers as data, so a fifth tier needs no code change", async () => {
-    view();
-    fireEvent.click(await screen.findByText("Manage lists"));
-    fireEvent.change(screen.getByLabelText("List"), { target: { value: "tier_label" } });
-    fireEvent.blur(screen.getByLabelText("Rank for tier1"), { target: { value: "5" } });
-    expect(putReferenceValue).toHaveBeenCalledWith("r-tier-1", expect.objectContaining({ severity_order: 5 }));
-  });
-
-  it("adds a value to a list MVTA owns", async () => {
-    view();
-    fireEvent.click(await screen.findByText("Manage lists"));
-    fireEvent.change(screen.getByLabelText("List"), { target: { value: "source_system" } });
-    fireEvent.change(screen.getByPlaceholderText("stored value"), { target: { value: "Trapeze" } });
-    fireEvent.change(screen.getByPlaceholderText("what the console shows"), { target: { value: "Trapeze OPS" } });
-    fireEvent.click(screen.getByRole("button", { name: /^Add to source systems$/ }));
-    expect(putReferenceValue).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
-      domain: "source_system", value: "Trapeze", label: "Trapeze OPS",
-    }));
   });
 
   it("names the governing exhibit from the Agreement, not from the product", async () => {

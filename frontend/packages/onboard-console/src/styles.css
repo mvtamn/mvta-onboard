@@ -1301,3 +1301,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .intake-steps i { align-items: center; background: var(--chip-bg); border-radius: 9px; color: var(--chip-fg); display: inline-flex; flex-shrink: 0; font-size: 10px; font-style: normal; font-weight: 700; height: 18px; justify-content: center; width: 18px; }
 .intake-returned { background: var(--pill-warning-bg); border-radius: 8px; color: var(--pill-warning-fg); font-size: 12px; line-height: 1.45; padding: 10px 12px; }
 .intake-returned strong { display: block; margin-bottom: 2px; }
+
+/* Administration's secondary nav groups several pages under one subject -
+   contractor performance is four separate jobs on one body of work. */
+.admin-secondary-group { display: contents; }
+.admin-secondary-group-label {
+  color: var(--text-muted); display: block; font-size: 10.5px; font-weight: 800;
+  letter-spacing: .07em; margin: 12px 0 4px; padding: 0 10px; text-transform: uppercase;
+}
+.admin-secondary-links .admin-secondary-group > a { padding-left: 20px; }

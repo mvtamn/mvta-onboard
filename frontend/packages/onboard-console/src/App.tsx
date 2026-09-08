@@ -49,6 +49,9 @@ import { OnDemandServiceStandardsAdmin } from "./routes/OnDemandServiceStandards
 import { AdminAccess, AdminEventAdministration, AdminGovernance, AdminIntegrations, AdminServiceConfiguration, AdminSubscribers } from "./routes/AdminModules.js";
 import { OtpComplianceAdmin } from "./routes/OtpComplianceAdmin.js";
 import { PerformanceStandardsAdmin } from "./routes/PerformanceStandardsAdmin.js";
+import { PerformanceContractorsAdmin } from "./routes/PerformanceContractorsAdmin.js";
+import { PerformanceAgreementsAdmin } from "./routes/PerformanceAgreementsAdmin.js";
+import { PerformanceListsAdmin } from "./routes/PerformanceListsAdmin.js";
 import { CHANGELOG_ENTRIES } from "./routes/changelogData.js";
 import { FixedRouteRefreshProvider } from "./context/FixedRouteRefreshContext.js";
 import { OperatorIdentity } from "./components/OperatorIdentity.js";
@@ -114,9 +117,9 @@ const PAGE_META: { match: (path: string) => boolean; title: string; sub: string 
     sub: "Monthly performance standards scoring, evidence, review, and issuance",
   },
   {
-    match: (p) => p.startsWith("/admin/performance-standards"),
-    title: "Performance Standards",
-    sub: "The contractor performance standards catalog, tier bands, and Agreement assignment",
+    match: (p) => p.startsWith("/admin/performance"),
+    title: "Performance Assessment setup",
+    sub: "Contractors, Agreements, the standards catalog and the lists behind them",
   },
   { match: (p) => p === "/changelog", title: "Changelog", sub: "Version history" },
 ];
@@ -329,7 +332,7 @@ function AuthenticatedApp({ account, roles, signOut }: {
                 {isAdmin && <NavLink to="/admin/integrations" title="Integrations & Data Health"><IconWrench /><span className="nav-label">Integrations &amp; Data Health</span></NavLink>}
                 {isAdmin && <NavLink to="/admin/decision-matrix" title="Decision Matrix"><IconWrench /><span className="nav-label">Decision Matrix</span></NavLink>}
                 {isAdmin && <NavLink to="/admin/otp-compliance" title="OTP Compliance"><IconWrench /><span className="nav-label">OTP Compliance</span></NavLink>}
-                {isAdmin && <NavLink to="/admin/performance-standards" title="Performance Standards"><IconAssessment /><span className="nav-label">Performance Standards</span></NavLink>}
+                {isAdmin && <NavLink to="/admin/performance/standards" title="Performance Assessment setup"><IconAssessment /><span className="nav-label">Performance Setup</span></NavLink>}
                 {canManageAccess && <NavLink to="/admin/governance" title="Governance & Audit"><IconClock /><span className="nav-label">Governance &amp; Audit</span></NavLink>}
               </div> : null}
             </>}
@@ -450,7 +453,16 @@ function AuthenticatedApp({ account, roles, signOut }: {
                 <Route path="service-standards" element={<RequireRole allowed={[...ADMIN]}><OnDemandServiceStandardsAdmin /></RequireRole>} />
                 <Route path="decision-matrix" element={<RequireRole allowed={[...ADMIN]}><DecisionMatrixAdmin /></RequireRole>} />
                 <Route path="otp-compliance" element={<RequireRole allowed={[...ADMIN]}><OtpComplianceAdmin /></RequireRole>} />
-                <Route path="performance-standards" element={<RequireRole allowed={[...ADMIN]}><PerformanceStandardsAdmin /></RequireRole>} />
+                {/* Performance assessment administration is four separate
+                    jobs on one body of work, so each has its own section. The
+                    old single-page path is kept as a redirect - it shipped and
+                    people have it. */}
+                <Route path="performance" element={<Navigate to="/admin/performance/standards" replace />} />
+                <Route path="performance/contractors" element={<RequireRole allowed={[...ADMIN]}><PerformanceContractorsAdmin /></RequireRole>} />
+                <Route path="performance/agreements" element={<RequireRole allowed={[...ADMIN]}><PerformanceAgreementsAdmin /></RequireRole>} />
+                <Route path="performance/standards" element={<RequireRole allowed={[...ADMIN]}><PerformanceStandardsAdmin /></RequireRole>} />
+                <Route path="performance/lists" element={<RequireRole allowed={[...ADMIN]}><PerformanceListsAdmin /></RequireRole>} />
+                <Route path="performance-standards" element={<Navigate to="/admin/performance/standards" replace />} />
                 <Route path="governance" element={<RequireRole allowed={[...ACCESS_MANAGEMENT]}><AdminGovernance /></RequireRole>} />
                 <Route path="subscribers" element={<RequireRole allowed={[...ACCESS_MANAGEMENT]}><AdminSubscribers /></RequireRole>} />
               </Route>
