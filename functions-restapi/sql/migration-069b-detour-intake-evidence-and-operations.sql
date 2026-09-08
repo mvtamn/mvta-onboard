@@ -4,7 +4,7 @@
 -- evidence alongside the structured operating facts.
 
 IF OBJECT_ID('dbo.DetourIntake', 'U') IS NULL OR OBJECT_ID('dbo.Detours', 'U') IS NULL
-  THROW 50069, 'Migration 069 requires DetourIntake and Detours.', 1;
+  THROW 50069, 'Migration 069b requires DetourIntake and Detours.', 1;
 GO
 
 IF COL_LENGTH('dbo.DetourIntake', 'proposed_start_time') IS NULL ALTER TABLE DetourIntake ADD proposed_start_time TIME NULL;
@@ -45,4 +45,4 @@ BEGIN
 END
 GO
 
-PRINT 'Migration 069 applied: complete intake operational details and supporting files.';
+PRINT 'Migration 069b applied: complete intake operational details and supporting files.';

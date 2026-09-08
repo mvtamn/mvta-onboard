@@ -7,7 +7,7 @@ import { isGuid, validateAgreementStandardAssignments, validatePerformanceAgreem
 // Performance agreements, and the standards each one assigns.
 //
 // Until this endpoint existed there was no way to create an agreement at all:
-// migration 032's INSERT was a one-time backfill guarded by
+// migration 032b's INSERT was a one-time backfill guarded by
 // NOT EXISTS(SELECT 1 FROM PerformanceAgreements), so a contractor added
 // through the console afterwards got no agreement, and then
 // complianceCandidatesPoll threw 50002 on every run while assessment periods

@@ -27,7 +27,7 @@ SET XACT_ABORT ON;
 SET NOCOUNT ON;
 
 IF OBJECT_ID(N'dbo.AssessmentPeriodStandards', N'U') IS NULL
-  THROW 50103, 'Migration 103 requires AssessmentPeriodStandards (migration 032).', 1;
+  THROW 50103, 'Migration 103 requires AssessmentPeriodStandards (migration 032b).', 1;
 GO
 
 IF COL_LENGTH('dbo.AssessmentPeriodStandards','resolver_key') IS NULL

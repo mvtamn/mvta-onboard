@@ -403,7 +403,7 @@ app.http("detourIntakePromote", {
         // Location is where the closure is; riders_directed is where riders
         // go instead. Intake has no field for the latter, so it stays null
         // until staff record it on the Detour. Detours.location arrives
-        // with migration 088; before it, the location is carried only in
+        // with migration 088b; before it, the location is carried only in
         // the intake row.
         const locationReady = (await new sql.Request(tx).query<{ ready: number }>("SELECT CASE WHEN COL_LENGTH('dbo.Detours', 'location') IS NULL THEN 0 ELSE 1 END AS ready")).recordset[0]?.ready === 1;
         detourReq.input("riders_directed", sql.NVarChar(500), null);

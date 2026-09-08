@@ -33,7 +33,7 @@ app.http("appSettings", {
         SELECT CASE WHEN OBJECT_ID('dbo.AppSettings', 'U') IS NULL THEN 0 ELSE 1 END AS ready
       `);
       if (tableCheck.recordset[0]?.ready !== 1) {
-        return { status: 503, jsonBody: { error: "Application settings are not ready - apply migration-032." } };
+        return { status: 503, jsonBody: { error: "Application settings are not ready - apply migration-032a." } };
       }
 
       if (request.method === "GET") {

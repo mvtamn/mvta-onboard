@@ -1,4 +1,4 @@
--- Migration 088: dismiss garage-departure candidates the narrowed rule would
+-- Migration 088a: dismiss garage-departure candidates the narrowed rule would
 -- never have raised.
 --
 -- complianceCandidatesPoll used to raise a GARAGE_DEPARTURE candidate for every
@@ -45,7 +45,7 @@ IF OBJECT_ID(N'dbo.ComplianceOccurrences', N'U') IS NULL
    OR OBJECT_ID(N'dbo.ContractorPerformanceStandards', N'U') IS NULL
    OR OBJECT_ID(N'dbo.AssessmentPeriods', N'U') IS NULL
 BEGIN
-    PRINT 'Migration 088 skipped: the compliance, departure or assessment tables are not present.';
+    PRINT 'Migration 088a skipped: the compliance, departure or assessment tables are not present.';
     RETURN;
 END;
 
@@ -114,12 +114,12 @@ DECLARE @remaining INT = (
     WHERE o.source = N'auto_candidate' AND o.review_status = N'candidate'
 ) - @to_dismiss;
 
-PRINT CONCAT('Migration 088: ', @to_dismiss, ' garage-departure candidates are within variance and will be dismissed.');
-PRINT CONCAT('Migration 088: ', @remaining, ' candidates still require review (of which ', @unmatched, ' have no matching FixedRouteDepartures row and were left untouched).');
+PRINT CONCAT('Migration 088a: ', @to_dismiss, ' garage-departure candidates are within variance and will be dismissed.');
+PRINT CONCAT('Migration 088a: ', @remaining, ' candidates still require review (of which ', @unmatched, ' have no matching FixedRouteDepartures row and were left untouched).');
 
 IF @apply = 0
 BEGIN
-    PRINT 'Migration 088: preview only (@apply = 0); nothing was changed.';
+    PRINT 'Migration 088a: preview only (@apply = 0); nothing was changed.';
     RETURN;
 END;
 
@@ -148,4 +148,4 @@ WHERE p.status <> N'finalized'
 
 COMMIT;
 
-PRINT CONCAT('Migration 088 applied: ', @to_dismiss, ' garage-departure candidates dismissed as within variance.');
+PRINT CONCAT('Migration 088a applied: ', @to_dismiss, ' garage-departure candidates dismissed as within variance.');

@@ -39,7 +39,7 @@ SET XACT_ABORT ON;
 SET NOCOUNT ON;
 
 IF OBJECT_ID(N'dbo.PerformanceAgreements', N'U') IS NULL
-  THROW 50102, 'Migration 102 requires PerformanceAgreements (migration 032).', 1;
+  THROW 50102, 'Migration 102 requires PerformanceAgreements (migration 032b).', 1;
 IF OBJECT_ID(N'dbo.ContractorPerformanceStandards', N'U') IS NULL
   THROW 50102, 'Migration 102 requires ContractorPerformanceStandards (migration 030).', 1;
 GO

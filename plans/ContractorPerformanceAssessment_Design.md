@@ -5,7 +5,7 @@
 **Scope:** the 9 High/Medium priority KPIs, scored monthly, with manager review before any penalty is issued; a monthly contractor report (§9); Power BI scorecard access (§10).
 **Author:** design pass, 2026-08-05. Requires MVTA sign-off on §12 before Phase 1 begins.
 
-> **Governance revision:** Performance Assessment is Agreement-scoped and MVTA-internal. It calculates Proposed Penalties; a separate Assessment Reviewer and Issuing Authority govern binding decisions. OnBoard does not represent or apply ramp-up. “Preliminary report” is now Validation Draft, Not Assessable is distinct from Meets, sharing and issuance are explicit audited actions, and Power BI is a companion Compliance Dashboard rather than an assessment-publication channel. Implementation uses additive migration 032 so legacy columns remain readable during rollout but have no operational effect.
+> **Governance revision:** Performance Assessment is Agreement-scoped and MVTA-internal. It calculates Proposed Penalties; a separate Assessment Reviewer and Issuing Authority govern binding decisions. OnBoard does not represent or apply ramp-up. “Preliminary report” is now Validation Draft, Not Assessable is distinct from Meets, sharing and issuance are explicit audited actions, and Power BI is a companion Compliance Dashboard rather than an assessment-publication channel. Implementation uses additive migration 032b so legacy columns remain readable during rollout but have no operational effect.
 
 ---
 

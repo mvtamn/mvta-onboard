@@ -8,7 +8,7 @@ const entry: ChangelogEntry = {
       heading: "Added",
       items: [
         "Administration › Performance Standards: the Attachment G standards catalog is now editable. Every standard's tier bands, priority, unit, measurement source, owner and effective dates can be changed from the console, and new occurrence-based or threshold-based standards can be added — Attachment G reserves the right to amend a threshold by amendment, and until now doing so meant writing a SQL migration. Saving a ladder writes a new dated version rather than overwriting the old one, so assessment periods already opened keep the bands they were scored against. Administrator access is required to change anything; the compliance roles can read.",
-        "Performance Agreements can be created and amended from the console. There was previously no code path anywhere that created one: migration 032's insert was a one-time backfill, so a contractor added through Performance Assessment afterwards got no agreement, and then the compliance candidate poll failed on every run while no assessment period could be opened at all. Creating an agreement seeds its standard assignments from the catalog, so a new term starts held to what MVTA scores today.",
+        "Performance Agreements can be created and amended from the console. There was previously no code path anywhere that created one: migration 032b's insert was a one-time backfill, so a contractor added through Performance Assessment afterwards got no agreement, and then the compliance candidate poll failed on every run while no assessment period could be opened at all. Creating an agreement seeds its standard assignments from the catalog, so a new term starts held to what MVTA scores today.",
       ],
     },
     {
