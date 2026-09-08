@@ -12,7 +12,7 @@ import {
 const standard = {
   code: "SHELTER_CLEANING", name: "Shelter cleaning compliance", standard_type: "occurrence",
   priority: "Medium", is_scored: true, is_safety_critical: false, direction: "lower_is_better",
-  unit_label: "occurrences", measurement_source: "manual", sort_order: 27,
+  unit_label: "occurrences", measurement_source: "manual_entry", sort_order: 27,
   effective_start_date: "20260101", effective_end_date: null,
 };
 
@@ -27,12 +27,74 @@ test("a threshold standard validates the same way", () => {
   }), []);
 });
 
-test("an automated standard must name the resolver that measures it", () => {
-  // Without one the compute falls through to manual entry, finds nothing, and
-  // scores the month as "no data" - which reads as a clean month.
-  const errors = validatePerformanceStandard({ ...standard, measurement_source: "auto" });
+test("a feed standard must name the resolver that measures it", () => {
+  // Without one the compute reports the standard not assessable and names the
+  // misconfiguration, but refusing the save is far cheaper than finding it at
+  // month-end close.
+  const errors = validatePerformanceStandard({
+    ...standard, standard_type: "threshold", direction: "higher_is_better", unit_label: "percent",
+    measurement_source: "api_feed",
+  });
   assert.ok(errors.some((error) => error.includes("resolver_key is required")));
-  assert.deepStrictEqual(validatePerformanceStandard({ ...standard, measurement_source: "auto", resolver_key: "SHELTER_CLEANING" }), []);
+});
+
+test("the resolver named has to be one the registry answers to", () => {
+  const errors = validatePerformanceStandard({
+    ...standard, standard_type: "threshold", direction: "higher_is_better", unit_label: "percent",
+    measurement_source: "api_feed", resolver_key: "SHELTER_CLEANING",
+  });
+  assert.ok(errors.some((error) => error.includes("must name a registered resolver")));
+  assert.deepStrictEqual(validatePerformanceStandard({
+    ...standard, standard_type: "threshold", direction: "higher_is_better", unit_label: "percent",
+    measurement_source: "api_feed", resolver_key: "OTP_FIXED_ROUTE",
+  }), []);
+});
+
+test("a resolver cannot serve a source kind it does not belong to", () => {
+  // MISSED_TRIPS_FR is OnBoard raising its own occurrences, not a feed this
+  // application ingests. The two used to be the same value.
+  const errors = validatePerformanceStandard({
+    ...standard, standard_type: "occurrence", measurement_source: "api_feed", resolver_key: "MISSED_TRIPS_FR",
+  });
+  assert.ok(errors.some((error) => error.includes("cannot serve a api_feed standard")));
+  assert.deepStrictEqual(validatePerformanceStandard({
+    ...standard, standard_type: "occurrence", measurement_source: "onboard_compliance", resolver_key: "MISSED_TRIPS_FR",
+  }), []);
+});
+
+test("a resolver cannot be attached to the kind of standard it cannot serve", () => {
+  const errors = validatePerformanceStandard({
+    ...standard, standard_type: "threshold", direction: "higher_is_better", unit_label: "percent",
+    measurement_source: "onboard_compliance", resolver_key: "MISSED_TRIPS_FR",
+  });
+  assert.ok(errors.some((error) => error.includes("cannot measure a threshold standard")));
+});
+
+test("a hand-entered standard is unaffected by the registry, and may not name one", () => {
+  assert.deepStrictEqual(validatePerformanceStandard({ ...standard, measurement_source: "manual_entry" }), []);
+  const errors = validatePerformanceStandard({ ...standard, measurement_source: "manual_entry", resolver_key: "OTP_FIXED_ROUTE" });
+  assert.ok(errors.some((error) => error.includes("only meaningful for a feed")));
+});
+
+test("a structured import names the system it is transcribed from", () => {
+  // The difference between this and plain manual entry is provenance: it names
+  // who to chase when the month's figure is missing.
+  const missing = validatePerformanceStandard({ ...standard, measurement_source: "structured_import" });
+  assert.ok(missing.some((error) => error.includes("source_system is required")));
+  assert.deepStrictEqual(
+    validatePerformanceStandard({ ...standard, measurement_source: "structured_import", source_system: "Nexus" }),
+    [],
+  );
+});
+
+test("a source system is refused on any other kind", () => {
+  for (const source of ["manual_entry", "api_feed", "onboard_compliance"]) {
+    const errors = validatePerformanceStandard({
+      ...standard, measurement_source: source, resolver_key: source === "manual_entry" ? undefined : "MISSED_TRIPS_FR",
+      source_system: "Asset Works M5",
+    });
+    assert.ok(errors.some((error) => error.includes("applies only to a standard transcribed")), source);
+  }
 });
 
 test("a code that operational SQL could not match is rejected", () => {
@@ -50,7 +112,7 @@ test("an enumeration outside the database CHECK constraint is rejected here firs
   assert.ok(validatePerformanceStandard({ ...standard, standard_type: "rolling" }).length);
   assert.ok(validatePerformanceStandard({ ...standard, priority: "Critical" }).length);
   assert.ok(validatePerformanceStandard({ ...standard, direction: "either" }).length);
-  assert.ok(validatePerformanceStandard({ ...standard, measurement_source: "imported" }).length);
+  assert.ok(validatePerformanceStandard({ ...standard, measurement_source: "auto" }).length);
 });
 
 // The OTP ladder as Attachment G v2 sets it, stored as ratios.

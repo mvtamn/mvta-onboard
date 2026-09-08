@@ -60,8 +60,8 @@ app.http("assessmentPeriodsOpen", {
         DECLARE @period UNIQUEIDENTIFIER=(SELECT TOP 1 id FROM AssessmentPeriods WHERE contractor_id=@contractor AND service_month=@month ORDER BY assessment_revision DESC);
         IF NOT EXISTS(SELECT 1 FROM AssessmentPeriodStandards WHERE period_id=@period)
         BEGIN
-          INSERT AssessmentPeriodStandards(period_id,standard_id,code,name,standard_type,priority,direction,is_safety_critical,measurement_source,sort_order)
-            SELECT @period,s.id,s.code,s.name,s.standard_type,s.priority,s.direction,s.is_safety_critical,s.measurement_source,s.sort_order
+          INSERT AssessmentPeriodStandards(period_id,standard_id,code,name,standard_type,priority,direction,is_safety_critical,measurement_source,sort_order${scope.snapshotsResolver ? ",resolver_key" : ""})
+            SELECT @period,s.id,s.code,s.name,s.standard_type,s.priority,s.direction,s.is_safety_critical,s.measurement_source,s.sort_order${scope.snapshotsResolver ? ",s.resolver_key" : ""}
             ${periodStandardSourceSql(scope)};
           -- Tier precedence (migration 102): an agreement's own tier rows
           -- govern the whole ladder for that standard, or none of it. Blending
@@ -135,7 +135,9 @@ app.http("assessmentPeriodReopen", {
     let body: Record<string, unknown>; try { body = await request.json() as Record<string, unknown>; } catch { return { status: 400, jsonBody: { error: "Request body must be valid JSON" } }; }
     if (typeof body.reason !== "string" || !body.reason.trim()) return { status: 400, jsonBody: { error: "reason is required" } };
     try {
-      const pool = await getPool(); const req = pool.request(); req.input("id", sql.UniqueIdentifier, request.params.id); req.input("reason", sql.NVarChar(1000), body.reason); req.input("actor", sql.NVarChar(200), auth.principal.userDetails ?? "onboard-console");
+      const pool = await getPool();
+      const reopenScope = await agreementScope(pool);
+      const req = pool.request(); req.input("id", sql.UniqueIdentifier, request.params.id); req.input("reason", sql.NVarChar(1000), body.reason); req.input("actor", sql.NVarChar(200), auth.principal.userDetails ?? "onboard-console");
       const result = await req.query<{ changed: number; id: string }>(`
         DECLARE @agreement UNIQUEIDENTIFIER,@month CHAR(6),@status NVARCHAR(20),@new_id UNIQUEIDENTIFIER=@id,@changed INT=0;
         SELECT @agreement=agreement_id,@month=service_month,@status=status FROM AssessmentPeriods WHERE id=@id;
@@ -144,7 +146,7 @@ app.http("assessmentPeriodReopen", {
           SET @new_id=NEWID();
           INSERT AssessmentPeriods(id,contractor_id,agreement_id,service_month,status,input_revision,notes,rule_set_sha256,rule_set_json,assessment_revision,supersedes_period_id)
           SELECT @new_id,contractor_id,agreement_id,service_month,'reopened',input_revision+1,@reason,rule_set_sha256,rule_set_json,assessment_revision+1,id FROM AssessmentPeriods WHERE id=@id;
-          INSERT AssessmentPeriodStandards(period_id,standard_id,code,name,standard_type,priority,direction,is_safety_critical,measurement_source,sort_order) SELECT @new_id,standard_id,code,name,standard_type,priority,direction,is_safety_critical,measurement_source,sort_order FROM AssessmentPeriodStandards WHERE period_id=@id;
+          INSERT AssessmentPeriodStandards(period_id,standard_id,code,name,standard_type,priority,direction,is_safety_critical,measurement_source,sort_order${reopenScope.snapshotsResolver ? ",resolver_key" : ""}) SELECT @new_id,standard_id,code,name,standard_type,priority,direction,is_safety_critical,measurement_source,sort_order${reopenScope.snapshotsResolver ? ",resolver_key" : ""} FROM AssessmentPeriodStandards WHERE period_id=@id;
           INSERT AssessmentPeriodTiers(period_id,standard_id,tier_order,tier_label,bound_low,bound_high,qualifier_code,penalty_basis,penalty_amount,triggers_cap) SELECT @new_id,standard_id,tier_order,tier_label,bound_low,bound_high,qualifier_code,penalty_basis,penalty_amount,triggers_cap FROM AssessmentPeriodTiers WHERE period_id=@id;
           SET @changed=1;
         END

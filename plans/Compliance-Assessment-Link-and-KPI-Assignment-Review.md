@@ -183,9 +183,15 @@ ORDER BY c.is_active DESC, c.name;
    Log resolves `source_ref` back to the trip or block/run and links to
    Compliance. The link never fails a review, and never mutates a finalized
    month.
-5. **Resolver registry** — make `resolver_key` real: a keyed map of resolvers in
-   `lib/assessment/`, with `measurement_source='auto'` and an unknown key failing
-   the compute loudly instead of falling through to manual entry.
+5. **Resolver registry** — ✅ built. `lib/assessment/resolvers/` holds the keyed
+   entries; the OTP measurement moved into one; `assess.ts` looks the key up
+   instead of branching on the standard's code. An unknown or absent key comes
+   back not-measurable with the reason named, which scores `not_assessable`
+   (partial period, exception required) rather than falling through to manual
+   entry and reading as a clean month. Migration 103 snapshots `resolver_key`
+   on the period so a catalog edit cannot change how a finalized month
+   recomputes. Validation and the console picker both refuse a key the registry
+   does not answer to, or one attached to the wrong kind of standard.
 6. **Ownership** — resolve `assigned_to` to an Entra identity, and surface an
    open-manual-metrics list per owner at month-end close.
 

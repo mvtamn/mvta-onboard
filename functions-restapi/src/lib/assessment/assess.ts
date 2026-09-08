@@ -5,10 +5,14 @@ import { assessmentInputHash, canonicalJson } from "./hash";
 import { computePenalty } from "./penalty";
 import { matchTier } from "./tiers";
 import { splitAssessmentInput } from "./input";
+import { agreementScopeIn, periodResolverKeySql } from "./schemaScope";
+import { resolveAutomatedThreshold, resolveManualMetric } from "./resolvers";
+import { isHandEntered, normalizeMeasurementSource } from "./measurementSource";
+import { notMeasurable } from "./resolvers/types";
 import type { StandardDirection, StandardTier, TierLabel } from "./types";
 
 interface PeriodRow { id: string; contractor_id: string; service_month: string; input_revision: number; status: string }
-interface StandardRow { id: string; code: string; standard_type: "occurrence" | "threshold"; direction: StandardDirection; is_safety_critical: boolean; measurement_source: string }
+interface StandardRow { id: string; code: string; standard_type: "occurrence" | "threshold"; direction: StandardDirection; is_safety_critical: boolean; measurement_source: string; resolver_key: string | null }
 interface TierRow { tier_order: number; tier_label: TierLabel; bound_low: number | null; bound_high: number | null; qualifier_code: string | null; penalty_basis: StandardTier["penaltyBasis"]; penalty_amount: number; triggers_cap: boolean }
 
 function mapTier(row: TierRow): StandardTier {
@@ -19,42 +23,27 @@ function severity(label: TierLabel): number {
   return { meets: 0, warning: 1, tier1: 2, tier2: 3 }[label];
 }
 
+// Measure one threshold standard for the period.
+//
+// Routed by where the number comes from, normalized because a period
+// snapshotted before migration 104 carries the old two-value vocabulary and
+// still has to compute to the same answer it was finalized with.
+//
+// An unregistered or absent resolver does not fall through to hand-entered
+// figures. That was the old behaviour and the worst available one: the compute
+// found nothing there either, scored the month "no data", and a scorecard
+// reading "no data" looks like a quiet month rather than a standard nobody can
+// measure.
 async function resolveThreshold(tx: Transaction, standard: StandardRow, contractorId: string, month: string) {
-  if (standard.code === "OTP_FIXED_ROUTE") {
-    const request = new sql.Request(tx);
-    request.input("month", sql.Char(6), month);
-    const result = await request.query<{ raw_total: number; raw_ontime: number; total: number; ontime: number }>(`
-      SELECT
-        SUM(ISNULL(otp.total,0)) raw_total,
-        SUM(ISNULL(otp.ontime,0)) raw_ontime,
-        SUM(CASE WHEN exclusion.id IS NULL THEN ISNULL(otp.total,0) ELSE 0 END) total,
-        SUM(CASE WHEN exclusion.id IS NULL THEN ISNULL(otp.ontime,0) ELSE 0 END) ontime
-      FROM OtpMonthlyRouteStopDay otp
-      LEFT JOIN RouteClassification classification ON classification.route_id=CONVERT(NVARCHAR(50),otp.route_id)
-      LEFT JOIN OtpStopExclusions exclusion ON exclusion.service_month=otp.service_month
-       AND exclusion.route_id=otp.route_id AND exclusion.stop_id=otp.stop_id
-       AND exclusion.day_of_week=otp.day_of_week AND exclusion.status='approved'
-      WHERE otp.service_month=@month AND ISNULL(classification.route_category,'FixedRoute')='FixedRoute'
-    `);
-    const rawTotal = Number(result.recordset[0]?.raw_total ?? 0);
-    const rawOntime = Number(result.recordset[0]?.raw_ontime ?? 0);
-    const total = Number(result.recordset[0]?.total ?? 0);
-    const ontime = Number(result.recordset[0]?.ontime ?? 0);
-    return { metricValue: total > 0 ? ontime / total : null, rawMetricValue: rawTotal > 0 ? rawOntime / rawTotal : null, excludedMetricValue: rawTotal - total > 0 ? (rawOntime - ontime) / (rawTotal - total) : null, rawQuantity: rawTotal, excludedQuantity: rawTotal - total, quantity: 1, occurrenceCount: 0, completeness: total > 0 ? 100 : 0, sourceRefs: [`OtpMonthlyRouteStopDay:${month}`] };
+  const context = { tx, contractorId, month, standardCode: standard.code };
+  const source = normalizeMeasurementSource(standard.measurement_source, standard.standard_type);
+  if (isHandEntered(source)) return resolveManualMetric(context, standard.id);
+  if (source === "onboard_compliance") {
+    // OnBoard raises occurrences, which are rows rather than a monthly figure.
+    // A threshold standard declaring this source has no number to read.
+    return notMeasurable(`${standard.code} is measured from OnBoard compliance occurrences, which cannot produce a monthly value. Change it to a feed or a hand-entered figure.`);
   }
-  const request = new sql.Request(tx);
-  request.input("standard_id", sql.UniqueIdentifier, standard.id);
-  request.input("contractor", sql.UniqueIdentifier, contractorId);
-  request.input("month", sql.Char(6), month);
-  const result = await request.query<{ metric_value: number; unit_count: number | null; id: string }>(`
-    SELECT TOP 1 metric_value, unit_count, id FROM ManualMetricEntries
-    WHERE standard_id=@standard_id AND contractor_id=@contractor AND service_month=@month AND superseded_by IS NULL
-    ORDER BY entered_at DESC
-  `);
-  const row = result.recordset[0];
-  const value = row ? Number(row.metric_value) : null;
-  const quantity = Number(row?.unit_count ?? row?.metric_value ?? 0);
-  return { metricValue: value, rawMetricValue: value, excludedMetricValue: null, rawQuantity: quantity, excludedQuantity: 0, quantity, occurrenceCount: Number(row?.unit_count ?? 0), completeness: row ? 100 : 0, sourceRefs: row ? [`ManualMetricEntries:${row.id}`] : [] };
+  return resolveAutomatedThreshold(standard.resolver_key, context);
 }
 
 export async function assessPeriod(tx: Transaction, periodId: string): Promise<void> {
@@ -65,8 +54,9 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
   if (!period) throw new Error("Assessment period not found");
   if (period.status === "finalized") throw new Error("Finalized periods must be reopened before recompute");
 
+  const scope = await agreementScopeIn(tx);
   const standardsReq = new sql.Request(tx); standardsReq.input("period_id",sql.UniqueIdentifier,period.id);
-  const standards = await standardsReq.query<StandardRow>(`SELECT standard_id id,code,standard_type,direction,is_safety_critical,measurement_source FROM AssessmentPeriodStandards WHERE period_id=@period_id ORDER BY sort_order`);
+  const standards = await standardsReq.query<StandardRow>(`SELECT standard_id id,code,standard_type,direction,is_safety_critical,measurement_source,${periodResolverKeySql(scope)} FROM AssessmentPeriodStandards WHERE period_id=@period_id ORDER BY sort_order`);
   for (const standard of standards.recordset) {
     const tierReq = new sql.Request(tx);
     tierReq.input("standard_id", sql.UniqueIdentifier, standard.id);
@@ -87,6 +77,9 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
     let excludedSourceRefs: string[] = [];
     let baseAmount = 0;
     let capRequired = false;
+    // Why a standard could not be measured, when that is a fact worth
+    // reporting rather than simply an empty month.
+    let unresolvedReason: string | null = null;
     let tierLabel: TierLabel = "meets";
 
     if (standard.standard_type === "occurrence") {
@@ -122,6 +115,7 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
       if (occurrenceCount > 0 && tierLabel === "meets") tierLabel = "tier1";
     } else {
       const resolved = await resolveThreshold(tx, standard, period.contractor_id, period.service_month);
+      unresolvedReason = resolved.unresolvedReason ?? null;
       metricValue = resolved.metricValue; quantity = resolved.quantity; occurrenceCount = resolved.occurrenceCount;
       rawMetricValue = resolved.rawMetricValue; rawUnitQuantity = resolved.rawQuantity; rawMetricValue ??= metricValue;
       excludedMetricValue = resolved.excludedMetricValue; excludedUnitQuantity = resolved.excludedQuantity;
@@ -149,7 +143,7 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
     const escalation = escalationMultiplier(consecutive);
     const proposed = notAssessable ? 0 : Math.max(0, baseAmount) * escalation;
     const outcome = notAssessable ? "not_assessable" : tierLabel;
-    const snapshot = { standardCode: standard.code, metricValue, quantity, occurrenceCount, sourceRefs, rawMetricValue, rawOccurrenceCount, rawUnitQuantity, excludedMetricValue, excludedOccurrenceCount, excludedUnitQuantity, excludedSourceRefs, baseAmount, escalation, proposed, tierLabel, outcome };
+    const snapshot = { standardCode: standard.code, resolverKey: standard.resolver_key ?? null, unresolvedReason, metricValue, quantity, occurrenceCount, sourceRefs, rawMetricValue, rawOccurrenceCount, rawUnitQuantity, excludedMetricValue, excludedOccurrenceCount, excludedUnitQuantity, excludedSourceRefs, baseAmount, escalation, proposed, tierLabel, outcome };
     const computationJson = canonicalJson(snapshot);
     const inputHash = assessmentInputHash(snapshot);
     const upsert = new sql.Request(tx);

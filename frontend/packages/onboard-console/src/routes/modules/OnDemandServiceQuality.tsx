@@ -275,6 +275,11 @@ export function OnDemandServiceQuality() {
   const hasRiskClaim = isPreview
     || (dataMode === "live" && diagnostics?.state !== "not_connected");
   const stat = (value: number) => (hasRiskClaim ? value : "—");
+  // The endpoint now returns only requests at or approaching their standard, so
+  // the list is a subset and has to name what it is a subset of. Preview and
+  // training scenarios are wholly at-risk by construction, so there the two
+  // numbers are the same and the comparison would be noise.
+  const monitoredCount = isPreview ? null : diagnostics?.monitored_request_count ?? null;
   const predictedPoor = risks.filter((risk) => risk.predictedWaitMinutes > standardFor(risk)).length;
   const currentlyPoor = risks.filter((risk) => risk.currentWaitMinutes > standardFor(risk)).length;
   const unassigned = risks.filter((risk) => risk.vehicle === null).length;
@@ -313,7 +318,7 @@ export function OnDemandServiceQuality() {
         <RiskStat value={stat(predictedPoor)} label="Predicted over standard" tone="warning" />
         <RiskStat value={stat(currentlyPoor)} label="Currently over standard" tone="danger" />
         <RiskStat value={stat(unassigned)} label="Unassigned at risk" tone="muted" />
-        <RiskStat value={hasRiskClaim ? `${median} min` : "—"} label="Median predicted wait" tone="accent" />
+        <RiskStat value={hasRiskClaim ? `${median} min` : "—"} label="Median at-risk wait" tone="accent" />
       </div>
 
       {dataMode === "loading" && !trainingMode ? (
@@ -354,7 +359,9 @@ export function OnDemandServiceQuality() {
               <span className="risk-eyebrow">Immediate attention</span>
               <h3>Wait-time exceptions</h3>
             </div>
-            <span className="risk-count">{risks.length} trips</span>
+            <span className="risk-count">{monitoredCount === null
+              ? `${risks.length} trips`
+              : `${risks.length} of ${monitoredCount} monitored`}</span>
           </div>
 
           <div className="risk-list-head on-demand" aria-hidden="true">

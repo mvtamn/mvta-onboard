@@ -1,5 +1,6 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AppDialogProvider } from "../components/AppDialog.js";
 import { PerformanceStandardsAdmin } from "./PerformanceStandardsAdmin.js";
 
 let roles: string[] = ["OCC.Admin"];
@@ -13,7 +14,7 @@ const AGREEMENT = {
 const OTP = {
   id: "50000000-0000-4000-8000-000000000001", code: "OTP_FIXED_ROUTE", name: "On-Time Performance (Fixed Route)",
   standard_type: "threshold" as const, priority: "High" as const, is_scored: true, is_safety_critical: false,
-  direction: "higher_is_better" as const, unit_label: "percent", measurement_source: "auto" as const,
+  direction: "higher_is_better" as const, unit_label: "percent", measurement_source: "api_feed" as const,
   resolver_key: "OTP_FIXED_ROUTE", sort_order: 26, effective_start_date: "20250101", effective_end_date: null,
 };
 const ORPHAN = {
@@ -25,8 +26,19 @@ const TIERS = [
   { id: "t2", standard_id: OTP.id, agreement_id: null, tier_order: 3, tier_label: "tier1" as const, bound_low: 0.75, bound_high: 0.8, qualifier_code: null, penalty_basis: "flat" as const, penalty_amount: 1500, triggers_cap: false, notes: null, effective_start_date: "20250101", effective_end_date: null },
 ];
 
+const RESOLVERS = [
+  { key: "OTP_FIXED_ROUTE", label: "Avail monthly on-time performance", description: "Fixed-route departures from Avail's monthly OTP feed.", applies_to: "threshold" as const, source: "api_feed" as const },
+  { key: "MISSED_TRIPS_FR", label: "Confirmed missed trips", description: "Occurrences raised from MonitoredMissedTrips once confirmed.", applies_to: "occurrence" as const, source: "onboard_compliance" as const },
+];
+
+const SOURCE_SYSTEMS = [
+  { value: "Nexus", label: "Nexus (Trackit)", description: "Customer contacts and operator conduct complaints." },
+  { value: "Asset Works M5", label: "Asset Works M5", description: "Fleet maintenance, road calls and vehicle availability." },
+];
+
 const putAgreementStandards = vi.fn().mockResolvedValue({ id: AGREEMENT.id, assignment_count: 1 });
 const putPerformanceStandard = vi.fn().mockResolvedValue({ id: OTP.id });
+const deletePerformanceStandard = vi.fn();
 const putStandardTiers = vi.fn().mockResolvedValue({ standard_id: OTP.id, agreement_id: null, effective_start_date: "20260101", tier_count: 2 });
 
 let catalog: Record<string, unknown>;
@@ -36,14 +48,23 @@ vi.mock("../config.js", () => ({ api: {
   putAgreementStandards: (...args: unknown[]) => putAgreementStandards(...args),
   putPerformanceStandard: (...args: unknown[]) => putPerformanceStandard(...args),
   putStandardTiers: (...args: unknown[]) => putStandardTiers(...args),
+  deletePerformanceStandard: (...args: unknown[]) => deletePerformanceStandard(...args),
   putPerformanceAgreement: vi.fn().mockResolvedValue({ id: "a0000000-0000-4000-8000-000000000001" }),
 } }));
+
+const view = () => render(<AppDialogProvider><PerformanceStandardsAdmin /></AppDialogProvider>);
+
+// Pick a standard from the catalog list, then open one of its submenu sections.
+async function open(name: string, tab?: "Details" | "Penalty bands" | "Assignment") {
+  fireEvent.click(await screen.findByText(name));
+  if (tab) fireEvent.click(screen.getByRole("button", { name: tab }));
+}
 
 describe("Performance Standards administration", () => {
   beforeEach(() => {
     roles = ["OCC.Admin"];
     catalog = {
-      standards: [ORPHAN, OTP], tiers: TIERS, agreements: [AGREEMENT],
+      standards: [ORPHAN, OTP], tiers: TIERS, agreements: [AGREEMENT], resolvers: RESOLVERS, source_systems: SOURCE_SYSTEMS,
       assignments: [{ id: "g1", agreement_id: AGREEMENT.id, standard_id: OTP.id, is_scored: true, effective_start_date: "20250101", effective_end_date: null, assignment_note: null }],
       diagnostics: { table_ready: true, assignments_ready: true },
     };
@@ -51,52 +72,90 @@ describe("Performance Standards administration", () => {
   });
   afterEach(cleanup);
 
-  it("states each band as a sentence, not as two raw bounds", async () => {
-    render(<PerformanceStandardsAdmin />);
-    // The page this replaces showed "tier1 75…80: $1,500 flat", which leaves a
-    // reader to work out which end is inclusive and what "flat" multiplies by.
-    expect(await screen.findByText("75% to under 80% → $1,500 for the month")).toBeInTheDocument();
-    expect(screen.getByText("85% or above → no penalty")).toBeInTheDocument();
-    expect(screen.getByText("Tier 1 penalty")).toBeInTheDocument();
-  });
-
-  it("leads with the standard's name and keeps its code as a reference", async () => {
-    render(<PerformanceStandardsAdmin />);
-    const row = (await screen.findByText("On-Time Performance (Fixed Route)")).closest("tr")!;
+  it("lists standards by name, keeping the code as a reference", async () => {
+    view();
+    const row = (await screen.findByText("On-Time Performance (Fixed Route)")).closest("button")!;
     // The code still has to be findable - resolvers and operational SQL match
     // on it - but it is no longer the first thing a reader has to decode.
     expect(within(row).getByText("OTP_FIXED_ROUTE")).toHaveClass("mono-ref");
-    expect(within(row).getByText("Monthly value")).toBeInTheDocument();
-    expect(within(row).getByText(/percent · higher is better/)).toBeInTheDocument();
+    expect(within(row).getByText("Scored")).toBeInTheDocument();
+    expect(within(row).getByText(/Monthly value · from a feed/)).toBeInTheDocument();
+  });
+
+  it("keeps the list and the detail in their own scroll areas", async () => {
+    // The complaint this layout answers: the editor used to be stacked under
+    // the catalog, so selecting a standard pushed it off the bottom.
+    view();
+    await open("OTP_FIXED_ROUTE");
+    expect(document.querySelector(".standards-workspace")).toBeInTheDocument();
+    expect(document.querySelector(".standards-list")).toBeInTheDocument();
+    expect(document.querySelector(".standards-detail")).toBeInTheDocument();
+  });
+
+  it("offers a submenu per standard rather than one long form", async () => {
+    view();
+    await open("OTP_FIXED_ROUTE");
+    for (const tab of ["Details", "Penalty bands", "Assignment"]) {
+      expect(screen.getByRole("button", { name: tab })).toBeInTheDocument();
+    }
+    // Details is where a click lands, so the pane is never empty.
+    expect(screen.getByRole("button", { name: "Details" })).toHaveAttribute("aria-current", "true");
+  });
+
+  it("shows the governing bands whichever section is open", async () => {
+    // It is what an administrator opened the page to check; it should not
+    // depend on which tab they happen to be in.
+    view();
+    await open("OTP_FIXED_ROUTE", "Assignment");
+    expect(screen.getByText("75% to under 80% → $1,500 for the month")).toBeInTheDocument();
+    expect(screen.getByText("85% or above → no penalty")).toBeInTheDocument();
+  });
+
+  it("filters the catalog by what a reader is looking for", async () => {
+    view();
+    await screen.findByText("On-Time Performance (Fixed Route)");
+    fireEvent.change(screen.getByLabelText("Filter standards"), { target: { value: "unassigned" } });
+    expect(screen.queryByText("On-Time Performance (Fixed Route)")).not.toBeInTheDocument();
+    expect(screen.getByText("Fleet Availability Short-Term")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Filter standards"), { target: { value: "all" } });
+    fireEvent.change(screen.getByLabelText("Search standards"), { target: { value: "on-time" } });
+    expect(screen.getByText("On-Time Performance (Fixed Route)")).toBeInTheDocument();
+    expect(screen.queryByText("Fleet Availability Short-Term")).not.toBeInTheDocument();
   });
 
   it("names an automated standard that has no resolver behind it", async () => {
-    render(<PerformanceStandardsAdmin />);
-    expect(await screen.findByText("no resolver")).toBeInTheDocument();
+    view();
+    const row = (await screen.findByText("Fleet Availability Short-Term")).closest("button")!;
+    expect(within(row).getByText(/no resolver/)).toBeInTheDocument();
   });
 
-  it("distinguishes a standard scored on this Agreement from one that is unassigned", async () => {
-    render(<PerformanceStandardsAdmin />);
-    expect(await screen.findByText("Scored")).toBeInTheDocument();
-    expect(screen.getByText("Unassigned")).toBeInTheDocument();
-  });
-
-  it("assigns a standard to the Agreement rather than to the agency at large", async () => {
-    render(<PerformanceStandardsAdmin />);
-    const row = (await screen.findByText("FLEET_AVAIL_SHORT")).closest("tr")!;
-    fireEvent.click(within(row).getByRole("checkbox"));
+  it("assigns a standard to the Agreement, not to the agency at large", async () => {
+    view();
+    await open("FLEET_AVAIL_SHORT", "Assignment");
+    fireEvent.click(screen.getByLabelText("Scored on this Agreement"));
     expect(putAgreementStandards).toHaveBeenCalledWith(AGREEMENT.id, [expect.objectContaining({
       standard_id: ORPHAN.id, is_scored: true, effective_start_date: "20250101",
     })]);
   });
 
+  it("records unassignment as an end date rather than a deletion", async () => {
+    // A month that already scored the standard has to keep resolving it.
+    view();
+    await open("OTP_FIXED_ROUTE", "Assignment");
+    fireEvent.change(screen.getByLabelText(/Stopped after/), { target: { value: "2026-06-30" } });
+    expect(putAgreementStandards).toHaveBeenCalledWith(AGREEMENT.id, [expect.objectContaining({
+      effective_end_date: "20260630",
+    })]);
+  });
+
   it("adds a standard the catalog has never held", async () => {
-    render(<PerformanceStandardsAdmin />);
-    fireEvent.click(await screen.findByText("Add standard"));
+    view();
+    fireEvent.click(await screen.findByText("New standard"));
     fireEvent.change(screen.getByPlaceholderText("OPERATOR_CONDUCT"), { target: { value: "shelter cleaning" } });
     const name = screen.getByText("Name").closest("label")!;
     fireEvent.change(within(name).getByRole("textbox"), { target: { value: "Shelter cleaning compliance" } });
-    fireEvent.click(screen.getByText("Add standard", { selector: "button.btn-primary" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add standard" }));
     expect(putPerformanceStandard).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
       // Typed lowercase with a space; the field is constrained to the shape
       // operational SQL matches on.
@@ -104,21 +163,144 @@ describe("Performance Standards administration", () => {
     }));
   });
 
-  it("refuses to save an automated standard with no resolver key", async () => {
-    render(<PerformanceStandardsAdmin />);
-    fireEvent.click(await screen.findByText("FLEET_AVAIL_SHORT"));
-    expect(screen.getByText("Save standard", { selector: "button" })).toBeDisabled();
+  it("will not open bands or assignment for a standard that does not exist yet", async () => {
+    view();
+    fireEvent.click(await screen.findByText("New standard"));
+    expect(screen.getByRole("button", { name: "Penalty bands" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Assignment" })).toBeDisabled();
+  });
+
+  it("deletes only after confirming, and only a standard nothing has scored", async () => {
+    deletePerformanceStandard.mockResolvedValue({ id: ORPHAN.id, code: ORPHAN.code });
+    view();
+    await open("FLEET_AVAIL_SHORT");
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    expect(await screen.findByText(/Delete Fleet Availability Short-Term\?/)).toBeInTheDocument();
+    // The dialog says what happens and what to do instead.
+    expect(screen.getByText(/retire it with an end date instead/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Delete standard" }));
+    await waitFor(() => expect(deletePerformanceStandard).toHaveBeenCalledWith(ORPHAN.id));
+  });
+
+  it("reports the references that blocked a delete", async () => {
+    deletePerformanceStandard.mockRejectedValue(new Error("On-Time Performance (Fixed Route) has been assessed against and cannot be deleted: it is referenced by 4 assessment periods."));
+    view();
+    await open("OTP_FIXED_ROUTE");
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete standard" }));
+    expect(await screen.findByText(/referenced by 4 assessment periods/)).toBeInTheDocument();
+  });
+
+  it("offers retiring as the safe alternative, prefilled with today", async () => {
+    view();
+    await open("OTP_FIXED_ROUTE");
+    fireEvent.click(screen.getByRole("button", { name: "Retire…" }));
+    const retired = screen.getByLabelText("Retired after") as HTMLInputElement;
+    expect(retired.value).toBe(new Date().toISOString().slice(0, 10));
+  });
+
+  it("picks what measures a standard from the registry, not from a text box", async () => {
+    view();
+    await open("OTP_FIXED_ROUTE", "Details");
+    expect(screen.getByLabelText(/Measured by/)).toHaveValue("OTP_FIXED_ROUTE");
+    expect(screen.getByText(/Fixed-route departures from Avail/)).toBeInTheDocument();
+  });
+
+  it("offers only the resolvers that can serve this kind of standard", async () => {
+    view();
+    await open("OTP_FIXED_ROUTE", "Details");
+    const options = within(screen.getByLabelText(/Measured by/)).getAllByRole("option").map((o) => o.textContent);
+    expect(options).toContain("Avail monthly on-time performance");
+    expect(options).not.toContain("Confirmed missed trips");
+  });
+
+  it("offers the four ways a figure actually arrives", async () => {
+    view();
+    fireEvent.click(await screen.findByText("New standard"));
+    const options = within(screen.getByLabelText(/Where the figure comes from/)).getAllByRole("option").map((o) => o.textContent);
+    expect(options).toEqual([
+      "Entered by hand",
+      "Transcribed from another system",
+      "Ingested from a feed",
+      "Raised by OnBoard compliance",
+    ]);
+  });
+
+  it("asks which system a transcribed figure comes from, and will not save without it", async () => {
+    // The difference between this and plain manual entry is provenance: it
+    // names who to chase when the month's figure is missing.
+    view();
+    fireEvent.click(await screen.findByText("New standard"));
+    fireEvent.change(screen.getByLabelText(/Where the figure comes from/), { target: { value: "structured_import" } });
+    const system = screen.getByLabelText(/Source system/);
+    expect(within(system).getAllByRole("option").map((o) => o.textContent))
+      .toEqual(["Select the system…", "Nexus (Trackit)", "Asset Works M5", "Another system…"]);
+    expect(screen.getByRole("button", { name: "Add standard" })).toBeDisabled();
+
+    fireEvent.change(system, { target: { value: "Nexus" } });
+    expect(screen.getByText(/operator conduct complaints/i)).toBeInTheDocument();
+  });
+
+  it("clears the fields a source kind does not use when it changes", async () => {
+    // A leftover resolver on a hand-entered standard reads as automated to
+    // anyone scanning the catalog, and the server refuses it anyway.
+    view();
+    await open("OTP_FIXED_ROUTE", "Details");
+    expect(screen.getByLabelText(/Measured by/)).toHaveValue("OTP_FIXED_ROUTE");
+    fireEvent.change(screen.getByLabelText(/Where the figure comes from/), { target: { value: "manual_entry" } });
+    expect(screen.queryByLabelText(/Measured by/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save standard" }));
+    expect(putPerformanceStandard).toHaveBeenCalledWith(OTP.id, expect.objectContaining({
+      measurement_source: "manual_entry", resolver_key: null, source_system: null,
+    }));
+  });
+
+  it("offers only resolvers belonging to the chosen source kind", async () => {
+    // A feed the app ingests and occurrences OnBoard raises itself used to be
+    // the same value; MISSED_TRIPS_FR must not be offered as a feed.
+    view();
+    await open("OTP_FIXED_ROUTE", "Details");
+    fireEvent.change(screen.getByLabelText(/Where the figure comes from/), { target: { value: "onboard_compliance" } });
+    expect(screen.getByText(/Nothing registered serves a monthly-value standard from this source/)).toBeInTheDocument();
+  });
+
+  it("hides the resolver picker entirely for a hand-entered standard", async () => {
+    view();
+    fireEvent.click(await screen.findByText("New standard"));
+    expect(screen.queryByLabelText(/Measured by/)).not.toBeInTheDocument();
   });
 
   it("keeps a standard's code fixed once operational SQL can reference it", async () => {
-    render(<PerformanceStandardsAdmin />);
-    fireEvent.click(await screen.findByText("OTP_FIXED_ROUTE"));
+    view();
+    await open("OTP_FIXED_ROUTE", "Details");
     expect(screen.getByPlaceholderText("OPERATOR_CONDUCT")).toBeDisabled();
   });
 
+  it("edits a band by criteria rather than by two unlabelled bounds", async () => {
+    view();
+    await open("OTP_FIXED_ROUTE", "Penalty bands");
+    const criteria = screen.getAllByLabelText("Applies when the value is");
+    expect(criteria[0]).toHaveValue("at_or_above");
+    expect(criteria[1]).toHaveValue("between");
+    // bound_high is exclusive, and two boxes labelled From and To never said so.
+    expect(screen.getAllByLabelText(/Up to, not including/)[0]).toBeInTheDocument();
+  });
+
+  it("clears the bound a criteria change stops using", async () => {
+    view();
+    await open("OTP_FIXED_ROUTE", "Penalty bands");
+    fireEvent.change(screen.getAllByLabelText("Applies when the value is")[1], { target: { value: "at_or_above" } });
+    fireEvent.click(screen.getByText("Save penalty bands"));
+    const ladder = putStandardTiers.mock.calls[0][1] as { tiers: { bound_low: number | null; bound_high: number | null }[] };
+    // The 75-80% band becomes "75% or above": the low bound it had is kept,
+    // the upper one it no longer uses is cleared.
+    expect(ladder.tiers[1].bound_high).toBeNull();
+    expect(ladder.tiers[1].bound_low).toBeCloseTo(0.75);
+  });
+
   it("writes a tier ladder as a new dated version", async () => {
-    render(<PerformanceStandardsAdmin />);
-    fireEvent.click(await screen.findByText("OTP_FIXED_ROUTE"));
+    view();
+    await open("OTP_FIXED_ROUTE", "Penalty bands");
     const effective = screen.getByText("Effective from", { selector: ".standards-scope span" }).closest("label")!;
     fireEvent.change(within(effective).getByDisplayValue(/\d{4}-\d{2}-\d{2}/), { target: { value: "2026-07-01" } });
     fireEvent.click(screen.getByText("Save penalty bands"));
@@ -128,103 +310,71 @@ describe("Performance Standards administration", () => {
   });
 
   it("writes percentage bands back as the ratios the resolvers compute", async () => {
-    render(<PerformanceStandardsAdmin />);
-    fireEvent.click(await screen.findByText("OTP_FIXED_ROUTE"));
+    view();
+    await open("OTP_FIXED_ROUTE", "Penalty bands");
     fireEvent.change(screen.getByDisplayValue("85"), { target: { value: "88" } });
     fireEvent.click(screen.getByText("Save penalty bands"));
     const ladder = putStandardTiers.mock.calls[0][1] as { tiers: { bound_low: number | null }[] };
     expect(ladder.tiers[0].bound_low).toBeCloseTo(0.88);
   });
 
-  it("edits a band by criteria rather than by two unlabelled bounds", async () => {
-    render(<PerformanceStandardsAdmin />);
-    fireEvent.click(await screen.findByText("OTP_FIXED_ROUTE"));
-    const criteria = screen.getAllByLabelText("Applies when the value is");
-    // The seeded OTP ladder: 85%+ meets, 75-80 is tier 1.
-    expect(criteria[0]).toHaveValue("at_or_above");
-    expect(criteria[1]).toHaveValue("between");
-    // "Up to, not including" is the whole point - bound_high is exclusive, and
-    // two boxes labelled From and To never said so.
-    expect(screen.getAllByLabelText(/Up to, not including/)[0]).toBeInTheDocument();
+  it("names a gap between bands before the ladder is saved", async () => {
+    // Attachment G's own bands are not always contiguous, so this warns rather
+    // than blocks - but an unintended gap scores a month at the wrong tier.
+    view();
+    await open("OTP_FIXED_ROUTE", "Penalty bands");
+    fireEvent.change(screen.getAllByLabelText(/From \(included\)/)[0], { target: { value: "60" } });
+    expect(await screen.findByText(/Nothing scores between/)).toBeInTheDocument();
   });
 
-  it("clears the bound a criteria change stops using", async () => {
-    // A leftover upper bound would keep narrowing a band the administrator
-    // believes they widened to everything at or above a number.
-    render(<PerformanceStandardsAdmin />);
-    fireEvent.click(await screen.findByText("OTP_FIXED_ROUTE"));
-    const criteria = screen.getAllByLabelText("Applies when the value is");
-    fireEvent.change(criteria[1], { target: { value: "at_or_above" } });
-    fireEvent.click(screen.getByText("Save penalty bands"));
-    const ladder = putStandardTiers.mock.calls[0][1] as { tiers: { bound_low: number | null; bound_high: number | null }[] };
-    // The 75-80% band becomes "75% or above": the low bound it already had is
-    // kept, the upper one it no longer uses is cleared.
-    expect(ladder.tiers[1].bound_high).toBeNull();
-    expect(ladder.tiers[1].bound_low).toBeCloseTo(0.75);
-  });
-
-  it("offers the condition codes the catalog already uses, on the standards that can match one", async () => {
-    // A free-text qualifier that matches no occurrence scores nothing, silently.
+  it("offers the condition codes the catalog uses, on standards that can match one", async () => {
     const occurrenceStandard = { ...ORPHAN, id: "50000000-0000-4000-8000-000000000003", code: "MISSED_TRIPS_FR", name: "Missed Trips", standard_type: "occurrence" as const, unit_label: "occurrences", resolver_key: "MISSED_TRIPS_FR" };
     catalog = {
       ...catalog, standards: [occurrenceStandard, OTP],
       tiers: [...TIERS, { ...TIERS[1], id: "t3", standard_id: occurrenceStandard.id, tier_order: 1, bound_low: null, bound_high: null, qualifier_code: "LAST_TRIP_OF_DAY" }],
     };
-    render(<PerformanceStandardsAdmin />);
-    fireEvent.click(await screen.findByText("MISSED_TRIPS_FR"));
+    view();
+    await open("MISSED_TRIPS_FR", "Penalty bands");
     expect(screen.getAllByLabelText(/Condition/)[0]).toBeInTheDocument();
     expect(screen.getAllByText("Only when: Last trip of day").length).toBeGreaterThan(0);
   });
 
   it("offers no condition on a monthly-value standard, where one could never match", async () => {
-    // assess.ts matches a threshold band with no qualifier, and matchTier then
-    // considers unqualified bands only - so a condition here would build a band
-    // that silently never scores.
-    render(<PerformanceStandardsAdmin />);
-    fireEvent.click(await screen.findByText("OTP_FIXED_ROUTE"));
+    // assess.ts matches a threshold band with no qualifier, so a condition here
+    // would build a band that silently never scores.
+    view();
+    await open("OTP_FIXED_ROUTE", "Penalty bands");
     expect(screen.queryByLabelText(/Condition/)).not.toBeInTheDocument();
-  });
-
-  it("names a gap between bands before the ladder is saved", async () => {
-    // Attachment G's own bands are not always contiguous, so this warns rather
-    // than blocks - but an unintended gap scores a month at the wrong tier.
-    render(<PerformanceStandardsAdmin />);
-    fireEvent.click(await screen.findByText("OTP_FIXED_ROUTE"));
-    fireEvent.change(screen.getAllByLabelText(/From \(included\)/)[0], { target: { value: "60" } });
-    expect(await screen.findByText(/Nothing scores between/)).toBeInTheDocument();
   });
 
   it("lets a non-administrator read the catalog but change nothing", async () => {
     roles = ["OCC.Compliance"];
-    render(<PerformanceStandardsAdmin />);
+    view();
     expect(await screen.findByText(/requires Administrator access/)).toBeInTheDocument();
-    expect(screen.queryByText("Add standard")).not.toBeInTheDocument();
-    expect(screen.getAllByRole("checkbox")[0]).toBeDisabled();
+    expect(screen.queryByText("New standard")).not.toBeInTheDocument();
+    await open("OTP_FIXED_ROUTE");
+    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
   });
 
   it("says plainly that no Agreement means no assessment can run", async () => {
     catalog = { ...catalog, agreements: [], assignments: [] };
-    render(<PerformanceStandardsAdmin />);
+    view();
     expect(await screen.findByText(/no assessment period can be opened/)).toBeInTheDocument();
   });
 
   it("degrades to a catalog-only view when migration 102 has not run", async () => {
     catalog = { ...catalog, agreements: [], assignments: [], diagnostics: { table_ready: true, assignments_ready: false } };
-    render(<PerformanceStandardsAdmin />);
+    view();
     expect(await screen.findByText(/Migration 102 has not been applied/)).toBeInTheDocument();
   });
 
-  it("does not offer a tier edit the write path would refuse before migration 102", async () => {
-    // Tier rows carry their scope in a column that migration adds, so the
-    // server 409s. Offering the button anyway would make the warning banner
-    // look advisory.
+  it("does not offer a band edit the write path would refuse before migration 102", async () => {
     catalog = { ...catalog, agreements: [], assignments: [], diagnostics: { table_ready: true, assignments_ready: false } };
-    render(<PerformanceStandardsAdmin />);
-    fireEvent.click(await screen.findByText("OTP_FIXED_ROUTE"));
+    view();
+    await open("OTP_FIXED_ROUTE", "Penalty bands");
     expect(screen.queryByText("Save penalty bands")).not.toBeInTheDocument();
-    // The bands stay readable - the point is that the month's numbers can
-    // still be verified, only not changed. The sentence appears twice by
-    // design: once in the catalog row, once as the editor's readout.
+    // The bands stay readable: the month's numbers can still be verified.
+    // Twice by design - the always-visible summary, and the editor's readout.
     expect(screen.getAllByText("75% to under 80% → $1,500 for the month").length).toBe(2);
   });
 });
