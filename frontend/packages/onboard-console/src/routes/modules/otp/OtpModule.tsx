@@ -558,7 +558,7 @@ function OtpTrendChart() {
         })}
       </div>
       <p className="td-dim" style={{ marginTop: 8 }}>
-        Percent only - no penalty-dollar figure is shown until a real Attachment G penalty rate is
+        Percent only - no penalty-dollar figure is shown until a real contract penalty rate is
         available.
       </p>
     </div>

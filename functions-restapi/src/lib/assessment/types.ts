@@ -17,6 +17,8 @@ export interface StandardTier {
   penaltyBasis: PenaltyBasis;
   penaltyAmount: number;
   triggersCap?: boolean;
+  /** Rank when several bands match one observation; from the period's snapshot (migration 105). */
+  severityOrder?: number | null;
 }
 
 export interface PenaltyInput {

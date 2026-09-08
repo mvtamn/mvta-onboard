@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   AgreementStandardAssignment, AgreementStandardInput, ContractorPerformanceStandard, ContractorRecord,
   ContractorStandardTier, PerformanceAgreementRecord,
-  KnownSourceSystem, PerformanceStandardInput, RegisteredResolver, StandardMeasurementSource,
+  KnownSourceSystem, PerformanceStandardInput, ReferenceValue, RegisteredResolver, StandardMeasurementSource,
   StandardTierInput,
 } from "@mvta/shared";
 import {
-  BAND_RANGES, bandRangeOf, boundsForRange, boundToInput, CATALOG_UNITS, describeBand,
-  inputToBound, isAutomated, isRatioUnit, ladderWarnings, PENALTY_BASES, qualifierLabel, sourceLabel,
-  TIER_LABELS, unitNoun, type BandRange,
+  BAND_RANGES, bandRangeOf, boundsForRange, boundToInput, describeBand,
+  FALLBACK_PENALTY_BASES, FALLBACK_PRIORITIES, FALLBACK_TIER_LABELS, FALLBACK_UNITS,
+  inputToBound, isAutomated, isRatioUnit, ladderWarnings, optionsFor, qualifierLabel, sourceLabel,
+  TIER_LABELS, unitNoun, withCurrent, type BandRange, type VocabularyOption,
 } from "./performanceStandardsVocabulary.js";
 import { api } from "../config.js";
 import { useAppDialog } from "../components/AppDialog.js";
@@ -36,6 +37,14 @@ const toInputDate = (value: string | null | undefined) => {
 };
 const toServiceDate = (value: string) => value.replace(/-/g, "");
 const today = () => toServiceDate(new Date().toISOString().slice(0, 10));
+
+// Every picker's options, read from ReferenceValues (migration 105) with the
+// built-in lists as the pre-migration fallback.
+interface Vocabulary {
+  units: VocabularyOption[]; priorities: VocabularyOption[]; penaltyBases: VocabularyOption[];
+  tierLabels: VocabularyOption[]; conditions: VocabularyOption[];
+  sourceSystems: VocabularyOption[]; teams: VocabularyOption[];
+}
 
 type Tab = "details" | "bands" | "assignment";
 type Filter = "all" | "scored" | "unassigned" | "auto" | "manual";
@@ -89,6 +98,8 @@ export function PerformanceStandardsAdmin() {
   const [contractors, setContractors] = useState<ContractorRecord[]>([]);
   const [resolvers, setResolvers] = useState<RegisteredResolver[]>([]);
   const [sourceSystems, setSourceSystems] = useState<KnownSourceSystem[]>([]);
+  const [referenceValues, setReferenceValues] = useState<ReferenceValue[]>([]);
+  const [showLists, setShowLists] = useState(false);
   const [agreementId, setAgreementId] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [draft, setDraft] = useState<PerformanceStandardInput | null>(null);
@@ -103,13 +114,19 @@ export function PerformanceStandardsAdmin() {
   const load = useCallback(async () => {
     try {
       setError("");
-      const [catalog, contractorList] = await Promise.all([api.getPerformanceStandards(), api.getContractors()]);
+      const [catalog, contractorList, reference] = await Promise.all([
+        api.getPerformanceStandards(), api.getContractors(),
+        // Absent before migration 105; the pickers fall back to their built-in
+        // lists rather than rendering empty.
+        api.getReferenceValues().catch(() => ({ values: [] as ReferenceValue[] })),
+      ]);
       setStandards(catalog.standards);
       setTiers(catalog.tiers);
       setAgreements(catalog.agreements);
       setAssignments(catalog.assignments);
       setResolvers(catalog.resolvers ?? []);
       setSourceSystems(catalog.source_systems ?? []);
+      setReferenceValues(reference.values ?? []);
       setContractors(contractorList.contractors);
       setReady(catalog.diagnostics.table_ready && catalog.diagnostics.assignments_ready);
       setAgreementId((current) => current || catalog.agreements.find((a) => a.is_active)?.id || catalog.agreements[0]?.id || "");
@@ -126,10 +143,24 @@ export function PerformanceStandardsAdmin() {
   // REPORTING_LATE). Offering the ones in use as a picker keeps a new band
   // matching occurrences that already carry the marker, instead of a typo that
   // silently matches nothing.
-  const knownQualifiers = useMemo(
-    () => [...new Set(tiers.map((tier) => tier.qualifier_code).filter((code): code is string => Boolean(code)))].sort(),
-    [tiers],
-  );
+  const vocab: Vocabulary = useMemo(() => ({
+    units: optionsFor(referenceValues, "unit", FALLBACK_UNITS),
+    priorities: optionsFor(referenceValues, "priority", FALLBACK_PRIORITIES),
+    penaltyBases: optionsFor(referenceValues, "penalty_basis", FALLBACK_PENALTY_BASES),
+    tierLabels: optionsFor(referenceValues, "tier_label", FALLBACK_TIER_LABELS),
+    conditions: optionsFor(referenceValues, "condition_code", []),
+    sourceSystems: optionsFor(referenceValues, "source_system",
+      sourceSystems.map((system) => ({ value: system.value, label: system.label, description: system.description }))),
+    teams: optionsFor(referenceValues, "responsible_team", []),
+  }), [referenceValues, sourceSystems]);
+
+  // Conditions come from the vocabulary table. They used to be derived from the
+  // tiers that already used one, so the first band carrying a new condition
+  // could never be created from the console.
+  const knownQualifiers = useMemo(() => {
+    const inUse = tiers.map((tier) => tier.qualifier_code).filter((code): code is string => Boolean(code));
+    return [...new Set([...vocab.conditions.map((option) => option.value), ...inUse])];
+  }, [vocab, tiers]);
   const assignmentFor = useMemo(() => {
     const index = new Map<string, AgreementStandardAssignment>();
     for (const row of assignments) if (row.agreement_id === agreementId) index.set(row.standard_id, row);
@@ -207,15 +238,26 @@ export function PerformanceStandardsAdmin() {
         <div>
           <span className="assessment-eyebrow">Administration · Contract governance</span>
           <h2>Performance Standards</h2>
-          <p>The Attachment G standards catalog, its penalty bands, and which standards each Agreement holds the contractor to.</p>
+          <p>The contractor performance standards catalog, its penalty bands, and which standards each Agreement holds the contractor to.</p>
         </div>
-        {isAdmin && <button className="btn-primary" disabled={busy} onClick={addStandard}>New standard</button>}
+        <div className="standards-head-actions">
+          {isAdmin && <button className="btn-sm" disabled={busy} onClick={() => setShowLists((open) => !open)}>
+            {showLists ? "Close lists" : "Manage lists"}
+          </button>}
+          {isAdmin && <button className="btn-primary" disabled={busy} onClick={addStandard}>New standard</button>}
+        </div>
       </div>
 
       {!isAdmin && <div className="assessment-warning">You can read the catalog. Changing a standard, a penalty band, or an Agreement assignment requires Administrator access.</div>}
       {!ready && <div className="assessment-warning">Migration 102 has not been applied to this database. The catalog reads correctly, but Agreement assignment is unavailable until it runs.</div>}
       {error && <div className="assessment-error">{error}</div>}
       {notice && <div className="standards-notice">{notice}</div>}
+
+      {showLists && <ReferenceValuesPanel
+        values={referenceValues} busy={busy} canEdit={isAdmin}
+        onSave={(id, input) => void run(() => api.putReferenceValue(id, input), `${input.label} saved.`)}
+        onDelete={(value) => void run(() => api.deleteReferenceValue(value.id), `${value.label} deleted.`)}
+      />}
 
       <AgreementPanel
         agreements={agreements} contractors={contractors} agreementId={agreementId} busy={busy} canEdit={isAdmin}
@@ -296,7 +338,7 @@ export function PerformanceStandardsAdmin() {
                 <h3>{draft && selectedId === "new" ? "New standard" : selected?.name}</h3>
                 {selected && <small className="mono-ref">{selected.code}</small>}
                 {selected && <div className="standards-detail-bands">
-                  <TierSummary standard={selected} tiers={tiers} agreementId={agreementId} />
+                  <TierSummary standard={selected} tiers={tiers} agreementId={agreementId} vocab={vocab} />
                 </div>}
               </div>
               {selected && isAdmin && <div className="standards-detail-actions">
@@ -329,14 +371,14 @@ export function PerformanceStandardsAdmin() {
 
             <div className="standards-tab-body">
               {tab === "details" && draft && <StandardEditor
-                draft={draft} setDraft={setDraft} standardId={selectedId} canEdit={isAdmin} busy={busy} resolvers={resolvers} sourceSystems={sourceSystems}
+                draft={draft} setDraft={setDraft} standardId={selectedId} canEdit={isAdmin} busy={busy} resolvers={resolvers} vocab={vocab}
                 onCancel={() => { setDraft(null); setSelectedId(""); }}
                 onSave={(id, input) => void run(() => api.putPerformanceStandard(id, input), `${input.name} saved.`)}
               />}
               {tab === "bands" && selected && <TierEditor
                 key={`tiers-${selected.id}-${agreementId}`}
                 standard={selected} tiers={tiers} agreement={agreement} canEdit={isAdmin && ready} busy={busy}
-                knownQualifiers={knownQualifiers}
+                knownQualifiers={knownQualifiers} vocab={vocab}
                 onSave={(input) => void run(() => api.putStandardTiers(selected.id, input), `${selected.name} penalty bands saved.`)}
               />}
               {tab === "assignment" && selected && <AssignmentTab
@@ -349,6 +391,148 @@ export function PerformanceStandardsAdmin() {
       </div>
     </div>
   </>;
+}
+
+const DOMAIN_TITLES: { domain: string; title: string; blurb: string }[] = [
+  { domain: "unit", title: "Units", blurb: "What a standard is measured in." },
+  { domain: "priority", title: "Priorities", blurb: "How a standard is ranked for attention." },
+  { domain: "condition_code", title: "Conditions", blurb: "Markers that narrow a penalty band to some occurrences." },
+  { domain: "source_system", title: "Source systems", blurb: "Where a transcribed figure is read from." },
+  { domain: "responsible_team", title: "Responsible teams", blurb: "Who is chased when a figure is missing." },
+  { domain: "tier_label", title: "Tier labels", blurb: "What each band of the ladder is called, and which outranks which." },
+  { domain: "penalty_basis", title: "Charge bases", blurb: "What a penalty amount is multiplied by." },
+  { domain: "measurement_source", title: "Measurement sources", blurb: "The four ways a month's figure arrives." },
+  { domain: "standard_type", title: "Standard types", blurb: "Counted events, or a monthly value." },
+  { domain: "direction", title: "Directions", blurb: "Which way is good performance." },
+];
+
+// The lists behind every picker.
+//
+// Two classes, and the difference is visible rather than mysterious: an owned
+// list takes new values; a system list is what the scoring engine branches on,
+// so its labels and order are MVTA's and its values are not. computePenalty
+// switches exhaustively over the charge bases - one invented here would have no
+// arithmetic and the month would fail to compute. The server refuses it too;
+// this only makes the refusal predictable.
+function ReferenceValuesPanel({ values, busy, canEdit, onSave, onDelete }: {
+  values: ReferenceValue[]; busy: boolean; canEdit: boolean;
+  onSave: (id: string, input: { domain: string; value: string; label: string; description?: string | null; sort_order?: number; severity_order?: number | null; is_active?: boolean }) => void;
+  onDelete: (value: ReferenceValue) => void;
+}) {
+  const [domain, setDomain] = useState("unit");
+  const [newValue, setNewValue] = useState("");
+  const [newLabel, setNewLabel] = useState("");
+  const rows = values.filter((row) => row.domain === domain)
+    .slice().sort((left, right) => left.sort_order - right.sort_order || left.label.localeCompare(right.label));
+  const meta = DOMAIN_TITLES.find((entry) => entry.domain === domain);
+  const systemList = rows.some((row) => row.is_system);
+
+  if (!values.length) {
+    return <section className="contractor-setup">
+      <div className="assessment-section-head"><div>
+        <span className="assessment-eyebrow">Vocabulary</span>
+        <h3>Lists</h3>
+        <p>Migration 105 has not been applied to this database, so the pickers are using their built-in lists and there is nothing to edit yet.</p>
+      </div></div>
+    </section>;
+  }
+
+  return <section className="contractor-setup">
+    <div className="assessment-section-head">
+      <div>
+        <span className="assessment-eyebrow">Vocabulary</span>
+        <h3>Lists behind the pickers</h3>
+        <p>{meta?.blurb}</p>
+      </div>
+      <select aria-label="List" value={domain} onChange={(event) => setDomain(event.target.value)}>
+        {DOMAIN_TITLES.map((entry) => <option key={entry.domain} value={entry.domain}>{entry.title}</option>)}
+      </select>
+    </div>
+
+    {systemList && <div className="standards-hint">
+      The scoring engine branches on these values, so they can be renamed, reordered and retired but not added to or deleted. The label is what the console shows; the value is what the code matches on.
+    </div>}
+
+    <div className="assessment-table-wrap">
+      <table className="data">
+        <thead><tr>
+          <th>Label</th><th>Value</th><th>Order</th>
+          {domain === "tier_label" && <th>Outranks</th>}
+          <th>In use</th><th />
+        </tr></thead>
+        <tbody>
+          {rows.map((row) => <tr key={row.id}>
+            <td>
+              <input
+                aria-label={`Label for ${row.value}`} defaultValue={row.label} disabled={!canEdit || busy}
+                onBlur={(event) => {
+                  const label = event.target.value.trim();
+                  if (label && label !== row.label) onSave(row.id, { ...row, label });
+                }}
+              />
+              {row.description && <small>{row.description}</small>}
+            </td>
+            <td><code className="mono-ref">{row.value}</code></td>
+            <td>
+              <input
+                type="number" min={0} aria-label={`Order for ${row.value}`} defaultValue={row.sort_order}
+                disabled={!canEdit || busy}
+                onBlur={(event) => {
+                  const sort = Number(event.target.value);
+                  if (Number.isInteger(sort) && sort !== row.sort_order) onSave(row.id, { ...row, sort_order: sort });
+                }}
+              />
+            </td>
+            {domain === "tier_label" && <td>
+              {/* Ranking, not money: which band wins when several match one
+                  observation. Safe to edit, and snapshotted per period so a
+                  reordering cannot restate a finalized month. */}
+              <input
+                type="number" min={0} aria-label={`Rank for ${row.value}`} defaultValue={row.severity_order ?? 0}
+                disabled={!canEdit || busy}
+                onBlur={(event) => {
+                  const severity = Number(event.target.value);
+                  if (Number.isInteger(severity) && severity !== row.severity_order) onSave(row.id, { ...row, severity_order: severity });
+                }}
+              />
+            </td>}
+            <td>
+              <label className="standards-toggle">
+                <input
+                  type="checkbox" checked={row.is_active} disabled={!canEdit || busy}
+                  onChange={(event) => onSave(row.id, { ...row, is_active: event.target.checked })}
+                />
+                <span>{row.is_active ? "Offered" : "Retired"}</span>
+              </label>
+            </td>
+            <td>
+              {canEdit && !row.is_system && <button className="assessment-link-button" disabled={busy} onClick={() => onDelete(row)}>Delete</button>}
+            </td>
+          </tr>)}
+        </tbody>
+      </table>
+    </div>
+
+    {canEdit && !systemList && <div className="standards-new-value">
+      <label><span>New value</span>
+        <input value={newValue} placeholder="stored value" onChange={(event) => setNewValue(event.target.value)} />
+      </label>
+      <label><span>Label</span>
+        <input value={newLabel} placeholder="what the console shows" onChange={(event) => setNewLabel(event.target.value)} />
+      </label>
+      <button
+        className="btn-primary"
+        disabled={busy || !newValue.trim() || !newLabel.trim()}
+        onClick={() => {
+          onSave(crypto.randomUUID(), {
+            domain, value: newValue.trim(), label: newLabel.trim(),
+            sort_order: rows.length + 1, is_active: true,
+          });
+          setNewValue(""); setNewLabel("");
+        }}
+      >Add to {meta?.title.toLowerCase()}</button>
+    </div>}
+  </section>;
 }
 
 // One standard's place on the selected Agreement. Separated from the catalog
@@ -417,14 +601,14 @@ function resolveLadder(standard: ContractorPerformanceStandard, tiers: Contracto
   return { ladder, source };
 }
 
-function TierSummary({ standard, tiers, agreementId }: { standard: ContractorPerformanceStandard; tiers: ContractorStandardTier[]; agreementId: string }) {
+function TierSummary({ standard, tiers, agreementId, vocab }: { standard: ContractorPerformanceStandard; tiers: ContractorStandardTier[]; agreementId: string; vocab: Vocabulary }) {
   const { ladder, source } = resolveLadder(standard, tiers, agreementId);
   if (!ladder.length) return <small className="standards-flag">No bands configured</small>;
   return <>
     {source === "agreement" && <small className="standards-override">Agreement override</small>}
     <ul className="standards-band-list">
       {ladder.map((tier) => <li key={tier.id}>
-        <span className={`assessment-tier ${tier.tier_label}`}>{TIER_LABELS.find((t) => t.value === tier.tier_label)?.label ?? tier.tier_label}</span>
+        <span className={`assessment-tier ${tier.tier_label}`}>{vocab.tierLabels.find((option) => option.value === tier.tier_label)?.label ?? TIER_LABELS.find((t) => t.value === tier.tier_label)?.label ?? tier.tier_label}</span>
         <small>{describeBand(tier, standard)}</small>
       </li>)}
     </ul>
@@ -434,7 +618,7 @@ function TierSummary({ standard, tiers, agreementId }: { standard: ContractorPer
 function AgreementPanel({ agreements, contractors, agreementId, busy, canEdit, onSelect, onSave }: {
   agreements: PerformanceAgreementRecord[]; contractors: ContractorRecord[]; agreementId: string; busy: boolean; canEdit: boolean;
   onSelect: (id: string) => void;
-  onSave: (id: string, input: { contractor_id: string; starts_on: string; ends_on: string; validation_business_days: number; retention_years: number; is_active: boolean }) => void;
+  onSave: (id: string, input: { contractor_id: string; starts_on: string; ends_on: string; validation_business_days: number; retention_years: number; is_active: boolean; contract_number: string | null; exhibit_reference: string | null }) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState("");
@@ -442,6 +626,8 @@ function AgreementPanel({ agreements, contractors, agreementId, busy, canEdit, o
   const [contractorId, setContractorId] = useState("");
   const [starts, setStarts] = useState("");
   const [ends, setEnds] = useState("");
+  const [contractNumber, setContractNumber] = useState("");
+  const [exhibit, setExhibit] = useState("");
   const [validationDays, setValidationDays] = useState(5);
   const [retention, setRetention] = useState(7);
   const [active, setActive] = useState(true);
@@ -451,6 +637,8 @@ function AgreementPanel({ agreements, contractors, agreementId, busy, canEdit, o
     setContractorId(record?.contractor_id ?? contractors.find((c) => c.is_active)?.id ?? "");
     setStarts(toInputDate(record?.starts_on) || toInputDate(today()));
     setEnds(toInputDate(record?.ends_on));
+    setContractNumber(record?.contract_number ?? "");
+    setExhibit(record?.exhibit_reference ?? "");
     setValidationDays(record?.validation_business_days ?? 5);
     setRetention(record?.retention_years ?? 7);
     setActive(record?.is_active ?? true);
@@ -468,6 +656,7 @@ function AgreementPanel({ agreements, contractors, agreementId, busy, canEdit, o
           {record.contractor_name ?? "Contractor"} · {toInputDate(record.starts_on)} to {toInputDate(record.ends_on)}{record.is_active ? "" : " (inactive)"}
         </option>)}
       </select>
+      {current?.exhibit_reference && <span className="standards-exhibit">{current.exhibit_reference}</span>}
       {canEdit && <button className="btn-sm" disabled={busy} onClick={() => beginEdit(current)}>Edit Agreement</button>}
     </div>;
   }
@@ -501,6 +690,13 @@ function AgreementPanel({ agreements, contractors, agreementId, busy, canEdit, o
         </select>
         {!contractors.length && <small>No contractor records exist. Add one under Performance Assessment &gt; Manage contractors first.</small>}
       </label>
+      <label><span>Contract number</span>
+        <input value={contractNumber} onChange={(event) => setContractNumber(event.target.value)} placeholder="e.g. RFP 2025-07" />
+      </label>
+      <label><span>Standards exhibit</span>
+        <input value={exhibit} onChange={(event) => setExhibit(event.target.value)} placeholder="e.g. Attachment G v2" />
+        <small>What this contract calls the document these standards come from. Shown wherever the console cites it.</small>
+      </label>
       <label><span>Term start</span><input type="date" value={starts} onChange={(event) => setStarts(event.target.value)} /></label>
       <label><span>Term end</span><input type="date" value={ends} onChange={(event) => setEnds(event.target.value)} /></label>
       <label><span>Validation window (business days)</span><input type="number" min={1} max={30} value={validationDays} onChange={(event) => setValidationDays(Number(event.target.value))} /></label>
@@ -512,6 +708,7 @@ function AgreementPanel({ agreements, contractors, agreementId, busy, canEdit, o
         onClick={() => {
           onSave(editing === "new" ? crypto.randomUUID() : editing, {
             contractor_id: contractorId, starts_on: toServiceDate(starts), ends_on: toServiceDate(ends),
+            contract_number: contractNumber.trim() || null, exhibit_reference: exhibit.trim() || null,
             validation_business_days: validationDays, retention_years: retention, is_active: active,
           });
           setOpen(false);
@@ -523,9 +720,9 @@ function AgreementPanel({ agreements, contractors, agreementId, busy, canEdit, o
   </section>;
 }
 
-function StandardEditor({ draft, setDraft, standardId, canEdit, busy, resolvers, sourceSystems, onCancel, onSave }: {
+function StandardEditor({ draft, setDraft, standardId, canEdit, busy, resolvers, vocab, onCancel, onSave }: {
   draft: PerformanceStandardInput; setDraft: (next: PerformanceStandardInput) => void; standardId: string;
-  canEdit: boolean; busy: boolean; resolvers: RegisteredResolver[]; sourceSystems: KnownSourceSystem[];
+  canEdit: boolean; busy: boolean; resolvers: RegisteredResolver[]; vocab: Vocabulary;
   onCancel: () => void; onSave: (id: string, input: PerformanceStandardInput) => void;
 }) {
   const isNew = standardId === "new";
@@ -595,19 +792,19 @@ function StandardEditor({ draft, setDraft, standardId, canEdit, busy, resolvers,
       </fieldset>
       <label><span>Priority</span>
         <select value={draft.priority} disabled={!canEdit} onChange={(event) => set("priority", event.target.value as PerformanceStandardInput["priority"])}>
-          {["High", "Medium", "Low", "NA"].map((value) => <option key={value} value={value}>{value}</option>)}
+          {withCurrent(vocab.priorities, draft.priority).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
         </select>
       </label>
       <label><span>Unit</span>
         <select
-          value={CATALOG_UNITS.some((unit) => unit.value === draft.unit_label) ? draft.unit_label : "__custom"}
+          value={vocab.units.some((unit) => unit.value === draft.unit_label) ? draft.unit_label : "__custom"}
           disabled={!canEdit}
           onChange={(event) => set("unit_label", event.target.value === "__custom" ? "" : event.target.value)}
         >
-          {CATALOG_UNITS.map((unit) => <option key={unit.value} value={unit.value}>{unit.label}</option>)}
+          {withCurrent(vocab.units, draft.unit_label).map((unit) => <option key={unit.value} value={unit.value}>{unit.label}</option>)}
           <option value="__custom">Something else…</option>
         </select>
-        {!CATALOG_UNITS.some((unit) => unit.value === draft.unit_label) &&
+        {!vocab.units.some((unit) => unit.value === draft.unit_label) &&
           <input value={draft.unit_label} disabled={!canEdit} autoFocus placeholder="Name the unit" onChange={(event) => set("unit_label", event.target.value)} />}
         <small>Percent is stored as a ratio and shown as a percentage everywhere.</small>
       </label>
@@ -643,18 +840,18 @@ function StandardEditor({ draft, setDraft, standardId, canEdit, busy, resolvers,
       </fieldset>
       {draft.measurement_source === "structured_import" && <label><span>Source system</span>
         <select
-          value={sourceSystems.some((system) => system.value === draft.source_system) || !draft.source_system ? draft.source_system ?? "" : "__other"}
+          value={vocab.sourceSystems.some((system) => system.value === draft.source_system) || !draft.source_system ? draft.source_system ?? "" : "__other"}
           disabled={!canEdit}
           onChange={(event) => set("source_system", event.target.value === "__other" ? "" : event.target.value || null)}
         >
           <option value="">Select the system…</option>
-          {sourceSystems.map((system) => <option key={system.value} value={system.value}>{system.label}</option>)}
+          {vocab.sourceSystems.map((system) => <option key={system.value} value={system.value}>{system.label}</option>)}
           <option value="__other">Another system…</option>
         </select>
-        {draft.source_system !== null && !sourceSystems.some((system) => system.value === draft.source_system) &&
+        {draft.source_system !== null && !vocab.sourceSystems.some((system) => system.value === draft.source_system) &&
           <input value={draft.source_system ?? ""} disabled={!canEdit} placeholder="Name the system" onChange={(event) => set("source_system", event.target.value)} />}
         <small>
-          {sourceSystems.find((system) => system.value === draft.source_system)?.description
+          {vocab.sourceSystems.find((system) => system.value === draft.source_system)?.description
             ?? "Names who to chase when the month's figure is missing."}
         </small>
       </label>}
@@ -733,9 +930,9 @@ function BoundField({ label, unit, value, disabled, onChange }: {
   );
 }
 
-function TierEditor({ standard, tiers, agreement, canEdit, busy, knownQualifiers, onSave }: {
+function TierEditor({ standard, tiers, agreement, canEdit, busy, knownQualifiers, vocab, onSave }: {
   standard: ContractorPerformanceStandard; tiers: ContractorStandardTier[]; agreement: PerformanceAgreementRecord | null;
-  canEdit: boolean; busy: boolean; knownQualifiers: string[];
+  canEdit: boolean; busy: boolean; knownQualifiers: string[]; vocab: Vocabulary;
   onSave: (input: { agreement_id: string | null; effective_start_date: string; tiers: StandardTierInput[] }) => void;
 }) {
   const unit = standard.unit_label;
@@ -789,7 +986,7 @@ function TierEditor({ standard, tiers, agreement, canEdit, busy, knownQualifiers
           <div className="standards-band-head">
             <label><span>Outcome</span>
               <select value={tier.tier_label} disabled={!canEdit} onChange={(event) => update(index, { tier_label: event.target.value as StandardTierInput["tier_label"] })}>
-                {TIER_LABELS.map((label) => <option key={label.value} value={label.value}>{label.label}</option>)}
+                {withCurrent(vocab.tierLabels, tier.tier_label).map((label) => <option key={label.value} value={label.value}>{label.label}</option>)}
               </select>
             </label>
             {canEdit && <button className="assessment-link-button" onClick={() => setLadder(ladder.filter((_, position) => position !== index))}>Remove band</button>}
@@ -821,7 +1018,7 @@ function TierEditor({ standard, tiers, agreement, canEdit, busy, knownQualifiers
               <select value={tier.qualifier_code ?? ""} disabled={!canEdit}
                 onChange={(event) => update(index, { qualifier_code: event.target.value || null })}>
                 <option value="">Any {unitNoun(unit)}</option>
-                {knownQualifiers.map((code) => <option key={code} value={code}>Only when: {qualifierLabel(code)}</option>)}
+                {knownQualifiers.map((code) => <option key={code} value={code}>Only when: {vocab.conditions.find((option) => option.value === code)?.label ?? qualifierLabel(code)}</option>)}
               </select>
               <small>A condition narrows this band to occurrences carrying that marker.</small>
             </label>}
@@ -833,9 +1030,9 @@ function TierEditor({ standard, tiers, agreement, canEdit, busy, knownQualifiers
                 penalty_basis: event.target.value as StandardTierInput["penalty_basis"],
                 penalty_amount: event.target.value === "none" ? 0 : tier.penalty_amount,
               })}>
-                {PENALTY_BASES.map((basis) => <option key={basis.value} value={basis.value}>{basis.label}</option>)}
+                {withCurrent(vocab.penaltyBases, tier.penalty_basis).map((basis) => <option key={basis.value} value={basis.value}>{basis.label}</option>)}
               </select>
-              <small>{PENALTY_BASES.find((basis) => basis.value === tier.penalty_basis)?.hint}</small>
+              <small>{vocab.penaltyBases.find((basis) => basis.value === tier.penalty_basis)?.description}</small>
             </label>
             {tier.penalty_basis !== "none" && <label><span>Amount</span>
               <div className="standards-measure">

@@ -139,3 +139,15 @@
 .standards-bound{display:grid;gap:6px}
 .standards-slider{width:100%;accent-color:var(--brand-green);margin:0}
 .standards-bound.has-slider .standards-measure{margin-bottom:1px}
+
+.standards-head-actions{display:flex;gap:8px;align-items:center;flex:none}
+.standards-new-value{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto;gap:10px;align-items:end}
+.standards-new-value label{display:grid;gap:5px}
+.standards-new-value span{color:var(--text-dim);font-size:.76rem;font-weight:700}
+.standards-new-value input{min-height:38px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface-bg);padding:7px 10px;color:var(--text);font:inherit}
+/* The exhibit this Agreement's standards come from, named from its own record
+   rather than hardcoded in the product. */
+.standards-exhibit{padding:3px 9px;border-radius:10px;background:var(--chip-bg);color:var(--chip-fg);font-size:.72rem;font-weight:700;flex:none}
+.standards-toggle{display:flex;align-items:center;gap:7px;white-space:nowrap}
+.standards-toggle input{width:17px;height:17px}
+@media(max-width:620px){.standards-new-value{grid-template-columns:1fr}}

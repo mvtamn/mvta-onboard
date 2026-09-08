@@ -5,6 +5,7 @@ import { assessmentInputHash, canonicalJson } from "./hash";
 import { computePenalty } from "./penalty";
 import { matchTier } from "./tiers";
 import { splitAssessmentInput } from "./input";
+import { tierSeverity } from "./referenceValues";
 import { agreementScopeIn, periodResolverKeySql } from "./schemaScope";
 import { resolveAutomatedThreshold, resolveManualMetric } from "./resolvers";
 import { isHandEntered, normalizeMeasurementSource } from "./measurementSource";
@@ -13,14 +14,17 @@ import type { StandardDirection, StandardTier, TierLabel } from "./types";
 
 interface PeriodRow { id: string; contractor_id: string; service_month: string; input_revision: number; status: string }
 interface StandardRow { id: string; code: string; standard_type: "occurrence" | "threshold"; direction: StandardDirection; is_safety_critical: boolean; measurement_source: string; resolver_key: string | null }
-interface TierRow { tier_order: number; tier_label: TierLabel; bound_low: number | null; bound_high: number | null; qualifier_code: string | null; penalty_basis: StandardTier["penaltyBasis"]; penalty_amount: number; triggers_cap: boolean }
+interface TierRow { tier_order: number; tier_label: TierLabel; bound_low: number | null; bound_high: number | null; qualifier_code: string | null; penalty_basis: StandardTier["penaltyBasis"]; penalty_amount: number; triggers_cap: boolean; severity_order: number | null }
 
 function mapTier(row: TierRow): StandardTier {
-  return { tierOrder: row.tier_order, tierLabel: row.tier_label, boundLow: row.bound_low, boundHigh: row.bound_high, qualifierCode: row.qualifier_code, penaltyBasis: row.penalty_basis, penaltyAmount: Number(row.penalty_amount), triggersCap: row.triggers_cap };
+  return { tierOrder: row.tier_order, tierLabel: row.tier_label, boundLow: row.bound_low, boundHigh: row.bound_high, qualifierCode: row.qualifier_code, penaltyBasis: row.penalty_basis, penaltyAmount: Number(row.penalty_amount), triggersCap: row.triggers_cap, severityOrder: row.severity_order ?? null };
 }
 
-function severity(label: TierLabel): number {
-  return { meets: 0, warning: 1, tier1: 2, tier2: 3 }[label];
+// Tier ranking comes from the period's snapshot (migration 105), falling back
+// to the pre-105 map. See referenceValues.tierSeverity for why an unknown
+// label must rank below everything rather than yielding undefined.
+function severity(tier: Pick<StandardTier, "tierLabel" | "severityOrder">): number {
+  return tierSeverity(tier.tierLabel, tier.severityOrder);
 }
 
 // Measure one threshold standard for the period.
@@ -77,6 +81,7 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
     let excludedSourceRefs: string[] = [];
     let baseAmount = 0;
     let capRequired = false;
+    let worstSeverity: number | null = null;
     // Why a standard could not be measured, when that is a fact worth
     // reporting rather than simply an empty month.
     let unresolvedReason: string | null = null;
@@ -110,7 +115,7 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
         if (!tier) continue;
         baseAmount += computePenalty(tier, { quantity: row.quantity, durationDays: row.duration_days ?? 1 });
         capRequired ||= Boolean(tier.triggersCap);
-        if (severity(tier.tierLabel) > severity(tierLabel)) tierLabel = tier.tierLabel;
+        if (severity(tier) > severity({ tierLabel, severityOrder: worstSeverity })) { tierLabel = tier.tierLabel; worstSeverity = tier.severityOrder ?? null; }
       }
       if (occurrenceCount > 0 && tierLabel === "meets") tierLabel = "tier1";
     } else {
