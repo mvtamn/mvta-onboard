@@ -10,8 +10,8 @@ import {
 // moments every one of these has to compose SQL the older schema can parse -
 // an unknown object or column fails at parse time and takes the whole batch
 // with it, so no runtime guard inside the SQL could save it.
-const scoped = { scoped: true, snapshotsResolver: true, penaltyScaling: true, snapshotsSeverity: true, windowModes: true };
-const unscoped = { scoped: false, snapshotsResolver: false, penaltyScaling: false, snapshotsSeverity: false, windowModes: false };
+const scoped = { scoped: true, snapshotsResolver: true, penaltyScaling: true, snapshotsSeverity: true, windowModes: true, categorised: true };
+const unscoped = { scoped: false, snapshotsResolver: false, penaltyScaling: false, snapshotsSeverity: false, windowModes: false, categorised: false };
 
 test("before migration 102 nothing names AgreementStandards", () => {
   for (const sql of [assignedStandardCountSql(unscoped), periodStandardSourceSql(unscoped), periodTierScopeSql(unscoped)]) {

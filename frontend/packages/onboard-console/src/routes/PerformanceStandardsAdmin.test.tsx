@@ -51,6 +51,8 @@ const REFERENCE_VALUES = [
   { id: "r-tier-meets", domain: "tier_label", value: "meets", label: "Meets the standard", description: null, sort_order: 1, severity_order: 0, is_active: true, is_system: true },
   { id: "r-tier-1", domain: "tier_label", value: "tier1", label: "Tier 1 penalty", description: null, sort_order: 3, severity_order: 2, is_active: true, is_system: true },
   { id: "r-basis-flat", domain: "penalty_basis", value: "flat", label: "Flat amount for the month", description: "Charged once.", sort_order: 2, severity_order: null, is_active: true, is_system: true },
+  { id: "r-cat-service", domain: "category", value: "service_delivery", label: "Service Delivery", description: null, sort_order: 1, severity_order: null, is_active: true, is_system: false },
+  { id: "r-cat-safety", domain: "category", value: "safety", label: "Safety", description: null, sort_order: 4, severity_order: null, is_active: true, is_system: false },
 ];
 const putStandardTiers = vi.fn().mockResolvedValue({ standard_id: OTP.id, agreement_id: null, effective_start_date: "20260101", tier_count: 2 });
 
@@ -291,6 +293,66 @@ describe("Performance Standards administration", () => {
     await open("OTP_FIXED_ROUTE");
     expect(screen.getByText(/More than 3 occurrences within one calendar quarter/)).toBeInTheDocument();
     expect(screen.getByText(/restarts on 1 January/)).toBeInTheDocument();
+  });
+
+  // Category. Thirty standards in one flat list, and nothing said which six
+  // were the safety ones except somebody knowing.
+  it("shows a standard's category in the list, by its label", async () => {
+    catalog = { ...catalog, standards: [ORPHAN, { ...OTP, category: "service_delivery" }] };
+    view();
+    const row = (await screen.findByText("On-Time Performance (Fixed Route)")).closest("button")!;
+    // The stored value is service_delivery; a reader sees the label.
+    expect(within(row).getByText(/Service Delivery/)).toBeInTheDocument();
+    expect(within(row).queryByText(/service_delivery/)).not.toBeInTheDocument();
+  });
+
+  it("says nothing rather than inventing a category for a standard that has none", async () => {
+    view();
+    const row = (await screen.findByText("On-Time Performance (Fixed Route)")).closest("button")!;
+    expect(within(row).queryByText(/Service Delivery/)).not.toBeInTheDocument();
+    expect(within(row).getByText(/Monthly value/)).toBeInTheDocument();
+  });
+
+  it("filters the catalog to one category", async () => {
+    catalog = { ...catalog, standards: [{ ...ORPHAN, category: "safety" }, { ...OTP, category: "service_delivery" }] };
+    view();
+    await screen.findByText("On-Time Performance (Fixed Route)");
+    fireEvent.change(screen.getByLabelText("Filter standards"), { target: { value: "category:safety" } });
+    expect(screen.getByText("Fleet Availability Short-Term")).toBeInTheDocument();
+    expect(screen.queryByText("On-Time Performance (Fixed Route)")).not.toBeInTheDocument();
+  });
+
+  it("offers a No category filter only while something is uncategorised", async () => {
+    catalog = { ...catalog, standards: [{ ...ORPHAN, category: "safety" }, { ...OTP, category: "service_delivery" }] };
+    view();
+    await screen.findByText("On-Time Performance (Fixed Route)");
+    // A filter that can only ever return an empty list is worse than no filter.
+    expect(screen.queryByRole("option", { name: "No category" })).not.toBeInTheDocument();
+
+    cleanup();
+    catalog = { ...catalog, standards: [ORPHAN, { ...OTP, category: "service_delivery" }] };
+    view();
+    await screen.findByText("On-Time Performance (Fixed Route)");
+    expect(screen.getByRole("option", { name: "No category" })).toBeInTheDocument();
+  });
+
+  it("saves the category chosen for a standard", async () => {
+    view();
+    await open("OTP_FIXED_ROUTE");
+    const field = screen.getByText("Category").closest("label")!;
+    fireEvent.change(within(field).getByRole("combobox"), { target: { value: "safety" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save standard" }));
+    expect(putPerformanceStandard).toHaveBeenCalledWith(OTP.id, expect.objectContaining({ category: "safety" }));
+  });
+
+  it("saves an uncategorised standard as null, not as an empty string", async () => {
+    catalog = { ...catalog, standards: [ORPHAN, { ...OTP, category: "safety" }] };
+    view();
+    await open("OTP_FIXED_ROUTE");
+    const field = screen.getByText("Category").closest("label")!;
+    fireEvent.change(within(field).getByRole("combobox"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save standard" }));
+    expect(putPerformanceStandard).toHaveBeenCalledWith(OTP.id, expect.objectContaining({ category: null }));
   });
 
   it("will not open bands or assignment for a standard that does not exist yet", async () => {

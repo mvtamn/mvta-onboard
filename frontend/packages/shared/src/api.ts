@@ -133,6 +133,8 @@ export interface PerformanceStandardInput {
   resolver_key?: string | null;
   /** Required for a structured import: the external system it is transcribed from. */
   source_system?: string | null;
+  /** Which part of the contract the standard belongs to. Free to be null. */
+  category?: string | null;
   data_source_note?: string | null;
   responsible_team?: string | null;
   assigned_to?: string | null;

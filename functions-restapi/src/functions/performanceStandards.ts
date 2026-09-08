@@ -131,17 +131,23 @@ app.http("performanceStandardPut", {
         req.input("cap_days", sql.Int, capDays);
       }
       if (scope.windowModes) req.input("cap_mode", sql.NVarChar(20), capMode);
-      const capSet = [
+      // Same reason as the window: a column the schema lacks fails the MERGE at
+      // parse time, so category is composed in rather than bound outright.
+      if (scope.categorised) req.input("category", sql.NVarChar(50), body.category ?? null);
+      const guardedSet = [
         scope.penaltyScaling ? "cap_window_threshold=@cap_threshold,cap_window_days=@cap_days" : "",
         scope.windowModes ? "cap_window_mode=@cap_mode" : "",
+        scope.categorised ? "category=@category" : "",
       ].filter(Boolean).join(",");
-      const capColumns = [
+      const guardedColumns = [
         scope.penaltyScaling ? "cap_window_threshold,cap_window_days" : "",
         scope.windowModes ? "cap_window_mode" : "",
+        scope.categorised ? "category" : "",
       ].filter(Boolean).join(",");
-      const capValues = [
+      const guardedValues = [
         scope.penaltyScaling ? "@cap_threshold,@cap_days" : "",
         scope.windowModes ? "@cap_mode" : "",
+        scope.categorised ? "@category" : "",
       ].filter(Boolean).join(",");
       req.input("sort", sql.Int, body.sort_order);
       req.input("start", sql.Char(8), body.effective_start_date);
@@ -154,12 +160,12 @@ app.http("performanceStandardPut", {
           is_scored=@scored,is_safety_critical=@safety,direction=@direction,unit_label=@unit,measurement_source=@source,
           resolver_key=@resolver,source_system=@source_system,data_source_note=@data_note,responsible_team=@team,assigned_to=@assigned,
           cap_rule_note=@cap_note,sort_order=@sort,effective_start_date=@start,effective_end_date=@end,
-          ${capSet ? `${capSet},` : ""}updated_by=@actor,updated_at=SYSUTCDATETIME()
+          ${guardedSet ? `${guardedSet},` : ""}updated_by=@actor,updated_at=SYSUTCDATETIME()
         WHEN NOT MATCHED THEN INSERT(id,code,name,description,standard_type,priority,is_scored,is_safety_critical,direction,
           unit_label,measurement_source,resolver_key,source_system,data_source_note,responsible_team,assigned_to,cap_rule_note,sort_order,
-          effective_start_date,effective_end_date,${capColumns ? `${capColumns},` : ""}updated_by)
+          effective_start_date,effective_end_date,${guardedColumns ? `${guardedColumns},` : ""}updated_by)
           VALUES(@id,@code,@name,@description,@type,@priority,@scored,@safety,@direction,@unit,@source,@resolver,@source_system,@data_note,
-            @team,@assigned,@cap_note,@sort,@start,@end,${capValues ? `${capValues},` : ""}@actor);
+            @team,@assigned,@cap_note,@sort,@start,@end,${guardedValues ? `${guardedValues},` : ""}@actor);
       `);
       return { status: 200, jsonBody: { id } };
     } catch (error) {
