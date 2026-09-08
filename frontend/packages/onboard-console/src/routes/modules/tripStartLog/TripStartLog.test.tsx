@@ -19,9 +19,32 @@ vi.mock("../../../context/FixedRouteRefreshContext.js", () => ({
   formatRefreshCountdown: (s: number) => `${s}s`,
 }));
 
+// The fixtures describe a day that has NOT happened yet.
+//
+// The Watch queue only counts a trip as due when its service date is today, so
+// several assertions here depend on the fixture day being ahead of the clock:
+// "Not the live day" renders, and trips are upcoming rather than needing a
+// disposition. A fixed date cannot express "ahead of the clock" - 2026-09-08
+// was a few days out when this was written, and every one of those assertions
+// inverted the day the calendar reached it.
+//
+// Seven days keeps the weekday, so the rotation fixtures still read sensibly.
+// Only the DATE floats; the times stay literal UTC, and the assertions on
+// displayed clock times read scheduled_start_seconds rather than these.
+function daysAhead(count: number): Date {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + count);
+  return date;
+}
+const SERVICE_DAY = daysAhead(7);
+const isoDay = (date: Date) => date.toISOString().slice(0, 10);
+const SERVICE_DATE = isoDay(SERVICE_DAY).replace(/-/g, "");
+const NEXT_SERVICE_DATE = isoDay(daysAhead(8)).replace(/-/g, "");
+const at = (time: string) => `${isoDay(SERVICE_DAY)}T${time}`;
+
 function trip(overrides: Partial<TripStartLogTrip> & { trip_id: string }): TripStartLogTrip {
   return {
-    service_date: "20260908",
+    service_date: SERVICE_DATE,
     block_id: "1",
     route_id: "444-2-A",
     route_short_name: "444",
@@ -30,7 +53,7 @@ function trip(overrides: Partial<TripStartLogTrip> & { trip_id: string }): TripS
     origin_stop_id: "1",
     origin_stop_name: "Apple Valley Transit Station",
     scheduled_start_seconds: 3 * 3600 + 20 * 60,
-    scheduled_start_at: "2026-09-08T08:20:00Z",
+    scheduled_start_at: at("08:20:00Z"),
     in_rotation: false,
     rotation_day: "monday",
     actual_start_at: null,
@@ -45,14 +68,14 @@ function trip(overrides: Partial<TripStartLogTrip> & { trip_id: string }): TripS
 
 function response(trips: TripStartLogTrip[], overrides: Partial<TripStartLogResponse["diagnostics"]> = {}): TripStartLogResponse {
   return {
-    service_date: "20260908",
+    service_date: SERVICE_DATE,
     trips,
     diagnostics: {
       table_ready: true,
       materialized: trips.length > 0,
       trip_count: trips.length,
       rotation_count: trips.filter((t) => t.in_rotation).length,
-      rotation_anchor_date: "20260908",
+      rotation_anchor_date: SERVICE_DATE,
       week_offset: 0,
       ...overrides,
     },
@@ -61,7 +84,7 @@ function response(trips: TripStartLogTrip[], overrides: Partial<TripStartLogResp
 
 const DAY = [
   trip({ trip_id: "t1", in_rotation: true, rotation_day: "tuesday" }),
-  trip({ trip_id: "t2", block_id: "2", route_short_name: "460", scheduled_start_seconds: 5 * 3600, start_status: "late", start_delay_seconds: 120, in_rotation: true, rotation_day: "tuesday", verification: { observation: "observed_left_late", verified_by: "ocs@example.org", verified_initials: "JD", verified_at: "2026-09-08T10:03:00Z", note: null } }),
+  trip({ trip_id: "t2", block_id: "2", route_short_name: "460", scheduled_start_seconds: 5 * 3600, start_status: "late", start_delay_seconds: 120, in_rotation: true, rotation_day: "tuesday", verification: { observation: "observed_left_late", verified_by: "ocs@example.org", verified_initials: "JD", verified_at: at("10:03:00Z"), note: null } }),
   trip({ trip_id: "t3", block_id: "3", route_short_name: "Orange LINK", route_id: "425", scheduled_start_seconds: 6 * 3600, start_status: "on_time", start_delay_seconds: -20, rotation_day: "wednesday" }),
 ];
 
@@ -72,7 +95,7 @@ afterEach(() => {
 });
 
 function verified(observation: "observed_on_time" | "observed_left_late" | "not_observed", note: string | null = null) {
-  return { observation, verified_by: "test.user@sst.example", verified_initials: "TU", verified_at: "2026-09-08T08:21:00Z", note };
+  return { observation, verified_by: "test.user@sst.example", verified_initials: "TU", verified_at: at("08:21:00Z"), note };
 }
 
 function stat(label: string): string {
@@ -167,7 +190,7 @@ describe("Dispatch Log shell", () => {
   it("shows the Watch and Timeline views over the same filtered rows and selection", async () => {
     const lateOverFive = trip({
       trip_id: "t4", block_id: "4", route_short_name: "477", scheduled_start_seconds: 6 * 3600 + 30 * 60,
-      scheduled_start_at: "2026-09-08T11:30:00Z", actual_start_at: "2026-09-08T11:42:00Z", actual_start_source: "vehicle_position",
+      scheduled_start_at: at("11:30:00Z"), actual_start_at: at("11:42:00Z"), actual_start_source: "vehicle_position",
       start_status: "late", start_delay_seconds: 720, in_rotation: true, rotation_day: "tuesday",
     });
     vi.mocked(api.getTripStartLog).mockResolvedValueOnce(response([...DAY, lateOverFive]));
@@ -176,7 +199,8 @@ describe("Dispatch Log shell", () => {
 
     await screen.findByRole("table", { name: "Dispatch log trips" });
     await user.click(screen.getByRole("tab", { name: "Watch" }));
-    // 2026-09-08 is not today, so the queue says so; dispositions still apply.
+    // The fixture day is deliberately ahead of the clock, so the queue says it
+    // is not the live day and dispositions still apply.
     expect(screen.getByText("Not the live day")).toBeInTheDocument();
     const dispositions = screen.getByRole("list", { name: "Needs disposition" });
     const items = within(dispositions).getAllByRole("listitem");
@@ -230,16 +254,16 @@ describe("Dispatch Log shell", () => {
   it("re-reads the log for a newly chosen service date", async () => {
     vi.mocked(api.getTripStartLog)
       .mockResolvedValueOnce(response(DAY))
-      .mockResolvedValueOnce({ ...response([]), service_date: "20260909" });
+      .mockResolvedValueOnce({ ...response([]), service_date: NEXT_SERVICE_DATE });
     render(<TripStartLog />);
 
     await screen.findByRole("table", { name: "Dispatch log trips" });
     const input = screen.getByLabelText("Service date") as HTMLInputElement;
-    expect(input.value).toBe("2026-09-08");
-    fireEvent.change(input, { target: { value: "2026-09-09" } });
+    expect(input.value).toBe(isoDay(SERVICE_DAY));
+    fireEvent.change(input, { target: { value: isoDay(daysAhead(8)) } });
 
     expect(await screen.findByText("No log for this date")).toBeInTheDocument();
-    expect(api.getTripStartLog).toHaveBeenLastCalledWith("20260909");
+    expect(api.getTripStartLog).toHaveBeenLastCalledWith(NEXT_SERVICE_DATE);
   });
 
   it("exports the whole day as a CSV download, and only once the day's log exists", async () => {
@@ -261,7 +285,7 @@ describe("Dispatch Log shell", () => {
     await screen.findByRole("table", { name: "Dispatch log trips" });
     await user.click(screen.getByRole("button", { name: "⬇ Export CSV" }));
 
-    expect(api.getTripStartLogCsv).toHaveBeenCalledWith("20260908");
+    expect(api.getTripStartLogCsv).toHaveBeenCalledWith(SERVICE_DATE);
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     expect(click).toHaveBeenCalledTimes(1);
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:dispatch-log");
@@ -293,7 +317,7 @@ describe("Dispatch Log shell", () => {
     const cell = () => within(table).getByRole("button", { name: /for route 444 at 03:20/ });
     expect(cell()).toHaveAccessibleName(/Mark observed on time/);
     await user.click(cell());
-    expect(api.recordTripStartVerification).toHaveBeenLastCalledWith({ service_date: "20260908", trip_id: "t1", action: "observed_on_time", note: null, initials: "TU" });
+    expect(api.recordTripStartVerification).toHaveBeenLastCalledWith({ service_date: SERVICE_DATE, trip_id: "t1", action: "observed_on_time", note: null, initials: "TU" });
     expect(within(table).getAllByRole("row")[1]).toHaveTextContent("TU");
     expect(cell()).toHaveAccessibleName(/Mark observed left late/);
     await user.click(cell());
@@ -323,7 +347,7 @@ describe("Dispatch Log shell", () => {
     authState.roles = ["OCC.TripStartVerify"];
     const lateOverFive = trip({
       trip_id: "t4", block_id: "4", route_short_name: "477", scheduled_start_seconds: 6 * 3600 + 30 * 60,
-      scheduled_start_at: "2026-09-08T11:30:00Z", actual_start_at: "2026-09-08T11:42:00Z", actual_start_source: "vehicle_position",
+      scheduled_start_at: at("11:30:00Z"), actual_start_at: at("11:42:00Z"), actual_start_source: "vehicle_position",
       start_status: "late", start_delay_seconds: 720, in_rotation: true, rotation_day: "tuesday",
     });
     vi.mocked(api.getTripStartLog).mockResolvedValueOnce(response([...DAY, lateOverFive]));
@@ -338,7 +362,7 @@ describe("Dispatch Log shell", () => {
     await user.click(within(dispositions).getByRole("button", { name: "Record disposition" }));
     expect(promptMock).toHaveBeenCalledWith(expect.objectContaining({ title: "Record disposition", required: true }));
     expect(api.recordTripStartVerification).toHaveBeenCalledWith({
-      service_date: "20260908", trip_id: "t4", action: "not_observed", note: "Late-route procedure followed; dispatcher notified 06:41", initials: "TU",
+      service_date: SERVICE_DATE, trip_id: "t4", action: "not_observed", note: "Late-route procedure followed; dispatcher notified 06:41", initials: "TU",
     });
     // Once recorded, the item shows the initials instead of the action.
     expect(within(screen.getByRole("list", { name: "Needs disposition" })).getByText("TU")).toBeInTheDocument();

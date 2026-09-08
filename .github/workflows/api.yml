@@ -19,6 +19,19 @@ permissions:
   contents: read
 
 jobs:
+  migration-numbers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The check compares the branch against its merge base, so the
+          # shallow default clone is not enough history.
+          fetch-depth: 0
+      - name: Fetch the base branch
+        run: git fetch --no-tags origin main
+      - name: No migration number this branch adds is taken on main
+        run: functions-restapi/scripts/check-migration-numbers.sh origin/main
+
   test:
     runs-on: ubuntu-latest
     strategy:
