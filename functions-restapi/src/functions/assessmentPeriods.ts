@@ -1,6 +1,6 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { assessPeriod } from "../lib/assessment/assess";
-import { agreementScope, assignedStandardCountSql, periodStandardSourceSql, periodTierScopeSql } from "../lib/assessment/schemaScope";
+import { agreementScope, assignedStandardCountSql, periodStandardSnapshotColumns, periodStandardSourceSql, periodTierCopyColumns, periodTierScopeSql, periodTierSnapshotColumns } from "../lib/assessment/schemaScope";
 import { COMPLIANCE_MANAGER_ROLES, COMPLIANCE_READ_ROLES, COMPLIANCE_WRITE_ROLES, requireRole } from "../lib/auth";
 import { getPool, sql } from "../lib/db";
 import { loadKpiTrust } from "../lib/kpiTrustStore";
@@ -60,15 +60,15 @@ app.http("assessmentPeriodsOpen", {
         DECLARE @period UNIQUEIDENTIFIER=(SELECT TOP 1 id FROM AssessmentPeriods WHERE contractor_id=@contractor AND service_month=@month ORDER BY assessment_revision DESC);
         IF NOT EXISTS(SELECT 1 FROM AssessmentPeriodStandards WHERE period_id=@period)
         BEGIN
-          INSERT AssessmentPeriodStandards(period_id,standard_id,code,name,standard_type,priority,direction,is_safety_critical,measurement_source,sort_order${scope.snapshotsResolver ? ",resolver_key" : ""})
-            SELECT @period,s.id,s.code,s.name,s.standard_type,s.priority,s.direction,s.is_safety_critical,s.measurement_source,s.sort_order${scope.snapshotsResolver ? ",s.resolver_key" : ""}
+          INSERT AssessmentPeriodStandards(period_id,standard_id,${periodStandardSnapshotColumns(scope)})
+            SELECT @period,s.id,${periodStandardSnapshotColumns(scope).split(",").map((column) => `s.${column}`).join(",")}
             ${periodStandardSourceSql(scope)};
           -- Tier precedence (migration 102): an agreement's own tier rows
           -- govern the whole ladder for that standard, or none of it. Blending
           -- an override with catalog defaults would produce bands nobody wrote.
           -- Pre-102 every row is a catalog default and the clause is empty.
-          INSERT AssessmentPeriodTiers
-            SELECT @period,t.standard_id,t.tier_order,t.tier_label,t.bound_low,t.bound_high,t.qualifier_code,t.penalty_basis,t.penalty_amount,t.triggers_cap
+          INSERT AssessmentPeriodTiers(${periodTierSnapshotColumns(scope).columns})
+            SELECT ${periodTierSnapshotColumns(scope).select}
             FROM ContractorStandardTiers t
             JOIN AssessmentPeriodStandards s ON s.period_id=@period AND s.standard_id=t.standard_id
             WHERE t.effective_start_date<=CONCAT(@month,'01') AND (t.effective_end_date IS NULL OR t.effective_end_date>=CONCAT(@month,'01'))
@@ -146,8 +146,8 @@ app.http("assessmentPeriodReopen", {
           SET @new_id=NEWID();
           INSERT AssessmentPeriods(id,contractor_id,agreement_id,service_month,status,input_revision,notes,rule_set_sha256,rule_set_json,assessment_revision,supersedes_period_id)
           SELECT @new_id,contractor_id,agreement_id,service_month,'reopened',input_revision+1,@reason,rule_set_sha256,rule_set_json,assessment_revision+1,id FROM AssessmentPeriods WHERE id=@id;
-          INSERT AssessmentPeriodStandards(period_id,standard_id,code,name,standard_type,priority,direction,is_safety_critical,measurement_source,sort_order${reopenScope.snapshotsResolver ? ",resolver_key" : ""}) SELECT @new_id,standard_id,code,name,standard_type,priority,direction,is_safety_critical,measurement_source,sort_order${reopenScope.snapshotsResolver ? ",resolver_key" : ""} FROM AssessmentPeriodStandards WHERE period_id=@id;
-          INSERT AssessmentPeriodTiers(period_id,standard_id,tier_order,tier_label,bound_low,bound_high,qualifier_code,penalty_basis,penalty_amount,triggers_cap) SELECT @new_id,standard_id,tier_order,tier_label,bound_low,bound_high,qualifier_code,penalty_basis,penalty_amount,triggers_cap FROM AssessmentPeriodTiers WHERE period_id=@id;
+          INSERT AssessmentPeriodStandards(period_id,standard_id,${periodStandardSnapshotColumns(reopenScope)}) SELECT @new_id,standard_id,${periodStandardSnapshotColumns(reopenScope)} FROM AssessmentPeriodStandards WHERE period_id=@id;
+          INSERT AssessmentPeriodTiers(period_id,${periodTierCopyColumns(reopenScope)}) SELECT @new_id,${periodTierCopyColumns(reopenScope)} FROM AssessmentPeriodTiers WHERE period_id=@id;
           SET @changed=1;
         END
         IF @changed=1 BEGIN

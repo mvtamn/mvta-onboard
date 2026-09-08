@@ -1353,6 +1353,12 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     reviewComplianceOccurrence(id: string, review_status: OccurrenceReviewStatus, attribution: OccurrenceAttribution, dismiss_reason?: string) {
       return request<{ id: string }>(`/api/compliance-occurrences/${id}`, { method: "PATCH", body: JSON.stringify({ review_status, attribution, dismiss_reason }) }, true);
     },
+    // The reviewer's figure for one occurrence on a ranged band. Pass null to
+    // clear it. The note is required because the figure is a judgement.
+    setOccurrenceAssessedAmount(id: string, assessed_amount: number | null, note?: string) {
+      return request<{ id: string }>(`/api/compliance-occurrences/${id}/assessed-amount`,
+        { method: "PUT", body: JSON.stringify({ assessed_amount, note }) }, true);
+    },
     getManualMetrics() {
       return request<{ metrics: ManualMetricEntry[]; diagnostics: { table_ready: boolean } }>("/api/manual-metrics", {}, true);
     },

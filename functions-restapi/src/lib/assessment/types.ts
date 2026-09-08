@@ -19,10 +19,19 @@ export interface StandardTier {
   triggersCap?: boolean;
   /** Rank when several bands match one observation; from the period's snapshot (migration 105). */
   severityOrder?: number | null;
+  /**
+   * A band whose amount the contract states as a RANGE rather than a figure -
+   * damage reimbursement at $2,500-$10,000, say. Both set means a reviewer
+   * enters the amount for each occurrence; penaltyAmount is not used.
+   */
+  penaltyAmountMin?: number | null;
+  penaltyAmountMax?: number | null;
 }
 
 export interface PenaltyInput {
   quantity?: number;
+  /** The reviewer's figure for this occurrence, on a ranged band. */
+  assessedAmount?: number | null;
   durationDays?: number;
 }
 
