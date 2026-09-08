@@ -29,8 +29,36 @@ export function createGraphDocumentChecker(getDelegatedToken: TokenProvider, fet
       const response = await fetchGraph(`https://graph.microsoft.com/v1.0/sites/${encodeURIComponent(reference.site_id)}/drives/${encodeURIComponent(reference.drive_id)}/items/${encodeURIComponent(reference.item_id)}?$select=eTag,name,file`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (response.status === 401 || response.status === 403 || response.status === 404) {
-        return { health_status: "Unavailable", observed_version: null, observed_file_name: null, observed_mime_type: null, reason: "SharePoint did not make the document available to this Admin." };
+      // 401, 403 and 404 used to collapse into one message that blamed the
+      // document. They are three different faults with three different owners:
+      // a credential SharePoint would not accept, a library OnBoard was never
+      // granted, and a file that is genuinely not where the Procedure says it
+      // is. Only the last is about the document.
+      //
+      // The distinction is not academic. On 2026-09-06 the tenant had consented
+      // no SharePoint permission of any kind, so Graph answered 403 to every
+      // request - and every reference in the system would have reported that
+      // SharePoint had not made the document available, while the documents sat
+      // untouched and correct. An Admin reading that goes looking in SharePoint,
+      // which is the one place the answer is not. See
+      // docs/runbooks/decision-matrix-sharepoint-documents.md.
+      //
+      // All three remain Unavailable - the column allows only Valid, Needs
+      // review and Unavailable, and a document that could not be inspected must
+      // not present itself as checked. What changes is what the reason says.
+      if (response.status === 401 || response.status === 403) {
+        return {
+          health_status: "Unavailable",
+          observed_version: null,
+          observed_file_name: null,
+          observed_mime_type: null,
+          reason: response.status === 403
+            ? "OnBoard is not authorized to read this SharePoint library, so the document was never inspected. This is a permissions gap to fix in Entra, not a problem with the document."
+            : "SharePoint rejected OnBoard's credential, so the document was never inspected. This is a configuration fault, not a problem with the document.",
+        };
+      }
+      if (response.status === 404) {
+        return { health_status: "Unavailable", observed_version: null, observed_file_name: null, observed_mime_type: null, reason: "SharePoint has no document at the site, drive and item this Procedure records. It may have been moved, replaced with a new item, or deleted." };
       }
       if (!response.ok) throw new Error(`Microsoft Graph returned ${response.status}.`);
       const item = await response.json() as { eTag?: unknown; name?: unknown; file?: { mimeType?: unknown } };
