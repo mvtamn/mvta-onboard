@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.151] - 2026-09-08
+
+- **Duplicate migration numbers fail the build.** Migrations are applied in number order by a person reading `functions-restapi/sql/`, so two files claiming one number makes "which ran, and in what order" unanswerable from the filename. It kept happening because the number is picked by reading the directory at authoring time, which is a race whenever two branches are open: four collided in one week (PR #215 renumbered them) and 105 collided again the next day between two sessions. Two checks, because there are two failure shapes. `migrationNumbers.test.ts` runs in `npm test` and fails on two files at one number in the tree - it catches the post-merge state and runs locally before a push. A `migration-numbers` CI job compares the branch against its merge base and fails when the branch adds a number `main` has since taken - the cross-branch case, which git never flags because the filenames differ. Both were exercised against the shapes they exist for, and the CI script uses `[0-9][0-9]*` rather than a GNU-only `\+` so it runs on BSD sed and can be tested outside CI. No console change.
+
 ## [1.5.150] - 2026-09-08
 
 - **The Dispatch Log tests no longer expire.** Their fixtures were dated `20260908` - a few days ahead when they were written - and the Watch queue only counts a trip as due when its service date is today. On 8 September the clock reached the fixture date, the day became "today", the "Not the live day" banner correctly stopped rendering, and assertions about dispositions failed for a reason that had nothing to do with dispositions. `main` was red for every branch. The fixture day is now derived seven days ahead of whenever the suite runs, which keeps the weekday for the rotation fixtures and cannot go stale; only the date floats, and the assertions on displayed clock times read `scheduled_start_seconds` rather than the timestamps. No product change.
