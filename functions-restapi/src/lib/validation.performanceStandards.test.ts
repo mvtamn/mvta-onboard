@@ -260,3 +260,15 @@ test("a zero threshold is refused: every occurrence would trip it", () => {
   });
   assert.ok(errors.some((error) => error.includes("cap_window_threshold must be")), errors.join("; "));
 });
+
+// Category. A grouping for reading the catalog, never an input to scoring, so
+// the only rules are that it fits the column and that absent is allowed.
+test("a standard validates with a category, and without one", () => {
+  assert.deepStrictEqual(validatePerformanceStandard({ ...standard, category: "safety" }), []);
+  assert.deepStrictEqual(validatePerformanceStandard({ ...standard, category: null }), []);
+});
+
+test("a category longer than the column is refused rather than truncated", () => {
+  const errors = validatePerformanceStandard({ ...standard, category: "x".repeat(51) });
+  assert.ok(errors.some((error) => error.includes("category")), errors.join("; "));
+});

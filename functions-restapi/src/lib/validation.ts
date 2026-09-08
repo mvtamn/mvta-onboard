@@ -1152,6 +1152,7 @@ export function validatePerformanceStandard(body: UnknownBody): string[] {
   optionalText(body.description, 2000, "description", errors);
   optionalText(body.data_source_note, 1000, "data_source_note", errors);
   optionalText(body.cap_rule_note, 1000, "cap_rule_note", errors);
+  optionalText(body.category, 50, "category", errors);
   optionalText(body.responsible_team, 200, "responsible_team", errors);
   optionalText(body.assigned_to, 200, "assigned_to", errors);
   errors.push(...capWindowErrors(body));

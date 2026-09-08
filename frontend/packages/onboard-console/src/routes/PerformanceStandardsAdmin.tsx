@@ -45,10 +45,14 @@ interface Vocabulary {
   units: VocabularyOption[]; priorities: VocabularyOption[]; penaltyBases: VocabularyOption[];
   tierLabels: VocabularyOption[]; conditions: VocabularyOption[];
   sourceSystems: VocabularyOption[]; teams: VocabularyOption[]; owners: VocabularyOption[];
+  categories: VocabularyOption[];
 }
 
 type Tab = "details" | "bands" | "assignment";
-type Filter = "all" | "scored" | "unassigned" | "auto" | "manual";
+// The fixed filters, plus one per category as `category:<value>`. Categories
+// are data, so they cannot be enumerated in a union here - the list is whatever
+// Lists currently holds.
+type Filter = "all" | "scored" | "unassigned" | "auto" | "manual" | `category:${string}`;
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "details", label: "Details" },
@@ -82,7 +86,7 @@ const EMPTY_STANDARD: PerformanceStandardInput = {
   code: "", name: "", description: "", standard_type: "occurrence", priority: "Medium",
   is_scored: true, is_safety_critical: false, direction: "lower_is_better", unit_label: "occurrences",
   measurement_source: "manual_entry", resolver_key: null, source_system: null, data_source_note: "", responsible_team: "",
-  assigned_to: "", cap_rule_note: "", cap_window_mode: null, cap_window_days: null, cap_window_threshold: null,
+  category: null, assigned_to: "", cap_rule_note: "", cap_window_mode: null, cap_window_days: null, cap_window_threshold: null,
   sort_order: 0, effective_start_date: today(), effective_end_date: null,
 };
 
@@ -95,6 +99,7 @@ function standardToInput(standard: ContractorPerformanceStandard): PerformanceSt
     measurement_source: standard.measurement_source ?? "manual_entry",
     resolver_key: standard.resolver_key ?? null, source_system: standard.source_system ?? null,
     data_source_note: standard.data_source_note ?? "", responsible_team: standard.responsible_team ?? "",
+    category: standard.category ?? null,
     assigned_to: standard.assigned_to ?? "", cap_rule_note: standard.cap_rule_note ?? "",
     cap_window_mode: standard.cap_window_mode ?? null,
     cap_window_days: standard.cap_window_days ?? null,
@@ -168,6 +173,7 @@ export function PerformanceStandardsAdmin() {
       sourceSystems.map((system) => ({ value: system.value, label: system.label, description: system.description }))),
     teams: optionsFor(referenceValues, "responsible_team", []),
     owners: optionsFor(referenceValues, "assigned_to", []),
+    categories: optionsFor(referenceValues, "category", []),
   }), [referenceValues, sourceSystems]);
 
   // Conditions come from the vocabulary table. They used to be derived from the
@@ -228,6 +234,7 @@ export function PerformanceStandardsAdmin() {
       if (filter === "unassigned" && assignment) return false;
       if (filter === "auto" && !isAutomated(standard.measurement_source)) return false;
       if (filter === "manual" && isAutomated(standard.measurement_source)) return false;
+      if (filter.startsWith("category:") && (standard.category ?? "") !== filter.slice("category:".length)) return false;
       if (!needle) return true;
       return `${standard.name} ${standard.code} ${standard.unit_label}`.toLowerCase().includes(needle);
     });
@@ -286,6 +293,12 @@ export function PerformanceStandardsAdmin() {
               <option value="unassigned">Not assigned</option>
               <option value="auto">Measured automatically</option>
               <option value="manual">Entered by hand</option>
+              {vocab.categories.length > 0 && <optgroup label="Category">
+                {vocab.categories.map((option) => <option key={option.value} value={`category:${option.value}`}>{option.label}</option>)}
+                {/* Offered only when something is actually uncategorised, so it
+                    is never a filter that returns an empty list. */}
+                {standards.some((standard) => !standard.category) && <option value="category:">No category</option>}
+              </optgroup>}
             </select>
           </div>
           <div className="standards-list-meta">
@@ -319,6 +332,11 @@ export function PerformanceStandardsAdmin() {
                   <span className="standards-row-meta">
                     <span className={`standards-state ${state.toLowerCase()}`}>{state}</span>
                     <small>
+                      {/* The category leads: it is how a reader finds their way
+                          through thirty standards in one list. */}
+                      {standard.category
+                        ? `${vocab.categories.find((option) => option.value === standard.category)?.label ?? standard.category} · `
+                        : ""}
                       {standard.standard_type === "occurrence" ? "Counted events" : "Monthly value"}
                       {" · "}{sourceLabel(standard.measurement_source, standard.source_system)}
                       {isAutomated(standard.measurement_source) && !standard.resolver_key ? " · no resolver" : ""}
@@ -647,6 +665,11 @@ function StandardEditor({ draft, setDraft, standardId, canEdit, busy, resolvers,
             : `Nothing registered serves a ${draft.standard_type === "threshold" ? "monthly-value" : "counted-events"} standard from this source. Enter it by hand instead.`}
         </small>}
       </label>}
+      <ListField
+        label="Category" options={vocab.categories} value={draft.category ?? ""} disabled={!canEdit}
+        hint="Which part of the contract this belongs to. Groups the catalog and a scorecard; it is never read when a month is scored."
+        onChange={(value) => set("category", value || null)}
+      />
       <ListField
         label="Responsible team" options={vocab.teams} value={draft.responsible_team ?? ""} disabled={!canEdit}
         hint="The team accountable for this standard. Maintained under Lists."

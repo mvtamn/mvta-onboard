@@ -14,6 +14,7 @@ import "./performanceStandards.css";
 
 const DOMAIN_TITLES: { domain: string; title: string; blurb: string }[] = [
   { domain: "unit", title: "Units", blurb: "What a standard is measured in." },
+  { domain: "category", title: "Categories", blurb: "Which part of the contract a standard belongs to. Groups the catalog and a scorecard; never read when a month is scored." },
   { domain: "priority", title: "Priorities", blurb: "How a standard is ranked for attention." },
   { domain: "condition_code", title: "Conditions", blurb: "Markers that narrow a penalty band to some occurrences." },
   { domain: "source_system", title: "Source systems", blurb: "Where a transcribed figure is read from." },

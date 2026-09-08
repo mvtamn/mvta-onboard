@@ -1604,6 +1604,12 @@ export interface ContractorPerformanceStandard {
   measurement_source?: StandardMeasurementSource; resolver_key?: string | null;
   /** The external system a structured import is transcribed from; null otherwise. */
   source_system?: string | null;
+  /**
+   * Which part of the contract this standard belongs to (migration 110). A
+   * grouping for reading the catalog and a scorecard, never an input to
+   * scoring - which is why it is not snapshotted onto the period.
+   */
+  category?: string | null;
   data_source_note?: string | null; responsible_team?: string | null; assigned_to?: string | null;
   cap_rule_note?: string | null; sort_order?: number;
   effective_start_date?: string; effective_end_date?: string | null;
