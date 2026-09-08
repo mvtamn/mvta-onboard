@@ -10,6 +10,7 @@ import {
 } from "./types";
 import { findResolver, resolversForSource } from "./assessment/resolvers";
 import { MEASUREMENT_SOURCES } from "./assessment/measurementSource";
+import { isReferenceDomain } from "./assessment/referenceValues";
 
 // Match the NVARCHAR column sizes in sql/phase1-schema.sql so oversized input
 // fails fast with a clear 400 here instead of an opaque SQL truncation 500.
@@ -1195,6 +1196,34 @@ export function validateStandardTierLadder(body: UnknownBody): string[] {
   return errors;
 }
 
+// One row of the vocabulary behind the configurator's pickers. The
+// system-domain guardrail is enforced in the handler, which can see whether
+// the row already exists; this only checks the shape.
+export function validateReferenceValue(body: UnknownBody): string[] {
+  const errors: string[] = [];
+  if (!isReferenceDomain(body.domain)) errors.push("domain must name a known reference domain");
+  if (typeof body.value !== "string" || !body.value.trim() || body.value.length > 50) {
+    errors.push("value is required and must be at most 50 characters");
+  }
+  if (typeof body.label !== "string" || !body.label.trim() || body.label.length > 200) {
+    errors.push("label is required and must be at most 200 characters");
+  }
+  optionalText(body.description, 500, "description", errors);
+  if (body.sort_order !== undefined && (!Number.isInteger(body.sort_order) || Number(body.sort_order) < 0)) {
+    errors.push("sort_order must be a non-negative integer");
+  }
+  // Ranking is only meaningful for tiers - it is what decides which band wins
+  // when several match one observation.
+  if (body.severity_order !== undefined && body.severity_order !== null) {
+    if (body.domain !== "tier_label") errors.push("severity_order applies only to tier labels");
+    else if (!Number.isInteger(body.severity_order) || Number(body.severity_order) < 0) {
+      errors.push("severity_order must be a non-negative integer");
+    }
+  }
+  if (body.is_active !== undefined && typeof body.is_active !== "boolean") errors.push("is_active must be a boolean");
+  return errors;
+}
+
 export function validatePerformanceAgreement(body: UnknownBody): string[] {
   const errors: string[] = [];
   if (!isGuid(body.contractor_id)) errors.push("contractor_id must be a GUID");
@@ -1210,6 +1239,8 @@ export function validatePerformanceAgreement(body: UnknownBody): string[] {
     errors.push("retention_years must be an integer between 1 and 25");
   }
   if (typeof body.is_active !== "boolean") errors.push("is_active must be a boolean");
+  optionalText(body.contract_number, 100, "contract_number", errors);
+  optionalText(body.exhibit_reference, 200, "exhibit_reference", errors);
   return errors;
 }
 

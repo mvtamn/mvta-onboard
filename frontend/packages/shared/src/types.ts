@@ -1617,6 +1617,15 @@ export interface RegisteredResolver {
   source: StandardMeasurementSource;
 }
 
+// One row of the vocabulary behind the configurator's pickers.
+// is_system marks a value the scoring engine branches on: its label, order and
+// active flag are MVTA's, its value is a contract with the code.
+export interface ReferenceValue {
+  id: string; domain: string; value: string; label: string; description: string | null;
+  sort_order: number; severity_order: number | null; is_active: boolean; is_system: boolean;
+  updated_by?: string; updated_at?: string;
+}
+
 // An external system MVTA transcribes a monthly figure from.
 export interface KnownSourceSystem { value: string; label: string; description: string }
 
@@ -1625,6 +1634,9 @@ export interface PerformanceAgreementRecord {
   id: string; contractor_id: string; contractor_name?: string; starts_on: string; ends_on: string;
   validation_business_days: number; retention_years: number; is_active: boolean;
   scored_standard_count?: number;
+  /** The contract this Agreement is under, and the exhibit the standards come from. */
+  contract_number?: string | null;
+  exhibit_reference?: string | null;
 }
 
 // Which catalog standards this agreement scores, over which months. Unassigning

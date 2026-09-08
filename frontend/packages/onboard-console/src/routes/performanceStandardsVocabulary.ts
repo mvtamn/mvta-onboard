@@ -1,5 +1,6 @@
 import type {
-  ContractorPerformanceStandard, ContractorStandardTier, StandardMeasurementSource, StandardPenaltyBasis,
+  ContractorPerformanceStandard, ContractorStandardTier, ReferenceValue,
+  StandardMeasurementSource, StandardPenaltyBasis,
 } from "@mvta/shared";
 
 // Turning the tier model into words, and back.
@@ -222,3 +223,54 @@ export function isAutomated(source: StandardMeasurementSource | undefined): bool
 export function isHandEntered(source: StandardMeasurementSource | undefined): boolean {
   return !isAutomated(source);
 }
+
+// --- the vocabulary, read from the database ---
+//
+// Every picker in the configurator draws its options from ReferenceValues
+// (migration 105) rather than from a literal array, so MVTA can rename a tier
+// to whatever the contract calls it, hide the units it does not use, and add a
+// source system without a deploy.
+//
+// The built-in lists survive as the fallback for an environment where the
+// migration has not run: the page still renders every picker, using the code's
+// own words. That is the same degrade-before-the-migration pattern the
+// agreement scoping and the resolver snapshot use.
+
+export interface VocabularyOption {
+  value: string;
+  label: string;
+  description?: string | null;
+  /** tier_label only: which tier outranks which when several bands match. */
+  severityOrder?: number | null;
+}
+
+export function optionsFor(
+  values: ReferenceValue[],
+  domain: string,
+  fallback: readonly VocabularyOption[],
+): VocabularyOption[] {
+  const rows = values
+    .filter((row) => row.domain === domain && row.is_active)
+    .slice()
+    .sort((left, right) => left.sort_order - right.sort_order || left.label.localeCompare(right.label));
+  if (!rows.length) return [...fallback];
+  return rows.map((row) => ({
+    value: row.value, label: row.label, description: row.description, severityOrder: row.severity_order,
+  }));
+}
+
+// A value that has been retired, or renamed since a record used it, still has
+// to render wherever it was used - so a picker showing a stored value includes
+// it even when it is no longer offered for new records.
+export function withCurrent(options: VocabularyOption[], current: string | null | undefined): VocabularyOption[] {
+  if (!current || options.some((option) => option.value === current)) return options;
+  return [...options, { value: current, label: `${current} (retired)` }];
+}
+
+export const FALLBACK_UNITS: readonly VocabularyOption[] = CATALOG_UNITS.map((unit) => ({ value: unit.value, label: unit.label }));
+export const FALLBACK_PENALTY_BASES: readonly VocabularyOption[] = PENALTY_BASES.map((basis) => ({ value: basis.value, label: basis.label, description: basis.hint }));
+export const FALLBACK_TIER_LABELS: readonly VocabularyOption[] = TIER_LABELS.map((tier, index) => ({ value: tier.value, label: tier.label, severityOrder: index }));
+export const FALLBACK_PRIORITIES: readonly VocabularyOption[] = [
+  { value: "High", label: "High" }, { value: "Medium", label: "Medium" },
+  { value: "Low", label: "Low" }, { value: "NA", label: "Not applicable" },
+];

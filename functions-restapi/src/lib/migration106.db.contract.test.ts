@@ -9,7 +9,7 @@ import {
 } from "../functions/complianceCandidatesPoll";
 import { parseConnectionString, sql } from "./db";
 
-// Runs migration 105 against a real SQL Server (the CI contract job's
+// Runs migration 106 against a real SQL Server (the CI contract job's
 // container) and reads the five reporting views back.
 //
 // A view is the one kind of SQL in this repo that nothing else exercises: no
@@ -189,14 +189,14 @@ async function runMigration(pool: sql.ConnectionPool, file: string): Promise<voi
   }
 }
 
-test("migration 105 reporting views expose the raw OTP, missed-trip and garage-departure measurements", { skip: !connectionString }, async () => {
+test("migration 106 reporting views expose the raw OTP, missed-trip and garage-departure measurements", { skip: !connectionString }, async () => {
   if (!connectionString) return;
   const pool = new sql.ConnectionPool(parseConnectionString(connectionString));
   await pool.connect();
   try {
     await pool.request().batch(SCHEMA);
     await pool.request().batch(SEED);
-    await runMigration(pool, "migration-105-raw-measurement-reporting-views.sql");
+    await runMigration(pool, "migration-106-raw-measurement-reporting-views.sql");
 
     // --- OTP monthly: IsAssessable is resolveOtpFixedRoute's filter, per row.
     const otp = (await pool.request().query<{ StopId: number; IsAssessable: boolean; IsStopExcluded: boolean; ExclusionReasonLabel: string | null; RouteCategory: string; IsOfficialRecord: boolean }>(
@@ -296,7 +296,7 @@ test("migration 105 reporting views expose the raw OTP, missed-trip and garage-d
     assert.ok(health[0].StaleHours >= 2 && health[0].StaleHours < 3);
 
     // Re-running the migration is a no-op (CREATE OR ALTER throughout).
-    await runMigration(pool, "migration-105-raw-measurement-reporting-views.sql");
+    await runMigration(pool, "migration-106-raw-measurement-reporting-views.sql");
     const again = (await pool.request().query<{ n: number }>("SELECT COUNT(*) n FROM dbo.vw_GarageDeparture")).recordset[0].n;
     assert.equal(again, 5);
   } finally {

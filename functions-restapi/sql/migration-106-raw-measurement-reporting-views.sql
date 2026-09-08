@@ -1,4 +1,4 @@
--- Migration 105: reporting views over the raw OTP, missed-trip and garage-
+-- Migration 106: reporting views over the raw OTP, missed-trip and garage-
 -- departure measurements.
 --
 -- Migration 031 gave Power BI the ASSESSED layer: finalized periods, scored
@@ -70,19 +70,19 @@ GO
 -- an unhelpful "invalid object name" hundreds of lines in. Name the dependency
 -- instead.
 IF OBJECT_ID(N'dbo.OtpMonthlyRouteStopDay', N'U') IS NULL
-  THROW 50105, 'Migration 105 requires OtpMonthlyRouteStopDay (migration 014).', 1;
+  THROW 50106, 'Migration 106 requires OtpMonthlyRouteStopDay (migration 014).', 1;
 IF OBJECT_ID(N'dbo.OtpDailyRouteStopHour', N'U') IS NULL
-  THROW 50105, 'Migration 105 requires OtpDailyRouteStopHour (migration 020).', 1;
+  THROW 50106, 'Migration 106 requires OtpDailyRouteStopHour (migration 020).', 1;
 IF OBJECT_ID(N'dbo.MonitoredMissedTrips', N'U') IS NULL
-  THROW 50105, 'Migration 105 requires MonitoredMissedTrips (migration 011).', 1;
+  THROW 50106, 'Migration 106 requires MonitoredMissedTrips (migration 011).', 1;
 IF OBJECT_ID(N'dbo.FixedRouteDepartures', N'U') IS NULL
-  THROW 50105, 'Migration 105 requires FixedRouteDepartures (migration 013).', 1;
+  THROW 50106, 'Migration 106 requires FixedRouteDepartures (migration 013).', 1;
 IF OBJECT_ID(N'dbo.OnDemandDepartures', N'U') IS NULL
-  THROW 50105, 'Migration 105 requires OnDemandDepartures (migration 096b).', 1;
+  THROW 50106, 'Migration 106 requires OnDemandDepartures (migration 096b).', 1;
 IF OBJECT_ID(N'dbo.ComplianceOccurrences', N'U') IS NULL
-  THROW 50105, 'Migration 105 requires ComplianceOccurrences (migration 030).', 1;
+  THROW 50106, 'Migration 106 requires ComplianceOccurrences (migration 030).', 1;
 IF COL_LENGTH(N'dbo.OnDemandDepartures', N'driver_identifier') IS NULL
-  THROW 50105, 'Migration 105 requires OnDemandDepartures.driver_identifier (migration 100).', 1;
+  THROW 50106, 'Migration 106 requires OnDemandDepartures.driver_identifier (migration 100).', 1;
 GO
 
 -- ---------------------------------------------------------------------------
@@ -414,4 +414,4 @@ BEGIN
 END;
 GO
 
-PRINT 'Migration 105 applied: raw measurement reporting views created (vw_OtpMonthlyRouteStop, vw_OtpDailyRouteStopHour, vw_MissedTrip, vw_GarageDeparture, vw_MeasurementFeedHealth).';
+PRINT 'Migration 106 applied: raw measurement reporting views created (vw_OtpMonthlyRouteStop, vw_OtpDailyRouteStopHour, vw_MissedTrip, vw_GarageDeparture, vw_MeasurementFeedHealth).';

@@ -155,6 +155,8 @@ export interface StandardTierInput {
 
 export interface PerformanceAgreementInput {
   contractor_id: string;
+  contract_number?: string | null;
+  exhibit_reference?: string | null;
   starts_on: string;
   ends_on: string;
   validation_business_days: number;
@@ -1255,6 +1257,20 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     // 409 says which references blocked it.
     deletePerformanceStandard(id: string) {
       return request<{ id: string; code: string }>(`/api/performance-standards/${id}`, { method: "DELETE" }, true);
+    },
+    // The vocabulary every picker reads from. diagnostics.table_ready is false
+    // before migration 105, and the console falls back to its built-in lists.
+    getReferenceValues() {
+      return request<{ values: import("./types.js").ReferenceValue[]; diagnostics: { table_ready: boolean } }>("/api/reference-values", {}, true);
+    },
+    putReferenceValue(id: string, input: {
+      domain: string; value: string; label: string; description?: string | null;
+      sort_order?: number; severity_order?: number | null; is_active?: boolean;
+    }) {
+      return request<{ id: string }>(`/api/reference-values/${id}`, { method: "PUT", body: JSON.stringify(input) }, true);
+    },
+    deleteReferenceValue(id: string) {
+      return request<{ id: string }>(`/api/reference-values/${id}`, { method: "DELETE" }, true);
     },
     getPerformanceAgreements() {
       return request<{
