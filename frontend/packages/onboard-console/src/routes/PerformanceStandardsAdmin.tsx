@@ -6,7 +6,7 @@ import type {
   StandardTierInput,
 } from "@mvta/shared";
 import {
-  BAND_RANGES, bandRangeOf, boundsForRange, boundToInput, capWindowSentence, describeBand,
+  BAND_RANGES, bandRangeOf, boundsForRange, boundToInput, capWindowSentence, defaultTargetDisplay, describeBand,
   FALLBACK_PENALTY_BASES, FALLBACK_PRIORITIES, FALLBACK_TIER_LABELS, FALLBACK_UNITS,
   inputToBound, isAutomated, isRatioUnit, ladderWarnings, optionsFor, qualifierLabel, sourceLabel,
   TIER_LABELS, unitNoun, withCurrent, type BandRange, type VocabularyOption,
@@ -82,11 +82,25 @@ const CAP_WINDOW_MODES: { value: CapWindowMode | ""; label: string; hint: string
   { value: "calendar_quarter", label: "Calendar quarter", hint: "Counts within Jan-Mar, Apr-Jun, and so on. The count restarts each quarter." },
 ];
 
+// Which number a band is matched against. Only a counted-events standard reads
+// it: a monthly-value standard is scored on its one figure, and matchTier is
+// handed that figure directly.
+//
+// The distinction is easy to miss and expensive to get wrong. A band bounded
+// 13-16 under "the occurrence's own size" matches an occurrence of quantity
+// 13; under "its position in the month" it matches the thirteenth occurrence,
+// whatever its size. Those are different rules and different money.
+const BAND_SCOPES: { value: "per_occurrence" | "running_count"; label: string; hint: string }[] = [
+  { value: "per_occurrence", label: "The occurrence's own size", hint: "A band bounded 13–16 matches an occurrence of that quantity." },
+  { value: "running_count", label: "Its position in the month", hint: "A band bounded 13–16 matches the 13th to 16th occurrence, whatever each one's size." },
+];
+
 const EMPTY_STANDARD: PerformanceStandardInput = {
   code: "", name: "", description: "", standard_type: "occurrence", priority: "Medium",
   is_scored: true, is_safety_critical: false, direction: "lower_is_better", unit_label: "occurrences",
   measurement_source: "manual_entry", resolver_key: null, source_system: null, data_source_note: "", responsible_team: "",
-  category: null, assigned_to: "", cap_rule_note: "", cap_window_mode: null, cap_window_days: null, cap_window_threshold: null,
+  category: null, target_value: null, target_display: null, band_scope: "per_occurrence",
+  assigned_to: "", cap_rule_note: "", cap_window_mode: null, cap_window_days: null, cap_window_threshold: null,
   sort_order: 0, effective_start_date: today(), effective_end_date: null,
 };
 
@@ -100,6 +114,9 @@ function standardToInput(standard: ContractorPerformanceStandard): PerformanceSt
     resolver_key: standard.resolver_key ?? null, source_system: standard.source_system ?? null,
     data_source_note: standard.data_source_note ?? "", responsible_team: standard.responsible_team ?? "",
     category: standard.category ?? null,
+    target_value: standard.target_value ?? null,
+    target_display: standard.target_display ?? null,
+    band_scope: standard.band_scope ?? "per_occurrence",
     assigned_to: standard.assigned_to ?? "", cap_rule_note: standard.cap_rule_note ?? "",
     cap_window_mode: standard.cap_window_mode ?? null,
     cap_window_days: standard.cap_window_days ?? null,
@@ -487,6 +504,11 @@ function TierSummary({ standard, tiers, agreementId, vocab }: { standard: Contra
   if (!ladder.length) return <small className="standards-flag">No bands configured</small>;
   return <>
     {source === "agreement" && <small className="standards-override">Agreement override</small>}
+    {/* The target above the ladder, because it is the figure the contract
+        states and the bands are what happens around it. */}
+    {standard.target_value !== null && standard.target_value !== undefined && <small className="standards-target">
+      Target: {standard.target_display || defaultTargetDisplay(standard.target_value, standard.unit_label)}
+    </small>}
     <ul className="standards-band-list">
       {ladder.map((tier) => <li key={tier.id}>
         <span className={`assessment-tier ${tier.tier_label}`}>{vocab.tierLabels.find((option) => option.value === tier.tier_label)?.label ?? TIER_LABELS.find((t) => t.value === tier.tier_label)?.label ?? tier.tier_label}</span>
@@ -563,7 +585,16 @@ function StandardEditor({ draft, setDraft, standardId, canEdit, busy, resolvers,
               <input
                 type="radio" name="standard-type" value={option.value} disabled={!canEdit}
                 checked={draft.standard_type === option.value}
-                onChange={() => set("standard_type", option.value)}
+                onChange={() => {
+                  // running_count is read only in the occurrence loop, so on a
+                  // monthly-value standard it would be a setting the page
+                  // shows and the compute never obeys. The server refuses it.
+                  setDraft({
+                    ...draft,
+                    standard_type: option.value,
+                    band_scope: option.value === "threshold" ? "per_occurrence" : draft.band_scope ?? "per_occurrence",
+                  });
+                }}
               />
               <strong>{option.label}</strong><small>{option.hint}</small>
             </label>
@@ -694,6 +725,43 @@ function StandardEditor({ draft, setDraft, standardId, canEdit, busy, resolvers,
         <small>Shown under the standard's name in the catalog list, clamped to two lines with the rest on hover.</small>
       </label>
       <label className="standards-wide"><span>Data source note</span><textarea rows={2} value={draft.data_source_note ?? ""} disabled={!canEdit} onChange={(event) => set("data_source_note", event.target.value)} placeholder="Which feed, which filter, and any definition the contract settles." /></label>
+      {/* The contract's stated target, which is not the same thing as the band
+          that happens to mean "meets". Before this it had nowhere to live, so
+          an issued report read "Configured bands" where the target belongs. */}
+      <BoundField
+        label="Contract target" unit={draft.unit_label} value={draft.target_value ?? null} disabled={!canEdit}
+        onChange={(value) => setDraft({
+          ...draft,
+          target_value: value,
+          // A display string with no target behind it reads on a report as a
+          // figure the system knows, when nothing knows it.
+          target_display: value === null ? null : draft.target_display,
+        })}
+      />
+      {draft.target_value !== null && draft.target_value !== undefined && <label><span>Reads on a report as</span>
+        <input
+          value={draft.target_display ?? ""} disabled={!canEdit}
+          placeholder={defaultTargetDisplay(draft.target_value, draft.unit_label)}
+          onChange={(event) => set("target_display", event.target.value.trim() ? event.target.value : null)}
+        />
+        <small>What a contractor reads where the target belongs. Left empty, the figure itself is shown.</small>
+      </label>}
+      {draft.standard_type === "occurrence" && <fieldset className="standards-choice standards-wide">
+        <legend>Bands match</legend>
+        <div className="standards-choice-cards">
+          {BAND_SCOPES.map((option) => (
+            <label key={option.value} className={(draft.band_scope ?? "per_occurrence") === option.value ? "selected" : ""}>
+              <input
+                type="radio" name="band-scope" value={option.value} disabled={!canEdit}
+                checked={(draft.band_scope ?? "per_occurrence") === option.value}
+                onChange={() => set("band_scope", option.value)}
+              />
+              <strong>{option.label}</strong>
+              <small>{option.hint}</small>
+            </label>
+          ))}
+        </div>
+      </fieldset>}
       <fieldset className="standards-choice standards-wide">
         <legend>Corrective action window</legend>
         <div className="standards-choice-cards">

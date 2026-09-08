@@ -135,6 +135,18 @@ export interface PerformanceStandardInput {
   source_system?: string | null;
   /** Which part of the contract the standard belongs to. Free to be null. */
   category?: string | null;
+  /**
+   * The figure the contract states as the standard, distinct from the bands.
+   * A percentage is stored as a ratio, like every other bound.
+   */
+  target_value?: number | null;
+  /** How the target reads on an issued report. Defaults from target_value. */
+  target_display?: string | null;
+  /**
+   * Whether an occurrence band matches that occurrence's own quantity or its
+   * position in the month. Only an occurrence standard reads it.
+   */
+  band_scope?: "per_occurrence" | "running_count" | null;
   data_source_note?: string | null;
   responsible_team?: string | null;
   assigned_to?: string | null;

@@ -272,3 +272,53 @@ test("a category longer than the column is refused rather than truncated", () =>
   const errors = validatePerformanceStandard({ ...standard, category: "x".repeat(51) });
   assert.ok(errors.some((error) => error.includes("category")), errors.join("; "));
 });
+
+// The contract's stated target, and which value an occurrence band matches.
+test("a target validates as a number, and its absence validates too", () => {
+  assert.deepStrictEqual(validatePerformanceStandard({ ...standard, target_value: 0.85 }), []);
+  assert.deepStrictEqual(validatePerformanceStandard({ ...standard, target_value: null }), []);
+});
+
+test("a target that is not a number is refused", () => {
+  const errors = validatePerformanceStandard({ ...standard, target_value: "85%" });
+  assert.ok(errors.some((error) => error.includes("target_value must be")), errors.join("; "));
+});
+
+test("a target phrase validates with a target behind it", () => {
+  assert.deepStrictEqual(validatePerformanceStandard({
+    ...standard, target_value: 11, target_display: "Under 11 a month",
+  }), []);
+});
+
+test("a target phrase with no target behind it is refused", () => {
+  // It would read on an issued report as a figure the system knows, when
+  // nothing knows it.
+  const errors = validatePerformanceStandard({ ...standard, target_display: "Under 11 a month" });
+  assert.ok(errors.some((error) => error.includes("target_display needs a target_value")), errors.join("; "));
+});
+
+test("both band scopes validate on a counted-events standard", () => {
+  for (const scope of ["per_occurrence", "running_count"]) {
+    assert.deepStrictEqual(validatePerformanceStandard({ ...standard, band_scope: scope }), [], scope);
+  }
+});
+
+test("a count-scaled band is refused on a monthly-value standard", () => {
+  // The compute reads band_scope only in the occurrence loop, so stored here
+  // it would be a setting the page shows and nothing obeys.
+  const errors = validatePerformanceStandard({
+    ...standard, code: "FLEET_AVAILABILITY", standard_type: "threshold", band_scope: "running_count",
+  });
+  assert.ok(errors.some((error) => error.includes("running_count applies only")), errors.join("; "));
+});
+
+test("per_occurrence is accepted on a monthly-value standard, since that is the column's default", () => {
+  assert.deepStrictEqual(validatePerformanceStandard({
+    ...standard, code: "FLEET_AVAILABILITY", standard_type: "threshold", band_scope: "per_occurrence",
+  }), []);
+});
+
+test("an unrecognised band scope names the two that exist", () => {
+  const errors = validatePerformanceStandard({ ...standard, band_scope: "per_month" });
+  assert.deepStrictEqual(errors, ["band_scope must be one of: per_occurrence, running_count"]);
+});

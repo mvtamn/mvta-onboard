@@ -1075,6 +1075,7 @@ export const VALID_MEASUREMENT_SOURCES = MEASUREMENT_SOURCES;
 export const VALID_TIER_LABELS = ["meets", "warning", "tier1", "tier2"] as const;
 export const VALID_PENALTY_BASES = ["none", "flat", "per_unit", "per_unit_per_day", "per_day", "per_week"] as const;
 export const VALID_CAP_WINDOW_MODES = ["rolling_days", "calendar_quarter"] as const;
+export const VALID_BAND_SCOPES = ["per_occurrence", "running_count"] as const;
 
 // Standard codes are referenced by resolvers and by operational SQL by literal
 // value, so they are restricted to the shape those references assume rather
@@ -1156,6 +1157,42 @@ export function validatePerformanceStandard(body: UnknownBody): string[] {
   optionalText(body.responsible_team, 200, "responsible_team", errors);
   optionalText(body.assigned_to, 200, "assigned_to", errors);
   errors.push(...capWindowErrors(body));
+  errors.push(...targetErrors(body));
+  return errors;
+}
+
+// The contract's stated target, and which value an occurrence band matches.
+//
+// target_display is what a contractor reads on an issued report, so it is
+// allowed to say something a number cannot - "85% or above", "Under 11 a
+// month". It is not required: assess.ts falls back to the target_value and
+// then to "Configured bands".
+function targetErrors(body: UnknownBody): string[] {
+  const errors: string[] = [];
+  const target = body.target_value;
+  if (target !== undefined && target !== null && target !== "") {
+    if (typeof target !== "number" || !Number.isFinite(target)) {
+      errors.push("target_value must be a finite number or null");
+    }
+  }
+  optionalText(body.target_display, 100, "target_display", errors);
+  // A display string with no target behind it reads on a report as a figure
+  // the system knows, when nothing knows it.
+  if (!Number.isFinite(body.target_value) && typeof body.target_display === "string" && body.target_display.trim()) {
+    errors.push("target_display needs a target_value behind it");
+  }
+
+  const scope = body.band_scope;
+  if (scope !== undefined && scope !== null && scope !== "") {
+    if (!VALID_BAND_SCOPES.includes(scope as never)) {
+      errors.push(`band_scope must be one of: ${VALID_BAND_SCOPES.join(", ")}`);
+    } else if (scope === "running_count" && body.standard_type === "threshold") {
+      // A threshold standard is scored on one monthly value, and the compute
+      // only reads band_scope in the occurrence loop. Stored here it would be
+      // a setting the page shows and nothing obeys.
+      errors.push("band_scope running_count applies only to a counted-events standard");
+    }
+  }
   return errors;
 }
 

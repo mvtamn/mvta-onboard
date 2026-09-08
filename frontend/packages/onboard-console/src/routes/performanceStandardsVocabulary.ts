@@ -303,3 +303,15 @@ export function capWindowSentence(standard: {
   }
   return `${count} in any ${days} consecutive days owes corrective action. The window never resets, so a count can straddle a month or a quarter.`;
 }
+
+// What a report shows for the target when nobody has written a phrase for it.
+//
+// assess.ts falls back to String(target_value) and then to "Configured bands",
+// so an 85% target reads as "0.85" on an issued report unless somebody says
+// otherwise. This is what the editor offers as the placeholder, formatted the
+// way every other figure on the page is - which is usually enough, and makes
+// the cases that need words ("Under 11 a month") the ones somebody types.
+export function defaultTargetDisplay(value: number | null | undefined, unit: string): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "";
+  return formatBound(value, unit);
+}

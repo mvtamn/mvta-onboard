@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AssessmentTierLabel } from "@mvta/shared";
 import {
-  bandRangeOf, boundsForRange, boundToInput, capWindowSentence, describeBand, describePenalty, describeRange,
+  bandRangeOf, boundsForRange, boundToInput, capWindowSentence, defaultTargetDisplay, describeBand, describePenalty, describeRange,
   inputToBound, ladderWarnings, qualifierLabel, unitNoun,
 } from "./performanceStandardsVocabulary.js";
 
@@ -167,5 +167,21 @@ describe("capWindowSentence", () => {
       .toContain("Set the number of days");
     expect(capWindowSentence({ cap_window_mode: "rolling_days", cap_window_days: 90 }))
       .toContain("Once the threshold is set");
+  });
+});
+
+describe("defaultTargetDisplay", () => {
+  it("shows a ratio target as the percentage a reader expects", () => {
+    expect(defaultTargetDisplay(0.85, "percent")).toBe("85%");
+  });
+
+  it("keeps the unit on a target that is not a percentage", () => {
+    expect(defaultTargetDisplay(12000, "miles")).toBe("12,000 miles");
+  });
+
+  it("has nothing to show when there is no target", () => {
+    expect(defaultTargetDisplay(null, "percent")).toBe("");
+    expect(defaultTargetDisplay(undefined, "percent")).toBe("");
+    expect(defaultTargetDisplay(Number.NaN, "percent")).toBe("");
   });
 });
