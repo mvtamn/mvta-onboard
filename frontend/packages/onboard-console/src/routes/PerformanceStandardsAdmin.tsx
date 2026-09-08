@@ -259,7 +259,15 @@ export function PerformanceStandardsAdmin() {
                 >
                   <span className="standards-row-name">
                     <strong>{standard.name}</strong>
-                    <small className="mono-ref">{standard.code}</small>
+                    {/* The description rather than the code: the code is an
+                        identifier for resolvers and SQL, not something a reader
+                        scanning the catalog needs. It stays on the detail
+                        header, where the standard being worked on is named.
+                        Clamped to two lines with the full text on hover, so a
+                        long description does not set the row height. */}
+                    {standard.description?.trim()
+                      ? <small className="standards-row-description" title={standard.description}>{standard.description}</small>
+                      : <small className="standards-row-description is-empty">No description yet</small>}
                   </span>
                   <span className="standards-row-meta">
                     <span className={`standards-state ${state.toLowerCase()}`}>{state}</span>
@@ -549,21 +557,45 @@ function StandardEditor({ draft, setDraft, standardId, canEdit, busy, resolvers,
         {!isNew && <small>A standard's code is referenced by resolvers and operational SQL, so it cannot be changed. Retire this one and add a replacement instead.</small>}
       </label>
       <label><span>Name</span><input value={draft.name} disabled={!canEdit} onChange={(event) => set("name", event.target.value)} /></label>
-      <label><span>What it measures</span>
-        <select value={draft.standard_type} disabled={!canEdit} onChange={(event) => set("standard_type", event.target.value as PerformanceStandardInput["standard_type"])}>
-          <option value="occurrence">Counted events — each one is logged and charged</option>
-          <option value="threshold">Monthly value — one number scored against bands</option>
-        </select>
-      </label>
+      <fieldset className="standards-choice standards-segmented">
+        <legend>What it measures</legend>
+        <div>
+          {[
+            { value: "occurrence" as const, label: "Counted events", hint: "each one logged and charged" },
+            { value: "threshold" as const, label: "Monthly value", hint: "one number, scored against bands" },
+          ].map((option) => (
+            <label key={option.value} className={draft.standard_type === option.value ? "selected" : ""}>
+              <input
+                type="radio" name="standard-type" value={option.value} disabled={!canEdit}
+                checked={draft.standard_type === option.value}
+                onChange={() => set("standard_type", option.value)}
+              />
+              <strong>{option.label}</strong><small>{option.hint}</small>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <fieldset className="standards-choice standards-segmented">
+        <legend>Good performance is</legend>
+        <div>
+          {[
+            { value: "lower_is_better" as const, label: "Lower", hint: "a rising number is worse" },
+            { value: "higher_is_better" as const, label: "Higher", hint: "a falling number is worse" },
+          ].map((option) => (
+            <label key={option.value} className={draft.direction === option.value ? "selected" : ""}>
+              <input
+                type="radio" name="standard-direction" value={option.value} disabled={!canEdit}
+                checked={draft.direction === option.value}
+                onChange={() => set("direction", option.value)}
+              />
+              <strong>{option.label}</strong><small>{option.hint}</small>
+            </label>
+          ))}
+        </div>
+      </fieldset>
       <label><span>Priority</span>
         <select value={draft.priority} disabled={!canEdit} onChange={(event) => set("priority", event.target.value as PerformanceStandardInput["priority"])}>
           {["High", "Medium", "Low", "NA"].map((value) => <option key={value} value={value}>{value}</option>)}
-        </select>
-      </label>
-      <label><span>Good performance is</span>
-        <select value={draft.direction} disabled={!canEdit} onChange={(event) => set("direction", event.target.value as PerformanceStandardInput["direction"])}>
-          <option value="lower_is_better">Fewer / lower — a rising number is worse</option>
-          <option value="higher_is_better">More / higher — a falling number is worse</option>
         </select>
       </label>
       <label><span>Unit</span>
@@ -579,26 +611,36 @@ function StandardEditor({ draft, setDraft, standardId, canEdit, busy, resolvers,
           <input value={draft.unit_label} disabled={!canEdit} autoFocus placeholder="Name the unit" onChange={(event) => set("unit_label", event.target.value)} />}
         <small>Percent is stored as a ratio and shown as a percentage everywhere.</small>
       </label>
-      <label><span>Where the figure comes from</span>
-        <select
-          value={draft.measurement_source} disabled={!canEdit}
-          onChange={(event) => {
-            const next = event.target.value as StandardMeasurementSource;
-            // Clearing the fields the new kind does not use: a leftover
-            // resolver on a hand-entered standard reads as automated to anyone
-            // scanning the catalog, and the server refuses it anyway.
-            setDraft({
-              ...draft,
-              measurement_source: next,
-              resolver_key: next === "api_feed" || next === "onboard_compliance" ? draft.resolver_key ?? null : null,
-              source_system: next === "structured_import" ? draft.source_system ?? null : null,
-            });
-          }}
-        >
-          {MEASUREMENT_SOURCES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-        </select>
-        <small>{MEASUREMENT_SOURCES.find((option) => option.value === draft.measurement_source)?.hint}</small>
-      </label>
+      {/* Four cards rather than a dropdown: the choice decides what the
+          standard needs next, so each option carries the consequence beside
+          it instead of hiding it behind a closed select. Real radios, so
+          arrow keys and screen readers behave. */}
+      <fieldset className="standards-choice standards-wide">
+        <legend>Where the figure comes from</legend>
+        <div className="standards-choice-cards">
+          {MEASUREMENT_SOURCES.map((option) => (
+            <label key={option.value} className={draft.measurement_source === option.value ? "selected" : ""}>
+              <input
+                type="radio" name="measurement-source" value={option.value} disabled={!canEdit}
+                checked={draft.measurement_source === option.value}
+                onChange={() => {
+                  // Clearing the fields the new kind does not use: a leftover
+                  // resolver on a hand-entered standard reads as automated to
+                  // anyone scanning the catalog, and the server refuses it.
+                  setDraft({
+                    ...draft,
+                    measurement_source: option.value,
+                    resolver_key: option.value === "api_feed" || option.value === "onboard_compliance" ? draft.resolver_key ?? null : null,
+                    source_system: option.value === "structured_import" ? draft.source_system ?? null : null,
+                  });
+                }}
+              />
+              <strong>{option.label}</strong>
+              <small>{option.hint}</small>
+            </label>
+          ))}
+        </div>
+      </fieldset>
       {draft.measurement_source === "structured_import" && <label><span>Source system</span>
         <select
           value={sourceSystems.some((system) => system.value === draft.source_system) || !draft.source_system ? draft.source_system ?? "" : "__other"}
@@ -635,7 +677,14 @@ function StandardEditor({ draft, setDraft, standardId, canEdit, busy, resolvers,
       <label><span>Sort order</span><input type="number" min={0} value={draft.sort_order} disabled={!canEdit} onChange={(event) => set("sort_order", Number(event.target.value))} /></label>
       <label className="contractor-active"><input type="checkbox" checked={draft.is_scored} disabled={!canEdit} onChange={(event) => set("is_scored", event.target.checked)} /><span>Scored by default</span></label>
       <label className="contractor-active"><input type="checkbox" checked={draft.is_safety_critical} disabled={!canEdit} onChange={(event) => set("is_safety_critical", event.target.checked)} /><span>Safety-critical</span></label>
-      <label className="standards-wide"><span>Description</span><textarea rows={2} value={draft.description ?? ""} disabled={!canEdit} onChange={(event) => set("description", event.target.value)} /></label>
+      <label className="standards-wide"><span>Description</span>
+        <textarea
+          rows={2} value={draft.description ?? ""} disabled={!canEdit}
+          placeholder="What this standard measures, in a sentence."
+          onChange={(event) => set("description", event.target.value)}
+        />
+        <small>Shown under the standard's name in the catalog list, clamped to two lines with the rest on hover.</small>
+      </label>
       <label className="standards-wide"><span>Data source note</span><textarea rows={2} value={draft.data_source_note ?? ""} disabled={!canEdit} onChange={(event) => set("data_source_note", event.target.value)} placeholder="Which feed, which filter, and any definition the contract settles." /></label>
       <label className="standards-wide"><span>CAP rule note</span><textarea rows={2} value={draft.cap_rule_note ?? ""} disabled={!canEdit} onChange={(event) => set("cap_rule_note", event.target.value)} /></label>
     </div>
@@ -645,6 +694,43 @@ function StandardEditor({ draft, setDraft, standardId, canEdit, busy, resolvers,
       onClick={() => onSave(isNew ? crypto.randomUUID() : standardId, draft)}
     >{isNew ? "Add standard" : "Save standard"}</button>}
   </section>;
+}
+
+// One band bound, with a slider only where a slider means anything.
+//
+// A percentage runs 0-100 on a scale everyone shares, and Attachment G's own
+// thresholds sit on round numbers - dragging to 85 and nudging is genuinely
+// faster than typing. Miles between road calls does not work that way: its
+// bands are 10,000-12,000 on an open-ended scale, so a 0-100 track would be
+// meaningless and a track sized to today's numbers would be a guess. Those
+// keep the number field alone.
+//
+// The number input stays authoritative either way: the slider steps in halves,
+// and a contract that says 84.9% has to be typeable.
+function BoundField({ label, unit, value, disabled, onChange }: {
+  label: string; unit: string; value: number | null; disabled: boolean;
+  onChange: (bound: number | null) => void;
+}) {
+  const ratio = isRatioUnit(unit);
+  const text = boundToInput(value, unit);
+  return (
+    <label className={ratio ? "standards-bound has-slider" : "standards-bound"}>
+      <span>{label}</span>
+      <div className="standards-measure">
+        <input
+          inputMode="decimal" value={text} disabled={disabled}
+          onChange={(event) => onChange(inputToBound(event.target.value, unit))}
+        />
+        <span>{ratio ? "%" : unit}</span>
+      </div>
+      {ratio && <input
+        className="standards-slider" type="range" min={0} max={100} step={0.5}
+        aria-label={`${label} (percent)`}
+        value={text === "" ? 0 : Number(text)} disabled={disabled}
+        onChange={(event) => onChange(inputToBound(event.target.value, unit))}
+      />}
+    </label>
+  );
 }
 
 function TierEditor({ standard, tiers, agreement, canEdit, busy, knownQualifiers, onSave }: {
@@ -715,22 +801,16 @@ function TierEditor({ standard, tiers, agreement, canEdit, busy, knownQualifiers
                 {BAND_RANGES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
-            {(range === "at_or_above" || range === "between") && <label>
-              <span>{range === "between" ? "From (included)" : "At or above"}</span>
-              <div className="standards-measure">
-                <input inputMode="decimal" value={boundToInput(tier.bound_low, unit)} disabled={!canEdit}
-                  onChange={(event) => update(index, { bound_low: inputToBound(event.target.value, unit) })} />
-                <span>{isRatioUnit(unit) ? "%" : unit}</span>
-              </div>
-            </label>}
-            {(range === "under" || range === "between") && <label>
-              <span>Up to, not including</span>
-              <div className="standards-measure">
-                <input inputMode="decimal" value={boundToInput(tier.bound_high, unit)} disabled={!canEdit}
-                  onChange={(event) => update(index, { bound_high: inputToBound(event.target.value, unit) })} />
-                <span>{isRatioUnit(unit) ? "%" : unit}</span>
-              </div>
-            </label>}
+            {(range === "at_or_above" || range === "between") && <BoundField
+              label={range === "between" ? "From (included)" : "At or above"}
+              unit={unit} value={tier.bound_low} disabled={!canEdit}
+              onChange={(bound) => update(index, { bound_low: bound })}
+            />}
+            {(range === "under" || range === "between") && <BoundField
+              label="Up to, not including"
+              unit={unit} value={tier.bound_high} disabled={!canEdit}
+              onChange={(bound) => update(index, { bound_high: bound })}
+            />}
             {/* Only occurrence standards can carry a condition. assess.ts
                 matches a threshold band with matchTier(tiers, value, direction)
                 and no qualifier, and matchTier then considers unqualified bands
