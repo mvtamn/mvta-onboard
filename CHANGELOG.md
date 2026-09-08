@@ -5,13 +5,30 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.149] - 2026-09-08
+## [1.5.153] - 2026-09-08
 
 - **Performance assessment setup is four sections under Administration, grouped but independent.** Contractors, Agreements, Standards and Lists were stacked inside other screens: contractors behind a `Manage contractors` toggle in the assessment module, agreements as a strip above the standards catalog, lists behind a second toggle beside it. Each is one job on one body of work, and burying three of them inside the fourth made each harder to find than it needed to be. `AdminLayout` gained group support - consecutive links sharing a `group` render under one heading, and a page cannot join a group by accident because the order lives in one array.
 - **A contractor is edited on its own.** It outlives any one contract term - the same record carries across a re-procurement - so its identity should not depend on which term happens to be open.
 - **An Agreement is edited on its own, and every term is listed.** The strip it replaces only ever showed the active one, so a previous term was invisible even though the assessment history references it. Contract number and standards exhibit are edited here.
 - **The standards catalog consumes the Agreement rather than editing it.** It shows which Agreement assignments are read against, cites that Agreement's exhibit, and links to the Agreements section.
 - **Performance Standards is in Administration's own side navigation.** It was added to the main menu when it shipped and never to `AdminLayout`, so anyone who opened Administration and read down the list could not find it. `/admin/performance-standards` redirects to `/admin/performance/standards`, since the old path shipped and people have it.
+
+## [1.5.152] - 2026-09-08
+
+- **Migration 107: targets, count-scaled bands, ranged amounts and rolling CAP windows.** The tier model handled four of the contract's penalty shapes and quietly could not express the rest; each gap below is a real standard in the seeded catalog.
+- **Threshold standards carry a target, distinct from their bands.** The exhibit states one per standard and the schema had nowhere to put it, so it lived implicitly in whichever band meant "meets" - and `assess.ts` wrote the literal string `'Configured tiers'` into `PeriodKpiAssessments.target_display`, which is what a contractor read on an issued report where the target belongs.
+- **Occurrence bands can scale with the monthly count.** `matchTier` received ONE occurrence's quantity, so a band bounded 13-16 matched an occurrence of quantity 13 rather than the thirteenth occurrence of the month, and never fired. `band_scope = 'running_count'` matches each occurrence on its ordinal position instead.
+- **A band's amount can be a range.** Damage reimbursement runs $2,500-$10,000: the contract sets bounds, a person sets the figure on the facts. `penalty_amount` is one number, so this could only be modelled by inventing a figure the contract does not state. A ranged band now waits on a reviewer, who records the amount and what it rests on from the Occurrence Log; `bandAmount` returns null rather than 0 for an unresolved one, because scoring it as nothing states that nothing is owed. `awaiting_amount_count` rides on the assessment so the month cannot read as complete.
+- **Corrective action can turn on a rolling window.** "CAP if more than 5 in a rolling 30 days" is not a property of a band - it is a count over a window that slides across month boundaries, and `triggers_cap` is matched one occurrence at a time. `findCapWindowBreach` evaluates occurrences from before the period too, so four collisions in late March and two in early April breach a 30-day rule that neither month breaches alone.
+- **Fixed a latent break in the period snapshot.** `INSERT AssessmentPeriodTiers` had no column list, so it depended on the physical column order of the table - and migration 105's `severity_order` would have failed every attempt to open a period with a column-count mismatch the moment it was applied. Both snapshot paths now name their columns, and the reopen path no longer silently drops `severity_order`.
+
+## [1.5.151] - 2026-09-08
+
+- **Duplicate migration numbers fail the build.** Migrations are applied in number order by a person reading `functions-restapi/sql/`, so two files claiming one number makes "which ran, and in what order" unanswerable from the filename. It kept happening because the number is picked by reading the directory at authoring time, which is a race whenever two branches are open: four collided in one week (PR #215 renumbered them) and 105 collided again the next day between two sessions. Two checks, because there are two failure shapes. `migrationNumbers.test.ts` runs in `npm test` and fails on two files at one number in the tree - it catches the post-merge state and runs locally before a push. A `migration-numbers` CI job compares the branch against its merge base and fails when the branch adds a number `main` has since taken - the cross-branch case, which git never flags because the filenames differ. Both were exercised against the shapes they exist for, and the CI script uses `[0-9][0-9]*` rather than a GNU-only `\+` so it runs on BSD sed and can be tested outside CI. No console change.
+
+## [1.5.150] - 2026-09-08
+
+- **The Dispatch Log tests no longer expire.** Their fixtures were dated `20260908` - a few days ahead when they were written - and the Watch queue only counts a trip as due when its service date is today. On 8 September the clock reached the fixture date, the day became "today", the "Not the live day" banner correctly stopped rendering, and assertions about dispositions failed for a reason that had nothing to do with dispositions. `main` was red for every branch. The fixture day is now derived seven days ahead of whenever the suite runs, which keeps the weekday for the rotation fixtures and cannot go stale; only the date floats, and the assertions on displayed clock times read `scheduled_start_seconds` rather than the timestamps. No product change.
 
 ## [1.5.146] - 2026-09-07
 

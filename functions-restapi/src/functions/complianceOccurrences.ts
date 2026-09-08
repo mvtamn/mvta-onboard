@@ -20,3 +20,89 @@ app.http("complianceOccurrencePatch", { route:"compliance-occurrences/{id}",meth
   const pool=await getPool();const tx=new sql.Transaction(pool);try{await tx.begin();const req=new sql.Request(tx);req.input("id",sql.UniqueIdentifier,request.params.id);req.input("status",sql.NVarChar(20),body.review_status);req.input("attribution",sql.NVarChar(30),body.attribution);req.input("reason",sql.NVarChar(1000),body.dismiss_reason??null);req.input("actor",sql.NVarChar(200),auth.principal.userDetails??"onboard-console");const result=await req.query<{contractor_id:string;service_month:string}>(`UPDATE ComplianceOccurrences SET review_status=@status,attribution=@attribution,dismiss_reason=@reason,reviewed_by=@actor,reviewed_at=SYSUTCDATETIME() OUTPUT inserted.contractor_id,inserted.service_month WHERE id=@id;`);const row=result.recordset[0];if(!row){await tx.rollback();return{status:404,jsonBody:{error:"Occurrence not found"}};}const stale=new sql.Request(tx);stale.input("contractor",sql.UniqueIdentifier,row.contractor_id);stale.input("month",sql.Char(6),row.service_month);await stale.query(`UPDATE AssessmentPeriods SET input_revision=input_revision+1,status=CASE WHEN status IN('in_review','stale') THEN 'stale' ELSE status END WHERE contractor_id=@contractor AND service_month=@month AND status<>'finalized';`);await tx.commit();return{status:200,jsonBody:{id:request.params.id}};}
   catch(error){try{await tx.rollback();}catch{/*done*/}context.error("PATCH compliance occurrence failed",error);return{status:500,jsonBody:{error:"Internal server error"}};}
 }});
+
+// A reviewer's figure for one occurrence on a ranged band.
+//
+// Some penalties are stated as a range rather than a number - damage
+// reimbursement runs $2,500-$10,000 - so the contract sets the bounds and a
+// person sets the figure on the facts. It is a judgement, so it is recorded
+// with who made it and why, and the month cannot read as complete while any
+// confirmed occurrence on a ranged band is still waiting for one.
+app.http("complianceOccurrenceAmount", {
+  route: "compliance-occurrences/{id}/assessed-amount", methods: ["PUT"], authLevel: "anonymous",
+  handler: async (request: HttpRequest, context: InvocationContext) => {
+    const auth = requireRole(request, COMPLIANCE_WRITE_ROLES);
+    if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
+    if (!isGuid(request.params.id)) return { status: 400, jsonBody: { error: "Invalid occurrence id" } };
+    let body: Record<string, unknown>;
+    try { body = await request.json() as Record<string, unknown>; } catch { return { status: 400, jsonBody: { error: "Request body must be valid JSON" } }; }
+    const clearing = body.assessed_amount === null;
+    if (!clearing && (typeof body.assessed_amount !== "number" || !Number.isFinite(body.assessed_amount) || body.assessed_amount < 0)) {
+      return { status: 400, jsonBody: { error: "assessed_amount must be a non-negative number, or null to clear it" } };
+    }
+    if (!clearing && (typeof body.note !== "string" || !body.note.trim() || body.note.length > 1000)) {
+      return { status: 400, jsonBody: { error: "note is required and must be at most 1000 characters — the figure is a judgement, so say what it rests on" } };
+    }
+
+    const pool = await getPool();
+    const ready = await pool.request().query<{ ready: number }>(
+      `SELECT CASE WHEN COL_LENGTH('dbo.ComplianceOccurrences','assessed_amount') IS NULL THEN 0 ELSE 1 END ready`);
+    if (!ready.recordset[0]?.ready) return { status: 409, jsonBody: { error: "Migration 107 has not been applied to this database yet" } };
+
+    const tx = new sql.Transaction(pool);
+    try {
+      await tx.begin();
+      const bounds = new sql.Request(tx);
+      bounds.input("id", sql.UniqueIdentifier, request.params.id);
+      // The bounds come from the ranged band on the occurrence's own standard.
+      // Checking here means a figure outside the contract is refused while the
+      // reviewer is looking at it, not at month-end close.
+      const found = await bounds.query<{ contractor_id: string; service_month: string; min_amount: number | null; max_amount: number | null }>(`
+        SELECT TOP 1 o.contractor_id, o.service_month,
+          (SELECT TOP 1 t.penalty_amount_min FROM ContractorStandardTiers t
+             WHERE t.standard_id=o.standard_id AND t.penalty_amount_min IS NOT NULL AND t.effective_end_date IS NULL
+             ORDER BY t.tier_order) min_amount,
+          (SELECT TOP 1 t.penalty_amount_max FROM ContractorStandardTiers t
+             WHERE t.standard_id=o.standard_id AND t.penalty_amount_max IS NOT NULL AND t.effective_end_date IS NULL
+             ORDER BY t.tier_order) max_amount
+        FROM ComplianceOccurrences o WHERE o.id=@id
+      `);
+      const row = found.recordset[0];
+      if (!row) { await tx.rollback(); return { status: 404, jsonBody: { error: "Occurrence not found" } }; }
+      if (!clearing && row.min_amount !== null && row.max_amount !== null) {
+        const amount = body.assessed_amount as number;
+        if (amount < row.min_amount || amount > row.max_amount) {
+          await tx.rollback();
+          return { status: 400, jsonBody: { error: `The contract sets this penalty between ${row.min_amount} and ${row.max_amount}. ${amount} is outside that range.` } };
+        }
+      }
+
+      const write = new sql.Request(tx);
+      write.input("id", sql.UniqueIdentifier, request.params.id);
+      write.input("amount", sql.Decimal(12, 2), clearing ? null : body.assessed_amount);
+      write.input("note", sql.NVarChar(1000), clearing ? null : String(body.note).trim());
+      write.input("actor", sql.NVarChar(200), auth.principal.userDetails ?? "onboard-console");
+      await write.query(`
+        UPDATE ComplianceOccurrences
+        SET assessed_amount=@amount, assessed_amount_note=@note,
+            assessed_by=CASE WHEN @amount IS NULL THEN NULL ELSE @actor END,
+            assessed_at=CASE WHEN @amount IS NULL THEN NULL ELSE SYSUTCDATETIME() END
+        WHERE id=@id;
+      `);
+      const stale = new sql.Request(tx);
+      stale.input("contractor", sql.UniqueIdentifier, row.contractor_id);
+      stale.input("month", sql.Char(6), row.service_month);
+      await stale.query(`
+        UPDATE AssessmentPeriods SET input_revision=input_revision+1,
+          status=CASE WHEN status IN('in_review','stale') THEN 'stale' ELSE status END
+        WHERE contractor_id=@contractor AND service_month=@month AND status<>'finalized';
+      `);
+      await tx.commit();
+      return { status: 200, jsonBody: { id: request.params.id } };
+    } catch (error) {
+      try { await tx.rollback(); } catch { /* the transaction is already resolved */ }
+      context.error("PUT compliance occurrence assessed amount failed", error);
+      return { status: 500, jsonBody: { error: "Internal server error" } };
+    }
+  },
+});
