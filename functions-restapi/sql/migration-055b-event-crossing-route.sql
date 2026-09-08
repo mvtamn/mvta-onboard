@@ -6,4 +6,4 @@ IF COL_LENGTH('dbo.EventGeofenceCrossings', 'route_id') IS NULL
 
 COMMIT TRANSACTION;
 GO
-PRINT 'Migration 055 applied: event crossings retain the AVL route at crossing time.';
+PRINT 'Migration 055b applied: event crossings retain the AVL route at crossing time.';

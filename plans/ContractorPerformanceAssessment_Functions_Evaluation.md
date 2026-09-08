@@ -11,10 +11,10 @@ The Performance Assessment implementation now has an **operational governed mont
 - The contractor, period, scoring, manager-review, occurrence, manual-metric, and report handlers compile and are registered.
 - The deterministic scoring helpers, revision hashes, stale-review protection, report hashing, and business-day deadline helpers are implemented and tested.
 - The REST API suite passes: **278/278 tests**, including a public Performance Assessment workflow seam, contractor isolation, official-artifact formatting, and business-day governance.
-- Migration 032 adds Agreement identity, frozen rule-set provenance, Not Assessable exceptions, immutable evidence-version metadata, Validation Draft sharing, Final Issuance Records, Assessment Credits, and item-scoped disputes.
+- Migration 032b adds Agreement identity, frozen rule-set provenance, Not Assessable exceptions, immutable evidence-version metadata, Validation Draft sharing, Final Issuance Records, Assessment Credits, and item-scoped disputes.
 - Assessment computation now scopes occurrences, manual metrics, and escalation history to the selected period's contractor. Automated candidate ingestion still cannot safely choose among multiple active contractors.
 
-The module should not be treated as contract-ready until migration 032 is applied and verified, evidence/CAP/dispute operations are completed, and the governed workflow passes a database-backed acceptance run.
+The module should not be treated as contract-ready until migration 032b is applied and verified, evidence/CAP/dispute operations are completed, and the governed workflow passes a database-backed acceptance run.
 
 ## Runtime inventory
 

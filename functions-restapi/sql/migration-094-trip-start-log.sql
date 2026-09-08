@@ -21,7 +21,7 @@ IF OBJECT_ID('dbo.GtfsScheduledTrips', 'U') IS NULL OR COL_LENGTH('dbo.GtfsSched
   THROW 50094, 'Migration 094 requires GtfsScheduledTrips with block_id (migration 027).', 1;
 GO
 IF OBJECT_ID('dbo.AppSettings', 'U') IS NULL
-  THROW 50094, 'Migration 094 requires AppSettings (migration 032).', 1;
+  THROW 50094, 'Migration 094 requires AppSettings (migration 032a).', 1;
 GO
 
 IF OBJECT_ID('dbo.TripStartLog', 'U') IS NULL

@@ -1,4 +1,4 @@
--- Migration 088: give the authoritative Detour its own location, and undo
+-- Migration 088b: give the authoritative Detour its own location, and undo
 -- the intake location that acceptance had been writing into riders_directed.
 --
 -- Detour Intake captures where the closure IS (location) separately from
@@ -13,7 +13,7 @@
 -- a value staff have since edited is left alone.
 
 IF OBJECT_ID('dbo.Detours', 'U') IS NULL OR OBJECT_ID('dbo.DetourIntake', 'U') IS NULL
-  THROW 50088, 'Migration 088 requires Detours and DetourIntake.', 1;
+  THROW 50088, 'Migration 088b requires Detours and DetourIntake.', 1;
 GO
 
 IF COL_LENGTH('dbo.Detours', 'location') IS NULL ALTER TABLE Detours ADD location NVARCHAR(500) NULL;
@@ -27,4 +27,4 @@ JOIN DetourIntake i ON i.id = d.id AND i.status = 'accepted'
 WHERE i.location IS NOT NULL AND d.location IS NULL;
 GO
 
-PRINT 'Migration 088 applied: Detours.location added; promoted intake locations moved out of riders_directed.';
+PRINT 'Migration 088b applied: Detours.location added; promoted intake locations moved out of riders_directed.';

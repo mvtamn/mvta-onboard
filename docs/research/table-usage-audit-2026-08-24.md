@@ -35,15 +35,15 @@ This is a source-code audit, not a production database inventory. It cannot prov
 | `AccessManagementGuestInvitations` | Active | `functions-restapi/sql/migration-052-access-management.sql:102` | `functions-restapi/src/lib/accessManagementStore.ts:473` |
 | `AccessManagementMetadata` | Active | `functions-restapi/sql/migration-052-access-management.sql:76` | `functions-restapi/src/lib/accessManagementStore.ts:329` |
 | `AccessManagementOperations` | Active | `functions-restapi/sql/migration-052-access-management.sql:60` | `functions-restapi/src/lib/accessManagementStore.ts:252` |
-| `AppPollState` | Active | `functions-restapi/sql/migration-032-app-settings.sql:29` | `functions-restapi/src/functions/availAvlPoll.ts:60` |
-| `AppSettings` | Active | `functions-restapi/sql/migration-032-app-settings.sql:3` | `functions-restapi/src/functions/appSettings.ts:19`; `functions-restapi/src/functions/availAvlPoll.ts:56` |
-| `AssessmentCorrectionImpacts` | Active | `functions-restapi/sql/migration-032-governed-performance-assessment.sql:158` | `functions-restapi/src/functions/assessmentPeriods.ts:124` |
-| `AssessmentCredits` | Active | `functions-restapi/sql/migration-032-governed-performance-assessment.sql:137` | `functions-restapi/src/functions/assessmentGovernance.ts:42` |
-| `AssessmentDisputeItems` | Active | `functions-restapi/sql/migration-032-governed-performance-assessment.sql:148` | `functions-restapi/src/functions/assessmentGovernance.ts:30` |
-| `AssessmentExceptions` | Active | `functions-restapi/sql/migration-032-governed-performance-assessment.sql:105` | `functions-restapi/src/functions/assessmentGovernance.ts:12`; `functions-restapi/src/functions/assessmentPeriods.ts:81` |
+| `AppPollState` | Active | `functions-restapi/sql/migration-032a-app-settings.sql:29` | `functions-restapi/src/functions/availAvlPoll.ts:60` |
+| `AppSettings` | Active | `functions-restapi/sql/migration-032a-app-settings.sql:3` | `functions-restapi/src/functions/appSettings.ts:19`; `functions-restapi/src/functions/availAvlPoll.ts:56` |
+| `AssessmentCorrectionImpacts` | Active | `functions-restapi/sql/migration-032b-governed-performance-assessment.sql:158` | `functions-restapi/src/functions/assessmentPeriods.ts:124` |
+| `AssessmentCredits` | Active | `functions-restapi/sql/migration-032b-governed-performance-assessment.sql:137` | `functions-restapi/src/functions/assessmentGovernance.ts:42` |
+| `AssessmentDisputeItems` | Active | `functions-restapi/sql/migration-032b-governed-performance-assessment.sql:148` | `functions-restapi/src/functions/assessmentGovernance.ts:30` |
+| `AssessmentExceptions` | Active | `functions-restapi/sql/migration-032b-governed-performance-assessment.sql:105` | `functions-restapi/src/functions/assessmentGovernance.ts:12`; `functions-restapi/src/functions/assessmentPeriods.ts:81` |
 | `AssessmentPeriods` | Active | `functions-restapi/sql/migration-030-contractor-performance-assessment.sql:177` | `functions-restapi/src/functions/assessmentEvidence.ts:12`; `functions-restapi/src/functions/assessmentGovernance.ts:20` |
-| `AssessmentPeriodStandards` | Active | `functions-restapi/sql/migration-032-governed-performance-assessment.sql:73` | `functions-restapi/src/functions/assessmentPeriods.ts:41`; `functions-restapi/src/functions/assessmentReports.ts:14` |
-| `AssessmentPeriodTiers` | Active | `functions-restapi/sql/migration-032-governed-performance-assessment.sql:74` | `functions-restapi/src/functions/assessmentPeriods.ts:44`; `functions-restapi/src/lib/assessment/assess.ts:74` |
+| `AssessmentPeriodStandards` | Active | `functions-restapi/sql/migration-032b-governed-performance-assessment.sql:73` | `functions-restapi/src/functions/assessmentPeriods.ts:41`; `functions-restapi/src/functions/assessmentReports.ts:14` |
+| `AssessmentPeriodTiers` | Active | `functions-restapi/sql/migration-032b-governed-performance-assessment.sql:74` | `functions-restapi/src/functions/assessmentPeriods.ts:44`; `functions-restapi/src/lib/assessment/assess.ts:74` |
 | `AvailAvlVehiclePositions` | Active | `functions-restapi/sql/migration-012-avail-avl-reports.sql:20` | `functions-restapi/src/functions/availAvl.ts:38`; `functions-restapi/src/functions/availAvlPoll.ts:6` |
 | `AvailMissedTripsRouteStopDay` | Active | `functions-restapi/sql/migration-015-avail-missed-trips.sql:13` | `functions-restapi/src/functions/availMissedTrips.ts:62`; `functions-restapi/src/functions/availMissedTripsPoll.ts:67` |
 | `ComplianceAssessmentAudit` | Active | `functions-restapi/sql/migration-030-contractor-performance-assessment.sql:281` | `functions-restapi/src/functions/assessmentEvidence.ts:12`; `functions-restapi/src/functions/assessmentGovernance.ts:12` |
@@ -68,7 +68,7 @@ This is a source-code audit, not a production database inventory. It cannot prov
 | `EmailDeliveryLog` | Active | `functions-restapi/sql/phase1-schema.sql:103` | `functions-dispatch/src/functions/dispatchMessageCreated.ts:3` |
 | `EventGeofenceCrossings` | Active | `functions-restapi/sql/migration-033-event-geofences.sql:43` | `functions-restapi/src/functions/eventGeofenceCrossings.ts:5`; `functions-restapi/src/functions/eventGeofenceNotifications.ts:57` |
 | `EventGeofenceDirectionRules` | Active | `functions-restapi/sql/migration-033-event-geofences.sql:22` | `functions-restapi/src/functions/eventGeofences.ts:33`; `functions-restapi/src/functions/eventServicePlans.ts:18` |
-| `EventGeofenceNotificationCooldowns` | Active | `functions-restapi/sql/migration-069-event-geofence-notification-cooldowns.sql:4` | `functions-restapi/src/functions/eventGeofenceNotify.ts:64` |
+| `EventGeofenceNotificationCooldowns` | Active | `functions-restapi/sql/migration-069a-event-geofence-notification-cooldowns.sql:4` | `functions-restapi/src/functions/eventGeofenceNotify.ts:64` |
 | `EventGeofenceNotifications` | Active | `functions-restapi/sql/migration-033-event-geofences.sql:54` | `functions-restapi/src/functions/eventGeofenceNotifications.ts:10`; `functions-restapi/src/functions/eventGeofenceNotify.ts:11` |
 | `EventGeofencePurposes` | Active | `functions-restapi/sql/migration-067-event-geofence-purpose-catalog.sql:9` | `functions-restapi/src/functions/eventGeofences.ts:15` |
 | `EventGeofences` | Active | `functions-restapi/sql/migration-033-event-geofences.sql:2` | `functions-restapi/src/functions/eventGeofenceCrossings.ts:19`; `functions-restapi/src/functions/eventGeofenceNotify.ts:41` |
@@ -97,7 +97,7 @@ This is a source-code audit, not a production database inventory. It cannot prov
 | `EventVehiclePositionHistory` | Active | `functions-restapi/sql/migration-016-route-classification.sql:47` | `functions-restapi/src/functions/availAvlPoll.ts:105`; `functions-restapi/src/functions/eventMonitoringHealth.ts:16` |
 | `ExcusableDelayClaims` | Active | `functions-restapi/sql/migration-030-contractor-performance-assessment.sql:84` | `functions-restapi/src/lib/assessment/assess.ts:100` |
 | `ExpirationDefaults` | Active | `functions-restapi/sql/phase1-schema.sql:40` | `functions-restapi/src/functions/adminExpirationDefaults.ts:4`; `functions-restapi/src/functions/otpSettings.ts:4` |
-| `FinalIssuanceRecords` | Active | `functions-restapi/sql/migration-032-governed-performance-assessment.sql:127` | `functions-restapi/src/functions/assessmentReports.ts:61` |
+| `FinalIssuanceRecords` | Active | `functions-restapi/sql/migration-032b-governed-performance-assessment.sql:127` | `functions-restapi/src/functions/assessmentReports.ts:61` |
 | `FixedRouteDepartures` | Active | `functions-restapi/sql/migration-013-fixed-route-departures.sql:21` | `functions-restapi/src/functions/availAvl.ts:60`; `functions-restapi/src/functions/complianceCandidatesPoll.ts:15` |
 | `GtfsCalendar` | Active | `functions-restapi/sql/migration-011-missed-trips.sql:46` | `functions-restapi/src/functions/gtfsMissedTripsPoll.ts:9`; `functions-restapi/src/functions/gtfsStopsSync.ts:6` |
 | `GtfsCalendarDates` | Active | `functions-restapi/sql/migration-011-missed-trips.sql:63` | `functions-restapi/src/functions/gtfsMissedTripsPoll.ts:10`; `functions-restapi/src/functions/gtfsStopsSync.ts:6` |
@@ -123,7 +123,7 @@ This is a source-code audit, not a production database inventory. It cannot prov
 | `OtpSettings` | Active | `functions-restapi/sql/migration-018-otp-exclusions-and-settings.sql:87` | `functions-restapi/src/functions/otpSettings.ts:36` |
 | `OtpStopExclusions` | Active | `functions-restapi/sql/migration-018-otp-exclusions-and-settings.sql:50` | `functions-restapi/src/functions/otpAuditStream.ts:4`; `functions-restapi/src/functions/otpStopExclusions.ts:47` |
 | `PenaltyDisputes` | Active | `functions-restapi/sql/migration-030-contractor-performance-assessment.sql:314` | `functions-restapi/src/functions/assessmentGovernance.ts:30`; `functions-restapi/src/functions/assessmentReports.ts:61` |
-| `PerformanceAgreements` | Active | `functions-restapi/sql/migration-032-governed-performance-assessment.sql:12` | `functions-restapi/src/functions/assessmentPeriods.ts:33`; `functions-restapi/src/functions/complianceCandidatesPoll.ts:22` |
+| `PerformanceAgreements` | Active | `functions-restapi/sql/migration-032b-governed-performance-assessment.sql:12` | `functions-restapi/src/functions/assessmentPeriods.ts:33`; `functions-restapi/src/functions/complianceCandidatesPoll.ts:22` |
 | `PeriodKpiAssessments` | Active | `functions-restapi/sql/migration-030-contractor-performance-assessment.sql:201` | `functions-restapi/src/functions/assessmentEvidence.ts:12`; `functions-restapi/src/functions/assessmentGovernance.ts:12` |
 | `RouteClassification` | Active | `functions-restapi/sql/migration-016-route-classification.sql:16` | `functions-restapi/src/functions/eventGeofenceCrossings.ts:20`; `functions-restapi/src/functions/eventGeofenceNotify.ts:41` |
 | `RouteClassificationHistory` | Active | `functions-restapi/sql/migration-039-admin-concurrency-and-classification-history.sql:3` | `functions-restapi/src/functions/routeClassification.ts:192` |
@@ -135,4 +135,4 @@ This is a source-code audit, not a production database inventory. It cannot prov
 | `Subscribers` | Active | `functions-restapi/sql/phase1-schema.sql:60` | `functions-restapi/src/functions/adminSubscribers.ts:1`; `functions-restapi/src/functions/subscribersCreate.ts:1` |
 | `SuggestedAlerts` | Active | `functions-restapi/sql/migration-003-suggested-alerts.sql:11` | `functions-restapi/src/functions/availAvlPoll.ts:5`; `functions-restapi/src/functions/gtfsAlertsPoll.ts:2` |
 | `SystemOutageWindows` | Candidate | `functions-restapi/sql/migration-030-contractor-performance-assessment.sql:161` | — |
-| `ValidationDraftShares` | Active | `functions-restapi/sql/migration-032-governed-performance-assessment.sql:116` | `functions-restapi/src/functions/assessmentEvidence.ts:12`; `functions-restapi/src/functions/assessmentGovernance.ts:20` |
+| `ValidationDraftShares` | Active | `functions-restapi/sql/migration-032b-governed-performance-assessment.sql:116` | `functions-restapi/src/functions/assessmentEvidence.ts:12`; `functions-restapi/src/functions/assessmentGovernance.ts:20` |

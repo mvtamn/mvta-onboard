@@ -2,7 +2,7 @@
 -- This application never creates or updates Avail records automatically.
 
 IF OBJECT_ID('dbo.Detours', 'U') IS NULL
-  THROW 50055, 'Migration 055 requires migration 017 (Detours) first.', 1;
+  THROW 50055, 'Migration 055a requires migration 017 (Detours) first.', 1;
 GO
 
 IF COL_LENGTH('dbo.Detours', 'avail_entry_result') IS NULL
@@ -22,4 +22,4 @@ IF NOT EXISTS (
     CHECK (avail_entry_result IS NULL OR avail_entry_result IN ('entered', 'conflict', 'not_entered'));
 GO
 
-PRINT 'Migration 055 applied: human Avail entry confirmation fields added.';
+PRINT 'Migration 055a applied: human Avail entry confirmation fields added.';

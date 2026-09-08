@@ -8,7 +8,7 @@
 -- is required and communication status is unchanged.
 
 IF OBJECT_ID('dbo.AppSettings', 'U') IS NULL
-  THROW 50089, 'Migration 089 requires AppSettings (migration 032).', 1;
+  THROW 50089, 'Migration 089 requires AppSettings (migration 032a).', 1;
 GO
 
 IF NOT EXISTS (SELECT 1 FROM AppSettings WHERE module = 'detour' AND setting_key = 'contractor_name')
