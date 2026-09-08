@@ -3,7 +3,9 @@
 // Two classes of domain, because they are not alike:
 //
 //   OWNED     units, source systems, condition codes, responsible teams,
-//             priorities. Lists MVTA maintains. Add, rename, reorder, retire.
+//             assigned owners, priorities. Lists MVTA maintains. Add, rename,
+//             reorder, retire. The engine does not branch on any of them, so
+//             none needs the system-row guardrail.
 //
 //   SYSTEM    penalty_basis, tier_label, measurement_source, standard_type,
 //             direction. The scoring engine branches on these values.
@@ -18,7 +20,7 @@
 // Retiring is is_active = 0, never a delete. A value that already scored a
 // month has to keep resolving; inactive only means "keep it out of new
 // pickers".
-export const OWNED_DOMAINS = ["unit", "source_system", "condition_code", "responsible_team", "priority"] as const;
+export const OWNED_DOMAINS = ["unit", "source_system", "condition_code", "responsible_team", "assigned_to", "priority"] as const;
 export const SYSTEM_DOMAINS = ["penalty_basis", "tier_label", "measurement_source", "standard_type", "direction"] as const;
 export const REFERENCE_DOMAINS = [...OWNED_DOMAINS, ...SYSTEM_DOMAINS] as const;
 

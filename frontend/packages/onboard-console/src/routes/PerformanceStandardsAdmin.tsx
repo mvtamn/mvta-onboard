@@ -44,7 +44,7 @@ const today = () => toServiceDate(new Date().toISOString().slice(0, 10));
 interface Vocabulary {
   units: VocabularyOption[]; priorities: VocabularyOption[]; penaltyBases: VocabularyOption[];
   tierLabels: VocabularyOption[]; conditions: VocabularyOption[];
-  sourceSystems: VocabularyOption[]; teams: VocabularyOption[];
+  sourceSystems: VocabularyOption[]; teams: VocabularyOption[]; owners: VocabularyOption[];
 }
 
 type Tab = "details" | "bands" | "assignment";
@@ -150,6 +150,7 @@ export function PerformanceStandardsAdmin() {
     sourceSystems: optionsFor(referenceValues, "source_system",
       sourceSystems.map((system) => ({ value: system.value, label: system.label, description: system.description }))),
     teams: optionsFor(referenceValues, "responsible_team", []),
+    owners: optionsFor(referenceValues, "assigned_to", []),
   }), [referenceValues, sourceSystems]);
 
   // Conditions come from the vocabulary table. They used to be derived from the
@@ -629,8 +630,16 @@ function StandardEditor({ draft, setDraft, standardId, canEdit, busy, resolvers,
             : `Nothing registered serves a ${draft.standard_type === "threshold" ? "monthly-value" : "counted-events"} standard from this source. Enter it by hand instead.`}
         </small>}
       </label>}
-      <label><span>Responsible team</span><input value={draft.responsible_team ?? ""} disabled={!canEdit} onChange={(event) => set("responsible_team", event.target.value)} /></label>
-      <label><span>Assigned to</span><input value={draft.assigned_to ?? ""} disabled={!canEdit} onChange={(event) => set("assigned_to", event.target.value)} /></label>
+      <ListField
+        label="Responsible team" options={vocab.teams} value={draft.responsible_team ?? ""} disabled={!canEdit}
+        hint="The team accountable for this standard. Maintained under Lists."
+        onChange={(value) => set("responsible_team", value)}
+      />
+      <ListField
+        label="Assigned to" options={vocab.owners} value={draft.assigned_to ?? ""} disabled={!canEdit}
+        hint="The person who owns it month to month, and who is chased when a figure is missing."
+        onChange={(value) => set("assigned_to", value)}
+      />
       <label><span>Effective from</span><input type="date" value={toInputDate(draft.effective_start_date)} disabled={!canEdit} onChange={(event) => set("effective_start_date", toServiceDate(event.target.value))} /></label>
       <label><span>Retired after</span><input type="date" value={toInputDate(draft.effective_end_date)} disabled={!canEdit} onChange={(event) => set("effective_end_date", event.target.value ? toServiceDate(event.target.value) : null)} /></label>
       <label><span>Sort order</span><input type="number" min={0} value={draft.sort_order} disabled={!canEdit} onChange={(event) => set("sort_order", Number(event.target.value))} /></label>
@@ -666,6 +675,46 @@ function StandardEditor({ draft, setDraft, standardId, canEdit, busy, resolvers,
 //
 // The number input stays authoritative either way: the slider steps in halves,
 // and a contract that says 84.9% has to be typeable.
+// A value chosen from a list, with room for one the list does not have yet.
+//
+// The lists are seeded from what the catalog already holds, so they start
+// complete - but a new team or owner appearing mid-edit should not mean
+// leaving the standard to add it somewhere else. Anything typed here is saved
+// on the standard; adding it under Lists is what offers it to everyone else.
+function ListField({ label, options, value, disabled, hint, onChange }: {
+  label: string; options: VocabularyOption[]; value: string; disabled: boolean; hint: string;
+  onChange: (value: string) => void;
+}) {
+  // Typing a new value is a mode the reader chooses, not something inferred
+  // from the value being unknown - otherwise clearing the box to type would
+  // close the box you were typing in. A value the list has not caught up with
+  // still shows as itself, via withCurrent, rather than as "Someone else".
+  const [entering, setEntering] = useState(false);
+  const choices = withCurrent(options, value);
+  return <label>
+    <span>{label}</span>
+    <select
+      value={entering ? "__other" : value} disabled={disabled}
+      onChange={(event) => {
+        if (event.target.value === "__other") { setEntering(true); return; }
+        setEntering(false);
+        onChange(event.target.value);
+      }}
+    >
+      <option value="">Not set</option>
+      {choices.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+      <option value="__other">Someone else…</option>
+    </select>
+    {entering && <input
+      value={value} disabled={disabled} autoFocus placeholder={`Name the ${label.toLowerCase()}`}
+      onChange={(event) => onChange(event.target.value)}
+    />}
+    {!options.length
+      ? <small>No {label.toLowerCase()} list exists yet. Anything entered here is saved on the standard; add it under Lists to offer it everywhere.</small>
+      : <small>{hint}</small>}
+  </label>;
+}
+
 function BoundField({ label, unit, value, disabled, onChange }: {
   label: string; unit: string; value: number | null; disabled: boolean;
   onChange: (bound: number | null) => void;
