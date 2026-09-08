@@ -179,7 +179,7 @@ which is exactly the `external_detour_id` linkage that only exists for
 `source='avail'` rows — a manual row has none until someone types it in.
 
 **Stale-record nudge:** reuse the existing pattern rather than inventing one.
-`AppSettings` (migration-032) holds admin-editable thresholds; `AppPollState`
+`AppSettings` (migration-032a) holds admin-editable thresholds; `AppPollState`
 provides the database-backed lease so only one scaled instance fires a due poll.
 Both were built generically for exactly this.
 

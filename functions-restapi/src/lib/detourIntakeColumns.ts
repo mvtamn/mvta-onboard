@@ -7,7 +7,7 @@
 export interface DetourIntakeSchemaFlags {
   duplicateLinksReady: boolean;   // migration 057
   completeFieldsReady: boolean;   // migration 056
-  operationalFieldsReady: boolean; // migration 069
+  operationalFieldsReady: boolean; // migration 069b
   geometryReady?: boolean;         // migration 091
 }
 

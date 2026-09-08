@@ -1,4 +1,4 @@
--- Migration 032: reusable application settings and timer-poller state.
+-- Migration 032a: reusable application settings and timer-poller state.
 
 CREATE TABLE AppSettings (
     id            INT IDENTITY(1,1) PRIMARY KEY,
@@ -36,4 +36,4 @@ GO
 INSERT INTO AppPollState (module, last_run_at) VALUES ('event', NULL);
 GO
 
-PRINT 'Migration 032 applied: AppSettings and AppPollState created; event poll interval seeded at 30 seconds.';
+PRINT 'Migration 032a applied: AppSettings and AppPollState created; event poll interval seeded at 30 seconds.';

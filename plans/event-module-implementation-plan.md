@@ -8,7 +8,7 @@ its file style differs from the rest of the repo.
 | Part | Status | Landed as |
 |---|---|---|
 | A1 RouteClassification + Admin editor | Built, with deltas (no `avail_route_name` column — see A1 note) | `migration-016`, `routeClassification.ts` |
-| A2 Event-bus filtering + configurable interval | Built, **not as specified** — see the as-built note in A2 | `migration-032`, `availAvlPoll.ts` |
+| A2 Event-bus filtering + configurable interval | Built, **not as specified** — see the as-built note in A2 | `migration-032a`, `availAvlPoll.ts` |
 | A3 Azure Maps panel + `/maps/token` | Built | `mapsToken.ts`, `maps.bicep`, `EventMonitoring.tsx` |
 | A4 Geofencing + locations + notifications | Built | `migration-033`, `eventGeofences.ts`, `eventLocations.ts`, `eventGeofenceCrossings.ts`, `eventGeofenceNotify.ts`, `eventGeofenceNotifications.ts`, `lib/geofence.ts`, `lib/eventGeofenceDetection.ts`, `EventResourceMapEditor.tsx` |
 | A5 Audit trail integration | Built, as its own stream rather than extending `otpAuditStream.ts` | `eventModuleAuditStream.ts` |
@@ -340,7 +340,7 @@ CREATE TABLE EventServicePlanLocations (
 ## Files to touch/add
 
 **A1–A3 are done — the list below is retained as a record of intent.** As built:
-`migration-016-route-classification.sql`, `migration-032-app-settings.sql`,
+`migration-016-route-classification.sql`, `migration-032a-app-settings.sql`,
 `routeClassification.ts`, `eventVehiclePositions.ts`, `appSettings.ts`,
 `mapsToken.ts`, `maps.bicep`, `Admin.tsx`, `EventMonitoring.tsx` +
 `eventMonitoring.css`, and **`availAvlPoll.ts` (modified)** — no `eventAvlPoll.ts`.
@@ -357,7 +357,7 @@ CREATE TABLE EventServicePlanLocations (
 
 ## Recommended build sequence
 1. ~~**A1** (`RouteClassification` table + Admin.tsx section)~~ — **done**.
-2. ~~**A2** (event-bus filtering in the existing AVL poller)~~ — **done**, in `availAvlPoll.ts`. Also delivered `AppSettings`/`AppPollState` (migration-032) with a DB-backed lease for multi-instance safety, which this plan did not specify.
+2. ~~**A2** (event-bus filtering in the existing AVL poller)~~ — **done**, in `availAvlPoll.ts`. Also delivered `AppSettings`/`AppPollState` (migration-032a) with a DB-backed lease for multi-instance safety, which this plan did not specify.
 3. ~~**A3** (`EventMonitoring.tsx`'s Azure Maps panel)~~ — **done**; Maps Bicep module approved and deployed.
 4. ~~**A4** (geofencing + reference locations + notification pipeline)~~ — **done**, using the Azure Maps drawing toolbar in a dedicated `EventResourceMapEditor.tsx` and hand-written point-in-polygon math in `lib/geofence.ts` (no `@turf` dependency). Teams webhook provisioning remains an MVTA-side action: both send paths read `TEAMS_EVENT_WEBHOOK_URL`, and until it is set, manual approval returns 503 and `auto` rules are silently recorded as `manual`.
 5. ~~**A6** (Service Plans)~~ — **done**, in `EventPlanning.tsx`, with a five-state approval lifecycle (migration-035). Its gating condition reached crossing detection only — see the gating note in Build status.

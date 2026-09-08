@@ -13,4 +13,4 @@ BEGIN
 END;
 GO
 
-PRINT 'Migration 069 applied: Event AVL notification cooldowns are serialized.';
+PRINT 'Migration 069a applied: Event AVL notification cooldowns are serialized.';
