@@ -217,6 +217,9 @@ MIGRATIONS=(
   "migration-104-measurement-source-kinds.sql"
   "migration-105-reference-values.sql"
   "migration-106-raw-measurement-reporting-views.sql"
+  "migration-107-penalty-scaling.sql"
+  "migration-108-team-and-owner-lists.sql"
+  "migration-109-window-modes-and-staffing-split.sql"
 )
 
 # Each migration's landing check: a query returning 1 when it is present.
@@ -226,14 +229,20 @@ CHECK_LABELS=(
   "104 · ContractorPerformanceStandards.source_system + CK_CPS_Source"
   "105 · dbo.ReferenceValues"
   "106 · five reporting views"
+  "107 · standard targets, ranged band amounts, assessed occurrence amounts"
+  "108 · responsible_team and assigned_to reference values"
+  "109 · cap_window_mode + the four Operator Staffing standards"
 )
 CHECK_QUERIES=(
   "SELECT COUNT(*) FROM sys.columns WHERE object_id=OBJECT_ID('dbo.AssessmentPeriodStandards') AND name='resolver_key'"
   "SELECT CASE WHEN COL_LENGTH('dbo.ContractorPerformanceStandards','source_system') IS NOT NULL AND EXISTS(SELECT 1 FROM sys.check_constraints WHERE name='CK_CPS_Source') THEN 1 ELSE 0 END"
   "SELECT CASE WHEN OBJECT_ID('dbo.ReferenceValues','U') IS NOT NULL THEN 1 ELSE 0 END"
   "SELECT COUNT(*) FROM sys.views WHERE name IN ('vw_OtpMonthlyRouteStop','vw_OtpDailyRouteStopHour','vw_MissedTrip','vw_GarageDeparture','vw_MeasurementFeedHealth')"
+  "SELECT CASE WHEN COL_LENGTH('dbo.ContractorPerformanceStandards','target_value') IS NOT NULL AND COL_LENGTH('dbo.ContractorStandardTiers','penalty_amount_min') IS NOT NULL AND COL_LENGTH('dbo.ComplianceOccurrences','assessed_amount') IS NOT NULL AND COL_LENGTH('dbo.PeriodKpiAssessments','awaiting_amount_count') IS NOT NULL THEN 1 ELSE 0 END"
+  "SELECT CASE WHEN EXISTS(SELECT 1 FROM dbo.ReferenceValues WHERE domain='responsible_team') AND EXISTS(SELECT 1 FROM dbo.ReferenceValues WHERE domain='assigned_to') THEN 1 ELSE 0 END"
+  "SELECT CASE WHEN COL_LENGTH('dbo.ContractorPerformanceStandards','cap_window_mode') IS NOT NULL AND EXISTS(SELECT 1 FROM sys.check_constraints WHERE name='CK_CPS_CapWindowMode') AND (SELECT COUNT(*) FROM dbo.ContractorPerformanceStandards WHERE code IN ('OPERATOR_STAFFING_LEVEL','PIVOT_COVERAGE','PIVOT_MISUSE','UNQUALIFIED_OPERATOR')) = 4 THEN 1 ELSE 0 END"
 )
-CHECK_EXPECTED=("1" "1" "1" "5")
+CHECK_EXPECTED=("1" "1" "1" "5" "1" "1" "1")
 
 # Set when this wizard opens the firewall itself, so stage 6 knows what to undo.
 ADDED_FIREWALL_RULE=""
