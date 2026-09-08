@@ -1,5 +1,5 @@
 import type {
-  ContractorPerformanceStandard, ContractorStandardTier, StandardPenaltyBasis,
+  ContractorPerformanceStandard, ContractorStandardTier, StandardMeasurementSource, StandardPenaltyBasis,
 } from "@mvta/shared";
 
 // Turning the tier model into words, and back.
@@ -192,4 +192,33 @@ export function ladderWarnings(
     warnings.push("More than one band matches any value; only the first will ever score.");
   }
   return warnings;
+}
+
+// How a standard's source reads in the catalog. Short, because it sits in a
+// list row beside everything else about the standard.
+export const MEASUREMENT_SOURCE_LABELS: Record<StandardMeasurementSource, string> = {
+  api_feed: "from a feed",
+  onboard_compliance: "from OnBoard",
+  manual_entry: "by hand",
+  structured_import: "transcribed",
+};
+
+export function sourceLabel(source: StandardMeasurementSource | undefined, sourceSystem?: string | null): string {
+  const base = MEASUREMENT_SOURCE_LABELS[source ?? "manual_entry"];
+  return source === "structured_import" && sourceSystem ? `from ${sourceSystem}` : base;
+}
+
+// Whether anything measures this standard without a person typing the figure.
+// Only these two kinds name a resolver, so only they can be missing one.
+export function isAutomated(source: StandardMeasurementSource | undefined): boolean {
+  return source === "api_feed" || source === "onboard_compliance";
+}
+
+// Whether a person types this standard's monthly figure. Both manual kinds do:
+// the difference between them is provenance, not mechanism, so anything that
+// offers an entry form has to include both - otherwise reclassifying a
+// standard as transcribed from Nexus or M5 would quietly remove it from the
+// form somebody enters it on.
+export function isHandEntered(source: StandardMeasurementSource | undefined): boolean {
+  return !isAutomated(source);
 }

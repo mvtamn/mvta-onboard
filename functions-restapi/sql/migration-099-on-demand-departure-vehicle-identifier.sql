@@ -1,6 +1,6 @@
 -- Migration 099: the fleet number on an on-demand departure.
 --
--- OnDemandDepartures (migration 096) stores Spare's vehicle id, an opaque key.
+-- OnDemandDepartures (migration 096b) stores Spare's vehicle id, an opaque key.
 -- The console showed that key in its Vehicle column while the fixed-route
 -- view shows Avail's fleet label, the number painted on the bus. Spare calls
 -- the same thing the vehicle's identifier (the Ridership Export's
@@ -11,7 +11,7 @@
 -- Re-runnable. Run once against the live database (see HANDOFF section 5.7).
 
 IF OBJECT_ID('dbo.OnDemandDepartures', 'U') IS NULL
-  THROW 50099, 'Migration 099 requires OnDemandDepartures (migration 096).', 1;
+  THROW 50099, 'Migration 099 requires OnDemandDepartures (migration 096b).', 1;
 GO
 
 IF COL_LENGTH('dbo.OnDemandDepartures', 'vehicle_identifier') IS NULL

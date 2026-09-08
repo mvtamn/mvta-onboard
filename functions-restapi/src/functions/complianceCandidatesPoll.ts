@@ -263,11 +263,11 @@ app.timer("complianceCandidatesPoll", {
           CASE WHEN OBJECT_ID('dbo.OnDemandDepartures','U') IS NOT NULL THEN 1 ELSE 0 END on_demand_ready
       `);
       if (!ready.recordset[0]?.ready) { context.warn("Compliance candidate tables are not ready; migration 030 may be pending."); return; }
-      // The on-demand table arrives with migration 096; until it exists the
+      // The on-demand table arrives with migration 096b; until it exists the
       // Spare half is simply absent, which ADR 0028 says is the right reading
       // of a departure with no source for its service type.
       const onDemandReady = ready.recordset[0]?.on_demand_ready === 1;
-      if (!onDemandReady) context.warn("OnDemandDepartures is missing (migration 096); on-demand garage departures raise no candidates.");
+      if (!onDemandReady) context.warn("OnDemandDepartures is missing (migration 096b); on-demand garage departures raise no candidates.");
       if (!allowFixedRouteDepartures) context.warn(`Fixed-route departures feed is ${trust.fixed_route_departures?.state ?? "unknown"}; no fixed-route garage-departure candidates this run.`);
       if (onDemandReady && !allowOnDemandDepartures) context.warn(`On-demand departures feed is ${trust.on_demand_departures?.state ?? "unknown"}; no on-demand garage-departure candidates this run.`);
       const candidateRequest = pool.request();

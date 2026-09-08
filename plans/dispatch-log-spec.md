@@ -209,7 +209,7 @@ poller uses); `missed` from a `MonitoredMissedTrips` row for the trip;
 
 **`TripStartVerifications`** — the human layer, kept separate so an operator's
 observation is never overwritten by a poller. One row per trip, upserted so a
-cell can be corrected; **`TripStartVerificationEvents`** (migration 096) is
+cell can be corrected; **`TripStartVerificationEvents`** (migration 096a) is
 the append-only record of every change to it — previous and new observation,
 who, initials, note, when.
 
@@ -530,7 +530,7 @@ Nothing before step 5 depends on the open decisions in §7.
    = `OCC.TripStartVerify` + Admin; `OCC.TripStartVerify` also joins the read
    roles and the console's nav. The current observation is upserted in
    `TripStartVerifications`; every change is appended to
-   `TripStartVerificationEvents` (migration 096) as the audit trail. In the
+   `TripStartVerificationEvents` (migration 096a) as the audit trail. In the
    console the Grid's Verified cell is the workbook's one-click cycle (blank →
    on time → left late → blank) under the signed-in user's initials, the
    Watch's rotation items carry On time / Left late, and "Record disposition"

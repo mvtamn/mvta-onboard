@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import {
-  assignedStandardCountSql, periodStandardSourceSql, periodTierScopeSql,
+  assignedStandardCountSql, periodResolverKeySql, periodStandardSourceSql, periodTierScopeSql,
 } from "./assessment/schemaScope";
 
 // The application deploys on merge; migration 102 is a separate manual step
@@ -9,8 +9,8 @@ import {
 // moments every one of these has to compose SQL the older schema can parse -
 // an unknown object or column fails at parse time and takes the whole batch
 // with it, so no runtime guard inside the SQL could save it.
-const scoped = { scoped: true };
-const unscoped = { scoped: false };
+const scoped = { scoped: true, snapshotsResolver: true };
+const unscoped = { scoped: false, snapshotsResolver: false };
 
 test("before migration 102 nothing names AgreementStandards", () => {
   for (const sql of [assignedStandardCountSql(unscoped), periodStandardSourceSql(unscoped), periodTierScopeSql(unscoped)]) {
@@ -54,4 +54,18 @@ test("after migration 102 an agreement's ladder replaces the catalog's entirely"
 
 test("the assigned-standard count falls back to the catalog's scored set", () => {
   assert.ok(assignedStandardCountSql(unscoped).includes("ContractorPerformanceStandards WHERE is_scored=1"));
+});
+
+test("before migration 103 the resolver comes from the catalog, not the snapshot", () => {
+  // AssessmentPeriodStandards.resolver_key does not exist yet, so naming it
+  // would fail the whole batch at parse time.
+  const sql = periodResolverKeySql({ scoped: true, snapshotsResolver: false });
+  assert.ok(!/^resolver_key$/.test(sql));
+  assert.ok(sql.includes("FROM ContractorPerformanceStandards"));
+});
+
+test("after migration 103 the period's own snapshot decides how it was measured", () => {
+  // The point of snapshotting it: repointing a standard at a different
+  // resolver must not change how an already-issued month recomputes.
+  assert.strictEqual(periodResolverKeySql({ scoped: true, snapshotsResolver: true }), "resolver_key");
 });

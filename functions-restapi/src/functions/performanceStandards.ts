@@ -1,6 +1,8 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { ADMIN_ROLES, COMPLIANCE_READ_ROLES, requireRole } from "../lib/auth";
 import { getPool, sql } from "../lib/db";
+import { RESOLVERS } from "../lib/assessment/resolvers";
+import { KNOWN_SOURCE_SYSTEMS } from "../lib/assessment/measurementSource";
 import { agreementScope } from "../lib/assessment/schemaScope";
 import { isGuid, validatePerformanceStandard, validateStandardTierLadder } from "../lib/validation";
 
@@ -30,7 +32,7 @@ app.http("performanceStandardsList", {
         SELECT CASE WHEN OBJECT_ID('dbo.ContractorPerformanceStandards','U') IS NULL THEN 0 ELSE 1 END ready
       `);
       if (!ready.recordset[0]?.ready) {
-        return { status: 200, jsonBody: { standards: [], tiers: [], agreements: [], assignments: [], diagnostics: { table_ready: false, assignments_ready: false } } };
+        return { status: 200, jsonBody: { standards: [], tiers: [], agreements: [], assignments: [], resolvers: [], source_systems: [], diagnostics: { table_ready: false, assignments_ready: false } } };
       }
       // Migration 102 may not have run yet; the catalog still reads correctly
       // without it, so the page degrades to the agency-wide view rather than
@@ -54,6 +56,12 @@ app.http("performanceStandardsList", {
         jsonBody: {
           standards: standards.recordset, tiers: tiers.recordset,
           agreements: agreements.recordset, assignments: assignments.recordset,
+          // The registry, so the console offers the keys the compute answers
+          // to rather than a text box. Served from code, not from the
+          // database: it is the set of resolvers this deployment has, which is
+          // exactly what a saved resolver_key has to match.
+          resolvers: RESOLVERS.map(({ key, label, description, appliesTo, source }) => ({ key, label, description, applies_to: appliesTo, source })),
+          source_systems: KNOWN_SOURCE_SYSTEMS.map(({ value, label, description }) => ({ value, label, description })),
           diagnostics: { table_ready: true, assignments_ready: assignmentsReady },
         },
       };
@@ -103,6 +111,7 @@ app.http("performanceStandardPut", {
       req.input("unit", sql.NVarChar(50), String(body.unit_label).trim());
       req.input("source", sql.NVarChar(20), body.measurement_source);
       req.input("resolver", sql.NVarChar(50), body.resolver_key ?? null);
+      req.input("source_system", sql.NVarChar(100), body.source_system ?? null);
       req.input("data_note", sql.NVarChar(1000), body.data_source_note ?? null);
       req.input("team", sql.NVarChar(200), body.responsible_team ?? null);
       req.input("assigned", sql.NVarChar(200), body.assigned_to ?? null);
@@ -116,13 +125,13 @@ app.http("performanceStandardPut", {
         USING (SELECT @id id) source ON target.id=source.id
         WHEN MATCHED THEN UPDATE SET name=@name,description=@description,standard_type=@type,priority=@priority,
           is_scored=@scored,is_safety_critical=@safety,direction=@direction,unit_label=@unit,measurement_source=@source,
-          resolver_key=@resolver,data_source_note=@data_note,responsible_team=@team,assigned_to=@assigned,
+          resolver_key=@resolver,source_system=@source_system,data_source_note=@data_note,responsible_team=@team,assigned_to=@assigned,
           cap_rule_note=@cap_note,sort_order=@sort,effective_start_date=@start,effective_end_date=@end,
           updated_by=@actor,updated_at=SYSUTCDATETIME()
         WHEN NOT MATCHED THEN INSERT(id,code,name,description,standard_type,priority,is_scored,is_safety_critical,direction,
-          unit_label,measurement_source,resolver_key,data_source_note,responsible_team,assigned_to,cap_rule_note,sort_order,
+          unit_label,measurement_source,resolver_key,source_system,data_source_note,responsible_team,assigned_to,cap_rule_note,sort_order,
           effective_start_date,effective_end_date,updated_by)
-          VALUES(@id,@code,@name,@description,@type,@priority,@scored,@safety,@direction,@unit,@source,@resolver,@data_note,
+          VALUES(@id,@code,@name,@description,@type,@priority,@scored,@safety,@direction,@unit,@source,@resolver,@source_system,@data_note,
             @team,@assigned,@cap_note,@sort,@start,@end,@actor);
       `);
       return { status: 200, jsonBody: { id } };
@@ -223,6 +232,75 @@ app.http("performanceStandardTiersPut", {
     } catch (error) {
       try { await tx.rollback(); } catch { /* the transaction is already resolved */ }
       context.error("PUT /performance-standards/{id}/tiers failed", error);
+      return { status: 500, jsonBody: { error: "Internal server error" } };
+    }
+  },
+});
+
+app.http("performanceStandardDelete", {
+  route: "performance-standards/{id}",
+  methods: ["DELETE"],
+  authLevel: "anonymous",
+  handler: async (request: HttpRequest, context: InvocationContext) => {
+    const auth = requireRole(request, ADMIN_ROLES);
+    if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
+    const id = request.params.id;
+    if (!isGuid(id)) return { status: 400, jsonBody: { error: "Invalid standard id" } };
+
+    const pool = await getPool();
+    const tx = new sql.Transaction(pool);
+    try {
+      await tx.begin();
+      const standardReq = new sql.Request(tx);
+      standardReq.input("id", sql.UniqueIdentifier, id);
+      const standard = await standardReq.query<{ code: string; name: string }>(`SELECT code,name FROM ContractorPerformanceStandards WITH (UPDLOCK,HOLDLOCK) WHERE id=@id`);
+      if (!standard.recordset[0]) { await tx.rollback(); return { status: 404, jsonBody: { error: "Standard not found" } }; }
+
+      // Deleting is only ever for a standard nobody has measured against. Once
+      // an occurrence, a hand-entered figure or a period snapshot names it,
+      // removing the row would orphan a scored month - and a month that was
+      // issued to the contractor has to keep resolving what produced its
+      // numbers. Retiring with an effective_end_date is the answer there, and
+      // the error says so rather than leaving the administrator guessing.
+      const usesReq = new sql.Request(tx);
+      usesReq.input("id", sql.UniqueIdentifier, id);
+      const uses = await usesReq.query<{ occurrences: number; metrics: number; periods: number }>(`
+        SELECT
+          (SELECT COUNT(*) FROM ComplianceOccurrences WHERE standard_id=@id) occurrences,
+          (SELECT COUNT(*) FROM ManualMetricEntries WHERE standard_id=@id) metrics,
+          (SELECT COUNT(*) FROM AssessmentPeriodStandards WHERE standard_id=@id) periods
+      `);
+      const used = uses.recordset[0];
+      const blocking = [
+        used.occurrences && `${used.occurrences} compliance occurrence${used.occurrences === 1 ? "" : "s"}`,
+        used.metrics && `${used.metrics} monthly figure${used.metrics === 1 ? "" : "s"}`,
+        used.periods && `${used.periods} assessment period${used.periods === 1 ? "" : "s"}`,
+      ].filter(Boolean);
+      if (blocking.length) {
+        await tx.rollback();
+        return {
+          status: 409,
+          jsonBody: {
+            error: `${standard.recordset[0].name} has been assessed against and cannot be deleted: it is referenced by ${blocking.join(", ")}. Retire it with an end date instead, which stops it scoring future months while keeping the ones it already scored intact.`,
+            references: used,
+          },
+        };
+      }
+
+      // Tiers and agreement assignments describe the standard rather than
+      // recording anything scored, so they go with it.
+      const purge = new sql.Request(tx);
+      purge.input("id", sql.UniqueIdentifier, id);
+      await purge.query(`
+        IF OBJECT_ID('dbo.AgreementStandards','U') IS NOT NULL DELETE FROM AgreementStandards WHERE standard_id=@id;
+        DELETE FROM ContractorStandardTiers WHERE standard_id=@id;
+        DELETE FROM ContractorPerformanceStandards WHERE id=@id;
+      `);
+      await tx.commit();
+      return { status: 200, jsonBody: { id, code: standard.recordset[0].code } };
+    } catch (error) {
+      try { await tx.rollback(); } catch { /* the transaction is already resolved */ }
+      context.error("DELETE /performance-standards/{id} failed", error);
       return { status: 500, jsonBody: { error: "Internal server error" } };
     }
   },

@@ -129,8 +129,10 @@ export interface PerformanceStandardInput {
   direction: import("./types.js").StandardDirection;
   unit_label: string;
   measurement_source: import("./types.js").StandardMeasurementSource;
-  /** Required when measurement_source is "auto": names the resolver that measures it. */
+  /** Required for a feed or OnBoard-compliance standard: names what measures it. */
   resolver_key?: string | null;
+  /** Required for a structured import: the external system it is transcribed from. */
+  source_system?: string | null;
   data_source_note?: string | null;
   responsible_team?: string | null;
   assigned_to?: string | null;
@@ -1231,6 +1233,8 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
         standards: ContractorPerformanceStandard[]; tiers: ContractorStandardTier[];
         agreements: import("./types.js").PerformanceAgreementRecord[];
         assignments: import("./types.js").AgreementStandardAssignment[];
+        resolvers: import("./types.js").RegisteredResolver[];
+        source_systems: import("./types.js").KnownSourceSystem[];
         diagnostics: { table_ready: boolean; assignments_ready: boolean };
       }>("/api/performance-standards", {}, true);
     },
@@ -1245,6 +1249,12 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     putStandardTiers(id: string, input: { agreement_id: string | null; effective_start_date: string; tiers: StandardTierInput[] }) {
       return request<{ standard_id: string; agreement_id: string | null; effective_start_date: string; tier_count: number }>(
         `/api/performance-standards/${id}/tiers`, { method: "PUT", body: JSON.stringify(input) }, true);
+    },
+    // Only ever succeeds for a standard nothing has been assessed against;
+    // one that has scored a month is retired with an end date instead, and the
+    // 409 says which references blocked it.
+    deletePerformanceStandard(id: string) {
+      return request<{ id: string; code: string }>(`/api/performance-standards/${id}`, { method: "DELETE" }, true);
     },
     getPerformanceAgreements() {
       return request<{

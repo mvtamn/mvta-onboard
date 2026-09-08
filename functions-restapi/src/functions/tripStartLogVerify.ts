@@ -57,7 +57,7 @@ app.http("tripStartLogVerify", {
           THEN 1 ELSE 0 END AS ok
       `);
       if (ready.recordset[0]?.ok !== 1) {
-        return { status: 503, jsonBody: { error: "Verification recording is not connected: apply migrations 094 and 096." } };
+        return { status: 503, jsonBody: { error: "Verification recording is not connected: apply migrations 094 and 096a." } };
       }
 
       const exists = pool.request();
