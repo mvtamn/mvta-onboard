@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.150] - 2026-09-08
+
+- **The Dispatch Log tests no longer expire.** Their fixtures were dated `20260908` - a few days ahead when they were written - and the Watch queue only counts a trip as due when its service date is today. On 8 September the clock reached the fixture date, the day became "today", the "Not the live day" banner correctly stopped rendering, and assertions about dispositions failed for a reason that had nothing to do with dispositions. `main` was red for every branch. The fixture day is now derived seven days ahead of whenever the suite runs, which keeps the weekday for the rotation fixtures and cannot go stale; only the date floats, and the assertions on displayed clock times read `scheduled_start_seconds` rather than the timestamps. No product change.
+
 ## [1.5.146] - 2026-09-07
 
 - **Migration 106: reporting views over the raw OTP, missed-trip and garage-departure measurements.** Migration 031 gave Power BI the assessed layer and deliberately stops there, which is right for a scorecard and useless for the drill-through it provokes. Answering "which stops, which trips, which runs" meant pointing a report at base tables whose date keys are `CHAR(6)`/`CHAR(8)`, whose exclusion rules live in TypeScript, and whose column names were written for the poller - every one of them the retrofit migration 031's own header set out to avoid. Five views: `vw_OtpMonthlyRouteStop`, `vw_OtpDailyRouteStopHour`, `vw_MissedTrip`, `vw_GarageDeparture` and `vw_MeasurementFeedHealth`.
