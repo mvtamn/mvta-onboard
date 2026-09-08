@@ -14,7 +14,7 @@ import { notMeasurable } from "./resolvers/types";
 import type { StandardDirection, StandardTier, TierLabel } from "./types";
 
 interface PeriodRow { id: string; contractor_id: string; service_month: string; input_revision: number; status: string }
-interface StandardRow { id: string; code: string; standard_type: "occurrence" | "threshold"; direction: StandardDirection; is_safety_critical: boolean; measurement_source: string; resolver_key: string | null; target_value: number | null; target_display: string | null; band_scope: "per_occurrence" | "running_count" | null; cap_window_days: number | null; cap_window_threshold: number | null }
+interface StandardRow { id: string; code: string; standard_type: "occurrence" | "threshold"; direction: StandardDirection; is_safety_critical: boolean; measurement_source: string; resolver_key: string | null; target_value: number | null; target_display: string | null; band_scope: "per_occurrence" | "running_count" | null; cap_window_days: number | null; cap_window_threshold: number | null; cap_window_mode: "rolling_days" | "calendar_quarter" | null }
 interface TierRow { tier_order: number; tier_label: TierLabel; bound_low: number | null; bound_high: number | null; qualifier_code: string | null; penalty_basis: StandardTier["penaltyBasis"]; penalty_amount: number; triggers_cap: boolean; severity_order: number | null; penalty_amount_min: number | null; penalty_amount_max: number | null }
 
 function mapTier(row: TierRow): StandardTier {
@@ -141,12 +141,14 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
       // occurrences leading up to this period as well as those inside it -
       // five collisions spread over two months breach a 30-day rule that
       // neither month breaches alone.
-      if (standard.cap_window_days && standard.cap_window_threshold) {
+      const windowMode = standard.cap_window_mode ?? "rolling_days";
+      if (standard.cap_window_threshold && (windowMode === "calendar_quarter" || standard.cap_window_days)) {
         const windowReq = new sql.Request(tx);
         windowReq.input("standard_id", sql.UniqueIdentifier, standard.id);
         windowReq.input("contractor", sql.UniqueIdentifier, period.contractor_id);
         windowReq.input("month", sql.Char(6), period.service_month);
-        windowReq.input("days", sql.Int, standard.cap_window_days);
+        windowReq.input("days", sql.Int, standard.cap_window_days ?? 0);
+        windowReq.input("mode", sql.NVarChar(20), windowMode);
         const windowRows = await windowReq.query<{ service_date: string; quantity: number }>(`
           SELECT o.service_date, o.quantity FROM ComplianceOccurrences o
           LEFT JOIN ExcusableDelayClaims c ON c.id=o.relief_id
@@ -154,10 +156,15 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
             AND o.review_status='confirmed'
             AND o.attribution='contractor_error' AND (c.id IS NULL OR c.status<>'approved')
             AND o.service_date <= CONCAT(@month,'31')
-            AND CONVERT(date,o.service_date,112) >= DATEADD(day, -(@days), CONVERT(date, CONCAT(@month,'01'), 112))
+            -- A rolling window reaches back its own length before the month;
+            -- a calendar quarter reaches back to the first day of the quarter
+            -- this month falls in, which is where its count starts.
+            AND CONVERT(date,o.service_date,112) >= CASE WHEN @mode = 'calendar_quarter'
+                  THEN DATEADD(quarter, DATEDIFF(quarter, 0, CONVERT(date, CONCAT(@month,'01'), 112)), 0)
+                  ELSE DATEADD(day, -(@days), CONVERT(date, CONCAT(@month,'01'), 112)) END
           ORDER BY o.service_date
         `);
-        const rule = { windowDays: standard.cap_window_days, threshold: standard.cap_window_threshold };
+        const rule = { mode: windowMode, windowDays: standard.cap_window_days ?? undefined, threshold: standard.cap_window_threshold };
         const breach = findCapWindowBreach(
           windowRows.recordset.map(row => ({ serviceDate: row.service_date, quantity: row.quantity })), rule);
         if (breach) {

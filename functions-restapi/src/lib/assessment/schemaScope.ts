@@ -24,6 +24,8 @@ export interface AgreementScope {
   snapshotsResolver: boolean;
   /** migration 107 has run: targets, count-scaled bands, ranged amounts and CAP windows. */
   penaltyScaling: boolean;
+  /** migration 109 has run: a window says whether it is rolling days or a calendar quarter. */
+  windowModes: boolean;
   /** migration 105 has run: the period's tier snapshot carries its ranking. */
   snapshotsSeverity: boolean;
 }
@@ -36,10 +38,11 @@ const SCOPE_QUERY = `
       CONVERT(int, CASE WHEN COL_LENGTH('dbo.AssessmentPeriodStandards','resolver_key') IS NULL THEN 0 ELSE 1 END) snapshots_resolver,
       CONVERT(int, CASE WHEN COL_LENGTH('dbo.ComplianceOccurrences','assessed_amount') IS NULL
                           OR COL_LENGTH('dbo.AssessmentPeriodStandards','target_value') IS NULL THEN 0 ELSE 1 END) penalty_scaling,
-      CONVERT(int, CASE WHEN COL_LENGTH('dbo.AssessmentPeriodTiers','severity_order') IS NULL THEN 0 ELSE 1 END) snapshots_severity
+      CONVERT(int, CASE WHEN COL_LENGTH('dbo.AssessmentPeriodTiers','severity_order') IS NULL THEN 0 ELSE 1 END) snapshots_severity,
+      CONVERT(int, CASE WHEN COL_LENGTH('dbo.AssessmentPeriodStandards','cap_window_mode') IS NULL THEN 0 ELSE 1 END) window_modes
 `;
 
-interface ScopeRow { scoped: number; snapshots_resolver: number; penalty_scaling: number; snapshots_severity: number }
+interface ScopeRow { scoped: number; snapshots_resolver: number; penalty_scaling: number; snapshots_severity: number; window_modes: number }
 
 function toScope(row: ScopeRow | undefined): AgreementScope {
   return {
@@ -47,6 +50,7 @@ function toScope(row: ScopeRow | undefined): AgreementScope {
     snapshotsResolver: row?.snapshots_resolver === 1,
     penaltyScaling: row?.penalty_scaling === 1,
     snapshotsSeverity: row?.snapshots_severity === 1,
+    windowModes: row?.window_modes === 1,
   };
 }
 
@@ -114,9 +118,10 @@ export function periodTierScopeSql(scope: AgreementScope): string {
 // amounts and no rolling windows.
 export function periodStandardScalingSql(scope: AgreementScope): string {
   return scope.penaltyScaling
-    ? "target_value,target_display,band_scope,cap_window_days,cap_window_threshold"
+    ? `target_value,target_display,band_scope,cap_window_days,cap_window_threshold,${scope.windowModes ? "cap_window_mode" : "CONVERT(nvarchar(20),NULL) cap_window_mode"}`
     : "CONVERT(float,NULL) target_value,CONVERT(nvarchar(100),NULL) target_display," +
-      "CONVERT(nvarchar(20),NULL) band_scope,CONVERT(int,NULL) cap_window_days,CONVERT(int,NULL) cap_window_threshold";
+      "CONVERT(nvarchar(20),NULL) band_scope,CONVERT(int,NULL) cap_window_days,CONVERT(int,NULL) cap_window_threshold," +
+      "CONVERT(nvarchar(20),NULL) cap_window_mode";
 }
 
 export function periodTierScalingSql(scope: AgreementScope): string {
@@ -165,5 +170,6 @@ export function periodStandardSnapshotColumns(scope: AgreementScope): string {
     "measurement_source", "sort_order"];
   if (scope.snapshotsResolver) columns.push("resolver_key");
   if (scope.penaltyScaling) columns.push("target_value", "target_display", "band_scope", "cap_window_days", "cap_window_threshold");
+  if (scope.windowModes) columns.push("cap_window_mode");
   return columns.join(",");
 }

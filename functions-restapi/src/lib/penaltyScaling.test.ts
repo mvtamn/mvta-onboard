@@ -117,3 +117,53 @@ test("the breach says what was counted, over what dates, against what rule", () 
   const breach = findCapWindowBreach(["20260301", "20260302", "20260303", "20260304", "20260305", "20260306"].map((d) => day(d)), rule)!;
   assert.match(describeCapWindowBreach(breach, rule), /6 occurrences between 20260205 and 20260306 exceed the 5 tolerated in any 30 days/);
 });
+
+// --- calendar quarters, which are not rolling windows ---
+
+test("a calendar quarter counts within the quarter and resets at its boundary", () => {
+  // "3+ repeat cases per quarter" tolerates two: the third breaches.
+  const rule = { mode: "calendar_quarter" as const, threshold: 2 };
+  const twoInQ1 = ["20260115", "20260220"].map((d) => day(d));
+  assert.strictEqual(findCapWindowBreach(twoInQ1, rule), null);
+  const breach = findCapWindowBreach([...twoInQ1, day("20260310")], rule);
+  assert.ok(breach);
+  assert.strictEqual(breach?.count, 3);
+  assert.strictEqual(breach?.startedOn, "20260101");
+  assert.strictEqual(breach?.endedOn, "20260331");
+});
+
+test("the two modes genuinely disagree, which is why the choice is recorded", () => {
+  // Three cases in December and three in January: never a calendar-quarter
+  // breach, always a rolling-90-day one. Treating either as an approximation
+  // of the other would score a corrective action that is not owed, or miss one
+  // that is.
+  const across = ["20251205", "20251215", "20251228", "20260105", "20260115", "20260125"].map((d) => day(d));
+  assert.strictEqual(findCapWindowBreach(across, { mode: "calendar_quarter", threshold: 3 }), null);
+  assert.ok(findCapWindowBreach(across, { mode: "rolling_days", windowDays: 90, threshold: 3 }));
+});
+
+test("quarter bounds are the real ones, including the short first quarter", () => {
+  const q1 = findCapWindowBreach(["20260101", "20260201", "20260301"].map((d) => day(d)), { mode: "calendar_quarter", threshold: 2 });
+  assert.strictEqual(q1?.endedOn, "20260331");
+  const q4 = findCapWindowBreach(["20261001", "20261101", "20261201"].map((d) => day(d)), { mode: "calendar_quarter", threshold: 2 });
+  assert.strictEqual(q4?.startedOn, "20261001");
+  assert.strictEqual(q4?.endedOn, "20261231");
+});
+
+test("a rolling rule with no length is still not a rule, and a quarter needs none", () => {
+  assert.strictEqual(findCapWindowBreach([day("20260301")], { mode: "rolling_days", threshold: 1 }), null);
+  assert.ok(findCapWindowBreach([day("20260301"), day("20260302")], { mode: "calendar_quarter", threshold: 1 }));
+});
+
+test("the breach names the period it was counted over", () => {
+  const rule = { mode: "calendar_quarter" as const, threshold: 2 };
+  const breach = findCapWindowBreach(["20260115", "20260220", "20260310"].map((d) => day(d)), rule)!;
+  assert.match(describeCapWindowBreach(breach, rule), /exceed the 2 tolerated in that calendar quarter/);
+});
+
+test("an omitted mode still means rolling days, so nothing already configured changes", () => {
+  const legacy = { windowDays: 30, threshold: 5 };
+  const six = ["20260301", "20260302", "20260303", "20260304", "20260305", "20260306"].map((d) => day(d));
+  assert.ok(findCapWindowBreach(six, legacy));
+  assert.match(describeCapWindowBreach(findCapWindowBreach(six, legacy)!, legacy), /in any 30 days/);
+});

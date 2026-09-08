@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.154] - 2026-09-08
+
+- **Migration 109: a corrective-action window says how it counts.** Migration 107 gave the rule a rolling length in days; contracts write both kinds, and "3+ repeat cases per quarter" is not a rolling ninety days. Three cases in December and three in January breach a calendar-quarter rule never and a rolling 90-day rule almost certainly, so treating either as an approximation of the other scores a corrective action that is not owed, or misses one that is. `cap_window_mode` records which, constrained so a rolling window carries a length and a calendar quarter does not. Windows configured before this are marked `rolling_days`, which is what the code already did.
+- **The occurrence lookback follows the mode.** A rolling window reaches back its own length before the month; a calendar quarter reaches back to the first day of the quarter the month falls in, which is where its count starts.
+- **Operator Staffing & Qualifications is split into the four standards it contains** - `OPERATOR_STAFFING_LEVEL` ($500 per day below 120%), `PIVOT_COVERAGE` ($250 per peak period), `PIVOT_MISUSE` ($250 per occurrence) and `UNQUALIFIED_OPERATOR` ($1,000 per operator per day, safety-critical). One standard has one unit and one ladder, so as a single entry three of the four penalties had nowhere to live. They are seeded dormant, so scoring one is a deliberate assignment on an Agreement; the combined row is retired rather than deleted and its note names the replacements. Two units are added for them: peak-periods and operator-days.
+
 ## [1.5.153] - 2026-09-08
 
 - **Performance assessment setup is four sections under Administration, grouped but independent.** Contractors, Agreements, Standards and Lists were stacked inside other screens: contractors behind a `Manage contractors` toggle in the assessment module, agreements as a strip above the standards catalog, lists behind a second toggle beside it. Each is one job on one body of work, and burying three of them inside the fourth made each harder to find than it needed to be. `AdminLayout` gained group support - consecutive links sharing a `group` render under one heading, and a page cannot join a group by accident because the order lives in one array.
