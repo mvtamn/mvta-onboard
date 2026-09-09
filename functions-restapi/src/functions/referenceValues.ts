@@ -89,6 +89,7 @@ app.http("referenceValuePut", {
       write.input("active", sql.Bit, body.is_active !== false);
       // Only an owner is a person; a team, a tier, a category has no account.
       const upn = domain === "assigned_to" && typeof body.principal_upn === "string" && body.principal_upn.trim() ? body.principal_upn.trim().toLowerCase() : null;
+      if (upn && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(upn)) { await tx.rollback(); return { status: 400, jsonBody: { error: "principal_upn must be an account name like name@mvta.us" } }; }
       write.input("upn", sql.NVarChar(320), upn);
       write.input("actor", sql.NVarChar(200), auth.principal.userDetails ?? "onboard-console");
       await write.query(`

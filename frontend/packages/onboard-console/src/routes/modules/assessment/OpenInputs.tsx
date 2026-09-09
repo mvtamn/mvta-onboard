@@ -12,7 +12,7 @@ export function OpenInputs({ period }: { period: AssessmentPeriod | undefined })
   useEffect(() => {
     if (!period) { setOpen([]); return; }
     let active = true;
-    api.getOpenManualInputs(period.service_month).then(r => { if (active) setOpen(r.open.filter(o => o.contractor_id === period.contractor_id)); }).catch(() => { if (active) setOpen([]); });
+    api.getOpenManualInputs(period.service_month, { contractor_id: period.contractor_id, period_id: period.id }).then(r => { if (active) setOpen(r.open); }).catch(() => { if (active) setOpen([]); });
     return () => { active = false; };
   }, [period]);
   if (!period || !open.length) return null;

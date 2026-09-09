@@ -11,3 +11,5 @@
 /* A submitted plan's six elements, entered together and read back together. */
 .assessment-cap-form{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.assessment-cap-form label{display:flex;flex-direction:column;gap:4px;font-size:12px}.assessment-cap-form textarea{min-height:56px}.assessment-cap-form>div{grid-column:1/-1}
 .assessment-cap-fields{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin:8px 0 0}.assessment-cap-fields dt{font-size:11px;opacity:.7}.assessment-cap-fields dd{margin:0}
+/* The signed-in owner has figures to enter: the banner leads with them. */
+.assessment-open-mine{border-left:4px solid #b45309}

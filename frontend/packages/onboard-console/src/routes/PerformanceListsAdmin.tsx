@@ -78,7 +78,8 @@ function ReferenceValuesPanel({ values, busy, canEdit, onSave, onDelete }: {
       <table className="data">
         <thead><tr>
           <th>Label</th><th>Value</th><th>Order</th>
-          {domain === "tier_label" && <th>Outranks</th>}
+          {domain === "assigned_to" && <th>Account</th>}
+            {domain === "tier_label" && <th>Outranks</th>}
           <th>In use</th><th />
         </tr></thead>
         <tbody>
