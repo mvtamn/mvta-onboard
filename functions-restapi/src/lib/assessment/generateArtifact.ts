@@ -1,7 +1,7 @@
 import { auditSql } from "./audit";
 import { createHash, randomUUID } from "node:crypto";
 import { buildComplianceReportBlobPath, uploadComplianceReport } from "../blobStorage";
-import { getPool, sql } from "../db";
+import { sql } from "../db";
 import { renderAssessmentReport, type AssessmentReportModel } from "../report/renderAssessmentReport";
 import { buildReportModel, type ReportCapRow, type ReportEvidenceRow, type ReportExceptionRow, type ReportItemRow, type ReportOccurrenceRow, type ReportOtpExclusionRow, type ReportPeriodRow, type ReportStandardRow } from "../report/buildReportModel";
 import { voidLiveIssuanceProofSql, withPeriodReportLock } from "./issuanceProof";
@@ -14,8 +14,8 @@ import { resolveFinalRequest } from "./reportLineage";
 export type ArtifactType = "preliminary" | "final";
 export type ArtifactOutcome = { status: 201; id: string; version: number; hash: string } | { status: 404 | 409; error: string };
 
-export async function readModel(periodId:string,reportId:string,type:"preliminary"|"final",version:number,issuedAt:Date|null,deadline:Date|null,capDeadline:Date|null=null):Promise<AssessmentReportModel>{
-  const pool=await getPool();const req=pool.request();req.input("period",sql.UniqueIdentifier,periodId);
+export async function readModel(pool:sql.ConnectionPool,periodId:string,reportId:string,type:"preliminary"|"final",version:number,issuedAt:Date|null,deadline:Date|null,capDeadline:Date|null=null):Promise<AssessmentReportModel>{
+  const req=pool.request();req.input("period",sql.UniqueIdentifier,periodId);
   const period=await req.query<ReportPeriodRow&{contractor_id:string}>(`SELECT p.*,c.name contractor_name FROM AssessmentPeriods p JOIN Contractors c ON c.id=p.contractor_id WHERE p.id=@period`);
   const p=period.recordset[0];if(!p)throw new Error("Assessment Period not found");req.input("contractor",sql.UniqueIdentifier,p.contractor_id);req.input("month",sql.Char(6),p.service_month);
   const rows=await req.query<ReportItemRow>(`SELECT a.*,s.name,s.standard_type FROM PeriodKpiAssessments a JOIN AssessmentPeriodStandards s ON s.period_id=a.period_id AND s.standard_id=a.standard_id WHERE a.period_id=@period ORDER BY s.sort_order`);
@@ -44,7 +44,7 @@ export async function generateArtifact(pool: sql.ConnectionPool, input: { period
       const versionReq=new sql.Request(tx);versionReq.input("period",sql.UniqueIdentifier,periodId);versionReq.input("type",sql.NVarChar(20),type);versionReq.input("actor",sql.NVarChar(200),actor);
       const version=(await versionReq.query<{version:number}>(`${type==="final"?voidLiveIssuanceProofSql("period","actor"):""}
         SELECT ISNULL(MAX(version),0)+1 version FROM ComplianceReports WHERE period_id=@period AND issuance_type=@type`)).recordset[0].version;
-      const id=randomUUID();const model=await readModel(periodId,id,type,version,null,null);const html=renderAssessmentReport(model);const hash=createHash("sha256").update(html).digest("hex");const path=buildComplianceReportBlobPath(periodId,id);await (input.upload??uploadComplianceReport)(path,html);
+      const id=randomUUID();const model=await readModel(pool,periodId,id,type,version,null,null);const html=renderAssessmentReport(model);const hash=createHash("sha256").update(html).digest("hex");const path=buildComplianceReportBlobPath(periodId,id);await (input.upload??uploadComplianceReport)(path,html);
       const write=new sql.Request(tx);write.input("id",sql.UniqueIdentifier,id);write.input("period",sql.UniqueIdentifier,periodId);write.input("contractor",sql.UniqueIdentifier,p.contractor_id);write.input("month",sql.Char(6),p.service_month);write.input("type",sql.NVarChar(20),type);write.input("version",sql.Int,version);write.input("supersedes",sql.UniqueIdentifier,lineage.supersedesId);write.input("reason",sql.NVarChar(500),lineage.supersedeReason);write.input("path",sql.NVarChar(1000),path);write.input("hash",sql.Char(64),hash);write.input("total",sql.Decimal(12,2),model.assessedTotal);write.input("actor",sql.NVarChar(200),actor);
       await write.query(`INSERT ComplianceReports(id,period_id,contractor_id,service_month,issuance_type,version,supersedes_id,blob_path,content_sha256,assessed_total,supersede_reason,generated_by) VALUES(@id,@period,@contractor,@month,@type,@version,@supersedes,@path,@hash,@total,@reason,@actor);${auditSql("report","@id",type==="final"?"issuance_proof_prepared":"draft_generated","actor",{after:"CONCAT('{\"content_sha256\":\"',@hash,'\"}')"})}`);
       return{status:201 as const,id,version,hash};
