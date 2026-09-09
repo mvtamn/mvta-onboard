@@ -155,6 +155,12 @@ app.http("routeClassificationUpsert", {
     } catch {
       return { status: 400, jsonBody: { error: "Request body must be valid JSON" } };
     }
+    // Valid JSON is not necessarily an object: a bare string, number or array
+    // parses cleanly and then reaches the validator as something it cannot
+    // read fields from.
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+      return { status: 400, jsonBody: { error: "Request body must be a JSON object" } };
+    }
     const errors = validateRouteClassification(raw as Record<string, unknown>);
     if (errors.length > 0) {
       return { status: 400, jsonBody: { error: "Validation failed", details: errors } };

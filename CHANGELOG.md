@@ -5,6 +5,15 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.163] - 2026-09-09
+
+- **Three fixes that were written, reviewed and then stalled in open pull requests.** Each had been sitting for weeks against a `main` it could no longer merge into, so the work is re-landed here and the original PRs (#58, #120, #124) are closed pointing at this one.
+  - **A second direction rule for the same movement no longer collides on priority.** `eventDirectionRules.ts` requires priority to be unique per Monitoring Area and boundary movement, but the editor defaulted every new rule to 0, so the second rule for a movement was refused on save. The editor now suggests the next free number, re-suggesting when the Area or the movement changes and folding in a rule saved moments ago that the refreshed list does not carry yet. A refused save now shows the server's reasons rather than only its summary line (from #58).
+  - **The rider subscribe form links to the privacy policy and terms.** The consent checkbox asked riders to agree to automated messages with nothing to read first (from #124).
+  - **The first request after the dev database auto-pauses retries.** That database is serverless and pauses when idle; the resume takes 30 to 60 seconds and the first connection through it commonly fails with a transient socket error, which reached callers as a bare 500. The initial connect now retries four times with a widening delay. Only the connect is retried, never a query already in flight, so a non-idempotent write cannot be applied twice (from #58).
+  - Also from #58: a `POST` to route classification whose body is valid JSON but not an object (a bare string, number or array) is refused with a clear message rather than reaching the validator as something it cannot read fields from.
+- **Removed: the pre-086 feed-health compatibility path.** `feedHealthTable()` resolved the ledger's name per call and accepted the pre-rename `MissedTripFeedHealth`, to cover the window where the migration and the deployment could land in either order. Migration 086 has been applied since 2026-08-28, and keeping the arm meant a database missing it would silently read a table nothing writes any more. `feedHealthTableReady()` names `KpiFeedHealth` alone and fails closed, so feed health reads as unavailable — which is true — rather than as stale-but-fine (from #120).
+
 ## [1.5.162] - 2026-09-09
 
 - **The What's new panel caps at five changes and says what it left out.** The panel is a glance at the running build, and it printed every bullet of the release: v1.5.159 has five, but releases carrying a dozen turned a panel into a page to scroll past its own "View full changelog" link. It now shows the first five and, when there are more, a muted line counting the rest — shown rather than the list quietly ending, because a truncated panel that looks complete misreports what shipped. The full text of every change stays on the Changelog page the panel already links to.

@@ -60,6 +60,36 @@ export function parseConnectionString(connectionString: string): sql.config {
   };
 }
 
+// The dev SQL Database runs on a serverless tier that auto-pauses when idle
+// (infra-stage0/modules/sql.bicep). The first connection after a pause
+// commonly fails with a transient socket error while the database resumes,
+// which takes 30-60 seconds, and the caller sees a bare 500. Retry the connect
+// a few times with a widening delay instead of failing on the first blip.
+//
+// This wraps the initial connect only. A query that fails mid-flight is not
+// retried, because re-issuing an already-sent non-idempotent write could
+// apply it twice.
+const CONNECT_RETRY_ATTEMPTS = 4;
+const CONNECT_RETRY_BASE_DELAY_MS = 2000;
+
+function isTransientConnectError(error: unknown): boolean {
+  const code = (error as { code?: string } | undefined)?.code;
+  return code === "ESOCKET" || code === "ETIMEOUT" || code === "ECONNRESET";
+}
+
+async function connectWithRetry(config: sql.config): Promise<sql.ConnectionPool> {
+  for (let attempt = 1; attempt <= CONNECT_RETRY_ATTEMPTS; attempt++) {
+    try {
+      return await sql.connect(config);
+    } catch (error) {
+      if (attempt === CONNECT_RETRY_ATTEMPTS || !isTransientConnectError(error)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, CONNECT_RETRY_BASE_DELAY_MS * attempt));
+    }
+  }
+  // Unreachable: the loop always returns or throws. Here to satisfy the compiler.
+  throw new Error("connectWithRetry exhausted its attempts without a result");
+}
+
 export function getPool(): Promise<sql.ConnectionPool> {
   if (!poolPromise) {
     const connectionString = process.env.SQL_CONNECTION_STRING;
@@ -71,7 +101,7 @@ export function getPool(): Promise<sql.ConnectionPool> {
       );
     }
     const config = parseConnectionString(connectionString);
-    poolPromise = sql.connect(config).catch((err) => {
+    poolPromise = connectWithRetry(config).catch((err) => {
       // Clear the cached promise on failure so the next call actually
       // retries instead of permanently reusing this same rejected promise
       // until the whole process restarts.
