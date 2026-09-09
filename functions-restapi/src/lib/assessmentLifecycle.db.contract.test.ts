@@ -3,6 +3,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import { assessPeriod } from "./assessment/assess";
+import { finalizePeriod } from "./assessment/finalizePeriod";
+import { generateArtifact } from "./assessment/generateArtifact";
+import { issueFinal } from "./assessment/issueFinal";
 import { voidLiveIssuanceProofSql, withPeriodReportLock } from "./assessment/issuanceProof";
 import { materialChangeSql } from "./assessment/materialChange";
 import { reviewedItemsSha256Sql } from "./assessment/reviewedItems";
@@ -28,7 +31,7 @@ const connectionString = process.env.DECISION_MATRIX_TEST_SQL_CONNECTION_STRING;
 
 // Every migration that alters an assessment table, in order. Views (031, 106)
 // read tables outside this set and are not part of the lifecycle.
-const MIGRATIONS = ["030-contractor-performance-assessment", "032b-governed-performance-assessment", "065-assessment-causality", "102-agreement-scoped-standards", "103-period-resolver-key", "104-measurement-source-kinds", "105-reference-values", "107-penalty-scaling", "108-team-and-owner-lists", "109-window-modes-and-staffing-split", "110-standard-category", "111-issuance-proof", "112a-period-rules-lock", "112b-share-binds-reviewed-items"];
+const MIGRATIONS = ["030-contractor-performance-assessment", "032b-governed-performance-assessment", "065-assessment-causality", "102-agreement-scoped-standards", "103-period-resolver-key", "104-measurement-source-kinds", "105-reference-values", "107-penalty-scaling", "108-team-and-owner-lists", "109-window-modes-and-staffing-split", "110-standard-category", "111-issuance-proof", "112a-period-rules-lock", "112b-share-binds-reviewed-items", "113-owner-principal", "114-cap-withdrawn"];
 
 // sqlcmd splits on GO; mssql does not. Same rule: a line that is only GO.
 function batches(text: string): string[] {
@@ -197,6 +200,50 @@ test("assessment lifecycle against real SQL", { skip: !connectionString && "DECI
       const second = withPeriodReportLock(pool, july, async () => { order.push("second-in"); return 2; });
       assert.deepEqual(await Promise.all([first, second]), [1, 2]);
       assert.deepEqual(order, ["first-in", "first-out", "second-in"]);
+    });
+
+    await t.test("a month goes review -> draft -> share -> finalize -> proof -> issue through the production libs", async () => {
+      // Blob Storage is not here; the artifact libs take an uploader.
+      const blobs = new Map<string, string>(); const upload = async (path: string, html: string) => { blobs.set(path, html); };
+      const august = await openPeriod(pool, "202608");
+      await occurrence(pool, "20260805"); await occurrence(pool, "20260806");
+      await compute(pool, august);
+      const scored = await item(pool, august);
+      const review = pool.request(); review.input("id", sql.UniqueIdentifier, scored.id);
+      await review.query(`UPDATE PeriodKpiAssessments SET recommended_action='adjusted',recommended_amount=1500,recommendation_reason='One trip was MVTA-directed in practice',recommendation_by='reviewer',reviewed_input_sha256=input_sha256,reviewed_by='reviewer',reviewed_at=SYSUTCDATETIME() WHERE id=@id`);
+
+      const draft = await generateArtifact(pool, { periodId: august, type: "preliminary", actor: "reviewer", upload });
+      assert.equal(draft.status, 201); if (draft.status !== 201) return;
+      assert.match(blobs.get(`periods/${august}/${draft.id}.html`) ?? "", /VALIDATION DRAFT/);
+      assert.match(blobs.get(`periods/${august}/${draft.id}.html`) ?? "", /Recommended amount:<\/b> <b>\$1,500\.00/);
+
+      // Share the draft. The share handler's own guards (a draft generated after
+      // every review, the latest version, status in_review) are not driven here;
+      // the row is written directly with the window already over, which is what
+      // finalize reads.
+      const share = pool.request(); share.input("period", sql.UniqueIdentifier, august); share.input("report", sql.UniqueIdentifier, draft.id);
+      await share.query(`INSERT ValidationDraftShares(period_id,report_id,recipient,delivery_method,sender_attestation,shared_by,shared_at,validation_ends_on,computed_revision,items_sha256) SELECT @period,@report,'c@example.com','email','sent','reviewer',DATEADD(day,-10,SYSUTCDATETIME()),DATEADD(day,-1,CONVERT(date,SYSUTCDATETIME())),computed_revision,${reviewedItemsSha256Sql("period")} FROM AssessmentPeriods WHERE id=@period;UPDATE AssessmentPeriods SET status='in_validation',validation_ends_on=DATEADD(day,-1,CONVERT(date,SYSUTCDATETIME())) WHERE id=@period`);
+
+      // The reviewer cannot finalize their own review; the Issuing Authority can.
+      assert.equal((await finalizePeriod(pool, { periodId: august, actor: "reviewer" })).changed, false);
+      assert.equal((await finalizePeriod(pool, { periodId: august, actor: "issuer" })).changed, true);
+      const bound = (await pool.request().query<{ status: string; final_total: number; binding_amount: number; manager_action: string }>(`SELECT p.status,p.final_total,a.binding_amount,a.manager_action FROM AssessmentPeriods p JOIN PeriodKpiAssessments a ON a.period_id=p.id WHERE p.id='${august}'`)).recordset[0];
+      assert.deepEqual({ status: bound.status, total: Number(bound.final_total), amount: Number(bound.binding_amount), action: bound.manager_action }, { status: "finalized", total: 1500, amount: 1500, action: "adjusted" });
+
+      const proof = await generateArtifact(pool, { periodId: august, type: "final", actor: "issuer", upload });
+      assert.equal(proof.status, 201); if (proof.status !== 201) return;
+      await pool.request().query(`INSERT MvtaHolidayCalendarCoverage(id,coverage_through,updated_by) SELECT 1,'2027-12-31','${ACTOR}' WHERE NOT EXISTS(SELECT 1 FROM MvtaHolidayCalendarCoverage WHERE id=1)`);
+      const refused = await issueFinal(pool, { reportId: proof.id, periodId: august, actor: "reviewer", recipient: "c@example.com", deliveryMethod: "email", senderAttestation: "sent", upload });
+      assert.equal(refused.status, 409, "the reviewer cannot issue");
+      const issued = await issueFinal(pool, { reportId: proof.id, periodId: august, actor: "issuer", recipient: "c@example.com", deliveryMethod: "email", senderAttestation: "sent", now: new Date("2026-09-10T15:00:00Z"), upload });
+      assert.equal(issued.status, 200); if (issued.status !== 200) return;
+      assert.notEqual(issued.hash, proof.hash, "the issued bytes carry the issuer and deadline");
+      const row = (await pool.request().query<{ status: string; proof_sha256: string; content_sha256: string; issued_by: string; records: number; caps: number }>(`SELECT p.status,r.proof_sha256,r.content_sha256,r.issued_by,(SELECT COUNT(*) FROM FinalIssuanceRecords WHERE report_id=r.id) records,(SELECT COUNT(*) FROM CorrectiveActionPlans WHERE period_id=p.id) caps FROM ComplianceReports r JOIN AssessmentPeriods p ON p.id=r.period_id WHERE r.id='${proof.id}'`)).recordset[0];
+      assert.equal(row.status, "issued"); assert.equal(row.proof_sha256.toLowerCase(), proof.hash); assert.equal(row.content_sha256.toLowerCase(), issued.hash); assert.equal(row.issued_by, "issuer"); assert.equal(row.records, 1);
+      // MISSED_TRIPS_FR carries no tier that triggers a CAP, so issuance creates none.
+      assert.equal(row.caps, 0);
+      assert.match(blobs.get([...blobs.keys()].find(k => k.includes("-issued-"))!) ?? "", /Final Assessment/);
+      assert.equal(issued.deadline.toISOString().slice(0, 10), "2026-09-24", "ten business days after a Thursday issuance");
     });
   } finally {
     await pool.close();

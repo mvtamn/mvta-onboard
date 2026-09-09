@@ -14,14 +14,14 @@ const SUBMISSION: Array<{ field: keyof AssessmentCap & string; label: string }> 
 // What each status can become, and who may take it there. Mirrors
 // lib/assessment/capTransitions on the server, which is the rule.
 const NEXT: Record<string, Array<{ to: string; label: string; manager: boolean; note?: boolean }>> = {
-  required: [{ to: "submitted", label: "Record submission", manager: false }],
+  required: [{ to: "submitted", label: "Record submission", manager: false }, { to: "withdrawn", label: "Withdraw", manager: true, note: true }],
   submitted: [{ to: "approved", label: "Approve", manager: true }, { to: "required", label: "Return", manager: true, note: true }],
   approved: [{ to: "in_progress", label: "Start", manager: false }],
   in_progress: [{ to: "closed", label: "Close", manager: true, note: true }, { to: "failed", label: "Fail", manager: true, note: true }],
 };
 
 export function Caps({ rows, period }: { rows: PeriodKpiAssessment[]; period: AssessmentPeriod | undefined }) {
-  const { roles } = useAuth(); const { prompt } = useAppDialog();
+  const { roles } = useAuth(); const { prompt, confirm } = useAppDialog();
   const manager = roles.includes("OCC.ComplianceManager") || roles.includes("OCC.Admin");
   const [records, setRecords] = useState<AssessmentCap[]>([]);
   const [submitting, setSubmitting] = useState<string | null>(null);
@@ -29,15 +29,17 @@ export function Caps({ rows, period }: { rows: PeriodKpiAssessment[]; period: As
   const [error, setError] = useState("");
   const [tick, setTick] = useState(0);
   useEffect(() => { if (!period) { setRecords([]); return; } let active = true; api.getAssessmentCaps(period.id).then(result => { if (active) setRecords(result.caps); }); return () => { active = false; }; }, [period, tick]);
-  const move = async (cap: AssessmentCap, to: string, fields: Record<string, string> = {}) => {
+  const run = async (action: () => Promise<unknown>) => {
     setError("");
-    try { await api.transitionAssessmentCap(cap.id, to as AssessmentCapStatus, fields); setSubmitting(null); setForm({}); setTick(t => t + 1); }
+    try { await action(); setSubmitting(null); setForm({}); setTick(t => t + 1); }
     catch (e) { setError(e instanceof Error ? e.message : "Unable to update the plan"); }
   };
-  const close = async (cap: AssessmentCap, to: string) => { const note = await prompt({ title: to === "closed" ? "Close the plan" : to === "failed" ? "Record the plan as failed" : "Return the submission", label: to === "required" ? "Why it is returned" : "Closure note", confirmLabel: to === "closed" ? "Close" : to === "failed" ? "Record failure" : "Return", multiline: true, required: true }); if (note) void move(cap, to, to === "required" ? { note } : { closure_note: note }); };
+  const move = (cap: AssessmentCap, to: string, fields: Record<string, string> = {}) => run(() => api.transitionAssessmentCap(cap.id, to as AssessmentCapStatus, fields));
+  const close = async (cap: AssessmentCap, to: string) => { const titles: Record<string, [string, string, string]> = { closed: ["Close the plan", "Closure note", "Close"], failed: ["Record the plan as failed", "Closure note", "Record failure"], required: ["Return the submission", "Why it is returned", "Return"], withdrawn: ["Withdraw the determination", "Why the plan is no longer required", "Withdraw"] }; const [title, label, confirmLabel] = titles[to]; const note = await prompt({ title, label, confirmLabel, multiline: true, required: true }); if (note) void move(cap, to, to === "required" || to === "withdrawn" ? { note } : { closure_note: note }); };
   const pending = rows.filter(r => r.cap_required || r.tier_label === "tier2");
   return <section><div className="assessment-section-head"><div><h3>Corrective Action Plans</h3><p>CAP Determinations remain independent of Monetary Adjustments and Penalty Waivers. A plan is due five business days after issuance and states root cause, corrective actions, responsible parties, timeline, monitoring plan, and closure criteria.</p></div></div>
     {error && <div className="assessment-error">{error}</div>}
+    {manager && period && period.status === "issued" && <div><button onClick={() => void (async () => { const note = await prompt({ title: "Require a Corrective Action Plan", description: "A determination made on your judgement, or one the contractor brought. Due five business days from today.", label: "Why a plan is required", confirmLabel: "Require plan", multiline: true, required: true }); if (!note) return; const theirs = await confirm({ title: "Whose initiative", description: "Did the contractor bring this plan, rather than MVTA requiring it? Cancel means MVTA requires it.", confirmLabel: "The contractor brought it" }); void run(() => api.createAssessmentCap({ period_id: period.id, trigger_reason: theirs ? "contractor_initiated" : "discretionary", note })); })()}>Require a plan</button></div>}
     {records.map(cap => <div className="assessment-card" key={cap.id}>
       <strong>{cap.standard_name}</strong>
       <p>{cap.trigger_reason} · due {formatDate(cap.due_at)}{cap.submitted_at ? ` · submitted ${formatDate(cap.submitted_at)}` : ""}{cap.closed_at ? ` · ${cap.status} ${formatDate(cap.closed_at)}` : ""}</p>

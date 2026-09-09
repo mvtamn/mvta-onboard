@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.175] - 2026-09-09
+## [1.5.176] - 2026-09-09
 
 - **Performance Assessment opens on one card for the contractor and month.** The contractor picker, the month stepper and the status pill replace the context bar, the "Open assessment month" button and the separate Assessment period select, which named the same month twice. Beneath them the card shows where the month is in its lifecycle (Opened, Computed, In review, Validation, Finalized, Issued), the proposed and recommended totals, and an Outstanding list — items awaiting review, monthly figures missing, occurrences needing an amount, CAPs flagged — each a link into the section where it is dealt with. One button names the next thing the month needs (open, compute, continue review, prepare the draft, finalize, issue), the same actions the section pages already allow at that status; `modules/assessment/glance.ts` holds those readings as pure functions with their own tests.
 - **Stepping to a month with no assessment shows it as Not opened**, with opening it as the action. A correction period (`supersedes_period_id`) is shown in place of the one it supersedes.
@@ -15,6 +15,16 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **The scorecard reads in the contract's order.** Grouped by category (`groupByCategory`, shared with the Standards admin list), the categories as Lists orders them, with a totals row. **Monthly metrics is a checklist** (`metricsChecklist`, with tests) rather than a form above a history table: one line per hand-entered figure the month scores, missing ones first, each entered in place with its source of record and stamped with who entered it and when; before the first compute the catalog's scored flag stands in for the period's rows. Standards the month does not score are listed beneath with a way to change the assignments.
 - **Administration › Performance Assessment polish.** The four pages no longer repeat their title beneath the page header. Lists uses the same master-detail workspace as the other three, its twelve lists down the left with system lists marked. Contractors shows the Agreements under the selected contractor. Agreements groups its form into Term, Contract references and Process, with the units inside the fields. Standards groups its catalog by category and offers the catalog-or-Agreement ladder choice as a segmented control. Also fixed: a literal `\u2019` in the Lists introduction.
 - **The module's own title block and the four stat tiles are gone.** The card carries the figures and the page header already names the page. The card is drawn on the console's theme tokens (`styles.css`), so it follows the dark theme; the rest of `assessment.css` still carries its own palette.
+
+## [1.5.175] - 2026-09-09
+
+Second pass over the implementation plan — the follow-ups the phase reviews deferred (#257).
+
+- **The report names a system outage as an exclusion cause** (`System outage: Avail CAD AVL`), which F deferred until D's report model landed.
+- **CAP Determinations can be withdrawn.** Migration 114 admits `withdrawn`; `required → withdrawn` is the Issuing Authority's, needs a reason on the audit row, and is final (CONTEXT: "a separate reasoned decision to remove"). **Manual CAPs:** `POST /api/assessment-caps` records a `discretionary` or `contractor_initiated` determination, due five business days out, holiday-aware (design §8). Console: *Withdraw*, *Require a plan*.
+- **Finalize and issue are libs** (`lib/assessment/finalizePeriod.ts`, `issueFinal.ts`); handlers delegate, behaviour unchanged. `generateArtifact` and `issueFinal` take an uploader, `issueFinal` a clock, so the **lifecycle contract test drives the whole chain on real SQL Server**: review → Validation Draft → share → finalize (reviewer refused, issuer accepted) → Issuance Proof → issue, asserting bound amounts, both hashes, the issuance record, and the dispute deadline.
+- Plans updated: every ticket A–I marked built with its PR; what remains is the dev walkthrough, Power BI, and an attribution rule before a second Agreement.
+
 ## [1.5.174] - 2026-09-09
 
 Phase I of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — the month-boundary timer.
