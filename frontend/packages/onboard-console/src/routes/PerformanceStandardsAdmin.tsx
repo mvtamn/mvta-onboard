@@ -8,12 +8,13 @@ import type {
 import {
   BAND_RANGES, bandRangeOf, boundsForRange, boundToInput, capWindowSentence, defaultTargetDisplay, describeBand,
   FALLBACK_PENALTY_BASES, FALLBACK_PRIORITIES, FALLBACK_TIER_LABELS, FALLBACK_UNITS,
-  inputToBound, isAutomated, isRatioUnit, ladderWarnings, optionsFor, qualifierLabel, sourceLabel,
+  inputToBound, isAutomated, isRatioUnit, ladderWarnings, optionsFor, qualifierLabel,
   TIER_LABELS, unitNoun, withCurrent, type BandRange, type VocabularyOption,
 } from "./performanceStandardsVocabulary.js";
 import { Link } from "react-router-dom";
 import { api } from "../config.js";
 import { groupByCategory } from "./modules/assessment/categoryGroups.js";
+import { standardWords } from "./modules/assessment/standardWords.js";
 import { useAppDialog } from "../components/AppDialog.js";
 import { useAuth } from "../auth/AuthContext.js";
 import "./modules/assessment/assessment.css";
@@ -356,8 +357,7 @@ export function PerformanceStandardsAdmin() {
                       {standard.category
                         ? `${vocab.categories.find((option) => option.value === standard.category)?.label ?? standard.category} · `
                         : ""}
-                      {standard.standard_type === "occurrence" ? "Counted events" : "Monthly value"}
-                      {" · "}{sourceLabel(standard.measurement_source, standard.source_system)}
+                      {standardWords(standard)}
                       {isAutomated(standard.measurement_source) && !standard.resolver_key ? " · no resolver" : ""}
                     </small>
                   </span>
