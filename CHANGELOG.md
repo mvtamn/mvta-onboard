@@ -5,11 +5,20 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.164] - 2026-09-09
+## [1.5.165] - 2026-09-09
 
 - **Performance Assessment opens on one card for the contractor and month.** The contractor picker, the month stepper and the status pill replace the context bar, the "Open assessment month" button and the separate Assessment period select, which named the same month twice. Beneath them the card shows where the month is in its lifecycle (Opened, Computed, In review, Validation, Finalized, Issued), the proposed and recommended totals, and an Outstanding list — items awaiting review, monthly figures missing, occurrences needing an amount, CAPs flagged — each a link into the section where it is dealt with. One button names the next thing the month needs (open, compute, continue review, prepare the draft, finalize, issue), the same actions the section pages already allow at that status; `modules/assessment/glance.ts` holds those readings as pure functions with their own tests.
 - **Stepping to a month with no assessment shows it as Not opened**, with opening it as the action. A correction period (`supersedes_period_id`) is shown in place of the one it supersedes.
 - **The module's own title block and the four stat tiles are gone.** The card carries the figures and the page header already names the page. The card is drawn on the console's theme tokens (`styles.css`), so it follows the dark theme; the rest of `assessment.css` still carries its own palette.
+
+## [1.5.164] - 2026-09-09
+
+- **Three fixes that were written, reviewed and then stalled in open pull requests.** Each had been sitting for weeks against a `main` it could no longer merge into, so the work is re-landed here and the original PRs (#58, #120, #124) are closed pointing at this one.
+  - **A second direction rule for the same movement no longer collides on priority.** `eventDirectionRules.ts` requires priority to be unique per Monitoring Area and boundary movement, but the editor defaulted every new rule to 0, so the second rule for a movement was refused on save. The editor now suggests the next free number, re-suggesting when the Area or the movement changes and folding in a rule saved moments ago that the refreshed list does not carry yet. A refused save now shows the server's reasons rather than only its summary line (from #58).
+  - **The rider subscribe form links to the privacy policy and terms.** The consent checkbox asked riders to agree to automated messages with nothing to read first (from #124).
+  - **The first request after the dev database auto-pauses retries.** That database is serverless and pauses when idle; the resume takes 30 to 60 seconds and the first connection through it commonly fails with a transient socket error, which reached callers as a bare 500. The initial connect now retries four times with a widening delay. Only the connect is retried, never a query already in flight, so a non-idempotent write cannot be applied twice (from #58).
+  - Also from #58: a `POST` to route classification whose body is valid JSON but not an object (a bare string, number or array) is refused with a clear message rather than reaching the validator as something it cannot read fields from.
+- **Removed: the pre-086 feed-health compatibility path.** `feedHealthTable()` resolved the ledger's name per call and accepted the pre-rename `MissedTripFeedHealth`, to cover the window where the migration and the deployment could land in either order. Migration 086 has been applied since 2026-08-28, and keeping the arm meant a database missing it would silently read a table nothing writes any more. `feedHealthTableReady()` names `KpiFeedHealth` alone and fails closed, so feed health reads as unavailable — which is true — rather than as stale-but-fine (from #120).
 
 ## [1.5.163] - 2026-09-09
 
