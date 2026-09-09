@@ -1405,7 +1405,7 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     },
     getComplianceOccurrences(filter: { contractor_id?: string; service_month?: string; review_status?: OccurrenceReviewStatus; limit?: number; offset?: number } = {}) {
       const qs = new URLSearchParams(); for (const [k, v] of Object.entries(filter)) if (v !== undefined && v !== "") qs.set(k, String(v));
-      return request<{ occurrences: import("./types.js").ComplianceOccurrence[]; diagnostics: { table_ready: boolean } }>(`/api/compliance-occurrences${qs.size ? `?${qs}` : ""}`, {}, true);
+      return request<{ occurrences: ComplianceOccurrence[]; diagnostics: { table_ready: boolean } }>(`/api/compliance-occurrences${qs.size ? `?${qs}` : ""}`, {}, true);
     },
     // Settle one occurrence: whether it counts, and whose error it was. Backs
     // both the Performance Assessment module's occurrence queue and the inline
@@ -1422,7 +1422,7 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     },
     getManualMetrics(filter: { contractor_id?: string; service_month?: string } = {}) {
       const qs = new URLSearchParams(); if (filter.contractor_id) qs.set("contractor_id", filter.contractor_id); if (filter.service_month) qs.set("service_month", filter.service_month);
-      return request<{ metrics: import("./types.js").ManualMetricEntry[]; diagnostics: { table_ready: boolean } }>(`/api/manual-metrics${qs.size ? `?${qs}` : ""}`, {}, true);
+      return request<{ metrics: ManualMetricEntry[]; diagnostics: { table_ready: boolean } }>(`/api/manual-metrics${qs.size ? `?${qs}` : ""}`, {}, true);
     },
     getOpenManualInputs(serviceMonth: string) {
       return request<{ open: import("./types.js").OpenManualInput[]; service_month: string }>(`/api/manual-metrics/open?service_month=${encodeURIComponent(serviceMonth)}`, {}, true);
