@@ -51,8 +51,9 @@ app.http("assessmentCapTransition", {
 
 
 // A manual CAP Determination (design §8): the Issuing Authority requires a
-// plan on its own judgement or records one the contractor brought. Due five
-// business days out, holiday-aware and failing closed like issuance.
+// plan on its own judgement or records one the contractor brought - against
+// an issued month, so it can never stand in for the tier-rule plan issuance
+// creates. Due five business days out, holiday-aware, failing closed.
 app.http("assessmentCapCreate", {
   route: "assessment-caps", methods: ["POST"], authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
@@ -69,8 +70,8 @@ app.http("assessmentCapCreate", {
       const due = addBusinessDays(now, 5, new Set(calendar.recordset.map(r => r.holiday_date.toISOString().slice(0, 10))));
       const req = pool.request(); const id = randomUUID();
       req.input("id", sql.UniqueIdentifier, id); req.input("period", sql.UniqueIdentifier, body.period_id); req.input("standard", sql.UniqueIdentifier, isGuid(body.standard_id) ? body.standard_id : null); req.input("trigger", sql.NVarChar(40), body.trigger_reason); req.input("due", sql.DateTime2, due); req.input("note", sql.NVarChar(1000), body.note); req.input("actor", sql.NVarChar(200), auth.principal.userDetails ?? "onboard-console");
-      const result = await req.query<{ id: string }>(`IF EXISTS(SELECT 1 FROM AssessmentPeriods WHERE id=@period AND status<>'open') AND (@standard IS NULL OR EXISTS(SELECT 1 FROM AssessmentPeriodStandards WHERE period_id=@period AND standard_id=@standard)) BEGIN INSERT CorrectiveActionPlans(id,contractor_id,standard_id,period_id,trigger_reason,due_at,created_by) SELECT @id,contractor_id,@standard,@period,@trigger,@due,@actor FROM AssessmentPeriods WHERE id=@period;${auditSql("cap", "@id", "cap_required", "actor", { after: "(SELECT @trigger trigger_reason,@due due_at FOR JSON PATH,WITHOUT_ARRAY_WRAPPER)", note: "@note" })}SELECT @id id;END`);
-      if (!result.recordset[0]) return { status: 409, jsonBody: { error: "A manual CAP needs a computed Assessment Period and, if named, one of its scored standards" } };
+      const result = await req.query<{ id: string }>(`IF EXISTS(SELECT 1 FROM AssessmentPeriods WHERE id=@period AND status='issued') AND (@standard IS NULL OR EXISTS(SELECT 1 FROM AssessmentPeriodStandards WHERE period_id=@period AND standard_id=@standard)) BEGIN INSERT CorrectiveActionPlans(id,contractor_id,standard_id,period_id,trigger_reason,due_at,created_by) SELECT @id,contractor_id,@standard,@period,@trigger,@due,@actor FROM AssessmentPeriods WHERE id=@period;${auditSql("cap", "@id", "cap_required", "actor", { after: "(SELECT @trigger trigger_reason,@due due_at FOR JSON PATH,WITHOUT_ARRAY_WRAPPER)", note: "@note" })}SELECT @id id;END`);
+      if (!result.recordset[0]) return { status: 409, jsonBody: { error: "A manual CAP is required against an issued Assessment Period and, if named, one of its scored standards" } };
       return { status: 201, jsonBody: { id, due_at: due.toISOString() } };
     } catch (error) { context.error("POST assessment CAP failed", error); return { status: 409, jsonBody: { error: error instanceof Error ? error.message : "Unable to require a plan" } }; }
   },

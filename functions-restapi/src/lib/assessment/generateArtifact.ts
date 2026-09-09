@@ -11,6 +11,8 @@ import { resolveFinalRequest } from "./reportLineage";
 // Rendering an artifact for a period: the model from the rows as they are,
 // the HTML, its hash, the blob, the row, the audit. Shared by the create
 // handler and the month-boundary timer, under the period's report lock.
+// Blob Storage in production; the contract test hands in a map.
+export type Uploader = (path: string, html: string) => Promise<void>;
 export type ArtifactType = "preliminary" | "final";
 export type ArtifactOutcome = { status: 201; id: string; version: number; hash: string } | { status: 404 | 409; error: string };
 
@@ -25,13 +27,15 @@ export async function readModel(pool:sql.ConnectionPool,periodId:string,reportId
   const occurrences=await req.query<ReportOccurrenceRow>(`SELECT s.name standard_name,o.service_date,o.description,o.quantity,o.qualifier_code,o.attribution,o.source_ref,c.status claim_status,c.event_description claim_description,${outageExclusionSql("o")} outage_system,(SELECT STRING_AGG(CONVERT(VARCHAR(MAX),e.content_sha256),'|') FROM ComplianceEvidence e WHERE e.occurrence_id=o.id) evidence_hashes FROM ComplianceOccurrences o JOIN AssessmentPeriodStandards s ON s.period_id=@period AND s.standard_id=o.standard_id LEFT JOIN ExcusableDelayClaims c ON c.id=o.relief_id WHERE o.contractor_id=@contractor AND o.service_month=@month AND o.review_status='confirmed' ORDER BY s.sort_order,o.service_date,o.created_at`);
   const exceptions=await req.query<ReportExceptionRow>(`SELECT s.name standard_name,x.reason,x.missing_data_owner,x.remediation_action,x.expected_correction_date FROM AssessmentExceptions x JOIN PeriodKpiAssessments a ON a.id=x.assessment_id JOIN AssessmentPeriodStandards s ON s.period_id=a.period_id AND s.standard_id=a.standard_id WHERE x.period_id=@period ORDER BY s.sort_order,x.authorized_at`);
   // The determination lives on the item; the plan row appears at issue.
-  const caps=await req.query<ReportCapRow>(`SELECT s.name standard_name,c.trigger_reason,c.due_at,c.status,a.cap_reason FROM PeriodKpiAssessments a JOIN AssessmentPeriodStandards s ON s.period_id=a.period_id AND s.standard_id=a.standard_id LEFT JOIN CorrectiveActionPlans c ON c.period_id=a.period_id AND c.standard_id=a.standard_id WHERE a.period_id=@period AND (a.cap_required=1 OR c.id IS NOT NULL) ORDER BY s.sort_order`);
+  const caps=await req.query<ReportCapRow>(`SELECT s.name standard_name,c.trigger_reason,c.due_at,c.status,a.cap_reason FROM PeriodKpiAssessments a JOIN AssessmentPeriodStandards s ON s.period_id=a.period_id AND s.standard_id=a.standard_id LEFT JOIN CorrectiveActionPlans c ON c.period_id=a.period_id AND c.standard_id=a.standard_id AND c.status<>'withdrawn' WHERE a.period_id=@period AND (a.cap_required=1 OR c.id IS NOT NULL) ORDER BY s.sort_order`);
   const standards=await req.query<ReportStandardRow>(`SELECT s.name,s.standard_type,s.measurement_source,a.data_completeness_pct,a.assessment_outcome FROM AssessmentPeriodStandards s LEFT JOIN PeriodKpiAssessments a ON a.period_id=s.period_id AND a.standard_id=s.standard_id WHERE s.period_id=@period ORDER BY s.sort_order`);
-  const otpExclusions=await req.query<ReportOtpExclusionRow>(`SELECT ISNULL(x.reason_code,'unspecified') reason_code,COUNT(*) stop_count FROM OtpStopExclusions x WHERE x.service_month=@month AND x.status='approved' GROUP BY x.reason_code ORDER BY stop_count DESC`);
+  // OtpStopExclusions belongs to the OTP module (migration 018); a database
+  // that carries only the assessment tables has none, and no exclusions.
+  const otpExclusions=await req.query<ReportOtpExclusionRow>(`IF OBJECT_ID('dbo.OtpStopExclusions','U') IS NOT NULL SELECT ISNULL(x.reason_code,'unspecified') reason_code,COUNT(*) stop_count FROM OtpStopExclusions x WHERE x.service_month=@month AND x.status='approved' GROUP BY x.reason_code ORDER BY stop_count DESC ELSE SELECT CONVERT(nvarchar(30),NULL) reason_code,0 stop_count WHERE 1=0`);
   return buildReportModel({reportId,type,version,period:p,rows:rows.recordset,evidence:evidence.recordset,issuedAt,deadline,schedules:{occurrences:occurrences.recordset,exceptions:exceptions.recordset,caps:caps.recordset,standards:standards.recordset,otpExclusions:otpExclusions.recordset,capDeadline}});
 }
 
-export async function generateArtifact(pool: sql.ConnectionPool, input: { periodId: string; type: ArtifactType; actor: string; body?: Record<string, unknown>; upload?: (path: string, html: string) => Promise<void> }): Promise<ArtifactOutcome> {
+export async function generateArtifact(pool: sql.ConnectionPool, input: { periodId: string; type: ArtifactType; actor: string; body?: Record<string, unknown>; upload?: Uploader }): Promise<ArtifactOutcome> {
   const { periodId, type, actor } = input; const body = input.body ?? {};
   return withPeriodReportLock(pool,periodId,async tx=>{
       const state=new sql.Request(tx);state.input("period",sql.UniqueIdentifier,periodId);
