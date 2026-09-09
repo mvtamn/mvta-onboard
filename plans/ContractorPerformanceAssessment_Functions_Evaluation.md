@@ -4,7 +4,7 @@
 **Scope:** Azure Functions, scoring/report modules, SQL dependencies, authorization, tests, and console integration
 **Design reference:** `plans/ContractorPerformanceAssessment_Design.md`
 
-> **Revision note.** The August 14 version was written against the tree *before* commit `60e2de1` (the governed-workflow commit that shipped it) and was never re-run afterwards. Twelve further commits touched the assessment code between August 14 and September 8 (PRs #199–#234, migrations 102 and 110). Roughly half of the August findings are now resolved; this revision re-verifies every finding against the current tree and marks each **Open**, **Partially resolved**, or **Resolved**.
+> **Revision note.** A parallel September 8 review (written in Codex, never committed) found eleven further defects; they are folded in below, each re-verified against `origin/main`, and marked *(from the parallel review)*. The August 14 version was written against the tree *before* commit `60e2de1` (the governed-workflow commit that shipped it) and was never re-run afterwards. Twelve further commits touched the assessment code between August 14 and September 8 (PRs #199–#234, migrations 102 and 110). Roughly half of the August findings are now resolved; this revision re-verifies every finding against the current tree and marks each **Open**, **Partially resolved**, or **Resolved**.
 
 ## Executive assessment
 
@@ -158,6 +158,46 @@ Finalize requires `COUNT(PeriodKpiAssessments) = COUNT(AssessmentPeriodStandards
 
 Occurrence, window, threshold, and escalation-history queries all carry `@contractor` (`assess.ts:97-196`).
 
+### High — the Escalation Streak counts unissued and superseded periods — **OPEN** *(from the parallel review)*
+
+`assess.ts:190-196` selects every prior `PeriodKpiAssessments` row for the contractor and standard where the period is `finalized` **or** `issued`, with no Agreement filter and no latest-revision selection. Two consequences: a corrected month has two period rows (the issued original and its correction, `supersedes_period_id`), so it counts twice; and a month that is finalized but never issued advances the streak, which ADR 0011 says must pause instead. Select one effective *issued* outcome per Agreement and month (the latest `assessment_revision`), and test correction, supersession, Not Assessable pauses, and an Agreement change.
+
+### High — the Validation Draft does not show the amounts that become binding — **OPEN** *(from the parallel review)*
+
+`readModel` in `assessmentReports.ts` renders a Validation Draft from `proposed_total` and the legacy `manager_*` columns, while review writes `recommended_*` (`periodAssessments.ts`) and finalization binds those (`assessmentPeriods.ts`). A waived or adjusted charge can therefore differ between the shared draft and the Final without a new Validation Window — the exact thing ADR 0009 exists to prevent. Render the reviewed recommendation and reason, and bind the share to that revision's hash.
+
+### High — Assessment Exception writes bypass the editable-period guard — **PARTIALLY RESOLVED** *(from the parallel review)*
+
+`assessmentGovernance.ts` inserts an exception for any `not_assessable` item with no check on period status and without voiding a Shared Validation Draft. PR #238 makes an exception void a live Issuance Proof, so a finalized month can no longer be issued over one silently; but an exception can still land on an `in_validation` or `issued` period, and sharing is not restarted. Restrict writes to editable revisions and invalidate the prior share (ADRs 0009, 0013).
+
+### High — registered evidence stays overwritable under its upload token — **OPEN** *(from the parallel review)*
+
+`blobStorage.ts:103` issues the evidence upload SAS with `cw` (create + write) and `assessmentEvidence.ts` verifies size and SHA-256, then registers the *same path*. Until that SAS expires, its holder can overwrite the bytes the hash was taken from. ADR 0013 requires evidence used by a Shared Validation Draft or Final to be immutable: copy verified content to a path the upload token cannot reach (or enable blob immutability), and test a second write after registration.
+
+### Medium — report arithmetic conflates computation with the binding adjustment — **OPEN** *(from the parallel review)*
+
+`renderAssessmentReport.ts:12` prints `(base − relief) × escalation = assessed`, but on a Final `assessed` is the reviewed binding amount, so after a waiver or adjustment the printed equation is false. Show the computed amount, the adjustment or waiver with its reason, and the binding amount as separate lines (design §9 section 5 and 9), and add the occurrence, exception, and CAP schedules.
+
+### Console — High — a stale action response can replace the selected period's rows — **OPEN** *(from the parallel review)*
+
+`AssessmentModule.tsx:31` `act()` captures `selected` at call time; after the action and `load()` it fetches that period's rows and stores them unconditionally. Switching months while an action is in flight lets the old response land after the new period's effect and overwrite its rows; the selection effect also keeps the previous `detailId`. Use one cancellable selected-period loader and reconcile the KPI selection on change.
+
+### Console — High — ranged penalties never expose amount entry — **OPEN** *(from the parallel review)*
+
+`GET /compliance-occurrences` returns `o.*` plus names; it does not join the applicable tier's `penalty_amount_min` / `penalty_amount_max`. The console shows **Set amount…** only when both are present, so a ranged-penalty occurrence (migration 107) can never be given an amount from the UI, and compute keeps it in `awaiting_amount_count`. Return the governed bounds and test the real response shape through the UI.
+
+### Console — Medium — review status reads the binding field before binding exists — **OPEN** *(from the parallel review)*
+
+`ScoreTable` and `ManagerReview` display `manager_action`, which finalization sets; review writes `recommended_action`. A completed review looks pending until the month is finalized. Show recommendations during review and binding decisions after.
+
+### Console — Medium — the Report page cannot open the artifact it manages — **OPEN** *(from the parallel review)*
+
+`ReportWorkflow` lists artifacts and offers generate / share / prepare / issue, but no preview or download, although hash-verified `GET …/{id}/html` and `…/download` exist. A reviewer should read the exact bytes before attesting to sharing, and an Issuing Authority the exact Issuance Proof before issuing. (The parallel review's other point here — repeated final generation needing supersession arguments the UI never collected — closed with PR #238.)
+
+### Caveat — the in-memory workflow seam is not the production path *(from the parallel review)*
+
+`lib/performanceAssessmentWorkflow.ts` is referenced only by its own tests; the SQL handlers do not use it. PR #238 leaned on it for the Issuance Proof lifecycle and the finalize invariant, so those rules are asserted twice — once in the model, once by hand in T-SQL — and only the model is tested. It is a specification the handlers are held to by review, not a test of them. Database-backed handler tests remain the missing layer.
+
 ### Medium — report contents are incomplete — **OPEN**
 
 `renderAssessmentReport.ts` renders Summary, Performance standard results, Computation detail, Contractor Evidence, and Dispute rights. Occurrence schedules, exclusions/relief detail, CAPs, prior disputes, data sources, and completeness caveats are still absent.
@@ -216,6 +256,10 @@ Unchanged from August: extract a **Performance Assessment lifecycle module** who
 
 - Database integration tests for `assessPeriod` against the deployed schema.
 - Report generation/version concurrency and issuance idempotency tests against a real database (the lock has no test; the lineage decision and the proof lifecycle do).
+- Escalation history across correction periods, unissued months, and Agreement changes.
+- Draft/Final parity: the shared Validation Draft's amounts equal what finalization binds.
+- Evidence: a second write to a registered path after registration must fail.
+- Console: delayed responses while switching periods; a ranged-penalty occurrence through the real list response.
 - Blob/SQL failure-recovery tests.
 - Golden-file coverage for the complete report HTML.
 - Handler authorization tests for every role set.
@@ -225,14 +269,19 @@ Unchanged from August: extract a **Performance Assessment lifecycle module** who
 
 Items 1–3 of the September 8 list (candidate attribution, report lineage and idempotency, finalization invariant) closed on 2026-09-09 via PRs #237 and #238.
 
-1. **Audit breadth + read endpoint:** compute, manager decision, finalize, validation share, dispute decision, report generation; `GET /compliance-assessment-audit`.
-2. **CAP lifecycle:** status transitions, due-date tracking, console management.
-3. **Excusable-delay claims and outages:** handlers to create and decide what `assess.ts` already honours.
-4. **Report content:** occurrence schedules, relief detail, CAPs, prior disputes, data sources.
-5. **Owner identity for manual metrics** and a month-end open-items list.
-6. **Month-boundary timer:** only after compute, report, and notification paths are proven idempotent.
-7. **Power BI deployment:** login, Key Vault secret, gateway (owner cost approval), dataset.
+1. **Governance correctness first** (the four High findings from the parallel review): Escalation Streak over issued outcomes only; Validation Draft renders the recommended amounts and binds the share to that hash; exception writes restricted to editable revisions and restart sharing; evidence sealed after registration. Each with a production-path regression, not a model-only one.
+2. **Console correctness:** the `act()` stale-selection race, penalty bounds on the occurrence list, recommendation vs binding display, and preview/download on the Report page.
+3. **Audit breadth + read endpoint:** compute, manager decision, finalize, validation share, dispute decision, report generation; `GET /compliance-assessment-audit`.
+4. **Report content and arithmetic:** computed / adjustment / binding lines; occurrence, exception, relief, CAP, and data-source schedules.
+5. **CAP lifecycle:** status transitions, due-date tracking, console management.
+6. **Excusable-delay claims and outages:** handlers to create and decide what `assess.ts` already honours.
+7. **Database-backed lifecycle and concurrency tests**, replacing model-only confidence.
+8. **Owner identity for manual metrics**, a month-end open-items list, and bounded list queries.
+9. **Month-boundary timer:** only after the above are proven idempotent.
+10. **Power BI deployment:** login, Key Vault secret, gateway (owner cost approval), dataset.
+
+Upstream dependencies: GitHub issues [#52](https://github.com/mvtamn/mvta-onboard/issues/52), [#56](https://github.com/mvtamn/mvta-onboard/issues/56), and [#57](https://github.com/mvtamn/mvta-onboard/issues/57) govern missed-trip detection, review gates, and rollout; the Compliance → Assessment links do not by themselves prove promotion eligibility is complete.
 
 ## Operational readiness statement
 
-The Function App is healthy and the governed workflow — open, compute, review, validation share, evidence, exceptions, finalize, issue, dispute, credit — is exercisable end to end from the console for a **single active contractor**. Automated ingestion refuses to run with more than one active contractor, so a second Agreement needs a source-to-contractor rule before activation. Superseding Final Assessments are lineage-checked and the Issuance Proof is distinct from the Final (ADR 0029). The dev walkthrough of the proof flow (finalize → Prepare → Prepare again → Issue) has not yet been performed by anyone. System outages, excusable-delay claim entry, CAP management, the audit read endpoint, and automatic monthly opening remain unbuilt.
+The Function App is healthy and the governed workflow — open, compute, review, validation share, evidence, exceptions, finalize, issue, dispute, credit — is exercisable end to end from the console for a **single active contractor**. Automated ingestion refuses to run with more than one active contractor, so a second Agreement needs a source-to-contractor rule before activation. Superseding Final Assessments are lineage-checked and the Issuance Proof is distinct from the Final (ADR 0029). Passing unit tests do not establish safe end-to-end issuance: the Escalation Streak, Draft/Final parity, exception guarding, and evidence sealing findings above should close before a Final Assessment is issued to a contractor. The dev walkthrough of the proof flow (finalize → Prepare → Prepare again → Issue) has not yet been performed by anyone. System outages, excusable-delay claim entry, CAP management, the audit read endpoint, and automatic monthly opening remain unbuilt.

@@ -55,6 +55,8 @@ Ordered by the evaluation's delivery order; item numbers there are authoritative
 
 ~~1–4~~ **Closed 2026-09-09:** candidate attribution fails closed unless exactly one contractor is active (PR #237); the Issuance Proof is distinct from the Final, supersession is derived from period lineage, generate/issue run under a per-period lock, and finalize requires the full frozen Rule Set (PR #238, ADR 0029, migration 111). A source-to-contractor rule is still needed before a second Agreement is activated.
 
+**Added 2026-09-09 from the parallel September 8 review, verified against `origin/main` — these outrank the numbered items below:** the Escalation Streak counts unissued and superseded periods (§6, ADR 0011); the Validation Draft renders proposed rather than recommended amounts (§9, ADR 0009); Assessment Exception writes have no editable-period guard and do not restart sharing (§5, ADR 0009/0013); registered evidence stays writable under its `cw` upload SAS (§5, ADR 0013); the report's computation line conflates calculation with the binding adjustment (§9 sections 5 and 9); and in the console, `act()` races period selection, ranged penalties never expose amount entry, review status reads `manager_action` before binding, and the Report page has no preview/download. Details and file references are in the evaluation.
+
 5. Audit breadth (compute, review, finalize, share, dispute decision, report generation) and the `/compliance-assessment-audit` read endpoint.
 6. CAP lifecycle beyond creation; `SystemOutageWindows` and `ExcusableDelayClaims` create/decide handlers; report sections 6/7/8/11.
 7. Owner identity for manual metrics (gap F) and a month-end open-items list.
