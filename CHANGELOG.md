@@ -5,12 +5,25 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.165] - 2026-09-09
+## [1.5.167] - 2026-09-09
 
 - **Performance Assessment opens on one card for the contractor and month.** The contractor picker, the month stepper and the status pill replace the context bar, the "Open assessment month" button and the separate Assessment period select, which named the same month twice. Beneath them the card shows where the month is in its lifecycle (Opened, Computed, In review, Validation, Finalized, Issued), the proposed and recommended totals, and an Outstanding list — items awaiting review, monthly figures missing, occurrences needing an amount, CAPs flagged — each a link into the section where it is dealt with. One button names the next thing the month needs (open, compute, continue review, prepare the draft, finalize, issue), the same actions the section pages already allow at that status; `modules/assessment/glance.ts` holds those readings as pure functions with their own tests.
 - **Stepping to a month with no assessment shows it as Not opened**, with opening it as the action. A correction period (`supersedes_period_id`) is shown in place of the one it supersedes.
 - **Six sections instead of nine.** Scorecard, Occurrences, Monthly metrics, Review, CAPs and Issuance, each carrying a count of what is outstanding in it, so the bar reads as a to-do list as much as a menu. A standard's detail is reached from its scorecard row (with a *Back to scorecard* crumb) rather than from a KPI Detail tab; Report and Disputes are one Issuance section; the read-only standards catalog is a link at the end of the bar — to Administration for administrators, to the in-module mirror for everyone else. The bar is on the theme tokens too.
 - **The module's own title block and the four stat tiles are gone.** The card carries the figures and the page header already names the page. The card is drawn on the console's theme tokens (`styles.css`), so it follows the dark theme; the rest of `assessment.css` still carries its own palette.
+## [1.5.166] - 2026-09-09
+
+Phase A of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — governance correctness.
+
+- **A1 — the Escalation Streak reads one issued outcome per Agreement-month.** `assess.ts` selected every `finalized`/`issued` period for the contractor; a correction period counted beside its original and an unissued month advanced the streak. Now: same Agreement, `status='issued'`, highest `assessment_revision` per month (ADR 0011). The rows read are stored in `computation_json` outside the input hash.
+- **A2 — a Shared Validation Draft shows the recommended amounts and binds to them.** `lib/report/buildReportModel.ts` is the pure model builder: drafts show `recommended_*` + reason, Finals the binding decision. Migration 112b (lettered against main's 112a period-rules lock) adds `ValidationDraftShares.computed_revision` and `items_sha256` (a SQL hash over every item's `reviewed_input_sha256`, `lib/assessment/reviewedItems.ts`); the share records both and finalize refuses a mismatch (ADR 0009). Shares recorded before 112b must be re-shared. A `migration112b.db.contract.test.ts` exercises the expression on real SQL Server.
+- **A3 — Assessment Exception writes are guarded and share one material-change fragment.** `lib/assessment/materialChange.ts` (withdraw share, stale period, void live Issuance Proof) is used by evidence and exceptions; an exception is accepted on `in_review`/`stale`/`reopened`/`in_validation`/`finalized`, never `issued`, and is a Material Assessment Change only after sharing.
+- **A4 — registered evidence is sealed.** Verified bytes are copied by the app to `sealed/<assessment>/<evidence id>` and that path is registered; the `cw` upload SAS never names it (ADR 0013). Staging blob deleted.
+- **A5 — the report separates computation from the binding adjustment.** `Computed: base × escalation`, then *Recommendation* / *Binding decision* with reason, then the applicable amount; excluded inputs named, not subtracted (ADR 0012). Golden tests in `report.test.ts`.
+
+## [1.5.165] - 2026-09-09
+
+- **Recomputing a not-yet-finalised month failed outright.** The rule refresh in 1.5.163 composes its standard set through `periodStandardSourceSql`, which joins `AgreementStandards` on `@agreement` wherever migration 102 is present - and `refreshPeriodRules` bound only `@period` and `@month`. Every recompute of a drafting period stopped with "Must declare the scalar variable @agreement" and rolled back. The tests asserted on the composed SQL text, which cannot see a parameter that is named but never bound; there is now a test that extracts every `@name` from the statement and fails unless the code binds it, and it fails without the fix. Found by applying 112 to dev and running the recompute it was written for, rather than by reading the diff again.
 
 ## [1.5.164] - 2026-09-09
 

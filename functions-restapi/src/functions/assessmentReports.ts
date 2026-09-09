@@ -6,17 +6,18 @@ import { buildComplianceReportBlobPath, downloadComplianceReport, uploadComplian
 import { agreementScopeIn } from "../lib/assessment/schemaScope";
 import { getPool, sql } from "../lib/db";
 import { renderAssessmentReport, type AssessmentReportModel } from "../lib/report/renderAssessmentReport";
+import { buildReportModel, type ReportEvidenceRow, type ReportItemRow, type ReportPeriodRow } from "../lib/report/buildReportModel";
 import { isGuid } from "../lib/validation";
 import { voidLiveIssuanceProofSql, withPeriodReportLock } from "../lib/assessment/issuanceProof";
 import { resolveFinalRequest } from "../lib/assessment/reportLineage";
 
 async function readModel(periodId:string,reportId:string,type:"preliminary"|"final",version:number,issuedAt:Date|null,deadline:Date|null):Promise<AssessmentReportModel>{
   const pool=await getPool();const req=pool.request();req.input("period",sql.UniqueIdentifier,periodId);
-  const period=await req.query<any>(`SELECT p.*,c.name contractor_name FROM AssessmentPeriods p JOIN Contractors c ON c.id=p.contractor_id WHERE p.id=@period`);
+  const period=await req.query<ReportPeriodRow>(`SELECT p.*,c.name contractor_name FROM AssessmentPeriods p JOIN Contractors c ON c.id=p.contractor_id WHERE p.id=@period`);
   const p=period.recordset[0];if(!p)throw new Error("Assessment Period not found");
-  const rows=await req.query<any>(`SELECT a.*,s.name,s.standard_type FROM PeriodKpiAssessments a JOIN AssessmentPeriodStandards s ON s.period_id=a.period_id AND s.standard_id=a.standard_id WHERE a.period_id=@period ORDER BY s.sort_order`);
-  const evidence=await req.query<any>(`SELECT s.name assessment_name,e.caption,e.content_sha256 FROM ComplianceEvidence e JOIN PeriodKpiAssessments a ON a.id=e.assessment_id JOIN AssessmentPeriodStandards s ON s.period_id=a.period_id AND s.standard_id=a.standard_id WHERE a.period_id=@period AND e.visibility='contractor' ORDER BY s.sort_order,e.uploaded_at`);
-  return{reportId,issuanceType:type,version,contractorName:p.contractor_name,serviceMonth:p.service_month,issuedAt:issuedAt?.toISOString()??null,issuedBy:null,disputeDeadline:deadline?.toISOString().slice(0,10)??null,isPartial:Boolean(p.is_partial),assessedTotal:Number(type==="final"?p.final_total??0:p.proposed_total??0),assessments:rows.recordset.map((a:any)=>({name:a.name,standardType:a.standard_type,metricDisplay:a.assessment_outcome==="not_assessable"?"Not Assessable":a.metric_display,targetDisplay:a.target_display,tierLabel:a.assessment_outcome==="not_assessable"?"Not Assessable":a.tier_label,occurrenceCount:a.occurrence_count,baseAmount:Number(a.base_amount),reliefAmount:Number(a.relief_amount),escalationMultiplier:Number(a.escalation_multiplier),assessedAmount:Number(type==="final"?a.final_amount??0:a.proposed_amount),managerAction:a.manager_action,managerReason:a.manager_reason,dataCompletenessPct:a.data_completeness_pct})),evidence:evidence.recordset.map((e:any)=>({assessmentName:e.assessment_name,caption:e.caption??"Evidence",contentSha256:e.content_sha256}))};
+  const rows=await req.query<ReportItemRow>(`SELECT a.*,s.name,s.standard_type FROM PeriodKpiAssessments a JOIN AssessmentPeriodStandards s ON s.period_id=a.period_id AND s.standard_id=a.standard_id WHERE a.period_id=@period ORDER BY s.sort_order`);
+  const evidence=await req.query<ReportEvidenceRow>(`SELECT s.name assessment_name,e.caption,e.content_sha256 FROM ComplianceEvidence e JOIN PeriodKpiAssessments a ON a.id=e.assessment_id JOIN AssessmentPeriodStandards s ON s.period_id=a.period_id AND s.standard_id=a.standard_id WHERE a.period_id=@period AND e.visibility='contractor' ORDER BY s.sort_order,e.uploaded_at`);
+  return buildReportModel({reportId,type,version,period:p,rows:rows.recordset,evidence:evidence.recordset,issuedAt,deadline});
 }
 
 app.http("assessmentReportsList",{route:"assessment-reports",methods:["GET"],authLevel:"anonymous",handler:async(request,context)=>{

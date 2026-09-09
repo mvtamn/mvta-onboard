@@ -9,7 +9,7 @@ comments, changelog entries and runbooks.
 
 Two branches that both read the same `main` pick the same next number, and git
 merges them without a conflict because the filenames differ. It has happened
-five times. When it does, both migrations are usually already applied, so
+six times. When it does, both migrations are usually already applied, so
 neither can be renumbered to a free number at the end - that would claim it ran
 after migrations it actually preceded. Instead the pair keeps its position and
 a letter orders it:
@@ -21,6 +21,7 @@ a letter orders it:
 | 069 | event geofence notification cooldowns | detour intake evidence and operations |
 | 088 | dismiss within-variance garage departures | detour location |
 | 096 | trip start verification events | on-demand departures |
+| 112 | period rules lock | share binds reviewed items |
 
 The letter follows the order the two reached `main`, or the order they were
 written when a single merge brought both.
