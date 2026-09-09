@@ -1381,6 +1381,7 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     },
     linkOccurrenceRelief(id: string, review_status: OccurrenceReviewStatus, attribution: OccurrenceAttribution, relief_id: string | null) {
       return request<{ id: string }>(`/api/compliance-occurrences/${id}`, { method: "PATCH", body: JSON.stringify({ review_status, attribution, relief_id }) }, true);
+    },
     transitionAssessmentCap(id: string, status: import("./types.js").AssessmentCapStatus, fields: Record<string, string> = {}) {
       return request<{ id: string; status: string }>(`/api/assessment-caps/${id}`, { method: "PATCH", body: JSON.stringify({ status, ...fields }) }, true);
     },
