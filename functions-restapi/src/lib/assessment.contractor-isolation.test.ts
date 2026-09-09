@@ -19,7 +19,7 @@ test("assessment input queries stay within the selected contractor", async () =>
 
     async query<T>(text: string): Promise<{ recordset: T[] }> {
       if (text.includes("FROM AssessmentPeriods WITH")) {
-        return { recordset: [{ id: "period", contractor_id: contractorId, service_month: "202607", ramp_up_stage: "full", input_revision: 0, status: "open" } as T] };
+        return { recordset: [{ id: "period", contractor_id: contractorId, agreement_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", service_month: "202607", ramp_up_stage: "full", input_revision: 0, status: "open" } as T] };
       }
       if (text.includes("FROM ContractorPerformanceStandards")) {
         return { recordset: [
