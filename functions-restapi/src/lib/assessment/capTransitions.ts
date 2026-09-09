@@ -11,15 +11,15 @@ export type CapStatus = "required" | "submitted" | "approved" | "in_progress" | 
 export const CAP_MANUAL_TRIGGERS = ["discretionary", "contractor_initiated"] as const;
 export type CapRole = "writer" | "manager";
 export type CapFields = Partial<Record<CapSubmissionField | "closure_note" | "note", unknown>>;
-export type CapTransition = { ok: true; sets: (CapSubmissionField | "closure_note")[]; note: boolean; stamps: "submitted_at" | "closed_at" | null; clears: "submitted_at" | null } | { ok: false; error: string };
+export type CapTransition = { ok: true; sets: (CapSubmissionField | "closure_note")[]; note: boolean; stamps: "submitted_at" | "closed_at" | "withdrawn_at" | null; clears: "submitted_at" | null } | { ok: false; error: string };
 
-interface Step { role: CapRole; requires: readonly (CapSubmissionField | "closure_note" | "note")[]; stamps: "submitted_at" | "closed_at" | null; clears?: "submitted_at" }
+interface Step { role: CapRole; requires: readonly (CapSubmissionField | "closure_note" | "note")[]; stamps: "submitted_at" | "closed_at" | "withdrawn_at" | null; clears?: "submitted_at" }
 // "note" is recorded on the audit row, not the plan: a return says why the
 // submission was sent back, and the plan itself carries no such column.
 const STEPS: Partial<Record<`${CapStatus}->${CapStatus}`, Step>> = {
   "required->submitted": { role: "writer", requires: CAP_SUBMISSION_FIELDS, stamps: "submitted_at" },
   "submitted->required": { role: "manager", requires: ["note"], stamps: null, clears: "submitted_at" },   // returned incomplete, with the reason
-  "required->withdrawn": { role: "manager", requires: ["note"], stamps: "closed_at" },   // the separate reasoned decision to remove a determination (CONTEXT)
+  "required->withdrawn": { role: "manager", requires: ["note"], stamps: "withdrawn_at" },   // the separate reasoned decision to remove a determination (CONTEXT)
   "submitted->approved": { role: "manager", requires: [], stamps: null },
   "approved->in_progress": { role: "writer", requires: [], stamps: null },   // the work is the contractor's; recording its start is a writer's act
   "in_progress->closed": { role: "manager", requires: ["closure_note"], stamps: "closed_at" },

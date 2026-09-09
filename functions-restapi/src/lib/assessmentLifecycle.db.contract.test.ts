@@ -217,7 +217,10 @@ test("assessment lifecycle against real SQL", { skip: !connectionString && "DECI
       assert.match(blobs.get(`periods/${august}/${draft.id}.html`) ?? "", /VALIDATION DRAFT/);
       assert.match(blobs.get(`periods/${august}/${draft.id}.html`) ?? "", /Recommended amount:<\/b> <b>\$1,500\.00/);
 
-      // Share the draft as the handler does, with the window already over.
+      // Share the draft. The share handler's own guards (a draft generated after
+      // every review, the latest version, status in_review) are not driven here;
+      // the row is written directly with the window already over, which is what
+      // finalize reads.
       const share = pool.request(); share.input("period", sql.UniqueIdentifier, august); share.input("report", sql.UniqueIdentifier, draft.id);
       await share.query(`INSERT ValidationDraftShares(period_id,report_id,recipient,delivery_method,sender_attestation,shared_by,shared_at,validation_ends_on,computed_revision,items_sha256) SELECT @period,@report,'c@example.com','email','sent','reviewer',DATEADD(day,-10,SYSUTCDATETIME()),DATEADD(day,-1,CONVERT(date,SYSUTCDATETIME())),computed_revision,${reviewedItemsSha256Sql("period")} FROM AssessmentPeriods WHERE id=@period;UPDATE AssessmentPeriods SET status='in_validation',validation_ends_on=DATEADD(day,-1,CONVERT(date,SYSUTCDATETIME())) WHERE id=@period`);
 
@@ -229,7 +232,7 @@ test("assessment lifecycle against real SQL", { skip: !connectionString && "DECI
 
       const proof = await generateArtifact(pool, { periodId: august, type: "final", actor: "issuer", upload });
       assert.equal(proof.status, 201); if (proof.status !== 201) return;
-      await pool.request().query(`INSERT MvtaHolidayCalendarCoverage(id,coverage_through) SELECT 1,'2027-12-31' WHERE NOT EXISTS(SELECT 1 FROM MvtaHolidayCalendarCoverage WHERE id=1)`);
+      await pool.request().query(`INSERT MvtaHolidayCalendarCoverage(id,coverage_through,updated_by) SELECT 1,'2027-12-31','${ACTOR}' WHERE NOT EXISTS(SELECT 1 FROM MvtaHolidayCalendarCoverage WHERE id=1)`);
       const refused = await issueFinal(pool, { reportId: proof.id, periodId: august, actor: "reviewer", recipient: "c@example.com", deliveryMethod: "email", senderAttestation: "sent", upload });
       assert.equal(refused.status, 409, "the reviewer cannot issue");
       const issued = await issueFinal(pool, { reportId: proof.id, periodId: august, actor: "issuer", recipient: "c@example.com", deliveryMethod: "email", senderAttestation: "sent", now: new Date("2026-09-10T15:00:00Z"), upload });
@@ -237,6 +240,8 @@ test("assessment lifecycle against real SQL", { skip: !connectionString && "DECI
       assert.notEqual(issued.hash, proof.hash, "the issued bytes carry the issuer and deadline");
       const row = (await pool.request().query<{ status: string; proof_sha256: string; content_sha256: string; issued_by: string; records: number; caps: number }>(`SELECT p.status,r.proof_sha256,r.content_sha256,r.issued_by,(SELECT COUNT(*) FROM FinalIssuanceRecords WHERE report_id=r.id) records,(SELECT COUNT(*) FROM CorrectiveActionPlans WHERE period_id=p.id) caps FROM ComplianceReports r JOIN AssessmentPeriods p ON p.id=r.period_id WHERE r.id='${proof.id}'`)).recordset[0];
       assert.equal(row.status, "issued"); assert.equal(row.proof_sha256.toLowerCase(), proof.hash); assert.equal(row.content_sha256.toLowerCase(), issued.hash); assert.equal(row.issued_by, "issuer"); assert.equal(row.records, 1);
+      // MISSED_TRIPS_FR carries no tier that triggers a CAP, so issuance creates none.
+      assert.equal(row.caps, 0);
       assert.match(blobs.get([...blobs.keys()].find(k => k.includes("-issued-"))!) ?? "", /Final Assessment/);
       assert.equal(issued.deadline.toISOString().slice(0, 10), "2026-09-24", "ten business days after a Thursday issuance");
     });

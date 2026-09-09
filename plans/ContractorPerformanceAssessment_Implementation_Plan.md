@@ -152,7 +152,7 @@ Tables exist; `assess.ts` already excludes occurrences whose `relief_id` points 
 
 ## Phase G — Database-backed confidence
 
-### G1 — Lifecycle and concurrency contract tests · **L** — **built, #252**
+### G1 — Lifecycle and concurrency contract tests · **L** — **built, #252 + #257** (drives open → compute → review → draft → share → finalize → proof → issue; reopen → correction → superseding Final is still handler-inline SQL and not driven)
 
 *Finding:* Evaluation § caveat on the model-only seam. The CI contract job already runs SQL Server (`DECISION_MATRIX_TEST_SQL_CONNECTION_STRING`, `api.yml:68`). Add `assessmentLifecycle.db.contract.test.ts`: apply migrations 030–112, seed one Agreement, run open → compute → review → share → finalize → prepare proof → issue → reopen → correction → superseding Final against real SQL, assert hashes, streak (A1), share binding (A2), the `UX_CR_LiveProof` index under two concurrent prepares, and `sp_getapplock` serialisation. Blob calls go to a local fake.
 - **Blocked by:** A1, A2, A3.

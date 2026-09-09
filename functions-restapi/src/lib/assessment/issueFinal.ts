@@ -10,7 +10,9 @@ import { renderAssessmentReport } from "../report/renderAssessmentReport";
 // Issuance: the live Issuance Proof becomes the Final Assessment (ADR 0029)
 // - re-rendered with issuer and the holiday-aware dispute deadline, its own
 // bytes kept beside the issued ones - and the period becomes issued, CAPs
-// are created, superseded disputes closed, the issuance recorded. Shared by
+// are created (a withdrawn plan does not stand in the way of requiring one
+// again on a superseding Final), superseded disputes closed, the issuance
+// recorded. Shared by
 // the handler and the lifecycle contract test; the uploader and the clock
 // are injectable so the test can run without Blob Storage.
 export type IssueOutcome = { status: 200; id: string; hash: string; deadline: Date } | { status: 409; error: string };

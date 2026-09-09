@@ -243,7 +243,7 @@ CHECK_LABELS=(
   "112a · AssessmentPeriods.rules_locked_at"
   "112b · ValidationDraftShares.computed_revision + items_sha256"
   "113 · ReferenceValues.principal_upn"
-  "114 · CK_CAP_Status admits withdrawn"
+  "114 · CorrectiveActionPlans.withdrawn_at + CK_CAP_Status admits withdrawn"
 )
 CHECK_QUERIES=(
   "SELECT COUNT(*) FROM sys.columns WHERE object_id=OBJECT_ID('dbo.AssessmentPeriodStandards') AND name='resolver_key'"
@@ -258,7 +258,7 @@ CHECK_QUERIES=(
   "SELECT CASE WHEN COL_LENGTH('dbo.AssessmentPeriods','rules_locked_at') IS NOT NULL THEN 1 ELSE 0 END"
   "SELECT CASE WHEN COL_LENGTH('dbo.ValidationDraftShares','computed_revision') IS NOT NULL AND COL_LENGTH('dbo.ValidationDraftShares','items_sha256') IS NOT NULL THEN 1 ELSE 0 END"
   "SELECT CASE WHEN COL_LENGTH('dbo.ReferenceValues','principal_upn') IS NOT NULL THEN 1 ELSE 0 END"
-  "SELECT CASE WHEN EXISTS(SELECT 1 FROM sys.check_constraints WHERE name='CK_CAP_Status' AND definition LIKE '%withdrawn%') THEN 1 ELSE 0 END"
+  "SELECT CASE WHEN COL_LENGTH('dbo.CorrectiveActionPlans','withdrawn_at') IS NOT NULL AND EXISTS(SELECT 1 FROM sys.check_constraints WHERE name='CK_CAP_Status' AND definition LIKE '%withdrawn%') THEN 1 ELSE 0 END"
 )
 CHECK_EXPECTED=("1" "1" "1" "5" "1" "1" "1" "1" "1" "1" "1" "1" "1")
 
