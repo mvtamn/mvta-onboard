@@ -40,7 +40,7 @@ Phase A of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — go
 
 - **The What's new panel caps at five changes and says what it left out.** The panel is a glance at the running build, and it printed every bullet of the release: v1.5.159 has five, but releases carrying a dozen turned a panel into a page to scroll past its own "View full changelog" link. It now shows the first five and, when there are more, a muted line counting the rest — shown rather than the list quietly ending, because a truncated panel that looks complete misreports what shipped. The full text of every change stays on the Changelog page the panel already links to.
 
-## [1.5.163] - 2026-09-09
+## [1.5.2] - 2026-09-09
 
 Phase B of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — console correctness.
 
