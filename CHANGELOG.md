@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.162] - 2026-09-09
+
+- **The What's new panel caps at five changes and says what it left out.** The panel is a glance at the running build, and it printed every bullet of the release: v1.5.159 has five, but releases carrying a dozen turned a panel into a page to scroll past its own "View full changelog" link. It now shows the first five and, when there are more, a muted line counting the rest — shown rather than the list quietly ending, because a truncated panel that looks complete misreports what shipped. The full text of every change stays on the Changelog page the panel already links to.
+
 ## [1.5.161] - 2026-09-08
 
 - **The Issuance Proof is not the Final Assessment.** "Generate Final Assessment" wrote a `ComplianceReports` row of type `final` with no `issued_at`, and the create handler treated each unissued one as the latest Final the next had to supersede — a finalized month could grow v1, v2, v3 "finals" from one unchanged state. ADR 0029 names that render an Issuance Proof: one live per period (`UX_CR_LiveProof`, migration 111), voided rather than superseded on Prepare, reopen, or evidence added to a finalized month (`voided_at`, audited, nothing deleted), and never a supersession target. Issue transitions the proof's row into the Final and keeps `proof_blob_path` / `proof_sha256` beside the issued ones.

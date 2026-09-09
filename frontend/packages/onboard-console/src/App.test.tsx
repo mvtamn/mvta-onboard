@@ -19,6 +19,20 @@ vi.mock("./hooks/useLiveStats.js", () => ({
   useLiveStats: vi.fn(),
   dataStateLabel: vi.fn(() => "Loading live data"),
 }));
+// A release with more bullets than the popover shows, so the cap and its
+// "N more" line are exercised: the real newest release may have five or fewer.
+vi.mock("./routes/changelogData.js", () => ({
+  CHANGELOG_ENTRIES: [
+    {
+      version: __APP_VERSION__,
+      date: "2026-09-09",
+      sections: [
+        { heading: "Added", items: ["one", "two", "three"] },
+        { heading: "Changed", items: ["four", "five", "six", "seven"] },
+      ],
+    },
+  ],
+}));
 vi.mock("./theme/ThemeContext.js", () => ({
   useTheme: vi.fn(() => ({ theme: "light", toggle: vi.fn() })),
 }));
@@ -98,5 +112,26 @@ describe("App authentication boundary", () => {
 
     expect(screen.getByRole("button", { name: "Sign in with Microsoft" })).toBeInTheDocument();
     expect(useLiveStats).not.toHaveBeenCalled();
+  });
+
+  it("shows five release bullets in the popover and says how many it left out", async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      account: { name: "Admin", username: "admin@mvta.test" },
+      roles: ["OCC.Admin"],
+      signIn: vi.fn(),
+      signOut: vi.fn(),
+    });
+    vi.mocked(useLiveStats).mockReturnValue({
+      activeCount: 0, activeMessages: [], lastMessageId: null, pending: [], subscribers: null,
+      syncedAt: null, ok: true, activeState: "live", pendingState: "live", overallState: "live", refresh: vi.fn(),
+    } as never);
+
+    const { container } = render(<MemoryRouter initialEntries={["/"]}><App /></MemoryRouter>);
+    container.querySelector<HTMLButtonElement>(".nav-changelog")!.click();
+
+    const popover = await screen.findByRole("dialog", { name: /What’s new/ });
+    const items = Array.from(popover.querySelectorAll("li")).map((li) => li.textContent);
+    // Seven bullets in the release: five shown, then the count of the rest.
+    expect(items).toEqual(["one", "two", "three", "four", "five", "2 more changes in this release"]);
   });
 });
