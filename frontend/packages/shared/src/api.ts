@@ -1361,6 +1361,26 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     getAssessmentAudit(periodId: string, limit = 200, offset = 0) {
       return request<{ entries: import("./types.js").AssessmentAuditEntry[]; diagnostics: { limit: number; offset: number; returned_count: number } }>(`/api/compliance-assessment-audit?period_id=${encodeURIComponent(periodId)}&limit=${limit}&offset=${offset}`, {}, true);
     },
+    getExcusableDelayClaims(contractorId: string, serviceMonth: string) {
+      return request<{ claims: import("./types.js").ExcusableDelayClaim[] }>(`/api/excusable-delay-claims?contractor_id=${encodeURIComponent(contractorId)}&service_month=${encodeURIComponent(serviceMonth)}`, {}, true);
+    },
+    createExcusableDelayClaim(input: { contractor_id: string; service_month: string; event_description: string; event_started_at: string; notice_received_at: string; documentation_note?: string }) {
+      return request<{ id: string; late_notice: boolean }>("/api/excusable-delay-claims", { method: "POST", body: JSON.stringify(input) }, true);
+    },
+    decideExcusableDelayClaim(id: string, status: "approved" | "denied", decision_note: string) {
+      return request<{ id: string; status: string }>(`/api/excusable-delay-claims/${id}/decision`, { method: "POST", body: JSON.stringify({ status, decision_note }) }, true);
+    },
+    getSystemOutages(serviceMonth?: string) {
+      return request<{ outages: import("./types.js").SystemOutageWindow[] }>(`/api/system-outages${serviceMonth ? `?service_month=${encodeURIComponent(serviceMonth)}` : ""}`, {}, true);
+    },
+    createSystemOutage(input: { system: string; started_at: string; ended_at?: string | null; scope_note: string }) {
+      return request<{ id: string }>("/api/system-outages", { method: "POST", body: JSON.stringify(input) }, true);
+    },
+    endSystemOutage(id: string, ended_at: string) {
+      return request<{ id: string }>(`/api/system-outages/${id}`, { method: "PATCH", body: JSON.stringify({ ended_at }) }, true);
+    },
+    linkOccurrenceRelief(id: string, review_status: OccurrenceReviewStatus, attribution: OccurrenceAttribution, relief_id: string | null) {
+      return request<{ id: string }>(`/api/compliance-occurrences/${id}`, { method: "PATCH", body: JSON.stringify({ review_status, attribution, relief_id }) }, true);
     transitionAssessmentCap(id: string, status: import("./types.js").AssessmentCapStatus, fields: Record<string, string> = {}) {
       return request<{ id: string; status: string }>(`/api/assessment-caps/${id}`, { method: "PATCH", body: JSON.stringify({ status, ...fields }) }, true);
     },

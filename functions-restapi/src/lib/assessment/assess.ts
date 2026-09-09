@@ -2,6 +2,7 @@ import type { Transaction } from "mssql";
 import { sql } from "../db";
 import { escalationMultiplier } from "./escalation";
 import { auditSql } from "./audit";
+import { outageExclusionSql } from "./relief";
 import { assessmentInputHash, canonicalJson } from "./hash";
 import { bandAmount, computePenalty, isRangedBand } from "./penalty";
 import { refreshPeriodRules } from "./ruleRefresh";
@@ -94,6 +95,8 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
     let worstSeverity: number | null = null;
     // Occurrences on a ranged band with no reviewer figure yet.
     let awaitingAmountCount = 0;
+    // Occurrences excluded because their observing system was down (Attachment G data protocol).
+    let excludedForOutage = 0;
     let capWindowReason: string | null = null;
     // Why a standard could not be measured, when that is a fact worth
     // reporting rather than simply an empty month.
@@ -105,10 +108,11 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
       occurrencesReq.input("standard_id", sql.UniqueIdentifier, standard.id);
       occurrencesReq.input("contractor", sql.UniqueIdentifier, period.contractor_id);
       occurrencesReq.input("month", sql.Char(6), period.service_month);
-      const occurrences = await occurrencesReq.query<{ id: string; quantity: number; duration_days: number | null; qualifier_code: string | null; excluded: boolean; service_date: string; assessed_amount: number | null }>(`
+      const occurrences = await occurrencesReq.query<{ id: string; quantity: number; duration_days: number | null; qualifier_code: string | null; excluded: boolean; service_date: string; assessed_amount: number | null; outage_system: string | null }>(`
         SELECT o.id,o.quantity,o.duration_days,o.qualifier_code,o.service_date,
           ${scope.penaltyScaling ? "o.assessed_amount" : "CONVERT(decimal(12,2),NULL) assessed_amount"},
-          CONVERT(bit,CASE WHEN o.attribution<>'contractor_error' OR c.status='approved' THEN 1 ELSE 0 END) excluded
+          CONVERT(bit,CASE WHEN o.attribution<>'contractor_error' OR c.status='approved' OR ${outageExclusionSql("o")} IS NOT NULL THEN 1 ELSE 0 END) excluded,
+          ${outageExclusionSql("o")} outage_system
         FROM ComplianceOccurrences o LEFT JOIN ExcusableDelayClaims c ON c.id=o.relief_id
         WHERE o.standard_id=@standard_id AND o.contractor_id=@contractor AND o.service_month=@month AND o.review_status='confirmed'
         ORDER BY o.service_date, o.created_at, o.id
@@ -121,6 +125,7 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
       excludedUnitQuantity = input.excludedQuantity;
       excludedMetricValue = input.excludedQuantity;
       excludedSourceRefs = input.excludedIds.map(id => `ComplianceOccurrences:${id}`);
+      excludedForOutage = occurrences.recordset.filter(o => o.outage_system).length;
       occurrenceCount = input.assessableCount;
       quantity = input.assessableQuantity;
       metricValue = quantity;
@@ -220,7 +225,7 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
     const escalation = escalationMultiplier(consecutive);
     const proposed = notAssessable ? 0 : Math.max(0, baseAmount) * escalation;
     const outcome = notAssessable ? "not_assessable" : tierLabel;
-    const snapshot = { standardCode: standard.code, resolverKey: standard.resolver_key ?? null, unresolvedReason, awaitingAmountCount, capWindowReason, targetValue: standard.target_value ?? null, metricValue, quantity, occurrenceCount, sourceRefs, rawMetricValue, rawOccurrenceCount, rawUnitQuantity, excludedMetricValue, excludedOccurrenceCount, excludedUnitQuantity, excludedSourceRefs, baseAmount, escalation, proposed, tierLabel, outcome };
+    const snapshot = { standardCode: standard.code, resolverKey: standard.resolver_key ?? null, unresolvedReason, awaitingAmountCount, excludedForOutage, capWindowReason, targetValue: standard.target_value ?? null, metricValue, quantity, occurrenceCount, sourceRefs, rawMetricValue, rawOccurrenceCount, rawUnitQuantity, excludedMetricValue, excludedOccurrenceCount, excludedUnitQuantity, excludedSourceRefs, baseAmount, escalation, proposed, tierLabel, outcome };
     // The issued outcomes the streak was read from travel with the item so a
     // dispute can reproduce the multiplier; they are not part of the input
     // hash, because the escalation they produce already is.
