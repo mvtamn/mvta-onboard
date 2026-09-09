@@ -31,7 +31,7 @@ export async function readModel(periodId:string,reportId:string,type:"preliminar
   return buildReportModel({reportId,type,version,period:p,rows:rows.recordset,evidence:evidence.recordset,issuedAt,deadline,schedules:{occurrences:occurrences.recordset,exceptions:exceptions.recordset,caps:caps.recordset,standards:standards.recordset,otpExclusions:otpExclusions.recordset,capDeadline}});
 }
 
-export async function generateArtifact(pool: sql.ConnectionPool, input: { periodId: string; type: ArtifactType; actor: string; body?: Record<string, unknown> }): Promise<ArtifactOutcome> {
+export async function generateArtifact(pool: sql.ConnectionPool, input: { periodId: string; type: ArtifactType; actor: string; body?: Record<string, unknown>; upload?: (path: string, html: string) => Promise<void> }): Promise<ArtifactOutcome> {
   const { periodId, type, actor } = input; const body = input.body ?? {};
   return withPeriodReportLock(pool,periodId,async tx=>{
       const state=new sql.Request(tx);state.input("period",sql.UniqueIdentifier,periodId);
@@ -44,7 +44,7 @@ export async function generateArtifact(pool: sql.ConnectionPool, input: { period
       const versionReq=new sql.Request(tx);versionReq.input("period",sql.UniqueIdentifier,periodId);versionReq.input("type",sql.NVarChar(20),type);versionReq.input("actor",sql.NVarChar(200),actor);
       const version=(await versionReq.query<{version:number}>(`${type==="final"?voidLiveIssuanceProofSql("period","actor"):""}
         SELECT ISNULL(MAX(version),0)+1 version FROM ComplianceReports WHERE period_id=@period AND issuance_type=@type`)).recordset[0].version;
-      const id=randomUUID();const model=await readModel(periodId,id,type,version,null,null);const html=renderAssessmentReport(model);const hash=createHash("sha256").update(html).digest("hex");const path=buildComplianceReportBlobPath(periodId,id);await uploadComplianceReport(path,html);
+      const id=randomUUID();const model=await readModel(periodId,id,type,version,null,null);const html=renderAssessmentReport(model);const hash=createHash("sha256").update(html).digest("hex");const path=buildComplianceReportBlobPath(periodId,id);await (input.upload??uploadComplianceReport)(path,html);
       const write=new sql.Request(tx);write.input("id",sql.UniqueIdentifier,id);write.input("period",sql.UniqueIdentifier,periodId);write.input("contractor",sql.UniqueIdentifier,p.contractor_id);write.input("month",sql.Char(6),p.service_month);write.input("type",sql.NVarChar(20),type);write.input("version",sql.Int,version);write.input("supersedes",sql.UniqueIdentifier,lineage.supersedesId);write.input("reason",sql.NVarChar(500),lineage.supersedeReason);write.input("path",sql.NVarChar(1000),path);write.input("hash",sql.Char(64),hash);write.input("total",sql.Decimal(12,2),model.assessedTotal);write.input("actor",sql.NVarChar(200),actor);
       await write.query(`INSERT ComplianceReports(id,period_id,contractor_id,service_month,issuance_type,version,supersedes_id,blob_path,content_sha256,assessed_total,supersede_reason,generated_by) VALUES(@id,@period,@contractor,@month,@type,@version,@supersedes,@path,@hash,@total,@reason,@actor);${auditSql("report","@id",type==="final"?"issuance_proof_prepared":"draft_generated","actor",{after:"CONCAT('{\"content_sha256\":\"',@hash,'\"}')"})}`);
       return{status:201 as const,id,version,hash};

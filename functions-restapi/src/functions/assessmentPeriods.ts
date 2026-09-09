@@ -1,6 +1,7 @@
 import { auditSql } from "../lib/assessment/audit";
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { assessPeriod } from "../lib/assessment/assess";
+import { finalizePeriod } from "../lib/assessment/finalizePeriod";
 import { openPeriodSql } from "../lib/assessment/openPeriod";
 import { agreementScope, assignedStandardCountSql, periodStandardSnapshotColumns, periodTierCopyColumns } from "../lib/assessment/schemaScope";
 import { COMPLIANCE_MANAGER_ROLES, COMPLIANCE_READ_ROLES, COMPLIANCE_WRITE_ROLES, requireRole } from "../lib/auth";
@@ -91,35 +92,8 @@ app.http("assessmentPeriodFinalize", {
       if (otpTrust.state !== "current" && otpTrust.state !== "current_but_empty") {
         return { status: 409, jsonBody: { error: "Assessment finalization is unavailable while OTP KPI trust is stale or unavailable." } };
       }
-      const req = pool.request(); req.input("id", sql.UniqueIdentifier, request.params.id); req.input("actor", sql.NVarChar(200), auth.principal.userDetails ?? "onboard-console");
-      // Finalising is the moment the figure is agreed, so it is the moment the
-      // rule set stops being a draft. Composed in only where migration 111 has
-      // run, like every other guarded column.
-      const finalizeScope = await agreementScope(pool);
-      const lockOnFinalize = finalizeScope.rulesLock ? ",rules_locked_at=SYSUTCDATETIME()" : "";
-      const result = await req.query<{ changed: number }>(`
-        UPDATE AssessmentPeriods SET status='finalized',final_total=(SELECT SUM(CASE WHEN recommended_amount<0 THEN 0 ELSE recommended_amount END) FROM PeriodKpiAssessments WHERE period_id=@id),finalized_by=@actor,finalized_at=SYSUTCDATETIME()${lockOnFinalize}
-        WHERE id=@id AND status='in_validation' AND validation_ends_on<=CONVERT(date,SYSUTCDATETIME()) AND computed_revision=input_revision
-          AND EXISTS(SELECT 1 FROM ValidationDraftShares v WHERE v.period_id=@id AND v.superseded_at IS NULL AND v.computed_revision=AssessmentPeriods.computed_revision AND v.items_sha256=${reviewedItemsSha256Sql("id")})
-          AND (SELECT COUNT(*) FROM PeriodKpiAssessments WHERE period_id=@id)=(SELECT COUNT(*) FROM AssessmentPeriodStandards WHERE period_id=@id)
-          AND EXISTS(SELECT 1 FROM PeriodKpiAssessments WHERE period_id=@id)
-          AND NOT EXISTS(SELECT 1 FROM PeriodKpiAssessments WHERE period_id=@id AND (recommended_action IS NULL OR reviewed_input_sha256<>input_sha256 OR (ISNULL(data_completeness_pct,0)<=0 AND assessment_outcome<>'not_assessable')))
-          AND NOT EXISTS(SELECT 1 FROM PeriodKpiAssessments WHERE period_id=@id AND reviewed_by=@actor)
-          AND NOT EXISTS(SELECT 1 FROM PeriodKpiAssessments a WHERE a.period_id=@id AND a.assessment_outcome='not_assessable' AND NOT EXISTS(SELECT 1 FROM AssessmentExceptions e WHERE e.assessment_id=a.id))
-          AND NOT EXISTS(SELECT 1 FROM ComplianceOccurrences o JOIN AssessmentPeriods p ON p.contractor_id=o.contractor_id AND p.service_month=o.service_month WHERE p.id=@id AND o.review_status='candidate');
-        DECLARE @changed INT=@@ROWCOUNT;
-        IF @changed=1 BEGIN
-          UPDATE PeriodKpiAssessments SET manager_action=recommended_action,manager_reason=recommendation_reason,final_amount=CASE WHEN recommended_amount<0 THEN 0 ELSE recommended_amount END,binding_amount=CASE WHEN recommended_amount<0 THEN 0 ELSE recommended_amount END,binding_reason=recommendation_reason,binding_decision_by=@actor,binding_decision_at=SYSUTCDATETIME() WHERE period_id=@id;
-          -- A proof can only be prepared after finalization, so one that exists
-          -- now was rendered from an earlier finalized state that went stale
-          -- (evidence landed while it was being rendered). It is not the one
-          -- to check for this finalization.
-          ${voidLiveIssuanceProofSql("id","actor")}
-          ${auditSql("period","@id","finalized","actor",{after:"(SELECT final_total,computed_revision FROM AssessmentPeriods WHERE id=@id FOR JSON PATH,WITHOUT_ARRAY_WRAPPER)"})}
-        END
-        SELECT @changed changed;
-      `);
-      if (!result.recordset[0]?.changed) return { status: 409, jsonBody: { error: "Period is stale, incomplete, has pending KPI review, or its Shared Validation Draft no longer matches the reviewed items" } };
+      const result = await finalizePeriod(pool, { periodId: request.params.id, actor: auth.principal.userDetails ?? "onboard-console" });
+      if (!result.changed) return { status: 409, jsonBody: { error: "Period is stale, incomplete, has pending KPI review, or its Shared Validation Draft no longer matches the reviewed items" } };
       return { status: 200, jsonBody: { id: request.params.id, status: "finalized" } };
     } catch (error) { context.error("POST assessment finalize failed", error); return { status: 500, jsonBody: { error: "Internal server error" } }; }
   },
