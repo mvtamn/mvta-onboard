@@ -157,6 +157,14 @@ export function IconMoon(_: IconProps) {
   );
 }
 
+export function IconChevronDown(_: IconProps) {
+  return (
+    <svg {...base}>
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
 export function IconCollapseNav(_: IconProps) {
   return (
     <svg {...base}>

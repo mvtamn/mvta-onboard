@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./auth/AuthContext.js";
 import { RequireRole } from "./auth/RequireRole.js";
@@ -19,8 +19,8 @@ import {
   IconAssessment,
   IconBus,
   IconMenu,
-  IconCollapseNav,
-  IconExpandNav,
+  IconGear,
+  IconChevronDown,
 } from "./components/NavIcons.js";
 import { Dashboard } from "./routes/Dashboard.js";
 import { ServiceOperations } from "./routes/ServiceOperations.js";
@@ -133,7 +133,38 @@ function CompatibilityRedirect({ to }: { to: string }) {
   return <Navigate to={`${to}${location.search}${location.hash}`} replace />;
 }
 
+// One description per destination, shown in the collapsed rail's hover
+// flyout. PAGE_META can't supply these - it folds all of /admin/* into a
+// single "Administration" entry, and the flyout needs a line per link.
+type NavEntry = { to: string; end?: boolean; label: string; desc: string; icon: ReactNode };
+// `cluster` marks a category that folds into ONE icon while the rail is
+// collapsed (Administration: eight links, four of them the same wrench, which
+// is an unreadable icon stack at 64px). Its links move into a hover menu.
+type NavCategory = { id: string; name: string; entries: NavEntry[]; cluster?: ReactNode };
+
+function navEntries(...items: (NavEntry | false | null | undefined)[]): NavEntry[] {
+  return items.filter((item): item is NavEntry => Boolean(item));
+}
+
 const NAV_COLLAPSED_KEY = "mvta-onboard-nav-collapsed";
+// The version whose release notes have been opened. Anything else means the
+// footer chip carries an unread dot.
+const CHANGELOG_SEEN_KEY = "mvta-onboard-changelog-seen";
+
+const NARROW_QUERY = "(max-width: 860px)";
+
+function matchesNarrow(): boolean {
+  // jsdom has no matchMedia; the shell must still render in tests.
+  return typeof window.matchMedia === "function" && window.matchMedia(NARROW_QUERY).matches;
+}
+
+function readChangelogSeen(): string | null {
+  try {
+    return window.localStorage.getItem(CHANGELOG_SEEN_KEY);
+  } catch {
+    return null;
+  }
+}
 
 function readNavCollapsed(): boolean {
   try {
@@ -233,11 +264,18 @@ function AuthenticatedApp({ account, roles, signOut }: {
   // Desktop-only rail collapse (icon-only, 64px). Persisted so an operator who
   // wants the extra map/table width keeps it across sessions and page reloads.
   const [navCollapsed, setNavCollapsed] = useState(readNavCollapsed);
-  const [specialistOpen, setSpecialistOpen] = useState(true);
-  const [eventsOpen, setEventsOpen] = useState(true);
-  const [complianceOpen, setComplianceOpen] = useState(true);
-  const [adminOpen, setAdminOpen] = useState(true);
+  // Categories start open; only the ones a user has closed are recorded.
+  const [closedGroups, setClosedGroups] = useState<Record<string, boolean>>({});
+  // Which collapsed-rail cluster menu is pinned open by a click. Hover and
+  // keyboard focus open it too (CSS), so this is only for touch and for
+  // keeping it up while the pointer travels to a row.
+  const [openCluster, setOpenCluster] = useState<string | null>(null);
   const [changelogOpen, setChangelogOpen] = useState(false);
+  const [changelogSeen, setChangelogSeen] = useState(readChangelogSeen);
+  // Below 860px the rail is an off-canvas drawer with labels (see
+  // .nav-sidebar in styles.css), so the collapsed-rail affordances - the
+  // Administration cluster and the hover flyouts - must not render there.
+  const [isNarrow, setIsNarrow] = useState(matchesNarrow);
   useEffect(() => { setMobileNavOpen(false); }, [location.pathname]);
   useEffect(() => {
     try {
@@ -247,6 +285,87 @@ function AuthenticatedApp({ account, roles, signOut }: {
       // won't survive a reload.
     }
   }, [navCollapsed]);
+  // Expanding the rail dismisses any pinned cluster menu - it belongs to the
+  // collapsed rail only, and would otherwise reopen the next time it collapses.
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia(NARROW_QUERY);
+    const onChange = (event: MediaQueryListEvent) => setIsNarrow(event.matches);
+    setIsNarrow(query.matches);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
+  useEffect(() => { if (!navCollapsed) setOpenCluster(null); }, [navCollapsed]);
+  useEffect(() => { setOpenCluster(null); }, [location.pathname]);
+
+  function openChangelog() {
+    setChangelogOpen(true);
+    setChangelogSeen(__APP_VERSION__);
+    try {
+      window.localStorage.setItem(CHANGELOG_SEEN_KEY, __APP_VERSION__);
+    } catch {
+      // Storage disabled: the dot just comes back on the next load.
+    }
+  }
+
+  const railCollapsed = navCollapsed && !isNarrow;
+
+  const navCategories: NavCategory[] = [
+    {
+      id: "service-operations",
+      name: "Service Operations",
+      entries: navEntries(
+        canSeeCommunications && { to: "/", end: true, label: "Dashboard", desc: "Compose and monitor active rider alerts", icon: <IconDashboard /> },
+        canSeeCommunications && { to: "/service-operations", end: true, label: "Overview", desc: "Service-alert communications and operational monitoring", icon: <IconDashboard /> },
+        canSeeCommunications && { to: "/service-operations/compose", label: "Compose", desc: "Draft a new Service Alert", icon: <IconCompose /> },
+        canSeeCommunications && { to: "/service-operations/active", label: "Active Service Alerts", desc: "Edit or retract currently active alerts", icon: <IconMessages /> },
+        canSeeCommunications && { to: "/service-operations/suggested", label: "Suggested Alerts", desc: "Review predictive delay and wait-time candidates", icon: <IconBell /> },
+        canSeeServiceRisk && { to: "/service-operations/risk", label: "Service Risk & Quality", desc: "Investigate fixed-route and on-demand service risk", icon: <IconWrench /> },
+        canSeeDispatchLog && { to: "/service-operations/dispatch-log", label: "Dispatch Log", desc: "Watch every revenue trip start against its schedule", icon: <IconClock /> },
+      ),
+    },
+    {
+      id: "specialist-operations",
+      name: "Specialist Operations",
+      entries: navEntries(
+        canSeeDetours && { to: "/detours", label: "Detours & Closures", desc: "Every detour and closure in one place, Avail-built or not", icon: <IconDetour /> },
+        isAdmin && { to: "/detour-intake", label: "Detour Intake", desc: "Create and review the complete operational Detour record", icon: <IconDetour /> },
+        canSeeDetours && { to: "/detour-reports", label: "Detour Reports", desc: "Search and export detour history — read-only", icon: <IconClock /> },
+        canSeeOccTools && { to: "/occ", label: "OCC Tools", desc: "Service-risk prediction, procedure guidance, and vehicle monitoring", icon: <IconWrench /> },
+      ),
+    },
+    {
+      id: "events",
+      name: "Events",
+      entries: navEntries(
+        canSeeEventAvl && isAdmin && { to: "/events/planning", label: "Planning", desc: "Prepare and approve event service plans", icon: <IconBus /> },
+        canSeeEventAvl && { to: "/events/avl", label: "Event AVL", desc: "Monitor active vehicles and event service in real time", icon: <IconBus /> },
+      ),
+    },
+    {
+      id: "compliance",
+      name: "Compliance & Assessment",
+      entries: navEntries(
+        isCompliance && { to: "/compliance", label: "Compliance", desc: "OTP compliance and missed-trip investigation", icon: <IconShield /> },
+        isCompliance && { to: "/performance-assessment", label: "Performance Assessment", desc: "Monthly standards scoring, evidence, review, and issuance", icon: <IconAssessment /> },
+      ),
+    },
+    {
+      id: "administration",
+      name: "Administration",
+      cluster: <IconGear />,
+      entries: navEntries(
+        canManageAccess && { to: "/admin/access", label: "Access & Identity", desc: "Roles, sign-in, and who can reach which workspace", icon: <IconShield /> },
+        isAdmin && { to: "/admin/events", label: "Event Administration", desc: "The event catalog and the resources behind it", icon: <IconBus /> },
+        isAdmin && { to: "/admin/service", label: "Service Configuration", desc: "Routes, feeds, and service-day configuration", icon: <IconWrench /> },
+        isAdmin && { to: "/admin/integrations", label: "Integrations & Data Health", desc: "Connector status and feed freshness", icon: <IconWrench /> },
+        isAdmin && { to: "/admin/decision-matrix", label: "Decision Matrix", desc: "The thresholds behind suggested alerts", icon: <IconWrench /> },
+        isAdmin && { to: "/admin/otp-compliance", label: "OTP Compliance", desc: "On-time performance rules and tolerances", icon: <IconWrench /> },
+        isAdmin && { to: "/admin/performance/standards", label: "Performance Setup", desc: "Contractors, agreements, the standards catalog and its lists", icon: <IconAssessment /> },
+        canManageAccess && { to: "/admin/governance", label: "Governance & Audit", desc: "The audit log, retention, and governance settings", icon: <IconClock /> },
+      ),
+    },
+  ].filter((category) => category.entries.length > 0);
 
   return (
     <FixedRouteRefreshProvider>
@@ -261,10 +380,7 @@ function AuthenticatedApp({ account, roles, signOut }: {
           <span className="logo-badge">MVTA</span>
           <div className="nav-brand-detail">
             <div className="nav-brand-text">OnBoard</div>
-            <button className="nav-version-button" onClick={() => setChangelogOpen(true)} aria-haspopup="dialog">
-              <span className="nav-version-number">v{__APP_VERSION__}</span>
-              <span>What’s new</span>
-            </button>
+            <div className="nav-brand-sub">Staff console</div>
           </div>
           <button
             className="nav-collapse-btn"
@@ -274,69 +390,77 @@ function AuthenticatedApp({ account, roles, signOut }: {
             title={navCollapsed ? "Expand navigation menu" : "Collapse navigation menu"}
             onClick={() => setNavCollapsed((collapsed) => !collapsed)}
           >
-            {navCollapsed ? <IconExpandNav /> : <IconCollapseNav />}
+            <IconMenu />
           </button>
         </div>
 
         <nav className="nav-list" id="primary-nav">
-          {canSeeCommunications && <NavLink to="/" end title="Dashboard"><IconDashboard /><span className="nav-label">Dashboard</span></NavLink>}
-          {(canSeeCommunications || canSeeServiceRisk || canSeeDispatchLog) && <div className="nav-section-label">Service Operations</div>}
-          {canSeeCommunications && <>
-            <NavLink to="/service-operations" end title="Overview"><IconDashboard /><span className="nav-label">Overview</span></NavLink>
-            <NavLink to="/service-operations/compose" title="Compose"><IconCompose /><span className="nav-label">Compose</span></NavLink>
-            <NavLink to="/service-operations/active" title="Active Service Alerts"><IconMessages /><span className="nav-label">Active Service Alerts</span></NavLink>
-            <NavLink to="/service-operations/suggested" title="Suggested Alerts"><IconBell /><span className="nav-label">Suggested Alerts</span></NavLink>
-          </>}
-          {canSeeServiceRisk && <NavLink to="/service-operations/risk" title="Service Risk & Quality"><IconWrench /><span className="nav-label">Service Risk &amp; Quality</span></NavLink>}
-          {canSeeDispatchLog && <NavLink to="/service-operations/dispatch-log" title="Dispatch Log"><IconClock /><span className="nav-label">Dispatch Log</span></NavLink>}
-          {(isAdmin || isCompliance || canSeeDetours || canSeeOccTools) && (
-            <section className="nav-group">
-              <button className="nav-group-toggle" aria-expanded={specialistOpen} onClick={() => setSpecialistOpen((open) => !open)}>
-                <span>Specialist Operations</span><span aria-hidden="true">{specialistOpen ? "⌃" : "›"}</span>
-              </button>
-              {specialistOpen || navCollapsed ? <div className="nav-group-links">
-                {canSeeDetours && <NavLink to="/detours" title="Detours & Closures"><IconDetour /><span className="nav-label">Detours &amp; Closures</span></NavLink>}
-                {isAdmin && <NavLink to="/detour-intake" title="Detour Intake"><IconDetour /><span className="nav-label">Detour Intake</span></NavLink>}
-                {canSeeDetours && <NavLink to="/detour-reports" title="Detour Reports"><IconClock /><span className="nav-label">Detour Reports</span></NavLink>}
-              {canSeeOccTools && <NavLink to="/occ" title="OCC Tools"><IconWrench /><span className="nav-label">OCC Tools</span></NavLink>}
-              </div> : null}
-            </section>
-          )}
-          {canSeeEventAvl && <section className="nav-group">
-            <button className="nav-group-toggle" aria-expanded={eventsOpen} onClick={() => setEventsOpen((open) => !open)}>
-              <span>Events</span><span aria-hidden="true">{eventsOpen ? "⌃" : "›"}</span>
-            </button>
-            {eventsOpen || navCollapsed ? <div className="nav-group-links">
-              {isAdmin && <NavLink to="/events/planning" title="Event Planning"><IconBus /><span className="nav-label">Planning</span></NavLink>}
-              <NavLink to="/events/avl" title="Event AVL"><IconBus /><span className="nav-label">Event AVL</span></NavLink>
-            </div> : null}
-          </section>}
-          {isCompliance && <section className="nav-group">
-            <button className="nav-group-toggle" aria-expanded={complianceOpen} onClick={() => setComplianceOpen((open) => !open)}>
-              <span>Compliance &amp; Assessment</span><span aria-hidden="true">{complianceOpen ? "⌃" : "›"}</span>
-            </button>
-            {complianceOpen || navCollapsed ? <div className="nav-group-links">
-              <NavLink to="/compliance" title="Compliance"><IconShield /><span className="nav-label">Compliance</span></NavLink>
-              <NavLink to="/performance-assessment" title="Performance Assessment"><IconAssessment /><span className="nav-label">Performance Assessment</span></NavLink>
-            </div> : null}
-          </section>}
-          <section className="nav-group nav-group-administration">
-            {(isAdmin || canManageAccess) && <>
-              <button className="nav-group-toggle" aria-expanded={adminOpen} onClick={() => setAdminOpen((open) => !open)}>
-                <span>Administration</span><span aria-hidden="true">{adminOpen ? "⌃" : "›"}</span>
-              </button>
-              {adminOpen || navCollapsed ? <div className="nav-group-links">
-                {canManageAccess && <NavLink to="/admin/access" title="Access & Identity"><IconShield /><span className="nav-label">Access &amp; Identity</span></NavLink>}
-                {isAdmin && <NavLink to="/admin/events" title="Event Administration"><IconBus /><span className="nav-label">Event Administration</span></NavLink>}
-                {isAdmin && <NavLink to="/admin/service" title="Service Configuration"><IconWrench /><span className="nav-label">Service Configuration</span></NavLink>}
-                {isAdmin && <NavLink to="/admin/integrations" title="Integrations & Data Health"><IconWrench /><span className="nav-label">Integrations &amp; Data Health</span></NavLink>}
-                {isAdmin && <NavLink to="/admin/decision-matrix" title="Decision Matrix"><IconWrench /><span className="nav-label">Decision Matrix</span></NavLink>}
-                {isAdmin && <NavLink to="/admin/otp-compliance" title="OTP Compliance"><IconWrench /><span className="nav-label">OTP Compliance</span></NavLink>}
-                {isAdmin && <NavLink to="/admin/performance/standards" title="Performance Assessment setup"><IconAssessment /><span className="nav-label">Performance Setup</span></NavLink>}
-                {canManageAccess && <NavLink to="/admin/governance" title="Governance & Audit"><IconClock /><span className="nav-label">Governance &amp; Audit</span></NavLink>}
-              </div> : null}
-            </>}
-          </section>
+          {navCategories.map((category) => {
+            const clustered = railCollapsed && Boolean(category.cluster);
+            const open = !closedGroups[category.id];
+            return (
+              <section className="nav-group" key={category.id}>
+                {clustered ? (
+                  <div className={`nav-cluster${openCluster === category.id ? " is-open" : ""}`}>
+                    <button
+                      className="nav-cluster-btn"
+                      aria-haspopup="true"
+                      aria-expanded={openCluster === category.id}
+                      aria-label={`${category.name} — ${category.entries.length} pages`}
+                      onClick={() => setOpenCluster((id) => (id === category.id ? null : category.id))}
+                    >
+                      {category.cluster}
+                      <span className="nav-cluster-count">{category.entries.length}</span>
+                    </button>
+                    <div className="nav-flyout nav-flyout-menu">
+                      <span className="nav-flyout-cat">{category.name}</span>
+                      {category.entries.map((entry) => (
+                        <NavLink key={entry.to} to={entry.to} end={entry.end} className="nav-menu-row" onClick={() => setOpenCluster(null)}>
+                          {entry.icon}
+                          <span>{entry.label}</span>
+                        </NavLink>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      className="nav-group-toggle"
+                      aria-expanded={open}
+                      onClick={() => setClosedGroups((closed) => ({ ...closed, [category.id]: open }))}
+                    >
+                      <span>{category.name}</span>
+                      <span className="nav-chevron" aria-hidden="true"><IconChevronDown /></span>
+                    </button>
+                    {/* Collapsed, every category's links stay rendered: a
+                        hidden group heading must never be the only way to
+                        reach a page. */}
+                    {open || railCollapsed ? (
+                      <div className="nav-group-links">
+                        {category.entries.map((entry) => (
+                          <div className="nav-item" key={entry.to}>
+                            <NavLink to={entry.to} end={entry.end} title={entry.label}>
+                              {entry.icon}
+                              <span className="nav-label">{entry.label}</span>
+                            </NavLink>
+                            {/* Sibling of the link, not a child: the anchor's
+                                text has to stay the label alone. */}
+                            {railCollapsed ? (
+                              <span className="nav-flyout" aria-hidden="true">
+                                <span className="nav-flyout-cat">{category.name}</span>
+                                <b>{entry.label}</b>
+                                <span className="nav-flyout-desc">{entry.desc}</span>
+                              </span>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </>
+                )}
+              </section>
+            );
+          })}
         </nav>
 
         <div className="nav-spacer" />
@@ -344,6 +468,31 @@ function AuthenticatedApp({ account, roles, signOut }: {
           <div className="nav-status" title={stats.ok ? "Console Live" : "Console Offline"}>
             <span className="live-dot" />
             <span className="nav-label">{stats.ok ? "Console Live" : "Console Offline"}</span>
+          </div>
+          <div className="nav-item">
+            <button
+              className="nav-changelog"
+              onClick={openChangelog}
+              aria-haspopup="dialog"
+              title={`What’s new in v${__APP_VERSION__}`}
+            >
+              <span className="nav-version-number">
+                {railCollapsed ? __APP_VERSION__.split(".").slice(-1)[0] : `v${__APP_VERSION__}`}
+                {changelogSeen === __APP_VERSION__ ? null : <span className="nav-new-dot" />}
+              </span>
+              <span className="nav-changelog-text">
+                <b>What’s new</b>
+                <small>Release notes</small>
+              </span>
+              <span className="nav-changelog-arrow" aria-hidden="true"><IconChevronDown /></span>
+            </button>
+            {railCollapsed ? (
+              <span className="nav-flyout" aria-hidden="true">
+                <span className="nav-flyout-cat">Build</span>
+                <b>{`What’s new in v${__APP_VERSION__}`}</b>
+                <span className="nav-flyout-desc">Release notes for the running build, then the full changelog.</span>
+              </span>
+            ) : null}
           </div>
         </div>
         </aside>
