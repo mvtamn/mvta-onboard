@@ -11,9 +11,7 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 Phase I of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — the month-boundary timer. (1.5.173 is Phase H on its own PR.)
 
-<<<<<<< HEAD
 - **I1 — `assessmentPeriodOpen`**, `0 0 6 1 * *` (06:00 UTC on the 1st = 01:00 Central), opt-in by `ASSESSMENT_MONTH_BOUNDARY_ENABLED=true`. Per contractor whose Agreement covers the month: open the new period, open the prior if missing, compute the prior only while it is `open`/`stale`/`reopened` (a person's review is never recomputed by a clock), generate its Validation Draft. Shares nothing, issues nothing, notifies no one (design §9). `lib/assessment/monthBoundary.ts` is the pure plan (Chicago month, 5 tests); the Validation Draft / Issuance Proof generation moves from the create handler into `lib/assessment/generateArtifact.ts` so the timer and the handler run one path, and `readModel` goes with it.
->>>>>>> ceefefb (I1: the month boundary opens, computes, and drafts - and then stops)
 
 ## [1.5.173] - 2026-09-09
 
@@ -21,7 +19,7 @@ Phase H of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — ow
 
 - **H1 — owner identity and the month-end open-inputs list.** Migration 113 adds `ReferenceValues.principal_upn` (assigned_to domain only; the PUT handler accepts it there and lowercases it). `GET /api/manual-metrics/open?service_month=` lists every hand-entered scored standard of the active Agreement with no entry for the month, grouped by owner with their account. The console shows it on Monthly Metrics (`OpenInputs.tsx`, 2 tests): the signed-in owner's first, then everyone else's; Administration › Lists gets an *Account* column for owners.
 - **H2 — bounded list queries.** `GET /compliance-occurrences` takes `contractor_id`, `service_month`, `review_status`, `limit`, `offset`; `GET /manual-metrics` takes `contractor_id`, `service_month`, `limit`; `GET /assessment-periods` takes `contractor_id`, `limit` (default 120). The shared client passes filters; unfiltered calls keep working with a default cap.
-=======
+
 ## [1.5.172] - 2026-09-09
 
 Phase G of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — database-backed confidence. (1.5.169–1.5.171 are Phases D–F on their own PRs.)
@@ -188,12 +186,12 @@ Phase A of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — go
 - **A condition can be used before any band uses it.** `knownQualifiers` was derived from tiers already carrying one, so the first band with a new condition was uncreatable from the console. It now comes from the vocabulary, unioned with whatever is in use.
 - **The band summary and the band editor cannot disagree.** `TierSummary` still read the static tier list, so a renamed tier showed its old name in the detail header and its new one in the editor.
 
-
 ## [1.5.144] - 2026-09-07
 
 - **Performance Standards was not themed.** The page shipped with ~60 hardcoded colours - a teal `#075f49` where the console's brand green is `#00553d`, slate-blue borders and cool greys against the app's warm paper - and, more than a consistency problem, hardcoded `#fff` surfaces do not follow `[data-theme="dark"]`: its panels stayed white while the rest of the console went dark. The stylesheet now uses the tokens (`--surface-bg`, `--border`, `--text-muted`, `--brand-green`, the `--pill-*` set, `--chip-bg`). The one remaining literal is `#fff` on a brand-green fill, which is what `.btn-primary` and `.panel-header` do - that fill is constant across themes.
 - **Source kind is four cards, not a dropdown.** The choice decides what the standard needs next (a resolver, a source system, nothing), so each option carries that consequence beside it instead of hiding it in a closed select. Standard type and direction became two-way choices for the same reason. All three use real radios, so arrow-key navigation and screen readers work without ARIA of our own.
 - **A percentage bound gets a slider beside its number.** Percentages run 0-100 on a shared scale and Attachment G's thresholds sit on round numbers (85, 80, 75), so dragging is faster - with the number field still authoritative, because a contract that says 84.9% has to be typeable. Bands measured in miles or occurrences get no slider: road calls band on 10,000-12,000 on an open-ended scale, where a 0-100 track is meaningless and a track sized to today's numbers would be a guess.
+
 ## [1.5.143] - 2026-09-07
 
 
@@ -211,6 +209,7 @@ Phase A of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — go
 - **The ordering follows the same ranking as the labels.** It ranked a watch as "within five minutes of the standard", which only coincides with the twenty-minute watch band when the standard is twenty-five. Under a zone override of forty minutes a genuine Watch ranked last and could be cut by the 250-row cap; overdue requests with a healthy forecast ranked last for the same reason. Ranking is now critical, exceeded, projected, overdue, watch, then the unjudgeable.
 - **`diagnostics.monitored_request_count` says how many active requests the list was drawn from**, since the list is now a subset. The console's list header reads "3 of 41 monitored", and the summary tile is relabelled "Median at-risk wait" — the population it measured all along, and now actually does. Training and preview scenarios are wholly at-risk by construction, so they keep the plain count.
 - The query is exported and exercised by `onDemandRisks.db.contract.test.ts` against a real SQL Server in the contract job, one seeded row per `waitState` branch including both boundaries of the watch band and a zone whose override separates the band from the standard. The test imports the statement rather than restating it.
+
 ## [1.5.140] - 2026-09-07
 
 - **Migration 104: `measurement_source` names where a figure comes from, in the four ways it arrives.** `'auto'` covered both an external feed this application ingests and occurrences OnBoard raises from its own compliance modules - yet only the first has a resolver to call, which is the confusion the registry had to model around with `appliesTo`. `'manual'` covered both a figure somebody knows and one transcribed from another system's structured report, which has a named source, a schema, and a route to becoming a feed later. Now `api_feed`, `onboard_compliance`, `manual_entry` and `structured_import`, with `source_system` on the one kind that has one (constrained so it cannot be set on the others).
@@ -219,7 +218,6 @@ Phase A of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — go
 - **The registry declares which source kind each entry serves**, and the validator enforces the pairing in both directions: `MISSED_TRIPS_FR` is an OnBoard intake and can no longer be attached to a standard claiming to read a feed. A hand-entered standard naming a resolver is refused too - nothing would ever call it, and it reads as automated to anyone scanning the catalog.
 - **A threshold standard sourced from `onboard_compliance` is reported not assessable with the reason named.** OnBoard raises occurrence rows, not a monthly figure, so there is nothing for the tier ladder to match.
 - **The monthly figures form now lists both hand-entered kinds.** It filtered on `'manual'`; without this, reclassifying a standard as transcribed from Nexus or M5 would have quietly removed it from the form somebody enters it on.
-
 
 ## [1.5.139] - 2026-09-07
 
@@ -230,14 +228,12 @@ Phase A of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — go
 - **DELETE /performance-standards/{id}**, refused with 409 when the standard is referenced by a compliance occurrence, a hand-entered figure or an assessment period - naming which, and pointing at retirement instead. Tiers and Agreement assignments go with it, since they describe the standard rather than recording anything scored. A Retire action prefills an end date for the case delete cannot serve.
 - **The Performance Agreement collapses to one line** unless it is being edited; it was 240px of static explanation above the work.
 
-
 ## [1.5.138] - 2026-09-07
 
 - **`resolver_key` is real: the compute keys on it, and the console picks from a registry.** The column has existed since migration 030 and was referenced by no code at all - `assess.ts` branched on `standard.code === "OTP_FIXED_ROUTE"`, so the catalog advertised a resolver registry that did not exist and an automated standard meant editing the compute rather than adding a row. `lib/assessment/resolvers/` now holds the entries, the OTP measurement moved into one, and `GET /performance-standards` serves the registry so the console offers the keys this deployment actually answers to.
 - **The registry carries two kinds, because `resolver_key` means two things.** A `threshold` entry measures one number for the month. An `occurrence` entry names the intake that raises `ComplianceOccurrences` (the candidate poll, or a reviewer confirming one) and has nothing to call at compute time - the rows already exist and `assess.ts` aggregates them. Modelling both keeps the key checkable instead of free text, and stops a measuring function being hung on a row with no value to measure. Crossing them is refused in both directions, server and console.
 - **An automated standard pointing at an unregistered key is not assessable, and says which key was wrong.** It used to fall through to `ManualMetricEntries`, find nothing, and score "no data" - on a scorecard, indistinguishable from a clean month. `not_assessable` is the loud path: it makes the period partial and needs an authorized exception before finalizing.
 - **Migration 103: `AssessmentPeriodStandards` snapshots `resolver_key`.** The snapshot already froze code, type, direction, unit and measurement source so a later catalog edit cannot change what a finalized month was scored against; the resolver was the one part it did not carry, which did not matter while nothing read the column. It does now - repointing a standard would otherwise silently change how an issued month recomputes. Existing `rule_set_sha256` values are deliberately not rewritten: they hash what was actually snapshotted, and back-dating them would forge the record rather than complete it. Guarded like migration 102, so the code runs before the migration does.
-
 
 ## [1.5.137] - 2026-09-07
 
@@ -273,6 +269,7 @@ Phase A of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — go
 - **Performance Agreements can be created and amended.** No code path anywhere created one — migration 032b's insert was a one-time backfill guarded by `NOT EXISTS`, so a contractor added through the console afterwards got no agreement, `complianceCandidatesPoll` then threw `50002` on every run, and no assessment period could be opened. `GET/PUT /performance-agreements` and `PUT /performance-agreements/{id}/standards` close that. Creating an agreement seeds its assignments from the catalog; assignments are merged, never deleted, because a period that already scored a standard has to keep resolving the row it scored.
 - **An assessment period whose agreement assigns nothing is refused.** It would previously open, snapshot an empty rule set and compute a $0 assessment indistinguishable from a clean month. The error names the page that fixes it.
 - **The Performance Assessment module's Standards tab shows the governing numbers.** It rendered a tier label and a dollar amount and nothing else, so a manager could not confirm from the console that on-time performance tier 1 is the 75–80% band. It now shows bounds, qualifier, CAP trigger, measurement source, owner and responsible team, flags an automated standard with no resolver behind it, and stays read-only — linking administrators to the new page.
+
 ## [1.5.132] - 2026-09-06
 
 - **An expired sign-in no longer reads as a server outage.** `getToken` returned `null` whenever silent token renewal failed, and the shared API client sends the request regardless - just without an `Authorization` header. Easy Auth then attached no `x-ms-client-principal`, `requireRole` answered `401 "Not authenticated."`, and each module reported that in its own words: on 2026-09-06 the Decision Matrix admin workspace showed four panels saying the database was reachable and the fault was worth investigating, about an hour into a working session. Nothing was wrong with the database, and no request had reached it. `getToken` now throws a 401 `ApiError` naming the expired sign-in instead of returning `null`, so the request never leaves without an identity. Only `InteractionRequiredAuthError` used to trigger a re-authentication redirect, which missed the common case: silent renewal runs in a hidden iframe, so a browser blocking third-party cookies fails it with a `BrowserAuthError` and fell straight through to `null`; both now redirect. The Decision Matrix admin workspace tells an expired sign-in from a genuine fault and says it once at the top rather than in all five panels, and its failure copy no longer asserts the database is reachable - a claim it was in no position to make, since these requests never got that far.
@@ -320,7 +317,6 @@ Phase A of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — go
 - **The Decision Matrix admin workspace says which migration it is waiting on, per surface.** Administration › Decision Matrix read four endpoints through one `Promise.all` with one `catch`, so any single problem printed "Decision Matrix governance data could not be loaded." and blanked all four sections. That message was wrong in both directions: it called an unmigrated database an outage, and it hid three working surfaces when one failed. The four surfaces are backed by four different migrations — governance queue and authoring by 076, audit history by 078, legacy candidates by 079 (with 051's rows), Match Rules by 080 — so "not connected" was never one condition here. `GET manage/decision-matrix/governance-queue`, `/audit`, `/match-rules` and `/legacy-candidates` now probe for their own tables and answer 200 with `diagnostics.table_ready` and `diagnostics.required_migration`, the migration number coming from the server because that is where the table lists live. The console reads them independently: a header banner distinguishes **not connected** (nothing has run) from **partly connected**, naming only the migrations actually missing, and each section reports its own state in place. A surface that genuinely fails now says so as a fault worth investigating, and no longer takes its neighbours down with it. The Create Draft and Add rule forms are withheld rather than offered when their tables are absent, since submitting either could only 500. No migration; no change to any surface once its tables exist.
 - **Recorded that migration 079 has in fact run on dev.** A table listing shows `DecisionMatrixLegacyMigrations`, which only 079 creates — so the HANDOFF note claiming all four Decision Matrix migrations were unrun was wrong, and the missing run records prove nothing either way. The note is corrected; 076, 078 and 080 remain genuinely unconfirmed.
 
-
 ## [1.5.122] - 2026-09-06
 
 - **Integrations & Data Health rebuilt around the two questions it answers.** The page opened on eight identical blue banners followed by a card whose KPI trust rows packed every dependency's delivery, coverage, contract, and last failure into one run-on sentence, and whose Check feeds control was an unstyled browser-default button (`.button-secondary` never had a rule). It now opens on a summary strip - KPI streams current, feed connections reachable, oldest required ingestion, and Check feeds - then a board of one card per KPI trust stream, each naming the console module it gates. A degraded stream lays its dependencies out as rows (required or supporting, contract, when it last landed, in the tone of its own state) with the last failure reason called out; a current stream collapses to chips. Attention-first ordering keeps unavailable and stale streams at the top, with a By module switch. Feed checks are a real table (feed, last success, records, status) with a failed check's reason under its row, and reachability counts configured sources only. Trust loads as the page opens; the vendor checks stay an explicit action, and running them refreshes trust so both halves describe one moment. `KpiTrustSummary` and `FeedHealth` are replaced by `IntegrationsHealth`; the state labels, tones, and stream names move to `kpiTrustPresentation.ts`. No API changes.
@@ -332,6 +328,7 @@ Phase A of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — go
 ## [1.5.120] - 2026-09-06
 
 - **Garage Departures, Fixed Route: read as a reviewer, judged as the contract does.** The view printed the stored service date (`20260904`), repeated the month and day in every Scheduled and Actual cell in the browser's own time zone, showed Avail's operator string as sent (`HAWTHORNE, PORSCHE -144`), and coloured only two statuses - one of them `Late Relief`, a mid-shift changeover the feed has never emitted, which is also what the "Late pullouts" card counted, so it read 0 forever while `Missed Pullout`, `Missed Login` and `Late Pullout` rendered as neutral grey. Its counts applied neither the ten-minute allowance nor the settled-day guard the compliance candidate poll applies, so the module could disagree with what reached the assessment queue. Now `GET /fixed-route-departures` judges every row with the poll's own rule, moved into `lib/fixedRouteDepartureOutcome.ts` so both read one implementation, and returns an `outcome` per row (`late`, `no_departure`, `departed`, `unresolved`, `no_schedule`, `not_settled`) plus diagnostics counted by it - `settled_count`, `late_count`, `no_departure_count`, the `variance_seconds` and `settled_before` they used; `expired_count` is gone. The console groups rows under a band per service day (newest first, the runs needing attention first within a day), or per operator or vehicle with the most reviewable runs first and a Repeat flag, formats the day as "Fri, Sep 4, 2026" and pullout times as time-only in Central, splits the operator into a cased name and a badge reference, sets the fleet number in tabular numerals, says "No operator on record" instead of a dash, shows the delta signed with a real minus and red only over the allowance, keeps Avail's status as evidence beside a new Outcome column, adds a Reviewable-only filter and a per-day strip of reviewable departures, and states the allowance in the toolbar and the cards. Today's runs are labelled Not settled rather than looking clean. No migration; the On-Demand view is unchanged.
+
 ## [1.5.119] - 2026-09-06
 
 - **The Audit Log's message search no longer fails on a legacy row.** `GET /manage/messages` answered 500 on dev the first day its route was reachable: one Messages row stores `channels` as `web,sms` rather than the JSON array every current writer produces, and `JSON.parse` on it threw inside the row map, taking the whole result with it. The same parse sat in the public active-messages feed and the suggested-alerts list, so a legacy row could have blanked rider-facing alerts too. All list-valued Messages columns (channels, tags, routes_affected, stops_affected, zones_affected) are now read through one lenient parser (`lib/stringList.ts`): a JSON array is parsed as before, anything else is split on commas, and nothing throws. No schema or API shape changes.
@@ -654,6 +651,7 @@ Phase A of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — go
 ## [1.5.49] - 2026-08-18
 
 - **Align fixed-route service-risk counts.** Overview, diagnostics, the exception list, and summary tiles now use the same raw-seconds threshold predicate, preserving missing-prediction telemetry instead of rounding before filtering.
+
 ## [1.5.48] - 2026-08-17
 
 - **Keep Event Planning context across resource administration.** Missing geofence links now preserve the selected Event Plan and revision, and Event Administration always offers an explicit return to Planning.
@@ -1221,6 +1219,7 @@ Not yet deployed. The deployed console is still on 1.5.0 — both 1.5.1 and
   image attachments "live" when they can't be until Blob Storage exists.
   `availDetoursFeed.ts`'s own fallback diagnostic still named the wrong
   (capital-D) key in its error text.
+
 ## [1.5.1] - 2026-08-07
 
 Not yet deployed.
