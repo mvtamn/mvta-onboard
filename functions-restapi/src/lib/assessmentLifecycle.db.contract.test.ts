@@ -1,0 +1,172 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import test from "node:test";
+import { assessPeriod } from "./assessment/assess";
+import { voidLiveIssuanceProofSql, withPeriodReportLock } from "./assessment/issuanceProof";
+import { materialChangeSql } from "./assessment/materialChange";
+import { reviewedItemsSha256Sql } from "./assessment/reviewedItems";
+import { agreementScope, assignedStandardCountSql, periodStandardSnapshotColumns, periodStandardSourceSql, periodTierScopeSql, periodTierSnapshotColumns } from "./assessment/schemaScope";
+import { parseConnectionString, sql } from "./db";
+
+// The assessment lifecycle against a real SQL Server (the CI contract job's
+// container): the real migrations, a period opened the way the handler opens
+// one, occurrences scored by the real assessPeriod, and the T-SQL fragments
+// the handlers compose - the things the in-memory workflow seam specifies
+// but cannot test. Each assertion is one rule the plan's Phase G named:
+//
+//   a recompute with unchanged inputs preserves the review; a changed input
+//   resets it (the hash seam);
+//   an approved excusable-delay claim removes its occurrence from the count
+//   and keeps it in the raw count (ADR 0012);
+//   the Escalation Streak reads issued outcomes only (ADR 0011);
+//   a material change withdraws the share and voids the live proof (ADR 0009/0029);
+//   at most one live Issuance Proof per period (UX_CR_LiveProof);
+//   two report operations on one period serialise under the app lock.
+const connectionString = process.env.DECISION_MATRIX_TEST_SQL_CONNECTION_STRING;
+
+const MIGRATIONS = ["030-contractor-performance-assessment", "032b-governed-performance-assessment", "102-agreement-scoped-standards", "103-period-resolver-key", "104-measurement-source-kinds", "105-reference-values", "107-penalty-scaling", "108-team-and-owner-lists", "109-window-modes-and-staffing-split", "110-standard-category", "111-issuance-proof", "112a-period-rules-lock", "112b-share-binds-reviewed-items"];
+
+// sqlcmd splits on GO; mssql does not. Same rule: a line that is only GO.
+function batches(text: string): string[] {
+  return text.split(/^\s*GO\s*$/im).map(b => b.trim()).filter(Boolean);
+}
+
+const CONTRACTOR = "c0000000-0000-4000-8000-000000000001";
+const AGREEMENT = "a0000000-0000-4000-8000-000000000001";
+const ACTOR = "contract-test";
+
+async function fresh(pool: sql.ConnectionPool) {
+  // Every assessment table, dropped in dependency order, then the real migrations.
+  await pool.request().batch(`
+    DECLARE @sql NVARCHAR(MAX)='';
+    SELECT @sql+='ALTER TABLE '+QUOTENAME(s.name)+'.'+QUOTENAME(t.name)+' DROP CONSTRAINT '+QUOTENAME(f.name)+';' FROM sys.foreign_keys f JOIN sys.tables t ON t.object_id=f.parent_object_id JOIN sys.schemas s ON s.schema_id=t.schema_id;
+    EXEC sp_executesql @sql;
+    SET @sql='';
+    SELECT @sql+='DROP TABLE '+QUOTENAME(s.name)+'.'+QUOTENAME(t.name)+';' FROM sys.tables t JOIN sys.schemas s ON s.schema_id=t.schema_id;
+    EXEC sp_executesql @sql;`);
+  for (const m of MIGRATIONS) {
+    const file = join(process.cwd(), "sql", `migration-${m}.sql`);
+    for (const b of batches(readFileSync(file, "utf8"))) await pool.request().batch(b);
+  }
+}
+
+async function seed(pool: sql.ConnectionPool) {
+  const r = pool.request();
+  await r.batch(`
+    INSERT Contractors(id,name,contract_start_date,contract_end_date,is_active,updated_by) VALUES('${CONTRACTOR}','Transit Operations','20260101','20261231',1,'${ACTOR}');
+    INSERT PerformanceAgreements(id,contractor_id,starts_on,ends_on,is_active,updated_by) VALUES('${AGREEMENT}','${CONTRACTOR}','2026-01-01','2026-12-31',1,'${ACTOR}');
+    INSERT AgreementStandards(agreement_id,standard_id,is_scored,effective_start_date) SELECT '${AGREEMENT}',id,1,'20260101' FROM ContractorPerformanceStandards WHERE code='MISSED_TRIPS_FR';`);
+}
+
+// The open handler's SQL, composed through the same schemaScope helpers.
+async function openPeriod(pool: sql.ConnectionPool, month: string): Promise<string> {
+  const scope = await agreementScope(pool);
+  const req = pool.request(); req.input("contractor", sql.UniqueIdentifier, CONTRACTOR); req.input("month", sql.Char(6), month); req.input("agreement", sql.UniqueIdentifier, AGREEMENT);
+  const assigned = (await req.query<{ n: number }>(`SELECT ${assignedStandardCountSql(scope)} n FROM Contractors c JOIN PerformanceAgreements a ON a.contractor_id=c.id WHERE c.id=@contractor`)).recordset[0].n;
+  assert.ok(assigned > 0, "the agreement assigns the standard");
+  const result = await req.query<{ id: string }>(`
+    INSERT AssessmentPeriods(contractor_id,agreement_id,service_month) VALUES(@contractor,@agreement,@month);
+    DECLARE @period UNIQUEIDENTIFIER=(SELECT TOP 1 id FROM AssessmentPeriods WHERE contractor_id=@contractor AND service_month=@month ORDER BY assessment_revision DESC);
+    INSERT AssessmentPeriodStandards(period_id,standard_id,${periodStandardSnapshotColumns(scope)}) SELECT @period,s.id,${periodStandardSnapshotColumns(scope).split(",").map(c => `s.${c}`).join(",")} ${periodStandardSourceSql(scope)};
+    INSERT AssessmentPeriodTiers(${periodTierSnapshotColumns(scope).columns}) SELECT ${periodTierSnapshotColumns(scope).select} FROM ContractorStandardTiers t JOIN AssessmentPeriodStandards s ON s.period_id=@period AND s.standard_id=t.standard_id WHERE t.effective_start_date<=CONCAT(@month,'01') AND (t.effective_end_date IS NULL OR t.effective_end_date>=CONCAT(@month,'01')) ${periodTierScopeSql(scope)};
+    SELECT @period id;`);
+  return result.recordset[0].id;
+}
+
+async function compute(pool: sql.ConnectionPool, periodId: string) {
+  const tx = new sql.Transaction(pool); await tx.begin();
+  try { await assessPeriod(tx, periodId); await tx.commit(); } catch (e) { await tx.rollback(); throw e; }
+}
+
+async function occurrence(pool: sql.ConnectionPool, day: string, opts: { attribution?: string; reliefId?: string | null } = {}) {
+  const r = pool.request(); r.input("contractor", sql.UniqueIdentifier, CONTRACTOR); r.input("day", sql.Char(8), day); r.input("attribution", sql.NVarChar(30), opts.attribution ?? "contractor_error"); r.input("relief", sql.UniqueIdentifier, opts.reliefId ?? null);
+  await r.query(`INSERT ComplianceOccurrences(standard_id,contractor_id,service_date,quantity,description,source,source_ref,review_status,attribution,relief_id,created_by) SELECT id,@contractor,@day,1,'Trip not operated','manual',CONCAT('test:',@day),'confirmed',@attribution,@relief,'${ACTOR}' FROM ContractorPerformanceStandards WHERE code='MISSED_TRIPS_FR'`);
+}
+
+async function item(pool: sql.ConnectionPool, periodId: string) {
+  const r = pool.request(); r.input("period", sql.UniqueIdentifier, periodId);
+  return (await r.query<{ id: string; input_sha256: string; occurrence_count: number; raw_occurrence_count: number; excluded_occurrence_count: number; proposed_amount: number; escalation_multiplier: number; consecutive_months_below: number; recommended_action: string | null; reviewed_input_sha256: string | null }>(`SELECT id,input_sha256,occurrence_count,raw_occurrence_count,excluded_occurrence_count,proposed_amount,escalation_multiplier,consecutive_months_below,recommended_action,reviewed_input_sha256 FROM PeriodKpiAssessments WHERE period_id=@period`)).recordset[0];
+}
+
+test("assessment lifecycle against real SQL", { skip: !connectionString && "DECISION_MATRIX_TEST_SQL_CONNECTION_STRING not set" }, async t => {
+  const pool = await new sql.ConnectionPool(parseConnectionString(connectionString!)).connect();
+  try {
+    await fresh(pool); await seed(pool);
+    const july = await openPeriod(pool, "202607");
+
+    await t.test("a recompute with unchanged inputs preserves the review; a changed input resets it", async () => {
+      await occurrence(pool, "20260712"); await occurrence(pool, "20260713");
+      await compute(pool, july);
+      const first = await item(pool, july);
+      assert.equal(first.occurrence_count, 2); assert.equal(Number(first.proposed_amount), 2000);
+      const review = pool.request(); review.input("id", sql.UniqueIdentifier, first.id);
+      await review.query(`UPDATE PeriodKpiAssessments SET recommended_action='confirmed',recommended_amount=proposed_amount,reviewed_input_sha256=input_sha256,reviewed_by='reviewer',reviewed_at=SYSUTCDATETIME() WHERE id=@id`);
+      await pool.request().query(`UPDATE AssessmentPeriods SET status='stale' WHERE id='${july}'`);
+      await compute(pool, july);
+      const same = await item(pool, july);
+      assert.equal(same.input_sha256, first.input_sha256); assert.equal(same.recommended_action, "confirmed");
+      await occurrence(pool, "20260714");
+      await pool.request().query(`UPDATE AssessmentPeriods SET status='stale',input_revision=input_revision+1 WHERE id='${july}'`);
+      await compute(pool, july);
+      const changed = await item(pool, july);
+      assert.notEqual(changed.input_sha256, first.input_sha256); assert.equal(changed.occurrence_count, 3);
+      assert.equal(changed.reviewed_input_sha256, null, "a changed input needs a new review");
+    });
+
+    await t.test("an approved excusable-delay claim removes its occurrence from the count and keeps it in the raw count", async () => {
+      const claim = pool.request();
+      const claimId = (await claim.query<{ id: string }>(`DECLARE @id UNIQUEIDENTIFIER=NEWID();INSERT ExcusableDelayClaims(id,contractor_id,service_month,event_description,event_started_at,notice_received_at,status,created_by) VALUES(@id,'${CONTRACTOR}','202607','Ice storm','2026-07-15T06:00:00','2026-07-15T12:00:00','approved','${ACTOR}');SELECT @id id`)).recordset[0].id;
+      await occurrence(pool, "20260715", { reliefId: claimId });
+      await occurrence(pool, "20260716", { attribution: "mvta_directed" });
+      await pool.request().query(`UPDATE AssessmentPeriods SET status='stale',input_revision=input_revision+1 WHERE id='${july}'`);
+      await compute(pool, july);
+      const scored = await item(pool, july);
+      assert.equal(scored.raw_occurrence_count, 5); assert.equal(scored.excluded_occurrence_count, 2); assert.equal(scored.occurrence_count, 3);
+    });
+
+    await t.test("the Escalation Streak reads issued outcomes only, one per month", async () => {
+      // April and May issued below standard; June finalized but never issued; July is the fourth month.
+      for (const [month, status] of [["202604", "issued"], ["202605", "issued"], ["202606", "finalized"]] as const) {
+        const p = await openPeriod(pool, month);
+        await occurrence(pool, `${month}10`);
+        await compute(pool, p);
+        await pool.request().query(`UPDATE AssessmentPeriods SET status='${status}' WHERE id='${p}'`);
+      }
+      await pool.request().query(`UPDATE AssessmentPeriods SET status='stale',input_revision=input_revision+1 WHERE id='${july}'`);
+      await compute(pool, july);
+      const scored = await item(pool, july);
+      // April + May count (June is unissued and pauses), plus July itself = 3 -> escalation.
+      assert.equal(scored.consecutive_months_below, 3); assert.equal(Number(scored.escalation_multiplier), 1.5);
+    });
+
+    await t.test("a material change withdraws the share and voids the live proof; only one proof can be live", async () => {
+      const r = pool.request(); r.input("period", sql.UniqueIdentifier, july); r.input("actor", sql.NVarChar(200), ACTOR);
+      await r.query(`
+        UPDATE AssessmentPeriods SET status='finalized' WHERE id=@period;
+        INSERT ComplianceReports(period_id,contractor_id,service_month,issuance_type,version,blob_path,content_sha256,assessed_total,generated_by) VALUES(@period,'${CONTRACTOR}','202607','preliminary',1,'p/1.html',REPLICATE('a',64),0,@actor);
+        INSERT ValidationDraftShares(period_id,report_id,recipient,delivery_method,sender_attestation,shared_by,shared_at,validation_ends_on,computed_revision,items_sha256) SELECT @period,id,'c@example.com','email','sent',@actor,SYSUTCDATETIME(),'2026-08-10',1,${reviewedItemsSha256Sql("period")} FROM ComplianceReports WHERE period_id=@period;
+        INSERT ComplianceReports(period_id,contractor_id,service_month,issuance_type,version,blob_path,content_sha256,assessed_total,generated_by) VALUES(@period,'${CONTRACTOR}','202607','final',1,'p/proof1.html',REPLICATE('b',64),0,@actor);`);
+      await assert.rejects(pool.request().query(`INSERT ComplianceReports(period_id,contractor_id,service_month,issuance_type,version,blob_path,content_sha256,assessed_total,generated_by) VALUES('${july}','${CONTRACTOR}','202607','final',2,'p/proof2.html',REPLICATE('c',64),0,'${ACTOR}')`), /UX_CR_LiveProof/, "a second live proof is refused by the index");
+      const change = pool.request(); change.input("period", sql.UniqueIdentifier, july); change.input("actor", sql.NVarChar(200), ACTOR);
+      await change.query(materialChangeSql("period", "actor"));
+      const after = (await pool.request().query<{ status: string; shares_open: number; proofs_live: number; voided_audit: number }>(`SELECT (SELECT status FROM AssessmentPeriods WHERE id='${july}') status,(SELECT COUNT(*) FROM ValidationDraftShares WHERE period_id='${july}' AND superseded_at IS NULL) shares_open,(SELECT COUNT(*) FROM ComplianceReports WHERE period_id='${july}' AND issuance_type='final' AND issued_at IS NULL AND voided_at IS NULL) proofs_live,(SELECT COUNT(*) FROM ComplianceAssessmentAudit WHERE action='issuance_proof_voided') voided_audit`)).recordset[0];
+      assert.deepEqual(after, { status: "stale", shares_open: 0, proofs_live: 0, voided_audit: 1 });
+      // With the first proof voided, a new one can be prepared.
+      await pool.request().query(`INSERT ComplianceReports(period_id,contractor_id,service_month,issuance_type,version,blob_path,content_sha256,assessed_total,generated_by) VALUES('${july}','${CONTRACTOR}','202607','final',2,'p/proof2.html',REPLICATE('c',64),0,'${ACTOR}')`);
+      const v = pool.request(); v.input("period", sql.UniqueIdentifier, july); v.input("actor", sql.NVarChar(200), ACTOR);
+      await v.query(voidLiveIssuanceProofSql("period", "actor"));
+    });
+
+    await t.test("two report operations on one period serialise under the app lock", async () => {
+      const order: string[] = [];
+      const first = withPeriodReportLock(pool, july, async () => { order.push("first-in"); await new Promise(r => setTimeout(r, 300)); order.push("first-out"); return 1; });
+      await new Promise(r => setTimeout(r, 50));
+      const second = withPeriodReportLock(pool, july, async () => { order.push("second-in"); return 2; });
+      assert.deepEqual(await Promise.all([first, second]), [1, 2]);
+      assert.deepEqual(order, ["first-in", "first-out", "second-in"]);
+    });
+  } finally {
+    await pool.close();
+  }
+});
