@@ -5,6 +5,13 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.171] - 2026-09-09
+
+Phase F of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — relief intake. (1.5.169 and 1.5.170 are Phases D and E on their own PRs.)
+
+- **F1 — excusable-delay claims.** `GET/POST /api/excusable-delay-claims` and `POST …/{id}/decision` (Issuing Authority); `late_notice` from `lib/assessment/relief.ts` (`isLateNotice`, > 24 h); a decision runs `materialChangeSql` on the open period for that contractor-month; `PATCH /compliance-occurrences/{id}` accepts `relief_id` (must be a claim for the same contractor-month). Console: a **Relief** panel on the Occurrence Log and a per-occurrence claim selector.
+- **F2 — system outage windows.** `GET/POST/PATCH /api/system-outages`; `outageExclusionSql` maps an occurrence's `source_ref` to its observing system (Avail for `FixedRouteDepartures:avail_pullout` and `MonitoredMissedTrips:gtfs`, Spare for `MonitoredMissedTrips:spare` and `OnDemandDepartures:spare_duties`) and excludes it while a window for that system covers its service date; `assess.ts` counts `excludedForOutage` in the snapshot. Late notice (> 24 h) disqualifies relief: approving anyway needs a `late_notice_override` reason, kept with the decision. Window dates are compared as agency days (`AT TIME ZONE 'Central Standard Time'`), the CAP-window count applies the same exclusion, and a decision or a claim link on a shared month is a Material Assessment Change across every open period for that month. Audit rows: `claim_filed`, `claim_decided`, `outage_logged`, `outage_updated`; the History trail includes claims and the outage windows touching the month. The report's exclusion wording for outages lands once Phase D (#249) is on `main`.
+
 ## [1.5.170] - 2026-09-09
 
 Phase E of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — CAP lifecycle. (1.5.169 is Phase D on its own PR.)
