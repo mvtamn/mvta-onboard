@@ -34,8 +34,16 @@ describe("targetText", () => {
   });
   it("falls back to the Meets band's range, then says there is no target", () => {
     expect(targetText({ target_display: "Configured bands", standard_type: "threshold" }, percent, meets85)).toBe("85% or above");
-    expect(targetText({ target_display: "Configured bands", standard_type: "occurrence" }, counts, [{ tier_label: "meets", bound_low: null, bound_high: 1 }])).toBe("Under 1 occurrences");
+    expect(targetText({ target_display: "Configured bands", standard_type: "threshold" }, counts, [{ tier_label: "meets", bound_low: null, bound_high: 11 }])).toBe("Under 11 occurrences");
     expect(targetText({ target_display: "", standard_type: "threshold" }, percent, [])).toBe("No target set");
     expect(targetText({ target_display: "Configured bands", standard_type: "threshold" }, undefined, [])).toBe("No target set");
+  });
+  it("infers none as the target of an occurrence standard, and reads a capped Meets band as that many or fewer", () => {
+    expect(targetText({ target_display: "Configured bands", standard_type: "occurrence" }, counts, [])).toBe("0 occurrences");
+    expect(targetText({ target_display: "Configured bands", standard_type: "occurrence" }, counts, [{ tier_label: "meets", bound_low: null, bound_high: null }])).toBe("0 occurrences");
+    expect(targetText({ target_display: "Configured bands", standard_type: "occurrence" }, counts, [{ tier_label: "meets", bound_low: null, bound_high: 1 }])).toBe("0 occurrences");
+    expect(targetText({ target_display: "Configured bands", standard_type: "occurrence" }, counts, [{ tier_label: "meets", bound_low: 0, bound_high: 11 }])).toBe("10 occurrences or fewer");
+    expect(targetText({ target_display: "Configured bands", standard_type: "occurrence" }, undefined, [])).toBe("0 occurrences");
+    expect(targetText({ target_display: "Configured bands", standard_type: "occurrence" }, { ...counts, direction: "higher_is_better" }, [])).toBe("No target set");
   });
 });

@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.178] - 2026-09-09
+
+- **An occurrence standard with no stated target is targeted at none.** `targetDisplay` (API, at compute) and `targetText` (console, for older rows) read "0 occurrences" where they read "No target set": a counted event with nothing stated is one the contract means not to happen. A Meets band capped at a count reads as that many or fewer — under 11 complaints is "10 occurrences or fewer", under 1 is "0 occurrences" — instead of "Under 11 occurrences". Only `lower_is_better` occurrence standards without a stated target or value are inferred; a standard whose count is meant to be high still says no target is set.
+
 ## [1.5.177] - 2026-09-09
 
 - **The scorecard reads its figures and targets in words.** `assess.ts` wrote `String(metricValue)` and the literal "Configured bands" into `PeriodKpiAssessments`, so on-time performance read as `0.8362388553570882` against *Configured bands* on the scorecard, the standard's detail and the issued report. `lib/assessment/display.ts` (tests) now writes `83.6%` against `85% or above` — the contract's own `target_display` when it has one, the stated `target_value` with its direction otherwise, the Meets band's range after that, never a placeholder — and an occurrence standard's figure is its count. The unit is read live from the catalog at compute time, not snapshotted: it is presentation, never a scoring input. Months computed before this are formatted the same way by the console (`modules/assessment/scorecardDisplay.ts`, tests) from the catalog's unit and ladder, so nothing needs recomputing to read properly.

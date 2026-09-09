@@ -57,12 +57,23 @@ export function targetDisplay(standard: DisplayStandard, tiers: readonly Display
     return standard.direction === "higher_is_better" ? `${value} or above` : `${value} or fewer`;
   }
   const meets = tiers.find((tier) => tier.tier_label === "meets");
+  const counted = standard.standard_type === "occurrence" && !isRatioUnit(unit);
   if (meets) {
+    // A count is met at whole numbers: a Meets band under 11 means ten or
+    // fewer, and one under 1 means none at all.
+    if (counted && !meets.bound_low && meets.bound_high !== null && Number.isInteger(meets.bound_high) && meets.bound_high >= 1) {
+      const most = meets.bound_high - 1;
+      return most === 0 ? formatQuantity(0, unit) : `${formatQuantity(most, unit)} or fewer`;
+    }
     const low = meets.bound_low !== null ? formatQuantity(meets.bound_low, unit) : "";
     const high = meets.bound_high !== null ? formatQuantity(meets.bound_high, unit) : "";
     if (low && high) return `${low} to under ${high}`;
     if (low) return `${low} or above`;
     if (high) return `Under ${high}`;
   }
+  // An occurrence standard with nothing stated is what the contract means by
+  // it: the event is not supposed to happen. Fewer is better and none is the
+  // target; only a standard that counts toward something says otherwise.
+  if (counted && standard.direction === "lower_is_better") return formatQuantity(0, unit);
   return "No target set";
 }
