@@ -7,18 +7,26 @@ import { buildComplianceReportBlobPath, downloadComplianceReport, uploadComplian
 import { agreementScopeIn } from "../lib/assessment/schemaScope";
 import { getPool, sql } from "../lib/db";
 import { renderAssessmentReport, type AssessmentReportModel } from "../lib/report/renderAssessmentReport";
-import { buildReportModel, type ReportEvidenceRow, type ReportItemRow, type ReportPeriodRow } from "../lib/report/buildReportModel";
+import { buildReportModel, type ReportCapRow, type ReportEvidenceRow, type ReportExceptionRow, type ReportItemRow, type ReportOccurrenceRow, type ReportOtpExclusionRow, type ReportPeriodRow, type ReportStandardRow } from "../lib/report/buildReportModel";
 import { isGuid } from "../lib/validation";
 import { voidLiveIssuanceProofSql, withPeriodReportLock } from "../lib/assessment/issuanceProof";
 import { resolveFinalRequest } from "../lib/assessment/reportLineage";
 
-async function readModel(periodId:string,reportId:string,type:"preliminary"|"final",version:number,issuedAt:Date|null,deadline:Date|null):Promise<AssessmentReportModel>{
+async function readModel(periodId:string,reportId:string,type:"preliminary"|"final",version:number,issuedAt:Date|null,deadline:Date|null,capDeadline:Date|null=null):Promise<AssessmentReportModel>{
   const pool=await getPool();const req=pool.request();req.input("period",sql.UniqueIdentifier,periodId);
-  const period=await req.query<ReportPeriodRow>(`SELECT p.*,c.name contractor_name FROM AssessmentPeriods p JOIN Contractors c ON c.id=p.contractor_id WHERE p.id=@period`);
-  const p=period.recordset[0];if(!p)throw new Error("Assessment Period not found");
+  const period=await req.query<ReportPeriodRow&{contractor_id:string}>(`SELECT p.*,c.name contractor_name FROM AssessmentPeriods p JOIN Contractors c ON c.id=p.contractor_id WHERE p.id=@period`);
+  const p=period.recordset[0];if(!p)throw new Error("Assessment Period not found");req.input("contractor",sql.UniqueIdentifier,p.contractor_id);req.input("month",sql.Char(6),p.service_month);
   const rows=await req.query<ReportItemRow>(`SELECT a.*,s.name,s.standard_type FROM PeriodKpiAssessments a JOIN AssessmentPeriodStandards s ON s.period_id=a.period_id AND s.standard_id=a.standard_id WHERE a.period_id=@period ORDER BY s.sort_order`);
   const evidence=await req.query<ReportEvidenceRow>(`SELECT s.name assessment_name,e.caption,e.content_sha256 FROM ComplianceEvidence e JOIN PeriodKpiAssessments a ON a.id=e.assessment_id JOIN AssessmentPeriodStandards s ON s.period_id=a.period_id AND s.standard_id=a.standard_id WHERE a.period_id=@period AND e.visibility='contractor' ORDER BY s.sort_order,e.uploaded_at`);
-  return buildReportModel({reportId,type,version,period:p,rows:rows.recordset,evidence:evidence.recordset,issuedAt,deadline});
+  // Design §9 sections 6-8 and 11: what was counted, what was removed in the
+  // contractor's favour, what they must submit, and where each number came from.
+  const occurrences=await req.query<ReportOccurrenceRow>(`SELECT s.name standard_name,o.service_date,o.description,o.quantity,o.qualifier_code,o.attribution,o.source_ref,c.status claim_status,c.event_description claim_description,(SELECT STRING_AGG(CONVERT(VARCHAR(MAX),e.content_sha256),'|') FROM ComplianceEvidence e WHERE e.occurrence_id=o.id) evidence_hashes FROM ComplianceOccurrences o JOIN AssessmentPeriodStandards s ON s.period_id=@period AND s.standard_id=o.standard_id LEFT JOIN ExcusableDelayClaims c ON c.id=o.relief_id WHERE o.contractor_id=@contractor AND o.service_month=@month AND o.review_status='confirmed' ORDER BY s.sort_order,o.service_date,o.created_at`);
+  const exceptions=await req.query<ReportExceptionRow>(`SELECT s.name standard_name,x.reason,x.missing_data_owner,x.remediation_action,x.expected_correction_date FROM AssessmentExceptions x JOIN PeriodKpiAssessments a ON a.id=x.assessment_id JOIN AssessmentPeriodStandards s ON s.period_id=a.period_id AND s.standard_id=a.standard_id WHERE x.period_id=@period ORDER BY s.sort_order,x.authorized_at`);
+  // The determination lives on the item; the plan row appears at issue.
+  const caps=await req.query<ReportCapRow>(`SELECT s.name standard_name,c.trigger_reason,c.due_at,c.status,a.cap_reason FROM PeriodKpiAssessments a JOIN AssessmentPeriodStandards s ON s.period_id=a.period_id AND s.standard_id=a.standard_id LEFT JOIN CorrectiveActionPlans c ON c.period_id=a.period_id AND c.standard_id=a.standard_id WHERE a.period_id=@period AND (a.cap_required=1 OR c.id IS NOT NULL) ORDER BY s.sort_order`);
+  const standards=await req.query<ReportStandardRow>(`SELECT s.name,s.standard_type,s.measurement_source,a.data_completeness_pct,a.assessment_outcome FROM AssessmentPeriodStandards s LEFT JOIN PeriodKpiAssessments a ON a.period_id=s.period_id AND a.standard_id=s.standard_id WHERE s.period_id=@period ORDER BY s.sort_order`);
+  const otpExclusions=await req.query<ReportOtpExclusionRow>(`SELECT ISNULL(x.reason_code,'unspecified') reason_code,COUNT(*) stop_count FROM OtpStopExclusions x WHERE x.service_month=@month AND x.status='approved' GROUP BY x.reason_code ORDER BY stop_count DESC`);
+  return buildReportModel({reportId,type,version,period:p,rows:rows.recordset,evidence:evidence.recordset,issuedAt,deadline,schedules:{occurrences:occurrences.recordset,exceptions:exceptions.recordset,caps:caps.recordset,standards:standards.recordset,otpExclusions:otpExclusions.recordset,capDeadline}});
 }
 
 app.http("assessmentReportsList",{route:"assessment-reports",methods:["GET"],authLevel:"anonymous",handler:async(request,context)=>{
@@ -78,7 +86,7 @@ app.http("assessmentReportIssue",{route:"assessment-reports/{id}/issue",methods:
     const outcome=await withPeriodReportLock(pool,periodOf.period_id,async tx=>{
     const lookup=new sql.Request(tx);lookup.input("id",sql.UniqueIdentifier,request.params.id);lookup.input("actor",sql.NVarChar(200),actor);const row=(await lookup.query<any>(`SELECT r.* FROM ComplianceReports r JOIN AssessmentPeriods p ON p.id=r.period_id WHERE r.id=@id AND r.issuance_type='final' AND r.issued_at IS NULL AND r.voided_at IS NULL AND p.status='finalized' AND NOT EXISTS(SELECT 1 FROM PeriodKpiAssessments a WHERE a.period_id=p.id AND a.reviewed_by=@actor)`)).recordset[0];if(!row)return{status:409 as const,error:"Issuance requires a live Issuance Proof and an issuer who did not review any Assessment Item"};
     const issuedAt=new Date();const calendar=await pool.request().query<{holiday_date:Date}>(`SELECT holiday_date FROM MvtaHolidays`);const coverage=await pool.request().query<{coverage_through:Date}>(`SELECT coverage_through FROM MvtaHolidayCalendarCoverage WHERE id=1`);assertHolidayCoverage(issuedAt,new Date(issuedAt.getTime()+30*86400000),coverage.recordset[0]?.coverage_through??null);const holidays=new Set(calendar.recordset.map(r=>r.holiday_date.toISOString().slice(0,10)));const deadline=addBusinessDays(issuedAt,10,holidays);const capDeadline=addBusinessDays(issuedAt,5,holidays);
-    const model=await readModel(row.period_id,row.id,"final",row.version,issuedAt,deadline);model.issuedBy=actor;const html=renderAssessmentReport(model);const hash=createHash("sha256").update(html).digest("hex");const issuedPath=row.blob_path.replace(/\.html$/,`-issued-${issuedAt.getTime()}.html`);await uploadComplianceReport(issuedPath,html);
+    const model=await readModel(row.period_id,row.id,"final",row.version,issuedAt,deadline,capDeadline);model.issuedBy=actor;const html=renderAssessmentReport(model);const hash=createHash("sha256").update(html).digest("hex");const issuedPath=row.blob_path.replace(/\.html$/,`-issued-${issuedAt.getTime()}.html`);await uploadComplianceReport(issuedPath,html);
     // A report can be issued without the period passing through finalize, so
     // the rule set is locked here too: an issued figure is relied upon exactly
     // as a finalised one is. COALESCE keeps the original lock time if the

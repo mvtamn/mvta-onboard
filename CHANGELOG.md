@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.169] - 2026-09-09
+## [1.5.171] - 2026-09-09
 
 - **Performance Assessment opens on one card for the contractor and month.** The contractor picker, the month stepper and the status pill replace the context bar, the "Open assessment month" button and the separate Assessment period select, which named the same month twice. Beneath them the card shows where the month is in its lifecycle (Opened, Computed, In review, Validation, Finalized, Issued), the proposed and recommended totals, and an Outstanding list — items awaiting review, monthly figures missing, occurrences needing an amount, CAPs flagged — each a link into the section where it is dealt with. One button names the next thing the month needs (open, compute, continue review, prepare the draft, finalize, issue), the same actions the section pages already allow at that status; `modules/assessment/glance.ts` holds those readings as pure functions with their own tests.
 - **Stepping to a month with no assessment shows it as Not opened**, with opening it as the action. A correction period (`supersedes_period_id`) is shown in place of the one it supersedes.
@@ -13,6 +13,17 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **A standard's detail is a page of its own.** The figure and how it was produced (base − relief × escalation = proposed) sit above the observations that count toward it, each naming the module it was observed in. A rail beside them carries the review — the same recommend, adjust and waive actions as the Review section, sharing its prompts, with the current recommendation and its reason — a Corrective action card when a CAP is flagged, the evidence versions with who added each and when, and the standard's source, team, owner and penalty bands (`describeBand`). Outcome pills across the module now use the tier labels from Lists rather than the raw `tier1`/`meets` values.
 - **Issuance is three steps on one page.** Validation Draft (generate, open, record sharing), Final Assessment (prepare the Issuance Proof, open, issue) and Disputes (the window from the issued Final's deadline), each a card that says where it stands and offers only the acts allowed at the month's status; the artifacts table with preview and download sits beneath, and disputes are listed with their version, items, basis and outcome. History, from Phase C, is a seventh section.
 - **The module's own title block and the four stat tiles are gone.** The card carries the figures and the page header already names the page. The card is drawn on the console's theme tokens (`styles.css`), so it follows the dark theme; the rest of `assessment.css` still carries its own palette.
+## [1.5.170] - 2026-09-09
+
+Phase E of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — CAP lifecycle. (1.5.169 is Phase D on its own PR.)
+
+- **E1 — CAP transitions and due dates.** `lib/assessment/capTransitions.ts` is the rule: `required → submitted → approved → in_progress → closed | failed`, `submitted → required` for a return; submission needs the six elements (writer's act), approve/start/close/fail are the Issuing Authority's, closure needs a note; overdue = still `required` past `due_at`. `PATCH /api/assessment-caps/{id}` applies one transition under a row lock and audits it (`cap_transitioned`; the History trail now includes CAP rows). `GET /assessment-caps` returns `overdue` and the recorded fields. The console **CAPs** tab moves to `Caps.tsx` with the submission form and role-gated step buttons. The dead `capTriggers` / `consecutiveMonthsBelow` helpers are deleted.
+
+## [1.5.169] - 2026-09-09
+
+Phase D of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — report content.
+
+- **D1 — occurrence, exclusion, exception, and CAP schedules.** `buildReportModel` takes the period's confirmed occurrences (with claim status and attribution), `AssessmentExceptions`, `CorrectiveActionPlans`, and the frozen standards' `measurement_source`; the renderer adds *Occurrence schedule*, *Exclusions and relief applied*, *Corrective Action Plans required*, *Manager notes*, and *Data sources and completeness*, in design §9's order (golden tests pin the order). Exclusions are grouped by cause (approved excusable-delay claim, attributed as excusable, attributed to MVTA direction) with approved `OtpStopExclusions` by reason code beside them; occurrence rows carry the hashes of evidence attached to them. The CAP schedule reads the **determination from `cap_required` on the item**, not from `CorrectiveActionPlans` — those rows only exist after issue, so a proof would otherwise always say none is required; the due date is the plan row's when present, else the issuance clock. Not Assessable comes from `assessment_outcome`, never inferred from a percentage; a Validation Draft's Manager notes read as recommendations. Dates print MM/DD/YYYY from ISO, `Date`, or `CHAR(8)`.
 
 ## [1.5.168] - 2026-09-09
 

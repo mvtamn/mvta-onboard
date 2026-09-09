@@ -1713,10 +1713,11 @@ export interface ContractorStandardTier {
 // A 'final' row with no issued_at is an Issuance Proof, not a Final Assessment;
 // voided_at marks a proof that stopped being the one to check (ADR 0029).
 export interface AssessmentReport { id: string; period_id: string; issuance_type: "preliminary" | "final"; version: number; content_sha256: string; proof_sha256: string | null; supersedes_id: string | null; supersede_reason: string | null; issued_at: string | null; voided_at: string | null; voided_by: string | null; dispute_deadline_at: string | null }
-export interface AssessmentCap { id: string; standard_name: string; status: string; trigger_reason: string; due_at: string }
+export type AssessmentCapStatus = "required" | "submitted" | "approved" | "in_progress" | "closed" | "failed";
+export interface AssessmentCap { id: string; standard_name: string; status: AssessmentCapStatus | string; trigger_reason: string; due_at: string; overdue: boolean; submitted_at: string | null; closed_at: string | null; root_cause: string | null; corrective_actions: string | null; responsible_parties: string | null; timeline_note: string | null; monitoring_plan: string | null; closure_criteria: string | null; closure_note: string | null }
 // One row of a period's trail (ComplianceAssessmentAudit). before/after are
 // JSON text the writing handler chose; the console shows them as-is.
-export interface AssessmentAuditEntry { id: number; entity_type: "period" | "assessment" | "report" | "dispute"; entity_id: string; action: string; actor: string; before_json: string | null; after_json: string | null; note: string | null; created_at: string }
+export interface AssessmentAuditEntry { id: number; entity_type: "period" | "assessment" | "report" | "dispute" | "cap"; entity_id: string; action: string; actor: string; before_json: string | null; after_json: string | null; note: string | null; created_at: string }
 export interface AssessmentDispute { id: string; report_version: number; item_count: number; basis: string; status: string; outcome: string | null; submitted_at: string }
 export interface AssessmentEvidence { id: string; assessment_id: string; content_type: string; file_size_bytes: number; caption: string | null; content_sha256: string; visibility: "internal" | "contractor"; redaction_reason: string | null; uploaded_by: string; uploaded_at: string }
 
