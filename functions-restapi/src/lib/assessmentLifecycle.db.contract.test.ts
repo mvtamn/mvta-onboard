@@ -26,7 +26,9 @@ import { parseConnectionString, sql } from "./db";
 //   two report operations on one period serialise under the app lock.
 const connectionString = process.env.DECISION_MATRIX_TEST_SQL_CONNECTION_STRING;
 
-const MIGRATIONS = ["030-contractor-performance-assessment", "032b-governed-performance-assessment", "102-agreement-scoped-standards", "103-period-resolver-key", "104-measurement-source-kinds", "105-reference-values", "107-penalty-scaling", "108-team-and-owner-lists", "109-window-modes-and-staffing-split", "110-standard-category", "111-issuance-proof", "112a-period-rules-lock", "112b-share-binds-reviewed-items"];
+// Every migration that alters an assessment table, in order. Views (031, 106)
+// read tables outside this set and are not part of the lifecycle.
+const MIGRATIONS = ["030-contractor-performance-assessment", "032b-governed-performance-assessment", "065-assessment-causality", "102-agreement-scoped-standards", "103-period-resolver-key", "104-measurement-source-kinds", "105-reference-values", "107-penalty-scaling", "108-team-and-owner-lists", "109-window-modes-and-staffing-split", "110-standard-category", "111-issuance-proof", "112a-period-rules-lock", "112b-share-binds-reviewed-items"];
 
 // sqlcmd splits on GO; mssql does not. Same rule: a line that is only GO.
 function batches(text: string): string[] {
