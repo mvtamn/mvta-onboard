@@ -1,0 +1,28 @@
+{
+  "pages": [
+    { "id": "page-1", "name": "Assessment module" },
+    { "id": "page-2", "name": "Setup (Administration)" }
+  ],
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1440, "h": 1338, "title": "Scorecard · at a glance", "page": "page-1" },
+    { "file": "KpiDetail.dc.html", "x": 1540, "y": 0, "w": 1440, "h": 1338, "title": "Standard detail (drill-in from Scorecard)", "page": "page-1" },
+    { "file": "Occurrences.dc.html", "x": 3080, "y": 0, "w": 1440, "h": 1448, "title": "Occurrences", "page": "page-1" },
+    { "file": "MonthlyMetrics.dc.html", "x": 4620, "y": 0, "w": 1440, "h": 1128, "title": "Monthly metrics", "page": "page-1" },
+    { "file": "Review.dc.html", "x": 0, "y": 1590, "w": 1440, "h": 1338, "title": "Review", "page": "page-1" },
+    { "file": "Caps.dc.html", "x": 1540, "y": 1590, "w": 1440, "h": 1128, "title": "CAPs", "page": "page-1" },
+    { "file": "Issuance.dc.html", "x": 3080, "y": 1590, "w": 1440, "h": 1338, "title": "Issuance (Report + Disputes)", "page": "page-1" },
+    { "file": "GlanceAltA.dc.html", "x": 4620, "y": 1590, "w": 1120, "h": 240, "title": "At a glance · Option A · one line", "page": "page-1" },
+    { "file": "GlanceAltB.dc.html", "x": 4620, "y": 1970, "w": 1120, "h": 350, "title": "At a glance · Option B · lifecycle first", "page": "page-1" },
+    { "file": "AdminContractors.dc.html", "x": 0, "y": 0, "w": 1440, "h": 1088, "title": "Administration · Contractors", "page": "page-2" },
+    { "file": "AdminAgreements.dc.html", "x": 1540, "y": 0, "w": 1440, "h": 1088, "title": "Administration · Agreements", "page": "page-2" },
+    { "file": "AdminStandards.dc.html", "x": 3080, "y": 0, "w": 1440, "h": 1568, "title": "Administration · Standards", "page": "page-2" },
+    { "file": "AdminLists.dc.html", "x": 4620, "y": 0, "w": 1440, "h": 1228, "title": "Administration · Lists", "page": "page-2" }
+  ],
+  "annotations": [
+    { "id": "what-changed", "x": 0, "y": -560, "w": 620, "page": "page-1", "text": "What changed in the module\n\n1. One header instead of three. The panel header names the page; the module's own eyebrow, h2 and paragraph are gone, and the contractor-setup toggle has already moved to Administration.\n2. One way to pick the month. The contractor picker, the month stepper and the status pill replace the context bar (contractor + month + \"Open assessment month\") and the separate \"Assessment period\" select, which named the same thing twice. Stepping to a month with no period offers to open it.\n3. The at-a-glance card carries the lifecycle (Opened, Computed, In review, Validation, Finalized, Issued), two figures instead of four (Proposed, Recommended so far), an Outstanding list that links straight to the work, and one next action that changes with the stage.\n4. Six sections instead of nine. KPI Detail is a drill-in from the Scorecard row; Report and Disputes are one Issuance flow; the read-only Standards mirror is a link to the catalog (which already renders read-only for non-admins). Tabs carry counts for what is outstanding.\n5. Scorecard groups by the contract's categories (migration 110) in the order the contract reads, and shows Not assessable rows with an Enter figure link rather than hiding them.\n6. Monthly metrics is a checklist of what is missing, not a form above a history table.\n7. Colors, radii and type come from styles.css tokens (evergreen, warm neutrals, semantic pills) in place of assessment.css's slate/tailwind values; the dark theme follows for free. Use the Console theme tweak above each artboard." },
+    { "id": "sample-data", "x": 660, "y": -560, "w": 440, "page": "page-1", "text": "Sample data is invented\n\nNorthline Transit Services, RFP 2025-07, every figure, trip, block, fleet number, name and hash on these artboards is illustrative. Standard names, codes, categories, owners and teams are the real seeded catalog (migrations 030 and 110). Statuses and the review actions follow the code's own vocabulary (open, in_review, in_validation, finalized, issued; confirm, adjust, waive)." },
+    { "id": "glance-options", "x": 4620, "y": 1410, "w": 1120, "page": "page-1", "text": "At-a-glance options\n\nThe card on the Scorecard artboard is the recommended treatment: identity and next action on the top line, lifecycle beside the two figures and the Outstanding list. Options A and B below explore the two other places the emphasis could go. Pick one and the others go." },
+    { "id": "admin-changes", "x": 0, "y": -420, "w": 620, "page": "page-2", "text": "What changed under Administration\n\n1. The repeated title is gone: the evergreen panel header names the page, so the h2 beneath it (\"Contractors\" under CONTRACTORS) is replaced by the eyebrow and one sentence.\n2. All four pages share the same master-detail workspace, including Lists, which was a single select above a table. Its twelve lists are now the left column, with system lists marked.\n3. Contractors shows the Agreements under the selected contractor; Agreements groups its form into Term, Contract references and Process, with units inside the fields.\n4. Standards groups the catalog by category, shows the ladder as a readable sentence per band, and makes the catalog-vs-Agreement ladder choice a segmented control instead of a select.\n5. Everything is on styles.css tokens, so the dark theme holds." }
+  ],
+  "launch": { "view": "canvas", "page": "page-1" }
+}

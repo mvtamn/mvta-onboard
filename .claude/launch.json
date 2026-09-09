@@ -4,16 +4,53 @@
     {
       "name": "onboard-console",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "frontend", "run", "dev:console"],
+      "runtimeArgs": [
+        "--prefix",
+        "frontend",
+        "run",
+        "dev:console"
+      ],
       "port": 5174,
       "autoPort": true
     },
     {
       "name": "rider-app",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "frontend", "run", "dev:rider"],
+      "runtimeArgs": [
+        "--prefix",
+        "frontend",
+        "run",
+        "dev:rider"
+      ],
       "port": 5173,
       "autoPort": true
+    },
+    {
+      "name": "design-preview",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8765",
+        "--directory",
+        "design"
+      ],
+      "port": 8765
+    },
+    {
+      "name": "console-mock",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "VITE_AUTH_MODE=mock",
+        "VITE_API_PROXY_TARGET=http://localhost:7071",
+        "PORT=5175",
+        "npm",
+        "--prefix",
+        "frontend",
+        "run",
+        "dev:console"
+      ],
+      "port": 5175
     }
   ]
 }
