@@ -19,7 +19,10 @@ app.http("assessmentPeriodsList", {
       const pool = await getPool();
       const check = await pool.request().query<{ ready: number }>(`SELECT CASE WHEN OBJECT_ID('dbo.AssessmentPeriods','U') IS NULL THEN 0 ELSE 1 END ready`);
       if (!check.recordset[0]?.ready) return { status: 200, jsonBody: { periods: [], diagnostics: { table_ready: false } } };
-      const result = await pool.request().query(`SELECT p.*,c.name contractor_name FROM AssessmentPeriods p JOIN Contractors c ON c.id=p.contractor_id ORDER BY service_month DESC,c.name`);
+      const q = pool.request(); const contractor = request.query.get("contractor_id");
+      const limit = Math.min(500, Math.max(1, Number(request.query.get("limit") ?? 120) || 120));
+      q.input("contractor", sql.UniqueIdentifier, isGuid(contractor) ? contractor : null); q.input("limit", sql.Int, limit);
+      const result = await q.query(`SELECT TOP (@limit) p.*,c.name contractor_name FROM AssessmentPeriods p JOIN Contractors c ON c.id=p.contractor_id WHERE (@contractor IS NULL OR p.contractor_id=@contractor) ORDER BY service_month DESC,c.name`);
       return { status: 200, jsonBody: { periods: result.recordset, diagnostics: { table_ready: true } } };
     } catch (error) { context.error("GET /assessment-periods failed", error); return { status: 500, jsonBody: { error: "Internal server error" } }; }
   },

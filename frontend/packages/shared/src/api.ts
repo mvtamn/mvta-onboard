@@ -1288,7 +1288,7 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     },
     putReferenceValue(id: string, input: {
       domain: string; value: string; label: string; description?: string | null;
-      sort_order?: number; severity_order?: number | null; is_active?: boolean;
+      sort_order?: number; severity_order?: number | null; is_active?: boolean; principal_upn?: string | null;
     }) {
       return request<{ id: string }>(`/api/reference-values/${id}`, { method: "PUT", body: JSON.stringify(input) }, true);
     },
@@ -1403,8 +1403,9 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     createAssessmentEvidence(input: { assessment_id: string; blob_path: string; content_type: string; file_size_bytes: number; content_sha256: string; visibility: "internal" | "contractor"; caption?: string; supersedes_id?: string }) {
       return request<{ id: string }>("/api/assessment-evidence", { method: "POST", body: JSON.stringify(input) }, true);
     },
-    getComplianceOccurrences() {
-      return request<{ occurrences: ComplianceOccurrence[]; diagnostics: { table_ready: boolean } }>("/api/compliance-occurrences", {}, true);
+    getComplianceOccurrences(filter: { contractor_id?: string; service_month?: string; review_status?: OccurrenceReviewStatus; limit?: number; offset?: number } = {}) {
+      const qs = new URLSearchParams(); for (const [k, v] of Object.entries(filter)) if (v !== undefined && v !== "") qs.set(k, String(v));
+      return request<{ occurrences: import("./types.js").ComplianceOccurrence[]; diagnostics: { table_ready: boolean } }>(`/api/compliance-occurrences${qs.size ? `?${qs}` : ""}`, {}, true);
     },
     // Settle one occurrence: whether it counts, and whose error it was. Backs
     // both the Performance Assessment module's occurrence queue and the inline
@@ -1419,8 +1420,12 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<{ id: string }>(`/api/compliance-occurrences/${id}/assessed-amount`,
         { method: "PUT", body: JSON.stringify({ assessed_amount, note }) }, true);
     },
-    getManualMetrics() {
-      return request<{ metrics: ManualMetricEntry[]; diagnostics: { table_ready: boolean } }>("/api/manual-metrics", {}, true);
+    getManualMetrics(filter: { contractor_id?: string; service_month?: string } = {}) {
+      const qs = new URLSearchParams(); if (filter.contractor_id) qs.set("contractor_id", filter.contractor_id); if (filter.service_month) qs.set("service_month", filter.service_month);
+      return request<{ metrics: import("./types.js").ManualMetricEntry[]; diagnostics: { table_ready: boolean } }>(`/api/manual-metrics${qs.size ? `?${qs}` : ""}`, {}, true);
+    },
+    getOpenManualInputs(serviceMonth: string) {
+      return request<{ open: import("./types.js").OpenManualInput[]; service_month: string }>(`/api/manual-metrics/open?service_month=${encodeURIComponent(serviceMonth)}`, {}, true);
     },
     putManualMetric(input: { standard_id: string; contractor_id: string; service_month: string; metric_value: number; source_note: string }) {
       return request<{ id: string }>("/api/manual-metrics", { method: "PUT", body: JSON.stringify(input) }, true);

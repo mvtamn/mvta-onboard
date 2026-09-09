@@ -7,6 +7,7 @@ import { useAuth } from "../../../auth/AuthContext.js";
 import { ReportWorkflow } from "./ReportWorkflow.js";
 import { Caps } from "./Caps.js";
 import { Relief } from "./Relief.js";
+import { OpenInputs } from "./OpenInputs.js";
 import { History } from "./History.js";
 import { Empty, formatDate, formatMonth, money } from "./assessmentFormat.js";
 import { usePeriodRows } from "./usePeriodRows.js";
@@ -49,7 +50,7 @@ export function AssessmentModule(){
     {page==="scorecard"&&<><Stats totals={totals}/>{!period?<Empty>Open or select an Assessment Period to view its scorecard.</Empty>:<ScoreTable rows={rows} status={period.status} busy={busy} onDetail={r=>{setDetailId(r.id);setPage("detail")}}/>}</>}
     {page==="detail"&&(!period?<Empty>Select an Assessment Period, then choose a KPI.</Empty>:<><select aria-label="KPI" value={detailId} onChange={e=>setDetailId(e.target.value)}>{rows.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}</select>{detail?<><KpiDetail row={detail} occurrences={periodOccurrences.filter(o=>o.standard_id===detail.standard_id)}/><Evidence assessment={detail}/></>:<Empty>Compute this period to produce KPI detail.</Empty>}</>)}
     {page==="occurrences"&&<><Occurrences rows={periodOccurrences} periodSelected={Boolean(period)} busy={busy} claims={claims} onAmount={(o,amount,note)=>void act(()=>api.setOccurrenceAssessedAmount(o.id,amount,note))} onReview={(o,status,attribution,reason)=>void act(()=>api.reviewComplianceOccurrence(o.id,status,attribution,reason))} onRelief={(o,reliefId)=>void act(()=>api.linkOccurrenceRelief(o.id,o.review_status as OccurrenceReviewStatus,o.attribution as OccurrenceAttribution,reliefId))}/><Relief period={period} onChanged={()=>{void load();setRefreshKey(k=>k+1);setClaimsTick(t=>t+1)}}/></>}
-    {page==="metrics"&&<Metrics rows={periodMetrics} standards={standards} period={period} busy={busy} onSave={(standard_id,value,note)=>period&&void act(()=>api.putManualMetric({standard_id,contractor_id:period.contractor_id,service_month:period.service_month,metric_value:value,source_note:note}))}/>}
+    {page==="metrics"&&<><OpenInputs period={period}/><Metrics rows={periodMetrics} standards={standards} period={period} busy={busy} onSave={(standard_id,value,note)=>period&&void act(()=>api.putManualMetric({standard_id,contractor_id:period.contractor_id,service_month:period.service_month,metric_value:value,source_note:note}))}/></>}
     {page==="review"&&<ManagerReview period={period} rows={rows} totals={totals} busy={busy} onReview={(r,a,amount,reason)=>void act(()=>api.reviewPeriodAssessment(r.id,a,amount,reason))} onCompute={()=>period&&void act(()=>api.computeAssessmentPeriod(period.id))} onFinalize={()=>period&&void act(()=>api.finalizeAssessmentPeriod(period.id))}/>}
     {page==="caps"&&<Caps rows={rows} period={period}/>}
     {page==="report"&&<ReportWorkflow period={period} busy={busy} act={act}/>}
