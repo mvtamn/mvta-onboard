@@ -3,3 +3,7 @@
 /* A voided Issuance Proof stays in the history but is not the one to check. */
 .assessment-voided td{opacity:.55;text-decoration:line-through}
 .assessment-voided td code{text-decoration:none}
+
+/* The archived artifact, opened in place. Sandboxed: it can render, not run. */
+.assessment-preview{margin-top:12px;border:1px solid var(--border,#ccd5df);border-radius:6px;padding:8px}
+.assessment-preview iframe{width:100%;height:70vh;border:0;background:#fff}

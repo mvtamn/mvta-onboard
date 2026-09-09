@@ -1342,6 +1342,11 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     shareValidationDraft(periodId: string, report_id: string, recipient: string, sender_attestation: string) {
       return request<{ status: string; validation_ends_on: string }>(`/api/assessment-periods/${periodId}/validation-share`, { method: "POST", body: JSON.stringify({ report_id, recipient, delivery_method: "email", sender_attestation }) }, true);
     },
+    // The archived bytes of one artifact, hash-verified by the server. Text,
+    // not JSON, so it does not go through request().
+    async getAssessmentReportHtml(id: string) {
+      return (await requestBlob(`/api/assessment-reports/${id}/html`)).text();
+    },
     issueAssessmentReport(id: string, recipient: string, sender_attestation: string) {
       return request<{ id: string; status: string; content_sha256: string; dispute_deadline_at: string }>(`/api/assessment-reports/${id}/issue`, { method: "POST", body: JSON.stringify({ recipient, delivery_method: "email", sender_attestation }) }, true);
     },
