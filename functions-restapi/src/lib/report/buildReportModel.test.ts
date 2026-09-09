@@ -43,3 +43,46 @@ test("computed amount is base times escalation; relief is an excluded input, not
   assert.equal(model.assessments[0].excludedOccurrenceCount, 2);
   assert.equal("reliefAmount" in model.assessments[0], false);
 });
+
+// Design §9 sections 6, 7, 8, 9 and 11: the schedules a contractor needs to
+// dispute a figure, what was removed in their favour, what they must submit,
+// and where each number came from.
+const schedules = {
+  occurrences: [
+    { standard_name: "Missed trips", service_date: "20260712", description: "Trip 4401 not operated", quantity: 1, qualifier_code: null, attribution: "contractor_error", review_status: "confirmed", source_ref: "MonitoredMissedTrips:gtfs:4401|20260712", claim_status: null, claim_description: null },
+    { standard_name: "Missed trips", service_date: "20260713", description: "Trip 4402 not operated", quantity: 1, qualifier_code: "LAST_TRIP_OF_DAY", attribution: "contractor_error", review_status: "confirmed", source_ref: "MonitoredMissedTrips:gtfs:4402|20260713", claim_status: "approved", claim_description: "Ice storm, 24-hour notice given" },
+    { standard_name: "Missed trips", service_date: "20260714", description: "Trip 4403 not operated", quantity: 1, qualifier_code: null, attribution: "mvta_directed", review_status: "confirmed", source_ref: "MonitoredMissedTrips:gtfs:4403|20260714", claim_status: null, claim_description: null },
+  ],
+  exceptions: [{ standard_name: "Operator conduct", reason: "Nexus export not received", missing_data_owner: "Rob", remediation_action: "Request July export", expected_correction_date: new Date("2026-08-20T00:00:00Z") }],
+  caps: [{ standard_name: "Fixed-route OTP", trigger_reason: "tier_rule", due_at: new Date("2026-08-17T00:00:00Z"), status: "required" }],
+  standards: [
+    { name: "Fixed-route OTP", standard_type: "threshold", measurement_source: "api_feed", data_completeness_pct: 100 },
+    { name: "Operator conduct", standard_type: "threshold", measurement_source: "manual_entry", data_completeness_pct: 0 },
+  ],
+};
+
+test("the occurrence schedule lists every confirmed occurrence and says which were counted", () => {
+  const model = buildReportModel({ reportId: "r1", type: "final", version: 1, period, rows: [item()], evidence: [], issuedAt: null, deadline: null, ...schedules });
+  assert.deepEqual(model.occurrences.map(o => ({ date: o.serviceDate, counted: o.counted, why: o.exclusionReason })), [
+    { date: "20260712", counted: true, why: null },
+    { date: "20260713", counted: false, why: "Approved excusable-delay claim: Ice storm, 24-hour notice given" },
+    { date: "20260714", counted: false, why: "Attributed to MVTA direction" },
+  ]);
+  assert.equal(model.occurrences[1].qualifierCode, "LAST_TRIP_OF_DAY");
+  assert.equal(model.occurrences[0].sourceRef, "MonitoredMissedTrips:gtfs:4401|20260712");
+});
+
+test("exceptions, CAPs, and data sources travel with the report", () => {
+  const model = buildReportModel({ reportId: "r1", type: "final", version: 1, period, rows: [item()], evidence: [], issuedAt: null, deadline: null, ...schedules });
+  assert.deepEqual(model.exceptions, [{ standardName: "Operator conduct", reason: "Nexus export not received", missingDataOwner: "Rob", remediationAction: "Request July export", expectedCorrectionDate: "2026-08-20" }]);
+  assert.deepEqual(model.caps, [{ standardName: "Fixed-route OTP", triggerReason: "tier_rule", dueAt: "2026-08-17", status: "required" }]);
+  assert.deepEqual(model.dataSources, [
+    { standardName: "Fixed-route OTP", source: "Ingested from a feed", handEntered: false, dataCompletenessPct: 100 },
+    { standardName: "Operator conduct", source: "Entered by hand", handEntered: true, dataCompletenessPct: 0 },
+  ]);
+});
+
+test("a report with no schedules still builds", () => {
+  const model = buildReportModel({ reportId: "r1", type: "preliminary", version: 1, period, rows: [item()], evidence: [], issuedAt: null, deadline: null });
+  assert.deepEqual([model.occurrences, model.exceptions, model.caps, model.dataSources], [[], [], [], []]);
+});

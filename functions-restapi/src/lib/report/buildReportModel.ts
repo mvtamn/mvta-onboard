@@ -1,4 +1,5 @@
-import type { AssessmentReportModel, ReportAssessment } from "./renderAssessmentReport";
+import type { AssessmentReportModel, ReportAssessment, ReportCap, ReportDataSource, ReportException, ReportOccurrence } from "./renderAssessmentReport";
+import { isHandEntered, MEASUREMENT_SOURCE_LABELS, normalizeMeasurementSource } from "../assessment/measurementSource";
 
 // The SQL rows behind an artifact, as the handler selects them. Kept as the
 // raw column names so the mapping below is the only place they are read.
@@ -11,6 +12,22 @@ export interface ReportItemRow {
   excluded_occurrence_count: number | null; excluded_unit_quantity: number | null; data_completeness_pct: number | null;
 }
 export interface ReportEvidenceRow { assessment_name: string; caption: string | null; content_sha256: string }
+export interface ReportOccurrenceRow { standard_name: string; service_date: string; description: string; quantity: number; qualifier_code: string | null; attribution: string; review_status: string; source_ref: string | null; claim_status: string | null; claim_description: string | null }
+export interface ReportExceptionRow { standard_name: string; reason: string; missing_data_owner: string; remediation_action: string; expected_correction_date: Date | string }
+export interface ReportCapRow { standard_name: string; trigger_reason: string; due_at: Date | string; status: string }
+export interface ReportStandardRow { name: string; standard_type: string; measurement_source: string | null; data_completeness_pct: number | null }
+const isoDate = (value: Date | string) => (value instanceof Date ? value.toISOString() : String(value)).slice(0, 10);
+
+// Why an occurrence was left out, in the words the contractor should read.
+// Relief is removed from the inputs before tiering (ADR 0012); this is where
+// the report says so.
+function exclusionReason(o: ReportOccurrenceRow): string | null {
+  if (o.claim_status === "approved") return `Approved excusable-delay claim: ${o.claim_description ?? "documented"}`;
+  if (o.attribution === "excusable") return "Attributed as excusable";
+  if (o.attribution === "mvta_directed") return "Attributed to MVTA direction";
+  if (o.attribution !== "contractor_error") return "Attribution undetermined";
+  return null;
+}
 
 // Pure: rows in, model out. A Validation Draft shows what review recommends,
 // because that is what finalization will bind - a draft that showed the raw
@@ -18,7 +35,7 @@ export interface ReportEvidenceRow { assessment_name: string; caption: string | 
 // (ADR 0009). A Final shows the binding decision. The computed amount is the
 // same on both: base × escalation, with relief already removed from the
 // inputs before tiering (ADR 0012), never subtracted from a dollar figure.
-export function buildReportModel(input: { reportId: string; type: "preliminary" | "final"; version: number; period: ReportPeriodRow; rows: ReportItemRow[]; evidence: ReportEvidenceRow[]; issuedAt: Date | null; deadline: Date | null }): AssessmentReportModel {
+export function buildReportModel(input: { reportId: string; type: "preliminary" | "final"; version: number; period: ReportPeriodRow; rows: ReportItemRow[]; evidence: ReportEvidenceRow[]; issuedAt: Date | null; deadline: Date | null; occurrences?: ReportOccurrenceRow[]; exceptions?: ReportExceptionRow[]; caps?: ReportCapRow[]; standards?: ReportStandardRow[] }): AssessmentReportModel & { occurrences: ReportOccurrence[]; exceptions: ReportException[]; caps: ReportCap[]; dataSources: ReportDataSource[] } {
   const final = input.type === "final";
   const assessments: ReportAssessment[] = input.rows.map(a => {
     const notAssessable = a.assessment_outcome === "not_assessable";
@@ -49,5 +66,9 @@ export function buildReportModel(input: { reportId: string; type: "preliminary" 
     disputeDeadline: input.deadline?.toISOString().slice(0, 10) ?? null,
     isPartial: Boolean(input.period.is_partial), assessedTotal, assessments,
     evidence: input.evidence.map(e => ({ assessmentName: e.assessment_name, caption: e.caption ?? "Evidence", contentSha256: e.content_sha256 })),
+    occurrences: (input.occurrences ?? []).map((o): ReportOccurrence => { const why = exclusionReason(o); return { standardName: o.standard_name, serviceDate: o.service_date, description: o.description, quantity: o.quantity, qualifierCode: o.qualifier_code, sourceRef: o.source_ref, counted: why === null, exclusionReason: why }; }),
+    exceptions: (input.exceptions ?? []).map((e): ReportException => ({ standardName: e.standard_name, reason: e.reason, missingDataOwner: e.missing_data_owner, remediationAction: e.remediation_action, expectedCorrectionDate: isoDate(e.expected_correction_date) })),
+    caps: (input.caps ?? []).map((c): ReportCap => ({ standardName: c.standard_name, triggerReason: c.trigger_reason, dueAt: isoDate(c.due_at), status: c.status })),
+    dataSources: (input.standards ?? []).map((d): ReportDataSource => { const source = normalizeMeasurementSource(d.measurement_source, d.standard_type === "occurrence" ? "occurrence" : "threshold"); return { standardName: d.name, source: MEASUREMENT_SOURCE_LABELS[source], handEntered: isHandEntered(source), dataCompletenessPct: d.data_completeness_pct }; }),
   };
 }

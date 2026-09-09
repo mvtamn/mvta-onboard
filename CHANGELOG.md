@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.169] - 2026-09-09
+
+Phase D of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — report content.
+
+- **D1 — occurrence, exclusion, exception, and CAP schedules.** `buildReportModel` takes the period's confirmed occurrences (with claim status and attribution), `AssessmentExceptions`, `CorrectiveActionPlans`, and the frozen standards' `measurement_source`; the renderer adds *Occurrence schedule*, *Exclusions and relief applied*, *Corrective Action Plans required*, *Manager notes*, and *Data sources and completeness*, in design §9's order (golden tests pin the order). Exclusion reasons are worded from the row: approved excusable-delay claim, attributed as excusable, attributed to MVTA direction. Dates print MM/DD/YYYY from either ISO or `CHAR(8)`.
+
 ## [1.5.168] - 2026-09-09
 
 ## [1.5.167] - 2026-09-09
