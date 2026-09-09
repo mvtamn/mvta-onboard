@@ -148,7 +148,7 @@ test("the refresh bounds tiers to the month it is scoring", () => {
 
 // The migration says what it does, and the checks a reader would want.
 test("migration 112 adds the lock column and backfills conservatively", () => {
-  const file = path.join(process.cwd(), "sql", "migration-112-period-rules-lock.sql");
+  const file = path.join(process.cwd(), "sql", "migration-112a-period-rules-lock.sql");
   const text = readFileSync(file, "utf8");
   assert.match(text, /ADD rules_locked_at DATETIME2 NULL/);
   assert.match(text, /Re-runnable/);

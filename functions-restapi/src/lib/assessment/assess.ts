@@ -59,6 +59,7 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
   const period = periodResult.recordset[0];
   if (!period) throw new Error("Assessment period not found");
   if (period.status === "finalized") throw new Error("Finalized periods must be reopened before recompute");
+  if (!period.agreement_id) throw new Error("Assessment Period has no Agreement; the Escalation Streak cannot be read");
 
   const scope = await agreementScopeIn(tx);
   // A period that has never been finalised is still drafting its rules, so it
@@ -193,14 +194,22 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
       }
     }
 
+    // The Escalation Streak is built from issued outcomes only, one per
+    // Agreement and month (ADR 0011). A finalized-but-unissued month is simply
+    // absent, which pauses the streak rather than advancing or breaking it; a
+    // correction period (higher assessment_revision, same month) replaces the
+    // original it supersedes instead of counting beside it; and another
+    // Agreement's months - even for the same contractor - are not this one's.
     const historyReq = new sql.Request(tx);
     historyReq.input("standard_id", sql.UniqueIdentifier, standard.id);
     historyReq.input("contractor", sql.UniqueIdentifier, period.contractor_id);
+    historyReq.input("agreement", sql.UniqueIdentifier, period.agreement_id);
     historyReq.input("month", sql.Char(6), period.service_month);
-    const history = await historyReq.query<{ tier_label: TierLabel; assessment_outcome: string | null }>(`
-        SELECT pka.tier_label,pka.assessment_outcome FROM PeriodKpiAssessments pka
+    const history = await historyReq.query<{ service_month: string; tier_label: TierLabel; assessment_outcome: string | null }>(`
+        SELECT p.service_month,pka.tier_label,pka.assessment_outcome FROM PeriodKpiAssessments pka
         JOIN AssessmentPeriods p ON p.id=pka.period_id
-        WHERE pka.standard_id=@standard_id AND p.contractor_id=@contractor AND p.service_month<@month AND p.status IN('finalized','issued')
+        WHERE pka.standard_id=@standard_id AND p.contractor_id=@contractor AND p.agreement_id=@agreement AND p.service_month<@month AND p.status='issued'
+          AND p.assessment_revision=(SELECT MAX(x.assessment_revision) FROM AssessmentPeriods x WHERE x.agreement_id=p.agreement_id AND x.service_month=p.service_month AND x.status='issued')
         ORDER BY p.service_month DESC
     `);
     let priorConsecutive = 0;
@@ -211,7 +220,11 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
     const proposed = notAssessable ? 0 : Math.max(0, baseAmount) * escalation;
     const outcome = notAssessable ? "not_assessable" : tierLabel;
     const snapshot = { standardCode: standard.code, resolverKey: standard.resolver_key ?? null, unresolvedReason, awaitingAmountCount, capWindowReason, targetValue: standard.target_value ?? null, metricValue, quantity, occurrenceCount, sourceRefs, rawMetricValue, rawOccurrenceCount, rawUnitQuantity, excludedMetricValue, excludedOccurrenceCount, excludedUnitQuantity, excludedSourceRefs, baseAmount, escalation, proposed, tierLabel, outcome };
-    const computationJson = canonicalJson(snapshot);
+    // The issued outcomes the streak was read from travel with the item so a
+    // dispute can reproduce the multiplier; they are not part of the input
+    // hash, because the escalation they produce already is.
+    const escalationHistory = history.recordset.map(row => ({ serviceMonth: row.service_month, outcome: row.assessment_outcome ?? row.tier_label }));
+    const computationJson = canonicalJson({ ...snapshot, escalationHistory });
     const inputHash = assessmentInputHash(snapshot);
     const upsert = new sql.Request(tx);
     upsert.input("period_id", sql.UniqueIdentifier, period.id); upsert.input("standard_id", sql.UniqueIdentifier, standard.id);

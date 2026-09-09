@@ -6,6 +6,7 @@ import { getPool, sql } from "../lib/db";
 import { loadKpiTrust } from "../lib/kpiTrustStore";
 import { isGuid, isServiceMonth } from "../lib/validation";
 import { voidLiveIssuanceProofSql } from "../lib/assessment/issuanceProof";
+import { reviewedItemsSha256Sql } from "../lib/assessment/reviewedItems";
 
 app.http("assessmentPeriodsList", {
   route: "assessment-periods", methods: ["GET"], authLevel: "anonymous",
@@ -115,8 +116,9 @@ app.http("assessmentPeriodFinalize", {
       const finalizeScope = await agreementScope(pool);
       const lockOnFinalize = finalizeScope.rulesLock ? ",rules_locked_at=SYSUTCDATETIME()" : "";
       const result = await req.query<{ changed: number }>(`
-        UPDATE AssessmentPeriods SET status='finalized',final_total=(SELECT SUM(recommended_amount) FROM PeriodKpiAssessments WHERE period_id=@id),finalized_by=@actor,finalized_at=SYSUTCDATETIME()${lockOnFinalize}
+        UPDATE AssessmentPeriods SET status='finalized',final_total=(SELECT SUM(CASE WHEN recommended_amount<0 THEN 0 ELSE recommended_amount END) FROM PeriodKpiAssessments WHERE period_id=@id),finalized_by=@actor,finalized_at=SYSUTCDATETIME()${lockOnFinalize}
         WHERE id=@id AND status='in_validation' AND validation_ends_on<=CONVERT(date,SYSUTCDATETIME()) AND computed_revision=input_revision
+          AND EXISTS(SELECT 1 FROM ValidationDraftShares v WHERE v.period_id=@id AND v.superseded_at IS NULL AND v.computed_revision=AssessmentPeriods.computed_revision AND v.items_sha256=${reviewedItemsSha256Sql("id")})
           AND (SELECT COUNT(*) FROM PeriodKpiAssessments WHERE period_id=@id)=(SELECT COUNT(*) FROM AssessmentPeriodStandards WHERE period_id=@id)
           AND EXISTS(SELECT 1 FROM PeriodKpiAssessments WHERE period_id=@id)
           AND NOT EXISTS(SELECT 1 FROM PeriodKpiAssessments WHERE period_id=@id AND (recommended_action IS NULL OR reviewed_input_sha256<>input_sha256 OR (ISNULL(data_completeness_pct,0)<=0 AND assessment_outcome<>'not_assessable')))
@@ -134,7 +136,7 @@ app.http("assessmentPeriodFinalize", {
         END
         SELECT @changed changed;
       `);
-      if (!result.recordset[0]?.changed) return { status: 409, jsonBody: { error: "Period is stale, incomplete, or has pending KPI review" } };
+      if (!result.recordset[0]?.changed) return { status: 409, jsonBody: { error: "Period is stale, incomplete, has pending KPI review, or its Shared Validation Draft no longer matches the reviewed items" } };
       return { status: 200, jsonBody: { id: request.params.id, status: "finalized" } };
     } catch (error) { context.error("POST assessment finalize failed", error); return { status: 500, jsonBody: { error: "Internal server error" } }; }
   },
