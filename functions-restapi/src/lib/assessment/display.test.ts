@@ -31,10 +31,18 @@ test("the target prefers the contract's own words, then the stated value with it
   assert.equal(targetDisplay(occurrence({ target_value: 0 }), []), "0 occurrences");
 });
 
+test("an occurrence standard with nothing stated is targeted at none, and a Meets band capped at a count reads as that many or fewer", () => {
+  assert.equal(targetDisplay(occurrence(), []), "0 occurrences");
+  assert.equal(targetDisplay(occurrence(), [{ tier_label: "meets", bound_low: null, bound_high: null }]), "0 occurrences");
+  assert.equal(targetDisplay(occurrence(), [{ tier_label: "meets", bound_low: null, bound_high: 1 }]), "0 occurrences");
+  assert.equal(targetDisplay(occurrence(), [{ tier_label: "meets", bound_low: null, bound_high: 11 }]), "10 occurrences or fewer");
+  assert.equal(targetDisplay(occurrence({ unit_label: "vehicle-days" }), [{ tier_label: "meets", bound_low: 0, bound_high: 5 }]), "4 vehicle-days or fewer");
+  assert.equal(targetDisplay(occurrence({ direction: "higher_is_better" }), []), "No target set");
+});
+
 test("without a stated target the Meets band's range stands in; without that, it says so", () => {
   const tiers = [{ tier_label: "meets", bound_low: 0.85, bound_high: null }, { tier_label: "warning", bound_low: 0.8, bound_high: 0.85 }];
   assert.equal(targetDisplay(threshold(), tiers), "85% or above");
-  assert.equal(targetDisplay(occurrence(), [{ tier_label: "meets", bound_low: null, bound_high: 1 }]), "Under 1 occurrence");
   assert.equal(targetDisplay(threshold({ unit_label: "occurrences" }), [{ tier_label: "meets", bound_low: 0, bound_high: 11 }]), "0 occurrences to under 11 occurrences");
   assert.equal(targetDisplay(threshold(), []), "No target set");
 });

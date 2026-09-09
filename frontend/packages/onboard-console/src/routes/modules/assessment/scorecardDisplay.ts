@@ -44,6 +44,17 @@ export function targetText(
     return standard?.direction === "higher_is_better" ? `${text} or above` : `${text} or fewer`;
   }
   const meets = ladder.find((tier) => tier.tier_label === "meets");
+  const counted = row.standard_type === "occurrence" && !isRatioUnit(unit);
+  // A count is met at whole numbers: a Meets band under 11 means ten or fewer,
+  // and one under 1 means none at all.
+  if (meets && counted && !meets.bound_low && meets.bound_high !== null && Number.isInteger(meets.bound_high) && meets.bound_high >= 1) {
+    const most = meets.bound_high - 1;
+    return most === 0 ? quantity(0, unit) : `${quantity(most, unit)} or fewer`;
+  }
   const range = meets && unit ? describeRange(meets, unit) : "Any measured value";
-  return range === "Any measured value" ? "No target set" : range;
+  if (range !== "Any measured value") return range;
+  // An occurrence standard with nothing stated is what the contract means by
+  // it: the event is not supposed to happen, so none is the target.
+  if (counted && standard?.direction !== "higher_is_better") return quantity(0, unit);
+  return "No target set";
 }
