@@ -1361,6 +1361,9 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     getAssessmentAudit(periodId: string, limit = 200, offset = 0) {
       return request<{ entries: import("./types.js").AssessmentAuditEntry[]; diagnostics: { limit: number; offset: number; returned_count: number } }>(`/api/compliance-assessment-audit?period_id=${encodeURIComponent(periodId)}&limit=${limit}&offset=${offset}`, {}, true);
     },
+    transitionAssessmentCap(id: string, status: import("./types.js").AssessmentCapStatus, fields: Record<string, string> = {}) {
+      return request<{ id: string; status: string }>(`/api/assessment-caps/${id}`, { method: "PATCH", body: JSON.stringify({ status, ...fields }) }, true);
+    },
     getAssessmentDisputes(periodId: string) {
       return request<{ disputes: import("./types.js").AssessmentDispute[] }>(`/api/assessment-disputes?period_id=${encodeURIComponent(periodId)}`, {}, true);
     },

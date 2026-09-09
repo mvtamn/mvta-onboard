@@ -28,7 +28,7 @@ app.http("assessmentValidationShare", { route: "assessment-periods/{id}/validati
 
 app.http("assessmentCapsList",{route:"assessment-caps",methods:["GET"],authLevel:"anonymous",handler:async(request,context)=>{
   const auth=requireRole(request,COMPLIANCE_READ_ROLES);if(!auth.authorized)return{status:auth.status,jsonBody:{error:auth.message}};const period=request.query.get("period_id");if(!isGuid(period))return{status:400,jsonBody:{error:"period_id is required"}};
-  try{const pool=await getPool();const req=pool.request();req.input("period",sql.UniqueIdentifier,period);const result=await req.query(`SELECT c.*,s.name standard_name FROM CorrectiveActionPlans c LEFT JOIN ContractorPerformanceStandards s ON s.id=c.standard_id WHERE c.period_id=@period ORDER BY c.due_at`);return{status:200,jsonBody:{caps:result.recordset}};}catch(error){context.error("GET assessment CAPs failed",error);return{status:500,jsonBody:{error:"Internal server error"}};}
+  try{const pool=await getPool();const req=pool.request();req.input("period",sql.UniqueIdentifier,period);const result=await req.query(`SELECT c.*,s.name standard_name,CONVERT(bit,CASE WHEN c.status='required' AND c.due_at<SYSUTCDATETIME() THEN 1 ELSE 0 END) overdue FROM CorrectiveActionPlans c LEFT JOIN ContractorPerformanceStandards s ON s.id=c.standard_id WHERE c.period_id=@period ORDER BY c.due_at`);return{status:200,jsonBody:{caps:result.recordset}};}catch(error){context.error("GET assessment CAPs failed",error);return{status:500,jsonBody:{error:"Internal server error"}};}
 }});
 
 app.http("assessmentDisputesList",{route:"assessment-disputes",methods:["GET"],authLevel:"anonymous",handler:async(request,context)=>{
