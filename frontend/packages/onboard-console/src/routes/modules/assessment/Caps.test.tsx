@@ -7,7 +7,7 @@ import { Caps } from "./Caps.js";
 
 vi.mock("../../../config.js", () => ({ api: { getAssessmentCaps: vi.fn(), transitionAssessmentCap: vi.fn(), createAssessmentCap: vi.fn() } }));
 vi.mock("../../../auth/AuthContext.js", () => ({ useAuth: () => ({ roles: ["OCC.ComplianceManager"] }) }));
-const confirm = vi.fn(async (_options: unknown) => false);
+const confirm = vi.fn(async (_options?: unknown) => false);
 vi.mock("../../../components/AppDialog.js", () => ({ useAppDialog: () => ({ prompt: vi.fn().mockResolvedValue("Verified two clean months"), confirm }) }));
 
 const period: AssessmentPeriod = { id: "p1", contractor_id: "c1", contractor_name: "Transit Operations", service_month: "202607", status: "issued", input_revision: 1, computed_revision: 1, proposed_total: 1500, final_total: 1500 };
