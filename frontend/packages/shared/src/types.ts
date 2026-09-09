@@ -1672,7 +1672,7 @@ export interface AgreementStandardAssignment {
 }
 
 export interface ContractorRecord { id: string; name: string; contract_start_date: string; contract_end_date: string | null; is_active: boolean }
-export interface AssessmentPeriod { id: string; contractor_id: string; contractor_name: string; service_month: string; status: AssessmentPeriodStatus; input_revision: number; computed_revision: number | null; proposed_total: number; final_total: number | null }
+export interface AssessmentPeriod { id: string; contractor_id: string; contractor_name: string; service_month: string; status: AssessmentPeriodStatus; input_revision: number; computed_revision: number | null; proposed_total: number; final_total: number | null; supersedes_period_id?: string | null }
 export interface PeriodKpiAssessment { id: string; period_id: string; standard_id: string; code: string; name: string; standard_type: string; priority: string; metric_display: string; target_display?: string; variance_pct?: number | null; tier_label: AssessmentTierLabel; assessment_outcome?: AssessmentTierLabel | "not_assessable" | null; occurrence_count: number; base_amount?: number; relief_amount?: number; escalation_multiplier?: number; proposed_amount: number; final_amount: number | null; manager_action: ManagerAssessmentAction; manager_reason: string | null; recommended_action?: Exclude<ManagerAssessmentAction,"pending"> | null; recommended_amount?: number | null; cap_required?: boolean; cap_reason?: string | null; consecutive_months_below?: number; data_completeness_pct: number | null }
 export interface ComplianceOccurrence {
   id: string; standard_id: string; standard_code: string; standard_name: string;
@@ -1710,7 +1710,9 @@ export interface ContractorStandardTier {
   triggers_cap: boolean; notes: string | null;
   effective_start_date?: string; effective_end_date?: string | null;
 }
-export interface AssessmentReport { id: string; period_id: string; issuance_type: "preliminary" | "final"; version: number; content_sha256: string; issued_at: string | null; dispute_deadline_at: string | null }
+// A 'final' row with no issued_at is an Issuance Proof, not a Final Assessment;
+// voided_at marks a proof that stopped being the one to check (ADR 0029).
+export interface AssessmentReport { id: string; period_id: string; issuance_type: "preliminary" | "final"; version: number; content_sha256: string; proof_sha256: string | null; supersedes_id: string | null; supersede_reason: string | null; issued_at: string | null; voided_at: string | null; voided_by: string | null; dispute_deadline_at: string | null }
 export interface AssessmentCap { id: string; standard_name: string; status: string; trigger_reason: string; due_at: string }
 export interface AssessmentDispute { id: string; report_version: number; item_count: number; basis: string; status: string; outcome: string | null; submitted_at: string }
 export interface AssessmentEvidence { id: string; assessment_id: string; content_type: string; file_size_bytes: number; caption: string | null; content_sha256: string; visibility: "internal" | "contractor"; redaction_reason: string | null; uploaded_by: string; uploaded_at: string }

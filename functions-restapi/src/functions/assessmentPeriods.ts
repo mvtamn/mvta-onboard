@@ -5,6 +5,7 @@ import { COMPLIANCE_MANAGER_ROLES, COMPLIANCE_READ_ROLES, COMPLIANCE_WRITE_ROLES
 import { getPool, sql } from "../lib/db";
 import { loadKpiTrust } from "../lib/kpiTrustStore";
 import { isGuid, isServiceMonth } from "../lib/validation";
+import { voidLiveIssuanceProofSql } from "../lib/assessment/issuanceProof";
 
 app.http("assessmentPeriodsList", {
   route: "assessment-periods", methods: ["GET"], authLevel: "anonymous",
@@ -111,13 +112,21 @@ app.http("assessmentPeriodFinalize", {
       const result = await req.query<{ changed: number }>(`
         UPDATE AssessmentPeriods SET status='finalized',final_total=(SELECT SUM(recommended_amount) FROM PeriodKpiAssessments WHERE period_id=@id),finalized_by=@actor,finalized_at=SYSUTCDATETIME()
         WHERE id=@id AND status='in_validation' AND validation_ends_on<=CONVERT(date,SYSUTCDATETIME()) AND computed_revision=input_revision
+          AND (SELECT COUNT(*) FROM PeriodKpiAssessments WHERE period_id=@id)=(SELECT COUNT(*) FROM AssessmentPeriodStandards WHERE period_id=@id)
           AND EXISTS(SELECT 1 FROM PeriodKpiAssessments WHERE period_id=@id)
           AND NOT EXISTS(SELECT 1 FROM PeriodKpiAssessments WHERE period_id=@id AND (recommended_action IS NULL OR reviewed_input_sha256<>input_sha256 OR (ISNULL(data_completeness_pct,0)<=0 AND assessment_outcome<>'not_assessable')))
           AND NOT EXISTS(SELECT 1 FROM PeriodKpiAssessments WHERE period_id=@id AND reviewed_by=@actor)
           AND NOT EXISTS(SELECT 1 FROM PeriodKpiAssessments a WHERE a.period_id=@id AND a.assessment_outcome='not_assessable' AND NOT EXISTS(SELECT 1 FROM AssessmentExceptions e WHERE e.assessment_id=a.id))
           AND NOT EXISTS(SELECT 1 FROM ComplianceOccurrences o JOIN AssessmentPeriods p ON p.contractor_id=o.contractor_id AND p.service_month=o.service_month WHERE p.id=@id AND o.review_status='candidate');
         DECLARE @changed INT=@@ROWCOUNT;
-        IF @changed=1 UPDATE PeriodKpiAssessments SET manager_action=recommended_action,manager_reason=recommendation_reason,final_amount=CASE WHEN recommended_amount<0 THEN 0 ELSE recommended_amount END,binding_amount=CASE WHEN recommended_amount<0 THEN 0 ELSE recommended_amount END,binding_reason=recommendation_reason,binding_decision_by=@actor,binding_decision_at=SYSUTCDATETIME() WHERE period_id=@id;
+        IF @changed=1 BEGIN
+          UPDATE PeriodKpiAssessments SET manager_action=recommended_action,manager_reason=recommendation_reason,final_amount=CASE WHEN recommended_amount<0 THEN 0 ELSE recommended_amount END,binding_amount=CASE WHEN recommended_amount<0 THEN 0 ELSE recommended_amount END,binding_reason=recommendation_reason,binding_decision_by=@actor,binding_decision_at=SYSUTCDATETIME() WHERE period_id=@id;
+          -- A proof can only be prepared after finalization, so one that exists
+          -- now was rendered from an earlier finalized state that went stale
+          -- (evidence landed while it was being rendered). It is not the one
+          -- to check for this finalization.
+          ${voidLiveIssuanceProofSql("id","actor")}
+        END
         SELECT @changed changed;
       `);
       if (!result.recordset[0]?.changed) return { status: 409, jsonBody: { error: "Period is stale, incomplete, or has pending KPI review" } };
@@ -141,7 +150,9 @@ app.http("assessmentPeriodReopen", {
       const result = await req.query<{ changed: number; id: string }>(`
         DECLARE @agreement UNIQUEIDENTIFIER,@month CHAR(6),@status NVARCHAR(20),@new_id UNIQUEIDENTIFIER=@id,@changed INT=0;
         SELECT @agreement=agreement_id,@month=service_month,@status=status FROM AssessmentPeriods WHERE id=@id;
-        IF @status='finalized' BEGIN UPDATE AssessmentPeriods SET status='reopened',input_revision=input_revision+1,final_total=NULL,finalized_by=NULL,finalized_at=NULL,notes=@reason WHERE id=@id;SET @changed=1;END
+        IF @status='finalized' BEGIN UPDATE AssessmentPeriods SET status='reopened',input_revision=input_revision+1,final_total=NULL,finalized_by=NULL,finalized_at=NULL,notes=@reason WHERE id=@id;SET @changed=1;
+          ${voidLiveIssuanceProofSql("id","actor")}
+        END
         ELSE IF @status='issued' BEGIN
           SET @new_id=NEWID();
           INSERT AssessmentPeriods(id,contractor_id,agreement_id,service_month,status,input_revision,notes,rule_set_sha256,rule_set_json,assessment_revision,supersedes_period_id)

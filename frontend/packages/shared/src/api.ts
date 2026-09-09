@@ -1336,8 +1336,8 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     getAssessmentReports(periodId: string) {
       return request<{ reports: import("./types.js").AssessmentReport[] }>(`/api/assessment-reports?period_id=${encodeURIComponent(periodId)}`, {}, true);
     },
-    createAssessmentReport(period_id: string, issuance_type: "preliminary" | "final") {
-      return request<{ id: string; version: number; content_sha256: string }>("/api/assessment-reports", { method: "POST", body: JSON.stringify({ period_id, issuance_type }) }, true);
+    createAssessmentReport(period_id: string, issuance_type: "preliminary" | "final", supersede_reason?: string) {
+      return request<{ id: string; version: number; content_sha256: string }>("/api/assessment-reports", { method: "POST", body: JSON.stringify({ period_id, issuance_type, ...(supersede_reason ? { supersede_reason } : {}) }) }, true);
     },
     shareValidationDraft(periodId: string, report_id: string, recipient: string, sender_attestation: string) {
       return request<{ status: string; validation_ends_on: string }>(`/api/assessment-periods/${periodId}/validation-share`, { method: "POST", body: JSON.stringify({ report_id, recipient, delivery_method: "email", sender_attestation }) }, true);

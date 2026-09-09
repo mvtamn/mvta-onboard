@@ -697,6 +697,14 @@ _Avoid_: Final Assessment, issued assessment
 A newly reviewed and issued Final Assessment that corrects an earlier Final Assessment while preserving the earlier artifact and restarting the dispute period.
 _Avoid_: edited final, overwritten report
 
+**Issuance Proof**:
+The archived, content-hashed render of a Finalized Assessment that the Issuing Authority inspects before issuing. It is not a Final Assessment, is never sent to the contractor, and is voided rather than superseded when regenerated or when the period changes.
+_Avoid_: unissued final, draft final, generated final, preview
+
+**Report Version**:
+The generation counter printed on an artifact for one Assessment Period, sequenced separately for Validation Drafts and for Issuance Proofs (which become Final Assessments). It counts renders, not issuances, so a voided Issuance Proof keeps its number.
+_Avoid_: issuance number, revision
+
 **Not Assessable**:
 The explicit outcome for a required standard whose evidence or measurement is insufficient. It is neither compliance nor noncompliance and cannot silently be treated as meeting the standard.
 _Avoid_: meets, zero penalty, missing
