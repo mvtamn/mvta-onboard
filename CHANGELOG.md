@@ -5,9 +5,17 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.178] - 2026-09-09
+## [1.5.180] - 2026-09-09
 
 - **An occurrence standard with no stated target is targeted at none.** `targetDisplay` (API, at compute) and `targetText` (console, for older rows) read "0 occurrences" where they read "No target set": a counted event with nothing stated is one the contract means not to happen. A Meets band capped at a count reads as that many or fewer — under 11 complaints is "10 occurrences or fewer", under 1 is "0 occurrences" — instead of "Under 11 occurrences". Only `lower_is_better` occurrence standards without a stated target or value are inferred; a standard whose count is meant to be high still says no target is set.
+## [1.5.179] - 2026-09-09
+
+- **A standard's code no longer stands under its name** on the scorecard, the standard's detail, the monthly metrics checklist or the read-only catalog. `MISSED_TRIPS_FR` is a machine key for resolvers and SQL and told a reader nothing; `modules/assessment/standardWords.ts` (tests) puts in its place how the figure is produced and who answers for it — "Counted events · from OnBoard · Rob" — and on the detail the team as well. The Administration › Standards list uses the same words. The code stays on that page's detail header, where an administrator may be matching it to a resolver or a query, and search there still finds it.
+
+## [1.5.178] - 2026-09-09
+
+- **A standard's detail page says when a corrective action plan is owed.** The rail described how the standard is measured, who owns it and what each band charges, and stopped there - the corrective-action window, configurable in Administration since 1.5.156, appeared nowhere in the module that acts on it. A reviewer looking at Initial Operator Training Violations could see `$1,000 per day` and could not see that a third case in any rolling 90 days obliges a plan. It now reads as a sentence beside the bands, from the same `capWindowSentence` the configurator reads back, so the two cannot describe one rule differently.
+- **"No window" is said, not left blank.** A standard that charges per occurrence and escalates nothing gets that sentence quietly rather than the em dash an empty row uses: it is an answer about the contract, not a missing value.
 
 ## [1.5.177] - 2026-09-09
 

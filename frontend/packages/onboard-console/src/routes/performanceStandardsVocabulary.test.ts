@@ -185,3 +185,21 @@ describe("defaultTargetDisplay", () => {
     expect(defaultTargetDisplay(Number.NaN, "percent")).toBe("");
   });
 });
+
+describe("capWindowSentence on a standard record", () => {
+  // The assessment detail rail passes the catalog record straight in, so the
+  // shape it reads has to be the shape a standard actually has.
+  it("reads the window off a standard the API returned", () => {
+    const standard = {
+      cap_window_mode: "rolling_days" as const, cap_window_days: 90, cap_window_threshold: 2,
+    };
+    expect(capWindowSentence(standard))
+      .toBe("More than 2 occurrences in any 90 consecutive days owes corrective action. The window never resets, so a count can straddle a month or a quarter.");
+  });
+
+  it("says a standard with no window has none, rather than saying nothing", () => {
+    // The rail shows this in place of the em dash the other empty rows use: no
+    // window is an answer about the contract, not a missing value.
+    expect(capWindowSentence({})).toBe("No corrective action window: occurrences are charged as they happen.");
+  });
+});
