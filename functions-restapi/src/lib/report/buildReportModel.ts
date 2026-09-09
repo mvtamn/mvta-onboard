@@ -12,7 +12,7 @@ export interface ReportItemRow {
   excluded_occurrence_count: number | null; excluded_unit_quantity: number | null; data_completeness_pct: number | null;
 }
 export interface ReportEvidenceRow { assessment_name: string; caption: string | null; content_sha256: string }
-export interface ReportOccurrenceRow { standard_name: string; service_date: string; description: string; quantity: number; qualifier_code: string | null; attribution: string; source_ref: string | null; claim_status: string | null; claim_description: string | null; evidence_hashes: string | null }
+export interface ReportOccurrenceRow { standard_name: string; service_date: string; description: string; quantity: number; qualifier_code: string | null; attribution: string; source_ref: string | null; claim_status: string | null; claim_description: string | null; evidence_hashes: string | null; outage_system?: string | null }
 export interface ReportExceptionRow { standard_name: string; reason: string; missing_data_owner: string; remediation_action: string; expected_correction_date: Date | string }
 // A CAP Determination is made by the compute (cap_required) and the row in
 // CorrectiveActionPlans only exists once the month is issued, so a proof or a
@@ -29,6 +29,7 @@ export const isoDate = (value: Date | string) => { const v = value instanceof Da
 // Relief is removed from the inputs before tiering (ADR 0012); this is where
 // the report says so.
 function exclusionReason(o: ReportOccurrenceRow): string | null {
+  if (o.outage_system) return `System outage: ${o.outage_system.replace(/_/g, " ")}`;
   if (o.claim_status === "approved") return `Approved excusable-delay claim: ${o.claim_description ?? "documented"}`;
   if (o.attribution === "excusable") return "Attributed as excusable";
   if (o.attribution === "mvta_directed") return "Attributed to MVTA direction";

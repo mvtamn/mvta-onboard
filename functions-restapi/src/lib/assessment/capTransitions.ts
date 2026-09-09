@@ -6,7 +6,9 @@
 // skips a step, and a closed or failed plan is history.
 export const CAP_SUBMISSION_FIELDS = ["root_cause", "corrective_actions", "responsible_parties", "timeline_note", "monitoring_plan", "closure_criteria"] as const;
 export type CapSubmissionField = typeof CAP_SUBMISSION_FIELDS[number];
-export type CapStatus = "required" | "submitted" | "approved" | "in_progress" | "closed" | "failed";
+export type CapStatus = "required" | "submitted" | "approved" | "in_progress" | "closed" | "failed" | "withdrawn";
+// Design §8: a determination made by a person rather than a trigger.
+export const CAP_MANUAL_TRIGGERS = ["discretionary", "contractor_initiated"] as const;
 export type CapRole = "writer" | "manager";
 export type CapFields = Partial<Record<CapSubmissionField | "closure_note" | "note", unknown>>;
 export type CapTransition = { ok: true; sets: (CapSubmissionField | "closure_note")[]; note: boolean; stamps: "submitted_at" | "closed_at" | null; clears: "submitted_at" | null } | { ok: false; error: string };
@@ -17,6 +19,7 @@ interface Step { role: CapRole; requires: readonly (CapSubmissionField | "closur
 const STEPS: Partial<Record<`${CapStatus}->${CapStatus}`, Step>> = {
   "required->submitted": { role: "writer", requires: CAP_SUBMISSION_FIELDS, stamps: "submitted_at" },
   "submitted->required": { role: "manager", requires: ["note"], stamps: null, clears: "submitted_at" },   // returned incomplete, with the reason
+  "required->withdrawn": { role: "manager", requires: ["note"], stamps: "closed_at" },   // the separate reasoned decision to remove a determination (CONTEXT)
   "submitted->approved": { role: "manager", requires: [], stamps: null },
   "approved->in_progress": { role: "writer", requires: [], stamps: null },   // the work is the contractor's; recording its start is a writer's act
   "in_progress->closed": { role: "manager", requires: ["closure_note"], stamps: "closed_at" },

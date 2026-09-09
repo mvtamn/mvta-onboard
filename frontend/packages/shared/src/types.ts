@@ -1716,7 +1716,7 @@ export interface ContractorStandardTier {
 // A 'final' row with no issued_at is an Issuance Proof, not a Final Assessment;
 // voided_at marks a proof that stopped being the one to check (ADR 0029).
 export interface AssessmentReport { id: string; period_id: string; issuance_type: "preliminary" | "final"; version: number; content_sha256: string; proof_sha256: string | null; supersedes_id: string | null; supersede_reason: string | null; issued_at: string | null; voided_at: string | null; voided_by: string | null; dispute_deadline_at: string | null }
-export type AssessmentCapStatus = "required" | "submitted" | "approved" | "in_progress" | "closed" | "failed";
+export type AssessmentCapStatus = "required" | "submitted" | "approved" | "in_progress" | "closed" | "failed" | "withdrawn";
 export interface AssessmentCap { id: string; standard_name: string; status: AssessmentCapStatus | string; trigger_reason: string; due_at: string; overdue: boolean; submitted_at: string | null; closed_at: string | null; root_cause: string | null; corrective_actions: string | null; responsible_parties: string | null; timeline_note: string | null; monitoring_plan: string | null; closure_criteria: string | null; closure_note: string | null }
 // One row of a period's trail (ComplianceAssessmentAudit). before/after are
 // JSON text the writing handler chose; the console shows them as-is.

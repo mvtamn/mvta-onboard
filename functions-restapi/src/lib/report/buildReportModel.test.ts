@@ -98,3 +98,10 @@ test("OTP stop exclusions are reported by reason code", () => {
   const model = buildReportModel({ reportId: "r1", type: "final", version: 1, period, rows: [item()], evidence: [], issuedAt: null, deadline: null, schedules: { otpExclusions: [{ reason_code: "LAYOVER", stop_count: 12 }] } });
   assert.deepEqual(model.otpExclusions, [{ reasonCode: "LAYOVER", stopCount: 12 }]);
 });
+
+test("an occurrence excluded by a documented outage names the system", () => {
+  const model = buildReportModel({ reportId: "r1", type: "final", version: 1, period, rows: [item()], evidence: [], issuedAt: null, deadline: null, schedules: { occurrences: [
+    { standard_name: "Missed trips", service_date: "20260720", description: "Trip 4410 not operated", quantity: 1, qualifier_code: null, attribution: "contractor_error", source_ref: "MonitoredMissedTrips:gtfs:4410|20260720", claim_status: null, claim_description: null, evidence_hashes: null, outage_system: "Avail_CAD_AVL" },
+  ] } });
+  assert.deepEqual(model.occurrences.map(o => ({ counted: o.counted, why: o.exclusionReason })), [{ counted: false, why: "System outage: Avail CAD AVL" }]);
+});

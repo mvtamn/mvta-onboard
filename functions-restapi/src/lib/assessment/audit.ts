@@ -6,7 +6,7 @@
 // `entityIdExpr` and `actorParam` are T-SQL expressions the caller has in
 // scope (a bound parameter, a declared variable, or a column in an OUTPUT);
 // `after` and `before` are optional T-SQL expressions producing JSON text.
-export const AUDIT_ACTIONS = ["computed", "reviewed", "validation_shared", "finalized", "draft_generated", "issuance_proof_prepared", "issuance_proof_voided", "issued", "reopened", "correction_started", "stale_due_to_prior_period_reopen", "exception_authorized", "evidence_added", "dispute_filed", "dispute_decided", "cap_transitioned", "claim_filed", "claim_decided", "outage_logged", "outage_updated"] as const;
+export const AUDIT_ACTIONS = ["computed", "reviewed", "validation_shared", "finalized", "draft_generated", "issuance_proof_prepared", "issuance_proof_voided", "issued", "reopened", "correction_started", "stale_due_to_prior_period_reopen", "exception_authorized", "evidence_added", "dispute_filed", "dispute_decided", "cap_transitioned", "cap_required", "claim_filed", "claim_decided", "outage_logged", "outage_updated"] as const;
 export type AuditAction = typeof AUDIT_ACTIONS[number];
 export type AuditEntity = "period" | "assessment" | "report" | "dispute" | "cap" | "claim" | "outage";
 
