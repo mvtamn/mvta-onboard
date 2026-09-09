@@ -223,6 +223,7 @@ MIGRATIONS=(
   "migration-110-standard-category.sql"
   "migration-111-issuance-proof.sql"
   "migration-112-period-rules-lock.sql"
+  "migration-112-share-binds-reviewed-items.sql"
 )
 
 # Each migration's landing check: a query returning 1 when it is present.
@@ -238,6 +239,7 @@ CHECK_LABELS=(
   "110 · ContractorPerformanceStandards.category + the category list"
   "111 · ComplianceReports.voided_at/proof_sha256 + UX_CR_LiveProof"
   "112 · AssessmentPeriods.rules_locked_at"
+  "112 · ValidationDraftShares.computed_revision + items_sha256"
 )
 CHECK_QUERIES=(
   "SELECT COUNT(*) FROM sys.columns WHERE object_id=OBJECT_ID('dbo.AssessmentPeriodStandards') AND name='resolver_key'"
@@ -250,8 +252,9 @@ CHECK_QUERIES=(
   "SELECT CASE WHEN COL_LENGTH('dbo.ContractorPerformanceStandards','category') IS NOT NULL AND EXISTS(SELECT 1 FROM dbo.ReferenceValues WHERE domain='category') THEN 1 ELSE 0 END"
   "SELECT CASE WHEN COL_LENGTH('dbo.ComplianceReports','voided_at') IS NOT NULL AND COL_LENGTH('dbo.ComplianceReports','proof_sha256') IS NOT NULL AND EXISTS(SELECT 1 FROM sys.indexes WHERE name='UX_CR_LiveProof') THEN 1 ELSE 0 END"
   "SELECT CASE WHEN COL_LENGTH('dbo.AssessmentPeriods','rules_locked_at') IS NOT NULL THEN 1 ELSE 0 END"
+  "SELECT CASE WHEN COL_LENGTH('dbo.ValidationDraftShares','computed_revision') IS NOT NULL AND COL_LENGTH('dbo.ValidationDraftShares','items_sha256') IS NOT NULL THEN 1 ELSE 0 END"
 )
-CHECK_EXPECTED=("1" "1" "1" "5" "1" "1" "1" "1" "1" "1")
+CHECK_EXPECTED=("1" "1" "1" "5" "1" "1" "1" "1" "1" "1" "1")
 
 # The four arrays are keyed by position, and nothing else notices when they
 # drift. One short CHECK_QUERIES and every migration after the gap is verified
