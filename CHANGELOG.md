@@ -5,13 +5,23 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.167] - 2026-09-09
+## [1.5.168] - 2026-09-09
 
 - **Performance Assessment opens on one card for the contractor and month.** The contractor picker, the month stepper and the status pill replace the context bar, the "Open assessment month" button and the separate Assessment period select, which named the same month twice. Beneath them the card shows where the month is in its lifecycle (Opened, Computed, In review, Validation, Finalized, Issued), the proposed and recommended totals, and an Outstanding list — items awaiting review, monthly figures missing, occurrences needing an amount, CAPs flagged — each a link into the section where it is dealt with. One button names the next thing the month needs (open, compute, continue review, prepare the draft, finalize, issue), the same actions the section pages already allow at that status; `modules/assessment/glance.ts` holds those readings as pure functions with their own tests.
 - **Stepping to a month with no assessment shows it as Not opened**, with opening it as the action. A correction period (`supersedes_period_id`) is shown in place of the one it supersedes.
 - **Six sections instead of nine.** Scorecard, Occurrences, Monthly metrics, Review, CAPs and Issuance, each carrying a count of what is outstanding in it, so the bar reads as a to-do list as much as a menu. A standard's detail is reached from its scorecard row (with a *Back to scorecard* crumb) rather than from a KPI Detail tab; Report and Disputes are one Issuance section; the read-only standards catalog is a link at the end of the bar — to Administration for administrators, to the in-module mirror for everyone else. The bar is on the theme tokens too.
 - **A standard's detail is a page of its own.** The figure and how it was produced (base − relief × escalation = proposed) sit above the observations that count toward it, each naming the module it was observed in. A rail beside them carries the review — the same recommend, adjust and waive actions as the Review section, sharing its prompts, with the current recommendation and its reason — a Corrective action card when a CAP is flagged, the evidence versions with who added each and when, and the standard's source, team, owner and penalty bands (`describeBand`). Outcome pills across the module now use the tier labels from Lists rather than the raw `tier1`/`meets` values.
 - **The module's own title block and the four stat tiles are gone.** The card carries the figures and the page header already names the page. The card is drawn on the console's theme tokens (`styles.css`), so it follows the dark theme; the rest of `assessment.css` still carries its own palette.
+
+## [1.5.167] - 2026-09-09
+
+Phase B of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — console correctness.
+
+- **B1 — one cancellable loader for the selected period.** `usePeriodRows` (hook + 4 tests) replaces the rows fetch inside `act()`, which captured `selected` and stored a stale month's rows; the KPI selection resets with the period.
+- **B2 — the occurrence list carries a ranged penalty's bounds.** `lib/assessment/rangedPenalty.ts` OUTER APPLYs the tier effective on the occurrence's service date (qualifier first); the console's existing *Set amount…* now appears.
+- **B3 — review shows recommendations before binding.** `reviewDisplay` names the column *Recommendation* until finalized, *Binding decision* after; ScoreTable and ManagerReview use it.
+- **B4 — the Report page opens the artifact it manages.** `ReportWorkflow.tsx` (own file, 3 tests) gets Preview (hash-verified bytes in a `sandbox=""` iframe via `srcDoc`) and Download official HTML; `api.getAssessmentReportHtml`. Format helpers move to `assessmentFormat.tsx`.
+
 ## [1.5.166] - 2026-09-09
 
 Phase A of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — governance correctness.
@@ -28,9 +38,8 @@ Phase A of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — go
 
 ## [1.5.164] - 2026-09-09
 
-- **Three fixes that were written, reviewed and then stalled in open pull requests.** Each had been sitting for weeks against a `main` it could no longer merge into, so the work is re-landed here and the original PRs (#58, #120, #124) are closed pointing at this one.
+- **Three fixes that were written, reviewed and then stalled in open pull requests.** Each had been sitting for weeks against a `main` it could no longer merge into, so the work is re-landed here and the original PRs (#58, #120, #124) are closed pointing at this one. #124's privacy-policy link is the exception: it was re-landed and then reverted the same day, because a fuller version naming the Terms & Conditions and the Privacy Policy as two links was already in flight elsewhere.
   - **A second direction rule for the same movement no longer collides on priority.** `eventDirectionRules.ts` requires priority to be unique per Monitoring Area and boundary movement, but the editor defaulted every new rule to 0, so the second rule for a movement was refused on save. The editor now suggests the next free number, re-suggesting when the Area or the movement changes and folding in a rule saved moments ago that the refreshed list does not carry yet. A refused save now shows the server's reasons rather than only its summary line (from #58).
-  - **The rider subscribe form links to the privacy policy and terms.** The consent checkbox asked riders to agree to automated messages with nothing to read first (from #124).
   - **The first request after the dev database auto-pauses retries.** That database is serverless and pauses when idle; the resume takes 30 to 60 seconds and the first connection through it commonly fails with a transient socket error, which reached callers as a bare 500. The initial connect now retries four times with a widening delay. Only the connect is retried, never a query already in flight, so a non-idempotent write cannot be applied twice (from #58).
   - Also from #58: a `POST` to route classification whose body is valid JSON but not an object (a bare string, number or array) is refused with a clear message rather than reaching the validator as something it cannot read fields from.
 - **Removed: the pre-086 feed-health compatibility path.** `feedHealthTable()` resolved the ledger's name per call and accepted the pre-rename `MissedTripFeedHealth`, to cover the window where the migration and the deployment could land in either order. Migration 086 has been applied since 2026-08-28, and keeping the arm meant a database missing it would silently read a table nothing writes any more. `feedHealthTableReady()` names `KpiFeedHealth` alone and fails closed, so feed health reads as unavailable — which is true — rather than as stale-but-fine (from #120).
@@ -609,44 +618,20 @@ Phase A of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — go
 - **Event AVL histories are readable.** Message history, geofence crossings, and audit entries rendered as single muted paragraphs with every field run together by dots; each entry now carries its timestamp, label, and detail as distinct elements, with real empty states and a scroll region per panel.
 - **Event Planning links to Event AVL directly.** The activation handoff pointed at the legacy `/event-monitoring` redirect rather than `/events/avl`.
 
-## [1.5.47] - 2026-08-17
+## [1.5.49] - 2026-08-18
 
-- **Show the activation checklist while the Event Plan is still a draft.** The itemized readiness list and its repair links previously appeared only once the plan reached `approved` - after every item was already satisfied. Draft is the longest phase and the one where items are actually outstanding, so the list now renders from draft onward beside the activation readiness gate.
-- **Send the "complete the checklist" next action to the right panel.** The action that asks for a missing operational resource scrolled to *Plan details* (the Event picker and dates) instead of *Scope resources*, which is where routes, geofences, and locations are actually linked.
-- **Restore the staff console typecheck.** `@mvta/shared`'s build output had drifted behind its source, so the console typechecked against declarations missing `route_conflict`, `EventServicePlanRevision.links`, and the conflict-override argument. Rebuilding the shared package clears all 13 errors in Event Planning and the remaining Detour errors across the package. The affected behavior worked correctly at runtime; only the build was broken.
-
+- **Align fixed-route service-risk counts.** Overview, diagnostics, the exception list, and summary tiles now use the same raw-seconds threshold predicate, preserving missing-prediction telemetry instead of rounding before filtering.
 ## [1.5.48] - 2026-08-17
 
 - **Keep Event Planning context across resource administration.** Missing geofence links now preserve the selected Event Plan and revision, and Event Administration always offers an explicit return to Planning.
 - **Clarify Event Plan terminology and review evidence.** User-facing labels now consistently call the workflow object an Event Plan, lifecycle completion is labeled Completed, and review evidence lists the selected resource names.
 - **Improve Event Planning recovery and accessibility.** Empty consoles offer a first-Event action, resource selectors retain independent searches and failed bulk links, selected panels announce their changes, and remove actions identify their resource.
 
-## [1.5.50] - 2026-08-18
+## [1.5.47] - 2026-08-17
 
-- **Choose an Event Plan's geographic scope on a map.** Geofences and transit locations can now be added and removed by selecting them on a map beside the list, with in-scope boundaries filled and available ones dashed. Routes stay list-only - special service is absent from the GTFS schedule, so routes have no geometry to draw - and the list remains a complete alternative for every resource type.
-- **Copy an Event Plan to its next run.** Recurring Events reuse their routes, geofences, and locations almost unchanged while the dates always differ, so `Copy to a new Event Plan` carries the scope and deliberately leaves the operating period unset - landing the new draft on the dates as its first outstanding readiness item.
-- **The workspace stages stopped pretending to be destinations.** Plan, Review, and Activate all pointed at the same `/events/planning`, so choosing one reloaded the page you were already on. They now render as status; only Configure, which genuinely navigates to Event Administration, remains a link.
-
-- **The Event Planning next action now performs the step instead of scrolling to it.** Its button previously called `scrollIntoView` in every state, so the most prominent control on the page moved the viewport rather than advancing the work. It now submits for review, approves, and activates directly; an incomplete draft jumps to the resource selector that resolves the first missing readiness item, with that resource tab already chosen.
-- **Advancing an Event Plan no longer requires scrolling to a duplicate button.** The lifecycle panel repeated the same primary transition at the bottom of the page; the Next action panel is now the single control, and the panel points to it. Completion stays with the other deliberate active-plan controls, where suspend and modify already live.
-- **The conflict override reason moved into the panel that activates.** The one field standing between an operator and a live scope is no longer somewhere further down the page.
-- **Event AVL histories are readable.** Message history, geofence crossings, and audit entries rendered as single muted paragraphs with every field run together by dots; each entry now carries its timestamp, label, and detail as distinct elements, with real empty states and a scroll region per panel.
-- **Event Planning links to Event AVL directly.** The activation handoff pointed at the legacy `/event-monitoring` redirect rather than `/events/avl`.
-
-## [1.5.49] - 2026-08-18
-
-- **Align fixed-route service-risk counts.** Overview, diagnostics, the exception list, and summary tiles now use the same raw-seconds threshold predicate, preserving missing-prediction telemetry instead of rounding before filtering.
-## [1.5.49] - 2026-08-22
-
-- **Restore the missing in-app release notes.** The console's Changelog page and "What's new" popover were missing 1.5.46 and 1.5.47 entirely - `changelogData.ts` had not been hand-synced when those releases were cut, so the popover reported "not available yet" for the deployed build. Both versions are now present.
-
-## [1.5.48] - 2026-08-22
-
-- **Collapse and expand the side navigation.** The primary navigation rail now has a collapse control in its brand row that shrinks it to a 64px icon-only rail, giving map- and table-heavy pages (Event AVL, Detour Reports) the extra width. Every destination stays reachable while collapsed - group headings hide but their links remain, and each icon carries its label as a tooltip. The choice persists across reloads, and below 860px the existing off-canvas drawer still governs, so the collapsed rail is desktop-only.
-
-## [1.5.47] - 2026-08-20
-
-- **Lead Event AVL with the open notification queue.** Open Event notifications now appear above the vehicle map as the page's primary action, rather than below it; the map is retitled "Vehicle map" to match. Open-queue membership (pending, acknowledged, failed) is now a single named predicate covered by a test.
+- **Show the activation checklist while the Event Plan is still a draft.** The itemized readiness list and its repair links previously appeared only once the plan reached `approved` - after every item was already satisfied. Draft is the longest phase and the one where items are actually outstanding, so the list now renders from draft onward beside the activation readiness gate.
+- **Send the "complete the checklist" next action to the right panel.** The action that asks for a missing operational resource scrolled to *Plan details* (the Event picker and dates) instead of *Scope resources*, which is where routes, geofences, and locations are actually linked.
+- **Restore the staff console typecheck.** `@mvta/shared`'s build output had drifted behind its source, so the console typechecked against declarations missing `route_conflict`, `EventServicePlanRevision.links`, and the conflict-override argument. Rebuilding the shared package clears all 13 errors in Event Planning and the remaining Detour errors across the package. The affected behavior worked correctly at runtime; only the build was broken.
 
 ## [1.5.46] - 2026-08-16
 
@@ -658,27 +643,27 @@ Phase A of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — go
 
 - **Recover from invalid geofence rings.** Event Planning now rejects self-intersecting polygons before save, restores the previous boundary when an edit is invalid, and keeps the map available for another attempt.
 
-## [1.5.38] - 2026-08-15
+## [1.5.42] - 2026-08-15
 
-- **Populate the unassigned vehicle queue.** Event AVL now projects every fresh AVL vehicle; active plan and geofence scope continue to control assignments and crossing detection.
+- **Add operational Event AVL messaging control.** Planning now defines standard geofence message types for departing, passed, arriving-soon, or custom messages. Event AVL controls automatic Teams delivery for the selected active operating period; the arriving-soon message is triggered by entering its configured approach geofence.
 
-## [1.5.39] - 2026-08-15
+## [1.5.41] - 2026-08-15
 
-- **Clarify Event Planning.** Operating periods now use separate local date/time fields, resources use searchable checkbox selection, and activation presents a simpler readiness handoff.
-- **Improve direction-rule authoring.** Direction rules are organized into matching, movement, and message steps with compass presets, clearer delivery labels, and an Event AVL message preview.
+- **Separate the Event AVL queue from history.** Every crossing in an active operating scope now creates an operational queue item, with matched rules controlling the message and manual or automatic delivery. Completed Teams deliveries remain available in investigative history.
 
 ## [1.5.40] - 2026-08-15
 
 - **Identify buses by route in event messages.** Crossings now retain the AVL route ID alongside the bus number, so multiple buses operating the same event route remain distinguishable in Event AVL and Teams notifications.
 - **Allow geofence removal.** Administrators can remove a geofence from the resource list; removal deactivates it and preserves the record for audit. Active-plan geofences remain protected.
 
-## [1.5.41] - 2026-08-15
+## [1.5.39] - 2026-08-15
 
-- **Separate the Event AVL queue from history.** Every crossing in an active operating scope now creates an operational queue item, with matched rules controlling the message and manual or automatic delivery. Completed Teams deliveries remain available in investigative history.
+- **Clarify Event Planning.** Operating periods now use separate local date/time fields, resources use searchable checkbox selection, and activation presents a simpler readiness handoff.
+- **Improve direction-rule authoring.** Direction rules are organized into matching, movement, and message steps with compass presets, clearer delivery labels, and an Event AVL message preview.
 
-## [1.5.42] - 2026-08-15
+## [1.5.38] - 2026-08-15
 
-- **Add operational Event AVL messaging control.** Planning now defines standard geofence message types for departing, passed, arriving-soon, or custom messages. Event AVL controls automatic Teams delivery for the selected active operating period; the arriving-soon message is triggered by entering its configured approach geofence.
+- **Populate the unassigned vehicle queue.** Event AVL now projects every fresh AVL vehicle; active plan and geofence scope continue to control assignments and crossing detection.
 
 ## [1.5.37] - 2026-08-15
 

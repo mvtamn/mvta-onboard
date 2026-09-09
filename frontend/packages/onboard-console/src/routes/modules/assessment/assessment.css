@@ -105,3 +105,6 @@
 .assessment-evidence .grow{flex:1;min-width:0;overflow-wrap:anywhere}.assessment-evidence .grow small{display:block;color:var(--text-muted);font-size:11px}
 .assessment-obs{display:block;white-space:nowrap}.assessment-obs a{font-weight:600}.assessment-obs small{display:block;color:var(--text-muted);font-size:11px}
 @media(max-width:1000px){.assessment-detail{grid-template-columns:1fr}}
+/* The archived artifact, opened in place. Sandboxed: it can render, not run. */
+.assessment-preview{margin-top:12px;border:1px solid #ccd5df;border-radius:6px;padding:8px}
+.assessment-preview iframe{width:100%;height:70vh;border:0;background:#fff}
