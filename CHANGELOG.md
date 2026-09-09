@@ -5,6 +5,8 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.168] - 2026-09-09
+
 ## [1.5.167] - 2026-09-09
 
 Phase B of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — console correctness.
