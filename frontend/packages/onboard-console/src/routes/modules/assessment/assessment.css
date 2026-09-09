@@ -7,3 +7,7 @@
 /* The archived artifact, opened in place. Sandboxed: it can render, not run. */
 .assessment-preview{margin-top:12px;border:1px solid #ccd5df;border-radius:6px;padding:8px}
 .assessment-preview iframe{width:100%;height:70vh;border:0;background:#fff}
+
+/* A submitted plan's six elements, entered together and read back together. */
+.assessment-cap-form{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.assessment-cap-form label{display:flex;flex-direction:column;gap:4px;font-size:12px}.assessment-cap-form textarea{min-height:56px}.assessment-cap-form>div{grid-column:1/-1}
+.assessment-cap-fields{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin:8px 0 0}.assessment-cap-fields dt{font-size:11px;opacity:.7}.assessment-cap-fields dd{margin:0}

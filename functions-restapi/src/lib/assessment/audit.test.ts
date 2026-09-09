@@ -17,5 +17,6 @@ test("a period's trail covers the period, its items, its reports, and disputes o
   assert.match(sql, /entity_type='assessment' AND a\.entity_id IN \(SELECT id FROM PeriodKpiAssessments WHERE period_id=@period\)/);
   assert.match(sql, /entity_type='report' AND a\.entity_id IN \(SELECT id FROM ComplianceReports WHERE period_id=@period\)/);
   assert.match(sql, /entity_type='dispute'/);
+  assert.match(sql, /entity_type='cap' AND a\.entity_id IN \(SELECT id FROM CorrectiveActionPlans WHERE period_id=@period\)/);
   assert.match(sql, /ORDER BY a\.created_at DESC/);
 });

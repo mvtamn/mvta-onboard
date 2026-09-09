@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.170] - 2026-09-09
+
+Phase E of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — CAP lifecycle. (1.5.169 is Phase D on its own PR.)
+
+- **E1 — CAP transitions and due dates.** `lib/assessment/capTransitions.ts` is the rule: `required → submitted → approved → in_progress → closed | failed`, `submitted → required` for a return; submission needs the six elements (writer's act), approve/start/close/fail are the Issuing Authority's, closure needs a note; overdue = still `required` past `due_at`. `PATCH /api/assessment-caps/{id}` applies one transition under a row lock and audits it (`cap_transitioned`; the History trail now includes CAP rows). `GET /assessment-caps` returns `overdue` and the recorded fields. The console **CAPs** tab moves to `Caps.tsx` with the submission form and role-gated step buttons. The dead `capTriggers` / `consecutiveMonthsBelow` helpers are deleted.
+
 ## [1.5.169] - 2026-09-09
 
 Phase D of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — report content.
