@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.171] - 2026-09-09
+## [1.5.174] - 2026-09-09
 
 - **Performance Assessment opens on one card for the contractor and month.** The contractor picker, the month stepper and the status pill replace the context bar, the "Open assessment month" button and the separate Assessment period select, which named the same month twice. Beneath them the card shows where the month is in its lifecycle (Opened, Computed, In review, Validation, Finalized, Issued), the proposed and recommended totals, and an Outstanding list — items awaiting review, monthly figures missing, occurrences needing an amount, CAPs flagged — each a link into the section where it is dealt with. One button names the next thing the month needs (open, compute, continue review, prepare the draft, finalize, issue), the same actions the section pages already allow at that status; `modules/assessment/glance.ts` holds those readings as pure functions with their own tests.
 - **Stepping to a month with no assessment shows it as Not opened**, with opening it as the action. A correction period (`supersedes_period_id`) is shown in place of the one it supersedes.
@@ -15,6 +15,26 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **The scorecard reads in the contract's order.** Grouped by category (`groupByCategory`, shared with the Standards admin list), the categories as Lists orders them, with a totals row. **Monthly metrics is a checklist** (`metricsChecklist`, with tests) rather than a form above a history table: one line per hand-entered figure the month scores, missing ones first, each entered in place with its source of record and stamped with who entered it and when; before the first compute the catalog's scored flag stands in for the period's rows. Standards the month does not score are listed beneath with a way to change the assignments.
 - **Administration › Performance Assessment polish.** The four pages no longer repeat their title beneath the page header. Lists uses the same master-detail workspace as the other three, its twelve lists down the left with system lists marked. Contractors shows the Agreements under the selected contractor. Agreements groups its form into Term, Contract references and Process, with the units inside the fields. Standards groups its catalog by category and offers the catalog-or-Agreement ladder choice as a segmented control. Also fixed: a literal `\u2019` in the Lists introduction.
 - **The module's own title block and the four stat tiles are gone.** The card carries the figures and the page header already names the page. The card is drawn on the console's theme tokens (`styles.css`), so it follows the dark theme; the rest of `assessment.css` still carries its own palette.
+## [1.5.173] - 2026-09-09
+
+Phase H of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — ownership and bounded lists. (1.5.169–1.5.172 are Phases D–G on their own PRs.)
+
+- **H1 — owner identity and the month-end open-inputs list.** Migration 113 adds `ReferenceValues.principal_upn` (assigned_to domain only; the PUT handler accepts it there and lowercases it). `GET /api/manual-metrics/open?service_month=` lists every hand-entered scored standard of the active Agreement with no entry for the month, grouped by owner with their account. The console shows it on Monthly Metrics (`OpenInputs.tsx`, 2 tests): the signed-in owner's first, then everyone else's; Administration › Lists gets an *Account* column for owners.
+- **H2 — bounded list queries.** `GET /compliance-occurrences` takes `contractor_id`, `service_month`, `review_status`, `limit`, `offset`; `GET /manual-metrics` takes `contractor_id`, `service_month`, `limit`; `GET /assessment-periods` takes `contractor_id`, `limit` (default 120). The shared client passes filters; unfiltered calls keep working with a default cap.
+
+## [1.5.172] - 2026-09-09
+
+Phase G of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — database-backed confidence. (1.5.169–1.5.171 are Phases D–F on their own PRs.)
+
+- **G1 — lifecycle and concurrency contract test.** `assessmentLifecycle.db.contract.test.ts` runs in the CI SQL job (`test:decision-matrix-contract`): drops every table, applies the real migrations 030 → 112b from their files, seeds one contractor/Agreement/standard, opens a period through the same `schemaScope` helpers the handler uses, and asserts on real SQL Server: review preserved on an unchanged recompute and reset on a changed one (the hash seam); an approved claim excluded from the count and kept in the raw count (ADR 0012); the Escalation Streak over issued months only (ADR 0011); `materialChangeSql` withdrawing the share and voiding the live proof (ADR 0009/0029); `UX_CR_LiveProof` refusing a second live proof; `withPeriodReportLock` serialising two operations. `migration112b.db.contract.test.ts` joins the same script. Handler-inline SQL (finalize, issue) is still specified only by the in-memory seam.
+
+## [1.5.171] - 2026-09-09
+
+Phase F of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — relief intake. (1.5.169 and 1.5.170 are Phases D and E on their own PRs.)
+
+- **F1 — excusable-delay claims.** `GET/POST /api/excusable-delay-claims` and `POST …/{id}/decision` (Issuing Authority); `late_notice` from `lib/assessment/relief.ts` (`isLateNotice`, > 24 h); a decision runs `materialChangeSql` on the open period for that contractor-month; `PATCH /compliance-occurrences/{id}` accepts `relief_id` (must be a claim for the same contractor-month). Console: a **Relief** panel on the Occurrence Log and a per-occurrence claim selector.
+- **F2 — system outage windows.** `GET/POST/PATCH /api/system-outages`; `outageExclusionSql` maps an occurrence's `source_ref` to its observing system (Avail for `FixedRouteDepartures:avail_pullout` and `MonitoredMissedTrips:gtfs`, Spare for `MonitoredMissedTrips:spare` and `OnDemandDepartures:spare_duties`) and excludes it while a window for that system covers its service date; `assess.ts` counts `excludedForOutage` in the snapshot. Late notice (> 24 h) disqualifies relief: approving anyway needs a `late_notice_override` reason, kept with the decision. Window dates are compared as agency days (`AT TIME ZONE 'Central Standard Time'`), the CAP-window count applies the same exclusion, and a decision or a claim link on a shared month is a Material Assessment Change across every open period for that month. Audit rows: `claim_filed`, `claim_decided`, `outage_logged`, `outage_updated`; the History trail includes claims and the outage windows touching the month. The report's exclusion wording for outages lands once Phase D (#249) is on `main`.
+
 ## [1.5.170] - 2026-09-09
 
 Phase E of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — CAP lifecycle. (1.5.169 is Phase D on its own PR.)

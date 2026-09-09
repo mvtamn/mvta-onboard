@@ -1,7 +1,8 @@
 import { auditSql } from "../lib/assessment/audit";
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { assessPeriod } from "../lib/assessment/assess";
-import { agreementScope, assignedStandardCountSql, periodStandardSnapshotColumns, periodStandardSourceSql, periodTierCopyColumns, periodTierScopeSql, periodTierSnapshotColumns } from "../lib/assessment/schemaScope";
+import { openPeriodSql } from "../lib/assessment/openPeriod";
+import { agreementScope, assignedStandardCountSql, periodStandardSnapshotColumns, periodTierCopyColumns } from "../lib/assessment/schemaScope";
 import { COMPLIANCE_MANAGER_ROLES, COMPLIANCE_READ_ROLES, COMPLIANCE_WRITE_ROLES, requireRole } from "../lib/auth";
 import { getPool, sql } from "../lib/db";
 import { loadKpiTrust } from "../lib/kpiTrustStore";
@@ -18,7 +19,10 @@ app.http("assessmentPeriodsList", {
       const pool = await getPool();
       const check = await pool.request().query<{ ready: number }>(`SELECT CASE WHEN OBJECT_ID('dbo.AssessmentPeriods','U') IS NULL THEN 0 ELSE 1 END ready`);
       if (!check.recordset[0]?.ready) return { status: 200, jsonBody: { periods: [], diagnostics: { table_ready: false } } };
-      const result = await pool.request().query(`SELECT p.*,c.name contractor_name FROM AssessmentPeriods p JOIN Contractors c ON c.id=p.contractor_id ORDER BY service_month DESC,c.name`);
+      const q = pool.request(); const contractor = request.query.get("contractor_id");
+      const limit = Math.min(500, Math.max(1, Number(request.query.get("limit") ?? 120) || 120));
+      q.input("contractor", sql.UniqueIdentifier, isGuid(contractor) ? contractor : null); q.input("limit", sql.Int, limit);
+      const result = await q.query(`SELECT TOP (@limit) p.*,c.name contractor_name FROM AssessmentPeriods p JOIN Contractors c ON c.id=p.contractor_id WHERE (@contractor IS NULL OR p.contractor_id=@contractor) ORDER BY service_month DESC,c.name`);
       return { status: 200, jsonBody: { periods: result.recordset, diagnostics: { table_ready: true } } };
     } catch (error) { context.error("GET /assessment-periods failed", error); return { status: 500, jsonBody: { error: "Internal server error" } }; }
   },
@@ -57,30 +61,7 @@ app.http("assessmentPeriodsOpen", {
       }
       const write = pool.request(); write.input("contractor", sql.UniqueIdentifier, body.contractor_id); write.input("month", sql.Char(6), body.service_month);
       write.input("agreement", sql.UniqueIdentifier, contractor.recordset[0].agreement_id);
-      const result = await write.query<{ id: string }>(`
-        IF NOT EXISTS(SELECT 1 FROM AssessmentPeriods WHERE contractor_id=@contractor AND service_month=@month)
-          INSERT AssessmentPeriods(contractor_id,agreement_id,service_month) VALUES(@contractor,@agreement,@month);
-        DECLARE @period UNIQUEIDENTIFIER=(SELECT TOP 1 id FROM AssessmentPeriods WHERE contractor_id=@contractor AND service_month=@month ORDER BY assessment_revision DESC);
-        IF NOT EXISTS(SELECT 1 FROM AssessmentPeriodStandards WHERE period_id=@period)
-        BEGIN
-          INSERT AssessmentPeriodStandards(period_id,standard_id,${periodStandardSnapshotColumns(scope)})
-            SELECT @period,s.id,${periodStandardSnapshotColumns(scope).split(",").map((column) => `s.${column}`).join(",")}
-            ${periodStandardSourceSql(scope)};
-          -- Tier precedence (migration 102): an agreement's own tier rows
-          -- govern the whole ladder for that standard, or none of it. Blending
-          -- an override with catalog defaults would produce bands nobody wrote.
-          -- Pre-102 every row is a catalog default and the clause is empty.
-          INSERT AssessmentPeriodTiers(${periodTierSnapshotColumns(scope).columns})
-            SELECT ${periodTierSnapshotColumns(scope).select}
-            FROM ContractorStandardTiers t
-            JOIN AssessmentPeriodStandards s ON s.period_id=@period AND s.standard_id=t.standard_id
-            WHERE t.effective_start_date<=CONCAT(@month,'01') AND (t.effective_end_date IS NULL OR t.effective_end_date>=CONCAT(@month,'01'))
-              ${periodTierScopeSql(scope)};
-          DECLARE @rules NVARCHAR(MAX)=(SELECT s.*,JSON_QUERY((SELECT t.* FROM AssessmentPeriodTiers t WHERE t.period_id=s.period_id AND t.standard_id=s.standard_id ORDER BY t.tier_order FOR JSON PATH)) tiers FROM AssessmentPeriodStandards s WHERE s.period_id=@period ORDER BY s.sort_order FOR JSON PATH);
-          UPDATE AssessmentPeriods SET rule_set_json=@rules,rule_set_sha256=CONVERT(char(64),HASHBYTES('SHA2_256',@rules),2) WHERE id=@period;
-        END;
-        SELECT @period id;
-      `);
+      const result = await write.query<{ id: string }>(openPeriodSql(scope));
       return { status: 201, jsonBody: { id: result.recordset[0]?.id } };
     } catch (error) { context.error("POST /assessment-periods failed", error); return { status: 500, jsonBody: { error: "Internal server error" } }; }
   },

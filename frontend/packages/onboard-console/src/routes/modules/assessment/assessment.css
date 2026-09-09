@@ -146,3 +146,5 @@
 .assessment-metric-state .btn-sm{margin:0}
 table.data tr.assessment-total td{background:var(--surface-alt-bg);font-weight:700;border-top:1px solid var(--border-strong);border-bottom:0}
 @media(max-width:900px){.assessment-metric-head{display:none}.assessment-metric-row{grid-template-columns:1fr 1fr}}
+/* The signed-in owner has figures to enter: the banner leads with them. */
+.assessment-open-mine{border-left:4px solid #b45309}

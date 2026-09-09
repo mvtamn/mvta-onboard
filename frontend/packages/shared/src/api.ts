@@ -9,102 +9,115 @@
 import type {
   ActiveMessage,
   AdminMessage,
+  AppSettingRow,
+  AssessmentPeriod,
+  AvailAvlVehicle,
+  AvailMissedTripRecord,
+  AvailMissedTripsRouteRollup,
+  Category,
+  ComplianceOccurrence,
+  ContractorPerformanceStandard,
+  ContractorRecord,
+  ContractorStandardTier,
+  CreateDateExclusionInput,
+  CreateDetourInput,
+  CreateDetourIntakeInput,
   CreateMessageInput,
   CreateMessageResult,
+  CreateReasonCodeInput,
+  DecisionMatrixDiagnostics,
+  DecisionMatrixSurfaceDiagnostics,
+  Detour,
+  DetourCommunication,
+  DetourContractorNotification,
+  DetourFulfillmentMode,
+  DetourHistoricalImportResult,
+  DetourHistoricalImportRow,
+  DetourImage,
+  DetourIntake,
+  DetourIntakeStatus,
+  DetourLifecycleState,
+  DetourReasonCode,
+  DetourStatus,
+  DetourWorkflowHistoryEntry,
+  Event,
+  EventAuditEntry,
+  EventGeofence,
+  EventGeofenceCrossing,
+  EventGeofenceNotification,
+  EventGeofencePurposeOption,
+  EventGeofenceRule,
+  EventLocation,
+  EventMonitoringHealth,
+  EventOperationalMessaging,
+  EventScopeException,
+  EventServicePlan,
+  EventServicePlanRevision,
+  EventVehicleAssignment,
+  EventVehiclePosition,
   ExpirationDefault,
+  FixedRouteDeparture,
+  GtfsRouteOption,
+  ManagerAssessmentAction,
+  ManualMetricEntry,
+  MapsTokenResponse,
   MaskedSubscriber,
+  MissedTrip,
+  MissedTripReview,
+  MissedTripsDiagnostics,
+  MissedTripsMonthlySummaryResponse,
+  MonitoringAreaTest,
+  NearbyGtfsStop,
+  OccurrenceAttribution,
+  OccurrenceReviewStatus,
+  OnBoardAccessAuditEntry,
+  OnBoardAccessChangeRecord,
+  OnBoardAccessMetadata,
+  OnBoardAccessPrincipal,
+  OnBoardAccessReconciliationReport,
+  OnBoardDirectoryChange,
+  OnBoardSignInInformation,
+  OnDemandDeparture,
+  OnDemandRiskDiagnostics,
+  OnDemandRiskRecord,
+  OnDemandServiceStandardAudit,
+  OnDemandServiceStandardPolicy,
+  OpenManualInput,
+  OtpAuditEntry,
+  OtpDailyRow,
+  OtpDateExclusion,
+  OtpHistoricalBackfillInput,
+  OtpHistoricalBackfillResponse,
+  OtpMonthlyRouteRollup,
+  OtpMonthlyStopRow,
+  OtpMonthlyTrendPoint,
+  OtpReasonCode,
+  OtpSettingsRow,
+  OtpStopExclusion,
+  PeriodKpiAssessment,
+  PrepareSuggestedAlertInput,
+  PrepareSuggestedAlertResult,
+  ProcedureDraft,
+  ProcedureDraftInput,
+  ProcedureDraftSaveResult,
+  PutStopExclusionInput,
+  ReasonCodeAppliesTo,
+  RouteClassificationInput,
+  RouteClassificationListResponse,
+  RouteClassificationRow,
+  Severity,
   SubscribeInput,
   SubscribersSummary,
   SuggestedAlert,
   SuggestedAlertStatus,
-  PrepareSuggestedAlertInput,
-  PrepareSuggestedAlertResult,
   TripDelay,
   TripDelayDiagnostics,
-  OnDemandRiskRecord,
-  OnDemandRiskDiagnostics,
-  MissedTrip,
-  MissedTripsDiagnostics,
-  MissedTripReview,
-  ValidateMissedTripInput,
-  MissedTripsMonthlySummaryResponse,
-  GtfsRouteOption,
-  Category,
-  Severity,
-  AvailAvlVehicle,
-  FixedRouteDeparture,
-  OnDemandDeparture,
   TripStartLogResponse,
   TripStartVerification,
   TripStartVerificationAction,
-  OtpMonthlyStopRow,
-  OtpDailyRow,
-  OtpMonthlyRouteRollup,
-  AvailMissedTripRecord,
-  AvailMissedTripsRouteRollup,
-  Detour,
-  DetourStatus,
-  CreateDetourInput,
   UpdateDetourInput,
-  DetourReasonCode,
-  RouteClassificationRow,
-  RouteClassificationListResponse,
-  RouteClassificationInput,
-  EventVehiclePosition,
-  EventMonitoringHealth,
-  AppSettingRow,
-  Event, EventLocation, EventGeofence, EventGeofencePurposeOption, EventGeofenceRule, EventGeofenceCrossing, EventGeofenceNotification, EventOperationalMessaging, MonitoringAreaTest, EventServicePlan, EventServicePlanRevision, EventAuditEntry, EventVehicleAssignment,
-  EventScopeException,
-  OtpStopExclusion,
-  PutStopExclusionInput,
-  OtpDateExclusion,
-  CreateDateExclusionInput,
-  OtpAuditEntry,
-  OtpReasonCode,
-  ReasonCodeAppliesTo,
-  CreateReasonCodeInput,
   UpdateReasonCodeInput,
-  OtpSettingsRow,
-  OtpMonthlyTrendPoint,
-  OtpHistoricalBackfillInput,
-  OtpHistoricalBackfillResponse,
-  MapsTokenResponse,
-  DetourImage,
-  DetourIntake,
-  DetourIntakeStatus,
-  CreateDetourIntakeInput,
-  DetourFulfillmentMode,
-  DetourLifecycleState,
-  DetourCommunication,
-  DetourHistoricalImportResult,
-  DetourContractorNotification,
-  NearbyGtfsStop,
-  DetourHistoricalImportRow,
-  DetourWorkflowHistoryEntry,
-  ContractorPerformanceStandard,
-  ContractorRecord,
-  AssessmentPeriod,
-  PeriodKpiAssessment,
-  ComplianceOccurrence,
-  OccurrenceAttribution,
-  OccurrenceReviewStatus,
-  ContractorStandardTier,
-  ManualMetricEntry,
-  ManagerAssessmentAction,
-  ProcedureDraft,
-  ProcedureDraftInput,
-  ProcedureDraftSaveResult,
-  OnBoardAccessPrincipal,
-  OnBoardDirectoryChange,
-  OnBoardAccessChangeRecord,
-  OnBoardAccessAuditEntry,
-  OnBoardAccessMetadata,
-  OnBoardSignInInformation,
-  OnBoardAccessReconciliationReport,
-  OnDemandServiceStandardPolicy,
-  OnDemandServiceStandardAudit,
-  DecisionMatrixDiagnostics,
-  DecisionMatrixSurfaceDiagnostics,
+  ValidateMissedTripInput,
 } from "./types.js";
 
 export interface TokenRequestOptions {
@@ -1288,7 +1301,7 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     },
     putReferenceValue(id: string, input: {
       domain: string; value: string; label: string; description?: string | null;
-      sort_order?: number; severity_order?: number | null; is_active?: boolean;
+      sort_order?: number; severity_order?: number | null; is_active?: boolean; principal_upn?: string | null;
     }) {
       return request<{ id: string }>(`/api/reference-values/${id}`, { method: "PUT", body: JSON.stringify(input) }, true);
     },
@@ -1361,6 +1374,27 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     getAssessmentAudit(periodId: string, limit = 200, offset = 0) {
       return request<{ entries: import("./types.js").AssessmentAuditEntry[]; diagnostics: { limit: number; offset: number; returned_count: number } }>(`/api/compliance-assessment-audit?period_id=${encodeURIComponent(periodId)}&limit=${limit}&offset=${offset}`, {}, true);
     },
+    getExcusableDelayClaims(contractorId: string, serviceMonth: string) {
+      return request<{ claims: import("./types.js").ExcusableDelayClaim[] }>(`/api/excusable-delay-claims?contractor_id=${encodeURIComponent(contractorId)}&service_month=${encodeURIComponent(serviceMonth)}`, {}, true);
+    },
+    createExcusableDelayClaim(input: { contractor_id: string; service_month: string; event_description: string; event_started_at: string; notice_received_at: string; documentation_note?: string }) {
+      return request<{ id: string; late_notice: boolean }>("/api/excusable-delay-claims", { method: "POST", body: JSON.stringify(input) }, true);
+    },
+    decideExcusableDelayClaim(id: string, status: "approved" | "denied", decision_note: string, late_notice_override?: string) {
+      return request<{ id: string; status: string; late_notice: boolean }>(`/api/excusable-delay-claims/${id}/decision`, { method: "POST", body: JSON.stringify({ status, decision_note, ...(late_notice_override ? { late_notice_override } : {}) }) }, true);
+    },
+    getSystemOutages(serviceMonth?: string) {
+      return request<{ outages: import("./types.js").SystemOutageWindow[] }>(`/api/system-outages${serviceMonth ? `?service_month=${encodeURIComponent(serviceMonth)}` : ""}`, {}, true);
+    },
+    createSystemOutage(input: { system: string; started_at: string; ended_at?: string | null; scope_note: string }) {
+      return request<{ id: string }>("/api/system-outages", { method: "POST", body: JSON.stringify(input) }, true);
+    },
+    endSystemOutage(id: string, ended_at: string) {
+      return request<{ id: string }>(`/api/system-outages/${id}`, { method: "PATCH", body: JSON.stringify({ ended_at }) }, true);
+    },
+    linkOccurrenceRelief(id: string, review_status: OccurrenceReviewStatus, attribution: OccurrenceAttribution, relief_id: string | null) {
+      return request<{ id: string }>(`/api/compliance-occurrences/${id}`, { method: "PATCH", body: JSON.stringify({ review_status, attribution, relief_id }) }, true);
+    },
     transitionAssessmentCap(id: string, status: import("./types.js").AssessmentCapStatus, fields: Record<string, string> = {}) {
       return request<{ id: string; status: string }>(`/api/assessment-caps/${id}`, { method: "PATCH", body: JSON.stringify({ status, ...fields }) }, true);
     },
@@ -1382,8 +1416,9 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     createAssessmentEvidence(input: { assessment_id: string; blob_path: string; content_type: string; file_size_bytes: number; content_sha256: string; visibility: "internal" | "contractor"; caption?: string; supersedes_id?: string }) {
       return request<{ id: string }>("/api/assessment-evidence", { method: "POST", body: JSON.stringify(input) }, true);
     },
-    getComplianceOccurrences() {
-      return request<{ occurrences: ComplianceOccurrence[]; diagnostics: { table_ready: boolean } }>("/api/compliance-occurrences", {}, true);
+    getComplianceOccurrences(filter: { contractor_id?: string; service_month?: string; review_status?: OccurrenceReviewStatus; limit?: number; offset?: number } = {}) {
+      const qs = new URLSearchParams(); for (const [k, v] of Object.entries(filter)) if (v !== undefined && v !== "") qs.set(k, String(v));
+      return request<{ occurrences: ComplianceOccurrence[]; diagnostics: { table_ready: boolean } }>(`/api/compliance-occurrences${qs.size ? `?${qs}` : ""}`, {}, true);
     },
     // Settle one occurrence: whether it counts, and whose error it was. Backs
     // both the Performance Assessment module's occurrence queue and the inline
@@ -1398,8 +1433,13 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<{ id: string }>(`/api/compliance-occurrences/${id}/assessed-amount`,
         { method: "PUT", body: JSON.stringify({ assessed_amount, note }) }, true);
     },
-    getManualMetrics() {
-      return request<{ metrics: ManualMetricEntry[]; diagnostics: { table_ready: boolean } }>("/api/manual-metrics", {}, true);
+    getManualMetrics(filter: { contractor_id?: string; service_month?: string; limit?: number } = {}) {
+      const qs = new URLSearchParams(); for (const [k, v] of Object.entries(filter)) if (v !== undefined && v !== "") qs.set(k, String(v));
+      return request<{ metrics: ManualMetricEntry[]; diagnostics: { table_ready: boolean } }>(`/api/manual-metrics${qs.size ? `?${qs}` : ""}`, {}, true);
+    },
+    getOpenManualInputs(serviceMonth: string, scope: { contractor_id?: string; period_id?: string } = {}) {
+      const qs = new URLSearchParams({ service_month: serviceMonth }); if (scope.contractor_id) qs.set("contractor_id", scope.contractor_id); if (scope.period_id) qs.set("period_id", scope.period_id);
+      return request<{ open: OpenManualInput[]; service_month: string }>(`/api/manual-metrics/open?${qs}`, {}, true);
     },
     putManualMetric(input: { standard_id: string; contractor_id: string; service_month: string; metric_value: number; source_note: string }) {
       return request<{ id: string }>("/api/manual-metrics", { method: "PUT", body: JSON.stringify(input) }, true);

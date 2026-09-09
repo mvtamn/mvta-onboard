@@ -95,6 +95,10 @@ IF COL_LENGTH('dbo.ComplianceEvidence','supersedes_id') IS NULL ALTER TABLE dbo.
 IF COL_LENGTH('dbo.ComplianceEvidence','visibility') IS NULL ALTER TABLE dbo.ComplianceEvidence ADD visibility NVARCHAR(20) NOT NULL CONSTRAINT DF_CE_Visibility DEFAULT N'internal';
 IF COL_LENGTH('dbo.ComplianceEvidence','redaction_reason') IS NULL ALTER TABLE dbo.ComplianceEvidence ADD redaction_reason NVARCHAR(1000) NULL;
 IF COL_LENGTH('dbo.ComplianceEvidence','assessment_id') IS NULL ALTER TABLE dbo.ComplianceEvidence ADD assessment_id UNIQUEIDENTIFIER NULL REFERENCES dbo.PeriodKpiAssessments(id);
+-- The CHECK below names assessment_id; a batch is compiled before it runs,
+-- so the column must exist in an earlier batch or the constraint fails with
+-- "Invalid column name" on a database that never had it.
+GO
 IF EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID('dbo.ComplianceEvidence') AND name='CK_CE_OneParent')
     ALTER TABLE dbo.ComplianceEvidence DROP CONSTRAINT CK_CE_OneParent;
 ALTER TABLE dbo.ComplianceEvidence ADD CONSTRAINT CK_CE_OneParent CHECK((CASE WHEN occurrence_id IS NULL THEN 0 ELSE 1 END)+(CASE WHEN metric_entry_id IS NULL THEN 0 ELSE 1 END)+(CASE WHEN assessment_id IS NULL THEN 0 ELSE 1 END)=1);
