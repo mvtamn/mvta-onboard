@@ -14,7 +14,7 @@ import { isHandEntered, normalizeMeasurementSource } from "./measurementSource";
 import { notMeasurable } from "./resolvers/types";
 import type { StandardDirection, StandardTier, TierLabel } from "./types";
 
-interface PeriodRow { id: string; contractor_id: string; service_month: string; input_revision: number; status: string; rules_locked_at: Date | null }
+interface PeriodRow { id: string; contractor_id: string; agreement_id: string | null; service_month: string; input_revision: number; status: string; rules_locked_at: Date | null }
 interface StandardRow { id: string; code: string; standard_type: "occurrence" | "threshold"; direction: StandardDirection; is_safety_critical: boolean; measurement_source: string; resolver_key: string | null; target_value: number | null; target_display: string | null; band_scope: "per_occurrence" | "running_count" | null; cap_window_days: number | null; cap_window_threshold: number | null; cap_window_mode: "rolling_days" | "calendar_quarter" | null }
 interface TierRow { tier_order: number; tier_label: TierLabel; bound_low: number | null; bound_high: number | null; qualifier_code: string | null; penalty_basis: StandardTier["penaltyBasis"]; penalty_amount: number; triggers_cap: boolean; severity_order: number | null; penalty_amount_min: number | null; penalty_amount_max: number | null }
 
