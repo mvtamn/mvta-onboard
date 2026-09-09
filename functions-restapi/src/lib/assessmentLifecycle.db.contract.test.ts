@@ -6,7 +6,8 @@ import { assessPeriod } from "./assessment/assess";
 import { voidLiveIssuanceProofSql, withPeriodReportLock } from "./assessment/issuanceProof";
 import { materialChangeSql } from "./assessment/materialChange";
 import { reviewedItemsSha256Sql } from "./assessment/reviewedItems";
-import { agreementScope, assignedStandardCountSql, periodStandardSnapshotColumns, periodStandardSourceSql, periodTierScopeSql, periodTierSnapshotColumns } from "./assessment/schemaScope";
+import { openPeriodSql } from "./assessment/openPeriod";
+import { agreementScope, assignedStandardCountSql } from "./assessment/schemaScope";
 import { parseConnectionString, sql } from "./db";
 
 // The assessment lifecycle against a real SQL Server (the CI contract job's
@@ -60,23 +61,19 @@ async function seed(pool: sql.ConnectionPool) {
   const r = pool.request();
   await r.batch(`
     INSERT Contractors(id,name,contract_start_date,contract_end_date,is_active,updated_by) VALUES('${CONTRACTOR}','Transit Operations','20260101','20261231',1,'${ACTOR}');
-    INSERT PerformanceAgreements(id,contractor_id,starts_on,ends_on,is_active,updated_by) VALUES('${AGREEMENT}','${CONTRACTOR}','2026-01-01','2026-12-31',1,'${ACTOR}');
-    INSERT AgreementStandards(agreement_id,standard_id,is_scored,effective_start_date) SELECT '${AGREEMENT}',id,1,'20260101' FROM ContractorPerformanceStandards WHERE code='MISSED_TRIPS_FR';`);
+    INSERT PerformanceAgreements(id,contractor_id,starts_on,ends_on,is_active,created_by) VALUES('${AGREEMENT}','${CONTRACTOR}','2026-01-01','2026-12-31',1,'${ACTOR}');
+    INSERT AgreementStandards(agreement_id,standard_id,is_scored,effective_start_date,updated_by) SELECT '${AGREEMENT}',id,1,'20260101','${ACTOR}' FROM ContractorPerformanceStandards WHERE code='MISSED_TRIPS_FR';`);
 }
 
-// The open handler's SQL, composed through the same schemaScope helpers.
+// Opened with the handler's own SQL (lib/assessment/openPeriod), so a
+// change there is exercised here rather than silently diverging.
 async function openPeriod(pool: sql.ConnectionPool, month: string): Promise<string> {
   const scope = await agreementScope(pool);
   const req = pool.request(); req.input("contractor", sql.UniqueIdentifier, CONTRACTOR); req.input("month", sql.Char(6), month); req.input("agreement", sql.UniqueIdentifier, AGREEMENT);
   const assigned = (await req.query<{ n: number }>(`SELECT ${assignedStandardCountSql(scope)} n FROM Contractors c JOIN PerformanceAgreements a ON a.contractor_id=c.id WHERE c.id=@contractor`)).recordset[0].n;
   assert.ok(assigned > 0, "the agreement assigns the standard");
-  const result = await req.query<{ id: string }>(`
-    INSERT AssessmentPeriods(contractor_id,agreement_id,service_month) VALUES(@contractor,@agreement,@month);
-    DECLARE @period UNIQUEIDENTIFIER=(SELECT TOP 1 id FROM AssessmentPeriods WHERE contractor_id=@contractor AND service_month=@month ORDER BY assessment_revision DESC);
-    INSERT AssessmentPeriodStandards(period_id,standard_id,${periodStandardSnapshotColumns(scope)}) SELECT @period,s.id,${periodStandardSnapshotColumns(scope).split(",").map(c => `s.${c}`).join(",")} ${periodStandardSourceSql(scope)};
-    INSERT AssessmentPeriodTiers(${periodTierSnapshotColumns(scope).columns}) SELECT ${periodTierSnapshotColumns(scope).select} FROM ContractorStandardTiers t JOIN AssessmentPeriodStandards s ON s.period_id=@period AND s.standard_id=t.standard_id WHERE t.effective_start_date<=CONCAT(@month,'01') AND (t.effective_end_date IS NULL OR t.effective_end_date>=CONCAT(@month,'01')) ${periodTierScopeSql(scope)};
-    SELECT @period id;`);
-  return result.recordset[0].id;
+  const open = pool.request(); open.input("contractor", sql.UniqueIdentifier, CONTRACTOR); open.input("month", sql.Char(6), month); open.input("agreement", sql.UniqueIdentifier, AGREEMENT);
+  return (await open.query<{ id: string }>(openPeriodSql(scope))).recordset[0].id;
 }
 
 async function compute(pool: sql.ConnectionPool, periodId: string) {
@@ -157,16 +154,42 @@ test("assessment lifecycle against real SQL", { skip: !connectionString && "DECI
       await change.query(materialChangeSql("period", "actor"));
       const after = (await pool.request().query<{ status: string; shares_open: number; proofs_live: number; voided_audit: number }>(`SELECT (SELECT status FROM AssessmentPeriods WHERE id='${july}') status,(SELECT COUNT(*) FROM ValidationDraftShares WHERE period_id='${july}' AND superseded_at IS NULL) shares_open,(SELECT COUNT(*) FROM ComplianceReports WHERE period_id='${july}' AND issuance_type='final' AND issued_at IS NULL AND voided_at IS NULL) proofs_live,(SELECT COUNT(*) FROM ComplianceAssessmentAudit WHERE action='issuance_proof_voided') voided_audit`)).recordset[0];
       assert.deepEqual(after, { status: "stale", shares_open: 0, proofs_live: 0, voided_audit: 1 });
+      // The share bound the reviewed items (A2): re-doing a review after
+      // sharing makes the recorded hash differ from the one finalize recomputes.
+      const bound = pool.request(); bound.input("period", sql.UniqueIdentifier, july);
+      const before = (await bound.query<{ recorded: string; current: string }>(`SELECT TOP 1 v.items_sha256 recorded,${reviewedItemsSha256Sql("period")} current FROM ValidationDraftShares v WHERE v.period_id=@period ORDER BY v.shared_at DESC`)).recordset[0];
+      assert.equal(before.recorded, before.current, "the share recorded the items as reviewed");
+      await pool.request().query(`UPDATE PeriodKpiAssessments SET reviewed_input_sha256=REPLICATE('f',64) WHERE period_id='${july}'`);
+      const changed = (await bound.query<{ recorded: string; current: string }>(`SELECT TOP 1 v.items_sha256 recorded,${reviewedItemsSha256Sql("period")} current FROM ValidationDraftShares v WHERE v.period_id=@period ORDER BY v.shared_at DESC`)).recordset[0];
+      assert.notEqual(changed.recorded, changed.current, "a review changed after sharing no longer matches the share");
       // With the first proof voided, a new one can be prepared.
       await pool.request().query(`INSERT ComplianceReports(period_id,contractor_id,service_month,issuance_type,version,blob_path,content_sha256,assessed_total,generated_by) VALUES('${july}','${CONTRACTOR}','202607','final',2,'p/proof2.html',REPLICATE('c',64),0,'${ACTOR}')`);
       const v = pool.request(); v.input("period", sql.UniqueIdentifier, july); v.input("actor", sql.NVarChar(200), ACTOR);
       await v.query(voidLiveIssuanceProofSql("period", "actor"));
     });
 
-    await t.test("two report operations on one period serialise under the app lock", async () => {
+    await t.test("two concurrent prepares under the app lock leave exactly one live proof", async () => {
+      // Each prepare does what the create handler does under the lock: void
+      // the live proof, then insert its own. Concurrently, without the lock,
+      // the second INSERT would collide on UX_CR_LiveProof; with it, the
+      // second waits, sees the first's proof, voids it, and inserts.
+      const prepare = (version: number) => withPeriodReportLock(pool, july, async tx => {
+        const r = new sql.Request(tx); r.input("period", sql.UniqueIdentifier, july); r.input("actor", sql.NVarChar(200), ACTOR); r.input("version", sql.Int, version);
+        await r.query(`${voidLiveIssuanceProofSql("period", "actor")} INSERT ComplianceReports(period_id,contractor_id,service_month,issuance_type,version,blob_path,content_sha256,assessed_total,generated_by) VALUES(@period,'${CONTRACTOR}','202607','final',@version,CONCAT('p/proof',@version,'.html'),REPLICATE('d',64),0,@actor)`);
+        return version;
+      });
+      assert.deepEqual((await Promise.all([prepare(10), prepare(11)])).sort(), [10, 11]);
+      const live = (await pool.request().query<{ n: number }>(`SELECT COUNT(*) n FROM ComplianceReports WHERE period_id='${july}' AND issuance_type='final' AND issued_at IS NULL AND voided_at IS NULL`)).recordset[0].n;
+      assert.equal(live, 1);
+    });
+
+    await t.test("the lock holder finishes before the next operation starts", async () => {
+      // The second operation is released only once the first is inside the
+      // lock, so the ordering assertion does not depend on wall-clock timing.
       const order: string[] = [];
-      const first = withPeriodReportLock(pool, july, async () => { order.push("first-in"); await new Promise(r => setTimeout(r, 300)); order.push("first-out"); return 1; });
-      await new Promise(r => setTimeout(r, 50));
+      let firstInside: () => void = () => undefined; const inside = new Promise<void>(r => { firstInside = r; });
+      const first = withPeriodReportLock(pool, july, async () => { order.push("first-in"); firstInside(); await new Promise(r => setTimeout(r, 200)); order.push("first-out"); return 1; });
+      await inside;
       const second = withPeriodReportLock(pool, july, async () => { order.push("second-in"); return 2; });
       assert.deepEqual(await Promise.all([first, second]), [1, 2]);
       assert.deepEqual(order, ["first-in", "first-out", "second-in"]);
