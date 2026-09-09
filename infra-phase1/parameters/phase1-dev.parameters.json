@@ -7,6 +7,7 @@
     "uniqueSuffix": { "value": "mvta-jx4471" },
     "spareMissedTripsEnabled": { "value": true },
     "onDemandDeparturesEnabled": { "value": true },
+    "assessmentMonthBoundaryEnabled": { "value": false },
     "onDemandMonitoringEnabled": { "value": false },
     "onDemandMonitoringServiceIds": { "value": "" },
     "gtfsSilentNoShowEnabled": { "value": true },

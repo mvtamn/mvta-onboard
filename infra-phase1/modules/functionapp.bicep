@@ -15,6 +15,9 @@ param onDemandMonitoringEnabled bool = false
 param onDemandMonitoringServiceIds string = ''
 param onDemandDeparturesEnabled bool = false
 param gtfsSilentNoShowEnabled bool = false
+// The month-boundary timer (assessmentPeriodOpen) runs only where this is
+// true; off until the compute and the report are trusted in that environment.
+param assessmentMonthBoundaryEnabled bool = false
 param spareMissedTripServiceIds string = ''
 param spareContractorFaultValues string = ''
 param complianceReportsStorageAccountName string = ''
@@ -229,6 +232,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         // On-demand garage departures (onDemandDeparturesPoll) read Spare duties
         // named by the missed-trip requests above, so they share that scope.
         { name: 'ON_DEMAND_DEPARTURES_ENABLED', value: string(onDemandDeparturesEnabled) }
+        { name: 'ASSESSMENT_MONTH_BOUNDARY_ENABLED', value: string(assessmentMonthBoundaryEnabled) }
         // The activation gate for on-demand service-quality monitoring. It is
         // read by both onDemandSpareReconcile and the /on-demand-risks read
         // contract, so unset means the hourly reconciliation never runs, the

@@ -5,13 +5,23 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+- **I1 — `assessmentPeriodOpen`**, `0 0 6 1 * *` (06:00 UTC on the 1st; midnight CST or 01:00 CDT), opt-in by `ASSESSMENT_MONTH_BOUNDARY_ENABLED=true`, threaded through `main-phase1.bicep` and `phase1-dev.parameters.json` (default `false`). Per contractor whose Agreement covers the month: open the new period, open the prior if missing, compute the prior only while it is `open`/`stale`/`reopened` (a person's review is never recomputed by a clock), generate its Validation Draft unless the month still holds unreviewed candidates (then it warns and waits). Shares nothing, issues nothing, notifies no one (design §9). `lib/assessment/monthBoundary.ts` is the pure plan (Chicago month, 5 tests); the Validation Draft / Issuance Proof generation moves from the create handler into `lib/assessment/generateArtifact.ts` so the timer and the handler run one path, and `readModel` goes with it. `npm test` now runs the `lib/assessment` and `lib/report` seam tests too — the old glob never descended into them, so those suites had run only by hand.
+
+## [1.5.174] - 2026-09-09
+
+Phase I of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — the month-boundary timer. (1.5.173 is Phase H on its own PR.)
+
+<<<<<<< HEAD
+- **I1 — `assessmentPeriodOpen`**, `0 0 6 1 * *` (06:00 UTC on the 1st = 01:00 Central), opt-in by `ASSESSMENT_MONTH_BOUNDARY_ENABLED=true`. Per contractor whose Agreement covers the month: open the new period, open the prior if missing, compute the prior only while it is `open`/`stale`/`reopened` (a person's review is never recomputed by a clock), generate its Validation Draft. Shares nothing, issues nothing, notifies no one (design §9). `lib/assessment/monthBoundary.ts` is the pure plan (Chicago month, 5 tests); the Validation Draft / Issuance Proof generation moves from the create handler into `lib/assessment/generateArtifact.ts` so the timer and the handler run one path, and `readModel` goes with it.
+>>>>>>> ceefefb (I1: the month boundary opens, computes, and drafts - and then stops)
+
 ## [1.5.173] - 2026-09-09
 
 Phase H of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — ownership and bounded lists. (1.5.169–1.5.172 are Phases D–G on their own PRs.)
 
 - **H1 — owner identity and the month-end open-inputs list.** Migration 113 adds `ReferenceValues.principal_upn` (assigned_to domain only; the PUT handler accepts it there and lowercases it). `GET /api/manual-metrics/open?service_month=` lists every hand-entered scored standard of the active Agreement with no entry for the month, grouped by owner with their account. The console shows it on Monthly Metrics (`OpenInputs.tsx`, 2 tests): the signed-in owner's first, then everyone else's; Administration › Lists gets an *Account* column for owners.
 - **H2 — bounded list queries.** `GET /compliance-occurrences` takes `contractor_id`, `service_month`, `review_status`, `limit`, `offset`; `GET /manual-metrics` takes `contractor_id`, `service_month`, `limit`; `GET /assessment-periods` takes `contractor_id`, `limit` (default 120). The shared client passes filters; unfiltered calls keep working with a default cap.
-
+=======
 ## [1.5.172] - 2026-09-09
 
 Phase G of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — database-backed confidence. (1.5.169–1.5.171 are Phases D–F on their own PRs.)

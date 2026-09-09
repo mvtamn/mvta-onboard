@@ -27,6 +27,8 @@ param allowedCorsOrigins array = []
 @description('Enables bounded Spare Requests + Slots ingestion and missed-trip evaluation for the REST API.')
 param spareMissedTripsEnabled bool = false
 param onDemandDeparturesEnabled bool = false
+// The assessment month-boundary timer; off until the compute and report are trusted here.
+param assessmentMonthBoundaryEnabled bool = false
 
 @description('Enables the hourly authoritative on-demand reconciliation and the /on-demand-risks read contract. False leaves Service Risk & Quality reporting Not connected.')
 param onDemandMonitoringEnabled bool = false
@@ -128,6 +130,7 @@ module restApiFunction 'modules/functionapp.bicep' = {
     complianceReportsStorageAccountName: take('stmvtacompreport${environment}${cleanSuffix}', 24)
     spareMissedTripsEnabled: spareMissedTripsEnabled
     onDemandDeparturesEnabled: onDemandDeparturesEnabled
+    assessmentMonthBoundaryEnabled: assessmentMonthBoundaryEnabled
     onDemandMonitoringEnabled: onDemandMonitoringEnabled
     onDemandMonitoringServiceIds: onDemandMonitoringServiceIds
     gtfsSilentNoShowEnabled: gtfsSilentNoShowEnabled
