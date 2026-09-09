@@ -7,8 +7,10 @@ import { voidLiveIssuanceProofSql } from "./issuanceProof";
 // rendered from the pre-change state is voided with it (ADR 0029). Before
 // sharing, the same write is just a write - nothing to withdraw.
 //
-// Every handler that can make such a change runs this one fragment, so the
-// set of things a change touches is decided once. `periodParam` and
+// Every handler that records new information against a shared month -
+// evidence, exceptions - runs this one fragment, so what a change touches is
+// decided once. Reopen and Prepare void the proof on their own terms and are
+// not material changes. `periodParam` and
 // `actorParam` name parameters the caller has already bound.
 export const MATERIAL_CHANGE_STATUSES = ["in_validation", "finalized"] as const;
 

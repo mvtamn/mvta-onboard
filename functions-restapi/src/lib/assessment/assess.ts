@@ -59,6 +59,7 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
   const period = periodResult.recordset[0];
   if (!period) throw new Error("Assessment period not found");
   if (period.status === "finalized") throw new Error("Finalized periods must be reopened before recompute");
+  if (!period.agreement_id) throw new Error("Assessment Period has no Agreement; the Escalation Streak cannot be read");
 
   const scope = await agreementScopeIn(tx);
   // A period that has never been finalised is still drafting its rules, so it

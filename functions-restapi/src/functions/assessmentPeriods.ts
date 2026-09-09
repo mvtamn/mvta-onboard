@@ -116,7 +116,7 @@ app.http("assessmentPeriodFinalize", {
       const finalizeScope = await agreementScope(pool);
       const lockOnFinalize = finalizeScope.rulesLock ? ",rules_locked_at=SYSUTCDATETIME()" : "";
       const result = await req.query<{ changed: number }>(`
-        UPDATE AssessmentPeriods SET status='finalized',final_total=(SELECT SUM(recommended_amount) FROM PeriodKpiAssessments WHERE period_id=@id),finalized_by=@actor,finalized_at=SYSUTCDATETIME()${lockOnFinalize}
+        UPDATE AssessmentPeriods SET status='finalized',final_total=(SELECT SUM(CASE WHEN recommended_amount<0 THEN 0 ELSE recommended_amount END) FROM PeriodKpiAssessments WHERE period_id=@id),finalized_by=@actor,finalized_at=SYSUTCDATETIME()${lockOnFinalize}
         WHERE id=@id AND status='in_validation' AND validation_ends_on<=CONVERT(date,SYSUTCDATETIME()) AND computed_revision=input_revision
           AND EXISTS(SELECT 1 FROM ValidationDraftShares v WHERE v.period_id=@id AND v.superseded_at IS NULL AND v.computed_revision=AssessmentPeriods.computed_revision AND v.items_sha256=${reviewedItemsSha256Sql("id")})
           AND (SELECT COUNT(*) FROM PeriodKpiAssessments WHERE period_id=@id)=(SELECT COUNT(*) FROM AssessmentPeriodStandards WHERE period_id=@id)

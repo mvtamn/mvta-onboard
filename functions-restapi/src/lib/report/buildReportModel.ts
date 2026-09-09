@@ -25,9 +25,10 @@ export function buildReportModel(input: { reportId: string; type: "preliminary" 
     const computedAmount = Number(a.base_amount) * Number(a.escalation_multiplier);
     const reviewAction = final ? (a.manager_action ?? "pending") : (a.recommended_action ?? "pending");
     const reviewReason = final ? (a.binding_reason ?? a.manager_reason) : a.recommendation_reason;
-    const assessedAmount = final
+    // Never negative (ADR 0012): the same clamp finalization applies.
+    const assessedAmount = Math.max(0, final
       ? Number(a.binding_amount ?? a.final_amount ?? 0)
-      : Number(a.recommended_action ? a.recommended_amount ?? 0 : a.proposed_amount);
+      : Number(a.recommended_action ? a.recommended_amount ?? 0 : a.proposed_amount));
     return {
       name: a.name, standardType: a.standard_type,
       metricDisplay: notAssessable ? "Not Assessable" : a.metric_display ?? "",
