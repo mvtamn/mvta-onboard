@@ -78,7 +78,9 @@ async function openPeriod(pool: sql.ConnectionPool, month: string): Promise<stri
 
 async function compute(pool: sql.ConnectionPool, periodId: string) {
   const tx = new sql.Transaction(pool); await tx.begin();
-  try { await assessPeriod(tx, periodId); await tx.commit(); } catch (e) { await tx.rollback(); throw e; }
+  // Keep the real error: after a failed statement the rollback itself throws
+  // "Transaction has been aborted", which would replace the cause.
+  try { await assessPeriod(tx, periodId); await tx.commit(); } catch (e) { try { await tx.rollback(); } catch { /* already aborted */ } throw e; }
 }
 
 async function occurrence(pool: sql.ConnectionPool, day: string, opts: { attribution?: string; reliefId?: string | null } = {}) {
@@ -157,11 +159,11 @@ test("assessment lifecycle against real SQL", { skip: !connectionString && "DECI
       // The share bound the reviewed items (A2): re-doing a review after
       // sharing makes the recorded hash differ from the one finalize recomputes.
       const bound = pool.request(); bound.input("period", sql.UniqueIdentifier, july);
-      const before = (await bound.query<{ recorded: string; current: string }>(`SELECT TOP 1 v.items_sha256 recorded,${reviewedItemsSha256Sql("period")} current FROM ValidationDraftShares v WHERE v.period_id=@period ORDER BY v.shared_at DESC`)).recordset[0];
-      assert.equal(before.recorded, before.current, "the share recorded the items as reviewed");
+      const before = (await bound.query<{ recorded: string; current_hash: string }>(`SELECT TOP 1 v.items_sha256 recorded,${reviewedItemsSha256Sql("period")} current_hash FROM ValidationDraftShares v WHERE v.period_id=@period ORDER BY v.shared_at DESC`)).recordset[0];
+      assert.equal(before.recorded, before.current_hash, "the share recorded the items as reviewed");
       await pool.request().query(`UPDATE PeriodKpiAssessments SET reviewed_input_sha256=REPLICATE('f',64) WHERE period_id='${july}'`);
-      const changed = (await bound.query<{ recorded: string; current: string }>(`SELECT TOP 1 v.items_sha256 recorded,${reviewedItemsSha256Sql("period")} current FROM ValidationDraftShares v WHERE v.period_id=@period ORDER BY v.shared_at DESC`)).recordset[0];
-      assert.notEqual(changed.recorded, changed.current, "a review changed after sharing no longer matches the share");
+      const changed = (await bound.query<{ recorded: string; current_hash: string }>(`SELECT TOP 1 v.items_sha256 recorded,${reviewedItemsSha256Sql("period")} current_hash FROM ValidationDraftShares v WHERE v.period_id=@period ORDER BY v.shared_at DESC`)).recordset[0];
+      assert.notEqual(changed.recorded, changed.current_hash, "a review changed after sharing no longer matches the share");
       // With the first proof voided, a new one can be prepared.
       await pool.request().query(`INSERT ComplianceReports(period_id,contractor_id,service_month,issuance_type,version,blob_path,content_sha256,assessed_total,generated_by) VALUES('${july}','${CONTRACTOR}','202607','final',2,'p/proof2.html',REPLICATE('c',64),0,'${ACTOR}')`);
       const v = pool.request(); v.input("period", sql.UniqueIdentifier, july); v.input("actor", sql.NVarChar(200), ACTOR);
