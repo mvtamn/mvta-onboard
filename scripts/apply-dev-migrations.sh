@@ -222,8 +222,8 @@ MIGRATIONS=(
   "migration-109-window-modes-and-staffing-split.sql"
   "migration-110-standard-category.sql"
   "migration-111-issuance-proof.sql"
-  "migration-112-period-rules-lock.sql"
-  "migration-112-share-binds-reviewed-items.sql"
+  "migration-112a-period-rules-lock.sql"
+  "migration-112b-share-binds-reviewed-items.sql"
 )
 
 # Each migration's landing check: a query returning 1 when it is present.
@@ -238,8 +238,8 @@ CHECK_LABELS=(
   "109 · cap_window_mode + the four Operator Staffing standards"
   "110 · ContractorPerformanceStandards.category + the category list"
   "111 · ComplianceReports.voided_at/proof_sha256 + UX_CR_LiveProof"
-  "112 · AssessmentPeriods.rules_locked_at"
-  "112 · ValidationDraftShares.computed_revision + items_sha256"
+  "112a · AssessmentPeriods.rules_locked_at"
+  "112b · ValidationDraftShares.computed_revision + items_sha256"
 )
 CHECK_QUERIES=(
   "SELECT COUNT(*) FROM sys.columns WHERE object_id=OBJECT_ID('dbo.AssessmentPeriodStandards') AND name='resolver_key'"

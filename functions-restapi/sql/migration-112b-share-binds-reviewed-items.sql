@@ -1,4 +1,4 @@
--- Migration 112: a Shared Validation Draft is bound to the items it showed.
+-- Migration 112b: a Shared Validation Draft is bound to the items it showed.
 --
 -- Sharing a Validation Draft starts the contractor's Validation Window
 -- (ADR 0009). What it shared was recorded as a report id, and finalize only
@@ -22,7 +22,7 @@ SET XACT_ABORT ON;
 SET NOCOUNT ON;
 
 IF OBJECT_ID(N'dbo.ValidationDraftShares', N'U') IS NULL
-  THROW 50112, 'Migration 112 requires ValidationDraftShares (migration 032b).', 1;
+  THROW 50112, 'Migration 112b requires ValidationDraftShares (migration 032b).', 1;
 GO
 
 IF COL_LENGTH('dbo.ValidationDraftShares', 'computed_revision') IS NULL

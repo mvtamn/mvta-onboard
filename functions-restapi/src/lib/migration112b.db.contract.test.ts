@@ -3,7 +3,7 @@ import test from "node:test";
 import { reviewedItemsSha256Sql } from "./assessment/reviewedItems";
 import { parseConnectionString, sql } from "./db";
 
-// Runs the reviewed-items hash expression against a real SQL Server (the CI
+// Migration 112b. Runs the reviewed-items hash expression against a real SQL Server (the CI
 // contract job's container). STRING_AGG ... WITHIN GROUP and HASHBYTES are
 // exactly the kind of T-SQL a unit test cannot exercise, and the expression
 // is what binds a Shared Validation Draft to what finalization binds - if it
