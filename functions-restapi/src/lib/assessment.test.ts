@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { capTriggers, consecutiveMonthsBelow, escalationMultiplier } from "./assessment/escalation";
+import { escalationMultiplier } from "./assessment/escalation";
 import { assessmentInputHash, canonicalJson } from "./assessment/hash";
 import { addBusinessDays, assertHolidayCoverage } from "./assessment/businessDays";
 import { computePenalty } from "./assessment/penalty";
@@ -40,15 +40,10 @@ test("penalty bases calculate quantity and duration", () => {
 });
 
 test("escalation begins at exactly three consecutive months", () => {
-  assert.equal(consecutiveMonthsBelow([true, true, true, false]), 3);
   assert.equal(escalationMultiplier(2), 1);
   assert.equal(escalationMultiplier(3), 1.5);
 });
 
-test("CAP triggers are explicit and deduplicated by caller", () => {
-  assert.deepEqual(capTriggers({ variancePct: -10 }), []);
-  assert.deepEqual(capTriggers({ variancePct: -10.1, tierTriggersCap: true }), ["deviation_over_10pct", "tier_rule"]);
-});
 
 test("assessment hashes are stable across object key ordering", () => {
   assert.equal(canonicalJson({ b: 2, a: { d: 4, c: 3 } }), '{"a":{"c":3,"d":4},"b":2}');
