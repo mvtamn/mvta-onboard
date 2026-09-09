@@ -222,6 +222,7 @@ MIGRATIONS=(
   "migration-109-window-modes-and-staffing-split.sql"
   "migration-110-standard-category.sql"
   "migration-111-issuance-proof.sql"
+  "migration-112-period-rules-lock.sql"
 )
 
 # Each migration's landing check: a query returning 1 when it is present.
@@ -236,6 +237,7 @@ CHECK_LABELS=(
   "109 · cap_window_mode + the four Operator Staffing standards"
   "110 · ContractorPerformanceStandards.category + the category list"
   "111 · ComplianceReports.voided_at/proof_sha256 + UX_CR_LiveProof"
+  "112 · AssessmentPeriods.rules_locked_at"
 )
 CHECK_QUERIES=(
   "SELECT COUNT(*) FROM sys.columns WHERE object_id=OBJECT_ID('dbo.AssessmentPeriodStandards') AND name='resolver_key'"
@@ -247,8 +249,9 @@ CHECK_QUERIES=(
   "SELECT CASE WHEN COL_LENGTH('dbo.ContractorPerformanceStandards','cap_window_mode') IS NOT NULL AND EXISTS(SELECT 1 FROM sys.check_constraints WHERE name='CK_CPS_CapWindowMode') AND (SELECT COUNT(*) FROM dbo.ContractorPerformanceStandards WHERE code IN ('OPERATOR_STAFFING_LEVEL','PIVOT_COVERAGE','PIVOT_MISUSE','UNQUALIFIED_OPERATOR')) = 4 THEN 1 ELSE 0 END"
   "SELECT CASE WHEN COL_LENGTH('dbo.ContractorPerformanceStandards','category') IS NOT NULL AND EXISTS(SELECT 1 FROM dbo.ReferenceValues WHERE domain='category') THEN 1 ELSE 0 END"
   "SELECT CASE WHEN COL_LENGTH('dbo.ComplianceReports','voided_at') IS NOT NULL AND COL_LENGTH('dbo.ComplianceReports','proof_sha256') IS NOT NULL AND EXISTS(SELECT 1 FROM sys.indexes WHERE name='UX_CR_LiveProof') THEN 1 ELSE 0 END"
+  "SELECT CASE WHEN COL_LENGTH('dbo.AssessmentPeriods','rules_locked_at') IS NOT NULL THEN 1 ELSE 0 END"
 )
-CHECK_EXPECTED=("1" "1" "1" "5" "1" "1" "1" "1" "1")
+CHECK_EXPECTED=("1" "1" "1" "5" "1" "1" "1" "1" "1" "1")
 
 # The four arrays are keyed by position, and nothing else notices when they
 # drift. One short CHECK_QUERIES and every migration after the gap is verified

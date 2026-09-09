@@ -1,5 +1,7 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { ADMIN_ROLES, COMPLIANCE_READ_ROLES, requireRole } from "../lib/auth";
+import { agreementScopeIn } from "../lib/assessment/schemaScope";
+import { markRulesChanged } from "../lib/assessment/ruleChange";
 import { getPool, sql } from "../lib/db";
 import { agreementScope } from "../lib/assessment/schemaScope";
 import { isGuid, validateAgreementStandardAssignments, validatePerformanceAgreement } from "../lib/validation";
@@ -190,8 +192,12 @@ app.http("performanceAgreementStandardsPut", {
           return { status: 404, jsonBody: { error: `Standard ${String(assignment.standard_id)} not found` } };
         }
       }
+      // Which standards an Agreement scores is a rule, and a period drafting
+      // now would otherwise keep scoring the set it opened with.
+      const staled = await markRulesChanged(tx, { agreementId: id },
+        auth.principal.userDetails ?? "onboard-console", (await agreementScopeIn(tx)).rulesLock);
       await tx.commit();
-      return { status: 200, jsonBody: { id, assignment_count: assignments.length } };
+      return { status: 200, jsonBody: { id, assignment_count: assignments.length, periods_marked_stale: staled } };
     } catch (error) {
       try { await tx.rollback(); } catch { /* the transaction is already resolved */ }
       context.error("PUT /performance-agreements/{id}/standards failed", error);

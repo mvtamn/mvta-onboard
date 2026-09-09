@@ -109,8 +109,13 @@ app.http("assessmentPeriodFinalize", {
         return { status: 409, jsonBody: { error: "Assessment finalization is unavailable while OTP KPI trust is stale or unavailable." } };
       }
       const req = pool.request(); req.input("id", sql.UniqueIdentifier, request.params.id); req.input("actor", sql.NVarChar(200), auth.principal.userDetails ?? "onboard-console");
+      // Finalising is the moment the figure is agreed, so it is the moment the
+      // rule set stops being a draft. Composed in only where migration 111 has
+      // run, like every other guarded column.
+      const finalizeScope = await agreementScope(pool);
+      const lockOnFinalize = finalizeScope.rulesLock ? ",rules_locked_at=SYSUTCDATETIME()" : "";
       const result = await req.query<{ changed: number }>(`
-        UPDATE AssessmentPeriods SET status='finalized',final_total=(SELECT SUM(recommended_amount) FROM PeriodKpiAssessments WHERE period_id=@id),finalized_by=@actor,finalized_at=SYSUTCDATETIME()
+        UPDATE AssessmentPeriods SET status='finalized',final_total=(SELECT SUM(recommended_amount) FROM PeriodKpiAssessments WHERE period_id=@id),finalized_by=@actor,finalized_at=SYSUTCDATETIME()${lockOnFinalize}
         WHERE id=@id AND status='in_validation' AND validation_ends_on<=CONVERT(date,SYSUTCDATETIME()) AND computed_revision=input_revision
           AND (SELECT COUNT(*) FROM PeriodKpiAssessments WHERE period_id=@id)=(SELECT COUNT(*) FROM AssessmentPeriodStandards WHERE period_id=@id)
           AND EXISTS(SELECT 1 FROM PeriodKpiAssessments WHERE period_id=@id)
