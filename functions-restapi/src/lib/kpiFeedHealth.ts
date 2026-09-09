@@ -3,21 +3,18 @@
 import { sql } from "./db";
 import type { KpiFeedName } from "./kpiTrust";
 
-// Migration 086 renamed dbo.MissedTripFeedHealth to dbo.KpiFeedHealth.
-// Resolving the name per call keeps writes working whichever of the migration
-// and the deployment lands first; drop the legacy arm once 086 is applied
-// everywhere. Both values are literals from this closed set, never input, so
-// interpolating them into a statement introduces no injection surface.
-export type FeedHealthTable = "KpiFeedHealth" | "MissedTripFeedHealth";
-
-export async function feedHealthTable(pool: sql.ConnectionPool): Promise<FeedHealthTable | null> {
-  const result = await pool.request().query<{ table_name: FeedHealthTable | null }>(`
-    SELECT CASE
-      WHEN OBJECT_ID('dbo.KpiFeedHealth', 'U') IS NOT NULL THEN 'KpiFeedHealth'
-      WHEN OBJECT_ID('dbo.MissedTripFeedHealth', 'U') IS NOT NULL THEN 'MissedTripFeedHealth'
-      ELSE NULL END AS table_name
+// Migration 086 renamed dbo.MissedTripFeedHealth to dbo.KpiFeedHealth, and has
+// been applied to the only environment that exists since 2026-08-28. The
+// compatibility arm that also accepted the pre-086 name is gone: it existed to
+// cover the window where the deployment and the migration could land in either
+// order, and keeping it past that window means a database missing 086 reads the
+// old table and reports feed health that nothing writes any more. Naming one
+// table fails closed instead - feed health reads as unavailable, which is true.
+export async function feedHealthTableReady(pool: sql.ConnectionPool): Promise<boolean> {
+  const result = await pool.request().query<{ ready: number }>(`
+    SELECT CASE WHEN OBJECT_ID('dbo.KpiFeedHealth', 'U') IS NULL THEN 0 ELSE 1 END AS ready
   `);
-  return result.recordset[0]?.table_name ?? null;
+  return result.recordset[0]?.ready === 1;
 }
 
 // What a completed ingestion run should write to this ledger.
@@ -65,8 +62,7 @@ export async function recordFeedHealth(
   sourceTimestampSeconds: number | null,
   coverage?: { startAt?: Date | null; endAt?: Date | null },
 ): Promise<void> {
-  const table = await feedHealthTable(pool);
-  if (!table) return;
+  if (!await feedHealthTableReady(pool)) return;
   const sourceTimestamp =
     sourceTimestampSeconds && Number.isFinite(sourceTimestampSeconds)
       ? new Date(sourceTimestampSeconds * 1000)
@@ -78,7 +74,7 @@ export async function recordFeedHealth(
   req.input("coverage_start_at", sql.DateTime2, coverage?.startAt ?? sourceTimestamp);
   req.input("coverage_end_at", sql.DateTime2, coverage?.endAt ?? sourceTimestamp);
   await req.query(`
-    MERGE ${table} WITH (HOLDLOCK) AS target
+    MERGE KpiFeedHealth WITH (HOLDLOCK) AS target
     USING (SELECT @feed_name AS feed_name) AS src
     ON target.feed_name = src.feed_name
     WHEN MATCHED THEN UPDATE SET
@@ -99,11 +95,10 @@ export async function recordFeedHealth(
 }
 
 export async function recordFeedFailure(pool: sql.ConnectionPool, feedName: KpiFeedName, error: unknown): Promise<void> {
-  const table = await feedHealthTable(pool);
-  if (!table) return;
+  if (!await feedHealthTableReady(pool)) return;
   const message = error instanceof Error ? error.message : String(error);
   await pool.request().input("feed_name", sql.NVarChar, feedName).input("reason", sql.NVarChar(1000), message.slice(0, 1000)).query(`
-    MERGE ${table} WITH (HOLDLOCK) AS target
+    MERGE KpiFeedHealth WITH (HOLDLOCK) AS target
     USING (SELECT @feed_name AS feed_name) AS src ON target.feed_name = src.feed_name
     WHEN MATCHED THEN UPDATE SET last_failure_at = SYSUTCDATETIME(), last_failure_reason = @reason, updated_at = SYSUTCDATETIME()
     WHEN NOT MATCHED THEN INSERT(feed_name, last_failure_at, last_failure_reason) VALUES(@feed_name, SYSUTCDATETIME(), @reason);
