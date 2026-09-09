@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { FALLBACK_TIER_LABELS, describeBand, isAutomated, optionsFor, sourceLabel, type VocabularyOption } from "../../performanceStandardsVocabulary.js";
-import { currentMonth, lifecycleStages, nextAction, outstandingItems, periodFor, statusPill, stepMonth } from "./glance.js";
+import { currentMonth, lifecycleStages, nextAction, occurrencesNeedingAmount, outstandingItems, periodFor, reviewProgress, statusPill, stepMonth } from "./glance.js";
 import { groupByCategory, type CategoryGroup } from "./categoryGroups.js";
 import { metricsChecklist, type MetricsChecklist } from "./metricsChecklist.js";
 import type { AgreementStandardAssignment, AssessmentDispute, AssessmentEvidence, AssessmentPeriod, AssessmentPeriodStatus, ComplianceOccurrence, ContractorPerformanceStandard, ContractorRecord, ContractorStandardTier, ExcusableDelayClaim, ManualMetricEntry, OccurrenceAttribution, OccurrenceReviewStatus, PerformanceAgreementRecord, PeriodKpiAssessment, ReferenceValue } from "@mvta/shared";
@@ -55,7 +55,8 @@ export function AssessmentModule(){
   const openCatalog=()=>isAdmin?navigate("/admin/performance/standards"):setPage("standards");
   const checklist=useMemo(()=>metricsChecklist(rows,standards,periodMetrics,agreement?new Set(assignments.filter(a=>a.agreement_id===agreement.id).map(a=>a.standard_id)):undefined),[rows,standards,periodMetrics,agreement,assignments]);
   const groups=useMemo(()=>groupByCategory(rows,r=>standards.find(s=>s.id===r.standard_id)?.category,vocab.categories),[rows,standards,vocab.categories]);
-  const counts:Record<NavKey,number>={scorecard:0,occurrences:period?periodOccurrences.length:0,metrics:checklist.scored.length-checklist.entered,review:rows.filter(r=>!r.recommended_action&&r.assessment_outcome!=="not_assessable").length,caps:totals.caps,issuance:0,history:0};
+  const barProgress=reviewProgress(rows);
+  const counts:Record<NavKey,number>={scorecard:0,occurrences:period?occurrencesNeedingAmount(periodOccurrences):0,metrics:checklist.scored.length-checklist.entered,review:barProgress.total-barProgress.reviewed,caps:totals.caps,issuance:0,history:0};
   // Rows are reloaded by the period loader, keyed on refreshKey, so an
   // action's refresh can never land on a period selected after it started.
   async function act(action:()=>Promise<unknown>){setBusy(true);setError("");try{await action();await load();setRefreshKey(k=>k+1)}catch(e){setError(e instanceof Error?e.message:"Action failed")}finally{setBusy(false)}}
@@ -70,8 +71,8 @@ export function AssessmentModule(){
       <span className="assessment-nav-spacer"/>
       {isAdmin?<Link className="assessment-nav-link" to="/admin/performance/standards">Standards catalog {externalIcon}</Link>:<button type="button" className={`assessment-nav-link${page==="standards"?" active":""}`} onClick={()=>setPage("standards")}>Standards catalog</button>}
     </nav>
-    {page==="scorecard"&&(!period?<Empty>Open this assessment month to view its scorecard.</Empty>:<ScoreTable rows={rows} groups={groups} totals={totals} status={period.status} tiers={vocab.tiers} busy={busy} onDetail={r=>{setDetailId(r.id);setPage("detail")}} onEnterFigure={()=>setPage("metrics")}/>)}
-    {page==="detail"&&(!period?<Empty>Open this assessment month, then choose a standard from its scorecard.</Empty>:<div className="assessment-stack">
+    {page==="scorecard"&&(!period?<Empty>Open this Assessment Period to view its scorecard.</Empty>:<ScoreTable rows={rows} groups={groups} totals={totals} status={period.status} tiers={vocab.tiers} busy={busy} onDetail={r=>{setDetailId(r.id);setPage("detail")}} onEnterFigure={()=>setPage("metrics")}/>)}
+    {page==="detail"&&(!period?<Empty>Open this Assessment Period, then choose a standard from its scorecard.</Empty>:<div className="assessment-stack">
       <div className="assessment-detail-bar"><button type="button" className="assessment-crumb" onClick={()=>setPage("scorecard")}>{chevron("left")} Back to scorecard</button><select aria-label="Standard" value={detailId} onChange={e=>setDetailId(e.target.value)}>{rows.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}</select></div>
       {detail?<StandardDetail row={detail} period={period} standard={standards.find(s=>s.id===detail.standard_id)} ladder={tiers.filter(t=>t.standard_id===detail.standard_id&&!t.agreement_id&&!t.effective_end_date).sort((a,b)=>a.tier_order-b.tier_order)} occurrences={periodOccurrences.filter(o=>o.standard_id===detail.standard_id)} vocab={vocab} busy={busy} onReview={(r,a,amount,reason)=>void act(()=>api.reviewPeriodAssessment(r.id,a,amount,reason))} onGo={setPage}/>:<Empty>Compute this month to produce detail for its standards.</Empty>}
     </div>)}
@@ -93,13 +94,13 @@ export function AssessmentModule(){
 const chevron=(direction:"left"|"right")=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={direction==="left"?"m15 6-6 6 6 6":"m9 6 6 6-6 6"}/></svg>;
 const check=<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>;
 function Glance({contractors,contractorId,onContractor,month,onMonth,period,agreement,rows,occurrences,totals,missingFigures,busy,manageOpen,onManage,onOpen,onCompute,onFinalize,onGo}:{contractors:ContractorRecord[];contractorId:string;onContractor:(id:string)=>void;month:string;onMonth:(month:string)=>void;period:AssessmentPeriod|undefined;agreement:PerformanceAgreementRecord|undefined;rows:PeriodKpiAssessment[];occurrences:ComplianceOccurrence[];totals:AssessmentTotals;missingFigures:number;busy:boolean;manageOpen:boolean;onManage:()=>void;onOpen:()=>void;onCompute:()=>void;onFinalize:()=>void;onGo:(page:Page)=>void}){
-  const status=period?.status??null,stages=lifecycleStages(status),pill=statusPill(status),action=nextAction(status,totals.pending),items=outstandingItems(rows,occurrences,missingFigures),reviewed=rows.filter(r=>r.recommended_action).length;
+  const status=period?.status??null,stages=lifecycleStages(status),pill=statusPill(status),action=nextAction(status,totals.pending),items=outstandingItems(rows,occurrences,missingFigures),progress=reviewProgress(rows);
   const run=()=>{if(action.kind==="open")onOpen();else if(action.kind==="compute")onCompute();else if(action.kind==="finalize")onFinalize();else onGo(action.page)};
   const reference=agreement?[agreement.contract_number,agreement.exhibit_reference].filter(Boolean).join(" · "):"";
   return <section className="assessment-glance" aria-label="Assessment month at a glance">
     <div className="assessment-glance-top">
       <div className="assessment-glance-identity">
-        <select className="assessment-glance-picker" aria-label="Contractor" value={contractorId} disabled={!contractors.length} onChange={e=>onContractor(e.target.value)}>{!contractors.length&&<option value="">No active contractor</option>}{contractors.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>
+        <select className="assessment-glance-picker" aria-label="Contractor" value={contractorId} disabled={!contractors.length} onChange={e=>onContractor(e.target.value)}>{!contractors.length&&<option value="">No Assessment Contractor</option>}{contractors.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>
         <span className="assessment-glance-month"><button type="button" aria-label="Previous month" disabled={busy} onClick={()=>onMonth(stepMonth(month,-1))}>{chevron("left")}</button><strong>{formatMonth(month)}</strong><button type="button" aria-label="Next month" disabled={busy} onClick={()=>onMonth(stepMonth(month,1))}>{chevron("right")}</button></span>
         <span className={`pill-sm ${pill.className}`}>{pill.label}</span>
       </div>
@@ -114,7 +115,7 @@ function Glance({contractors,contractorId,onContractor,month,onMonth,period,agre
       <ol className="assessment-lifecycle" aria-label="Lifecycle">{stages.map(s=><li key={s.label} className={s.state} aria-current={s.state==="current"?"step":undefined}><span className="assessment-lifecycle-node" aria-hidden="true">{s.state==="done"?check:null}</span><span>{s.label}</span></li>)}</ol>
       <div className="assessment-figures">
         <div><span>Proposed penalties</span><strong>{money(totals.proposed)}</strong><small>Automation, before review</small></div>
-        <div><span>Recommended so far</span><strong>{money(totals.final)}</strong><small>{reviewed} of {rows.length} items reviewed</small></div>
+        <div><span>Recommended so far</span><strong>{money(totals.final)}</strong><small>{progress.reviewed} of {progress.total} items reviewed</small></div>
         <div className="assessment-outstanding"><span>Outstanding</span>{items.length?items.map(i=><button type="button" key={i.key} className={i.quiet?"quiet":undefined} onClick={()=>onGo(i.page)}>{i.label}</button>):<small>{rows.length?"Nothing outstanding":period?"Compute the month to score it":"Open the month to begin"}</small>}</div>
       </div>
     </div>
@@ -195,7 +196,7 @@ return <section><div className="assessment-section-head"><div><h3>Occurrence Log
 // The period's rows say which standards those are; before the first compute
 // the catalog's scored flag stands in.
 function Metrics({checklist:list,computed,period,busy,onCatalog,onSave}:{checklist:MetricsChecklist;computed:boolean;period:AssessmentPeriod|undefined;busy:boolean;onCatalog:()=>void;onSave:(id:string,value:number,note:string)=>void}){
-  if(!period)return <Empty>Open this assessment month to enter its figures.</Empty>;
+  if(!period)return <Empty>Open this Assessment Period to enter its figures.</Empty>;
   const canEnter=!["finalized","issued"].includes(period.status);
   return <section className="assessment-stack">
     <div className="assessment-section-head"><div><h3>Monthly metrics</h3><p>The figures nobody feeds automatically: what the month's value was, and where it was read from. The month cannot compute as complete until every scored figure is in.</p></div>{list.scored.length>0&&<div className="assessment-section-actions"><span className="muted" style={{fontSize:12}}>{list.entered} of {list.scored.length} entered</span><span className="assessment-progress" aria-hidden="true"><i style={{width:`${Math.round(100*list.entered/list.scored.length)}%`}}/></span></div>}</div>

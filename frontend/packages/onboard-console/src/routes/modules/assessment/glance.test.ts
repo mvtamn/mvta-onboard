@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AssessmentPeriod, ComplianceOccurrence, PeriodKpiAssessment } from "@mvta/shared";
-import { lifecycleStages, nextAction, outstandingItems, periodFor, statusPill, stepMonth } from "./glance.js";
+import { currentMonth, lifecycleStages, nextAction, occurrencesNeedingAmount, outstandingItems, periodFor, reviewProgress, statusPill, stepMonth } from "./glance.js";
 
 const row = (overrides: Partial<PeriodKpiAssessment>): PeriodKpiAssessment => ({
   id: "r", period_id: "p", standard_id: "s", code: "X", name: "X", standard_type: "occurrence", priority: "High",
@@ -26,23 +26,31 @@ describe("stepMonth", () => {
 
 describe("lifecycleStages", () => {
   const states = (status: Parameters<typeof lifecycleStages>[0]) => lifecycleStages(status).map((s) => s.state);
-  it("marks the stages before the current one done", () => {
-    expect(states("in_review")).toEqual(["done", "done", "current", "upcoming", "upcoming", "upcoming"]);
+  it("names the stages CONTEXT.md's Assessment Lifecycle names", () => {
+    // The vocabulary a contractor and an auditor already read on the
+    // artifacts; the card does not invent a parallel progression.
+    expect(lifecycleStages(null).map((s) => s.label))
+      .toEqual(["Open", "Under Review", "In Validation", "Finalized", "Issued"]);
   });
-  it("keeps a stale month at Computed rather than sending it back to Opened", () => {
-    expect(states("stale")).toEqual(["done", "current", "upcoming", "upcoming", "upcoming", "upcoming"]);
+  it("marks the stages before the current one done", () => {
+    expect(states("in_review")).toEqual(["done", "current", "upcoming", "upcoming", "upcoming"]);
+  });
+  it("keeps a stale month at Under Review rather than sending it back to Open", () => {
+    expect(states("stale")).toEqual(["done", "current", "upcoming", "upcoming", "upcoming"]);
+    // The pill is where a stale month says so.
+    expect(statusPill("stale").label).toMatch(/Stale/);
     expect(states("reopened")[0]).toBe("current");
   });
   it("shows an issued month as finished and an unopened one as untouched", () => {
-    expect(states("issued")).toEqual(Array(6).fill("done"));
-    expect(states(null)).toEqual(Array(6).fill("upcoming"));
+    expect(states("issued")).toEqual(Array(5).fill("done"));
+    expect(states(null)).toEqual(Array(5).fill("upcoming"));
     expect(statusPill(null).label).toBe("Not opened");
   });
 });
 
 describe("nextAction", () => {
   it("offers to open a month that has no period", () => {
-    expect(nextAction(null, 0)).toEqual({ kind: "open", label: "Open assessment month" });
+    expect(nextAction(null, 0)).toEqual({ kind: "open", label: "Open Assessment Period" });
   });
   it("computes an open month and recomputes a stale one", () => {
     expect(nextAction("open", 0).kind).toBe("compute");
@@ -55,6 +63,57 @@ describe("nextAction", () => {
   it("only offers Finalize when nothing is pending, matching the review page's gate", () => {
     expect(nextAction("in_validation", 1).kind).toBe("go");
     expect(nextAction("in_validation", 0).kind).toBe("finalize");
+  });
+  it("does not promise a review that the status has already closed", () => {
+    // Every review control is gated on in_review, so "Continue review" here
+    // would land the reader on a page where nothing can be pressed.
+    expect(nextAction("in_validation", 2)).toEqual({ kind: "go", label: "See what is pending", page: "review" });
+    expect(nextAction("in_review", 2).label).toBe("Continue review");
+  });
+});
+
+describe("reviewProgress", () => {
+  it("counts only the rows a reviewer can act on", () => {
+    // A not_assessable row has no figure to recommend and is excluded from
+    // "awaiting review", so counting it in the denominator would leave the
+    // tally unreachable - "1 of 2 reviewed" beside "Nothing outstanding".
+    const rows = [
+      row({ id: "a", recommended_action: "confirmed" }),
+      row({ id: "b", assessment_outcome: "not_assessable" }),
+    ];
+    expect(reviewProgress(rows)).toEqual({ reviewed: 1, total: 1 });
+    expect(outstandingItems(rows, []).some((i) => i.key === "review")).toBe(false);
+  });
+  it("is zero of zero when there is nothing scored", () => {
+    expect(reviewProgress([])).toEqual({ reviewed: 0, total: 0 });
+  });
+});
+
+describe("occurrencesNeedingAmount", () => {
+  const ranged = { penalty_amount_min: 2500, penalty_amount_max: 10000 } as Partial<ComplianceOccurrence>;
+  it("counts a confirmed ranged occurrence with no figure set", () => {
+    expect(occurrencesNeedingAmount([occurrence({ ...ranged })])).toBe(1);
+  });
+  it("ignores one a reviewer has already priced, and one not yet confirmed", () => {
+    expect(occurrencesNeedingAmount([occurrence({ ...ranged, assessed_amount: 4000 })])).toBe(0);
+    expect(occurrencesNeedingAmount([occurrence({ ...ranged, review_status: "pending" })])).toBe(0);
+  });
+  it("ignores an occurrence whose penalty is a fixed amount", () => {
+    expect(occurrencesNeedingAmount([occurrence({})])).toBe(0);
+  });
+  it("is the same reading the Outstanding line uses", () => {
+    // The section count and the card's line must not disagree about what is
+    // outstanding in Occurrences.
+    const occurrences = [occurrence({ ...ranged }), occurrence({ id: "o2", ...ranged })];
+    const line = outstandingItems([], occurrences).find((i) => i.key === "amount");
+    expect(line?.label).toContain(String(occurrencesNeedingAmount(occurrences)));
+  });
+});
+
+describe("currentMonth", () => {
+  it("is YYYYMM in the reader's own month", () => {
+    expect(currentMonth(new Date(2026, 8, 9))).toBe("202609");
+    expect(currentMonth(new Date(2026, 0, 31))).toBe("202601");
   });
 });
 

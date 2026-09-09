@@ -57,6 +57,10 @@ Phase E of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — CA
 
 - **E1 — CAP transitions and due dates.** `lib/assessment/capTransitions.ts` is the rule: `required → submitted → approved → in_progress → closed | failed`, `submitted → required` for a return; submission needs the six elements (writer's act), approve/start/close/fail are the Issuing Authority's, closure needs a note; overdue = still `required` past `due_at`. `PATCH /api/assessment-caps/{id}` applies one transition under a row lock and audits it (`cap_transitioned`; the History trail now includes CAP rows). `GET /assessment-caps` returns `overdue` and the recorded fields. The console **CAPs** tab moves to `Caps.tsx` with the submission form and role-gated step buttons. The dead `capTriggers` / `consecutiveMonthsBelow` helpers are deleted.
 
+- **The card speaks the glossary's language.** The lifecycle now reads Open, Under Review, In Validation, Finalized, Issued - CONTEXT.md's own Assessment Lifecycle - rather than a parallel progression with an invented Computed stage; a stale month stands at Under Review, where its pill already says the inputs moved. "Assessment Period" and "Assessment Contractor" replace the phrasings the glossary lists under *Avoid*.
+- **One action, and one the page allows.** At In Validation with items still pending the card offered "Continue review", and every control on that page is gated on In Review - the reader arrived somewhere nothing could be pressed. It now says what is in the way and shows it.
+- **"n of m items reviewed" can reach m.** The denominator counted rows a reviewer cannot act on, so a month with a missing monthly figure read "4 of 5 reviewed" beside "Nothing outstanding", forever. `reviewProgress` counts only actionable rows, and the Occurrences section count is now what is outstanding in it rather than every occurrence in the month - the same reading the Outstanding line uses, so the two cannot disagree.
+
 ## [1.5.169] - 2026-09-09
 
 Phase D of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — report content.
