@@ -40,6 +40,15 @@ Phase A of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — go
 
 - **The What's new panel caps at five changes and says what it left out.** The panel is a glance at the running build, and it printed every bullet of the release: v1.5.159 has five, but releases carrying a dozen turned a panel into a page to scroll past its own "View full changelog" link. It now shows the first five and, when there are more, a muted line counting the rest — shown rather than the list quietly ending, because a truncated panel that looks complete misreports what shipped. The full text of every change stays on the Changelog page the panel already links to.
 
+## [1.5.163] - 2026-09-09
+
+Phase B of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — console correctness. (1.5.162 is Phase A on its own PR; whichever merges second resolves this header.)
+
+- **B1 — one cancellable loader for the selected period.** `usePeriodRows` (hook + 4 tests) replaces the rows fetch inside `act()`, which captured `selected` and stored a stale month's rows; the KPI selection resets with the period.
+- **B2 — the occurrence list carries a ranged penalty's bounds.** `lib/assessment/rangedPenalty.ts` OUTER APPLYs the tier effective on the occurrence's service date (qualifier first); the console's existing *Set amount…* now appears.
+- **B3 — review shows recommendations before binding.** `reviewDisplay` names the column *Recommendation* until finalized, *Binding decision* after; ScoreTable and ManagerReview use it.
+- **B4 — the Report page opens the artifact it manages.** `ReportWorkflow.tsx` (own file, 3 tests) gets Preview (hash-verified bytes in a `sandbox=""` iframe via `srcDoc`) and Download official HTML; `api.getAssessmentReportHtml`. Format helpers move to `assessmentFormat.tsx`.
+
 ## [1.5.161] - 2026-09-08
 
 - **The Issuance Proof is not the Final Assessment.** "Generate Final Assessment" wrote a `ComplianceReports` row of type `final` with no `issued_at`, and the create handler treated each unissued one as the latest Final the next had to supersede — a finalized month could grow v1, v2, v3 "finals" from one unchanged state. ADR 0029 names that render an Issuance Proof: one live per period (`UX_CR_LiveProof`, migration 112), voided rather than superseded on Prepare, reopen, or evidence added to a finalized month (`voided_at`, audited, nothing deleted), and never a supersession target. Issue transitions the proof's row into the Final and keeps `proof_blob_path` / `proof_sha256` beside the issued ones.
