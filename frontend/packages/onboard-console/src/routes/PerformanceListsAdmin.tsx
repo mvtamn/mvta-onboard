@@ -104,6 +104,18 @@ function ReferenceValuesPanel({ values, busy, canEdit, onSave, onDelete }: {
                 }}
               />
             </td>
+            {domain === "assigned_to" && <td>
+              {/* The account behind the name, so the month-end open-inputs list
+                  can be shown to the person it belongs to. Empty for a team. */}
+              <input
+                type="email" aria-label={`Account for ${row.value}`} defaultValue={row.principal_upn ?? ""} placeholder="name@mvta.us"
+                disabled={!canEdit || busy}
+                onBlur={(event) => {
+                  const upn = event.target.value.trim().toLowerCase();
+                  if (upn !== (row.principal_upn ?? "")) onSave(row.id, { ...row, principal_upn: upn || null });
+                }}
+              />
+            </td>}
             {domain === "tier_label" && <td>
               {/* Ranking, not money: which band wins when several match one
                   observation. Safe to edit, and snapshotted per period so a
