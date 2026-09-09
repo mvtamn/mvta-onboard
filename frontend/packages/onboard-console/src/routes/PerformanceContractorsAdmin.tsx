@@ -29,6 +29,7 @@ export function PerformanceContractorsAdmin() {
   const canEdit = roles.includes("OCC.Admin");
   const [contractors, setContractors] = useState<ContractorRecord[]>([]);
   const [agreements, setAgreements] = useState<PerformanceAgreementRecord[]>([]);
+  const [agreementsError, setAgreementsError] = useState("");
   const [selected, setSelected] = useState("new");
   const [name, setName] = useState("");
   const [start, setStart] = useState("");
@@ -44,11 +45,15 @@ export function PerformanceContractorsAdmin() {
       setError("");
       const [result, terms] = await Promise.all([
         api.getContractors(),
-        // Context for the selected contractor; absent before migration 102.
-        api.getPerformanceAgreements().catch(() => ({ agreements: [] as PerformanceAgreementRecord[] })),
+        // Context for the selected contractor, not the page's subject: a failure
+        // here is said in its own words below the list, not swallowed and not
+        // allowed to take the contractor list down with it.
+        api.getPerformanceAgreements().then((terms) => ({ terms, failure: "" }))
+          .catch((caught: unknown) => ({ terms: { agreements: [] as PerformanceAgreementRecord[] }, failure: caught instanceof Error ? caught.message : "The Agreements could not be loaded." })),
       ]);
       setContractors(result.contractors);
-      setAgreements(terms.agreements);
+      setAgreements(terms.terms.agreements);
+      setAgreementsError(terms.failure);
       setReady(result.diagnostics.table_ready);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The contractor list is unavailable.");
@@ -168,7 +173,8 @@ export function PerformanceContractorsAdmin() {
                     </div>
                   </div>
                 ))}
-                {!agreementsFor(selected).length && <p className="standards-hint">No Agreement names this contractor yet. <Link to="/admin/performance/agreements">Create one under Agreements.</Link></p>}
+                {agreementsError && <p className="standards-hint">Agreements could not be loaded: {agreementsError}</p>}
+                {!agreementsError && !agreementsFor(selected).length && <p className="standards-hint">No Agreement names this contractor yet. <Link to="/admin/performance/agreements">Create one under Agreements.</Link></p>}
               </div>
             </>}
           </div>
