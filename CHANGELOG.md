@@ -5,37 +5,35 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-- **I1 — `assessmentPeriodOpen`**, `0 0 6 1 * *` (06:00 UTC on the 1st; midnight CST or 01:00 CDT), opt-in by `ASSESSMENT_MONTH_BOUNDARY_ENABLED=true`, threaded through `main-phase1.bicep` and `phase1-dev.parameters.json` (default `false`). Per contractor whose Agreement covers the month: open the new period, open the prior if missing, compute the prior only while it is `open`/`stale`/`reopened` (a person's review is never recomputed by a clock), generate its Validation Draft unless the month still holds unreviewed candidates (then it warns and waits). Shares nothing, issues nothing, notifies no one (design §9). `lib/assessment/monthBoundary.ts` is the pure plan (Chicago month, 5 tests); the Validation Draft / Issuance Proof generation moves from the create handler into `lib/assessment/generateArtifact.ts` so the timer and the handler run one path, and `readModel` goes with it. `npm test` now runs the `lib/assessment` and `lib/report` seam tests too — the old glob never descended into them, so those suites had run only by hand.
-
 ## [1.5.174] - 2026-09-09
 
-Phase I of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — the month-boundary timer. (1.5.173 is Phase H on its own PR.)
+Phase I of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — the month-boundary timer.
 
-- **I1 — `assessmentPeriodOpen`**, `0 0 6 1 * *` (06:00 UTC on the 1st = 01:00 Central), opt-in by `ASSESSMENT_MONTH_BOUNDARY_ENABLED=true`. Per contractor whose Agreement covers the month: open the new period, open the prior if missing, compute the prior only while it is `open`/`stale`/`reopened` (a person's review is never recomputed by a clock), generate its Validation Draft. Shares nothing, issues nothing, notifies no one (design §9). `lib/assessment/monthBoundary.ts` is the pure plan (Chicago month, 5 tests); the Validation Draft / Issuance Proof generation moves from the create handler into `lib/assessment/generateArtifact.ts` so the timer and the handler run one path, and `readModel` goes with it.
+- **I1 — `assessmentPeriodOpen`**, `0 0 6 1 * *` (06:00 UTC on the 1st; midnight CST or 01:00 CDT), opt-in by `ASSESSMENT_MONTH_BOUNDARY_ENABLED=true`, threaded through `main-phase1.bicep` and `phase1-dev.parameters.json` (default `false`). Per contractor whose Agreement covers the month: open the new period, open the prior if missing, compute the prior only while it is `open`/`stale`/`reopened` (a person's review is never recomputed by a clock), generate its Validation Draft unless the month still holds unreviewed candidates (then it warns and waits). Shares nothing, issues nothing, notifies no one (design §9). `lib/assessment/monthBoundary.ts` is the pure plan (Chicago month, 5 tests); the Validation Draft / Issuance Proof generation moves from the create handler into `lib/assessment/generateArtifact.ts` so the timer and the handler run one path, and `readModel` goes with it. `npm test` now runs the `lib/assessment` and `lib/report` seam tests too — the old glob never descended into them, so those suites had run only by hand.
 
 ## [1.5.173] - 2026-09-09
 
-Phase H of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — ownership and bounded lists. (1.5.169–1.5.172 are Phases D–G on their own PRs.)
+Phase H of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — ownership and bounded lists.
 
 - **H1 — owner identity and the month-end open-inputs list.** Migration 113 adds `ReferenceValues.principal_upn` (assigned_to domain only; the PUT handler accepts it there and lowercases it). `GET /api/manual-metrics/open?service_month=` lists every hand-entered scored standard of the active Agreement with no entry for the month, grouped by owner with their account. The console shows it on Monthly Metrics (`OpenInputs.tsx`, 2 tests): the signed-in owner's first, then everyone else's; Administration › Lists gets an *Account* column for owners.
 - **H2 — bounded list queries.** `GET /compliance-occurrences` takes `contractor_id`, `service_month`, `review_status`, `limit`, `offset`; `GET /manual-metrics` takes `contractor_id`, `service_month`, `limit`; `GET /assessment-periods` takes `contractor_id`, `limit` (default 120). The shared client passes filters; unfiltered calls keep working with a default cap.
 
 ## [1.5.172] - 2026-09-09
 
-Phase G of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — database-backed confidence. (1.5.169–1.5.171 are Phases D–F on their own PRs.)
+Phase G of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — database-backed confidence.
 
 - **G1 — lifecycle and concurrency contract test.** `assessmentLifecycle.db.contract.test.ts` runs in the CI SQL job (`test:decision-matrix-contract`): drops every table, applies the real migrations 030 → 112b from their files, seeds one contractor/Agreement/standard, opens a period through the same `schemaScope` helpers the handler uses, and asserts on real SQL Server: review preserved on an unchanged recompute and reset on a changed one (the hash seam); an approved claim excluded from the count and kept in the raw count (ADR 0012); the Escalation Streak over issued months only (ADR 0011); `materialChangeSql` withdrawing the share and voiding the live proof (ADR 0009/0029); `UX_CR_LiveProof` refusing a second live proof; `withPeriodReportLock` serialising two operations. `migration112b.db.contract.test.ts` joins the same script. Handler-inline SQL (finalize, issue) is still specified only by the in-memory seam.
 
 ## [1.5.171] - 2026-09-09
 
-Phase F of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — relief intake. (1.5.169 and 1.5.170 are Phases D and E on their own PRs.)
+Phase F of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — relief intake.
 
 - **F1 — excusable-delay claims.** `GET/POST /api/excusable-delay-claims` and `POST …/{id}/decision` (Issuing Authority); `late_notice` from `lib/assessment/relief.ts` (`isLateNotice`, > 24 h); a decision runs `materialChangeSql` on the open period for that contractor-month; `PATCH /compliance-occurrences/{id}` accepts `relief_id` (must be a claim for the same contractor-month). Console: a **Relief** panel on the Occurrence Log and a per-occurrence claim selector.
 - **F2 — system outage windows.** `GET/POST/PATCH /api/system-outages`; `outageExclusionSql` maps an occurrence's `source_ref` to its observing system (Avail for `FixedRouteDepartures:avail_pullout` and `MonitoredMissedTrips:gtfs`, Spare for `MonitoredMissedTrips:spare` and `OnDemandDepartures:spare_duties`) and excludes it while a window for that system covers its service date; `assess.ts` counts `excludedForOutage` in the snapshot. Late notice (> 24 h) disqualifies relief: approving anyway needs a `late_notice_override` reason, kept with the decision. Window dates are compared as agency days (`AT TIME ZONE 'Central Standard Time'`), the CAP-window count applies the same exclusion, and a decision or a claim link on a shared month is a Material Assessment Change across every open period for that month. Audit rows: `claim_filed`, `claim_decided`, `outage_logged`, `outage_updated`; the History trail includes claims and the outage windows touching the month. The report's exclusion wording for outages lands once Phase D (#249) is on `main`.
 
 ## [1.5.170] - 2026-09-09
 
-Phase E of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — CAP lifecycle. (1.5.169 is Phase D on its own PR.)
+Phase E of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — CAP lifecycle.
 
 - **E1 — CAP transitions and due dates.** `lib/assessment/capTransitions.ts` is the rule: `required → submitted → approved → in_progress → closed | failed`, `submitted → required` for a return; submission needs the six elements (writer's act), approve/start/close/fail are the Issuing Authority's, closure needs a note; overdue = still `required` past `due_at`. `PATCH /api/assessment-caps/{id}` applies one transition under a row lock and audits it (`cap_transitioned`; the History trail now includes CAP rows). `GET /assessment-caps` returns `overdue` and the recorded fields. The console **CAPs** tab moves to `Caps.tsx` with the submission form and role-gated step buttons. The dead `capTriggers` / `consecutiveMonthsBelow` helpers are deleted.
 
@@ -1035,7 +1033,7 @@ Closes [#18](https://github.com/mvtamn/mvta-onboard/issues/18).
 
 Not yet deployed — stacked on 1.5.1-1.5.6, all still awaiting a deploy.
 
-- **Missed Trips' new Trip/Route/Direction table (1.5.5) is now an addition
+- **Missed Trips' new Trip/Route/Direction table is now an addition
   to the flagged-trip list, not a replacement of it.** 1.5.5 converted the
   whole list to a table; that took away the original card-row list (Service/
   Detection/Review) some staff were already using. There's now a "List /
