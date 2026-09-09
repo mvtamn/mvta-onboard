@@ -3,6 +3,7 @@ import { sql } from "../db";
 import { escalationMultiplier } from "./escalation";
 import { assessmentInputHash, canonicalJson } from "./hash";
 import { bandAmount, computePenalty, isRangedBand } from "./penalty";
+import { refreshPeriodRules } from "./ruleRefresh";
 import { bandMatchValue, matchTier } from "./tiers";
 import { splitAssessmentInput } from "./input";
 import { tierSeverity } from "./referenceValues";
@@ -13,7 +14,7 @@ import { isHandEntered, normalizeMeasurementSource } from "./measurementSource";
 import { notMeasurable } from "./resolvers/types";
 import type { StandardDirection, StandardTier, TierLabel } from "./types";
 
-interface PeriodRow { id: string; contractor_id: string; service_month: string; input_revision: number; status: string }
+interface PeriodRow { id: string; contractor_id: string; service_month: string; input_revision: number; status: string; rules_locked_at: Date | null }
 interface StandardRow { id: string; code: string; standard_type: "occurrence" | "threshold"; direction: StandardDirection; is_safety_critical: boolean; measurement_source: string; resolver_key: string | null; target_value: number | null; target_display: string | null; band_scope: "per_occurrence" | "running_count" | null; cap_window_days: number | null; cap_window_threshold: number | null; cap_window_mode: "rolling_days" | "calendar_quarter" | null }
 interface TierRow { tier_order: number; tier_label: TierLabel; bound_low: number | null; bound_high: number | null; qualifier_code: string | null; penalty_basis: StandardTier["penaltyBasis"]; penalty_amount: number; triggers_cap: boolean; severity_order: number | null; penalty_amount_min: number | null; penalty_amount_max: number | null }
 
@@ -60,6 +61,12 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
   if (period.status === "finalized") throw new Error("Finalized periods must be reopened before recompute");
 
   const scope = await agreementScopeIn(tx);
+  // A period that has never been finalised is still drafting its rules, so it
+  // picks up an assignment or a band changed since it opened. One that has been
+  // finalised keeps the snapshot its figure was agreed against.
+  if (scope.rulesLock && period.rules_locked_at === null) {
+    await refreshPeriodRules(tx, scope, period);
+  }
   const standardsReq = new sql.Request(tx); standardsReq.input("period_id",sql.UniqueIdentifier,period.id);
   const standards = await standardsReq.query<StandardRow>(`SELECT standard_id id,code,standard_type,direction,is_safety_critical,measurement_source,${periodResolverKeySql(scope)},${periodStandardScalingSql(scope)} FROM AssessmentPeriodStandards WHERE period_id=@period_id ORDER BY sort_order`);
   for (const standard of standards.recordset) {
