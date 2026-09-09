@@ -62,10 +62,16 @@ export function periodRulesRefreshSql(scope: AgreementScope): string {
 export async function refreshPeriodRules(
   tx: Transaction,
   scope: AgreementScope,
-  period: { id: string; service_month: string },
+  period: { id: string; service_month: string; agreement_id: string | null },
 ): Promise<void> {
   const request = new sql.Request(tx);
   request.input("period", sql.UniqueIdentifier, period.id);
   request.input("month", sql.Char(6), period.service_month);
+  // periodStandardSourceSql joins on @agreement wherever migration 102 is
+  // present, so the statement does not run without it. Bound unconditionally
+  // rather than only when scoped: an unused parameter is harmless, and a
+  // missing one is a runtime failure on a code path that is only reached when
+  // somebody has already changed the rules.
+  request.input("agreement", sql.UniqueIdentifier, period.agreement_id);
   await request.query(periodRulesRefreshSql(scope));
 }

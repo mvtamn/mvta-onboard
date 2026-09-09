@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.165] - 2026-09-09
+
+- **Recomputing a not-yet-finalised month failed outright.** The rule refresh in 1.5.163 composes its standard set through `periodStandardSourceSql`, which joins `AgreementStandards` on `@agreement` wherever migration 102 is present - and `refreshPeriodRules` bound only `@period` and `@month`. Every recompute of a drafting period stopped with "Must declare the scalar variable @agreement" and rolled back. The tests asserted on the composed SQL text, which cannot see a parameter that is named but never bound; there is now a test that extracts every `@name` from the statement and fails unless the code binds it, and it fails without the fix. Found by applying 112 to dev and running the recompute it was written for, rather than by reading the diff again.
+
 ## [1.5.164] - 2026-09-09
 
 - **Three fixes that were written, reviewed and then stalled in open pull requests.** Each had been sitting for weeks against a `main` it could no longer merge into, so the work is re-landed here and the original PRs (#58, #120, #124) are closed pointing at this one.

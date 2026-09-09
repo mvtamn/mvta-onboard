@@ -2,7 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { periodRulesRefreshSql } from "./assessment/ruleRefresh";
+import { periodRulesRefreshSql, refreshPeriodRules } from "./assessment/ruleRefresh";
+import { sql as sqlModule } from "./db";
 import { markRulesChanged } from "./assessment/ruleChange";
 
 // The SQL these compose cannot be executed here - it needs a server - so what
@@ -110,6 +111,33 @@ test("the refresh only names columns the database has", () => {
   assert.ok(!query.includes("AgreementStandards"), query);
   assert.ok(!query.includes("severity_order"), query);
   assert.ok(!query.includes("resolver_key"), query);
+});
+
+// The defect this test exists for: the statement joined on @agreement and
+// nothing bound it, so every recompute of a drafting period failed with
+// "Must declare the scalar variable @agreement" - on a path only reached once
+// somebody had already changed the rules. Asserting on the query text alone
+// could not see it, so the parameters are checked against the text that uses
+// them.
+test("every parameter the refresh names is bound", async () => {
+  const bound = new Set<string>();
+  const request = {
+    input(name: string, _type: unknown, _value: unknown) { bound.add(name); return request; },
+    async query(_query: string) { return { recordset: [] }; },
+  };
+  const fakeTx = { __fake: true } as never;
+  const original = sqlModule.Request;
+  (sqlModule as { Request: unknown }).Request = function () { return request; };
+  try {
+    await refreshPeriodRules(fakeTx, SCOPE, { id: "p-1", service_month: "202608", agreement_id: "a-1" });
+  } finally {
+    (sqlModule as { Request: unknown }).Request = original;
+  }
+  const named = new Set([...periodRulesRefreshSql(SCOPE).matchAll(/@([a-z_]+)/gi)].map((m) => m[1]));
+  named.delete("rules"); // a local DECLARE, not a parameter
+  for (const parameter of named) {
+    assert.ok(bound.has(parameter), `@${parameter} is used but never bound`);
+  }
 });
 
 test("the refresh bounds tiers to the month it is scoring", () => {
