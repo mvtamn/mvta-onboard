@@ -19,17 +19,44 @@ interface Measurement {
   sourceRef: string;
 }
 
+// One archived render for a period. An Issuance Proof is what the Issuing
+// Authority checks; issuing transitions that same artifact into the Final
+// Assessment and keeps the proof's hash beside the issued one (ADR 0029).
+export interface AssessmentArtifact {
+  kind: "issuance_proof" | "final_assessment";
+  version: number;
+  contentSha256: string;
+  proofSha256: string | null;
+  issuedAt: string | null;
+  voidedAt: string | null;
+}
+
 interface AssessmentPeriod {
   id: string;
   agreementId: string;
   month: string;
+  // The Assessment Rule Set frozen at open; a standard assigned to the
+  // Agreement later governs a later period (ADR 0006).
+  standards: AssessmentStandard[];
+  artifacts: AssessmentArtifact[];
   measurements: Measurement[];
   candidates: Array<{ id: string; standardId: string; sourceRef: string; resolution: "unresolved" | "confirmed" | "dismissed" | "deferred" }>;
   items?: Array<{ standardId: string; outcome: string; proposedPenalty: number; sourceRefs: string[] }>;
   reviews: Array<{ standardId: string; reviewer: string; action: "confirm" | "adjust" | "waive" }>;
   validationEndsOn?: string;
-  state: "open" | "under_review" | "in_validation" | "finalized" | "issued";
+  state: "open" | "under_review" | "in_validation" | "finalized" | "reopened" | "issued";
   audit: Array<{ action: string; actor: string }>;
+}
+
+// Nothing is deleted: a superseded proof keeps its version and its bytes, and
+// the audit says why it stopped being the one to check.
+function voidLiveProof(period: AssessmentPeriod, actor: string, at: string) {
+  for (const artifact of period.artifacts) {
+    if (artifact.kind === "issuance_proof" && artifact.voidedAt === null) {
+      artifact.voidedAt = at;
+      period.audit.push({ action: "issuance_proof_voided", actor });
+    }
+  }
 }
 
 function monthLabel(month: string): string {
@@ -47,7 +74,7 @@ export function createPerformanceAssessmentWorkflow(input: {
   return {
     open(month: string) {
       const id = `${input.agreement.id}:${month}`;
-      const period: AssessmentPeriod = { id, agreementId: input.agreement.id, month, measurements: [], candidates: [], reviews: [], state: "open", audit: [{ action: "opened", actor: "system" }] };
+      const period: AssessmentPeriod = { id, agreementId: input.agreement.id, month, standards: [...input.ruleSet.standards], artifacts: [], measurements: [], candidates: [], reviews: [], state: "open", audit: [{ action: "opened", actor: "system" }] };
       periods.set(id, period);
       return period;
     },
@@ -72,7 +99,7 @@ export function createPerformanceAssessmentWorkflow(input: {
       const period = periods.get(periodId);
       if (!period) throw new Error("Assessment Period not found");
       if (period.candidates.some(candidate => candidate.resolution === "unresolved")) throw new Error("Assessment Period has an unresolved candidate");
-      const items = input.ruleSet.standards.map(standard => {
+      const items = period.standards.map(standard => {
         const measurement = period.measurements.find(candidate => candidate.standardId === standard.id);
         if (!measurement) return { standardId: standard.id, outcome: "not_assessable", proposedPenalty: 0, sourceRefs: [] as string[] };
         const matching = [...standard.tiers].sort((a, b) => (a.below ?? a.above ?? 0) - (b.below ?? b.above ?? 0)).find(tier =>
@@ -110,17 +137,49 @@ export function createPerformanceAssessmentWorkflow(input: {
       if (!period) throw new Error("Assessment Period not found");
       if (period.reviews.some(review => review.reviewer === decision.issuer)) throw new Error("Review and issuance require separate people");
       if (!period.validationEndsOn || (decision.at ?? new Date().toISOString()).slice(0, 10) < period.validationEndsOn) throw new Error("Validation Window has not ended");
+      // One Assessment Item per standard in the frozen Rule Set, and at least
+      // one: a partial compute, or a month with nothing to score, is not a
+      // Finalized Assessment.
+      if (!period.items?.length || period.items.length !== period.standards.length) throw new Error("Finalization requires one Assessment Item per standard in the Assessment Rule Set");
       period.state = "finalized";
       period.audit.push({ action: "finalized", actor: decision.issuer });
+    },
+    prepareIssuanceProof(periodId: string, request: { actor: string; at?: string }) {
+      const period = periods.get(periodId);
+      if (!period || period.state !== "finalized") throw new Error("An Issuance Proof requires a Finalized Assessment");
+      voidLiveProof(period, request.actor, request.at ?? new Date().toISOString());
+      const render = `<!doctype html><html><body><h1>Issuance Proof</h1><p>${input.agreement.contractorName}</p><p>${monthLabel(period.month)}</p></body></html>`;
+      const artifact: AssessmentArtifact = { kind: "issuance_proof", version: period.artifacts.length + 1, contentSha256: createHash("sha256").update(render).digest("hex"), proofSha256: null, issuedAt: null, voidedAt: null };
+      period.artifacts.push(artifact);
+      period.audit.push({ action: "issuance_proof_prepared", actor: request.actor });
+      return { ...artifact };
     },
     issue(periodId: string, issuance: { issuer: string; recipient: string; method: string; at: string }) {
       const period = periods.get(periodId);
       if (!period || period.state !== "finalized") throw new Error("Only a Finalized Assessment can be issued");
-      const officialArtifact = `<!doctype html><html><body><h1>Final Assessment</h1><p>${input.agreement.contractorName}</p><p>${monthLabel(period.month)}</p></body></html>`;
+      const proof = period.artifacts.find(artifact => artifact.kind === "issuance_proof" && artifact.voidedAt === null);
+      if (!proof) throw new Error("Issuance requires a live Issuance Proof");
+      const officialArtifact = `<!doctype html><html><body><h1>Final Assessment</h1><p>${input.agreement.contractorName}</p><p>${monthLabel(period.month)}</p><p>Issued by ${issuance.issuer} on ${issuance.at}</p></body></html>`;
       const contentSha256 = createHash("sha256").update(officialArtifact).digest("hex");
+      proof.kind = "final_assessment";
+      proof.proofSha256 = proof.contentSha256;
+      proof.contentSha256 = contentSha256;
+      proof.issuedAt = issuance.at;
       period.state = "issued";
       period.audit.push({ action: "issued", actor: issuance.issuer });
       return { state: period.state, officialArtifact, contentSha256 };
+    },
+    reopen(periodId: string, decision: { actor: string; reason: string; at?: string }) {
+      const period = periods.get(periodId);
+      if (!period || period.state !== "finalized") throw new Error("Only a Finalized Assessment can be reopened in place");
+      voidLiveProof(period, decision.actor, decision.at ?? new Date().toISOString());
+      period.state = "reopened";
+      period.audit.push({ action: "reopened", actor: decision.actor });
+    },
+    artifacts(periodId: string) {
+      const period = periods.get(periodId);
+      if (!period) throw new Error("Assessment Period not found");
+      return period.artifacts.map(artifact => ({ ...artifact }));
     },
     audit(periodId: string) {
       const period = periods.get(periodId);

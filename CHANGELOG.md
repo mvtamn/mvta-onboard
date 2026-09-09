@@ -5,6 +5,13 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.161] - 2026-09-08
+
+- **The Issuance Proof is not the Final Assessment.** "Generate Final Assessment" wrote a `ComplianceReports` row of type `final` with no `issued_at`, and the create handler treated each unissued one as the latest Final the next had to supersede — a finalized month could grow v1, v2, v3 "finals" from one unchanged state. ADR 0029 names that render an Issuance Proof: one live per period (`UX_CR_LiveProof`, migration 111), voided rather than superseded on Prepare, reopen, or evidence added to a finalized month (`voided_at`, audited, nothing deleted), and never a supersession target. Issue transitions the proof's row into the Final and keeps `proof_blob_path` / `proof_sha256` beside the issued ones.
+- **Supersession is derived from period lineage.** A correction period (one carrying `supersedes_period_id`) must supersede the latest *issued* Final of the period it corrects and needs a `supersede_reason`, captured at proof generation and immutable through issue; a period without one refuses a reason. The client's `supersedes_id` is ignored. `lib/assessment/reportLineage.ts` is the pure decision, with its own tests.
+- **Finalize requires the full Assessment Rule Set.** `COUNT(PeriodKpiAssessments) = COUNT(AssessmentPeriodStandards)` and at least one, replacing the `EXISTS` guard. A standard assigned to the Agreement after the period opened waits for the next period (ADR 0006); the in-memory workflow seam now snapshots the rule set at open and has a test for exactly that.
+- **Generate and issue run under a per-period application lock** (`withPeriodReportLock`, `sp_getapplock` for the transaction) so version allocation, blob upload, and the SQL write are one step.
+
 ## [1.5.160] - 2026-09-08
 
 - **The candidate poll refuses to guess the contractor.** `complianceCandidatesPoll` attributed every missed trip and late departure to `TOP 1` active contractor ordered by `updated_at` — so saving a contractor record could silently move the next morning's candidates to someone else. An Agreement has exactly one Assessment Contractor (ADR 0005) and the poll has no route, division, or source-to-contractor rule to choose by, so it now runs only while exactly one contractor is active and throws `50003` otherwise, the same way it already threw `50001` with none. The guard is an exported SQL fragment with a test that pins both failure modes and the absence of the recency rule.
