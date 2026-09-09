@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.172] - 2026-09-09
+
+Phase G of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — database-backed confidence. (1.5.169–1.5.171 are Phases D–F on their own PRs.)
+
+- **G1 — lifecycle and concurrency contract test.** `assessmentLifecycle.db.contract.test.ts` runs in the CI SQL job (`test:decision-matrix-contract`): drops every table, applies the real migrations 030 → 112b from their files, seeds one contractor/Agreement/standard, opens a period through the same `schemaScope` helpers the handler uses, and asserts on real SQL Server: review preserved on an unchanged recompute and reset on a changed one (the hash seam); an approved claim excluded from the count and kept in the raw count (ADR 0012); the Escalation Streak over issued months only (ADR 0011); `materialChangeSql` withdrawing the share and voiding the live proof (ADR 0009/0029); `UX_CR_LiveProof` refusing a second live proof; `withPeriodReportLock` serialising two operations. `migration112b.db.contract.test.ts` joins the same script. Handler-inline SQL (finalize, issue) is still specified only by the in-memory seam.
+
 ## [1.5.171] - 2026-09-09
 
 Phase F of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — relief intake. (1.5.169 and 1.5.170 are Phases D and E on their own PRs.)
