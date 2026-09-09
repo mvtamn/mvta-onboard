@@ -9,6 +9,9 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 ## [1.5.167] - 2026-09-09
 
+- **C1 — every governance act writes an audit row.** `lib/assessment/audit.ts` (`auditSql`, `AUDIT_ACTIONS`) gives the rows one shape; new writes: `computed` (revision + per-item hash/outcome/amount), `reviewed` (before/after via OUTPUT), `validation_shared` (share record incl. `items_sha256`), `finalized`, `draft_generated`, `dispute_filed`, `dispute_decided`. Action names match the workflow seam's `audit()`.
+- **C2 — `GET /api/compliance-assessment-audit?period_id=`** (paged; `COMPLIANCE_READ_ROLES`) returns the period's trail across period, items, reports, and disputes; a **History** tab in the module shows it.
+
 Phase B of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — console correctness.
 
 ## [1.5.166] - 2026-09-09
@@ -49,6 +52,8 @@ Phase C of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — au
 ## [1.5.162] - 2026-09-09
 
 - **The What's new panel caps at five changes and says what it left out.** The panel is a glance at the running build, and it printed every bullet of the release: v1.5.159 has five, but releases carrying a dozen turned a panel into a page to scroll past its own "View full changelog" link. It now shows the first five and, when there are more, a muted line counting the rest — shown rather than the list quietly ending, because a truncated panel that looks complete misreports what shipped. The full text of every change stays on the Changelog page the panel already links to.
+
+
 
 - **B1 — one cancellable loader for the selected period.** `usePeriodRows` (hook + 4 tests) replaces the rows fetch inside `act()`, which captured `selected` and stored a stale month's rows; the KPI selection resets with the period.
 - **B2 — the occurrence list carries a ranged penalty's bounds.** `lib/assessment/rangedPenalty.ts` OUTER APPLYs the tier effective on the occurrence's service date (qualifier first); the console's existing *Set amount…* now appears.
