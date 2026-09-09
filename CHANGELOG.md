@@ -42,7 +42,7 @@ Phase A of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — go
 
 ## [1.5.163] - 2026-09-09
 
-Phase B of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — console correctness. (1.5.162 is Phase A on its own PR; whichever merges second resolves this header.)
+Phase B of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — console correctness.
 
 - **B1 — one cancellable loader for the selected period.** `usePeriodRows` (hook + 4 tests) replaces the rows fetch inside `act()`, which captured `selected` and stored a stale month's rows; the KPI selection resets with the period.
 - **B2 — the occurrence list carries a ranged penalty's bounds.** `lib/assessment/rangedPenalty.ts` OUTER APPLYs the tier effective on the occurrence's service date (qualifier first); the console's existing *Set amount…* now appears.

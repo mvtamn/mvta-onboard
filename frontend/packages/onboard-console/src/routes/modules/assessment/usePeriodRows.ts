@@ -14,6 +14,7 @@ export function usePeriodRows(load: (periodId: string) => Promise<{ assessments:
   useEffect(() => {
     if (!selected) { setRows([]); setDetailId(""); return; }
     let cancelled = false;
+    setError("");
     load(selected).then(r => {
       if (cancelled) return;
       setRows(r.assessments);

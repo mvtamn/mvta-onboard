@@ -1,12 +1,13 @@
-import { rangedPenaltyBoundsSql } from "../lib/assessment/rangedPenalty";
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { COMPLIANCE_READ_ROLES, COMPLIANCE_WRITE_ROLES, requireRole } from "../lib/auth";
+import { rangedPenaltyBoundsSql } from "../lib/assessment/rangedPenalty";
+import { agreementScope } from "../lib/assessment/schemaScope";
 import { getPool, sql } from "../lib/db";
 import { isGuid, validateComplianceOccurrence } from "../lib/validation";
 
 app.http("complianceOccurrencesList", { route:"compliance-occurrences",methods:["GET"],authLevel:"anonymous",handler:async(request:HttpRequest,context:InvocationContext)=>{
   const auth=requireRole(request,COMPLIANCE_READ_ROLES);if(!auth.authorized)return{status:auth.status,jsonBody:{error:auth.message}};
-  try{const pool=await getPool();const check=await pool.request().query<{ready:number}>(`SELECT CASE WHEN OBJECT_ID('dbo.ComplianceOccurrences','U') IS NULL THEN 0 ELSE 1 END ready`);if(!check.recordset[0]?.ready)return{status:200,jsonBody:{occurrences:[],diagnostics:{table_ready:false}}};const result=await pool.request().query(`SELECT o.*,s.code standard_code,s.name standard_name,c.name contractor_name,bounds.penalty_amount_min,bounds.penalty_amount_max FROM ComplianceOccurrences o JOIN ContractorPerformanceStandards s ON s.id=o.standard_id JOIN Contractors c ON c.id=o.contractor_id ${rangedPenaltyBoundsSql("o")} ORDER BY o.service_date DESC,o.created_at DESC`);return{status:200,jsonBody:{occurrences:result.recordset,diagnostics:{table_ready:true}}};}
+  try{const pool=await getPool();const check=await pool.request().query<{ready:number}>(`SELECT CASE WHEN OBJECT_ID('dbo.ComplianceOccurrences','U') IS NULL THEN 0 ELSE 1 END ready`);if(!check.recordset[0]?.ready)return{status:200,jsonBody:{occurrences:[],diagnostics:{table_ready:false}}};const scope=await agreementScope(pool);const result=await pool.request().query(`SELECT o.*,s.code standard_code,s.name standard_name,c.name contractor_name,bounds.penalty_amount_min,bounds.penalty_amount_max FROM ComplianceOccurrences o JOIN ContractorPerformanceStandards s ON s.id=o.standard_id JOIN Contractors c ON c.id=o.contractor_id ${rangedPenaltyBoundsSql("o",scope.scoped)} ORDER BY o.service_date DESC,o.created_at DESC`);return{status:200,jsonBody:{occurrences:result.recordset,diagnostics:{table_ready:true}}};}
   catch(error){context.error("GET compliance occurrences failed",error);return{status:500,jsonBody:{error:"Internal server error"}};}
 }});
 

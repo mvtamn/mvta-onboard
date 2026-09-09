@@ -7,17 +7,17 @@ import { reviewDisplay } from "./reviewDisplay.js";
 describe("reviewDisplay", () => {
   it("shows the recommendation while the month is under review, in validation, or stale", () => {
     for (const status of ["in_review", "in_validation", "stale", "reopened"] as const) {
-      expect(reviewDisplay(status, { recommended_action: "waived", manager_action: "pending" })).toEqual({ heading: "Recommendation", value: "waived" });
+      expect(reviewDisplay(status, { recommended_action: "waived", manager_action: "pending", final_amount: null })).toEqual({ heading: "Recommendation", value: "waived" });
     }
   });
   it("says an unreviewed item is awaiting review, not pending binding", () => {
-    expect(reviewDisplay("in_review", { recommended_action: null, manager_action: "pending" })).toEqual({ heading: "Recommendation", value: "awaiting review" });
+    expect(reviewDisplay("in_review", { recommended_action: null, manager_action: "pending", final_amount: null })).toEqual({ heading: "Recommendation", value: "awaiting review" });
   });
   it("shows the binding decision once the month is finalized or issued", () => {
-    expect(reviewDisplay("finalized", { recommended_action: "adjusted", manager_action: "adjusted" })).toEqual({ heading: "Binding decision", value: "adjusted" });
-    expect(reviewDisplay("issued", { recommended_action: "confirmed", manager_action: "confirmed" })).toEqual({ heading: "Binding decision", value: "confirmed" });
+    expect(reviewDisplay("finalized", { recommended_action: "adjusted", manager_action: "adjusted", final_amount: 750 })).toEqual({ heading: "Binding decision", value: "adjusted · $750" });
+    expect(reviewDisplay("issued", { recommended_action: "confirmed", manager_action: "confirmed", final_amount: null })).toEqual({ heading: "Binding decision", value: "confirmed" });
   });
   it("has nothing to show before compute", () => {
-    expect(reviewDisplay("open", { recommended_action: null, manager_action: "pending" })).toEqual({ heading: "Recommendation", value: "—" });
+    expect(reviewDisplay("open", { recommended_action: null, manager_action: "pending", final_amount: null })).toEqual({ heading: "Recommendation", value: "—" });
   });
 });
