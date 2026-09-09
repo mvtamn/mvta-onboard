@@ -10,6 +10,7 @@ import { bandMatchValue, matchTier } from "./tiers";
 import { splitAssessmentInput } from "./input";
 import { tierSeverity } from "./referenceValues";
 import { describeCapWindowBreach, findCapWindowBreach } from "./capWindow";
+import { metricDisplay, targetDisplay } from "./display";
 import { agreementScopeIn, periodResolverKeySql, periodStandardScalingSql, periodTierScalingSql } from "./schemaScope";
 import { resolveAutomatedThreshold, resolveManualMetric } from "./resolvers";
 import { isHandEntered, normalizeMeasurementSource } from "./measurementSource";
@@ -17,7 +18,7 @@ import { notMeasurable } from "./resolvers/types";
 import type { StandardDirection, StandardTier, TierLabel } from "./types";
 
 interface PeriodRow { id: string; contractor_id: string; agreement_id: string | null; service_month: string; input_revision: number; status: string; rules_locked_at: Date | null }
-interface StandardRow { id: string; code: string; standard_type: "occurrence" | "threshold"; direction: StandardDirection; is_safety_critical: boolean; measurement_source: string; resolver_key: string | null; target_value: number | null; target_display: string | null; band_scope: "per_occurrence" | "running_count" | null; cap_window_days: number | null; cap_window_threshold: number | null; cap_window_mode: "rolling_days" | "calendar_quarter" | null }
+interface StandardRow { id: string; code: string; standard_type: "occurrence" | "threshold"; direction: StandardDirection; is_safety_critical: boolean; unit_label: string | null; measurement_source: string; resolver_key: string | null; target_value: number | null; target_display: string | null; band_scope: "per_occurrence" | "running_count" | null; cap_window_days: number | null; cap_window_threshold: number | null; cap_window_mode: "rolling_days" | "calendar_quarter" | null }
 interface TierRow { tier_order: number; tier_label: TierLabel; bound_low: number | null; bound_high: number | null; qualifier_code: string | null; penalty_basis: StandardTier["penaltyBasis"]; penalty_amount: number; triggers_cap: boolean; severity_order: number | null; penalty_amount_min: number | null; penalty_amount_max: number | null }
 
 function mapTier(row: TierRow): StandardTier {
@@ -71,7 +72,7 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
     await refreshPeriodRules(tx, scope, period);
   }
   const standardsReq = new sql.Request(tx); standardsReq.input("period_id",sql.UniqueIdentifier,period.id);
-  const standards = await standardsReq.query<StandardRow>(`SELECT standard_id id,code,standard_type,direction,is_safety_critical,measurement_source,${periodResolverKeySql(scope)},${periodStandardScalingSql(scope)} FROM AssessmentPeriodStandards WHERE period_id=@period_id ORDER BY sort_order`);
+  const standards = await standardsReq.query<StandardRow>(`SELECT standard_id id,code,standard_type,direction,is_safety_critical,measurement_source,(SELECT c.unit_label FROM ContractorPerformanceStandards c WHERE c.id=standard_id) unit_label,${periodResolverKeySql(scope)},${periodStandardScalingSql(scope)} FROM AssessmentPeriodStandards WHERE period_id=@period_id ORDER BY sort_order`);
   for (const standard of standards.recordset) {
     const tierReq = new sql.Request(tx);
     tierReq.input("standard_id", sql.UniqueIdentifier, standard.id);
@@ -236,7 +237,7 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
     const inputHash = assessmentInputHash(snapshot);
     const upsert = new sql.Request(tx);
     upsert.input("period_id", sql.UniqueIdentifier, period.id); upsert.input("standard_id", sql.UniqueIdentifier, standard.id);
-    upsert.input("metric", sql.Float, metricValue); upsert.input("display", sql.NVarChar(50), metricValue === null ? "No data" : String(metricValue));
+    upsert.input("metric", sql.Float, metricValue); upsert.input("display", sql.NVarChar(50), metricDisplay(metricValue, standard, occurrenceCount));
     upsert.input("count", sql.Int, occurrenceCount); upsert.input("quantity", sql.Float, quantity); upsert.input("tier", sql.NVarChar(20), tierLabel);
     upsert.input("raw_metric", sql.Float, rawMetricValue); upsert.input("raw_count", sql.Int, rawOccurrenceCount); upsert.input("raw_quantity", sql.Float, rawUnitQuantity);
     upsert.input("excluded_metric", sql.Float, excludedMetricValue); upsert.input("excluded_count", sql.Int, excludedOccurrenceCount); upsert.input("excluded_quantity", sql.Float, excludedUnitQuantity); upsert.input("excluded_refs", sql.NVarChar(sql.MAX), JSON.stringify(excludedSourceRefs));
@@ -245,7 +246,7 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
     upsert.input("consecutive", sql.Int, consecutive); upsert.input("completeness", sql.Float, completeness);
     upsert.input("outcome", sql.NVarChar(30), outcome);
     upsert.input("cap", sql.Bit, capRequired);
-    upsert.input("target_display", sql.NVarChar(100), standard.target_display ?? (standard.target_value !== null ? String(standard.target_value) : "Configured bands"));
+    upsert.input("target_display", sql.NVarChar(100), targetDisplay(standard, tierRows.recordset));
     upsert.input("awaiting", sql.Int, awaitingAmountCount);
     await upsert.query(`
       MERGE PeriodKpiAssessments WITH (HOLDLOCK) target USING (SELECT @period_id period_id,@standard_id standard_id) source
