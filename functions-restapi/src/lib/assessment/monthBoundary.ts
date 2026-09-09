@@ -16,7 +16,7 @@ export function priorServiceMonth(month: string): string {
   return m === 1 ? `${year - 1}12` : `${year}${String(m - 1).padStart(2, "0")}`;
 }
 
-export interface MonthBoundaryPlan { openCurrent: string | null; openPrior: string | null; compute: string | null; draft: boolean }
+export interface MonthBoundaryPlan { openCurrent: string | null; openPrior: string | null; compute: string | null; draft: boolean; held: string | null }
 
 // Only a period nobody has reviewed is the timer's to compute: open, stale
 // (inputs moved since the last compute), or reopened. Anything from
@@ -24,8 +24,13 @@ export interface MonthBoundaryPlan { openCurrent: string | null; openPrior: stri
 // clock.
 const UNTOUCHED: ReadonlySet<PeriodStatus> = new Set(["open", "stale", "reopened"]);
 
-export function monthBoundaryPlan(input: { now: Date; priorStatus: PeriodStatus | null; currentStatus: PeriodStatus | null }): MonthBoundaryPlan {
+// A Validation Draft shows the contractor what will be assessed. Compute
+// counts only confirmed occurrences, so a month with candidates nobody has
+// reviewed would draft an understatement; the draft waits for the review
+// (finalize refuses candidates too - assessmentPeriods.ts).
+export function monthBoundaryPlan(input: { now: Date; priorStatus: PeriodStatus | null; currentStatus: PeriodStatus | null; priorCandidates?: number }): MonthBoundaryPlan {
   const current = serviceMonthInChicago(input.now), prior = priorServiceMonth(current);
   const compute = input.priorStatus === null || UNTOUCHED.has(input.priorStatus) ? prior : null;
-  return { openCurrent: input.currentStatus === null ? current : null, openPrior: input.priorStatus === null ? prior : null, compute, draft: compute !== null };
+  const candidates = input.priorCandidates ?? 0;
+  return { openCurrent: input.currentStatus === null ? current : null, openPrior: input.priorStatus === null ? prior : null, compute, draft: compute !== null && candidates === 0, held: compute !== null && candidates > 0 ? `${candidates} unreviewed candidate occurrence${candidates === 1 ? "" : "s"}` : null };
 }
