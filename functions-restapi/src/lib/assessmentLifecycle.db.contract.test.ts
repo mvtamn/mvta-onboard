@@ -36,15 +36,20 @@ const CONTRACTOR = "c0000000-0000-4000-8000-000000000001";
 const AGREEMENT = "a0000000-0000-4000-8000-000000000001";
 const ACTOR = "contract-test";
 
+// The other contract tests share the job's `master` database and node runs
+// test files in parallel, so this one gets a database of its own: created
+// empty, migrated from the real files, dropped at the end.
+const DATABASE = "mvta_assessment_contract";
+
+async function ownDatabase(connectionString: string): Promise<sql.ConnectionPool> {
+  const admin = await new sql.ConnectionPool(parseConnectionString(connectionString)).connect();
+  try {
+    await admin.request().batch(`IF DB_ID('${DATABASE}') IS NOT NULL BEGIN ALTER DATABASE [${DATABASE}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [${DATABASE}]; END; CREATE DATABASE [${DATABASE}];`);
+  } finally { await admin.close(); }
+  return new sql.ConnectionPool({ ...parseConnectionString(connectionString), database: DATABASE }).connect();
+}
+
 async function fresh(pool: sql.ConnectionPool) {
-  // Every assessment table, dropped in dependency order, then the real migrations.
-  await pool.request().batch(`
-    DECLARE @sql NVARCHAR(MAX)='';
-    SELECT @sql+='ALTER TABLE '+QUOTENAME(s.name)+'.'+QUOTENAME(t.name)+' DROP CONSTRAINT '+QUOTENAME(f.name)+';' FROM sys.foreign_keys f JOIN sys.tables t ON t.object_id=f.parent_object_id JOIN sys.schemas s ON s.schema_id=t.schema_id;
-    EXEC sp_executesql @sql;
-    SET @sql='';
-    SELECT @sql+='DROP TABLE '+QUOTENAME(s.name)+'.'+QUOTENAME(t.name)+';' FROM sys.tables t JOIN sys.schemas s ON s.schema_id=t.schema_id;
-    EXEC sp_executesql @sql;`);
   for (const m of MIGRATIONS) {
     const file = join(process.cwd(), "sql", `migration-${m}.sql`);
     for (const b of batches(readFileSync(file, "utf8"))) await pool.request().batch(b);
@@ -90,7 +95,7 @@ async function item(pool: sql.ConnectionPool, periodId: string) {
 }
 
 test("assessment lifecycle against real SQL", { skip: !connectionString && "DECISION_MATRIX_TEST_SQL_CONNECTION_STRING not set" }, async t => {
-  const pool = await new sql.ConnectionPool(parseConnectionString(connectionString!)).connect();
+  const pool = await ownDatabase(connectionString!);
   try {
     await fresh(pool); await seed(pool);
     const july = await openPeriod(pool, "202607");
@@ -168,5 +173,7 @@ test("assessment lifecycle against real SQL", { skip: !connectionString && "DECI
     });
   } finally {
     await pool.close();
+    const admin = await new sql.ConnectionPool(parseConnectionString(connectionString!)).connect();
+    try { await admin.request().batch(`IF DB_ID('${DATABASE}') IS NOT NULL BEGIN ALTER DATABASE [${DATABASE}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [${DATABASE}]; END`); } finally { await admin.close(); }
   }
 });
