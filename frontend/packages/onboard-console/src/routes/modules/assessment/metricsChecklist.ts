@@ -8,8 +8,6 @@ import { isHandEntered } from "../../performanceStandardsVocabulary.js";
 // catalog's is_scored flag, which can have changed since.
 
 export interface ChecklistItem {
-  /** The period's row for this standard; null before the month is first computed. */
-  row: PeriodKpiAssessment | null;
   standard: ContractorPerformanceStandard;
   /** The month's entry for this standard, when one has been saved. */
   entry: ManualMetricEntry | undefined;
@@ -18,7 +16,7 @@ export interface ChecklistItem {
 export interface MetricsChecklist {
   /** Missing figures first, then entered ones; each in the scorecard's order. */
   scored: ChecklistItem[];
-  /** Hand-entered monthly standards the month does not score. */
+  /** Hand-entered monthly standards on the Agreement that the month does not score. */
   unscored: ContractorPerformanceStandard[];
   entered: number;
 }
@@ -30,26 +28,28 @@ export function metricsChecklist(
   rows: readonly PeriodKpiAssessment[],
   standards: readonly ContractorPerformanceStandard[],
   metrics: readonly ManualMetricEntry[],
+  /** The standards assigned to the Agreement; the whole catalog when unknown (before migration 102). */
+  assigned?: ReadonlySet<string>,
 ): MetricsChecklist {
   const byId = new Map(standards.map((standard) => [standard.id, standard]));
   const items: ChecklistItem[] = [];
   for (const row of rows) {
     const standard = byId.get(row.standard_id);
     if (!standard || !isMonthlyFigure(standard)) continue;
-    items.push({ row, standard, entry: metrics.find((metric) => metric.standard_id === standard.id) });
+    items.push({ standard, entry: metrics.find((metric) => metric.standard_id === standard.id) });
   }
   // A month not yet computed has no rows to read its rule set from, and its
   // figures are entered before that first compute. The catalog's scored flag
   // stands in until the rows exist.
   if (!rows.length) {
     for (const standard of standards) {
-      if (isMonthlyFigure(standard) && standard.is_scored) items.push({ row: null, standard, entry: metrics.find((metric) => metric.standard_id === standard.id) });
+      if (isMonthlyFigure(standard) && standard.is_scored) items.push({ standard, entry: metrics.find((metric) => metric.standard_id === standard.id) });
     }
   }
   const scoredIds = new Set(items.map((item) => item.standard.id));
   return {
     scored: [...items.filter((item) => !item.entry), ...items.filter((item) => item.entry)],
-    unscored: standards.filter((standard) => isMonthlyFigure(standard) && !scoredIds.has(standard.id)),
+    unscored: standards.filter((standard) => isMonthlyFigure(standard) && !scoredIds.has(standard.id) && (!assigned || assigned.has(standard.id))),
     entered: items.filter((item) => item.entry).length,
   };
 }

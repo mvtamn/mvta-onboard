@@ -78,14 +78,19 @@ const plural = (count: number, one: string, many: string) => `${count} ${count =
  * at the section where it is done. CAPs are listed last and quietly: they are
  * an outcome to act on, not a blocker on the money.
  */
-export function outstandingItems(rows: PeriodKpiAssessment[], occurrences: ComplianceOccurrence[]): Outstanding[] {
+export function outstandingItems(
+  rows: PeriodKpiAssessment[],
+  occurrences: ComplianceOccurrence[],
+  /** The metrics checklist's count when the caller has one; the rows' not-assessable count otherwise. */
+  missingFigures: number = rows.filter((row) => row.assessment_outcome === "not_assessable").length,
+): Outstanding[] {
   const items: Outstanding[] = [];
   const awaiting = rows.filter((row) => !row.recommended_action && row.assessment_outcome !== "not_assessable");
   if (awaiting.length) {
     const sum = awaiting.reduce((total, row) => total + Number(row.proposed_amount || 0), 0);
     items.push({ key: "review", page: "review", label: `${plural(awaiting.length, "item", "items")} awaiting review · ${money(sum)}` });
   }
-  const missing = rows.filter((row) => row.assessment_outcome === "not_assessable").length;
+  const missing = missingFigures;
   if (missing) items.push({ key: "metrics", page: "metrics", label: `${plural(missing, "monthly figure", "monthly figures")} missing` });
   const ranged = occurrences.filter((o) =>
     o.review_status === "confirmed" && o.penalty_amount_min != null && o.penalty_amount_max != null && o.assessed_amount == null).length;

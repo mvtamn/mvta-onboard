@@ -49,13 +49,7 @@ function ReferenceValuesPanel({ values, busy, canEdit, onSave, onDelete }: {
   const systemList = rows.some((row) => row.is_system);
 
   if (!values.length) {
-    return <section className="contractor-setup">
-      <div className="assessment-section-head"><div>
-        <span className="assessment-eyebrow">Vocabulary</span>
-        <h3>Lists</h3>
-        <p>Migration 105 has not been applied to this database, so the pickers are using their built-in lists and there is nothing to edit yet.</p>
-      </div></div>
-    </section>;
+    return <div className="assessment-warning">Migration 105 has not been applied to this database, so the pickers are using their built-in lists and there is nothing to edit yet.</div>;
   }
 
   const isSystem = (entry: string) => values.some((row) => row.domain === entry && row.is_system);

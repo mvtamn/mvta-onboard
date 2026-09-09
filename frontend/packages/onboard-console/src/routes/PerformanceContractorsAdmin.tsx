@@ -56,6 +56,8 @@ export function PerformanceContractorsAdmin() {
   }, []);
   useEffect(() => { void load(); }, [load]);
 
+  const agreementsFor = (contractorId: string) => agreements.filter((a) => a.contractor_id === contractorId);
+
   function edit(contractor: ContractorRecord | null) {
     setSelected(contractor?.id ?? "new");
     setName(contractor?.name ?? "");
@@ -115,7 +117,7 @@ export function PerformanceContractorsAdmin() {
                       {contractor.is_active ? "Current" : "Historical"}
                     </span>
                     <small>{formatDate(contractor.contract_start_date)} – {contractor.contract_end_date ? formatDate(contractor.contract_end_date) : "ongoing"}</small>
-                    {agreements.some((a) => a.contractor_id === contractor.id) && <small>· {agreements.filter((a) => a.contractor_id === contractor.id).length} {agreements.filter((a) => a.contractor_id === contractor.id).length === 1 ? "Agreement" : "Agreements"}</small>}
+                    {agreementsFor(contractor.id).length > 0 && <small>· {agreementsFor(contractor.id).length} {agreementsFor(contractor.id).length === 1 ? "Agreement" : "Agreements"}</small>}
                   </span>
                 </button>
               </li>
@@ -153,7 +155,7 @@ export function PerformanceContractorsAdmin() {
             {selected !== "new" && <>
               <p className="standards-group-label">Agreements under this contractor</p>
               <div className="agreement-summary">
-                {agreements.filter((a) => a.contractor_id === selected).map((a) => (
+                {agreementsFor(selected).map((a) => (
                   <div className="agreement-card" key={a.id}>
                     <div>
                       <strong>{a.contract_number || "Agreement"}</strong>
@@ -166,7 +168,7 @@ export function PerformanceContractorsAdmin() {
                     </div>
                   </div>
                 ))}
-                {!agreements.some((a) => a.contractor_id === selected) && <p className="standards-hint">No Agreement names this contractor yet. <Link to="/admin/performance/agreements">Create one under Agreements.</Link></p>}
+                {!agreementsFor(selected).length && <p className="standards-hint">No Agreement names this contractor yet. <Link to="/admin/performance/agreements">Create one under Agreements.</Link></p>}
               </div>
             </>}
           </div>

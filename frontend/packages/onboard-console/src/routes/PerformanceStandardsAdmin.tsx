@@ -325,7 +325,7 @@ export function PerformanceStandardsAdmin() {
           </div>
           <ul className="standards-rows">
             {groupByCategory(visible, (standard) => standard.category, vocab.categories).map((group) => <Fragment key={group.key || "other"}>
-            {group.label && <li className="standards-group" aria-hidden="true">{group.label}</li>}
+            {group.label && <li className="standards-group">{group.label}</li>}
             {group.items.map((standard) => {
               const assignment = assignmentFor.get(standard.id);
               const state = assignment ? (assignment.is_scored ? "Scored" : "Dormant") : "Unassigned";

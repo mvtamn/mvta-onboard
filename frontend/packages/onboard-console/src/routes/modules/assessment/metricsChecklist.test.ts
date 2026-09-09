@@ -33,6 +33,11 @@ describe("metricsChecklist", () => {
     expect(list.unscored.map((item) => item.id)).toEqual(["fleet"]);
     expect(list.entered).toBe(1);
   });
+  it("lists as not scored only the hand-entered standards the Agreement assigns, when the assignments are known", () => {
+    const rows = [row({ id: "r1", standard_id: "roadcalls" })];
+    expect(metricsChecklist(rows, standards, [], new Set(["roadcalls", "safety"])).unscored.map((item) => item.id)).toEqual(["safety"]);
+    expect(metricsChecklist(rows, standards, []).unscored.map((item) => item.id)).toEqual(["safety", "fleet"]);
+  });
   it("puts the missing figures first so the reader sees what is left", () => {
     const rows = [row({ id: "r1", standard_id: "roadcalls" }), row({ id: "r2", standard_id: "safety" })];
     const metrics = [entry({ standard_id: "roadcalls" })];
@@ -40,7 +45,7 @@ describe("metricsChecklist", () => {
   });
   it("before the first compute, reads the catalog's scored flag instead of the period's rows", () => {
     const list = metricsChecklist([], standards, [entry({ standard_id: "safety", metric_value: 92 })]);
-    expect(list.scored.map((item) => [item.standard.id, item.row, item.entry?.metric_value ?? null])).toEqual([["roadcalls", null, null], ["safety", null, 92]]);
+    expect(list.scored.map((item) => [item.standard.id, item.entry?.metric_value ?? null])).toEqual([["roadcalls", null], ["safety", 92]]);
     expect(list.unscored.map((item) => item.id)).toEqual(["fleet"]);
   });
 });

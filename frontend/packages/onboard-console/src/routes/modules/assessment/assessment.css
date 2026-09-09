@@ -134,7 +134,7 @@
 .assessment-metric-head,.assessment-metric-row{display:grid;grid-template-columns:minmax(0,1.3fr) 150px minmax(0,1.4fr) 150px 130px;gap:12px;align-items:center;padding:10px 14px}
 .assessment-metric-head{background:var(--surface-alt-bg);border-bottom:1px solid var(--border-soft);color:var(--text-dim);font-size:11px;font-weight:700}
 .assessment-metric-row{border-top:1px solid var(--border-soft)}
-.assessment-metric-row:nth-of-type(2){border-top:0}
+.assessment-metric-head+.assessment-metric-row{border-top:0}
 .assessment-metric-row strong{display:block;font-size:13px;color:var(--text)}
 .assessment-metric-row small{display:block;color:var(--text-muted);font-size:11px;margin-top:2px}
 .assessment-measure{display:flex;align-items:center;gap:6px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface-bg);padding:0 10px;min-height:34px}
