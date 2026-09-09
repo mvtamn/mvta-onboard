@@ -1,6 +1,7 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import type { AssessmentAuditEntry, AssessmentPeriod } from "@mvta/shared";
 import { api } from "../../../config.js";
+import { Empty } from "./assessmentFormat.js";
 
 const ACTION_LABEL: Record<string, string> = {
   computed: "Computed", reviewed: "Reviewed", validation_shared: "Validation Draft shared", finalized: "Finalized",
@@ -8,7 +9,6 @@ const ACTION_LABEL: Record<string, string> = {
   issued: "Final Assessment issued", reopened: "Reopened", correction_started: "Correction started", stale_due_to_prior_period_reopen: "Stale: an earlier month was reopened",
   exception_authorized: "Exception authorized", evidence_added: "Evidence added", dispute_filed: "Dispute filed", dispute_decided: "Dispute decided",
 };
-const Empty = ({ children }: { children: ReactNode }) => <div className="assessment-empty">{children}</div>;
 const when = (value: string) => new Date(value).toLocaleString("en-US", { timeZone: "America/Chicago", month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 
 // The period's trail, newest first. The JSON the handlers recorded is shown
