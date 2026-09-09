@@ -96,6 +96,12 @@
 .assessment-rail-card .btn-sm{margin:0}
 .assessment-kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 14px;font-size:12px;margin:0}
 .assessment-kv dt{color:var(--text-muted)}.assessment-kv dd{margin:0;color:var(--text);font-weight:600;min-width:0}
+/* The corrective-action window reads as a sentence, so it wraps and carries
+   the normal weight rather than the emphasis the short values get. "No window"
+   is a real answer rather than a missing value, so it is said quietly instead
+   of shown as the em dash the other empty rows use. */
+.assessment-cap-window{font-weight:500;line-height:1.45;display:block}
+.assessment-cap-window.quiet{color:var(--text-muted)}
 .assessment-band-list{list-style:none;margin:0;padding:0;display:grid;gap:4px}
 .assessment-band-list li{display:flex;align-items:baseline;gap:7px;font-weight:400;color:var(--text-dim);font-size:11.5px}
 .assessment-evidence{list-style:none;margin:0;padding:0}

@@ -5,6 +5,11 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.178] - 2026-09-09
+
+- **A standard's detail page says when a corrective action plan is owed.** The rail described how the standard is measured, who owns it and what each band charges, and stopped there - the corrective-action window, configurable in Administration since 1.5.156, appeared nowhere in the module that acts on it. A reviewer looking at Initial Operator Training Violations could see `$1,000 per day` and could not see that a third case in any rolling 90 days obliges a plan. It now reads as a sentence beside the bands, from the same `capWindowSentence` the configurator reads back, so the two cannot describe one rule differently.
+- **"No window" is said, not left blank.** A standard that charges per occurrence and escalates nothing gets that sentence quietly rather than the em dash an empty row uses: it is an answer about the contract, not a missing value.
+
 ## [1.5.177] - 2026-09-09
 
 - **The scorecard reads its figures and targets in words.** `assess.ts` wrote `String(metricValue)` and the literal "Configured bands" into `PeriodKpiAssessments`, so on-time performance read as `0.8362388553570882` against *Configured bands* on the scorecard, the standard's detail and the issued report. `lib/assessment/display.ts` (tests) now writes `83.6%` against `85% or above` — the contract's own `target_display` when it has one, the stated `target_value` with its direction otherwise, the Meets band's range after that, never a placeholder — and an occurrence standard's figure is its count. The unit is read live from the catalog at compute time, not snapshotted: it is presentation, never a scoring input. Months computed before this are formatted the same way by the console (`modules/assessment/scorecardDisplay.ts`, tests) from the catalog's unit and ladder, so nothing needs recomputing to read properly.
