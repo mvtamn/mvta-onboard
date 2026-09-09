@@ -4,3 +4,11 @@ test("Validation Draft is labeled, escaped, and uses a full month name",()=>{con
 test("Final Assessment prints governed dates as MM\/DD\/YYYY",()=>{const html=renderAssessmentReport({...base,issuanceType:"final",issuedAt:"2026-08-01",disputeDeadline:"2026-08-14"});assert.doesNotMatch(html,/VALIDATION DRAFT/);assert.match(html,/08\/14\/2026/);});
 test("official artifacts do not represent ramp-up",()=>{assert.doesNotMatch(renderAssessmentReport({...base,issuanceType:"final"}),/ramp-up/i);});
 test("partial assessments label the total explicitly",()=>{assert.match(renderAssessmentReport({...base,issuanceType:"final",isPartial:true}),/Partial Assessed Total/);});
+
+// The printed arithmetic must be true on every artifact. After a waiver the
+// computed figure and the binding figure differ, and the report says which is
+// which and why - it does not print an equation the contractor can disprove.
+const waived={...base,assessedTotal:0,assessments:[{...base.assessments[0],computedAmount:1500,assessedAmount:0,reviewAction:"waived",reviewReason:"Documented detour on Route 420"}]};
+test("a Validation Draft prints computed and recommended amounts as separate lines",()=>{const html=renderAssessmentReport({...waived,issuanceType:"preliminary"});assert.match(html,/Computed:<\/b> \$1,500\.00 × 1 = \$1,500\.00/);assert.match(html,/Recommendation:<\/b> waived — Documented detour on Route 420/);assert.match(html,/Recommended amount:<\/b> <b>\$0\.00<\/b>/);assert.doesNotMatch(html,/= <b>\$0\.00/);});
+test("a Final Assessment prints the binding decision under its own name",()=>{const html=renderAssessmentReport({...waived,issuanceType:"final",issuedAt:"2026-08-10T15:05:00Z",disputeDeadline:"2026-08-24"});assert.match(html,/Binding decision:<\/b> waived/);assert.match(html,/Binding amount:<\/b> <b>\$0\.00<\/b>/);assert.doesNotMatch(html,/Recommendation:/);});
+test("excluded inputs are named beside the computed figure, never subtracted from it",()=>{const html=renderAssessmentReport({...base,issuanceType:"final",assessments:[{...base.assessments[0],computedAmount:1500,excludedOccurrenceCount:2}]});assert.match(html,/after excluding 2 occurrences from the inputs/);assert.doesNotMatch(html,/−/);});
