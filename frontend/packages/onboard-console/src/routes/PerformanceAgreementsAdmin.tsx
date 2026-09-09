@@ -89,7 +89,6 @@ export function PerformanceAgreementsAdmin() {
       <div className="standards-head">
         <div>
           <span className="assessment-eyebrow">Performance assessment · Contract terms</span>
-          <h2>Performance Agreements</h2>
           <p>A term binding one contractor to a set of standards between two dates. Assessment periods and the compliance candidate poll both refuse to run without an active one.</p>
         </div>
         {canEdit && <button className="btn-primary" disabled={busy || !contractors.length} onClick={() => edit(null)}>New Agreement</button>}
@@ -103,7 +102,7 @@ export function PerformanceAgreementsAdmin() {
 
       <div className="standards-workspace">
         <section className="standards-list" aria-label="Agreements">
-          <div className="standards-list-meta">{agreements.length} on record</div>
+          <div className="standards-list-meta"><span>{agreements.length} on record</span><span>{agreements.filter((a) => a.is_active).length} active</span></div>
           <ul className="standards-rows">
             {agreements.map((agreement) => (
               <li key={agreement.id}>
@@ -146,19 +145,14 @@ export function PerformanceAgreementsAdmin() {
               <div><h3>{selected === "new" ? "New Agreement" : agreements.find((a) => a.id === selected)?.contractor_name ?? "Agreement"}</h3></div>
             </div>
             <div className="standards-tab-body">
-              <div className="standards-grid">
+              {/* Three groups: the term itself, what the contract calls things,
+                  and the windows the process runs on. */}
+              <fieldset className="standards-fieldset"><legend>Term</legend><div className="standards-grid">
                 <label className="standards-wide"><span>Contractor</span>
                   <select value={form.contractor_id} disabled={!canEdit} onChange={(event) => set("contractor_id", event.target.value)}>
                     <option value="">Select a contractor</option>
                     {contractors.map((contractor) => <option key={contractor.id} value={contractor.id}>{contractor.name}</option>)}
                   </select>
-                </label>
-                <label><span>Contract number</span>
-                  <input value={form.contract_number} disabled={!canEdit} placeholder="e.g. RFP 2025-07" onChange={(event) => set("contract_number", event.target.value)} />
-                </label>
-                <label><span>Standards exhibit</span>
-                  <input value={form.exhibit_reference} disabled={!canEdit} placeholder="e.g. Attachment G v2" onChange={(event) => set("exhibit_reference", event.target.value)} />
-                  <small>What this contract calls the document the standards come from. Cited wherever the console refers to it.</small>
                 </label>
                 <label><span>Term start</span>
                   <input type="date" value={form.starts_on} disabled={!canEdit} onChange={(event) => set("starts_on", event.target.value)} />
@@ -166,19 +160,32 @@ export function PerformanceAgreementsAdmin() {
                 <label><span>Term end</span>
                   <input type="date" value={form.ends_on} disabled={!canEdit} onChange={(event) => set("ends_on", event.target.value)} />
                 </label>
-                <label><span>Validation window (business days)</span>
-                  <input type="number" min={1} max={30} value={form.validation_business_days} disabled={!canEdit}
-                    onChange={(event) => set("validation_business_days", Number(event.target.value))} />
+              </div></fieldset>
+              <fieldset className="standards-fieldset"><legend>Contract references</legend><div className="standards-grid">
+                <label><span>Contract number</span>
+                  <input value={form.contract_number} disabled={!canEdit} placeholder="e.g. RFP 2025-07" onChange={(event) => set("contract_number", event.target.value)} />
                 </label>
-                <label><span>Record retention (years)</span>
-                  <input type="number" min={1} max={25} value={form.retention_years} disabled={!canEdit}
-                    onChange={(event) => set("retention_years", Number(event.target.value))} />
+                <label><span>Standards exhibit</span>
+                  <input value={form.exhibit_reference} disabled={!canEdit} placeholder="e.g. Attachment G v2" onChange={(event) => set("exhibit_reference", event.target.value)} />
+                  <small>What this contract calls the document the standards come from. Cited wherever the console refers to it.</small>
                 </label>
-                <label className="contractor-active">
+              </div></fieldset>
+              <fieldset className="standards-fieldset"><legend>Process</legend><div className="standards-grid">
+                <label><span>Validation window</span>
+                  <span className="standards-measure"><input type="number" min={1} max={30} value={form.validation_business_days} disabled={!canEdit}
+                    onChange={(event) => set("validation_business_days", Number(event.target.value))} /><span>business days</span></span>
+                  <small>How long the contractor has to validate a shared draft.</small>
+                </label>
+                <label><span>Record retention</span>
+                  <span className="standards-measure"><input type="number" min={1} max={25} value={form.retention_years} disabled={!canEdit}
+                    onChange={(event) => set("retention_years", Number(event.target.value))} /><span>years</span></span>
+                  <small>How long issued assessments and their evidence are kept.</small>
+                </label>
+                <label className="contractor-active standards-wide">
                   <input type="checkbox" checked={form.is_active} disabled={!canEdit} onChange={(event) => set("is_active", event.target.checked)} />
                   <span>Current Agreement for this contractor</span>
                 </label>
-              </div>
+              </div></fieldset>
               {selected === "new" && <div className="standards-hint">
                 A new Agreement inherits every standard in the catalog, scored as the catalog scores it. Adjust the assignments afterwards under Standards.
               </div>}

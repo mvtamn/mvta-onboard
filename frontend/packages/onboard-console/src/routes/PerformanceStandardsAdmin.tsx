@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import type {
   AgreementStandardAssignment, AgreementStandardInput, ContractorPerformanceStandard,
   ContractorStandardTier, PerformanceAgreementRecord,
@@ -13,6 +13,7 @@ import {
 } from "./performanceStandardsVocabulary.js";
 import { Link } from "react-router-dom";
 import { api } from "../config.js";
+import { groupByCategory } from "./modules/assessment/categoryGroups.js";
 import { useAppDialog } from "../components/AppDialog.js";
 import { useAuth } from "../auth/AuthContext.js";
 import "./modules/assessment/assessment.css";
@@ -277,7 +278,6 @@ export function PerformanceStandardsAdmin() {
       <div className="standards-head">
         <div>
           <span className="assessment-eyebrow">Administration · Contract governance</span>
-          <h2>Performance Standards</h2>
           <p>The contractor performance standards catalog, its penalty bands, and which standards each Agreement holds the contractor to.</p>
         </div>
         <div className="standards-head-actions">
@@ -324,7 +324,9 @@ export function PerformanceStandardsAdmin() {
               : `${visible.length} of ${standards.length} standards`}
           </div>
           <ul className="standards-rows">
-            {visible.map((standard) => {
+            {groupByCategory(visible, (standard) => standard.category, vocab.categories).map((group) => <Fragment key={group.key || "other"}>
+            {group.label && <li className="standards-group" aria-hidden="true">{group.label}</li>}
+            {group.items.map((standard) => {
               const assignment = assignmentFor.get(standard.id);
               const state = assignment ? (assignment.is_scored ? "Scored" : "Dormant") : "Unassigned";
               return <li key={standard.id}>
@@ -362,6 +364,7 @@ export function PerformanceStandardsAdmin() {
                 </button>
               </li>;
             })}
+            </Fragment>)}
             {!visible.length && <li className="standards-list-empty">No standard matches that search.</li>}
           </ul>
         </section>
@@ -930,12 +933,12 @@ function TierEditor({ standard, tiers, agreement, canEdit, busy, knownQualifiers
         </p>
       </div>
       <div className="standards-scope">
-        <label><span>Applies to</span>
-          <select value={scope} disabled={!agreement} onChange={(event) => setScope(event.target.value as "catalog" | "agreement")}>
-            <option value="catalog">Agency catalog default</option>
-            <option value="agreement">This Agreement only</option>
-          </select>
-        </label>
+        <div className="standards-scope-choice" role="group" aria-label="Applies to"><span>Applies to</span>
+          <span className="standards-segmented-control">
+            <button type="button" aria-pressed={scope === "catalog"} onClick={() => setScope("catalog")}>Agency catalog default</button>
+            <button type="button" aria-pressed={scope === "agreement"} disabled={!agreement} onClick={() => setScope("agreement")}>This Agreement only</button>
+          </span>
+        </div>
         <label><span>Effective from</span><input type="date" value={effective} disabled={!canEdit} onChange={(event) => setEffective(event.target.value)} /></label>
       </div>
     </div>

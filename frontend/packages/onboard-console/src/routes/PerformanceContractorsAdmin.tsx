@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import type { ContractorRecord } from "@mvta/shared";
+import type { ContractorRecord, PerformanceAgreementRecord } from "@mvta/shared";
+import { Link } from "react-router-dom";
 import { api } from "../config.js";
 import { useAuth } from "../auth/AuthContext.js";
 import "./modules/assessment/assessment.css";
@@ -27,6 +28,7 @@ export function PerformanceContractorsAdmin() {
   const { roles } = useAuth();
   const canEdit = roles.includes("OCC.Admin");
   const [contractors, setContractors] = useState<ContractorRecord[]>([]);
+  const [agreements, setAgreements] = useState<PerformanceAgreementRecord[]>([]);
   const [selected, setSelected] = useState("new");
   const [name, setName] = useState("");
   const [start, setStart] = useState("");
@@ -40,8 +42,13 @@ export function PerformanceContractorsAdmin() {
   const load = useCallback(async () => {
     try {
       setError("");
-      const result = await api.getContractors();
+      const [result, terms] = await Promise.all([
+        api.getContractors(),
+        // Context for the selected contractor; absent before migration 102.
+        api.getPerformanceAgreements().catch(() => ({ agreements: [] as PerformanceAgreementRecord[] })),
+      ]);
       setContractors(result.contractors);
+      setAgreements(terms.agreements);
       setReady(result.diagnostics.table_ready);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The contractor list is unavailable.");
@@ -80,7 +87,6 @@ export function PerformanceContractorsAdmin() {
       <div className="standards-head">
         <div>
           <span className="assessment-eyebrow">Performance assessment · Who is engaged</span>
-          <h2>Contractors</h2>
           <p>The operators MVTA has engaged. A contractor outlives any one contract term, so its record is kept here rather than inside an Agreement.</p>
         </div>
         {canEdit && <button className="btn-primary" disabled={busy} onClick={() => edit(null)}>New contractor</button>}
@@ -93,7 +99,7 @@ export function PerformanceContractorsAdmin() {
 
       <div className="standards-workspace">
         <section className="standards-list" aria-label="Contractors">
-          <div className="standards-list-meta">{contractors.length} on record</div>
+          <div className="standards-list-meta"><span>{contractors.length} on record</span><span>{contractors.filter((c) => c.is_active).length} current</span></div>
           <ul className="standards-rows">
             {contractors.map((contractor) => (
               <li key={contractor.id}>
@@ -109,6 +115,7 @@ export function PerformanceContractorsAdmin() {
                       {contractor.is_active ? "Current" : "Historical"}
                     </span>
                     <small>{formatDate(contractor.contract_start_date)} – {contractor.contract_end_date ? formatDate(contractor.contract_end_date) : "ongoing"}</small>
+                    {agreements.some((a) => a.contractor_id === contractor.id) && <small>· {agreements.filter((a) => a.contractor_id === contractor.id).length} {agreements.filter((a) => a.contractor_id === contractor.id).length === 1 ? "Agreement" : "Agreements"}</small>}
                   </span>
                 </button>
               </li>
@@ -143,6 +150,25 @@ export function PerformanceContractorsAdmin() {
             {canEdit && <button className="btn-primary" disabled={busy || !name.trim() || !start} onClick={() => void save()}>
               {selected === "new" ? "Add contractor" : "Save contractor"}
             </button>}
+            {selected !== "new" && <>
+              <p className="standards-group-label">Agreements under this contractor</p>
+              <div className="agreement-summary">
+                {agreements.filter((a) => a.contractor_id === selected).map((a) => (
+                  <div className="agreement-card" key={a.id}>
+                    <div>
+                      <strong>{a.contract_number || "Agreement"}</strong>
+                      {a.exhibit_reference && <span className="standards-exhibit">{a.exhibit_reference}</span>}
+                      <p>{formatDate(a.starts_on)} – {formatDate(a.ends_on)} · {a.scored_standard_count ?? 0} standards scored</p>
+                    </div>
+                    <div className="agreement-card-actions">
+                      <span className={`standards-state ${a.is_active ? "scored" : "unassigned"}`}>{a.is_active ? "Active" : "Ended"}</span>
+                      <Link className="btn-sm" to="/admin/performance/agreements">Open Agreement</Link>
+                    </div>
+                  </div>
+                ))}
+                {!agreements.some((a) => a.contractor_id === selected) && <p className="standards-hint">No Agreement names this contractor yet. <Link to="/admin/performance/agreements">Create one under Agreements.</Link></p>}
+              </div>
+            </>}
           </div>
         </aside>
       </div>

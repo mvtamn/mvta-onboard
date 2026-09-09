@@ -58,24 +58,38 @@ function ReferenceValuesPanel({ values, busy, canEdit, onSave, onDelete }: {
     </section>;
   }
 
-  return <section className="contractor-setup">
-    <div className="assessment-section-head">
+  const isSystem = (entry: string) => values.some((row) => row.domain === entry && row.is_system);
+  // The same master-detail workspace as Contractors, Agreements and Standards:
+  // the lists down the left, the one being edited on the right.
+  return <div className="standards-workspace lists-workspace">
+    <section className="standards-list" aria-label="Lists">
+      <div className="standards-list-meta"><span>{DOMAIN_TITLES.length} lists</span><span>{DOMAIN_TITLES.filter((entry) => isSystem(entry.domain)).length} system</span></div>
+      <ul className="standards-rows lists-rows">
+        {DOMAIN_TITLES.map((entry) => (
+          <li key={entry.domain}>
+            <button type="button" className={`standards-row${entry.domain === domain ? " selected" : ""}`} aria-current={entry.domain === domain} onClick={() => setDomain(entry.domain)}>
+              <span><strong>{entry.title}</strong>{isSystem(entry.domain) && <small>System list</small>}</span>
+              <span className="count">{values.filter((row) => row.domain === entry.domain).length}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+    <aside className="standards-detail" aria-label={meta?.title}>
+    <div className="standards-detail-head">
       <div>
-        <span className="assessment-eyebrow">Vocabulary</span>
-        <h3>Lists behind the pickers</h3>
-        <p>{meta?.blurb}</p>
+        <h3>{meta?.title}</h3>
+        <small className="standards-hint">{meta?.blurb}</small>
       </div>
-      <select aria-label="List" value={domain} onChange={(event) => setDomain(event.target.value)}>
-        {DOMAIN_TITLES.map((entry) => <option key={entry.domain} value={entry.domain}>{entry.title}</option>)}
-      </select>
+      <span className={`standards-state ${systemList ? "dormant" : "scored"}`}>{systemList ? "System list" : "Owned list"}</span>
     </div>
-
+    <div className="standards-tab-body">
     {systemList && <div className="standards-hint">
       The scoring engine branches on these values, so they can be renamed, reordered and retired but not added to or deleted. The label is what the console shows; the value is what the code matches on.
     </div>}
 
     <div className="assessment-table-wrap">
-      <table className="data">
+      <table className="data lists-table">
         <thead><tr>
           <th>Label</th><th>Value</th><th>Order</th>
           {domain === "tier_label" && <th>Outranks</th>}
@@ -153,7 +167,10 @@ function ReferenceValuesPanel({ values, busy, canEdit, onSave, onDelete }: {
         }}
       >Add to {meta?.title.toLowerCase()}</button>
     </div>}
-  </section>;
+    <p className="standards-hint">A label change shows everywhere the value appears from the next load. Retiring a value hides it from pickers without touching the standards already using it.</p>
+    </div>
+    </aside>
+  </div>;
 }
 
 
@@ -189,8 +206,7 @@ export function PerformanceListsAdmin() {
       <div className="standards-head">
         <div>
           <span className="assessment-eyebrow">Performance assessment · Vocabulary</span>
-          <h2>Lists behind the pickers</h2>
-          <p>Units, priorities, conditions, source systems and the rest. Rename them in the contract\u2019s own words, reorder them, and hide the ones MVTA does not use.</p>
+          <p>Units, priorities, conditions, source systems and the rest. Rename them in the contract’s own words, reorder them, and hide the ones MVTA does not use.</p>
         </div>
       </div>
 

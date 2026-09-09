@@ -127,3 +127,22 @@
 /* A submitted plan's six elements, entered together and read back together. */
 .assessment-cap-form{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.assessment-cap-form label{display:flex;flex-direction:column;gap:4px;font-size:12px}.assessment-cap-form textarea{min-height:56px}.assessment-cap-form>div{grid-column:1/-1}
 .assessment-cap-fields{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin:8px 0 0}.assessment-cap-fields dt{font-size:11px;opacity:.7}.assessment-cap-fields dd{margin:0}
+
+/* Monthly metrics as a checklist. */
+.assessment-progress{height:6px;width:120px;border-radius:999px;background:var(--pill-muted-bg);overflow:hidden;display:inline-block}
+.assessment-progress i{display:block;height:100%;background:var(--brand-green);border-radius:999px}
+.assessment-metric-head,.assessment-metric-row{display:grid;grid-template-columns:minmax(0,1.3fr) 150px minmax(0,1.4fr) 150px 130px;gap:12px;align-items:center;padding:10px 14px}
+.assessment-metric-head{background:var(--surface-alt-bg);border-bottom:1px solid var(--border-soft);color:var(--text-dim);font-size:11px;font-weight:700}
+.assessment-metric-row{border-top:1px solid var(--border-soft)}
+.assessment-metric-row:nth-of-type(2){border-top:0}
+.assessment-metric-row strong{display:block;font-size:13px;color:var(--text)}
+.assessment-metric-row small{display:block;color:var(--text-muted);font-size:11px;margin-top:2px}
+.assessment-measure{display:flex;align-items:center;gap:6px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface-bg);padding:0 10px;min-height:34px}
+.assessment-measure input{border:0;padding:6px 0;min-width:0;width:100%;font:inherit;font-size:12.5px;background:transparent;color:var(--text)}
+.assessment-measure input:focus{outline:none}
+.assessment-measure span{color:var(--text-muted);font-size:11px;font-weight:600;white-space:nowrap}
+.assessment-metric-input{min-height:34px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface-bg);padding:6px 10px;color:var(--text);font:inherit;font-size:12.5px;min-width:0}
+.assessment-metric-state{display:flex;gap:8px;align-items:center;justify-content:flex-end}
+.assessment-metric-state .btn-sm{margin:0}
+table.data tr.assessment-total td{background:var(--surface-alt-bg);font-weight:700;border-top:1px solid var(--border-strong);border-bottom:0}
+@media(max-width:900px){.assessment-metric-head{display:none}.assessment-metric-row{grid-template-columns:1fr 1fr}}
