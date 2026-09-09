@@ -5,6 +5,13 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.173] - 2026-09-09
+
+Phase H of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — ownership and bounded lists. (1.5.169–1.5.172 are Phases D–G on their own PRs.)
+
+- **H1 — owner identity and the month-end open-inputs list.** Migration 113 adds `ReferenceValues.principal_upn` (assigned_to domain only; the PUT handler accepts it there and lowercases it). `GET /api/manual-metrics/open?service_month=` lists every hand-entered scored standard of the active Agreement with no entry for the month, grouped by owner with their account. The console shows it on Monthly Metrics (`OpenInputs.tsx`, 2 tests): the signed-in owner's first, then everyone else's; Administration › Lists gets an *Account* column for owners.
+- **H2 — bounded list queries.** `GET /compliance-occurrences` takes `contractor_id`, `service_month`, `review_status`, `limit`, `offset`; `GET /manual-metrics` takes `contractor_id`, `service_month`, `limit`; `GET /assessment-periods` takes `contractor_id`, `limit` (default 120). The shared client passes filters; unfiltered calls keep working with a default cap.
+
 ## [1.5.172] - 2026-09-09
 
 Phase G of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — database-backed confidence. (1.5.169–1.5.171 are Phases D–F on their own PRs.)

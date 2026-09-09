@@ -163,7 +163,7 @@ Tables exist; `assess.ts` already excludes occurrences whose `relief_id` points 
 
 ### H1 — Manual-metric owners and the month-end open-items list · **M**
 
-Design §0.3 gap F. `assigned_to` values come from the `assigned_to` reference list (migration 108); map each to an Entra object id in the list row (migration 113: `ReferenceValues.principal_id`). `GET /manual-metrics/open?service_month=` returns scored manual standards with no entry for the month, grouped by owner. Console: an **Open inputs** banner on Monthly Metrics for the signed-in owner. No new role.
+Design §0.3 gap F. `assigned_to` values come from the `assigned_to` reference list (migration 108); map each to the account's user principal name in the list row (migration 113: `ReferenceValues.principal_upn` — a UPN is what an administrator can type and what the signed-in account exposes; an object id is neither, at the cost of a rename breaking the match visibly). `GET /manual-metrics/open?service_month=` returns scored manual standards with no entry for the month, grouped by owner. Console: an **Open inputs** banner on Monthly Metrics for the signed-in owner. No new role.
 - **Blocked by:** none.
 
 ### H2 — Bounded list queries · **S**

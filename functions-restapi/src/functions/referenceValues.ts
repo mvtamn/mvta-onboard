@@ -87,14 +87,18 @@ app.http("referenceValuePut", {
       write.input("sort", sql.Int, body.sort_order ?? 0);
       write.input("severity", sql.Int, domain === "tier_label" ? body.severity_order ?? null : null);
       write.input("active", sql.Bit, body.is_active !== false);
+      // Only an owner is a person; a team, a tier, a category has no account.
+      const upn = domain === "assigned_to" && typeof body.principal_upn === "string" && body.principal_upn.trim() ? body.principal_upn.trim().toLowerCase() : null;
+      if (upn && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(upn)) { await tx.rollback(); return { status: 400, jsonBody: { error: "principal_upn must be an account name like name@mvta.us" } }; }
+      write.input("upn", sql.NVarChar(320), upn);
       write.input("actor", sql.NVarChar(200), auth.principal.userDetails ?? "onboard-console");
       await write.query(`
         MERGE ReferenceValues WITH (HOLDLOCK) target
         USING (SELECT @id id) source ON target.id=source.id
         WHEN MATCHED THEN UPDATE SET label=@label,description=@description,sort_order=@sort,
-          severity_order=@severity,is_active=@active,updated_by=@actor,updated_at=SYSUTCDATETIME()
-        WHEN NOT MATCHED THEN INSERT(id,domain,value,label,description,sort_order,severity_order,is_active,is_system,updated_by)
-          VALUES(@id,@domain,@value,@label,@description,@sort,@severity,@active,0,@actor);
+          severity_order=@severity,is_active=@active,principal_upn=@upn,updated_by=@actor,updated_at=SYSUTCDATETIME()
+        WHEN NOT MATCHED THEN INSERT(id,domain,value,label,description,sort_order,severity_order,is_active,is_system,principal_upn,updated_by)
+          VALUES(@id,@domain,@value,@label,@description,@sort,@severity,@active,0,@upn,@actor);
       `);
       await tx.commit();
       return { status: row ? 200 : 201, jsonBody: { id } };

@@ -1646,6 +1646,8 @@ export interface RegisteredResolver {
 export interface ReferenceValue {
   id: string; domain: string; value: string; label: string; description: string | null;
   sort_order: number; severity_order: number | null; is_active: boolean; is_system: boolean;
+  /** assigned_to only: the account that owns the standards assigned to this value (migration 113). */
+  principal_upn?: string | null;
   updated_by?: string; updated_at?: string;
 }
 
@@ -1721,6 +1723,8 @@ export interface AssessmentCap { id: string; standard_name: string; status: Asse
 export interface AssessmentAuditEntry { id: number; entity_type: "period" | "assessment" | "report" | "dispute" | "cap" | "claim" | "outage"; entity_id: string; action: string; actor: string; before_json: string | null; after_json: string | null; note: string | null; created_at: string }
 export interface ExcusableDelayClaim { id: string; contractor_id: string; service_month: string; event_description: string; event_started_at: string; notice_received_at: string; documentation_note: string | null; status: "submitted" | "approved" | "denied"; late_notice: boolean; decided_by: string | null; decided_at: string | null; decision_note: string | null; created_by: string; created_at: string }
 export interface SystemOutageWindow { id: string; system: "Avail_CAD_AVL" | "ITMS" | "MDT" | "Spare" | "Other"; started_at: string; ended_at: string | null; scope_note: string; logged_by: string; logged_at: string }
+// A hand-entered standard with no figure for the month yet, and whose turn it is.
+export interface OpenManualInput { standard_id: string; code: string; name: string; assigned_to: string | null; responsible_team: string | null; contractor_id: string; contractor_name: string; principal_upn: string | null }
 export interface AssessmentDispute { id: string; report_version: number; item_count: number; basis: string; status: string; outcome: string | null; submitted_at: string }
 export interface AssessmentEvidence { id: string; assessment_id: string; content_type: string; file_size_bytes: number; caption: string | null; content_sha256: string; visibility: "internal" | "contractor"; redaction_reason: string | null; uploaded_by: string; uploaded_at: string }
 

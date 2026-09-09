@@ -37,7 +37,7 @@ const DOMAIN_TITLES: { domain: string; title: string; blurb: string }[] = [
 // this only makes the refusal predictable.
 function ReferenceValuesPanel({ values, busy, canEdit, onSave, onDelete }: {
   values: ReferenceValue[]; busy: boolean; canEdit: boolean;
-  onSave: (id: string, input: { domain: string; value: string; label: string; description?: string | null; sort_order?: number; severity_order?: number | null; is_active?: boolean }) => void;
+  onSave: (id: string, input: { domain: string; value: string; label: string; description?: string | null; sort_order?: number; severity_order?: number | null; is_active?: boolean; principal_upn?: string | null }) => void;
   onDelete: (value: ReferenceValue) => void;
 }) {
   const [domain, setDomain] = useState("unit");
@@ -78,7 +78,8 @@ function ReferenceValuesPanel({ values, busy, canEdit, onSave, onDelete }: {
       <table className="data">
         <thead><tr>
           <th>Label</th><th>Value</th><th>Order</th>
-          {domain === "tier_label" && <th>Outranks</th>}
+          {domain === "assigned_to" && <th>Account</th>}
+            {domain === "tier_label" && <th>Outranks</th>}
           <th>In use</th><th />
         </tr></thead>
         <tbody>
@@ -104,6 +105,18 @@ function ReferenceValuesPanel({ values, busy, canEdit, onSave, onDelete }: {
                 }}
               />
             </td>
+            {domain === "assigned_to" && <td>
+              {/* The account behind the name, so the month-end open-inputs list
+                  can be shown to the person it belongs to. Empty for a team. */}
+              <input
+                type="email" aria-label={`Account for ${row.value}`} defaultValue={row.principal_upn ?? ""} placeholder="name@mvta.us"
+                disabled={!canEdit || busy}
+                onBlur={(event) => {
+                  const upn = event.target.value.trim().toLowerCase();
+                  if (upn !== (row.principal_upn ?? "")) onSave(row.id, { ...row, principal_upn: upn || null });
+                }}
+              />
+            </td>}
             {domain === "tier_label" && <td>
               {/* Ranking, not money: which band wins when several match one
                   observation. Safe to edit, and snapshotted per period so a

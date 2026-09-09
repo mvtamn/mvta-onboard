@@ -7,6 +7,7 @@ import { useAuth } from "../../../auth/AuthContext.js";
 import { ReportWorkflow } from "./ReportWorkflow.js";
 import { Caps } from "./Caps.js";
 import { Relief } from "./Relief.js";
+import { OpenInputs } from "./OpenInputs.js";
 import { History } from "./History.js";
 import { Empty, formatDate, formatMonth, money } from "./assessmentFormat.js";
 import { usePeriodRows } from "./usePeriodRows.js";
@@ -26,13 +27,16 @@ const inputDate=(value:string|null|undefined)=>{const d=value?.replace(/\D/g,"")
 export function AssessmentModule(){
   const {roles}=useAuth();
   const [page,setPage]=useState<Page>("scorecard"),[periods,setPeriods]=useState<AssessmentPeriod[]>([]),[contractors,setContractors]=useState<ContractorRecord[]>([]),[standards,setStandards]=useState<ContractorPerformanceStandard[]>([]),[tiers,setTiers]=useState<ContractorStandardTier[]>([]),[occurrences,setOccurrences]=useState<ComplianceOccurrence[]>([]),[metrics,setMetrics]=useState<ManualMetricEntry[]>([]),[selected,setSelected]=useState(""),[month,setMonth]=useState(currentMonth()),[showContractors,setShowContractors]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(""),[tableReady,setTableReady]=useState(true);
-  const load=useCallback(async()=>{try{setError("");const [p,c,s,o,m]=await Promise.all([api.getAssessmentPeriods(),api.getContractors(),api.getPerformanceStandards(),api.getComplianceOccurrences(),api.getManualMetrics()]);setPeriods(p.periods);setContractors(c.contractors);setStandards(s.standards);setTiers(s.tiers??[]);setOccurrences(o.occurrences);setMetrics(m.metrics);setTableReady(p.diagnostics.table_ready&&c.diagnostics.table_ready&&s.diagnostics.table_ready);setSelected(v=>v||p.periods[0]?.id||"");}catch(e){setError(e instanceof Error?e.message:"Unable to load assessment workspace")}},[]);
+  const load=useCallback(async()=>{try{setError("");const [p,c,s]=await Promise.all([api.getAssessmentPeriods(),api.getContractors(),api.getPerformanceStandards()]);setPeriods(p.periods);setContractors(c.contractors);setStandards(s.standards);setTiers(s.tiers??[]);setTableReady(p.diagnostics.table_ready&&c.diagnostics.table_ready&&s.diagnostics.table_ready);setSelected(v=>v||p.periods[0]?.id||"");}catch(e){setError(e instanceof Error?e.message:"Unable to load assessment workspace")}},[]);
   useEffect(()=>{void load()},[load]);
   const [refreshKey,setRefreshKey]=useState(0);
   const {rows,detailId,setDetailId,error:rowsError}=usePeriodRows(api.getPeriodAssessments,selected,refreshKey);
   const period=periods.find(p=>p.id===selected),activeContractors=contractors.filter(c=>c.is_active),detail=rows.find(r=>r.id===detailId),periodOccurrences=period?occurrences.filter(o=>o.contractor_id===period.contractor_id&&o.service_date.startsWith(period.service_month)):occurrences,periodMetrics=period?metrics.filter(m=>m.contractor_id===period.contractor_id&&m.service_month===period.service_month):metrics;
   const [claims,setClaims]=useState<ExcusableDelayClaim[]>([]),[claimsTick,setClaimsTick]=useState(0);
   useEffect(()=>{if(!period){setClaims([]);return}let active=true;api.getExcusableDelayClaims(period.contractor_id,period.service_month).then(r=>{if(active)setClaims(r.claims.filter(c=>c.status==="approved"))}).catch(()=>{if(active)setClaims([])});return()=>{active=false}},[period,claimsTick]);
+  // The month's own rows, filtered on the request (H2) rather than fetched
+  // whole and sifted here; with no period selected, a recent capped set.
+  useEffect(()=>{let active=true;const scope=period?{contractor_id:period.contractor_id,service_month:period.service_month}:{};Promise.all([api.getComplianceOccurrences({...scope,limit:period?2000:200}),api.getManualMetrics({...scope,limit:period?1000:200})]).then(([o,m])=>{if(active){setOccurrences(o.occurrences);setMetrics(m.metrics)}}).catch(e=>{if(active)setError(e instanceof Error?e.message:"Unable to load the month's inputs")});return()=>{active=false}},[period,refreshKey]);
   const totals=useMemo(()=>({proposed:rows.reduce((s,r)=>s+Number(r.proposed_amount||0),0),final:rows.reduce((s,r)=>s+Number(r.recommended_amount??r.final_amount??0),0),pending:rows.filter(r=>!r.recommended_action).length,caps:rows.filter(r=>r.cap_required||r.tier_label==="tier2").length}),[rows]);
   // Rows are reloaded by the period loader, keyed on refreshKey, so an
   // action's refresh can never land on a period selected after it started.
@@ -49,7 +53,7 @@ export function AssessmentModule(){
     {page==="scorecard"&&<><Stats totals={totals}/>{!period?<Empty>Open or select an Assessment Period to view its scorecard.</Empty>:<ScoreTable rows={rows} status={period.status} busy={busy} onDetail={r=>{setDetailId(r.id);setPage("detail")}}/>}</>}
     {page==="detail"&&(!period?<Empty>Select an Assessment Period, then choose a KPI.</Empty>:<><select aria-label="KPI" value={detailId} onChange={e=>setDetailId(e.target.value)}>{rows.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}</select>{detail?<><KpiDetail row={detail} occurrences={periodOccurrences.filter(o=>o.standard_id===detail.standard_id)}/><Evidence assessment={detail}/></>:<Empty>Compute this period to produce KPI detail.</Empty>}</>)}
     {page==="occurrences"&&<><Occurrences rows={periodOccurrences} periodSelected={Boolean(period)} busy={busy} claims={claims} onAmount={(o,amount,note)=>void act(()=>api.setOccurrenceAssessedAmount(o.id,amount,note))} onReview={(o,status,attribution,reason)=>void act(()=>api.reviewComplianceOccurrence(o.id,status,attribution,reason))} onRelief={(o,reliefId)=>void act(()=>api.linkOccurrenceRelief(o.id,o.review_status as OccurrenceReviewStatus,o.attribution as OccurrenceAttribution,reliefId))}/><Relief period={period} onChanged={()=>{void load();setRefreshKey(k=>k+1);setClaimsTick(t=>t+1)}}/></>}
-    {page==="metrics"&&<Metrics rows={periodMetrics} standards={standards} period={period} busy={busy} onSave={(standard_id,value,note)=>period&&void act(()=>api.putManualMetric({standard_id,contractor_id:period.contractor_id,service_month:period.service_month,metric_value:value,source_note:note}))}/>}
+    {page==="metrics"&&<><OpenInputs period={period}/><Metrics rows={periodMetrics} standards={standards} period={period} busy={busy} onSave={(standard_id,value,note)=>period&&void act(()=>api.putManualMetric({standard_id,contractor_id:period.contractor_id,service_month:period.service_month,metric_value:value,source_note:note}))}/></>}
     {page==="review"&&<ManagerReview period={period} rows={rows} totals={totals} busy={busy} onReview={(r,a,amount,reason)=>void act(()=>api.reviewPeriodAssessment(r.id,a,amount,reason))} onCompute={()=>period&&void act(()=>api.computeAssessmentPeriod(period.id))} onFinalize={()=>period&&void act(()=>api.finalizeAssessmentPeriod(period.id))}/>}
     {page==="caps"&&<Caps rows={rows} period={period}/>}
     {page==="report"&&<ReportWorkflow period={period} busy={busy} act={act}/>}
