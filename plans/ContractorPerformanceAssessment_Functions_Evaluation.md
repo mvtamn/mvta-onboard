@@ -267,21 +267,12 @@ Unchanged from August: extract a **Performance Assessment lifecycle module** who
 
 ## Recommended delivery order
 
-Items 1–3 of the September 8 list (candidate attribution, report lineage and idempotency, finalization invariant) closed on 2026-09-09 via PRs #237 and #238.
+All items of the September 8 list closed on 2026-09-09 through PRs #237, #238, #244, #246, #247, #249–#254 and #257 (see `ContractorPerformanceAssessment_Implementation_Plan.md` for the per-ticket record). What remains:
 
-1. **Governance correctness first** (the four High findings from the parallel review): Escalation Streak over issued outcomes only; Validation Draft renders the recommended amounts and binds the share to that hash; exception writes restricted to editable revisions and restart sharing; evidence sealed after registration. Each with a production-path regression, not a model-only one.
-2. **Console correctness:** the `act()` stale-selection race, penalty bounds on the occurrence list, recommendation vs binding display, and preview/download on the Report page.
-3. **Audit breadth + read endpoint:** compute, manager decision, finalize, validation share, dispute decision, report generation; `GET /compliance-assessment-audit`.
-4. **Report content and arithmetic:** computed / adjustment / binding lines; occurrence, exception, relief, CAP, and data-source schedules.
-5. **CAP lifecycle:** status transitions, due-date tracking, console management.
-6. **Excusable-delay claims and outages:** handlers to create and decide what `assess.ts` already honours.
-7. **Database-backed lifecycle and concurrency tests**, replacing model-only confidence.
-8. **Owner identity for manual metrics**, a month-end open-items list, and bounded list queries.
-9. **Month-boundary timer:** only after the above are proven idempotent.
-10. **Power BI deployment:** login, Key Vault secret, gateway (owner cost approval), dataset.
-
-Upstream dependencies: GitHub issues [#52](https://github.com/mvtamn/mvta-onboard/issues/52), [#56](https://github.com/mvtamn/mvta-onboard/issues/56), and [#57](https://github.com/mvtamn/mvta-onboard/issues/57) govern missed-trip detection, review gates, and rollout; the Compliance → Assessment links do not by themselves prove promotion eligibility is complete.
+1. **The Phase B gate** — the dev walkthrough, by a person, after migrations 112b–114 are applied.
+2. **Power BI deployment** (design §10): login, Key Vault secret, gateway (owner cost approval), dataset.
+3. A source-to-contractor attribution rule, needed only before a second Agreement is activated (the candidate poll refuses to run until then).
 
 ## Operational readiness statement
 
-The Function App is healthy and the governed workflow — open, compute, review, validation share, evidence, exceptions, finalize, issue, dispute, credit — is exercisable end to end from the console for a **single active contractor**. Automated ingestion refuses to run with more than one active contractor, so a second Agreement needs a source-to-contractor rule before activation. Superseding Final Assessments are lineage-checked and the Issuance Proof is distinct from the Final (ADR 0029). Passing unit tests do not establish safe end-to-end issuance: the Escalation Streak, Draft/Final parity, exception guarding, and evidence sealing findings above should close before a Final Assessment is issued to a contractor. The dev walkthrough of the proof flow (finalize → Prepare → Prepare again → Issue) has not yet been performed by anyone. System outages, excusable-delay claim entry, CAP management, the audit read endpoint, and automatic monthly opening remain unbuilt.
+The Function App is healthy and the governed workflow — open, compute, review, validation share, evidence, exceptions, finalize, issue, dispute, credit — is exercisable end to end from the console for a **single active contractor**. Automated ingestion refuses to run with more than one active contractor, so a second Agreement needs a source-to-contractor rule before activation. Superseding Final Assessments are lineage-checked and the Issuance Proof is distinct from the Final (ADR 0029). Passing unit tests do not establish safe end-to-end issuance: the Escalation Streak, Draft/Final parity, exception guarding, and evidence sealing findings above should close before a Final Assessment is issued to a contractor. The lifecycle is now proved on real SQL Server in CI (review → draft → share → finalize → proof → issue, `assessmentLifecycle.db.contract.test.ts`); the dev walkthrough by a person has still not been performed. System outages, excusable-delay claim entry, CAP management, the audit read endpoint, and automatic monthly opening remain unbuilt.
