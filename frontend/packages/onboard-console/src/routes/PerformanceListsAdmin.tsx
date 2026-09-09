@@ -37,7 +37,7 @@ const DOMAIN_TITLES: { domain: string; title: string; blurb: string }[] = [
 // this only makes the refusal predictable.
 function ReferenceValuesPanel({ values, busy, canEdit, onSave, onDelete }: {
   values: ReferenceValue[]; busy: boolean; canEdit: boolean;
-  onSave: (id: string, input: { domain: string; value: string; label: string; description?: string | null; sort_order?: number; severity_order?: number | null; is_active?: boolean }) => void;
+  onSave: (id: string, input: { domain: string; value: string; label: string; description?: string | null; sort_order?: number; severity_order?: number | null; is_active?: boolean; principal_upn?: string | null }) => void;
   onDelete: (value: ReferenceValue) => void;
 }) {
   const [domain, setDomain] = useState("unit");
