@@ -7,19 +7,6 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 ## [1.5.168] - 2026-09-09
 
-## [1.5.168] - 2026-09-09
-
-Phase C of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — audit and history.
-
-- **C1 — every governance act writes an audit row.** `lib/assessment/audit.ts` (`auditSql`, `AUDIT_ACTIONS`) gives the rows one shape; new writes: `computed` (revision + per-item hash/outcome/amount), `reviewed` (before/after via OUTPUT), `validation_shared` (share record incl. `items_sha256`), `finalized`, `draft_generated`, `dispute_filed`, `dispute_decided`. Action names match the workflow seam's `audit()`.
-- **C2 — `GET /api/compliance-assessment-audit?period_id=`** (paged; `COMPLIANCE_READ_ROLES`) returns the period's trail across period, items, reports, and disputes; a **History** tab in the module shows it.
-
-- **Three fixes that were written, reviewed and then stalled in open pull requests.** Each had been sitting for weeks against a `main` it could no longer merge into, so the work is re-landed here and the original PRs (#58, #120, #124) are closed pointing at this one. #124's privacy-policy link is the exception: it was re-landed and then reverted the same day, because a fuller version naming the Terms & Conditions and the Privacy Policy as two links was already in flight elsewhere.
-  - **A second direction rule for the same movement no longer collides on priority.** `eventDirectionRules.ts` requires priority to be unique per Monitoring Area and boundary movement, but the editor defaulted every new rule to 0, so the second rule for a movement was refused on save. The editor now suggests the next free number, re-suggesting when the Area or the movement changes and folding in a rule saved moments ago that the refreshed list does not carry yet. A refused save now shows the server's reasons rather than only its summary line (from #58).
-  - **The first request after the dev database auto-pauses retries.** That database is serverless and pauses when idle; the resume takes 30 to 60 seconds and the first connection through it commonly fails with a transient socket error, which reached callers as a bare 500. The initial connect now retries four times with a widening delay. Only the connect is retried, never a query already in flight, so a non-idempotent write cannot be applied twice (from #58).
-  - Also from #58: a `POST` to route classification whose body is valid JSON but not an object (a bare string, number or array) is refused with a clear message rather than reaching the validator as something it cannot read fields from.
-- **Removed: the pre-086 feed-health compatibility path.** `feedHealthTable()` resolved the ledger's name per call and accepted the pre-rename `MissedTripFeedHealth`, to cover the window where the migration and the deployment could land in either order. Migration 086 has been applied since 2026-08-28, and keeping the arm meant a database missing it would silently read a table nothing writes any more. `feedHealthTableReady()` names `KpiFeedHealth` alone and fails closed, so feed health reads as unavailable — which is true — rather than as stale-but-fine (from #120).
-
 ## [1.5.167] - 2026-09-09
 
 - **C1 — every governance act writes an audit row.** `lib/assessment/audit.ts` (`auditSql`, `AUDIT_ACTIONS`) gives the rows one shape; new writes: `computed` (revision + per-item hash/outcome/amount), `reviewed` (before/after via OUTPUT), `validation_shared` (share record incl. `items_sha256`), `finalized`, `draft_generated`, `dispute_filed`, `dispute_decided`. Action names match the workflow seam's `audit()`.
