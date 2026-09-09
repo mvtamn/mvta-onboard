@@ -5,13 +5,21 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.168] - 2026-09-09
+## [1.5.169] - 2026-09-09
 
 - **Performance Assessment opens on one card for the contractor and month.** The contractor picker, the month stepper and the status pill replace the context bar, the "Open assessment month" button and the separate Assessment period select, which named the same month twice. Beneath them the card shows where the month is in its lifecycle (Opened, Computed, In review, Validation, Finalized, Issued), the proposed and recommended totals, and an Outstanding list — items awaiting review, monthly figures missing, occurrences needing an amount, CAPs flagged — each a link into the section where it is dealt with. One button names the next thing the month needs (open, compute, continue review, prepare the draft, finalize, issue), the same actions the section pages already allow at that status; `modules/assessment/glance.ts` holds those readings as pure functions with their own tests.
 - **Stepping to a month with no assessment shows it as Not opened**, with opening it as the action. A correction period (`supersedes_period_id`) is shown in place of the one it supersedes.
 - **Six sections instead of nine.** Scorecard, Occurrences, Monthly metrics, Review, CAPs and Issuance, each carrying a count of what is outstanding in it, so the bar reads as a to-do list as much as a menu. A standard's detail is reached from its scorecard row (with a *Back to scorecard* crumb) rather than from a KPI Detail tab; Report and Disputes are one Issuance section; the read-only standards catalog is a link at the end of the bar — to Administration for administrators, to the in-module mirror for everyone else. The bar is on the theme tokens too.
 - **A standard's detail is a page of its own.** The figure and how it was produced (base − relief × escalation = proposed) sit above the observations that count toward it, each naming the module it was observed in. A rail beside them carries the review — the same recommend, adjust and waive actions as the Review section, sharing its prompts, with the current recommendation and its reason — a Corrective action card when a CAP is flagged, the evidence versions with who added each and when, and the standard's source, team, owner and penalty bands (`describeBand`). Outcome pills across the module now use the tier labels from Lists rather than the raw `tier1`/`meets` values.
+- **Issuance is three steps on one page.** Validation Draft (generate, open, record sharing), Final Assessment (prepare the Issuance Proof, open, issue) and Disputes (the window from the issued Final's deadline), each a card that says where it stands and offers only the acts allowed at the month's status; the artifacts table with preview and download sits beneath, and disputes are listed with their version, items, basis and outcome. History, from Phase C, is a seventh section.
 - **The module's own title block and the four stat tiles are gone.** The card carries the figures and the page header already names the page. The card is drawn on the console's theme tokens (`styles.css`), so it follows the dark theme; the rest of `assessment.css` still carries its own palette.
+
+## [1.5.168] - 2026-09-09
+
+Phase C of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — the trail a dispute is answered from.
+
+- **C1 — every governance act writes an audit row.** `lib/assessment/audit.ts` (`auditSql`, `AUDIT_ACTIONS`) gives the rows one shape; new writes: `computed` (revision + per-item hash/outcome/amount), `reviewed` (before/after via OUTPUT), `validation_shared` (share record incl. `items_sha256`), `finalized`, `draft_generated`, `dispute_filed`, `dispute_decided`. Action names match the workflow seam's `audit()`.
+- **C2 — `GET /api/compliance-assessment-audit?period_id=`** (paged; `COMPLIANCE_READ_ROLES`) returns the period's trail across period, items, reports, and disputes; a **History** tab in the module shows it.
 
 ## [1.5.167] - 2026-09-09
 
@@ -1119,68 +1127,7 @@ so none of them could catch it.
   Avail-synced rows read "Avail sync" rather than showing staff a service
   identity they'd have to decode.
 
-## [1.5.3] - 2026-08-07
-
-Not yet deployed. The deployed console is still on 1.5.0 — 1.5.1, 1.5.2 and
-1.5.3 are all awaiting a deploy.
-
-**`migration-025-detour-reporting-fields.sql` has been run against the dev
-DB (2026-08-07); the code is not yet deployed.** Unlike migration-024 there
-is no backfill gap — every new column is optional, so detours created
-through the currently-deployed build are simply uncategorized and can be
-filled in afterwards. Every surface below degrades gracefully anyway: the API
-guards on `COL_LENGTH('dbo.Detours', 'reason_code')` and drops the new
-fields rather than failing, `GET /detour-reason-codes` returns an empty list
-rather than 500ing, and the console hides the whole reporting section rather
-than letting staff type into fields whose data would be silently discarded.
-
-- **Detour reporting fields (Part B6).**
-  `migration-025-detour-reporting-fields.sql` adds a `DetourReasonCodes`
-  table (mirroring `OtpReasonCodes`, minus `applies_to` — it has only one
-  consumer) plus ten columns on `Detours`: `reason_code`, `severity`,
-  `reported_by`/`reported_at`, `approved_by`/`approved_at`, three more
-  notification-channel flags (`radio_notified`, `dispatch_board_notified`,
-  `social_media_notified`) and `resolution_notes`. **Every field is a draft
-  built from standard transit-ops practice, not from MVTA's real internal
-  detour-reporting form, which no document in this repo describes.** They
-  were approved as-drafted with that caveat explicit; expect to correct them
-  against the real form. Nothing requires any of them, so a wrong column can
-  be dropped without breaking existing rows. `reason_code` is a soft
-  (non-FK) reference to `DetourReasonCodes.code`, same convention as
-  `OtpStopExclusions.reason_code`, so retiring a code can't orphan the
-  history citing it — which is also why `code` is deliberately not editable
-  via `PATCH /detour-reason-codes/{id}`.
-- **New endpoints**: `GET /detour-reason-codes` (any detour-reading role,
-  including `OCC.Compliance` and `OCC.Detour`, neither of which is in
-  `STAFF_READ_ROLES`), `POST`/`PATCH` (admin only — this is a controlled
-  vocabulary, not day-to-day entry).
-- **"Clone as new detour"** on the Detours list. A single real notice
-  routinely bundles two separately-dated sub-closures — the Aug 2026 ramp
-  notice covered the Cliff Rd and Diffley Rd ramps on different dates —
-  which is two `Detours` rows sharing everything but their dates. Clone
-  copies the shared context and deliberately drops what must not be
-  inherited: dates, every notification flag, the approval, and resolution
-  notes.
-- **New read-only "Detour Reports" page (Part B7)** for compliance and ops
-  leadership: free-text search, filters (status, reason category, severity,
-  source, start-date range), and a client-side CSV export of whatever is
-  currently on screen. It reads the same `GET /detours` payload and the same
-  server-computed status as the entry page, so the two can't disagree about
-  whether a detour is Active. There are no edit controls anywhere on it,
-  even for users who have those rights on the entry page. Search and
-  filtering are **client-side** — `GET /detours` returns every non-deleted
-  row and there is no pagination; `lib/detourSearch.ts` is the single seam to
-  move server-side if real volume ever makes a full scan slow.
-- **A plain search box on Detours & Closures**, using that same matcher.
-  Terms are ANDed across number, internal reference, closure text, riders
-  directed, segment routes and directions, staff names, and the reason
-  code's human *label* — so typing "special event" finds rows stored as
-  `special_event`.
-- **Sidebar: "Detours & Closures" moved into the existing "Tools" group**,
-  alongside the new "Detour Reports", OCC Tools and Compliance, rather than
-  sitting flat among the rider-message primaries. The group header now
-  renders if any child does, so an `OCC.Detour`-only user sees a labelled
-  group instead of two orphaned links.
+## [1.5.3] - 2026-09-09
 
 ## [1.5.2] - 2026-08-07
 
