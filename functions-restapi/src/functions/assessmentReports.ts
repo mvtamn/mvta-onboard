@@ -1,3 +1,4 @@
+import { auditSql } from "../lib/assessment/audit";
 import { createHash, randomUUID } from "node:crypto";
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { addBusinessDays, assertHolidayCoverage } from "../lib/assessment/businessDays";
@@ -53,7 +54,7 @@ app.http("assessmentReportsCreate",{route:"assessment-reports",methods:["POST"],
         SELECT ISNULL(MAX(version),0)+1 version FROM ComplianceReports WHERE period_id=@period AND issuance_type=@type`)).recordset[0].version;
       const id=randomUUID();const model=await readModel(periodId,id,type,version,null,null);const html=renderAssessmentReport(model);const hash=createHash("sha256").update(html).digest("hex");const path=buildComplianceReportBlobPath(periodId,id);await uploadComplianceReport(path,html);
       const write=new sql.Request(tx);write.input("id",sql.UniqueIdentifier,id);write.input("period",sql.UniqueIdentifier,periodId);write.input("contractor",sql.UniqueIdentifier,p.contractor_id);write.input("month",sql.Char(6),p.service_month);write.input("type",sql.NVarChar(20),type);write.input("version",sql.Int,version);write.input("supersedes",sql.UniqueIdentifier,lineage.supersedesId);write.input("reason",sql.NVarChar(500),lineage.supersedeReason);write.input("path",sql.NVarChar(1000),path);write.input("hash",sql.Char(64),hash);write.input("total",sql.Decimal(12,2),model.assessedTotal);write.input("actor",sql.NVarChar(200),actor);
-      await write.query(`INSERT ComplianceReports(id,period_id,contractor_id,service_month,issuance_type,version,supersedes_id,blob_path,content_sha256,assessed_total,supersede_reason,generated_by) VALUES(@id,@period,@contractor,@month,@type,@version,@supersedes,@path,@hash,@total,@reason,@actor);${type==="final"?"INSERT ComplianceAssessmentAudit(entity_type,entity_id,action,actor,after_json) VALUES('report',@id,'issuance_proof_prepared',@actor,CONCAT('{\"content_sha256\":\"',@hash,'\"}'));":""}`);
+      await write.query(`INSERT ComplianceReports(id,period_id,contractor_id,service_month,issuance_type,version,supersedes_id,blob_path,content_sha256,assessed_total,supersede_reason,generated_by) VALUES(@id,@period,@contractor,@month,@type,@version,@supersedes,@path,@hash,@total,@reason,@actor);${auditSql("report","@id",type==="final"?"issuance_proof_prepared":"draft_generated","actor",{after:"CONCAT('{\"content_sha256\":\"',@hash,'\"}')"})}`);
       return{status:201,id,version,hash};
     });
     if(outcome.status!==201)return{status:outcome.status,jsonBody:{error:outcome.error}};

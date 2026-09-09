@@ -1,6 +1,7 @@
 import type { Transaction } from "mssql";
 import { sql } from "../db";
 import { escalationMultiplier } from "./escalation";
+import { auditSql } from "./audit";
 import { assessmentInputHash, canonicalJson } from "./hash";
 import { bandAmount, computePenalty, isRangedBand } from "./penalty";
 import { refreshPeriodRules } from "./ruleRefresh";
@@ -257,5 +258,6 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
   }
   const finish = new sql.Request(tx);
   finish.input("period_id", sql.UniqueIdentifier, period.id);
-  await finish.query(`UPDATE ValidationDraftShares SET superseded_at=SYSUTCDATETIME() WHERE period_id=@period_id AND superseded_at IS NULL;UPDATE AssessmentPeriods SET computed_revision=input_revision,computed_at=SYSUTCDATETIME(),status='in_review',validation_shared_at=NULL,validation_ends_on=NULL,validation_shared_by=NULL,validation_recipient=NULL,validation_method=NULL,validation_attestation=NULL,proposed_total=(SELECT ISNULL(SUM(proposed_amount),0) FROM PeriodKpiAssessments WHERE period_id=@period_id),is_partial=CASE WHEN EXISTS(SELECT 1 FROM PeriodKpiAssessments WHERE period_id=@period_id AND assessment_outcome='not_assessable') THEN 1 ELSE 0 END WHERE id=@period_id`);
+  finish.input("actor", sql.NVarChar(200), "assessPeriod");
+  await finish.query(`UPDATE ValidationDraftShares SET superseded_at=SYSUTCDATETIME() WHERE period_id=@period_id AND superseded_at IS NULL;UPDATE AssessmentPeriods SET computed_revision=input_revision,computed_at=SYSUTCDATETIME(),status='in_review',validation_shared_at=NULL,validation_ends_on=NULL,validation_shared_by=NULL,validation_recipient=NULL,validation_method=NULL,validation_attestation=NULL,proposed_total=(SELECT ISNULL(SUM(proposed_amount),0) FROM PeriodKpiAssessments WHERE period_id=@period_id),is_partial=CASE WHEN EXISTS(SELECT 1 FROM PeriodKpiAssessments WHERE period_id=@period_id AND assessment_outcome='not_assessable') THEN 1 ELSE 0 END WHERE id=@period_id;${auditSql("period","@period_id","computed","actor",{after:"(SELECT computed_revision,(SELECT standard_id,input_sha256,assessment_outcome,proposed_amount FROM PeriodKpiAssessments i WHERE i.period_id=@period_id FOR JSON PATH) items FROM AssessmentPeriods WHERE id=@period_id FOR JSON PATH,WITHOUT_ARRAY_WRAPPER)"})}`);
 }

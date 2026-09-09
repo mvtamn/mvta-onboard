@@ -1,3 +1,4 @@
+import { auditSql } from "../lib/assessment/audit";
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { assessPeriod } from "../lib/assessment/assess";
 import { agreementScope, assignedStandardCountSql, periodStandardSnapshotColumns, periodStandardSourceSql, periodTierCopyColumns, periodTierScopeSql, periodTierSnapshotColumns } from "../lib/assessment/schemaScope";
@@ -133,6 +134,7 @@ app.http("assessmentPeriodFinalize", {
           -- (evidence landed while it was being rendered). It is not the one
           -- to check for this finalization.
           ${voidLiveIssuanceProofSql("id","actor")}
+          ${auditSql("period","@id","finalized","actor",{after:"(SELECT final_total,computed_revision FROM AssessmentPeriods WHERE id=@id FOR JSON PATH,WITHOUT_ARRAY_WRAPPER)"})}
         END
         SELECT @changed changed;
       `);
