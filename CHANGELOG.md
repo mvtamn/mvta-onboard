@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.160] - 2026-09-08
+
+- **The candidate poll refuses to guess the contractor.** `complianceCandidatesPoll` attributed every missed trip and late departure to `TOP 1` active contractor ordered by `updated_at` — so saving a contractor record could silently move the next morning's candidates to someone else. An Agreement has exactly one Assessment Contractor (ADR 0005) and the poll has no route, division, or source-to-contractor rule to choose by, so it now runs only while exactly one contractor is active and throws `50003` otherwise, the same way it already threw `50001` with none. The guard is an exported SQL fragment with a test that pins both failure modes and the absence of the recency rule.
+
 ## [1.5.159] - 2026-09-08
 
 - **The collapsed rail keeps its categories.** Collapsing dropped every group heading and left one undifferentiated column of icons — the grouping the menu is built around simply stopped existing at 64px. Categories are now hairline rules between the icon runs, and hovering an icon opens a panel naming its category, its page, and what the page is for, rather than waiting on the OS tooltip to arrive with the label alone. Each description is written per destination: `PAGE_META` folds all of `/admin/*` into a single "Administration" entry, so it cannot supply them.

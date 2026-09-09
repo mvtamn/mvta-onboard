@@ -243,6 +243,20 @@ export function settledServiceDateExclusive(now: Date = new Date()): string {
   return agencyServiceDate(now).serviceDate;
 }
 
+// One Agreement has exactly one Assessment Contractor (ADR 0005), and this
+// poller has no route, division, or source-to-contractor rule to choose by.
+// So it attributes every candidate to the active contractor only while there
+// is exactly one. Two active contractors is not a tie to break by updated_at -
+// editing a contractor record would silently move every future candidate - it
+// is a configuration the poller must refuse until an attribution rule exists.
+export function assessmentContractorSql(): string {
+  return `
+        DECLARE @active_contractors INT=(SELECT COUNT(*) FROM Contractors WHERE is_active=1);
+        IF @active_contractors=0 THROW 50001,'No active contractor is configured.',1;
+        IF @active_contractors>1 THROW 50003,'More than one active contractor is configured; candidate attribution is ambiguous until a source-to-contractor rule exists.',1;
+        DECLARE @contractor UNIQUEIDENTIFIER=(SELECT id FROM Contractors WHERE is_active=1);`;
+}
+
 // Existing feed-specific review remains authoritative. This poller only copies
 // eligible observations into the governed assessment queue and never confirms
 // contractor attribution or creates a penalty.
@@ -278,8 +292,7 @@ app.timer("complianceCandidatesPoll", {
       candidateRequest.input("variance_seconds", sql.Int, garageDepartureVarianceSeconds());
       candidateRequest.input("settled_before", sql.Char(8), settledServiceDateExclusive());
       const result = await candidateRequest.query<{ inserted: number }>(`
-        DECLARE @contractor UNIQUEIDENTIFIER=(SELECT TOP 1 id FROM Contractors WHERE is_active=1 ORDER BY updated_at DESC);
-        IF @contractor IS NULL THROW 50001,'No active contractor is configured.',1;
+        ${assessmentContractorSql()}
         DECLARE @agreement_start DATE,@agreement_end DATE;
         SELECT TOP 1 @agreement_start=starts_on,@agreement_end=ends_on FROM PerformanceAgreements WHERE contractor_id=@contractor AND is_active=1;
         IF @agreement_start IS NULL THROW 50002,'No active Performance Agreement is configured.',1;

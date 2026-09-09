@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  assessmentContractorSql,
   departureSourceAllowed,
   fixedRouteDepartureSourceRefSql,
   garageDepartureCandidatePredicate,
@@ -176,4 +177,14 @@ test("a departure feed raises candidates when current or current-but-empty, and 
   assert.equal(departureSourceAllowed("stale"), false);
   assert.equal(departureSourceAllowed("unavailable"), false);
   assert.equal(departureSourceAllowed(undefined), false);
+});
+
+test("refuses to attribute candidates when more than one contractor is active", () => {
+  const guard = assessmentContractorSql();
+  // Zero and more-than-one both fail closed; the poller never picks a winner.
+  assert.match(guard, /@active_contractors=0 THROW 50001/);
+  assert.match(guard, /@active_contractors>1 THROW 50003/);
+  // The winner-by-recency rule is gone: no TOP 1, no ORDER BY updated_at.
+  assert.doesNotMatch(guard, /TOP 1/i);
+  assert.doesNotMatch(guard, /updated_at/);
 });
