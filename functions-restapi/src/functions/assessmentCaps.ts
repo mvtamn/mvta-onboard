@@ -19,7 +19,7 @@ app.http("assessmentCapTransition", {
     let body: Record<string, unknown>; try { body = await request.json() as Record<string, unknown>; } catch { return { status: 400, jsonBody: { error: "Request body must be valid JSON" } }; }
     const to = String(body.status) as CapStatus;
     if (!STATUSES.includes(to)) return { status: 400, jsonBody: { error: `status must be one of ${STATUSES.join(", ")}` } };
-    const role = requireRole(request, COMPLIANCE_MANAGER_ROLES).authorized ? "manager" : "writer";
+    const role = auth.principal.roles.some(r => COMPLIANCE_MANAGER_ROLES.includes(r)) ? "manager" : "writer";
     const actor = auth.principal.userDetails ?? "onboard-console";
     const pool = await getPool(); const tx = new sql.Transaction(pool);
     try {
@@ -31,9 +31,12 @@ app.http("assessmentCapTransition", {
       if (!decision.ok) { await tx.rollback(); return { status: 409, jsonBody: { error: decision.error } }; }
       const write = new sql.Request(tx);
       write.input("id", sql.UniqueIdentifier, request.params.id); write.input("to", sql.NVarChar(20), to); write.input("actor", sql.NVarChar(200), actor); write.input("from", sql.NVarChar(20), current.status);
+      // Field names come from the rule table, never the body; values are bound.
       const assignments = decision.sets.map(f => { write.input(f, sql.NVarChar(sql.MAX), String(body[f])); return `${f}=@${f}`; });
       if (decision.stamps) assignments.push(`${decision.stamps}=SYSUTCDATETIME()`);
-      await write.query(`UPDATE CorrectiveActionPlans SET status=@to${assignments.length ? "," + assignments.join(",") : ""} WHERE id=@id;${auditSql("cap", "@id", "cap_transitioned", "actor", { after: "(SELECT @from [from],@to [to] FOR JSON PATH,WITHOUT_ARRAY_WRAPPER)", note: body.closure_note ? "@closure_note" : undefined })}`);
+      if (decision.clears) assignments.push(`${decision.clears}=NULL`);
+      write.input("note", sql.NVarChar(1000), decision.note ? String(body.note) : decision.sets.includes("closure_note") ? String(body.closure_note) : null);
+      await write.query(`UPDATE CorrectiveActionPlans SET status=@to${assignments.length ? "," + assignments.join(",") : ""} WHERE id=@id;${auditSql("cap", "@id", "cap_transitioned", "actor", { after: "(SELECT @from [from],@to [to] FOR JSON PATH,WITHOUT_ARRAY_WRAPPER)", note: "@note" })}`);
       await tx.commit();
       return { status: 200, jsonBody: { id: request.params.id, status: to } };
     } catch (error) {

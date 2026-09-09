@@ -11,7 +11,7 @@ test("the six submission elements are the design's six", () => {
 });
 
 test("a submission needs every element and is a writer's act", () => {
-  assert.deepEqual(capTransition("required", "submitted", "writer", { root_cause: "x", corrective_actions: "y", responsible_parties: "z", timeline_note: "t", monitoring_plan: "m", closure_criteria: "c" }), { ok: true, sets: ["root_cause", "corrective_actions", "responsible_parties", "timeline_note", "monitoring_plan", "closure_criteria"], stamps: "submitted_at" });
+  assert.deepEqual(capTransition("required", "submitted", "writer", { root_cause: "x", corrective_actions: "y", responsible_parties: "z", timeline_note: "t", monitoring_plan: "m", closure_criteria: "c" }), { ok: true, sets: ["root_cause", "corrective_actions", "responsible_parties", "timeline_note", "monitoring_plan", "closure_criteria"], note: false, stamps: "submitted_at", clears: null });
   const partial = capTransition("required", "submitted", "writer", { root_cause: "x" });
   assert.equal(partial.ok, false);
   assert.match(String(!partial.ok && partial.error), /corrective_actions/);
@@ -19,15 +19,17 @@ test("a submission needs every element and is a writer's act", () => {
 
 test("approval, progress, closure, and failure are the manager's, and closure needs a note", () => {
   assert.equal(capTransition("submitted", "approved", "writer", {}).ok, false);
-  assert.deepEqual(capTransition("submitted", "approved", "manager", {}), { ok: true, sets: [], stamps: null });
-  assert.deepEqual(capTransition("approved", "in_progress", "manager", {}), { ok: true, sets: [], stamps: null });
+  assert.deepEqual(capTransition("submitted", "approved", "manager", {}), { ok: true, sets: [], note: false, stamps: null, clears: null });
+  // Recording that work started is the contractor's side of the plan: a writer's act.
+  assert.deepEqual(capTransition("approved", "in_progress", "writer", {}), { ok: true, sets: [], note: false, stamps: null, clears: null });
   assert.equal(capTransition("in_progress", "closed", "manager", {}).ok, false);
-  assert.deepEqual(capTransition("in_progress", "closed", "manager", { closure_note: "Verified two clean months" }), { ok: true, sets: ["closure_note"], stamps: "closed_at" });
-  assert.deepEqual(capTransition("in_progress", "failed", "manager", { closure_note: "No plan followed" }), { ok: true, sets: ["closure_note"], stamps: "closed_at" });
+  assert.deepEqual(capTransition("in_progress", "closed", "manager", { closure_note: "Verified two clean months" }), { ok: true, sets: ["closure_note"], note: false, stamps: "closed_at", clears: null });
+  assert.deepEqual(capTransition("in_progress", "failed", "manager", { closure_note: "No plan followed" }), { ok: true, sets: ["closure_note"], note: false, stamps: "closed_at", clears: null });
 });
 
-test("a submission the manager sends back returns to required, and nothing skips a step", () => {
-  assert.deepEqual(capTransition("submitted", "required", "manager", {}), { ok: true, sets: [], stamps: null });
+test("a submission the manager sends back returns to required with a reason, and nothing skips a step", () => {
+  assert.equal(capTransition("submitted", "required", "manager", {}).ok, false);
+  assert.deepEqual(capTransition("submitted", "required", "manager", { note: "Closure criteria are not measurable" }), { ok: true, sets: [], note: true, stamps: null, clears: "submitted_at" });
   assert.equal(capTransition("required", "approved", "manager", {}).ok, false);
   assert.equal(capTransition("closed", "in_progress", "manager", {}).ok, false);
   assert.equal(capTransition("approved", "closed", "manager", { closure_note: "n" }).ok, false);

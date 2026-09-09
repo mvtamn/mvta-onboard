@@ -8,25 +8,28 @@ export const CAP_SUBMISSION_FIELDS = ["root_cause", "corrective_actions", "respo
 export type CapSubmissionField = typeof CAP_SUBMISSION_FIELDS[number];
 export type CapStatus = "required" | "submitted" | "approved" | "in_progress" | "closed" | "failed";
 export type CapRole = "writer" | "manager";
-export type CapFields = Partial<Record<CapSubmissionField | "closure_note", unknown>>;
-export type CapTransition = { ok: true; sets: string[]; stamps: "submitted_at" | "closed_at" | null } | { ok: false; error: string };
+export type CapFields = Partial<Record<CapSubmissionField | "closure_note" | "note", unknown>>;
+export type CapTransition = { ok: true; sets: (CapSubmissionField | "closure_note")[]; note: boolean; stamps: "submitted_at" | "closed_at" | null; clears: "submitted_at" | null } | { ok: false; error: string };
 
-const STEPS: Record<`${CapStatus}->${CapStatus}` & string, { role: CapRole; requires: readonly string[]; stamps: "submitted_at" | "closed_at" | null }> = {
+interface Step { role: CapRole; requires: readonly (CapSubmissionField | "closure_note" | "note")[]; stamps: "submitted_at" | "closed_at" | null; clears?: "submitted_at" }
+// "note" is recorded on the audit row, not the plan: a return says why the
+// submission was sent back, and the plan itself carries no such column.
+const STEPS: Partial<Record<`${CapStatus}->${CapStatus}`, Step>> = {
   "required->submitted": { role: "writer", requires: CAP_SUBMISSION_FIELDS, stamps: "submitted_at" },
-  "submitted->required": { role: "manager", requires: [], stamps: null },   // returned incomplete
+  "submitted->required": { role: "manager", requires: ["note"], stamps: null, clears: "submitted_at" },   // returned incomplete, with the reason
   "submitted->approved": { role: "manager", requires: [], stamps: null },
-  "approved->in_progress": { role: "manager", requires: [], stamps: null },
+  "approved->in_progress": { role: "writer", requires: [], stamps: null },   // the work is the contractor's; recording its start is a writer's act
   "in_progress->closed": { role: "manager", requires: ["closure_note"], stamps: "closed_at" },
   "in_progress->failed": { role: "manager", requires: ["closure_note"], stamps: "closed_at" },
-} as Record<string, { role: CapRole; requires: readonly string[]; stamps: "submitted_at" | "closed_at" | null }>;
+};
 
 export function capTransition(from: CapStatus, to: CapStatus, role: CapRole, fields: CapFields): CapTransition {
   const step = STEPS[`${from}->${to}`];
   if (!step) return { ok: false, error: `A Corrective Action Plan cannot go from ${from} to ${to}` };
   if (step.role === "manager" && role !== "manager") return { ok: false, error: `Only the Issuing Authority can move a plan to ${to}` };
-  const missing = step.requires.filter(f => typeof fields[f as keyof CapFields] !== "string" || !String(fields[f as keyof CapFields]).trim());
+  const missing = step.requires.filter(f => typeof fields[f] !== "string" || !String(fields[f]).trim());
   if (missing.length) return { ok: false, error: `Moving to ${to} requires ${missing.join(", ")}` };
-  return { ok: true, sets: [...step.requires], stamps: step.stamps };
+  return { ok: true, sets: step.requires.filter((f): f is CapSubmissionField | "closure_note" => f !== "note"), note: step.requires.includes("note"), stamps: step.stamps, clears: step.clears ?? null };
 }
 
 // Overdue is a state of a plan not yet submitted, not a property of a plan
