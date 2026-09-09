@@ -48,7 +48,7 @@ export type NextAction =
   | { kind: "open"; label: string }
   | { kind: "compute"; label: string }
   | { kind: "finalize"; label: string }
-  | { kind: "go"; label: string; page: "review" | "report" | "disputes" };
+  | { kind: "go"; label: string; page: "review" | "issuance" };
 
 /**
  * The one button on the card. It names the next thing the month needs, and
@@ -61,10 +61,10 @@ export function nextAction(status: AssessmentPeriodStatus | null, pending: numbe
     case "open":
     case "reopened": return { kind: "compute", label: "Compute" };
     case "stale": return { kind: "compute", label: "Recompute" };
-    case "in_review": return pending > 0 ? { kind: "go", label: "Continue review", page: "review" } : { kind: "go", label: "Prepare Validation Draft", page: "report" };
+    case "in_review": return pending > 0 ? { kind: "go", label: "Continue review", page: "review" } : { kind: "go", label: "Prepare Validation Draft", page: "issuance" };
     case "in_validation": return pending > 0 ? { kind: "go", label: "Continue review", page: "review" } : { kind: "finalize", label: "Finalize" };
-    case "finalized": return { kind: "go", label: "Issue Final Assessment", page: "report" };
-    case "issued": return { kind: "go", label: "Disputes", page: "disputes" };
+    case "finalized": return { kind: "go", label: "Issue Final Assessment", page: "issuance" };
+    case "issued": return { kind: "go", label: "Disputes", page: "issuance" };
   }
 }
 

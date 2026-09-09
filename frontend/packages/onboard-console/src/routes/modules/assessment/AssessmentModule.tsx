@@ -8,12 +8,18 @@ import { useAuth } from "../../../auth/AuthContext.js";
 import { useAppDialog } from "../../../components/AppDialog.js";
 import "./assessment.css";
 
-type Page = "scorecard"|"detail"|"occurrences"|"metrics"|"review"|"caps"|"report"|"disputes"|"standards";
-const NAV: {key:Page;label:string}[] = [
-  {key:"scorecard",label:"Scorecard"},{key:"detail",label:"KPI Detail"},{key:"occurrences",label:"Occurrence Log"},
-  {key:"metrics",label:"Monthly Metrics"},{key:"review",label:"Manager Review"},{key:"caps",label:"CAPs"},
-  {key:"report",label:"Report"},{key:"disputes",label:"Disputes"},{key:"standards",label:"Standards Admin"},
+// Six sections. A standard's detail is reached from its scorecard row, not a
+// tab of its own; the report and its disputes are one issuance flow; and the
+// read-only standards mirror is a link at the end of the bar rather than a
+// section of the month. Each section carries a count of what is outstanding
+// in it, so the bar reads as a to-do list as much as a menu.
+type Page = "scorecard"|"detail"|"occurrences"|"metrics"|"review"|"caps"|"issuance"|"standards";
+type NavKey = Exclude<Page,"detail"|"standards">;
+const NAV: {key:NavKey;label:string;hot?:boolean}[] = [
+  {key:"scorecard",label:"Scorecard"},{key:"occurrences",label:"Occurrences"},{key:"metrics",label:"Monthly metrics",hot:true},
+  {key:"review",label:"Review",hot:true},{key:"caps",label:"CAPs"},{key:"issuance",label:"Issuance"},
 ];
+const externalIcon=<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>;
 const money=(v:number|null|undefined)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(v??0);
 const formatDate=(value:string|null|undefined)=>{if(!value)return "—";const digits=value.replace(/\D/g,"");if(digits.length<8)return value;return `${digits.slice(4,6)}/${digits.slice(6,8)}/${digits.slice(0,4)}`};
 const formatMonth=(value:string)=>value.length===6?new Date(Number(value.slice(0,4)),Number(value.slice(4,6))-1,1).toLocaleDateString("en-US",{month:"long",year:"numeric"}):value;
@@ -31,6 +37,7 @@ export function AssessmentModule(){
   const period=periodFor(periods,contractorId,month),selected=period?.id??"",agreement=agreements.find(a=>a.contractor_id===contractorId&&a.is_active),activeContractors=contractors.filter(c=>c.is_active),detail=rows.find(r=>r.id===detailId),periodOccurrences=period?occurrences.filter(o=>o.contractor_id===period.contractor_id&&o.service_date.startsWith(period.service_month)):occurrences,periodMetrics=period?metrics.filter(m=>m.contractor_id===period.contractor_id&&m.service_month===period.service_month):metrics;
   useEffect(()=>{if(!selected){setRows([]);return}let cancelled=false;api.getPeriodAssessments(selected).then(r=>{if(!cancelled){setRows(r.assessments);setDetailId(v=>v||r.assessments[0]?.id||"")}}).catch(e=>{if(!cancelled)setError(e instanceof Error?e.message:"Unable to load scorecard")});return()=>{cancelled=true}},[selected]);
   const totals=useMemo(()=>({proposed:rows.reduce((s,r)=>s+Number(r.proposed_amount||0),0),final:rows.reduce((s,r)=>s+Number(r.recommended_amount??r.final_amount??0),0),pending:rows.filter(r=>!r.recommended_action).length,caps:rows.filter(r=>r.cap_required||r.tier_label==="tier2").length}),[rows]);
+  const counts:Record<NavKey,number>={scorecard:0,occurrences:period?periodOccurrences.length:0,metrics:rows.filter(r=>r.assessment_outcome==="not_assessable").length,review:rows.filter(r=>!r.recommended_action&&r.assessment_outcome!=="not_assessable").length,caps:totals.caps,issuance:0};
   async function act(action:()=>Promise<unknown>){setBusy(true);setError("");try{await action();await load();if(selected){const r=await api.getPeriodAssessments(selected);setRows(r.assessments)}}catch(e){setError(e instanceof Error?e.message:"Action failed")}finally{setBusy(false)}}
   if(!tableReady)return <div className="concept-banner">Performance Assessment database objects are not ready. Apply migration 030, then migration 031.</div>;
   return <div className="assessment-module">
@@ -38,15 +45,18 @@ export function AssessmentModule(){
     {!activeContractors.length&&!showContractors&&<div className="assessment-warning"><strong>Setup required:</strong> no active contractor is configured. <button className="assessment-link-button" onClick={()=>setShowContractors(true)}>Set up a contractor</button> to begin.</div>}
     {error&&<div className="assessment-error">{error}</div>}
     <Glance contractors={activeContractors} contractorId={contractorId} onContractor={setContractorId} month={month} onMonth={setMonth} period={period} agreement={agreement} rows={rows} occurrences={period?periodOccurrences:[]} totals={totals} busy={busy} manageOpen={showContractors} onManage={()=>setShowContractors(v=>!v)} onOpen={()=>void act(()=>api.openAssessmentPeriod(contractorId,month))} onCompute={()=>period&&void act(()=>api.computeAssessmentPeriod(period.id))} onFinalize={()=>period&&void act(()=>api.finalizeAssessmentPeriod(period.id))} onGo={setPage}/>
-    <nav className="assessment-nav" aria-label="Assessment sections">{NAV.map(n=><button key={n.key} className={page===n.key?"active":""} onClick={()=>setPage(n.key)}>{n.label}</button>)}</nav>
+    <nav className="assessment-nav" aria-label="Assessment sections">
+      {NAV.map(n=>{const count=counts[n.key],active=page===n.key||(n.key==="scorecard"&&page==="detail");return <button key={n.key} type="button" className={active?"active":""} aria-current={active?"page":undefined} onClick={()=>setPage(n.key)}>{n.label}{count>0&&<span className={`assessment-nav-count${n.hot?" hot":""}`}>{n.key==="metrics"?`${count} missing`:count}</span>}</button>})}
+      <span className="assessment-nav-spacer"/>
+      {roles.includes("OCC.Admin")?<Link className="assessment-nav-link" to="/admin/performance/standards">Standards catalog {externalIcon}</Link>:<button type="button" className={`assessment-nav-link${page==="standards"?" active":""}`} onClick={()=>setPage("standards")}>Standards catalog</button>}
+    </nav>
     {page==="scorecard"&&(!period?<Empty>Open this assessment month to view its scorecard.</Empty>:<ScoreTable rows={rows} busy={busy} onDetail={r=>{setDetailId(r.id);setPage("detail")}}/>)}
-    {page==="detail"&&(!period?<Empty>Select an Assessment Period, then choose a KPI.</Empty>:<><select aria-label="KPI" value={detailId} onChange={e=>setDetailId(e.target.value)}>{rows.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}</select>{detail?<><KpiDetail row={detail} occurrences={periodOccurrences.filter(o=>o.standard_id===detail.standard_id)}/><Evidence assessment={detail}/></>:<Empty>Compute this period to produce KPI detail.</Empty>}</>)}
+    {page==="detail"&&(!period?<Empty>Open this assessment month, then choose a standard from its scorecard.</Empty>:<><button type="button" className="assessment-crumb" onClick={()=>setPage("scorecard")}>{chevron("left")} Back to scorecard</button><select aria-label="KPI" value={detailId} onChange={e=>setDetailId(e.target.value)}>{rows.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}</select>{detail?<><KpiDetail row={detail} occurrences={periodOccurrences.filter(o=>o.standard_id===detail.standard_id)}/><Evidence assessment={detail}/></>:<Empty>Compute this period to produce KPI detail.</Empty>}</>)}
     {page==="occurrences"&&<Occurrences rows={periodOccurrences} periodSelected={Boolean(period)} busy={busy} onAmount={(o,amount,note)=>void act(()=>api.setOccurrenceAssessedAmount(o.id,amount,note))} onReview={(o,status,attribution,reason)=>void act(()=>api.reviewComplianceOccurrence(o.id,status,attribution,reason))}/>}
     {page==="metrics"&&<Metrics rows={periodMetrics} standards={standards} period={period} busy={busy} onSave={(standard_id,value,note)=>period&&void act(()=>api.putManualMetric({standard_id,contractor_id:period.contractor_id,service_month:period.service_month,metric_value:value,source_note:note}))}/>}
     {page==="review"&&<ManagerReview period={period} rows={rows} totals={totals} busy={busy} onReview={(r,a,amount,reason)=>void act(()=>api.reviewPeriodAssessment(r.id,a,amount,reason))} onCompute={()=>period&&void act(()=>api.computeAssessmentPeriod(period.id))} onFinalize={()=>period&&void act(()=>api.finalizeAssessmentPeriod(period.id))}/>}
     {page==="caps"&&<Caps rows={rows} period={period}/>}
-    {page==="report"&&<ReportWorkflow period={period} busy={busy} act={act}/>}
-    {page==="disputes"&&<Disputes period={period} rows={rows}/>}
+    {page==="issuance"&&<div className="assessment-stack"><ReportWorkflow period={period} busy={busy} act={act}/><Disputes period={period} rows={rows}/></div>}
     {page==="standards"&&<Standards standards={standards} tiers={tiers}/>}
   </div>;
 }

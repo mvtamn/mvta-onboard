@@ -50,7 +50,7 @@ describe("nextAction", () => {
   });
   it("sends the reader to review while items are pending, and on to the report once none are", () => {
     expect(nextAction("in_review", 3)).toEqual({ kind: "go", label: "Continue review", page: "review" });
-    expect(nextAction("in_review", 0)).toEqual({ kind: "go", label: "Prepare Validation Draft", page: "report" });
+    expect(nextAction("in_review", 0)).toEqual({ kind: "go", label: "Prepare Validation Draft", page: "issuance" });
   });
   it("only offers Finalize when nothing is pending, matching the review page's gate", () => {
     expect(nextAction("in_validation", 1).kind).toBe("go");
