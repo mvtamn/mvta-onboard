@@ -42,7 +42,7 @@ describe("Performance assessment lists", () => {
     // computePenalty switches exhaustively over the bases behind a `never`
     // check, so one added here would have no arithmetic at all.
     render(<PerformanceListsAdmin />);
-    fireEvent.change(await screen.findByLabelText("List"), { target: { value: "penalty_basis" } });
+    fireEvent.click(await screen.findByRole("button", { name: /^Charge bases/ }));
     expect(screen.getByText(/branches on these values/)).toBeInTheDocument();
     expect(screen.queryByText(/^Add to/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
@@ -50,7 +50,7 @@ describe("Performance assessment lists", () => {
 
   it("lets a system value be relabelled, which is the point of the split", async () => {
     render(<PerformanceListsAdmin />);
-    fireEvent.change(await screen.findByLabelText("List"), { target: { value: "tier_label" } });
+    fireEvent.click(await screen.findByRole("button", { name: /^Tier labels/ }));
     fireEvent.blur(screen.getByLabelText("Label for tier1"), { target: { value: "Level 1 Liquidated Damages" } });
     expect(putReferenceValue).toHaveBeenCalledWith("r-tier-1", expect.objectContaining({
       value: "tier1", label: "Level 1 Liquidated Damages",
@@ -59,14 +59,14 @@ describe("Performance assessment lists", () => {
 
   it("ranks tiers as data, so a fifth tier needs no code change", async () => {
     render(<PerformanceListsAdmin />);
-    fireEvent.change(await screen.findByLabelText("List"), { target: { value: "tier_label" } });
+    fireEvent.click(await screen.findByRole("button", { name: /^Tier labels/ }));
     fireEvent.blur(screen.getByLabelText("Rank for tier1"), { target: { value: "5" } });
     expect(putReferenceValue).toHaveBeenCalledWith("r-tier-1", expect.objectContaining({ severity_order: 5 }));
   });
 
   it("adds a value to a list the agency owns", async () => {
     render(<PerformanceListsAdmin />);
-    fireEvent.change(await screen.findByLabelText("List"), { target: { value: "source_system" } });
+    fireEvent.click(await screen.findByRole("button", { name: /^Source systems/ }));
     fireEvent.change(screen.getByPlaceholderText("stored value"), { target: { value: "Trapeze" } });
     fireEvent.change(screen.getByPlaceholderText("what the console shows"), { target: { value: "Trapeze OPS" } });
     fireEvent.click(screen.getByRole("button", { name: /^Add to source systems$/ }));

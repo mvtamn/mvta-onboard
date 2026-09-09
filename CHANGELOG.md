@@ -5,6 +5,17 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.176] - 2026-09-09
+
+- **Performance Assessment opens on one card for the contractor and month.** The contractor picker, the month stepper and the status pill replace the context bar, the "Open assessment month" button and the separate Assessment period select, which named the same month twice. Beneath them the card shows where the month is in its lifecycle (Opened, Computed, In review, Validation, Finalized, Issued), the proposed and recommended totals, and an Outstanding list — items awaiting review, monthly figures missing, occurrences needing an amount, CAPs flagged — each a link into the section where it is dealt with. One button names the next thing the month needs (open, compute, continue review, prepare the draft, finalize, issue), the same actions the section pages already allow at that status; `modules/assessment/glance.ts` holds those readings as pure functions with their own tests.
+- **Stepping to a month with no assessment shows it as Not opened**, with opening it as the action. A correction period (`supersedes_period_id`) is shown in place of the one it supersedes.
+- **Six sections instead of nine.** Scorecard, Occurrences, Monthly metrics, Review, CAPs and Issuance, each carrying a count of what is outstanding in it, so the bar reads as a to-do list as much as a menu. A standard's detail is reached from its scorecard row (with a *Back to scorecard* crumb) rather than from a KPI Detail tab; Report and Disputes are one Issuance section; the read-only standards catalog is a link at the end of the bar — to Administration for administrators, to the in-module mirror for everyone else. The bar is on the theme tokens too.
+- **A standard's detail is a page of its own.** The figure and how it was produced (base − relief × escalation = proposed) sit above the observations that count toward it, each naming the module it was observed in. A rail beside them carries the review — the same recommend, adjust and waive actions as the Review section, sharing its prompts, with the current recommendation and its reason — a Corrective action card when a CAP is flagged, the evidence versions with who added each and when, and the standard's source, team, owner and penalty bands (`describeBand`). Outcome pills across the module now use the tier labels from Lists rather than the raw `tier1`/`meets` values.
+- **Issuance is three steps on one page.** Validation Draft (generate, open, record sharing), Final Assessment (prepare the Issuance Proof, open, issue) and Disputes (the window from the issued Final's deadline), each a card that says where it stands and offers only the acts allowed at the month's status; the artifacts table with preview and download sits beneath, and disputes are listed with their version, items, basis and outcome. History, from Phase C, is a seventh section.
+- **The scorecard reads in the contract's order.** Grouped by category (`groupByCategory`, shared with the Standards admin list), the categories as Lists orders them, with a totals row. **Monthly metrics is a checklist** (`metricsChecklist`, with tests) rather than a form above a history table: one line per hand-entered figure the month scores, missing ones first, each entered in place with its source of record and stamped with who entered it and when; before the first compute the catalog's scored flag stands in for the period's rows. Standards the month does not score are listed beneath with a way to change the assignments.
+- **Administration › Performance Assessment polish.** The four pages no longer repeat their title beneath the page header. Lists uses the same master-detail workspace as the other three, its twelve lists down the left with system lists marked. Contractors shows the Agreements under the selected contractor. Agreements groups its form into Term, Contract references and Process, with the units inside the fields. Standards groups its catalog by category and offers the catalog-or-Agreement ladder choice as a segmented control. Also fixed: a literal `\u2019` in the Lists introduction.
+- **The module's own title block and the four stat tiles are gone.** The card carries the figures and the page header already names the page. The card is drawn on the console's theme tokens (`styles.css`), so it follows the dark theme; the rest of `assessment.css` still carries its own palette.
+
 ## [1.5.175] - 2026-09-09
 
 Second pass over the implementation plan — the follow-ups the phase reviews deferred (#257).
@@ -46,6 +57,10 @@ Phase E of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — CA
 
 - **E1 — CAP transitions and due dates.** `lib/assessment/capTransitions.ts` is the rule: `required → submitted → approved → in_progress → closed | failed`, `submitted → required` for a return; submission needs the six elements (writer's act), approve/start/close/fail are the Issuing Authority's, closure needs a note; overdue = still `required` past `due_at`. `PATCH /api/assessment-caps/{id}` applies one transition under a row lock and audits it (`cap_transitioned`; the History trail now includes CAP rows). `GET /assessment-caps` returns `overdue` and the recorded fields. The console **CAPs** tab moves to `Caps.tsx` with the submission form and role-gated step buttons. The dead `capTriggers` / `consecutiveMonthsBelow` helpers are deleted.
 
+- **The card speaks the glossary's language.** The lifecycle now reads Open, Under Review, In Validation, Finalized, Issued - CONTEXT.md's own Assessment Lifecycle - rather than a parallel progression with an invented Computed stage; a stale month stands at Under Review, where its pill already says the inputs moved. "Assessment Period" and "Assessment Contractor" replace the phrasings the glossary lists under *Avoid*.
+- **One action, and one the page allows.** At In Validation with items still pending the card offered "Continue review", and every control on that page is gated on In Review - the reader arrived somewhere nothing could be pressed. It now says what is in the way and shows it.
+- **"n of m items reviewed" can reach m.** The denominator counted rows a reviewer cannot act on, so a month with a missing monthly figure read "4 of 5 reviewed" beside "Nothing outstanding", forever. `reviewProgress` counts only actionable rows, and the Occurrences section count is now what is outstanding in it rather than every occurrence in the month - the same reading the Outstanding line uses, so the two cannot disagree.
+
 ## [1.5.169] - 2026-09-09
 
 Phase D of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — report content.
@@ -54,12 +69,19 @@ Phase D of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — re
 
 ## [1.5.168] - 2026-09-09
 
-## [1.5.167] - 2026-09-09
+Phase C of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — the trail a dispute is answered from.
 
 - **C1 — every governance act writes an audit row.** `lib/assessment/audit.ts` (`auditSql`, `AUDIT_ACTIONS`) gives the rows one shape; new writes: `computed` (revision + per-item hash/outcome/amount), `reviewed` (before/after via OUTPUT), `validation_shared` (share record incl. `items_sha256`), `finalized`, `draft_generated`, `dispute_filed`, `dispute_decided`. Action names match the workflow seam's `audit()`.
 - **C2 — `GET /api/compliance-assessment-audit?period_id=`** (paged; `COMPLIANCE_READ_ROLES`) returns the period's trail across period, items, reports, and disputes; a **History** tab in the module shows it.
 
+## [1.5.167] - 2026-09-09
+
 Phase B of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — console correctness.
+
+- **B1 — one cancellable loader for the selected period.** `usePeriodRows` (hook + 4 tests) replaces the rows fetch inside `act()`, which captured `selected` and stored a stale month's rows; the KPI selection resets with the period.
+- **B2 — the occurrence list carries a ranged penalty's bounds.** `lib/assessment/rangedPenalty.ts` OUTER APPLYs the tier effective on the occurrence's service date (qualifier first); the console's existing *Set amount…* now appears.
+- **B3 — review shows recommendations before binding.** `reviewDisplay` names the column *Recommendation* until finalized, *Binding decision* after; ScoreTable and ManagerReview use it.
+- **B4 — the Report page opens the artifact it manages.** `ReportWorkflow.tsx` (own file, 3 tests) gets Preview (hash-verified bytes in a `sandbox=""` iframe via `srcDoc`) and Download official HTML; `api.getAssessmentReportHtml`. Format helpers move to `assessmentFormat.tsx`.
 
 ## [1.5.166] - 2026-09-09
 
@@ -75,6 +97,14 @@ Phase A of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — go
 
 - **Recomputing a not-yet-finalised month failed outright.** The rule refresh in 1.5.163 composes its standard set through `periodStandardSourceSql`, which joins `AgreementStandards` on `@agreement` wherever migration 102 is present - and `refreshPeriodRules` bound only `@period` and `@month`. Every recompute of a drafting period stopped with "Must declare the scalar variable @agreement" and rolled back. The tests asserted on the composed SQL text, which cannot see a parameter that is named but never bound; there is now a test that extracts every `@name` from the statement and fails unless the code binds it, and it fails without the fix. Found by applying 112 to dev and running the recompute it was written for, rather than by reading the diff again.
 
+## [1.5.164] - 2026-09-09
+
+- **Three fixes that were written, reviewed and then stalled in open pull requests.** Each had been sitting for weeks against a `main` it could no longer merge into, so the work is re-landed here and the original PRs (#58, #120, #124) are closed pointing at this one. #124's privacy-policy link is the exception: it was re-landed and then reverted the same day, because a fuller version naming the Terms & Conditions and the Privacy Policy as two links was already in flight elsewhere.
+  - **A second direction rule for the same movement no longer collides on priority.** `eventDirectionRules.ts` requires priority to be unique per Monitoring Area and boundary movement, but the editor defaulted every new rule to 0, so the second rule for a movement was refused on save. The editor now suggests the next free number, re-suggesting when the Area or the movement changes and folding in a rule saved moments ago that the refreshed list does not carry yet. A refused save now shows the server's reasons rather than only its summary line (from #58).
+  - **The first request after the dev database auto-pauses retries.** That database is serverless and pauses when idle; the resume takes 30 to 60 seconds and the first connection through it commonly fails with a transient socket error, which reached callers as a bare 500. The initial connect now retries four times with a widening delay. Only the connect is retried, never a query already in flight, so a non-idempotent write cannot be applied twice (from #58).
+  - Also from #58: a `POST` to route classification whose body is valid JSON but not an object (a bare string, number or array) is refused with a clear message rather than reaching the validator as something it cannot read fields from.
+- **Removed: the pre-086 feed-health compatibility path.** `feedHealthTable()` resolved the ledger's name per call and accepted the pre-rename `MissedTripFeedHealth`, to cover the window where the migration and the deployment could land in either order. Migration 086 has been applied since 2026-08-28, and keeping the arm meant a database missing it would silently read a table nothing writes any more. `feedHealthTableReady()` names `KpiFeedHealth` alone and fails closed, so feed health reads as unavailable — which is true — rather than as stale-but-fine (from #120).
+
 ## [1.5.163] - 2026-09-09
 
 - **Migration 112: a rules change now reaches the month being assessed.** A period snapshots the standards and bands it will be scored against when it opens, so that a finalised month recomputes to the same number months later. That snapshot was applied for a period's whole life, and the consequence was not one anybody chose: assign a standard to an Agreement while a month is open and **that month can never score it**. Recompute reads the snapshot, so it changes nothing. Reopen copies the old snapshot forward, so it changes nothing either. The only way to correct an open month's rules was to delete the period row by hand. Found while configuring a standard on dev, where a freshly assigned standard stayed out of the review queue through a successful recompute.
@@ -86,13 +116,6 @@ Phase A of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — go
 ## [1.5.162] - 2026-09-09
 
 - **The What's new panel caps at five changes and says what it left out.** The panel is a glance at the running build, and it printed every bullet of the release: v1.5.159 has five, but releases carrying a dozen turned a panel into a page to scroll past its own "View full changelog" link. It now shows the first five and, when there are more, a muted line counting the rest — shown rather than the list quietly ending, because a truncated panel that looks complete misreports what shipped. The full text of every change stays on the Changelog page the panel already links to.
-
-
-
-- **B1 — one cancellable loader for the selected period.** `usePeriodRows` (hook + 4 tests) replaces the rows fetch inside `act()`, which captured `selected` and stored a stale month's rows; the KPI selection resets with the period.
-- **B2 — the occurrence list carries a ranged penalty's bounds.** `lib/assessment/rangedPenalty.ts` OUTER APPLYs the tier effective on the occurrence's service date (qualifier first); the console's existing *Set amount…* now appears.
-- **B3 — review shows recommendations before binding.** `reviewDisplay` names the column *Recommendation* until finalized, *Binding decision* after; ScoreTable and ManagerReview use it.
-- **B4 — the Report page opens the artifact it manages.** `ReportWorkflow.tsx` (own file, 3 tests) gets Preview (hash-verified bytes in a `sandbox=""` iframe via `srcDoc`) and Download official HTML; `api.getAssessmentReportHtml`. Format helpers move to `assessmentFormat.tsx`.
 
 ## [1.5.161] - 2026-09-08
 

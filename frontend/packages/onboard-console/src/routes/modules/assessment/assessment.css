@@ -1,15 +1,150 @@
-.assessment-page-shell{padding:24px}.assessment-module{display:grid;gap:20px}.assessment-toolbar,.assessment-period,.assessment-section-head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}.assessment-toolbar{padding-bottom:4px}.assessment-toolbar h2,.assessment-section-head h3{margin:2px 0 0}.assessment-toolbar p,.assessment-section-head p{margin:5px 0 0;color:#64748b}.assessment-eyebrow{display:block;color:#08765a;font-size:.72rem;font-weight:800;letter-spacing:.08em;}.assessment-manage{border:1px solid #9bb8ae;background:#fff;color:#075f49;border-radius:8px;padding:9px 13px;font-weight:700}.assessment-context-bar{display:grid;grid-template-columns:minmax(220px,1fr) minmax(170px,.55fr) auto;gap:12px;align-items:end;background:linear-gradient(135deg,#f3faf7,#f8fafc);border:1px solid #d7e7e0;border-radius:12px;padding:16px}.assessment-context-bar label,.assessment-entry label,.contractor-form label,.assessment-period-field{display:grid;gap:6px}.assessment-context-bar label>span,.assessment-entry label>span,.contractor-form label>span,.assessment-period-field>span{color:#526175;font-size:.76rem;font-weight:700;letter-spacing:.02em}.assessment-context-bar select,.assessment-context-bar input,.assessment-entry select,.assessment-entry input,.contractor-form select,.contractor-form input,.assessment-period select{min-height:40px;border:1px solid #c8d4df;border-radius:8px;background:#fff;padding:8px 10px;color:#172033}.assessment-context{color:#64748b;font-size:.85rem}.assessment-period{justify-content:flex-start}.assessment-period-field{min-width:min(420px,100%)}.assessment-link-button{border:0;background:transparent;color:inherit;text-decoration:underline;font-weight:800;padding:0}.assessment-nav{display:flex;gap:8px;overflow-x:auto;padding:4px 0 8px;border-bottom:1px solid #dbe3ec}.assessment-nav button{white-space:nowrap;border:1px solid transparent;border-radius:9px;background:#f1f5f9;padding:9px 13px;color:#334155;transition:.15s ease}.assessment-nav button:hover{background:#e5edea}.assessment-nav button.active{background:#075f49;border-color:#075f49;color:#fff;font-weight:700;box-shadow:0 3px 8px #064e3b22}.assessment-stats{display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:12px}.assessment-stats>div,.assessment-card{border:1px solid #dbe3ec;border-radius:12px;padding:16px;background:#fff;box-shadow:0 2px 8px #1720330a}.assessment-stats span,.assessment-table-wrap small,.assessment-review-row small{display:block;color:#64748b}.assessment-stats strong{font-size:1.5rem}.assessment-status,.assessment-tier{border-radius:999px;padding:4px 10px;font-size:.76rem;font-weight:700;text-transform:capitalize}.assessment-status.in_review,.assessment-tier.warning{background:#fef3c7;color:#92400e}.assessment-status.finalized,.assessment-tier.meets{background:#dcfce7;color:#166534}.assessment-status.stale,.assessment-tier.tier2{background:#fee2e2;color:#991b1b}.assessment-tier.tier1{background:#ffedd5;color:#9a3412}.assessment-error,.assessment-warning{padding:12px 14px;border-radius:9px}.assessment-error{background:#fee2e2;color:#991b1b}.assessment-warning{background:#fff7d6;color:#744c00;border:1px solid #f2d675}.assessment-empty{padding:40px;text-align:center;color:#64748b;border:1px dashed #cbd5e1;border-radius:12px;background:#fbfcfd}.assessment-table-wrap{overflow:auto;border:1px solid #e1e8ef;border-radius:10px}.assessment-table-wrap .data{margin:0}.assessment-table-wrap td:last-child{white-space:nowrap}.assessment-table-wrap button+button{margin-left:6px}.assessment-clickable{cursor:pointer}.assessment-clickable:hover{background:#f4faf7}.assessment-detail{display:grid;gap:12px}.assessment-calculation{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:16px;background:#f8fafc;border-radius:10px}.assessment-calculation span{display:grid;color:#64748b}.assessment-calculation strong{color:#172033;font-size:1.05rem}.assessment-entry{display:grid;grid-template-columns:minmax(210px,1.2fr) minmax(130px,.5fr) minmax(260px,1.5fr) auto;gap:12px;align-items:end;padding:16px;background:#f8fafc;border:1px solid #dbe3ec;border-radius:10px}.assessment-review-row{display:grid;grid-template-columns:minmax(240px,1fr) 100px repeat(3,auto);gap:8px;align-items:center;padding:12px 0;border-bottom:1px solid #e2e8f0}.assessment-card p{margin:6px 0;color:#64748b}.contractor-setup{display:grid;gap:16px;padding:20px;border:1px solid #cddfd8;border-radius:12px;background:#f8fcfa}.contractor-form{display:grid;grid-template-columns:repeat(2,minmax(190px,1fr));gap:14px;align-items:end}.contractor-form label:first-child,.contractor-form label:nth-child(2){grid-column:span 1}.contractor-form small{color:#64748b}.contractor-active{display:flex!important;grid-auto-flow:column;justify-content:start;align-items:center;padding-bottom:10px}.contractor-active input{min-height:auto;width:18px;height:18px}.contractor-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}.contractor-list>div{background:#fff;border:1px solid #dde7e2;border-radius:9px;padding:12px}.contractor-list>div>div{display:flex;justify-content:space-between;gap:8px}.contractor-list span{color:#08765a;font-size:.75rem;font-weight:700}.contractor-list p{margin:5px 0 0;color:#64748b}@media(max-width:900px){.assessment-context-bar,.assessment-entry{grid-template-columns:1fr 1fr}.assessment-context-bar button,.assessment-entry button,.assessment-entry-note{grid-column:1/-1}.assessment-review-row{grid-template-columns:1fr auto}.assessment-review-row button{grid-column:auto}.assessment-stats{grid-template-columns:repeat(2,1fr)}}@media(max-width:620px){.assessment-page-shell{padding:16px}.assessment-context-bar,.assessment-entry,.contractor-form{grid-template-columns:1fr}.contractor-form label{grid-column:1!important}.assessment-stats{grid-template-columns:1fr 1fr}}
+.assessment-page-shell{padding:24px}.assessment-module{display:grid;gap:20px}.assessment-section-head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}.assessment-section-head h3{margin:2px 0 0}.assessment-section-head p{margin:5px 0 0;color:#64748b}.assessment-eyebrow{display:block;color:#08765a;font-size:.72rem;font-weight:800;letter-spacing:.08em;}.assessment-manage{border:1px solid #9bb8ae;background:#fff;color:#075f49;border-radius:8px;padding:9px 13px;font-weight:700}.assessment-entry label,.contractor-form label{display:grid;gap:6px}.assessment-entry label>span,.contractor-form label>span{color:#526175;font-size:.76rem;font-weight:700;letter-spacing:.02em}.assessment-entry select,.assessment-entry input,.contractor-form select,.contractor-form input{min-height:40px;border:1px solid #c8d4df;border-radius:8px;background:#fff;padding:8px 10px;color:#172033}.assessment-link-button{border:0;background:transparent;color:inherit;text-decoration:underline;font-weight:800;padding:0}.assessment-card{border:1px solid #dbe3ec;border-radius:12px;padding:16px;background:#fff;box-shadow:0 2px 8px #1720330a}.assessment-table-wrap small,.assessment-review-row small{display:block;color:#64748b}.assessment-status,.assessment-tier{border-radius:999px;padding:4px 10px;font-size:.76rem;font-weight:700;text-transform:capitalize}.assessment-status.in_review{background:#fef3c7;color:#92400e}.assessment-status.finalized{background:#dcfce7;color:#166534}.assessment-status.stale{background:#fee2e2;color:#991b1b}.assessment-error,.assessment-warning{padding:12px 14px;border-radius:9px}.assessment-error{background:#fee2e2;color:#991b1b}.assessment-warning{background:#fff7d6;color:#744c00;border:1px solid #f2d675}.assessment-empty{padding:40px;text-align:center;color:#64748b;border:1px dashed #cbd5e1;border-radius:12px;background:#fbfcfd}.assessment-table-wrap{overflow:auto;border:1px solid #e1e8ef;border-radius:10px}.assessment-table-wrap .data{margin:0}.assessment-table-wrap td:last-child{white-space:nowrap}.assessment-table-wrap button+button{margin-left:6px}.assessment-clickable{cursor:pointer}.assessment-clickable:hover{background:#f4faf7}.assessment-entry{display:grid;grid-template-columns:minmax(210px,1.2fr) minmax(130px,.5fr) minmax(260px,1.5fr) auto;gap:12px;align-items:end;padding:16px;background:#f8fafc;border:1px solid #dbe3ec;border-radius:10px}.assessment-review-row{display:grid;grid-template-columns:minmax(240px,1fr) 100px repeat(3,auto);gap:8px;align-items:center;padding:12px 0;border-bottom:1px solid #e2e8f0}.assessment-card p{margin:6px 0;color:#64748b}.contractor-setup{display:grid;gap:16px;padding:20px;border:1px solid #cddfd8;border-radius:12px;background:#f8fcfa}.contractor-form{display:grid;grid-template-columns:repeat(2,minmax(190px,1fr));gap:14px;align-items:end}.contractor-form label:first-child,.contractor-form label:nth-child(2){grid-column:span 1}.contractor-form small{color:#64748b}.contractor-active{display:flex!important;grid-auto-flow:column;justify-content:start;align-items:center;padding-bottom:10px}.contractor-active input{min-height:auto;width:18px;height:18px}.contractor-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}.contractor-list>div{background:#fff;border:1px solid #dde7e2;border-radius:9px;padding:12px}.contractor-list>div>div{display:flex;justify-content:space-between;gap:8px}.contractor-list span{color:#08765a;font-size:.75rem;font-weight:700}.contractor-list p{margin:5px 0 0;color:#64748b}@media(max-width:900px){.assessment-entry{grid-template-columns:1fr 1fr}.assessment-entry button,.assessment-entry-note{grid-column:1/-1}.assessment-review-row{grid-template-columns:1fr auto}.assessment-review-row button{grid-column:auto}.assessment-glance-bottom{grid-template-columns:1fr}.assessment-figures{grid-template-columns:1fr 1fr}.assessment-outstanding{grid-column:1/-1}}@media(max-width:620px){.assessment-page-shell{padding:16px}.assessment-entry,.contractor-form{grid-template-columns:1fr}.contractor-form label{grid-column:1!important}}
 
 /* A voided Issuance Proof stays in the history but is not the one to check. */
 .assessment-voided td{opacity:.55;text-decoration:line-through}
 .assessment-voided td code{text-decoration:none}
 
+/* The month-at-a-glance card. On the console's tokens (styles.css), so it
+   reads as part of the shell and follows the dark theme; the rest of this
+   file predates the tokens and still carries its own palette. */
+.assessment-glance{border:1px solid var(--datasource-border);border-radius:12px;background:var(--surface-alt-bg);padding:16px 18px;display:grid;gap:12px}
+.assessment-glance-top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.assessment-glance-identity{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.assessment-glance-picker{border:1px solid var(--border-strong);border-radius:8px;background:var(--surface-bg);padding:6px 10px;font:inherit;font-size:17px;font-weight:700;color:var(--text);max-width:360px}
+.assessment-glance-month{display:inline-flex;align-items:center;gap:4px}
+.assessment-glance-month strong{font-size:17px;font-weight:700;min-width:150px;text-align:center;color:var(--text)}
+.assessment-glance-month button{width:30px;height:30px;border-radius:7px;border:1px solid var(--border-strong);background:var(--surface-bg);color:var(--text-dim);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.assessment-glance-month button:disabled{opacity:.45;cursor:default}
+.assessment-glance-meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:var(--text-muted);font-size:12px;margin-top:-4px}
+.assessment-glance-meta>*+*::before{content:"";display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--text-muted);margin-right:8px;vertical-align:middle}
+.assessment-glance-meta .assessment-link-button{color:var(--brand-green-text);font-weight:700;font-size:12px;text-decoration:none;cursor:pointer}
+.assessment-glance-meta .assessment-link-button:hover{text-decoration:underline}
+.assessment-glance-bottom{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:24px;align-items:start;border-top:1px solid var(--border);padding-top:14px}
+.assessment-lifecycle{list-style:none;margin:0;padding:0;display:flex;align-items:flex-start}
+.assessment-lifecycle li{display:grid;justify-items:center;gap:7px;flex:1;position:relative;min-width:0;font-size:11.5px;color:var(--text-muted);text-align:center;line-height:1.25}
+.assessment-lifecycle li::before{content:"";position:absolute;top:10px;left:-50%;right:50%;height:2px;background:var(--border-strong)}
+.assessment-lifecycle li:first-child::before{display:none}
+.assessment-lifecycle li.done::before,.assessment-lifecycle li.current::before{background:var(--brand-green)}
+.assessment-lifecycle li.done{color:var(--text-dim)}
+.assessment-lifecycle li.current{color:var(--text);font-weight:700}
+.assessment-lifecycle-node{width:22px;height:22px;border-radius:50%;border:2px solid var(--border-strong);background:var(--surface-bg);display:flex;align-items:center;justify-content:center;position:relative;z-index:1}
+.assessment-lifecycle li.done .assessment-lifecycle-node{background:var(--brand-green);border-color:var(--brand-green);color:#fff}
+.assessment-lifecycle li.current .assessment-lifecycle-node{border-color:var(--brand-green);box-shadow:0 0 0 4px var(--chip-bg)}
+.assessment-lifecycle li.current .assessment-lifecycle-node::after{content:"";width:8px;height:8px;border-radius:50%;background:var(--brand-green)}
+.assessment-figures{display:grid;grid-template-columns:auto auto minmax(0,1fr);gap:22px}
+.assessment-figures>div>span{display:block;color:var(--text-muted);font-size:11px}
+.assessment-figures strong{display:block;color:var(--text);font-size:22px;line-height:1.2;margin:3px 0;font-weight:800;letter-spacing:-.01em}
+.assessment-figures small{display:block;color:var(--text-muted);font-size:11px}
+.assessment-outstanding{display:grid;gap:4px;align-content:start;justify-items:start}
+.assessment-outstanding button{border:0;background:transparent;padding:0;font:inherit;font-size:12px;font-weight:600;color:var(--text-dim);display:flex;align-items:center;gap:7px;line-height:1.5;cursor:pointer;white-space:nowrap;text-align:left}
+.assessment-outstanding button::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--highlight-border);flex:none}
+.assessment-outstanding button.quiet::before{background:var(--text-muted)}
+.assessment-outstanding button:hover{color:var(--brand-green-text);text-decoration:underline}
+.assessment-outstanding small{margin-top:3px}
+
+/* The section bar: six sections carrying their outstanding counts, the
+   standards catalog as a link at the end. Same tokens as the card above. */
+.assessment-nav{display:flex;gap:6px;align-items:center;overflow-x:auto;padding-bottom:10px;border-bottom:1px solid var(--border)}
+.assessment-nav button{display:inline-flex;align-items:center;gap:7px;white-space:nowrap;border:1px solid transparent;border-radius:8px;background:var(--surface-alt-bg);padding:7px 12px;color:var(--text-dim);font:inherit;font-weight:600;cursor:pointer}
+.assessment-nav button:hover{background:var(--chip-bg);color:var(--chip-fg)}
+.assessment-nav button.active{background:var(--brand-green);border-color:var(--brand-green);color:#fff;font-weight:700}
+.assessment-nav-count{font-size:10px;font-weight:800;padding:1px 6px;border-radius:999px;background:var(--pill-muted-bg);color:var(--text-dim);line-height:1.4}
+.assessment-nav-count.hot{background:var(--pill-warning-bg);color:var(--pill-warning-fg)}
+.assessment-nav button.active .assessment-nav-count{background:rgba(255,255,255,.22);color:#fff}
+.assessment-nav button.active .assessment-nav-count.hot{background:#fff;color:var(--brand-green)}
+.assessment-nav-spacer{flex:1}
+.assessment-nav .assessment-nav-link{background:transparent;border:0;color:var(--text-muted);font-size:12px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:6px;padding:7px 4px;white-space:nowrap}
+.assessment-nav .assessment-nav-link:hover{color:var(--brand-green-text);background:transparent;text-decoration:underline}
+.assessment-nav .assessment-nav-link.active{color:var(--brand-green-text);font-weight:700}
+.assessment-crumb{display:inline-flex;align-items:center;gap:4px;border:0;background:transparent;padding:0;font:inherit;font-size:12px;font-weight:600;color:var(--text-dim);cursor:pointer;justify-self:start}
+.assessment-crumb:hover{color:var(--brand-green-text)}
+.assessment-stack{display:grid;gap:20px}
+
+/* Outcome pills, in the vocabulary's words and on the tokens. */
+.assessment-tier{text-transform:none;font-size:10.5px;padding:3px 9px;white-space:nowrap}
+.assessment-tier.meets{background:var(--pill-success-bg);color:var(--pill-success-fg)}
+.assessment-tier.warning{background:var(--pill-warning-bg);color:var(--pill-warning-fg)}
+.assessment-tier.tier1{background:var(--highlight-bg);color:#8a4a00}
+:root[data-theme="dark"] .assessment-tier.tier1{color:#f3c77a}
+.assessment-tier.tier2{background:var(--pill-danger-bg);color:var(--pill-danger-fg)}
+.assessment-tier.not_assessable{background:var(--pill-muted-bg);color:var(--pill-muted-fg)}
+.assessment-row-chevron{color:var(--text-muted);text-align:right;width:32px}
+
+/* A standard's detail: figure and observations on the left, what to do about
+   it on the right. */
+.assessment-detail-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.assessment-detail-bar select{min-height:34px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface-bg);padding:6px 10px;color:var(--text);font:inherit;max-width:420px}
+.assessment-detail{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:18px;align-items:start}
+.assessment-detail table.data{min-width:0}
+.assessment-detail-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.assessment-detail-head h3{margin:0;font-size:20px;font-weight:800;letter-spacing:-.01em;color:var(--text)}
+.assessment-detail-head p{margin:5px 0 0;color:var(--text-muted);font-size:12.5px}
+.assessment-calc{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:14px 16px;background:var(--surface-alt-bg);border:1px solid var(--border);border-radius:10px}
+.assessment-calc>div{display:grid;gap:2px}
+.assessment-calc>div>span{color:var(--text-muted);font-size:11px}
+.assessment-calc>div>strong{font-size:18px;font-weight:800;color:var(--text)}
+.assessment-calc>b{color:var(--text-muted);font-size:16px;font-weight:500}
+.assessment-calc>div.result{margin-left:auto;text-align:right;padding-left:16px;border-left:1px solid var(--border-strong)}
+.assessment-calc>div.result strong{font-size:22px;color:var(--brand-green-text)}
+.assessment-rail{display:grid;gap:14px}
+.assessment-rail-card{border:1px solid var(--border);border-radius:10px;background:var(--surface-bg);padding:14px 16px;display:grid;gap:8px;align-content:start}
+.assessment-rail-card h4{margin:0;font-size:13px;font-weight:700;color:var(--text)}
+.assessment-rail-card p{margin:0;color:var(--text-muted);font-size:12px;line-height:1.5}
+.assessment-rail-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.assessment-rail-actions{display:grid;gap:8px;margin-top:2px}
+.assessment-rail-actions button{width:100%;justify-content:center;padding:9px 12px;font-size:12px;margin:0}
+.assessment-rail-card .btn-sm{margin:0}
+.assessment-kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 14px;font-size:12px;margin:0}
+.assessment-kv dt{color:var(--text-muted)}.assessment-kv dd{margin:0;color:var(--text);font-weight:600;min-width:0}
+.assessment-band-list{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.assessment-band-list li{display:flex;align-items:baseline;gap:7px;font-weight:400;color:var(--text-dim);font-size:11.5px}
+.assessment-evidence{list-style:none;margin:0;padding:0}
+.assessment-evidence li{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border-soft);font-size:12px;color:var(--text)}
+.assessment-evidence li:first-child{border-top:0}
+.assessment-evidence svg{color:var(--text-muted);flex:none}
+.assessment-evidence .grow{flex:1;min-width:0;overflow-wrap:anywhere}.assessment-evidence .grow small{display:block;color:var(--text-muted);font-size:11px}
+.assessment-obs{display:block;white-space:nowrap}.assessment-obs a{font-weight:600}.assessment-obs small{display:block;color:var(--text-muted);font-size:11px}
+@media(max-width:1000px){.assessment-detail{grid-template-columns:1fr}}
 /* The archived artifact, opened in place. Sandboxed: it can render, not run. */
-.assessment-preview{margin-top:12px;border:1px solid #ccd5df;border-radius:6px;padding:8px}
+
+/* Issuance: three steps, then the artifacts. */
+.assessment-group-label{color:var(--text-muted);font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;margin:0}
+.assessment-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.assessment-step-card{border:1px solid var(--border);border-radius:10px;padding:14px 16px;background:var(--surface-bg);display:grid;gap:10px;align-content:start}
+.assessment-step-card.current{border-color:var(--brand-green);box-shadow:inset 0 0 0 1px var(--brand-green)}
+.assessment-step-card.locked{background:var(--surface-alt-bg)}
+.assessment-step-no{width:24px;height:24px;border-radius:50%;background:var(--chip-bg);color:var(--chip-fg);font-size:11.5px;font-weight:800;display:inline-flex;align-items:center;justify-content:center}
+.assessment-step-card.locked .assessment-step-no{background:var(--pill-muted-bg);color:var(--text-muted)}
+.assessment-step-card h4{margin:0;font-size:13.5px;color:var(--text)}
+.assessment-step-card p{margin:0;color:var(--text-muted);font-size:12px;line-height:1.5}
+.assessment-step-state{display:flex;align-items:center;gap:8px}
+.assessment-step-actions{display:flex;gap:6px;flex-wrap:wrap}
+.assessment-step-actions .btn-sm{margin:0}
+.assessment-preview{margin-top:12px;border:1px solid var(--border);border-radius:10px;padding:8px;background:var(--surface-bg)}
 .assessment-preview iframe{width:100%;height:70vh;border:0;background:#fff}
+@media(max-width:900px){.assessment-steps{grid-template-columns:1fr}}
 
 /* A submitted plan's six elements, entered together and read back together. */
 .assessment-cap-form{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.assessment-cap-form label{display:flex;flex-direction:column;gap:4px;font-size:12px}.assessment-cap-form textarea{min-height:56px}.assessment-cap-form>div{grid-column:1/-1}
 .assessment-cap-fields{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin:8px 0 0}.assessment-cap-fields dt{font-size:11px;opacity:.7}.assessment-cap-fields dd{margin:0}
+
+/* Monthly metrics as a checklist. */
+.assessment-progress{height:6px;width:120px;border-radius:999px;background:var(--pill-muted-bg);overflow:hidden;display:inline-block}
+.assessment-progress i{display:block;height:100%;background:var(--brand-green);border-radius:999px}
+.assessment-metric-head,.assessment-metric-row{display:grid;grid-template-columns:minmax(0,1.3fr) 150px minmax(0,1.4fr) 150px 130px;gap:12px;align-items:center;padding:10px 14px}
+.assessment-metric-head{background:var(--surface-alt-bg);border-bottom:1px solid var(--border-soft);color:var(--text-dim);font-size:11px;font-weight:700}
+.assessment-metric-row{border-top:1px solid var(--border-soft)}
+.assessment-metric-head+.assessment-metric-row{border-top:0}
+.assessment-metric-row strong{display:block;font-size:13px;color:var(--text)}
+.assessment-metric-row small{display:block;color:var(--text-muted);font-size:11px;margin-top:2px}
+.assessment-measure{display:flex;align-items:center;gap:6px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface-bg);padding:0 10px;min-height:34px}
+.assessment-measure input{border:0;padding:6px 0;min-width:0;width:100%;font:inherit;font-size:12.5px;background:transparent;color:var(--text)}
+.assessment-measure input:focus{outline:none}
+.assessment-measure span{color:var(--text-muted);font-size:11px;font-weight:600;white-space:nowrap}
+.assessment-metric-input{min-height:34px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface-bg);padding:6px 10px;color:var(--text);font:inherit;font-size:12.5px;min-width:0}
+.assessment-metric-state{display:flex;gap:8px;align-items:center;justify-content:flex-end}
+.assessment-metric-state .btn-sm{margin:0}
+table.data tr.assessment-total td{background:var(--surface-alt-bg);font-weight:700;border-top:1px solid var(--border-strong);border-bottom:0}
+@media(max-width:900px){.assessment-metric-head{display:none}.assessment-metric-row{grid-template-columns:1fr 1fr}}
 /* The signed-in owner has figures to enter: the banner leads with them. */
 .assessment-open-mine{border-left:4px solid #b45309}

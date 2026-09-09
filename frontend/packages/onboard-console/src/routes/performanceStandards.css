@@ -19,7 +19,7 @@
 .standards-list-toolbar input,.standards-list-toolbar select{min-height:36px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface-bg);padding:6px 10px;color:var(--text);font:inherit}
 .standards-list-toolbar input{flex:1 1 auto;min-width:0}
 .standards-list-meta{padding:8px 12px;color:var(--text-muted);font-size:.78rem;border-bottom:1px solid var(--border-soft)}
-.standards-rows{list-style:none;margin:0;padding:6px;overflow-y:auto;display:grid;gap:2px;align-content:start}
+.standards-rows{list-style:none;margin:0;padding:6px;overflow-y:auto;overflow-x:hidden;display:grid;gap:2px;align-content:start}
 .standards-row{width:100%;display:grid;gap:4px;text-align:left;border:1px solid transparent;border-radius:9px;background:transparent;padding:9px 10px;cursor:pointer;font:inherit;color:inherit}
 .standards-row:hover{background:var(--surface-alt-bg)}
 .standards-row.selected{background:var(--chip-bg);border-color:var(--brand-green)}
@@ -154,3 +154,35 @@
 .standards-toggle{display:flex;align-items:center;gap:7px;white-space:nowrap}
 .standards-toggle input{width:17px;height:17px}
 @media(max-width:620px){.standards-new-value{grid-template-columns:1fr}}
+
+/* Shared polish across the four Performance Assessment pages. */
+.standards-head p{margin-top:0}
+.standards-list-meta{display:flex;justify-content:space-between;gap:8px}
+.standards-group{list-style:none;color:var(--text-muted);font-size:.7rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase;padding:10px 10px 4px}
+.standards-group-label{color:var(--text-muted);font-size:.7rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;margin:16px 0 8px}
+.standards-fieldset{border:0;margin:0;padding:0;min-width:0;display:grid;gap:10px}
+.standards-fieldset+.standards-fieldset{margin-top:16px}
+.standards-fieldset legend{padding:0;margin-bottom:6px;color:var(--text-muted);font-size:.68rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase}
+.standards-fieldset .standards-measure input{border:0;padding:7px 0;min-height:36px;width:100%;background:transparent;color:var(--text);font:inherit}
+.standards-scope-choice{display:grid;gap:6px}
+.standards-scope-choice>span:first-child{color:var(--text-dim);font-size:.76rem;font-weight:700}
+.standards-segmented-control{display:inline-flex;border:1px solid var(--border-strong);border-radius:999px;overflow:hidden;background:var(--surface-bg)}
+.standards-segmented-control button{border:0;background:transparent;padding:8px 12px;font:inherit;font-size:12px;font-weight:600;color:var(--text-dim);border-left:1px solid var(--border-soft);cursor:pointer;white-space:nowrap}
+.standards-segmented-control button:first-child{border-left:0}
+.standards-segmented-control button[aria-pressed="true"]{background:var(--chip-bg);color:var(--chip-fg)}
+.standards-segmented-control button:disabled{opacity:.45;cursor:default}
+.lists-workspace{grid-template-columns:236px minmax(0,1fr)}
+.lists-rows .standards-row{grid-template-columns:minmax(0,1fr) auto;align-items:center}
+.lists-rows .standards-row small{display:block;color:var(--text-muted);font-size:.72rem}
+.lists-rows .standards-row .count{color:var(--text-muted);font-size:.72rem;font-weight:700}
+.lists-rows .standards-row.selected .count{color:var(--chip-fg)}
+.lists-table{min-width:0}.lists-table td:first-child{min-width:200px}.lists-table td:first-child input{width:100%;min-height:34px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface-bg);padding:6px 10px;color:var(--text);font:inherit}
+.lists-table td:nth-child(2),.lists-table td:last-child{white-space:nowrap}
+.lists-table input[type="number"]{width:64px;min-height:34px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface-bg);padding:6px 8px;color:var(--text);font:inherit;text-align:center}
+.agreement-summary{display:grid;gap:8px}
+.agreement-card{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;border:1px solid var(--border);border-radius:10px;background:var(--surface-bg)}
+.agreement-card strong{font-size:.9rem;margin-right:8px}
+.agreement-card p{margin:3px 0 0;color:var(--text-muted);font-size:.8rem}
+.agreement-card-actions{display:flex;gap:8px;align-items:center;flex:none}
+.agreement-card-actions .btn-sm{margin:0}
+@media(max-width:1000px){.lists-workspace{grid-template-columns:1fr}}

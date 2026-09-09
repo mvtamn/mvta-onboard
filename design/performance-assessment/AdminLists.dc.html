@@ -1,0 +1,383 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <title>Lists</title>
+  <style>
+.pa-root {
+  --page-bg: #edebe4; --surface-bg: #fff; --surface-alt-bg: #f6f5f1;
+  --border: #ddd; --border-strong: #ccc; --border-soft: #eee;
+  --text: #2c2c2a; --text-dim: #4f4f4f; --text-muted: #8a8a82;
+  --brand-green: #00553d; --brand-green-hover: #003d2c; --brand-green-text: #00553d;
+  --nav-bg: var(--brand-green);
+  --danger-text: #8a1f1f; --success-text: #1f7a4c; --success-bg: #e3f0d4;
+  --live-dot: #2fae66; --table-stripe: #fafaf8;
+  --pill-warning-bg: #fcefd8; --pill-warning-fg: #7a4a00;
+  --pill-danger-bg: #fbe0e0; --pill-danger-fg: #8a1f1f;
+  --pill-accent-bg: #dceaf8; --pill-accent-fg: #0b4c82;
+  --pill-success-bg: #e3f0d4; --pill-success-fg: #33530f;
+  --pill-muted-bg: #ececea; --pill-muted-fg: #4f4f4f;
+  --datasource-border: #d8e6dd;
+  --chip-bg: #dcede6; --chip-fg: #00301f;
+  --highlight-bg: #fdf1e1; --highlight-border: #faad60;
+  --nav-item-fg: rgba(255,255,255,.85); --nav-item-fg-dim: rgba(255,255,255,.5);
+  --nav-item-hover-bg: rgba(255,255,255,.08); --nav-item-active-bg: rgba(255,255,255,.14);
+  --nav-border: rgba(255,255,255,.12);
+  background: var(--page-bg); color: var(--text);
+}
+.pa-root[data-theme="dark"] {
+  --page-bg: #0b120e; --surface-bg: #152219; --surface-alt-bg: #16241d;
+  --border: #25392f; --border-strong: #2e4238; --border-soft: #1c2a23;
+  --text: #eef3f0; --text-dim: #c7d2cc; --text-muted: #8aa096;
+  --brand-green-text: #6fc9a0; --danger-text: #f0a1a1; --success-text: #7fd3a4; --success-bg: #1d3a2b;
+  --table-stripe: #182619;
+  --pill-warning-bg: #3a2c12; --pill-warning-fg: #f3c77a;
+  --pill-danger-bg: #3d1b1b; --pill-danger-fg: #f0a1a1;
+  --pill-accent-bg: #16304a; --pill-accent-fg: #9cc7ee;
+  --pill-success-bg: #1d3a2b; --pill-success-fg: #b6e2c4;
+  --pill-muted-bg: #263429; --pill-muted-fg: #c7d2cc;
+  --datasource-border: #2e4238; --chip-bg: #1f3a2d; --chip-fg: #cfe9db;
+  --highlight-bg: #3a2a14; --highlight-border: #b97a2c;
+}
+body { margin: 0; font-family: -apple-system, "Segoe UI", Inter, Roboto, Arial, sans-serif; font-size: 13px; }
+a { color: #00553d; text-decoration: none; } a:hover { color: #003d2c; text-decoration: underline; }
+* { box-sizing: border-box; }
+.pa-root { padding: 24px; min-height: 100vh; width: 1440px; }
+.pa-root a { color: var(--brand-green-text); }
+.frame { background: var(--surface-bg); border-radius: 14px; overflow: hidden; border: 1px solid var(--border); box-shadow: 0 4px 16px rgba(0,0,0,.1); display: flex; }
+.nav-sidebar { width: 232px; flex-shrink: 0; background: var(--nav-bg); display: flex; flex-direction: column; padding: 18px 14px; }
+.nav-brand { display: flex; align-items: center; gap: 10px; padding: 6px 8px 22px; }
+.logo-badge { background: rgba(255,255,255,.15); color: #fff; font-weight: bold; font-size: 12px; padding: 5px 9px; border-radius: 6px; letter-spacing: .5px; }
+.nav-brand-text { color: #fff; font-weight: bold; font-size: 15px; line-height: 1.2; }
+.nav-brand-sub { color: var(--nav-item-fg-dim); font-size: 11px; margin-top: 1px; }
+.nav-collapse-btn { margin-left: auto; background: transparent; border: 0; color: var(--nav-item-fg-dim); display: flex; padding: 4px; border-radius: 6px; }
+.nav-list { display: flex; flex-direction: column; gap: 2px; }
+.nav-group { border-top: 1px solid rgba(255,255,255,.13); margin-top: 8px; padding-top: 6px; }
+.nav-group:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
+.nav-group-toggle { display: flex; align-items: center; justify-content: space-between; color: var(--nav-item-fg-dim); font-size: 10.5px; font-weight: 800; letter-spacing: .07em; padding: 8px 12px 6px; text-transform: uppercase; }
+.nav-group-toggle svg { width: 13px; height: 13px; opacity: .8; }
+.nav-group-links { display: flex; flex-direction: column; gap: 2px; }
+.nav-item { position: relative; }
+.nav-list a { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 7px; color: var(--nav-item-fg); font-size: 13.5px; font-weight: 500; position: relative; text-decoration: none; }
+.nav-list a svg { width: 16px; height: 16px; flex-shrink: 0; opacity: .85; }
+.nav-list a.active { background: var(--nav-item-active-bg); color: #fff; font-weight: 600; }
+.nav-list a.active svg { opacity: 1; }
+.nav-list a.active::before { background: var(--live-dot); border-radius: 0 3px 3px 0; content: ""; height: 17px; left: -14px; position: absolute; top: 50%; transform: translateY(-50%); width: 3px; }
+.nav-spacer { flex: 1; }
+.nav-footer { border-top: 1px solid var(--nav-border); display: flex; flex-direction: column; gap: 6px; margin-top: 10px; padding-top: 12px; }
+.nav-status { display: flex; align-items: center; gap: 7px; padding: 4px 12px; color: var(--nav-item-fg-dim); font-size: 11.5px; font-weight: 600; }
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--live-dot); display: inline-block; }
+.nav-changelog { align-items: center; background: rgba(255,255,255,.06); border: 1px solid var(--nav-border); border-radius: 9px; color: var(--nav-item-fg); display: flex; gap: 9px; padding: 9px 11px; }
+.nav-version-number { background: rgba(255,255,255,.16); border-radius: 999px; color: #fff; flex-shrink: 0; font-size: 10px; font-weight: 800; padding: 3px 7px; }
+.nav-changelog-text { display: flex; flex-direction: column; line-height: 1.25; }
+.nav-changelog-text b { font-size: 12px; font-weight: 600; white-space: nowrap; }
+.nav-changelog-text small { color: var(--nav-item-fg-dim); font-size: 10px; }
+.nav-changelog-arrow { display: flex; margin-left: auto; opacity: .55; }
+.content-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.content-topbar { background: var(--surface-bg); border-bottom: 1px solid var(--border); padding: 14px 22px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.content-topbar h1 { font-size: 22px; font-weight: 800; color: var(--text); margin: 0; letter-spacing: -.01em; }
+.content-topbar .subtitle { color: var(--text-muted); font-size: 12.5px; margin-top: 3px; }
+.topbar-actions { display: flex; align-items: center; gap: 10px; }
+.theme-toggle-btn { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border-strong); background: var(--surface-bg); color: var(--text); display: flex; align-items: center; justify-content: center; }
+.pill-user { display: flex; align-items: center; gap: 8px; background: var(--surface-alt-bg); border: 1px solid var(--border); color: var(--text); font-size: 12px; padding: 4px 12px 4px 4px; border-radius: 999px; }
+.avatar { width: 24px; height: 24px; border-radius: 50%; background: var(--brand-green); color: #fff; font-size: 10.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.content-main { flex: 1; padding: 20px 22px; }
+.panel-header { background: var(--brand-green); color: #fff; padding: 12px 18px; border-radius: 10px 10px 0 0; font-size: 14.5px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; text-transform: uppercase; }
+.panel-header a { color: rgba(255,255,255,.85); font-size: 11.5px; font-weight: 700; text-transform: none; display: inline-flex; align-items: center; gap: 6px; }
+.panel-body { border: 1px solid var(--border); border-top: none; border-radius: 0 0 10px 10px; padding: 16px 18px; background: var(--surface-bg); box-shadow: 0 2px 8px rgba(0,0,0,.04); }
+table.data { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12.5px; }
+table.data th { background: var(--brand-green); color: #fff; text-align: left; padding: 9px 12px; font-size: 11px; letter-spacing: .3px; font-weight: 700; }
+table.data th:first-child { border-top-left-radius: 8px; } table.data th:last-child { border-top-right-radius: 8px; }
+table.data td { padding: 9px 12px; border-bottom: 1px solid var(--border-soft); color: var(--text); vertical-align: top; }
+table.data td small { display: block; color: var(--text-muted); font-size: 11px; margin-top: 2px; }
+table.data tr.route-group-header td { background: var(--surface-alt-bg); color: var(--text); font-weight: bold; font-size: 12px; border-bottom: 1px solid var(--border-strong); padding-top: 10px; }
+table.data th.num, table.data td.num { text-align: right; }
+.pill-sm { font-size: 10.5px; font-weight: bold; padding: 3px 8px; border-radius: 10px; white-space: nowrap; display: inline-block; line-height: 1.3; }
+.pill-warning { background: var(--pill-warning-bg); color: var(--pill-warning-fg); }
+.pill-danger { background: var(--pill-danger-bg); color: var(--pill-danger-fg); }
+.pill-accent { background: var(--pill-accent-bg); color: var(--pill-accent-fg); }
+.pill-success { background: var(--pill-success-bg); color: var(--pill-success-fg); }
+.pill-muted { background: var(--pill-muted-bg); color: var(--pill-muted-fg); }
+.chip { background: var(--chip-bg); color: var(--chip-fg); font-size: 11px; padding: 3px 9px; border-radius: 16px; display: inline-block; }
+.btn-primary { background: var(--brand-green); color: #fff; border: none; border-radius: 8px; padding: 10px 18px; font-weight: bold; font-size: 13px; display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.btn-primary[disabled] { opacity: .6; }
+.btn-sm { font-size: 11px; padding: 5px 11px; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--surface-bg); color: var(--text); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-weight: 600; }
+.btn-sm[disabled] { opacity: .45; }
+.btn-sm.danger { border-color: var(--danger-text); color: var(--danger-text); }
+.mono-ref { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 11px; color: var(--text-muted); }
+.muted { color: var(--text-muted); }
+.f { padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: 8px; font-size: 12.5px; font-family: inherit; background: var(--surface-bg); color: var(--text); min-height: 36px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.f.placeholder { color: var(--text-muted); }
+.pa-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); display: inline-block; flex: none; }
+
+.pa-module { display: grid; gap: 16px; }
+.pa-glance { border: 1px solid var(--datasource-border); border-radius: 12px; background: var(--surface-alt-bg); padding: 16px 18px; display: grid; gap: 14px; }
+.pa-glance-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.pa-identity { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.pa-picker { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface-bg); padding: 6px 8px 6px 12px; font: inherit; font-size: 17px; font-weight: 700; color: var(--text); }
+.pa-picker svg { color: var(--text-muted); }
+.pa-month { display: inline-flex; align-items: center; gap: 4px; }
+.pa-month strong { font-size: 17px; font-weight: 700; min-width: 150px; text-align: center; }
+.pa-step-btn { width: 30px; height: 30px; border-radius: 7px; border: 1px solid var(--border-strong); background: var(--surface-bg); color: var(--text-dim); display: inline-flex; align-items: center; justify-content: center; }
+.pa-glance-meta { color: var(--text-muted); font-size: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: -6px; }
+.pa-glance-bottom { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 24px; align-items: start; border-top: 1px solid var(--border); padding-top: 14px; }
+.pa-lifecycle { list-style: none; margin: 0; padding: 0; display: flex; align-items: flex-start; }
+.pa-lifecycle li { display: grid; justify-items: center; gap: 7px; flex: 1; position: relative; min-width: 0; }
+.pa-lifecycle li::before { content: ""; position: absolute; top: 10px; left: -50%; right: 50%; height: 2px; background: var(--border-strong); }
+.pa-lifecycle li:first-child::before { display: none; }
+.pa-lifecycle li.done::before { background: var(--brand-green); }
+.pa-lifecycle li.current::before { background: var(--brand-green); }
+.pa-lifecycle .pa-node { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--border-strong); background: var(--surface-bg); display: flex; align-items: center; justify-content: center; position: relative; z-index: 1; }
+.pa-lifecycle li.done .pa-node { background: var(--brand-green); border-color: var(--brand-green); color: #fff; }
+.pa-lifecycle li.current .pa-node { border-color: var(--brand-green); box-shadow: 0 0 0 4px var(--chip-bg); }
+.pa-lifecycle li.current .pa-node::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--brand-green); }
+.pa-lifecycle span { font-size: 11.5px; color: var(--text-muted); text-align: center; line-height: 1.25; }
+.pa-lifecycle li.done span { color: var(--text-dim); }
+.pa-lifecycle li.current span { color: var(--text); font-weight: 700; }
+.pa-lifecycle small { font-size: 10.5px; color: var(--text-muted); display: block; font-weight: 400; margin-top: 1px; }
+.pa-figures { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 22px; }
+.pa-outstanding a { white-space: nowrap; }
+.pa-figures > div > span { display: block; color: var(--text-muted); font-size: 11px; }
+.pa-figures strong { display: block; color: var(--text); font-size: 22px; line-height: 1.2; margin: 3px 0; font-weight: 800; letter-spacing: -.01em; }
+.pa-figures small { display: block; color: var(--text-muted); font-size: 11px; }
+.pa-outstanding { display: grid; gap: 4px; align-content: start; }
+.pa-outstanding a { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--text-dim); line-height: 1.5; }
+.pa-outstanding a .pa-dot { background: var(--highlight-border); }
+.pa-outstanding a.quiet .pa-dot { background: var(--text-muted); }
+.pa-tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+.pa-tab { display: inline-flex; align-items: center; gap: 7px; border: 1px solid transparent; border-radius: 8px; background: var(--surface-alt-bg); padding: 7px 12px; color: var(--text-dim); font: inherit; font-size: 13px; font-weight: 600; }
+.pa-tab.active { background: var(--brand-green); border-color: var(--brand-green); color: #fff; font-weight: 700; }
+.pa-tab .pa-count { font-size: 10px; font-weight: 800; padding: 1px 6px; border-radius: 999px; background: var(--pill-muted-bg); color: var(--text-dim); line-height: 1.4; }
+.pa-tab.active .pa-count { background: rgba(255,255,255,.22); color: #fff; }
+.pa-tab .pa-count.hot { background: var(--pill-warning-bg); color: var(--pill-warning-fg); }
+.pa-tab.active .pa-count.hot { background: #fff; color: var(--brand-green); }
+.pa-tabs .pa-tabs-spacer { flex: 1; }
+.pa-tabs .pa-catalog-link { align-self: center; font-size: 12px; font-weight: 600; display: inline-flex; gap: 6px; align-items: center; color: var(--text-muted); }
+.pa-section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+.pa-section-head h3 { margin: 0; font-size: 16px; font-weight: 700; }
+.pa-section-head p { margin: 4px 0 0; color: var(--text-muted); font-size: 12.5px; max-width: 72ch; }
+.pa-section-actions { display: flex; gap: 8px; align-items: center; flex: none; }
+.pa-table-wrap { border: 1px solid var(--border); border-radius: 10px; overflow: auto; }
+.pa-table-wrap table.data th:first-child, .pa-table-wrap table.data th:last-child { border-radius: 0; }
+table.data tr.pa-total td { background: var(--surface-alt-bg); font-weight: 700; border-bottom: 0; border-top: 1px solid var(--border-strong); }
+.pa-row-chevron { color: var(--text-muted); text-align: right; width: 32px; }
+.pa-tier { border-radius: 999px; padding: 3px 9px; font-size: 10.5px; font-weight: 700; white-space: nowrap; display: inline-block; line-height: 1.3; }
+.pa-tier.meets { background: var(--pill-success-bg); color: var(--pill-success-fg); }
+.pa-tier.warning { background: var(--pill-warning-bg); color: var(--pill-warning-fg); }
+.pa-tier.tier1 { background: var(--highlight-bg); color: #8a4a00; }
+.pa-root[data-theme="dark"] .pa-tier.tier1 { color: #f3c77a; }
+.pa-tier.tier2 { background: var(--pill-danger-bg); color: var(--pill-danger-fg); }
+.pa-tier.na { background: var(--pill-muted-bg); color: var(--pill-muted-fg); }
+.pa-notice { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border-radius: 9px; background: var(--highlight-bg); border: 1px solid var(--highlight-border); color: var(--text); font-size: 12.5px; }
+.pa-notice svg { color: #8a4a00; flex: none; margin-top: 1px; }
+.pa-notice a { font-weight: 700; }
+.pa-empty { padding: 32px; text-align: center; color: var(--text-muted); border: 1px dashed var(--border-strong); border-radius: 10px; background: var(--surface-alt-bg); font-size: 12.5px; }
+.pa-empty strong { display: block; color: var(--text); margin-bottom: 4px; }
+.pa-card { border: 1px solid var(--border); border-radius: 10px; background: var(--surface-bg); padding: 14px 16px; }
+.pa-card h4 { margin: 0 0 4px; font-size: 13px; font-weight: 700; }
+.pa-card p { margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+.pa-crumb { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--text-dim); }
+.pa-detail { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; align-items: start; }
+.pa-detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.pa-detail-head h3 { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: -.01em; }
+.pa-detail-head p { margin: 5px 0 0; color: var(--text-muted); font-size: 12.5px; }
+.pa-calc { display: flex; align-items: center; gap: 14px; padding: 14px 16px; background: var(--surface-alt-bg); border: 1px solid var(--border); border-radius: 10px; }
+.pa-calc > div { display: grid; gap: 2px; }
+.pa-calc > div > span { color: var(--text-muted); font-size: 11px; }
+.pa-calc > div > strong { font-size: 18px; font-weight: 800; }
+.pa-calc > b { color: var(--text-muted); font-size: 16px; font-weight: 500; }
+.pa-calc > div.result { margin-left: auto; text-align: right; padding-left: 16px; border-left: 1px solid var(--border-strong); }
+.pa-calc > div.result strong { font-size: 22px; color: var(--brand-green-text); }
+.pa-kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 12px; margin: 0; }
+.pa-kv dt { color: var(--text-muted); } .pa-kv dd { margin: 0; color: var(--text); font-weight: 600; }
+.pa-stack { display: grid; gap: 14px; }
+.pa-actions-col { display: grid; gap: 8px; }
+.pa-actions-col .btn-sm, .pa-actions-col .btn-primary { justify-content: center; width: 100%; padding-top: 9px; padding-bottom: 9px; font-size: 12px; }
+.pa-evidence li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--border-soft); font-size: 12px; }
+.pa-evidence li:first-child { border-top: 0; }
+.pa-evidence svg { color: var(--text-muted); flex: none; }
+.pa-evidence .grow { flex: 1; min-width: 0; } .pa-evidence .grow small { display: block; color: var(--text-muted); font-size: 11px; }
+.pa-evidence ul { list-style: none; margin: 6px 0 0; padding: 0; }
+.pa-filters { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.pa-segmented { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 8px; overflow: hidden; background: var(--surface-bg); }
+.pa-segmented button { border: 0; background: transparent; padding: 7px 12px; font: inherit; font-size: 12px; font-weight: 600; color: var(--text-dim); display: inline-flex; gap: 6px; align-items: center; border-left: 1px solid var(--border-soft); }
+.pa-segmented button:first-child { border-left: 0; }
+.pa-segmented button.active { background: var(--chip-bg); color: var(--chip-fg); }
+.pa-segmented button b { font-weight: 800; font-size: 10.5px; color: var(--text-muted); }
+.pa-search { min-width: 240px; }
+.pa-obs { display: block; white-space: nowrap; } .pa-obs a { font-weight: 600; }
+.pa-status-cell { display: grid; gap: 3px; justify-items: start; } .pa-status-cell small { margin: 0; }
+.pa-metric-row { display: grid; grid-template-columns: minmax(0, 1.3fr) 130px minmax(0, 1.4fr) 150px 110px; gap: 12px; align-items: center; padding: 12px 14px; border-top: 1px solid var(--border-soft); }
+.pa-metric-row:first-child { border-top: 0; }
+.pa-metric-row strong { display: block; font-size: 13px; } .pa-metric-row small { display: block; color: var(--text-muted); font-size: 11px; margin-top: 2px; }
+.pa-metric-row .f { min-height: 34px; padding: 6px 10px; font-size: 12.5px; }
+.pa-metric-row .f.unit { justify-content: flex-start; }
+.pa-metric-row .f.unit span { margin-left: auto; color: var(--text-muted); font-size: 11px; }
+.pa-metric-head { display: grid; grid-template-columns: minmax(0, 1.3fr) 130px minmax(0, 1.4fr) 150px 110px; gap: 12px; padding: 8px 14px; background: var(--surface-alt-bg); border-bottom: 1px solid var(--border-soft); color: var(--text-dim); font-size: 11px; font-weight: 700; }
+.pa-progress { height: 6px; border-radius: 999px; background: var(--pill-muted-bg); overflow: hidden; }
+.pa-progress i { display: block; height: 100%; background: var(--brand-green); border-radius: 999px; }
+.pa-review-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 12px 14px; border-top: 1px solid var(--border-soft); }
+.pa-review-row:first-child { border-top: 0; }
+.pa-review-row strong { display: block; font-size: 13px; } .pa-review-row small { display: block; color: var(--text-muted); font-size: 11.5px; margin-top: 2px; }
+.pa-review-row .pa-review-actions { display: flex; gap: 6px; }
+.pa-review-row .pa-decision { display: flex; align-items: center; gap: 10px; }
+.pa-review-row .pa-decision small { margin: 0; }
+.pa-group-label { color: var(--text-muted); font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; margin: 0; }
+.pa-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.pa-step-card { border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; background: var(--surface-bg); display: grid; gap: 10px; align-content: start; position: relative; }
+.pa-step-card.current { border-color: var(--brand-green); box-shadow: inset 0 0 0 1px var(--brand-green); }
+.pa-step-card.locked { background: var(--surface-alt-bg); }
+.pa-step-card .pa-step-no { width: 24px; height: 24px; border-radius: 50%; background: var(--chip-bg); color: var(--chip-fg); font-size: 11.5px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; }
+.pa-step-card.locked .pa-step-no { background: var(--pill-muted-bg); color: var(--text-muted); }
+.pa-step-card h4 { margin: 0; font-size: 13.5px; } .pa-step-card p { margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+.pa-step-card .pa-step-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.pa-step-card .pa-step-state { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim); }
+
+.admin-layout { display: grid; grid-template-columns: 218px minmax(0, 1fr); gap: 18px; align-items: start; }
+.admin-secondary-nav { background: var(--surface-bg); border: 1px solid var(--border); border-radius: 12px; padding: 14px 10px; }
+.admin-secondary-heading { display: grid; gap: 4px; padding: 8px 10px 16px; border-bottom: 1px solid var(--border-soft); }
+.admin-secondary-heading strong { font-size: 17px; }
+.admin-eyebrow { color: var(--brand-green-text); font-size: 10px; font-weight: 800; letter-spacing: .08em; }
+.admin-secondary-links { display: grid; gap: 3px; padding-top: 10px; }
+.admin-secondary-links a { display: flex; align-items: center; gap: 9px; padding: 9px 10px; color: var(--text-dim); text-decoration: none; border-radius: 7px; font-weight: 600; }
+.admin-secondary-links a.active { background: var(--chip-bg); color: var(--brand-green-text); }
+.admin-secondary-links svg { width: 16px; height: 16px; flex-shrink: 0; }
+.admin-secondary-group { display: grid; gap: 3px; margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--border-soft); }
+.admin-secondary-group-label { color: var(--text-muted); font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; padding: 4px 10px 6px; }
+.admin-secondary-group a { padding-left: 18px; }
+.admin-layout-content { min-width: 0; }
+.standards-page { display: grid; gap: 16px; }
+.standards-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.standards-head p { margin: 0; color: var(--text-muted); max-width: 78ch; font-size: 12.5px; line-height: 1.5; }
+.assessment-eyebrow { display: block; color: var(--brand-green-text); font-size: 11px; font-weight: 800; letter-spacing: .08em; margin-bottom: 4px; }
+.standards-workspace { display: grid; gap: 14px; align-items: start; grid-template-columns: minmax(300px, .85fr) minmax(420px, 1.15fr); }
+.standards-list, .standards-detail { background: var(--surface-bg); border: 1px solid var(--border); border-radius: 11px; box-shadow: 0 2px 8px rgba(0,0,0,.04); min-width: 0; overflow: hidden; display: grid; align-content: start; }
+.standards-list-toolbar { display: flex; gap: 8px; padding: 12px; border-bottom: 1px solid var(--border-soft); }
+.standards-list-toolbar .f { flex: 1 1 auto; }
+.standards-list-toolbar .f.narrow { flex: 0 0 150px; }
+.standards-list-meta { padding: 8px 12px; color: var(--text-muted); font-size: 11.5px; border-bottom: 1px solid var(--border-soft); display: flex; justify-content: space-between; align-items: center; }
+.standards-rows { list-style: none; margin: 0; padding: 6px; display: grid; gap: 2px; align-content: start; }
+.standards-group { list-style: none; color: var(--text-muted); font-size: 10.5px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; padding: 10px 10px 4px; }
+.standards-row { width: 100%; display: grid; gap: 4px; text-align: left; border: 1px solid transparent; border-radius: 9px; background: transparent; padding: 9px 10px; font: inherit; color: inherit; }
+.standards-row.selected { background: var(--chip-bg); border-color: var(--brand-green); }
+.standards-row-name { display: grid; gap: 2px; }
+.standards-row-name strong { font-size: 13px; line-height: 1.25; }
+.standards-row-description { color: var(--text-dim); font-size: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.4; }
+.standards-row-description.is-empty { color: var(--text-muted); font-style: italic; }
+.standards-row-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.standards-row-meta small { color: var(--text-muted); font-size: 11px; }
+.standards-state { border-radius: 999px; padding: 2px 8px; font-size: 10px; font-weight: 700; }
+.standards-state.scored { background: var(--pill-success-bg); color: var(--pill-success-fg); }
+.standards-state.dormant { background: var(--pill-warning-bg); color: var(--pill-warning-fg); }
+.standards-state.unassigned { background: var(--pill-muted-bg); color: var(--text-dim); }
+.standards-detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border-soft); }
+.standards-detail-head h3 { margin: 0; font-size: 16px; }
+.standards-detail-actions { display: flex; gap: 8px; flex: none; }
+.standards-tabs { display: flex; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--border-soft); }
+.standards-tabs button { white-space: nowrap; border: 1px solid transparent; border-radius: 8px; background: var(--surface-alt-bg); padding: 7px 12px; color: var(--text-dim); font: inherit; font-weight: 600; }
+.standards-tabs button.active { background: var(--brand-green); border-color: var(--brand-green); color: #fff; font-weight: 700; }
+.standards-tab-body { padding: 16px; display: grid; gap: 16px; }
+.standards-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.standards-grid label, .standards-band label { display: grid; gap: 6px; }
+.standards-grid label > span, .standards-band label > span, .standards-fieldset legend { color: var(--text-dim); font-size: 11.5px; font-weight: 700; }
+.standards-grid .f, .standards-band .f { min-height: 40px; }
+.standards-grid small { color: var(--text-muted); font-size: 11px; line-height: 1.4; }
+.standards-wide { grid-column: 1 / -1; }
+.standards-fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 10px; }
+.standards-fieldset legend { padding: 0; margin-bottom: 4px; text-transform: uppercase; letter-spacing: .05em; font-size: 10.5px; color: var(--text-muted); }
+.contractor-active { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.contractor-active .box { width: 18px; height: 18px; border-radius: 4px; border: 1px solid var(--border-strong); background: var(--surface-bg); display: inline-flex; align-items: center; justify-content: center; }
+.contractor-active .box.on { background: var(--brand-green); border-color: var(--brand-green); color: #fff; }
+.standards-hint { color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+.standards-agreement-bar { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--datasource-border); border-radius: 10px; background: var(--surface-alt-bg); }
+.standards-agreement-bar > span.label { color: var(--brand-green-text); font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; flex: none; }
+.standards-agreement-bar .f { flex: 1 1 260px; }
+.standards-exhibit { padding: 3px 9px; border-radius: 10px; background: var(--chip-bg); color: var(--chip-fg); font-size: 11px; font-weight: 700; flex: none; }
+.standards-bands { display: grid; gap: 12px; }
+.standards-band { border: 1px solid var(--border); border-radius: 11px; background: var(--surface-alt-bg); padding: 14px; display: grid; gap: 12px; }
+.standards-band-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.standards-band-head .pa-tier { text-transform: none; }
+.standards-band-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: end; }
+.standards-measure { display: flex; align-items: center; gap: 6px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface-bg); padding: 0 10px; min-height: 38px; font-size: 12.5px; }
+.standards-measure span { color: var(--text-muted); font-size: 11.5px; font-weight: 600; white-space: nowrap; margin-left: auto; }
+.standards-band-readout { margin: 0; padding: 9px 12px; border-radius: 8px; background: var(--chip-bg); color: var(--chip-fg); font-size: 12.5px; font-weight: 600; }
+.standards-band-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
+.standards-band-list li { display: flex; align-items: baseline; gap: 7px; font-size: 12px; color: var(--text-dim); }
+.standards-target { display: block; margin-top: 6px; color: var(--text-muted); font-size: 11.5px; font-weight: 600; }
+.standards-tier-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.standards-new-value { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto; gap: 10px; align-items: end; }
+.standards-new-value label { display: grid; gap: 5px; }
+.standards-new-value span { color: var(--text-dim); font-size: 11.5px; font-weight: 700; }
+.standards-toggle { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; font-size: 12px; }
+.lists-rows .standards-row { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.lists-rows .standards-row small { color: var(--text-muted); font-size: 11px; }
+.lists-rows .standards-row .count { color: var(--text-muted); font-size: 11px; font-weight: 700; }
+.lists-rows .standards-row.selected .count { color: var(--chip-fg); }
+.agreement-summary { display: grid; gap: 8px; }
+.lists-table td:first-child { min-width: 210px; } .lists-table th:last-child, .lists-table td:last-child, .lists-table td:nth-child(5) { white-space: nowrap; } .lists-table td:nth-child(2) { white-space: nowrap; }
+.agreement-summary .pa-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; }
+</style>
+</helmet>
+<div class="pa-root" data-theme="{{theme}}">
+  <div class="frame" style="min-height: 1180px">
+    <aside class="nav-sidebar">
+  <div class="nav-brand"><span class="logo-badge">MVTA</span><div><div class="nav-brand-text">OnBoard</div><div class="nav-brand-sub">Staff console</div></div><span class="nav-collapse-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path></svg></span></div>
+  <nav class="nav-list">
+    <section class="nav-group"><div class="nav-group-toggle"><span>Service Operations</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></div><div class="nav-group-links"><div class="nav-item"><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect></svg><span>Dashboard</span></a></div><div class="nav-item"><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg><span>Overview</span></a></div><div class="nav-item"><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg><span>Compose</span></a></div><div class="nav-item"><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg><span>Active Service Alerts</span></a></div><div class="nav-item"><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg><span>Suggested Alerts</span></a></div><div class="nav-item"><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 8.4 8 11 4.6-2.6 8-6 8-11V5Z"></path><path d="m9 12 2 2 4-4"></path></svg><span>Service Risk &amp; Quality</span></a></div><div class="nav-item"><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path></svg><span>Dispatch Log</span></a></div></div></section>
+    <section class="nav-group"><div class="nav-group-toggle"><span>Specialist Operations</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></div><div class="nav-group-links"><div class="nav-item"><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17h4l3-11 3 11h4"></path><path d="M17 13l3 4-3 4"></path></svg><span>Detours &amp; Closures</span></a></div><div class="nav-item"><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17h4l3-11 3 11h4"></path><path d="M17 13l3 4-3 4"></path></svg><span>Detour Intake</span></a></div><div class="nav-item"><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path></svg><span>Detour Reports</span></a></div><div class="nav-item"><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.6 5.6L2 19l3 3 7.1-7.1a4 4 0 0 0 5.6-5.6l-2.8 2.8-2.1-2.1Z"></path></svg><span>OCC Tools</span></a></div></div></section>
+    <section class="nav-group"><div class="nav-group-toggle"><span>Events</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></div><div class="nav-group-links"><div class="nav-item"><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="16" rx="3"></rect><path d="M4 9h16M8 19v2M16 19v2M8 15h.01M16 15h.01"></path></svg><span>Planning</span></a></div><div class="nav-item"><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="16" rx="3"></rect><path d="M4 9h16M8 19v2M16 19v2M8 15h.01M16 15h.01"></path></svg><span>Event AVL</span></a></div></div></section>
+    <section class="nav-group"><div class="nav-group-toggle"><span>Compliance &amp; Assessment</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></div><div class="nav-group-links"><div class="nav-item"><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 8.4 8 11 4.6-2.6 8-6 8-11V5Z"></path><path d="m9 12 2 2 4-4"></path></svg><span>Compliance</span></a></div><div class="nav-item"><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4h6"></path><path d="M9 2h6a2 2 0 0 1 2 2v1h2a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2V4a2 2 0 0 1 2-2Z"></path><path d="m7 12 2 2 4-4M7 18h10"></path></svg><span>Performance Assessment</span></a></div></div></section>
+    <section class="nav-group"><div class="nav-group-toggle"><span>Administration</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></div><div class="nav-group-links"><div class="nav-item"><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 8.4 8 11 4.6-2.6 8-6 8-11V5Z"></path><path d="m9 12 2 2 4-4"></path></svg><span>Access &amp; Identity</span></a></div><div class="nav-item"><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="16" rx="3"></rect><path d="M4 9h16M8 19v2M16 19v2M8 15h.01M16 15h.01"></path></svg><span>Event Administration</span></a></div><div class="nav-item"><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.6 5.6L2 19l3 3 7.1-7.1a4 4 0 0 0 5.6-5.6l-2.8 2.8-2.1-2.1Z"></path></svg><span>Service Configuration</span></a></div><div class="nav-item"><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.6 5.6L2 19l3 3 7.1-7.1a4 4 0 0 0 5.6-5.6l-2.8 2.8-2.1-2.1Z"></path></svg><span>Integrations &amp; Data Health</span></a></div><div class="nav-item"><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.6 5.6L2 19l3 3 7.1-7.1a4 4 0 0 0 5.6-5.6l-2.8 2.8-2.1-2.1Z"></path></svg><span>Decision Matrix</span></a></div><div class="nav-item"><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.6 5.6L2 19l3 3 7.1-7.1a4 4 0 0 0 5.6-5.6l-2.8 2.8-2.1-2.1Z"></path></svg><span>OTP Compliance</span></a></div><div class="nav-item"><a class="active"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4h6"></path><path d="M9 2h6a2 2 0 0 1 2 2v1h2a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2V4a2 2 0 0 1 2-2Z"></path><path d="m7 12 2 2 4-4M7 18h10"></path></svg><span>Performance Setup</span></a></div><div class="nav-item"><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path></svg><span>Governance &amp; Audit</span></a></div></div></section>
+  </nav>
+  <div class="nav-spacer"></div>
+  <div class="nav-footer">
+    <div class="nav-status"><span class="live-dot"></span><span>Console Live</span></div>
+    <div class="nav-changelog"><span class="nav-version-number">v1.5.159</span><span class="nav-changelog-text"><b>What’s new</b><small>Release notes</small></span><span class="nav-changelog-arrow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span></div>
+  </div>
+</aside>
+    <div class="content-col">
+      <header class="content-topbar"><div><h1>Performance Assessment setup</h1><div class="subtitle">Contractors, Agreements, the standards catalog and the lists behind them</div></div><div class="topbar-actions"><span class="theme-toggle-btn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg></span><span class="pill-user"><span class="avatar">TF</span><span>Tyre Fant · OCC.Admin</span></span></div></header>
+      <main class="content-main"><div class="admin-layout"><aside class="admin-secondary-nav" aria-label="Administration">
+  <div class="admin-secondary-heading"><span class="admin-eyebrow">MANAGEMENT WORKSPACE</span><strong>Administration</strong></div>
+  <nav class="admin-secondary-links">
+    <a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 8.4 8 11 4.6-2.6 8-6 8-11V5Z"></path><path d="m9 12 2 2 4-4"></path></svg><span>Access &amp; Identity</span></a><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="16" rx="3"></rect><path d="M4 9h16M8 19v2M16 19v2M8 15h.01M16 15h.01"></path></svg><span>Event Administration</span></a><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.6 5.6L2 19l3 3 7.1-7.1a4 4 0 0 0 5.6-5.6l-2.8 2.8-2.1-2.1Z"></path></svg><span>Service Configuration</span></a><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.6 5.6L2 19l3 3 7.1-7.1a4 4 0 0 0 5.6-5.6l-2.8 2.8-2.1-2.1Z"></path></svg><span>Service Standards</span></a><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.6 5.6L2 19l3 3 7.1-7.1a4 4 0 0 0 5.6-5.6l-2.8 2.8-2.1-2.1Z"></path></svg><span>Integrations &amp; Data Health</span></a><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.6 5.6L2 19l3 3 7.1-7.1a4 4 0 0 0 5.6-5.6l-2.8 2.8-2.1-2.1Z"></path></svg><span>Decision Matrix</span></a><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.6 5.6L2 19l3 3 7.1-7.1a4 4 0 0 0 5.6-5.6l-2.8 2.8-2.1-2.1Z"></path></svg><span>OTP Compliance</span></a>
+    <div class="admin-secondary-group"><span class="admin-secondary-group-label">Performance Assessment</span><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg><span>Contractors</span></a><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path></svg><span>Agreements</span></a><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4h6"></path><path d="M9 2h6a2 2 0 0 1 2 2v1h2a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2V4a2 2 0 0 1 2-2Z"></path><path d="m7 12 2 2 4-4M7 18h10"></path></svg><span>Standards</span></a><a class="active"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.6 5.6L2 19l3 3 7.1-7.1a4 4 0 0 0 5.6-5.6l-2.8 2.8-2.1-2.1Z"></path></svg><span>Lists</span></a></div>
+    <div class="admin-secondary-group"><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path></svg><span>Governance &amp; Audit</span></a><a class=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg><span>Subscribers</span></a></div>
+  </nav>
+</aside><section class="admin-layout-content"><div class="panel-header"><span>Lists</span></div><div class="panel-body standards-page">
+<div class="standards-head"><div><span class="assessment-eyebrow">PERFORMANCE ASSESSMENT · VOCABULARY</span><p>The lists behind every picker in the configurator. Rename them in the contract’s own words, reorder them, and retire the ones MVTA does not use. System lists are what the scoring engine branches on: their labels are yours, their values are not.</p></div></div>
+<div class="standards-workspace" style="grid-template-columns: 236px minmax(0, 1fr)">
+  <section class="standards-list">
+    <div class="standards-list-meta"><span>12 lists</span><span>5 system</span></div>
+    <ul class="standards-rows lists-rows">
+      <li><span class="standards-row "><span><strong style="font-size: 13px">Units</strong></span><span class="count">7</span></span></li><li><span class="standards-row selected"><span><strong style="font-size: 13px">Categories</strong></span><span class="count">7</span></span></li><li><span class="standards-row "><span><strong style="font-size: 13px">Priorities</strong></span><span class="count">4</span></span></li><li><span class="standards-row "><span><strong style="font-size: 13px">Conditions</strong></span><span class="count">3</span></span></li><li><span class="standards-row "><span><strong style="font-size: 13px">Source systems</strong></span><span class="count">5</span></span></li><li><span class="standards-row "><span><strong style="font-size: 13px">Responsible teams</strong></span><span class="count">6</span></span></li><li><span class="standards-row "><span><strong style="font-size: 13px">Assigned owners</strong></span><span class="count">9</span></span></li><li><span class="standards-row "><span><strong style="font-size: 13px">Tier labels</strong><small style="display: block">System list</small></span><span class="count">4</span></span></li><li><span class="standards-row "><span><strong style="font-size: 13px">Charge bases</strong><small style="display: block">System list</small></span><span class="count">6</span></span></li><li><span class="standards-row "><span><strong style="font-size: 13px">Measurement sources</strong><small style="display: block">System list</small></span><span class="count">4</span></span></li><li><span class="standards-row "><span><strong style="font-size: 13px">Standard types</strong><small style="display: block">System list</small></span><span class="count">2</span></span></li><li><span class="standards-row "><span><strong style="font-size: 13px">Directions</strong><small style="display: block">System list</small></span><span class="count">2</span></span></li>
+    </ul>
+  </section>
+  <aside class="standards-detail">
+    <div class="standards-detail-head"><div><h3>Categories</h3><small class="muted" style="font-size: 12px">Which part of the contract a standard belongs to. Groups the catalog and a scorecard in the order the contract reads; never read when a month is scored.</small></div><div class="standards-detail-actions"><span class="pill-sm pill-success">Owned list</span></div></div>
+    <div class="standards-tab-body">
+      <div class="pa-table-wrap"><table class="data lists-table">
+        <thead><tr><th>Label</th><th>Value</th><th class="num">Order</th><th class="num">Standards</th><th>In use</th><th></th></tr></thead>
+        <tbody><tr><td><span class="f" style="min-height: 34px; padding: 6px 10px">Service Delivery</span><small>Whether the scheduled service ran, and ran on time.</small></td><td><span class="mono-ref">service_delivery</span></td><td class="num"><span class="f" style="min-height: 34px; padding: 6px 10px; width: 56px; justify-content: center">1</span></td><td class="num">3</td><td><span class="standards-toggle"><span class="contractor-active"><span class="box on"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="2.5"><path d="m5 12 4 4L19 6"></path></svg></span><span>Offered</span></span></span></td><td><a style="font-size: 12px; font-weight: 700">Delete</a></td></tr><tr><td><span class="f" style="min-height: 34px; padding: 6px 10px">Operations &amp; Supervision</span><small>How the service was run and supervised on the day.</small></td><td><span class="mono-ref">operations</span></td><td class="num"><span class="f" style="min-height: 34px; padding: 6px 10px; width: 56px; justify-content: center">2</span></td><td class="num">4</td><td><span class="standards-toggle"><span class="contractor-active"><span class="box on"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="2.5"><path d="m5 12 4 4L19 6"></path></svg></span><span>Offered</span></span></span></td><td><a style="font-size: 12px; font-weight: 700">Delete</a></td></tr><tr><td><span class="f" style="min-height: 34px; padding: 6px 10px">Staffing &amp; Training</span><small>Whether the people running the service were there and qualified.</small></td><td><span class="mono-ref">staffing</span></td><td class="num"><span class="f" style="min-height: 34px; padding: 6px 10px; width: 56px; justify-content: center">3</span></td><td class="num">11</td><td><span class="standards-toggle"><span class="contractor-active"><span class="box on"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="2.5"><path d="m5 12 4 4L19 6"></path></svg></span><span>Offered</span></span></span></td><td><a style="font-size: 12px; font-weight: 700">Delete</a></td></tr><tr><td><span class="f" style="min-height: 34px; padding: 6px 10px">Safety</span><small>Collisions, inspections, and the safety programme.</small></td><td><span class="mono-ref">safety</span></td><td class="num"><span class="f" style="min-height: 34px; padding: 6px 10px; width: 56px; justify-content: center">4</span></td><td class="num">4</td><td><span class="standards-toggle"><span class="contractor-active"><span class="box on"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="2.5"><path d="m5 12 4 4L19 6"></path></svg></span><span>Offered</span></span></span></td><td><a style="font-size: 12px; font-weight: 700">Delete</a></td></tr><tr><td><span class="f" style="min-height: 34px; padding: 6px 10px">Maintenance &amp; Fleet</span><small>Vehicle availability, reliability and condition.</small></td><td><span class="mono-ref">maintenance</span></td><td class="num"><span class="f" style="min-height: 34px; padding: 6px 10px; width: 56px; justify-content: center">5</span></td><td class="num">5</td><td><span class="standards-toggle"><span class="contractor-active"><span class="box on"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="2.5"><path d="m5 12 4 4L19 6"></path></svg></span><span>Offered</span></span></span></td><td><a style="font-size: 12px; font-weight: 700">Delete</a></td></tr><tr><td><span class="f" style="min-height: 34px; padding: 6px 10px">Customer Experience</span><small>What the rider encounters, including accessibility.</small></td><td><span class="mono-ref">customer</span></td><td class="num"><span class="f" style="min-height: 34px; padding: 6px 10px; width: 56px; justify-content: center">6</span></td><td class="num">2</td><td><span class="standards-toggle"><span class="contractor-active"><span class="box on"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="2.5"><path d="m5 12 4 4L19 6"></path></svg></span><span>Offered</span></span></span></td><td><a style="font-size: 12px; font-weight: 700">Delete</a></td></tr><tr><td><span class="f" style="min-height: 34px; padding: 6px 10px">Reporting &amp; Compliance</span><small>Records and submissions the contract requires.</small></td><td><span class="mono-ref">reporting</span></td><td class="num"><span class="f" style="min-height: 34px; padding: 6px 10px; width: 56px; justify-content: center">7</span></td><td class="num">1</td><td><span class="standards-toggle"><span class="contractor-active"><span class="box on"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="2.5"><path d="m5 12 4 4L19 6"></path></svg></span><span>Offered</span></span></span></td><td><a style="font-size: 12px; font-weight: 700">Delete</a></td></tr></tbody>
+      </table></div>
+      <div class="standards-new-value"><label><span>New value</span><span class="f placeholder">stored value</span></label><label><span>Label</span><span class="f placeholder">what the console shows</span></label><span class="btn-primary">Add to categories</span></div>
+      <p class="standards-hint" style="margin: 0">A label change shows everywhere the value appears from the next load. Retiring a value hides it from pickers without touching the standards already using it.</p>
+    </div>
+  </aside>
+</div></div></section></div></main>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light","section":"Console theme"},"$preview":{"width":1440,"height":1228}}'>
+class Component extends DCLogic {
+  renderVals() { return { theme: this.props.theme ?? "light" }; }
+}
+</script>
+</body>
+</html>
