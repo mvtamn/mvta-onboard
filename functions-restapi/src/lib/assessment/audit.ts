@@ -25,5 +25,6 @@ export function periodAuditSelectSql(periodParam: string): string {
        OR (a.entity_type='dispute' AND a.entity_id IN (SELECT d.id FROM PenaltyDisputes d JOIN ComplianceReports r ON r.id=d.report_id WHERE r.period_id=@${periodParam}))
        OR (a.entity_type='cap' AND a.entity_id IN (SELECT id FROM CorrectiveActionPlans WHERE period_id=@${periodParam}))
        OR (a.entity_type='claim' AND a.entity_id IN (SELECT c.id FROM ExcusableDelayClaims c JOIN AssessmentPeriods p ON p.contractor_id=c.contractor_id AND p.service_month=c.service_month WHERE p.id=@${periodParam}))
+       OR (a.entity_type='outage' AND a.entity_id IN (SELECT w.id FROM SystemOutageWindows w JOIN AssessmentPeriods p ON p.id=@${periodParam} WHERE CONVERT(date,w.started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time')<=EOMONTH(CONVERT(date,CONCAT(p.service_month,'01'),112)) AND (w.ended_at IS NULL OR CONVERT(date,w.ended_at AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time')>=CONVERT(date,CONCAT(p.service_month,'01'),112))))
     ORDER BY a.created_at DESC,a.id DESC`;
 }

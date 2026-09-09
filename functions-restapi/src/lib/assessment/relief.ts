@@ -24,11 +24,16 @@ export function outageSystemForSourceRef(sourceRef: string | null | undefined): 
   return SOURCE_SYSTEMS.find(s => sourceRef.startsWith(s.prefix))?.system ?? null;
 }
 
+// Windows are stored in UTC; service dates are agency days (CONTEXT: the
+// Assessment Period is determined in America/Chicago). An outage that began
+// at 20:00 Central is the next UTC date and would otherwise miss its own day.
+export const agencyDate = (utcColumn: string) => `CONVERT(date,${utcColumn} AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time')`;
+
 // The same rule as a scalar subquery: the system of the first matching
 // window covering the occurrence's service date, or NULL. `alias` is the
 // ComplianceOccurrences alias in the enclosing query.
 export function outageExclusionSql(alias: string): string {
   const o = alias;
   const system = `CASE ${SOURCE_SYSTEMS.map(s => `WHEN ${o}.source_ref LIKE '${s.prefix}%' THEN '${s.system}'`).join(" ")} END`;
-  return `(SELECT TOP 1 w.system FROM SystemOutageWindows w WHERE w.system=${system} AND CONVERT(date,w.started_at)<=CONVERT(date,${o}.service_date,112) AND (w.ended_at IS NULL OR CONVERT(date,w.ended_at)>=CONVERT(date,${o}.service_date,112)) ORDER BY w.started_at)`;
+  return `(SELECT TOP 1 w.system FROM SystemOutageWindows w WHERE w.system=${system} AND ${agencyDate("w.started_at")}<=CONVERT(date,${o}.service_date,112) AND (w.ended_at IS NULL OR ${agencyDate("w.ended_at")}>=CONVERT(date,${o}.service_date,112)) ORDER BY w.started_at)`;
 }

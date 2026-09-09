@@ -1367,8 +1367,8 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     createExcusableDelayClaim(input: { contractor_id: string; service_month: string; event_description: string; event_started_at: string; notice_received_at: string; documentation_note?: string }) {
       return request<{ id: string; late_notice: boolean }>("/api/excusable-delay-claims", { method: "POST", body: JSON.stringify(input) }, true);
     },
-    decideExcusableDelayClaim(id: string, status: "approved" | "denied", decision_note: string) {
-      return request<{ id: string; status: string }>(`/api/excusable-delay-claims/${id}/decision`, { method: "POST", body: JSON.stringify({ status, decision_note }) }, true);
+    decideExcusableDelayClaim(id: string, status: "approved" | "denied", decision_note: string, late_notice_override?: string) {
+      return request<{ id: string; status: string; late_notice: boolean }>(`/api/excusable-delay-claims/${id}/decision`, { method: "POST", body: JSON.stringify({ status, decision_note, ...(late_notice_override ? { late_notice_override } : {}) }) }, true);
     },
     getSystemOutages(serviceMonth?: string) {
       return request<{ outages: import("./types.js").SystemOutageWindow[] }>(`/api/system-outages${serviceMonth ? `?service_month=${encodeURIComponent(serviceMonth)}` : ""}`, {}, true);

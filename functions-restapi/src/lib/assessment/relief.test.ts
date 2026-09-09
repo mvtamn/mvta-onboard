@@ -33,6 +33,7 @@ test("the SQL fragment names the window's system from source_ref and covers the 
   assert.match(sql, /o\.source_ref LIKE 'MonitoredMissedTrips:spare:%'/);
   assert.match(sql, /'Avail_CAD_AVL'/);
   assert.match(sql, /'Spare'/);
-  assert.match(sql, /CONVERT\(date,w\.started_at\)<=CONVERT\(date,o\.service_date,112\)/);
-  assert.match(sql, /w\.ended_at IS NULL OR CONVERT\(date,w\.ended_at\)>=CONVERT\(date,o\.service_date,112\)/);
+  // Agency day, not UTC day: a window that opened at 20:00 Central is still that day.
+  assert.match(sql, /CONVERT\(date,w\.started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time'\)<=CONVERT\(date,o\.service_date,112\)/);
+  assert.match(sql, /w\.ended_at IS NULL OR CONVERT\(date,w\.ended_at AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time'\)>=CONVERT\(date,o\.service_date,112\)/);
 });

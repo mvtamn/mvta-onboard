@@ -1,8 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { auditSql } from "../lib/assessment/audit";
 import { COMPLIANCE_READ_ROLES, COMPLIANCE_WRITE_ROLES, requireRole } from "../lib/auth";
 import { getPool, sql } from "../lib/db";
-import { isGuid } from "../lib/validation";
+import { agencyDate } from "../lib/assessment/relief";
+import { isGuid, isServiceMonth } from "../lib/validation";
 
 // Attachment G's data protocol: observations made while the observing system
 // was down are excluded from penalty calculation. A window is logged when the
@@ -19,7 +21,8 @@ app.http("systemOutagesList", {
     try {
       const pool = await getPool(); const req = pool.request();
       let where = "";
-      if (month && /^\d{6}$/.test(month)) { req.input("from", sql.Char(8), `${month}01`); req.input("to", sql.Char(8), `${month}31`); where = "WHERE CONVERT(date,started_at)<=CONVERT(date,@to,112) AND (ended_at IS NULL OR CONVERT(date,ended_at)>=CONVERT(date,@from,112))"; }
+      // Windows that touch any agency day of the month.
+      if (isServiceMonth(month)) { req.input("from", sql.Char(8), `${month}01`); where = `WHERE ${agencyDate("started_at")}<=EOMONTH(CONVERT(date,@from,112)) AND (ended_at IS NULL OR ${agencyDate("ended_at")}>=CONVERT(date,@from,112))`; }
       const result = await req.query(`SELECT * FROM SystemOutageWindows ${where} ORDER BY started_at DESC`);
       return { status: 200, jsonBody: { outages: result.recordset } };
     } catch (error) { context.error("GET system outages failed", error); return { status: 500, jsonBody: { error: "Internal server error" } }; }
@@ -36,7 +39,7 @@ app.http("systemOutagesCreate", {
     if (!SYSTEMS.includes(body.system as never) || Number.isNaN(started.getTime()) || (ended && (Number.isNaN(ended.getTime()) || ended <= started)) || typeof body.scope_note !== "string" || !body.scope_note.trim())
       return { status: 400, jsonBody: { error: `system (${SYSTEMS.join(", ")}), started_at, scope_note, and an ended_at after started_at if known are required` } };
     try {
-      const pool = await getPool(); const req = pool.request(); const id = crypto.randomUUID();
+      const pool = await getPool(); const req = pool.request(); const id = randomUUID();
       req.input("id", sql.UniqueIdentifier, id); req.input("system", sql.NVarChar(50), body.system); req.input("started", sql.DateTime2, started); req.input("ended", sql.DateTime2, ended); req.input("note", sql.NVarChar(1000), body.scope_note); req.input("actor", sql.NVarChar(200), auth.principal.userDetails ?? "onboard-console");
       await req.query(`INSERT SystemOutageWindows(id,system,started_at,ended_at,scope_note,logged_by) VALUES(@id,@system,@started,@ended,@note,@actor);${auditSql("outage", "@id", "outage_logged", "actor", { after: "(SELECT @system system,@started started_at,@ended ended_at FOR JSON PATH,WITHOUT_ARRAY_WRAPPER)" })}`);
       return { status: 201, jsonBody: { id } };

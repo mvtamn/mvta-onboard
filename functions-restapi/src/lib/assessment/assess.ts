@@ -111,13 +111,14 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
       const occurrences = await occurrencesReq.query<{ id: string; quantity: number; duration_days: number | null; qualifier_code: string | null; excluded: boolean; service_date: string; assessed_amount: number | null; outage_system: string | null }>(`
         SELECT o.id,o.quantity,o.duration_days,o.qualifier_code,o.service_date,
           ${scope.penaltyScaling ? "o.assessed_amount" : "CONVERT(decimal(12,2),NULL) assessed_amount"},
-          CONVERT(bit,CASE WHEN o.attribution<>'contractor_error' OR c.status='approved' OR ${outageExclusionSql("o")} IS NOT NULL THEN 1 ELSE 0 END) excluded,
+          CONVERT(bit,CASE WHEN o.attribution<>'contractor_error' OR c.status='approved' THEN 1 ELSE 0 END) excluded,
           ${outageExclusionSql("o")} outage_system
         FROM ComplianceOccurrences o LEFT JOIN ExcusableDelayClaims c ON c.id=o.relief_id
         WHERE o.standard_id=@standard_id AND o.contractor_id=@contractor AND o.service_month=@month AND o.review_status='confirmed'
         ORDER BY o.service_date, o.created_at, o.id
       `);
-      const input = splitAssessmentInput(occurrences.recordset);
+      // An outage excludes the same way relief does: removed from the input, kept in the raw count.
+      const input = splitAssessmentInput(occurrences.recordset.map(o => ({ ...o, excluded: o.excluded || o.outage_system !== null })));
       rawOccurrenceCount = input.rawCount;
       rawUnitQuantity = input.rawQuantity;
       rawMetricValue = input.rawQuantity;
@@ -169,6 +170,7 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
           WHERE o.standard_id=@standard_id AND o.contractor_id=@contractor
             AND o.review_status='confirmed'
             AND o.attribution='contractor_error' AND (c.id IS NULL OR c.status<>'approved')
+            AND ${outageExclusionSql("o")} IS NULL
             AND o.service_date <= CONCAT(@month,'31')
             -- A rolling window reaches back its own length before the month;
             -- a calendar quarter reaches back to the first day of the quarter

@@ -24,7 +24,7 @@ describe("Relief", () => {
     await screen.findByText("Ice storm");
     expect(screen.getByText(/Late notice/)).toBeTruthy();
     await userEvent.click(screen.getByRole("button", { name: "Deny" }));
-    await waitFor(() => expect(api.decideExcusableDelayClaim).toHaveBeenCalledWith("cl1", "denied", "Documentation reviewed"));
+    await waitFor(() => expect(api.decideExcusableDelayClaim).toHaveBeenCalledWith("cl1", "denied", "Documentation reviewed", undefined));
   });
 
   it("files a claim for the selected month", async () => {
@@ -49,5 +49,17 @@ describe("Relief", () => {
     expect(screen.getByText(/still open/)).toBeTruthy();
     await userEvent.click(screen.getByRole("button", { name: "End window" }));
     await waitFor(() => expect(api.endSystemOutage).toHaveBeenCalledWith("ow1", expect.any(String)));
+  });
+});
+
+describe("Relief late approval", () => {
+  it("approving a late claim asks for the exception reason and sends it", async () => {
+    (api.getExcusableDelayClaims as ReturnType<typeof vi.fn>).mockResolvedValue({ claims: [claim()] });
+    (api.getSystemOutages as ReturnType<typeof vi.fn>).mockResolvedValue({ outages: [] });
+    (api.decideExcusableDelayClaim as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "cl1", status: "approved", late_notice: true });
+    render(<Relief period={period} onChanged={() => undefined} />);
+    await screen.findByText("Ice storm");
+    await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await waitFor(() => expect(api.decideExcusableDelayClaim).toHaveBeenCalledWith("cl1", "approved", "Documentation reviewed", "Documentation reviewed"));
   });
 });
