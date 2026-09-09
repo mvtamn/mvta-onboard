@@ -1358,6 +1358,9 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     getAssessmentCaps(periodId: string) {
       return request<{ caps: import("./types.js").AssessmentCap[] }>(`/api/assessment-caps?period_id=${encodeURIComponent(periodId)}`, {}, true);
     },
+    getAssessmentAudit(periodId: string, limit = 200, offset = 0) {
+      return request<{ entries: import("./types.js").AssessmentAuditEntry[]; diagnostics: { limit: number; offset: number; returned_count: number } }>(`/api/compliance-assessment-audit?period_id=${encodeURIComponent(periodId)}&limit=${limit}&offset=${offset}`, {}, true);
+    },
     getAssessmentDisputes(periodId: string) {
       return request<{ disputes: import("./types.js").AssessmentDispute[] }>(`/api/assessment-disputes?period_id=${encodeURIComponent(periodId)}`, {}, true);
     },

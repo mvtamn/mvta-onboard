@@ -5,14 +5,14 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.168] - 2026-09-09
+
 ## [1.5.167] - 2026-09-09
 
-Phase B of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — console correctness.
+- **C1 — every governance act writes an audit row.** `lib/assessment/audit.ts` (`auditSql`, `AUDIT_ACTIONS`) gives the rows one shape; new writes: `computed` (revision + per-item hash/outcome/amount), `reviewed` (before/after via OUTPUT), `validation_shared` (share record incl. `items_sha256`), `finalized`, `draft_generated`, `dispute_filed`, `dispute_decided`. Action names match the workflow seam's `audit()`.
+- **C2 — `GET /api/compliance-assessment-audit?period_id=`** (paged; `COMPLIANCE_READ_ROLES`) returns the period's trail across period, items, reports, and disputes; a **History** tab in the module shows it.
 
-- **B1 — one cancellable loader for the selected period.** `usePeriodRows` (hook + 4 tests) replaces the rows fetch inside `act()`, which captured `selected` and stored a stale month's rows; the KPI selection resets with the period.
-- **B2 — the occurrence list carries a ranged penalty's bounds.** `lib/assessment/rangedPenalty.ts` OUTER APPLYs the tier effective on the occurrence's service date (qualifier first); the console's existing *Set amount…* now appears.
-- **B3 — review shows recommendations before binding.** `reviewDisplay` names the column *Recommendation* until finalized, *Binding decision* after; ScoreTable and ManagerReview use it.
-- **B4 — the Report page opens the artifact it manages.** `ReportWorkflow.tsx` (own file, 3 tests) gets Preview (hash-verified bytes in a `sandbox=""` iframe via `srcDoc`) and Download official HTML; `api.getAssessmentReportHtml`. Format helpers move to `assessmentFormat.tsx`.
+Phase B of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — console correctness.
 
 ## [1.5.166] - 2026-09-09
 
@@ -28,14 +28,6 @@ Phase A of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — go
 
 - **Recomputing a not-yet-finalised month failed outright.** The rule refresh in 1.5.163 composes its standard set through `periodStandardSourceSql`, which joins `AgreementStandards` on `@agreement` wherever migration 102 is present - and `refreshPeriodRules` bound only `@period` and `@month`. Every recompute of a drafting period stopped with "Must declare the scalar variable @agreement" and rolled back. The tests asserted on the composed SQL text, which cannot see a parameter that is named but never bound; there is now a test that extracts every `@name` from the statement and fails unless the code binds it, and it fails without the fix. Found by applying 112 to dev and running the recompute it was written for, rather than by reading the diff again.
 
-## [1.5.164] - 2026-09-09
-
-- **Three fixes that were written, reviewed and then stalled in open pull requests.** Each had been sitting for weeks against a `main` it could no longer merge into, so the work is re-landed here and the original PRs (#58, #120, #124) are closed pointing at this one. #124's privacy-policy link is the exception: it was re-landed and then reverted the same day, because a fuller version naming the Terms & Conditions and the Privacy Policy as two links was already in flight elsewhere.
-  - **A second direction rule for the same movement no longer collides on priority.** `eventDirectionRules.ts` requires priority to be unique per Monitoring Area and boundary movement, but the editor defaulted every new rule to 0, so the second rule for a movement was refused on save. The editor now suggests the next free number, re-suggesting when the Area or the movement changes and folding in a rule saved moments ago that the refreshed list does not carry yet. A refused save now shows the server's reasons rather than only its summary line (from #58).
-  - **The first request after the dev database auto-pauses retries.** That database is serverless and pauses when idle; the resume takes 30 to 60 seconds and the first connection through it commonly fails with a transient socket error, which reached callers as a bare 500. The initial connect now retries four times with a widening delay. Only the connect is retried, never a query already in flight, so a non-idempotent write cannot be applied twice (from #58).
-  - Also from #58: a `POST` to route classification whose body is valid JSON but not an object (a bare string, number or array) is refused with a clear message rather than reaching the validator as something it cannot read fields from.
-- **Removed: the pre-086 feed-health compatibility path.** `feedHealthTable()` resolved the ledger's name per call and accepted the pre-rename `MissedTripFeedHealth`, to cover the window where the migration and the deployment could land in either order. Migration 086 has been applied since 2026-08-28, and keeping the arm meant a database missing it would silently read a table nothing writes any more. `feedHealthTableReady()` names `KpiFeedHealth` alone and fails closed, so feed health reads as unavailable — which is true — rather than as stale-but-fine (from #120).
-
 ## [1.5.163] - 2026-09-09
 
 - **Migration 112: a rules change now reaches the month being assessed.** A period snapshots the standards and bands it will be scored against when it opens, so that a finalised month recomputes to the same number months later. That snapshot was applied for a period's whole life, and the consequence was not one anybody chose: assign a standard to an Agreement while a month is open and **that month can never score it**. Recompute reads the snapshot, so it changes nothing. Reopen copies the old snapshot forward, so it changes nothing either. The only way to correct an open month's rules was to delete the period row by hand. Found while configuring a standard on dev, where a freshly assigned standard stayed out of the review queue through a successful recompute.
@@ -47,6 +39,13 @@ Phase A of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — go
 ## [1.5.162] - 2026-09-09
 
 - **The What's new panel caps at five changes and says what it left out.** The panel is a glance at the running build, and it printed every bullet of the release: v1.5.159 has five, but releases carrying a dozen turned a panel into a page to scroll past its own "View full changelog" link. It now shows the first five and, when there are more, a muted line counting the rest — shown rather than the list quietly ending, because a truncated panel that looks complete misreports what shipped. The full text of every change stays on the Changelog page the panel already links to.
+
+
+
+- **B1 — one cancellable loader for the selected period.** `usePeriodRows` (hook + 4 tests) replaces the rows fetch inside `act()`, which captured `selected` and stored a stale month's rows; the KPI selection resets with the period.
+- **B2 — the occurrence list carries a ranged penalty's bounds.** `lib/assessment/rangedPenalty.ts` OUTER APPLYs the tier effective on the occurrence's service date (qualifier first); the console's existing *Set amount…* now appears.
+- **B3 — review shows recommendations before binding.** `reviewDisplay` names the column *Recommendation* until finalized, *Binding decision* after; ScoreTable and ManagerReview use it.
+- **B4 — the Report page opens the artifact it manages.** `ReportWorkflow.tsx` (own file, 3 tests) gets Preview (hash-verified bytes in a `sandbox=""` iframe via `srcDoc`) and Download official HTML; `api.getAssessmentReportHtml`. Format helpers move to `assessmentFormat.tsx`.
 
 ## [1.5.161] - 2026-09-08
 
@@ -1111,68 +1110,7 @@ so none of them could catch it.
   Avail-synced rows read "Avail sync" rather than showing staff a service
   identity they'd have to decode.
 
-## [1.5.3] - 2026-08-07
-
-Not yet deployed. The deployed console is still on 1.5.0 — 1.5.1, 1.5.2 and
-1.5.3 are all awaiting a deploy.
-
-**`migration-025-detour-reporting-fields.sql` has been run against the dev
-DB (2026-08-07); the code is not yet deployed.** Unlike migration-024 there
-is no backfill gap — every new column is optional, so detours created
-through the currently-deployed build are simply uncategorized and can be
-filled in afterwards. Every surface below degrades gracefully anyway: the API
-guards on `COL_LENGTH('dbo.Detours', 'reason_code')` and drops the new
-fields rather than failing, `GET /detour-reason-codes` returns an empty list
-rather than 500ing, and the console hides the whole reporting section rather
-than letting staff type into fields whose data would be silently discarded.
-
-- **Detour reporting fields (Part B6).**
-  `migration-025-detour-reporting-fields.sql` adds a `DetourReasonCodes`
-  table (mirroring `OtpReasonCodes`, minus `applies_to` — it has only one
-  consumer) plus ten columns on `Detours`: `reason_code`, `severity`,
-  `reported_by`/`reported_at`, `approved_by`/`approved_at`, three more
-  notification-channel flags (`radio_notified`, `dispatch_board_notified`,
-  `social_media_notified`) and `resolution_notes`. **Every field is a draft
-  built from standard transit-ops practice, not from MVTA's real internal
-  detour-reporting form, which no document in this repo describes.** They
-  were approved as-drafted with that caveat explicit; expect to correct them
-  against the real form. Nothing requires any of them, so a wrong column can
-  be dropped without breaking existing rows. `reason_code` is a soft
-  (non-FK) reference to `DetourReasonCodes.code`, same convention as
-  `OtpStopExclusions.reason_code`, so retiring a code can't orphan the
-  history citing it — which is also why `code` is deliberately not editable
-  via `PATCH /detour-reason-codes/{id}`.
-- **New endpoints**: `GET /detour-reason-codes` (any detour-reading role,
-  including `OCC.Compliance` and `OCC.Detour`, neither of which is in
-  `STAFF_READ_ROLES`), `POST`/`PATCH` (admin only — this is a controlled
-  vocabulary, not day-to-day entry).
-- **"Clone as new detour"** on the Detours list. A single real notice
-  routinely bundles two separately-dated sub-closures — the Aug 2026 ramp
-  notice covered the Cliff Rd and Diffley Rd ramps on different dates —
-  which is two `Detours` rows sharing everything but their dates. Clone
-  copies the shared context and deliberately drops what must not be
-  inherited: dates, every notification flag, the approval, and resolution
-  notes.
-- **New read-only "Detour Reports" page (Part B7)** for compliance and ops
-  leadership: free-text search, filters (status, reason category, severity,
-  source, start-date range), and a client-side CSV export of whatever is
-  currently on screen. It reads the same `GET /detours` payload and the same
-  server-computed status as the entry page, so the two can't disagree about
-  whether a detour is Active. There are no edit controls anywhere on it,
-  even for users who have those rights on the entry page. Search and
-  filtering are **client-side** — `GET /detours` returns every non-deleted
-  row and there is no pagination; `lib/detourSearch.ts` is the single seam to
-  move server-side if real volume ever makes a full scan slow.
-- **A plain search box on Detours & Closures**, using that same matcher.
-  Terms are ANDed across number, internal reference, closure text, riders
-  directed, segment routes and directions, staff names, and the reason
-  code's human *label* — so typing "special event" finds rows stored as
-  `special_event`.
-- **Sidebar: "Detours & Closures" moved into the existing "Tools" group**,
-  alongside the new "Detour Reports", OCC Tools and Compliance, rather than
-  sitting flat among the rider-message primaries. The group header now
-  renders if any child does, so an `OCC.Detour`-only user sees a labelled
-  group instead of two orphaned links.
+## [1.5.3] - 2026-09-09
 
 ## [1.5.2] - 2026-08-07
 

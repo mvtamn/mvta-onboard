@@ -5,17 +5,18 @@ import type { AssessmentCap, AssessmentDispute, AssessmentEvidence, AssessmentPe
 import { api } from "../../../config.js";
 import { useAuth } from "../../../auth/AuthContext.js";
 import { ReportWorkflow } from "./ReportWorkflow.js";
+import { History } from "./History.js";
 import { Empty, formatDate, formatMonth, money } from "./assessmentFormat.js";
 import { usePeriodRows } from "./usePeriodRows.js";
 import { reviewDisplay, reviewHeading } from "./reviewDisplay.js";
 import { useAppDialog } from "../../../components/AppDialog.js";
 import "./assessment.css";
 
-type Page = "scorecard"|"detail"|"occurrences"|"metrics"|"review"|"caps"|"report"|"disputes"|"standards";
+type Page = "scorecard"|"detail"|"occurrences"|"metrics"|"review"|"caps"|"report"|"disputes"|"history"|"standards";
 const NAV: {key:Page;label:string}[] = [
   {key:"scorecard",label:"Scorecard"},{key:"detail",label:"KPI Detail"},{key:"occurrences",label:"Occurrence Log"},
   {key:"metrics",label:"Monthly Metrics"},{key:"review",label:"Manager Review"},{key:"caps",label:"CAPs"},
-  {key:"report",label:"Report"},{key:"disputes",label:"Disputes"},{key:"standards",label:"Standards Admin"},
+  {key:"report",label:"Report"},{key:"disputes",label:"Disputes"},{key:"history",label:"History"},{key:"standards",label:"Standards Admin"},
 ];
 const currentMonth=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`};
 const inputDate=(value:string|null|undefined)=>{const d=value?.replace(/\D/g,"")??"";return d.length===8?`${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}`:""};
@@ -49,6 +50,7 @@ export function AssessmentModule(){
     {page==="caps"&&<Caps rows={rows} period={period}/>}
     {page==="report"&&<ReportWorkflow period={period} busy={busy} act={act}/>}
     {page==="disputes"&&<Disputes period={period} rows={rows}/>}
+    {page==="history"&&<History period={period}/>}
     {page==="standards"&&<Standards standards={standards} tiers={tiers}/>}
   </div>;
 }
