@@ -1395,6 +1395,9 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     linkOccurrenceRelief(id: string, review_status: OccurrenceReviewStatus, attribution: OccurrenceAttribution, relief_id: string | null) {
       return request<{ id: string }>(`/api/compliance-occurrences/${id}`, { method: "PATCH", body: JSON.stringify({ review_status, attribution, relief_id }) }, true);
     },
+    createAssessmentCap(input: { period_id: string; standard_id?: string | null; trigger_reason: "discretionary" | "contractor_initiated"; note: string }) {
+      return request<{ id: string; due_at: string }>("/api/assessment-caps", { method: "POST", body: JSON.stringify(input) }, true);
+    },
     transitionAssessmentCap(id: string, status: import("./types.js").AssessmentCapStatus, fields: Record<string, string> = {}) {
       return request<{ id: string; status: string }>(`/api/assessment-caps/${id}`, { method: "PATCH", body: JSON.stringify({ status, ...fields }) }, true);
     },

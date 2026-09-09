@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { CAP_SUBMISSION_FIELDS, capTransition, isCapOverdue } from "./capTransitions";
+import { CAP_MANUAL_TRIGGERS, CAP_SUBMISSION_FIELDS, capTransition, isCapOverdue } from "./capTransitions";
 
 // A CAP Determination is made at issuance; from there the plan moves
 // required -> submitted -> approved -> in_progress -> closed | failed, each
@@ -40,4 +40,21 @@ test("a CAP is overdue only while it is still required past its due date", () =>
   assert.equal(isCapOverdue("required", due, new Date("2026-08-18T00:00:00Z")), true);
   assert.equal(isCapOverdue("required", due, new Date("2026-08-16T00:00:00Z")), false);
   assert.equal(isCapOverdue("submitted", due, new Date("2026-08-18T00:00:00Z")), false);
+});
+
+// CONTEXT: a CAP Determination "requires a separate reasoned decision to
+// remove". Withdrawing is that decision: the Issuing Authority, a reason,
+// only while the plan is still required, and the plan is history after.
+test("a required plan can be withdrawn by the Issuing Authority with a reason, and nothing else can", () => {
+  assert.equal(capTransition("required", "withdrawn", "writer", { note: "x" }).ok, false);
+  assert.equal(capTransition("required", "withdrawn", "manager", {}).ok, false);
+  assert.deepEqual(capTransition("required", "withdrawn", "manager", { note: "Determination rested on a corrected count" }), { ok: true, sets: [], note: true, stamps: "withdrawn_at", clears: null });
+  assert.equal(capTransition("submitted", "withdrawn", "manager", { note: "x" }).ok, false);
+  assert.equal(capTransition("withdrawn", "required", "manager", { note: "x" }).ok, false);
+});
+
+// Design §8: "auto-required CAPs from triggers + manual ones". A manual
+// determination is one of two kinds the contract names.
+test("a manual CAP is discretionary or contractor-initiated", () => {
+  assert.deepEqual([...CAP_MANUAL_TRIGGERS], ["discretionary", "contractor_initiated"]);
 });

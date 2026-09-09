@@ -5,6 +5,15 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.175] - 2026-09-09
+
+Second pass over the implementation plan — the follow-ups the phase reviews deferred (#257).
+
+- **The report names a system outage as an exclusion cause** (`System outage: Avail CAD AVL`), which F deferred until D's report model landed.
+- **CAP Determinations can be withdrawn.** Migration 114 admits `withdrawn`; `required → withdrawn` is the Issuing Authority's, needs a reason on the audit row, and is final (CONTEXT: "a separate reasoned decision to remove"). **Manual CAPs:** `POST /api/assessment-caps` records a `discretionary` or `contractor_initiated` determination, due five business days out, holiday-aware (design §8). Console: *Withdraw*, *Require a plan*.
+- **Finalize and issue are libs** (`lib/assessment/finalizePeriod.ts`, `issueFinal.ts`); handlers delegate, behaviour unchanged. `generateArtifact` and `issueFinal` take an uploader, `issueFinal` a clock, so the **lifecycle contract test drives the whole chain on real SQL Server**: review → Validation Draft → share → finalize (reviewer refused, issuer accepted) → Issuance Proof → issue, asserting bound amounts, both hashes, the issuance record, and the dispute deadline.
+- Plans updated: every ticket A–I marked built with its PR; what remains is the dev walkthrough, Power BI, and an attribution rule before a second Agreement.
+
 ## [1.5.174] - 2026-09-09
 
 Phase I of `plans/ContractorPerformanceAssessment_Implementation_Plan.md` — the month-boundary timer.
