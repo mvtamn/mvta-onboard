@@ -238,6 +238,7 @@ body {
 .changelog-popover-date { color: var(--text-muted); display: block; font-size: 11px; margin: 0 0 15px; }
 .changelog-popover ul { color: var(--text-dim); font-size: 12px; line-height: 1.5; margin: 0 0 18px; padding-left: 18px; }
 .changelog-popover li { margin-bottom: 5px; }
+.changelog-popover li.changelog-popover-more { color: var(--text-muted); font-style: italic; list-style: none; margin-left: -18px; margin-top: 9px; }
 .changelog-popover-empty { color: var(--text-dim); font-size: 12px; margin: 15px 0 18px; }
 .changelog-close { background: var(--surface-alt-bg); border: 0; border-radius: 50%; color: var(--text-muted); cursor: pointer; font-size: 20px; height: 29px; line-height: 20px; position: absolute; right: 15px; top: 15px; width: 29px; }
 .changelog-close:hover { color: var(--text); }

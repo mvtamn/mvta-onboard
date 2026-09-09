@@ -174,8 +174,18 @@ function readNavCollapsed(): boolean {
   }
 }
 
+// The popover is a glance at the running build, not the release itself: some
+// releases carry a dozen bullets, and printing all of them turns a panel into
+// a page you have to scroll. Anything past the cap is what /changelog is for -
+// and the count is shown rather than the list quietly ending, so nobody reads
+// a truncated panel as the whole release.
+const POPOVER_ITEM_CAP = 5;
+
 function ChangelogPopover({ onClose }: { onClose: () => void }) {
   const currentRelease = CHANGELOG_ENTRIES.find((entry) => entry.version === __APP_VERSION__);
+  const releaseItems = currentRelease?.sections.flatMap((section) => section.items) ?? [];
+  const shownItems = releaseItems.slice(0, POPOVER_ITEM_CAP);
+  const remainingItems = releaseItems.length - shownItems.length;
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") onClose();
@@ -194,7 +204,12 @@ function ChangelogPopover({ onClose }: { onClose: () => void }) {
           <>
             <time className="changelog-popover-date" dateTime={currentRelease.date}>{currentRelease.date}</time>
             <ul>
-              {currentRelease.sections.flatMap((section) => section.items).map((item) => <li key={item}>{item}</li>)}
+              {shownItems.map((item) => <li key={item}>{item}</li>)}
+              {remainingItems > 0 ? (
+                <li className="changelog-popover-more">
+                  {remainingItems === 1 ? "1 more change in this release" : `${remainingItems} more changes in this release`}
+                </li>
+              ) : null}
             </ul>
           </>
         ) : (
