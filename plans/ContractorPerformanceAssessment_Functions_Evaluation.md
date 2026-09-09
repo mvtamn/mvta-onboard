@@ -75,7 +75,7 @@ Separation of duties: finalization is refused when any KPI row was reviewed by t
 
 ### 2. Period opening
 
-Opening a contractor-month requires an active contractor with an active `PerformanceAgreement` whose `starts_on..ends_on` covers the first of the service month. The ramp-up stage is frozen at open. One `AssessmentPeriods` row exists per contractor and month; reopening an existing pair returns it. Standards and tiers are snapshotted into `AssessmentPeriodStandards` / `AssessmentPeriodTiers` so later catalog edits do not change a period's rule set.
+Opening an Assessment Period requires an active contractor with an active `PerformanceAgreement` whose `starts_on..ends_on` covers the first of the service month. One `AssessmentPeriods` row exists per contractor and month; opening an existing pair returns it. Ramp-up is **not** represented or applied (ADR 0007); the legacy `ramp_up_stage` column has no operational effect. Standards and tiers are snapshotted into `AssessmentPeriodStandards` / `AssessmentPeriodTiers` so later catalog edits do not change a period's rule set.
 
 There is still no month-boundary timer; periods are opened manually.
 
@@ -86,7 +86,7 @@ There is still no month-boundary timer; periods are opened manually.
 1. Locks the period; rejects direct recomputation of a finalized period.
 2. Loads the period's frozen standards and tiers.
 3. Resolves occurrence- or threshold-based inputs **scoped to `period.contractor_id`**, excluding occurrences whose `relief_id` points at an approved `ExcusableDelayClaims` row and recording raw vs. excluded quantities.
-4. Matches a tier using direction, band scope (`per_occurrence` / `running_count`), and qualifier; computes penalty, ramp-up and escalation multipliers, and `cap_required` from the matched tier's `triggers_cap` and CAP-window rules.
+4. Matches a tier using direction, band scope (`per_occurrence` / `running_count`), and qualifier; computes the penalty, the escalation multiplier from the Escalation Streak, and `cap_required` from the matched tier's `triggers_cap` and CAP-window rules. There is no ramp-up multiplier (ADR 0007).
 5. Canonicalises and hashes the computation input.
 6. Upserts one `PeriodKpiAssessments` row per standard, preserving a manager decision only when `input_sha256` is unchanged.
 7. Marks the period `in_review` and records the computed revision.
@@ -186,13 +186,13 @@ Contractors, periods, occurrences, and manual metrics accept no query filters an
 
 ### Medium — audit coverage is incomplete — **PARTIALLY RESOLVED**
 
-`ComplianceAssessmentAudit` now receives `reopened`, `correction_started`, `exception_authorized`, `evidence_added`, and `issued`. Compute, manager decision, finalize, occurrence review, metric supersession, dispute decision, report generation, and validation share are still unrecorded, and there is no read endpoint.
+`ComplianceAssessmentAudit` now receives `reopened` (or `correction_started` when reopening an issued month creates a correction period), `stale_due_to_prior_period_reopen`, `exception_authorized`, `evidence_added`, and `issued`. Compute, manager decision, finalize, occurrence review, metric supersession, dispute decision, report generation, and validation share are still unrecorded, and there is no read endpoint.
 
 ## Architecture evaluation
 
 ### Deep modules present
 
-- Penalty, tier-matching, ramp-up, escalation, and CAP-window calculation are pure and tested.
+- Penalty, tier-matching, escalation, and CAP-window calculation are pure and tested.
 - Hashing makes one canonical input the seam for review preservation.
 - Business-day and holiday-coverage validation fail closed for both validation and dispute clocks.
 - Report byte verification makes the stored hash the integrity seam.
@@ -206,7 +206,7 @@ Contractors, periods, occurrences, and manual metrics accept no query filters an
 
 ### Recommended deepening
 
-Unchanged from August: extract a **Performance Assessment lifecycle module** whose interface owns open/compute, contractor-scoped input resolution, review preservation, finalization invariants, CAP creation, and report version/issuance state, with HTTP handlers and a future month-boundary timer as adapters. The status machine (`open → in_review → in_validation → finalized → issued`, with `stale` and correction branches) is now rich enough that it should be one function, not five handlers agreeing by convention.
+Unchanged from August: extract a **Performance Assessment lifecycle module** whose interface owns open/compute, contractor-scoped input resolution, review preservation, finalization invariants, CAP creation, and report version/issuance state, with HTTP handlers and a future month-boundary timer as adapters. The status machine (`open → in_review → in_validation → finalized → issued`, with `stale`, `reopened`, and correction branches) is now rich enough that it should be one function, not five handlers agreeing by convention.
 
 ## Test posture
 
@@ -214,7 +214,7 @@ Unchanged from August: extract a **Performance Assessment lifecycle module** who
 
 - TypeScript build passes.
 - `functions-restapi`: 730 tests, 725 pass, 5 skipped, 0 fail.
-- Helpers cover tier edges, qualifier precedence, penalty bases, ramp-up, escalation, CAP windows, stable hashes, business-day deadlines, and missing holiday coverage.
+- Helpers cover tier edges, qualifier precedence, penalty bases, escalation, CAP windows, stable hashes, business-day deadlines, and missing holiday coverage.
 - A deterministic orchestration regression verifies all three contractor-scoped query boundaries.
 - `complianceCandidatesPoll.test.ts` exists.
 

@@ -1,11 +1,82 @@
 # Contractor Performance Assessment — Design
 
-**Status:** Implemented foundation, revised August 14, 2026. The confirmed domain language in `CONTEXT.md` and ADRs 0005–0013 and 0016–0018 supersede conflicting language below.
+**Status:** Implemented and operating on dev; reconciled against the code on September 8, 2026 (§0). The confirmed domain language in `CONTEXT.md` § *Contractor performance assessment language* and ADRs 0005–0013 and 0028 supersede conflicting language below. Sections 1–14 are the original design and are kept as the contract-derived rationale; where the build diverged, an **As built** note follows the section.
 **Sources of record:** `Compliance/Attachment_G_Final_v2.docx`, `Compliance/ContractorPerformanceStandards_v3.xlsx`
 **Scope:** the 9 High/Medium priority KPIs, scored monthly, with manager review before any penalty is issued; a monthly contractor report (§9); Power BI scorecard access (§10).
 **Author:** design pass, 2026-08-05. Requires MVTA sign-off on §12 before Phase 1 begins.
 
 > **Governance revision:** Performance Assessment is Agreement-scoped and MVTA-internal. It calculates Proposed Penalties; a separate Assessment Reviewer and Issuing Authority govern binding decisions. OnBoard does not represent or apply ramp-up. “Preliminary report” is now Validation Draft, Not Assessable is distinct from Meets, sharing and issuance are explicit audited actions, and Power BI is a companion Compliance Dashboard rather than an assessment-publication channel. Implementation uses additive migration 032b so legacy columns remain readable during rollout but have no operational effect.
+
+---
+
+## 0. Implementation status — reconciled September 8, 2026
+
+This section replaces `plans/Compliance-Assessment-Link-and-KPI-Assignment-Review.md` (2026-09-06) and is the design-side companion to `plans/ContractorPerformanceAssessment_Functions_Evaluation.md`, which carries the per-finding code audit, test posture, and delivery order. Read that file for *what is defective*; read this one for *what was designed, what was built instead, and what remains*.
+
+### 0.1 Section-by-section reconciliation
+
+| Design section | Built? | As built (where it differs) |
+|---|---|---|
+| §2 Locked decisions | Mostly | Ramp-up decision reversed by ADR 0007 (not represented). "Preliminary report" is the **Validation Draft**; sharing is an explicit recorded act (ADR 0009). Power BI is a companion Compliance Dashboard, not the publication channel. |
+| §3 In-scope KPIs | Yes | All 26 standards seeded; 9 scored. Standards now belong to an **Agreement** (migration 102) and carry a contract **category** (110), a `measurement_source` kind (104), penalty scaling (107), and CAP window mode (109). |
+| §4 Architecture | Yes, reshaped | Period lifecycle is `open → in_review → in_validation → finalized → issued`, with `stale` and `reopened`/correction branches. Governance is split across Assessment Reviewer and Issuing Authority (ADR 0008) with separation of duties enforced at finalize. |
+| §5 Data model | Yes + 032b + 102–110 | `PerformanceAgreements`, `AgreementStandards`, `AssessmentPeriodStandards`/`Tiers` (frozen Rule Set, ADR 0006), `AssessmentExceptions`, `ValidationDraftShares`, `FinalIssuanceRecords`, `AssessmentCredits`, evidence versions. `SystemOutageWindows` and `ExcusableDelayClaims` tables exist; only the latter is *read* by scoring. |
+| §6 Engine | Yes | `lib/assessment/`: `tiers`, `penalty`, `escalation`, `capWindow`, `hash`, `businessDays`, `occurrenceIntake`, `measurementSource`, and a keyed `resolvers/` registry (`otpFixedRoute`, `manualMetric`). No `rampUp.ts`. `assessPeriod(tx, periodId)` is contractor-scoped. |
+| §7 API | Yes, different shape | See §7 *As built*. Evidence, exceptions, validation share, CAP list, disputes, agreements, and standards admin exist; drill-through, outages, claims CRUD, CAP lifecycle, and the audit query do not. |
+| §8 Console | Yes, relocated | Performance Assessment is its own route (`/performance-assessment`) in the *Compliance & Assessment* nav group, not a fourth tab in the Compliance switcher. Setup lives under *Administration › Performance Setup* as four pages: Contractors, Agreements, Standards, Lists. |
+| §9 Report | Yes | Validation Draft + Final; hash-verified preview/download; issuance writes `FinalIssuanceRecords`, creates CAPs, supersedes open disputes. Report sections 6, 7, 8, 11 not yet rendered. |
+| §10 Power BI | Views only | Migration 031 (assessed) and 106 (raw measurement) views exist. No `mvta_reporting_ro` login, no gateway, no dataset. |
+| §11 RBAC | Yes | `OCC.ComplianceManager` provisioned. Role sets in `lib/auth.ts:82-84`. |
+| §13 Phasing | 1 ✅ · 2 ✅ (minus timer, outages) · 3 partial | Disputes and Standards Admin done; Power BI deployment not started. |
+
+### 0.2 Compliance → Assessment links (from the 2026-09-06 review)
+
+All four review findings that were in scope are built:
+
+- **Confirming a Missed Trip raises its occurrence in the same transaction** and asks for attribution at the same sitting (`lib/assessment/occurrenceIntake.ts`); a false positive retracts an already-raised occurrence. Never fails the review, never mutates a finalized month.
+- **Garage Departures** (both service types) carry an Assessment column with inline *Charge / Excusable / MVTA-directed*.
+- **Missed Trips** shows a reviewed trip's outcome and links into `/performance-assessment`; the **Occurrence Log** resolves `source_ref` back to the trip or block/run and links to Compliance.
+- **Resolver registry** replaces `code ===` branching; an unknown or absent `resolver_key` scores `not_assessable` with the reason named (ADR 0010 fail-closed), and migration 103 snapshots the key on the period.
+
+### 0.3 KPI assignment to a contractor (from the same review)
+
+| Gap | Status |
+|---|---|
+| A. Standards agency-global | **Resolved** — `AgreementStandards` + `agreement_id` on tiers (migration 102). |
+| B. `UX_PA_Active` forbids a second agreement system-wide | **Resolved** — re-keyed on `(contractor_id, is_active)` (102). |
+| C. Nothing creates a `PerformanceAgreement` | **Resolved** — `PUT /api/performance-agreements/{id}` and the Agreements admin page. Verifying that dev actually has an agreement row is still an operator step (query in §0.5). |
+| D. Standards Admin read-only | **Resolved** — `PUT`/`DELETE /performance-standards/{id}`, `PUT …/{id}/tiers`, `PUT /performance-agreements/{id}/standards`, all `OCC.Admin`. |
+| E. Bands hidden in UI | **Resolved** — Administration › Performance Standards shows bounds, qualifier, CAP flag, direction, unit, team, owner, category, target, band scope. |
+| F. `assigned_to` free text | **Partially** — migration 108 backs team/owner with reference lists; it is still not an Entra identity and nothing prompts an owner at month-end. |
+
+### 0.4 Still open (design-level)
+
+Ordered by the evaluation's delivery order; item numbers there are authoritative.
+
+1. `complianceCandidatesPoll` attributes every candidate to `TOP 1` active contractor — must fail closed with more than one (Critical; contradicts ADR 0005's one-contractor-per-Agreement intent only if a second Agreement is ever activated, but the guard is cheap).
+2. Superseding Final Assessment lineage: persist the finalized revision on `ComplianceReports` and require a strictly newer one (§9 *Storage and immutability* promised this).
+3. Report generation is not one atomic operation across version allocation, blob, and SQL.
+4. Finalization should require the full scored-standard set, not merely ≥1 row.
+5. Audit breadth (compute, review, finalize, share, dispute decision, report generation) and the `/compliance-assessment-audit` read endpoint.
+6. CAP lifecycle beyond creation; `SystemOutageWindows` and `ExcusableDelayClaims` create/decide handlers; report sections 6/7/8/11.
+7. Owner identity for manual metrics (gap F) and a month-end open-items list.
+8. `assessmentPeriodOpen` month-boundary timer — last, after the above are idempotent.
+9. Power BI deployment (§10): login, Key Vault secret, gateway VM (owner cost approval), dataset.
+
+### 0.5 Operator check before relying on dev
+
+Run read-only against `sqldb-mvta-onboard-dev` (public access is disabled; use the private path):
+
+```sql
+SELECT c.name, c.is_active AS contractor_active,
+       a.id AS agreement_id, a.starts_on, a.ends_on, a.is_active AS agreement_active,
+       (SELECT COUNT(*) FROM dbo.AgreementStandards s WHERE s.agreement_id = a.id) AS assigned_standards
+FROM dbo.Contractors c
+LEFT JOIN dbo.PerformanceAgreements a ON a.contractor_id = c.id
+ORDER BY c.is_active DESC, c.name;
+```
+
+Exactly one active contractor with one active agreement and 26 assigned standards is the expected shape. No agreement → create one under Administration › Performance Setup › Agreements. Two active contractors → do **not** let the candidate timer run until item 1 above lands.
 
 ---
 
@@ -103,6 +174,8 @@ Dormant (seeded, `is_scored = 0`): the 17 remaining standards — including all 
 
 **Second principle:** one definition, shared. `lib/detourStatus.ts` set the precedent — status is computed in one place "so the API and any future consumer share one definition rather than two drifting ones." The tier-evaluation and adjusted-OTP math live in a shared module consumed by both the API and the console, never reimplemented client-side.
 
+> **As built (2026-09-08).** `AssessmentPeriods.status` is `open | in_review | in_validation | stale | finalized | issued | reopened`. A Validation Draft share moves `in_review → in_validation` and starts a 5-business-day Validation Window; new evidence or a new occurrence bumps `input_revision`, drops the period to `stale`, and voids the share (ADR 0009). Finalize requires the window to have elapsed, matching revisions, no candidate occurrences, every `not_assessable` item backed by an Assessment Exception, and a finalizer who reviewed none of the items (ADR 0008/0010). Issue moves `finalized → issued`. There is no ramp-up stage (ADR 0007).
+
 ---
 
 ## 5. Data model — `migration-030-contractor-performance-assessment.sql`
@@ -182,6 +255,8 @@ Every mutation that can affect a result — occurrence confirmation/attribution,
 
 **Business-day helper:** Attachment G's 5/10/15-business-day clocks are compliance output, so holiday-aware calculation is a Phase 2 prerequisite to final issuance. `MvtaHolidays` stores the observed MVTA closure dates and effective description; `addBusinessDays(start, count, holidays)` skips weekends and configured holidays and stores the resulting date. Phase 2 cannot enable final report issuance until the holiday calendar covers the entire possible deadline horizon. Missing calendar coverage fails closed with a legible validation error; it never silently falls back to weekdays only.
 
+> **As built (2026-09-08).** Migration 032b added `PerformanceAgreements`, `AssessmentPeriodStandards`/`AssessmentPeriodTiers` (the frozen Assessment Rule Set), `AssessmentExceptions`, `ValidationDraftShares`, `FinalIssuanceRecords`, `AssessmentCredits`, and evidence versioning (`supersedes_id`, `visibility`, `content_sha256`) on `ComplianceEvidence`, which is keyed to an Assessment Item (`assessment_id`), not to an occurrence or metric. Migrations 102–110 added `AgreementStandards`, `agreement_id` on tiers, a snapshotted `resolver_key` (103), `measurement_source IN ('api_feed','onboard_compliance','manual_entry','structured_import')` (104), reference-value lists (105, 108), penalty scaling (107), CAP window modes (109), and `category` (110). `PenaltyDisputes.status` is `submitted | under_review | upheld | adjusted | rescinded | superseded | returned` — not `reduced`/`waived` — and an `adjusted`/`rescinded` outcome writes an `AssessmentCredits` row. `ramp_up_stage`, `variance_pct`, `relief_amount`, and `cap_reason` are present but unpopulated.
+
 ---
 
 ## 6. Assessment engine
@@ -221,6 +296,8 @@ Ramp-up before escalation, both after relief. Attachment G does not state the in
 - **`lib/validation.ts`** — new validators (`validateOccurrence`, `validateManualMetric`, `validateManagerAction`, `validateCap`, `validateDispute`) added there, returning `string[]`, with `MAX_*` constants mirroring column widths.
 - **`lib/auth.ts` `requireRole`** and **`lib/db.ts` `getPool`** — unchanged.
 
+> **As built (2026-09-08).** There is no `rampUp.ts` and no `candidates.ts`; candidate detection lives in `functions/complianceCandidatesPoll.ts` and Compliance-side intake in `lib/assessment/occurrenceIntake.ts`. `resolvers.ts` became a directory: `resolvers/index.ts` is the keyed registry, with `otpFixedRoute` and `manualMetric` entries; occurrence standards need no resolver. `assessPeriod` takes `(tx, periodId)` rather than `(contractorId, serviceMonth)` and reads `contractor_id` from the locked period. Ordering is `base → escalation`; relief is expressed as `excluded_*` quantities removed *before* tier matching (approved `ExcusableDelayClaims` and non-`contractor_error` attribution), not as a dollar subtraction. `capTriggers` and `consecutiveMonthsBelow` in `escalation.ts` are unused; `assess.ts` computes both inline.
+
 ---
 
 ## 7. API surface
@@ -252,6 +329,8 @@ New files in `functions-restapi/src/functions/`, one per resource, registered by
 
 Shared-client work: types added to `frontend/packages/shared/src/types.ts`, methods to `frontend/packages/shared/src/api.ts`.
 
+> **As built (2026-09-08).** Present: `performance-standards` (`GET`; `PUT`/`DELETE /{id}`; `PUT /{id}/tiers`), `performance-agreements` (`GET`; `PUT /{id}`; `PUT /{id}/standards`), `contractors`, `assessment-periods` (+ `/compute`, `/finalize`, `/reopen`, `/exceptions`, `/validation-share`), `period-assessments`, `compliance-occurrences` (+ `PUT /{id}/assessed-amount`), `manual-metrics`, `assessment-evidence` (`GET`; `POST /upload-url`; `POST`), `assessment-caps` (`GET`), `assessment-disputes` (`GET`, `POST`; `POST /{id}/decision`), and the five `assessment-reports` routes. Absent: `/period-assessments/{id}/drill-through`, `/system-outages`, `/excusable-delay-claims`, CAP `POST`/`PATCH`, `/compliance-assessment-audit`, `GET /assessment-reports/{id}` metadata, and evidence `DELETE` (evidence is versioned, never deleted — ADR 0013). The full handler-by-handler table with role sets is in the evaluation document.
+
 ---
 
 ## 8. Console UI
@@ -273,6 +352,8 @@ Conventions carried over verbatim: `useEffect` + `api.*()` with a `cancelled` fl
 | **Standards Admin** | Catalog + tier editor (admin only), `is_scored` toggles, effective dates. Read-only for non-admins so anyone can see the governing numbers. |
 
 Also: a `PAGE_META` entry and `NavLink` + icon in `App.tsx` / `components/NavIcons.tsx` if the assessment module is later promoted to its own tab — v1 keeps it inside the Compliance switcher.
+
+> **As built (2026-09-08).** The module is `routes/PerformanceAssessment.tsx` at `/performance-assessment`, its own entry in the *Compliance & Assessment* nav group; the Compliance switcher keeps its three measurement tools. Pages: Scorecard, KPI Detail, Occurrence Log, Monthly Metrics, Manager Review, CAPs, Report, Disputes, Standards (read-only, linking to admin). Administration › Performance Setup holds `PerformanceContractorsAdmin`, `PerformanceAgreementsAdmin`, `PerformanceStandardsAdmin`, and `PerformanceListsAdmin`. Cross-module links exist in both directions (§0.2).
 
 ---
 
@@ -455,6 +536,8 @@ Nexus/Trackit and Asset Works M5 API integrations; broader Spare ridership/wait-
 | **1 — Foundation** | `migration-030` config + measurement + `PeriodKpiAssessments` + audit tables; revision/hash invalidation and stale-period behavior; seed all 26 standards and the 9 scored tier sets; `lib/assessment/` with `tiers`/`penalty`/`rampUp`/`escalation` + unit tests; the 3 auto resolvers (including both `gtfs` and `spare` records through the shared missed-trip queue); `otpOfficial.ts` shared port; `/api/performance-standards`, `/api/assessment-periods`, `/api/period-assessments`, `/api/compliance-occurrences`, `/api/manual-metrics`; Scorecard + KPI Detail + Occurrence Log + Monthly Metrics pages. Correct the 90% → target-driven threshold. |
 | **2 — Governance & the monthly report** | Manager Review + finalize; `ComplianceEvidence` blob upload; `SystemOutageWindows`; `ExcusableDelayClaims`; `CorrectiveActionPlans` + auto-triggers; `MvtaHolidays` + fail-closed holiday-aware business-day helper; `complianceCandidatesPoll`; `OCC.ComplianceManager` role provisioning. **Report:** `lib/report/` renderer + golden-file tests, `ComplianceReports` table, `compliance-reports` blob container and bicep module (with `COMPLIANCE_REPORTS_STORAGE_ACCOUNT` declared in `functionapp.bicep`), the six `/api/assessment-reports*` routes including official HTML download, the console Report page, and the `assessmentPeriodOpen` month-boundary timer. The report depends on finalize and correct deadline calculation, so it belongs here rather than Phase 1. |
 | **3 — Power BI, dispute & polish** | `PenaltyDisputes` using the Phase 2 business-day helper; Standards Admin editor; month-over-month trend + data-completeness reporting. **Power BI:** `migration-031-reporting-views.sql` (8 views), the `mvta_reporting_ro` login + Key Vault secret, `reporting-gateway.bicep` VM (owner cost approval required), and the Power BI dataset + report pages built by MVTA. Views depend on finalized periods existing, so Phase 3 is the earliest sensible point. |
+
+> **As built (2026-09-08).** Phase 1 complete. Phase 2 complete except `SystemOutageWindows` handlers, CAP auto-triggers beyond `triggers_cap`, and the `assessmentPeriodOpen` timer. Phase 3: disputes and Standards Admin complete; Power BI deployment (login, secret, gateway, dataset) not started. Remaining work is enumerated in §0.4 and prioritised in the evaluation document.
 
 ---
 
