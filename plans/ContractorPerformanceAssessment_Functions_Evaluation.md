@@ -1,280 +1,245 @@
 # Contractor Performance Assessment Functions — Evaluation and Reference
 
-**Evaluated:** August 14, 2026
-**Scope:** Azure Functions, scoring/report modules, SQL dependencies, authorization, tests, and console integration  
+**Evaluated:** September 8, 2026 (supersedes the August 14, 2026 evaluation)
+**Scope:** Azure Functions, scoring/report modules, SQL dependencies, authorization, tests, and console integration
 **Design reference:** `plans/ContractorPerformanceAssessment_Design.md`
+
+> **Revision note.** The August 14 version was written against the tree *before* commit `60e2de1` (the governed-workflow commit that shipped it) and was never re-run afterwards. Twelve further commits touched the assessment code between August 14 and September 8 (PRs #199–#234, migrations 102 and 110). Roughly half of the August findings are now resolved; this revision re-verifies every finding against the current tree and marks each **Open**, **Partially resolved**, or **Resolved**.
 
 ## Executive assessment
 
-The Performance Assessment implementation now has an **operational governed monthly workflow foundation**; evidence upload, full CAP/dispute screens, and production migration verification remain rollout work.
+The Performance Assessment implementation is a **governed, manually operated monthly workflow** with evidence, validation-draft sharing, exceptions, disputes, credits, and CAP creation wired end to end from handler to console. The remaining gaps are concentrated in three places: automated candidate attribution, report generation concurrency/lineage, and audit breadth.
 
-- The contractor, period, scoring, manager-review, occurrence, manual-metric, and report handlers compile and are registered.
-- The deterministic scoring helpers, revision hashes, stale-review protection, report hashing, and business-day deadline helpers are implemented and tested.
-- The REST API suite passes: **278/278 tests**, including a public Performance Assessment workflow seam, contractor isolation, official-artifact formatting, and business-day governance.
-- Migration 032b adds Agreement identity, frozen rule-set provenance, Not Assessable exceptions, immutable evidence-version metadata, Validation Draft sharing, Final Issuance Records, Assessment Credits, and item-scoped disputes.
-- Assessment computation now scopes occurrences, manual metrics, and escalation history to the selected period's contractor. Automated candidate ingestion still cannot safely choose among multiple active contractors.
+- 31 HTTP handlers and 1 timer are registered across `assessmentPeriods`, `periodAssessments`, `assessmentReports`, `assessmentGovernance`, `assessmentEvidence`, `complianceOccurrences`, `manualMetrics`, `contractors`, and `performanceStandards`.
+- The REST API suite passes: **730 tests, 725 pass, 5 skipped, 0 fail** (`npm test` in `functions-restapi`, 2026-09-08).
+- Assessment computation is contractor-scoped and agreement-scoped (migration 102); standards carry a category (migration 110).
+- Standards administration, evidence upload, disputes, credits, and CAP persistence — all listed as *Missing* on August 14 — now exist.
+- **The one Critical finding is unchanged:** the daily candidate timer still attributes every candidate to `TOP 1` active contractor and does not fail closed when more than one is active.
 
-The module should not be treated as contract-ready until migration 032b is applied and verified, evidence/CAP/dispute operations are completed, and the governed workflow passes a database-backed acceptance run.
+The module can support a single-contractor pilot today. It should not run with two active contractors until candidate attribution is deterministic, and report replacement lineage should be tightened before a Final Assessment is ever superseded in production.
 
 ## Runtime inventory
 
-The implementation registers **20 HTTP handlers** and **1 assessment-related timer**.
-
 | Module | Interface | Authorization | Status |
-|---|---|---:|---|
+|---|---|---|---|
 | Contractor registry | `GET /api/contractors` | Compliance read | Operational |
 | Contractor upsert | `PUT /api/contractors/{id}` | Admin | Operational; validation gaps |
-| Standards catalog | `GET /api/performance-standards` | Compliance read | Operational, read-only |
-| Assessment periods | `GET`, `POST /api/assessment-periods` | Read / write | Operational |
-| Period computation | `POST /api/assessment-periods/{id}/compute` | Compliance write | Operational; isolation defect |
-| Period finalization | `POST /api/assessment-periods/{id}/finalize` | Compliance manager | Operational; empty-period defect |
-| Period reopening | `POST /api/assessment-periods/{id}/reopen` | Compliance manager | Operational |
+| Standards catalog | `GET /api/performance-standards` | Compliance read | Operational |
+| Standards administration | `PUT /api/performance-standards/{id}`, `PUT …/{id}/tiers`, `DELETE …/{id}` | Admin | Operational (new since Aug 14) |
+| Assessment periods | `GET`, `POST /api/assessment-periods` | Read / write | Operational; open checks agreement window |
+| Period computation | `POST /api/assessment-periods/{id}/compute` | Compliance write | Operational; contractor-scoped |
+| Period finalization | `POST /api/assessment-periods/{id}/finalize` | Compliance manager | Operational; requires `in_validation` + elapsed window |
+| Period reopening | `POST /api/assessment-periods/{id}/reopen` | Compliance manager | Operational; audited |
+| Not Assessable exception | `POST /api/assessment-periods/{id}/exceptions` | Compliance manager | Operational; audited (new) |
+| Validation Draft share | `POST /api/assessment-periods/{id}/validation-share` | Compliance write | Operational; 5-business-day window (new) |
 | KPI results | `GET /api/period-assessments?period_id=` | Compliance read | Operational |
-| Manager decision | `PATCH /api/period-assessments/{id}` | Compliance manager | Operational |
-| Occurrence queue | `GET`, `POST /api/compliance-occurrences` | Read / write | Operational |
+| Manager decision | `PATCH /api/period-assessments/{id}` | Compliance write | Operational |
+| Occurrence queue | `GET`, `POST /api/compliance-occurrences` | Read / write | Operational; unbounded list |
 | Occurrence review | `PATCH /api/compliance-occurrences/{id}` | Compliance write | Operational |
-| Manual metrics | `GET`, `PUT /api/manual-metrics` | Read / write | Operational; isolation defect during compute |
+| Occurrence assessed amount | `PUT /api/compliance-occurrences/{id}/assessed-amount` | Compliance write | Operational (new) |
+| Manual metrics | `GET`, `PUT /api/manual-metrics` | Read / write | Operational; unbounded list |
+| Evidence list | `GET /api/assessment-evidence?assessment_id=` | Compliance read | Operational (new) |
+| Evidence upload URL | `POST /api/assessment-evidence/upload-url` | Compliance write | Operational; SAS to private blob (new) |
+| Evidence create | `POST /api/assessment-evidence` | Compliance write | Operational; hash + size verified, bumps `input_revision` (new) |
+| CAP list | `GET /api/assessment-caps?period_id=` | Compliance read | Operational (new) |
+| Disputes list / create | `GET`, `POST /api/assessment-disputes` | Read / write | Operational (new) |
+| Dispute decision | `POST /api/assessment-disputes/{id}/decision` | Compliance manager | Operational; writes `AssessmentCredits` (new) |
 | Report history | `GET /api/assessment-reports?period_id=` | Compliance read | Operational |
-| Report generation | `POST /api/assessment-reports` | Write / manager | Operational; lifecycle gaps |
-| Report preview | `GET /api/assessment-reports/{id}/html` | Compliance read | Operational |
-| Report download | `GET /api/assessment-reports/{id}/download` | Compliance read | Operational |
-| Report issuance | `POST /api/assessment-reports/{id}/issue` | Compliance manager | Operational; lifecycle gaps |
-| Candidate ingestion | `complianceCandidatesPoll`, daily at 06:20 UTC | Timer | Operational; assumes one active contractor |
+| Report generation | `POST /api/assessment-reports` | Write (preliminary) / manager (final) | Operational; lineage + concurrency gaps |
+| Report preview / download | `GET /api/assessment-reports/{id}/html`, `…/download` | Compliance read | Operational; hash-verified |
+| Report issuance | `POST /api/assessment-reports/{id}/issue` | Compliance manager | Operational; creates CAPs, supersedes open disputes |
+| Candidate ingestion | `complianceCandidatesPoll`, daily 06:20 UTC | Timer | **Operational; assumes one active contractor** |
 
 ## Authorization model
 
-All HTTP registrations use Azure Functions `authLevel: "anonymous"`; authorization is enforced inside each handler through `requireRole`.
+All HTTP registrations use `authLevel: "anonymous"`; authorization is enforced inside each handler through `requireRole` (`functions-restapi/src/lib/auth.ts:82-84`).
 
-| Capability | Roles |
-|---|---|
-| Read assessment information | `OCC.Viewer`, `OCC.Publisher`, `OCC.Admin`, `OCC.Compliance`, `OCC.ComplianceManager` |
-| Open/compute periods, maintain occurrences and metrics, generate preliminary reports | `OCC.Publisher`, `OCC.Admin`, `System.Ingestion`, `OCC.Compliance`, `OCC.ComplianceManager` |
-| Review/finalize/reopen assessments and issue final reports | `OCC.ComplianceManager`, `OCC.Admin` |
-| Maintain contractors | `OCC.Admin` |
+| Capability | Role set | Roles |
+|---|---|---|
+| Read assessment information | `COMPLIANCE_READ_ROLES` | staff read roles + `OCC.Compliance`, `OCC.ComplianceManager` |
+| Open/compute periods, maintain occurrences, metrics, evidence, disputes; share Validation Drafts; generate preliminary reports | `COMPLIANCE_WRITE_ROLES` | publish roles + `OCC.Compliance`, `OCC.ComplianceManager` |
+| Finalize/reopen, authorize exceptions, decide disputes, generate and issue Final Assessments | `COMPLIANCE_MANAGER_ROLES` | `OCC.ComplianceManager` + admin roles |
+| Maintain contractors and standards | `ADMIN_ROLES` | admin roles |
 
-`System.Ingestion` inherits assessment write access through `COMPLIANCE_WRITE_ROLES`. Confirm that a message-ingestion principal is intended to open periods, compute assessments, and generate preliminary reports.
+Separation of duties: finalization is refused when any KPI row was reviewed by the finalizing actor (`reviewed_by=@actor`).
+
+`System.Ingestion` still inherits `COMPLIANCE_WRITE_ROLES` through `PUBLISH_ROLES`. Confirm that a message-ingestion principal is intended to open periods, compute, upload evidence, and file disputes.
 
 ## Processing model
 
 ### 1. Candidate ingestion
 
-`complianceCandidatesPoll.ts` runs daily and idempotently merges:
+`complianceCandidatesPoll.ts` runs daily and idempotently merges confirmed missed trips and Late Relief / Expired Pullout departures into `ComplianceOccurrences` as `review_status='candidate'`, `attribution='undetermined'`. Nothing is penalised until staff confirm attribution.
 
-- Confirmed missed trips into `MISSED_TRIPS_FR` candidates.
-- Late Relief and Expired Pullout records into `GARAGE_DEPARTURE` candidates.
-- Each candidate starts as `review_status='candidate'` and `attribution='undetermined'`; it does not affect a penalty until staff confirms contractor attribution.
-
-Current limitation: the timer assigns every candidate to the single most recently updated active contractor using `SELECT TOP 1`. It has no route, division, operating-period, or source-to-contractor mapping.
+**Unchanged limitation** (`complianceCandidatesPoll.ts:281`): every candidate is assigned to `SELECT TOP 1 id FROM Contractors WHERE is_active=1 ORDER BY updated_at DESC`. It throws only when there are zero active contractors or no active `PerformanceAgreement` for the chosen one. There is no route, division, or source-to-contractor mapping, and no guard against more than one active contractor.
 
 ### 2. Period opening
 
-Opening a contractor-month:
+Opening an Assessment Period requires an active contractor with an active `PerformanceAgreement` whose `starts_on..ends_on` covers the first of the service month. One `AssessmentPeriods` row exists per contractor and month; opening an existing pair returns it. Ramp-up is **not** represented or applied (ADR 0007); the legacy `ramp_up_stage` column has no operational effect. Standards and tiers are snapshotted into `AssessmentPeriodStandards` / `AssessmentPeriodTiers` so later catalog edits do not change a period's rule set.
 
-1. Requires an active contractor.
-2. Computes and freezes the ramp-up stage from the contractor start date.
-3. Inserts one `AssessmentPeriods` row per contractor and service month.
-4. Returns the existing period when the pair already exists.
-
-There is no `assessmentPeriodOpen` month-boundary timer. Periods must be opened manually.
+There is still no month-boundary timer; periods are opened manually.
 
 ### 3. Computation
 
-`assessPeriod(transaction, periodId)`:
+`assessPeriod(tx, periodId)` (`functions-restapi/src/lib/assessment/assess.ts:54`):
 
-1. Locks the period and rejects direct recomputation of a finalized period.
-2. Loads all scored standards and effective tier rows.
-3. Resolves occurrence-based or threshold-based inputs.
-4. Calculates tier, base amount, ramp-up multiplier, escalation multiplier, and proposed amount.
-5. Canonicalizes and hashes the computation input.
-6. Upserts one `PeriodKpiAssessments` row per scored standard.
-7. Preserves a manager decision only when the input hash is unchanged; otherwise resets it to pending.
-8. Marks the period `in_review` and records the computed revision.
+1. Locks the period; rejects direct recomputation of a finalized period.
+2. Loads the period's frozen standards and tiers.
+3. Resolves occurrence- or threshold-based inputs **scoped to `period.contractor_id`**, excluding occurrences whose `relief_id` points at an approved `ExcusableDelayClaims` row and recording raw vs. excluded quantities.
+4. Matches a tier using direction, band scope (`per_occurrence` / `running_count`), and qualifier; computes the penalty, the escalation multiplier from the Escalation Streak, and `cap_required` from the matched tier's `triggers_cap` and CAP-window rules. There is no ramp-up multiplier (ADR 0007).
+5. Canonicalises and hashes the computation input.
+6. Upserts one `PeriodKpiAssessments` row per standard, preserving a manager decision only when `input_sha256` is unchanged.
+7. Marks the period `in_review` and records the computed revision.
 
-The pure calculation helpers are individually understandable and tested. The `assessPeriod` interface is still shallow because callers must provide an `mssql.Transaction`, while SQL input resolution, calculation, persistence, and lifecycle transition all remain exposed within one implementation.
+### 4. Review, validation, and finalization
 
-### 4. Manager review and finalization
-
-A manager can:
-
-- Confirm the proposed amount.
-- Adjust to a non-negative amount with a reason.
-- Waive to zero with a reason.
-
-Review succeeds only while the period is `in_review` and the computed revision still matches the input revision. Finalization requires no pending row, matching hashes, and positive data completeness for every existing row.
+- Manager decision (`PATCH /period-assessments/{id}`) succeeds only while the period is `in_review` and revisions match.
+- Validation share moves the period to `in_validation` and sets `validation_ends_on` five business days out (holiday-aware).
+- Evidence upload or a new occurrence bumps `input_revision` and drops the period to `stale`, voiding the share.
+- Finalization requires: `status='in_validation'`, `validation_ends_on` elapsed, `computed_revision=input_revision`, **at least one** KPI row, no row pending or with a mismatched review hash, every `not_assessable` row backed by an `AssessmentExceptions` row, no `candidate` occurrences for the contractor-month, and no row reviewed by the finalizing actor.
 
 ### 5. Report generation and issuance
 
-The report flow:
+1. Preliminary reports require `in_review`; Final reports require `finalized`.
+2. A superseding Final must name the latest Final on the same agreement + month and give a reason.
+3. Version is `MAX(version)+1`; the HTML is rendered, hashed, uploaded to private Blob, then the SQL row is inserted.
+4. Preview/download re-hash the blob against the stored hash.
+5. Issuance re-renders with issuer and a holiday-aware 10-business-day dispute deadline, uploads the issued blob, conditionally stamps the row, writes a `FinalIssuanceRecords` row, marks the period `issued`, supersedes open disputes on the prior Final, creates `CorrectiveActionPlans` for every `cap_required` row, and writes an audit entry. It fails closed when the holiday calendar does not cover the horizon.
 
-1. Builds a report model from the period and KPI results.
-2. Renders self-contained HTML.
-3. Calculates SHA-256.
-4. Uploads the HTML to private Blob Storage.
-5. Stores report metadata and hash in SQL.
-6. Verifies the downloaded bytes against the stored hash for preview/download.
-7. On issuance, re-renders the final report with issuer and a holiday-aware 10-business-day dispute deadline, uploads a new issued blob, conditionally stamps the SQL row, and writes an audit entry.
+### 6. Disputes and credits
 
-Final issuance fails closed when the holiday calendar does not cover the deadline horizon.
+Disputes are item-scoped, must be filed before `dispute_deadline_at`, and move through `submitted → under_review → (upheld | adjusted | rescinded | denied)`. `adjusted` and `rescinded` decisions require a credit amount and write `AssessmentCredits`.
 
 ## Design coverage
 
-| Designed capability | Implementation status | Notes |
-|---|---|---|
-| Contractor maintenance | Partial | Handler and console form exist; date/name validation is incomplete. |
-| Standards and tiers catalog | Partial | Read exists; admin edit does not. |
-| Open/list/compute/finalize/reopen periods | Implemented | Automatic monthly opening is missing. |
-| KPI scorecard | Implemented | Target display is generic; variance is not populated. |
-| KPI drill-through handler | Missing | Console derives occurrences from the global occurrence list instead. |
-| Occurrence candidate review | Partial | Review exists; evidence and manual-entry console flow are incomplete. |
-| Manual monthly metrics | Implemented | Evidence is missing; scoring isolation defect exists. |
-| Compliance evidence | Missing | Table exists; no blob/metadata handlers. |
-| System outages | Missing | Table exists; no handlers or scoring relief. |
-| Excusable-delay claims | Missing | Table exists; no handlers or scoring relief. |
-| CAP lifecycle | Missing | Table and pure trigger helper exist; no handlers, persistence, or automatic creation. |
-| Penalty disputes | Missing | Table exists; no handlers or console workflow. |
-| Assessment audit query | Missing | Table exists; only reopen and issue write limited entries. |
-| Preliminary/final report handlers | Partial | Handlers exist; shared client and console workflow are not connected. |
-| Report preview/download/issue console | Missing | Console displays a placeholder panel. |
-| Standards administration | Missing | Console is read-only. |
-| Power BI views | Implemented in migration 031 | Gateway/login/security deployment is outside this evaluation. |
+| Designed capability | Aug 14 | Sep 8 | Notes |
+|---|---|---|---|
+| Contractor maintenance | Partial | Partial | Validation gaps remain (see findings). |
+| Standards and tiers catalog | Partial | **Implemented** | Admin PUT/DELETE and tier editing, agreement- and category-scoped (migrations 102, 110). |
+| Open/list/compute/finalize/reopen | Implemented | Implemented | Automatic monthly opening still missing. |
+| KPI scorecard | Implemented | Implemented | `target_display` now real; `variance_pct` still unpopulated. |
+| KPI drill-through handler | Missing | Missing | Console still derives from the global occurrence list. |
+| Occurrence candidate review | Partial | Implemented | Review, assessed-amount, and console entry exist. |
+| Manual monthly metrics | Implemented | Implemented | Isolation defect resolved. |
+| Compliance evidence | Missing | **Implemented** | SAS upload, hash/size verification, versioning, visibility, audit. |
+| Not Assessable exceptions | — | **Implemented** | Manager-authorised, audited. |
+| Validation Draft sharing | — | **Implemented** | 5-business-day clock, attestation, voided on new input. |
+| System outages | Missing | Missing | Table only. |
+| Excusable-delay claims | Missing | **Read-only** | `assess.ts` honours approved claims; nothing creates them. |
+| CAP lifecycle | Missing | **Partial** | `cap_required` persisted; CAPs created on issuance; list endpoint. No status transitions, due-date tracking, or console management. |
+| Penalty disputes | Missing | **Implemented** | List/create/decide with credits and deadline enforcement. |
+| Assessment audit query | Missing | Missing | Writes exist for 5 actions; no read endpoint. |
+| Report handlers + console | Partial / Missing | **Implemented** | Console generates, previews, issues, and shares. |
+| Power BI views | Migration 031 | Migration 031 + PR #217 raw views | Gateway/login outside this evaluation. |
 
 ## Findings
 
-### Resolved — assessment inputs were not isolated by contractor
+### Critical — automated candidates use an arbitrary contractor — **OPEN, unchanged**
 
-`assess.ts` resolves data by standard and month but omits the period's contractor from three queries:
+`complianceCandidatesPoll.ts:281` assigns all imported candidates to `TOP 1` active contractor ordered by `updated_at`. Editing a contractor record silently changes future attribution.
 
-1. `ComplianceOccurrences` selects all confirmed contractor-error occurrences for the month.
-2. `ManualMetricEntries` selects the latest metric for the month.
-3. Prior `PeriodKpiAssessments` history counts any contractor's finalized months for escalation.
+Required correction: define and persist the source-to-contractor rule. Until then, fail closed when `COUNT(*) FROM Contractors WHERE is_active=1` is not exactly one. This is a small SQL change and should land before a second contractor is activated.
 
-Effect: with two active contractors, Contractor A can be charged for Contractor B's occurrences, use Contractor B's manual metric, or inherit Contractor B's escalation multiplier.
+### High — report replacement does not enforce the complete reopen cycle — **OPEN**
 
-Resolution (August 10, 2026): `assessPeriod` now carries `contractor_id` from the locked period and applies it to occurrence, manual-metric, and escalation-history predicates. A deterministic orchestration regression verifies all three query boundaries. A database integration test remains recommended to validate the deployed schema and SQL behavior end to end.
+`assessmentReports.ts:33-35` checks `status='finalized'`, that `supersedes_id` is the latest Final, and that a reason is present. No finalized revision is stored on `ComplianceReports`, so a second Final can be generated from an unchanged finalized state.
 
-### Critical — automated candidates use an arbitrary contractor
+Required correction: persist `computed_revision` on each report and require a strictly newer revision (or a `correction_started` audit row after the prior Final) for a superseding Final.
 
-`complianceCandidatesPoll` assigns all imported missed-trip and garage-departure candidates to `TOP 1` active contractor ordered by `updated_at`. Updating a contractor record can silently change future attribution.
+### High — report storage and SQL are not idempotent as one operation — **OPEN**
 
-Required correction: define and persist the source-to-contractor assignment rule. Until then, fail closed when the number of active contractors is not exactly one.
+Version allocation (`MAX(version)+1`), blob upload, and SQL insert remain three unrelated steps. Concurrent generation can raise a unique-key conflict after orphan blobs are written; concurrent issuance can upload an issued blob before the conditional update rejects the loser.
 
-### High — an empty period can finalize
+Required correction: reserve the report/version row transactionally before upload; derive the blob path from that row; add orphan-blob reconciliation.
 
-The finalization condition uses `NOT EXISTS` against incomplete or pending KPI rows. If computation produces zero rows, the condition is true and the period may finalize with a null total.
+### High — an empty period can finalize — **PARTIALLY RESOLVED**
 
-Required correction: require the number of assessment rows to equal the number of effective scored standards and use `ISNULL(SUM(final_amount),0)` only after that invariant passes.
+`assessmentPeriods.ts:116` now requires `EXISTS(SELECT 1 FROM PeriodKpiAssessments WHERE period_id=@id)`, so a zero-row period cannot finalize. The stricter invariant — row count equals the period's scored-standard count — is not enforced, so a period computed against a partial standard set could still finalize.
 
-### High — CAP rules are disconnected from runtime
+### High — CAP rules are disconnected from runtime — **RESOLVED (helper still dead)**
 
-`capTriggers` is covered by a pure test but is never called in production. `assessPeriod` does not persist `cap_required`, `cap_reason`, or `CorrectiveActionPlans`. The console substitutes `tier2` as a display heuristic.
+`assess.ts` computes and persists `cap_required`; issuance inserts `CorrectiveActionPlans`; `GET /assessment-caps` lists them. The pure `capTriggers` and `consecutiveMonthsBelow` helpers in `escalation.ts` remain referenced only from tests and should be deleted or wired in.
 
-Deletion test: removing `capTriggers` would not change runtime behavior. The current CAP module is shallow.
+### Resolved — assessment inputs not isolated by contractor — **RESOLVED**
 
-### High — report replacement does not enforce the complete reopen cycle
+Occurrence, window, threshold, and escalation-history queries all carry `@contractor` (`assess.ts:97-196`).
 
-Report generation checks that the period is finalized and that a replacement names the latest final report with a reason. It does not prove that the period was reopened, recomputed, re-reviewed, and finalized after the prior final. A second final version can be generated from the same unchanged finalized state.
+### Medium — report contents are incomplete — **OPEN**
 
-Required correction: persist the finalized revision/version on each report and require a strictly newer finalized revision for replacement.
+`renderAssessmentReport.ts` renders Summary, Performance standard results, Computation detail, Contractor Evidence, and Dispute rights. Occurrence schedules, exclusions/relief detail, CAPs, prior disputes, data sources, and completeness caveats are still absent.
 
-### High — report storage and SQL are not idempotent as one operation
+### Medium — scoring fields are placeholders or disconnected — **PARTIALLY RESOLVED**
 
-Version allocation uses `MAX(version)+1`, uploads the blob, then inserts SQL metadata. Concurrent generation can create a unique-key conflict after one or more orphan blobs have been written. Concurrent issuance can likewise upload an issued blob before the conditional SQL update rejects the loser.
+- `target_display` — resolved; comes from the standard's `target_display`/`target_value`.
+- `direction` — resolved; passed to `matchTier`.
+- `triggers_cap` — resolved; drives `cap_required`.
+- `variance_pct` — still absent from code and schema.
+- `relief_amount` — still hard-coded `0`; relief is now expressed through `excluded_*` columns, so the column is vestigial rather than wrong. Drop it or populate it.
 
-Required correction: reserve the report/version row transactionally before upload, use a deterministic operation identifier, and add cleanup/reconciliation for abandoned blobs.
+### Medium — contractor validation is incomplete — **OPEN**
 
-### Medium — report contents are incomplete
+`contractors.ts`: whitespace-only names pass and are trimmed to empty; `ASSESSMENT_DATE_RE` accepts non-calendar dates (e.g. `20260231`); end-before-start is allowed. Period opening now checks the agreement window, which mitigates the last item downstream.
 
-The renderer includes cover metadata, a summary total, KPI results, computation details, manager action, completeness, and dispute text. The design additionally requires occurrence schedules, exclusions/relief, CAPs, prior disputes, manager notes as a distinct section, data sources, and detailed completeness caveats.
+### Medium — list interfaces are unbounded — **OPEN**
 
-### Medium — scoring fields are placeholders or disconnected
+Contractors, periods, occurrences, and manual metrics accept no query filters and return every row to any compliance reader.
 
-- `target_display` is always `Configured tiers`.
-- `variance_pct` is not populated.
-- `relief_amount` is always zero.
-- Tier `triggers_cap` is loaded but unused.
-- `direction` is accepted by `matchTier` but not used; correct results depend entirely on stored tier bands.
-- The pure `consecutiveMonthsBelow` helper is tested but not used; similar logic is reimplemented inside `assessPeriod`.
+### Medium — audit coverage is incomplete — **PARTIALLY RESOLVED**
 
-### Medium — contractor validation is incomplete
-
-- A whitespace-only contractor name passes the type check and is trimmed to an empty string.
-- Contract start/end values validate digit shape but not real calendar dates.
-- End-before-start is allowed.
-- Period opening checks active status but not whether the service month falls within contract dates.
-
-### Medium — list interfaces are unbounded
-
-Contractors, periods, occurrences, and manual metrics are returned without pagination or filters. The occurrence and metric handlers return data across all contractors and months to every compliance reader.
-
-### Medium — audit coverage is incomplete
-
-The schema describes an assessment audit, but only period reopen and report issue write entries. Contractor edits, occurrence review, metric supersession, compute, manager decisions, finalize, report generation, and failed governance actions are not recorded.
+`ComplianceAssessmentAudit` now receives `reopened` (or `correction_started` when reopening an issued month creates a correction period), `stale_due_to_prior_period_reopen`, `exception_authorized`, `evidence_added`, and `issued`. Compute, manager decision, finalize, occurrence review, metric supersession, dispute decision, report generation, and validation share are still unrecorded, and there is no read endpoint.
 
 ## Architecture evaluation
 
-### Deep modules already present
+### Deep modules present
 
-- Penalty calculation hides six penalty bases behind one interface.
-- Ramp-up calculation hides stage and safety carve-out rules.
-- Hashing provides strong leverage: one canonical input determines review preservation or invalidation.
-- Business-day calculation and holiday-coverage validation form a useful fail-closed module.
-- Report byte verification makes the stored hash the integrity seam for preview and download.
+- Penalty, tier-matching, escalation, and CAP-window calculation are pure and tested.
+- Hashing makes one canonical input the seam for review preservation.
+- Business-day and holiday-coverage validation fail closed for both validation and dispute clocks.
+- Report byte verification makes the stored hash the integrity seam.
+- Evidence create verifies size and SHA-256 server-side before trusting the upload.
 
 ### Shallow modules and leaking seams
 
-- `assessPeriod(transaction, periodId)` requires a database transaction and owns input queries, calculation, persistence, and lifecycle. Its interface does not isolate the scoring policy from the SQL adapter.
-- CAP triggering is testable but disconnected from its callers.
-- Report generation, persistence, blob upload, version allocation, and issuance are compressed into HTTP handlers; failure and concurrency rules leak across SQL and Blob Storage.
-- Console integration exposes many individual shared-client methods while report, dispute, CAP, and evidence workflows are absent.
+- `assessPeriod(tx, periodId)` still owns SQL input resolution, calculation, persistence, and lifecycle in one 241-line function behind an `mssql.Transaction`. Its test surface is the orchestration test, not the interface.
+- Report generation, version allocation, blob upload, and issuance are still inline in HTTP handlers; the concurrency rules leak across SQL and Blob.
+- Governance handlers (`assessmentGovernance.ts`) embed multi-statement T-SQL per handler; lifecycle rules for periods are spread across `assessmentPeriods`, `assessmentGovernance`, `assessmentEvidence`, and `assessmentReports`.
 
 ### Recommended deepening
 
-The first architectural change should be a **Performance Assessment lifecycle module** whose interface owns:
-
-- Opening and computing a contractor-month.
-- Resolving contractor-scoped inputs.
-- Preserving or invalidating manager review by revision/hash.
-- Finalization invariants.
-- CAP creation.
-- Report generation/version/issuance state.
-
-HTTP handlers and the month-boundary timer should be adapters at that seam. SQL and Blob Storage are real adapters because calculation tests need an in-memory assessment fixture while production needs Azure SQL/Blob behavior. This creates locality for governance rules and leverage across manual actions, scheduled processing, tests, and future contractor access.
-
-Do not add another pass-through module around the existing handlers. Replace the current orchestration with the deep module and make its interface the test surface.
+Unchanged from August: extract a **Performance Assessment lifecycle module** whose interface owns open/compute, contractor-scoped input resolution, review preservation, finalization invariants, CAP creation, and report version/issuance state, with HTTP handlers and a future month-boundary timer as adapters. The status machine (`open → in_review → in_validation → finalized → issued`, with `stale`, `reopened`, and correction branches) is now rich enough that it should be one function, not five handlers agreeing by convention.
 
 ## Test posture
 
-### Verified
+### Verified (2026-09-08)
 
 - TypeScript build passes.
-- Repository test suite: 259 passed, 0 failed.
-- Assessment helpers cover tier edges, qualifier precedence, penalty bases, ramp-up, escalation, CAP trigger rules, stable hashes, business-day deadlines, and missing holiday coverage.
-- Renderer tests cover preliminary watermarking, HTML escaping, and presence of a final dispute deadline.
+- `functions-restapi`: 730 tests, 725 pass, 5 skipped, 0 fail.
+- Helpers cover tier edges, qualifier precedence, penalty bases, escalation, CAP windows, stable hashes, business-day deadlines, and missing holiday coverage.
+- A deterministic orchestration regression verifies all three contractor-scoped query boundaries.
+- `complianceCandidatesPoll.test.ts` exists.
 
 ### Missing
 
-- Database integration tests for `assessPeriod`.
-- Two-contractor isolation tests.
-- Handler authorization tests for every role set.
-- Period lifecycle and stale-review integration tests.
-- Candidate-ingestion attribution tests.
-- Empty/incomplete finalization tests.
-- Report generation/version concurrency tests.
+- Database integration tests for `assessPeriod` against the deployed schema.
+- Candidate-ingestion attribution test with two active contractors.
+- Finalization test for a partial standard set.
+- Report generation/version concurrency and issuance idempotency tests.
 - Blob/SQL failure-recovery tests.
-- Issuance idempotency tests.
-- Golden-file or snapshot coverage for the complete report HTML.
+- Golden-file coverage for the complete report HTML.
+- Handler authorization tests for every role set.
 - Authenticated console workflow tests.
 
 ## Recommended delivery order
 
-1. **Finish multi-contractor protection:** make automated candidate attribution deterministic or fail closed when it is ambiguous. Assessment computation is now contractor-scoped.
-2. **Protect finalization:** require a complete scored-standard set and add lifecycle integration tests.
-3. **Connect existing report functions:** add shared-client methods and implement report history, preview, download, generation, and issue controls in the console.
-4. **Implement governance inputs:** evidence, outages, excusable-delay claims, CAP persistence, and audit writes.
-5. **Implement disputes:** completeness, business-day clocks, determinations, and credits.
-6. **Implement standards administration:** effective-dated standard/tier changes with audit.
-7. **Add the month-boundary timer:** only after computation, report, holiday, and notification failure paths are proven idempotent.
+1. **Fail closed on ambiguous contractor attribution** in `complianceCandidatesPoll` (Critical; small change).
+2. **Report lineage and idempotency:** persist the finalized revision on reports, reserve the version row before upload, add reconciliation.
+3. **Finalization invariant:** require a full scored-standard set.
+4. **Audit breadth + read endpoint.**
+5. **CAP lifecycle:** status transitions, due-date tracking, console management.
+6. **Excusable-delay claims and outages:** handlers to create what `assess.ts` already honours.
+7. **Report content:** occurrence schedules, relief detail, CAPs, prior disputes, data sources.
+8. **Month-boundary timer:** only after compute, report, and notification paths are proven idempotent.
 
 ## Operational readiness statement
 
-The Function App is healthy and the implemented interfaces can support a manually operated, single-contractor pilot. It is **not fully operational against the approved design** and automated ingestion is **not safe for multiple active contractors** until candidate attribution is deterministic. Assessment computation itself is now contractor-scoped. Report handlers exist but the console cannot exercise them; CAP, dispute, evidence, outage, claim, audit-query, standards-edit, and automatic monthly workflows remain incomplete.
+The Function App is healthy and the governed workflow — open, compute, review, validation share, evidence, exceptions, finalize, issue, dispute, credit — is exercisable end to end from the console for a **single active contractor**. Automated ingestion is **not safe for multiple active contractors** until candidate attribution is deterministic, and a superseding Final Assessment should not be relied on in production until report lineage is enforced. System outages, excusable-delay claim entry, CAP management, the audit read endpoint, and automatic monthly opening remain unbuilt.
