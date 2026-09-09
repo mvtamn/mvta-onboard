@@ -30,6 +30,8 @@ export interface AgreementScope {
   snapshotsSeverity: boolean;
   /** migration 110 has run: a catalog standard says which part of the contract it belongs to. */
   categorised: boolean;
+  /** migration 112 has run: a period records when its rule set stopped being editable. */
+  rulesLock: boolean;
 }
 
 const SCOPE_QUERY = `
@@ -42,10 +44,11 @@ const SCOPE_QUERY = `
                           OR COL_LENGTH('dbo.AssessmentPeriodStandards','target_value') IS NULL THEN 0 ELSE 1 END) penalty_scaling,
       CONVERT(int, CASE WHEN COL_LENGTH('dbo.AssessmentPeriodTiers','severity_order') IS NULL THEN 0 ELSE 1 END) snapshots_severity,
       CONVERT(int, CASE WHEN COL_LENGTH('dbo.AssessmentPeriodStandards','cap_window_mode') IS NULL THEN 0 ELSE 1 END) window_modes,
-      CONVERT(int, CASE WHEN COL_LENGTH('dbo.ContractorPerformanceStandards','category') IS NULL THEN 0 ELSE 1 END) categorised
+      CONVERT(int, CASE WHEN COL_LENGTH('dbo.ContractorPerformanceStandards','category') IS NULL THEN 0 ELSE 1 END) categorised,
+      CONVERT(int, CASE WHEN COL_LENGTH('dbo.AssessmentPeriods','rules_locked_at') IS NULL THEN 0 ELSE 1 END) rules_lock
 `;
 
-interface ScopeRow { scoped: number; snapshots_resolver: number; penalty_scaling: number; snapshots_severity: number; window_modes: number; categorised: number }
+interface ScopeRow { scoped: number; snapshots_resolver: number; penalty_scaling: number; snapshots_severity: number; window_modes: number; categorised: number; rules_lock: number }
 
 function toScope(row: ScopeRow | undefined): AgreementScope {
   return {
@@ -55,6 +58,7 @@ function toScope(row: ScopeRow | undefined): AgreementScope {
     snapshotsSeverity: row?.snapshots_severity === 1,
     windowModes: row?.window_modes === 1,
     categorised: row?.categorised === 1,
+    rulesLock: row?.rules_lock === 1,
   };
 }
 

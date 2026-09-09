@@ -3,7 +3,8 @@ import { ADMIN_ROLES, COMPLIANCE_READ_ROLES, requireRole } from "../lib/auth";
 import { getPool, sql } from "../lib/db";
 import { RESOLVERS } from "../lib/assessment/resolvers";
 import { KNOWN_SOURCE_SYSTEMS } from "../lib/assessment/measurementSource";
-import { agreementScope } from "../lib/assessment/schemaScope";
+import { agreementScope, agreementScopeIn } from "../lib/assessment/schemaScope";
+import { markRulesChanged } from "../lib/assessment/ruleChange";
 import { isGuid, validatePerformanceStandard, validateStandardTierLadder } from "../lib/validation";
 
 // The Attachment G standards catalog and its tier ladders.
@@ -174,7 +175,11 @@ app.http("performanceStandardPut", {
           VALUES(@id,@code,@name,@description,@type,@priority,@scored,@safety,@direction,@unit,@source,@resolver,@source_system,@data_note,
             @team,@assigned,@cap_note,@sort,@start,@end,${guardedValues ? `${guardedValues},` : ""}@actor);
       `);
-      return { status: 200, jsonBody: { id } };
+      // Editing the catalog standard itself - its unit, its target, its window,
+      // whether it is scored at all - changes what every drafting period that
+      // holds it would compute.
+      const staled = await markRulesChanged(pool, {}, auth.principal.userDetails ?? "onboard-console", scope.rulesLock);
+      return { status: 200, jsonBody: { id, periods_marked_stale: staled } };
     } catch (error) {
       context.error("PUT /performance-standards/{id} failed", error);
       return { status: 500, jsonBody: { error: "Internal server error" } };
@@ -267,8 +272,13 @@ app.http("performanceStandardTiersPut", {
           VALUES(@standard,@agreement,@order,@label,@low,@high,@qualifier,@basis,@amount,@cap,@notes,@start,NULL,@actor);
         `);
       }
+      // A band is a rule. An agreement's own ladder reaches only that
+      // agreement's periods; a catalog default reaches every drafting period,
+      // because any of them may be resolving against it.
+      const staled = await markRulesChanged(tx, { agreementId },
+        auth.principal.userDetails ?? "onboard-console", (await agreementScopeIn(tx)).rulesLock);
       await tx.commit();
-      return { status: 200, jsonBody: { standard_id: id, agreement_id: agreementId, effective_start_date: effectiveStart, tier_count: tiers.length } };
+      return { status: 200, jsonBody: { periods_marked_stale: staled, standard_id: id, agreement_id: agreementId, effective_start_date: effectiveStart, tier_count: tiers.length } };
     } catch (error) {
       try { await tx.rollback(); } catch { /* the transaction is already resolved */ }
       context.error("PUT /performance-standards/{id}/tiers failed", error);

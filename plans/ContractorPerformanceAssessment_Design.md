@@ -1,6 +1,6 @@
 # Contractor Performance Assessment — Design
 
-**Status:** Implemented and operating on dev; reconciled against the code on September 8, 2026 (§0). The confirmed domain language in `CONTEXT.md` § *Contractor performance assessment language* and ADRs 0005–0013 and 0028 supersede conflicting language below. Sections 1–14 are the original design and are kept as the contract-derived rationale; where the build diverged, an **As built** note follows the section.
+**Status:** Implemented and operating on dev; reconciled against the code on September 8, 2026 (§0), updated September 9 after PRs #237/#238. The confirmed domain language in `CONTEXT.md` § *Contractor performance assessment language* and ADRs 0005–0013, 0028 and 0029 supersede conflicting language below. Sections 1–14 are the original design and are kept as the contract-derived rationale; where the build diverged, an **As built** note follows the section.
 **Sources of record:** `Compliance/Attachment_G_Final_v2.docx`, `Compliance/ContractorPerformanceStandards_v3.xlsx`
 **Scope:** the 9 High/Medium priority KPIs, scored monthly, with manager review before any penalty is issued; a monthly contractor report (§9); Power BI scorecard access (§10).
 **Author:** design pass, 2026-08-05. Requires MVTA sign-off on §12 before Phase 1 begins.
@@ -24,10 +24,10 @@ This section replaces `plans/Compliance-Assessment-Link-and-KPI-Assignment-Revie
 | §6 Engine | Yes | `lib/assessment/`: `tiers`, `penalty`, `escalation`, `capWindow`, `hash`, `businessDays`, `occurrenceIntake`, `measurementSource`, and a keyed `resolvers/` registry (`otpFixedRoute`, `manualMetric`). No `rampUp.ts`. `assessPeriod(tx, periodId)` is contractor-scoped. |
 | §7 API | Yes, different shape | See §7 *As built*. Evidence, exceptions, validation share, CAP list, disputes, agreements, and standards admin exist; drill-through, outages, claims CRUD, CAP lifecycle, and the audit query do not. |
 | §8 Console | Yes, relocated | Performance Assessment is its own route (`/performance-assessment`) in the *Compliance & Assessment* nav group, not a fourth tab in the Compliance switcher. Setup lives under *Administration › Performance Setup* as four pages: Contractors, Agreements, Standards, Lists. |
-| §9 Report | Yes | Validation Draft + Final; hash-verified preview/download; issuance writes `FinalIssuanceRecords`, creates CAPs, supersedes open disputes. Report sections 6, 7, 8, 11 not yet rendered. |
+| §9 Report | Yes | Validation Draft → Issuance Proof → Final (ADR 0029, migration 111); supersession derived from period lineage; per-period lock; hash-verified preview/download; issuance writes `FinalIssuanceRecords`, creates CAPs, supersedes open disputes. Report sections 6, 7, 8, 11 not yet rendered. |
 | §10 Power BI | Views only | Migration 031 (assessed) and 106 (raw measurement) views exist. No `mvta_reporting_ro` login, no gateway, no dataset. |
 | §11 RBAC | Yes | `OCC.ComplianceManager` provisioned. Role sets in `lib/auth.ts:82-84`. |
-| §13 Phasing | 1 ✅ · 2 ✅ (minus timer, outages) · 3 partial | Disputes and Standards Admin done; Power BI deployment not started. |
+| §13 Phasing | 1 ✅ · 2 ✅ (minus timer, outages) · 3 partial | Disputes, Standards Admin, and report lineage done; Power BI deployment not started. |
 
 ### 0.2 Compliance → Assessment links (from the 2026-09-06 review)
 
@@ -53,10 +53,10 @@ All four review findings that were in scope are built:
 
 Ordered by the evaluation's delivery order; item numbers there are authoritative.
 
-1. `complianceCandidatesPoll` attributes every candidate to `TOP 1` active contractor — must fail closed with more than one (Critical; contradicts ADR 0005's one-contractor-per-Agreement intent only if a second Agreement is ever activated, but the guard is cheap).
-2. Superseding Final Assessment lineage: persist the finalized revision on `ComplianceReports` and require a strictly newer one (§9 *Storage and immutability* promised this).
-3. Report generation is not one atomic operation across version allocation, blob, and SQL.
-4. Finalization should require the full scored-standard set, not merely ≥1 row.
+~~1–4~~ **Closed 2026-09-09:** candidate attribution fails closed unless exactly one contractor is active (PR #237); the Issuance Proof is distinct from the Final, supersession is derived from period lineage, generate/issue run under a per-period lock, and finalize requires the full frozen Rule Set (PR #238, ADR 0029, migration 111). A source-to-contractor rule is still needed before a second Agreement is activated.
+
+**Added 2026-09-09 from the parallel September 8 review, verified against `origin/main` — these outrank the numbered items below:** the Escalation Streak counts unissued and superseded periods (§6, ADR 0011); the Validation Draft renders proposed rather than recommended amounts (§9, ADR 0009); Assessment Exception writes have no editable-period guard and do not restart sharing (§5, ADR 0009/0013); registered evidence stays writable under its `cw` upload SAS (§5, ADR 0013); the report's computation line conflates calculation with the binding adjustment (§9 sections 5 and 9); and in the console, `act()` races period selection, ranged penalties never expose amount entry, review status reads `manager_action` before binding, and the Report page has no preview/download. Details and file references are in the evaluation.
+
 5. Audit breadth (compute, review, finalize, share, dispute decision, report generation) and the `/compliance-assessment-audit` read endpoint.
 6. CAP lifecycle beyond creation; `SystemOutageWindows` and `ExcusableDelayClaims` create/decide handlers; report sections 6/7/8/11.
 7. Owner identity for manual metrics (gap F) and a month-end open-items list.
@@ -76,7 +76,7 @@ LEFT JOIN dbo.PerformanceAgreements a ON a.contractor_id = c.id
 ORDER BY c.is_active DESC, c.name;
 ```
 
-Exactly one active contractor with one active agreement and 26 assigned standards is the expected shape. No agreement → create one under Administration › Performance Setup › Agreements. Two active contractors → do **not** let the candidate timer run until item 1 above lands.
+Exactly one active contractor with one active agreement and 26 assigned standards is the expected shape. No agreement → create one under Administration › Performance Setup › Agreements. Two active contractors → the candidate timer refuses to run (`THROW 50003`) until one is deactivated or an attribution rule exists.
 
 ---
 
