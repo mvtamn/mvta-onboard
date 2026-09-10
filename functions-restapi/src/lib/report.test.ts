@@ -30,3 +30,11 @@ test("data sources name the feed and flag hand-entered figures and Not Assessabl
 test("a report with no schedules says so rather than printing empty tables",()=>{const html=renderAssessmentReport({...base,issuanceType:"final"});assert.match(html,/No occurrences were counted/);assert.match(html,/No exclusions or relief/);assert.match(html,/No Corrective Action Plan/);});
 
 test("a Validation Draft's manager notes read as recommendations, and a CAP without a plan row names the issuance clock",()=>{const html=renderAssessmentReport({...full,issuanceType:"preliminary",issuedAt:null,disputeDeadline:null,caps:[{standardName:"Missed trips",triggerReason:"tier_rule",dueAt:null,status:"required"}]});assert.match(html,/recommended adjusted to \$1,000\.00/);assert.match(html,/Five business days from issuance/);});
+
+// A figure made from two quantities prints them under itself, in the results
+// table and again in its computation detail, so the contractor can check the
+// division the month was scored on. A figure typed whole prints nothing extra.
+const roadCalls={...base,issuanceType:"final" as const,assessments:[{...base.assessments[0],name:"Average Miles Between Road Calls",metricDisplay:"13,300 miles",targetDisplay:"12,000 miles or above",tierLabel:"meets",metricWorking:"412,300 miles ÷ 31 road calls"}]};
+test("the results table shows the working under a figure made from parts",()=>{const html=renderAssessmentReport(roadCalls);assert.match(html,/<td>13,300 miles<br><small>412,300 miles ÷ 31 road calls<\/small><\/td>/);});
+test("the computation detail states the figure and what it was made from",()=>{assert.match(renderAssessmentReport(roadCalls),/<b>Figure:<\/b> 13,300 miles, from 412,300 miles ÷ 31 road calls/);});
+test("a figure typed whole prints no working",()=>{const html=renderAssessmentReport({...base,issuanceType:"final"});assert.doesNotMatch(html,/<small>.*÷/);assert.doesNotMatch(html,/Figure:/);});

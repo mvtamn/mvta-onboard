@@ -32,6 +32,8 @@ export interface AgreementScope {
   categorised: boolean;
   /** migration 112 has run: a period records when its rule set stopped being editable. */
   rulesLock: boolean;
+  /** migration 115 has run: an assessment carries the working its figure was made from. */
+  metricWorking: boolean;
 }
 
 const SCOPE_QUERY = `
@@ -45,10 +47,11 @@ const SCOPE_QUERY = `
       CONVERT(int, CASE WHEN COL_LENGTH('dbo.AssessmentPeriodTiers','severity_order') IS NULL THEN 0 ELSE 1 END) snapshots_severity,
       CONVERT(int, CASE WHEN COL_LENGTH('dbo.AssessmentPeriodStandards','cap_window_mode') IS NULL THEN 0 ELSE 1 END) window_modes,
       CONVERT(int, CASE WHEN COL_LENGTH('dbo.ContractorPerformanceStandards','category') IS NULL THEN 0 ELSE 1 END) categorised,
-      CONVERT(int, CASE WHEN COL_LENGTH('dbo.AssessmentPeriods','rules_locked_at') IS NULL THEN 0 ELSE 1 END) rules_lock
+      CONVERT(int, CASE WHEN COL_LENGTH('dbo.AssessmentPeriods','rules_locked_at') IS NULL THEN 0 ELSE 1 END) rules_lock,
+      CONVERT(int, CASE WHEN COL_LENGTH('dbo.PeriodKpiAssessments','metric_working') IS NULL THEN 0 ELSE 1 END) metric_working
 `;
 
-interface ScopeRow { scoped: number; snapshots_resolver: number; penalty_scaling: number; snapshots_severity: number; window_modes: number; categorised: number; rules_lock: number }
+interface ScopeRow { scoped: number; snapshots_resolver: number; penalty_scaling: number; snapshots_severity: number; window_modes: number; categorised: number; rules_lock: number; metric_working: number }
 
 function toScope(row: ScopeRow | undefined): AgreementScope {
   return {
@@ -59,6 +62,7 @@ function toScope(row: ScopeRow | undefined): AgreementScope {
     windowModes: row?.window_modes === 1,
     categorised: row?.categorised === 1,
     rulesLock: row?.rules_lock === 1,
+    metricWorking: row?.metric_working === 1,
   };
 }
 

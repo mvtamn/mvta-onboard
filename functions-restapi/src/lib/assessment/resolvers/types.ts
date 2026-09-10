@@ -28,6 +28,12 @@ export interface ResolvedMeasurement {
    * assessment so the period's exception list names the cause.
    */
   unresolvedReason?: string;
+  /**
+   * How the figure was made, in words, when it was made from parts the report
+   * should show: "412,300 miles ÷ 31 road calls". Presentation only - never
+   * part of scoring or the input hash.
+   */
+  working?: string;
 }
 
 export interface ResolverContext {

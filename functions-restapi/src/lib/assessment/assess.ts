@@ -102,6 +102,9 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
     // Why a standard could not be measured, when that is a fact worth
     // reporting rather than simply an empty month.
     let unresolvedReason: string | null = null;
+    // The working behind a figure made from parts, for the report to print
+    // under it. Presentation, like metric_display: outside the input hash.
+    let metricWorking: string | null = null;
     let tierLabel: TierLabel = "meets";
 
     if (standard.standard_type === "occurrence") {
@@ -197,6 +200,7 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
       rawMetricValue = resolved.rawMetricValue; rawUnitQuantity = resolved.rawQuantity; rawMetricValue ??= metricValue;
       excludedMetricValue = resolved.excludedMetricValue; excludedUnitQuantity = resolved.excludedQuantity;
       completeness = resolved.completeness; sourceRefs = resolved.sourceRefs;
+      metricWorking = resolved.working ?? null;
       if (metricValue !== null) {
         const tier = matchTier(tiers, metricValue, standard.direction);
         if (tier) { tierLabel = tier.tierLabel; baseAmount = computePenalty(tier, { quantity }); capRequired = Boolean(tier.triggersCap); }
@@ -248,10 +252,11 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
     upsert.input("cap", sql.Bit, capRequired);
     upsert.input("target_display", sql.NVarChar(100), targetDisplay(standard, tierRows.recordset));
     upsert.input("awaiting", sql.Int, awaitingAmountCount);
+    upsert.input("working", sql.NVarChar(200), metricWorking);
     await upsert.query(`
       MERGE PeriodKpiAssessments WITH (HOLDLOCK) target USING (SELECT @period_id period_id,@standard_id standard_id) source
       ON target.period_id=source.period_id AND target.standard_id=source.standard_id
-      WHEN MATCHED THEN UPDATE SET metric_value=@metric,metric_display=@display,occurrence_count=@count,unit_quantity=@quantity,raw_metric_value=@raw_metric,raw_occurrence_count=@raw_count,raw_unit_quantity=@raw_quantity,excluded_metric_value=@excluded_metric,excluded_occurrence_count=@excluded_count,excluded_unit_quantity=@excluded_quantity,excluded_source_refs_json=@excluded_refs,tier_label=@tier,
+      WHEN MATCHED THEN UPDATE SET metric_value=@metric,metric_display=@display,${scope.metricWorking ? "metric_working=@working," : ""}occurrence_count=@count,unit_quantity=@quantity,raw_metric_value=@raw_metric,raw_occurrence_count=@raw_count,raw_unit_quantity=@raw_quantity,excluded_metric_value=@excluded_metric,excluded_occurrence_count=@excluded_count,excluded_unit_quantity=@excluded_quantity,excluded_source_refs_json=@excluded_refs,tier_label=@tier,
        target_display=@target_display,base_amount=@base,escalation_multiplier=@escalation,relief_amount=0,proposed_amount=@proposed,
        manager_action=CASE WHEN target.input_sha256=@hash THEN target.manager_action ELSE 'pending' END,
        final_amount=CASE WHEN target.input_sha256=@hash THEN target.final_amount ELSE NULL END,
@@ -260,8 +265,8 @@ export async function assessPeriod(tx: Transaction, periodId: string): Promise<v
        reviewed_by=CASE WHEN target.input_sha256=@hash THEN target.reviewed_by ELSE NULL END,
        reviewed_at=CASE WHEN target.input_sha256=@hash THEN target.reviewed_at ELSE NULL END,cap_required=@cap,awaiting_amount_count=@awaiting,
        input_sha256=@hash,consecutive_months_below=@consecutive,data_completeness_pct=@completeness,computation_json=@json,assessment_outcome=@outcome
-      WHEN NOT MATCHED THEN INSERT(period_id,standard_id,metric_value,metric_display,occurrence_count,unit_quantity,raw_metric_value,raw_occurrence_count,raw_unit_quantity,excluded_metric_value,excluded_occurrence_count,excluded_unit_quantity,excluded_source_refs_json,tier_label,target_display,base_amount,escalation_multiplier,proposed_amount,input_sha256,consecutive_months_below,data_completeness_pct,computation_json,assessment_outcome,cap_required,awaiting_amount_count)
-       VALUES(@period_id,@standard_id,@metric,@display,@count,@quantity,@raw_metric,@raw_count,@raw_quantity,@excluded_metric,@excluded_count,@excluded_quantity,@excluded_refs,@tier,@target_display,@base,@escalation,@proposed,@hash,@consecutive,@completeness,@json,@outcome,@cap,@awaiting);
+      WHEN NOT MATCHED THEN INSERT(period_id,standard_id,metric_value,metric_display,${scope.metricWorking ? "metric_working," : ""}occurrence_count,unit_quantity,raw_metric_value,raw_occurrence_count,raw_unit_quantity,excluded_metric_value,excluded_occurrence_count,excluded_unit_quantity,excluded_source_refs_json,tier_label,target_display,base_amount,escalation_multiplier,proposed_amount,input_sha256,consecutive_months_below,data_completeness_pct,computation_json,assessment_outcome,cap_required,awaiting_amount_count)
+       VALUES(@period_id,@standard_id,@metric,@display,${scope.metricWorking ? "@working," : ""}@count,@quantity,@raw_metric,@raw_count,@raw_quantity,@excluded_metric,@excluded_count,@excluded_quantity,@excluded_refs,@tier,@target_display,@base,@escalation,@proposed,@hash,@consecutive,@completeness,@json,@outcome,@cap,@awaiting);
     `);
   }
   const finish = new sql.Request(tx);

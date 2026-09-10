@@ -5,6 +5,11 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.183] - 2026-09-09
+
+- **The issued report shows the working behind Average Miles Between Road Calls.** Since 1.5.182 the figure is entered as miles over chargeable road calls, but the report still printed "13,300 miles" with nothing under it. `resolveManualMetric` now reads the entry's numerator and denominator and hands the compute the working in words - `ratioWorking` in `lib/assessment/display.ts` (tests), "412,300 miles ÷ 31 road calls" or "412,300 miles, no road calls" - and the compute snapshots it in `PeriodKpiAssessments.metric_working` beside `metric_display`, outside the input hash, because it is presentation like the figure's own text. The report prints it under the figure in the results table and as a "Figure:" line in each standard's computation detail; the scorecard row and the standard's detail page carry the same line. A figure typed whole, or a month computed before its entry carried parts, prints nothing extra.
+- **Migration 115** adds the column. `schemaScope.metricWorking` gates the write, so the deployed code computes correctly before the migration is applied and starts recording the working after it.
+
 ## [1.5.182] - 2026-09-09
 
 - **Average Miles Between Road Calls is entered as the two figures it is made from.** The monthly metrics checklist asked for the finished quotient, so the owner divided M5's miles by its road-call count at their desk and typed the result, and the issued report carried a figure the contractor could not check. `MetricRow` now asks for the miles the fleet operated and the chargeable road calls it had, works the figure out as they are typed, and saves all three; the saved row shows its working ("412,300 miles ÷ 31 road calls"). `modules/assessment/ratioComponents.ts` (tests) says which standards are entered this way - one today, keyed by code, because the catalog has no column for it and a schema change for a single case would be a guess. `ManualMetricEntries.numerator` and `denominator` have existed since migration 030 and the PUT handler already wrote them; nothing sent them.
