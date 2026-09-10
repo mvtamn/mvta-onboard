@@ -147,6 +147,8 @@
 .assessment-measure input{border:0;padding:6px 0;min-width:0;width:100%;font:inherit;font-size:12.5px;background:transparent;color:var(--text)}
 .assessment-measure input:focus{outline:none}
 .assessment-measure span{color:var(--text-muted);font-size:11px;font-weight:600;white-space:nowrap}
+.assessment-ratio{display:flex;flex-direction:column;gap:6px;min-width:0}
+.assessment-ratio small{margin:0}
 .assessment-metric-input{min-height:34px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface-bg);padding:6px 10px;color:var(--text);font:inherit;font-size:12.5px;min-width:0}
 .assessment-metric-state{display:flex;gap:8px;align-items:center;justify-content:flex-end}
 .assessment-metric-state .btn-sm{margin:0}

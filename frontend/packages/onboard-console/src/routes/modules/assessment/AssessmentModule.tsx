@@ -5,6 +5,7 @@ import { currentMonth, lifecycleStages, nextAction, occurrencesNeedingAmount, ou
 import { groupByCategory, type CategoryGroup } from "./categoryGroups.js";
 import { metricsChecklist, type MetricsChecklist } from "./metricsChecklist.js";
 import { metricText, targetText } from "./scorecardDisplay.js";
+import { ratioComponents, ratioText, ratioValue } from "./ratioComponents.js";
 import { standardWords } from "./standardWords.js";
 import type { AgreementStandardAssignment, AssessmentDispute, AssessmentEvidence, AssessmentPeriod, AssessmentPeriodStatus, ComplianceOccurrence, ContractorPerformanceStandard, ContractorRecord, ContractorStandardTier, ExcusableDelayClaim, ManualMetricEntry, OccurrenceAttribution, OccurrenceReviewStatus, PerformanceAgreementRecord, PeriodKpiAssessment, ReferenceValue } from "@mvta/shared";
 import { api } from "../../../config.js";
@@ -82,7 +83,7 @@ export function AssessmentModule(){
       {detail?<StandardDetail row={detail} period={period} standard={standards.find(s=>s.id===detail.standard_id)} ladder={tiers.filter(t=>t.standard_id===detail.standard_id&&!t.agreement_id&&!t.effective_end_date).sort((a,b)=>a.tier_order-b.tier_order)} occurrences={periodOccurrences.filter(o=>o.standard_id===detail.standard_id)} vocab={vocab} busy={busy} onReview={(r,a,amount,reason)=>void act(()=>api.reviewPeriodAssessment(r.id,a,amount,reason))} onGo={setPage}/>:<Empty>Compute this month to produce detail for its standards.</Empty>}
     </div>)}
     {page==="occurrences"&&<><Occurrences rows={periodOccurrences} periodSelected={Boolean(period)} busy={busy} claims={claims} onAmount={(o,amount,note)=>void act(()=>api.setOccurrenceAssessedAmount(o.id,amount,note))} onReview={(o,status,attribution,reason)=>void act(()=>api.reviewComplianceOccurrence(o.id,status,attribution,reason))} onRelief={(o,reliefId)=>void act(()=>api.linkOccurrenceRelief(o.id,o.review_status as OccurrenceReviewStatus,o.attribution as OccurrenceAttribution,reliefId))}/><Relief period={period} onChanged={()=>{void load();setRefreshKey(k=>k+1);setClaimsTick(t=>t+1)}}/></>}
-    {page==="metrics"&&<><OpenInputs period={period}/><Metrics checklist={checklist} computed={rows.length>0} period={period} busy={busy} onCatalog={openCatalog} onSave={(standard_id,value,note)=>period&&void act(()=>api.putManualMetric({standard_id,contractor_id:period.contractor_id,service_month:period.service_month,metric_value:value,source_note:note}))}/></>}
+    {page==="metrics"&&<><OpenInputs period={period}/><Metrics checklist={checklist} computed={rows.length>0} period={period} busy={busy} onCatalog={openCatalog} onSave={(standard_id,value,note,parts)=>period&&void act(()=>api.putManualMetric({standard_id,contractor_id:period.contractor_id,service_month:period.service_month,metric_value:value,source_note:note,...parts}))}/></>}
     {page==="review"&&<ManagerReview period={period} rows={rows} totals={totals} busy={busy} onReview={(r,a,amount,reason)=>void act(()=>api.reviewPeriodAssessment(r.id,a,amount,reason))} onCompute={()=>period&&void act(()=>api.computeAssessmentPeriod(period.id))} onFinalize={()=>period&&void act(()=>api.finalizeAssessmentPeriod(period.id))}/>}
     {page==="caps"&&<Caps rows={rows} period={period}/>}
     {page==="issuance"&&<div className="assessment-stack"><ReportWorkflow period={period} busy={busy} act={act}/><Disputes period={period} rows={rows}/></div>}
@@ -204,7 +205,7 @@ return <section><div className="assessment-section-head"><div><h3>Occurrence Log
 // month scores by a typed figure, missing ones first, each entered in place.
 // The period's rows say which standards those are; before the first compute
 // the catalog's scored flag stands in.
-function Metrics({checklist:list,computed,period,busy,onCatalog,onSave}:{checklist:MetricsChecklist;computed:boolean;period:AssessmentPeriod|undefined;busy:boolean;onCatalog:()=>void;onSave:(id:string,value:number,note:string)=>void}){
+function Metrics({checklist:list,computed,period,busy,onCatalog,onSave}:{checklist:MetricsChecklist;computed:boolean;period:AssessmentPeriod|undefined;busy:boolean;onCatalog:()=>void;onSave:MetricSave}){
   if(!period)return <Empty>Open this Assessment Period to enter its figures.</Empty>;
   const canEnter=!["finalized","issued"].includes(period.status);
   return <section className="assessment-stack">
@@ -215,19 +216,37 @@ function Metrics({checklist:list,computed,period,busy,onCatalog,onSave}:{checkli
     {list.unscored.length>0&&<><p className="assessment-group-label">Not scored this month</p><div className="assessment-glance-meta" style={{margin:0}}>{list.unscored.map(standard=><span key={standard.id}>{standard.name}</span>)}<button type="button" className="assessment-link-button" onClick={onCatalog}>Change assignments in Standards</button></div></>}
   </section>;
 }
-function MetricRow({item,busy,onSave}:{item:{standard:ContractorPerformanceStandard;entry:ManualMetricEntry|undefined};busy:boolean;onSave:(id:string,value:number,note:string)=>void}){
+// What a saved figure hands back: the value the month scores on and, for a
+// ratio standard, the two quantities it was made from.
+export type MetricSave=(id:string,value:number,note:string,parts?:{numerator:number;denominator:number})=>void;
+export function MetricRow({item,busy,onSave}:{item:{standard:ContractorPerformanceStandard;entry:ManualMetricEntry|undefined};busy:boolean;onSave:MetricSave}){
   const {standard,entry}=item;
+  // Miles over road calls is entered as the two quantities; every other figure is typed whole.
+  const parts=ratioComponents(standard);
+  const part=(value:number|null|undefined)=>value===null||value===undefined?"":String(value);
   const [editing,setEditing]=useState(!entry),[value,setValue]=useState(entry?String(entry.metric_value):""),[note,setNote]=useState(entry?.source_note??"");
+  const [numerator,setNumerator]=useState(part(entry?.numerator)),[denominator,setDenominator]=useState(part(entry?.denominator));
   // Reset only when the saved entry itself changes, not on every reload that
   // hands back the same one - an edit in progress survives the refresh.
-  useEffect(()=>{setEditing(!entry);setValue(entry?String(entry.metric_value):"");setNote(entry?.source_note??"")},[entry?.id,entry?.entered_at]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(()=>{setEditing(!entry);setValue(entry?String(entry.metric_value):"");setNote(entry?.source_note??"");setNumerator(part(entry?.numerator));setDenominator(part(entry?.denominator))},[entry?.id,entry?.entered_at]); // eslint-disable-line react-hooks/exhaustive-deps
   const unit=standard.unit_label==="percent"?"%":standard.unit_label;
+  // The figure the two parts make, worked out as they are typed so the owner
+  // sees the value the month will score on before saving it.
+  const ratio=parts&&numerator!==""&&denominator!==""?ratioValue(Number(numerator),Number(denominator)):null;
+  const ready=parts?ratio!==null:value!=="";
+  const save=()=>{if(parts){if(ratio!==null)onSave(standard.id,ratio,note.trim(),{numerator:Number(numerator),denominator:Number(denominator)})}else onSave(standard.id,Number(value),note.trim())};
+  const saved=entry&&parts&&entry.numerator!==null&&entry.numerator!==undefined&&entry.denominator!==null&&entry.denominator!==undefined?ratioText(parts,entry.numerator,entry.denominator):null;
   return <div className="assessment-metric-row">
     <div><strong>{standard.name}</strong><small>{standardWords(standard,{unit:true})}</small></div>
-    {editing?<label className="assessment-measure"><input type="number" aria-label={`${standard.name} value`} placeholder="Value" value={value} disabled={busy} onChange={e=>setValue(e.target.value)}/><span>{unit}</span></label>:<div><strong>{entry?.metric_value.toLocaleString("en-US")}</strong> <span className="muted">{unit}</span></div>}
+    {editing?(parts?<div className="assessment-ratio">
+      <label className="assessment-measure"><input type="number" min={0} aria-label={`${standard.name} ${parts.numerator.label.toLowerCase()}`} placeholder={parts.numerator.label} value={numerator} disabled={busy} onChange={e=>setNumerator(e.target.value)}/><span>{parts.numerator.unit}</span></label>
+      <label className="assessment-measure"><input type="number" min={0} aria-label={`${standard.name} ${parts.denominator.label.toLowerCase()}`} placeholder={parts.denominator.label} value={denominator} disabled={busy} onChange={e=>setDenominator(e.target.value)}/><span>{parts.denominator.unit}</span></label>
+      <small>{ratio===null?`${parts.numerator.label} ÷ ${parts.denominator.label.toLowerCase()}`:`= ${ratio.toLocaleString("en-US")} ${unit}`}</small>
+    </div>:<label className="assessment-measure"><input type="number" aria-label={`${standard.name} value`} placeholder="Value" value={value} disabled={busy} onChange={e=>setValue(e.target.value)}/><span>{unit}</span></label>)
+    :<div><strong>{entry?.metric_value.toLocaleString("en-US")}</strong> <span className="muted">{unit}</span>{saved&&<small>{saved}</small>}</div>}
     {editing?<input className="assessment-metric-input" aria-label={`${standard.name} source of record`} placeholder="Source of record" value={note} disabled={busy} onChange={e=>setNote(e.target.value)}/>:<div>{entry?.source_note}</div>}
     <div className="muted" style={{fontSize:12}}>{entry?`${entry.entered_by} · ${formatDate(entry.entered_at)}`:standard.assigned_to||"No owner set"}</div>
-    <div className="assessment-metric-state">{entry?<span className="pill-sm pill-success">Entered</span>:<span className="pill-sm pill-warning">Missing</span>}{editing?<button type="button" className="btn-sm" disabled={busy||value===""||!note.trim()} onClick={()=>onSave(standard.id,Number(value),note.trim())}>Save</button>:<button type="button" className="btn-sm" disabled={busy} onClick={()=>setEditing(true)}>Change</button>}</div>
+    <div className="assessment-metric-state">{entry?<span className="pill-sm pill-success">Entered</span>:<span className="pill-sm pill-warning">Missing</span>}{editing?<button type="button" className="btn-sm" disabled={busy||!ready||!note.trim()} onClick={save}>Save</button>:<button type="button" className="btn-sm" disabled={busy} onClick={()=>setEditing(true)}>Change</button>}</div>
   </div>;
 }
 function ManagerReview({period,rows,totals,busy,onReview,onCompute,onFinalize}:{period:AssessmentPeriod|undefined;rows:PeriodKpiAssessment[];totals:AssessmentTotals;busy:boolean;onReview:(r:PeriodKpiAssessment,a:"confirmed"|"adjusted"|"waived",amount?:number,reason?:string)=>void;onCompute:()=>void;onFinalize:()=>void}){const {prompt}=useAppDialog();const adjust=(r:PeriodKpiAssessment)=>recommendAdjustment(prompt,r,onReview),waive=(r:PeriodKpiAssessment)=>recommendWaiver(prompt,r,onReview);if(!period)return <Empty>Select an Assessment Period to begin review.</Empty>;return <section><div className="assessment-section-head"><div><h3>Assessment Review</h3><p>Automation calculates a Proposed Penalty; a reviewer recommends treatment before a separate Issuing Authority finalizes it.</p></div><div><button disabled={busy||!["open","stale","reopened"].includes(period.status)} onClick={onCompute}>{period.status==="stale"?"Recompute":"Compute"}</button> <button disabled={busy||period.status!=="in_validation"||totals.pending>0} onClick={onFinalize}>Finalize {money(totals.final)}</button></div></div>{!rows.length?<Empty>Compute the period to create its review queue.</Empty>:rows.map(r=><div className="assessment-review-row" key={r.id}><div><strong>{r.name}</strong><small>{r.metric_display} · proposed {money(r.proposed_amount)}</small></div><span>{(()=>{const d=reviewDisplay(period.status,r);return `${d.heading}: ${d.value}`})()}</span><button disabled={busy||period.status!=="in_review"} onClick={()=>onReview(r,"confirmed")}>Recommend confirmation</button><button disabled={busy||period.status!=="in_review"} onClick={()=>void adjust(r)}>Recommend adjustment</button><button disabled={busy||period.status!=="in_review"} onClick={()=>void waive(r)}>Recommend waiver</button></div>)}</section>}

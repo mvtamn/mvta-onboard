@@ -1700,7 +1700,12 @@ export interface ComplianceOccurrence {
   penalty_amount_min?: number | null;
   penalty_amount_max?: number | null;
 }
-export interface ManualMetricEntry { id: string; standard_id: string; standard_code: string; standard_name: string; contractor_id: string; contractor_name: string; service_month: string; metric_value: number; source_note: string; entered_by: string; entered_at: string }
+export interface ManualMetricEntry {
+  id: string; standard_id: string; standard_code: string; standard_name: string; contractor_id: string; contractor_name: string;
+  service_month: string; metric_value: number; source_note: string; entered_by: string; entered_at: string;
+  /** The two quantities a ratio standard's figure was made from (miles over road calls); null for a figure typed whole. */
+  numerator?: number | null; denominator?: number | null;
+}
 // A band in a standard's tier ladder. agreement_id NULL is the agency catalog
 // default; a row naming an agreement overrides the whole ladder for that
 // agreement (migration 102 - an override governs all bands or none).

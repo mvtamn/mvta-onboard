@@ -1444,7 +1444,7 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       const qs = new URLSearchParams({ service_month: serviceMonth }); if (scope.contractor_id) qs.set("contractor_id", scope.contractor_id); if (scope.period_id) qs.set("period_id", scope.period_id);
       return request<{ open: OpenManualInput[]; service_month: string }>(`/api/manual-metrics/open?${qs}`, {}, true);
     },
-    putManualMetric(input: { standard_id: string; contractor_id: string; service_month: string; metric_value: number; source_note: string }) {
+    putManualMetric(input: { standard_id: string; contractor_id: string; service_month: string; metric_value: number; source_note: string; numerator?: number; denominator?: number }) {
       return request<{ id: string }>("/api/manual-metrics", { method: "PUT", body: JSON.stringify(input) }, true);
     },
 

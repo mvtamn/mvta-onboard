@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import {
+  validateManualMetric,
   validateCreateMessage,
   validatePrepareSuggestedAlert,
   validateMissedTripValidation,
@@ -662,4 +663,40 @@ test("detour intake rejection requires decision notes", () => {
 test("detour intake can return to Operations for missing information", () => {
   assert.deepStrictEqual(validateReviewDetourIntake({ status: "needs_information", decision_notes: "Add the affected stop." }), []);
   assert.ok(validateReviewDetourIntake({ status: "needs_information" }).some((e) => e.includes("decision_notes")));
+});
+
+const metric = (over: Record<string, unknown> = {}) => ({
+  standard_id: "11111111-1111-4111-8111-111111111111", contractor_id: "22222222-2222-4222-8222-222222222222",
+  service_month: "202608", metric_value: 13300, source_note: "M5 road call report", ...over,
+});
+
+test("validateManualMetric accepts a figure typed whole", () => {
+  assert.deepStrictEqual(validateManualMetric(metric()), []);
+});
+
+test("validateManualMetric accepts miles over road calls when the figure is their quotient to the whole unit", () => {
+  assert.deepStrictEqual(validateManualMetric(metric({ numerator: 412300, denominator: 31 })), []);
+  assert.deepStrictEqual(validateManualMetric(metric({ metric_value: 412300, numerator: 412300, denominator: 0 })), []);
+});
+
+test("validateManualMetric rejects a figure that is not what its parts make", () => {
+  assert.deepStrictEqual(
+    validateManualMetric(metric({ metric_value: 12000, numerator: 412300, denominator: 31 })),
+    ["metric_value must be numerator divided by denominator to the whole unit, or the numerator when the denominator is zero"],
+  );
+});
+
+test("validateManualMetric wants both parts or neither", () => {
+  assert.deepStrictEqual(validateManualMetric(metric({ numerator: 412300 })), ["numerator and denominator are entered together or not at all"]);
+  assert.deepStrictEqual(validateManualMetric(metric({ numerator: 412300, denominator: null })), ["numerator and denominator are entered together or not at all"]);
+});
+
+test("validateManualMetric rejects a negative or non-numeric part", () => {
+  assert.deepStrictEqual(validateManualMetric(metric({ numerator: -1, denominator: 31 })), ["numerator and denominator must be finite numbers of zero or more"]);
+  assert.deepStrictEqual(validateManualMetric(metric({ numerator: "412300", denominator: 31 })), ["numerator and denominator must be finite numbers of zero or more"]);
+});
+
+test("validateManualMetric still requires the figure itself", () => {
+  assert.deepStrictEqual(validateManualMetric(metric({ metric_value: Number.NaN })), ["standard_id, contractor_id, service_month, finite metric_value, and source_note are required"]);
+  assert.deepStrictEqual(validateManualMetric(metric({ source_note: "  " })), ["standard_id, contractor_id, service_month, finite metric_value, and source_note are required"]);
 });

@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.182] - 2026-09-09
+
+- **Average Miles Between Road Calls is entered as the two figures it is made from.** The monthly metrics checklist asked for the finished quotient, so the owner divided M5's miles by its road-call count at their desk and typed the result, and the issued report carried a figure the contractor could not check. `MetricRow` now asks for the miles the fleet operated and the chargeable road calls it had, works the figure out as they are typed, and saves all three; the saved row shows its working ("412,300 miles ÷ 31 road calls"). `modules/assessment/ratioComponents.ts` (tests) says which standards are entered this way - one today, keyed by code, because the catalog has no column for it and a schema change for a single case would be a guess. `ManualMetricEntries.numerator` and `denominator` have existed since migration 030 and the PUT handler already wrote them; nothing sent them.
+- **A month with no road calls records the miles it ran.** There is no quotient to take, and the miles operated are the floor on the distance between failures: the fleet went at least that far. It scores as meeting any target a contract states, which is what a month with no failures deserves, and the row says "412,300 miles, no road calls" rather than pretending to a division.
+- **`PUT /api/manual-metrics` refuses a figure that is not what its parts make.** `validateManualMetric` (tests) requires the two parts together or not at all, finite and zero or more, and the stored value to be their quotient to the whole unit - or the numerator when the denominator is zero. The working on a report always adds up.
+
 ## [1.5.181] - 2026-09-09
 
 - **A standard's detail page can be opened without a mouse.** The scorecard row was `<tr className="assessment-clickable" onClick={...}>` and nothing more - no button, no `role`, no `tabindex` - so the drill-in was a pointer-only affordance. A reviewer working by keyboard, or reading with a screen reader, could not open any standard at all: the row did not announce itself as actionable and could not be focused. The only other route was the picker on the detail page, which cannot be reached without first opening a detail page. Found while verifying the module on dev, where driving the drill-in needed a synthetic DOM click because nothing else could reach it.
