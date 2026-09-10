@@ -103,3 +103,17 @@ describe("ScoreTable drill-in", () => {
     }
   });
 });
+
+describe("ScoreTable working", () => {
+  afterEach(cleanup);
+
+  it("shows how a figure made from parts was made, under the figure", () => {
+    view({ rows: [row({ code: "AVG_MILES_ROAD_CALLS", name: "Average Miles Between Road Calls", standard_type: "threshold", metric_display: "13,300 miles", metric_working: "412,300 miles ÷ 31 road calls" })] });
+    expect(screen.getByText("412,300 miles ÷ 31 road calls")).toBeInTheDocument();
+  });
+
+  it("adds nothing under a figure typed whole", () => {
+    view();
+    expect(screen.queryByText(/÷/)).toBeNull();
+  });
+});

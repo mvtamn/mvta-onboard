@@ -105,3 +105,20 @@ test("an occurrence excluded by a documented outage names the system", () => {
   ] } });
   assert.deepEqual(model.occurrences.map(o => ({ counted: o.counted, why: o.exclusionReason })), [{ counted: false, why: "System outage: Avail CAD AVL" }]);
 });
+
+test("a figure made from parts carries its working; one typed whole carries none", () => {
+  const model = buildReportModel({ reportId: "r1", type: "final", version: 1, period, rows: [
+    item({ name: "Average Miles Between Road Calls", metric_display: "13,300 miles", metric_working: "412,300 miles ÷ 31 road calls" }),
+    item({ name: "Operator Conduct Complaints", metric_display: "9 occurrences" }),
+  ], evidence: [], issuedAt: null, deadline: null });
+  assert.equal(model.assessments[0].metricWorking, "412,300 miles ÷ 31 road calls");
+  assert.equal(model.assessments[1].metricWorking, null);
+});
+
+test("a Not Assessable item shows no working, since it has no figure", () => {
+  const model = buildReportModel({ reportId: "r1", type: "final", version: 1, period, rows: [
+    item({ assessment_outcome: "not_assessable", metric_display: "13,300 miles", metric_working: "412,300 miles ÷ 31 road calls" }),
+  ], evidence: [], issuedAt: null, deadline: null });
+  assert.equal(model.assessments[0].metricDisplay, "Not Assessable");
+  assert.equal(model.assessments[0].metricWorking, null);
+});

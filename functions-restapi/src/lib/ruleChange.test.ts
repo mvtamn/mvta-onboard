@@ -75,7 +75,7 @@ test("a catalog-wide change is scoped to nothing but the drafting state", async 
 
 const SCOPE = {
   scoped: true, snapshotsResolver: true, penaltyScaling: true,
-  snapshotsSeverity: true, windowModes: true, categorised: true, rulesLock: true,
+  snapshotsSeverity: true, windowModes: true, categorised: true, rulesLock: true, metricWorking: true,
 };
 
 test("refreshing a period's rules replaces the snapshot rather than adding to it", () => {
@@ -103,7 +103,7 @@ test("the rule-set hash is rewritten from the rules that will be applied", () =>
 test("the refresh only names columns the database has", () => {
   const before102 = {
     scoped: false, snapshotsResolver: false, penaltyScaling: false,
-    snapshotsSeverity: false, windowModes: false, categorised: false, rulesLock: true,
+    snapshotsSeverity: false, windowModes: false, categorised: false, rulesLock: true, metricWorking: false,
   };
   const query = periodRulesRefreshSql(before102);
   // The same guarantee every other composed statement gives: an unknown column

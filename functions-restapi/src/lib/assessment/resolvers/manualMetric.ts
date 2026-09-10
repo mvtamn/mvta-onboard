@@ -1,4 +1,5 @@
 import { sql } from "../../db";
+import { ratioWorking } from "../display";
 import type { ResolvedMeasurement, ResolverContext } from "./types";
 
 // The current hand-entered figure for a standard nothing measures for us.
@@ -11,8 +12,8 @@ export async function resolveManualMetric(context: ResolverContext, standardId: 
   request.input("standard_id", sql.UniqueIdentifier, standardId);
   request.input("contractor", sql.UniqueIdentifier, context.contractorId);
   request.input("month", sql.Char(6), context.month);
-  const result = await request.query<{ metric_value: number; unit_count: number | null; id: string }>(`
-    SELECT TOP 1 metric_value, unit_count, id FROM ManualMetricEntries
+  const result = await request.query<{ metric_value: number; unit_count: number | null; numerator: number | null; denominator: number | null; id: string }>(`
+    SELECT TOP 1 metric_value, unit_count, numerator, denominator, id FROM ManualMetricEntries
     WHERE standard_id=@standard_id AND contractor_id=@contractor AND service_month=@month AND superseded_by IS NULL
     ORDER BY entered_at DESC
   `);
@@ -29,10 +30,15 @@ export async function resolveManualMetric(context: ResolverContext, standardId: 
   }
   const value = Number(row.metric_value);
   const quantity = Number(row.unit_count ?? row.metric_value ?? 0);
+  // A ratio standard's entry carries the two quantities it was divided from
+  // (v1.5.182); the report shows them under the figure. Older entries, and
+  // standards typed whole, carry none.
+  const working = ratioWorking(context.standardCode, row.numerator, row.denominator);
   return {
     metricValue: value, rawMetricValue: value, excludedMetricValue: null,
     rawQuantity: quantity, excludedQuantity: 0, quantity,
     occurrenceCount: Number(row.unit_count ?? 0), completeness: 100,
     sourceRefs: [`ManualMetricEntries:${row.id}`],
+    ...(working ? { working } : {}),
   };
 }

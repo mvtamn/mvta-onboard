@@ -6,6 +6,8 @@ import { isHandEntered, MEASUREMENT_SOURCE_LABELS, normalizeMeasurementSource } 
 export interface ReportPeriodRow { contractor_name: string; service_month: string; is_partial: boolean | null; proposed_total: number | null; final_total: number | null }
 export interface ReportItemRow {
   name: string; standard_type: string; metric_display: string | null; target_display: string | null; tier_label: string; assessment_outcome: string | null;
+  /** How a figure made from parts was made, from migration 115 on; absent or null before it and for a figure typed whole. */
+  metric_working?: string | null;
   occurrence_count: number; base_amount: number; escalation_multiplier: number; proposed_amount: number;
   recommended_action: string | null; recommended_amount: number | null; recommendation_reason: string | null;
   manager_action: string | null; manager_reason: string | null; final_amount: number | null; binding_amount: number | null; binding_reason: string | null;
@@ -58,6 +60,7 @@ export function buildReportModel(input: { reportId: string; type: "preliminary" 
     return {
       name: a.name, standardType: a.standard_type,
       metricDisplay: notAssessable ? "Not Assessable" : a.metric_display ?? "",
+      metricWorking: notAssessable ? null : a.metric_working ?? null,
       targetDisplay: a.target_display ?? "",
       tierLabel: notAssessable ? "Not Assessable" : a.tier_label,
       occurrenceCount: a.occurrence_count,

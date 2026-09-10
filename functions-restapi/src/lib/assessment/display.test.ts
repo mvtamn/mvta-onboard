@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatQuantity, metricDisplay, targetDisplay, type DisplayStandard } from "./display";
+import { formatQuantity, metricDisplay, ratioWorking, targetDisplay, type DisplayStandard } from "./display";
 
 const threshold = (over: Partial<DisplayStandard> = {}): DisplayStandard => ({
   standard_type: "threshold", direction: "higher_is_better", unit_label: "percent", target_value: null, target_display: null, ...over,
@@ -45,4 +45,18 @@ test("without a stated target the Meets band's range stands in; without that, it
   assert.equal(targetDisplay(threshold(), tiers), "85% or above");
   assert.equal(targetDisplay(threshold({ unit_label: "occurrences" }), [{ tier_label: "meets", bound_low: 0, bound_high: 11 }]), "0 occurrences to under 11 occurrences");
   assert.equal(targetDisplay(threshold(), []), "No target set");
+});
+
+test("the working behind miles between road calls names both quantities", () => {
+  assert.equal(ratioWorking("AVG_MILES_ROAD_CALLS", 412300, 31), "412,300 miles ÷ 31 road calls");
+});
+
+test("a month with no road calls says so instead of dividing by nothing", () => {
+  assert.equal(ratioWorking("AVG_MILES_ROAD_CALLS", 412300, 0), "412,300 miles, no road calls");
+});
+
+test("no working for a standard typed whole, or an entry saved without its parts", () => {
+  assert.equal(ratioWorking("OPERATOR_CONDUCT", 9, 1), null);
+  assert.equal(ratioWorking("AVG_MILES_ROAD_CALLS", null, null), null);
+  assert.equal(ratioWorking("AVG_MILES_ROAD_CALLS", 412300, undefined), null);
 });

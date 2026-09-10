@@ -278,6 +278,32 @@ export function validateManagerAssessmentAction(body: UnknownBody): string[] {
   return errors;
 }
 
+// A hand-entered monthly figure. The two parts are optional and travel
+// together: a ratio standard (the console knows which) sends the quantities
+// it divided, and the stored figure has to be the one they make, to the whole
+// unit, or the issued report would show working that does not add up. A
+// month with no road calls is legitimate: its figure is then the miles run.
+export function validateManualMetric(body: UnknownBody): string[] {
+  const errors: string[] = [];
+  const value = body.metric_value;
+  if (
+    !isGuid(body.standard_id) || !isGuid(body.contractor_id) || !isServiceMonth(body.service_month) ||
+    typeof value !== "number" || !Number.isFinite(value) ||
+    typeof body.source_note !== "string" || !body.source_note.trim()
+  ) errors.push("standard_id, contractor_id, service_month, finite metric_value, and source_note are required");
+  const given = (part: unknown) => part !== undefined && part !== null;
+  const n = body.numerator, d = body.denominator;
+  if (given(n) !== given(d)) errors.push("numerator and denominator are entered together or not at all");
+  else if (given(n)) {
+    if (typeof n !== "number" || !Number.isFinite(n) || n < 0 || typeof d !== "number" || !Number.isFinite(d) || d < 0) {
+      errors.push("numerator and denominator must be finite numbers of zero or more");
+    } else if (typeof value === "number" && Math.abs(value - (d === 0 ? n : n / d)) > 0.5) {
+      errors.push("metric_value must be numerator divided by denominator to the whole unit, or the numerator when the denominator is zero");
+    }
+  }
+  return errors;
+}
+
 export function validateComplianceOccurrence(body: UnknownBody): string[] {
   const errors: string[] = [];
   if (!isGuid(body.standard_id)) errors.push("standard_id must be a GUID");

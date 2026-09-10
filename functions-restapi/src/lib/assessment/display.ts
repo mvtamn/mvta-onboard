@@ -35,6 +35,29 @@ export function formatQuantity(value: number, unit: string | null): string {
   return noun ? `${text} ${value === 1 ? noun[0] : noun[1]}` : `${text} ${unit}`;
 }
 
+// The standards whose hand-entered figure is one quantity over another, and
+// what the two are called. The console's modules/assessment/ratioComponents.ts
+// asks for the same two figures under the same names; the two lists are kept
+// by hand because the API does not import console code.
+const RATIO_COMPONENTS: Record<string, { numerator: string; denominator: string }> = {
+  AVG_MILES_ROAD_CALLS: { numerator: "miles", denominator: "road calls" },
+};
+
+const whole = (value: number) => value.toLocaleString("en-US", { maximumFractionDigits: 0 });
+
+/**
+ * The working behind a ratio standard's figure: "412,300 miles ÷ 31 road
+ * calls", or "412,300 miles, no road calls" when there was nothing to divide
+ * by. Null for a standard entered whole or an entry saved without its parts.
+ */
+export function ratioWorking(standardCode: string, numerator: number | null | undefined, denominator: number | null | undefined): string | null {
+  const parts = RATIO_COMPONENTS[standardCode];
+  if (!parts || numerator === null || numerator === undefined || denominator === null || denominator === undefined) return null;
+  if (!Number.isFinite(numerator) || !Number.isFinite(denominator)) return null;
+  if (denominator === 0) return `${whole(numerator)} ${parts.numerator}, no ${parts.denominator}`;
+  return `${whole(numerator)} ${parts.numerator} ÷ ${whole(denominator)} ${parts.denominator}`;
+}
+
 /** The month's figure, or "No data" when nothing measured it. */
 export function metricDisplay(metricValue: number | null, standard: Pick<DisplayStandard, "standard_type" | "unit_label">, occurrenceCount: number): string {
   if (standard.standard_type === "occurrence") return formatQuantity(occurrenceCount, standard.unit_label ?? "occurrences");
