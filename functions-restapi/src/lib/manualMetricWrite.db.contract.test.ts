@@ -40,8 +40,11 @@ interface Row { id: string; metric_value: number; numerator: number | null; deno
 
 async function rows(pool: sql.ConnectionPool, standardId: string): Promise<Row[]> {
   const r = pool.request(); r.input("standard", sql.UniqueIdentifier, standardId);
-  return (await r.query<Row>(`SELECT id,metric_value,numerator,denominator,source_note,superseded_by FROM ManualMetricEntries WHERE standard_id=@standard AND contractor_id='${CONTRACTOR}' AND service_month='202608' ORDER BY entered_at`)).recordset;
+  // SQL Server hands uniqueidentifiers back upper-case; crypto.randomUUID() is lower-case. Compare in one case.
+  return (await r.query<Row>(`SELECT id,metric_value,numerator,denominator,source_note,superseded_by FROM ManualMetricEntries WHERE standard_id=@standard AND contractor_id='${CONTRACTOR}' AND service_month='202608' ORDER BY entered_at`)).recordset
+    .map(row => ({ ...row, id: row.id.toLowerCase(), superseded_by: row.superseded_by?.toLowerCase() ?? null }));
 }
+const lower = (value: string | null) => value?.toLowerCase() ?? null;
 
 async function write(pool: sql.ConnectionPool, standardId: string, figure: { metricValue: number; numerator?: number; denominator?: number; sourceNote: string }) {
   const tx = new sql.Transaction(pool); await tx.begin();
@@ -70,11 +73,11 @@ test("changing a hand-entered figure against real SQL", { skip: !connectionStrin
     await t.test("a second entry replaces the first: one live row, the old one pointing at the new", async () => {
       const [first] = await rows(pool, standardId);
       const second = await write(pool, standardId, { metricValue: 13300, numerator: 412300, denominator: 31, sourceNote: "M5 road call report" });
-      assert.equal(second.supersededId, first.id);
+      assert.equal(lower(second.supersededId), first.id);
       const all = await rows(pool, standardId);
       assert.equal(all.length, 2);
-      const old = all.find(r => r.id === first.id)!, live = all.find(r => r.id === second.id)!;
-      assert.equal(old.superseded_by, second.id, "the first entry records what replaced it");
+      const old = all.find(r => r.id === first.id)!, live = all.find(r => r.id === lower(second.id))!;
+      assert.equal(old.superseded_by, lower(second.id), "the first entry records what replaced it");
       assert.equal(live.superseded_by, null, "the second entry is live, not left pointing at itself");
       assert.equal(Number(live.metric_value), 13300);
       assert.equal(Number(live.numerator), 412300);
@@ -86,9 +89,9 @@ test("changing a hand-entered figure against real SQL", { skip: !connectionStrin
       const before = await rows(pool, standardId);
       const live = before.find(r => r.superseded_by === null)!;
       const third = await write(pool, standardId, { metricValue: 412300, numerator: 412300, denominator: 0, sourceNote: "M5 road call report, corrected" });
-      assert.equal(third.supersededId, live.id);
+      assert.equal(lower(third.supersededId), live.id);
       const after = await rows(pool, standardId);
-      assert.deepEqual(after.filter(r => r.superseded_by === null).map(r => r.id), [third.id]);
+      assert.deepEqual(after.filter(r => r.superseded_by === null).map(r => r.id), [lower(third.id)]);
     });
   } finally {
     await pool.close();
