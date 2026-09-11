@@ -27,6 +27,8 @@ import type {
   CreateReasonCodeInput,
   DecisionMatrixDiagnostics,
   DecisionMatrixSurfaceDiagnostics,
+  DecisionMatrixLibraryEntry,
+  DecisionMatrixLibraryDiagnostics,
   Detour,
   DetourCommunication,
   DetourContractorNotification,
@@ -599,6 +601,16 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
 
     checkDecisionMatrixProcedureReferences(procedureId: string, revision: number) {
       return request<{ document_references: Array<{ reference_id: string; health_status: string; reason: string | null }> }>(`/api/manage/decision-matrix/procedures/${encodeURIComponent(procedureId)}/revisions/${revision}/document-references/check`, { method: "POST" }, { delegatedSharePoint: true });
+    },
+
+    /** Browse the one approved SharePoint library. `path` is relative to its root; omit it for the root. */
+    getDecisionMatrixLibrary(path?: string) {
+      const query = new URLSearchParams();
+      if (path) query.set("path", path);
+      const suffix = query.toString() ? `?${query.toString()}` : "";
+      return request<{ entries: DecisionMatrixLibraryEntry[]; diagnostics: DecisionMatrixLibraryDiagnostics }>(
+        `/api/manage/decision-matrix/library${suffix}`, {}, true,
+      );
     },
 
     getDecisionMatrixLegacyCandidates() {

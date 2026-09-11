@@ -105,7 +105,7 @@ export async function browseDecisionMatrixLibrary(request: HttpRequest, context:
         status: 200,
         jsonBody: {
           entries: [],
-          diagnostics: { configured: true, outcome: listing.outcome, path: listing.path, reason: listing.reason },
+          diagnostics: { configured: true, outcome: listing.outcome, path: listing.path, reason: listing.reason, site_id: config.site_id, drive_id: config.drive_id },
         },
       };
     }
@@ -118,6 +118,12 @@ export async function browseDecisionMatrixLibrary(request: HttpRequest, context:
           outcome: "ok",
           path: listing.path,
           reason: null,
+          // The site and drive are configuration, so the picker cannot know
+          // them and a chosen document needs them. Reporting which library was
+          // read is also the only way a reader can tell which one they are
+          // looking at.
+          site_id: config.site_id,
+          drive_id: config.drive_id,
           folder_count: listing.entries.filter((entry) => entry.kind === "folder").length,
           file_count: listing.entries.filter((entry) => entry.kind === "file").length,
         },

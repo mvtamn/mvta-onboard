@@ -228,6 +228,38 @@ export interface DecisionMatrixDiagnostics {
  * the migration that would fix it. The server supplies the migration number
  * because that is where the table lists live.
  */
+/** One entry in the approved SharePoint library the Procedure picker browses. */
+export interface DecisionMatrixLibraryEntry {
+  item_id: string;
+  name: string;
+  kind: "folder" | "file";
+  /** Relative to the library root, and what to send back as `path` to descend. */
+  path: string;
+  mime_type: string | null;
+  size_bytes: number | null;
+  /** The eTag a document reference stores as its expected version. */
+  etag: string | null;
+  last_modified_at: string | null;
+  child_count: number | null;
+  web_url: string | null;
+}
+
+/**
+ * Why a listing is what it is. `ok` and an empty list is a real answer - an
+ * empty folder - and is deliberately not the same as any of the others.
+ */
+export interface DecisionMatrixLibraryDiagnostics {
+  configured: boolean;
+  outcome: "ok" | "not_configured" | "forbidden" | "not_found" | "failed";
+  path: string;
+  reason: string | null;
+  /** Which library was read. Configuration on the server, so the picker learns it here. */
+  site_id?: string;
+  drive_id?: string;
+  folder_count?: number;
+  file_count?: number;
+}
+
 export interface DecisionMatrixSurfaceDiagnostics {
   /** False when this surface's tables are absent: not connected, not an outage. */
   table_ready: boolean;
