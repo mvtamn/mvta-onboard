@@ -140,6 +140,12 @@ module restApiFunction 'modules/functionapp.bicep' = {
     frontDoorId: frontDoorId
     allowedCorsOrigins: allowedCorsOrigins
     serviceBusNamespace: 'sb-mvta-onboard-${environment}'
+    // The REST API redirects a rider who clicked the confirmation link to the
+    // rider app's landing page. It falls back to a same-host path when this is
+    // unset, so a missing value is not an outage - but naming the app
+    // explicitly keeps that working if the two are ever served from different
+    // hosts. Same parameter the dispatch app uses to BUILD the link.
+    riderAppBaseUrl: riderAppBaseUrl
     includeSpareApiKey: true
     complianceReportsStorageAccountName: take('stmvtacompreport${environment}${cleanSuffix}', 24)
     spareMissedTripsEnabled: spareMissedTripsEnabled

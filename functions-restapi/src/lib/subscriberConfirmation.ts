@@ -1,5 +1,7 @@
+import type { InvocationContext } from "@azure/functions";
 import type { Transaction } from "mssql";
 import { sql } from "./db";
+import { issueConfirmation, type IssuedConfirmation } from "./confirmationTokens";
 
 // The double opt-in state machine: turning a token a rider presents back to us
 // into a confirmed channel, and recording an opt-out.
@@ -321,4 +323,97 @@ export async function optOut(
   );
 
   return { changed: result.recordset[0]?.changed ?? 0 };
+}
+
+/** A rider may ask for another token this often, per channel. */
+export const RESEND_COOLDOWN_MS = 2 * 60 * 1000;
+
+export type ResendOutcome =
+  /** A fresh token was written; the caller must publish it after committing. */
+  | "issued"
+  /** Something was sent to this contact within the cooldown. */
+  | "too_soon"
+  /** No subscriber with this contact has that channel awaiting confirmation. */
+  | "nothing_to_send";
+
+export interface ResendResult {
+  outcome: ResendOutcome;
+  subscriberId?: string;
+  issued?: IssuedConfirmation;
+}
+
+/**
+ * Issue a replacement token for a contact that is still awaiting confirmation.
+ *
+ * A rider whose code never arrived, or who let it expire, has no other way
+ * back in - the opt-in form would create a second subscriber rather than
+ * re-sending to the first. So this path is required. It is also, unbounded, a
+ * free SMS-sending oracle pointed at any number its caller likes, so it is
+ * capped by time rather than by a counter: the cap has to apply to a caller
+ * who never sees the result, and a per-token attempt count does not, since a
+ * new token would reset it.
+ *
+ * The cooldown is measured from the last token ISSUED for that channel,
+ * whatever became of it. Measuring from the live one only would let a caller
+ * alternate resend and confirm-with-a-wrong-code to keep the queue busy.
+ *
+ * SUPERSEDE, THEN ISSUE. The old token stops working the moment the new one
+ * exists; two live codes for one number would mean the attempt cap could be
+ * dodged by guessing against whichever row a lookup happened to find first.
+ * The order also matters to UX_SubConfirm_Channel_Token, which is filtered to
+ * live rows: issuing first leaves two live rows for the channel, and a redraw
+ * that collided with the token being retired would fail against an index entry
+ * that was about to disappear.
+ *
+ * Only a channel in `pending_confirmation` is resent to. An unsubscribed
+ * channel must not be revived by asking, and a confirmed one has nothing left
+ * to prove.
+ */
+export async function resendConfirmation(
+  tx: Transaction,
+  channel: Channel,
+  contact: string,
+  context?: InvocationContext,
+): Promise<ResendResult> {
+  const matchOn = channel === "sms" ? "phone_number" : "email";
+  const statusColumn = channel === "sms" ? "sms_status" : "email_status";
+
+  // The subscriber to resend to, and when this channel last had a token sent.
+  // Duplicate rows for one contact are possible until they are merged on
+  // confirmation (increment 4); the newest signup is the one the rider is
+  // waiting on, and resending to every duplicate would multiply the send.
+  const find = new sql.Request(tx);
+  find.input("contact", sql.NVarChar(320), contact);
+  find.input("channel", sql.NVarChar(10), channel);
+  const found = await find.query<{ subscriber_id: string; last_issued_at: Date | null }>(
+    `SELECT TOP 1 s.subscriber_id,
+            (SELECT MAX(c.created_at) FROM SubscriberConfirmations c
+              WHERE c.subscriber_id = s.subscriber_id AND c.channel = @channel) AS last_issued_at
+       FROM Subscribers s WITH(UPDLOCK, HOLDLOCK)
+      WHERE s.${matchOn} = @contact
+        AND s.${statusColumn} = 'pending_confirmation'
+      ORDER BY last_issued_at DESC`,
+  );
+  const row = found.recordset[0];
+  if (!row) return { outcome: "nothing_to_send" };
+
+  const lastIssued = row.last_issued_at;
+  if (lastIssued && Date.now() - lastIssued.getTime() < RESEND_COOLDOWN_MS) {
+    return { outcome: "too_soon", subscriberId: row.subscriber_id };
+  }
+
+  const supersede = new sql.Request(tx);
+  supersede.input("id", sql.UniqueIdentifier, row.subscriber_id);
+  supersede.input("channel", sql.NVarChar(10), channel);
+  await supersede.query(
+    `UPDATE SubscriberConfirmations
+        SET superseded_at = SYSUTCDATETIME()
+      WHERE subscriber_id = @id
+        AND channel = @channel
+        AND confirmed_at IS NULL
+        AND superseded_at IS NULL`,
+  );
+
+  const issued = await issueConfirmation(tx, row.subscriber_id, channel, context);
+  return { outcome: "issued", subscriberId: row.subscriber_id, issued };
 }

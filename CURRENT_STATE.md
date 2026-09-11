@@ -269,20 +269,28 @@ list.
 
 ### 7.2 Double opt-in cannot be completed
 
-Subscription creation and confirmation-message delivery are implemented, but
-the callback endpoints are not:
+Subscription creation and confirmation-message delivery are implemented. The
+rider-facing callbacks now exist (1.5.191, increment 3):
 
-- SMS confirmation-code submission.
-- Email confirmation-link handling.
-- Confirmation-code resend.
-- Inbound SMS processing.
-- `STOP` opt-out handling.
-- `HELP` response handling.
+- Email confirmation-link handling — `GET /api/subscribers/confirm-email`.
+- SMS confirmation-code submission — `POST /api/subscribers/confirm-sms`.
+- Confirmation-code resend — `POST /api/subscribers/resend`.
 
-The email sender currently generates a link to
-`/api/subscribers/confirm-email`, but no matching REST function exists. The SMS
-message tells the rider to reply with the code, but no inbound webhook exists.
-New subscribers therefore remain `pending_confirmation`.
+Still missing:
+
+- Inbound SMS processing (increment 5).
+- `STOP` opt-out handling (increment 5). The state machine records one; nothing
+  receives one yet.
+- The rider landing page the email link redirects to (increment 6). Until it
+  exists, a confirmed rider is redirected to `/subscribe/confirmed`, which the
+  rider app does not route — the confirmation itself has already been written
+  by then, but the rider sees an empty page.
+- `HELP` response handling needs no code: ACS answers mandatory keywords from
+  the toll-free campaign brief.
+
+A subscriber can therefore now reach `confirmed`, by email link or by typing
+the texted code into the page — but the SMS channel cannot be exercised end to
+end until a toll-free number is verified (requested 2026-09-11; see HANDOFF.md).
 
 Migration 117 (2026-09-11) is the groundwork, not the fix: it gives each channel
 its own confirmation state, adds the attempt timestamp and opt-out reason the
