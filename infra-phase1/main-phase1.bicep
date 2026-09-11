@@ -24,6 +24,9 @@ param decisionMatrixLibrarySiteId string = ''
 @description('Graph drive id of that library. Both this and the site id must be set for browsing to be configured.')
 param decisionMatrixLibraryDriveId string = ''
 
+@description('Application (client) id of the dedicated SharePoint document-reading registration. Empty falls back to the API application, which only dev has granted. Its secret is read from Key Vault secret decision-matrix-health-client-secret and never appears here.')
+param decisionMatrixHealthClientId string = ''
+
 @description('Front Door ID (FrontDoorId GUID). When set, Function App inbound is locked to this Front Door only. Empty leaves inbound open (roll out deliberately - see functionapp.bicep).')
 param frontDoorId string = ''
 
@@ -131,6 +134,7 @@ module restApiFunction 'modules/functionapp.bicep' = {
     aadClientId: aadClientId
     decisionMatrixLibrarySiteId: decisionMatrixLibrarySiteId
     decisionMatrixLibraryDriveId: decisionMatrixLibraryDriveId
+    decisionMatrixHealthClientId: decisionMatrixHealthClientId
     frontDoorId: frontDoorId
     allowedCorsOrigins: allowedCorsOrigins
     serviceBusNamespace: 'sb-mvta-onboard-${environment}'
