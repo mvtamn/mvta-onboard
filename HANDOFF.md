@@ -405,6 +405,22 @@ lesson 7 above.
   holds Contributor on acs-mvta-onboard-dev (ACS has no data-plane RBAC role;
   acs.ts authenticates with DefaultAzureCredential). Email delivery is fully
   provisioned in dev; it activates when the PR's dispatch code deploys.
+- REQUESTED 2026-09-11, PENDING CARRIER: a toll-free SMS number on
+  `acs-mvta-onboard-dev`. Toll-free verification runs roughly five to six
+  weeks at the carriers, so treat a missing number as expected until about
+  mid-October 2026, not as a defect. Nothing about rider SMS can be tested end
+  to end until it clears: no number means no `ACS_SMS_FROM`, and no
+  `ACS_SMS_FROM` means no send and no inbound STOP handling.
+  When the number is granted, the ONLY supported way to configure it is
+  `acsSmsFrom` in `infra-phase1/parameters/phase1-dev.parameters.json` ->
+  `functionapp.bicep` -> the dispatch app's `ACS_SMS_FROM` (declared empty on
+  dev by PR #272). Do NOT set it with `az functionapp config appsettings set`:
+  that block is the complete desired state and the next routine infra deploy
+  erases anything set imperatively, which is exactly how `ACS_ENDPOINT` was
+  lost on 2026-09-05. Losing a setting that took six weeks of carrier
+  verification to earn is not a recoverable mistake.
+  Email is unaffected and already provisioned; every rider-alert increment
+  except the SMS send path can be built and verified on email alone.
 - DEFERRED BY OWNER (2026-09-05): Teams delivery for detour communications.
   The owner plans to implement it last. The app setting
   `TEAMS_DETOUR_WEBHOOK_URL` is already declared as a Key Vault reference to
