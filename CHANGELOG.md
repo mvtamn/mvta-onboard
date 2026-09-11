@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.188] - 2026-09-11
+
+- **A rider typing their own mobile number could not subscribe.** `POST /api/subscribers` accepts phone numbers only in E.164 (`/^\+[1-9]\d{7,14}$/`), and the opt-in form sent whatever was typed. Every ordinary way of writing a number - `9523883275`, `952-388-3275`, `(952) 388-3275`, `1 952 388 3275` - was a 400, and so was the form's own placeholder, `+1 612 555 0142`, because of the spaces in it. The form reported all of that as "We couldn't start your subscription. Check your contact information and try again.", which named nothing the rider could act on: the number *was* their number. `normalizeUsPhone` (in `@mvta/shared`, so the console can reuse it) converts a North American number as riders write it into E.164 before the request is made, and writes the result back into the field so the rider sees what is being stored. A number it cannot read is refused in the form, naming the field, rather than sent to be rejected. The server's rule is unchanged - E.164 is what the SMS provider dials - so this is a translation at the form, not a loosening of the contract.
+- **The opt-in form says which field the API rejected.** A 400 from `POST /api/subscribers` carries a `details` array naming the fields that failed; the form discarded it and printed one sentence for every kind of failure. It now reports a bad number, a bad email address and an empty category list separately, and keeps the general sentence for everything else.
+- **`@mvta/shared`'s unit tests run in CI.** The package had three test files and no `test` script, so root `npm test` - which fans out with `--if-present` - skipped them, and nothing had run them since they were written. They pass. The script is scoped to `src`, because `tsc` emits the test files into `dist` too and an unscoped run executed all of them twice.
+
 ## [1.5.187] - 2026-09-11
 
 - **The rider subscribe form links to MVTA's Terms & Conditions and Privacy Policy.** The consent checkbox asked riders to agree to automated messages with nothing to read first. It now links to `https://www.mvta.com/rider-alerts-policy/` and `https://www.mvta.com/privacy-and-security-policy/` beside the checkbox text.
