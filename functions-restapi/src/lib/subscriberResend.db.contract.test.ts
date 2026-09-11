@@ -23,6 +23,13 @@ import { resendConfirmation, RESEND_COOLDOWN_MS } from "./subscriberConfirmation
 //   The cooldown compares a DATETIME2 written by SYSUTCDATETIME() against a
 //   Date from Node. Whether those are the same clock is a fact about the
 //   driver, not about the code.
+//
+// Note on `--test-concurrency=1` in the contract npm script: this file and
+// subscriberConfirmation.db.contract.test.ts both drop and recreate
+// Subscribers and SubscriberConfirmations in the same database. Run in
+// parallel, as node --test does by default, the two files deadlock each other
+// on the reset - which is a fact about the test harness and not about anything
+// under test. The contract job runs one file at a time.
 const connectionString = process.env.DECISION_MATRIX_TEST_SQL_CONNECTION_STRING;
 
 const BEFORE = `
