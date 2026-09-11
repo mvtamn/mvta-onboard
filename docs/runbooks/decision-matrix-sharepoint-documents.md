@@ -52,6 +52,8 @@ The scheduled sync settles the delegated-versus-application question on its own:
 
 Perform these in order. Steps 1–5 are tenant actions and cannot be done from this repository or by CI.
 
+`scripts/setup-decision-matrix-documents-identity.sh` walks an administrator through steps 1–5 and checks each one landed, including a final app-only read of the library that proves consent and the site grant together. It is the same procedure written out below; run it, or follow the steps by hand.
+
 1. **Register the application.** Create a new Entra application registration named for its purpose, for example `MVTA OnBoard — Decision Matrix Documents (dev)`. Create one per environment; never reuse a production registration in a lower environment. It needs no redirect URI, no platform configuration and no exposed API — it is never signed into by a person.
 
 2. **Add the Graph application permission.** On the new registration, add Microsoft Graph → **Application permissions** → `Sites.Selected`.
@@ -78,12 +80,16 @@ Perform these in order. Steps 1–5 are tenant actions and cannot be done from t
 
 5. **Create a client secret and store it.** Create a secret on the registration, note its expiry, and store the value in the environment's Key Vault. Never paste it into an app setting, a pipeline variable, or this repository. Set a calendar reminder before expiry — an expired secret makes every document read fail, and the current failure message will call that a document problem.
 
-6. **Declare the app settings in Bicep.** Add to `infra-phase1`, not the Portal. The Bicep app-settings list is the complete desired state for the Function App, so a value set by hand survives only until the next infrastructure deploy.
+6. **Name the application in the environment's parameters file.** The Bicep is already written: set `decisionMatrixHealthClientId` in `infra-phase1/parameters/phase1-{env}.parameters.json` to the application id from step 1, and the two app settings follow.
 
-   | Setting | Value |
+   | Setting | Where its value comes from |
    | --- | --- |
-   | `DECISION_MATRIX_HEALTH_CLIENT_ID` | The application ID from step 1 |
-   | `DECISION_MATRIX_HEALTH_CLIENT_SECRET` | A Key Vault reference to the secret from step 5 |
+   | `DECISION_MATRIX_HEALTH_CLIENT_ID` | The `decisionMatrixHealthClientId` parameter |
+   | `DECISION_MATRIX_HEALTH_CLIENT_SECRET` | A Key Vault reference to `decision-matrix-health-client-secret`, the secret stored in step 5 |
+
+   Both are emitted together or not at all, so a client id without its secret cannot reach the app - that half-configured state reads at runtime as a document problem rather than as a missing credential. An empty parameter emits neither and leaves the library reads falling back to the API application, which is dev's arrangement today.
+
+   The secret never appears in this repository, in an app setting, or in a pipeline variable: the app's managed identity reads it from the vault at runtime, and rotating it is a vault operation with no redeploy.
 
    `AZURE_TENANT_ID` is already declared and is reused as-is.
 

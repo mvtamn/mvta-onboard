@@ -59,6 +59,9 @@ param decisionMatrixLibrarySiteId string = ''
 @description('Graph drive id of that library. Both this and the site id must be set for browsing to be configured.')
 param decisionMatrixLibraryDriveId string = ''
 
+@description('Application (client) id of the dedicated SharePoint document-reading registration - the identity of steps 1-5 of docs/runbooks/decision-matrix-sharepoint-documents.md. Empty falls back to the API application where that has been granted the library, which is dev only.')
+param decisionMatrixHealthClientId string = ''
+
 @description('Front Door ID (the FrontDoorId GUID from the Front Door profile). When set, inbound is locked so only traffic through this Front Door instance reaches the app. Empty = no inbound restriction (default, preserves current behavior).')
 param frontDoorId string = ''
 
@@ -234,6 +237,24 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         // docs/runbooks/decision-matrix-sharepoint-documents.md.
         { name: 'DECISION_MATRIX_LIBRARY_SITE_ID', value: decisionMatrixLibrarySiteId }
         { name: 'DECISION_MATRIX_LIBRARY_DRIVE_ID', value: decisionMatrixLibraryDriveId }
+      ] : [], !empty(decisionMatrixHealthClientId) ? [
+        // The dedicated document-reading identity. It is separate from the API
+        // application on purpose: that one carries the delegated scopes the
+        // console signs in with and is the audience Easy Auth validates, so a
+        // SharePoint *application* permission added there would let any code
+        // path read the library with no user present, and could not be revoked
+        // without disturbing sign-in for every user of the console.
+        //
+        // Both settings are emitted together or not at all. The client id
+        // alone would leave decisionMatrixProcedureGovernance.ts asking for a
+        // secret that is not there, which reads at runtime as a document
+        // problem rather than as a half-configured identity.
+        //
+        // The secret is a Key Vault reference, never a literal: the vault-wide
+        // Key Vault Secrets User assignment below already lets this app read
+        // it, so rotating the secret is a vault operation with no redeploy.
+        { name: 'DECISION_MATRIX_HEALTH_CLIENT_ID', value: decisionMatrixHealthClientId }
+        { name: 'DECISION_MATRIX_HEALTH_CLIENT_SECRET', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/decision-matrix-health-client-secret/)' }
       ] : [], !empty(complianceReportsStorageAccountName) ? [
         { name: 'COMPLIANCE_REPORTS_STORAGE_ACCOUNT', value: complianceReportsStorageAccountName }
       ] : [], includeSpareApiKey ? [
