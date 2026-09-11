@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.187] - 2026-09-11
+
+- **The rider subscribe form links to MVTA's Terms & Conditions and Privacy Policy.** The consent checkbox asked riders to agree to automated messages with nothing to read first. It now links to `https://www.mvta.com/rider-alerts-policy/` and `https://www.mvta.com/privacy-and-security-policy/` beside the checkbox text.
+
 ## [1.5.186] - 2026-09-11
 
 - **The primary SOP is picked from the approved library, not typed in.** Creating a Draft asked an Admin for `site_id`, `drive_id`, `item_id`, expected version, file name, MIME type and web URL as seven free-text boxes. Every one is a machine fact about a file, found by digging through a SharePoint URL or Graph Explorer and copying an eTag, and one wrong character produced a reference whose health check failed for what looked like the document's own fault. The form now browses the library added in 1.5.185: folders first then files, item counts and sizes, a breadcrumb back to the root, and one click to choose. The chosen document shows its name and the folder it came from, and can be changed. The SOP code stays typed, because that is a human fact about the Procedure rather than a machine fact about the file. A file SharePoint did not fully describe - no eTag, no MIME type, no link - cannot be chosen and says which of those is missing, rather than being saved as a reference that fails its first check. The picker tells apart the ways the library can be unreadable, and an expired sign-in is reported as an expired sign-in rather than as a SharePoint problem.
