@@ -5,7 +5,7 @@ import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool } from "../lib/db";
 import { recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
 import { evaluateOnDemandInterventions } from "../lib/onDemandInterventions";
-import { onDemandMonitoringEnabled } from "../lib/onDemandMonitoringHealth";
+import { onDemandActivation } from "../lib/onDemandMonitoringHealth";
 import { normalizeOnDemandSpareRequest } from "../lib/onDemandSpareMonitor";
 import {
   loadActiveOperationalZones,
@@ -17,12 +17,7 @@ import { fetchSparePage, spareString, type SpareRequestRecord } from "../lib/spa
 const PAGE_SIZE = 200;
 const MAX_ROWS = 10_000;
 
-function serviceIds(): ReadonlySet<string> {
-  return new Set((process.env.ON_DEMAND_MONITORING_SERVICE_IDS ?? "")
-    .split(",").map((value) => value.trim()).filter(Boolean));
-}
-
-async function fetchAuthoritativeRequests(): Promise<SpareRequestRecord[]> {
+async function fetchAuthoritativeRequests(scoped: ReadonlySet<string>): Promise<SpareRequestRecord[]> {
   const rows: SpareRequestRecord[] = [];
   let skip = 0;
   let total = 0;
@@ -40,27 +35,37 @@ async function fetchAuthoritativeRequests(): Promise<SpareRequestRecord[]> {
   if (rows.length >= MAX_ROWS && total > rows.length) {
     throw new Error(`On-demand reconciliation exceeded the ${MAX_ROWS}-row safety cap`);
   }
-  const scoped = serviceIds();
-  return scoped.size === 0
-    ? rows
-    : rows.filter((row) => {
-      const serviceId = spareString(row.serviceId, 64);
-      return serviceId !== null && scoped.has(serviceId);
-    });
+  return rows.filter((row) => {
+    const serviceId = spareString(row.serviceId, 64);
+    return serviceId !== null && scoped.has(serviceId);
+  });
 }
 
 app.timer("onDemandSpareReconcile", {
   schedule: "0 0 * * * *",
   handler: async (_timer: Timer, context: InvocationContext) => {
-    if (!onDemandMonitoringEnabled()) {
+    const activation = onDemandActivation();
+    if (!activation.active && activation.reason === "disabled") {
       context.log("On-demand reconciliation is disabled (ON_DEMAND_MONITORING_ENABLED is not true).");
       return;
     }
     const reconciledAt = new Date();
     const pool = await getPool();
+    if (!activation.active) {
+      // Refused rather than run unscoped: reading every service the key can
+      // see would look like a healthy reconciliation while covering the wrong
+      // population. Recorded as a feed failure so the misconfiguration shows
+      // up in KPI trust instead of going quiet.
+      const err = new Error("ON_DEMAND_MONITORING_ENABLED is true but ON_DEMAND_MONITORING_SERVICE_IDS is empty; refusing to reconcile every Spare service.");
+      context.error(err.message);
+      try { await recordFeedFailure(pool, "spare_on_demand_reconciliation", err); } catch (healthError) {
+        context.error("Failed to record on-demand reconciliation feed failure:", healthError);
+      }
+      return;
+    }
     let requests: SpareRequestRecord[];
     try {
-      requests = await fetchAuthoritativeRequests();
+      requests = await fetchAuthoritativeRequests(activation.serviceIds);
     } catch (err) {
       context.error("On-demand authoritative reconciliation failed:", err);
       try { await recordFeedFailure(pool, "spare_on_demand_reconciliation", err); } catch (healthError) {

@@ -8,6 +8,7 @@ vi.mock("../config.js", () => ({ api: {
   updateOnDemandServiceStandard: vi.fn(),
   updateOnDemandZoneServiceStandard: vi.fn(),
   removeOnDemandZoneServiceStandard: vi.fn(),
+  listOnDemandZoneVersions: vi.fn().mockResolvedValue({ versions: [] }),
 } }));
 
 describe("On-demand service standards administration", () => {

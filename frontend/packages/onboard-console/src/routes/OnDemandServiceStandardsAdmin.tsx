@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { type OnDemandServiceStandardAudit, type OnDemandServiceStandardPolicy } from "@mvta/shared";
 import { api } from "../config.js";
+import { OnDemandZoneGeometryAdmin } from "./OnDemandZoneGeometryAdmin.js";
 import "./modules/serviceRisk.css";
 
 export function OnDemandServiceStandardsAdmin() {
@@ -66,5 +67,6 @@ export function OnDemandServiceStandardsAdmin() {
       {message && <small className="service-standard-message">{message}</small>}
       {audit.length > 0 && <div className="service-standard-audit"><strong>Recent policy history</strong>{audit.slice(0, 5).map((entry) => <small key={`${entry.occurred_at}-${entry.action}`}>{entry.action.replaceAll("_", " ")} · {new Date(entry.occurred_at).toLocaleString()} · {entry.occurred_by ?? "system"}</small>)}</div>}
     </section>
+    <OnDemandZoneGeometryAdmin />
   </div>;
 }
