@@ -6,36 +6,12 @@
 // opaque link token for email). A "confirmation-requested" event is enqueued
 // so the dispatch app sends it. NO alerts go to a channel until it's confirmed.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
-import crypto from "node:crypto";
 import { getPool, sql } from "../lib/db";
 import { validateSubscribe } from "../lib/validation";
 import { publishConfirmationRequested } from "../lib/events";
+import { issueConfirmation, CONFIRM_TTL_HOURS, type IssuedConfirmation } from "../lib/confirmationTokens";
+import type { Channel } from "../lib/subscriberConfirmation";
 import type { SubscribeBody } from "../lib/types";
-
-const CONFIRM_TTL_HOURS = 24;
-
-function makeSmsCode(): string {
-  // 6-digit numeric code, zero-padded.
-  return String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
-}
-
-// A six-digit code has a million values, and UX_SubConfirm_Channel_Token
-// (migration 117) requires it to be unique among the SMS confirmations that
-// are still live. Two riders opting in at once can draw the same one, and that
-// collision is the second rider's opt-in failing for a reason that has nothing
-// to do with them. Drawing again is the whole fix; the odds of three draws
-// colliding are not worth a cleverer scheme.
-const CODE_ATTEMPTS = 3;
-
-function isDuplicateKey(err: unknown): boolean {
-  // 2627 unique constraint, 2601 unique index.
-  const number = (err as { number?: number } | null)?.number;
-  return number === 2627 || number === 2601;
-}
-
-function makeEmailToken(): string {
-  return crypto.randomBytes(24).toString("base64url");
-}
 
 function serializeAudience(value: string[] | "ALL" | null | undefined): string | null {
   // routes/zones accept an array or the literal "ALL".
@@ -95,41 +71,18 @@ app.http("subscribersCreate", {
       const subscriberId = subResult.recordset[0].subscriber_id;
 
       // Issue one confirmation token per provided channel.
-      const channels: { channel: "sms" | "email"; token: string }[] = [];
-      if (body.phone_number) channels.push({ channel: "sms", token: makeSmsCode() });
-      if (body.email) channels.push({ channel: "email", token: makeEmailToken() });
+      const channels: Channel[] = [];
+      if (body.phone_number) channels.push("sms");
+      if (body.email) channels.push("email");
 
       const expiresAt = new Date(Date.now() + CONFIRM_TTL_HOURS * 3600_000);
-      const confirmations: { confirmation_id: string; channel: "sms" | "email"; token: string }[] = [];
-      for (const c of channels) {
-        let token = c.token;
-        for (let attempt = 1; ; attempt++) {
-          const insertConf = new sql.Request(tx);
-          insertConf.input("subscriber_id", sql.UniqueIdentifier, subscriberId);
-          insertConf.input("channel", sql.NVarChar, c.channel);
-          insertConf.input("token", sql.NVarChar, token);
-          insertConf.input("expires_at", sql.DateTime2, expiresAt);
-          try {
-            const confResult = await insertConf.query<{ confirmation_id: string }>(`
-              INSERT INTO SubscriberConfirmations (subscriber_id, channel, token, expires_at)
-              OUTPUT INSERTED.confirmation_id
-              VALUES (@subscriber_id, @channel, @token, @expires_at)
-            `);
-            confirmations.push({
-              confirmation_id: confResult.recordset[0].confirmation_id,
-              channel: c.channel,
-              token,
-            });
-            break;
-          } catch (err) {
-            // Only an SMS code can realistically collide; an email token is 24
-            // random bytes, so a duplicate there is a signal, not a draw, and
-            // is left to surface.
-            if (c.channel !== "sms" || !isDuplicateKey(err) || attempt >= CODE_ATTEMPTS) throw err;
-            context.warn(`SMS confirmation code collided (attempt ${attempt}); drawing another.`);
-            token = makeSmsCode();
-          }
-        }
+      const confirmations: IssuedConfirmation[] = [];
+      for (const channel of channels) {
+        confirmations.push(
+          await issueConfirmation(tx, subscriberId, channel, expiresAt, (attempt) =>
+            context.warn(`SMS confirmation code collided (attempt ${attempt}); drawing another.`),
+          ),
+        );
       }
 
       await tx.commit();

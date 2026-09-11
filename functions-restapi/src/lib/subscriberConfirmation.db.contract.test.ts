@@ -3,7 +3,14 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseConnectionString, sql } from "./db";
-import { confirmEmail, confirmSms, optOut, MAX_CONFIRM_ATTEMPTS } from "./subscriberConfirmation";
+import {
+  confirmEmail,
+  confirmSms,
+  optOut,
+  requestResend,
+  MAX_CONFIRM_ATTEMPTS,
+  RESEND_MIN_INTERVAL_MS,
+} from "./subscriberConfirmation";
 
 // The state machine against a real SQL Server (the CI contract job's
 // container). classifyConfirmation is unit-tested; everything here is the half
@@ -322,6 +329,113 @@ test("STOP stops every record for that number, and repeating it is harmless", sk
     // and a rider may send it twice. Neither is an error.
     assert.equal((await inTx(pool, (tx) => optOut(tx, "sms", "+16125550142", "sms_stop"))).changed, 0);
     assert.equal((await inTx(pool, (tx) => optOut(tx, "sms", "+15555550100", "sms_stop"))).changed, 0);
+  } finally {
+    await pool.close();
+  }
+});
+
+test("a resend supersedes the old code, and only the new one works", skip, async () => {
+  const pool = await new sql.ConnectionPool(parseConnectionString(connectionString!)).connect();
+  try {
+    await reset(pool);
+    await seed(pool, { phone: "+16125550142", smsToken: "121212" });
+
+    // The first code was issued just now, so an immediate resend is refused -
+    // otherwise this endpoint is a way to make OnBoard text a number as fast
+    // as anyone can post to it.
+    assert.equal((await inTx(pool, (tx) => requestResend(tx, "sms", "+16125550142"))).outcome, "too_soon");
+
+    // Past the floor, a fresh code is issued and the old one is put out of use.
+    const later = new Date(Date.now() + RESEND_MIN_INTERVAL_MS + 1000);
+    const resent = await inTx(pool, (tx) => requestResend(tx, "sms", "+16125550142", later));
+    assert.equal(resent.outcome, "issued");
+    assert.equal(resent.event?.channel, "sms");
+    assert.equal(resent.event?.phone_number, "+16125550142");
+    assert.match(resent.event!.token, /^\d{6}$/);
+
+    // Two live codes would mean a rider holding two texts, either of which
+    // looks current and only one of which works.
+    const live = await pool.request().query<{ n: number }>(
+      "SELECT COUNT(*) n FROM dbo.SubscriberConfirmations WHERE channel='sms' AND confirmed_at IS NULL AND superseded_at IS NULL",
+    );
+    assert.equal(live.recordset[0].n, 1);
+
+    assert.equal((await inTx(pool, (tx) => confirmSms(tx, "+16125550142", "121212"))).outcome, "not_found");
+    assert.equal(
+      (await inTx(pool, (tx) => confirmSms(tx, "+16125550142", resent.event!.token))).outcome,
+      "confirmed",
+    );
+  } finally {
+    await pool.close();
+  }
+});
+
+test("a resend clears a lockout, which is how a rider recovers from it", skip, async () => {
+  const pool = await new sql.ConnectionPool(parseConnectionString(connectionString!)).connect();
+  try {
+    await reset(pool);
+    await seed(pool, { phone: "+16125550142", smsToken: "131313" });
+    for (let i = 0; i < MAX_CONFIRM_ATTEMPTS; i++) {
+      await inTx(pool, (tx) => confirmSms(tx, "+16125550142", "000000"));
+    }
+    assert.equal((await inTx(pool, (tx) => confirmSms(tx, "+16125550142", "131313"))).outcome, "too_many_attempts");
+
+    const later = new Date(Date.now() + RESEND_MIN_INTERVAL_MS + 1000);
+    const resent = await inTx(pool, (tx) => requestResend(tx, "sms", "+16125550142", later));
+    assert.equal(resent.outcome, "issued");
+    // The attempt count belongs to the confirmation, not the subscriber, so a
+    // new confirmation starts clean. A lockout that outlived every code would
+    // be permanent, with nothing a rider could do about it.
+    assert.equal(
+      (await inTx(pool, (tx) => confirmSms(tx, "+16125550142", resent.event!.token))).outcome,
+      "confirmed",
+    );
+  } finally {
+    await pool.close();
+  }
+});
+
+test("resend sends nothing to a confirmed channel, an unknown contact, or someone who opted out", skip, async () => {
+  const pool = await new sql.ConnectionPool(parseConnectionString(connectionString!)).connect();
+  try {
+    await reset(pool);
+
+    // Already confirmed: nothing is pending.
+    await seed(pool, { email: "done@example.com", emailToken: "done-token" });
+    await inTx(pool, (tx) => confirmEmail(tx, "done-token"));
+    assert.equal((await inTx(pool, (tx) => requestResend(tx, "email", "done@example.com"))).outcome, "nothing_pending");
+
+    // Never subscribed.
+    assert.equal((await inTx(pool, (tx) => requestResend(tx, "sms", "+15555550100"))).outcome, "nothing_pending");
+
+    // Opted out. Re-texting someone who asked us to stop, because they typed
+    // their number into a form, is the failure this guards.
+    await seed(pool, { phone: "+16125550199", smsToken: "141414" });
+    await inTx(pool, (tx) => optOut(tx, "sms", "+16125550199", "sms_stop"));
+    assert.equal((await inTx(pool, (tx) => requestResend(tx, "sms", "+16125550199"))).outcome, "nothing_pending");
+
+    // And no event was produced for any of them, so nothing is enqueued.
+    const issued = await pool.request().query<{ n: number }>(
+      "SELECT COUNT(*) n FROM dbo.SubscriberConfirmations WHERE created_at > DATEADD(second, -30, SYSUTCDATETIME()) AND token IN ('141414','done-token')",
+    );
+    assert.equal(issued.recordset[0].n, 2, "only the two seeded tokens exist; no resend added a third");
+  } finally {
+    await pool.close();
+  }
+});
+
+test("an email resend issues a link token, not a six-digit code", skip, async () => {
+  const pool = await new sql.ConnectionPool(parseConnectionString(connectionString!)).connect();
+  try {
+    await reset(pool);
+    await seed(pool, { email: "waiting@example.com", emailToken: "old-email-token" });
+    const later = new Date(Date.now() + RESEND_MIN_INTERVAL_MS + 1000);
+    const resent = await inTx(pool, (tx) => requestResend(tx, "email", "waiting@example.com", later));
+    assert.equal(resent.outcome, "issued");
+    assert.equal(resent.event?.email, "waiting@example.com");
+    assert.ok(resent.event!.token.length > 20, "an email token is long because nothing types it");
+    assert.equal((await inTx(pool, (tx) => confirmEmail(tx, "old-email-token"))).outcome, "superseded");
+    assert.equal((await inTx(pool, (tx) => confirmEmail(tx, resent.event!.token))).outcome, "confirmed");
   } finally {
     await pool.close();
   }

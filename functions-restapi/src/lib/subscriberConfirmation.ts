@@ -1,5 +1,7 @@
 import type { Transaction } from "mssql";
 import { sql } from "./db";
+import { issueConfirmation, CONFIRM_TTL_HOURS } from "./confirmationTokens";
+import type { ConfirmationRequestedEvent } from "./types";
 
 // The double opt-in state machine: turning a token a rider presents back to us
 // into a confirmed channel, and recording an opt-out.
@@ -321,4 +323,112 @@ export async function optOut(
   );
 
   return { changed: result.recordset[0]?.changed ?? 0 };
+}
+
+// --- Resend -----------------------------------------------------------------
+
+/**
+ * How long a rider must wait before a new token is issued for the same channel.
+ *
+ * A resend endpoint with no floor is a free SMS-sending oracle: anyone who
+ * knows a subscribed number can make OnBoard text it as fast as they can post.
+ * Two minutes is long enough to make that pointless and short enough that a
+ * rider who genuinely did not get the first text is not left waiting.
+ */
+export const RESEND_MIN_INTERVAL_MS = 2 * 60 * 1000;
+
+export type ResendOutcome =
+  /** A new token exists and its event should be published after the commit. */
+  | "issued"
+  /** A live token was issued less than RESEND_MIN_INTERVAL_MS ago. */
+  | "too_soon"
+  /** No subscriber, or none with this channel still awaiting confirmation. */
+  | "nothing_pending";
+
+export interface ResendResult {
+  outcome: ResendOutcome;
+  /** Present on "issued", for the caller to publish once the transaction commits. */
+  event?: ConfirmationRequestedEvent;
+}
+
+/**
+ * Issue a fresh token for a channel that is still waiting, superseding the old
+ * one.
+ *
+ * THE CALLER MUST ANSWER THE SAME WAY FOR ALL THREE OUTCOMES. They are
+ * distinguished here so the caller knows whether to publish an event and so
+ * the contract tests can tell them apart; distinguishing them in an HTTP
+ * response would turn this endpoint into a way to ask whether any given phone
+ * number or email address is partway through signing up.
+ *
+ * Superseding rather than adding: two live codes for one channel means a rider
+ * holding two texts, either of which looks current, and only one of which
+ * works.
+ */
+export async function requestResend(
+  tx: Transaction,
+  channel: Channel,
+  contact: string,
+  now: Date = new Date(),
+): Promise<ResendResult> {
+  const column = channel === "sms" ? "sms_status" : "email_status";
+  const matchOn = channel === "sms" ? "phone_number" : "email";
+
+  const find = new sql.Request(tx);
+  find.input("contact", sql.NVarChar(320), contact);
+  // A confirmed channel needs nothing, and an opted-out record must not be
+  // sent anything at all - re-texting someone who asked us to stop, because
+  // they typed their number into a form, is the failure this guards.
+  const found = await find.query<{ subscriber_id: string; phone_number: string | null; email: string | null }>(
+    `SELECT TOP 1 subscriber_id, phone_number, email
+       FROM Subscribers WITH(UPDLOCK, HOLDLOCK)
+      WHERE ${matchOn} = @contact
+        AND status <> 'opted_out'
+        AND ${column} = 'pending_confirmation'
+      ORDER BY opted_in_at DESC, subscriber_id`,
+  );
+  const subscriber = found.recordset[0];
+  if (!subscriber) return { outcome: "nothing_pending" };
+
+  const live = new sql.Request(tx);
+  live.input("id", sql.UniqueIdentifier, subscriber.subscriber_id);
+  live.input("channel", sql.NVarChar(10), channel);
+  const existing = await live.query<{ confirmation_id: string; created_at: Date }>(
+    `SELECT confirmation_id, created_at
+       FROM SubscriberConfirmations WITH(UPDLOCK, HOLDLOCK)
+      WHERE subscriber_id = @id AND channel = @channel
+        AND confirmed_at IS NULL AND superseded_at IS NULL
+      ORDER BY created_at DESC`,
+  );
+  const newest = existing.recordset[0];
+  if (newest && now.getTime() - newest.created_at.getTime() < RESEND_MIN_INTERVAL_MS) {
+    return { outcome: "too_soon" };
+  }
+
+  for (const row of existing.recordset) {
+    const supersede = new sql.Request(tx);
+    supersede.input("id", sql.UniqueIdentifier, row.confirmation_id);
+    await supersede.query(
+      "UPDATE SubscriberConfirmations SET superseded_at = SYSUTCDATETIME() WHERE confirmation_id = @id",
+    );
+  }
+
+  const issued = await issueConfirmation(
+    tx,
+    subscriber.subscriber_id,
+    channel,
+    new Date(now.getTime() + CONFIRM_TTL_HOURS * 3600_000),
+  );
+
+  return {
+    outcome: "issued",
+    event: {
+      confirmation_id: issued.confirmation_id,
+      subscriber_id: subscriber.subscriber_id,
+      channel,
+      token: issued.token,
+      phone_number: subscriber.phone_number,
+      email: subscriber.email,
+    },
+  };
 }
