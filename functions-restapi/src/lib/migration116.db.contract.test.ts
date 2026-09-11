@@ -52,6 +52,19 @@ test("migration 116 applies, is re-runnable, and holds the shape the sync depend
     await pool.request().query(`UPDATE dbo.DecisionMatrixDocumentLocations SET is_active=0 WHERE location_id='${LOCATION}'`);
     await pool.request().query(`INSERT dbo.DecisionMatrixDocumentLocations(location_id,site_id,drive_id,folder_path,label,added_by)
       VALUES('loc-replacement','${SITE}','${DRIVE}','_SOPs/_OCC Documents','OCC SOPs again','admin@mvta')`);
+
+    // Reactivating the retired one while the replacement still holds the folder
+    // is the same collision by another route, and is refused the same way. The
+    // first version of this test reactivated it blind to restore state, and the
+    // index caught that - which is the behaviour, not a snag in it.
+    await assert.rejects(
+      pool.request().query(`UPDATE dbo.DecisionMatrixDocumentLocations SET is_active=1 WHERE location_id='${LOCATION}'`),
+      /duplicate key|UX_DecisionMatrixDocumentLocations_Folder/i,
+      "reactivating a location whose folder is now watched by another must be refused",
+    );
+
+    // Retiring the replacement is what makes room for it again.
+    await pool.request().query(`DELETE dbo.DecisionMatrixDocumentLocations WHERE location_id='loc-replacement'`);
     await pool.request().query(`UPDATE dbo.DecisionMatrixDocumentLocations SET is_active=1 WHERE location_id='${LOCATION}'`);
 
     // last_sync_status must name a fault it can actually be.
