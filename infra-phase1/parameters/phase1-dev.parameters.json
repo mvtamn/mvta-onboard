@@ -14,6 +14,8 @@
     "spareMissedTripServiceIds": { "value": "18b6ed3e-00d4-42d7-be0b-feeb0a4a4918,d7046565-a56d-47ad-a1ce-61886debe304,7c31648d-784a-47c0-8088-e78dcfd753ed" },
     "spareContractorFaultValues": { "value": "" },
     "aadClientId": { "value": "7e5a35b1-dc1b-473d-987d-6942a7b4fae2" },
+    "decisionMatrixLibrarySiteId": { "value": "mvtamn.sharepoint.com,7b84f005-b5d7-4d2d-a2b0-32a661974bfc,56e6ed5b-1d29-4cec-b257-3c0e6d481c6f" },
+    "decisionMatrixLibraryDriveId": { "value": "b!BfCEe9e1LU2isDKmYZdL_Fvt5lYpHexMslc8Dm1IHG9Y2kod4r76SLq5PbjYfDXh" },
     "acsEndpoint": { "value": "https://acs-mvta-onboard-dev.unitedstates.communication.azure.com" },
     "acsEmailFrom": { "value": "DoNotReply@93587da7-3b33-4e41-9473-e64bd57cb979.azurecomm.net" },
     "accessManagementConfigJson": {

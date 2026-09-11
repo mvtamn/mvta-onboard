@@ -18,6 +18,12 @@ param uniqueSuffix string
 @description('Client ID of the MVTA OnBoard Entra ID app registration. LIVE VALUE: 7e5a35b1-dc1b-473d-987d-6942a7b4fae2')
 param aadClientId string
 
+@description('Graph site id of the approved SOP library the Decision Matrix picker browses. Empty leaves the picker saying no library is configured rather than failing.')
+param decisionMatrixLibrarySiteId string = ''
+
+@description('Graph drive id of that library. Both this and the site id must be set for browsing to be configured.')
+param decisionMatrixLibraryDriveId string = ''
+
 @description('Front Door ID (FrontDoorId GUID). When set, Function App inbound is locked to this Front Door only. Empty leaves inbound open (roll out deliberately - see functionapp.bicep).')
 param frontDoorId string = ''
 
@@ -123,6 +129,8 @@ module restApiFunction 'modules/functionapp.bicep' = {
     planSku: 'B1'
     planTier: 'Basic'
     aadClientId: aadClientId
+    decisionMatrixLibrarySiteId: decisionMatrixLibrarySiteId
+    decisionMatrixLibraryDriveId: decisionMatrixLibraryDriveId
     frontDoorId: frontDoorId
     allowedCorsOrigins: allowedCorsOrigins
     serviceBusNamespace: 'sb-mvta-onboard-${environment}'

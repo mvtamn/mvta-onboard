@@ -10,7 +10,7 @@ This runbook authorizes OnBoard to read the approved SOP library in SharePoint. 
 | Browse SharePoint and select a guide | Proposed |
 | Keep a Procedure in sync with its source location | Proposed |
 
-As with `access-management-entra.md`, application deployment and tenant authorization are deliberately separate. Do not place tenant secrets, real application identifiers, site identifiers or library paths in this repository.
+As with `access-management-entra.md`, application deployment and tenant authorization are deliberately separate. Never place a secret in this repository: client secrets, the SharePoint ones included, live in the environment's Key Vault and are referenced from Bicep. Non-secret identifiers - the Graph site id and drive id of an approved library - belong in the environment's parameters file alongside the application id and the role and group ids already there, because the Bicep app-settings list is the complete desired state and a value set by hand survives only until the next infrastructure deploy. They are addresses, not authorization: reading the library still requires the `Sites.Selected` grant of step 4 and the secret of step 5, and publishing an address grants nothing on its own.
 
 ## Why this is needed, precisely
 
