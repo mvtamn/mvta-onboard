@@ -249,10 +249,11 @@ used by the applications:
   identity-based Service Bus trigger connection
 - `SERVICE_BUS_QUEUE`
 - `SERVICE_BUS_CONFIRM_QUEUE`
-- `ACS_ENDPOINT`
-- `ACS_SMS_FROM`
-- `ACS_EMAIL_FROM`
-- `RIDER_APP_BASE_URL`
+- `ACS_ENDPOINT` (declared 2026-09-05)
+- `ACS_SMS_FROM` (declared with migration 117; empty on dev until a toll-free
+  number is acquired and verified)
+- `ACS_EMAIL_FROM` (declared 2026-09-05)
+- `RIDER_APP_BASE_URL` (declared with migration 117)
 - `GTFS_RT_ALERT_URL`
 - `GTFS_RT_TRIPUPDATE_URL`
 - `GTFS_RT_VEHICLE_URL`
@@ -282,6 +283,14 @@ The email sender currently generates a link to
 `/api/subscribers/confirm-email`, but no matching REST function exists. The SMS
 message tells the rider to reply with the code, but no inbound webhook exists.
 New subscribers therefore remain `pending_confirmation`.
+
+Migration 117 (2026-09-11) is the groundwork, not the fix: it gives each channel
+its own confirmation state, adds the attempt timestamp and opt-out reason the
+callbacks will write, and scopes confirmation-token uniqueness to live rows per
+channel. The callbacks themselves are increments 2-6 of
+`plans/rider-opt-in-confirmation-loop-spec.md`. The migration closes one defect
+outright: `status` no longer doubles as the SMS channel's state, so confirming
+an email link can no longer make an unproven phone number SMS-eligible.
 
 Azure Communication Services provisioning is required to send real
 confirmations, but it does not prevent the callback endpoints and their tests

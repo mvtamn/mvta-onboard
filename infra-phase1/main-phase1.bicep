@@ -64,6 +64,12 @@ param acsEndpoint string = ''
 @description('Verified ACS email sender address for the dispatch app. Empty leaves email sending unconfigured.')
 param acsEmailFrom string = ''
 
+@description('ACS SMS sender number in E.164 for the dispatch app. Empty leaves SMS sending unconfigured; the sender no-ops rather than throwing.')
+param acsSmsFrom string = ''
+
+@description('Public base URL of the rider app, used by the dispatch app to build double opt-in confirmation links. No trailing slash.')
+param riderAppBaseUrl string = ''
+
 @description('Tenant-specific OnBoard enterprise-app, role, and group identifiers as AccessEnvironmentConfig JSON. Empty leaves Access Management disabled.')
 param accessManagementConfigJson string = ''
 
@@ -186,6 +192,8 @@ module dispatchFunction 'modules/functionapp.bicep' = {
     serviceBusNamespace: 'sb-mvta-onboard-${environment}'
     acsEndpoint: acsEndpoint
     acsEmailFrom: acsEmailFrom
+    acsSmsFrom: acsSmsFrom
+    riderAppBaseUrl: riderAppBaseUrl
     manageRoleAssignments: manageRoleAssignments
   }
 }

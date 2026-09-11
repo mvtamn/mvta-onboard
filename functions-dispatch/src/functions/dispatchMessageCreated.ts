@@ -2,9 +2,16 @@
 // For each new alert, find confirmed subscribers whose preferences match, send
 // SMS/email via ACS, and record each attempt in SmsDeliveryLog/EmailDeliveryLog.
 //
-// Matching (POC scope): subscriber is 'confirmed', the alert's category is in
-// their categories, and either they subscribed to "ALL" routes, the alert has
-// no specific routes, or their routes intersect the alert's routes_affected.
+// Matching (POC scope): the subscriber record is 'confirmed', the alert's
+// category is in their categories, and either they subscribed to "ALL" routes,
+// the alert has no specific routes, or their routes intersect the alert's
+// routes_affected.
+//
+// Each channel is then gated on its OWN confirmation state - sms_status and
+// email_status (migration 117) - never on the record's. Before 117, `status`
+// was both the record's lifecycle and the SMS channel's state, so confirming
+// an email link would have made an unproven phone number SMS-eligible. A
+// channel may not vouch for the other one; that is what double opt-in is.
 import { app, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { sendSms, sendEmail } from "../lib/acs";
@@ -28,6 +35,7 @@ interface SubscriberRow {
   subscriber_id: string;
   phone_number: string | null;
   email: string | null;
+  sms_status: string | null;
   email_status: string | null;
   routes: string | null;
 }
@@ -94,7 +102,7 @@ app.serviceBusQueue("dispatchMessageCreated", {
     const findSubs = pool.request();
     findSubs.input("category", sql.NVarChar, event.category);
     const { recordset } = await findSubs.query<SubscriberRow>(`
-      SELECT subscriber_id, phone_number, email, email_status, routes
+      SELECT subscriber_id, phone_number, email, sms_status, email_status, routes
       FROM Subscribers
       WHERE status = 'confirmed'
         AND EXISTS (SELECT 1 FROM OPENJSON(categories) WHERE value = @category)
@@ -108,7 +116,7 @@ app.serviceBusQueue("dispatchMessageCreated", {
     for (const sub of recordset) {
       if (!routeMatches(parseAudience(sub.routes), alertRoutes)) continue;
 
-      if (sendSmsChannel && sub.phone_number) {
+      if (sendSmsChannel && sub.phone_number && sub.sms_status === "confirmed") {
         try {
           const res = await sendSms(sub.phone_number, body, context);
           await logDelivery(

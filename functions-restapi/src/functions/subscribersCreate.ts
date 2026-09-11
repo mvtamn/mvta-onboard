@@ -19,6 +19,20 @@ function makeSmsCode(): string {
   return String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
 }
 
+// A six-digit code has a million values, and UX_SubConfirm_Channel_Token
+// (migration 117) requires it to be unique among the SMS confirmations that
+// are still live. Two riders opting in at once can draw the same one, and that
+// collision is the second rider's opt-in failing for a reason that has nothing
+// to do with them. Drawing again is the whole fix; the odds of three draws
+// colliding are not worth a cleverer scheme.
+const CODE_ATTEMPTS = 3;
+
+function isDuplicateKey(err: unknown): boolean {
+  // 2627 unique constraint, 2601 unique index.
+  const number = (err as { number?: number } | null)?.number;
+  return number === 2627 || number === 2601;
+}
+
 function makeEmailToken(): string {
   return crypto.randomBytes(24).toString("base64url");
 }
@@ -60,18 +74,22 @@ app.http("subscribersCreate", {
       insertSub.input("routes", sql.NVarChar, serializeAudience(body.routes));
       insertSub.input("zones", sql.NVarChar, serializeAudience(body.zones));
       insertSub.input("categories", sql.NVarChar, JSON.stringify(body.categories));
+      // Each channel starts unproven in its own column (migration 117). A
+      // channel the rider did not give has no state, which is not the same as
+      // having an unconfirmed one.
+      insertSub.input("sms_status", sql.NVarChar, body.phone_number ? "pending_confirmation" : null);
       insertSub.input("email_status", sql.NVarChar, body.email ? "pending_confirmation" : null);
       insertSub.input("consent_source", sql.NVarChar, body.consent_source);
 
       const subResult = await insertSub.query<{ subscriber_id: string }>(`
         INSERT INTO Subscribers (
           phone_number, email, routes, zones, categories,
-          status, email_status, consent_source
+          status, sms_status, email_status, consent_source
         )
         OUTPUT INSERTED.subscriber_id
         VALUES (
           @phone_number, @email, @routes, @zones, @categories,
-          'pending_confirmation', @email_status, @consent_source
+          'pending_confirmation', @sms_status, @email_status, @consent_source
         )
       `);
       const subscriberId = subResult.recordset[0].subscriber_id;
@@ -84,21 +102,34 @@ app.http("subscribersCreate", {
       const expiresAt = new Date(Date.now() + CONFIRM_TTL_HOURS * 3600_000);
       const confirmations: { confirmation_id: string; channel: "sms" | "email"; token: string }[] = [];
       for (const c of channels) {
-        const insertConf = new sql.Request(tx);
-        insertConf.input("subscriber_id", sql.UniqueIdentifier, subscriberId);
-        insertConf.input("channel", sql.NVarChar, c.channel);
-        insertConf.input("token", sql.NVarChar, c.token);
-        insertConf.input("expires_at", sql.DateTime2, expiresAt);
-        const confResult = await insertConf.query<{ confirmation_id: string }>(`
-          INSERT INTO SubscriberConfirmations (subscriber_id, channel, token, expires_at)
-          OUTPUT INSERTED.confirmation_id
-          VALUES (@subscriber_id, @channel, @token, @expires_at)
-        `);
-        confirmations.push({
-          confirmation_id: confResult.recordset[0].confirmation_id,
-          channel: c.channel,
-          token: c.token,
-        });
+        let token = c.token;
+        for (let attempt = 1; ; attempt++) {
+          const insertConf = new sql.Request(tx);
+          insertConf.input("subscriber_id", sql.UniqueIdentifier, subscriberId);
+          insertConf.input("channel", sql.NVarChar, c.channel);
+          insertConf.input("token", sql.NVarChar, token);
+          insertConf.input("expires_at", sql.DateTime2, expiresAt);
+          try {
+            const confResult = await insertConf.query<{ confirmation_id: string }>(`
+              INSERT INTO SubscriberConfirmations (subscriber_id, channel, token, expires_at)
+              OUTPUT INSERTED.confirmation_id
+              VALUES (@subscriber_id, @channel, @token, @expires_at)
+            `);
+            confirmations.push({
+              confirmation_id: confResult.recordset[0].confirmation_id,
+              channel: c.channel,
+              token,
+            });
+            break;
+          } catch (err) {
+            // Only an SMS code can realistically collide; an email token is 24
+            // random bytes, so a duplicate there is a signal, not a draw, and
+            // is left to surface.
+            if (c.channel !== "sms" || !isDuplicateKey(err) || attempt >= CODE_ATTEMPTS) throw err;
+            context.warn(`SMS confirmation code collided (attempt ${attempt}); drawing another.`);
+            token = makeSmsCode();
+          }
+        }
       }
 
       await tx.commit();
