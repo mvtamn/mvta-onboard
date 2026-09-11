@@ -360,7 +360,19 @@ test("a resend supersedes the old code, and only the new one works", skip, async
     );
     assert.equal(live.recordset[0].n, 1);
 
-    assert.equal((await inTx(pool, (tx) => confirmSms(tx, "+16125550142", "121212"))).outcome, "not_found");
+    // The rider is holding two texts. Using the older one is told to use the
+    // newer, rather than being called wrong - and does not spend an attempt.
+    assert.equal((await inTx(pool, (tx) => confirmSms(tx, "+16125550142", "121212"))).outcome, "superseded");
+    const spent = await pool.request().query<{ attempts: number }>(
+      "SELECT attempts FROM dbo.SubscriberConfirmations WHERE channel='sms' AND confirmed_at IS NULL AND superseded_at IS NULL",
+    );
+    assert.equal(spent.recordset[0].attempts, 0, "a stale code we really sent is not a guess");
+
+    // A code we never sent still is one.
+    const guess = await inTx(pool, (tx) => confirmSms(tx, "+16125550142", "000000"));
+    assert.equal(guess.outcome, "incorrect_code");
+    assert.equal(guess.attemptsRemaining, MAX_CONFIRM_ATTEMPTS - 1);
+
     assert.equal(
       (await inTx(pool, (tx) => confirmSms(tx, "+16125550142", resent.event!.token))).outcome,
       "confirmed",
