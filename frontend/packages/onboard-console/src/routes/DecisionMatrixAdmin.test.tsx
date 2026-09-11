@@ -95,4 +95,16 @@ describe("Decision Matrix administration", () => {
     expect(await screen.findByText(/fault worth investigating/i)).toBeInTheDocument();
     expect(screen.queryByText(/sign-in has expired/i)).not.toBeInTheDocument();
   });
+
+  it("asks for the primary SOP by browsing, not by typing seven identifiers", async () => {
+    render(<DecisionMatrixAdmin />);
+    await screen.findByRole("button", { name: "Create Draft" });
+    expect(screen.getByRole("button", { name: /Browse the approved library/i })).toBeInTheDocument();
+    // The machine facts about a file are no longer asked of a person.
+    for (const gone of ["SharePoint site ID", "Drive ID", "Item ID", "Expected version", "File name", "MIME type", "SharePoint link"]) {
+      expect(screen.queryByLabelText(gone)).not.toBeInTheDocument();
+    }
+    // The SOP's own code is a human fact and stays.
+    expect(screen.getByLabelText("Primary SOP code")).toBeInTheDocument();
+  });
 });

@@ -119,3 +119,30 @@
   .dmx .dmx-qrg { overflow-x: auto; }
   .dmx .dmx-qrg table.data { min-width: 640px; }
 }
+
+/* Document picker -------------------------------------------------------- */
+/* A file list, so it reads like one: folders above files, one row each, the
+   name carrying the weight and the detail beneath it in the quiet colour the
+   rest of this module already uses for secondary facts. */
+.dmx-picker { display: grid; gap: 10px; }
+
+.dmx-picker-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; font-size: 13px; }
+.dmx-picker-crumbs [aria-current="location"] { font-weight: 600; }
+
+.dmx-picker-list { list-style: none; margin: 0; padding: 0; max-height: 340px; overflow-y: auto; border: 1px solid var(--border, #d8dee5); border-radius: 6px; }
+.dmx-picker-item + .dmx-picker-item { border-top: 1px solid var(--border-subtle, #eceff3); }
+
+.dmx-picker-open { display: grid; gap: 2px; width: 100%; text-align: left; padding: 9px 12px; background: none; border: 0; cursor: pointer; font: inherit; color: inherit; }
+.dmx-picker-open:hover:not(:disabled) { background: var(--row-hover, #f4f7fa); }
+.dmx-picker-open:focus-visible { outline: 2px solid var(--focus, #2563eb); outline-offset: -2px; }
+/* A file SharePoint did not fully describe cannot be chosen; it stays listed
+   so nobody hunts for a document that is right there. */
+.dmx-picker-open:disabled { cursor: not-allowed; opacity: 0.6; }
+
+.dmx-picker-name { font-weight: 500; }
+/* Folders lead with a marker so the two kinds are not told apart by position
+   alone, which fails the moment a folder sorts next to a file. */
+.dmx-picker-item.folder .dmx-picker-name::before { content: "▸ "; color: var(--muted, #6b7785); }
+
+.dmx-chosen-document { display: grid; gap: 6px; }
+.dmx-chosen { display: grid; gap: 3px; justify-items: start; padding: 9px 12px; border: 1px solid var(--border, #d8dee5); border-radius: 6px; }
