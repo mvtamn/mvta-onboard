@@ -53,6 +53,12 @@ param enableEasyAuth bool = true
 @description('Client ID of the MVTA OnBoard Entra ID app registration - wires up Easy Auth so the caller principal and app roles are available via x-ms-client-principal')
 param aadClientId string
 
+@description('Graph site id of the approved SOP library the Decision Matrix picker browses. Empty = no library configured, and the picker says so rather than failing.')
+param decisionMatrixLibrarySiteId string = ''
+
+@description('Graph drive id of that library. Both this and the site id must be set for browsing to be configured.')
+param decisionMatrixLibraryDriveId string = ''
+
 @description('Front Door ID (the FrontDoorId GUID from the Front Door profile). When set, inbound is locked so only traffic through this Front Door instance reaches the app. Empty = no inbound restriction (default, preserves current behavior).')
 param frontDoorId string = ''
 
@@ -214,6 +220,20 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'ONBOARD_ACCESS_CONFIG_JSON', value: accessManagementConfigJson }
         { name: 'ONBOARD_ACCESS_ADMIN_FALLBACK', value: string(accessAdminFallback) }
         { name: 'ONBOARD_PRIVILEGED_AUTH_CONTEXT', value: privilegedAuthContext }
+      ] : [], !empty(decisionMatrixLibrarySiteId) && !empty(decisionMatrixLibraryDriveId) ? [
+        // The one approved SharePoint library the Decision Matrix picker may
+        // browse. It is configuration rather than request input on purpose: the
+        // application holds Sites.Selected, so SharePoint refuses any site an
+        // administrator has not granted it, and naming the site here keeps an
+        // OCC.Admin from reaching a second granted library by editing a query
+        // string. Reading it is app-only - Sites.Selected is an application
+        // permission, and the sync that shares the credential runs on a timer
+        // with no signed-in user. Declared here because this list is the
+        // COMPLETE desired state: set by hand, it is removed by the next
+        // routine infra deploy. See
+        // docs/runbooks/decision-matrix-sharepoint-documents.md.
+        { name: 'DECISION_MATRIX_LIBRARY_SITE_ID', value: decisionMatrixLibrarySiteId }
+        { name: 'DECISION_MATRIX_LIBRARY_DRIVE_ID', value: decisionMatrixLibraryDriveId }
       ] : [], !empty(complianceReportsStorageAccountName) ? [
         { name: 'COMPLIANCE_REPORTS_STORAGE_ACCOUNT', value: complianceReportsStorageAccountName }
       ] : [], includeSpareApiKey ? [

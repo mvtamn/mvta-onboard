@@ -9,6 +9,8 @@
     "ONBOARD_API_CLIENT_ID": "REPLACE_ME",
     "ONBOARD_API_CLIENT_SECRET": "REPLACE_ME",
     "// decision matrix health": "Dedicated app identity for the daily SharePoint metadata check. Grant only Sites.Selected/File read permissions to approved libraries; it never streams document content to users.",
+    "DECISION_MATRIX_LIBRARY_SITE_ID": "REPLACE_ME",
+    "DECISION_MATRIX_LIBRARY_DRIVE_ID": "REPLACE_ME",
     "DECISION_MATRIX_HEALTH_CLIENT_ID": "REPLACE_ME",
     "DECISION_MATRIX_HEALTH_CLIENT_SECRET": "REPLACE_ME",
     "ONBOARD_ENVIRONMENT": "development",
