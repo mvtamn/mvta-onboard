@@ -1,14 +1,14 @@
 # Decision Matrix SharePoint document access runbook
 
-This runbook authorizes OnBoard to read the approved SOP library in SharePoint. It is a prerequisite for three things that are already written and cannot currently work, and for two that are proposed:
+This runbook authorizes OnBoard to read the approved SOP library in SharePoint. It is a prerequisite for three things that are already written and cannot currently work, for one that has shipped and needs the site grant to do anything, and for one that is still proposed:
 
 | Capability | State |
 | --- | --- |
 | Document health checks on Procedure references | Written; returns `Unavailable` for every document today |
 | Inline rendition preview (QRG images) | Written; fails today |
 | Daily document-health timer | Written; exits early, no credential configured |
-| Browse SharePoint and select a guide | Proposed |
-| Keep a Procedure in sync with its source location | Proposed |
+| Browse SharePoint and select a guide | Shipped in 1.5.185/1.5.186; site and drive configured on dev, so it reads once the site grant exists |
+| Keep a Procedure in sync with its source location | Proposed; migration 116 holds the schema, nothing reads or writes it yet |
 
 As with `access-management-entra.md`, application deployment and tenant authorization are deliberately separate. Never place a secret in this repository: client secrets, the SharePoint ones included, live in the environment's Key Vault and are referenced from Bicep. Non-secret identifiers - the Graph site id and drive id of an approved library - belong in the environment's parameters file alongside the application id and the role and group ids already there, because the Bicep app-settings list is the complete desired state and a value set by hand survives only until the next infrastructure deploy. They are addresses, not authorization: reading the library still requires the `Sites.Selected` grant of step 4 and the secret of step 5, and publishing an address grants nothing on its own.
 
