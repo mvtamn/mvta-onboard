@@ -3,7 +3,12 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseConnectionString, sql } from "./db";
-import { resendConfirmation, RESEND_COOLDOWN_MS } from "./subscriberConfirmation";
+import {
+  resendConfirmation,
+  confirmSms,
+  RESEND_COOLDOWN_MS,
+  MAX_CONFIRM_ATTEMPTS,
+} from "./subscriberConfirmation";
 
 // Reissuing a token against a real SQL Server (the CI contract job's
 // container). None of what is asserted here is visible to a test with fakes in
@@ -365,6 +370,99 @@ test("a new code may reuse a code the supersede just freed", skip, async () => {
          VALUES (@id, 'sms', '999999', DATEADD(hour, 24, SYSUTCDATETIME()))`,
       );
     assert.equal((await liveTokens(pool, id, "sms")).includes("999999"), true);
+  } finally {
+    await pool.close();
+  }
+});
+
+// What happens to the text the resend replaced. A rider now holds two, the
+// older one still looks current, and which of them they type is not a
+// meaningful choice they made.
+
+async function attemptsOnLiveToken(pool: sql.ConnectionPool, id: string): Promise<number> {
+  const result = await pool.request().input("id", sql.UniqueIdentifier, id).query<{ attempts: number }>(
+    `SELECT attempts FROM dbo.SubscriberConfirmations
+      WHERE subscriber_id=@id AND channel='sms' AND confirmed_at IS NULL AND superseded_at IS NULL`,
+  );
+  return result.recordset[0].attempts;
+}
+
+test("the code a resend replaced says so, and does not cost an attempt", skip, async () => {
+  const pool = await new sql.ConnectionPool(parseConnectionString(connectionString!)).connect();
+  try {
+    await reset(pool);
+    const id = await seed(pool, {
+      phone: "+19523883275",
+      tokens: [{ channel: "sms", token: "111111", ageMinutes: COOLED }],
+    });
+    assert.equal((await inTx(pool, (tx) => resendConfirmation(tx, "sms", "+19523883275"))).outcome, "issued");
+
+    // The older text. Treating it as a wrong guess both misdescribes it - we
+    // sent that code to this number - and spends one of the five tries on a
+    // mistake the rider had no way to avoid making.
+    const stale = await inTx(pool, (tx) => confirmSms(tx, "+19523883275", "111111"));
+    assert.equal(stale.outcome, "superseded", "tell the rider to use the newer code, not that theirs is wrong");
+    assert.equal(await attemptsOnLiveToken(pool, id), 0, "a code we really sent is not a guess");
+
+    // The newer one still works, and was not damaged by the attempt above.
+    const live = (await liveTokens(pool, id, "sms"))[0];
+    assert.equal((await inTx(pool, (tx) => confirmSms(tx, "+19523883275", live))).outcome, "confirmed");
+  } finally {
+    await pool.close();
+  }
+});
+
+test("a code we never sent to this number is still a guess", skip, async () => {
+  const pool = await new sql.ConnectionPool(parseConnectionString(connectionString!)).connect();
+  try {
+    await reset(pool);
+    const id = await seed(pool, {
+      phone: "+19523883275",
+      tokens: [
+        { channel: "sms", token: "222222", ageMinutes: COOLED, superseded: true },
+        { channel: "sms", token: "333333" },
+      ],
+    });
+
+    // The concession is narrow on purpose: it applies only to codes this
+    // number was actually issued. Reaching it means naming one of those, which
+    // is exactly as hard as naming the live code - so it hands a guesser
+    // nothing, and everything else still counts.
+    const guess = await inTx(pool, (tx) => confirmSms(tx, "+19523883275", "000000"));
+    assert.equal(guess.outcome, "incorrect_code");
+    assert.equal(guess.attemptsRemaining, MAX_CONFIRM_ATTEMPTS - 1);
+    assert.equal(await attemptsOnLiveToken(pool, id), 1);
+
+    // And another number's retired code is not "ours" either.
+    await seed(pool, {
+      phone: "+16125550142",
+      tokens: [{ channel: "sms", token: "444444", superseded: true }, { channel: "sms", token: "555555" }],
+    });
+    const crossed = await inTx(pool, (tx) => confirmSms(tx, "+19523883275", "444444"));
+    assert.equal(crossed.outcome, "incorrect_code");
+    assert.equal(await attemptsOnLiveToken(pool, id), 2);
+  } finally {
+    await pool.close();
+  }
+});
+
+test("replying with the code that already worked reads as done", skip, async () => {
+  const pool = await new sql.ConnectionPool(parseConnectionString(connectionString!)).connect();
+  try {
+    await reset(pool);
+    // A confirmed channel with a later pending one is unusual but reachable:
+    // the rider re-subscribed. Their old code should not read as a wrong
+    // guess against the new signup.
+    const id = await seed(pool, {
+      phone: "+19523883275",
+      tokens: [
+        { channel: "sms", token: "666666", confirmed: true },
+        { channel: "sms", token: "777777" },
+      ],
+    });
+    const spent = await inTx(pool, (tx) => confirmSms(tx, "+19523883275", "666666"));
+    assert.equal(spent.outcome, "already_confirmed");
+    assert.equal(await attemptsOnLiveToken(pool, id), 0);
   } finally {
     await pool.close();
   }
