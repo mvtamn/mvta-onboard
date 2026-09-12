@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { after } from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseConnectionString, sql } from "./db";
@@ -58,6 +58,23 @@ CREATE UNIQUE INDEX UX_SubConfirm_Token ON dbo.SubscriberConfirmations (token);
 `;
 
 const skip = { skip: !connectionString && "DECISION_MATRIX_TEST_SQL_CONNECTION_STRING not set" };
+
+// Every contract test file shares one database, and each rebuilds the tables it
+// needs by dropping them first. SubscriberPreferenceChanges holds a foreign key
+// to Subscribers, so a file that leaves it behind makes the NEXT file's
+// `DROP TABLE dbo.Subscribers` fail - and that file then reports "there is
+// already an object named 'Subscribers'", which says nothing about the file
+// that actually caused it. This one is the only file that creates the table, so
+// it is the one that has to take it away again.
+after(async () => {
+  if (!connectionString) return;
+  const pool = await new sql.ConnectionPool(parseConnectionString(connectionString)).connect();
+  try {
+    await pool.request().batch("IF OBJECT_ID('dbo.SubscriberPreferenceChanges','U') IS NOT NULL DROP TABLE dbo.SubscriberPreferenceChanges;");
+  } finally {
+    await pool.close();
+  }
+});
 
 test("migration 119 gives every existing subscriber their own key", skip, async () => {
   const pool = await new sql.ConnectionPool(parseConnectionString(connectionString!)).connect();
