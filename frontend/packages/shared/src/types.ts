@@ -1849,3 +1849,26 @@ export interface TripStartLogResponse {
   trips: TripStartLogTrip[];
   diagnostics: TripStartLogDiagnostics;
 }
+
+export interface OnDemandZoneVersion {
+  id: string;
+  feed_version: string;
+  source_sha256: string;
+  is_active: boolean;
+  zone_count: number;
+  imported_at: string;
+  imported_by: string;
+  // Null until migration 098 is applied; the listing answers without it.
+  activated_at: string | null;
+  activated_by: string | null;
+}
+
+export interface OnDemandZoneUploadResult {
+  versionId: string;
+  feedVersion: string;
+  zoneCount: number;
+  imported: boolean;
+  activated: boolean;
+  zones: string[];
+  message: string;
+}

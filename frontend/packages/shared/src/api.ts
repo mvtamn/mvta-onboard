@@ -85,6 +85,8 @@ import type {
   OnDemandRiskRecord,
   OnDemandServiceStandardAudit,
   OnDemandServiceStandardPolicy,
+  OnDemandZoneUploadResult,
+  OnDemandZoneVersion,
   OpenManualInput,
   OtpAuditEntry,
   OtpDailyRow,
@@ -752,6 +754,28 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
 
     removeOnDemandZoneServiceStandard(zoneId: string) {
       return request<void>(`/api/on-demand-service-standards/zones/${encodeURIComponent(zoneId)}`, { method: "DELETE" }, true);
+    },
+
+    listOnDemandZoneVersions() {
+      return request<{ versions: OnDemandZoneVersion[] }>("/api/on-demand-zone-versions", {}, true);
+    },
+
+    activateOnDemandZoneVersion(versionId: string) {
+      return request<{ activated: boolean; message?: string }>(
+        "/api/on-demand-zone-versions",
+        { method: "POST", body: JSON.stringify({ version_id: versionId }) },
+        true,
+      );
+    },
+
+    // The archive is sent as raw bytes with an explicit Content-Type, because
+    // the shared request helper labels an unlabelled body application/json.
+    uploadOnDemandZoneArchive(archive: File | Blob) {
+      return request<OnDemandZoneUploadResult>(
+        "/api/on-demand-zone-versions/upload",
+        { method: "POST", body: archive, headers: { "Content-Type": "application/zip" } },
+        true,
+      );
     },
 
     getOnDemandServiceStandardAudit() {

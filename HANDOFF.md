@@ -586,9 +586,13 @@ restarts, not the old cascade.
 ### What is still blocking, and who owns it
 
 1. **The GTFS-Flex archive - Operations.** No zone version has ever been
-   active; `onDemandSpareWebhook` was still logging the gap at 04:02 UTC today
-   (1,475 warnings in 24 h, once a minute through the service day). The
-   importer is complete (#184/#185) but has nothing to import.
+   active; `onDemandSpareWebhook` was still logging the gap at 04:02 UTC on
+   2026-09-08 (1,475 warnings in 24 h, once a minute through the service day).
+   The importer is complete (#184/#185) but has nothing to import. **As of
+   1.5.185 the way in is no longer the blocker**: Service Standards -> Zone
+   geometry takes the archive as a file upload (`OCC.Admin`), so the SSH and
+   base64 path nobody ever executed is now a fallback. What is still owed is
+   the archive itself, exported from Spare.
    `ON_DEMAND_ZONE_FLEX_URL` is unset so `onDemandZonesSync` skips every run,
    and no published GTFS-Flex URL is known for MVTA Connect - MVTA's
    fixed-route `google_transit.zip` is not it (eleven files, no

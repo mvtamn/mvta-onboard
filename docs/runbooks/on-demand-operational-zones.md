@@ -8,7 +8,8 @@ The importer has existed since PRs #184/#185. **No zone version has ever been ac
 | --- | --- |
 | GTFS-Flex parser, geometry validation, point-in-polygon resolver | Written and tested since migration 074 |
 | `onDemandZonesSync` daily poller (09:30 UTC) | Written; **skips every run** — `ON_DEMAND_ZONE_FLEX_URL` is unset |
-| `scripts/importOnDemandZones.ts` hand-seeding | Written; never run |
+| Console upload (`OnDemandZoneGeometryAdmin` → `POST /api/on-demand-zone-versions/upload`) | Added 1.5.185; the path to use today |
+| `scripts/importOnDemandZones.ts` hand-seeding | Written; never run. Superseded by the console upload |
 | `GET`/`POST /api/on-demand-zone-versions` | Written; never used |
 | Activation attribution (migration 098) | Written; **applied state on dev unverified** |
 
@@ -16,18 +17,18 @@ Zones are a prerequisite for the monitor, not the switch that starts it. See [Wh
 
 ## Which path to take
 
-There are two ways in, and the choice is not preference — it depends on whether a published feed URL exists.
+There are three ways in, and the choice is not preference — it depends on whether a published feed URL exists, and on whether the console is reachable.
 
-| | Daily poller | Hand-seeding script |
-| --- | --- | --- |
-| Needs | `ON_DEMAND_ZONE_FLEX_URL` set to a reachable archive | A `.zip` on disk |
-| Runs | 09:30 UTC daily, unattended | Once, by a person |
-| Records feed health | Yes (`on_demand_zones`) | No |
-| Use when | MVTA or Spare publishes a GTFS-Flex URL | Today — no URL is known |
+| | Daily poller | Console upload | Hand-seeding script |
+| --- | --- | --- | --- |
+| Needs | `ON_DEMAND_ZONE_FLEX_URL` set to a reachable archive | A `.zip` on disk and `OCC.Admin` | A `.zip` on disk and an SSH session |
+| Runs | 09:30 UTC daily, unattended | Once, by a person, in the browser | Once, by a person, inside the container |
+| Records feed health | Yes (`on_demand_zones`) | No | No |
+| Use when | MVTA or Spare publishes a GTFS-Flex URL | **Today** — no URL is known | The console is unreachable |
 
-Both share the same parser, the same source hash, the same transactional write, and the same first-import activation rule, so a hand-seeded version is indistinguishable from a polled one. A later poll of identical bytes is recognised as already imported rather than duplicated.
+All three share the same parser, the same source hash, the same transactional write, and the same first-import activation rule, so a hand-seeded version is indistinguishable from a polled one. A later poll of identical bytes is recognised as already imported rather than duplicated.
 
-**Prefer the poller the moment a URL exists.** Set `onDemandZoneFlexUrl` in `infra-phase1/parameters/phase1-dev.parameters.json` and deploy; nothing else changes. The script exists because waiting for a URL kept the monitor down indefinitely.
+**Prefer the poller the moment a URL exists.** Set `onDemandZoneFlexUrl` in `infra-phase1/parameters/phase1-dev.parameters.json` and deploy; nothing else changes. The upload and the script exist because waiting for a URL kept the monitor down indefinitely — and because the archive is exported from Spare by hand, so there may never be a URL to poll.
 
 ## What you need
 
@@ -48,41 +49,25 @@ To adopt a third zone, or to follow an upstream location-id rename, set `ON_DEMA
 
 ## Preconditions
 
-- `OCC.Admin` to activate. Any staff read role can list versions.
+- `OCC.Admin` to upload or activate. Any staff read role can list versions.
 - Migration 098 applied, for activation to be attributed. It is **not** a hard prerequisite: `activationAuditSupported()` probes for the column on every call, so activation and the listing both work on a database the migration has not reached — the actor is simply not recorded. Apply it first if you want the audit trail, which is the point of having it.
-- For the script only: network reach to the database. See the warning below.
+- For Path D only: network reach to the database. See the warning below.
 
-> **The dev SQL server has `publicNetworkAccess: Disabled`.** The seeding script connects directly with `SQL_CONNECTION_STRING`, so it **cannot be run from a laptop**. Run it from inside the VNet — the Function App container is the practical place, and the compiled script ships in the deployment package. Do not re-open public network access to work around this; that was closed deliberately.
+> **The dev SQL server has `publicNetworkAccess: Disabled`.** The seeding script connects directly with `SQL_CONNECTION_STRING`, so it **cannot be run from a laptop**. Run it from inside the VNet — the Function App container is the practical place, and the compiled script ships in the deployment package. Do not re-open public network access to work around this; that was closed deliberately. **The console upload is not subject to this**: it reaches the database through the REST app, which is already inside the VNet, which is the reason to prefer Path A.
 
-## Path A — hand-seed from an archive
+## Path A — upload from the console
 
-The REST app is Linux (`NODE|24`), VNet-integrated, and runs from a package (`WEBSITE_RUN_FROM_PACKAGE=1`), so `/home/site/wwwroot` is a read-only mount that already contains `dist/src/scripts/importOnDemandZones.js` and the production `node_modules`. `SQL_CONNECTION_STRING` is already in the container's environment as a Key Vault reference.
+The way in for an archive exported from Spare by hand. Needs `OCC.Admin` and nothing else — no SSH, no connection string, no base64.
 
-1. **Open an SSH session** to the container, from the Azure Portal (Function App → Development Tools → SSH) or:
+1. Export the GTFS-Flex feed from Spare to a `.zip` on your machine.
+2. In the console, open **Administration · MVTA Connect → Service Standards** and find **Zone geometry**. It states whether any version is in force.
+3. Choose the archive and press **Upload and import**. It is parsed before the database is touched, so a malformed archive, or one missing an expected zone, is refused there with the reason — `GTFS-Flex archive is missing locations.geojson` means you exported the fixed-route feed.
+4. Read the outcome, which is one of the same three the script reports:
+   - *Imported and activated* — no version was active, so the first import activates itself. Go to [Verify](#verify).
+   - *Imported as inactive* — another version is already active; activate it from the version list when the change is intended ([Path C](#path-c--activate-an-imported-version) explains why this is separate).
+   - *Already stored under this feed version* — these exact bytes are known. Check whether that version is the active one before assuming there is nothing to do.
 
-   ```bash
-   az webapp ssh -n func-mvta-restapi-dev -g rg-mvta-onboard-dev
-   ```
-
-2. **Get the archive into the container.** `/home/site/wwwroot` is read-only; write to `/tmp`. Either `curl` it from a location the container can reach, or paste it base64-encoded:
-
-   ```bash
-   base64 -d > /tmp/mvta-connect-flex.zip
-   ```
-
-3. **Run the import:**
-
-   ```bash
-   cd /home/site/wwwroot && node dist/src/scripts/importOnDemandZones.js /tmp/mvta-connect-flex.zip
-   ```
-
-   It prints the feed version and the zone names it parsed **before** touching the database — a malformed archive, or one missing an expected zone, fails there rather than after a transaction is open. Then one of:
-
-   - `Imported and activated version <id>. The on-demand zone monitor is now live.` — no version was active, so the first import activates itself. Skip to [Verify](#verify).
-   - `Imported version <id> as INACTIVE, because another version is already active.` — go to [Path C](#path-c--activate-an-imported-version).
-   - `Already imported as version <id>; nothing changed.` — these exact bytes are already stored under this feed version. Check whether that version is the active one before assuming there is nothing to do.
-
-4. **Delete the archive** from `/tmp` when done.
+Re-run this whenever the service area moves. The archive is not stored; only the parsed geometry, the feed version and the source hash are.
 
 ## Path B — the daily poller
 
@@ -146,6 +131,38 @@ copy(entry.secret);
 ```
 
 Then `read -rs TOKEN && export TOKEN`. The token is short-lived; take a fresh one on a `401`. It is a credential — do not paste it into a shared channel or commit it. Alternatively copy the `Authorization` header from any `/api/` request in the DevTools Network tab.
+
+## Path D — hand-seed from inside the container
+
+Kept for the case the console is unreachable. [Path A](#path-a--upload-from-the-console) does the same import with the same code and needs no SSH session.
+
+The REST app is Linux (`NODE|24`), VNet-integrated, and runs from a package (`WEBSITE_RUN_FROM_PACKAGE=1`), so `/home/site/wwwroot` is a read-only mount that already contains `dist/src/scripts/importOnDemandZones.js` and the production `node_modules`. `SQL_CONNECTION_STRING` is already in the container's environment as a Key Vault reference.
+
+1. **Open an SSH session** to the container, from the Azure Portal (Function App → Development Tools → SSH) or:
+
+   ```bash
+   az webapp ssh -n func-mvta-restapi-dev -g rg-mvta-onboard-dev
+   ```
+
+2. **Get the archive into the container.** `/home/site/wwwroot` is read-only; write to `/tmp`. Either `curl` it from a location the container can reach, or paste it base64-encoded:
+
+   ```bash
+   base64 -d > /tmp/mvta-connect-flex.zip
+   ```
+
+3. **Run the import:**
+
+   ```bash
+   cd /home/site/wwwroot && node dist/src/scripts/importOnDemandZones.js /tmp/mvta-connect-flex.zip
+   ```
+
+   It prints the feed version and the zone names it parsed **before** touching the database — a malformed archive, or one missing an expected zone, fails there rather than after a transaction is open. Then one of:
+
+   - `Imported and activated version <id>. The on-demand zone monitor is now live.` — no version was active, so the first import activates itself. Skip to [Verify](#verify).
+   - `Imported version <id> as INACTIVE, because another version is already active.` — go to [Path C](#path-c--activate-an-imported-version).
+   - `Already imported as version <id>; nothing changed.` — these exact bytes are already stored under this feed version. Check whether that version is the active one before assuming there is nothing to do.
+
+4. **Delete the archive** from `/tmp` when done.
 
 ## Verify
 
