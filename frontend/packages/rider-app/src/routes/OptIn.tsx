@@ -1,6 +1,35 @@
 import { useState } from "react";
-import { CATEGORIES, CATEGORY_LABELS, type Category, ApiError } from "@mvta/shared";
+import {
+  CATEGORIES,
+  CATEGORY_LABELS,
+  type Category,
+  ApiError,
+  normalizeUsPhone,
+  formatE164ForDisplay,
+} from "@mvta/shared";
 import { api } from "../config.js";
+
+const BAD_PHONE_MSG =
+  "That mobile number doesn\u2019t look right. Enter 10 digits, like (952) 388-3275.";
+
+// POST /subscribers answers a 400 with a `details` array naming the fields it
+// rejected. Saying which field is wrong is the difference between a rider
+// fixing it and a rider giving up, so unpack it instead of reporting every
+// failure as the same sentence.
+function describeSubscribeError(err: unknown): string {
+  const details = err instanceof ApiError ? err.details : null;
+  if (err instanceof ApiError && err.status === 400 && Array.isArray(details)) {
+    const named = (field: string) =>
+      details.some((d: unknown) => String(d).startsWith(field));
+    if (named("phone_number")) return BAD_PHONE_MSG;
+    if (named("email")) return "That email address doesn\u2019t look right. Check it and try again.";
+    if (named("categories")) return "Choose at least one kind of alert.";
+  }
+  if (err instanceof ApiError) {
+    return "We couldn\u2019t start your subscription. Check your contact information and try again.";
+  }
+  return "We couldn\u2019t start your subscription. Please try again.";
+}
 
 // Rider opt-in. The server enforces double opt-in (a confirmation SMS/email
 // must be acknowledged before any alerts are sent), so a successful submit
@@ -36,10 +65,25 @@ export function OptIn() {
       return;
     }
 
+    // The API only accepts E.164, so convert what the rider typed before
+    // sending; an unreadable number is named here rather than coming back as
+    // an unexplained failure.
+    let e164: string | undefined;
+    if (phone.trim()) {
+      const normalized = normalizeUsPhone(phone);
+      if (!normalized) {
+        setStatus("error");
+        setErrorMsg(BAD_PHONE_MSG);
+        return;
+      }
+      e164 = normalized;
+      setPhone(formatE164ForDisplay(normalized));
+    }
+
     setStatus("submitting");
     try {
       await api.subscribe({
-        phone_number: phone.trim() || undefined,
+        phone_number: e164,
         email: email.trim() || undefined,
         routes: "ALL",
         zones: "ALL",
@@ -49,11 +93,7 @@ export function OptIn() {
       setStatus("done");
     } catch (err) {
       setStatus("error");
-      setErrorMsg(
-        err instanceof ApiError
-          ? "We couldn’t start your subscription. Check your contact information and try again."
-          : "We couldn’t start your subscription. Please try again.",
-      );
+      setErrorMsg(describeSubscribeError(err));
     }
   }
 
@@ -83,7 +123,7 @@ export function OptIn() {
           <input
             type="tel"
             inputMode="tel"
-            placeholder="+1 612 555 0142"
+            placeholder="(952) 388-3275"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             autoComplete="tel"
