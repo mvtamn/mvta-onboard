@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   classifyConfirmation,
   MAX_CONFIRM_ATTEMPTS,
+  unionAudience,
   type ConfirmationRow,
 } from "./subscriberConfirmation";
 
@@ -106,4 +107,31 @@ test("an expired confirmation that is also locked out reads as expired", () => {
     classifyConfirmation(row({ expires_at: EARLIER, attempts: MAX_CONFIRM_ATTEMPTS }), NOW),
     "expired",
   );
+});
+
+// --- unionAudience ----------------------------------------------------------
+
+test("ALL on either side wins, because it is what the rider asked for", () => {
+  assert.equal(unionAudience("ALL", '["444"]'), "ALL");
+  assert.equal(unionAudience('["444"]', "ALL"), "ALL");
+  assert.equal(unionAudience("ALL", null), "ALL");
+});
+
+test("two lists become one, without duplicates and keeping the first order", () => {
+  assert.equal(unionAudience('["444","445"]', '["445","446"]'), '["444","445","446"]');
+});
+
+test("an absent value yields rather than erasing the other", () => {
+  // NULL is "not specified". Treating it as an empty list would silently
+  // narrow a subscription the rider chose on the other record.
+  assert.equal(unionAudience(null, '["444"]'), '["444"]');
+  assert.equal(unionAudience('["444"]', null), '["444"]');
+  assert.equal(unionAudience(null, null), null);
+});
+
+test("a value that is not a readable list is treated as absent, not thrown", () => {
+  // A confirmation must not fail on the shape of a column the rider cannot
+  // see, let alone fix.
+  assert.equal(unionAudience("not json", '["444"]'), '["444"]');
+  assert.equal(unionAudience('{"route":"444"}', '["444"]'), '["444"]');
 });

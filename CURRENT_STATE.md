@@ -328,12 +328,27 @@ operation. A temporary Service Bus failure can therefore leave:
 - An active web alert that was never dispatched by SMS/email.
 - A pending subscriber who never received a confirmation.
 
-### 7.5 Subscriber duplication is not prevented
+### 7.5 Subscriber duplication — resolved at confirmation (1.5.193)
 
-Phone and email indexes are non-unique. Repeated opt-ins can create multiple
-subscriber records for the same contact method. Once confirmation is
-implemented, this can lead to duplicate notifications unless subscription
-creation merges, reactivates, or explicitly rejects existing contacts.
+Phone and email indexes are non-unique, so repeated opt-ins still create
+multiple records for one contact. They are now folded together at the moment
+the contact is confirmed (migration 118, `mergeOnConfirm`): the record that was
+already confirmed survives, the newcomer's categories, routes and zones are
+unioned into it, and the newcomer is marked `merged` with `merged_into` naming
+its survivor. Every audience query selects `status = 'confirmed'`, so a merged
+record leaves the audience without any query changing.
+
+Deliberately NOT a unique index on the contact: that would refuse a second
+opt-in, which is not a mistake (a rider re-subscribing with more categories has
+said something new), and would refuse it at a moment when nobody has proved
+they own the contact — so a stranger typing someone else's number could block
+that person from ever subscribing. Confirmation is the only moment the contact
+is a fact rather than a claim.
+
+An unconfirmed duplicate is retired without its preferences, since nobody
+proved it. A record confirmed on its *other* channel is kept, but its
+outstanding token for the confirmed contact is voided so one contact cannot be
+confirmed twice.
 
 ## 8. Security posture
 

@@ -140,8 +140,10 @@ export async function confirmEmail(tx: Transaction, token: string): Promise<Conf
     return { outcome: state, subscriberId: row?.subscriber_id, channel: row ? "email" : undefined };
   }
   // Holding the link is the proof; there is nothing further to check.
-  await markConfirmed(tx, row!);
-  return { outcome: "confirmed", subscriberId: row!.subscriber_id, channel: "email" };
+  const survivorId = await markConfirmed(tx, row!);
+  // The survivor, not the row that was confirming: a duplicate folded into an
+  // older record is no longer the subscriber this contact belongs to.
+  return { outcome: "confirmed", subscriberId: survivorId, channel: "email" };
 }
 
 /**
@@ -202,8 +204,8 @@ export async function confirmSms(
     };
   }
 
-  await markConfirmed(tx, row);
-  return { outcome: "confirmed", subscriberId: row.subscriber_id, channel: "sms" };
+  const survivorId = await markConfirmed(tx, row);
+  return { outcome: "confirmed", subscriberId: survivorId, channel: "sms" };
 }
 
 /** Whether this number has an already-confirmed SMS channel. */
@@ -211,7 +213,8 @@ async function spentSmsExists(tx: Transaction, phoneNumber: string): Promise<boo
   const req = new sql.Request(tx);
   req.input("phone", sql.NVarChar(20), phoneNumber);
   const result = await req.query<{ n: number }>(
-    `SELECT COUNT(*) AS n FROM Subscribers WHERE phone_number = @phone AND sms_status = 'confirmed'`,
+    `SELECT COUNT(*) AS n FROM Subscribers
+      WHERE phone_number = @phone AND sms_status = 'confirmed' AND merged_into IS NULL`,
   );
   return (result.recordset[0]?.n ?? 0) > 0;
 }
@@ -237,7 +240,7 @@ async function countAttempt(tx: Transaction, confirmationId: string): Promise<nu
 // opted_in_at is the FIRST confirmation, not the latest: it is the date the
 // consent record rests on, and a second channel confirming months later does
 // not change when this person agreed.
-async function markConfirmed(tx: Transaction, row: ConfirmationRow): Promise<void> {
+async function markConfirmed(tx: Transaction, row: ConfirmationRow): Promise<string> {
   const spend = new sql.Request(tx);
   spend.input("id", sql.UniqueIdentifier, row.confirmation_id);
   await spend.query(
@@ -256,6 +259,12 @@ async function markConfirmed(tx: Transaction, row: ConfirmationRow): Promise<voi
             opted_in_at = COALESCE(opted_in_at, SYSUTCDATETIME())
       WHERE subscriber_id = @id`,
   );
+
+  // The contact is proven as of this statement, which is the only moment its
+  // duplicates can be resolved on a fact rather than on a claim. Inside the
+  // same transaction, so a confirmation and its merge are one event.
+  const merge = await mergeOnConfirm(tx, row.subscriber_id, row.channel);
+  return merge.survivorId;
 }
 
 export type OptOutReason = "sms_stop" | "email_link" | "staff";
@@ -302,6 +311,7 @@ export async function optOut(
             opted_out_at = CASE WHEN ${other} IS NULL OR ${other} = 'unsubscribed' THEN SYSUTCDATETIME() ELSE opted_out_at END,
             opted_out_reason = CASE WHEN ${other} IS NULL OR ${other} = 'unsubscribed' THEN @reason ELSE opted_out_reason END
       WHERE ${matchOn} = @contact
+        AND merged_into IS NULL
         AND (${column} IS NULL OR ${column} <> 'unsubscribed');
       SELECT @@ROWCOUNT AS changed;`,
   );
@@ -392,6 +402,10 @@ export async function resendConfirmation(
        FROM Subscribers s WITH(UPDLOCK, HOLDLOCK)
       WHERE s.${matchOn} = @contact
         AND s.${statusColumn} = 'pending_confirmation'
+        -- A merged record keeps its channel columns as history; reissuing
+        -- against one would send a code that confirms a record no audience
+        -- query can see.
+        AND s.merged_into IS NULL
       ORDER BY last_issued_at DESC`,
   );
   const row = found.recordset[0];
@@ -416,4 +430,297 @@ export async function resendConfirmation(
 
   const issued = await issueConfirmation(tx, row.subscriber_id, channel, context);
   return { outcome: "issued", subscriberId: row.subscriber_id, issued };
+}
+
+// --- Merging duplicate records on confirmation (CURRENT_STATE 7.5) -----------
+//
+// The contact indexes are not unique, so opting in twice with the same number
+// creates two records. Nothing could confirm one until increment 3, so the
+// duplication was harmless; now it means the same person gets every alert
+// twice.
+//
+// Confirmation is the right moment to resolve it, and the only one. Before it,
+// nobody has proved they own the contact: refusing a second opt-in at the form
+// would let a stranger who types your number stop you subscribing, and merging
+// two unproven records would merge on a claim rather than on a fact. At
+// confirmation the contact is proven, so the records that hold it are known to
+// belong to one person.
+
+/**
+ * Combine two stored audience values.
+ *
+ * Each is a JSON array, the literal "ALL", or NULL - the three shapes
+ * `serializeAudience` writes. "ALL" wins over everything, because a rider who
+ * asked for every route on either record has asked for every route. NULL means
+ * "not specified" and yields to a value rather than erasing it.
+ *
+ * The union is deliberate and not "the newer one wins": both records were
+ * created by the same proven person, and each list is something they asked
+ * for. Dropping either would silently narrow a subscription they chose.
+ */
+export function unionAudience(a: string | null, b: string | null): string | null {
+  if (a === "ALL" || b === "ALL") return "ALL";
+  const left = parseList(a);
+  const right = parseList(b);
+  if (!left && !right) return a ?? b;
+  const merged = [...(left ?? [])];
+  for (const value of right ?? []) if (!merged.includes(value)) merged.push(value);
+  return JSON.stringify(merged);
+}
+
+/** A stored JSON array, or null when the value is absent or not one. */
+function parseList(value: string | null): string[] | null {
+  if (!value) return null;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.map(String) : null;
+  } catch {
+    // Not readable as a list. Treated as absent rather than thrown, because
+    // the alternative is a confirmation failing on the shape of a column the
+    // rider cannot see or fix.
+    return null;
+  }
+}
+
+export interface MergeResult {
+  /** The record that now carries this contact. The confirmed one, always. */
+  survivorId: string;
+  /** Records folded into it. */
+  mergedIds: string[];
+}
+
+const CONTACT_COLUMN = { sms: "phone_number", email: "email" } as const;
+const STATUS_COLUMN = { sms: "sms_status", email: "email_status" } as const;
+
+interface DuplicateRow {
+  subscriber_id: string;
+  phone_number: string | null;
+  email: string | null;
+  routes: string | null;
+  zones: string | null;
+  categories: string;
+  status: string;
+  sms_status: string | null;
+  email_status: string | null;
+  opted_in_at: Date | null;
+}
+
+/**
+ * Fold the duplicates of a just-confirmed contact together.
+ *
+ * Runs inside the confirming transaction, so a half-merged pair - two records
+ * both live, or one pointing at a survivor that was never updated - cannot be
+ * committed.
+ *
+ * THE SURVIVOR IS THE RECORD THAT WAS ALREADY CONFIRMED on this channel, not
+ * the one confirming now. It carries `opted_in_at`, the date the consent
+ * record rests on, and its delivery history refers to it by id. The record
+ * confirming now is the newcomer even though it is the one in hand.
+ *
+ * An opted-out record is never a survivor. A rider who stopped alerts and
+ * later subscribed again has given fresh consent on a new record, and folding
+ * that into the stopped one would discard it.
+ *
+ * Only categories, routes and zones move. A contact moves only into an empty
+ * slot - if the survivor has no email and the merged record has one, the
+ * address and its unconfirmed state come across and its live confirmation is
+ * repointed, so the link already in that rider's inbox still works. Where both
+ * hold a value, the survivor's stands: it is the established record, and
+ * overwriting a proven contact with an unproven one is the one move here that
+ * could send to a stranger.
+ */
+export async function mergeOnConfirm(
+  tx: Transaction,
+  subscriberId: string,
+  channel: Channel,
+): Promise<MergeResult> {
+  const contactColumn = CONTACT_COLUMN[channel];
+  const statusColumn = STATUS_COLUMN[channel];
+
+  const self = await readSubscriber(tx, subscriberId);
+  const contact = channel === "sms" ? self?.phone_number : self?.email;
+  if (!self || !contact) return { survivorId: subscriberId, mergedIds: [] };
+
+  // Every other record holding this contact, oldest consent first.
+  const find = new sql.Request(tx);
+  find.input("self", sql.UniqueIdentifier, subscriberId);
+  find.input("contact", sql.NVarChar(320), contact);
+  const others = await find.query<DuplicateRow>(
+    `SELECT subscriber_id, phone_number, email, routes, zones, categories,
+            status, sms_status, email_status, opted_in_at
+       FROM Subscribers WITH(UPDLOCK, HOLDLOCK)
+      WHERE ${contactColumn} = @contact
+        AND subscriber_id <> @self
+        AND merged_into IS NULL
+      ORDER BY COALESCE(opted_in_at, '9999-12-31') ASC`,
+  );
+
+  const survivor =
+    others.recordset.find(
+      (row) => row[statusColumn] === "confirmed" && row.status !== "opted_out",
+    ) ?? null;
+
+  if (survivor) {
+    await foldInto(tx, survivor.subscriber_id, self);
+    // Anything else holding this contact and never confirmed is retired too,
+    // so one confirmation resolves the whole set rather than leaving a third
+    // record to be discovered later.
+    const alsoMerged = [self.subscriber_id];
+    for (const row of others.recordset) {
+      if (row.subscriber_id === survivor.subscriber_id) continue;
+      if (row.status !== "pending_confirmation") {
+        await voidConfirmationsFor(tx, row.subscriber_id, channel);
+        continue;
+      }
+      // Retired WITHOUT its preferences, unlike the record that just
+      // confirmed. Nobody ever proved that record, so its category and route
+      // choices are a claim rather than a decision, and a stranger who typed
+      // this contact into the form could otherwise widen a real subscriber's
+      // alerts by picking everything.
+      await retire(tx, row.subscriber_id, survivor.subscriber_id);
+      alsoMerged.push(row.subscriber_id);
+    }
+    return { survivorId: survivor.subscriber_id, mergedIds: alsoMerged };
+  }
+
+  // Nothing else has confirmed this contact, so the record in hand is the
+  // survivor.
+  const mergedIds: string[] = [];
+  for (const row of others.recordset) {
+    if (row.status !== "pending_confirmation") {
+      // Confirmed on its OTHER channel, so it is a real subscription and must
+      // not be folded away - but this contact now belongs to the record that
+      // proved it, and a second record must never confirm it as well. Its
+      // outstanding token for this channel is voided; the rider has already
+      // confirmed the contact, on the record that kept it.
+      await voidConfirmationsFor(tx, row.subscriber_id, channel);
+      continue;
+    }
+    // Entirely unconfirmed, so its preferences do not travel - same rule as
+    // the branch above.
+    await retire(tx, row.subscriber_id, subscriberId);
+    mergedIds.push(row.subscriber_id);
+  }
+  return { survivorId: subscriberId, mergedIds };
+}
+
+async function readSubscriber(tx: Transaction, id: string): Promise<DuplicateRow | null> {
+  const req = new sql.Request(tx);
+  req.input("id", sql.UniqueIdentifier, id);
+  const result = await req.query<DuplicateRow>(
+    `SELECT subscriber_id, phone_number, email, routes, zones, categories,
+            status, sms_status, email_status, opted_in_at
+       FROM Subscribers WITH(UPDLOCK, HOLDLOCK)
+      WHERE subscriber_id = @id`,
+  );
+  return result.recordset[0] ?? null;
+}
+
+/**
+ * Move `loser`'s preferences and any contact the survivor lacks, then retire it.
+ *
+ * The survivor is re-read here rather than passed in. Three records holding
+ * one contact means this runs twice, and the second call working from the row
+ * as it looked before the first would write the second union over the first -
+ * silently dropping whichever list the first fold had just brought across.
+ */
+async function foldInto(tx: Transaction, survivorId: string, loser: DuplicateRow): Promise<void> {
+  const survivor = await readSubscriber(tx, survivorId);
+  if (!survivor) return;
+  const takePhone = !survivor.phone_number && !!loser.phone_number;
+  const takeEmail = !survivor.email && !!loser.email;
+
+  const update = new sql.Request(tx);
+  update.input("id", sql.UniqueIdentifier, survivor.subscriber_id);
+  update.input("routes", sql.NVarChar, unionAudience(survivor.routes, loser.routes));
+  update.input("zones", sql.NVarChar, unionAudience(survivor.zones, loser.zones));
+  update.input("categories", sql.NVarChar, unionAudience(survivor.categories, loser.categories));
+  update.input("phone", sql.NVarChar(20), takePhone ? loser.phone_number : null);
+  update.input("sms_status", sql.NVarChar(30), takePhone ? loser.sms_status : null);
+  update.input("email", sql.NVarChar(320), takeEmail ? loser.email : null);
+  update.input("email_status", sql.NVarChar(30), takeEmail ? loser.email_status : null);
+  await update.query(
+    `UPDATE Subscribers
+        SET routes = @routes,
+            zones = @zones,
+            categories = @categories,
+            phone_number = COALESCE(@phone, phone_number),
+            sms_status = COALESCE(@sms_status, sms_status),
+            email = COALESCE(@email, email),
+            email_status = COALESCE(@email_status, email_status)
+      WHERE subscriber_id = @id`,
+  );
+
+  // A channel that came across brings its outstanding token with it, so the
+  // link already sitting in that rider's inbox confirms the survivor instead
+  // of a record that no longer exists to them.
+  if (takePhone) await repointConfirmations(tx, loser.subscriber_id, survivor.subscriber_id, "sms");
+  if (takeEmail) await repointConfirmations(tx, loser.subscriber_id, survivor.subscriber_id, "email");
+
+  await retire(tx, loser.subscriber_id, survivor.subscriber_id);
+}
+
+/** Point a record at its survivor and kill whatever tokens it still had out. */
+async function retire(tx: Transaction, id: string, into: string): Promise<void> {
+  await markMerged(tx, id, into);
+  await voidAllConfirmations(tx, id);
+}
+
+async function markMerged(tx: Transaction, id: string, into: string): Promise<void> {
+  const req = new sql.Request(tx);
+  req.input("id", sql.UniqueIdentifier, id);
+  req.input("into", sql.UniqueIdentifier, into);
+  await req.query(
+    `UPDATE Subscribers
+        SET status = 'merged', merged_into = @into, merged_at = SYSUTCDATETIME()
+      WHERE subscriber_id = @id`,
+  );
+}
+
+async function repointConfirmations(
+  tx: Transaction,
+  from: string,
+  to: string,
+  channel: Channel,
+): Promise<void> {
+  const req = new sql.Request(tx);
+  req.input("from", sql.UniqueIdentifier, from);
+  req.input("to", sql.UniqueIdentifier, to);
+  req.input("channel", sql.NVarChar(10), channel);
+  await req.query(
+    `UPDATE SubscriberConfirmations
+        SET subscriber_id = @to
+      WHERE subscriber_id = @from
+        AND channel = @channel
+        AND confirmed_at IS NULL
+        AND superseded_at IS NULL`,
+  );
+}
+
+/** Void whatever tokens a retired record still had out. */
+async function voidAllConfirmations(tx: Transaction, id: string): Promise<void> {
+  const req = new sql.Request(tx);
+  req.input("id", sql.UniqueIdentifier, id);
+  await req.query(
+    `UPDATE SubscriberConfirmations
+        SET superseded_at = SYSUTCDATETIME()
+      WHERE subscriber_id = @id
+        AND confirmed_at IS NULL
+        AND superseded_at IS NULL`,
+  );
+}
+
+/** Void one channel's outstanding tokens on a record that is staying. */
+async function voidConfirmationsFor(tx: Transaction, id: string, channel: Channel): Promise<void> {
+  const req = new sql.Request(tx);
+  req.input("id", sql.UniqueIdentifier, id);
+  req.input("channel", sql.NVarChar(10), channel);
+  await req.query(
+    `UPDATE SubscriberConfirmations
+        SET superseded_at = SYSUTCDATETIME()
+      WHERE subscriber_id = @id
+        AND channel = @channel
+        AND confirmed_at IS NULL
+        AND superseded_at IS NULL`,
+  );
 }
