@@ -57,11 +57,21 @@ CREATE TABLE dbo.SubscriberConfirmations (
 CREATE UNIQUE INDEX UX_SubConfirm_Token ON dbo.SubscriberConfirmations (token);
 `;
 
+// Both migrations, not only 117: since increment 4 the module reads
+// merged_into, so a schema stopped at 117 fails every call here with an error
+// about a column rather than about the behaviour under test.
+const MIGRATIONS = [
+  "migration-117-subscriber-channel-state.sql",
+  "migration-118-subscriber-merge.sql",
+];
+
 async function reset(pool: sql.ConnectionPool) {
   await pool.request().batch(BEFORE);
-  const text = readFileSync(join(process.cwd(), "sql", "migration-117-subscriber-channel-state.sql"), "utf8");
-  for (const batch of text.split(/^\s*GO\s*$/gim).map((p) => p.trim()).filter(Boolean)) {
-    await pool.request().batch(batch);
+  for (const file of MIGRATIONS) {
+    const text = readFileSync(join(process.cwd(), "sql", file), "utf8");
+    for (const batch of text.split(/^\s*GO\s*$/gim).map((p) => p.trim()).filter(Boolean)) {
+      await pool.request().batch(batch);
+    }
   }
 }
 
