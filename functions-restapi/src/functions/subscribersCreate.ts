@@ -10,6 +10,7 @@ import { getPool, sql } from "../lib/db";
 import { validateSubscribe } from "../lib/validation";
 import { publishConfirmationRequested } from "../lib/events";
 import { issueConfirmation } from "../lib/confirmationTokens";
+import { makeManageKey } from "../lib/manageKey";
 import type { Channel } from "../lib/subscriberConfirmation";
 import type { SubscribeBody } from "../lib/types";
 
@@ -56,16 +57,22 @@ app.http("subscribersCreate", {
       insertSub.input("sms_status", sql.NVarChar, body.phone_number ? "pending_confirmation" : null);
       insertSub.input("email_status", sql.NVarChar, body.email ? "pending_confirmation" : null);
       insertSub.input("consent_source", sql.NVarChar, body.consent_source);
+      // Issued now rather than when the rider first asks to manage anything:
+      // the first alert they receive carries the link, and that alert can be
+      // minutes after they confirm (migration 119).
+      insertSub.input("manage_key", sql.NVarChar(64), makeManageKey());
 
       const subResult = await insertSub.query<{ subscriber_id: string }>(`
         INSERT INTO Subscribers (
           phone_number, email, routes, zones, categories,
-          status, sms_status, email_status, consent_source
+          status, sms_status, email_status, consent_source,
+          manage_key, manage_key_issued_at
         )
         OUTPUT INSERTED.subscriber_id
         VALUES (
           @phone_number, @email, @routes, @zones, @categories,
-          'pending_confirmation', @sms_status, @email_status, @consent_source
+          'pending_confirmation', @sms_status, @email_status, @consent_source,
+          @manage_key, SYSUTCDATETIME()
         )
       `);
       const subscriberId = subResult.recordset[0].subscriber_id;
