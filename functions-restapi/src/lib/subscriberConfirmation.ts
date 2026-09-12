@@ -193,6 +193,21 @@ export async function confirmSms(
   }
 
   if (row.token !== code) {
+    // A rider who asked for another code is holding two texts, and the older
+    // one still looks current. Before counting this as a guess, check whether
+    // it is a code we really did send to this number - and if so, say which
+    // state it is in rather than calling it wrong, and do not spend one of the
+    // five attempts on it. Otherwise using the wrong text costs the rider a
+    // try and tells them nothing about why.
+    //
+    // This gives a guesser nothing. Reaching it means naming a code that was
+    // actually issued to this number, which is exactly as hard as naming the
+    // live one.
+    const stale = await findSpentSmsToken(tx, phoneNumber, code);
+    if (stale) {
+      return { outcome: stale, subscriberId: row.subscriber_id, channel: "sms" };
+    }
+
     const attempts = await countAttempt(tx, row.confirmation_id);
     return {
       outcome: "incorrect_code",
@@ -204,6 +219,31 @@ export async function confirmSms(
 
   await markConfirmed(tx, row);
   return { outcome: "confirmed", subscriberId: row.subscriber_id, channel: "sms" };
+}
+
+/**
+ * A code this number was genuinely sent, which is no longer the live one.
+ * Returns how it was spent, or null if we never sent this code to this number.
+ */
+async function findSpentSmsToken(
+  tx: Transaction,
+  phoneNumber: string,
+  code: string,
+): Promise<"already_confirmed" | "superseded" | null> {
+  const req = new sql.Request(tx);
+  req.input("phone", sql.NVarChar(20), phoneNumber);
+  req.input("token", sql.NVarChar(100), code);
+  const found = await req.query<{ confirmed_at: Date | null }>(
+    `SELECT TOP 1 c.confirmed_at
+       FROM SubscriberConfirmations c
+       JOIN Subscribers s ON s.subscriber_id = c.subscriber_id
+      WHERE c.channel = 'sms' AND s.phone_number = @phone AND c.token = @token
+        AND (c.confirmed_at IS NOT NULL OR c.superseded_at IS NOT NULL)
+      ORDER BY c.created_at DESC`,
+  );
+  const row = found.recordset[0];
+  if (!row) return null;
+  return row.confirmed_at ? "already_confirmed" : "superseded";
 }
 
 /** Whether this number has an already-confirmed SMS channel. */

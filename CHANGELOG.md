@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.193] - 2026-09-12
+
+- **Using the older of two confirmation texts was treated as a guess.** A resend supersedes the previous code (1.5.191), but the rider is left holding both texts and the older one still looks current. Typing it answered "that code is not right" and spent one of the five attempts - misdescribing a code OnBoard really did send to that number, and charging the rider for a choice they had no way to make correctly. `confirmSms` now checks, before counting an attempt, whether the code presented is one this number was actually issued: if it is, the answer is that it was superseded (or already confirmed) and no attempt is spent. Anything else still counts, including a retired code belonging to a different number. The concession hands a guesser nothing - reaching it means naming a code genuinely issued to that number, which is exactly as hard as naming the live one.
+
 ## [1.5.192] - 2026-09-11
 
 - **The confirmation link now lands somewhere.** `GET /api/subscribers/confirm-email` has redirected to `/subscribe/confirmed` since 1.5.191, and the rider app did not route it - a rider who clicked the link in their email got an empty page, after their confirmation had already been written. `routes/Confirmed.tsx` is that page: every status the endpoint can send has a heading and a sentence, and an unrecognised or missing one reads as a link that did not work rather than as a blank page. Increment 6 of `plans/rider-opt-in-confirmation-loop-spec.md`.
