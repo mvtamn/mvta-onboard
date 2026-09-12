@@ -281,12 +281,11 @@ Still missing:
 - Inbound SMS processing (increment 5).
 - `STOP` opt-out handling (increment 5). The state machine records one; nothing
   receives one yet.
-- The rider landing page the email link redirects to (increment 6). Until it
-  exists, a confirmed rider is redirected to `/subscribe/confirmed`, which the
-  rider app does not route — the confirmation itself has already been written
-  by then, but the rider sees an empty page.
 - `HELP` response handling needs no code: ACS answers mandatory keywords from
   the toll-free campaign brief.
+
+The rider landing page at `/subscribe/confirmed` exists as of 1.5.192, and the
+opt-in success screen takes the texted code directly.
 
 A subscriber can therefore now reach `confirmed`, by email link or by typing
 the texted code into the page — but the SMS channel cannot be exercised end to

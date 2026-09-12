@@ -31,6 +31,90 @@ function describeSubscribeError(err: unknown): string {
   return "We couldn\u2019t start your subscription. Please try again.";
 }
 
+// Confirming the texted code without leaving the page.
+//
+// `POST /api/subscribers/confirm-sms` answers `confirmed` or `invalid` and
+// nothing else - it takes a phone number from anyone, so saying "expired" or
+// "too many attempts" would tell whoever typed one whether it is mid-signup.
+// The remedy for every `invalid` is the same, which is why one sentence covers
+// all of them and why the resend sits beside it.
+function SmsCodeBox({ phoneNumber }: { phoneNumber: string }) {
+  const [code, setCode] = useState("");
+  const [state, setState] = useState<"idle" | "checking" | "confirmed" | "wrong" | "error">("idle");
+  const [resent, setResent] = useState(false);
+
+  async function onSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setState("checking");
+    try {
+      const result = await api.confirmSms({ phone_number: phoneNumber, code: code.trim() });
+      setState(result.status === "confirmed" ? "confirmed" : "wrong");
+    } catch {
+      setState("error");
+    }
+  }
+
+  async function onResend() {
+    setResent(false);
+    try {
+      await api.resendConfirmation({ phone_number: phoneNumber });
+      // This page knows a confirmation is waiting, because it just created
+      // one - so it can say so plainly, where the landing page reached from an
+      // email link cannot.
+      setResent(true);
+      setCode("");
+      setState("idle");
+    } catch {
+      setState("error");
+    }
+  }
+
+  if (state === "confirmed") {
+    return (
+      <p className="subtitle" role="status">
+        Your mobile number is confirmed. You&rsquo;ll start getting texts about delays, detours,
+        and closures.
+      </p>
+    );
+  }
+
+  return (
+    <form className="form" onSubmit={onSubmit}>
+      <label className="field">
+        <span>Enter the 6-digit code we texted you</span>
+        <input
+          type="text"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          maxLength={6}
+          placeholder="123456"
+          value={code}
+          onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
+        />
+      </label>
+      {state === "wrong" && (
+        <p className="error inline">
+          That code didn&rsquo;t work. Check it, or ask for a new one.
+        </p>
+      )}
+      {state === "error" && (
+        <p className="error inline">We couldn&rsquo;t reach MVTA just now. Please try again.</p>
+      )}
+      {resent && (
+        <p className="subtitle" role="status">
+          A new code is on its way. It can take a minute to arrive.
+        </p>
+      )}
+      <button className="btn-primary" type="submit" disabled={state === "checking" || code.length !== 6}>
+        {state === "checking" ? "Checking…" : "Confirm my number"}
+      </button>
+      <button className="retry-btn" type="button" onClick={onResend}>
+        Send me a new code
+      </button>
+    </form>
+  );
+}
+
 // Rider opt-in. The server enforces double opt-in (a confirmation SMS/email
 // must be acknowledged before any alerts are sent), so a successful submit
 // here means "check your phone/email to confirm", not "you're subscribed".
@@ -41,6 +125,11 @@ export function OptIn() {
   const [consent, setConsent] = useState(false);
   const [status, setStatus] = useState<"idle" | "submitting" | "done" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  // What was actually sent, kept for the success screen: it offers to confirm
+  // the texted code in place, which needs the number in the shape the API
+  // stored it rather than the shape the field holds.
+  const [submittedPhone, setSubmittedPhone] = useState<string | null>(null);
+  const [submittedEmail, setSubmittedEmail] = useState<string | null>(null);
 
   function toggleCategory(c: Category) {
     setCategories((prev) => {
@@ -90,6 +179,8 @@ export function OptIn() {
         categories: [...categories],
         consent_source: "web_form",
       });
+      setSubmittedPhone(e164 ?? null);
+      setSubmittedEmail(email.trim() || null);
       setStatus("done");
     } catch (err) {
       setStatus("error");
@@ -102,9 +193,15 @@ export function OptIn() {
       <>
         <h1 className="title">Check your phone or email</h1>
         <p className="subtitle">
-          We&rsquo;ve sent a confirmation to the contact information you provided. Reply or click
-          the link to confirm. You won&rsquo;t receive alerts until you do.
+          We&rsquo;ve sent a confirmation to the contact information you provided.
+          {submittedEmail ? " Click the link in the email to confirm it." : ""}
+          {" "}You won&rsquo;t receive alerts until you do.
         </p>
+        {/* The code box is the only way to finish the SMS channel today:
+            replying to the text needs a toll-free number, which is in carrier
+            verification. It is worth having regardless - a rider who is already
+            looking at this tab would rather type six digits than switch apps. */}
+        {submittedPhone && <SmsCodeBox phoneNumber={submittedPhone} />}
       </>
     );
   }

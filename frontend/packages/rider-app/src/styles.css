@@ -84,7 +84,8 @@ body {
 .field > span,
 .field legend { font-size: 13px; font-weight: bold; color: #2c2c2a; padding: 0; }
 .field input[type="tel"],
-.field input[type="email"] {
+.field input[type="email"],
+.field input[type="text"] {
   font-size: 14px;
   padding: 10px 12px;
   border: 1px solid #ccc;
