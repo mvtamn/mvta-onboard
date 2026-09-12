@@ -47,6 +47,12 @@ param acsEndpoint string = ''
 @description('Verified ACS email sender address, e.g. DoNotReply@<domain>.azurecomm.net. Empty leaves email sending unconfigured.')
 param acsEmailFrom string = ''
 
+@description('ACS SMS sender number in E.164, e.g. +18005550100. Must be toll-free verified before carriers will deliver. Empty leaves SMS sending unconfigured.')
+param acsSmsFrom string = ''
+
+@description('Public base URL of the rider app, used to build confirmation links. No trailing slash. Empty leaves confirmation emails with a relative link.')
+param riderAppBaseUrl string = ''
+
 @description('Configure Easy Auth for this app. Disable for background-only Function Apps with no HTTP surface.')
 param enableEasyAuth bool = true
 
@@ -215,6 +221,18 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'ACS_ENDPOINT', value: acsEndpoint }
       ] : [], !empty(acsEmailFrom) ? [
         { name: 'ACS_EMAIL_FROM', value: acsEmailFrom }
+      ] : [], !empty(acsSmsFrom) ? [
+        // Declared here for the same reason ACS_ENDPOINT is: this appSettings
+        // list is the complete desired state, so a number set with
+        // `az functionapp config appsettings set` is erased by the next
+        // routine infra deploy - which is what happened to ACS_ENDPOINT on
+        // 2026-09-05. A toll-free number costs weeks of carrier verification
+        // to obtain; losing the setting for it should not be possible.
+        { name: 'ACS_SMS_FROM', value: acsSmsFrom }
+      ] : [], !empty(riderAppBaseUrl) ? [
+        // dispatchConfirmation builds the double opt-in email link from this.
+        // Unset, the link is relative and lands nowhere from an inbox.
+        { name: 'RIDER_APP_BASE_URL', value: riderAppBaseUrl }
       ] : [], enableAccessManagement ? [
         { name: 'AZURE_TENANT_ID', value: subscription().tenantId }
         { name: 'ONBOARD_API_CLIENT_ID', value: aadClientId }

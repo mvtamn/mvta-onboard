@@ -16,6 +16,7 @@ import type {
   AvailMissedTripsRouteRollup,
   Category,
   ComplianceOccurrence,
+  ConfirmSmsInput,
   ContractorPerformanceStandard,
   ContractorRecord,
   ContractorStandardTier,
@@ -104,6 +105,7 @@ import type {
   ProcedureDraftSaveResult,
   PutStopExclusionInput,
   ReasonCodeAppliesTo,
+  ResendConfirmationInput,
   RouteClassificationInput,
   RouteClassificationListResponse,
   RouteClassificationRow,
@@ -490,6 +492,37 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     subscribe(input: SubscribeInput) {
       return request<{ subscriber_id: string; status: string }>(
         "/api/subscribers",
+        { method: "POST", body: JSON.stringify(input) },
+      );
+    },
+
+    /**
+     * Confirm the SMS channel with the code the rider was texted.
+     *
+     * Answers `confirmed` or `invalid` and nothing else, deliberately: the
+     * endpoint takes a phone number from anyone, so reporting "expired" or
+     * "too many attempts" would say whether that number is mid-signup. The
+     * remedy for every `invalid` is the same - check the code, or ask for a
+     * new one - so there is nothing for the rider to lose by it.
+     */
+    confirmSms(input: ConfirmSmsInput) {
+      return request<{ status: "confirmed" | "invalid"; channel?: "sms" }>(
+        "/api/subscribers/confirm-sms",
+        { method: "POST", body: JSON.stringify(input) },
+      );
+    },
+
+    /**
+     * Ask for a fresh confirmation code or link.
+     *
+     * Always answers `{ status: "ok" }` - whether the contact exists, is
+     * already confirmed, or asked thirty seconds ago. Do not build UI that
+     * implies otherwise: "we have sent another one if that contact is waiting
+     * to be confirmed" is the strongest true statement available.
+     */
+    resendConfirmation(input: ResendConfirmationInput) {
+      return request<{ status: "ok" }>(
+        "/api/subscribers/resend",
         { method: "POST", body: JSON.stringify(input) },
       );
     },

@@ -67,6 +67,12 @@ param acsEndpoint string = ''
 @description('Verified ACS email sender address for the dispatch app. Empty leaves email sending unconfigured.')
 param acsEmailFrom string = ''
 
+@description('ACS SMS sender number in E.164 for the dispatch app. Empty leaves SMS sending unconfigured; the sender no-ops rather than throwing.')
+param acsSmsFrom string = ''
+
+@description('Public base URL of the rider app, used by the dispatch app to build double opt-in confirmation links. No trailing slash.')
+param riderAppBaseUrl string = ''
+
 @description('Tenant-specific OnBoard enterprise-app, role, and group identifiers as AccessEnvironmentConfig JSON. Empty leaves Access Management disabled.')
 param accessManagementConfigJson string = ''
 
@@ -138,6 +144,12 @@ module restApiFunction 'modules/functionapp.bicep' = {
     frontDoorId: frontDoorId
     allowedCorsOrigins: allowedCorsOrigins
     serviceBusNamespace: 'sb-mvta-onboard-${environment}'
+    // The REST API redirects a rider who clicked the confirmation link to the
+    // rider app's landing page. It falls back to a same-host path when this is
+    // unset, so a missing value is not an outage - but naming the app
+    // explicitly keeps that working if the two are ever served from different
+    // hosts. Same parameter the dispatch app uses to BUILD the link.
+    riderAppBaseUrl: riderAppBaseUrl
     includeSpareApiKey: true
     complianceReportsStorageAccountName: take('stmvtacompreport${environment}${cleanSuffix}', 24)
     spareMissedTripsEnabled: spareMissedTripsEnabled
@@ -190,6 +202,8 @@ module dispatchFunction 'modules/functionapp.bicep' = {
     serviceBusNamespace: 'sb-mvta-onboard-${environment}'
     acsEndpoint: acsEndpoint
     acsEmailFrom: acsEmailFrom
+    acsSmsFrom: acsSmsFrom
+    riderAppBaseUrl: riderAppBaseUrl
     manageRoleAssignments: manageRoleAssignments
   }
 }

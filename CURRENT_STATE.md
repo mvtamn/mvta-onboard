@@ -249,10 +249,11 @@ used by the applications:
   identity-based Service Bus trigger connection
 - `SERVICE_BUS_QUEUE`
 - `SERVICE_BUS_CONFIRM_QUEUE`
-- `ACS_ENDPOINT`
-- `ACS_SMS_FROM`
-- `ACS_EMAIL_FROM`
-- `RIDER_APP_BASE_URL`
+- `ACS_ENDPOINT` (declared 2026-09-05)
+- `ACS_SMS_FROM` (declared with migration 117; empty on dev until a toll-free
+  number is acquired and verified)
+- `ACS_EMAIL_FROM` (declared 2026-09-05)
+- `RIDER_APP_BASE_URL` (declared with migration 117)
 - `GTFS_RT_ALERT_URL`
 - `GTFS_RT_TRIPUPDATE_URL`
 - `GTFS_RT_VEHICLE_URL`
@@ -266,22 +267,47 @@ App-specific settings should be parameters or separate configuration blocks;
 the REST and dispatch applications should not receive an identical settings
 list.
 
-### 7.2 Double opt-in cannot be completed
+### 7.2 Double opt-in — built, waiting on the toll-free number (1.5.195)
 
-Subscription creation and confirmation-message delivery are implemented, but
-the callback endpoints are not:
+Subscription creation and confirmation-message delivery are implemented. The
+rider-facing callbacks now exist (1.5.191, increment 3):
 
-- SMS confirmation-code submission.
-- Email confirmation-link handling.
-- Confirmation-code resend.
-- Inbound SMS processing.
-- `STOP` opt-out handling.
-- `HELP` response handling.
+- Email confirmation-link handling — `GET /api/subscribers/confirm-email`.
+- SMS confirmation-code submission — `POST /api/subscribers/confirm-sms`.
+- Confirmation-code resend — `POST /api/subscribers/resend`.
 
-The email sender currently generates a link to
-`/api/subscribers/confirm-email`, but no matching REST function exists. The SMS
-message tells the rider to reply with the code, but no inbound webhook exists.
-New subscribers therefore remain `pending_confirmation`.
+Inbound SMS and `STOP` landed with 1.5.195 (increment 5):
+`POST /api/acs-sms-events` is an Event Grid webhook for
+`Microsoft.Communication.SMSReceived`. A six-digit reply confirms the SMS
+channel for the number that sent it; `STOP` / `STOPALL` / `UNSUBSCRIBE` /
+`CANCEL` / `END` / `QUIT`, matched exactly, stop that number. Anything else is
+logged and never answered.
+
+`HELP` needs no code: ACS answers the mandatory keywords from the toll-free
+campaign brief, and OnBoard sends no automatic reply to any inbound text.
+
+**Every increment of the spec is now built.** What remains is not code:
+
+- The toll-free number and its carrier verification (requested 2026-09-11).
+- The Event Grid subscription for `SMSReceived`, which must point at the Front
+  Door URL rather than the Function App's own hostname — the REST app's inbound
+  is Front Door only. Steps are in HANDOFF.md.
+- Migrations 117 and 118 applied to dev.
+
+The rider landing page at `/subscribe/confirmed` exists as of 1.5.192, and the
+opt-in success screen takes the texted code directly.
+
+A subscriber can therefore reach `confirmed` by email link, by typing the
+texted code into the page, or by replying to the text — the last of which
+cannot be exercised end to end until the toll-free number is verified.
+
+Migration 117 (2026-09-11) is the groundwork, not the fix: it gives each channel
+its own confirmation state, adds the attempt timestamp and opt-out reason the
+callbacks will write, and scopes confirmation-token uniqueness to live rows per
+channel. The callbacks themselves are increments 2-6 of
+`plans/rider-opt-in-confirmation-loop-spec.md`. The migration closes one defect
+outright: `status` no longer doubles as the SMS channel's state, so confirming
+an email link can no longer make an unproven phone number SMS-eligible.
 
 Azure Communication Services provisioning is required to send real
 confirmations, but it does not prevent the callback endpoints and their tests
@@ -312,12 +338,27 @@ operation. A temporary Service Bus failure can therefore leave:
 - An active web alert that was never dispatched by SMS/email.
 - A pending subscriber who never received a confirmation.
 
-### 7.5 Subscriber duplication is not prevented
+### 7.5 Subscriber duplication — resolved at confirmation (1.5.193)
 
-Phone and email indexes are non-unique. Repeated opt-ins can create multiple
-subscriber records for the same contact method. Once confirmation is
-implemented, this can lead to duplicate notifications unless subscription
-creation merges, reactivates, or explicitly rejects existing contacts.
+Phone and email indexes are non-unique, so repeated opt-ins still create
+multiple records for one contact. They are now folded together at the moment
+the contact is confirmed (migration 118, `mergeOnConfirm`): the record that was
+already confirmed survives, the newcomer's categories, routes and zones are
+unioned into it, and the newcomer is marked `merged` with `merged_into` naming
+its survivor. Every audience query selects `status = 'confirmed'`, so a merged
+record leaves the audience without any query changing.
+
+Deliberately NOT a unique index on the contact: that would refuse a second
+opt-in, which is not a mistake (a rider re-subscribing with more categories has
+said something new), and would refuse it at a moment when nobody has proved
+they own the contact — so a stranger typing someone else's number could block
+that person from ever subscribing. Confirmation is the only moment the contact
+is a fact rather than a claim.
+
+An unconfirmed duplicate is retired without its preferences, since nobody
+proved it. A record confirmed on its *other* channel is kept, but its
+outstanding token for the confirmed contact is voided so one contact cannot be
+confirmed twice.
 
 ## 8. Security posture
 
@@ -337,8 +378,9 @@ Implemented controls include:
 
 Outstanding security and compliance work includes:
 
-- Completing double opt-in confirmation.
-- Implementing and testing `STOP` and `HELP`.
+- Verifying double opt-in and `STOP` end to end on dev, once the toll-free
+  number is verified and the Event Grid subscription exists. The code and its
+  tests are complete (1.5.189-1.5.195).
 - Verifying that the live Easy Auth audience configuration is correct.
 - Ensuring Front Door-only ingress is enabled in the live parameters.
 - Adding abuse controls/rate limiting for public subscription operations.
@@ -353,8 +395,10 @@ Outstanding security and compliance work includes:
    required Service Bus, GTFS, ACS, and rider-app setting.
 2. Deploy the Easy Auth audience fix and verify an authenticated console read
    and write through Front Door.
-3. Implement email confirmation, SMS confirmation, resend, inbound SMS,
-   `STOP`, and `HELP`.
+3. Turn on inbound SMS: apply migrations 117 and 118, set the verified
+   toll-free number in the dev parameters file, and create the `SMSReceived`
+   Event Grid subscription against the Front Door URL (HANDOFF.md has the
+   steps). The code for confirmation, resend, inbound SMS and `STOP` is done.
 4. Make dispatch honor category, route, zone, and channel preferences.
 5. Add dispatch unit tests and an integration test covering message creation,
    queue delivery, audience selection, and delivery logging.

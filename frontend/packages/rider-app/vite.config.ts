@@ -6,6 +6,14 @@ import react from "@vitejs/plugin-react";
 // production the SWA sits behind Front Door with the API on the same origin.
 export default defineConfig({
   plugins: [react()],
+  // The rider app had no tests until the confirmation landing page, which is
+  // six branches of copy and two forms that post to endpoints answering
+  // deliberately uninformative results - the kind of thing that rots silently.
+  // Same setup as the console's, so there is one way to test a component here.
+  test: {
+    environment: "jsdom",
+    setupFiles: ["./src/setupTests.ts"],
+  },
   server: {
     port: process.env.PORT ? Number(process.env.PORT) : 5173,
     proxy: {

@@ -46,6 +46,10 @@ app.http("adminSubscribersSummary", {
           COALESCE(SUM(CASE WHEN status = 'pending_confirmation' THEN 1 ELSE 0 END), 0) AS pending,
           COALESCE(SUM(CASE WHEN status = 'opted_out' THEN 1 ELSE 0 END), 0) AS opted_out
         FROM Subscribers
+        -- Merged records (migration 118) are history, not subscribers: their
+        -- contact now belongs to the record they were folded into, and
+        -- counting both would report one rider as two.
+        WHERE merged_into IS NULL
       `);
 
       const summary = summaryFromCounts(counts.recordset[0]);
@@ -65,6 +69,7 @@ app.http("adminSubscribersSummary", {
         }>(`
           SELECT TOP 25 subscriber_id, phone_number, email, status, email_status, opted_in_at
           FROM Subscribers
+          WHERE merged_into IS NULL
           ORDER BY COALESCE(opted_in_at, '2000-01-01') DESC
         `);
         jsonBody.recent = recent.recordset.map((row) => ({

@@ -69,6 +69,32 @@ export interface SubscribeInput {
   consent_source: "web_form" | "mobile_app";
 }
 
+/**
+ * What the rider's confirmation landing page is told.
+ *
+ * Narrower than the states the server's state machine distinguishes, and
+ * narrower still on the SMS path, where only `confirmed` is ever reported -
+ * anything else would tell whoever typed a phone number whether it is
+ * subscribed. See `functions-restapi/src/functions/subscribersConfirm.ts`.
+ */
+export type ConfirmationStatus =
+  | "confirmed"
+  | "already_confirmed"
+  | "superseded"
+  | "expired"
+  | "opted_out"
+  | "invalid";
+
+export interface ConfirmSmsInput {
+  phone_number: string;
+  code: string;
+}
+
+export interface ResendConfirmationInput {
+  phone_number?: string;
+  email?: string;
+}
+
 // Staff-console admin surfaces (Audit Log, Admin, Subscribers, Suggested Alerts).
 
 export type MessageStatus = "draft" | "active" | "expired" | "archived" | "retracted";

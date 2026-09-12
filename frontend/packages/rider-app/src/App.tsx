@@ -1,6 +1,7 @@
 import { NavLink, Route, Routes } from "react-router-dom";
 import { ServiceAlerts } from "./routes/ServiceAlerts.js";
 import { OptIn } from "./routes/OptIn.js";
+import { Confirmed } from "./routes/Confirmed.js";
 
 export function App() {
   return (
@@ -23,6 +24,9 @@ export function App() {
         <Routes>
           <Route path="/" element={<ServiceAlerts />} />
           <Route path="/subscribe" element={<OptIn />} />
+          {/* Where the confirmation email's link redirects, by way of
+              GET /api/subscribers/confirm-email. */}
+          <Route path="/subscribe/confirmed" element={<Confirmed />} />
         </Routes>
       </div>
     </div>

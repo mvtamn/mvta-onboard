@@ -419,6 +419,41 @@ lesson 7 above.
   answered 200. Microsoft.EventGrid had to be registered in the subscription
   first. Note the portal's Test/Run on the REST app cannot be used (inbound is
   Front Door only); the dispatch app has no such restriction.
+- TO DO WHEN THE TOLL-FREE NUMBER CLEARS VERIFICATION: turning inbound SMS on.
+  The code landed with increment 5 of
+  plans/rider-opt-in-confirmation-loop-spec.md; none of it does anything until
+  these are done, in this order. Every one is a portal/CLI step, not a code
+  change.
+  1. Apply migrations 117 and 118 to the dev database. Both are outstanding;
+     118 is also required by the console's Subscribers page, which reads
+     `merged_into`.
+  2. Set `acsSmsFrom` in `infra-phase1/parameters/phase1-dev.parameters.json`
+     to the verified toll-free number and deploy the infra template. NOT with
+     `az functionapp config appsettings set`: that module's appSettings block
+     is the complete desired state, and the next routine deploy erases
+     anything set imperatively - which is how ACS_ENDPOINT was lost on
+     2026-09-05.
+  3. Read the REST API Function App's default function key:
+     `az functionapp keys list -g <rg> -n func-mvta-restapi-dev`.
+  4. Create an Event Grid subscription on `acs-mvta-onboard-dev` for
+     `Microsoft.Communication.SMSReceived`, with the webhook endpoint
+     `https://<front door host>/api/acs-sms-events?code=<function key>`.
+     NOTE THE HOSTNAME. Unlike the `detour-email-receipts` subscription above,
+     which points straight at the dispatch app, this one must go through Front
+     Door: the REST app's inbound is Front Door only, so a subscription aimed
+     at func-mvta-restapi-dev.azurewebsites.net fails its validation handshake
+     and is never created. Microsoft.EventGrid is already registered in the
+     subscription (done 2026-09-05).
+  5. Check the subscription shows as Provisioned. The handshake is answered by
+     the code on the first POST, so a failure here is the endpoint URL or the
+     key, not the handler.
+  6. Register the STOP/HELP auto-replies in the toll-free campaign brief. ACS
+     answers those keywords itself and OnBoard deliberately replies to no
+     inbound text at all, so the brief's wording is the only reply a rider
+     ever gets.
+  Then smoke test: subscribe with a real number, reply with the code, check the
+  Subscribers page shows it confirmed, publish an alert, text STOP, and confirm
+  the count moves.
 - Optional: set the contractor name and recipients under Administration ->
   Service Configuration; until a name is set no contractor audience is
   required.
