@@ -267,7 +267,7 @@ App-specific settings should be parameters or separate configuration blocks;
 the REST and dispatch applications should not receive an identical settings
 list.
 
-### 7.2 Double opt-in cannot be completed
+### 7.2 Double opt-in — built, waiting on the toll-free number (1.5.195)
 
 Subscription creation and confirmation-message delivery are implemented. The
 rider-facing callbacks now exist (1.5.191, increment 3):
@@ -276,20 +276,30 @@ rider-facing callbacks now exist (1.5.191, increment 3):
 - SMS confirmation-code submission — `POST /api/subscribers/confirm-sms`.
 - Confirmation-code resend — `POST /api/subscribers/resend`.
 
-Still missing:
+Inbound SMS and `STOP` landed with 1.5.195 (increment 5):
+`POST /api/acs-sms-events` is an Event Grid webhook for
+`Microsoft.Communication.SMSReceived`. A six-digit reply confirms the SMS
+channel for the number that sent it; `STOP` / `STOPALL` / `UNSUBSCRIBE` /
+`CANCEL` / `END` / `QUIT`, matched exactly, stop that number. Anything else is
+logged and never answered.
 
-- Inbound SMS processing (increment 5).
-- `STOP` opt-out handling (increment 5). The state machine records one; nothing
-  receives one yet.
-- `HELP` response handling needs no code: ACS answers mandatory keywords from
-  the toll-free campaign brief.
+`HELP` needs no code: ACS answers the mandatory keywords from the toll-free
+campaign brief, and OnBoard sends no automatic reply to any inbound text.
+
+**Every increment of the spec is now built.** What remains is not code:
+
+- The toll-free number and its carrier verification (requested 2026-09-11).
+- The Event Grid subscription for `SMSReceived`, which must point at the Front
+  Door URL rather than the Function App's own hostname — the REST app's inbound
+  is Front Door only. Steps are in HANDOFF.md.
+- Migrations 117 and 118 applied to dev.
 
 The rider landing page at `/subscribe/confirmed` exists as of 1.5.192, and the
 opt-in success screen takes the texted code directly.
 
-A subscriber can therefore now reach `confirmed`, by email link or by typing
-the texted code into the page — but the SMS channel cannot be exercised end to
-end until a toll-free number is verified (requested 2026-09-11; see HANDOFF.md).
+A subscriber can therefore reach `confirmed` by email link, by typing the
+texted code into the page, or by replying to the text — the last of which
+cannot be exercised end to end until the toll-free number is verified.
 
 Migration 117 (2026-09-11) is the groundwork, not the fix: it gives each channel
 its own confirmation state, adds the attempt timestamp and opt-out reason the
@@ -368,8 +378,9 @@ Implemented controls include:
 
 Outstanding security and compliance work includes:
 
-- Completing double opt-in confirmation.
-- Implementing and testing `STOP` and `HELP`.
+- Verifying double opt-in and `STOP` end to end on dev, once the toll-free
+  number is verified and the Event Grid subscription exists. The code and its
+  tests are complete (1.5.189-1.5.195).
 - Verifying that the live Easy Auth audience configuration is correct.
 - Ensuring Front Door-only ingress is enabled in the live parameters.
 - Adding abuse controls/rate limiting for public subscription operations.
@@ -384,8 +395,10 @@ Outstanding security and compliance work includes:
    required Service Bus, GTFS, ACS, and rider-app setting.
 2. Deploy the Easy Auth audience fix and verify an authenticated console read
    and write through Front Door.
-3. Implement email confirmation, SMS confirmation, resend, inbound SMS,
-   `STOP`, and `HELP`.
+3. Turn on inbound SMS: apply migrations 117 and 118, set the verified
+   toll-free number in the dev parameters file, and create the `SMSReceived`
+   Event Grid subscription against the Front Door URL (HANDOFF.md has the
+   steps). The code for confirmation, resend, inbound SMS and `STOP` is done.
 4. Make dispatch honor category, route, zone, and channel preferences.
 5. Add dispatch unit tests and an integration test covering message creation,
    queue delivery, audience selection, and delivery logging.
