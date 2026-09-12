@@ -1,0 +1,213 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    :root {
+      --page-bg:#edebe4; --surface:#fff; --surface-alt:#f6f5f1; --border:#ddd; --border-strong:#ccc; --border-soft:#eee;
+      --text:#2c2c2a; --text-dim:#4f4f4f; --text-muted:#8a8a82;
+      --green:#00553d; --green-text:#00553d; --live:#2fae66;
+      --danger:#8a1f1f; --success:#1f7a4c;
+      --warn-bg:#fcefd8; --warn-fg:#7a4a00; --danger-bg:#fbe0e0; --danger-fg:#8a1f1f;
+      --accent-bg:#dceaf8; --accent-fg:#0b4c82; --success-bg:#e3f0d4; --success-fg:#33530f;
+      --muted-bg:#ececea; --muted-fg:#4f4f4f; --chip-bg:#dcede6; --chip-fg:#00301f;
+      --highlight-bg:#fdf1e1; --highlight-border:#faad60; --datasource-border:#d8e6dd;
+      --nav-bg:#00553d;
+    }
+    .root.dark {
+      --page-bg:#0b120e; --surface:#152219; --surface-alt:#16241d; --border:#25392f; --border-strong:#2e4238; --border-soft:#1c2a23;
+      --text:#eef3f0; --text-dim:#c7d2cc; --text-muted:#8aa096; --green-text:#6fc9a0;
+      --danger:#e08585; --success:#5fbf8f;
+      --warn-bg:#3a2a15; --warn-fg:#f0b070; --danger-bg:#3a1f1f; --danger-fg:#f0a0a0;
+      --accent-bg:#1a2a3a; --accent-fg:#8ec4f0; --success-bg:#193b2c; --success-fg:#8fd6ac;
+      --muted-bg:#243128; --muted-fg:#b0bab3; --chip-bg:#193b2c; --chip-fg:#cdeedd;
+      --highlight-bg:#3a2a15; --highlight-border:#cc8a3d; --datasource-border:#25392f; --nav-bg:#0a1310;
+    }
+    body { margin:0; font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif; }
+    a { color:var(--green-text); } a:hover { color:#003d2c; }
+    .root { background:var(--page-bg); color:var(--text); min-height:100%; box-sizing:border-box; }
+    .eyebrow { color:var(--green-text); font-size:10px; font-weight:900; letter-spacing:.08em; text-transform:uppercase; }
+    h1 { font-size:22px; font-weight:800; letter-spacing:-0.01em; margin:4px 0 0; }
+    h2 { font-size:14.5px; font-weight:700; letter-spacing:.02em; margin:0; }
+    p { font-size:13px; line-height:1.5; color:var(--text-dim); margin:6px 0 0; }
+    small { font-size:11px; color:var(--text-muted); }
+
+    /* ---- the signal core: one 18px stage, five states ---- */
+    .sig { position:relative; display:inline-flex; width:18px; height:18px; align-items:center; justify-content:center; flex:none; }
+    .sig.sm { width:14px; height:14px; }
+    .sig.lg { width:26px; height:26px; }
+    .sig svg { position:absolute; inset:0; width:100%; height:100%; transform:rotate(-90deg); overflow:visible; }
+    .sig .track { fill:none; stroke:currentColor; stroke-width:1.5; opacity:.20; }
+    .sig .arc { fill:none; stroke:currentColor; stroke-width:1.5; stroke-linecap:round; stroke-dasharray:45.6; stroke-dashoffset:0; }
+    .core { width:8px; height:8px; border-radius:50%; background:currentColor; position:relative; z-index:2; }
+    .sig.sm .core { width:6px; height:6px; }
+    .sig.lg .core { width:11px; height:11px; }
+    .halo { position:absolute; inset:0; border-radius:50%; border:1.5px solid currentColor; opacity:0; }
+
+    /* live: the connection is loudly alive. Two staggered rings, a bloom at
+       every arrival, a comet running the countdown arc, and a wave crossing
+       the history bars in the direction time runs. */
+    .is-live { color:var(--live); }
+    .is-live .halo { animation:halo 2s cubic-bezier(.16,.66,.28,1) infinite; }
+    .is-live .halo.two { animation-delay:1s; }
+    .is-live .arc { animation:countdown 30s linear infinite; }
+    .is-live .comet { fill:none; stroke:currentColor; stroke-width:2.4; stroke-linecap:round; stroke-dasharray:0.1 45.5; animation:comet 30s linear infinite; filter:drop-shadow(0 0 3px currentColor); }
+    .is-live .core { animation:arrive 30s cubic-bezier(.1,.7,.3,1) infinite; }
+    .is-live .bloom { position:absolute; inset:0; border-radius:50%; background:radial-gradient(circle, currentColor 0%, transparent 62%); opacity:0; animation:bloom 30s cubic-bezier(.1,.7,.3,1) infinite; }
+    @keyframes halo { 0%{transform:scale(.34);opacity:.8;} 78%{transform:scale(1.5);opacity:0;} 100%{transform:scale(1.5);opacity:0;} }
+    @keyframes countdown { from{stroke-dashoffset:0;} to{stroke-dashoffset:45.6;} }
+    @keyframes comet { from{stroke-dashoffset:0;} to{stroke-dashoffset:-45.6;} }
+    @keyframes arrive {
+      0%   { transform:scale(2.1); filter:brightness(1.9) drop-shadow(0 0 7px currentColor); }
+      6%   { transform:scale(1);   filter:brightness(1)   drop-shadow(0 0 0 currentColor); }
+      100% { transform:scale(1);   filter:brightness(1)   drop-shadow(0 0 0 currentColor); }
+    }
+    @keyframes bloom { 0%{opacity:.85;transform:scale(.5);} 14%{opacity:0;transform:scale(2.6);} 100%{opacity:0;transform:scale(2.6);} }
+
+    /* connecting: indeterminate sweep, hollow core */
+    .is-connecting { color:var(--text-muted); }
+    .is-connecting .core { background:transparent; box-shadow:inset 0 0 0 1.5px currentColor; }
+    .is-connecting svg { animation:spin 1s linear infinite; }
+    .is-connecting .arc { stroke-dasharray:11 35; }
+    .is-connecting .comet { display:none; }
+    @keyframes spin { to { transform:rotate(270deg); } }
+
+    /* stale: motion stops dead. The louder the live state gets, the harder a
+       frozen indicator lands - and it is never carried by stillness alone:
+       the ring goes dashed, the core squares off, the label changes. */
+    .is-stale { color:var(--warn-fg); }
+    .is-stale .core { border-radius:2px; width:7px; height:7px; }
+    .is-stale .track { stroke-dasharray:2.6 2.6; opacity:.55; }
+    .is-stale .arc, .is-stale .comet, .is-stale .halo, .is-stale .bloom { display:none; }
+    .is-down { color:var(--danger); }
+    .is-down .core { background:transparent; box-shadow:inset 0 0 0 1.5px currentColor; }
+    .is-down .track { opacity:.5; }
+    .is-down .arc, .is-down .comet, .is-down .halo, .is-down .bloom { display:none; }
+    .is-down .slash { position:absolute; z-index:3; width:13px; height:1.6px; background:currentColor; transform:rotate(-45deg); border-radius:1px; }
+    .is-locked { color:var(--danger); }
+    .is-locked .arc, .is-locked .comet, .is-locked .halo, .is-locked .bloom { display:none; }
+    .is-locked .track { opacity:.5; }
+    .is-locked .core { width:6px; height:6px; }
+    .is-locked .keybar { position:absolute; z-index:3; width:1.6px; height:6px; background:currentColor; border-radius:1px; transform:translate(4px,2px); }
+
+    /* ---- freshness ticks: the last six polls. A wave crosses them left to
+       right, one bar at a time, so the history reads as a running feed. ---- */
+    .ticks { display:flex; gap:3px; align-items:flex-end; }
+    .tick { width:3px; height:11px; border-radius:1.5px; background:currentColor; opacity:.22; transform-origin:50% 100%; }
+    .tick.on { opacity:.85; }
+    .tick.head { opacity:1; }
+    .ticks.live .tick.on, .ticks.live .tick.head { animation:wave 2s cubic-bezier(.3,.7,.3,1) infinite; }
+    .ticks.live .tick:nth-child(1) { animation-delay:0s; }
+    .ticks.live .tick:nth-child(2) { animation-delay:.11s; }
+    .ticks.live .tick:nth-child(3) { animation-delay:.22s; }
+    .ticks.live .tick:nth-child(4) { animation-delay:.33s; }
+    .ticks.live .tick:nth-child(5) { animation-delay:.44s; }
+    .ticks.live .tick:nth-child(6) { animation-delay:.55s; }
+    .ticks.live .tick.head { animation-duration:2s; filter:drop-shadow(0 0 4px currentColor); }
+    @keyframes wave { 0%{transform:scaleY(.5);} 16%{transform:scaleY(1.25);} 36%{transform:scaleY(.85);} 100%{transform:scaleY(.85);} }
+
+    /* ---- the banner ---- */
+    .banner { display:flex; align-items:center; gap:9px; border-radius:8px; padding:9px 11px; font-size:11.5px; position:relative; overflow:hidden; border:1px solid; }
+    .banner .badge { border-radius:999px; font-size:9px; font-weight:800; letter-spacing:.06em; padding:3px 8px; flex:none; color:var(--surface); text-transform:uppercase; position:relative; z-index:2; }
+    .banner .msg { color:inherit; min-width:0; position:relative; z-index:2; }
+    .banner .msg b { font-weight:700; }
+    .banner .spacer { flex:1; }
+    .banner .sig, .banner .ticks { position:relative; z-index:2; }
+    .wire { position:absolute; left:0; top:0; height:2.5px; width:100%; overflow:hidden; }
+    .wire.bottom { top:auto; bottom:0; height:1.5px; }
+    .wire i { position:absolute; inset:0; background:linear-gradient(90deg,transparent,currentColor 46%,#fff 50%,currentColor 54%,transparent); opacity:.9; transform:translateX(-100%); }
+    /* A sheen crosses the banner body on the same clock as the wire - the
+       whole surface registers the refresh, not just its edge. */
+    .sheen { position:absolute; inset:0; z-index:1; pointer-events:none; }
+    .sheen i { position:absolute; inset:0; background:linear-gradient(100deg,transparent 38%,currentColor 50%,transparent 62%); opacity:.13; transform:translateX(-100%); }
+    .b-live { background:var(--chip-bg); border-color:var(--datasource-border); color:var(--chip-fg); }
+    .b-live .badge { background:var(--green); }
+    .b-live .wire i { animation:wire 6s cubic-bezier(.5,0,.35,1) infinite; }
+    .b-live .wire.bottom i { animation:wire 6s cubic-bezier(.5,0,.35,1) infinite; animation-delay:.25s; opacity:.5; }
+    .b-live .sheen i { animation:wire 6s cubic-bezier(.5,0,.35,1) infinite; animation-delay:.08s; }
+    .b-live .badge { animation:badgeglow 6s ease-in-out infinite; }
+    @keyframes wire { 0%{transform:translateX(-100%);} 26%{transform:translateX(100%);} 100%{transform:translateX(100%);} }
+    @keyframes badgeglow { 0%{box-shadow:0 0 0 0 rgba(47,174,102,.65);} 18%{box-shadow:0 0 0 6px rgba(47,174,102,0);} 100%{box-shadow:0 0 0 0 rgba(47,174,102,0);} }
+    .b-warn { background:var(--warn-bg); border-color:var(--highlight-border); color:var(--warn-fg); }
+    .b-warn .badge { background:var(--warn-fg); }
+    .b-down { background:var(--danger-bg); border-color:var(--danger-fg); color:var(--danger-fg); }
+    .b-down .badge { background:var(--danger-fg); }
+    .b-muted { background:var(--muted-bg); border-color:var(--border); color:var(--muted-fg); }
+    .b-muted .badge { background:var(--muted-fg); }
+
+    /* reduced motion: every animation above is decoration over a state that is
+       already legible in shape, color and words. Switch them all off. */
+    .root.still *, .root.still *::before, .root.still *::after { animation:none !important; }
+    .root.still .is-live .arc { stroke-dashoffset:16; }
+    .root.still .comet, .root.still .bloom, .root.still .sheen, .root.still .wire { display:none; }
+    .col { padding:24px 24px 28px; display:flex; flex-direction:column; gap:18px; }
+    .old-banner { align-items:center; background:var(--accent-bg); border:1px solid rgba(11,76,130,.25); border-radius:8px; color:var(--accent-fg); display:flex; font-size:11.5px; gap:9px; padding:8px 10px; }
+    .old-badge { background:var(--accent-fg); border-radius:999px; color:var(--surface); font-size:9px; font-weight:800; letter-spacing:.06em; padding:3px 7px; flex-shrink:0; }
+    .old-dot { width:7px; height:7px; border-radius:50%; background:var(--live); display:inline-block; flex:none; }
+    .old-dot.bad { background:var(--danger); }
+    .old-fresh { align-items:center; background:var(--surface-alt); border:1px solid var(--border); border-radius:8px; color:var(--text-dim); display:flex; gap:7px; padding:9px 11px; font-size:12px; }
+    .old-fresh strong { color:var(--text); }
+    .old-feed { align-items:center; color:var(--success); display:flex; font-size:13px; font-weight:800; gap:7px; }
+    .old-nav { background:var(--nav-bg); border-radius:10px; padding:13px 14px; display:flex; align-items:center; gap:7px; color:rgba(255,255,255,.5); font-size:11.5px; font-weight:600; }
+    .gap { display:grid; gap:9px; }
+    .gap li { color:var(--text-dim); font-size:12px; line-height:1.5; }
+    .gap li::marker { color:var(--danger); }
+  </style>
+</helmet>
+<div class="root {{rootClass}} col">
+  <div>
+    <span class="eyebrow">Today, as shipped</span>
+    <h1 style="font-size:18px">Four unrelated live indicators</h1>
+    <p>Every one of these is static. None of them says how old the data is, and three of them carry their state in colour alone.</p>
+  </div>
+
+  <div>
+    <small>Service Risk &amp; Quality · <code>.concept-banner</code></small>
+    <div class="old-banner" style="margin-top:6px"><span class="old-badge">LIVE DATA</span><span>3 active trips checked; 0 exceed the 15-minute departure threshold; last update 11:50 PM.</span></div>
+  </div>
+
+  <div>
+    <small>Dashboard · <code>.dashboard-freshness</code></small>
+    <div class="old-fresh" style="margin-top:6px"><span class="old-dot"></span><strong>Live data</strong><span>Updated 11:50:04 PM</span></div>
+  </div>
+
+  <div>
+    <small>Feeds &amp; freshness rail · <code>.data-health-feed</code></small>
+    <div style="margin-top:6px;display:grid;gap:8px;background:var(--surface-alt);border:1px solid var(--border);border-radius:8px;padding:11px">
+      <div class="old-feed"><span class="old-dot"></span>GTFS-Realtime · Live data</div>
+      <div class="old-feed" style="color:var(--danger)"><span class="old-dot bad"></span>MVTA Connect · Stale data</div>
+    </div>
+  </div>
+
+  <div>
+    <small>Sidebar footer · <code>.nav-status</code></small>
+    <div class="old-nav" style="margin-top:6px"><span class="old-dot"></span>Console Live</div>
+  </div>
+
+  <div style="border-top:1px solid var(--border);padding-top:14px">
+    <h2 style="margin-bottom:8px">What the redesign fixes</h2>
+    <ul class="gap">
+      <li>A live feed and a dead feed differ by one 7px colour swap — <code>#2fae66</code> to <code>#8a1f1f</code>. Nothing moves, nothing changes shape.</li>
+      <li>The blue accent banner reads as an informational note, not as a live connection; it uses the same tint as “preview data”.</li>
+      <li>Stale is stated in words but never in age — an operator cannot tell 40 seconds from 40 minutes without opening another page.</li>
+      <li>Four different treatments for one idea: a badge, a dot, a coloured row and a nav pill, none of them the same component.</li>
+    </ul>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"dark":{"editor":"boolean","default":false,"section":"Theme"},"motion":{"editor":"enum","options":["full","reduced"],"default":"full","section":"Theme"}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dark = this.props.dark ?? false;
+    const still = (this.props.motion ?? 'full') === 'reduced';
+    return { rootClass: (dark ? 'dark' : '') + (still ? ' still' : '') };
+  }
+}
+</script>
+</body>
+</html>
