@@ -251,3 +251,25 @@ the transactional outbox (§7.4), and a full preference-management page. Route
 selection in particular should wait for the preference page, since the first
 wrong pick is otherwise unfixable — and the preference page wants the proven
 contact and the token machinery this spec builds.
+
+
+## Addendum (2026-09-13): choosing how to receive alerts
+
+The opt-in form asks **How do you want alerts?** - Text, Email, or Both - before
+it asks for contact details, and shows only the fields that choice needs. Until
+now the choice was implied by which fields a rider happened to fill in, which
+made "both" an accident rather than a decision and showed a phone field to a
+rider who only wanted email.
+
+- **Both is the default**, and Both means both: each field is required, and the
+  error names the missing one and the choice to make instead ("or choose Email
+  if you only want emails").
+- **Only the chosen channels are sent.** A value typed into a field the rider
+  then switched away from is not submitted - sending it would start a
+  subscription they took back.
+- **The server is unchanged.** `POST /api/subscribers` already accepts a phone
+  number, an email address, or both; the choice is a form concern.
+- **Changing channels later belongs to the manage page**
+  (`plans/rider-preference-management-spec.md`), which can stop a channel but
+  cannot add one. Adding a channel is a new opt-in, with its own consent and
+  confirmation.

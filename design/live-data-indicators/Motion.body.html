@@ -1,0 +1,43 @@
+<div class="root {{rootClass}} col">
+  <div>
+    <span class="eyebrow">Motion</span>
+    <h1 style="font-size:18px">Every animation reports something</h1>
+    <p>This is deliberately loud, and it still keeps the house rule: every loop below is driven by a real value — the poll interval, an arrival, a retry. The volume is spent on the two states that matter (data landed, feed alive) and nowhere else, which is what makes a dead indicator impossible to miss.</p>
+  </div>
+
+  <table>
+    <tr><th style="width:104px">Motion</th><th style="width:92px">Timing</th><th>What it is reporting</th></tr>
+    <tr><td><b>Twin halos</b></td><td>2s loop, offset .5<br>cubic-bezier(.16,.66,.28,1)</td><td>The connection is open and answering. Two rings half a beat apart, expanding to 1.5×, so there is always one in flight — the signal never sits still while the feed is alive.</td></tr>
+    <tr><td><b>Arc + comet</b></td><td>module refresh interval<br>linear</td><td>Time until the next poll, unwinding, with a lit 2.4px comet running the leading edge. 30s on Service Risk, 60s on Garage Departures — bound to the module’s own rate, never a fixed number.</td></tr>
+    <tr><td><b>Arrival punch + bloom</b></td><td>~1.8s, once per poll</td><td>New data landed: the core snaps to 2.1× at 1.9× brightness while a radial bloom throws out to 2.6× behind it. The single most useful frame in the system — an operator watching the page knows the number in front of them just changed.</td></tr>
+    <tr><td><b>History wave</b></td><td>2s loop, 110ms stagger</td><td>A wave crosses the six poll bars left to right; the head bar is the tallest and carries a glow. Stops the instant a cycle is missed and the bar stays hollow.</td></tr>
+    <tr><td><b>Wire, sheen &amp; badge</b></td><td>6s loop, 26% duty</td><td>A lit 2.5px sweep along the top edge, a trailing hairline along the bottom, a sheen across the body and a glow ring off the badge — all on one clock. Reserved for the one banner that owns the page’s data; never more than one per screen.</td></tr>
+    <tr><td><b>Connecting sweep</b></td><td>1.1s loop, linear</td><td>A request is in flight with no answer yet. Indeterminate on purpose — it must not be mistaken for a countdown.</td></tr>
+    <tr><td style="color:var(--danger)"><b style="color:var(--danger)">Nothing</b></td><td>—</td><td><b>Stale, unavailable and sign-in-required do not animate at all.</b> A frozen indicator among breathing ones is what draws the eye, and it degrades correctly in a screenshot, a PDF and a paused tab.</td></tr>
+  </table>
+
+  <div class="pair">
+    <div class="pane">
+      <span class="cap">Default</span>
+      <div class="row" style="color:var(--success)"><span class="sig is-live" style="color:var(--live)"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle><circle class="arc" cx="9" cy="9" r="7.25"></circle><circle class="comet" cx="9" cy="9" r="7.25"></circle></svg><span class="halo"></span><span class="halo two"></span><span class="bloom"></span><span class="core"></span></span>GTFS-Realtime · Live<span class="ticks live" style="color:var(--live)"><i class="tick on"></i><i class="tick on"></i><i class="tick on"></i><i class="tick head"></i></span></div>
+      <div class="row" style="color:var(--warn-fg)"><span class="sig is-stale"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle></svg><span class="core"></span></span>MVTA Connect · Stale</div>
+    </div>
+    <div class="pane still-demo">
+      <span class="cap">prefers-reduced-motion</span>
+      <div class="row" style="color:var(--success)"><span class="sig is-live" style="color:var(--live)"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle><circle class="arc" cx="9" cy="9" r="7.25"></circle><circle class="comet" cx="9" cy="9" r="7.25"></circle></svg><span class="halo"></span><span class="halo two"></span><span class="bloom"></span><span class="core"></span></span>GTFS-Realtime · Live<span class="ticks live" style="color:var(--live)"><i class="tick on"></i><i class="tick on"></i><i class="tick on"></i><i class="tick head"></i></span></div>
+      <div class="row" style="color:var(--warn-fg)"><span class="sig is-stale"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle></svg><span class="core"></span></span>MVTA Connect · Stale</div>
+    </div>
+  </div>
+
+  <div>
+    <h2 style="margin-bottom:8px">Rules the motion has to obey</h2>
+    <ul class="rules">
+      <li>Live and stale differ in <b>shape</b> (round core vs. squared, solid ring vs. dashed), in <b>words</b> and in colour — motion is the fourth cue, never the first.</li>
+      <li>Under <code>prefers-reduced-motion</code> every loop is switched off and the arc freezes mid-travel. Nothing above becomes ambiguous.</li>
+      <li>One loud element per region. A dashboard with three live feeds gets three small cores and exactly one banner wire — the volume is a page-level budget, not a per-component licence.</li>
+      <li>The arc is honest: if the refresh interval changes, the arc's duration changes with it. Never animate a countdown the page is not actually keeping.</li>
+      <li>Service runs 8am–10pm CST. Outside those hours an empty feed is healthy, so the overnight state is “live, no vehicles reporting” — not stale.</li>
+      <li>State changes are announced to <code>aria-live="polite"</code> with the age in words; the indicator carries <code>role="status"</code>, as the current one does.</li>
+    </ul>
+  </div>
+</div>

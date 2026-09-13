@@ -1,0 +1,299 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    :root {
+      --page-bg:#edebe4; --surface:#fff; --surface-alt:#f6f5f1; --border:#ddd; --border-strong:#ccc; --border-soft:#eee;
+      --text:#2c2c2a; --text-dim:#4f4f4f; --text-muted:#8a8a82;
+      --green:#00553d; --green-text:#00553d; --live:#2fae66;
+      --danger:#8a1f1f; --success:#1f7a4c;
+      --warn-bg:#fcefd8; --warn-fg:#7a4a00; --danger-bg:#fbe0e0; --danger-fg:#8a1f1f;
+      --accent-bg:#dceaf8; --accent-fg:#0b4c82; --success-bg:#e3f0d4; --success-fg:#33530f;
+      --muted-bg:#ececea; --muted-fg:#4f4f4f; --chip-bg:#dcede6; --chip-fg:#00301f;
+      --highlight-bg:#fdf1e1; --highlight-border:#faad60; --datasource-border:#d8e6dd;
+      --nav-bg:#00553d;
+    }
+    .root.dark {
+      --page-bg:#0b120e; --surface:#152219; --surface-alt:#16241d; --border:#25392f; --border-strong:#2e4238; --border-soft:#1c2a23;
+      --text:#eef3f0; --text-dim:#c7d2cc; --text-muted:#8aa096; --green-text:#6fc9a0;
+      --danger:#e08585; --success:#5fbf8f;
+      --warn-bg:#3a2a15; --warn-fg:#f0b070; --danger-bg:#3a1f1f; --danger-fg:#f0a0a0;
+      --accent-bg:#1a2a3a; --accent-fg:#8ec4f0; --success-bg:#193b2c; --success-fg:#8fd6ac;
+      --muted-bg:#243128; --muted-fg:#b0bab3; --chip-bg:#193b2c; --chip-fg:#cdeedd;
+      --highlight-bg:#3a2a15; --highlight-border:#cc8a3d; --datasource-border:#25392f; --nav-bg:#0a1310;
+    }
+    body { margin:0; font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif; }
+    a { color:var(--green-text); } a:hover { color:#003d2c; }
+    .root { background:var(--page-bg); color:var(--text); min-height:100%; box-sizing:border-box; }
+    .eyebrow { color:var(--green-text); font-size:10px; font-weight:900; letter-spacing:.08em; text-transform:uppercase; }
+    h1 { font-size:22px; font-weight:800; letter-spacing:-0.01em; margin:4px 0 0; }
+    h2 { font-size:14.5px; font-weight:700; letter-spacing:.02em; margin:0; }
+    p { font-size:13px; line-height:1.5; color:var(--text-dim); margin:6px 0 0; }
+    small { font-size:11px; color:var(--text-muted); }
+
+    /* ---- the signal core: one 18px stage, five states ---- */
+    .sig { position:relative; display:inline-flex; width:18px; height:18px; align-items:center; justify-content:center; flex:none; }
+    .sig.sm { width:14px; height:14px; }
+    .sig.lg { width:26px; height:26px; }
+    .sig svg { position:absolute; inset:0; width:100%; height:100%; transform:rotate(-90deg); overflow:visible; }
+    .sig .track { fill:none; stroke:currentColor; stroke-width:1.5; opacity:.20; }
+    .sig .arc { fill:none; stroke:currentColor; stroke-width:1.5; stroke-linecap:round; stroke-dasharray:45.6; stroke-dashoffset:0; }
+    .core { width:8px; height:8px; border-radius:50%; background:currentColor; position:relative; z-index:2; }
+    .sig.sm .core { width:6px; height:6px; }
+    .sig.lg .core { width:11px; height:11px; }
+    .halo { position:absolute; inset:0; border-radius:50%; border:1.5px solid currentColor; opacity:0; }
+
+    /* live: the connection is loudly alive. Two staggered rings, a bloom at
+       every arrival, a comet running the countdown arc, and a wave crossing
+       the history bars in the direction time runs. */
+    .is-live { color:var(--live); }
+    .is-live .halo { animation:halo 2s cubic-bezier(.16,.66,.28,1) infinite; }
+    .is-live .halo.two { animation-delay:1s; }
+    .is-live .arc { animation:countdown 30s linear infinite; }
+    .is-live .comet { fill:none; stroke:currentColor; stroke-width:2.4; stroke-linecap:round; stroke-dasharray:0.1 45.5; animation:comet 30s linear infinite; filter:drop-shadow(0 0 3px currentColor); }
+    .is-live .core { animation:arrive 30s cubic-bezier(.1,.7,.3,1) infinite; }
+    .is-live .bloom { position:absolute; inset:0; border-radius:50%; background:radial-gradient(circle, currentColor 0%, transparent 62%); opacity:0; animation:bloom 30s cubic-bezier(.1,.7,.3,1) infinite; }
+    @keyframes halo { 0%{transform:scale(.34);opacity:.8;} 78%{transform:scale(1.5);opacity:0;} 100%{transform:scale(1.5);opacity:0;} }
+    @keyframes countdown { from{stroke-dashoffset:0;} to{stroke-dashoffset:45.6;} }
+    @keyframes comet { from{stroke-dashoffset:0;} to{stroke-dashoffset:-45.6;} }
+    @keyframes arrive {
+      0%   { transform:scale(2.1); filter:brightness(1.9) drop-shadow(0 0 7px currentColor); }
+      6%   { transform:scale(1);   filter:brightness(1)   drop-shadow(0 0 0 currentColor); }
+      100% { transform:scale(1);   filter:brightness(1)   drop-shadow(0 0 0 currentColor); }
+    }
+    @keyframes bloom { 0%{opacity:.85;transform:scale(.5);} 14%{opacity:0;transform:scale(2.6);} 100%{opacity:0;transform:scale(2.6);} }
+
+    /* connecting: indeterminate sweep, hollow core */
+    .is-connecting { color:var(--text-muted); }
+    .is-connecting .core { background:transparent; box-shadow:inset 0 0 0 1.5px currentColor; }
+    .is-connecting svg { animation:spin 1s linear infinite; }
+    .is-connecting .arc { stroke-dasharray:11 35; }
+    .is-connecting .comet { display:none; }
+    @keyframes spin { to { transform:rotate(270deg); } }
+
+    /* stale: motion stops dead. The louder the live state gets, the harder a
+       frozen indicator lands - and it is never carried by stillness alone:
+       the ring goes dashed, the core squares off, the label changes. */
+    .is-stale { color:var(--warn-fg); }
+    .is-stale .core { border-radius:2px; width:7px; height:7px; }
+    .is-stale .track { stroke-dasharray:2.6 2.6; opacity:.55; }
+    .is-stale .arc, .is-stale .comet, .is-stale .halo, .is-stale .bloom { display:none; }
+    .is-down { color:var(--danger); }
+    .is-down .core { background:transparent; box-shadow:inset 0 0 0 1.5px currentColor; }
+    .is-down .track { opacity:.5; }
+    .is-down .arc, .is-down .comet, .is-down .halo, .is-down .bloom { display:none; }
+    .is-down .slash { position:absolute; z-index:3; width:13px; height:1.6px; background:currentColor; transform:rotate(-45deg); border-radius:1px; }
+    .is-locked { color:var(--danger); }
+    .is-locked .arc, .is-locked .comet, .is-locked .halo, .is-locked .bloom { display:none; }
+    .is-locked .track { opacity:.5; }
+    .is-locked .core { width:6px; height:6px; }
+    .is-locked .keybar { position:absolute; z-index:3; width:1.6px; height:6px; background:currentColor; border-radius:1px; transform:translate(4px,2px); }
+
+    /* ---- freshness ticks: the last six polls. A wave crosses them left to
+       right, one bar at a time, so the history reads as a running feed. ---- */
+    .ticks { display:flex; gap:3px; align-items:flex-end; }
+    .tick { width:3px; height:11px; border-radius:1.5px; background:currentColor; opacity:.22; transform-origin:50% 100%; }
+    .tick.on { opacity:.85; }
+    .tick.head { opacity:1; }
+    .ticks.live .tick.on, .ticks.live .tick.head { animation:wave 2s cubic-bezier(.3,.7,.3,1) infinite; }
+    .ticks.live .tick:nth-child(1) { animation-delay:0s; }
+    .ticks.live .tick:nth-child(2) { animation-delay:.11s; }
+    .ticks.live .tick:nth-child(3) { animation-delay:.22s; }
+    .ticks.live .tick:nth-child(4) { animation-delay:.33s; }
+    .ticks.live .tick:nth-child(5) { animation-delay:.44s; }
+    .ticks.live .tick:nth-child(6) { animation-delay:.55s; }
+    .ticks.live .tick.head { animation-duration:2s; filter:drop-shadow(0 0 4px currentColor); }
+    @keyframes wave { 0%{transform:scaleY(.5);} 16%{transform:scaleY(1.25);} 36%{transform:scaleY(.85);} 100%{transform:scaleY(.85);} }
+
+    /* ---- the banner ---- */
+    .banner { display:flex; align-items:center; gap:9px; border-radius:8px; padding:9px 11px; font-size:11.5px; position:relative; overflow:hidden; border:1px solid; }
+    .banner .badge { border-radius:999px; font-size:9px; font-weight:800; letter-spacing:.06em; padding:3px 8px; flex:none; color:var(--surface); text-transform:uppercase; position:relative; z-index:2; }
+    .banner .msg { color:inherit; min-width:0; position:relative; z-index:2; }
+    .banner .msg b { font-weight:700; }
+    .banner .spacer { flex:1; }
+    .banner .sig, .banner .ticks { position:relative; z-index:2; }
+    .wire { position:absolute; left:0; top:0; height:2.5px; width:100%; overflow:hidden; }
+    .wire.bottom { top:auto; bottom:0; height:1.5px; }
+    .wire i { position:absolute; inset:0; background:linear-gradient(90deg,transparent,currentColor 46%,#fff 50%,currentColor 54%,transparent); opacity:.9; transform:translateX(-100%); }
+    /* A sheen crosses the banner body on the same clock as the wire - the
+       whole surface registers the refresh, not just its edge. */
+    .sheen { position:absolute; inset:0; z-index:1; pointer-events:none; }
+    .sheen i { position:absolute; inset:0; background:linear-gradient(100deg,transparent 38%,currentColor 50%,transparent 62%); opacity:.13; transform:translateX(-100%); }
+    .b-live { background:var(--chip-bg); border-color:var(--datasource-border); color:var(--chip-fg); }
+    .b-live .badge { background:var(--green); }
+    .b-live .wire i { animation:wire 6s cubic-bezier(.5,0,.35,1) infinite; }
+    .b-live .wire.bottom i { animation:wire 6s cubic-bezier(.5,0,.35,1) infinite; animation-delay:.25s; opacity:.5; }
+    .b-live .sheen i { animation:wire 6s cubic-bezier(.5,0,.35,1) infinite; animation-delay:.08s; }
+    .b-live .badge { animation:badgeglow 6s ease-in-out infinite; }
+    @keyframes wire { 0%{transform:translateX(-100%);} 26%{transform:translateX(100%);} 100%{transform:translateX(100%);} }
+    @keyframes badgeglow { 0%{box-shadow:0 0 0 0 rgba(47,174,102,.65);} 18%{box-shadow:0 0 0 6px rgba(47,174,102,0);} 100%{box-shadow:0 0 0 0 rgba(47,174,102,0);} }
+    .b-warn { background:var(--warn-bg); border-color:var(--highlight-border); color:var(--warn-fg); }
+    .b-warn .badge { background:var(--warn-fg); }
+    .b-down { background:var(--danger-bg); border-color:var(--danger-fg); color:var(--danger-fg); }
+    .b-down .badge { background:var(--danger-fg); }
+    .b-muted { background:var(--muted-bg); border-color:var(--border); color:var(--muted-fg); }
+    .b-muted .badge { background:var(--muted-fg); }
+
+    /* reduced motion: every animation above is decoration over a state that is
+       already legible in shape, color and words. Switch them all off. */
+    .root.still *, .root.still *::before, .root.still *::after { animation:none !important; }
+    .root.still .is-live .arc { stroke-dashoffset:16; }
+    .root.still .comet, .root.still .bloom, .root.still .sheen, .root.still .wire { display:none; }
+    .sheet { display:flex; flex-direction:column; gap:26px; }
+    .card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px 18px; }
+    .anatomy { display:grid; grid-template-columns:150px minmax(0,1fr); gap:22px; align-items:center; }
+    .stage { display:flex; align-items:center; justify-content:center; height:120px; background:var(--surface-alt); border:1px solid var(--border-soft); border-radius:10px; }
+    .stage .sig { transform:scale(3.1); }
+    .legend { display:grid; gap:12px; }
+    .legend-row { display:grid; grid-template-columns:108px minmax(0,1fr); gap:12px; align-items:baseline; }
+    .legend-row b { color:var(--text); font-size:12px; font-weight:700; }
+    .legend-row span { color:var(--text-dim); font-size:12px; line-height:1.45; }
+    .matrix { display:grid; gap:0; }
+    .mrow { display:grid; grid-template-columns:186px 200px minmax(0,1fr); gap:16px; align-items:center; padding:14px 0; border-bottom:1px solid var(--border-soft); }
+    .mrow:last-child { border-bottom:0; }
+    .mname b { display:block; color:var(--text); font-size:13px; font-weight:700; }
+    .mname span { display:block; color:var(--text-muted); font-size:11px; line-height:1.4; margin-top:3px; }
+    .inline-sig { display:flex; align-items:center; gap:7px; font-size:13px; font-weight:800; }
+    .inline-sig .ticks { margin-left:2px; }
+    .placements { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+    .nav-demo { background:var(--nav-bg); border-radius:10px; padding:13px 14px; display:flex; align-items:center; gap:8px; color:rgba(255,255,255,.85); font-size:11.5px; font-weight:600; }
+    .nav-demo .sig { color:var(--live); }
+    .bar-demo { display:flex; align-items:center; gap:8px; background:var(--surface-alt); border:1px solid var(--border); border-radius:8px; padding:9px 11px; font-size:12px; color:var(--text-dim); }
+    .bar-demo strong { color:var(--text); font-size:12.5px; }
+    .feed-demo { display:grid; gap:9px; background:var(--surface-alt); border:1px solid var(--border); border-radius:8px; padding:11px; }
+    .feed-row { display:flex; align-items:center; gap:7px; font-size:12.5px; font-weight:800; }
+    .cap { color:var(--text-muted); font-size:10px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; margin-bottom:7px; display:block; }
+  </style>
+</helmet>
+<div class="root {{rootClass}}" style="padding:28px 30px 34px">
+  <div class="sheet">
+
+    <div>
+      <span class="eyebrow">Live data · signal system</span>
+      <h1>Pulse</h1>
+      <p style="max-width:660px">One indicator for every surface that reports whether operational data is arriving. It pulses hard while the connection is open — twin halos, a comet on the countdown arc, a bloom at every arrival, a sweep across the banner — and then goes completely dead the moment the feed stops. The louder the live state, the harder a frozen one lands.</p>
+    </div>
+
+    <div class="card">
+      <span class="cap">Anatomy</span>
+      <div class="anatomy">
+        <div class="stage">
+          <span class="sig is-live"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle><circle class="arc" cx="9" cy="9" r="7.25"></circle><circle class="comet" cx="9" cy="9" r="7.25"></circle></svg><span class="halo"></span><span class="halo two"></span><span class="bloom"></span><span class="core"></span></span>
+        </div>
+        <div class="legend">
+          <div class="legend-row"><b>Core</b><span>7–11px dot in <code>--live-dot</code> #2FAE66. At each arrival it punches to 2.1× and blooms outward — the loudest single frame in the console, and it fires only when data actually lands.</span></div>
+          <div class="legend-row"><b>Countdown arc</b><span>Unwinds over the module’s own refresh interval, with a lit comet running the leading edge. At a glance: how old is what I’m reading, and how long until it changes.</span></div>
+          <div class="legend-row"><b>Breath halo</b><span>Two rings on a 2s cycle, offset by half a beat, so the pulse never fully rests. Present only while the socket is answering; its absence is the stale signal.</span></div>
+          <div class="legend-row"><b>Freshness ticks</b><span>The last six polls as bars — filled arrived, faint missed — with a wave crossing them left to right, the direction time runs. Evidence that survives a screenshot, a colour-blind reader and reduced motion.</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <span class="cap">States — the five <code>OperationalDataState</code> values, unchanged</span>
+      <div class="matrix">
+
+        <div class="mrow">
+          <div class="mname"><b>Live</b><span>Feed answered inside its freshness contract</span></div>
+          <div class="inline-sig is-live" style="color:var(--live)">
+            <span class="sig is-live"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle><circle class="arc" cx="9" cy="9" r="7.25"></circle><circle class="comet" cx="9" cy="9" r="7.25"></circle></svg><span class="halo"></span><span class="halo two"></span><span class="bloom"></span><span class="core"></span></span>
+            <span style="color:var(--success)">Live data</span>
+            <span class="ticks live" style="color:var(--live)"><i class="tick on"></i><i class="tick on"></i><i class="tick on"></i><i class="tick on"></i><i class="tick on"></i><i class="tick head"></i></span>
+          </div>
+          <div class="banner b-live"><span class="sheen"><i></i></span><span class="wire"><i></i></span><span class="wire bottom"><i></i></span><span class="badge">Live data</span><span class="msg">3 active trips checked · 0 over the 15-minute threshold · <b>updated 11:50 PM</b></span></div>
+        </div>
+
+        <div class="mrow">
+          <div class="mname"><b>Connecting</b><span>First load, or a retry in flight</span></div>
+          <div class="inline-sig is-connecting" style="color:var(--text-muted)">
+            <span class="sig is-connecting"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle><circle class="arc" cx="9" cy="9" r="7.25"></circle></svg><span class="core"></span></span>
+            <span>Connecting</span>
+          </div>
+          <div class="banner b-muted"><span class="badge">Connecting</span><span class="msg">Asking the GTFS-Realtime feed. Counts below are from the last good poll.</span></div>
+        </div>
+
+        <div class="mrow">
+          <div class="mname"><b>Stale</b><span>Answering, but outside the contract</span></div>
+          <div class="inline-sig is-stale" style="color:var(--warn-fg)">
+            <span class="sig is-stale"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle></svg><span class="core"></span></span>
+            <span>Stale data</span>
+            <span class="ticks"><i class="tick on"></i><i class="tick on"></i><i class="tick on"></i><i class="tick"></i><i class="tick"></i><i class="tick"></i></span>
+          </div>
+          <div class="banner b-warn"><span class="badge">Stale</span><span class="msg">Last arrival <b>11:31 PM</b>, 19 minutes ago. Absence of a trip here is not evidence it did not run.</span></div>
+        </div>
+
+        <div class="mrow">
+          <div class="mname"><b>Unavailable</b><span>Request failed, or the feed is not configured</span></div>
+          <div class="inline-sig is-down" style="color:var(--danger)">
+            <span class="sig is-down"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle></svg><span class="core"></span><span class="slash"></span></span>
+            <span>Unavailable</span>
+            <span class="ticks"><i class="tick"></i><i class="tick"></i><i class="tick"></i><i class="tick"></i><i class="tick"></i><i class="tick"></i></span>
+          </div>
+          <div class="banner b-down"><span class="badge">Unavailable</span><span class="msg">The TripUpdate feed is not answering. Nothing on this page is current — do not action from it.</span></div>
+        </div>
+
+        <div class="mrow">
+          <div class="mname"><b>Sign-in required</b><span>Session was not accepted</span></div>
+          <div class="inline-sig is-locked" style="color:var(--danger)">
+            <span class="sig is-locked"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle></svg><span class="core"></span><span class="keybar"></span></span>
+            <span>Sign in again</span>
+          </div>
+          <div class="banner b-down"><span class="badge">Sign in</span><span class="msg">Your session was not accepted. <a href="#">Sign in again</a> to restore live data.</span></div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="card">
+      <span class="cap">Placements — same core, three densities</span>
+      <div class="placements">
+        <div>
+          <div class="nav-demo">
+            <span class="sig sm is-live" style="color:var(--live)"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle><circle class="arc" cx="9" cy="9" r="7.25"></circle><circle class="comet" cx="9" cy="9" r="7.25"></circle></svg><span class="halo"></span><span class="halo two"></span><span class="bloom"></span><span class="core"></span></span>
+            <span>Console live</span>
+          </div>
+          <small style="display:block;margin-top:7px">Sidebar footer · 14px · no ticks</small>
+        </div>
+        <div>
+          <div class="bar-demo">
+            <span class="sig is-live" style="color:var(--live)"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle><circle class="arc" cx="9" cy="9" r="7.25"></circle><circle class="comet" cx="9" cy="9" r="7.25"></circle></svg><span class="halo"></span><span class="halo two"></span><span class="bloom"></span><span class="core"></span></span>
+            <strong>Live data</strong><span>Updated 11:50:04 PM</span>
+          </div>
+          <small style="display:block;margin-top:7px">Dashboard freshness bar · 18px</small>
+        </div>
+        <div>
+          <div class="feed-demo">
+            <div class="feed-row" style="color:var(--success)">
+              <span class="sig sm is-live" style="color:var(--live)"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle><circle class="arc" cx="9" cy="9" r="7.25"></circle><circle class="comet" cx="9" cy="9" r="7.25"></circle></svg><span class="halo"></span><span class="halo two"></span><span class="bloom"></span><span class="core"></span></span>
+              GTFS-Realtime · Live
+            </div>
+            <div class="feed-row" style="color:var(--warn-fg)">
+              <span class="sig sm is-stale"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle></svg><span class="core"></span></span>
+              MVTA Connect · Stale
+            </div>
+          </div>
+          <small style="display:block;margin-top:7px">Feeds &amp; freshness rail · 14px</small>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"dark":{"editor":"boolean","default":false,"section":"Theme"},"motion":{"editor":"enum","options":["full","reduced"],"default":"full","section":"Theme"}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dark = this.props.dark ?? false;
+    const still = (this.props.motion ?? 'full') === 'reduced';
+    return { rootClass: (dark ? 'dark' : '') + (still ? ' still' : '') };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+<div class="root {{rootClass}} col">
+  <div>
+    <span class="eyebrow">Today, as shipped</span>
+    <h1 style="font-size:18px">Four unrelated live indicators</h1>
+    <p>Every one of these is static. None of them says how old the data is, and three of them carry their state in colour alone.</p>
+  </div>
+
+  <div>
+    <small>Service Risk &amp; Quality · <code>.concept-banner</code></small>
+    <div class="old-banner" style="margin-top:6px"><span class="old-badge">LIVE DATA</span><span>3 active trips checked; 0 exceed the 15-minute departure threshold; last update 11:50 PM.</span></div>
+  </div>
+
+  <div>
+    <small>Dashboard · <code>.dashboard-freshness</code></small>
+    <div class="old-fresh" style="margin-top:6px"><span class="old-dot"></span><strong>Live data</strong><span>Updated 11:50:04 PM</span></div>
+  </div>
+
+  <div>
+    <small>Feeds &amp; freshness rail · <code>.data-health-feed</code></small>
+    <div style="margin-top:6px;display:grid;gap:8px;background:var(--surface-alt);border:1px solid var(--border);border-radius:8px;padding:11px">
+      <div class="old-feed"><span class="old-dot"></span>GTFS-Realtime · Live data</div>
+      <div class="old-feed" style="color:var(--danger)"><span class="old-dot bad"></span>MVTA Connect · Stale data</div>
+    </div>
+  </div>
+
+  <div>
+    <small>Sidebar footer · <code>.nav-status</code></small>
+    <div class="old-nav" style="margin-top:6px"><span class="old-dot"></span>Console Live</div>
+  </div>
+
+  <div style="border-top:1px solid var(--border);padding-top:14px">
+    <h2 style="margin-bottom:8px">What the redesign fixes</h2>
+    <ul class="gap">
+      <li>A live feed and a dead feed differ by one 7px colour swap — <code>#2fae66</code> to <code>#8a1f1f</code>. Nothing moves, nothing changes shape.</li>
+      <li>The blue accent banner reads as an informational note, not as a live connection; it uses the same tint as “preview data”.</li>
+      <li>Stale is stated in words but never in age — an operator cannot tell 40 seconds from 40 minutes without opening another page.</li>
+      <li>Four different treatments for one idea: a badge, a dot, a coloured row and a nav pill, none of them the same component.</li>
+    </ul>
+  </div>
+</div>
