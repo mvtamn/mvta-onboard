@@ -22,6 +22,7 @@ import {
   useFixedRouteRefresh,
 } from "../../context/FixedRouteRefreshContext.js";
 import { LiveDelays } from "./LiveDelays.js";
+import { LiveBanner } from "../../components/LiveSignal.js";
 import {
   FIXED_ROUTE_RISKS,
   type FixedRouteRisk,
@@ -423,22 +424,12 @@ export function FixedRouteServiceRisk() {
 
       <FixedRouteRefreshControls />
 
-      <div className="concept-banner">
-        <span className="concept-badge">
-          {trainingMode
-            ? "Training"
-            : dataMode === "loading"
-            ? "Connecting"
-            : dataMode === "preview"
-              ? "Preview data"
-              : diagnostics?.state === "current"
-                ? "Live data"
-                : "Feed status"}
-        </span>
-        <span>{trainingMode
-          ? TRAINING_SCENARIO_NOTICE
-          : liveMessage}</span>
-      </div>
+      <FixedRouteRiskBanner
+        trainingMode={trainingMode}
+        dataMode={dataMode}
+        diagnosticsState={diagnostics?.state ?? null}
+        message={trainingMode ? TRAINING_SCENARIO_NOTICE : liveMessage}
+      />
 
       <div className="risk-stat-grid" aria-label="Fixed route risk summary">
         <RiskStat value={predicted} label="Predicted over 15 min" tone="danger" />
@@ -557,6 +548,67 @@ function RiskModuleHeader({
         ) : null}
       </div>
     </div>
+  );
+}
+
+// The banner that owns this page's data. It is the one place on the module
+// that is allowed the loud treatment - the sweep, the sheen, the badge glow -
+// and it earns it by running on the page's real refresh clock: the arc and
+// the poll bars come from the refresh context, not from a timer of its own.
+// Training and preview banners get no signal at all, because no feed is
+// answering behind them.
+function FixedRouteRiskBanner({
+  trainingMode,
+  dataMode,
+  diagnosticsState,
+  message,
+}: {
+  trainingMode: boolean;
+  dataMode: "loading" | "live" | "preview" | "authentication_required";
+  diagnosticsState: string | null;
+  message: string;
+}) {
+  const { intervalMs, secondsLeft, history } = useFixedRouteRefresh();
+
+  if (trainingMode) {
+    return <LiveBanner tone="accent" badge="Training">{message}</LiveBanner>;
+  }
+  if (dataMode === "preview") {
+    return <LiveBanner tone="accent" badge="Preview data">{message}</LiveBanner>;
+  }
+  if (dataMode === "loading") {
+    return <LiveBanner state="connecting" tone="muted" badge="Connecting" role="status">{message}</LiveBanner>;
+  }
+  if (dataMode === "authentication_required") {
+    return <LiveBanner state="locked" tone="danger" badge="Sign in" role="status">{message}</LiveBanner>;
+  }
+  if (diagnosticsState === "current") {
+    return (
+      <LiveBanner
+        state="live"
+        tone="live"
+        badge="Live data"
+        role="status"
+        intervalMs={intervalMs}
+        secondsLeft={secondsLeft}
+        history={history}
+      >
+        {message}
+      </LiveBanner>
+    );
+  }
+  // Answering, but not current - or not answering at all. Either way the
+  // numbers below are not a reading of now, so the banner stops moving.
+  return (
+    <LiveBanner
+      state={diagnosticsState === "stale" ? "stale" : "unavailable"}
+      tone={diagnosticsState === "stale" ? "warning" : "danger"}
+      badge={diagnosticsState === "stale" ? "Stale" : "Feed status"}
+      role="status"
+      history={history}
+    >
+      {message}
+    </LiveBanner>
   );
 }
 

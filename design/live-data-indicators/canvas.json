@@ -1,0 +1,14 @@
+{
+  "artboards": [
+    { "file": "Before.dc.html", "x": 0, "y": 0, "w": 560, "h": 880, "title": "Today" },
+    { "file": "Main.dc.html", "x": 680, "y": 0, "w": 900, "h": 1250, "title": "Pulse — signal system" },
+    { "file": "Motion.dc.html", "x": 1700, "y": 0, "w": 680, "h": 1250, "title": "Motion spec" },
+    { "file": "ServiceRisk.dc.html", "x": 680, "y": 1400, "w": 1180, "h": 780, "title": "In context — Service Risk" },
+    { "file": "DataHealth.dc.html", "x": 1980, "y": 1400, "w": 620, "h": 900, "title": "In context — Dashboard" }
+  ],
+  "annotations": [
+    { "id": "tempo", "x": 0, "y": 960, "w": 520, "text": "Open question: the arc is bound to each module's own refresh rate (30s on Service Risk, 60s elsewhere). If a module has no fixed rate, the arc is omitted and only the core + ticks show.\n\nTell me which reading you want and I'll adjust." },
+    { "id": "guide", "x": 0, "y": 1400, "w": 520, "text": "DESIGN.md says: no ornamental motion on operational surfaces, and never carry state in colour or motion alone. Every loop here is bound to a real event, and live vs stale differ in shape and words before they differ in movement. See the Motion spec artboard." }
+  ],
+  "launch": { "view": "canvas" }
+}

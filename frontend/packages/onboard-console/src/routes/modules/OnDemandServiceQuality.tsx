@@ -22,6 +22,7 @@ import {
   type RiskTrend,
   type RiskWorkflow,
 } from "./serviceRisk.data.js";
+import { LiveBanner } from "../../components/LiveSignal.js";
 import "./serviceRisk.css";
 
 type DataMode = "loading" | "live" | "preview" | "authentication_required";
@@ -34,6 +35,28 @@ function monitoringLabel(mode: DataMode, diagnostics: OnDemandRiskDiagnostics | 
   if (diagnostics?.state === "not_connected") return "Not connected";
   if (diagnostics?.state === "degraded") return "Degraded";
   return "No active service";
+}
+
+// Same rule as the fixed-route risk banner: the loud treatment belongs to a
+// feed that is actually answering, and the training and preview banners wear
+// no signal because nothing is behind them. This module has no refresh clock
+// of its own, so there is no countdown arc to draw.
+function OnDemandQualityBanner({
+  trainingMode, dataMode, diagnostics, message,
+}: {
+  trainingMode: boolean;
+  dataMode: DataMode;
+  diagnostics: OnDemandRiskDiagnostics | null;
+  message: string;
+}) {
+  const badge = trainingMode ? "Training" : monitoringLabel(dataMode, diagnostics);
+  if (trainingMode) return <LiveBanner tone="accent" badge={badge}>{message}</LiveBanner>;
+  if (dataMode === "preview") return <LiveBanner tone="accent" badge={badge}>{message}</LiveBanner>;
+  if (dataMode === "loading") return <LiveBanner state="connecting" tone="muted" badge={badge} role="status">{message}</LiveBanner>;
+  if (dataMode === "authentication_required") return <LiveBanner state="locked" tone="danger" badge={badge} role="status">{message}</LiveBanner>;
+  if (diagnostics?.state === "current") return <LiveBanner state="live" tone="live" badge={badge} role="status">{message}</LiveBanner>;
+  if (diagnostics?.state === "degraded") return <LiveBanner state="stale" tone="warning" badge={badge} role="status">{message}</LiveBanner>;
+  return <LiveBanner state="unavailable" tone="danger" badge={badge} role="status">{message}</LiveBanner>;
 }
 
 function monitoringMessage(mode: DataMode, diagnostics: OnDemandRiskDiagnostics | null, previewMessage: string | null): string {
@@ -307,12 +330,12 @@ export function OnDemandServiceQuality() {
         </div>
       </div>
 
-      <div className="concept-banner">
-        <span className="concept-badge">{trainingMode ? "Training" : monitoringLabel(dataMode, diagnostics)}</span>
-        <span>{trainingMode
-          ? TRAINING_SCENARIO_NOTICE
-          : monitoringMessage(dataMode, diagnostics, liveMessage)}</span>
-      </div>
+      <OnDemandQualityBanner
+        trainingMode={trainingMode}
+        dataMode={dataMode}
+        diagnostics={diagnostics}
+        message={trainingMode ? TRAINING_SCENARIO_NOTICE : monitoringMessage(dataMode, diagnostics, liveMessage)}
+      />
 
       <div className="risk-stat-grid" aria-label="On-demand service quality summary">
         <RiskStat value={stat(predictedPoor)} label="Predicted over standard" tone="warning" />
