@@ -105,3 +105,22 @@ body {
   cursor: pointer;
 }
 .btn-primary:disabled { opacity: 0.6; cursor: default; }
+
+/* Preference page. A route list is long, and labels like "470 - Burnsville -
+   Minneapolis" are too long to wrap as chips the way the category checks do,
+   so it is one per line in a bounded box that keeps Save within reach. */
+.checks.list {flex-direction: column; flex-wrap: nowrap; gap: 8px; max-height: 260px; overflow-y: auto; border: 1px solid #e3e1da; border-radius: 6px; padding: 10px 12px;}
+.radios {display: flex; flex-direction: column; gap: 8px;}
+.note {font-size: 12px; color: #4f4f4f; margin: 2px 0 0 22px;}
+.actions {display: flex; gap: 10px; align-items: center; flex-wrap: wrap;}
+.btn-secondary {background: #fff;
+  color: #2c2c2a;
+  border: 1px solid #bbb;
+  border-radius: 6px;
+  padding: 12px 18px;
+  font-size: 14px;
+  cursor: pointer;}
+.danger-zone {margin-top: 28px; padding-top: 18px; border-top: 1px solid #e3e1da; max-width: 460px; display: flex; flex-direction: column; gap: 10px;}
+.danger-zone .note {margin-left: 0;}
+.status-ok {color: #00553d; font-size: 13px; margin: 0 0 16px;}
+.actions .status-ok {margin: 0;}
