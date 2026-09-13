@@ -301,17 +301,13 @@ A subscriber can therefore reach `confirmed` by email link, by typing the
 texted code into the page, or by replying to the text — the last of which
 cannot be exercised end to end until the toll-free number is verified.
 
-Migration 117 (2026-09-11) is the groundwork, not the fix: it gives each channel
-its own confirmation state, adds the attempt timestamp and opt-out reason the
-callbacks will write, and scopes confirmation-token uniqueness to live rows per
-channel. The callbacks themselves are increments 2-6 of
-`plans/rider-opt-in-confirmation-loop-spec.md`. The migration closes one defect
-outright: `status` no longer doubles as the SMS channel's state, so confirming
-an email link can no longer make an unproven phone number SMS-eligible.
-
-Azure Communication Services provisioning is required to send real
-confirmations, but it does not prevent the callback endpoints and their tests
-from being implemented now.
+Migration 117 (2026-09-11) is what the callbacks write into. It gives each
+channel its own confirmation state, adds the attempt timestamp and opt-out
+reason, and scopes confirmation-token uniqueness to live rows per channel. It
+closed one defect outright: `status` no longer doubles as the SMS channel's
+state, so confirming an email link cannot make an unproven phone number
+SMS-eligible. Migration 118 (increment 4) adds `merged_into` / `merged_at` and
+the `merged` status that folding duplicate records needs.
 
 ### 7.3 Dispatch targeting — zones evaluated (1.5.201)
 
