@@ -171,8 +171,8 @@ test("a key mailed before a merge still reaches the rider's subscription", skip,
   const pool = await new sql.ConnectionPool(parseConnectionString(connectionString!)).connect();
   try {
     await reset(pool);
-    const survivor = await seed(pool, { phone: "+19523883275" });
-    const folded = await seed(pool, { phone: "+19523883275" });
+    const survivor = await seed(pool, { phone: "+16125550123" });
+    const folded = await seed(pool, { phone: "+16125550123" });
     await pool.request()
       .input("loser", sql.UniqueIdentifier, folded.id)
       .input("winner", sql.UniqueIdentifier, survivor.id)
@@ -183,7 +183,7 @@ test("a key mailed before a merge still reaches the rider's subscription", skip,
     assert.equal(resolved?.merged_into, null, "and what comes back is a live record, not a merged one");
 
     // A chain, not just one hop: merges can happen more than once.
-    const newest = await seed(pool, { phone: "+19523883275" });
+    const newest = await seed(pool, { phone: "+16125550123" });
     await pool.request()
       .input("loser", sql.UniqueIdentifier, survivor.id)
       .input("winner", sql.UniqueIdentifier, newest.id)
@@ -202,7 +202,7 @@ test("a key that names nothing resolves to nothing, in every way it can", skip, 
   const pool = await new sql.ConnectionPool(parseConnectionString(connectionString!)).connect();
   try {
     await reset(pool);
-    await seed(pool, { phone: "+19523883275" });
+    await seed(pool, { phone: "+16125550123" });
     for (const key of [makeManageKey(), "", "not-a-key", "A".repeat(64)]) {
       assert.equal(await inTx(pool, (tx) => resolveManageKey(tx, key)), null, `key ${JSON.stringify(key.slice(0, 12))}`);
     }
@@ -216,7 +216,7 @@ test("a PUT assigns, so a rider can narrow what they receive", skip, async () =>
   try {
     await reset(pool);
     const { id, key } = await seed(pool, {
-      phone: "+19523883275",
+      phone: "+16125550123",
       categories: ["delay", "detour", "closure"],
       routes: "ALL",
     });
@@ -257,7 +257,7 @@ test("stopping one channel leaves the other, and stopping both opts the record o
   const pool = await new sql.ConnectionPool(parseConnectionString(connectionString!)).connect();
   try {
     await reset(pool);
-    const { id, key } = await seed(pool, { phone: "+19523883275", email: "a@example.com" });
+    const { id, key } = await seed(pool, { phone: "+16125550123", email: "a@example.com" });
 
     const put = (channels: ("sms" | "email")[]) =>
       inTx(pool, async (tx) => {
@@ -294,7 +294,7 @@ test("an opted-out record is refused, not quietly revived", skip, async () => {
   try {
     await reset(pool);
     const { id, key } = await seed(pool, {
-      phone: "+19523883275", status: "opted_out", smsStatus: "unsubscribed", categories: ["delay"],
+      phone: "+16125550123", status: "opted_out", smsStatus: "unsubscribed", categories: ["delay"],
     });
     const outcome = await inTx(pool, async (tx) => {
       const record = (await resolveManageKey(tx, key))!;
@@ -315,7 +315,7 @@ test("unsubscribing rotates the key, so the link in the inbox stops working", sk
   const pool = await new sql.ConnectionPool(parseConnectionString(connectionString!)).connect();
   try {
     await reset(pool);
-    const { id, key } = await seed(pool, { phone: "+19523883275", email: "a@example.com" });
+    const { id, key } = await seed(pool, { phone: "+16125550123", email: "a@example.com" });
     await pool.request().input("id", sql.UniqueIdentifier, id).query(
       "INSERT dbo.SubscriberConfirmations (subscriber_id, channel, token, expires_at) VALUES (@id,'email','live-token',DATEADD(hour,24,SYSUTCDATETIME()))",
     );
@@ -376,7 +376,7 @@ test("what the page reads back is what was stored", skip, async () => {
   const pool = await new sql.ConnectionPool(parseConnectionString(connectionString!)).connect();
   try {
     await reset(pool);
-    const { key } = await seed(pool, { phone: "+19523883275", categories: ["delay"], routes: '["470"]' });
+    const { key } = await seed(pool, { phone: "+16125550123", categories: ["delay"], routes: '["470"]' });
     const state = await inTx(pool, async (tx) => stateOf((await resolveManageKey(tx, key))!));
     assert.deepEqual(state.categories, ["delay"]);
     assert.deepEqual(state.routes, ["470"]);

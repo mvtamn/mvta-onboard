@@ -4,11 +4,11 @@ import { normalizeUsPhone, isE164, formatE164ForDisplay } from "./phone.js";
 describe("normalizeUsPhone", () => {
   it("accepts the shapes riders actually type", () => {
     // The number from the failing opt-in: 11 digits, no plus.
-    expect(normalizeUsPhone("19523883275")).toBe("+19523883275");
-    expect(normalizeUsPhone("9523883275")).toBe("+19523883275");
-    expect(normalizeUsPhone("952-388-3275")).toBe("+19523883275");
-    expect(normalizeUsPhone("(952) 388-3275")).toBe("+19523883275");
-    expect(normalizeUsPhone("1 (952) 388-3275")).toBe("+19523883275");
+    expect(normalizeUsPhone("16125550123")).toBe("+16125550123");
+    expect(normalizeUsPhone("6125550123")).toBe("+16125550123");
+    expect(normalizeUsPhone("612-555-0123")).toBe("+16125550123");
+    expect(normalizeUsPhone("(612) 555-0123")).toBe("+16125550123");
+    expect(normalizeUsPhone("1 (612) 555-0123")).toBe("+16125550123");
   });
 
   it("keeps an explicit country code and strips its punctuation", () => {
@@ -21,14 +21,14 @@ describe("normalizeUsPhone", () => {
     expect(normalizeUsPhone("")).toBeNull();
     expect(normalizeUsPhone("   ")).toBeNull();
     expect(normalizeUsPhone("555-0142")).toBeNull();
-    expect(normalizeUsPhone("952388327")).toBeNull();
-    expect(normalizeUsPhone("29523883275")).toBeNull();
+    expect(normalizeUsPhone("612555012")).toBeNull();
+    expect(normalizeUsPhone("26125550123")).toBeNull();
     expect(normalizeUsPhone("not a phone")).toBeNull();
     expect(normalizeUsPhone("+0123456789")).toBeNull();
   });
 
   it("produces values the API's E.164 rule accepts", () => {
-    for (const typed of ["19523883275", "952-388-3275", "+1 612 555 0142"]) {
+    for (const typed of ["16125550123", "612-555-0123", "+1 612 555 0142"]) {
       expect(isE164(normalizeUsPhone(typed)!)).toBe(true);
     }
   });
@@ -36,7 +36,7 @@ describe("normalizeUsPhone", () => {
 
 describe("formatE164ForDisplay", () => {
   it("makes a US number readable and leaves others alone", () => {
-    expect(formatE164ForDisplay("+19523883275")).toBe("+1 (952) 388-3275");
+    expect(formatE164ForDisplay("+16125550123")).toBe("+1 (612) 555-0123");
     expect(formatE164ForDisplay("+442079460958")).toBe("+442079460958");
   });
 });
