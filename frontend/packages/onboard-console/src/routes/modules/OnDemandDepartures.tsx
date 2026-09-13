@@ -4,7 +4,7 @@ import { api } from "../../config.js";
 import { useAuth } from "../../auth/AuthContext.js";
 import {
   agencyTimeLabel,
-  badgeLabel,
+  DeparturesFeedBanner,
   dailyCounts,
   deltaMinutesLabel,
   DepartureTrend,
@@ -317,10 +317,7 @@ export function OnDemandDepartures() {
       </div>
 
       {message ? (
-        <div className="concept-banner">
-          <span className="concept-badge">{badgeLabel(state)}</span>
-          <span>{message}</span>
-        </div>
+        <DeparturesFeedBanner state={state} message={message} />
       ) : null}
 
       {/* Same rule as the fixed route view: the numbers are withheld until the

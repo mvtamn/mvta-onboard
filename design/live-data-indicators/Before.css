@@ -1,0 +1,12 @@
+    .col { padding:24px 24px 28px; display:flex; flex-direction:column; gap:18px; }
+    .old-banner { align-items:center; background:var(--accent-bg); border:1px solid rgba(11,76,130,.25); border-radius:8px; color:var(--accent-fg); display:flex; font-size:11.5px; gap:9px; padding:8px 10px; }
+    .old-badge { background:var(--accent-fg); border-radius:999px; color:var(--surface); font-size:9px; font-weight:800; letter-spacing:.06em; padding:3px 7px; flex-shrink:0; }
+    .old-dot { width:7px; height:7px; border-radius:50%; background:var(--live); display:inline-block; flex:none; }
+    .old-dot.bad { background:var(--danger); }
+    .old-fresh { align-items:center; background:var(--surface-alt); border:1px solid var(--border); border-radius:8px; color:var(--text-dim); display:flex; gap:7px; padding:9px 11px; font-size:12px; }
+    .old-fresh strong { color:var(--text); }
+    .old-feed { align-items:center; color:var(--success); display:flex; font-size:13px; font-weight:800; gap:7px; }
+    .old-nav { background:var(--nav-bg); border-radius:10px; padding:13px 14px; display:flex; align-items:center; gap:7px; color:rgba(255,255,255,.5); font-size:11.5px; font-weight:600; }
+    .gap { display:grid; gap:9px; }
+    .gap li { color:var(--text-dim); font-size:12px; line-height:1.5; }
+    .gap li::marker { color:var(--danger); }
