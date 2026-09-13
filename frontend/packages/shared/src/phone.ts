@@ -1,6 +1,6 @@
 // The API stores and dials phone numbers in E.164 (functions-restapi
 // validation.ts: /^\+[1-9]\d{7,14}$/), but riders type what is on their phone:
-// "952-388-3275", "(952) 388-3275", "1 952 388 3275". Left as typed, every one
+// "612-555-0123", "(612) 555-0123", "1 612 555 0123". Left as typed, every one
 // of those is a 400 from the opt-in endpoint, which the form could only report
 // as "check your contact information" — so normalize here, at the form, where
 // the rider can still see and correct the result.
@@ -32,7 +32,7 @@ export function normalizeUsPhone(input: string): string | null {
   return null;
 }
 
-/** "+19523883275" -> "+1 (952) 388-3275", so the rider can check it. */
+/** "+16125550123" -> "+1 (612) 555-0123", so the rider can check it. */
 export function formatE164ForDisplay(e164: string): string {
   const m = /^\+1(\d{3})(\d{3})(\d{4})$/.exec(e164);
   return m ? `+1 (${m[1]}) ${m[2]}-${m[3]}` : e164;
