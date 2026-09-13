@@ -54,6 +54,7 @@ import { PerformanceAgreementsAdmin } from "./routes/PerformanceAgreementsAdmin.
 import { PerformanceListsAdmin } from "./routes/PerformanceListsAdmin.js";
 import { CHANGELOG_ENTRIES } from "./routes/changelogData.js";
 import { FixedRouteRefreshProvider } from "./context/FixedRouteRefreshContext.js";
+import { LiveSignal, signalStateFor } from "./components/LiveSignal.js";
 import { OperatorIdentity } from "./components/OperatorIdentity.js";
 
 const ADMIN = ["OCC.Admin"] as const;
@@ -481,7 +482,7 @@ function AuthenticatedApp({ account, roles, signOut }: {
         <div className="nav-spacer" />
         <div className="nav-footer">
           <div className="nav-status" title={stats.ok ? "Console Live" : "Console Offline"}>
-            <span className="live-dot" />
+            <LiveSignal state={signalStateFor(stats.overallState)} size="sm" />
             <span className="nav-label">{stats.ok ? "Console Live" : "Console Offline"}</span>
           </div>
           <div className="nav-item">

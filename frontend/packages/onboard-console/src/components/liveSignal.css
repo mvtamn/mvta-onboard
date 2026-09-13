@@ -1,0 +1,171 @@
+/* The live-data signal. See LiveSignal.tsx for why it moves the way it does.
+
+   Every animation here is bound to a real event - a poll landing, a refresh
+   interval, a retry in flight. None of them run outside the live state, and
+   all of them are switched off under prefers-reduced-motion, where the
+   states stay legible by shape, colour and label alone. */
+
+.live-signal {
+  align-items: center;
+  display: inline-flex;
+  flex: none;
+  height: 18px;
+  justify-content: center;
+  position: relative;
+  width: 18px;
+}
+.live-signal-sm { height: 14px; width: 14px; }
+.live-signal-lg { height: 26px; width: 26px; }
+
+.live-signal svg { height: 100%; inset: 0; overflow: visible; position: absolute; transform: rotate(-90deg); width: 100%; }
+.live-signal-track { fill: none; opacity: .2; stroke: currentColor; stroke-width: 1.5; }
+.live-signal-arc { fill: none; stroke: currentColor; stroke-dasharray: 45.6; stroke-linecap: round; stroke-width: 1.5; }
+.live-signal-comet { fill: none; filter: drop-shadow(0 0 3px currentColor); stroke: currentColor; stroke-dasharray: .1 45.5; stroke-linecap: round; stroke-width: 2.4; }
+
+.live-signal-core { background: currentColor; border-radius: 50%; height: 8px; position: relative; width: 8px; z-index: 2; }
+.live-signal-sm .live-signal-core { height: 6px; width: 6px; }
+.live-signal-lg .live-signal-core { height: 11px; width: 11px; }
+.live-signal-halo { border: 1.5px solid currentColor; border-radius: 50%; inset: 0; opacity: 0; position: absolute; }
+.live-signal-bloom { background: radial-gradient(circle, currentColor 0%, transparent 62%); border-radius: 50%; inset: 0; opacity: 0; position: absolute; }
+
+/* Live: two halos half a beat apart so a ring is always in flight, a comet
+   running the leading edge of the countdown, and a punch plus bloom at the
+   moment data lands - the arrival is the loudest frame in the console
+   because it is the one an operator most needs to catch. */
+.live-signal.is-live { color: var(--live-dot); }
+.live-signal.is-live .live-signal-halo { animation: live-signal-halo 2s cubic-bezier(.16, .66, .28, 1) infinite; }
+.live-signal.is-live .live-signal-halo.two { animation-delay: 1s; }
+.live-signal.is-live .live-signal-arc { animation: live-signal-countdown linear infinite; }
+.live-signal.is-live .live-signal-comet { animation: live-signal-comet linear infinite; }
+.live-signal.is-live .live-signal-core { animation: live-signal-arrive 30s cubic-bezier(.1, .7, .3, 1) infinite; }
+.live-signal.is-live .live-signal-bloom { animation: live-signal-bloom 30s cubic-bezier(.1, .7, .3, 1) infinite; }
+
+@keyframes live-signal-halo {
+  0% { opacity: .8; transform: scale(.34); }
+  78%, 100% { opacity: 0; transform: scale(1.5); }
+}
+@keyframes live-signal-countdown { from { stroke-dashoffset: 0; } to { stroke-dashoffset: 45.6; } }
+@keyframes live-signal-comet { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -45.6; } }
+@keyframes live-signal-arrive {
+  0% { filter: brightness(1.9) drop-shadow(0 0 7px currentColor); transform: scale(2.1); }
+  6%, 100% { filter: brightness(1) drop-shadow(0 0 0 currentColor); transform: scale(1); }
+}
+@keyframes live-signal-bloom {
+  0% { opacity: .85; transform: scale(.5); }
+  14%, 100% { opacity: 0; transform: scale(2.6); }
+}
+
+/* Connecting: indeterminate on purpose - it must not be mistaken for a
+   countdown, because nothing is known yet about when an answer arrives. */
+.live-signal.is-connecting { color: var(--text-muted); }
+.live-signal.is-connecting .live-signal-core { background: transparent; box-shadow: inset 0 0 0 1.5px currentColor; }
+.live-signal.is-connecting svg { animation: live-signal-spin 1s linear infinite; }
+.live-signal.is-connecting .live-signal-arc { animation: none; stroke-dasharray: 11 35; }
+@keyframes live-signal-spin { to { transform: rotate(270deg); } }
+
+/* Stale, unavailable and sign-in-required do not animate at all. A frozen
+   indicator among breathing ones is what draws the eye - and none of them
+   rest on stillness alone: the ring goes dashed or dims, the core squares
+   off or hollows out, and the label changes with it. */
+.live-signal.is-stale { color: var(--pill-warning-fg); }
+.live-signal.is-stale .live-signal-core { border-radius: 2px; height: 7px; width: 7px; }
+.live-signal.is-stale .live-signal-track { opacity: .55; stroke-dasharray: 2.6 2.6; }
+
+.live-signal.is-down { color: var(--danger-text); }
+.live-signal.is-down .live-signal-core { background: transparent; box-shadow: inset 0 0 0 1.5px currentColor; }
+.live-signal.is-down .live-signal-track { opacity: .5; }
+.live-signal-slash { background: currentColor; border-radius: 1px; height: 1.6px; position: absolute; transform: rotate(-45deg); width: 13px; z-index: 3; }
+.live-signal-sm .live-signal-slash { width: 10px; }
+
+.live-signal.is-locked { color: var(--danger-text); }
+.live-signal.is-locked .live-signal-track { opacity: .5; }
+.live-signal.is-locked .live-signal-core { height: 6px; width: 6px; }
+.live-signal-keybar { background: currentColor; border-radius: 1px; height: 6px; position: absolute; transform: translate(4px, 2px); width: 1.6px; z-index: 3; }
+
+/* ---- poll history ---- */
+.feed-history { align-items: flex-end; display: inline-flex; gap: 3px; }
+.feed-tick { background: currentColor; border-radius: 1.5px; height: 11px; opacity: .22; transform-origin: 50% 100%; width: 3px; }
+.feed-tick.on { opacity: .85; }
+.feed-tick.head { filter: drop-shadow(0 0 4px currentColor); opacity: 1; }
+.feed-history.live .feed-tick.on { animation: live-signal-wave 2s cubic-bezier(.3, .7, .3, 1) infinite; }
+.feed-history.live .feed-tick:nth-child(2) { animation-delay: .11s; }
+.feed-history.live .feed-tick:nth-child(3) { animation-delay: .22s; }
+.feed-history.live .feed-tick:nth-child(4) { animation-delay: .33s; }
+.feed-history.live .feed-tick:nth-child(5) { animation-delay: .44s; }
+.feed-history.live .feed-tick:nth-child(6) { animation-delay: .55s; }
+@keyframes live-signal-wave {
+  0% { transform: scaleY(.5); }
+  16% { transform: scaleY(1.25); }
+  36%, 100% { transform: scaleY(.85); }
+}
+
+/* ---- the live banner ---- */
+.live-banner { align-items: center; border: 1px solid; border-radius: 8px; display: flex; font-size: 11.5px; gap: 9px; margin-bottom: 14px; overflow: hidden; padding: 9px 11px; position: relative; }
+.live-banner > * { position: relative; z-index: 2; }
+/* The badge carries its own type here rather than borrowing serviceRisk.css:
+   this banner is used by modules that do not import that stylesheet, and a
+   badge whose text colour never arrived is a dark chip on a dark chip. */
+.live-banner .concept-badge {
+  border-radius: 999px;
+  color: var(--surface-bg);
+  flex: none;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  padding: 3px 8px;
+}
+.live-banner-message { min-width: 0; }
+.live-banner-spacer { flex: 1; }
+
+/* The refresh registers across the whole banner, not only at its edge: a lit
+   sweep along the top, a trailing hairline along the bottom, a sheen across
+   the body and a glow off the badge, all on one clock. Reserved for the
+   banner that owns the page's data - never more than one per screen. */
+.live-banner-wire { height: 2.5px; left: 0; overflow: hidden; position: absolute; top: 0; width: 100%; z-index: 1; }
+.live-banner-wire.bottom { bottom: 0; height: 1.5px; top: auto; }
+.live-banner-wire i { background: linear-gradient(90deg, transparent, currentColor 46%, #fff 50%, currentColor 54%, transparent); inset: 0; opacity: .9; position: absolute; transform: translateX(-100%); }
+.live-banner-sheen { inset: 0; pointer-events: none; position: absolute; z-index: 1; }
+.live-banner-sheen i { background: linear-gradient(100deg, transparent 38%, currentColor 50%, transparent 62%); inset: 0; opacity: .13; position: absolute; transform: translateX(-100%); }
+
+.live-banner.tone-live { background: var(--chip-bg); border-color: var(--datasource-border); color: var(--chip-fg); }
+/* Evergreen is a dark fill in both themes, so this badge takes white text
+   rather than the surface token the other tones use - under [data-theme=dark]
+   that token is itself dark, and the label would sit green on green. */
+.live-banner.tone-live .concept-badge { animation: live-banner-badge 6s ease-in-out infinite; background: var(--brand-green); color: #fff; }
+.live-banner.tone-live .live-banner-wire i { animation: live-banner-sweep 6s cubic-bezier(.5, 0, .35, 1) infinite; }
+.live-banner.tone-live .live-banner-wire.bottom i { animation-delay: .25s; opacity: .5; }
+.live-banner.tone-live .live-banner-sheen i { animation: live-banner-sweep 6s cubic-bezier(.5, 0, .35, 1) infinite; animation-delay: .08s; }
+@keyframes live-banner-sweep {
+  0% { transform: translateX(-100%); }
+  26%, 100% { transform: translateX(100%); }
+}
+@keyframes live-banner-badge {
+  0% { box-shadow: 0 0 0 0 rgba(47, 174, 102, .65); }
+  18%, 100% { box-shadow: 0 0 0 6px rgba(47, 174, 102, 0); }
+}
+
+.live-banner.tone-warning { background: var(--pill-warning-bg); border-color: var(--highlight-border); color: var(--pill-warning-fg); }
+.live-banner.tone-warning .concept-badge { background: var(--pill-warning-fg); }
+.live-banner.tone-danger { background: var(--pill-danger-bg); border-color: var(--pill-danger-fg); color: var(--pill-danger-fg); }
+.live-banner.tone-danger .concept-badge { background: var(--pill-danger-fg); }
+.live-banner.tone-muted { background: var(--pill-muted-bg); border-color: var(--border); color: var(--pill-muted-fg); }
+.live-banner.tone-muted .concept-badge { background: var(--pill-muted-fg); }
+.live-banner.tone-accent { background: var(--pill-accent-bg); border-color: color-mix(in srgb, var(--pill-accent-fg) 25%, transparent); color: var(--pill-accent-fg); }
+.live-banner.tone-accent .concept-badge { background: var(--pill-accent-fg); }
+
+/* Every loop above decorates a state that is already carried by shape, colour
+   and words, so switching them all off costs nothing but the movement. The
+   arc freezes part-way rather than snapping full or empty, which would read
+   as a countdown that had just started or just finished. */
+@media (prefers-reduced-motion: reduce) {
+  .live-signal *,
+  .feed-history *,
+  .live-banner .concept-badge,
+  .live-banner-wire i,
+  .live-banner-sheen i { animation: none !important; }
+  .live-signal-comet,
+  .live-signal-bloom,
+  .live-banner-wire,
+  .live-banner-sheen { display: none; }
+  .live-signal.is-live .live-signal-arc { stroke-dashoffset: 16; }
+}

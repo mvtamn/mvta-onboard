@@ -3,6 +3,7 @@ import { ApiError, type GtfsRouteOption, type MissedTrip, type MissedTripReview,
 import { Link } from "react-router-dom";
 import { api } from "../../config.js";
 import { MISSED_TRIP_ALERTS, type MissedTripAlert } from "./missedTrips.data.js";
+import { LiveBanner } from "../../components/LiveSignal.js";
 import "./serviceRisk.css";
 
 const AUTO_REFRESH_MS = 60_000;
@@ -659,18 +660,20 @@ function MissedTripsInvestigationPage({
 
   return (
     <>
-      <div className="concept-banner">
-        <span className="concept-badge">
-          {dataMode === "loading"
-            ? "Loading"
-            : isPreview
-              ? "Development preview"
-              : dataMode === "error"
-                ? "Data unavailable"
-                : configured
-                  ? diagnostics?.schedule_detection_status === "paused" ? "Cancellation-only" : "Live data"
-                  : "Partial data"}
-        </span>
+      <LiveBanner
+        role="status"
+        state={dataMode === "loading" ? "connecting" : isPreview ? undefined : dataMode === "error" ? "unavailable" : configured && diagnostics?.schedule_detection_status !== "paused" ? "live" : "stale"}
+        tone={dataMode === "loading" ? "muted" : isPreview ? "accent" : dataMode === "error" ? "danger" : configured && diagnostics?.schedule_detection_status !== "paused" ? "live" : "warning"}
+        badge={dataMode === "loading"
+          ? "Loading"
+          : isPreview
+            ? "Development preview"
+            : dataMode === "error"
+              ? "Data unavailable"
+              : configured
+                ? diagnostics?.schedule_detection_status === "paused" ? "Cancellation-only" : "Live data"
+                : "Partial data"}
+      >
         <span>
           {liveMessage ?? `Authenticated missed-trip data loaded${diagnostics?.last_checked_at ? ` · last detector check ${agoLabel(minutesAgo(diagnostics.last_checked_at))}` : ""}.${
             dataMode === "live" && diagnostics?.spare_enabled
@@ -678,7 +681,7 @@ function MissedTripsInvestigationPage({
               : ""
           }`}
         </span>
-      </div>
+      </LiveBanner>
       {blockingFeeds.length > 0 ? (
         <div className="concept-banner" role="status">
           <span className="concept-badge">Feed warning</span>

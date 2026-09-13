@@ -1,0 +1,9 @@
+<script data-dc-script data-props='{"dark":{"editor":"boolean","default":false,"section":"Theme"},"motion":{"editor":"enum","options":["full","reduced"],"default":"full","section":"Theme"}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dark = this.props.dark ?? false;
+    const still = (this.props.motion ?? 'full') === 'reduced';
+    return { rootClass: (dark ? 'dark' : '') + (still ? ' still' : '') };
+  }
+}
+</script>
