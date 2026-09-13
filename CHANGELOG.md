@@ -5,6 +5,14 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.204] - 2026-09-13
+
+- **Service Risk showed a healthy fixed-route feed as failed every night.** `TripDelayDiagnostics.state` has four values - `current`, `no_current_trips`, `stale`, `configuration_missing` - and 1.5.197's banner handled the first and third and sent the rest to the red "unavailable" branch. So outside 8am-10pm service, when the feed answers on schedule and reports nothing running, the banner drew a slashed failure glyph beside a full row of polls that had all arrived. Found walking through Service Risk on dev at 1:45am CDT.
+- **`no_current_trips` now reads as what it is: a live feed with nothing to report.** The signal keeps moving and keeps its countdown and poll bars, because the feed is answering. The banner is the quiet muted tone with no sweep and the badge "No active trips", because the sweep means data landed for the page to own, and none did. Only `configuration_missing` stays red. On-Demand Service Quality's `no_active_service` had the same fall-through and gets the same treatment, without a countdown since that module keeps no refresh clock.
+- **The Dispatch Log never actually showed its live indicator.** Its banner rendered only when there was a warning message, and a working log has none - so the countdown and poll bars 1.5.197 described as appearing there were never on screen. Today's log now gets the live banner. An earlier day does not: it is a settled record, and a countdown beside it would promise a refresh that is not coming.
+- **The newest poll bar's glow is reserved for a live feed.** On a stale or failed banner it now stays flat; the glow means an arrival, and there the bar is only a record.
+- **Verified.** Console tests including new cases for each state above: no active service renders muted with a live signal and no failure glyph, a monitor that is not connected still renders red, the fixed-route banner distinguishes no current trips from a missing configuration, and the Dispatch Log shows its live banner for today and not for an earlier day.
+
 ## [1.5.203] - 2026-09-12
 
 - **Every alert email carries a way to change or stop it.** Increment D of `plans/rider-preference-management-spec.md`. The footer says why the email arrived and links to the preference page from 1.5.202 - which until now nothing linked to. The footer is built in `functions-dispatch/src/lib/alertEmail.ts`, and the link is never logged, because it carries the manage key.

@@ -56,6 +56,10 @@ function OnDemandQualityBanner({
   if (dataMode === "authentication_required") return <LiveBanner state="locked" tone="danger" badge={badge} role="status">{message}</LiveBanner>;
   if (diagnostics?.state === "current") return <LiveBanner state="live" tone="live" badge={badge} role="status">{message}</LiveBanner>;
   if (diagnostics?.state === "degraded") return <LiveBanner state="stale" tone="warning" badge={badge} role="status">{message}</LiveBanner>;
+  // The monitor answered and there is simply no on-demand service running -
+  // a healthy reading, not a failure. The signal keeps moving; the banner is
+  // quiet because no requests landed for the page to own.
+  if (diagnostics?.state === "no_active_service") return <LiveBanner state="live" tone="muted" badge={badge} role="status">{message}</LiveBanner>;
   return <LiveBanner state="unavailable" tone="danger" badge={badge} role="status">{message}</LiveBanner>;
 }
 

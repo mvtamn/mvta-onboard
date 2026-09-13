@@ -4,6 +4,7 @@ import { ApiError, type TripStartLogResponse, type TripStartLogTrip } from "@mvt
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../../config.js";
 import { TripStartLog } from "./TripStartLog.js";
+import { agencyTodayServiceDate } from "./tripStartLogState.js";
 
 vi.mock("../../../config.js", () => ({
   api: { getTripStartLog: vi.fn(), getTripStartLogCsv: vi.fn(), recordTripStartVerification: vi.fn() },
@@ -386,5 +387,37 @@ describe("Dispatch Log shell", () => {
 
     expect(await screen.findByText("Dispatch Log unavailable")).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("upstream down");
+  });
+});
+
+// A working log has no warning message, and the banner used to render only
+// for one - so the live indicator hid exactly when the page was live.
+describe("TripStartLog live banner", () => {
+  it("shows the live banner, with its countdown, for today's working log", async () => {
+    const today = agencyTodayServiceDate(new Date());
+    const day = [trip({ trip_id: "today-1", service_date: today })];
+    vi.mocked(api.getTripStartLog).mockResolvedValueOnce({ ...response(day), service_date: today });
+
+    const { container } = render(<TripStartLog />);
+
+    await screen.findByText(/refreshes with fixed-route data/);
+    const banner = container.querySelector(".live-banner");
+    expect(banner?.className).toContain("tone-live");
+    expect(banner?.querySelector(".live-signal")?.className).toContain("is-live");
+    expect(banner?.querySelector(".live-signal-arc")).not.toBeNull();
+  });
+
+  // An earlier or later day is a settled record; a countdown beside it would
+  // promise a refresh that is not coming.
+  it("shows no live banner for a day that is not today", async () => {
+    vi.mocked(api.getTripStartLog).mockResolvedValueOnce(response(DAY));
+
+    const { container } = render(<TripStartLog />);
+
+    // Wait for the fixture day to render, so the absence below is not just
+    // the moment before the response arrived.
+    await screen.findAllByText("Apple Valley Transit Station");
+    expect(screen.queryByText(/refreshes with fixed-route data/)).toBeNull();
+    expect(container.querySelector(".live-banner.tone-live")).toBeNull();
   });
 });

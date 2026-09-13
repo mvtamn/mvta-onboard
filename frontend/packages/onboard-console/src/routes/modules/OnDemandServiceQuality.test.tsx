@@ -120,6 +120,56 @@ describe("On-Demand Risk investigation workspace", () => {
     expect(within(summary).getByText("0 min")).toBeInTheDocument();
   });
 
+  // No active service is the monitor answering with nothing to watch, not the
+  // monitor failing. It fell through to the red unavailable banner, which on
+  // dev meant every night outside service hours read as an outage.
+  it("shows no active service as a healthy feed, not a failure", async () => {
+    vi.mocked(api.getOnDemandRisks).mockResolvedValueOnce({
+      risks: [],
+      diagnostics: {
+        state: "no_active_service",
+        last_authoritative_reconciliation_at: "2026-08-24T00:30:00Z",
+        latest_source_update_at: "2026-08-24T00:29:00Z",
+        active_request_count: 0,
+        monitored_request_count: 0,
+        reconciliation_interval_minutes: 60,
+        degraded_after_minutes: 90,
+      },
+    });
+
+    const { container } = render(<MemoryRouter><OnDemandServiceQuality /></MemoryRouter>);
+
+    await screen.findByLabelText("On-demand service quality summary");
+    const banner = container.querySelector(".live-banner");
+    expect(banner?.className).toContain("tone-muted");
+    expect(banner?.querySelector(".live-signal")?.className).toContain("is-live");
+    expect(banner?.querySelector(".live-signal-slash")).toBeNull();
+    // Quiet: nothing landed for the page to own, so no sweep.
+    expect(banner?.querySelector(".live-banner-wire")).toBeNull();
+  });
+
+  it("still shows a monitor that is not connected as unavailable", async () => {
+    vi.mocked(api.getOnDemandRisks).mockResolvedValueOnce({
+      risks: [],
+      diagnostics: {
+        state: "not_connected",
+        last_authoritative_reconciliation_at: null,
+        latest_source_update_at: null,
+        active_request_count: null,
+        monitored_request_count: null,
+        reconciliation_interval_minutes: 60,
+        degraded_after_minutes: 90,
+      },
+    });
+
+    const { container } = render(<MemoryRouter><OnDemandServiceQuality /></MemoryRouter>);
+
+    await screen.findByText("On-Demand monitoring is not connected.");
+    const banner = container.querySelector(".live-banner");
+    expect(banner?.className).toContain("tone-danger");
+    expect(banner?.querySelector(".live-signal-slash")).not.toBeNull();
+  });
+
   it("distinguishes an expired sign-in from an empty monitoring result", async () => {
     vi.mocked(api.getOnDemandRisks).mockRejectedValueOnce(new ApiError(401, "Not authenticated"));
 
