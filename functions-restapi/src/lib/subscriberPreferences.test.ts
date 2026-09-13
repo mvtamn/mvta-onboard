@@ -19,12 +19,12 @@ function valid(overrides: Record<string, unknown> = {}) {
 // Masking. A found link must let a rider recognise which subscription they are
 // looking at and must not let a stranger read the contact off it.
 test("a masked phone shows only the last four digits", () => {
-  assert.equal(maskPhone("+19523883275"), "(•••) •••-3275");
+  assert.equal(maskPhone("+16125550123"), "(•••) •••-0123");
   assert.equal(maskPhone(null), null);
 });
 
 test("a masked email keeps the first and last letter and the domain", () => {
-  assert.equal(maskEmail("tyre.fant@gmail.com"), "t•••••••t@gmail.com");
+  assert.equal(maskEmail("rider.one@example.com"), "r•••••••e@example.com");
   // Short local parts cannot show both ends without showing the whole thing.
   assert.equal(maskEmail("jo@example.com"), "j•••@example.com");
   assert.equal(maskEmail("a@b.com"), "a•••@b.com");
@@ -99,7 +99,7 @@ test("an absent or unreadable audience reads as everything, not as nothing", () 
 
 test("a malformed categories column reads as none rather than throwing at a rider", () => {
   const record = {
-    subscriber_id: "s", phone_number: "+19523883275", email: null,
+    subscriber_id: "s", phone_number: "+16125550123", email: null,
     categories: "{not json", routes: null, zones: null,
     status: "confirmed", sms_status: "confirmed", email_status: null, merged_into: null,
   } as SubscriberRecord;

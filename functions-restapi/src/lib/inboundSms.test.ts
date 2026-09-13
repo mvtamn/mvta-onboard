@@ -24,7 +24,7 @@ test("an inbound message is read out of the event", () => {
     {
       eventType: SMS_RECEIVED_EVENT,
       data: {
-        from: "+19523883275",
+        from: "+16125550123",
         to: "+18005550000",
         message: "123456",
         receivedTimestamp: "2026-09-12T02:00:00Z",
@@ -32,7 +32,7 @@ test("an inbound message is read out of the event", () => {
     },
   ]);
   assert.deepEqual(parsed, [
-    { from: "+19523883275", to: "+18005550000", message: "123456", receivedAt: "2026-09-12T02:00:00Z" },
+    { from: "+16125550123", to: "+18005550000", message: "123456", receivedAt: "2026-09-12T02:00:00Z" },
   ]);
 });
 
@@ -51,7 +51,7 @@ test("a message with no sender is dropped", () => {
 test("an empty message is kept, because it is still a message that arrived", () => {
   // Distinct from a missing one: the rider sent something, it classifies as
   // "other", and it is logged rather than discarded before anyone sees it.
-  const parsed = parseInboundSms([{ eventType: SMS_RECEIVED_EVENT, data: { from: "+19523883275", message: "" } }]);
+  const parsed = parseInboundSms([{ eventType: SMS_RECEIVED_EVENT, data: { from: "+16125550123", message: "" } }]);
   assert.equal(parsed.length, 1);
   assert.deepEqual(classifyInboundSms(parsed[0].message), { kind: "other" });
 });
@@ -59,7 +59,7 @@ test("an empty message is kept, because it is still a message that arrived", () 
 test("a batch is processed in full, not just its first event", () => {
   const parsed = parseInboundSms([
     { eventType: SUBSCRIPTION_VALIDATION_EVENT, data: { validationCode: "x" } },
-    { eventType: SMS_RECEIVED_EVENT, data: { from: "+19523883275", message: "STOP" } },
+    { eventType: SMS_RECEIVED_EVENT, data: { from: "+16125550123", message: "STOP" } },
     { eventType: SMS_RECEIVED_EVENT, data: { from: "+16125550142", message: "123456" } },
   ]);
   assert.deepEqual(parsed.map((m) => m.message), ["STOP", "123456"]);
