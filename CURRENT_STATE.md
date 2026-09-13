@@ -301,30 +301,31 @@ A subscriber can therefore reach `confirmed` by email link, by typing the
 texted code into the page, or by replying to the text — the last of which
 cannot be exercised end to end until the toll-free number is verified.
 
-Migration 117 (2026-09-11) is the groundwork, not the fix: it gives each channel
-its own confirmation state, adds the attempt timestamp and opt-out reason the
-callbacks will write, and scopes confirmation-token uniqueness to live rows per
-channel. The callbacks themselves are increments 2-6 of
-`plans/rider-opt-in-confirmation-loop-spec.md`. The migration closes one defect
-outright: `status` no longer doubles as the SMS channel's state, so confirming
-an email link can no longer make an unproven phone number SMS-eligible.
+Migration 117 (2026-09-11) is what the callbacks write into. It gives each
+channel its own confirmation state, adds the attempt timestamp and opt-out
+reason, and scopes confirmation-token uniqueness to live rows per channel. It
+closed one defect outright: `status` no longer doubles as the SMS channel's
+state, so confirming an email link cannot make an unproven phone number
+SMS-eligible. Migration 118 (increment 4) adds `merged_into` / `merged_at` and
+the `merged` status that folding duplicate records needs.
 
-Azure Communication Services provisioning is required to send real
-confirmations, but it does not prevent the callback endpoints and their tests
-from being implemented now.
+### 7.3 Dispatch targeting — zones evaluated (1.5.201)
 
-### 7.3 Dispatch targeting is incomplete
+Broadcast dispatch evaluates the subscriber's categories, each channel's own
+confirmation state (1.5.189), the alert's requested delivery channels, and the
+subscriber's audience by route AND by zone (`functions-dispatch/src/lib/audienceMatch.ts`).
+On each dimension an alert naming nothing is system-wide.
 
-Broadcast dispatch currently evaluates category and route preferences, but it
-does not evaluate:
+Zone IDs are `external_location_id` end to end: the on-demand monitor writes
+them into `zones_affected`, the console's prepared drafts send them, and the
+rider preference API offers them. `OnDemandRequestZoneSnapshots.zone_id` is a
+different column holding the zone's UUID primary key - do not match against it.
 
-- The subscriber's zone preferences.
-- The alert's affected zones.
-- The alert's requested delivery channels.
+`"Unzoned"` appears in `zones_affected` when a pickup falls outside every zone;
+it reaches only subscribers who have not narrowed their zones.
 
-As written, a message restricted to SMS or email can still be sent over both
-available channels, and a zone-specific alert can reach confirmed subscribers
-outside the affected zone.
+Nothing changes in practice until riders can choose zones: the opt-in form
+still sends `zones: "ALL"` for everyone.
 
 ### 7.4 Event publication has no durable retry path
 

@@ -7,10 +7,11 @@
 // originating request (e.g. creating a message still succeeds even if the
 // event can't be enqueued). The active-messages read path is the source of
 // truth for riders; dispatch is a downstream side effect.
+import { randomUUID } from "node:crypto";
 import { ServiceBusClient } from "@azure/service-bus";
 import { DefaultAzureCredential } from "@azure/identity";
 import type { InvocationContext } from "@azure/functions";
-import type { MessageCreatedEvent, ConfirmationRequestedEvent, DetourCommunicationRequestedEvent } from "./types";
+import type { MessageCreatedEvent, ConfirmationRequestedEvent, DetourCommunicationRequestedEvent, ManageLinkRequestedEvent } from "./types";
 
 let client: ServiceBusClient | null = null;
 
@@ -77,6 +78,22 @@ export function publishConfirmationRequested(
 ): Promise<boolean> {
   const queueName = process.env.SERVICE_BUS_CONFIRM_QUEUE || "confirmation-requested-events";
   return publish(queueName, "confirmation-requested", event, event.confirmation_id, context);
+}
+
+/**
+ * Publish a rider's request for their manage link. Same queue as confirmations;
+ * dispatchConfirmation routes on `kind`.
+ *
+ * A fresh message id per request. The queue has no duplicate detection today,
+ * but an id reused across two genuine requests would silently drop the second
+ * on the day someone turns it on.
+ */
+export function publishManageLinkRequested(
+  event: ManageLinkRequestedEvent,
+  context?: InvocationContext,
+): Promise<boolean> {
+  const queueName = process.env.SERVICE_BUS_CONFIRM_QUEUE || "confirmation-requested-events";
+  return publish(queueName, "manage-link-requested", event, `manage-link:${randomUUID()}`, context);
 }
 
 export function publishEventGeofenceNotification(crossingId: number, context?: InvocationContext): Promise<boolean> {

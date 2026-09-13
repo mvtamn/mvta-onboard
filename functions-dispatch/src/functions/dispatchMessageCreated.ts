@@ -3,9 +3,9 @@
 // SMS/email via ACS, and record each attempt in SmsDeliveryLog/EmailDeliveryLog.
 //
 // Matching (POC scope): the subscriber record is 'confirmed', the alert's
-// category is in their categories, and either they subscribed to "ALL" routes,
-// the alert has no specific routes, or their routes intersect the alert's
-// routes_affected.
+// category is in their categories, and they are in the alert's audience by
+// route AND by zone (lib/audienceMatch.ts) - where an alert naming no routes,
+// or no zones, is system-wide on that dimension.
 //
 // Each channel is then gated on its OWN confirmation state - sms_status and
 // email_status (migration 117) - never on the record's. Before 117, `status`
@@ -15,8 +15,9 @@
 import { app, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { sendSms, sendEmail } from "../lib/acs";
-import { escapeHtml } from "../lib/html";
 import { channelRequested, teamsTargets } from "../lib/deliveryChannels";
+import { parseAudience, routeMatches, zoneMatches } from "../lib/audienceMatch";
+import { buildAlertEmail, manageLinkFor } from "../lib/alertEmail";
 import type { ConnectionPool } from "mssql";
 
 interface MessageCreatedEvent {
@@ -38,22 +39,8 @@ interface SubscriberRow {
   sms_status: string | null;
   email_status: string | null;
   routes: string | null;
-}
-
-function parseAudience(value: string | null): string[] | "ALL" | null {
-  if (!value || value === "ALL") return value === "ALL" ? "ALL" : null;
-  try {
-    return JSON.parse(value) as string[];
-  } catch {
-    return null;
-  }
-}
-
-function routeMatches(subscriberRoutes: string[] | "ALL" | null, alertRoutes: string[] | null): boolean {
-  if (subscriberRoutes === "ALL" || subscriberRoutes == null) return true;
-  if (!alertRoutes || alertRoutes.length === 0) return true; // system-wide alert
-  const set = new Set(alertRoutes);
-  return subscriberRoutes.some((r) => set.has(r));
+  zones: string | null;
+  manage_key: string | null;
 }
 
 async function logDelivery(
@@ -102,19 +89,33 @@ app.serviceBusQueue("dispatchMessageCreated", {
     const findSubs = pool.request();
     findSubs.input("category", sql.NVarChar, event.category);
     const { recordset } = await findSubs.query<SubscriberRow>(`
-      SELECT subscriber_id, phone_number, email, sms_status, email_status, routes
+      SELECT subscriber_id, phone_number, email, sms_status, email_status, routes, zones, manage_key
       FROM Subscribers
       WHERE status = 'confirmed'
         AND EXISTS (SELECT 1 FROM OPENJSON(categories) WHERE value = @category)
     `);
 
     const alertRoutes = event.routes_affected || null;
+    const alertZones = event.zones_affected || null;
+    // Checked once, not per subscriber: an unset or invalid base URL would
+    // otherwise log the same warning for every recipient of every alert.
+    const riderAppBase = process.env.RIDER_APP_BASE_URL;
+    const baseUsable = manageLinkFor(riderAppBase, "0".repeat(64)) !== null;
+    if (sendEmailChannel && !baseUsable) {
+      context.warn(
+        `RIDER_APP_BASE_URL is unset or not a plain https URL; message ${event.message_id} goes out without a manage/unsubscribe link.`,
+      );
+    }
     const body = `MVTA: ${event.summary}`;
 
     let smsCount = 0;
     let emailCount = 0;
     for (const sub of recordset) {
       if (!routeMatches(parseAudience(sub.routes), alertRoutes)) continue;
+      // CURRENT_STATE 7.3: zones_affected was read into the event and never
+      // looked at, so a zone-scoped alert reached every subscriber. See
+      // audienceMatch.ts for why these are external_location_ids.
+      if (!zoneMatches(parseAudience(sub.zones), alertZones)) continue;
 
       if (sendSmsChannel && sub.phone_number && sub.sms_status === "confirmed") {
         try {
@@ -136,13 +137,14 @@ app.serviceBusQueue("dispatchMessageCreated", {
 
       if (sendEmailChannel && sub.email && sub.email_status === "confirmed") {
         try {
-          const res = await sendEmail(
-            sub.email,
-            "MVTA Service Alert",
-            event.summary,
-            `<p>${escapeHtml(event.summary)}</p>`,
-            context,
-          );
+          // The footer's link is the rider's way to change or stop these emails.
+          // Never logged: it carries the manage key.
+          const link = manageLinkFor(riderAppBase, sub.manage_key);
+          if (baseUsable && !link) {
+            context.warn(`Subscriber ${sub.subscriber_id} has no manage key; email sent without a manage/unsubscribe link.`);
+          }
+          const mail = buildAlertEmail(event.summary, link);
+          const res = await sendEmail(sub.email, mail.subject, mail.text, mail.html, context);
           await logDelivery(
             pool,
             "EmailDeliveryLog",

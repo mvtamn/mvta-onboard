@@ -95,6 +95,59 @@ export interface ResendConfirmationInput {
   email?: string;
 }
 
+/** A channel's own confirmation state (migration 117). */
+export type RiderChannelStatus = "pending_confirmation" | "confirmed" | "unsubscribed";
+
+/** One route or zone a rider may choose from. */
+export interface RiderPreferenceOption {
+  id: string;
+  label: string;
+}
+
+/**
+ * A rider's own subscription, as `GET /api/subscribers/preferences` returns it
+ * for the manage key in `X-Manage-Key`.
+ *
+ * `phone` and `email` arrive MASKED. A found link must let a rider recognise
+ * which subscription they are looking at without letting a stranger read the
+ * contact off it, and there is no endpoint that returns them unmasked.
+ *
+ * `status` is never `merged`: the server follows a merged record to its
+ * survivor before answering, so a link mailed before a merge still lands on
+ * the subscription that is live.
+ *
+ * Zone ids are `external_location_id`, the same values dispatch matches
+ * alerts against. `options.zones` is empty whenever no zone version is active.
+ */
+export interface RiderPreferences {
+  phone: string | null;
+  email: string | null;
+  has_sms: boolean;
+  has_email: boolean;
+  status: "pending_confirmation" | "confirmed" | "opted_out";
+  categories: string[];
+  routes: string[] | "ALL";
+  zones: string[] | "ALL";
+  sms_status: RiderChannelStatus | null;
+  email_status: RiderChannelStatus | null;
+  options: { routes: RiderPreferenceOption[]; zones: RiderPreferenceOption[] };
+}
+
+/**
+ * Body for `PUT /api/subscribers/preferences`. It REPLACES - nothing here is
+ * merged with what was stored, which is what lets a rider narrow.
+ *
+ * An empty `categories`, `routes` or `zones` list is refused by the server
+ * rather than read as "nothing" or "everything"; send `"ALL"` for every route
+ * or zone. A channel left out of `channels` is stopped.
+ */
+export interface RiderPreferenceUpdate {
+  categories: Category[];
+  routes: string[] | "ALL";
+  zones: string[] | "ALL";
+  channels: ("sms" | "email")[];
+}
+
 // Staff-console admin surfaces (Audit Log, Admin, Subscribers, Suggested Alerts).
 
 export type MessageStatus = "draft" | "active" | "expired" | "archived" | "retracted";

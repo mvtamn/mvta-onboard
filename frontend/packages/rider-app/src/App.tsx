@@ -2,6 +2,7 @@ import { NavLink, Route, Routes } from "react-router-dom";
 import { ServiceAlerts } from "./routes/ServiceAlerts.js";
 import { OptIn } from "./routes/OptIn.js";
 import { Confirmed } from "./routes/Confirmed.js";
+import { Preferences } from "./routes/Preferences.js";
 
 export function App() {
   return (
@@ -27,6 +28,9 @@ export function App() {
           {/* Where the confirmation email's link redirects, by way of
               GET /api/subscribers/confirm-email. */}
           <Route path="/subscribe/confirmed" element={<Confirmed />} />
+          {/* Where the link at the bottom of an alert email lands. It carries
+              ?key=, which the page reads once and removes from the URL. */}
+          <Route path="/subscribe/preferences" element={<Preferences />} />
         </Routes>
       </div>
     </div>

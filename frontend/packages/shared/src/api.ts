@@ -114,6 +114,8 @@ import type {
   Severity,
   SubscribeInput,
   SubscribersSummary,
+  RiderPreferences,
+  RiderPreferenceUpdate,
   SuggestedAlert,
   SuggestedAlertStatus,
   TripDelay,
@@ -527,6 +529,65 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
         "/api/subscribers/resend",
         { method: "POST", body: JSON.stringify(input) },
       );
+    },
+
+    /**
+     * A rider's own subscription, for the manage key from their alert email.
+     *
+     * The key travels in `X-Manage-Key` and never in the URL: a key in a
+     * request URL is a key in the Function App's request telemetry, in Front
+     * Door's access logs and in any referrer, and this one does not expire.
+     * Not `Authorization`, because Easy Auth sits in front of this app and a
+     * bearer value that is not a JWT is something it may reject first.
+     *
+     * 404 means the key names no subscription - rotated by an unsubscribe,
+     * cut short in transit, or never real. The server does not say which.
+     */
+    getPreferences(manageKey: string) {
+      return request<RiderPreferences>("/api/subscribers/preferences", {
+        headers: { "X-Manage-Key": manageKey },
+      });
+    },
+
+    /**
+     * Replace a rider's preferences. Assigns; never widens by union.
+     *
+     * 409 means the subscription is opted out, which a link cannot undo -
+     * coming back is a new consent. 400 carries the server's reasons.
+     */
+    updatePreferences(manageKey: string, input: RiderPreferenceUpdate) {
+      return request<{ status: "updated" }>("/api/subscribers/preferences", {
+        method: "PUT",
+        body: JSON.stringify(input),
+        headers: { "X-Manage-Key": manageKey },
+      });
+    },
+
+    /**
+     * Stop every channel and rotate the key, so the link that did it stops
+     * working. Answers 200 even when the key is already spent: a second click
+     * on unsubscribe is not a failure.
+     */
+    unsubscribeWithManageKey(manageKey: string) {
+      return request<{ status: "unsubscribed"; changed: boolean }>("/api/subscribers/unsubscribe", {
+        method: "POST",
+        headers: { "X-Manage-Key": manageKey },
+      });
+    },
+
+    /**
+     * Ask for the link to your own subscription to be sent again.
+     *
+     * Always answers `{ status: "ok" }` - whether the contact is subscribed,
+     * unconfirmed, unknown, or asked two minutes ago - so it cannot be used to
+     * ask whether a number or address is signed up. Only a contact that has
+     * confirmed alerts is ever sent anything. Do not build UI that implies more.
+     */
+    requestManageLink(input: ResendConfirmationInput) {
+      return request<{ status: "ok" }>("/api/subscribers/manage-link", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
     },
 
     // --- Staff console (all authenticated; server enforces roles) ---
