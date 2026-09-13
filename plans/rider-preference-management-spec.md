@@ -205,7 +205,7 @@ outbox (CURRENT_STATE §7.4) remains open and is unrelated to this.
 
 The answer at the top of this spec - no route picker on the subscribe form on
 its own - depended on this page existing. It does (1.5.202), so the form now
-asks *Which routes?* as well (1.5.204). A rider can narrow or widen from the
+asks *Which routes?* as well (1.5.205). A rider can narrow or widen from the
 preference page afterwards, so a choice made at signup is no longer
 irreversible; `mergeOnConfirm` still unions routes when the same contact signs
 up twice, and that can still only widen.

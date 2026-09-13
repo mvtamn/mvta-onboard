@@ -557,7 +557,7 @@ function RiskModuleHeader({
 // the poll bars come from the refresh context, not from a timer of its own.
 // Training and preview banners get no signal at all, because no feed is
 // answering behind them.
-function FixedRouteRiskBanner({
+export function FixedRouteRiskBanner({
   trainingMode,
   dataMode,
   diagnosticsState,
@@ -597,16 +597,39 @@ function FixedRouteRiskBanner({
       </LiveBanner>
     );
   }
-  // Answering, but not current - or not answering at all. Either way the
-  // numbers below are not a reading of now, so the banner stops moving.
+  // The feed answered on schedule and reported that nothing is running -
+  // overnight, every night, outside 8am-10pm service. That is a healthy feed,
+  // so the signal keeps moving and keeps its countdown and poll bars. The
+  // banner stays quiet, without the sweep, because no data landed for this
+  // page to own. It used to fall through to the red "unavailable" branch
+  // below, which put a slashed failure glyph beside a full row of polls that
+  // had all arrived.
+  if (diagnosticsState === "no_current_trips") {
+    return (
+      <LiveBanner
+        state="live"
+        tone="muted"
+        badge="No active trips"
+        role="status"
+        intervalMs={intervalMs}
+        secondsLeft={secondsLeft}
+        history={history}
+      >
+        {message}
+      </LiveBanner>
+    );
+  }
+  if (diagnosticsState === "stale") {
+    return (
+      <LiveBanner state="stale" tone="warning" badge="Stale" role="status" history={history}>
+        {message}
+      </LiveBanner>
+    );
+  }
+  // configuration_missing, or a state this module does not know: nothing
+  // here is a reading of now, so the banner stops moving.
   return (
-    <LiveBanner
-      state={diagnosticsState === "stale" ? "stale" : "unavailable"}
-      tone={diagnosticsState === "stale" ? "warning" : "danger"}
-      badge={diagnosticsState === "stale" ? "Stale" : "Feed status"}
-      role="status"
-      history={history}
-    >
+    <LiveBanner state="unavailable" tone="danger" badge="Feed status" role="status" history={history}>
       {message}
     </LiveBanner>
   );

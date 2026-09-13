@@ -132,7 +132,7 @@ export interface PreferenceOptions {
  * Routes and zones in a body, checked against what is actually offered.
  *
  * Shared by the preference PUT and by opt-in (POST /subscribers), which has had
- * a route picker since 1.5.204. Both take a list from an anonymous caller, and
+ * a route picker since 1.5.205. Both take a list from an anonymous caller, and
  * neither should store a value that dispatch will never match.
  */
 export function audienceErrors(body: Record<string, unknown>, options: PreferenceOptions): string[] {
