@@ -146,7 +146,7 @@ test("confirm-sms tells an arbitrary caller nothing but success", () => {
 
 test("a correct code confirms", async () => {
   gatewayReturning({ outcome: "confirmed", subscriberId: "sub-1", channel: "sms" } satisfies ConfirmResult);
-  const response = await confirmSmsCode(postRequest("confirm-sms", { phone_number: "952-388-3275", code: "123456" }), context);
+  const response = await confirmSmsCode(postRequest("confirm-sms", { phone_number: "612-555-0123", code: "123456" }), context);
   assert.equal(response.status, 200);
   assert.deepEqual(response.jsonBody, { status: "confirmed", channel: "sms" });
 });
@@ -165,10 +165,10 @@ function gatewayCountingQueries(result: unknown) {
 }
 
 test("a number typed the way a rider writes it is still looked up", async () => {
-  // Stored E.164. A "(952) 388-3275" that reached the query unchanged would
+  // Stored E.164. A "(612) 555-0123" that reached the query unchanged would
   // match nothing, and read to the rider as never having subscribed.
   const state = gatewayCountingQueries({ outcome: "confirmed" } satisfies ConfirmResult);
-  const response = await confirmSmsCode(postRequest("confirm-sms", { phone_number: "(952) 388-3275", code: "123456" }), context);
+  const response = await confirmSmsCode(postRequest("confirm-sms", { phone_number: "(612) 555-0123", code: "123456" }), context);
   assert.equal(state.queried, true);
   assert.deepEqual(response.jsonBody, { status: "confirmed", channel: "sms" });
 });
@@ -176,9 +176,9 @@ test("a number typed the way a rider writes it is still looked up", async () => 
 test("an unusable number or code is answered without a query, in the same shape as a wrong code", async () => {
   const state = gatewayCountingQueries({ outcome: "confirmed" } satisfies ConfirmResult);
   for (const body of [
-    { phone_number: "952388327", code: "123456" },
-    { phone_number: "+19523883275", code: "12345" },
-    { phone_number: "+19523883275", code: "abcdef" },
+    { phone_number: "612555012", code: "123456" },
+    { phone_number: "+16125550123", code: "12345" },
+    { phone_number: "+16125550123", code: "abcdef" },
   ]) {
     const response = await confirmSmsCode(postRequest("confirm-sms", body), context);
     assert.deepEqual(response.jsonBody, { status: "invalid" }, JSON.stringify(body));
@@ -187,7 +187,7 @@ test("an unusable number or code is answered without a query, in the same shape 
 });
 
 test("a body missing either field is the caller's error, and says so", async () => {
-  const response = await confirmSmsCode(postRequest("confirm-sms", { phone_number: "+19523883275" }), context);
+  const response = await confirmSmsCode(postRequest("confirm-sms", { phone_number: "+16125550123" }), context);
   assert.equal(response.status, 400);
 });
 
@@ -200,7 +200,7 @@ test("resend answers identically whatever the database found", async () => {
     { outcome: "nothing_to_send" },
   ] as ResendResult[]) {
     gatewayReturning(result);
-    const response = await resendConfirmationRequest(postRequest("resend", { phone_number: "+19523883275" }), context);
+    const response = await resendConfirmationRequest(postRequest("resend", { phone_number: "+16125550123" }), context);
     assert.equal(response.status, 200, result.outcome);
     assert.deepEqual(response.jsonBody, { status: "ok" }, result.outcome);
   }
@@ -227,14 +227,14 @@ test("only an issued token is published, and it carries the contact it was issue
     subscriberId: "sub-1",
     issued: { confirmation_id: "c1", channel: "sms", token: "654321" },
   } satisfies ResendResult);
-  await resendConfirmationRequest(postRequest("resend", { phone_number: "952-388-3275" }), context);
+  await resendConfirmationRequest(postRequest("resend", { phone_number: "612-555-0123" }), context);
   assert.deepEqual(published, [
     {
       confirmation_id: "c1",
       subscriber_id: "sub-1",
       channel: "sms",
       token: "654321",
-      phone_number: "+19523883275",
+      phone_number: "+16125550123",
       email: null,
     },
   ]);
@@ -242,6 +242,6 @@ test("only an issued token is published, and it carries the contact it was issue
 
 test("a cooled-down resend sends nothing", async () => {
   const published = gatewayReturning({ outcome: "too_soon", subscriberId: "sub-1" } satisfies ResendResult);
-  await resendConfirmationRequest(postRequest("resend", { phone_number: "+19523883275" }), context);
+  await resendConfirmationRequest(postRequest("resend", { phone_number: "+16125550123" }), context);
   assert.deepEqual(published, []);
 });

@@ -10,7 +10,7 @@ import {
 import { api } from "../config.js";
 
 const BAD_PHONE_MSG =
-  "That mobile number doesn\u2019t look right. Enter 10 digits, like (952) 388-3275.";
+  "That mobile number doesn\u2019t look right. Enter 10 digits, like (612) 555-0123.";
 
 // POST /subscribers answers a 400 with a `details` array naming the fields it
 // rejected. Saying which field is wrong is the difference between a rider
@@ -220,7 +220,7 @@ export function OptIn() {
           <input
             type="tel"
             inputMode="tel"
-            placeholder="(952) 388-3275"
+            placeholder="(612) 555-0123"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             autoComplete="tel"

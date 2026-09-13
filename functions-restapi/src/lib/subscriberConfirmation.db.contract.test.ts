@@ -143,7 +143,7 @@ test("confirming a channel confirms that channel and no other", skip, async () =
   try {
     await reset(pool);
     const id = await seed(pool, {
-      phone: "+19523883275",
+      phone: "+16125550123",
       email: "both@example.com",
       smsToken: "123456",
       emailToken: "email-token-aaa",
@@ -162,7 +162,7 @@ test("confirming a channel confirms that channel and no other", skip, async () =
     assert.ok(row.opted_in_at instanceof Date);
     const firstConsent = row.opted_in_at!.getTime();
 
-    const sms = await inTx(pool, (tx) => confirmSms(tx, "+19523883275", "123456"));
+    const sms = await inTx(pool, (tx) => confirmSms(tx, "+16125550123", "123456"));
     assert.equal(sms.outcome, "confirmed");
     row = await readSubscriber(pool, id);
     assert.equal(row.sms_status, "confirmed");

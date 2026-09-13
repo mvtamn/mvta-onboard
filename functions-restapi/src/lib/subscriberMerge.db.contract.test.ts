@@ -172,7 +172,7 @@ async function inTx<T>(pool: sql.ConnectionPool, fn: (tx: sql.Transaction) => Pr
 }
 
 const skip = { skip: !connectionString && "DECISION_MATRIX_TEST_SQL_CONNECTION_STRING not set" };
-const PHONE = "+19523883275";
+const PHONE = "+16125550123";
 
 test("confirming a duplicate folds it into the record that was already confirmed", skip, async () => {
   const pool = await new sql.ConnectionPool(parseConnectionString(connectionString!)).connect();
