@@ -87,6 +87,24 @@ export interface ConfirmationRequestedEvent {
   email: string | null;
 }
 
+/**
+ * A rider asking for the link to their own subscription again. Published on
+ * the confirmation-requested queue and told apart from a confirmation by
+ * `kind`, so it needed no new queue, trigger or role assignment.
+ *
+ * Carries the manage key in the message body - the same exposure confirmation
+ * tokens already have on this queue. Service Bus encrypts at rest and does not
+ * log message bodies. Only the contact for the requested channel is included.
+ */
+export interface ManageLinkRequestedEvent {
+  kind: "manage_link";
+  subscriber_id: string;
+  channel: "sms" | "email";
+  manage_key: string;
+  phone_number: string | null;
+  email: string | null;
+}
+
 // Detour & Closure module - see detour-and-event-module-implementation-plan.md.
 export interface DetourSegmentBody {
   routes: string;

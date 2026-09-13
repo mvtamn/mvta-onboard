@@ -1,7 +1,7 @@
 import type { Transaction } from "mssql";
 import { sql } from "./db";
 import { isManageKey, makeManageKey } from "./manageKey";
-import { VALID_CATEGORIES } from "./types";
+import { VALID_CATEGORIES, type ManageLinkRequestedEvent } from "./types";
 
 // Reading and changing a rider's own subscription, authenticated by the manage
 // key from migration 119.
@@ -389,5 +389,102 @@ export async function readOptions(tx: Transaction): Promise<{
       label: [r.route_short_name, r.route_long_name].filter(Boolean).join(" - ") || r.route_id,
     })),
     zones: zones.recordset.map((z) => ({ id: z.external_location_id, label: z.name })),
+  };
+}
+
+// --- Sending a rider their manage link again --------------------------------
+
+/** How long a rider must wait between requests for their manage link. */
+export const MANAGE_LINK_MIN_INTERVAL_MS = 2 * 60 * 1000;
+
+export type ManageLinkOutcome =
+  /** A link should be sent; publish `event` once the transaction commits. */
+  | "issued"
+  /** A link was sent to this record less than two minutes ago. */
+  | "too_soon"
+  /** No live record has this contact on a CONFIRMED channel. */
+  | "nothing_confirmed";
+
+export interface ManageLinkResult {
+  outcome: ManageLinkOutcome;
+  event?: ManageLinkRequestedEvent;
+}
+
+/**
+ * Prepare the manage link for a rider who has lost theirs.
+ *
+ * ONLY A CONFIRMED CHANNEL IS EVER SENT ONE. The manage key opens the whole
+ * subscription, which may include a second contact. Sending it to an address
+ * nobody has proved would hand that subscription - possibly including someone
+ * else's phone number - to whoever owns an inbox a stranger typed into a form.
+ * An unconfirmed rider has a confirmation to finish instead.
+ *
+ * THE CALLER MUST ANSWER THE SAME WAY FOR ALL THREE OUTCOMES. They are
+ * distinguished here so the handler knows whether to publish and so the
+ * contract tests can tell them apart; distinguishing them over HTTP would make
+ * the endpoint a way to ask whether any number or address is subscribed.
+ */
+export async function requestManageLink(
+  tx: Transaction,
+  channel: Channel,
+  contact: string,
+  now: Date = new Date(),
+): Promise<ManageLinkResult> {
+  const statusColumn = channel === "sms" ? "sms_status" : "email_status";
+  const matchOn = channel === "sms" ? "phone_number" : "email";
+
+  const find = new sql.Request(tx);
+  find.input("contact", sql.NVarChar(320), contact);
+  const found = await find.query<{
+    subscriber_id: string;
+    phone_number: string | null;
+    email: string | null;
+    manage_key: string | null;
+    manage_link_sent_at: Date | null;
+  }>(
+    `SELECT TOP 1 subscriber_id, phone_number, email, manage_key, manage_link_sent_at
+       FROM Subscribers WITH(UPDLOCK, HOLDLOCK)
+      WHERE ${matchOn} = @contact
+        AND ${statusColumn} = 'confirmed'
+        AND status = 'confirmed'
+        AND merged_into IS NULL
+      ORDER BY opted_in_at DESC, subscriber_id`,
+  );
+  const sub = found.recordset[0];
+  if (!sub) return { outcome: "nothing_confirmed" };
+
+  if (sub.manage_link_sent_at && now.getTime() - sub.manage_link_sent_at.getTime() < MANAGE_LINK_MIN_INTERVAL_MS) {
+    return { outcome: "too_soon" };
+  }
+
+  // A record that predates migration 119's backfill, or was written between
+  // applying it and deploying the code that issues keys at opt-in, has none.
+  // Issue one now rather than send a link to nothing. Every SET below reads the
+  // row as it was before this UPDATE, so COALESCE and the CASE agree.
+  const key = sub.manage_key ?? makeManageKey();
+  const write = new sql.Request(tx);
+  write.input("id", sql.UniqueIdentifier, sub.subscriber_id);
+  write.input("key", sql.NVarChar(64), key);
+  write.input("now", sql.DateTime2, now);
+  await write.query(
+    `UPDATE Subscribers
+        SET manage_link_sent_at = @now,
+            manage_key = COALESCE(manage_key, @key),
+            manage_key_issued_at = CASE WHEN manage_key IS NULL THEN @now ELSE manage_key_issued_at END
+      WHERE subscriber_id = @id`,
+  );
+
+  return {
+    outcome: "issued",
+    event: {
+      kind: "manage_link",
+      subscriber_id: sub.subscriber_id,
+      channel,
+      manage_key: key,
+      // Only the contact being sent to. The dispatcher needs one, and the
+      // other is none of this message's business.
+      phone_number: channel === "sms" ? sub.phone_number : null,
+      email: channel === "email" ? sub.email : null,
+    },
   };
 }
