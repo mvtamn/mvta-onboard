@@ -313,18 +313,23 @@ Azure Communication Services provisioning is required to send real
 confirmations, but it does not prevent the callback endpoints and their tests
 from being implemented now.
 
-### 7.3 Dispatch targeting is incomplete
+### 7.3 Dispatch targeting — zones evaluated (1.5.199)
 
-Broadcast dispatch currently evaluates category and route preferences, but it
-does not evaluate:
+Broadcast dispatch evaluates the subscriber's categories, each channel's own
+confirmation state (1.5.189), the alert's requested delivery channels, and the
+subscriber's audience by route AND by zone (`functions-dispatch/src/lib/audienceMatch.ts`).
+On each dimension an alert naming nothing is system-wide.
 
-- The subscriber's zone preferences.
-- The alert's affected zones.
-- The alert's requested delivery channels.
+Zone IDs are `external_location_id` end to end: the on-demand monitor writes
+them into `zones_affected`, the console's prepared drafts send them, and the
+rider preference API offers them. `OnDemandRequestZoneSnapshots.zone_id` is a
+different column holding the zone's UUID primary key - do not match against it.
 
-As written, a message restricted to SMS or email can still be sent over both
-available channels, and a zone-specific alert can reach confirmed subscribers
-outside the affected zone.
+`"Unzoned"` appears in `zones_affected` when a pickup falls outside every zone;
+it reaches only subscribers who have not narrowed their zones.
+
+Nothing changes in practice until riders can choose zones: the opt-in form
+still sends `zones: "ALL"` for everyone.
 
 ### 7.4 Event publication has no durable retry path
 
