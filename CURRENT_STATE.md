@@ -309,30 +309,18 @@ state, so confirming an email link cannot make an unproven phone number
 SMS-eligible. Migration 118 (increment 4) adds `merged_into` / `merged_at` and
 the `merged` status that folding duplicate records needs.
 
-### 7.3 Dispatch does not evaluate zones
+### 7.3 Dispatch targeting is incomplete
 
-Broadcast dispatch evaluates the subscriber's categories, their route
-preferences, each channel's own confirmation state (1.5.189), and the alert's
-requested delivery channels. It does not evaluate:
+Broadcast dispatch currently evaluates category and route preferences, but it
+does not evaluate:
 
-- The subscriber's zone preferences (`Subscribers.zones`).
-- The alert's affected zones (`zones_affected`, carried on the event and read
-  into `MessageCreatedEvent` but never used).
+- The subscriber's zone preferences.
+- The alert's affected zones.
+- The alert's requested delivery channels.
 
-A zone-specific alert therefore reaches every matching confirmed subscriber,
-whatever zone they chose.
-
-This is currently inert rather than wrong in practice: the opt-in form sends
-`zones: "ALL"` for everyone, so no subscriber has a zone preference to ignore.
-It becomes a real defect the moment riders can choose zones - which is the same
-work as letting them choose routes, and both want the preference-management
-page that does not exist yet. `routes` has the same shape and IS evaluated, so
-zone matching is a small addition to `routeMatches` rather than new machinery.
-
-The earlier version of this section also listed requested delivery channels as
-unevaluated. That has not been true since `deliveryChannels.ts`: a message
-naming neither SMS nor Email skips subscriber dispatch entirely, and each
-channel is gated on being asked for.
+As written, a message restricted to SMS or email can still be sent over both
+available channels, and a zone-specific alert can reach confirmed subscribers
+outside the affected zone.
 
 ### 7.4 Event publication has no durable retry path
 
