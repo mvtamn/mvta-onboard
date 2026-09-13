@@ -189,6 +189,16 @@ body {
 
 .form.optin .submit { align-self: flex-start; min-width: 220px; }
 
+/* Route picker on the subscribe form: two segments rather than three, a note
+   flush with the section rather than indented under a checkbox, and the list's
+   rows sized like the category checks. */
+.segments.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.segment span { text-align: center; }
+.segment input:disabled { cursor: default; }
+.segment input:disabled + span, .segment input:disabled:hover + span { background: transparent; color: #8a8a86; }
+.section > .note { margin: 0; font-size: 13px; line-height: 1.45; }
+.form.optin .checks.list { gap: 0; max-height: 300px; padding: 2px 14px; border-color: #e6e3da; border-radius: 8px; }
+
 @media (max-width: 560px) {
   body { padding: 12px; }
   .alertbar { padding: 9px 16px; font-size: 12px; }

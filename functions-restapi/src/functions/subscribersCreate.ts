@@ -11,6 +11,7 @@ import { validateSubscribe } from "../lib/validation";
 import { publishConfirmationRequested } from "../lib/events";
 import { issueConfirmation } from "../lib/confirmationTokens";
 import { makeManageKey } from "../lib/manageKey";
+import { audienceErrors, readOptions } from "../lib/subscriberPreferences";
 import type { Channel } from "../lib/subscriberConfirmation";
 import type { SubscribeBody } from "../lib/types";
 
@@ -44,6 +45,22 @@ app.http("subscribersCreate", {
     const tx = new sql.Transaction(pool);
     try {
       await tx.begin();
+
+      // A chosen route or zone must be one that is offered, checked the way the
+      // preference page's PUT checks it: a retired or mistyped id would be
+      // stored as a value dispatch never matches, and the rider would wait for
+      // alerts that never come. "ALL", or no field at all, needs no list.
+      if (Array.isArray(body.routes) || Array.isArray(body.zones)) {
+        const options = await readOptions(tx);
+        const audience = audienceErrors(
+          { routes: body.routes ?? "ALL", zones: body.zones ?? "ALL" },
+          { routeIds: options.routes.map((r) => r.id), zoneIds: options.zones.map((z) => z.id) },
+        );
+        if (audience.length > 0) {
+          await tx.rollback();
+          return { status: 400, jsonBody: { error: "Validation failed", details: audience } };
+        }
+      }
 
       const insertSub = new sql.Request(tx);
       insertSub.input("phone_number", sql.NVarChar, body.phone_number || null);

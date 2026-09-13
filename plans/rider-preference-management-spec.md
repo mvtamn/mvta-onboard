@@ -200,3 +200,20 @@ already works.
 Changing a contact in place (it is a new opt-in, by design); a rider-facing
 delivery history; quiet hours; per-route severity thresholds. The transactional
 outbox (CURRENT_STATE §7.4) remains open and is unrelated to this.
+
+## Addendum (2026-09-13): route choice at signup
+
+The answer at the top of this spec - no route picker on the subscribe form on
+its own - depended on this page existing. It does (1.5.202), so the form now
+asks *Which routes?* as well (1.5.205). A rider can narrow or widen from the
+preference page afterwards, so a choice made at signup is no longer
+irreversible; `mergeOnConfirm` still unions routes when the same contact signs
+up twice, and that can still only widen.
+
+- The form reads its list from `GET /api/subscribers/options` - anonymous, and
+  the same `readOptions` as the preference `GET`.
+- `POST /subscribers` validates routes and zones against that list with
+  `audienceErrors`, shared with the `PUT`.
+- Zones stay `"ALL"` at signup. The preference page offers them once a zone
+  version is active.
+

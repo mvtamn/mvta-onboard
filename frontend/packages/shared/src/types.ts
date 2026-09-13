@@ -134,6 +134,18 @@ export interface RiderPreferences {
 }
 
 /**
+ * `GET /api/subscribers/options` - what a rider signing up may choose from.
+ *
+ * The same lists `RiderPreferences.options` carries, so a route picked at
+ * signup is one the preference page offers afterwards. Public, and says nothing
+ * about any subscriber. `zones` is empty whenever no zone version is active.
+ */
+export interface RiderSubscribeOptions {
+  routes: RiderPreferenceOption[];
+  zones: RiderPreferenceOption[];
+}
+
+/**
  * Body for `PUT /api/subscribers/preferences`. It REPLACES - nothing here is
  * merged with what was stored, which is what lets a rider narrow.
  *

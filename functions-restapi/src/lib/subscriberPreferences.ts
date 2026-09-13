@@ -129,6 +129,38 @@ export interface PreferenceOptions {
 }
 
 /**
+ * Routes and zones in a body, checked against what is actually offered.
+ *
+ * Shared by the preference PUT and by opt-in (POST /subscribers), which has had
+ * a route picker since 1.5.205. Both take a list from an anonymous caller, and
+ * neither should store a value that dispatch will never match.
+ */
+export function audienceErrors(body: Record<string, unknown>, options: PreferenceOptions): string[] {
+  const errors: string[] = [];
+  for (const [field, offered] of [
+    ["routes", options.routeIds],
+    ["zones", options.zoneIds],
+  ] as const) {
+    const value = body[field];
+    if (value === "ALL") continue;
+    if (!Array.isArray(value)) {
+      errors.push(`${field} must be an array or the string "ALL"`);
+      continue;
+    }
+    if (value.length === 0) {
+      // "No routes" and "all routes" are not the same thing, and an empty list
+      // that quietly meant everything would be the worst possible reading of a
+      // rider unticking every box.
+      errors.push(`${field} must name at least one, or be "ALL"`);
+      continue;
+    }
+    const unknown = value.filter((v) => !offered.includes(String(v)));
+    if (unknown.length > 0) errors.push(`${field} contains unknown values: ${unknown.join(", ")}`);
+  }
+  return errors;
+}
+
+/**
  * Validate what a rider submitted.
  *
  * Routes and zones are checked against what the GET actually offered, not
@@ -151,26 +183,7 @@ export function validatePreferenceUpdate(
     if (bad.length > 0) errors.push(`categories contains invalid values: ${bad.join(", ")}`);
   }
 
-  for (const [field, offered] of [
-    ["routes", options.routeIds],
-    ["zones", options.zoneIds],
-  ] as const) {
-    const value = body[field];
-    if (value === "ALL") continue;
-    if (!Array.isArray(value)) {
-      errors.push(`${field} must be an array or the string "ALL"`);
-      continue;
-    }
-    if (value.length === 0) {
-      // "No routes" and "all routes" are not the same thing, and an empty list
-      // that quietly meant everything would be the worst possible reading of a
-      // rider unticking every box.
-      errors.push(`${field} must name at least one, or be "ALL"`);
-      continue;
-    }
-    const unknown = value.filter((v) => !offered.includes(String(v)));
-    if (unknown.length > 0) errors.push(`${field} contains unknown values: ${unknown.join(", ")}`);
-  }
+  errors.push(...audienceErrors(body, options));
 
   if (!Array.isArray(body.channels)) {
     errors.push("channels must be an array");

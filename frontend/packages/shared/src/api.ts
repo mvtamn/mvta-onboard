@@ -115,6 +115,7 @@ import type {
   SubscribeInput,
   SubscribersSummary,
   RiderPreferences,
+  RiderSubscribeOptions,
   RiderPreferenceUpdate,
   SuggestedAlert,
   SuggestedAlertStatus,
@@ -498,6 +499,14 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
         "/api/subscribers",
         { method: "POST", body: JSON.stringify(input) },
       );
+    },
+
+    /**
+     * What a rider signing up may choose from: MVTA's routes, and the active
+     * MVTA Connect zones. Public; it reads nothing about any subscriber.
+     */
+    getSubscribeOptions() {
+      return request<RiderSubscribeOptions>("/api/subscribers/options", { method: "GET" });
     },
 
     /**
