@@ -65,7 +65,7 @@ test("the subscription handshake is answered before anything else happens", asyn
 
 test("STOP stops the number that sent it", async () => {
   const opened = gatewayReturning({ changed: 2 });
-  const response = await acsSmsEvents(eventRequest([smsEvent("+19523883275", "STOP")]), context);
+  const response = await acsSmsEvents(eventRequest([smsEvent("+16125550123", "STOP")]), context);
   assert.equal(opened.length, 1);
   assert.deepEqual(response.jsonBody, { received: 1, confirmed: 0, stopped: 1, failed: 0 });
 });
@@ -84,14 +84,14 @@ test("a texted code confirms, and the full outcome is logged rather than replied
   // reply: ACS answers the mandatory keywords itself, and two systems
   // answering one text is how a loop starts.
   gatewayReturning({ outcome: "confirmed", subscriberId: "sub-1", channel: "sms" });
-  const response = await acsSmsEvents(eventRequest([smsEvent("+19523883275", "123456")]), context);
+  const response = await acsSmsEvents(eventRequest([smsEvent("+16125550123", "123456")]), context);
   assert.deepEqual(response.jsonBody, { received: 1, confirmed: 1, stopped: 0, failed: 0 });
   assert.ok(logs.some((line) => line.includes("confirmed")));
 });
 
 test("a wrong code is recorded as what it was, and still answered 200", async () => {
   gatewayReturning({ outcome: "incorrect_code", subscriberId: "sub-1", channel: "sms" });
-  const response = await acsSmsEvents(eventRequest([smsEvent("+19523883275", "999999")]), context);
+  const response = await acsSmsEvents(eventRequest([smsEvent("+16125550123", "999999")]), context);
   assert.equal(response.status, 200);
   assert.deepEqual(response.jsonBody, { received: 1, confirmed: 0, stopped: 0, failed: 0 });
   assert.ok(logs.some((line) => line.includes("incorrect_code")));
@@ -99,7 +99,7 @@ test("a wrong code is recorded as what it was, and still answered 200", async ()
 
 test("a message that is neither reaches no database at all", async () => {
   const opened = gatewayReturning({ changed: 0 });
-  const response = await acsSmsEvents(eventRequest([smsEvent("+19523883275", "when is the 444 due?")]), context);
+  const response = await acsSmsEvents(eventRequest([smsEvent("+16125550123", "when is the 444 due?")]), context);
   assert.deepEqual(opened, []);
   assert.deepEqual(response.jsonBody, { received: 1, confirmed: 0, stopped: 0, failed: 0 });
 });
@@ -116,7 +116,7 @@ test("a failure is acknowledged, counted, and logged - never retried", async () 
   // reasons fails again. The count is in the response so the loss is visible
   // rather than silent.
   gatewayThrowing(new Error("deadlock"));
-  const response = await acsSmsEvents(eventRequest([smsEvent("+19523883275", "STOP")]), context);
+  const response = await acsSmsEvents(eventRequest([smsEvent("+16125550123", "STOP")]), context);
   assert.equal(response.status, 200);
   assert.deepEqual(response.jsonBody, { received: 1, confirmed: 0, stopped: 0, failed: 1 });
   assert.ok(logs.some((line) => line.includes("could not be processed")));
@@ -132,7 +132,7 @@ test("one failing message does not stop the rest of the batch", async () => {
     },
   });
   const response = await acsSmsEvents(
-    eventRequest([smsEvent("+19523883275", "STOP"), smsEvent("+16125550142", "STOP")]),
+    eventRequest([smsEvent("+16125550123", "STOP"), smsEvent("+16125550142", "STOP")]),
     context,
   );
   assert.deepEqual(response.jsonBody, { received: 2, confirmed: 0, stopped: 1, failed: 1 });
@@ -151,7 +151,7 @@ test("a body that is not JSON is the caller's error, and says so", async () => {
 test("a single event outside an array is still handled", async () => {
   // Event Grid posts an array, but the portal's own test send does not.
   gatewayReturning({ changed: 1 });
-  const response = await acsSmsEvents(eventRequest(smsEvent("+19523883275", "STOP")), context);
+  const response = await acsSmsEvents(eventRequest(smsEvent("+16125550123", "STOP")), context);
   assert.deepEqual((response.jsonBody as { stopped: number }).stopped, 1);
 });
 

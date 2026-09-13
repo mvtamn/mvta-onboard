@@ -35,20 +35,20 @@ describe("the opt-in success screen", () => {
     expect(screen.queryByLabelText(/6-digit code/i)).toBeNull();
     cleanup();
 
-    await subscribeWith({ phone: "952-388-3275" });
+    await subscribeWith({ phone: "612-555-0123" });
     expect(screen.getByLabelText(/6-digit code/i)).toBeTruthy();
   });
 
   it("confirms the number the API stored, not the one that was typed", async () => {
-    await subscribeWith({ phone: "(952) 388-3275" });
+    await subscribeWith({ phone: "(612) 555-0123" });
     await userEvent.type(screen.getByLabelText(/6-digit code/i), "123456");
     await userEvent.click(screen.getByRole("button", { name: /confirm my number/i }));
-    expect(api.confirmSms).toHaveBeenCalledWith({ phone_number: "+19523883275", code: "123456" });
+    expect(api.confirmSms).toHaveBeenCalledWith({ phone_number: "+16125550123", code: "123456" });
     expect(await screen.findByRole("status")).toHaveTextContent(/mobile number is confirmed/i);
   });
 
   it("keeps non-digits out of the code, and will not submit a partial one", async () => {
-    await subscribeWith({ phone: "952-388-3275" });
+    await subscribeWith({ phone: "612-555-0123" });
     const box = screen.getByLabelText(/6-digit code/i);
     await userEvent.type(box, "12a3b4");
     expect(box).toHaveValue("1234");
@@ -60,7 +60,7 @@ describe("the opt-in success screen", () => {
     // purpose, so there is exactly one sentence to write - and it has to carry
     // the only action that fixes all three.
     vi.mocked(api.confirmSms).mockResolvedValueOnce({ status: "invalid" });
-    await subscribeWith({ phone: "952-388-3275" });
+    await subscribeWith({ phone: "612-555-0123" });
     await userEvent.type(screen.getByLabelText(/6-digit code/i), "000000");
     await userEvent.click(screen.getByRole("button", { name: /confirm my number/i }));
     expect(await screen.findByText(/didn’t work/i)).toHaveTextContent(/ask for a new one/i);
@@ -70,9 +70,9 @@ describe("the opt-in success screen", () => {
   it("says plainly that a new code is coming, because this page knows one is waiting", async () => {
     // Unlike the landing page reached from an email link, this screen created
     // the confirmation itself a moment ago, so it can promise delivery.
-    await subscribeWith({ phone: "952-388-3275" });
+    await subscribeWith({ phone: "612-555-0123" });
     await userEvent.click(screen.getByRole("button", { name: /send me a new code/i }));
-    expect(api.resendConfirmation).toHaveBeenCalledWith({ phone_number: "+19523883275" });
+    expect(api.resendConfirmation).toHaveBeenCalledWith({ phone_number: "+16125550123" });
     expect(await screen.findByRole("status")).toHaveTextContent(/new code is on its way/i);
   });
 });
