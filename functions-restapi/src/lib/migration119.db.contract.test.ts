@@ -88,7 +88,7 @@ test("migration 119 gives every existing subscriber their own key", skip, async 
     // merge is in somebody's inbox and increment B resolves it to the survivor.
     await pool.request().batch(`
       INSERT dbo.Subscribers (phone_number, email, categories, status, sms_status, email_status, consent_source) VALUES
-        ('+19523883275', NULL, '["delay"]', 'pending_confirmation', 'pending_confirmation', NULL, 'web_form'),
+        ('+16125550123', NULL, '["delay"]', 'pending_confirmation', 'pending_confirmation', NULL, 'web_form'),
         ('+16125550142', 'a@example.com', '["delay"]', 'confirmed', 'confirmed', 'confirmed', 'web_form'),
         ('+16125550143', NULL, '["delay"]', 'opted_out', 'unsubscribed', NULL, 'web_form'),
         (NULL, 'b@example.com', '["delay"]', 'confirmed', NULL, 'confirmed', 'web_form');
@@ -138,7 +138,7 @@ test("a key cannot be shared between two subscribers", skip, async () => {
     const key = makeManageKey();
     await pool.request().input("k", sql.NVarChar(64), key).query(
       `INSERT dbo.Subscribers (phone_number, categories, status, sms_status, consent_source, manage_key, manage_key_issued_at)
-       VALUES ('+19523883275', '["delay"]', 'pending_confirmation', 'pending_confirmation', 'web_form', @k, SYSUTCDATETIME())`,
+       VALUES ('+16125550123', '["delay"]', 'pending_confirmation', 'pending_confirmation', 'web_form', @k, SYSUTCDATETIME())`,
     );
     await assert.rejects(
       pool.request().input("k", sql.NVarChar(64), key).query(
@@ -171,7 +171,7 @@ test("a preference change records what it changed, and cannot record nonsense", 
       await pool.request().query<{ subscriber_id: string }>(
         `INSERT dbo.Subscribers (phone_number, categories, status, sms_status, consent_source, manage_key, manage_key_issued_at)
          OUTPUT INSERTED.subscriber_id
-         VALUES ('+19523883275', '["delay"]', 'confirmed', 'confirmed', 'web_form', LOWER(CONVERT(NVARCHAR(64), CRYPT_GEN_RANDOM(32), 2)), SYSUTCDATETIME())`,
+         VALUES ('+16125550123', '["delay"]', 'confirmed', 'confirmed', 'web_form', LOWER(CONVERT(NVARCHAR(64), CRYPT_GEN_RANDOM(32), 2)), SYSUTCDATETIME())`,
       )
     ).recordset[0].subscriber_id;
 
