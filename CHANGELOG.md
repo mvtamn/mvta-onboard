@@ -5,6 +5,14 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.205] - 2026-09-13
+
+- **Riders choose their routes when they sign up.** The subscribe form asks *Which routes?* - All routes, or Only the routes I choose - under the alert types. It used to send every signup as "all routes", so "the routes you ride" in its own subtitle was a promise the form could not keep, and a rider who wanted one route had to take all of them and narrow it from the first alert email. All routes stays the default. The spec held this back until riders had a preference page, because signing up again can only ever widen routes; that page shipped in 1.5.202, so a choice made here can now be changed.
+- **`GET /api/subscribers/options` is new, and anonymous.** It answers with the same route and zone lists the preference page gets, from the same `readOptions`, rather than opening the staff route registry at `GET /api/routes`. It reads nothing about any subscriber. Browsers may cache it for five minutes.
+- **`POST /subscribers` checks chosen routes and zones against that list,** the way the preference `PUT` does, through a shared `audienceErrors`. An empty list or an id that is not offered is a 400, rather than a stored value dispatch never matches. `"ALL"` and a missing field behave as before.
+- **If the route list can't load, signing up still works.** "Only the routes I choose" is not offered, and a note says the rider can choose routes later from the link in any alert email. Zones stay `"ALL"` at signup; the preference page offers them once a zone version is active.
+- **One picker, two pages.** `rider-app/src/components/AudiencePicker.tsx` is the preference page's route and zone picker, moved out so the subscribe form uses it too, in each page's own style.
+
 ## [1.5.204] - 2026-09-13
 
 - **Service Risk showed a healthy fixed-route feed as failed every night.** `TripDelayDiagnostics.state` has four values - `current`, `no_current_trips`, `stale`, `configuration_missing` - and 1.5.197's banner handled the first and third and sent the rest to the red "unavailable" branch. So outside 8am-10pm service, when the feed answers on schedule and reports nothing running, the banner drew a slashed failure glyph beside a full row of polls that had all arrived. Found walking through Service Risk on dev at 1:45am CDT.

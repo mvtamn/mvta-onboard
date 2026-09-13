@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   CATEGORIES,
   CATEGORY_LABELS,
@@ -6,8 +6,10 @@ import {
   ApiError,
   normalizeUsPhone,
   formatE164ForDisplay,
+  type RiderPreferenceOption,
 } from "@mvta/shared";
 import { api } from "../config.js";
+import { AudiencePicker, type Mode } from "../components/AudiencePicker.js";
 
 const BAD_PHONE_MSG =
   "That mobile number doesn\u2019t look right. Enter 10 digits, like (612) 555-0123.";
@@ -24,6 +26,7 @@ function describeSubscribeError(err: unknown): string {
     if (named("phone_number")) return BAD_PHONE_MSG;
     if (named("email")) return "That email address doesn\u2019t look right. Check it and try again.";
     if (named("categories")) return "Choose at least one kind of alert.";
+    if (named("routes")) return "A route you chose is no longer offered. Reload the page and choose your routes again.";
   }
   if (err instanceof ApiError) {
     return "We couldn\u2019t start your subscription. Check your contact information and try again.";
@@ -139,6 +142,13 @@ export function OptIn() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [categories, setCategories] = useState<Set<Category>>(new Set(CATEGORIES));
+  // Every route unless the rider narrows it. The list comes from the API; until
+  // it arrives, or if it can't, "only the routes I choose" is not offered
+  // rather than offered empty, and signing up for every route still works.
+  const [routeOptions, setRouteOptions] = useState<RiderPreferenceOption[] | null>(null);
+  const [routeOptionsFailed, setRouteOptionsFailed] = useState(false);
+  const [routeMode, setRouteMode] = useState<Mode>("all");
+  const [routes, setRoutes] = useState<Set<string>>(new Set());
   const [consent, setConsent] = useState(false);
   const [status, setStatus] = useState<"idle" | "submitting" | "done" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
@@ -151,6 +161,24 @@ export function OptIn() {
 
   const wantsText = channels !== "email";
   const wantsEmail = channels !== "text";
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getSubscribeOptions()
+      .then((options) => {
+        if (!cancelled) setRouteOptions(options.routes);
+      })
+      .catch(() => {
+        if (!cancelled) setRouteOptionsFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const canChooseRoutes = routeOptions !== null && routeOptions.length > 0;
+  const routeListMissing = routeOptionsFailed || (routeOptions !== null && routeOptions.length === 0);
 
   function fail(message: string, field: ErrorField) {
     setStatus("error");
@@ -172,6 +200,14 @@ export function OptIn() {
     setCategories((prev) => {
       const next = new Set(prev);
       next.has(c) ? next.delete(c) : next.add(c);
+      return next;
+    });
+  }
+
+  function toggleRoute(id: string) {
+    setRoutes((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
   }
@@ -202,6 +238,11 @@ export function OptIn() {
     if (categories.size === 0) {
       return fail("Choose at least one kind of alert.", null);
     }
+    if (routeMode === "some" && routes.size === 0) {
+      // Never read as "every route": a rider who ticked nothing has not asked
+      // for all of them.
+      return fail("Choose at least one route, or choose All routes.", null);
+    }
     if (!consent) {
       return fail("Please agree to receive alerts before subscribing.", "consent");
     }
@@ -227,7 +268,11 @@ export function OptIn() {
       await api.subscribe({
         phone_number: e164,
         email: sendEmail,
-        routes: "ALL",
+        // In the order the list offers them, not the order they were ticked.
+        routes:
+          routeMode === "some" && routeOptions
+            ? routeOptions.map((r) => r.id).filter((id) => routes.has(id))
+            : "ALL",
         zones: "ALL",
         categories: [...categories],
         consent_source: "web_form",
@@ -355,6 +400,32 @@ export function OptIn() {
             ))}
           </div>
         </fieldset>
+
+        <AudiencePicker
+          variant="section"
+          legend="Which routes?"
+          name="route-mode"
+          allLabel="All routes"
+          someLabel="Only the routes I choose"
+          listLabel="Routes"
+          options={routeOptions ?? []}
+          mode={routeMode}
+          chosen={routes}
+          someDisabled={!canChooseRoutes}
+          note={
+            routeListMissing
+              ? "We couldn\u2019t load the route list just now. You can sign up for all routes, then choose yours from the link in any alert email."
+              : undefined
+          }
+          onMode={(mode) => {
+            setRouteMode(mode);
+            clearError();
+          }}
+          onToggle={(id) => {
+            toggleRoute(id);
+            clearError();
+          }}
+        />
 
         <div className="section">
           <label className="check consent">

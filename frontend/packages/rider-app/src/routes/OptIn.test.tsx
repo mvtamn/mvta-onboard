@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { OptIn } from "./OptIn.js";
 
@@ -12,6 +12,14 @@ vi.mock("../config.js", () => ({
     subscribe: vi.fn(async () => ({ subscriber_id: "sub-1", status: "pending_confirmation" })),
     confirmSms: vi.fn(async () => ({ status: "confirmed" as const, channel: "sms" as const })),
     resendConfirmation: vi.fn(async () => ({ status: "ok" as const })),
+    getSubscribeOptions: vi.fn(async () => ({
+      routes: [
+        { id: "470", label: "470 - Burnsville - Minneapolis" },
+        { id: "472", label: "472 - Eagan - Minneapolis" },
+        { id: "495", label: "495 - Apple Valley - Mall of America" },
+      ],
+      zones: [],
+    })),
   },
 }));
 const { api } = await import("../config.js");
@@ -152,5 +160,57 @@ describe("choosing how to get alerts", () => {
     expect(await subscribeWith({ phone: "612-555-0123" })).toHaveTextContent(/^check your phone$/i);
     cleanup();
     expect(await subscribeWith({ email: "rider@example.com" })).toHaveTextContent(/^check your email$/i);
+  });
+});
+
+describe("choosing routes", () => {
+  const onlyChosen = () => screen.getByRole("radio", { name: /only the routes i choose/i });
+
+  /** A form with both contacts filled in, ready to agree and submit. */
+  async function fillContacts() {
+    render(<OptIn />);
+    await userEvent.type(screen.getByLabelText(/mobile number/i), "612-555-0123");
+    await userEvent.type(screen.getByLabelText(/email address/i), "rider@example.com");
+  }
+
+  it("signs up for every route unless the rider narrows it", async () => {
+    await fillContacts();
+    expect(screen.getByRole("radio", { name: /all routes/i })).toBeChecked();
+    await agree();
+    await submit();
+    expect(api.subscribe).toHaveBeenCalledWith(expect.objectContaining({ routes: "ALL" }));
+  });
+
+  it("sends only the routes chosen, in the order the list offers them", async () => {
+    await fillContacts();
+    await waitFor(() => expect(onlyChosen()).toBeEnabled());
+    await userEvent.click(onlyChosen());
+    const list = screen.getByRole("group", { name: "Routes" });
+    expect(list).toBeTruthy();
+    await userEvent.click(screen.getByRole("checkbox", { name: /^495/ }));
+    await userEvent.click(screen.getByRole("checkbox", { name: /^470/ }));
+    await agree();
+    await submit();
+    expect(api.subscribe).toHaveBeenCalledWith(expect.objectContaining({ routes: ["470", "495"] }));
+  });
+
+  it("will not read no routes ticked as every route", async () => {
+    await fillContacts();
+    await waitFor(() => expect(onlyChosen()).toBeEnabled());
+    await userEvent.click(onlyChosen());
+    await agree();
+    await submit();
+    expect(await screen.findByRole("alert")).toHaveTextContent(/at least one route, or choose all routes/i);
+    expect(api.subscribe).not.toHaveBeenCalled();
+  });
+
+  it("still signs a rider up for every route when the list can't be loaded", async () => {
+    vi.mocked(api.getSubscribeOptions).mockRejectedValueOnce(new Error("offline"));
+    await fillContacts();
+    expect(await screen.findByText(/couldn’t load the route list/i)).toBeTruthy();
+    expect(onlyChosen()).toBeDisabled();
+    await agree();
+    await submit();
+    expect(api.subscribe).toHaveBeenCalledWith(expect.objectContaining({ routes: "ALL" }));
   });
 });

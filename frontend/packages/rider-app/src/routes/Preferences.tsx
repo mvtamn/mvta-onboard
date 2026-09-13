@@ -10,6 +10,7 @@ import {
   type RiderPreferences,
 } from "@mvta/shared";
 import { api } from "../config.js";
+import { AudiencePicker, type Mode } from "../components/AudiencePicker.js";
 
 // A rider managing their own subscription, reached from the link in an alert
 // email. Increment C of plans/rider-preference-management-spec.md.
@@ -282,8 +283,6 @@ function ManageLinkForm() {
     </form>
   );
 }
-
-type Mode = "all" | "some";
 
 interface FormProps {
   prefs: RiderPreferences;
@@ -562,47 +561,5 @@ function ChannelCheck(props: {
       {props.stopped && <p className="note">{props.stoppedNote}</p>}
       {!props.stopped && props.pending && <p className="note">Waiting for you to confirm.</p>}
     </div>
-  );
-}
-
-function AudiencePicker(props: {
-  legend: string;
-  name: string;
-  allLabel: string;
-  someLabel: string;
-  listLabel: string;
-  options: RiderPreferenceOption[];
-  mode: Mode;
-  chosen: Set<string>;
-  dropped: string[];
-  droppedNote: string;
-  onMode: (mode: Mode) => void;
-  onToggle: (id: string) => void;
-}) {
-  return (
-    <fieldset className="field">
-      <legend>{props.legend}</legend>
-      <div className="radios">
-        <label className="check">
-          <input type="radio" name={props.name} checked={props.mode === "all"} onChange={() => props.onMode("all")} />
-          {props.allLabel}
-        </label>
-        <label className="check">
-          <input type="radio" name={props.name} checked={props.mode === "some"} onChange={() => props.onMode("some")} />
-          {props.someLabel}
-        </label>
-      </div>
-      {props.dropped.length > 0 && <p className="note">{props.droppedNote}</p>}
-      {props.mode === "some" && (
-        <div className="checks list" role="group" aria-label={props.listLabel}>
-          {props.options.map((option) => (
-            <label key={option.id} className="check">
-              <input type="checkbox" checked={props.chosen.has(option.id)} onChange={() => props.onToggle(option.id)} />
-              {option.label}
-            </label>
-          ))}
-        </div>
-      )}
-    </fieldset>
   );
 }

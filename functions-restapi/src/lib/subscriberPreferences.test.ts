@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   maskPhone,
   maskEmail,
+  audienceErrors,
   validatePreferenceUpdate,
   parseAudience,
   serializeAudience,
@@ -105,4 +106,12 @@ test("a malformed categories column reads as none rather than throwing at a ride
   } as SubscriberRecord;
   assert.deepEqual(stateOf(record).categories, []);
   assert.equal(stateOf(record).routes, "ALL");
+});
+
+// Routes and zones on their own, as opt-in (POST /subscribers) checks them.
+test("audienceErrors accepts ALL and offered ids, and refuses an empty or unknown list", () => {
+  assert.deepEqual(audienceErrors({ routes: "ALL", zones: "ALL" }, OPTIONS), []);
+  assert.deepEqual(audienceErrors({ routes: ["470", "495"], zones: ["zone-a"] }, OPTIONS), []);
+  assert.deepEqual(audienceErrors({ routes: [], zones: "ALL" }, OPTIONS), ['routes must name at least one, or be "ALL"']);
+  assert.deepEqual(audienceErrors({ routes: ["470", "999"], zones: "ALL" }, OPTIONS), ["routes contains unknown values: 999"]);
 });
