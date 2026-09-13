@@ -4,6 +4,7 @@ import { api } from "../../../config.js";
 import { useAuth } from "../../../auth/AuthContext.js";
 import { useAppDialog } from "../../../components/AppDialog.js";
 import { formatRefreshCountdown, useFixedRouteRefresh } from "../../../context/FixedRouteRefreshContext.js";
+import { LiveBanner } from "../../../components/LiveSignal.js";
 import { TripStartLogInspector } from "./TripStartLogInspector.js";
 import { TripStartLogQueryBar } from "./TripStartLogQueryBar.js";
 import { TripStartLogSummary } from "./TripStartLogSummary.js";
@@ -269,10 +270,17 @@ export function TripStartLog() {
       ) : null}
 
       {message ? (
-        <div className="concept-banner" role="status">
-          <span className="concept-badge">{state === "live" ? "Live data" : state === "loading" ? "Checking" : state === "unavailable" ? "Unavailable" : "Not connected"}</span>
-          <span>{message}</span>
-        </div>
+        <LiveBanner
+          role="status"
+          state={state === "live" ? "live" : state === "loading" ? "connecting" : state === "unavailable" ? "unavailable" : "stale"}
+          tone={state === "live" ? "live" : state === "loading" ? "muted" : state === "unavailable" ? "danger" : "warning"}
+          badge={state === "live" ? "Live data" : state === "loading" ? "Checking" : state === "unavailable" ? "Unavailable" : "Not connected"}
+          intervalMs={refresh.intervalMs}
+          secondsLeft={refresh.secondsLeft}
+          history={refresh.history}
+        >
+          {message}
+        </LiveBanner>
       ) : null}
 
       <TripStartLogQueryBar filters={filters} routes={routes} onChange={setFilters} />
