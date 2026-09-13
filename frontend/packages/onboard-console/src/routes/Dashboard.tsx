@@ -3,6 +3,7 @@ import { NavLink } from "react-router-dom";
 import type { ActiveMessage, SuggestedAlert } from "@mvta/shared";
 import { MessagesTable } from "../components/MessagesTable.js";
 import { Sidebar } from "../components/Sidebar.js";
+import { LiveSignal, signalStateFor } from "../components/LiveSignal.js";
 import { dataStateLabel, type LiveStats, type OperationalDataState } from "../hooks/useLiveStats.js";
 
 // Dashboard: triage-first metrics and next actions, followed by published
@@ -37,8 +38,8 @@ export function Dashboard({ stats, onChanged }: { stats: LiveStats; onChanged?: 
   return (
     <div className="content-layout">
       <div className="content-primary">
-        <div className="dashboard-freshness" role="status">
-          <span className={`live-dot ${stats.overallState}`} />
+        <div className={`dashboard-freshness ${stats.overallState}`} role="status">
+          <LiveSignal state={signalStateFor(stats.overallState)} />
           <strong>{dataStateLabel(stats.overallState)}</strong>
           <span>{stats.syncedAt ? `Updated ${stats.syncedAt.toLocaleTimeString()}` : "Retrying connection"}</span>
           <NavLink to="/service-operations/suggested">{stats.pending?.length ?? "—"} suggested alerts</NavLink>

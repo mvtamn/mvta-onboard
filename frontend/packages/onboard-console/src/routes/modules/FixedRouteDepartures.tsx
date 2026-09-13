@@ -4,7 +4,7 @@ import { api } from "../../config.js";
 import { useAuth } from "../../auth/AuthContext.js";
 import {
   agencyTimeLabel,
-  badgeLabel,
+  DeparturesFeedBanner,
   dailyCounts,
   deltaMinutesLabel,
   DepartureTrend,
@@ -286,10 +286,7 @@ export function FixedRouteDepartures() {
       </div>
 
       {message ? (
-        <div className="concept-banner">
-          <span className="concept-badge">{badgeLabel(state)}</span>
-          <span>{message}</span>
-        </div>
+        <DeparturesFeedBanner state={state} message={message} />
       ) : null}
 
       {/* A zero here is a claim - "no run failed to depart" - and an

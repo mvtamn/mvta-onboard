@@ -1,0 +1,67 @@
+<div class="root {{rootClass}} col">
+  <div>
+    <span class="eyebrow">In place</span>
+    <h1 style="font-size:18px">Dashboard &amp; data health</h1>
+  </div>
+
+  <div>
+    <span class="cap">Freshness bar — healthy</span>
+    <div class="freshbar">
+      <span class="sig is-live" style="color:var(--live)"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle><circle class="arc" cx="9" cy="9" r="7.25"></circle><circle class="comet" cx="9" cy="9" r="7.25"></circle></svg><span class="halo"></span><span class="halo two"></span><span class="bloom"></span><span class="core"></span></span>
+      <strong>Live data</strong><span>Updated 11:50:04 PM</span>
+      <span class="spacer"></span>
+      <a href="#">4 suggested alerts</a>
+    </div>
+  </div>
+
+  <div>
+    <span class="cap">Freshness bar — one feed behind</span>
+    <div class="freshbar" style="background:var(--warn-bg);border-color:var(--highlight-border);color:var(--warn-fg)">
+      <span class="sig is-stale"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle></svg><span class="core"></span></span>
+      <strong style="color:inherit">Stale data</strong><span style="color:inherit">MVTA Connect last answered 11:31 PM · 19 min ago</span>
+      <span class="spacer"></span>
+      <a href="#" style="color:inherit">Open data health</a>
+    </div>
+  </div>
+
+  <div class="rail">
+    <div class="rail-head">
+      <div><span class="eyebrow">Data health</span><h2>Feeds &amp; freshness</h2></div>
+      <span class="btn-sm">↻ Refresh</span>
+    </div>
+
+    <div class="summary">
+      <span class="sig is-live" style="color:var(--live)"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle><circle class="arc" cx="9" cy="9" r="7.25"></circle><circle class="comet" cx="9" cy="9" r="7.25"></circle></svg><span class="halo"></span><span class="halo two"></span><span class="bloom"></span><span class="core"></span></span>
+      <strong>Live data</strong>
+      <span class="spacer"></span>
+      <small style="color:inherit;opacity:.75">next poll 12s</small>
+    </div>
+
+    <div class="feeds">
+      <div class="feed" style="color:var(--success)">
+        <span class="sig sm is-live" style="color:var(--live)"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle><circle class="arc" cx="9" cy="9" r="7.25"></circle><circle class="comet" cx="9" cy="9" r="7.25"></circle></svg><span class="halo"></span><span class="halo two"></span><span class="bloom"></span><span class="core"></span></span>
+        <span><b>GTFS-Realtime</b><small style="color:var(--text-muted)">Arrived 11:50:04 PM · every 30s</small></span>
+        <span class="ticks live" style="color:var(--live)"><i class="tick on"></i><i class="tick on"></i><i class="tick on"></i><i class="tick on"></i><i class="tick on"></i><i class="tick head"></i></span>
+      </div>
+      <div class="feed" style="color:var(--warn-fg)">
+        <span class="sig sm is-stale"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle></svg><span class="core"></span></span>
+        <span><b>MVTA Connect</b><small style="color:var(--text-muted)">Last arrived 11:31 PM · 19 min ago</small></span>
+        <span class="ticks"><i class="tick on"></i><i class="tick on"></i><i class="tick"></i><i class="tick"></i><i class="tick"></i><i class="tick"></i></span>
+      </div>
+      <div class="feed" style="color:var(--danger)">
+        <span class="sig sm is-down"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle></svg><span class="core"></span><span class="slash" style="width:10px"></span></span>
+        <span><b>Spare webhooks</b><small style="color:var(--text-muted)">Not answering since 10:04 PM</small></span>
+        <span class="ticks"><i class="tick"></i><i class="tick"></i><i class="tick"></i><i class="tick"></i><i class="tick"></i><i class="tick"></i></span>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <span class="cap">Sidebar footer</span>
+    <div class="navfoot">
+      <span class="sig sm is-live" style="color:var(--live)"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle><circle class="arc" cx="9" cy="9" r="7.25"></circle><circle class="comet" cx="9" cy="9" r="7.25"></circle></svg><span class="halo"></span><span class="halo two"></span><span class="bloom"></span><span class="core"></span></span>
+      <span>Console live</span>
+    </div>
+    <p style="font-size:11.5px">The footer signal is the one indicator on screen at all times, so it carries the quietest version: core, breath and arc, no ticks. If it stops breathing, every page's data is suspect.</p>
+  </div>
+</div>
