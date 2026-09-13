@@ -3,7 +3,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { ApiError, type RiderPreferences } from "@mvta/shared";
-import { MANAGE_KEY_STORAGE, Preferences } from "./Preferences.js";
+import { MANAGE_KEY_STORAGE, Preferences, keyFromHash } from "./Preferences.js";
 
 // The page a rider reaches from the link in an alert email. What is worth
 // pinning here is less "does it render" than the handful of places where a
@@ -16,6 +16,7 @@ vi.mock("../config.js", () => ({
     getPreferences: vi.fn(),
     updatePreferences: vi.fn(async () => ({ status: "updated" as const })),
     unsubscribeWithManageKey: vi.fn(async () => ({ status: "unsubscribed" as const, changed: true })),
+    requestManageLink: vi.fn(async () => ({ status: "ok" as const })),
   },
 }));
 const { api } = await import("../config.js");
@@ -55,7 +56,7 @@ function prefs(overrides: Partial<RiderPreferences> = {}): RiderPreferences {
  */
 function Where() {
   const location = useLocation();
-  return <div data-testid="where">{location.pathname + location.search}</div>;
+  return <div data-testid="where">{location.pathname + location.search + location.hash}</div>;
 }
 
 function renderAt(query = "") {
@@ -87,17 +88,18 @@ const save = () => userEvent.click(screen.getByRole("button", { name: /save chan
 
 describe("the manage key", () => {
   it("is taken out of the address bar as soon as the page has it", async () => {
-    renderAt(`?key=${KEY}`);
+    renderAt(`#key=${KEY}`);
     expect(await screen.findByRole("heading", { name: /your mvta service alerts/i })).toBeTruthy();
     expect(api.getPreferences).toHaveBeenCalledWith(KEY);
-    // Left in the URL it can be screenshotted, pasted into a support ticket,
-    // or carried off in a referrer - for a credential that does not expire.
+    // It arrived in the fragment, which no server ever sees. Left in the
+    // address bar it could still be screenshotted or pasted into a support
+    // ticket - for a credential that does not expire.
     expect(screen.getByTestId("where")).toHaveTextContent(/^\/subscribe\/preferences$/);
   });
 
   it("survives a reload, since the address bar no longer has it", async () => {
-    // There is no way back in otherwise: the email-me-my-link recovery is a
-    // later increment.
+    // Otherwise a reload sends a rider who holds a working link back through
+    // recovery to be emailed the same link again.
     sessionStorage.setItem(MANAGE_KEY_STORAGE, KEY);
     renderAt();
     await screen.findByRole("heading", { name: /your mvta service alerts/i });
@@ -114,14 +116,14 @@ describe("the manage key", () => {
     // The link the rider just opened is what they meant. A key stored from an
     // earlier visit could belong to a different subscription.
     sessionStorage.setItem(MANAGE_KEY_STORAGE, "b".repeat(64));
-    renderAt("?key=abc123");
+    renderAt("#key=abc123");
     expect(await screen.findByRole("heading", { name: /open your link/i })).toBeTruthy();
     expect(api.getPreferences).not.toHaveBeenCalled();
   });
 
   it("is forgotten when the server says it names nothing", async () => {
     vi.mocked(api.getPreferences).mockRejectedValueOnce(new ApiError(404, "not found"));
-    renderAt(`?key=${KEY}`);
+    renderAt(`#key=${KEY}`);
     expect(await screen.findByRole("heading", { name: /no longer works/i })).toBeTruthy();
     expect(sessionStorage.getItem(MANAGE_KEY_STORAGE)).toBeNull();
   });
@@ -129,12 +131,12 @@ describe("the manage key", () => {
 
 describe("what the rider sees", () => {
   it("shows the contact masked, exactly as the API sent it", async () => {
-    renderAt(`?key=${KEY}`);
+    renderAt(`#key=${KEY}`);
     expect(await screen.findByRole("checkbox", { name: "Texts to (•••) •••-0123" })).toBeChecked();
   });
 
   it("does not offer zones when no zone version is active", async () => {
-    renderAt(`?key=${KEY}`);
+    renderAt(`#key=${KEY}`);
     await screen.findByRole("heading", { name: /your mvta service alerts/i });
     expect(screen.queryByRole("group", { name: /zones/i })).toBeNull();
   });
@@ -143,20 +145,20 @@ describe("what the rider sees", () => {
     vi.mocked(api.getPreferences).mockResolvedValue(
       prefs({ options: { routes: prefs().options.routes, zones: [{ id: "zone-a", label: "Apple Valley" }] } }),
     );
-    renderAt(`?key=${KEY}`);
+    renderAt(`#key=${KEY}`);
     expect(await screen.findByRole("group", { name: /which mvta connect zones/i })).toBeTruthy();
   });
 
   it("an opted-out subscription gets no form, since a save could not revive it", async () => {
     vi.mocked(api.getPreferences).mockResolvedValue(prefs({ status: "opted_out" }));
-    renderAt(`?key=${KEY}`);
+    renderAt(`#key=${KEY}`);
     expect(await screen.findByRole("heading", { name: /unsubscribed/i })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /save changes/i })).toBeNull();
   });
 
   it("an unreachable API is MVTA's problem, and can be retried", async () => {
     vi.mocked(api.getPreferences).mockRejectedValueOnce(new Error("offline"));
-    renderAt(`?key=${KEY}`);
+    renderAt(`#key=${KEY}`);
     expect(await screen.findByRole("heading", { name: /couldn’t reach mvta/i })).toBeTruthy();
     await userEvent.click(screen.getByRole("button", { name: /try again/i }));
     expect(await screen.findByRole("heading", { name: /your mvta service alerts/i })).toBeTruthy();
@@ -165,7 +167,7 @@ describe("what the rider sees", () => {
 
 describe("saving", () => {
   it("narrowing to chosen routes sends exactly those routes", async () => {
-    renderAt(`?key=${KEY}`);
+    renderAt(`#key=${KEY}`);
     await userEvent.click(await screen.findByRole("radio", { name: /only the routes i choose/i }));
     await userEvent.click(screen.getByRole("checkbox", { name: /^472 /i }));
     await save();
@@ -179,7 +181,7 @@ describe("saving", () => {
   });
 
   it("'only' with nothing ticked is refused, never saved as every route", async () => {
-    renderAt(`?key=${KEY}`);
+    renderAt(`#key=${KEY}`);
     await userEvent.click(await screen.findByRole("radio", { name: /only the routes i choose/i }));
     await save();
     expect(screen.getByRole("alert")).toHaveTextContent(/choose at least one route/i);
@@ -187,7 +189,7 @@ describe("saving", () => {
   });
 
   it("no categories is refused, and points at unsubscribing", async () => {
-    renderAt(`?key=${KEY}`);
+    renderAt(`#key=${KEY}`);
     await userEvent.click(await screen.findByRole("checkbox", { name: "Delay" }));
     await userEvent.click(screen.getByRole("checkbox", { name: "Detour" }));
     await save();
@@ -198,7 +200,7 @@ describe("saving", () => {
   it("turning off every channel is refused, and points at unsubscribing", async () => {
     // A save with no channels would opt the rider out but leave this link
     // working; unsubscribing also retires the link and records why.
-    renderAt(`?key=${KEY}`);
+    renderAt(`#key=${KEY}`);
     await userEvent.click(await screen.findByRole("checkbox", { name: /texts to/i }));
     await save();
     expect(screen.getByRole("alert")).toHaveTextContent(/unsubscribe below/i);
@@ -211,7 +213,7 @@ describe("saving", () => {
     vi.mocked(api.getPreferences).mockResolvedValue(
       prefs({ has_email: true, email: "r•••••••e@example.com", email_status: "unsubscribed" }),
     );
-    renderAt(`?key=${KEY}`);
+    renderAt(`#key=${KEY}`);
     const email = await screen.findByRole("checkbox", { name: /emails to/i });
     expect(email).toBeDisabled();
     expect(email).not.toBeChecked();
@@ -222,7 +224,7 @@ describe("saving", () => {
 
   it("a route that no longer runs is taken off the list, and the rider is told", async () => {
     vi.mocked(api.getPreferences).mockResolvedValue(prefs({ routes: ["470", "999"] }));
-    renderAt(`?key=${KEY}`);
+    renderAt(`#key=${KEY}`);
     expect(await screen.findByText(/no longer run/i)).toBeTruthy();
     const list = screen.getByRole("group", { name: "Routes" });
     expect(within(list).getByRole("checkbox", { name: /^470 /i })).toBeChecked();
@@ -233,7 +235,7 @@ describe("saving", () => {
 
   it("with no zone choice offered, sends back exactly what was stored", async () => {
     vi.mocked(api.getPreferences).mockResolvedValue(prefs({ zones: ["zone-a"] }));
-    renderAt(`?key=${KEY}`);
+    renderAt(`#key=${KEY}`);
     await screen.findByRole("heading", { name: /your mvta service alerts/i });
     await save();
     // Not "ALL": a rider who could not see a zone choice has not made one.
@@ -241,7 +243,7 @@ describe("saving", () => {
   });
 
   it("re-reads the subscription afterwards, so the page shows what the server stored", async () => {
-    renderAt(`?key=${KEY}`);
+    renderAt(`#key=${KEY}`);
     await userEvent.click(await screen.findByRole("checkbox", { name: "Detour" }));
     await save();
     expect(await screen.findByRole("status")).toHaveTextContent(/saved/i);
@@ -251,7 +253,7 @@ describe("saving", () => {
   it("confirms the save beside the Save button, where the rider is looking", async () => {
     // Found in the browser: the form is long enough that a rider pressing Save
     // is scrolled past the heading, and a confirmation up there was invisible.
-    renderAt(`?key=${KEY}`);
+    renderAt(`#key=${KEY}`);
     await userEvent.click(await screen.findByRole("checkbox", { name: "Detour" }));
     await save();
     const saved = await screen.findByRole("status");
@@ -259,7 +261,7 @@ describe("saving", () => {
   });
 
   it("clears the confirmation as soon as the rider changes something else", async () => {
-    renderAt(`?key=${KEY}`);
+    renderAt(`#key=${KEY}`);
     await userEvent.click(await screen.findByRole("checkbox", { name: "Detour" }));
     await save();
     await screen.findByRole("status");
@@ -269,7 +271,7 @@ describe("saving", () => {
 
   it("a save refused because they opted out elsewhere shows them unsubscribed", async () => {
     vi.mocked(api.updatePreferences).mockRejectedValueOnce(new ApiError(409, "opted out"));
-    renderAt(`?key=${KEY}`);
+    renderAt(`#key=${KEY}`);
     await screen.findByRole("heading", { name: /your mvta service alerts/i });
     await save();
     expect(await screen.findByRole("heading", { name: /unsubscribed/i })).toBeTruthy();
@@ -278,7 +280,7 @@ describe("saving", () => {
 
 describe("unsubscribing", () => {
   it("asks once, then retires the key the server just rotated", async () => {
-    renderAt(`?key=${KEY}`);
+    renderAt(`#key=${KEY}`);
     await userEvent.click(await screen.findByRole("button", { name: /unsubscribe from all/i }));
     expect(api.unsubscribeWithManageKey).not.toHaveBeenCalled();
 
@@ -290,7 +292,7 @@ describe("unsubscribing", () => {
   });
 
   it("can be backed out of", async () => {
-    renderAt(`?key=${KEY}`);
+    renderAt(`#key=${KEY}`);
     await userEvent.click(await screen.findByRole("button", { name: /unsubscribe from all/i }));
     await userEvent.click(screen.getByRole("button", { name: /keep my alerts/i }));
     expect(api.unsubscribeWithManageKey).not.toHaveBeenCalled();
@@ -299,9 +301,78 @@ describe("unsubscribing", () => {
 
   it("a failure says they are still subscribed", async () => {
     vi.mocked(api.unsubscribeWithManageKey).mockRejectedValueOnce(new Error("offline"));
-    renderAt(`?key=${KEY}`);
+    renderAt(`#key=${KEY}`);
     await userEvent.click(await screen.findByRole("button", { name: /unsubscribe from all/i }));
     await userEvent.click(screen.getByRole("button", { name: /yes, unsubscribe/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/still subscribed/i);
+  });
+});
+
+describe("reading the key from the link", () => {
+  it("reads it from the fragment, where no server sees it", () => {
+    const key = "c".repeat(64);
+    expect(keyFromHash(`#key=${key}`)).toBe(key);
+    expect(keyFromHash(`#utm=x&key=${key}`)).toBe(key);
+    expect(keyFromHash("")).toBeUndefined();
+    expect(keyFromHash("#other=1")).toBeUndefined();
+    expect(keyFromHash("#key=cut-short")).toBeNull();
+  });
+
+  it("does not read a key from the query string", async () => {
+    // A ?key= link would put the key in the access log of the request for this
+    // very page before any code ran to remove it. No such link has been sent,
+    // and honouring one would invite the format.
+    renderAt(`?key=${KEY}`);
+    expect(await screen.findByRole("heading", { name: /open your link/i })).toBeTruthy();
+    expect(api.getPreferences).not.toHaveBeenCalled();
+  });
+});
+
+describe("sending the link again", () => {
+  const sendMyLink = () => userEvent.click(screen.getByRole("button", { name: /send me my link/i }));
+
+  it("is offered to a rider who arrived without a link", async () => {
+    renderAt();
+    await userEvent.type(await screen.findByRole("textbox"), "rider@example.com");
+    await sendMyLink();
+    expect(api.requestManageLink).toHaveBeenCalledWith({ email: "rider@example.com" });
+  });
+
+  it("normalizes a typed mobile number before sending it", async () => {
+    // The API stores E.164; "(612) 555-0123" arriving unchanged matches no row.
+    renderAt();
+    await userEvent.type(await screen.findByRole("textbox"), "(612) 555-0123");
+    await sendMyLink();
+    expect(api.requestManageLink).toHaveBeenCalledWith({ phone_number: "+16125550123" });
+  });
+
+  it("promises only what the endpoint can keep", async () => {
+    // The endpoint answers the same whether or not the contact exists, and
+    // only a confirmed contact is sent anything.
+    renderAt();
+    await userEvent.type(await screen.findByRole("textbox"), "nobody@example.com");
+    await sendMyLink();
+    expect(await screen.findByRole("status")).toHaveTextContent(/if that contact has confirmed/i);
+  });
+
+  it("is offered when a link no longer works", async () => {
+    vi.mocked(api.getPreferences).mockRejectedValueOnce(new ApiError(404, "not found"));
+    renderAt(`#key=${KEY}`);
+    await screen.findByRole("heading", { name: /no longer works/i });
+    expect(screen.getByRole("button", { name: /send me my link/i })).toBeTruthy();
+  });
+
+  it("is not offered once the subscription has loaded", async () => {
+    renderAt(`#key=${KEY}`);
+    await screen.findByRole("heading", { name: /your mvta service alerts/i });
+    expect(screen.queryByRole("button", { name: /send me my link/i })).toBeNull();
+  });
+
+  it("an unreachable API is MVTA's problem, not the rider's", async () => {
+    vi.mocked(api.requestManageLink).mockRejectedValueOnce(new Error("offline"));
+    renderAt();
+    await userEvent.type(await screen.findByRole("textbox"), "rider@example.com");
+    await sendMyLink();
+    expect(await screen.findByRole("alert")).toHaveTextContent(/couldn’t reach MVTA/i);
   });
 });

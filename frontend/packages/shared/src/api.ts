@@ -575,6 +575,21 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       });
     },
 
+    /**
+     * Ask for the link to your own subscription to be sent again.
+     *
+     * Always answers `{ status: "ok" }` - whether the contact is subscribed,
+     * unconfirmed, unknown, or asked two minutes ago - so it cannot be used to
+     * ask whether a number or address is signed up. Only a contact that has
+     * confirmed alerts is ever sent anything. Do not build UI that implies more.
+     */
+    requestManageLink(input: ResendConfirmationInput) {
+      return request<{ status: "ok" }>("/api/subscribers/manage-link", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+
     // --- Staff console (all authenticated; server enforces roles) ---
 
     updateMessage(id: string, input: { summary?: string; expires_at?: string }) {

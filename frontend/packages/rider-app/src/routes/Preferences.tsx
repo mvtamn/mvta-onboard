@@ -4,6 +4,7 @@ import {
   ApiError,
   CATEGORIES,
   CATEGORY_LABELS,
+  normalizeUsPhone,
   type Category,
   type RiderPreferenceOption,
   type RiderPreferences,
@@ -13,19 +14,35 @@ import { api } from "../config.js";
 // A rider managing their own subscription, reached from the link in an alert
 // email. Increment C of plans/rider-preference-management-spec.md.
 //
-// THE KEY LEAVES THE ADDRESS BAR ON ARRIVAL. The link carries ?key=, and it is
-// read once, kept, and then replaced out of the URL - so it is not left sitting
-// where it can be screenshotted, pasted into a support ticket, or carried off in
-// a referrer. It is kept in sessionStorage rather than only in memory, because
-// otherwise a reload would lock the rider out with no way back in: the
-// "email me my link" recovery is increment D and does not exist yet. The
-// storage is scoped to this tab and dies with it.
+// THE KEY ARRIVES IN THE FRAGMENT AND LEAVES THE ADDRESS BAR AT ONCE. The link
+// carries #key=, never ?key=: a fragment is not part of the request the browser
+// makes for this page, so it never reaches Front Door's or Static Web Apps'
+// access logs, and it is not sent in a Referer. It is read once, kept, and then
+// removed from the URL so it is not left where it can be screenshotted or
+// pasted into a support ticket. It is kept in sessionStorage rather than only
+// in memory so a reload does not send the rider back through recovery for a
+// link they already hold. The storage is scoped to this tab and dies with it.
 
 export const MANAGE_KEY_STORAGE = "mvta.manageKey";
 
 /** The shape migration 119 issues. Anything else is not worth a request. */
 function looksLikeKey(value: string): boolean {
   return /^[0-9a-f]{64}$/.test(value);
+}
+
+/**
+ * The key from the link's fragment, `#key=...`.
+ *
+ * `undefined` means the link carried no key; `null` means it carried something
+ * that is not a key - a link cut short by a mail program, usually. A `?key=`
+ * query string is deliberately not read: no link has ever been sent that way,
+ * and honouring it would invite a format that puts the key in access logs.
+ */
+export function keyFromHash(hash: string): string | null | undefined {
+  const params = new URLSearchParams(hash.startsWith("#") ? hash.slice(1) : hash);
+  if (!params.has("key")) return undefined;
+  const value = params.get("key") ?? "";
+  return looksLikeKey(value) ? value : null;
 }
 
 function remember(key: string) {
@@ -69,20 +86,20 @@ export function Preferences() {
   // malformed ?key= does NOT fall back to a key stored from an earlier visit -
   // that one could belong to a different subscription.
   const [key] = useState<string | null>(() => {
-    const fromUrl = new URLSearchParams(location.search).get("key");
-    if (fromUrl !== null) {
-      if (!looksLikeKey(fromUrl)) return null;
-      remember(fromUrl);
-      return fromUrl;
+    const fromLink = keyFromHash(location.hash);
+    if (fromLink !== undefined) {
+      if (fromLink === null) return null;
+      remember(fromLink);
+      return fromLink;
     }
     return recall();
   });
 
   useEffect(() => {
-    if (new URLSearchParams(location.search).has("key")) {
-      navigate(location.pathname, { replace: true });
+    if (keyFromHash(location.hash) !== undefined) {
+      navigate(location.pathname + location.search, { replace: true });
     }
-  }, [location.pathname, location.search, navigate]);
+  }, [location.hash, location.pathname, location.search, navigate]);
 
   const [view, setView] = useState<View>(key ? { kind: "loading" } : { kind: "no_key" });
   const [justSaved, setJustSaved] = useState(false);
@@ -119,8 +136,10 @@ export function Preferences() {
           <h1 className="title">Open your link from an MVTA alert</h1>
           <p className="subtitle">
             To change your alerts, use the link at the bottom of your most recent MVTA alert email.
-            If you opened one and ended up here, your mail program may have cut the link short.
+            If you opened one and ended up here, your mail program may have cut the link short. We can
+            send you the link again.
           </p>
+          <ManageLinkForm />
           <p className="subtitle">
             <Link to="/subscribe">Sign up for service alerts</Link>
           </p>
@@ -131,9 +150,10 @@ export function Preferences() {
         <>
           <h1 className="title">This link no longer works</h1>
           <p className="subtitle">
-            A link stops working once you unsubscribe with it. Try the link in your most recent MVTA
-            alert email, or sign up again.
+            A link stops working once you unsubscribe with it. If you&rsquo;re still getting alerts, we
+            can send you a new one. Otherwise, sign up again.
           </p>
+          <ManageLinkForm />
           <p className="subtitle">
             <Link to="/subscribe">Sign up for service alerts</Link>
           </p>
@@ -200,6 +220,66 @@ export function Preferences() {
         </>
       )}
     </>
+  );
+}
+
+// Sending the link again, for a rider who does not have it.
+//
+// The acknowledgement is the same whatever the server found, because the
+// endpoint answers the same to everyone - so the sentence promises nothing
+// about whether that contact is subscribed. Only a confirmed contact is ever
+// sent a link, which is why the sentence says "confirmed".
+function ManageLinkForm() {
+  const [contact, setContact] = useState("");
+  const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+
+  async function onSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    const typed = contact.trim();
+    if (!typed) return;
+    setState("sending");
+    // An "@" is the only signal available. A number that cannot be read is
+    // sent as typed and simply matches nothing, which answers like everything
+    // else.
+    const phone = typed.includes("@") ? null : normalizeUsPhone(typed);
+    try {
+      await api.requestManageLink(phone ? { phone_number: phone } : { email: typed });
+      setState("sent");
+    } catch {
+      setState("error");
+    }
+  }
+
+  if (state === "sent") {
+    return (
+      <p className="subtitle" role="status">
+        If that contact has confirmed MVTA alerts, we&rsquo;ve sent it a link. It can take a minute to
+        arrive.
+      </p>
+    );
+  }
+
+  return (
+    <form className="form" onSubmit={onSubmit}>
+      <label className="field">
+        <span>Send my link to this mobile number or email address</span>
+        <input
+          type="text"
+          value={contact}
+          onChange={(event) => setContact(event.target.value)}
+          placeholder="(612) 555-0123 or you@example.com"
+          autoComplete="email"
+        />
+      </label>
+      {state === "error" && (
+        <p className="error inline" role="alert">
+          We couldn&rsquo;t reach MVTA just now. Please try again.
+        </p>
+      )}
+      <button className="btn-primary" type="submit" disabled={state === "sending" || !contact.trim()}>
+        {state === "sending" ? "Sending…" : "Send me my link"}
+      </button>
+    </form>
   );
 }
 
