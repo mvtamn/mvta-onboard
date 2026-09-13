@@ -321,10 +321,11 @@ function PreferencesForm({ prefs, manageKey, justSaved, onEdited, onSaved, onOpt
   const [zoneMode, setZoneMode] = useState<Mode>(initialZones.mode);
   const [zones, setZones] = useState<Set<string>>(initialZones.chosen);
 
-  // A stopped channel is shown, but cannot be switched back on from here.
-  // Re-enabling one returns it to "waiting for confirmation" without sending a
-  // new link or code - and this page cannot send one, because it only ever
-  // sees the contact masked. Signing up again is the path that actually works.
+  // A stopped channel is shown, but cannot be switched back on from here. The
+  // API refuses it (a stopped channel needs fresh consent to resume, which a
+  // link from an old email is not), so the checkbox is disabled rather than
+  // offering a save that would be turned down. Signing up again is the path
+  // that works, and it does restore delivery.
   const smsStopped = prefs.sms_status === "unsubscribed";
   const emailStopped = prefs.email_status === "unsubscribed";
   const [keepSms, setKeepSms] = useState(prefs.has_sms && !smsStopped);

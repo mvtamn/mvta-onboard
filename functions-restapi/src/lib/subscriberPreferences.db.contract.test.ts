@@ -271,12 +271,14 @@ test("stopping one channel leaves the other, and stopping both opts the record o
     assert.equal(row.email_status, "confirmed", "a channel they kept is untouched");
     assert.equal(row.status, "confirmed", "a subscriber with a live channel is still a subscriber");
 
-    // Turning SMS back on does not re-prove the number: it goes back to
-    // pending, and dispatch will not send to it until it is confirmed again.
-    await put(["sms", "email"]);
+    // Turning a stopped channel back on is refused, not quietly put back to
+    // "waiting for confirmation" with nothing sent to confirm it. Resuming is
+    // a new consent, which is the opt-in form's job.
+    const revived = await put(["sms", "email"]);
+    assert.equal(revived, "channel_stopped");
     row = await read(pool, id);
-    assert.equal(row.sms_status, "pending_confirmation", "re-ticking a box is not proof of a contact");
-    assert.equal(row.email_status, "confirmed", "a channel that stayed on keeps the proof it had");
+    assert.equal(row.sms_status, "unsubscribed", "nothing was written");
+    assert.equal(row.email_status, "confirmed");
 
     await put([]);
     row = await read(pool, id);
