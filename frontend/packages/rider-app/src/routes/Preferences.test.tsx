@@ -206,8 +206,8 @@ describe("saving", () => {
   });
 
   it("a stopped channel is shown but cannot be switched back on from here", async () => {
-    // Re-enabling it would leave it waiting for a confirmation nothing sends -
-    // this page only ever sees the contact masked, so it cannot send one.
+    // The API refuses to turn a stopped channel back on - resuming needs fresh
+    // consent - so the page must not offer a save that would be turned down.
     vi.mocked(api.getPreferences).mockResolvedValue(
       prefs({ has_email: true, email: "t•••••••t@gmail.com", email_status: "unsubscribed" }),
     );
