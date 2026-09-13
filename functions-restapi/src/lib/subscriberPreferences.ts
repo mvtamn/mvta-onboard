@@ -80,14 +80,14 @@ const SELECT_RECORD = `SELECT subscriber_id, phone_number, email, categories, ro
 // A found link must not become a way to read somebody's contact details. The
 // rider needs only enough to recognise which subscription they are looking at.
 
-/** "+19523883275" -> "(•••) •••-3275" */
+/** "+16125550123" -> "(•••) •••-0123" */
 export function maskPhone(e164: string | null): string | null {
   if (!e164) return null;
   const last4 = e164.slice(-4);
   return `(•••) •••-${last4}`;
 }
 
-/** "tyre.fant@gmail.com" -> "t•••••••t@gmail.com" */
+/** "rider.one@example.com" -> "r•••••••e@example.com" */
 export function maskEmail(email: string | null): string | null {
   if (!email) return null;
   const at = email.lastIndexOf("@");

@@ -22,7 +22,7 @@ const EVENT: ManageLinkRequestedEvent = {
   subscriber_id: "11111111-1111-1111-1111-111111111111",
   channel: "sms",
   manage_key: "a".repeat(64),
-  phone_number: "+19523883275",
+  phone_number: "+16125550123",
   email: null,
 };
 
@@ -69,12 +69,12 @@ test("every outcome gets the same answer, so the endpoint cannot say who is subs
     { outcome: "nothing_confirmed" },
   ] as ManageLinkResult[]) {
     gateway(result);
-    answers.push(await requestManageLinkHandler(post({ phone_number: "(952) 388-3275" }), context));
+    answers.push(await requestManageLinkHandler(post({ phone_number: "(612) 555-0123" }), context));
   }
   // A failure inside, too: an error that answered differently would be a
   // difference worth probing for.
   gateway(new Error("database down"));
-  answers.push(await requestManageLinkHandler(post({ phone_number: "(952) 388-3275" }), context));
+  answers.push(await requestManageLinkHandler(post({ phone_number: "(612) 555-0123" }), context));
 
   for (const answer of answers) {
     assert.deepEqual(answer, { status: 200, jsonBody: { status: "ok" } });
@@ -83,23 +83,23 @@ test("every outcome gets the same answer, so the endpoint cannot say who is subs
 
 test("a link is published only when one was issued, and only after the commit", async () => {
   const issued = gateway({ outcome: "issued", event: EVENT });
-  await requestManageLinkHandler(post({ phone_number: "+19523883275" }), context);
+  await requestManageLinkHandler(post({ phone_number: "+16125550123" }), context);
   assert.deepEqual(issued.calls, ["transaction", "publish"]);
   assert.deepEqual(issued.published, [EVENT]);
 
   for (const outcome of ["too_soon", "nothing_confirmed"] as const) {
     const quiet = gateway({ outcome });
-    await requestManageLinkHandler(post({ phone_number: "+19523883275" }), context);
+    await requestManageLinkHandler(post({ phone_number: "+16125550123" }), context);
     assert.deepEqual(quiet.published, [], `${outcome} sends nothing`);
   }
 });
 
 test("a number is normalized before it is looked up, and one that cannot be read is dropped", () => {
-  // The API stores E.164; "(952) 388-3275" arriving unchanged matches no row.
-  assert.deepEqual(contactsFrom({ phone_number: "(952) 388-3275" }), [["sms", "+19523883275"]]);
+  // The API stores E.164; "(612) 555-0123" arriving unchanged matches no row.
+  assert.deepEqual(contactsFrom({ phone_number: "(612) 555-0123" }), [["sms", "+16125550123"]]);
   assert.deepEqual(contactsFrom({ phone_number: "555-0142" }), []);
   assert.deepEqual(contactsFrom({ email: "  rider@example.com " }), [["email", "rider@example.com"]]);
-  assert.deepEqual(contactsFrom({ phone_number: 9523883275, email: "" }), []);
+  assert.deepEqual(contactsFrom({ phone_number: 6125550123, email: "" }), []);
 });
 
 test("a request with no usable contact touches nothing and still answers the same", async () => {
@@ -111,7 +111,7 @@ test("a request with no usable contact touches nothing and still answers the sam
 
 test("both contacts are tried, and one failing does not stop the other", async () => {
   const run = gateway(new Error("sms side broke"), { outcome: "issued", event: { ...EVENT, channel: "email", phone_number: null, email: "rider@example.com" } });
-  const answer = await requestManageLinkHandler(post({ phone_number: "+19523883275", email: "rider@example.com" }), context);
+  const answer = await requestManageLinkHandler(post({ phone_number: "+16125550123", email: "rider@example.com" }), context);
   assert.deepEqual(run.calls, ["transaction", "transaction", "publish"]);
   assert.equal(run.published[0].channel, "email");
   assert.deepEqual(answer, { status: 200, jsonBody: { status: "ok" } });
@@ -119,9 +119,9 @@ test("both contacts are tried, and one failing does not stop the other", async (
 
 test("a failure is logged by channel and never by the contact", async () => {
   gateway(new Error("boom"));
-  await requestManageLinkHandler(post({ phone_number: "+19523883275" }), context);
+  await requestManageLinkHandler(post({ phone_number: "+16125550123" }), context);
   assert.equal(errors.length, 1);
-  assert.ok(!JSON.stringify(errors[0].slice(0, 1)).includes("9523883275"), "the contact stays out of the logs");
+  assert.ok(!JSON.stringify(errors[0].slice(0, 1)).includes("6125550123"), "the contact stays out of the logs");
 });
 
 test("malformed JSON is refused, which says nothing about any contact", async () => {

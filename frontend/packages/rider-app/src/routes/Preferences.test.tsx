@@ -25,7 +25,7 @@ const KEY = "a".repeat(64);
 
 function prefs(overrides: Partial<RiderPreferences> = {}): RiderPreferences {
   return {
-    phone: "(•••) •••-3275",
+    phone: "(•••) •••-0123",
     email: null,
     has_sms: true,
     has_email: false,
@@ -132,7 +132,7 @@ describe("the manage key", () => {
 describe("what the rider sees", () => {
   it("shows the contact masked, exactly as the API sent it", async () => {
     renderAt(`#key=${KEY}`);
-    expect(await screen.findByRole("checkbox", { name: "Texts to (•••) •••-3275" })).toBeChecked();
+    expect(await screen.findByRole("checkbox", { name: "Texts to (•••) •••-0123" })).toBeChecked();
   });
 
   it("does not offer zones when no zone version is active", async () => {
@@ -211,7 +211,7 @@ describe("saving", () => {
     // The API refuses to turn a stopped channel back on - resuming needs fresh
     // consent - so the page must not offer a save that would be turned down.
     vi.mocked(api.getPreferences).mockResolvedValue(
-      prefs({ has_email: true, email: "t•••••••t@gmail.com", email_status: "unsubscribed" }),
+      prefs({ has_email: true, email: "r•••••••e@example.com", email_status: "unsubscribed" }),
     );
     renderAt(`#key=${KEY}`);
     const email = await screen.findByRole("checkbox", { name: /emails to/i });
@@ -339,11 +339,11 @@ describe("sending the link again", () => {
   });
 
   it("normalizes a typed mobile number before sending it", async () => {
-    // The API stores E.164; "(952) 388-3275" arriving unchanged matches no row.
+    // The API stores E.164; "(612) 555-0123" arriving unchanged matches no row.
     renderAt();
-    await userEvent.type(await screen.findByRole("textbox"), "(952) 388-3275");
+    await userEvent.type(await screen.findByRole("textbox"), "(612) 555-0123");
     await sendMyLink();
-    expect(api.requestManageLink).toHaveBeenCalledWith({ phone_number: "+19523883275" });
+    expect(api.requestManageLink).toHaveBeenCalledWith({ phone_number: "+16125550123" });
   });
 
   it("promises only what the endpoint can keep", async () => {

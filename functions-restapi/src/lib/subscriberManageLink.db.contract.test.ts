@@ -152,16 +152,16 @@ test("a confirmed channel is sent its link, and only its own contact travels", s
   try {
     await reset(pool);
     const key = makeManageKey();
-    const id = await seed(pool, { phone: "+19523883275", email: "both@example.com", key });
+    const id = await seed(pool, { phone: "+16125550123", email: "both@example.com", key });
 
-    const result = await inTx(pool, (tx) => requestManageLink(tx, "sms", "+19523883275"));
+    const result = await inTx(pool, (tx) => requestManageLink(tx, "sms", "+16125550123"));
     assert.equal(result.outcome, "issued");
     assert.deepEqual(result.event, {
       kind: "manage_link",
       subscriber_id: id,
       channel: "sms",
       manage_key: key,
-      phone_number: "+19523883275",
+      phone_number: "+16125550123",
       // The other contact is none of this message's business.
       email: null,
     });
@@ -200,8 +200,8 @@ test("proof is per channel: a confirmed email does not vouch for an unconfirmed 
   const pool = await new sql.ConnectionPool(parseConnectionString(connectionString!)).connect();
   try {
     await reset(pool);
-    await seed(pool, { phone: "+19523883275", email: "rider@example.com", sms: "pending_confirmation", em: "confirmed" });
-    assert.equal((await inTx(pool, (tx) => requestManageLink(tx, "sms", "+19523883275"))).outcome, "nothing_confirmed");
+    await seed(pool, { phone: "+16125550123", email: "rider@example.com", sms: "pending_confirmation", em: "confirmed" });
+    assert.equal((await inTx(pool, (tx) => requestManageLink(tx, "sms", "+16125550123"))).outcome, "nothing_confirmed");
     const email = await inTx(pool, (tx) => requestManageLink(tx, "email", "rider@example.com"));
     assert.equal(email.outcome, "issued");
     assert.equal(email.event?.phone_number, null, "the unproven phone is not carried along");

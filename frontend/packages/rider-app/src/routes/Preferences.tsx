@@ -267,7 +267,7 @@ function ManageLinkForm() {
           type="text"
           value={contact}
           onChange={(event) => setContact(event.target.value)}
-          placeholder="(952) 388-3275 or you@example.com"
+          placeholder="(612) 555-0123 or you@example.com"
           autoComplete="email"
         />
       </label>
