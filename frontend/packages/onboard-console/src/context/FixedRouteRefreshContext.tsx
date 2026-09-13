@@ -13,6 +13,7 @@ import { api } from "../config.js";
 const INTERVAL_STORAGE_KEY = "mvta-onboard-fixed-route-refresh-interval-ms";
 const NEXT_REFRESH_STORAGE_KEY = "mvta-onboard-fixed-route-next-refresh-at";
 const DEFAULT_INTERVAL_MS = 30_000;
+const HISTORY_LENGTH = 6;
 
 export const FIXED_ROUTE_REFRESH_OPTIONS = [
   { value: 15_000, label: "Every 15 seconds" },
@@ -34,6 +35,11 @@ interface FixedRouteRefreshValue {
   intervalMs: number;
   secondsLeft: number;
   lastCompletedAt: Date | null;
+  // The outcome of each of the last six polls, oldest first - true when the
+  // feed answered. The indicator shows these as bars, which is the only part
+  // of it that reports anything about the polls before this one, so they are
+  // recorded here rather than inferred from the current error state.
+  history: boolean[];
   setRefreshInterval: (intervalMs: number) => void;
   refreshNow: () => void;
 }
@@ -68,6 +74,7 @@ export function FixedRouteRefreshProvider({ children }: { children: ReactNode })
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastCompletedAt, setLastCompletedAt] = useState<Date | null>(null);
+  const [history, setHistory] = useState<boolean[]>([]);
 
   const load = useCallback(async () => {
     if (requestInFlight.current) return;
@@ -81,8 +88,10 @@ export function FixedRouteRefreshProvider({ children }: { children: ReactNode })
       });
       setError(null);
       setLastCompletedAt(new Date());
+      setHistory((previous) => [...previous, true].slice(-HISTORY_LENGTH));
     } catch (err) {
       setError(err);
+      setHistory((previous) => [...previous, false].slice(-HISTORY_LENGTH));
     } finally {
       requestInFlight.current = false;
       setLoading(false);
@@ -158,6 +167,7 @@ export function FixedRouteRefreshProvider({ children }: { children: ReactNode })
         intervalMs,
         secondsLeft,
         lastCompletedAt,
+        history,
         setRefreshInterval,
         refreshNow,
       }}
@@ -182,6 +192,7 @@ const FALLBACK_VALUE: FixedRouteRefreshValue = {
   intervalMs: DEFAULT_INTERVAL_MS,
   secondsLeft: 0,
   lastCompletedAt: null,
+  history: [],
   setRefreshInterval: () => {},
   refreshNow: () => {},
 };

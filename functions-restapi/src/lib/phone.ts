@@ -2,8 +2,8 @@
 //
 // `Subscribers.phone_number` is stored in E.164 and `validateSubscribe`
 // refuses anything else, so every lookup by number has to be made against the
-// same shape. A number that arrives as "952-388-3275" does not match the row
-// that holds "+19523883275"; it reads as a number that never subscribed, which
+// same shape. A number that arrives as "612-555-0123" does not match the row
+// that holds "+16125550123"; it reads as a number that never subscribed, which
 // is the one answer the rider cannot act on.
 //
 // The rider app normalizes at the form (`normalizeUsPhone` in

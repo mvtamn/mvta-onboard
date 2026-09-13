@@ -1,4 +1,5 @@
 import type { AssessmentPeriodStatus, OccurrenceAttribution, OccurrenceReviewStatus } from "@mvta/shared";
+import { LiveBanner } from "../../components/LiveSignal.js";
 
 // What the two Garage Departures views share. Garage departure is one concept
 // with one source per service type (ADR 0028), so the fixed-route and
@@ -34,6 +35,29 @@ export function badgeLabel(state: MonitoringState): string {
   if (state === "loading") return "Checking";
   if (state === "unavailable") return "Unavailable";
   return "Not connected";
+}
+
+// Both departure views report their feed the same way, so the mapping from
+// monitoring state to indicator lives here rather than twice. Neither view
+// polls on a clock of its own, so neither gets a countdown arc: the arc is
+// only ever drawn where a next poll is genuinely scheduled.
+export function DeparturesFeedBanner({ state, message }: { state: MonitoringState; message: string }) {
+  if (state === "loading") {
+    return <LiveBanner state="connecting" tone="muted" badge={badgeLabel(state)} role="status">{message}</LiveBanner>;
+  }
+  if (state === "live") {
+    return <LiveBanner state="live" tone="live" badge={badgeLabel(state)} role="status">{message}</LiveBanner>;
+  }
+  return (
+    <LiveBanner
+      state={state === "unavailable" ? "unavailable" : "stale"}
+      tone={state === "unavailable" ? "danger" : "warning"}
+      badge={badgeLabel(state)}
+      role="status"
+    >
+      {message}
+    </LiveBanner>
+  );
 }
 
 export function RiskStat({

@@ -1,0 +1,114 @@
+<div class="root {{rootClass}}" style="padding:28px 30px 34px">
+  <div class="sheet">
+
+    <div>
+      <span class="eyebrow">Live data · signal system</span>
+      <h1>Pulse</h1>
+      <p style="max-width:660px">One indicator for every surface that reports whether operational data is arriving. It pulses hard while the connection is open — twin halos, a comet on the countdown arc, a bloom at every arrival, a sweep across the banner — and then goes completely dead the moment the feed stops. The louder the live state, the harder a frozen one lands.</p>
+    </div>
+
+    <div class="card">
+      <span class="cap">Anatomy</span>
+      <div class="anatomy">
+        <div class="stage">
+          <span class="sig is-live"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle><circle class="arc" cx="9" cy="9" r="7.25"></circle><circle class="comet" cx="9" cy="9" r="7.25"></circle></svg><span class="halo"></span><span class="halo two"></span><span class="bloom"></span><span class="core"></span></span>
+        </div>
+        <div class="legend">
+          <div class="legend-row"><b>Core</b><span>7–11px dot in <code>--live-dot</code> #2FAE66. At each arrival it punches to 2.1× and blooms outward — the loudest single frame in the console, and it fires only when data actually lands.</span></div>
+          <div class="legend-row"><b>Countdown arc</b><span>Unwinds over the module’s own refresh interval, with a lit comet running the leading edge. At a glance: how old is what I’m reading, and how long until it changes.</span></div>
+          <div class="legend-row"><b>Breath halo</b><span>Two rings on a 2s cycle, offset by half a beat, so the pulse never fully rests. Present only while the socket is answering; its absence is the stale signal.</span></div>
+          <div class="legend-row"><b>Freshness ticks</b><span>The last six polls as bars — filled arrived, faint missed — with a wave crossing them left to right, the direction time runs. Evidence that survives a screenshot, a colour-blind reader and reduced motion.</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <span class="cap">States — the five <code>OperationalDataState</code> values, unchanged</span>
+      <div class="matrix">
+
+        <div class="mrow">
+          <div class="mname"><b>Live</b><span>Feed answered inside its freshness contract</span></div>
+          <div class="inline-sig is-live" style="color:var(--live)">
+            <span class="sig is-live"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle><circle class="arc" cx="9" cy="9" r="7.25"></circle><circle class="comet" cx="9" cy="9" r="7.25"></circle></svg><span class="halo"></span><span class="halo two"></span><span class="bloom"></span><span class="core"></span></span>
+            <span style="color:var(--success)">Live data</span>
+            <span class="ticks live" style="color:var(--live)"><i class="tick on"></i><i class="tick on"></i><i class="tick on"></i><i class="tick on"></i><i class="tick on"></i><i class="tick head"></i></span>
+          </div>
+          <div class="banner b-live"><span class="sheen"><i></i></span><span class="wire"><i></i></span><span class="wire bottom"><i></i></span><span class="badge">Live data</span><span class="msg">3 active trips checked · 0 over the 15-minute threshold · <b>updated 11:50 PM</b></span></div>
+        </div>
+
+        <div class="mrow">
+          <div class="mname"><b>Connecting</b><span>First load, or a retry in flight</span></div>
+          <div class="inline-sig is-connecting" style="color:var(--text-muted)">
+            <span class="sig is-connecting"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle><circle class="arc" cx="9" cy="9" r="7.25"></circle></svg><span class="core"></span></span>
+            <span>Connecting</span>
+          </div>
+          <div class="banner b-muted"><span class="badge">Connecting</span><span class="msg">Asking the GTFS-Realtime feed. Counts below are from the last good poll.</span></div>
+        </div>
+
+        <div class="mrow">
+          <div class="mname"><b>Stale</b><span>Answering, but outside the contract</span></div>
+          <div class="inline-sig is-stale" style="color:var(--warn-fg)">
+            <span class="sig is-stale"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle></svg><span class="core"></span></span>
+            <span>Stale data</span>
+            <span class="ticks"><i class="tick on"></i><i class="tick on"></i><i class="tick on"></i><i class="tick"></i><i class="tick"></i><i class="tick"></i></span>
+          </div>
+          <div class="banner b-warn"><span class="badge">Stale</span><span class="msg">Last arrival <b>11:31 PM</b>, 19 minutes ago. Absence of a trip here is not evidence it did not run.</span></div>
+        </div>
+
+        <div class="mrow">
+          <div class="mname"><b>Unavailable</b><span>Request failed, or the feed is not configured</span></div>
+          <div class="inline-sig is-down" style="color:var(--danger)">
+            <span class="sig is-down"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle></svg><span class="core"></span><span class="slash"></span></span>
+            <span>Unavailable</span>
+            <span class="ticks"><i class="tick"></i><i class="tick"></i><i class="tick"></i><i class="tick"></i><i class="tick"></i><i class="tick"></i></span>
+          </div>
+          <div class="banner b-down"><span class="badge">Unavailable</span><span class="msg">The TripUpdate feed is not answering. Nothing on this page is current — do not action from it.</span></div>
+        </div>
+
+        <div class="mrow">
+          <div class="mname"><b>Sign-in required</b><span>Session was not accepted</span></div>
+          <div class="inline-sig is-locked" style="color:var(--danger)">
+            <span class="sig is-locked"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle></svg><span class="core"></span><span class="keybar"></span></span>
+            <span>Sign in again</span>
+          </div>
+          <div class="banner b-down"><span class="badge">Sign in</span><span class="msg">Your session was not accepted. <a href="#">Sign in again</a> to restore live data.</span></div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="card">
+      <span class="cap">Placements — same core, three densities</span>
+      <div class="placements">
+        <div>
+          <div class="nav-demo">
+            <span class="sig sm is-live" style="color:var(--live)"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle><circle class="arc" cx="9" cy="9" r="7.25"></circle><circle class="comet" cx="9" cy="9" r="7.25"></circle></svg><span class="halo"></span><span class="halo two"></span><span class="bloom"></span><span class="core"></span></span>
+            <span>Console live</span>
+          </div>
+          <small style="display:block;margin-top:7px">Sidebar footer · 14px · no ticks</small>
+        </div>
+        <div>
+          <div class="bar-demo">
+            <span class="sig is-live" style="color:var(--live)"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle><circle class="arc" cx="9" cy="9" r="7.25"></circle><circle class="comet" cx="9" cy="9" r="7.25"></circle></svg><span class="halo"></span><span class="halo two"></span><span class="bloom"></span><span class="core"></span></span>
+            <strong>Live data</strong><span>Updated 11:50:04 PM</span>
+          </div>
+          <small style="display:block;margin-top:7px">Dashboard freshness bar · 18px</small>
+        </div>
+        <div>
+          <div class="feed-demo">
+            <div class="feed-row" style="color:var(--success)">
+              <span class="sig sm is-live" style="color:var(--live)"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle><circle class="arc" cx="9" cy="9" r="7.25"></circle><circle class="comet" cx="9" cy="9" r="7.25"></circle></svg><span class="halo"></span><span class="halo two"></span><span class="bloom"></span><span class="core"></span></span>
+              GTFS-Realtime · Live
+            </div>
+            <div class="feed-row" style="color:var(--warn-fg)">
+              <span class="sig sm is-stale"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7.25"></circle></svg><span class="core"></span></span>
+              MVTA Connect · Stale
+            </div>
+          </div>
+          <small style="display:block;margin-top:7px">Feeds &amp; freshness rail · 14px</small>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>

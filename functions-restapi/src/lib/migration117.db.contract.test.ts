@@ -80,7 +80,7 @@ test(
       // `sms_status = status`.
       await pool.request().batch(`
         INSERT dbo.Subscribers (phone_number, email, categories, status, email_status, consent_source) VALUES
-          ('+19523883275', NULL, '["delay"]', 'pending_confirmation', NULL, 'web_form'),
+          ('+16125550123', NULL, '["delay"]', 'pending_confirmation', NULL, 'web_form'),
           ('+16125550142', 'both@example.com', '["delay"]', 'confirmed', 'confirmed', 'web_form'),
           ('+16125550143', NULL, '["delay"]', 'opted_out', NULL, 'web_form'),
           (NULL, 'email-only@example.com', '["delay"]', 'confirmed', 'confirmed', 'web_form');`);
@@ -93,7 +93,7 @@ test(
         "SELECT phone_number, status, sms_status FROM dbo.Subscribers ORDER BY ISNULL(phone_number, 'zzz')",
       );
       const byPhone = new Map(backfilled.recordset.map((r) => [r.phone_number, r.sms_status]));
-      assert.equal(byPhone.get("+19523883275"), "pending_confirmation", "a pending record's SMS channel is pending");
+      assert.equal(byPhone.get("+16125550123"), "pending_confirmation", "a pending record's SMS channel is pending");
       assert.equal(byPhone.get("+16125550142"), "confirmed", "a confirmed record's SMS channel is confirmed");
       assert.equal(
         byPhone.get("+16125550143"),
@@ -110,22 +110,22 @@ test(
       // migration exists for: before it, setting status='confirmed' from the
       // email callback made an unproven phone number SMS-eligible.
       await assert.rejects(
-        pool.request().query("UPDATE dbo.Subscribers SET sms_status='opted_out' WHERE phone_number='+19523883275'"),
+        pool.request().query("UPDATE dbo.Subscribers SET sms_status='opted_out' WHERE phone_number='+16125550123'"),
         /CK_Subscribers_SmsStatus|conflicted/i,
         "a record-level state must not be storable in a channel column",
       );
       await assert.rejects(
-        pool.request().query("UPDATE dbo.Subscribers SET opted_out_reason='because' WHERE phone_number='+19523883275'"),
+        pool.request().query("UPDATE dbo.Subscribers SET opted_out_reason='because' WHERE phone_number='+16125550123'"),
         /CK_Subscribers_OptedOutReason|conflicted/i,
         "an opt-out reason must name a reason the system can act on",
       );
       for (const reason of ["sms_stop", "email_link", "staff"]) {
-        await pool.request().query(`UPDATE dbo.Subscribers SET opted_out_reason='${reason}' WHERE phone_number='+19523883275'`);
+        await pool.request().query(`UPDATE dbo.Subscribers SET opted_out_reason='${reason}' WHERE phone_number='+16125550123'`);
       }
 
       const subscriberId = (
         await pool.request().query<{ subscriber_id: string }>(
-          "SELECT TOP 1 subscriber_id FROM dbo.Subscribers WHERE phone_number='+19523883275'",
+          "SELECT TOP 1 subscriber_id FROM dbo.Subscribers WHERE phone_number='+16125550123'",
         )
       ).recordset[0].subscriber_id;
       const issue = (token: string, channel = "sms") =>

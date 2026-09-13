@@ -94,11 +94,11 @@ describe("the landing page", () => {
   });
 
   it("normalizes a typed mobile number before sending it", async () => {
-    // The API stores E.164; "(952) 388-3275" arriving unchanged matches no row.
+    // The API stores E.164; "(612) 555-0123" arriving unchanged matches no row.
     renderAt("?status=expired&channel=email");
-    await userEvent.type(screen.getByRole("textbox"), "(952) 388-3275");
+    await userEvent.type(screen.getByRole("textbox"), "(612) 555-0123");
     await userEvent.click(screen.getByRole("button", { name: /send a new one/i }));
-    expect(api.resendConfirmation).toHaveBeenCalledWith({ phone_number: "+19523883275" });
+    expect(api.resendConfirmation).toHaveBeenCalledWith({ phone_number: "+16125550123" });
   });
 
   it("promises only what the endpoint can keep", async () => {

@@ -163,11 +163,11 @@ test("a resend leaves exactly one live token, and it is the new one", skip, asyn
   try {
     await reset(pool);
     const id = await seed(pool, {
-      phone: "+19523883275",
+      phone: "+16125550123",
       tokens: [{ channel: "sms", token: "111111", ageMinutes: COOLED }],
     });
 
-    const result = await inTx(pool, (tx) => resendConfirmation(tx, "sms", "+19523883275"));
+    const result = await inTx(pool, (tx) => resendConfirmation(tx, "sms", "+16125550123"));
     assert.equal(result.outcome, "issued");
     assert.equal(result.subscriberId, id);
 
@@ -186,10 +186,10 @@ test("the superseded token is retired, not marked confirmed", skip, async () => 
   try {
     await reset(pool);
     const id = await seed(pool, {
-      phone: "+19523883275",
+      phone: "+16125550123",
       tokens: [{ channel: "sms", token: "222222", ageMinutes: COOLED }],
     });
-    await inTx(pool, (tx) => resendConfirmation(tx, "sms", "+19523883275"));
+    await inTx(pool, (tx) => resendConfirmation(tx, "sms", "+16125550123"));
 
     const old = (
       await pool.request().input("id", sql.UniqueIdentifier, id).query<{ confirmed_at: Date | null; superseded_at: Date | null }>(
@@ -215,14 +215,14 @@ test("a second resend inside the cooldown issues nothing", skip, async () => {
   try {
     await reset(pool);
     const id = await seed(pool, {
-      phone: "+19523883275",
+      phone: "+16125550123",
       tokens: [{ channel: "sms", token: "333333", ageMinutes: COOLED }],
     });
-    const first = await inTx(pool, (tx) => resendConfirmation(tx, "sms", "+19523883275"));
+    const first = await inTx(pool, (tx) => resendConfirmation(tx, "sms", "+16125550123"));
     assert.equal(first.outcome, "issued");
 
     // The token just issued is seconds old, so the cooldown is what refuses.
-    const second = await inTx(pool, (tx) => resendConfirmation(tx, "sms", "+19523883275"));
+    const second = await inTx(pool, (tx) => resendConfirmation(tx, "sms", "+16125550123"));
     assert.equal(second.outcome, "too_soon");
     assert.equal(second.issued, undefined);
     assert.deepEqual(await liveTokens(pool, id, "sms"), [first.issued!.token]);
@@ -239,13 +239,13 @@ test("the cooldown is measured from the last token issued, spent or not", skip, 
     // counting live rows would let a caller alternate resend and supersede to
     // keep sending.
     await seed(pool, {
-      phone: "+19523883275",
+      phone: "+16125550123",
       tokens: [
         { channel: "sms", token: "444444", ageMinutes: COOLED },
         { channel: "sms", token: "555555", ageMinutes: 0, superseded: true },
       ],
     });
-    const result = await inTx(pool, (tx) => resendConfirmation(tx, "sms", "+19523883275"));
+    const result = await inTx(pool, (tx) => resendConfirmation(tx, "sms", "+16125550123"));
     assert.equal(result.outcome, "too_soon");
   } finally {
     await pool.close();
@@ -258,8 +258,8 @@ test("a channel with no token yet is resent to", skip, async () => {
     await reset(pool);
     // The publish after opt-in is best-effort; a rider whose first send never
     // happened has no token at all, and has to be able to ask for one.
-    const id = await seed(pool, { phone: "+19523883275", tokens: [] });
-    const result = await inTx(pool, (tx) => resendConfirmation(tx, "sms", "+19523883275"));
+    const id = await seed(pool, { phone: "+16125550123", tokens: [] });
+    const result = await inTx(pool, (tx) => resendConfirmation(tx, "sms", "+16125550123"));
     assert.equal(result.outcome, "issued");
     assert.equal((await liveTokens(pool, id, "sms")).length, 1);
   } finally {
@@ -271,9 +271,9 @@ test("a confirmed or unsubscribed channel is never resent to", skip, async () =>
   const pool = await new sql.ConnectionPool(parseConnectionString(connectionString!)).connect();
   try {
     await reset(pool);
-    await seed(pool, { phone: "+19523883275", smsStatus: "confirmed", status: "confirmed" });
+    await seed(pool, { phone: "+16125550123", smsStatus: "confirmed", status: "confirmed" });
     assert.equal(
-      (await inTx(pool, (tx) => resendConfirmation(tx, "sms", "+19523883275"))).outcome,
+      (await inTx(pool, (tx) => resendConfirmation(tx, "sms", "+16125550123"))).outcome,
       "nothing_to_send",
       "a confirmed channel has nothing left to prove",
     );
@@ -303,14 +303,14 @@ test("resending one channel leaves the other channel's token alone", skip, async
   try {
     await reset(pool);
     const id = await seed(pool, {
-      phone: "+19523883275",
+      phone: "+16125550123",
       email: "both@example.com",
       tokens: [
         { channel: "sms", token: "666666", ageMinutes: COOLED },
         { channel: "email", token: "email-token-live", ageMinutes: COOLED },
       ],
     });
-    await inTx(pool, (tx) => resendConfirmation(tx, "sms", "+19523883275"));
+    await inTx(pool, (tx) => resendConfirmation(tx, "sms", "+16125550123"));
     assert.deepEqual(await liveTokens(pool, id, "email"), ["email-token-live"]);
   } finally {
     await pool.close();
@@ -325,15 +325,15 @@ test("a contact with duplicate rows gets one new token, on the newest signup", s
     // (increment 4); resending to every one of them would send the rider three
     // texts for one request.
     const older = await seed(pool, {
-      phone: "+19523883275",
+      phone: "+16125550123",
       tokens: [{ channel: "sms", token: "777777", ageMinutes: 240 }],
     });
     const newer = await seed(pool, {
-      phone: "+19523883275",
+      phone: "+16125550123",
       tokens: [{ channel: "sms", token: "888888", ageMinutes: COOLED }],
     });
 
-    const result = await inTx(pool, (tx) => resendConfirmation(tx, "sms", "+19523883275"));
+    const result = await inTx(pool, (tx) => resendConfirmation(tx, "sms", "+16125550123"));
     assert.equal(result.outcome, "issued");
     assert.equal(result.subscriberId, newer, "the newest signup is the one the rider is waiting on");
     assert.deepEqual(await liveTokens(pool, older, "sms"), ["777777"]);
@@ -351,10 +351,10 @@ test("a new code may reuse a code the supersede just freed", skip, async () => {
     // what frees the entry; issuing first would meet the index still holding
     // the token being retired.
     const id = await seed(pool, {
-      phone: "+19523883275",
+      phone: "+16125550123",
       tokens: [{ channel: "sms", token: "999999", ageMinutes: COOLED }],
     });
-    const result = await inTx(pool, (tx) => resendConfirmation(tx, "sms", "+19523883275"));
+    const result = await inTx(pool, (tx) => resendConfirmation(tx, "sms", "+16125550123"));
     assert.equal(result.outcome, "issued");
 
     // Prove the freed entry is genuinely reusable, which is the property the
@@ -392,21 +392,21 @@ test("the code a resend replaced says so, and does not cost an attempt", skip, a
   try {
     await reset(pool);
     const id = await seed(pool, {
-      phone: "+19523883275",
+      phone: "+16125550123",
       tokens: [{ channel: "sms", token: "111111", ageMinutes: COOLED }],
     });
-    assert.equal((await inTx(pool, (tx) => resendConfirmation(tx, "sms", "+19523883275"))).outcome, "issued");
+    assert.equal((await inTx(pool, (tx) => resendConfirmation(tx, "sms", "+16125550123"))).outcome, "issued");
 
     // The older text. Treating it as a wrong guess both misdescribes it - we
     // sent that code to this number - and spends one of the five tries on a
     // mistake the rider had no way to avoid making.
-    const stale = await inTx(pool, (tx) => confirmSms(tx, "+19523883275", "111111"));
+    const stale = await inTx(pool, (tx) => confirmSms(tx, "+16125550123", "111111"));
     assert.equal(stale.outcome, "superseded", "tell the rider to use the newer code, not that theirs is wrong");
     assert.equal(await attemptsOnLiveToken(pool, id), 0, "a code we really sent is not a guess");
 
     // The newer one still works, and was not damaged by the attempt above.
     const live = (await liveTokens(pool, id, "sms"))[0];
-    assert.equal((await inTx(pool, (tx) => confirmSms(tx, "+19523883275", live))).outcome, "confirmed");
+    assert.equal((await inTx(pool, (tx) => confirmSms(tx, "+16125550123", live))).outcome, "confirmed");
   } finally {
     await pool.close();
   }
@@ -417,7 +417,7 @@ test("a code we never sent to this number is still a guess", skip, async () => {
   try {
     await reset(pool);
     const id = await seed(pool, {
-      phone: "+19523883275",
+      phone: "+16125550123",
       tokens: [
         { channel: "sms", token: "222222", ageMinutes: COOLED, superseded: true },
         { channel: "sms", token: "333333" },
@@ -428,7 +428,7 @@ test("a code we never sent to this number is still a guess", skip, async () => {
     // number was actually issued. Reaching it means naming one of those, which
     // is exactly as hard as naming the live code - so it hands a guesser
     // nothing, and everything else still counts.
-    const guess = await inTx(pool, (tx) => confirmSms(tx, "+19523883275", "000000"));
+    const guess = await inTx(pool, (tx) => confirmSms(tx, "+16125550123", "000000"));
     assert.equal(guess.outcome, "incorrect_code");
     assert.equal(guess.attemptsRemaining, MAX_CONFIRM_ATTEMPTS - 1);
     assert.equal(await attemptsOnLiveToken(pool, id), 1);
@@ -438,7 +438,7 @@ test("a code we never sent to this number is still a guess", skip, async () => {
       phone: "+16125550142",
       tokens: [{ channel: "sms", token: "444444", superseded: true }, { channel: "sms", token: "555555" }],
     });
-    const crossed = await inTx(pool, (tx) => confirmSms(tx, "+19523883275", "444444"));
+    const crossed = await inTx(pool, (tx) => confirmSms(tx, "+16125550123", "444444"));
     assert.equal(crossed.outcome, "incorrect_code");
     assert.equal(await attemptsOnLiveToken(pool, id), 2);
   } finally {
@@ -454,13 +454,13 @@ test("replying with the code that already worked reads as done", skip, async () 
     // the rider re-subscribed. Their old code should not read as a wrong
     // guess against the new signup.
     const id = await seed(pool, {
-      phone: "+19523883275",
+      phone: "+16125550123",
       tokens: [
         { channel: "sms", token: "666666", confirmed: true },
         { channel: "sms", token: "777777" },
       ],
     });
-    const spent = await inTx(pool, (tx) => confirmSms(tx, "+19523883275", "666666"));
+    const spent = await inTx(pool, (tx) => confirmSms(tx, "+16125550123", "666666"));
     assert.equal(spent.outcome, "already_confirmed");
     assert.equal(await attemptsOnLiveToken(pool, id), 0);
   } finally {

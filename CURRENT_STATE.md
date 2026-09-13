@@ -313,7 +313,7 @@ Azure Communication Services provisioning is required to send real
 confirmations, but it does not prevent the callback endpoints and their tests
 from being implemented now.
 
-### 7.3 Dispatch targeting — zones evaluated (1.5.199)
+### 7.3 Dispatch targeting — zones evaluated (1.5.201)
 
 Broadcast dispatch evaluates the subscriber's categories, each channel's own
 confirmation state (1.5.189), the alert's requested delivery channels, and the

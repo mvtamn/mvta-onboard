@@ -1,0 +1,17 @@
+    .col { padding:22px 22px 26px; display:flex; flex-direction:column; gap:16px; }
+    .rail { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:15px; }
+    .rail-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:13px; }
+    .rail-head h2 { font-size:18px; font-weight:800; margin:3px 0 0; }
+    .btn-sm { background:var(--surface); border:1px solid var(--border-strong); border-radius:7px; color:var(--text); font-size:11.5px; font-weight:700; padding:5px 10px; flex:none; }
+    .summary { align-items:center; background:var(--chip-bg); border:1px solid var(--datasource-border); border-radius:7px; color:var(--chip-fg); display:flex; font-size:12px; gap:8px; padding:9px 10px; margin-bottom:12px; }
+    .summary .spacer { flex:1; }
+    .feeds { display:grid; gap:10px; }
+    .feed { display:grid; grid-template-columns:18px minmax(0,1fr) auto; align-items:center; gap:8px; }
+    .feed b { font-size:12.5px; font-weight:800; }
+    .feed small { display:block; font-weight:400; margin-top:1px; }
+    .freshbar { align-items:center; background:var(--surface-alt); border:1px solid var(--border); border-radius:8px; color:var(--text-dim); display:flex; gap:8px; padding:9px 11px; font-size:12px; }
+    .freshbar strong { color:var(--text); font-size:12.5px; }
+    .freshbar .spacer { flex:1; }
+    .freshbar a { font-size:12px; font-weight:800; text-decoration:none; }
+    .navfoot { background:var(--nav-bg); border-radius:10px; padding:12px 14px; display:flex; align-items:center; gap:8px; color:rgba(255,255,255,.85); font-size:11.5px; font-weight:600; }
+    .cap { color:var(--text-muted); font-size:10px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; display:block; margin-bottom:6px; }

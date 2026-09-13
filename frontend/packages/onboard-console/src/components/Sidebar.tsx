@@ -1,4 +1,5 @@
 import { dataStateLabel, type LiveStats } from "../hooks/useLiveStats.js";
+import { LiveSignal, signalStateFor } from "./LiveSignal.js";
 
 // Data-health context for the Dashboard's right rail. Each feed status is
 // derived from the live endpoints already used by the dashboard.
@@ -22,17 +23,17 @@ export function Sidebar({ stats }: { stats: LiveStats }) {
       </div>
 
       <div className={`data-health-summary ${stats.overallState}`} role="status">
-        <span className="live-dot" />
+        <LiveSignal state={signalStateFor(stats.overallState)} />
         <strong>{dataStateLabel(stats.overallState)}</strong>
       </div>
 
       <div className="data-health-status" aria-live="polite">
         <div className={`data-health-feed ${stats.activeState}`}>
-          <span className="live-dot" />
+          <LiveSignal state={signalStateFor(stats.activeState)} size="sm" />
           GTFS-Realtime · {dataStateLabel(stats.activeState)}
         </div>
         <div className={`data-health-feed ${stats.pendingState}`}>
-          <span className="live-dot" />
+          <LiveSignal state={signalStateFor(stats.pendingState)} size="sm" />
           MVTA Connect · {dataStateLabel(stats.pendingState)}
         </div>
       </div>
