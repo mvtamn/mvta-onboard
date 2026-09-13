@@ -41,7 +41,8 @@ body {
 }
 .navlinks a.active { color: #00553d; }
 .content { padding: 28px 24px 32px; }
-.crumb { font-size: 12px; color: #888; margin: 0 0 6px; }
+/* #6b6b6b, not #888: 12px text needs 4.5:1 on white, and #888 is 3.5:1. */
+.crumb { font-size: 12px; color: #6b6b6b; margin: 0 0 6px; }
 .title { color: #00553d; font-size: 24px; font-weight: bold; margin: 0 0 6px; }
 .subtitle { color: #4f4f4f; font-size: 14px; margin: 0 0 20px; }
 .filterbar { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
@@ -78,30 +79,104 @@ body {
 }
 .loading { text-align: center; padding: 50px 20px; color: #888; font-size: 14px; }
 
-/* Opt-in form */
+/* Browser surfaces, themed from the palette rather than left at defaults. */
+::selection { background: rgba(0, 85, 61, 0.18); }
+.content a { color: #00553d; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+.content a:hover { text-decoration-thickness: 2px; }
+.content a:focus-visible { outline: 3px solid rgba(0, 85, 61, 0.35); outline-offset: 2px; border-radius: 2px; }
+
+/* Forms - shared by the subscribe, confirmation and manage pages. */
 .form { display: flex; flex-direction: column; gap: 18px; max-width: 460px; }
-.field { display: flex; flex-direction: column; gap: 6px; border: none; padding: 0; margin: 0; }
+.field { display: flex; flex-direction: column; gap: 6px; border: none; padding: 0; margin: 0; min-width: 0; }
 .field > span,
-.field legend { font-size: 13px; font-weight: bold; color: #2c2c2a; padding: 0; }
+.field legend { font-size: 14px; font-weight: bold; color: #2c2c2a; padding: 0; }
 .field input[type="tel"],
 .field input[type="email"],
 .field input[type="text"] {
-  font-size: 14px;
-  padding: 10px 12px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
+  width: 100%;
+  font: inherit;
+  /* 16px, not 14px: iOS Safari zooms the page into any smaller field on focus. */
+  font-size: 16px;
+  color: #2c2c2a;
+  background: #fff;
+  padding: 11px 12px;
+  border: 1px solid #c8c6bf;
+  border-radius: 8px;
+  caret-color: #00553d;
+  transition: border-color 0.15s ease-out;
 }
-.checks { display: flex; flex-wrap: wrap; gap: 10px 18px; }
-.check { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #2c2c2a; }
-.check.consent { align-items: flex-start; gap: 10px; font-size: 12px; color: #4f4f4f; line-height: 1.4; }
+.field input::placeholder { color: #767676; }
+.field input:hover { border-color: #9c9a93; }
+.field input:focus { outline: 3px solid rgba(0, 85, 61, 0.25); outline-offset: 0; border-color: #00553d; }
+.field input[aria-invalid="true"] { border-color: #b3261e; }
+.field input[aria-invalid="true"]:focus { outline-color: rgba(179, 38, 30, 0.22); }
+
+.checks { display: flex; flex-wrap: wrap; gap: 4px 20px; }
+/* 11px padding makes a 41px row: a tap target, not just a 18px box. */
+.check { display: flex; align-items: flex-start; gap: 10px; padding: 11px 0; font-size: 14px; line-height: 1.35; color: #2c2c2a; cursor: pointer; }
+.check input[type="checkbox"],
+.check input[type="radio"] { flex: none; width: 18px; height: 18px; margin: 0; accent-color: #00553d; cursor: pointer; }
+.check input:focus-visible { outline: 3px solid rgba(0, 85, 61, 0.35); outline-offset: 2px; }
+.check input:disabled { cursor: default; }
+
 .btn-primary {
   background: #00553d;
   color: #fff;
   border: none;
-  border-radius: 6px;
-  padding: 12px 18px;
-  font-size: 14px;
+  border-radius: 8px;
+  padding: 13px 22px;
+  font: inherit;
+  font-size: 15px;
   font-weight: bold;
   cursor: pointer;
+  transition: background-color 0.15s ease-out;
 }
+.btn-primary:hover:not(:disabled) { background: #00442f; }
+.btn-primary:focus-visible,
+.retry-btn:focus-visible { outline: 3px solid rgba(0, 85, 61, 0.35); outline-offset: 2px; }
+/* In a stacked form the secondary action lines up under the primary one; the
+   left margin is for the inline retry beside an error message. */
+.form .retry-btn { align-self: flex-start; margin-left: 0; }
+
+/* Subscribe page. The only form that spans the full card, so its edges line
+   up with the heading and subtitle above it. */
+.form.optin { max-width: none; gap: 30px; }
+.section { border: 0; padding: 0; margin: 0; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.section-title { padding: 0; margin: 0 0 12px; font-size: 15px; font-weight: bold; color: #2c2c2a; }
+
+/* A track in the filter chips' #f1efe8, with the segments inset inside it rather
+   pressed against a border - the same "green is selected" language as the chips. */
+.segments { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 10px; background: #f1efe8; }
+.segment { position: relative; display: block; }
+.segment input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.segment span { display: flex; align-items: center; justify-content: center; min-height: 42px; padding: 0 12px; border-radius: 7px; font-size: 15px; font-weight: bold; color: #2c2c2a; transition: background-color 0.15s ease-out, color 0.15s ease-out; }
+.segment input:not(:checked):hover + span { background: #e6e3da; }
+.segment input:checked + span { background: #00553d; color: #fff; }
+/* Orange rather than green: a green ring would vanish on the selected segment.
+   Offset into the track, where nothing clips it. */
+.segment input:focus-visible + span { outline: 3px solid #f78e1e; outline-offset: 2px; }
+
+.contact-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; }
+
+.checks.grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 16px; }
+.check.wide { grid-column: span 2; }
+
+.check.consent { align-items: flex-start; gap: 12px; padding: 14px 16px; background: #f7f6f1; border: 1px solid #e6e3da; border-radius: 8px; font-size: 13px; line-height: 1.5; color: #4f4f4f; }
+.check.consent input { margin-top: 1px; }
+.check.consent input[aria-invalid="true"] { outline: 2px solid #b3261e; outline-offset: 2px; }
+
+.form-error { margin: 0; padding: 10px 12px; border: 1px solid #efc6c3; border-radius: 8px; background: #fbeeed; color: #8a1f1f; font-size: 14px; line-height: 1.45; }
 .btn-primary:disabled { opacity: 0.6; cursor: default; }
+.form.optin .submit { align-self: flex-start; min-width: 220px; }
+
+@media (max-width: 560px) {
+  body { padding: 12px; }
+  .alertbar { padding: 9px 16px; font-size: 12px; }
+  .nav { padding: 12px 16px; }
+  .navlinks a { margin-left: 14px; font-size: 13px; }
+  .content { padding: 22px 16px 26px; }
+  .title { font-size: 22px; }
+  .contact-fields { grid-template-columns: minmax(0, 1fr); }
+  .checks.grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .form.optin .submit { align-self: stretch; }
+}
