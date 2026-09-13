@@ -145,6 +145,17 @@ app.http("subscribersPreferencesPut", {
           // Coming back is a new consent, and the date someone agreed is what a
           // TCPA complaint turns on. A click on an old link is not that.
           return { status: 409, jsonBody: { status: "opted_out" } };
+        case "channel_stopped":
+          // The same rule one channel at a time. The page never sends this - it
+          // shows a stopped channel disabled - so only a direct caller reaches
+          // it, and is told why instead of the channel being silently left off.
+          return {
+            status: 400,
+            jsonBody: {
+              error: "Validation failed",
+              details: ["A stopped channel can't be turned back on here. To get those alerts again, sign up again."],
+            },
+          };
         default:
           return { status: 200, jsonBody: { status: "updated" } };
       }

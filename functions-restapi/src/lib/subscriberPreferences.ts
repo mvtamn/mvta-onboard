@@ -226,7 +226,7 @@ async function recordChange(
   );
 }
 
-export type WriteOutcome = "updated" | "opted_out" | "not_found";
+export type WriteOutcome = "updated" | "opted_out" | "channel_stopped" | "not_found";
 
 /**
  * Replace a rider's preferences.
@@ -250,17 +250,33 @@ export async function writePreferences(
   const before = stateOf(record);
   const keep = new Set(update.channels);
 
+  // A stopped channel is refused, not turned back on. This used to put it back
+  // to "waiting for confirmation" - and send nothing to confirm it, so the
+  // rider waited on a link or code that was never coming. Sending one from
+  // here would not be right either: this endpoint is reached from a link, not
+  // from a form with a consent statement, and a channel someone stopped - by
+  // texting STOP or on this page - needs fresh consent to resume. Signing up
+  // again is that path, and it does restore delivery: the new record confirms
+  // the contact, and because the old record's channel is no longer confirmed,
+  // mergeOnConfirm keeps the new record instead of folding it away.
+  if (
+    (keep.has("sms") && record.sms_status === "unsubscribed") ||
+    (keep.has("email") && record.email_status === "unsubscribed")
+  ) {
+    return "channel_stopped";
+  }
+
   // A channel the rider does not have stays null: there is nothing to send on,
   // which is not the same as having stopped it.
   const smsStatus = record.sms_status === null
     ? null
     : keep.has("sms")
-      ? reviveChannel(record.sms_status)
+      ? record.sms_status
       : "unsubscribed";
   const emailStatus = record.email_status === null
     ? null
     : keep.has("email")
-      ? reviveChannel(record.email_status)
+      ? record.email_status
       : "unsubscribed";
 
   const write = new sql.Request(tx);
@@ -295,14 +311,6 @@ export async function writePreferences(
     email_status: emailStatus,
   });
   return "updated";
-}
-
-// Turning a channel back on restores it to whatever it can honestly be. A
-// channel that was confirmed stays confirmed - the rider proved that contact
-// and nothing since has un-proved it - but one that never got past
-// 'pending_confirmation' does not get promoted by being re-ticked.
-function reviveChannel(current: string): string {
-  return current === "unsubscribed" ? "pending_confirmation" : current;
 }
 
 export interface UnsubscribeResult {
