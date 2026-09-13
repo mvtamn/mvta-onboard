@@ -272,14 +272,28 @@ export function TripStartLog() {
       {message ? (
         <LiveBanner
           role="status"
-          state={state === "live" ? "live" : state === "loading" ? "connecting" : state === "unavailable" ? "unavailable" : "stale"}
-          tone={state === "live" ? "live" : state === "loading" ? "muted" : state === "unavailable" ? "danger" : "warning"}
-          badge={state === "live" ? "Live data" : state === "loading" ? "Checking" : state === "unavailable" ? "Unavailable" : "Not connected"}
+          state={state === "loading" ? "connecting" : state === "unavailable" ? "unavailable" : "stale"}
+          tone={state === "loading" ? "muted" : state === "unavailable" ? "danger" : "warning"}
+          badge={state === "loading" ? "Checking" : state === "unavailable" ? "Unavailable" : "Not connected"}
+        >
+          {message}
+        </LiveBanner>
+      ) : live && isToday && serviceDate ? (
+        // A working log has no warning to show, so this banner used to hide
+        // exactly when the page was live - and the countdown and poll bars it
+        // carries were never on screen. Only today's log refreshes with the
+        // fixed-route clock; an earlier day is a settled record, and a
+        // countdown beside it would promise an update that is not coming.
+        <LiveBanner
+          role="status"
+          state="live"
+          tone="live"
+          badge="Live data"
           intervalMs={refresh.intervalMs}
           secondsLeft={refresh.secondsLeft}
           history={refresh.history}
         >
-          {message}
+          Log for {serviceDateLabel(serviceDate)} loaded · refreshes with fixed-route data
         </LiveBanner>
       ) : null}
 
