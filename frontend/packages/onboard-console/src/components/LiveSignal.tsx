@@ -32,12 +32,30 @@ const STATE_CLASS: Record<SignalState, string> = {
   locked: "is-locked",
 };
 
-// True once the delivery time has changed since this component mounted.
-// Opening a page is not a delivery: the data was already there, and a flash
-// on load would say something had just arrived when nothing had.
-function useArrivedSinceMount(arrivalKey: number | null | undefined): boolean {
-  const first = useRef(arrivalKey);
-  return arrivalKey != null && arrivalKey !== first.current;
+// Whether to show the arrival flash for this delivery slot. It fires once per
+// new slot, and never for:
+//   - the first slot this component sees. Opening a page is not a delivery:
+//     the data was already there. The banner mounts in its loading state with
+//     no clock and receives one a second later, so the baseline is the first
+//     slot seen, not the value at mount - keying on the mount value flashed on
+//     every page load, which is what dev showed;
+//   - a slot it has already seen. Re-reads, a second poller's stamp and a
+//     catch-up run all land in a slot that already delivered;
+//   - a return to live within the same slot. While the signal is not live it
+//     passes no slot, which clears the pending flash, so coming back to live
+//     does not replay one for data that arrived before the interruption.
+// The refs are written during render, idempotently, so a repeated render of
+// the same slot gives the same answer.
+function useDeliveryFlash(slotKey: number | null): boolean {
+  const lastSeen = useRef<number | null>(null);
+  const flashFor = useRef<number | null>(null);
+  if (slotKey == null) {
+    flashFor.current = null;
+  } else if (slotKey !== lastSeen.current) {
+    if (lastSeen.current !== null) flashFor.current = slotKey;
+    lastSeen.current = slotKey;
+  }
+  return slotKey != null && flashFor.current === slotKey;
 }
 
 export interface LiveSignalProps {
@@ -52,20 +70,23 @@ export interface LiveSignalProps {
 
 export function LiveSignal({ state, size = "md", clock, label }: LiveSignalProps) {
   const live = state === "live";
-  const lastArrivalAt = clock?.lastArrivalAt ?? null;
+  const slotStartAt = clock?.slotStartAt ?? null;
   const cadenceMs = clock?.cadenceMs ?? null;
-  const arrived = useArrivedSinceMount(live ? lastArrivalAt : null);
+  const arrived = useDeliveryFlash(live ? slotStartAt : null);
 
-  // The arc unwinds once, from the last real delivery towards the next one on
-  // the poller's cadence, and stays empty if that delivery is late - it does
-  // not loop as though another one were on its way. Keyed on the delivery, so
-  // a new one restarts it; the elapsed time is fixed per delivery, so the
-  // provider's once-a-second re-render does not nudge a running animation.
+  // The arc unwinds once across the delivered slot, from its start on the
+  // poller's grid to the next scheduled poll, and stays empty if that poll is
+  // late - it does not loop as though another one were on its way. Anchored to
+  // the slot, not the delivery stamp: a stamp lands seconds to minutes into its
+  // slot (later still for a catch-up run), and "stamp + five minutes" pointed
+  // past the real next poll. Keyed on the slot, so a new one restarts it; the
+  // elapsed time is fixed per slot, so the provider's once-a-second re-render
+  // does not nudge a running animation.
   const arcStyle = useMemo(() => {
-    if (lastArrivalAt === null || cadenceMs === null) return undefined;
-    const elapsed = Math.min(cadenceMs, Math.max(0, Date.now() - lastArrivalAt));
+    if (slotStartAt === null || cadenceMs === null) return undefined;
+    const elapsed = Math.min(cadenceMs, Math.max(0, Date.now() - slotStartAt));
     return { animationDuration: `${cadenceMs}ms`, animationDelay: elapsed > 0 ? `-${elapsed}ms` : "0ms" };
-  }, [lastArrivalAt, cadenceMs]);
+  }, [slotStartAt, cadenceMs]);
   const countdown = live && arcStyle !== undefined;
 
   return (
@@ -77,14 +98,14 @@ export function LiveSignal({ state, size = "md", clock, label }: LiveSignalProps
     >
       <svg viewBox="0 0 18 18" focusable="false" aria-hidden="true">
         <circle className="live-signal-track" cx="9" cy="9" r="7.25" />
-        {countdown ? <circle key={`arc-${lastArrivalAt}`} className="live-signal-arc" cx="9" cy="9" r="7.25" style={arcStyle} /> : null}
-        {countdown ? <circle key={`comet-${lastArrivalAt}`} className="live-signal-comet" cx="9" cy="9" r="7.25" style={arcStyle} /> : null}
+        {countdown ? <circle key={`arc-${slotStartAt}`} className="live-signal-arc" cx="9" cy="9" r="7.25" style={arcStyle} /> : null}
+        {countdown ? <circle key={`comet-${slotStartAt}`} className="live-signal-comet" cx="9" cy="9" r="7.25" style={arcStyle} /> : null}
       </svg>
       <span className="live-signal-halo" />
       <span className="live-signal-halo two" />
-      {/* Remounted per delivery so the one-shot punch and bloom replay. */}
-      <span key={`bloom-${lastArrivalAt}`} className={`live-signal-bloom${arrived ? " arrive" : ""}`} />
-      <span key={`core-${lastArrivalAt}`} className={`live-signal-core${arrived ? " arrive" : ""}`} />
+      {/* Remounted per delivered slot so the one-shot punch and bloom replay. */}
+      <span key={`bloom-${slotStartAt}`} className={`live-signal-bloom${arrived ? " arrive" : ""}`} />
+      <span key={`core-${slotStartAt}`} className={`live-signal-core${arrived ? " arrive" : ""}`} />
       {state === "unavailable" ? <span className="live-signal-slash" /> : null}
       {state === "locked" ? <span className="live-signal-keybar" /> : null}
     </span>
@@ -141,8 +162,8 @@ export interface LiveBannerProps {
 export function LiveBanner({
   state, tone, badge, children, clock, history, role, ariaLabel,
 }: LiveBannerProps) {
-  const arrivalKey = tone === "live" ? clock?.lastArrivalAt ?? null : null;
-  const arrived = useArrivedSinceMount(arrivalKey);
+  const arrivalKey = tone === "live" ? clock?.slotStartAt ?? null : null;
+  const arrived = useDeliveryFlash(arrivalKey);
   const sweep = arrived ? " arrive" : "";
   return (
     <div className={`live-banner tone-${tone}`} role={role} aria-label={ariaLabel}>

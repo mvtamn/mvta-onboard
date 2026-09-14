@@ -95,10 +95,14 @@ export function FixedRouteRefreshProvider({ children }: { children: ReactNode })
       setLastCompletedAt(new Date());
       // A worker still on the previous build answers without these; the
       // clock then stays as it was rather than guessing.
-      const deliveredAt = Date.parse(result.diagnostics?.feed_last_success_at ?? "");
-      if (Number.isFinite(deliveredAt)) setArrivals((previous) => recordArrival(previous, deliveredAt));
       const pollMinutes = result.diagnostics?.poll_interval_minutes;
-      if (typeof pollMinutes === "number" && pollMinutes > 0) setCadenceMs(pollMinutes * 60_000);
+      const cadence = typeof pollMinutes === "number" && pollMinutes > 0 ? pollMinutes * 60_000 : null;
+      if (cadence !== null) setCadenceMs(cadence);
+      // Recorded against the cadence from the same response, so a second
+      // poller's stamp or a catch-up run in an already-delivered slot is not
+      // counted as another delivery.
+      const deliveredAt = Date.parse(result.diagnostics?.feed_last_success_at ?? "");
+      if (Number.isFinite(deliveredAt)) setArrivals((previous) => recordArrival(previous, deliveredAt, cadence));
     } catch (err) {
       // A failed re-read says nothing about the feed. It fills no bar and
       // empties none; a feed that has actually stopped shows up as missed
