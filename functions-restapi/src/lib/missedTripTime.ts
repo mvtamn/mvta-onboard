@@ -33,6 +33,13 @@ function partsInAgencyTime(date: Date): DateParts {
   };
 }
 
+// Minutes past agency-local midnight (0-1439), daylight-saving correct: the
+// wall clock a dispatcher in the agency's time zone would read.
+export function agencyMinuteOfDay(date: Date): number {
+  const local = partsInAgencyTime(date);
+  return local.hour * 60 + local.minute;
+}
+
 function offsetAt(date: Date): number {
   const local = partsInAgencyTime(date);
   const representedAsUtc = Date.UTC(
