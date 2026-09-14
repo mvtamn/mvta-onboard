@@ -53,7 +53,11 @@ export function createGraphDocumentChecker(getDelegatedToken: TokenProvider, fet
           observed_file_name: null,
           observed_mime_type: null,
           reason: response.status === 403
-            ? "OnBoard is not authorized to read this SharePoint library, so the document was never inspected. This is a permissions gap to fix in Entra, not a problem with the document."
+            // The daily check reads as the application, where a 403 is the
+            // missing per-site grant; a check a person runs reads on their
+            // behalf, where it can also be their own SharePoint access.
+            // Neither is fixed in Entra.
+            ? "SharePoint refused OnBoard's read of this library, so the document was never inspected. A SharePoint administrator must grant the OnBoard application read access on this site (step 4 of the SharePoint documents runbook); if a person ran this check, it can also mean they cannot open the library. This is not a problem with the document."
             : "SharePoint rejected OnBoard's credential, so the document was never inspected. This is a configuration fault, not a problem with the document.",
         };
       }

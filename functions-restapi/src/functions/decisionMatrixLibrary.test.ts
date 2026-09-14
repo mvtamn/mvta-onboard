@@ -84,9 +84,9 @@ test("a listing is returned with the counts the picker shows", async () => {
 // Answering 500 would be the console's cue to report an outage, which is the
 // mistake the Decision Matrix has already made twice.
 test("a library that is not readable answers 200 and names which kind of not readable", async () => {
-  for (const [outcome, fragment] of [["forbidden", /not been granted/], ["not_found", /no folder/], ["failed", /could not be read/]] as const) {
+  for (const [outcome, fragment] of [["forbidden", /must grant the OnBoard application read access/], ["not_found", /no folder/], ["failed", /could not be read/]] as const) {
     await withSettings(CONFIGURED, async () => {
-      libraryReturning({ outcome, path: "_SOPs", reason: outcome === "forbidden" ? "OnBoard has not been granted access to this SharePoint library." : outcome === "not_found" ? "SharePoint has no folder at that path." : "SharePoint could not be read: boom" } as LibraryListing);
+      libraryReturning({ outcome, path: "_SOPs", reason: outcome === "forbidden" ? "SharePoint refused OnBoard's read of this library. A SharePoint administrator must grant the OnBoard application read access on this site." : outcome === "not_found" ? "SharePoint has no folder at that path." : "SharePoint could not be read: boom" } as LibraryListing);
       const response = await browseDecisionMatrixLibrary(adminRequest("_SOPs"), context);
       assert.equal(response.status, 200, `${outcome} must not be a 5xx`);
       const body = response.jsonBody as { entries: unknown[]; diagnostics: { configured: boolean; outcome: string; reason: string } };
