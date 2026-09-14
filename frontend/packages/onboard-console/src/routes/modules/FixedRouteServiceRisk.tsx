@@ -567,7 +567,8 @@ function RiskModuleHeader({
 // The banner that owns this page's data. It is the one place on the module
 // that is allowed the loud treatment - the sweep, the sheen, the badge glow -
 // and it earns it by running on the page's real refresh clock: the arc and
-// the poll bars come from the refresh context, not from a timer of its own.
+// the poll bars come from the feed's own delivery clock in the refresh
+// context - not from the console's 30-second re-reads, and not from a timer.
 // Training and preview banners get no signal at all, because no feed is
 // answering behind them.
 export function FixedRouteRiskBanner({
@@ -581,7 +582,7 @@ export function FixedRouteRiskBanner({
   diagnosticsState: string | null;
   message: string;
 }) {
-  const { intervalMs, secondsLeft, history } = useFixedRouteRefresh();
+  const { arrivalClock, history } = useFixedRouteRefresh();
 
   if (trainingMode) {
     return <LiveBanner tone="accent" badge="Training">{message}</LiveBanner>;
@@ -602,8 +603,7 @@ export function FixedRouteRiskBanner({
         tone="live"
         badge="Live data"
         role="status"
-        intervalMs={intervalMs}
-        secondsLeft={secondsLeft}
+        clock={arrivalClock}
         history={history}
       >
         {message}
@@ -624,8 +624,7 @@ export function FixedRouteRiskBanner({
         tone="muted"
         badge="No active trips"
         role="status"
-        intervalMs={intervalMs}
-        secondsLeft={secondsLeft}
+        clock={arrivalClock}
         history={history}
       >
         {message}

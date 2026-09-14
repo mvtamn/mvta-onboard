@@ -484,6 +484,12 @@ export interface TripDelayDiagnostics {
   static_stop_count: number;
   direction_reference_count: number;
   stale_after_minutes: number;
+  // When the TripUpdate feed last delivered successfully (feed ledger), and the
+  // poller's cadence. Optional: while a deploy rolls out, a worker still on the
+  // previous build answers without them, and the console must then draw no
+  // countdown and no flash rather than a wrong one.
+  feed_last_success_at?: string | null;
+  poll_interval_minutes?: number;
 }
 
 export interface DeparturePrediction {

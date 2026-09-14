@@ -23,6 +23,12 @@ export interface TripDelayDiagnostics {
   static_stop_count: number;
   direction_reference_count: number;
   stale_after_minutes: number;
+  // When the TripUpdate feed last delivered successfully, from the feed ledger.
+  // It moves on every successful poll - including an empty one overnight - so
+  // it is the console's clock for "data arrived", where the trip rows are not.
+  feed_last_success_at: string | null;
+  // The poller's cadence, so the console counts down to a real delivery.
+  poll_interval_minutes: number;
 }
 
 export const TRIP_DELAY_STALE_AFTER_MINUTES = FEED_STALE_AFTER_MINUTES.gtfs_trip_updates;

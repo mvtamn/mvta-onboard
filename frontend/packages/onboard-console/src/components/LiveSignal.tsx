@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
+import { useMemo, useRef, type ReactNode } from "react";
 import "./liveSignal.css";
+import type { ArrivalClock } from "../context/feedArrivals.js";
 import type { OperationalDataState } from "../hooks/useLiveStats.js";
 
 // One indicator for every surface that reports whether operational data is
@@ -31,28 +32,41 @@ const STATE_CLASS: Record<SignalState, string> = {
   locked: "is-locked",
 };
 
+// True once the delivery time has changed since this component mounted.
+// Opening a page is not a delivery: the data was already there, and a flash
+// on load would say something had just arrived when nothing had.
+function useArrivedSinceMount(arrivalKey: number | null | undefined): boolean {
+  const first = useRef(arrivalKey);
+  return arrivalKey != null && arrivalKey !== first.current;
+}
+
 export interface LiveSignalProps {
   state: SignalState;
   size?: "sm" | "md" | "lg";
-  // The module's own refresh interval, and how much of it is left. Both are
-  // required for the countdown arc, and the arc is omitted without them: a
-  // surface that does not poll on a known clock (the dashboard's one-shot
-  // load, for instance) must not draw a countdown it is not keeping. The
-  // negative animation-delay phases the arc to the real deadline rather than
-  // to whenever this component happened to mount.
-  intervalMs?: number;
-  secondsLeft?: number;
+  // The feed's own delivery clock. Without it there is no countdown and no
+  // arrival flash: a surface that does not know when data last landed, or how
+  // often it lands, must not draw either.
+  clock?: ArrivalClock | null;
   label?: string;
 }
 
-export function LiveSignal({ state, size = "md", intervalMs, secondsLeft, label }: LiveSignalProps) {
-  const countdown = state === "live" && intervalMs !== undefined && intervalMs > 0 && secondsLeft !== undefined;
-  const style = countdown
-    ? {
-        animationDuration: `${intervalMs}ms`,
-        animationDelay: `-${Math.max(0, intervalMs - secondsLeft * 1000)}ms`,
-      }
-    : undefined;
+export function LiveSignal({ state, size = "md", clock, label }: LiveSignalProps) {
+  const live = state === "live";
+  const lastArrivalAt = clock?.lastArrivalAt ?? null;
+  const cadenceMs = clock?.cadenceMs ?? null;
+  const arrived = useArrivedSinceMount(live ? lastArrivalAt : null);
+
+  // The arc unwinds once, from the last real delivery towards the next one on
+  // the poller's cadence, and stays empty if that delivery is late - it does
+  // not loop as though another one were on its way. Keyed on the delivery, so
+  // a new one restarts it; the elapsed time is fixed per delivery, so the
+  // provider's once-a-second re-render does not nudge a running animation.
+  const arcStyle = useMemo(() => {
+    if (lastArrivalAt === null || cadenceMs === null) return undefined;
+    const elapsed = Math.min(cadenceMs, Math.max(0, Date.now() - lastArrivalAt));
+    return { animationDuration: `${cadenceMs}ms`, animationDelay: elapsed > 0 ? `-${elapsed}ms` : "0ms" };
+  }, [lastArrivalAt, cadenceMs]);
+  const countdown = live && arcStyle !== undefined;
 
   return (
     <span
@@ -63,25 +77,26 @@ export function LiveSignal({ state, size = "md", intervalMs, secondsLeft, label 
     >
       <svg viewBox="0 0 18 18" focusable="false" aria-hidden="true">
         <circle className="live-signal-track" cx="9" cy="9" r="7.25" />
-        {countdown ? <circle className="live-signal-arc" cx="9" cy="9" r="7.25" style={style} /> : null}
-        {countdown ? <circle className="live-signal-comet" cx="9" cy="9" r="7.25" style={style} /> : null}
+        {countdown ? <circle key={`arc-${lastArrivalAt}`} className="live-signal-arc" cx="9" cy="9" r="7.25" style={arcStyle} /> : null}
+        {countdown ? <circle key={`comet-${lastArrivalAt}`} className="live-signal-comet" cx="9" cy="9" r="7.25" style={arcStyle} /> : null}
       </svg>
       <span className="live-signal-halo" />
       <span className="live-signal-halo two" />
-      <span className="live-signal-bloom" />
-      <span className="live-signal-core" />
+      {/* Remounted per delivery so the one-shot punch and bloom replay. */}
+      <span key={`bloom-${lastArrivalAt}`} className={`live-signal-bloom${arrived ? " arrive" : ""}`} />
+      <span key={`core-${lastArrivalAt}`} className={`live-signal-core${arrived ? " arrive" : ""}`} />
       {state === "unavailable" ? <span className="live-signal-slash" /> : null}
       {state === "locked" ? <span className="live-signal-keybar" /> : null}
     </span>
   );
 }
 
-// The last polls as bars - filled arrived, faint missed. Evidence of the same
-// fact the signal animates, in a form that survives a screenshot and reduced
-// motion, and the only part of the indicator that says anything about the
-// polls before this one. Rendered only where a real history is kept; a
-// surface that does not record its poll outcomes shows no bars rather than
-// six reassuring ones.
+// The last feed deliveries as bars - filled arrived, faint missed. Evidence of
+// the same fact the signal animates, in a form that survives a screenshot and
+// reduced motion, and the only part of the indicator that says anything about
+// the deliveries before this one. Rendered only where a real history is kept;
+// a surface that does not record deliveries shows no bars rather than six
+// reassuring ones.
 export function FeedHistory({ outcomes, live }: { outcomes: boolean[]; live: boolean }) {
   if (outcomes.length === 0) return null;
   const arrived = outcomes.filter(Boolean).length;
@@ -111,31 +126,35 @@ export interface LiveBannerProps {
   tone: BannerTone;
   badge: string;
   children: ReactNode;
-  intervalMs?: number;
-  secondsLeft?: number;
+  clock?: ArrivalClock | null;
   history?: boolean[];
   role?: "status" | "alert";
   ariaLabel?: string;
 }
 
 // The banner that owns a page's data. It is the loud end of the same
-// indicator: at each refresh a lit sweep crosses the top edge, a hairline
-// trails the bottom, a sheen crosses the body and the badge throws a glow -
-// all on one clock, and all only in the live tone.
+// indicator: when a delivery lands, a lit sweep crosses the top edge, a
+// hairline trails the bottom, a sheen crosses the body and the badge throws a
+// glow - once, together, and only in the live tone. It used to run every six
+// seconds whatever the feed was doing; a page whose data has not changed for
+// four minutes now holds still, which is the truth about it.
 export function LiveBanner({
-  state, tone, badge, children, intervalMs, secondsLeft, history, role, ariaLabel,
+  state, tone, badge, children, clock, history, role, ariaLabel,
 }: LiveBannerProps) {
+  const arrivalKey = tone === "live" ? clock?.lastArrivalAt ?? null : null;
+  const arrived = useArrivedSinceMount(arrivalKey);
+  const sweep = arrived ? " arrive" : "";
   return (
     <div className={`live-banner tone-${tone}`} role={role} aria-label={ariaLabel}>
       {tone === "live" ? (
         <>
-          <span className="live-banner-sheen" aria-hidden="true"><i /></span>
-          <span className="live-banner-wire" aria-hidden="true"><i /></span>
-          <span className="live-banner-wire bottom" aria-hidden="true"><i /></span>
+          <span key={`sheen-${arrivalKey}`} className={`live-banner-sheen${sweep}`} aria-hidden="true"><i /></span>
+          <span key={`wire-${arrivalKey}`} className={`live-banner-wire${sweep}`} aria-hidden="true"><i /></span>
+          <span key={`wire-bottom-${arrivalKey}`} className={`live-banner-wire bottom${sweep}`} aria-hidden="true"><i /></span>
         </>
       ) : null}
-      {state ? <LiveSignal state={state} intervalMs={intervalMs} secondsLeft={secondsLeft} /> : null}
-      <span className="concept-badge">{badge}</span>
+      {state ? <LiveSignal state={state} clock={clock} /> : null}
+      <span key={`badge-${arrivalKey}`} className={`concept-badge${sweep}`}>{badge}</span>
       <span className="live-banner-message">{children}</span>
       {history && history.length > 0 ? (
         <>

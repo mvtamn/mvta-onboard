@@ -16,7 +16,7 @@ vi.mock("../../../auth/AuthContext.js", () => ({ useAuth: () => authState }));
 const promptMock = vi.fn();
 vi.mock("../../../components/AppDialog.js", () => ({ useAppDialog: () => ({ prompt: promptMock, confirm: vi.fn() }) }));
 vi.mock("../../../context/FixedRouteRefreshContext.js", () => ({
-  useFixedRouteRefresh: () => ({ lastCompletedAt: null, secondsLeft: 30, intervalMs: 30_000 }),
+  useFixedRouteRefresh: () => ({ lastCompletedAt: null, secondsLeft: 30, intervalMs: 30_000, arrivalClock: { lastArrivalAt: Date.now() - 60_000, cadenceMs: 300_000 }, history: [true, true] }),
   formatRefreshCountdown: (s: number) => `${s}s`,
 }));
 

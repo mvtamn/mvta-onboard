@@ -1,7 +1,8 @@
 /* The live-data signal. See LiveSignal.tsx for why it moves the way it does.
 
-   Every animation here is bound to a real event - a poll landing, a refresh
-   interval, a retry in flight. None of them run outside the live state, and
+   Every animation here is bound to a real event - a feed delivery landing,
+   the time until the next one, a retry in flight. None of them run outside
+   the live state, and
    all of them are switched off under prefers-reduced-motion, where the
    states stay legible by shape, colour and label alone. */
 
@@ -28,17 +29,18 @@
 .live-signal-halo { border: 1.5px solid currentColor; border-radius: 50%; inset: 0; opacity: 0; position: absolute; }
 .live-signal-bloom { background: radial-gradient(circle, currentColor 0%, transparent 62%); border-radius: 50%; inset: 0; opacity: 0; position: absolute; }
 
-/* Live: two halos half a beat apart so a ring is always in flight, a comet
-   running the leading edge of the countdown, and a punch plus bloom at the
-   moment data lands - the arrival is the loudest frame in the console
-   because it is the one an operator most needs to catch. */
+/* Live: two halos half a beat apart while the feed is answering. The
+   countdown and the arrival punch are one-shot, driven by the feed's own
+   deliveries - the arc unwinds once towards the next poll and stays empty if
+   it is late, and the core punches and blooms once when a delivery lands.
+   Both used to loop on a fixed 30-second timer that no delivery drove. */
 .live-signal.is-live { color: var(--live-dot); }
 .live-signal.is-live .live-signal-halo { animation: live-signal-halo 2s cubic-bezier(.16, .66, .28, 1) infinite; }
 .live-signal.is-live .live-signal-halo.two { animation-delay: 1s; }
-.live-signal.is-live .live-signal-arc { animation: live-signal-countdown linear infinite; }
-.live-signal.is-live .live-signal-comet { animation: live-signal-comet linear infinite; }
-.live-signal.is-live .live-signal-core { animation: live-signal-arrive 30s cubic-bezier(.1, .7, .3, 1) infinite; }
-.live-signal.is-live .live-signal-bloom { animation: live-signal-bloom 30s cubic-bezier(.1, .7, .3, 1) infinite; }
+.live-signal.is-live .live-signal-arc { animation: live-signal-countdown linear 1 forwards; }
+.live-signal.is-live .live-signal-comet { animation: live-signal-comet linear 1 forwards; }
+.live-signal.is-live .live-signal-core.arrive { animation: live-signal-arrive 1.8s cubic-bezier(.1, .7, .3, 1) 1; }
+.live-signal.is-live .live-signal-bloom.arrive { animation: live-signal-bloom 1.8s cubic-bezier(.1, .7, .3, 1) 1; }
 
 @keyframes live-signal-halo {
   0% { opacity: .8; transform: scale(.34); }
@@ -48,11 +50,11 @@
 @keyframes live-signal-comet { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -45.6; } }
 @keyframes live-signal-arrive {
   0% { filter: brightness(1.9) drop-shadow(0 0 7px currentColor); transform: scale(2.1); }
-  6%, 100% { filter: brightness(1) drop-shadow(0 0 0 currentColor); transform: scale(1); }
+  60%, 100% { filter: brightness(1) drop-shadow(0 0 0 currentColor); transform: scale(1); }
 }
 @keyframes live-signal-bloom {
   0% { opacity: .85; transform: scale(.5); }
-  14%, 100% { opacity: 0; transform: scale(2.6); }
+  100% { opacity: 0; transform: scale(2.6); }
 }
 
 /* Connecting: indeterminate on purpose - it must not be mistaken for a
@@ -120,10 +122,11 @@
 .live-banner-message { min-width: 0; }
 .live-banner-spacer { flex: 1; }
 
-/* The refresh registers across the whole banner, not only at its edge: a lit
+/* A delivery registers across the whole banner, not only at its edge: a lit
    sweep along the top, a trailing hairline along the bottom, a sheen across
-   the body and a glow off the badge, all on one clock. Reserved for the
-   banner that owns the page's data - never more than one per screen. */
+   the body and a glow off the badge - once, together, when data lands.
+   Reserved for the banner that owns the page's data - never more than one
+   per screen. */
 .live-banner-wire { height: 2.5px; left: 0; overflow: hidden; position: absolute; top: 0; width: 100%; z-index: 1; }
 .live-banner-wire.bottom { bottom: 0; height: 1.5px; top: auto; }
 .live-banner-wire i { background: linear-gradient(90deg, transparent, currentColor 46%, #fff 50%, currentColor 54%, transparent); inset: 0; opacity: .9; position: absolute; transform: translateX(-100%); }
@@ -134,17 +137,18 @@
 /* Evergreen is a dark fill in both themes, so this badge takes white text
    rather than the surface token the other tones use - under [data-theme=dark]
    that token is itself dark, and the label would sit green on green. */
-.live-banner.tone-live .concept-badge { animation: live-banner-badge 6s ease-in-out infinite; background: var(--brand-green); color: #fff; }
-.live-banner.tone-live .live-banner-wire i { animation: live-banner-sweep 6s cubic-bezier(.5, 0, .35, 1) infinite; }
-.live-banner.tone-live .live-banner-wire.bottom i { animation-delay: .25s; opacity: .5; }
-.live-banner.tone-live .live-banner-sheen i { animation: live-banner-sweep 6s cubic-bezier(.5, 0, .35, 1) infinite; animation-delay: .08s; }
+.live-banner.tone-live .concept-badge { background: var(--brand-green); color: #fff; }
+.live-banner.tone-live .concept-badge.arrive { animation: live-banner-badge 1.2s ease-out 1; }
+.live-banner.tone-live .live-banner-wire.arrive i { animation: live-banner-sweep 1.6s cubic-bezier(.5, 0, .35, 1) 1; }
+.live-banner.tone-live .live-banner-wire.bottom.arrive i { animation-delay: .25s; opacity: .5; }
+.live-banner.tone-live .live-banner-sheen.arrive i { animation: live-banner-sweep 1.6s cubic-bezier(.5, 0, .35, 1) 1; animation-delay: .08s; }
 @keyframes live-banner-sweep {
   0% { transform: translateX(-100%); }
-  26%, 100% { transform: translateX(100%); }
+  100% { transform: translateX(100%); }
 }
 @keyframes live-banner-badge {
   0% { box-shadow: 0 0 0 0 rgba(47, 174, 102, .65); }
-  18%, 100% { box-shadow: 0 0 0 6px rgba(47, 174, 102, 0); }
+  100% { box-shadow: 0 0 0 6px rgba(47, 174, 102, 0); }
 }
 
 .live-banner.tone-warning { background: var(--pill-warning-bg); border-color: var(--highlight-border); color: var(--pill-warning-fg); }

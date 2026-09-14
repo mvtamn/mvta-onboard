@@ -4,6 +4,7 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
 import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { FEED_POLL_INTERVAL_MINUTES } from "../lib/feedFreshness";
 import { loadKpiTrust } from "../lib/kpiTrustStore";
 import {
   resolveTripDelayView,
@@ -148,6 +149,8 @@ app.http("tripDelaysList", {
         static_stop_count: staticStopCount,
         direction_reference_count: directionReferenceCount,
         stale_after_minutes: TRIP_DELAY_STALE_AFTER_MINUTES,
+        feed_last_success_at: feedDependency?.last_success_at ?? null,
+        poll_interval_minutes: FEED_POLL_INTERVAL_MINUTES.gtfs_trip_updates,
       };
       return { status: 200, jsonBody: { delays, diagnostics } };
     } catch (err) {
