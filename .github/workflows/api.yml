@@ -1,4 +1,4 @@
-name: Deploy Function Apps (REST API + dispatch)
+name: Deploy Function Apps (REST API + dispatch + Spare webhook receiver)
 
 on:
   push:
@@ -101,6 +101,17 @@ jobs:
             function_app: func-mvta-restapi-dev
           - app: functions-dispatch
             function_app: func-mvta-dispatch-dev
+          # The Spare webhook receiver's own app. It is built from the REST API
+          # package but loads a single entry point, so it runs the receiver and
+          # a health check and none of the REST API's timers (see
+          # functions-restapi/src/spareWebhookEntry.ts). The app is created by
+          # the infra workflow, which can finish after this one on the merge
+          # that introduces it.
+          - app: functions-restapi
+            function_app: func-mvta-sparehook-dev
+            entry: dist/src/spareWebhookEntry.js
+            expected_functions: '["health","onDemandSpareWebhook"]'
+            created_by_infra: true
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -118,6 +129,22 @@ jobs:
           npm run build
           npm prune --omit=dev
 
+      - name: Load only the Spare webhook receiver
+        if: matrix.entry
+        working-directory: ${{ matrix.app }}
+        # Rewrites package.json main on this runner's copy only, then proves
+        # what that entry registers. A package that loaded the REST API's
+        # functions/*.js glob would register every timer on a second app and
+        # double every poller, so anything beyond the expected set fails here.
+        run: |
+          node scripts/set-package-main.cjs . "${{ matrix.entry }}"
+          registered=$(node scripts/registered-functions.cjs --package . | tail -n 1)
+          echo "Registered: $registered"
+          if [ "$registered" != '${{ matrix.expected_functions }}' ]; then
+            echo "::error::${{ matrix.function_app }} would register $registered, expected ${{ matrix.expected_functions }}"
+            exit 1
+          fi
+
       - name: Azure login (OIDC)
         uses: azure/login@v2
         with:
@@ -125,7 +152,23 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Confirm the target Function App exists
+        id: target
+        if: matrix.created_by_infra
+        # On the merge that introduces an app, the infra workflow creates it and
+        # may not have finished yet. Skip with a notice rather than fail; re-run
+        # this workflow once the infra deploy is done.
+        run: |
+          if az resource show --resource-group rg-mvta-onboard-dev --name "${{ matrix.function_app }}" \
+              --resource-type Microsoft.Web/sites --query id -o tsv > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::${{ matrix.function_app }} does not exist yet - the infra workflow creates it. Re-run this workflow after that deploy finishes."
+          fi
+
       - name: Deploy to Function App
+        if: steps.target.outputs.exists != 'false'
         uses: Azure/functions-action@v1
         with:
           app-name: ${{ matrix.function_app }}
