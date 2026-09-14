@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, type ActiveMessage, type SubscribersSummary, type SuggestedAlert } from "@mvta/shared";
 import { api } from "../config.js";
+import { useVisibleInterval } from "./useVisibleInterval.js";
 
-export type OperationalDataState = "loading" | "live" | "stale" | "unavailable" | "authentication-required";
+import { worstDataState, type OperationalDataState } from "./dataState.js";
+
+// Re-exported so existing imports keep working; the definitions live in dataState.ts.
+export { worstDataState, type OperationalDataState };
 
 export function dataStateLabel(state: OperationalDataState): string {
   return {
@@ -19,10 +23,7 @@ function errorState(error: unknown, previous: OperationalDataState): Operational
   return previous === "live" || previous === "stale" ? "stale" : "unavailable";
 }
 
-function overallState(states: OperationalDataState[]): OperationalDataState {
-  const priority: OperationalDataState[] = ["authentication-required", "unavailable", "stale", "loading", "live"];
-  return priority.find((state) => states.includes(state)) ?? "loading";
-}
+export const LIVE_STATS_POLL_MS = 60_000;
 
 export interface LiveStats {
   activeCount: number | null;
@@ -38,7 +39,11 @@ export interface LiveStats {
   refresh: () => void;
 }
 
-// One shared fetch for the sidebar/footer live numbers. Auth-gated endpoints
+// One shared fetch for the sidebar/footer live numbers, repeated once a minute
+// while the page is visible. It used to load once and never again, so a
+// console left open kept its first counts, and its first "live", indefinitely.
+// This measures whether the console's own API answers; the feeds behind it are
+// judged separately, from the feed-health ledger (useFeedFreshness). Auth-gated endpoints
 // (suggested alerts, subscriber summary) fail without a real token - e.g. in
 // mock preview mode - so each section degrades to "—" independently instead of
 // failing the whole sidebar. The public active-messages count always works.
@@ -55,6 +60,7 @@ export function useLiveStats(): LiveStats {
   const [tick, setTick] = useState(0);
 
   const refresh = useCallback(() => setTick((t) => t + 1), []);
+  useVisibleInterval(refresh, LIVE_STATS_POLL_MS);
 
   useEffect(() => {
     let alive = true;
@@ -109,7 +115,7 @@ export function useLiveStats(): LiveStats {
     ok,
     activeState,
     pendingState,
-    overallState: overallState([activeState, pendingState]),
+    overallState: worstDataState([activeState, pendingState]),
     refresh,
   };
 }

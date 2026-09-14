@@ -3,9 +3,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { Dashboard } from "./Dashboard.js";
 import type { LiveStats } from "../hooks/useLiveStats.js";
+import type { FeedFreshness } from "../hooks/useFeedFreshness.js";
 
 vi.mock("../components/Sidebar.js", () => ({ Sidebar: () => <aside>Health summary</aside> }));
 vi.mock("../components/MessagesTable.js", () => ({ MessagesTable: () => <div>Active Service Alerts table</div> }));
+const feedHealth: FeedFreshness = {
+  feeds: [],
+  summary: { state: "live", label: "All feeds current" },
+  checkedAt: null,
+  refresh: vi.fn(),
+};
+vi.mock("../hooks/useFeedFreshness.js", () => ({ useFeedFreshness: () => feedHealth }));
 
 function stats(overrides: Partial<LiveStats> = {}): LiveStats {
   return {
@@ -43,5 +51,24 @@ describe("Dashboard", () => {
     );
 
     expect(screen.getByRole("status")).toHaveTextContent("Stale data");
+  });
+
+  // The bar used to say "Live data connected" whenever the API answered, even
+  // with a feed hours stale or never delivered.
+  it("reports the feeds, not just the API, once the API is answering", () => {
+    feedHealth.summary = { state: "unavailable", label: "MVTA Connect unavailable" };
+    render(<MemoryRouter><Dashboard stats={stats()} /></MemoryRouter>);
+
+    const bar = screen.getByRole("status");
+    expect(bar).toHaveTextContent("MVTA Connect unavailable");
+    expect(bar).not.toHaveTextContent("Live data connected");
+    expect(bar.className).toContain("unavailable");
+    expect(screen.getByLabelText("Dashboard summary")).toHaveTextContent("MVTA Connect unavailable");
+    feedHealth.summary = { state: "live", label: "All feeds current" };
+  });
+
+  it("says all feeds are current only when the feeds say so", () => {
+    render(<MemoryRouter><Dashboard stats={stats()} /></MemoryRouter>);
+    expect(screen.getByRole("status")).toHaveTextContent("All feeds current");
   });
 });

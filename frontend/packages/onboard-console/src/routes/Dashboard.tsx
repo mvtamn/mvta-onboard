@@ -5,13 +5,18 @@ import { MessagesTable } from "../components/MessagesTable.js";
 import { Sidebar } from "../components/Sidebar.js";
 import { LiveSignal, signalStateFor } from "../components/LiveSignal.js";
 import { dataStateLabel, type LiveStats, type OperationalDataState } from "../hooks/useLiveStats.js";
+import { useFeedFreshness } from "../hooks/useFeedFreshness.js";
 
 // Dashboard: triage-first metrics and next actions, followed by published
 // communications. Compose remains available from its dedicated route. `stats` comes from App.tsx's single useLiveStats()
-// instance (also drives the nav footer) rather than polling again here.
+// instance (also drives the nav footer), which says whether the console's own API
+// answers. Whether the feeds behind it are fresh is a different question, read
+// here from the feed-health ledger - the freshness bar and the "Feed state"
+// metric used to answer it with the API's state alone.
 export function Dashboard({ stats, onChanged }: { stats: LiveStats; onChanged?: () => void }) {
   const [activeMessages, setActiveMessages] = useState<ActiveMessage[] | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const feedHealth = useFeedFreshness();
   const knownActiveMessages = activeMessages ?? stats.activeMessages ?? null;
 
   useEffect(() => {
@@ -21,8 +26,15 @@ export function Dashboard({ stats, onChanged }: { stats: LiveStats; onChanged?: 
 
   function refreshAll() {
     stats.refresh();
+    feedHealth.refresh();
     onChanged?.();
   }
+
+  // The console's API comes first: if it is not answering, nothing on the page
+  // is current, feeds included. Once it answers, the bar reports the feeds.
+  const apiLive = stats.overallState === "live";
+  const barState: OperationalDataState = apiLive ? feedHealth.summary.state : stats.overallState;
+  const barLabel = apiLive ? feedHealth.summary.label : dataStateLabel(stats.overallState);
 
   const expiringSoon = useMemo(() => {
     if (!knownActiveMessages) return null;
@@ -38,9 +50,9 @@ export function Dashboard({ stats, onChanged }: { stats: LiveStats; onChanged?: 
   return (
     <div className="content-layout">
       <div className="content-primary">
-        <div className={`dashboard-freshness ${stats.overallState}`} role="status">
-          <LiveSignal state={signalStateFor(stats.overallState)} />
-          <strong>{dataStateLabel(stats.overallState)}</strong>
+        <div className={`dashboard-freshness ${barState}`} role="status">
+          <LiveSignal state={signalStateFor(barState)} />
+          <strong>{barLabel}</strong>
           <span>{stats.syncedAt ? `Updated ${stats.syncedAt.toLocaleTimeString()}` : "Retrying connection"}</span>
           <NavLink to="/service-operations/suggested">{stats.pending?.length ?? "—"} suggested alerts</NavLink>
         </div>
@@ -49,7 +61,7 @@ export function Dashboard({ stats, onChanged }: { stats: LiveStats; onChanged?: 
           <DashboardMetric label="Active rider alerts" value={knownActiveMessages?.length ?? stats.activeCount ?? "—"} />
           <DashboardMetric label="Suggested alerts" value={stats.pending?.length ?? "—"} tone="attention" />
           <DashboardMetric label="Expiring within 1 hour" value={expiringSoon ?? "—"} tone="attention" />
-          <DashboardMetric label="Feed state" value={dataStateLabel(stats.overallState)} tone={stats.overallState === "live" ? "healthy" : "attention"} />
+          <DashboardMetric label="Feed state" value={barLabel} tone={barState === "live" ? "healthy" : "attention"} />
         </div>
 
         <div className="dashboard-triage-grid">
@@ -79,7 +91,13 @@ export function Dashboard({ stats, onChanged }: { stats: LiveStats; onChanged?: 
             )}
           </section>
 
-          <Sidebar stats={stats} />
+          <Sidebar
+            stats={stats}
+            feeds={feedHealth.feeds}
+            summary={feedHealth.summary}
+            checkedAt={feedHealth.checkedAt}
+            onRefresh={refreshAll}
+          />
         </div>
 
         <section className="dashboard-published-card" aria-labelledby="published-communications-title">
