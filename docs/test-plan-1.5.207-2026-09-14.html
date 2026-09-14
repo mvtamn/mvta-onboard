@@ -1,0 +1,364 @@
+<title>OnBoard 1.5.207 Verification</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ground:#F4F7F4; --paper:#FFFFFF; --ink:#141A16; --ink-soft:#4A554D; --ink-faint:#727E76;
+  --rule:#D5DFD8; --rule-soft:#E6EDE8;
+  --accent:#14804A; --accent-soft:#E2F1E8; --accent-ink:#0E6238;
+  --warn:#8C5A08; --warn-soft:#F8EEDC;
+  --crit:#A32C22; --crit-soft:#F8E7E4;
+  --signal:#0E6238;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0E1310; --paper:#161C18; --ink:#E6ECE7; --ink-soft:#A6B2AA; --ink-faint:#7E8A83;
+    --rule:#28322C; --rule-soft:#1F2822;
+    --accent:#4FC08A; --accent-soft:#152720; --accent-ink:#6FD3A2;
+    --warn:#D9A44E; --warn-soft:#2A2214;
+    --crit:#E8867A; --crit-soft:#2C1A18;
+    --signal:#4FC08A;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0E1310; --paper:#161C18; --ink:#E6ECE7; --ink-soft:#A6B2AA; --ink-faint:#7E8A83;
+  --rule:#28322C; --rule-soft:#1F2822;
+  --accent:#4FC08A; --accent-soft:#152720; --accent-ink:#6FD3A2;
+  --warn:#D9A44E; --warn-soft:#2A2214;
+  --crit:#E8867A; --crit-soft:#2C1A18;
+  --signal:#4FC08A;
+}
+*{box-sizing:border-box}
+body{
+  background:var(--ground); color:var(--ink);
+  font-family:"Barlow", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size:16px; line-height:1.6; -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:860px; margin:0 auto; padding-inline:20px; padding-block:0 90px}
+h1,h2,h3,.cond{font-family:"Barlow Condensed", "Barlow", "Arial Narrow", sans-serif; font-weight:600; line-height:1.12; text-wrap:balance; margin:0; letter-spacing:.005em}
+p{margin:0}
+a{color:var(--accent-ink)}
+code{font-family:"IBM Plex Mono", ui-monospace, Menlo, monospace; font-size:.855em; background:var(--rule-soft); border:1px solid var(--rule); border-radius:3px; padding:.08em .34em; overflow-wrap:anywhere}
+.eyebrow{font-size:.7rem; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-faint); font-family:"Barlow", sans-serif}
+
+header.top{padding-block:44px 24px; display:flex; flex-direction:column; gap:16px; border-bottom:2px solid var(--ink)}
+header.top h1{font-size:clamp(2.4rem,7vw,3.8rem); text-transform:uppercase; letter-spacing:.005em}
+header.top .sub{font-size:1.0625rem; color:var(--ink-soft); max-width:64ch}
+.metarow{display:flex; flex-wrap:wrap; gap:8px}
+.tag{font-family:"IBM Plex Mono", monospace; font-size:.75rem; padding:.26em .6em; border:1px solid var(--rule); background:var(--paper); color:var(--ink-soft)}
+.tag.hi{border-color:var(--accent); color:var(--accent-ink); background:var(--accent-soft)}
+
+/* cadence bar */
+.progress{position:sticky; top:0; z-index:5; background:var(--ground); border-bottom:1px solid var(--rule); padding-block:10px; display:flex; align-items:center; gap:12px; flex-wrap:wrap}
+.ticks{display:flex; gap:4px; flex:1 1 160px; min-width:120px}
+.ticks span{flex:1; height:9px; background:var(--rule-soft); border:1px solid var(--rule)}
+.ticks span.on{background:var(--signal); border-color:var(--signal)}
+.count{font-family:"IBM Plex Mono", monospace; font-variant-numeric:tabular-nums; font-size:.78rem; font-weight:500; color:var(--ink-soft)}
+button.reset{font-family:"Barlow",sans-serif; font-size:.78rem; font-weight:600; color:var(--ink-faint); background:none; border:1px solid var(--rule); padding:.2em .6em; cursor:pointer}
+button.reset:hover{color:var(--ink); border-color:var(--ink-faint)}
+
+section.stage{padding-block:30px; border-bottom:1px solid var(--rule-soft); display:flex; flex-direction:column; gap:15px}
+section.stage h2{font-size:1.6rem; text-transform:uppercase}
+.body{max-width:66ch}
+.stack{display:flex; flex-direction:column; gap:14px}
+
+.tablewrap{overflow-x:auto; border:1px solid var(--rule); background:var(--paper)}
+table{border-collapse:collapse; width:100%; font-size:.9375rem}
+th,td{text-align:left; padding:9px 13px; border-bottom:1px solid var(--rule-soft); vertical-align:top}
+thead th{font-family:"Barlow",sans-serif; font-size:.7rem; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-faint); font-weight:700; background:var(--rule-soft); border-bottom:1px solid var(--rule)}
+tbody tr:last-child td{border-bottom:none}
+pre{margin:0; background:var(--paper); border:1px solid var(--rule); border-left:3px solid var(--accent); padding:12px 15px; overflow-x:auto; font-family:"IBM Plex Mono", monospace; font-size:.85rem; line-height:1.6}
+
+/* part divider */
+.part{padding-block:46px 6px; display:flex; flex-direction:column; gap:8px}
+.part .lab{font-family:"IBM Plex Mono",monospace; font-size:.75rem; letter-spacing:.14em; color:var(--accent-ink); text-transform:uppercase}
+.part h2{font-size:2rem; text-transform:uppercase}
+.part p{color:var(--ink-soft); max-width:64ch}
+.part .strip{display:flex; gap:3px; margin-top:10px}
+.part .strip i{height:6px; width:22px; background:var(--accent); opacity:.9}
+.part .strip i:nth-child(4){opacity:.55}
+.part .strip i:nth-child(5){opacity:.3}
+.part .strip i:nth-child(6){opacity:.15}
+
+.case{padding-block:30px; border-bottom:1px solid var(--rule-soft); display:flex; flex-direction:column; gap:15px; scroll-margin-top:70px}
+.case-head{display:grid; grid-template-columns:auto 1fr; gap:13px; align-items:start}
+.tick{position:relative; display:grid; place-items:center; width:32px; height:32px; border:1px solid var(--rule); background:var(--paper); cursor:pointer}
+.tick input{position:absolute; opacity:0; width:0; height:0}
+.tick .n{font-family:"IBM Plex Mono", monospace; font-size:.8rem; color:var(--ink-faint); font-variant-numeric:tabular-nums}
+.tick:has(input:checked){background:var(--accent-soft); border-color:var(--accent)}
+.tick:has(input:checked) .n{color:transparent}
+.tick:has(input:checked)::after{content:"✓"; position:absolute; color:var(--accent-ink); font-weight:700}
+.tick:has(input:focus-visible){outline:2px solid var(--accent); outline-offset:2px}
+.case h2{font-size:1.5rem; text-transform:uppercase}
+.case-head .ver{display:block; font-family:"IBM Plex Mono", monospace; font-size:.72rem; color:var(--ink-faint); margin-top:5px}
+.case:has(input:checked) > .case-head h2{color:var(--ink-soft)}
+
+ol.steps,ul.plain{margin:0; padding-left:1.3em; display:flex; flex-direction:column; gap:9px; max-width:66ch}
+ol.steps li::marker{color:var(--ink-faint); font-variant-numeric:tabular-nums}
+
+.expect{border-left:3px solid var(--accent); background:var(--accent-soft); padding:12px 15px}
+.expect .lab, .was .lab, .note .lab{font-size:.68rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase; display:block; margin-bottom:5px}
+.expect .lab{color:var(--accent-ink)}
+.expect ul{margin:0; padding-left:1.1em; display:flex; flex-direction:column; gap:7px}
+.was{border-left:3px solid var(--crit); background:var(--crit-soft); padding:12px 15px}
+.was .lab{color:var(--crit)}
+.note{border-left:3px solid var(--warn); background:var(--warn-soft); padding:12px 15px}
+.note .lab{color:var(--warn)}
+.expect p,.was p,.note p{max-width:62ch}
+
+footer{padding-block:32px; color:var(--ink-faint); font-size:.9rem; display:flex; flex-direction:column; gap:10px}
+@media (max-width:560px){ header.top{padding-block:32px 20px} }
+@media (prefers-reduced-motion: reduce){*{transition:none !important}}
+</style>
+
+<div class="wrap">
+
+<header class="top">
+  <span class="eyebrow">MVTA OnBoard · Release verification</span>
+  <h1>Riders choose,<br>feeds tell the truth</h1>
+  <p class="sub">Eight cases covering 1.5.198 through 1.5.207. Two bodies of work landed and they share no code: rider preference management — increments A–E of the spec — and the live-data honesty work in the console. Test them in either order, but do the prerequisites first.</p>
+  <div class="metarow">
+    <span class="tag hi">rider-app</span>
+    <span class="tag hi">onboard-console</span>
+    <span class="tag">functions-restapi</span>
+    <span class="tag">functions-dispatch</span>
+    <span class="tag">12–13 Sep 2026</span>
+  </div>
+</header>
+
+<div class="progress">
+  <span class="count" id="count">0 / 8 signed off</span>
+  <span class="ticks" id="ticks"></span>
+  <button class="reset" id="reset" type="button">Clear</button>
+</div>
+
+<section class="stage">
+  <span class="eyebrow">Before you start</span>
+  <h2>Migrations</h2>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Migration</th><th>Needed by</th></tr></thead>
+      <tbody>
+        <tr><td><code>migration-119-subscriber-manage-key.sql</code></td><td>manage key, preference page</td></tr>
+        <tr><td><code>migration-120-subscriber-manage-link-sent.sql</code></td><td>manage-link throttle</td></tr>
+        <tr><td><code>migration-086</code> (<code>KpiFeedHealth</code>)</td><td><code>/trip-delays</code> feed ledger</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="body">Confirm 119's backfill gave <strong>distinct</strong> keys. The contract job asserts it, but if you are looking at a database by hand: a single shared key would mean one rider's link manages everybody's subscription.</p>
+  <pre>SELECT COUNT(*), COUNT(DISTINCT manage_key) FROM Subscribers WHERE manage_key IS NOT NULL;</pre>
+  <p class="body">Both numbers must match. Also check <code>RIDER_APP_BASE_URL</code> is set on the dispatch app, https, a plain origin and path — case 4 covers what happens when it is not.</p>
+</section>
+
+<section class="stage">
+  <h2>Automated evidence</h2>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Area</th><th>Command</th></tr></thead>
+      <tbody>
+        <tr><td>REST API</td><td><code>cd functions-restapi &amp;&amp; npm test</code></td></tr>
+        <tr><td>DB contract jobs</td><td><code>npm run test:decision-matrix-contract</code></td></tr>
+        <tr><td>Console</td><td><code>cd frontend/packages/onboard-console &amp;&amp; npm test</code></td></tr>
+        <tr><td>Types</td><td><code>cd frontend &amp;&amp; npm run typecheck -w onboard-console</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="body">The contract list already includes <code>migration119</code>, <code>subscriberPreferences</code> and <code>subscriberManageLink</code> — a failure there is more informative than any manual case below.</p>
+</section>
+
+<div class="part">
+  <span class="lab">Part A</span>
+  <h2>Rider preference management</h2>
+  <p>A rider could set categories once, at opt-in, and never change anything again. The form hardcoded routes and zones to <code>"ALL"</code>, so “the routes you ride” in its own subtitle was a promise it could not keep.</p>
+  <div class="strip"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+</div>
+
+<section class="case" id="c1">
+  <div class="case-head">
+    <label class="tick"><input type="checkbox" data-c="1"><span class="n">1</span></label>
+    <div><h2>Choosing a channel before typing contact details</h2><span class="ver">1.5.198</span></div>
+  </div>
+  <ol class="steps">
+    <li>The subscribe form opens with <em>How do you want alerts?</em> — Text, Email, or <strong>Both (default)</strong> — and shows only the fields that choice needs.</li>
+    <li>Type an email address, switch to <strong>Text only</strong>, submit → no email subscription is created. The address the rider took back is not sent.</li>
+    <li>Submit with a missing field → the error <strong>names the missing field and the choice to make instead</strong>, appears above the button, marks the field for screen readers, and clears as soon as you change something.</li>
+  </ol>
+  <div class="expect"><span class="lab">Layout and accessibility — half this release</span>
+    <ul>
+      <li>The form <strong>spans the card</strong>, not 460px inside 670px. On desktop, Both puts the two contact fields side by side.</li>
+      <li>Categories are a four-column grid, two on phones, with <em>MVTA Connect Delay</em> spanning two cells so rows come out even.</li>
+      <li>Checkboxes 18px in 40px rows; fields 16px text — <strong>smaller and iOS Safari zooms the page on focus, so check on a real iPhone</strong>.</li>
+      <li>Every control has a visible green focus ring, orange on the selected channel. Tab through the whole form.</li>
+      <li>At 375px wide the form is not squeezed to ~277px.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="case" id="c2">
+  <div class="case-head">
+    <label class="tick"><input type="checkbox" data-c="2"><span class="n">2</span></label>
+    <div><h2>Choosing routes at signup</h2><span class="ver">1.5.205</span></div>
+  </div>
+  <ol class="steps">
+    <li>A <em>Which routes?</em> question sits under the alert types: <strong>All routes</strong> (default) or <strong>Only the routes I choose</strong>. Choose two and sign up; the stored subscription has those two, not <code>"ALL"</code>.</li>
+    <li>Post a route id that is <strong>not offered</strong> → <code>400</code>, rather than a stored value dispatch will never match. Same for an <strong>empty</strong> list. <code>"ALL"</code> and a missing field behave as before.</li>
+    <li>Call <code>GET /api/subscribers/options</code> <strong>anonymously</strong> → it answers with the route and zone lists, reads nothing about any subscriber, and is cacheable for five minutes. It must not require the staff <code>GET /api/routes</code>.</li>
+    <li><strong>Block the options call</strong> and reload → signing up still works. <em>Only the routes I choose</em> is not offered, and a note says the rider can choose routes later from the link in any alert email.</li>
+    <li>Zones stay <code>"ALL"</code> at signup — they are offered on the preference page only, and only once a zone version is active.</li>
+  </ol>
+</section>
+
+<section class="case" id="c3">
+  <div class="case-head">
+    <label class="tick"><input type="checkbox" data-c="3"><span class="n">3</span></label>
+    <div><h2>The preference page</h2><span class="ver">1.5.202, backed by 1.5.200</span></div>
+  </div>
+  <p class="body">Open <code>/subscribe/preferences#key=&lt;manage key&gt;</code>.</p>
+  <ol class="steps">
+    <li><strong>The key leaves the address bar on arrival.</strong> It survives a reload (sessionStorage, scoped to the tab) and dies when the tab closes.</li>
+    <li><code>?key=</code> is <strong>deliberately ignored</strong> — try it and expect the no-key screen. The link format is <code>#key=</code> because a fragment is never sent to a server: not to Front Door's or Static Web Apps' access logs, and not in a Referer.</li>
+    <li>A <strong>malformed</strong> key is treated as no key, and must not fall back to a key stored from an earlier visit.</li>
+    <li>Change categories, routes, zones, channels; save; reload. The change <strong>assigns, never unions</strong> — narrowing must work. It is most of why the page exists.</li>
+    <li><strong>Untick every route</strong> and save → refused. Routes and zones are <em>All</em> or <em>a chosen list</em>, never an emptied one: an empty list is neither everything nor nothing.</li>
+    <li>A route <strong>retired from the registry</strong> is taken off the rider's list and they are told so, rather than sent back and refused.</li>
+    <li>With <strong>no active zone version</strong>, zones are not offered, and a save sends the rider's stored zones back unchanged rather than resetting them to all.</li>
+    <li>Turn off every channel, or every category → you are pointed at <strong>Unsubscribe</strong> instead of saving.</li>
+    <li><strong>Unsubscribe</strong> asks once, opts the rider out, <strong>rotates the key</strong> and records a reason. The old link then shows the link-no-longer-works screen; a second unsubscribe is still success.</li>
+    <li>A <strong>stopped channel</strong> is shown, disabled, with a note that signing up again is the way back. Through the API it answers <code>400</code> and writes <strong>nothing</strong> — not “waiting for confirmation” (nothing would be sent to confirm it) and not confirmed (a link is not consent).</li>
+    <li>A link mailed <strong>before a merge</strong> still resolves to the survivor.</li>
+    <li>The key travels in the <strong><code>X-Manage-Key</code> header</strong> — never in a URL, and never as <code>Authorization: Bearer</code>.</li>
+  </ol>
+</section>
+
+<section class="case" id="c4">
+  <div class="case-head">
+    <label class="tick"><input type="checkbox" data-c="4"><span class="n">4</span></label>
+    <div><h2>The alert email footer, and the manage link</h2><span class="ver">1.5.203</span></div>
+  </div>
+  <ol class="steps">
+    <li>Send yourself an alert → a footer that says <strong>why the email arrived</strong> and links to the preference page. The link is <strong>never logged</strong>; it carries the manage key.</li>
+    <li>Unset <code>RIDER_APP_BASE_URL</code> (or make it http, or not a plain origin and path) → the email goes <strong>without a link</strong>, and dispatch logs why <strong>once per message, not once per recipient</strong>. A footer that looks like a working opt-out but is not is worse than none.</li>
+  </ol>
+  <div class="expect"><span class="lab">“Send me my link” — POST /api/subscribers/manage-link</span>
+    <ul>
+      <li>Answers <code>{ status: "ok" }</code> for a <strong>subscribed, unconfirmed, unknown, throttled and internally failed</strong> contact alike. Try all five — it must not reveal whether a number is signed up.</li>
+      <li><strong>Only a confirmed channel is ever sent a link.</strong> Ask on an unconfirmed contact: ok, and no message sent.</li>
+      <li>Ask twice inside two minutes → at most one message (migration 120, <code>manage_link_sent_at</code>).</li>
+      <li>It rides the existing confirmation queue, told apart by <code>kind</code> — the message must not arrive as <em>“your confirmation code is undefined”</em>.</li>
+    </ul>
+  </div>
+  <div class="note"><span class="lab">Deliberately absent — confirm, don't report</span><p>The confirmation email does <strong>not</strong> carry the manage link, and <code>List-Unsubscribe</code> / <code>List-Unsubscribe-Post</code> headers are <strong>not</strong> set.</p></div>
+</section>
+
+<section class="case" id="c5">
+  <div class="case-head">
+    <label class="tick"><input type="checkbox" data-c="5"><span class="n">5</span></label>
+    <div><h2>Zone-scoped dispatch</h2><span class="ver">1.5.201</span></div>
+  </div>
+  <ol class="steps">
+    <li>Send a <strong>zone</strong> alert → it reaches riders in that zone and riders who did not narrow, and not riders who narrowed to a different zone.</li>
+    <li>Send a <strong>route</strong> alert naming no zones → the zone check passes everyone and only routes filter. The two dimensions are <strong>ANDed</strong>, and an alert naming nothing in a dimension is system-wide in that dimension.</li>
+    <li>The ids matched are <strong><code>external_location_id</code></strong>, not the UUID <code>zone_id</code> in <code>OnDemandRequestZoneSnapshots</code>. Matching one space against the other fails <strong>silently</strong> — a zone alert would reach only riders who had not narrowed.</li>
+    <li><strong>“Unzoned”</strong> — a pickup outside every zone — reaches only riders who did not narrow, and is never offered as a choice.</li>
+    <li>Store a malformed <code>{}</code> in a subscriber's audience column and send → that row reads as no preference and <strong>the alert still reaches everyone after it</strong>.</li>
+  </ol>
+  <div class="was"><span class="lab">What used to happen</span><p>A malformed row threw out of the delivery loop — not per subscriber — dead-lettering the message for every subscriber past that row.</p></div>
+</section>
+
+<div class="part">
+  <span class="lab">Part B</span>
+  <h2>Live data honesty</h2>
+  <p>Service Risk re-reads <code>/trip-delays</code> every 30 seconds; the feed is polled every five minutes. Nine re-reads in ten return the same data, and everything used to animate on the re-read.</p>
+  <div class="strip"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+</div>
+
+<section class="case" id="c6">
+  <div class="case-head">
+    <label class="tick"><input type="checkbox" data-c="6"><span class="n">6</span></label>
+    <div><h2>Service Risk states</h2><span class="ver">1.5.204</span></div>
+  </div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>State</th><th>Expect</th></tr></thead>
+      <tbody>
+        <tr><td><code>current</code></td><td>live banner, moving signal, countdown, poll bars</td></tr>
+        <tr><td><code>no_current_trips</code></td><td><strong>quiet muted banner, no sweep, badge “No active trips”</strong>, signal still moving and counting down — a live feed with nothing to report</td></tr>
+        <tr><td><code>stale</code></td><td>stale banner</td></tr>
+        <tr><td><code>configuration_missing</code></td><td><strong>the only red one</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="was"><span class="lab">What used to happen</span><p>Everything but <code>current</code> and <code>stale</code> fell through to the red “unavailable” branch — so outside 8am–10pm service the banner drew a failure glyph beside a full row of polls that had all arrived. <strong>Check this after service hours</strong>, the only time it shows honestly.</p></div>
+  <ol class="steps">
+    <li>On-Demand Service Quality's <code>no_active_service</code> gets the same treatment, <strong>without</strong> a countdown — that module keeps no refresh clock.</li>
+    <li><strong>Dispatch Log</strong>: today's log now shows the live banner even with no warning message. An <strong>earlier day</strong> must not — it is a settled record, and a countdown there would promise a refresh that is not coming.</li>
+    <li>On a stale or failed banner the newest poll bar's <strong>glow is flat</strong>. The glow means an arrival; there the bar is only a record.</li>
+  </ol>
+</section>
+
+<section class="case" id="c7">
+  <div class="case-head">
+    <label class="tick"><input type="checkbox" data-c="7"><span class="n">7</span></label>
+    <div><h2>Freshness comes from the ledger, not the rows</h2><span class="ver">1.5.206</span></div>
+  </div>
+  <ol class="steps">
+    <li>With <code>MonitoredTripDelays</code> <strong>empty</strong> and the feed <strong>not answering</strong> → <code>unavailable</code> or <code>stale</code>, <strong>not</strong> <code>no_current_trips</code>. The rows cannot tell “the feed answered and nothing is running” from “the rows were cleared and the feed has not answered since”, because <code>gtfsDelaysPoll</code> deletes rows after every successful fetch.</li>
+    <li>Feed answering inside its contract, table empty → <code>no_current_trips</code>.</li>
+    <li>A database <strong>without <code>KpiFeedHealth</code></strong> → <code>unavailable</code>, rather than a guess.</li>
+    <li><strong>The ledger wins over freshly polled rows</strong> — poll rows in while the ledger says stale, and expect the stale banner.</li>
+    <li>A <strong>frozen vendor snapshot</strong> that keeps refreshing rows is still caught: KPI trust ages a feed by its own header timestamp.</li>
+    <li>While the feed is <strong>current</strong>, rows past the limit are left out so the list agrees with the state. While it is <strong>not</strong>, the last known rows stay visible under a banner saying not to act on them.</li>
+    <li><strong>One limit per feed.</strong> Service Risk, KPI trust and the <code>gtfsDelaysPoll</code> cleanup all read <code>lib/feedFreshness.ts</code>. Service Risk's fixed-route limit moves from <strong>10 to 15 minutes</strong>. The AVL “last 3 minutes” filters are vehicle recency and deliberately not governed by it.</li>
+  </ol>
+  <div class="was"><span class="lab">What used to happen</span><p>Three literals disagreed — Service Risk 10 minutes, KPI trust 15, the poller deleting rows at 15 — so every night the banner read Stale for about five minutes, then No current trips.</p></div>
+  <div class="note"><span class="lab">Known, not a defect</span><p>An empty feed during service hours still reads as <code>no_current_trips</code>. Without operating-hours awareness in the contract, a vendor sending nothing at 10am is indistinguishable from no trips at 1am.</p></div>
+</section>
+
+<section class="case" id="c8">
+  <div class="case-head">
+    <label class="tick"><input type="checkbox" data-c="8"><span class="n">8</span></label>
+    <div><h2>The live indicator runs on the feed's clock</h2><span class="ver">1.5.207</span></div>
+  </div>
+  <ol class="steps">
+    <li>Watch the console for <strong>more than five minutes</strong>. The countdown <strong>unwinds once</strong>, from the last real delivery to the next, and restarts only when a delivery lands. If the next delivery is late it <strong>holds empty</strong> rather than looping.</li>
+    <li>The arrival flash and the banner sweep fire <strong>once, when a delivery lands</strong> — not on page load (the data was already there) and not on a re-read that returned the same delivery. Between deliveries the banner holds still; the halos still breathe while the feed is answering.</li>
+    <li><strong>Poll bars count deliveries, not re-reads.</strong> Block a console re-read and confirm it does not empty a bar — a failed re-read says nothing about the feed.</li>
+    <li>A gap between deliveries fills missed slots, and time since the last delivery keeps adding empty bars while a stopped feed stays silent. A delivery is not counted missed until <strong>half a cadence</strong> late, because polls take seconds to minutes to land.</li>
+    <li><code>/trip-delays</code> returns <code>feed_last_success_at</code> and <code>poll_interval_minutes</code>, and the countdown's cadence matches the poller's schedule — a test holds them together.</li>
+    <li><strong>Mixed-build rollout:</strong> point the console at a worker on the previous build, which answers without the two new fields → <strong>no countdown and no flash</strong>, not a wrong one. This actually happened for ten minutes on 14 September.</li>
+  </ol>
+  <div class="was"><span class="lab">What used to happen</span><p>Checked on dev during service on 13 September: three refreshes passed while “last update 7:30 PM” never changed, and the countdown, the arrival punch and the six-second banner sweep all ran on timers no delivery drove.</p></div>
+</section>
+
+<footer>
+  <p>Cases 6–8 only tell the truth against a real feed over real time. An hour spanning a service-hours boundary is worth more than any amount of clicking.</p>
+  <p>Tick marks are saved in this browser only — your own progress, not a shared sign-off.</p>
+</footer>
+
+</div>
+
+<script>
+(function(){
+  var KEY = 'mvta-onboard-15207-verification';
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('input[type=checkbox][data-c]'));
+  var count = document.getElementById('count');
+  var ticks = document.getElementById('ticks');
+  boxes.forEach(function(){ ticks.appendChild(document.createElement('span')); });
+  var bars = Array.prototype.slice.call(ticks.children);
+  function read(){ try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch(e){ return {}; } }
+  function write(s){ try { localStorage.setItem(KEY, JSON.stringify(s)); } catch(e){} }
+  function paint(){
+    var done = 0;
+    boxes.forEach(function(b,i){ if(b.checked){ done++; } bars[i].className = b.checked ? 'on' : ''; });
+    count.textContent = done + ' / ' + boxes.length + ' signed off';
+  }
+  var state = read();
+  boxes.forEach(function(b){
+    b.checked = !!state[b.dataset.c];
+    b.addEventListener('change', function(){ var s = read(); s[b.dataset.c] = b.checked; write(s); paint(); });
+  });
+  document.getElementById('reset').addEventListener('click', function(){
+    boxes.forEach(function(b){ b.checked = false; }); write({}); paint();
+  });
+  paint();
+})();
+</script>
