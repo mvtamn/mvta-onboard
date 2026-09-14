@@ -33,8 +33,8 @@ describe("FixedRouteRiskBanner", () => {
     expect(el.querySelectorAll(".feed-tick")).toHaveLength(6);
   });
 
-  // Every night outside 8am-10pm the feed answers on schedule and reports
-  // nothing running. That fell through to the red unavailable branch, which
+  // Every night, outside the hours fixed-route trips always run, the feed
+  // answers on schedule and reports nothing running. That fell through to the red unavailable branch, which
   // on dev put a slashed failure glyph beside six polls that had all arrived.
   it("shows no current trips as a healthy, quiet feed rather than a failure", () => {
     const el = banner("no_current_trips");
@@ -44,6 +44,19 @@ describe("FixedRouteRiskBanner", () => {
     expect(el.querySelector(".live-signal-arc")).not.toBeNull();
     expect(el.querySelector(".live-signal-slash")).toBeNull();
     // Quiet: no data landed for the page to own, so no sweep.
+    expect(el.querySelector(".live-banner-wire")).toBeNull();
+  });
+
+  // D: the same empty answer during the hours trips always run is a problem.
+  it("shows no trips during service hours as a warning, while the feed keeps its countdown", () => {
+    const el = banner("no_trips_in_service");
+    expect(el.className).toContain("tone-warning");
+    expect(el.textContent).toContain("No trips in service");
+    // The feed is still answering: live signal, countdown and poll bars.
+    expect(el.querySelector(".live-signal")?.className).toContain("is-live");
+    expect(el.querySelector(".live-signal-arc")).not.toBeNull();
+    expect(el.querySelectorAll(".feed-tick")).toHaveLength(6);
+    // Nothing landed for the page to own, so no sweep.
     expect(el.querySelector(".live-banner-wire")).toBeNull();
   });
 

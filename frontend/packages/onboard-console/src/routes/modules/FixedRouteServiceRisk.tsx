@@ -265,6 +265,27 @@ function fixedRouteFeedMessage(diagnostics: TripDelayDiagnostics): string {
       `${updated ? ` (last trip data ${updated})` : ""}. Do not act on displayed risks.`
     );
   }
+  if (diagnostics.state === "no_trips_in_service") {
+    const window = diagnostics.trips_expected_window;
+    const hours = window ? `between ${window.from} and ${window.until} Central` : "during service hours";
+    const entities = diagnostics.feed_entity_count;
+    if (entities === 0) {
+      return (
+        `The TripUpdate feed answered on schedule but reported no trips ${hours}, when fixed-route trips ` +
+        "are always running. Check the feed before relying on this page."
+      );
+    }
+    if (typeof entities === "number" && entities > 0) {
+      return (
+        `The TripUpdate feed reported ${entities} trip${entities === 1 ? "" : "s"}, but none are being monitored ` +
+        `${hours}, when fixed-route trips are always running. Check trip monitoring before relying on this page.`
+      );
+    }
+    return (
+      `No trips are being monitored ${hours}, when fixed-route trips are always running. ` +
+      "Check the feed before relying on this page."
+    );
+  }
   if (diagnostics.state === "no_current_trips") {
     return (
       "The authenticated feed is configured, but there are no current monitored trip " +
@@ -291,6 +312,13 @@ function fixedRouteEmptyState(diagnostics: TripDelayDiagnostics | null) {
       title: "TripUpdate feed unavailable",
       detail:
         "The feed has not answered successfully. An empty list here is not evidence that no trip is at risk.",
+    };
+  }
+  if (diagnostics?.state === "no_trips_in_service") {
+    return {
+      title: "No trips reported during service hours",
+      detail:
+        "Fixed-route trips are always running at this hour. An empty list here is not evidence that no trip is at risk.",
     };
   }
   if (diagnostics?.state === "no_current_trips") {
@@ -610,13 +638,32 @@ export function FixedRouteRiskBanner({
       </LiveBanner>
     );
   }
+  // During the hours fixed-route trips are always running (lib/serviceHours.ts
+  // on the API), a feed that answers with none is a problem to check - the
+  // vendor sending nothing, or trips arriving unmonitored - not a quiet night.
+  // The feed is still answering, so the signal keeps its countdown and poll
+  // bars; the tone is a warning, and there is no sweep because nothing landed.
+  if (diagnosticsState === "no_trips_in_service") {
+    return (
+      <LiveBanner
+        state="live"
+        tone="warning"
+        badge="No trips in service"
+        role="status"
+        clock={arrivalClock}
+        history={history}
+      >
+        {message}
+      </LiveBanner>
+    );
+  }
   // The feed answered on schedule and reported that nothing is running -
-  // overnight, every night, outside 8am-10pm service. That is a healthy feed,
-  // so the signal keeps moving and keeps its countdown and poll bars. The
-  // banner stays quiet, without the sweep, because no data landed for this
-  // page to own. It used to fall through to the red "unavailable" branch
-  // below, which put a slashed failure glyph beside a full row of polls that
-  // had all arrived.
+  // overnight, outside the hours fixed-route trips always run. That is a
+  // healthy feed, so the signal keeps moving and keeps its countdown and poll
+  // bars. The banner stays quiet, without the sweep, because no data landed
+  // for this page to own. It used to fall through to the red "unavailable"
+  // branch below, which put a slashed failure glyph beside a full row of polls
+  // that had all arrived.
   if (diagnosticsState === "no_current_trips") {
     return (
       <LiveBanner

@@ -3,6 +3,9 @@ import { FEED_STALE_AFTER_MINUTES } from "./feedFreshness";
 export type TripDelayDataState =
   | "current"
   | "no_current_trips"
+  // The feed is answering, but no trip is being monitored during hours when
+  // fixed-route trips are always running (lib/serviceHours.ts).
+  | "no_trips_in_service"
   | "stale"
   | "unavailable"
   | "configuration_missing";
@@ -29,6 +32,15 @@ export interface TripDelayDiagnostics {
   feed_last_success_at: string | null;
   // The poller's cadence, so the console counts down to a real delivery.
   poll_interval_minutes: number;
+  // How many TripUpdate entities the feed's last successful delivery carried,
+  // from the ledger - before mapping to monitored trips. Lets the console say
+  // whether an empty page means the feed sent nothing or sent trips that were
+  // not monitored.
+  feed_entity_count: number | null;
+  // Whether fixed-route trips are expected to be running now, and the
+  // agency-local window that decides it.
+  trips_expected_now: boolean;
+  trips_expected_window: { from: string; until: string; time_zone: string };
 }
 
 export const TRIP_DELAY_STALE_AFTER_MINUTES = FEED_STALE_AFTER_MINUTES.gtfs_trip_updates;
@@ -37,6 +49,9 @@ export interface TripDelayViewInput<Row extends { last_polled_at: Date }> {
   tripUpdatesConfigured: boolean;
   feedState: TripUpdateFeedState;
   rows: readonly Row[];
+  // Whether fixed-route trips are expected to be running now. Omitted, an
+  // empty feed is never treated as suspicious.
+  tripsExpected?: boolean;
   now?: Date;
 }
 
@@ -68,9 +83,12 @@ export interface TripDelayView<Row> {
 // feed is not current, every row stays - the last known picture is worth
 // seeing, and the banner already says not to act on it.
 //
-// What this cannot tell is an empty feed during service hours from an empty
-// feed overnight: both are a feed answering with no trips. That needs
-// operating-hours awareness in the freshness contract, not a longer window.
+// An empty result is judged against service hours. Overnight, a feed that
+// answers with no trips is a quiet night. During the hours fixed-route trips
+// are always running, the same answer is a problem to check - the vendor
+// sending nothing, or trips arriving that are not being monitored - and it
+// used to look exactly like a quiet night. The feed's state still wins: a
+// stale or unavailable feed is reported as that, whatever the hour.
 export function resolveTripDelayView<Row extends { last_polled_at: Date }>(
   input: TripDelayViewInput<Row>,
 ): TripDelayView<Row> {
@@ -87,7 +105,8 @@ export function resolveTripDelayView<Row extends { last_polled_at: Date }>(
   const now = input.now ?? new Date();
   const limitMs = TRIP_DELAY_STALE_AFTER_MINUTES * 60_000;
   const fresh = all.filter((row) => now.getTime() - row.last_polled_at.getTime() <= limitMs);
-  return fresh.length > 0
-    ? { state: "current", delays: fresh, lastTripUpdateAt }
+  if (fresh.length > 0) return { state: "current", delays: fresh, lastTripUpdateAt };
+  return input.tripsExpected
+    ? { state: "no_trips_in_service", delays: [], lastTripUpdateAt }
     : { state: "no_current_trips", delays: [], lastTripUpdateAt };
 }

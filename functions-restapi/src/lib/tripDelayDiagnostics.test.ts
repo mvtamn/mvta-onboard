@@ -128,3 +128,64 @@ test("the TripUpdate poller runs on the cadence the console is told", () => {
   assert.ok(FEED_STALE_AFTER_MINUTES.gtfs_trip_updates >= 2 * FEED_POLL_INTERVAL_MINUTES.gtfs_trip_updates);
 });
 
+// D: an empty result is judged against service hours.
+test("reports no trips in service when the feed answers with none while trips are always running", () => {
+  const view = resolveTripDelayView({
+    tripUpdatesConfigured: true,
+    feedState: "current",
+    rows: [],
+    tripsExpected: true,
+    now: NOW,
+  });
+  assert.strictEqual(view.state, "no_trips_in_service");
+  assert.deepStrictEqual(view.delays, []);
+});
+
+test("still reports a quiet night as no current trips outside those hours", () => {
+  const view = resolveTripDelayView({
+    tripUpdatesConfigured: true,
+    feedState: "current",
+    rows: [],
+    tripsExpected: false,
+    now: NOW,
+  });
+  assert.strictEqual(view.state, "no_current_trips");
+});
+
+test("reports current data during service hours when trips are being monitored", () => {
+  const view = resolveTripDelayView({
+    tripUpdatesConfigured: true,
+    feedState: "current",
+    rows: [row("a", 2)],
+    tripsExpected: true,
+    now: NOW,
+  });
+  assert.strictEqual(view.state, "current");
+});
+
+// Trips the feed stopped reporting, waiting for cleanup, are not monitored
+// trips - during service hours that is still no trips in service.
+test("treats only rows past the limit as no trips in service during service hours", () => {
+  const view = resolveTripDelayView({
+    tripUpdatesConfigured: true,
+    feedState: "current",
+    rows: [row("finished", TRIP_DELAY_STALE_AFTER_MINUTES + 2)],
+    tripsExpected: true,
+    now: NOW,
+  });
+  assert.strictEqual(view.state, "no_trips_in_service");
+});
+
+test("lets a stale or unavailable feed win over service hours", () => {
+  for (const feedState of ["stale", "unavailable"] as const) {
+    const view = resolveTripDelayView({
+      tripUpdatesConfigured: true,
+      feedState,
+      rows: [],
+      tripsExpected: true,
+      now: NOW,
+    });
+    assert.strictEqual(view.state, feedState);
+  }
+});
+

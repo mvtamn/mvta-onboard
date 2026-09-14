@@ -5,7 +5,9 @@ import { app, type HttpRequest, type InvocationContext } from "@azure/functions"
 import { getPool } from "../lib/db";
 import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
 import { FEED_POLL_INTERVAL_MINUTES } from "../lib/feedFreshness";
-import { loadKpiTrust } from "../lib/kpiTrustStore";
+import { resolveKpiTrust } from "../lib/kpiTrust";
+import { loadKpiFeedHealthRecords } from "../lib/kpiTrustStore";
+import { FIXED_ROUTE_TRIPS_EXPECTED, fixedRouteTripsExpected } from "../lib/serviceHours";
 import {
   resolveTripDelayView,
   TRIP_DELAY_STALE_AFTER_MINUTES,
@@ -81,8 +83,12 @@ app.http("tripDelaysList", {
       // Whether the TripUpdate feed actually answered comes from the feed
       // ledger KPI trust already reads - the rows alone cannot say, because the
       // poller deletes them after every successful fetch.
-      const feedDependency = (await loadKpiTrust(pool)).fixed_route_delay.dependencies
+      const feedRecords = await loadKpiFeedHealthRecords(pool);
+      const feedDependency = resolveKpiTrust(feedRecords).fixed_route_delay.dependencies
         .find((dependency) => dependency.feed_name === "gtfs_trip_updates");
+      const feedEntityCount = feedRecords
+        .find((record) => record.feed_name === "gtfs_trip_updates")?.last_entity_count ?? null;
+      const tripsExpected = fixedRouteTripsExpected(new Date());
       const tripUpdatesConfigured = Boolean(
         process.env.GTFS_RT_TRIPUPDATE_URL?.trim(),
       );
@@ -90,6 +96,7 @@ app.http("tripDelaysList", {
         tripUpdatesConfigured,
         feedState: feedDependency?.state ?? "unavailable",
         rows: result.recordset,
+        tripsExpected,
       });
       const delays = view.delays.map((row) => ({
         ...row,
@@ -151,6 +158,13 @@ app.http("tripDelaysList", {
         stale_after_minutes: TRIP_DELAY_STALE_AFTER_MINUTES,
         feed_last_success_at: feedDependency?.last_success_at ?? null,
         poll_interval_minutes: FEED_POLL_INTERVAL_MINUTES.gtfs_trip_updates,
+        feed_entity_count: feedEntityCount,
+        trips_expected_now: tripsExpected,
+        trips_expected_window: {
+          from: FIXED_ROUTE_TRIPS_EXPECTED.from,
+          until: FIXED_ROUTE_TRIPS_EXPECTED.until,
+          time_zone: FIXED_ROUTE_TRIPS_EXPECTED.timeZone,
+        },
       };
       return { status: 200, jsonBody: { delays, diagnostics } };
     } catch (err) {

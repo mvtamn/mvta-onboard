@@ -466,6 +466,9 @@ export interface TripDelay {
 export type TripDelayDataState =
   | "current"
   | "no_current_trips"
+  // The feed is answering, but no trip is being monitored during hours when
+  // fixed-route trips are always running.
+  | "no_trips_in_service"
   | "stale"
   // The TripUpdate feed has not answered successfully, or its data cannot be
   // vouched for - judged from the feed health ledger, not from the rows.
@@ -490,6 +493,12 @@ export interface TripDelayDiagnostics {
   // countdown and no flash rather than a wrong one.
   feed_last_success_at?: string | null;
   poll_interval_minutes?: number;
+  // What the feed's last delivery carried (TripUpdate entities, before mapping
+  // to monitored trips), and whether trips are expected to be running now.
+  // Optional for the same rollout reason as the fields above.
+  feed_entity_count?: number | null;
+  trips_expected_now?: boolean;
+  trips_expected_window?: { from: string; until: string; time_zone: string };
 }
 
 export interface DeparturePrediction {
