@@ -319,7 +319,7 @@ pause "Enter to continue."
 # ── 5 ─────────────────────────────────────────────────────────────────────
 stage "Grant the application read on the approved site"
 say "This is the grant that actually opens the library, and the one whose"
-say "absence reads in the console as \"OnBoard has not been granted access\"."
+say "absence reads in the console as \"SharePoint refused OnBoard's read of this library\"."
 printf '\n'
 note "role: read - OnBoard reads approved documents, it never writes to SharePoint"
 printf '\n'

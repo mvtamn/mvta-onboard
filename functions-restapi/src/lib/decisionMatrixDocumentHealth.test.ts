@@ -35,8 +35,9 @@ test("a library OnBoard was never granted is reported as a permissions gap, not 
 
   const result = await checker(reference, "user-assertion");
   assert.equal(result.health_status, "Unavailable");
-  assert.match(result.reason ?? "", /not authorized to read this SharePoint library/);
+  assert.match(result.reason ?? "", /SharePoint administrator must grant the OnBoard application read access on this site/);
   assert.match(result.reason ?? "", /not a problem with the document/);
+  assert.doesNotMatch(result.reason ?? "", /Entra/);
 });
 
 test("a credential SharePoint rejects is reported as configuration, not as a document problem", async () => {

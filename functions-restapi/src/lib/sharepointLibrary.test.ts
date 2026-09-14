@@ -80,7 +80,20 @@ test("a library OnBoard was never granted is forbidden, not empty and not missin
   const library = createSharePointLibrary(config, async () => "token", fetchGraph);
   const listing = await library.listFolder("");
   assert.equal(listing.outcome, "forbidden");
-  assert.match(listing.reason, /not been granted/);
+  assert.match(listing.reason, /SharePoint administrator must grant the OnBoard application read access on this site/);
+  assert.match(listing.reason, /not a missing folder/);
+  // Sites.Selected is already consented; the per-site grant is a SharePoint
+  // act, and sending people to Entra for it cost three days in 2026-09.
+  assert.doesNotMatch(listing.reason, /Entra/);
+});
+
+test("a token SharePoint refuses is forbidden, and does not point at the site grant", async () => {
+  const { fetchGraph } = graphReturning([{ status: 401 }]);
+  const library = createSharePointLibrary(config, async () => "token", fetchGraph);
+  const listing = await library.listFolder("");
+  assert.equal(listing.outcome, "forbidden");
+  assert.match(listing.reason, /did not accept OnBoard's sign-in/);
+  assert.match(listing.reason, /site grant will not fix it/);
 });
 
 test("a folder that is not there is not_found, and says nothing about permissions", async () => {
@@ -107,12 +120,12 @@ test("an empty folder is ok and empty, not an error", async () => {
   assert.deepEqual(listing.entries, []);
 });
 
-test("the four outcomes do not share a message", async () => {
+test("the unreadable answers do not share a message", async () => {
   const reasons = new Set<string>();
-  for (const status of [403, 404, 503]) {
+  for (const status of [401, 403, 404, 503]) {
     const { fetchGraph } = graphReturning([{ status }]);
     const listing = await createSharePointLibrary(config, async () => "token", fetchGraph).listFolder("_SOPs");
     if (listing.outcome !== "ok") reasons.add(listing.reason);
   }
-  assert.equal(reasons.size, 3, `expected three distinct reasons, got ${JSON.stringify([...reasons])}`);
+  assert.equal(reasons.size, 4, `expected four distinct reasons, got ${JSON.stringify([...reasons])}`);
 });

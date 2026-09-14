@@ -5,6 +5,13 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.212] - 2026-09-14
+
+- **A refused SharePoint read sent people to Entra, where nothing was missing.** `sharepointLibrary.ts` mapped both a Graph 401 and a 403 from the drive children call to one reason: "a permissions gap to fix in Entra". The OnBoard application (`7e5a35b1-…`) already holds Microsoft Graph `Sites.Selected` as an application permission with admin consent. `Sites.Selected` grants nothing until an administrator grants the app a specific site through `POST /sites/{site-id}/permissions` (roles `["read"]`) or `Grant-PnPAzureADAppSitePermission`. That is a SharePoint act needing SharePoint Administrator or Global Administrator, not an Entra portal change. The wording misdirected troubleshooting from 2026-09-11 to 2026-09-14.
+- **401 and 403 now get separate reasons.** A 403 means the token was accepted and the site grant is missing, so the reason says a SharePoint administrator must grant the OnBoard application read access on this site (runbook step 4) and that this is a missing site grant, not a missing folder. A 401 means SharePoint refused the token itself, so the reason points at OnBoard's credential or consent and says a site grant will not fix it. Both are still `forbidden`, so the console's heading and warning state are unchanged.
+- **Document Health's 403 no longer says Entra either.** `decisionMatrixDocumentHealth.ts` gave its 403 the same "fix in Entra" wording, and it now names the SharePoint access instead. The setup wizard's step-5 note quotes the new console text.
+- **Verified.** REST API tests: 403 names the site grant and does not mention Entra, 401 is distinct and does not point at the site grant, all four unreadable answers have distinct reasons, and the library endpoint still answers 200 for `forbidden`. Console changelog tests.
+
 ## [1.5.211] - 2026-09-14
 
 - **The Spare webhook receiver gets its own Function App.** Spare posts roughly a webhook a second to `onDemandSpareWebhook` - 65,000 to 95,000 a day - and bursts far higher: 563 in one minute at 13:59 UTC on 2026-09-09. On the REST API's plan those bursts held CPU at 86-100% while every feed poller slowed twenty- to a hundred-fold, which is the one cause of stale data during service hours the staleness analysis found. The intake gate (#175) already bounds the receiver's database work; what it cannot bound is the cost of accepting that many requests on the pollers' worker. Option C of the analysis.

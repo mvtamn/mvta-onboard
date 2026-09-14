@@ -142,8 +142,19 @@ export function createSharePointLibrary(config: LibraryConfig, getToken: TokenPr
       // otherwise silently show only the first page.
       while (url) {
         const response: Response = await fetchGraph(url, { headers: { Authorization: `Bearer ${token}` } });
-        if (response.status === 401 || response.status === 403) {
-          return { outcome: "forbidden", path, reason: "OnBoard has not been granted access to this SharePoint library. This is a permissions gap to fix in Entra, not a missing folder." };
+        // Two different faults with two different fixers. The application
+        // holds Sites.Selected with admin consent, which grants nothing on its
+        // own: a 403 means the token was accepted and the per-site grant
+        // (POST /sites/{id}/permissions) is missing - a SharePoint
+        // administrator's act, not an Entra portal change. A 401 means the
+        // token itself was refused, so no site grant would help. The earlier
+        // single message sent people to Entra for a 403 on 2026-09-11..14.
+        // See docs/runbooks/decision-matrix-sharepoint-documents.md step 4.
+        if (response.status === 403) {
+          return { outcome: "forbidden", path, reason: "SharePoint refused OnBoard's read of this library. A SharePoint administrator must grant the OnBoard application read access on this site (step 4 of the SharePoint documents runbook). This is a missing site grant, not a missing folder." };
+        }
+        if (response.status === 401) {
+          return { outcome: "forbidden", path, reason: "SharePoint did not accept OnBoard's sign-in, so the library was never read. OnBoard's application credential or its consent needs checking. This is not a missing folder, and a site grant will not fix it." };
         }
         if (response.status === 404) {
           return { outcome: "not_found", path, reason: path ? "SharePoint has no folder at that path." : "SharePoint has no document library at the configured site and drive." };
