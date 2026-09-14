@@ -9,11 +9,11 @@ import {
 } from "react";
 import type { TripDelay, TripDelayDiagnostics } from "@mvta/shared";
 import { api } from "../config.js";
+import { arrivalClock, arrivalHistory, recordArrival, type ArrivalClock } from "./feedArrivals.js";
 
 const INTERVAL_STORAGE_KEY = "mvta-onboard-fixed-route-refresh-interval-ms";
 const NEXT_REFRESH_STORAGE_KEY = "mvta-onboard-fixed-route-next-refresh-at";
 const DEFAULT_INTERVAL_MS = 30_000;
-const HISTORY_LENGTH = 6;
 
 export const FIXED_ROUTE_REFRESH_OPTIONS = [
   { value: 15_000, label: "Every 15 seconds" },
@@ -35,10 +35,13 @@ interface FixedRouteRefreshValue {
   intervalMs: number;
   secondsLeft: number;
   lastCompletedAt: Date | null;
-  // The outcome of each of the last six polls, oldest first - true when the
-  // feed answered. The indicator shows these as bars, which is the only part
-  // of it that reports anything about the polls before this one, so they are
-  // recorded here rather than inferred from the current error state.
+  // The feed's own delivery clock - its last successful delivery and the
+  // poller's cadence - or null while either is unknown. The indicator counts
+  // down and flashes on this, not on the console's re-reads above, which
+  // return the same data nine times in ten.
+  arrivalClock: ArrivalClock | null;
+  // The last feed deliveries as poll bars, oldest first: true for a delivery,
+  // false for a slot on the cadence where none arrived.
   history: boolean[];
   setRefreshInterval: (intervalMs: number) => void;
   refreshNow: () => void;
@@ -74,7 +77,9 @@ export function FixedRouteRefreshProvider({ children }: { children: ReactNode })
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastCompletedAt, setLastCompletedAt] = useState<Date | null>(null);
-  const [history, setHistory] = useState<boolean[]>([]);
+  // Distinct delivery times seen while this console is open.
+  const [arrivals, setArrivals] = useState<number[]>([]);
+  const [cadenceMs, setCadenceMs] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     if (requestInFlight.current) return;
@@ -88,10 +93,17 @@ export function FixedRouteRefreshProvider({ children }: { children: ReactNode })
       });
       setError(null);
       setLastCompletedAt(new Date());
-      setHistory((previous) => [...previous, true].slice(-HISTORY_LENGTH));
+      // A worker still on the previous build answers without these; the
+      // clock then stays as it was rather than guessing.
+      const deliveredAt = Date.parse(result.diagnostics?.feed_last_success_at ?? "");
+      if (Number.isFinite(deliveredAt)) setArrivals((previous) => recordArrival(previous, deliveredAt));
+      const pollMinutes = result.diagnostics?.poll_interval_minutes;
+      if (typeof pollMinutes === "number" && pollMinutes > 0) setCadenceMs(pollMinutes * 60_000);
     } catch (err) {
+      // A failed re-read says nothing about the feed. It fills no bar and
+      // empties none; a feed that has actually stopped shows up as missed
+      // deliveries on its own cadence.
       setError(err);
-      setHistory((previous) => [...previous, false].slice(-HISTORY_LENGTH));
     } finally {
       requestInFlight.current = false;
       setLoading(false);
@@ -167,7 +179,10 @@ export function FixedRouteRefreshProvider({ children }: { children: ReactNode })
         intervalMs,
         secondsLeft,
         lastCompletedAt,
-        history,
+        // Recomputed on every render, and the provider re-renders each second
+        // with the countdown, so an overdue delivery empties a bar on time.
+        arrivalClock: arrivalClock(arrivals, cadenceMs),
+        history: arrivalHistory(arrivals, cadenceMs, Date.now()),
         setRefreshInterval,
         refreshNow,
       }}
@@ -192,6 +207,7 @@ const FALLBACK_VALUE: FixedRouteRefreshValue = {
   intervalMs: DEFAULT_INTERVAL_MS,
   secondsLeft: 0,
   lastCompletedAt: null,
+  arrivalClock: null,
   history: [],
   setRefreshInterval: () => {},
   refreshNow: () => {},

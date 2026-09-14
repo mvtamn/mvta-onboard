@@ -34,3 +34,15 @@ export const FEED_STALE_AFTER_MINUTES = {
   // Event AVL is polled every fifteen seconds and drives live maps.
   avail_avl: 2,
 } as const satisfies Partial<Record<KpiFeedName, number>>;
+
+// How often each polled feed is fetched, where the console needs to know it.
+// The console counts down to the next delivery and marks a poll as missed when
+// none arrives on this cadence, so the number it shows must be the number the
+// poller actually runs on - which is why the schedule below is built from it
+// rather than written out beside it.
+export const FEED_POLL_INTERVAL_MINUTES = {
+  gtfs_trip_updates: 5,
+} as const satisfies Partial<Record<KpiFeedName, number>>;
+
+export const GTFS_DELAYS_POLL_SCHEDULE = `0 */${FEED_POLL_INTERVAL_MINUTES.gtfs_trip_updates} * * * *`;
+

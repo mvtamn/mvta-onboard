@@ -21,7 +21,7 @@ import {
   type GtfsRtTripUpdateEntity,
 } from "../lib/gtfsTripUpdates";
 import { agencyServiceDate } from "../lib/missedTripTime";
-import { FEED_STALE_AFTER_MINUTES } from "../lib/feedFreshness";
+import { FEED_STALE_AFTER_MINUTES, GTFS_DELAYS_POLL_SCHEDULE } from "../lib/feedFreshness";
 import { DEPARTURE_RISK_THRESHOLD_SECONDS } from "../lib/tripDelayRisk";
 
 const ESCALATION_POLL_COUNT = 2;
@@ -254,7 +254,7 @@ async function escalateToSuggestedAlert(
 }
 
 app.timer("gtfsDelaysPoll", {
-  schedule: "0 */5 * * * *",
+  schedule: GTFS_DELAYS_POLL_SCHEDULE,
   handler: async (_timer: Timer, context: InvocationContext) => {
     const feedUrl = process.env.GTFS_RT_TRIPUPDATE_URL;
     if (!feedUrl) {

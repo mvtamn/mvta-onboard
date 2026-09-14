@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { FEED_STALE_AFTER_MINUTES } from "./feedFreshness";
+import { FEED_POLL_INTERVAL_MINUTES, FEED_STALE_AFTER_MINUTES, GTFS_DELAYS_POLL_SCHEDULE } from "./feedFreshness";
 import { resolveKpiTrust } from "./kpiTrust";
 import {
   resolveTripDelayView,
@@ -117,3 +117,14 @@ test("Service Risk, KPI trust and the cleanup share the TripUpdate feed's one li
     .find((dependency) => dependency.feed_name === "gtfs_trip_updates")?.stale_after_minutes;
   assert.strictEqual(kpiLimit, limit);
 });
+
+// The console counts down to the next TripUpdate delivery and marks polls as
+// missed on this cadence. If the schedule and the advertised interval drifted
+// apart, every countdown would be a lie.
+test("the TripUpdate poller runs on the cadence the console is told", () => {
+  assert.strictEqual(GTFS_DELAYS_POLL_SCHEDULE, `0 */${FEED_POLL_INTERVAL_MINUTES.gtfs_trip_updates} * * * *`);
+  assert.strictEqual(GTFS_DELAYS_POLL_SCHEDULE, "0 */5 * * * *");
+  // A feed is not stale until it has missed more than one delivery.
+  assert.ok(FEED_STALE_AFTER_MINUTES.gtfs_trip_updates >= 2 * FEED_POLL_INTERVAL_MINUTES.gtfs_trip_updates);
+});
+

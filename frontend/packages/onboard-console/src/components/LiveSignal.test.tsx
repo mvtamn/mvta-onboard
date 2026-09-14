@@ -1,8 +1,20 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FeedHistory, LiveBanner, LiveSignal, signalStateFor } from "./LiveSignal.js";
 
-afterEach(cleanup);
+const MIN = 60_000;
+const NOW = Date.parse("2026-09-13T19:31:00-05:00");
+// A delivery 1 minute ago, on a 5-minute cadence.
+const CLOCK = { lastArrivalAt: NOW - MIN, cadenceMs: 5 * MIN };
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(NOW);
+});
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 function signal(container: HTMLElement): HTMLElement {
   const element = container.querySelector(".live-signal");
@@ -22,10 +34,9 @@ describe("signalStateFor", () => {
 
 describe("LiveSignal", () => {
   // The countdown is a claim about when data next arrives. A surface that
-  // does not poll on a known clock must not draw one, or the indicator is
-  // promising a refresh nobody scheduled.
-  it("draws the countdown arc only when a real refresh clock is supplied", () => {
-    const { container } = render(<LiveSignal state="live" intervalMs={30_000} secondsLeft={20} />);
+  // does not know the feed's delivery clock must not draw one.
+  it("draws the countdown arc only when the feed's delivery clock is known", () => {
+    const { container } = render(<LiveSignal state="live" clock={CLOCK} />);
     expect(container.querySelector(".live-signal-arc")).not.toBeNull();
 
     cleanup();
@@ -33,20 +44,59 @@ describe("LiveSignal", () => {
     expect(without.querySelector(".live-signal-arc")).toBeNull();
   });
 
-  it("phases the arc to the real deadline rather than to when it mounted", () => {
-    const { container } = render(<LiveSignal state="live" intervalMs={30_000} secondsLeft={20} />);
+  // The console re-reads every 30 seconds; the feed delivers every five minutes.
+  // The arc counts down to the next delivery, not the next re-read.
+  it("counts down over the feed's cadence, from the last real delivery", () => {
+    const { container } = render(<LiveSignal state="live" clock={CLOCK} />);
     const arc = container.querySelector(".live-signal-arc") as SVGCircleElement;
-    expect(arc.style.animationDuration).toBe("30000ms");
-    // 10s of the 30s interval has already elapsed.
-    expect(arc.style.animationDelay).toBe("-10000ms");
+    expect(arc.style.animationDuration).toBe(`${5 * MIN}ms`);
+    expect(arc.style.animationDelay).toBe(`-${MIN}ms`);
+  });
+
+  it("holds the arc empty, rather than looping, once the next delivery is late", () => {
+    const late = { lastArrivalAt: NOW - 9 * MIN, cadenceMs: 5 * MIN };
+    const { container } = render(<LiveSignal state="live" clock={late} />);
+    const arc = container.querySelector(".live-signal-arc") as SVGCircleElement;
+    // Phased to the very end of a one-shot, forwards-filled animation.
+    expect(arc.style.animationDelay).toBe(`-${5 * MIN}ms`);
   });
 
   it("never animates a countdown for a state that is not receiving data", () => {
     for (const state of ["stale", "unavailable", "locked", "connecting"] as const) {
-      const { container } = render(<LiveSignal state={state} intervalMs={30_000} secondsLeft={20} />);
+      const { container } = render(<LiveSignal state={state} clock={CLOCK} />);
       expect(container.querySelector(".live-signal-arc")).toBeNull();
       cleanup();
     }
+  });
+
+  // Nine in ten re-reads return the same delivery. Only a new one is an arrival.
+  it("flashes only when a new delivery lands, not on load or on a re-read", () => {
+    const { container, rerender } = render(<LiveSignal state="live" clock={CLOCK} />);
+    expect(container.querySelector(".live-signal-core.arrive")).toBeNull();
+
+    rerender(<LiveSignal state="live" clock={{ ...CLOCK }} />);
+    expect(container.querySelector(".live-signal-core.arrive")).toBeNull();
+
+    const next = { lastArrivalAt: CLOCK.lastArrivalAt + 5 * MIN, cadenceMs: CLOCK.cadenceMs };
+    rerender(<LiveSignal state="live" clock={next} />);
+    expect(container.querySelector(".live-signal-core.arrive")).not.toBeNull();
+    expect(container.querySelector(".live-signal-bloom.arrive")).not.toBeNull();
+  });
+
+  it("restarts the countdown when a new delivery lands", () => {
+    const { container, rerender } = render(<LiveSignal state="live" clock={CLOCK} />);
+    const first = container.querySelector(".live-signal-arc");
+    vi.setSystemTime(NOW + 4 * MIN);
+    rerender(<LiveSignal state="live" clock={{ lastArrivalAt: NOW + 4 * MIN, cadenceMs: CLOCK.cadenceMs }} />);
+    const second = container.querySelector(".live-signal-arc") as SVGCircleElement;
+    expect(second).not.toBe(first);
+    expect(second.style.animationDelay).toBe("0ms");
+  });
+
+  it("does not flash a signal that is not live, even when the time moves", () => {
+    const { container, rerender } = render(<LiveSignal state="stale" clock={CLOCK} />);
+    rerender(<LiveSignal state="stale" clock={{ lastArrivalAt: NOW, cadenceMs: CLOCK.cadenceMs }} />);
+    expect(container.querySelector(".arrive")).toBeNull();
   });
 
   // Colour and motion are both unavailable to some readers, so each state has
@@ -98,10 +148,9 @@ describe("FeedHistory", () => {
 });
 
 describe("LiveBanner", () => {
-  // The sweep says "this page just took delivery of data". A preview or
-  // training banner has no feed behind it, so it must not wear one.
-  it("moves only in the live tone", () => {
-    const { container } = render(<LiveBanner state="live" tone="live" badge="Live data">Receiving</LiveBanner>);
+  // A preview or training banner has no feed behind it, so it wears no wire.
+  it("carries the sweep only in the live tone", () => {
+    const { container } = render(<LiveBanner state="live" tone="live" badge="Live data" clock={CLOCK}>Receiving</LiveBanner>);
     expect(container.querySelectorAll(".live-banner-wire")).toHaveLength(2);
     expect(container.querySelector(".live-banner-sheen")).not.toBeNull();
     cleanup();
@@ -109,6 +158,24 @@ describe("LiveBanner", () => {
     const preview = render(<LiveBanner tone="accent" badge="Preview data">Sample</LiveBanner>).container;
     expect(preview.querySelector(".live-banner-wire")).toBeNull();
     expect(preview.querySelector(".live-signal")).toBeNull();
+  });
+
+  // The sweep used to run every six seconds whatever the feed did. It now
+  // says one thing - "a delivery just landed" - and says it once.
+  it("sweeps once when a delivery lands, and holds still between deliveries", () => {
+    const { container, rerender } = render(
+      <LiveBanner state="live" tone="live" badge="Live data" clock={CLOCK}>Receiving</LiveBanner>,
+    );
+    expect(container.querySelector(".arrive")).toBeNull();
+
+    rerender(<LiveBanner state="live" tone="live" badge="Live data" clock={{ ...CLOCK }}>Receiving</LiveBanner>);
+    expect(container.querySelector(".arrive")).toBeNull();
+
+    const next = { lastArrivalAt: CLOCK.lastArrivalAt + 5 * MIN, cadenceMs: CLOCK.cadenceMs };
+    rerender(<LiveBanner state="live" tone="live" badge="Live data" clock={next}>Receiving</LiveBanner>);
+    expect(container.querySelector(".live-banner-wire.arrive")).not.toBeNull();
+    expect(container.querySelector(".live-banner-sheen.arrive")).not.toBeNull();
+    expect(container.querySelector(".concept-badge.arrive")).not.toBeNull();
   });
 
   it("keeps the badge and message readable as text", () => {

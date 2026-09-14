@@ -289,8 +289,7 @@ export function TripStartLog() {
           state="live"
           tone="live"
           badge="Live data"
-          intervalMs={refresh.intervalMs}
-          secondsLeft={refresh.secondsLeft}
+          clock={refresh.arrivalClock}
           history={refresh.history}
         >
           Log for {serviceDateLabel(serviceDate)} loaded · refreshes with fixed-route data
