@@ -55,6 +55,16 @@ describe("FixedRouteRiskBanner", () => {
     expect(el.querySelector(".live-signal-arc")).toBeNull();
   });
 
+  // The feed ledger says the TripUpdate feed has not answered. The API used to
+  // report that as "no current trips" whenever the rows had been cleared.
+  it("shows a feed that has not answered as unavailable, not as a quiet empty feed", () => {
+    const el = banner("unavailable");
+    expect(el.className).toContain("tone-danger");
+    expect(el.textContent).toContain("Feed unavailable");
+    expect(el.querySelector(".live-signal-slash")).not.toBeNull();
+    expect(el.querySelector(".live-signal-arc")).toBeNull();
+  });
+
   it("still shows a missing configuration as unavailable", () => {
     const el = banner("configuration_missing");
     expect(el.className).toContain("tone-danger");

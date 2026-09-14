@@ -467,6 +467,9 @@ export type TripDelayDataState =
   | "current"
   | "no_current_trips"
   | "stale"
+  // The TripUpdate feed has not answered successfully, or its data cannot be
+  // vouched for - judged from the feed health ledger, not from the rows.
+  | "unavailable"
   | "configuration_missing";
 
 export interface TripDelayDiagnostics {

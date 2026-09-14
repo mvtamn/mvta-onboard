@@ -21,10 +21,13 @@ import {
   type GtfsRtTripUpdateEntity,
 } from "../lib/gtfsTripUpdates";
 import { agencyServiceDate } from "../lib/missedTripTime";
+import { FEED_STALE_AFTER_MINUTES } from "../lib/feedFreshness";
 import { DEPARTURE_RISK_THRESHOLD_SECONDS } from "../lib/tripDelayRisk";
 
 const ESCALATION_POLL_COUNT = 2;
-const STALE_AFTER_MINUTES = 15;
+// Rows the feed stopped refreshing are cleared at the feed's own freshness
+// limit - the same number /trip-delays and KPI trust judge it by.
+const STALE_AFTER_MINUTES = FEED_STALE_AFTER_MINUTES.gtfs_trip_updates;
 
 interface MergeResult {
   polls_over_threshold: number;
