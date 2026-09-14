@@ -1,14 +1,28 @@
-import { dataStateLabel, type LiveStats } from "../hooks/useLiveStats.js";
+import type { LiveStats } from "../hooks/useLiveStats.js";
+import type { DashboardFeed, FeedSummary } from "../hooks/feedFreshness.js";
+import { whenLabel } from "../routes/modules/kpiTrustPresentation.js";
 import { LiveSignal, signalStateFor } from "./LiveSignal.js";
 
-// Data-health context for the Dashboard's right rail. Each feed status is
-// derived from the live endpoints already used by the dashboard.
-export function Sidebar({ stats }: { stats: LiveStats }) {
+// Data-health context for the Dashboard's right rail. Each feed row reports
+// that feed's own delivery from the feed-health ledger. It used to report two
+// console API calls under feed names - "GTFS-Realtime" was the active-messages
+// endpoint answering - so a stale feed could sit under "Live data connected".
+export function Sidebar({
+  stats,
+  feeds,
+  summary,
+  checkedAt,
+  onRefresh,
+}: {
+  stats: LiveStats;
+  feeds: DashboardFeed[];
+  summary: FeedSummary;
+  checkedAt: Date | null;
+  onRefresh: () => void;
+}) {
   const fixedRoutePending = stats.pending?.filter((alert) => alert.source === "gtfs_rt").length ?? null;
   const onDemandPending = stats.pending?.filter((alert) => alert.source === "zona").length ?? null;
-  const syncLabel = stats.syncedAt
-    ? `Today at ${stats.syncedAt.toLocaleTimeString()}`
-    : "Not synced yet";
+  const checkedLabel = checkedAt ? `Today at ${checkedAt.toLocaleTimeString()}` : "Not checked yet";
 
   return (
     <section className="data-health" aria-labelledby="data-health-title">
@@ -17,25 +31,32 @@ export function Sidebar({ stats }: { stats: LiveStats }) {
           <span className="dashboard-eyebrow">Data health</span>
           <h2 id="data-health-title">Feeds &amp; freshness</h2>
         </div>
-        <button className="btn-sm data-health-refresh" onClick={stats.refresh}>
+        <button className="btn-sm data-health-refresh" onClick={onRefresh}>
           ↻ Refresh
         </button>
       </div>
 
-      <div className={`data-health-summary ${stats.overallState}`} role="status">
-        <LiveSignal state={signalStateFor(stats.overallState)} />
-        <strong>{dataStateLabel(stats.overallState)}</strong>
+      <div className={`data-health-summary ${summary.state}`} role="status">
+        <LiveSignal state={signalStateFor(summary.state)} />
+        <strong>{summary.label}</strong>
       </div>
 
       <div className="data-health-status" aria-live="polite">
-        <div className={`data-health-feed ${stats.activeState}`}>
-          <LiveSignal state={signalStateFor(stats.activeState)} size="sm" />
-          GTFS-Realtime · {dataStateLabel(stats.activeState)}
-        </div>
-        <div className={`data-health-feed ${stats.pendingState}`}>
-          <LiveSignal state={signalStateFor(stats.pendingState)} size="sm" />
-          MVTA Connect · {dataStateLabel(stats.pendingState)}
-        </div>
+        {feeds.map((feed) => (
+          <div key={feed.key} className={`data-health-feed ${feed.state === "no_access" ? "loading" : feed.state}`}>
+            {/* No access says nothing about the feed, so it gets no signal at all. */}
+            {feed.state === "no_access" ? null : <LiveSignal state={signalStateFor(feed.state)} size="sm" />}
+            <span className="data-health-feed-text">
+              {feed.label} · {feed.stateLabel}
+              <small>
+                {feed.detail}
+                {feed.lastDeliveryAt
+                  ? ` · last delivery ${whenLabel(feed.lastDeliveryAt)}`
+                  : feed.state === "unavailable" ? " · no delivery recorded" : ""}
+              </small>
+            </span>
+          </div>
+        ))}
       </div>
 
       <div className="data-health-pending" aria-label="Pending alerts by feed">
@@ -51,8 +72,8 @@ export function Sidebar({ stats }: { stats: LiveStats }) {
       </div>
 
       <div className="data-health-sync">
-        <span>Last successful sync</span>
-        <strong>{syncLabel}</strong>
+        <span>Feeds last checked</span>
+        <strong>{checkedLabel}</strong>
       </div>
 
       <p className="data-health-guidance">
