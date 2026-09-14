@@ -1,4 +1,6 @@
-import { ON_DEMAND_DEGRADED_AFTER_MINUTES } from "./onDemandMonitoringHealth";
+// Each feed's deadline comes from feedFreshness.ts, which the endpoints and
+// pollers that judge the same feeds also read, so the limits cannot drift apart.
+import { FEED_STALE_AFTER_MINUTES as LIMIT } from "./feedFreshness";
 
 export type KpiTrustState = "current" | "stale" | "unavailable" | "current_but_empty";
 
@@ -52,8 +54,8 @@ type DependencyContract = { feedName: KpiFeedName; staleAfterMinutes?: number };
 type Contract = { required: readonly DependencyContract[]; supporting?: readonly DependencyContract[] };
 
 const CONTRACTS = {
-  fixed_route_delay: { required: [{ feedName: "gtfs_trip_updates", staleAfterMinutes: 15 }, { feedName: "gtfs_static" }], supporting: [{ feedName: "gtfs_vehicle_positions", staleAfterMinutes: 15 }] },
-  fixed_route_departures: { required: [{ feedName: "avail_pullout", staleAfterMinutes: 15 }] },
+  fixed_route_delay: { required: [{ feedName: "gtfs_trip_updates", staleAfterMinutes: LIMIT.gtfs_trip_updates }, { feedName: "gtfs_static" }], supporting: [{ feedName: "gtfs_vehicle_positions", staleAfterMinutes: LIMIT.gtfs_vehicle_positions }] },
+  fixed_route_departures: { required: [{ feedName: "avail_pullout", staleAfterMinutes: LIMIT.avail_pullout }] },
   // The on-demand half of garage departure (ADR 0028). onDemandDeparturesPoll
   // reads Spare duties every fifteen minutes, so 45 minutes is three missed
   // runs, the same allowance the other Spare ingestion feeds get. It learns
@@ -61,11 +63,11 @@ const CONTRACTS = {
   // evidence: without it the duty list goes quiet, but the duties it already
   // knows keep being measured.
   on_demand_departures: {
-    required: [{ feedName: "spare_duties", staleAfterMinutes: 45 }],
-    supporting: [{ feedName: "spare_requests", staleAfterMinutes: 45 }],
+    required: [{ feedName: "spare_duties", staleAfterMinutes: LIMIT.spare_duties }],
+    supporting: [{ feedName: "spare_requests", staleAfterMinutes: LIMIT.spare_requests }],
   },
   otp: { required: [{ feedName: "avail_otp_monthly" }], supporting: [{ feedName: "avail_otp_daily" }] },
-  event_avl: { required: [{ feedName: "avail_avl", staleAfterMinutes: 2 }] },
+  event_avl: { required: [{ feedName: "avail_avl", staleAfterMinutes: LIMIT.avail_avl }] },
   // Only the hourly authoritative reconciliation can establish On-Demand
   // currency, and it runs independently of missed-trip activation. The Spare
   // ingestion feeds stay supporting evidence so SPARE_MISSED_TRIPS_ENABLED
@@ -78,10 +80,10 @@ const CONTRACTS = {
   // as unavailable. Supporting dependencies do not set contract_pending, so
   // declaring it here does not put the On-Demand stream back into review.
   on_demand: {
-    required: [{ feedName: "spare_on_demand_reconciliation", staleAfterMinutes: ON_DEMAND_DEGRADED_AFTER_MINUTES }],
+    required: [{ feedName: "spare_on_demand_reconciliation", staleAfterMinutes: LIMIT.spare_on_demand_reconciliation }],
     supporting: [
-      { feedName: "spare_requests", staleAfterMinutes: 45 },
-      { feedName: "spare_slots", staleAfterMinutes: 45 },
+      { feedName: "spare_requests", staleAfterMinutes: LIMIT.spare_requests },
+      { feedName: "spare_slots", staleAfterMinutes: LIMIT.spare_slots },
       { feedName: "on_demand_zones" },
     ],
   },
@@ -89,11 +91,11 @@ const CONTRACTS = {
   // it explains reduced context without invalidating a current result, so it is
   // declared supporting rather than required.
   fixed_route_missed_trips: {
-    required: [{ feedName: "gtfs_trip_updates", staleAfterMinutes: 15 }, { feedName: "gtfs_vehicle_positions", staleAfterMinutes: 15 }],
+    required: [{ feedName: "gtfs_trip_updates", staleAfterMinutes: LIMIT.gtfs_trip_updates }, { feedName: "gtfs_vehicle_positions", staleAfterMinutes: LIMIT.gtfs_vehicle_positions }],
     supporting: [{ feedName: "avail_missed_trips" }],
   },
   spare_missed_trips: {
-    required: [{ feedName: "spare_requests", staleAfterMinutes: 45 }, { feedName: "spare_slots", staleAfterMinutes: 45 }],
+    required: [{ feedName: "spare_requests", staleAfterMinutes: LIMIT.spare_requests }, { feedName: "spare_slots", staleAfterMinutes: LIMIT.spare_slots }],
     supporting: [{ feedName: "avail_missed_trips" }],
   },
 } as const satisfies Record<string, Contract>;

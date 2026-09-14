@@ -259,6 +259,12 @@ function fixedRouteFeedMessage(diagnostics: TripDelayDiagnostics): string {
       `${updated ? ` (last received ${updated})` : ""}. Treat displayed risks as stale.`
     );
   }
+  if (diagnostics.state === "unavailable") {
+    return (
+      "The GTFS-Realtime TripUpdate feed has not answered successfully, so nothing here is a reading of now" +
+      `${updated ? ` (last trip data ${updated})` : ""}. Do not act on displayed risks.`
+    );
+  }
   if (diagnostics.state === "no_current_trips") {
     return (
       "The authenticated feed is configured, but there are no current monitored trip " +
@@ -278,6 +284,13 @@ function fixedRouteEmptyState(diagnostics: TripDelayDiagnostics | null) {
       title: "TripUpdate feed configuration is missing",
       detail:
         "Add the GTFS-Realtime TripUpdate feed setting before relying on fixed-route predictions.",
+    };
+  }
+  if (diagnostics?.state === "unavailable") {
+    return {
+      title: "TripUpdate feed unavailable",
+      detail:
+        "The feed has not answered successfully. An empty list here is not evidence that no trip is at risk.",
     };
   }
   if (diagnostics?.state === "no_current_trips") {
@@ -622,6 +635,13 @@ export function FixedRouteRiskBanner({
   if (diagnosticsState === "stale") {
     return (
       <LiveBanner state="stale" tone="warning" badge="Stale" role="status" history={history}>
+        {message}
+      </LiveBanner>
+    );
+  }
+  if (diagnosticsState === "unavailable") {
+    return (
+      <LiveBanner state="unavailable" tone="danger" badge="Feed unavailable" role="status" history={history}>
         {message}
       </LiveBanner>
     );

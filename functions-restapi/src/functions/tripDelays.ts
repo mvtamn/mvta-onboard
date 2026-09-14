@@ -4,8 +4,9 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
 import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { loadKpiTrust } from "../lib/kpiTrustStore";
 import {
-  determineTripDelayState,
+  resolveTripDelayView,
   TRIP_DELAY_STALE_AFTER_MINUTES,
 } from "../lib/tripDelayDiagnostics";
 import {
@@ -76,7 +77,20 @@ app.http("tripDelaysList", {
           d.predicted_max_departure_delay_seconds DESC,
           d.route_id
       `);
-      const delays = result.recordset.map((row) => ({
+      // Whether the TripUpdate feed actually answered comes from the feed
+      // ledger KPI trust already reads - the rows alone cannot say, because the
+      // poller deletes them after every successful fetch.
+      const feedDependency = (await loadKpiTrust(pool)).fixed_route_delay.dependencies
+        .find((dependency) => dependency.feed_name === "gtfs_trip_updates");
+      const tripUpdatesConfigured = Boolean(
+        process.env.GTFS_RT_TRIPUPDATE_URL?.trim(),
+      );
+      const view = resolveTripDelayView({
+        tripUpdatesConfigured,
+        feedState: feedDependency?.state ?? "unavailable",
+        rows: result.recordset,
+      });
+      const delays = view.delays.map((row) => ({
         ...row,
         departure_predictions: row.departure_predictions
           ? JSON.parse(row.departure_predictions)
@@ -112,28 +126,14 @@ app.http("tripDelaysList", {
           stop_name: prediction.stop_id ? stopNames.get(prediction.stop_id) ?? null : null,
         }));
       }
-      const lastTripUpdateAt = result.recordset.reduce<Date | null>(
-        (latest, row) =>
-          !latest || row.last_polled_at > latest ? row.last_polled_at : latest,
-        null,
-      );
-      const thresholdRiskCount = result.recordset.filter(isDepartureAtRisk).length;
-      const tripUpdatesConfigured = Boolean(
-        process.env.GTFS_RT_TRIPUPDATE_URL?.trim(),
-      );
+      const lastTripUpdateAt = view.lastTripUpdateAt;
+      const thresholdRiskCount = view.delays.filter(isDepartureAtRisk).length;
       const staticStopCount = Number(stopCountResult.recordset[0]?.count ?? 0);
       const directionReferenceCount = Number(
         directionCountResult.recordset[0]?.count ?? 0,
       );
       const diagnostics = {
-        state: determineTripDelayState({
-          tripUpdatesConfigured,
-          activeTripCount: delays.length,
-          thresholdRiskCount,
-          lastTripUpdateAt,
-          staticStopCount,
-          directionReferenceCount,
-        }),
+        state: view.state,
         trip_updates_configured: tripUpdatesConfigured,
         vehicle_positions_configured: Boolean(
           process.env.GTFS_RT_VEHICLE_URL?.trim(),
