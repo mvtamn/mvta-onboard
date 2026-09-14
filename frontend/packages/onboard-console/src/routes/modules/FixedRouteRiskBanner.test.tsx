@@ -7,7 +7,7 @@ vi.mock("../../context/FixedRouteRefreshContext.js", () => ({
   FIXED_ROUTE_REFRESH_OPTIONS: [],
   formatRefreshCountdown: (s: number) => `${s}s`,
   useFixedRouteRefresh: () => ({
-    arrivalClock: { lastArrivalAt: Date.now() - 60_000, cadenceMs: 300_000 },
+    arrivalClock: { lastArrivalAt: Date.now() - 60_000, slotStartAt: Math.floor((Date.now() - 60_000) / 300_000) * 300_000, cadenceMs: 300_000 },
     history: [true, true, true, true, true, true],
   }),
 }));

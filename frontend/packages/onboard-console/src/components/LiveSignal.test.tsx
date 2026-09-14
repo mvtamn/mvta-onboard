@@ -2,10 +2,15 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FeedHistory, LiveBanner, LiveSignal, signalStateFor } from "./LiveSignal.js";
 
+const SEC = 1_000;
 const MIN = 60_000;
-const NOW = Date.parse("2026-09-13T19:31:00-05:00");
-// A delivery 1 minute ago, on a 5-minute cadence.
-const CLOCK = { lastArrivalAt: NOW - MIN, cadenceMs: 5 * MIN };
+const CADENCE = 5 * MIN;
+// A slot boundary on the poller's UTC grid, and "now" one minute into it.
+const SLOT = Date.parse("2026-09-14T01:30:00Z");
+const NOW = SLOT + MIN;
+// The slot's delivery landed 20 seconds after its poll fired.
+const CLOCK = { lastArrivalAt: SLOT + 20 * SEC, slotStartAt: SLOT, cadenceMs: CADENCE };
+const NEXT = { lastArrivalAt: SLOT + CADENCE + 18 * SEC, slotStartAt: SLOT + CADENCE, cadenceMs: CADENCE };
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -44,21 +49,30 @@ describe("LiveSignal", () => {
     expect(without.querySelector(".live-signal-arc")).toBeNull();
   });
 
-  // The console re-reads every 30 seconds; the feed delivers every five minutes.
-  // The arc counts down to the next delivery, not the next re-read.
-  it("counts down over the feed's cadence, from the last real delivery", () => {
+  // Anchored to the slot on the poller's grid, so it points at the next
+  // scheduled poll rather than "stamp + five minutes".
+  it("counts down across the delivered slot to the next scheduled poll", () => {
     const { container } = render(<LiveSignal state="live" clock={CLOCK} />);
     const arc = container.querySelector(".live-signal-arc") as SVGCircleElement;
-    expect(arc.style.animationDuration).toBe(`${5 * MIN}ms`);
+    expect(arc.style.animationDuration).toBe(`${CADENCE}ms`);
     expect(arc.style.animationDelay).toBe(`-${MIN}ms`);
   });
 
-  it("holds the arc empty, rather than looping, once the next delivery is late", () => {
-    const late = { lastArrivalAt: NOW - 9 * MIN, cadenceMs: 5 * MIN };
+  // On dev a past-due catch-up stamped the ledger at 01:27:35 for the 01:25
+  // slot; "stamp + cadence" aimed the countdown at 01:32:35, not 01:30.
+  it("aims at the next slot even when the delivery stamp landed late in its slot", () => {
+    vi.setSystemTime(SLOT + 3 * MIN);
+    const late = { lastArrivalAt: SLOT + 2 * MIN + 35 * SEC, slotStartAt: SLOT, cadenceMs: CADENCE };
     const { container } = render(<LiveSignal state="live" clock={late} />);
     const arc = container.querySelector(".live-signal-arc") as SVGCircleElement;
-    // Phased to the very end of a one-shot, forwards-filled animation.
-    expect(arc.style.animationDelay).toBe(`-${5 * MIN}ms`);
+    expect(arc.style.animationDelay).toBe(`-${3 * MIN}ms`);
+  });
+
+  it("holds the arc empty, rather than looping, once the next poll is late", () => {
+    const old = { lastArrivalAt: SLOT - 2 * CADENCE + 20 * SEC, slotStartAt: SLOT - 2 * CADENCE, cadenceMs: CADENCE };
+    const { container } = render(<LiveSignal state="live" clock={old} />);
+    const arc = container.querySelector(".live-signal-arc") as SVGCircleElement;
+    expect(arc.style.animationDelay).toBe(`-${CADENCE}ms`);
   });
 
   it("never animates a countdown for a state that is not receiving data", () => {
@@ -69,34 +83,58 @@ describe("LiveSignal", () => {
     }
   });
 
-  // Nine in ten re-reads return the same delivery. Only a new one is an arrival.
-  it("flashes only when a new delivery lands, not on load or on a re-read", () => {
+  it("flashes only when a new slot delivers, not on a re-read of the same one", () => {
     const { container, rerender } = render(<LiveSignal state="live" clock={CLOCK} />);
     expect(container.querySelector(".live-signal-core.arrive")).toBeNull();
 
     rerender(<LiveSignal state="live" clock={{ ...CLOCK }} />);
     expect(container.querySelector(".live-signal-core.arrive")).toBeNull();
 
-    const next = { lastArrivalAt: CLOCK.lastArrivalAt + 5 * MIN, cadenceMs: CLOCK.cadenceMs };
-    rerender(<LiveSignal state="live" clock={next} />);
+    rerender(<LiveSignal state="live" clock={NEXT} />);
     expect(container.querySelector(".live-signal-core.arrive")).not.toBeNull();
     expect(container.querySelector(".live-signal-bloom.arrive")).not.toBeNull();
   });
 
-  it("restarts the countdown when a new delivery lands", () => {
+  // The defect dev showed: the banner mounts while loading with no clock and
+  // receives one a second later. That first clock is the page opening, not a
+  // delivery.
+  it("does not flash when the delivery clock first becomes known", () => {
+    const { container, rerender } = render(<LiveSignal state="live" />);
+    rerender(<LiveSignal state="live" clock={CLOCK} />);
+    expect(container.querySelector(".arrive")).toBeNull();
+
+    rerender(<LiveSignal state="live" clock={NEXT} />);
+    expect(container.querySelector(".live-signal-core.arrive")).not.toBeNull();
+  });
+
+  // Two pollers stamp the ledger each slot, seconds apart (288 of 288 slots on dev).
+  it("does not flash again for a second stamp in a slot that already delivered", () => {
+    const { container, rerender } = render(<LiveSignal state="live" clock={CLOCK} />);
+    rerender(<LiveSignal state="live" clock={NEXT} />);
+    const flashed = container.querySelector(".live-signal-core.arrive");
+    expect(flashed).not.toBeNull();
+
+    rerender(<LiveSignal state="live" clock={{ ...NEXT, lastArrivalAt: NEXT.lastArrivalAt + 9 * SEC }} />);
+    // The same element, not a remount - so the one-shot animation does not replay.
+    expect(container.querySelector(".live-signal-core")).toBe(flashed);
+  });
+
+  it("does not replay a flash when the signal returns to live within the same slot", () => {
+    const { container, rerender } = render(<LiveSignal state="live" clock={CLOCK} />);
+    rerender(<LiveSignal state="live" clock={NEXT} />);
+    rerender(<LiveSignal state="stale" clock={NEXT} />);
+    rerender(<LiveSignal state="live" clock={NEXT} />);
+    expect(container.querySelector(".arrive")).toBeNull();
+  });
+
+  it("restarts the countdown when a new slot delivers", () => {
     const { container, rerender } = render(<LiveSignal state="live" clock={CLOCK} />);
     const first = container.querySelector(".live-signal-arc");
-    vi.setSystemTime(NOW + 4 * MIN);
-    rerender(<LiveSignal state="live" clock={{ lastArrivalAt: NOW + 4 * MIN, cadenceMs: CLOCK.cadenceMs }} />);
+    vi.setSystemTime(SLOT + CADENCE);
+    rerender(<LiveSignal state="live" clock={{ ...NEXT, lastArrivalAt: SLOT + CADENCE }} />);
     const second = container.querySelector(".live-signal-arc") as SVGCircleElement;
     expect(second).not.toBe(first);
     expect(second.style.animationDelay).toBe("0ms");
-  });
-
-  it("does not flash a signal that is not live, even when the time moves", () => {
-    const { container, rerender } = render(<LiveSignal state="stale" clock={CLOCK} />);
-    rerender(<LiveSignal state="stale" clock={{ lastArrivalAt: NOW, cadenceMs: CLOCK.cadenceMs }} />);
-    expect(container.querySelector(".arrive")).toBeNull();
   });
 
   // Colour and motion are both unavailable to some readers, so each state has
@@ -160,9 +198,7 @@ describe("LiveBanner", () => {
     expect(preview.querySelector(".live-signal")).toBeNull();
   });
 
-  // The sweep used to run every six seconds whatever the feed did. It now
-  // says one thing - "a delivery just landed" - and says it once.
-  it("sweeps once when a delivery lands, and holds still between deliveries", () => {
+  it("sweeps once when a new slot delivers, and holds still between deliveries", () => {
     const { container, rerender } = render(
       <LiveBanner state="live" tone="live" badge="Live data" clock={CLOCK}>Receiving</LiveBanner>,
     );
@@ -171,11 +207,23 @@ describe("LiveBanner", () => {
     rerender(<LiveBanner state="live" tone="live" badge="Live data" clock={{ ...CLOCK }}>Receiving</LiveBanner>);
     expect(container.querySelector(".arrive")).toBeNull();
 
-    const next = { lastArrivalAt: CLOCK.lastArrivalAt + 5 * MIN, cadenceMs: CLOCK.cadenceMs };
-    rerender(<LiveBanner state="live" tone="live" badge="Live data" clock={next}>Receiving</LiveBanner>);
+    rerender(<LiveBanner state="live" tone="live" badge="Live data" clock={NEXT}>Receiving</LiveBanner>);
     expect(container.querySelector(".live-banner-wire.arrive")).not.toBeNull();
     expect(container.querySelector(".live-banner-sheen.arrive")).not.toBeNull();
     expect(container.querySelector(".concept-badge.arrive")).not.toBeNull();
+  });
+
+  // Exactly what a page load does on Service Risk: the banner renders muted
+  // while connecting, then live with the first clock.
+  it("does not sweep on page load, when the banner goes from connecting to live", () => {
+    const { container, rerender } = render(
+      <LiveBanner state="connecting" tone="muted" badge="Connecting">Connecting</LiveBanner>,
+    );
+    rerender(<LiveBanner state="live" tone="live" badge="Live data" clock={CLOCK}>Receiving</LiveBanner>);
+    expect(container.querySelector(".arrive")).toBeNull();
+
+    rerender(<LiveBanner state="live" tone="live" badge="Live data" clock={NEXT}>Receiving</LiveBanner>);
+    expect(container.querySelector(".live-banner-wire.arrive")).not.toBeNull();
   });
 
   it("keeps the badge and message readable as text", () => {
