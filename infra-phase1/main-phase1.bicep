@@ -89,6 +89,8 @@ param gtfsRtTripUpdateUrl string = 'https://srv.mvta.com/infoPoint/GTFS-realtime
 param gtfsStaticUrl string = 'https://mvta-dispatch.myavail.cloud/opensilvermyavailserver/files/gtfs/google_transit.zip'
 param onDemandZoneFlexUrl string = ''
 param onDemandOperationalZoneIds string = ''
+@description('Keep the Spare webhook receiver running on the REST API app. True until Spare is repointed at func-mvta-sparehook-<env>; then false disables it there. See HANDOFF.md, "Spare webhook receiver on its own app".')
+param spareWebhookOnRestApi bool = true
 
 @description('GTFS-Realtime VehiclePosition feed used for fixed-route vehicle monitoring.')
 param gtfsRtVehicleUrl string = 'https://srv.mvta.com/infoPoint/GTFS-realtime.ashx?&Type=VehiclePosition&debug=true'
@@ -176,6 +178,9 @@ module restApiFunction 'modules/functionapp.bicep' = {
     availOtpDailyUrl: availOtpDailyUrl
     availMissedTripsUrl: availMissedTripsUrl
     availPulloutUrl: availPulloutUrl
+    // Retired here only once Spare delivers to the receiver's own app below;
+    // switching it off first would drop deliveries.
+    disabledFunctions: spareWebhookOnRestApi ? [] : ['onDemandSpareWebhook']
   }
 }
 
@@ -204,6 +209,51 @@ module dispatchFunction 'modules/functionapp.bicep' = {
     acsEmailFrom: acsEmailFrom
     acsSmsFrom: acsSmsFrom
     riderAppBaseUrl: riderAppBaseUrl
+    manageRoleAssignments: manageRoleAssignments
+  }
+}
+
+// The Spare webhook receiver's own app and plan. Spare delivers roughly a
+// webhook a second and bursts far higher (563 in one minute on 2026-09-09);
+// on the REST API's plan those bursts held CPU at 95-100% and slowed every feed
+// poller twenty- to a hundred-fold. The intake gate bounds the receiver's
+// database work, but not the cost of accepting that many requests on the
+// pollers' worker - so it gets a worker of its own.
+//
+// It runs the REST API package through a single entry point that registers
+// only the receiver and a health check (functions-restapi/src/
+// spareWebhookEntry.ts); the deploy leg in api.yml fails if anything else
+// registers. It reads only SQL_CONNECTION_STRING, the Spare secrets and base
+// URL, and ON_DEMAND_OPERATIONAL_ZONE_IDS - all emitted by includeSpareApiKey
+// and onDemandOperationalZoneIds.
+//
+// - frontDoorId is empty on purpose: Spare posts straight to the app's
+//   azurewebsites.net hostname, never through Front Door, and every delivery
+//   is authenticated by the shared Spare webhook secret.
+// - Easy Auth is off: nothing here takes a signed-in user.
+// - Role assignments follow manageRoleAssignments, which dev leaves false
+//   because the deploy identity is Contributor only. Until an administrator
+//   grants this app's identity Key Vault Secrets User and its storage roles,
+//   its Key Vault references do not resolve and it cannot start - the steps
+//   are in HANDOFF.md. Nothing moves to it until Spare is repointed, so the
+//   REST API keeps receiving deliveries in the meantime.
+module spareWebhookFunction 'modules/functionapp.bicep' = {
+  name: 'spare-webhook-function-deployment'
+  params: {
+    functionAppName: 'func-mvta-sparehook-${environment}'
+    location: location
+    environment: environment
+    appInsightsConnectionString: appInsights.properties.ConnectionString
+    storageAccountName: take('stmvtasparehk${environment}${cleanSuffix}', 24)
+    subnetId: vnet.properties.subnets[0].id
+    keyVaultName: keyVault.name
+    planSku: 'B1'
+    planTier: 'Basic'
+    aadClientId: aadClientId
+    enableEasyAuth: false
+    frontDoorId: ''
+    includeSpareApiKey: true
+    onDemandOperationalZoneIds: onDemandOperationalZoneIds
     manageRoleAssignments: manageRoleAssignments
   }
 }
@@ -308,3 +358,4 @@ output serviceBusNamespace string = serviceBus.outputs.namespaceName
 output serviceBusQueueName string = serviceBus.outputs.queueName
 output detourImagesStorageAccount string = detourImagesStorage.outputs.storageAccountName
 output detourImagesContainer string = detourImagesStorage.outputs.containerName
+output spareWebhookFunctionHostname string = spareWebhookFunction.outputs.functionAppHostname

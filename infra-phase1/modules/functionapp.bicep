@@ -74,6 +74,9 @@ param frontDoorId string = ''
 @description('Allowed CORS origins (the SWA / Front Door hostnames). Empty = leave Azure default CORS (no override).')
 param allowedCorsOrigins array = []
 
+@description('Functions in the deployed package that this app must not run, emitted as AzureWebJobs.<name>.Disabled = true. Declared here rather than set by hand because appSettings below is the complete desired state.')
+param disabledFunctions array = []
+
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   name: storageAccountName
   location: location
@@ -310,7 +313,10 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         // defaulted to SPARE_MISSED_TRIP_SERVICE_IDS, which is missed-trip
         // policy and must not silently become monitoring policy.
         { name: 'ON_DEMAND_MONITORING_SERVICE_IDS', value: onDemandMonitoringServiceIds }
-      ] : [])
+      ] : [], map(disabledFunctions, name => {
+        name: 'AzureWebJobs.${name}.Disabled'
+        value: 'true'
+      }))
     }
   }
 }

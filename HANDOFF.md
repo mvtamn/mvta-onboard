@@ -38,6 +38,7 @@ SQL Database:           sqldb-mvta-onboard-dev
 SQL admin login:        mvtaonboardadmin
 REST API Function App:  func-mvta-restapi-dev
 Dispatch Function App:  func-mvta-dispatch-dev
+Spare webhook app:      func-mvta-sparehook-dev (own B1 plan; see "Spare webhook receiver on its own app")
 MVTA OnBoard SWA:        stapp-mvta-onboard-dev
 Rider opt-in SWA:        stapp-mvta-riderapp-dev
 Service Bus namespace:  sb-mvta-onboard-dev (queue: message-created-events)
@@ -660,3 +661,88 @@ Those pin the queries; they do not stand in for a live service day.
   changes.
 - Requests ingested while no zone version was active were recorded without a
   zone and are not retrospectively reclassified.
+
+## Spare webhook receiver on its own app — status (2026-09-14)
+
+**Why.** Spare posts roughly a webhook a second to `onDemandSpareWebhook`
+(65,000-95,000 a day) and bursts far higher: 563 in one minute at 13:59 UTC on
+2026-09-09. On `plan-func-mvta-restapi-dev` those bursts held CPU at 86-100%
+from 13:30 to 13:55 UTC while every feed poller slowed twenty- to a
+hundred-fold (`availAvlPoll` ran 50 times instead of ~260). The intake gate
+(#175) bounds the receiver's *database* work; what it cannot bound is the cost
+of accepting that many requests on the pollers' worker. A queue would not help:
+the requests would still arrive on the same worker, now with a send each. So the
+receiver gets its own app and plan.
+
+**What exists after the merge.** The infra workflow creates
+`func-mvta-sparehook-dev` on `plan-func-mvta-sparehook-dev` (Linux B1, roughly
+$13/month) with storage `stmvtasparehkdevmvtajx44`, on the same `snet-functions`
+subnet. The api workflow deploys the REST API package to it through
+`functions-restapi/src/spareWebhookEntry.ts`, which registers only
+`onDemandSpareWebhook` and `health`; that deploy leg fails if anything else
+registers, because the REST app's `functions/*.js` glob would double every
+poller. **Spare still posts to the REST API** until step 5 - nothing moves on
+merge.
+
+The receiver reads only `SQL_CONNECTION_STRING` (the same Key Vault secret and
+SQL login as the other apps, so no database user is needed),
+`SPARE_WEBHOOK_AUTH_SECRET`, `SPARE_API_KEY`, `SPARE_API_BASE_URL` and
+`ON_DEMAND_OPERATIONAL_ZONE_IDS`.
+
+### Cutover, in order
+
+1. **Confirm the infra deploy created the app.** The infra workflow run for the
+   merge must succeed, and
+   `az resource show -g rg-mvta-onboard-dev -n func-mvta-sparehook-dev --resource-type Microsoft.Web/sites`
+   must return it. If the region refuses a third B1 plan
+   (`SubscriptionIsOverQuotaForSku`), see section 3 before debugging anything
+   else.
+2. **Grant the app's identity its roles - an administrator's step.** The deploy
+   identity is Contributor on the resource group and cannot create role
+   assignments, and dev deploys with `manageRoleAssignments` false. Until these
+   exist the app's Key Vault references do not resolve and it cannot start:
+   ```bash
+   principal=$(az resource show -g rg-mvta-onboard-dev -n func-mvta-sparehook-dev --resource-type Microsoft.Web/sites --query identity.principalId -o tsv)
+   kv=$(az keyvault show -n kv-mvta-dev-mvta-jx4471 --query id -o tsv)
+   st=$(az storage account show -g rg-mvta-onboard-dev -n stmvtasparehkdevmvtajx44 --query id -o tsv)
+   az role assignment create --assignee-object-id "$principal" --assignee-principal-type ServicePrincipal --role "Key Vault Secrets User" --scope "$kv"
+   az role assignment create --assignee-object-id "$principal" --assignee-principal-type ServicePrincipal --role "Storage Blob Data Owner" --scope "$st"
+   az role assignment create --assignee-object-id "$principal" --assignee-principal-type ServicePrincipal --role "Storage Queue Data Contributor" --scope "$st"
+   ```
+   These are the roles `functionapp.bicep` would assign with
+   `manageRoleAssignments` true. Allow a few minutes for propagation.
+3. **Deploy the code, then restart.** If the api workflow's
+   `func-mvta-sparehook-dev` leg reported "does not exist yet" (the infra run
+   finished after it), re-run the api workflow from the Actions tab. Then
+   restart the app so Key Vault references are resolved with the new grant.
+   Verify the deploy the usual way: Kudu `packagename.txt`, not the green check.
+4. **Verify it answers, and loads only two functions.**
+   `curl https://func-mvta-sparehook-dev.azurewebsites.net/api/health` returns
+   200, and a `POST` to `/api/on-demand-webhooks/spare` without the secret
+   returns 401. In App Insights the app's host start maps exactly the `health`
+   and `on-demand-webhooks/spare` routes and no timers.
+5. **Repoint Spare - in Spare's admin, not in this repo.** Change the webhook
+   URL from
+   `https://func-mvta-restapi-dev.azurewebsites.net/api/on-demand-webhooks/spare`
+   to
+   `https://func-mvta-sparehook-dev.azurewebsites.net/api/on-demand-webhooks/spare`.
+   The shared secret does not change: both apps read `spare-webhook-auth-secret`.
+6. **Confirm deliveries moved.** In App Insights, `requests` named
+   `onDemandSpareWebhook` by `cloud_RoleName` over 30 minutes: they should
+   arrive on `func-mvta-sparehook-dev` and fall to zero on
+   `func-mvta-restapi-dev`, with 2xx results.
+7. **Retire the receiver on the REST API.** Set `spareWebhookOnRestApi` to
+   `false` in `infra-phase1/parameters/phase1-dev.parameters.json` and merge;
+   the infra deploy emits `AzureWebJobs.onDemandSpareWebhook.Disabled = true` on
+   the REST app. Do this only after step 6 - before it, it drops deliveries.
+8. **Later, the REST plan's size.** `plan-func-mvta-restapi-dev` was scaled to
+   two workers during the 2026-09-05 flood. After a week of normal CPU without
+   the receiver, returning it to one is worth considering; not before.
+
+### What does not change
+
+- The receiver's code, its intake gate and its per-instance coalescing are as
+  they were; they now run on one B1 worker of their own.
+- There is still no queue: a delivery refused with 503 is retried by Spare, as
+  before.
+
