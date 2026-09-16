@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { onDemandActivation, onDemandMonitoringServiceIds, onDemandMonitoringState } from "./onDemandMonitoringHealth";
+import { admitsMonitorWrite, onDemandActivation, onDemandMonitoringServiceIds, onDemandMonitoringState } from "./onDemandMonitoringHealth";
 
 const now = new Date("2026-08-27T12:00:00Z");
 
@@ -56,4 +56,22 @@ test("service ids are parsed from the release setting, blanks discarded", () => 
     if (prior === undefined) delete process.env.ON_DEMAND_MONITORING_SERVICE_IDS;
     else process.env.ON_DEMAND_MONITORING_SERVICE_IDS = prior;
   }
+});
+
+test("no monitor write is admitted while monitoring is off or unscoped", () => {
+  const disabled = onDemandActivation(false, new Set(["svc-a"]));
+  assert.deepEqual(admitsMonitorWrite("svc-a", disabled), { admit: false, reason: "disabled" });
+  const unscoped = onDemandActivation(true, new Set());
+  assert.deepEqual(admitsMonitorWrite("svc-a", unscoped), { admit: false, reason: "unscoped" });
+});
+
+test("an active monitor admits its own services and nothing else", () => {
+  const activation = onDemandActivation(true, new Set(["svc-a"]));
+  assert.deepEqual(admitsMonitorWrite("svc-a", activation), { admit: true });
+  assert.deepEqual(admitsMonitorWrite("svc-b", activation), { admit: false, reason: "out_of_scope" });
+});
+
+test("a request Spare did not attribute to a service is never admitted", () => {
+  const activation = onDemandActivation(true, new Set(["svc-a"]));
+  assert.deepEqual(admitsMonitorWrite(null, activation), { admit: false, reason: "out_of_scope" });
 });

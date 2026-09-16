@@ -47,3 +47,16 @@ test("normalizes duty telemetry without retaining location data", () => {
   });
   assert.deepEqual(normalizeSpareDutyMatchingStatus({ dutyId: "duty-7", isMatchingEnabled: false }), { dutyId: "duty-7", isMatchingEnabled: false });
 });
+
+test("a normalized request carries the service Spare attributed it to", () => {
+  const normalized = normalizeOnDemandSpareRequest({
+    id: "req-1",
+    serviceId: "svc-a",
+    updatedAt: 1_757_000_000,
+    scheduledPickupTs: 1_757_000_600,
+  });
+  assert.equal(normalized?.serviceId, "svc-a");
+  assert.equal(normalizeOnDemandSpareRequest({
+    id: "req-2", updatedAt: 1_757_000_000, scheduledPickupTs: 1_757_000_600,
+  })?.serviceId, null);
+});
