@@ -18,6 +18,7 @@ import {
   storeSpareDutyVehicle,
 } from "../lib/onDemandSpareMonitorStore";
 import { fetchSpareRequest, type SpareRequestRecord } from "../lib/spareApi";
+import { admitsMonitorWrite, onDemandActivation } from "../lib/onDemandMonitoringHealth";
 import { ContractSchemaLog, IntakeGate, PeriodicLog, VehicleWriteCoalescer } from "../lib/spareWebhookIntake";
 
 // Four of the pool's ten connections at most; the pollers behind the KPI
@@ -30,6 +31,10 @@ const vehicleWrites = new VehicleWriteCoalescer(60_000);
 const contractLog = new ContractSchemaLog();
 // The zone gap is reported once a minute; see hasActiveZones.
 const zoneGapLog = new PeriodicLog(60_000);
+// Likewise for deliveries declined because the monitor is off or the delivery
+// is for another service: a receiver taking a webhook a second must say why it
+// is writing nothing, without becoming the flood it is refusing.
+const notAdmittedLog = new PeriodicLog(60_000);
 
 const UNAVAILABLE = {
   status: 503,
@@ -64,6 +69,17 @@ app.http("onDemandSpareWebhook", {
 
     const data = (payload as { data?: unknown }).data;
 
+    // Resolved once per delivery, before any work. While the monitor is off -
+    // which it has been for the whole life of this receiver - none of these
+    // deliveries has anywhere to go, so the cheapest and most honest thing to
+    // do is accept them and write nothing. Spare needs a 2xx; it does not need
+    // us to have stored anything.
+    const activation = onDemandActivation();
+    if (!activation.active) {
+      report(context, activation.reason, eventType);
+      return { status: 202, jsonBody: { status: "accepted", stored: false } };
+    }
+
     // Decide, before touching the gate, whether this delivery has anything to
     // write. Most vehicle locations do not.
     if (eventType === "vehicleLocation") {
@@ -84,6 +100,13 @@ app.http("onDemandSpareWebhook", {
     if (eventType === "requestStatus") {
       const normalized = normalizeOnDemandSpareRequest((data ?? {}) as SpareRequestRecord);
       if (!normalized) return { status: 202, jsonBody: { status: "accepted" } };
+      // Scope decided from the delivery itself, before a gate slot or a zone
+      // load is spent on a request for a service the monitor is not for.
+      const decision = admitsMonitorWrite(normalized.serviceId, activation);
+      if (!decision.admit) {
+        report(context, decision.reason, eventType);
+        return { status: 202, jsonBody: { status: "accepted", stored: false } };
+      }
       return respond(await gate.run(async () => {
         const activeZones = await loadActiveOperationalZonesCached();
         if (!hasActiveZones(activeZones, context)) return;
@@ -105,7 +128,17 @@ app.http("onDemandSpareWebhook", {
       for (const update of updates) {
         const record = await fetchSpareRequest<SpareRequestRecord>(update.requestId);
         const normalized = normalizeOnDemandSpareRequest(record);
-        if (normalized) await storeOnDemandSpareRequest(normalized, activeZones);
+        if (!normalized) continue;
+        // An ETA payload carries no service attribution, so unlike
+        // requestStatus this scope check can only happen after the
+        // authoritative re-read. The read is spent either way; the write is
+        // not.
+        const decision = admitsMonitorWrite(normalized.serviceId, activation);
+        if (!decision.admit) {
+          report(context, decision.reason, eventType);
+          continue;
+        }
+        await storeOnDemandSpareRequest(normalized, activeZones);
       }
     }), context, eventType);
   },
@@ -128,6 +161,18 @@ function hasActiveZones(zones: ActiveOperationalZones, context: InvocationContex
     );
   }
   return false;
+}
+
+// Vehicle locations and duty-matching updates carry a duty, never a service,
+// and resolving one to the other would cost a Spare read on a delivery that
+// arrives about once a second - the load that put this receiver on its own app.
+// They stay scoped only by the activation above, which is defensible because
+// they are supporting evidence: the trust spec holds that webhook, vehicle and
+// duty activity cannot establish On-Demand state on their own, and only the
+// authoritative reconciliation can.
+function report(context: InvocationContext, reason: string, eventType: string): void {
+  if (!notAdmittedLog.shouldReport()) return;
+  context.log(JSON.stringify({ event: "spare_webhook_not_stored", reason, type: eventType }));
 }
 
 function respond(

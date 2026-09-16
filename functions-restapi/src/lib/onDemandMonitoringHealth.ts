@@ -50,3 +50,36 @@ export function onDemandActivation(
   if (serviceIds.size === 0) return { active: false, reason: "unscoped" };
   return { active: true, serviceIds };
 }
+
+export type MonitorWriteDecision =
+  | { admit: true }
+  | { admit: false; reason: "disabled" | "unscoped" | "out_of_scope" };
+
+// Whether one source record may be written into on-demand monitor state.
+//
+// Scoping the hourly reconciliation was never enough to give a scoped table.
+// Two other writers reach the same rows and neither consulted the activation:
+// onDemandSpareWebhook wrote every requestStatus and ETA delivery Spare sent,
+// and the monitor write that rides along on spareMissedTripsIngest is scoped
+// to SPARE_MISSED_TRIP_SERVICE_IDS - three services, not all of them MVTA
+// Connect - and runs whether on-demand monitoring is on or off. So
+// MonitoredOnDemandWaits has been accumulating requests from services the
+// monitor is not for, and would have kept them on the day it was switched on:
+// the scoped reconciliation does not touch a foreign row, so it cannot correct
+// one either.
+//
+// The same three-way answer as onDemandActivation, with the record's service
+// added, so every writer asks one question and gets one contract. A record
+// with no service id is never admitted: an unattributable request cannot be
+// shown to belong to MVTA Connect, and guessing in the permissive direction is
+// how the table got mixed in the first place.
+export function admitsMonitorWrite(
+  serviceId: string | null,
+  activation: OnDemandActivation = onDemandActivation(),
+): MonitorWriteDecision {
+  if (!activation.active) return { admit: false, reason: activation.reason };
+  if (!serviceId || !activation.serviceIds.has(serviceId)) {
+    return { admit: false, reason: "out_of_scope" };
+  }
+  return { admit: true };
+}
