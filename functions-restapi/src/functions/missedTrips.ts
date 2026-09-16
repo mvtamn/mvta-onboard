@@ -32,6 +32,9 @@ interface MissedTripRow {
   notes: string | null;
   detector_version: string | null;
   data_quality_status: string;
+  // Why this row is not (yet) a finding - see migration 121. Null on a decided
+  // row, and on every row in an environment that has not applied it.
+  undecided_reason: string | null;
   source_system: string;
   source_record_id: string | null;
   condition_late_start: boolean | null;
@@ -88,10 +91,23 @@ app.http("missedTripsList", {
       // which is the state Phase 0 of plans/missed-trip-feature-finish-plan.md
       // set out to avoid. They stay in the table for audit and are still
       // returned by view=all; the queue reports how many it left out.
+      //
+      // Held rows are excluded the same way, by the same reasoning. A row with
+      // an undecided_reason is one the detector has not finished deciding -
+      // either it is waiting for a second poll to agree, or something other
+      // than the trip explains its silence (migration 121). Neither is a
+      // finding, and neither is a thing a reviewer can act on.
+      const heldReady = await pool.request().query<{ ready: number }>(`
+        SELECT CASE WHEN COL_LENGTH('dbo.MonitoredMissedTrips', 'undecided_reason') IS NULL
+          THEN 0 ELSE 1 END AS ready
+      `);
+      const heldReadable = heldReady.recordset[0]?.ready === 1;
+      const notHeld = heldReadable ? " AND mmt.undecided_reason IS NULL" : "";
       const whereClause =
         view === "queue"
           ? "WHERE mmt.validation_status = 'unreviewed' AND mmt.status <> 'resolved'"
             + " AND mmt.data_quality_status NOT IN ('legacy_unverified', 'unknown_data_gap')"
+            + notHeld
           : view === "history"
             ? "WHERE mmt.validation_status <> 'unreviewed' OR mmt.status = 'resolved'"
             : "";
@@ -127,6 +143,7 @@ app.http("missedTripsList", {
                mmt.suggested_alert_id, mmt.first_seen_watching_at, mmt.last_checked_at,
                mmt.validation_status, mmt.reason_code, mmt.validated_by, mmt.validated_at, mmt.notes,
                mmt.detector_version, mmt.data_quality_status,
+               ${heldReadable ? "mmt.undecided_reason" : "CAST(NULL AS NVARCHAR(60)) AS undecided_reason"},
                mmt.source_system, mmt.source_record_id,
                sme.condition_late_start, sme.condition_superseded, sme.condition_late_arrival,
                sme.start_delay_seconds, sme.arrival_delay_seconds,
@@ -143,7 +160,18 @@ app.http("missedTripsList", {
         OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
       `);
       const missedTrips = result.recordset;
+      // Aggregates use the unqualified column names (no `mmt.` alias), so the
+      // queue predicate is rebuilt rather than reused.
+      const notHeldAggregate = heldReadable ? " AND undecided_reason IS NULL" : "";
+      const heldColumns = heldReadable
+        ? `,
+          SUM(CASE WHEN undecided_reason = 'awaiting_confirmation' THEN 1 ELSE 0 END) AS pending_confirmation_count,
+          SUM(CASE WHEN undecided_reason IS NOT NULL AND undecided_reason <> 'awaiting_confirmation' THEN 1 ELSE 0 END) AS held_undecided_count`
+        : `,
+          CAST(0 AS INT) AS pending_confirmation_count, CAST(0 AS INT) AS held_undecided_count`;
       const totals = await pool.request().query<{
+        pending_confirmation_count: number;
+        held_undecided_count: number;
         total_count: number;
         active_count: number;
         resolved_count: number;
@@ -166,9 +194,9 @@ app.http("missedTripsList", {
           -- the queue list, and a tile that counts rows the list omits is the
           -- mismatch this endpoint's aggregates were introduced to remove.
           SUM(CASE WHEN validation_status = 'unreviewed' AND status <> 'resolved'
-                    AND data_quality_status NOT IN ('legacy_unverified', 'unknown_data_gap') THEN 1 ELSE 0 END) AS unreviewed_count,
+                    AND data_quality_status NOT IN ('legacy_unverified', 'unknown_data_gap')${notHeldAggregate} THEN 1 ELSE 0 END) AS unreviewed_count,
           SUM(CASE WHEN validation_status = 'unreviewed' AND status <> 'resolved'
-                    AND data_quality_status NOT IN ('legacy_unverified', 'unknown_data_gap') THEN 1 ELSE 0 END) AS queue_count,
+                    AND data_quality_status NOT IN ('legacy_unverified', 'unknown_data_gap')${notHeldAggregate} THEN 1 ELSE 0 END) AS queue_count,
           SUM(CASE WHEN validation_status <> 'unreviewed' OR status = 'resolved' THEN 1 ELSE 0 END) AS history_count,
           SUM(CASE WHEN data_quality_status = 'legacy_unverified' THEN 1 ELSE 0 END) AS legacy_count,
           -- Trips the detector could not decide because the vehicle-position
@@ -180,9 +208,9 @@ app.http("missedTripsList", {
           SUM(CASE WHEN validation_status = 'false_positive' THEN 1 ELSE 0 END) AS false_positive_count,
           -- Legacy rows excluded here too: a route counted only because the
           -- superseded detector flagged it is not a route known to be affected.
-          COUNT(DISTINCT CASE WHEN data_quality_status NOT IN ('legacy_unverified', 'unknown_data_gap')
+          COUNT(DISTINCT CASE WHEN data_quality_status NOT IN ('legacy_unverified', 'unknown_data_gap')${notHeldAggregate}
                     THEN route_id END) AS routes_affected_count,
-          MAX(last_checked_at) AS last_checked_at
+          MAX(last_checked_at) AS last_checked_at${heldColumns}
         FROM MonitoredMissedTrips
       `);
       const total = totals.recordset[0];
@@ -226,6 +254,12 @@ app.http("missedTripsList", {
             routes_affected_count: total?.routes_affected_count ?? 0,
             legacy_unverified_count: total?.legacy_count ?? 0,
             unknown_data_gap_count: total?.data_gap_count ?? 0,
+            // Detected, not yet a finding: waiting for a second poll to agree.
+            pending_confirmation_count: total?.pending_confirmation_count ?? 0,
+            // Recorded with a reason other than the trip itself - a stale
+            // schedule, a schedule the feeds do not recognise, or a block whose
+            // vehicle never reported.
+            held_undecided_count: total?.held_undecided_count ?? 0,
             last_checked_at: total?.last_checked_at?.toISOString() ?? null,
             silent_no_show_enabled: silentNoShowEnabled,
             schedule_detection_status: silentNoShowEnabled ? "experimental" : "paused",
