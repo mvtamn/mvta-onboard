@@ -602,7 +602,22 @@ restarts, not the old cascade.
    (`location_id__b413a052-...` Apple Valley, `location_id__ad56cc1c-...`
    Shakopee - Prior Lake). One missing zone fails the import by design.
 
-2. **The decision to switch monitoring on - project owner.** The activation
+2. **The MVTA Connect service id - already in hand, nobody had looked.**
+   `ON_DEMAND_MONITORING_SERVICE_IDS` was treated as something Spare had to
+   tell us. It is not: `spareMissedTripsIngest` has been running with
+   `SPARE_MISSED_TRIPS_ENABLED` true since August and stores `service_id` and
+   `service_name` side by side on every row it writes, so dev already holds the
+   mapping.
+
+   ```sql
+   SELECT DISTINCT service_id, service_name FROM SpareMissedTripSource;
+   ```
+
+   Take the id whose name is MVTA Connect. Do **not** default the scope to
+   `SPARE_MISSED_TRIP_SERVICE_IDS` (three ids, not all of them MVTA Connect) -
+   ADR 0026.
+
+3. **The decision to switch monitoring on - project owner.** The activation
    gate in `plans/service-risk-quality-trust-implementation-plan.md` has six
    items; four have no recorded evidence anywhere in this repo: approved source
    owner and contract, confirmed non-PII field mapping and pickup-commitment
@@ -610,7 +625,7 @@ restarts, not the old cascade.
    breach that creates one internal Suggested Alert and sends no rider
    communication. Nothing in the code checks these; they are a judgement.
 
-### Activation sequence, once both are in hand
+### Activation sequence, once those are in hand
 
 1. Seed the zone version and activate it - `docs/runbooks/on-demand-operational-zones.md`.
    Note `scripts/importOnDemandZones.ts` needs `SQL_CONNECTION_STRING` and dev
@@ -633,7 +648,14 @@ restarts, not the old cascade.
 
 - `onDemandSpareReconcile` returns immediately while the flag is false, so the
   authoritative read, the health record and `reconcileOnDemandInterventions`
-  have never run against Spare.
+  have never run against Spare. **That is also why a defect in the read
+  survived to 2026-09-15**: it paged `/v1/requests` unbounded and with no
+  `orderDirection`, so on a collection MVTA Connect's size it would have thrown
+  `exceeded the 10,000-row safety cap` every hour, among records years old,
+  without ever reaching an active request. Fixed in 1.5.213 - it now reads a
+  24-hour update window through the shared `fetchSpareUpdatedWindow`, the same
+  contract the missed-trip ingest has run on since August. Still never executed
+  against Spare; the first real run is still the first real run.
 - `onDemandInterventionsEvaluate` (#214) fires on schedule and returns
   immediately - confirmed running, 3 runs to 04:10 UTC today - but has never
   evaluated a candidate.

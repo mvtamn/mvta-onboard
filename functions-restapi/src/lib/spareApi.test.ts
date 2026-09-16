@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assertSpareSlotsFilter, spareNumber, spareServiceName, spareString, spareTimestamp } from "./spareApi";
+import { assertSpareSlotsFilter, fetchSpareUpdatedWindow, positiveEnvInteger, spareNumber, spareServiceName, spareString, spareTimestamp, type SparePage } from "./spareApi";
 
 test("Spare field guards accept only bounded values of the expected type", () => {
   assert.equal(spareString(" request-1 ", 64), "request-1");
@@ -24,4 +24,31 @@ test("requires a targeted Spare slots filter before issuing a request", () => {
   assert.doesNotThrow(() => assertSpareSlotsFilter(new URLSearchParams({ dutyId: "duty-7" })));
   assert.doesNotThrow(() => assertSpareSlotsFilter(new URLSearchParams({ requestId: "request-7" })));
   assert.doesNotThrow(() => assertSpareSlotsFilter(new URLSearchParams({ ids: "slot-7" })));
+});
+
+test("pages a bounded window until the reported total is reached", async () => {
+  const pages: SparePage<{ id: string }>[] = [
+    { total: 3, limit: 2, skip: 0, data: [{ id: "a" }, { id: "b" }] },
+    { total: 3, limit: 2, skip: 2, data: [{ id: "c" }] },
+  ];
+  const skips: string[] = [];
+  let call = 0;
+  const rows = await fetchSpareUpdatedWindow<{ id: string }>(
+    "/v1/requests", 100, 200, 2, 100,
+    async (_path, query) => {
+      skips.push(query.get("skip")!);
+      return pages[call++] as never;
+    },
+  );
+  assert.deepEqual(rows.map((row) => row.id), ["a", "b", "c"]);
+  assert.deepEqual(skips, ["0", "2"]);
+});
+
+test("an environment override outside the allowed range falls back", () => {
+  process.env.SPARE_TEST_INT = "0";
+  assert.equal(positiveEnvInteger("SPARE_TEST_INT", 7, 10), 7);
+  process.env.SPARE_TEST_INT = "99";
+  assert.equal(positiveEnvInteger("SPARE_TEST_INT", 7, 10), 10);
+  delete process.env.SPARE_TEST_INT;
+  assert.equal(positiveEnvInteger("SPARE_TEST_INT", 7, 10), 7);
 });
