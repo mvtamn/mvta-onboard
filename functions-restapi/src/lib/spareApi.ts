@@ -159,6 +159,59 @@ export async function fetchSparePage<T>(
   return page;
 }
 
+// Spare documents a hard skip ceiling; passing it turns a large window into a
+// silent truncation rather than an error.
+const MAX_SKIP = 50_000;
+
+export type SparePageFetcher = <T>(path: string, query: URLSearchParams) => Promise<SparePage<T>>;
+
+export function positiveEnvInteger(name: string, fallback: number, maximum: number): number {
+  const parsed = Number(process.env[name] ?? "");
+  return Number.isInteger(parsed) && parsed > 0 ? Math.min(parsed, maximum) : fallback;
+}
+
+// Every bounded read of a Spare collection goes through here: an update window,
+// an explicit sort direction, and a row cap that fails loudly.
+//
+// The window is the part that matters. An unbounded read of /v1/requests pages
+// the whole history of the service, so the row cap is reached by records from
+// years ago and the run dies before it ever sees today - and with no
+// orderDirection, which end of the history a page comes from is Spare's choice,
+// not ours. Both callers read "what changed since we last looked", which is a
+// window, so neither has any use for an unbounded read.
+export async function fetchSpareUpdatedWindow<T>(
+  path: "/v1/requests",
+  fromSeconds: number,
+  toSeconds: number,
+  pageSize: number,
+  maxRows: number,
+  fetchPage: SparePageFetcher = fetchSparePage,
+): Promise<T[]> {
+  const rows: T[] = [];
+  let skip = 0;
+  let reportedTotal = 0;
+  while (rows.length < maxRows) {
+    const query = new URLSearchParams({
+      fromUpdatedAt: String(fromSeconds),
+      toUpdatedAt: String(toSeconds),
+      orderBy: "updatedAt",
+      orderDirection: "ASC",
+      limit: String(Math.min(pageSize, maxRows - rows.length)),
+      skip: String(skip),
+    });
+    const page = await fetchPage<T>(path, query);
+    reportedTotal = page.total;
+    rows.push(...page.data);
+    skip += page.data.length;
+    if (page.data.length === 0 || skip >= page.total) break;
+    if (skip > MAX_SKIP) throw new Error(`Spare ${path} pagination exceeded the documented skip limit`);
+  }
+  if (rows.length >= maxRows && reportedTotal > rows.length) {
+    throw new Error(`Spare ${path} update window exceeded the ${maxRows}-row safety cap`);
+  }
+  return rows;
+}
+
 async function fetchSpareResource<T>(
   collection: "/v1/requests" | "/v1/duties" | "/v1/vehicles" | "/v1/drivers",
   id: string,

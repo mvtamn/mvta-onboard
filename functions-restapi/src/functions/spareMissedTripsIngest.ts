@@ -7,6 +7,8 @@ import { getPool, sql } from "../lib/db";
 import { recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
 import {
   fetchSparePage,
+  fetchSpareUpdatedWindow,
+  positiveEnvInteger,
   spareNumber,
   spareServiceName,
   spareString,
@@ -27,11 +29,6 @@ function enabled(): boolean {
   return process.env.SPARE_MISSED_TRIPS_ENABLED?.trim().toLowerCase() === "true";
 }
 
-function positiveInteger(name: string, fallback: number, maximum: number): number {
-  const parsed = Number(process.env[name] ?? "");
-  return Number.isInteger(parsed) && parsed > 0 ? Math.min(parsed, maximum) : fallback;
-}
-
 function scopedServiceIds(): ReadonlySet<string> {
   return new Set(
     (process.env.SPARE_MISSED_TRIP_SERVICE_IDS ?? "")
@@ -39,38 +36,6 @@ function scopedServiceIds(): ReadonlySet<string> {
       .map((value) => value.trim())
       .filter(Boolean),
   );
-}
-
-async function fetchUpdated<T>(
-  path: "/v1/requests",
-  fromSeconds: number,
-  toSeconds: number,
-  pageSize: number,
-  maxRows: number,
-): Promise<T[]> {
-  const rows: T[] = [];
-  let skip = 0;
-  let reportedTotal = 0;
-  while (rows.length < maxRows) {
-    const query = new URLSearchParams({
-      fromUpdatedAt: String(fromSeconds),
-      toUpdatedAt: String(toSeconds),
-      orderBy: "updatedAt",
-      orderDirection: "ASC",
-      limit: String(Math.min(pageSize, maxRows - rows.length)),
-      skip: String(skip),
-    });
-    const page = await fetchSparePage<T>(path, query);
-    reportedTotal = page.total;
-    rows.push(...page.data);
-    skip += page.data.length;
-    if (page.data.length === 0 || skip >= page.total) break;
-    if (skip > 50_000) throw new Error(`Spare ${path} pagination exceeded the documented skip limit`);
-  }
-  if (rows.length >= maxRows && reportedTotal > rows.length) {
-    throw new Error(`Spare ${path} update window exceeded the ${maxRows}-row safety cap`);
-  }
-  return rows;
 }
 
 async function fetchPickupSlotsForDuty(
@@ -277,10 +242,12 @@ app.timer("spareMissedTripsIngest", {
     // spare_missed_trips detection went on consuming stale data.
     try {
       const nowSeconds = Math.floor(Date.now() / 1000);
-      const lookbackMinutes = positiveInteger("SPARE_MISSED_TRIP_LOOKBACK_MINUTES", DEFAULT_LOOKBACK_MINUTES, 7 * 24 * 60);
-      const maxRows = positiveInteger("SPARE_MISSED_TRIP_MAX_ROWS", DEFAULT_MAX_ROWS, 50_000);
+      const lookbackMinutes = positiveEnvInteger("SPARE_MISSED_TRIP_LOOKBACK_MINUTES", DEFAULT_LOOKBACK_MINUTES, 7 * 24 * 60);
+      const maxRows = positiveEnvInteger("SPARE_MISSED_TRIP_MAX_ROWS", DEFAULT_MAX_ROWS, 50_000);
       const fromSeconds = nowSeconds - lookbackMinutes * 60;
-      const requests = await fetchUpdated<SpareRequestRecord>("/v1/requests", fromSeconds, nowSeconds, REQUEST_PAGE_SIZE, maxRows);
+      const requests = await fetchSpareUpdatedWindow<SpareRequestRecord>(
+        "/v1/requests", fromSeconds, nowSeconds, REQUEST_PAGE_SIZE, maxRows,
+      );
       const slots = await fetchSlotsForRequestDuties(requests, maxRows);
       const pool = await getPool();
       // The on-demand wait-time monitor rides along on this ingest, but it is a
