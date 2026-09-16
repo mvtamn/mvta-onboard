@@ -8,7 +8,22 @@ export type MissedTripValidationStatus = "unreviewed" | "confirmed" | "false_pos
 // flagged before that migration ran; the console shows that honestly rather
 // than guessing which signal it was.
 export type MissedTripDetectionType = "explicit_cancellation" | "silent_no_show" | "spare_late_start" | "spare_superseded" | "spare_late_arrival" | "spare_multiple" | null;
-export type MissedTripDataQualityStatus = "legacy_unverified" | "source_verified" | "experimental";
+// Mirrors @mvta/shared's union; "unknown_data_gap" (migration 087) is a trip
+// the detector could not decide, recorded rather than counted.
+export type MissedTripDataQualityStatus =
+  | "legacy_unverified"
+  | "source_verified"
+  | "experimental"
+  | "unknown_data_gap";
+
+// Migration 121: why a row is not (yet) a finding. See @mvta/shared.
+export type MissedTripUndecidedReason =
+  | "awaiting_confirmation"
+  | "vehicle_position_feed_not_current"
+  | "static_schedule_stale"
+  | "schedule_disagrees_with_feed"
+  | "block_never_reported"
+  | "block_ran_around_this_trip";
 
 // Missed Trips is a compliance/investigation tool: detection flags a
 // candidate (status) and a separate staff review records whether it was
@@ -35,6 +50,7 @@ export interface MissedTripAlert {
   notes: string | null;
   detectorVersion: string | null;
   dataQualityStatus: MissedTripDataQualityStatus;
+  undecidedReason: MissedTripUndecidedReason | null;
   sourceSystem: "gtfs" | "spare";
   sourceRecordId: string | null;
   conditionLateStart: boolean | null;
@@ -74,6 +90,7 @@ export const MISSED_TRIP_ALERTS: MissedTripAlert[] = [
     notes: null,
     detectorVersion: "preview",
     dataQualityStatus: "experimental",
+    undecidedReason: null,
     sourceSystem: "gtfs",
     sourceRecordId: null,
     conditionLateStart: null,
@@ -103,6 +120,7 @@ export const MISSED_TRIP_ALERTS: MissedTripAlert[] = [
     notes: "Dispatch log confirms the vehicle ran 12 minutes behind and was never flagged internally.",
     detectorVersion: "preview",
     dataQualityStatus: "experimental",
+    undecidedReason: null,
     sourceSystem: "gtfs",
     sourceRecordId: null,
     conditionLateStart: null,

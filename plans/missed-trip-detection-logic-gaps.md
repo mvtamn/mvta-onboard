@@ -459,3 +459,72 @@ the sample cannot reliably identify every individual scheduled trip:
 Use it for vendor reconciliation and aggregate compliance only after the filter/field semantics
 are confirmed. It cannot replace the GTFS/vehicle-evidence path for individual live candidates,
 and many null-time rows will remain `unmatched` by design.
+
+## Implemented (2026-09-15) — guards for the four remaining false-positive mechanisms
+
+Hypotheses 2 (static schedule staleness vs. RT trip_id) and 5 (no confirmation
+before escalation) from "Working hypothesis: current iteration is surfacing
+false positives" are now addressed in code, along with a mechanism this document
+did not name: agency-wide feed health cannot see one dead AVL unit.
+
+Rules live in `functions-restapi/src/lib/missedTripConfidence.ts` as pure
+functions with unit tests; `gtfsMissedTripsPoll.ts` applies them. Detector
+version `gtfs-silent-v3`; reasons recorded in
+`MonitoredMissedTrips.undecided_reason` (migration 121).
+
+1. **Stale static schedule.** Two checks. The `gtfs_static` import must be under
+   48 hours old, and the day's schedule must agree with the realtime feeds -
+   measured as the share of past-deadline scheduled trips known to either feed,
+   floor 0.5 on a sample of at least 20. The second catches what a timestamp
+   cannot: an import that succeeded an hour ago still carries last week's trip
+   ids if a service change was published and the feed was not rebuilt. It
+   measures the consequence rather than trying to learn when service changes
+   happen.
+2. **Per-block coverage.** For each candidate, whether any vehicle position
+   arrived for any trip on its block that day - positions, not underway
+   evidence, since a bus idling at its terminal still proves the transponder is
+   alive. A block silent all day is either a bus that never left the garage or a
+   dead unit, which GTFS cannot separate, so it is recorded as
+   `block_never_reported` rather than escalated. The first case is not lost: it
+   is detected by Avail pullout through `fixedRouteDepartureOutcome.ts`, which
+   knows whether an operator logged in.
+3. **Block corroboration.** A block is one vehicle's day in order, so its other
+   trips are the closest thing GTFS has to a witness. When the block's bus
+   demonstrably operated a trip before the candidate and a trip after it, it was
+   in service throughout the window the candidate vanished from, and the row is
+   recorded as `block_ran_around_this_trip`. Two things produce that pattern and
+   GTFS cannot separate them: a trip id the detector failed to match, which is
+   not a missed trip, or a turn dispatch cut short, which is. The recall cost on
+   the second is taken deliberately - the alternative escalates every labelling
+   artifact, and the skipped turn is exactly what the retrospective Avail feed
+   reports independently at the stop level, with no dependence on GTFS trip ids.
+
+   Deliberately NOT held: a block whose evidence stops and never resumes (a bus
+   out of service mid-day - every remaining trip genuinely missed, and the
+   highest-precision pattern the detector has), and a block that starts late.
+   Both have a witness on one side only, both reach the queue untouched, and
+   both carry their own tests.
+4. **Two-poll confirmation.** Nothing escalates on one observation. A detection
+   is held as `awaiting_confirmation` and promoted only by a later poll that
+   still finds no evidence (`confirmPendingNoShows`, 240 s - under the
+   five-minute interval, so the next run always qualifies and the creating run
+   never can). `reconcileUnderwayEvidence` runs first, so a trip that turned out
+   to have run is resolved, or recorded as genuinely late, before confirmation
+   sees it.
+
+Held rows are excluded from the review queue and its tiles, and cannot reach
+compliance (which takes only reviewer-confirmed rows). The console reports both
+held counts above the queue.
+
+Not verified against live data. The suggested next step in this document -
+pulling real rows and measuring - is now also the calibration these thresholds
+need; the agreement floor and sample size in particular were chosen from the
+shape of the failure, not from measurement.
+
+All four items of the ranked list that produced this work are now built. What
+remains is measurement, not code: the agreement floor, the sample size and the
+48-hour static limit want calibrating, and the block rule in particular should
+be checked against how often MVTA actually cuts turns short - if skipped turns
+are common, the recall cost of `block_ran_around_this_trip` is larger than
+assumed and the rule may need the Avail reconciliation behind it before it can
+stay.
