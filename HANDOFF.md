@@ -746,3 +746,48 @@ SQL login as the other apps, so no database user is needed),
 - There is still no queue: a delivery refused with 503 is retried by Spare, as
   before.
 
+
+## Missed-trip false-positive guards — status (2026-09-15)
+
+Built on `claude/onboard-surfaces-missed-trips-9a74aa`. Items 2, 3 and 4 of the
+false-positive analysis in `plans/missed-trip-detection-logic-gaps.md`: a stale
+or unrecognised static schedule, a block whose vehicle never reported, and
+escalation on a single observation. Rules in
+`functions-restapi/src/lib/missedTripConfidence.ts`, applied by
+`gtfsMissedTripsPoll.ts`. Detector version `gtfs-silent-v3`.
+
+Silent no-show detection is enabled on dev (`gtfsSilentNoShowEnabled: true` in
+`infra-phase1/parameters/phase1-dev.parameters.json`), so these guards take
+effect on the next deploy.
+
+### Steps that are the user's
+
+1. **Apply migration 121**
+   (`functions-restapi/sql/migration-121-missed-trip-undecided-reason.sql`) to
+   the dev database. Dev SQL public network access is Disabled and the
+   classifier blocks `az sql server update`, so opening the firewall, running
+   the migration and closing it again is a manual step. Until it is applied the
+   detector falls back to escalating on the single observation, as it does
+   today — items 2 and 3 still apply, item 4 does not.
+2. **Read the poll log after a full service day.** App Insights `traces` for
+   `gtfsMissedTripsPoll`: the summary line now counts candidates detected,
+   confirmed on a later poll, recorded undecided and unrecordable, and the
+   warning line breaks the undecided count down by reason. That breakdown is
+   the calibration data — see below.
+
+### Open, and deliberately so
+
+- **The two agreement thresholds are estimates.** `SCHEDULE_AGREEMENT_FLOOR`
+  (0.5) and `SCHEDULE_AGREEMENT_MIN_SAMPLE` (20) were chosen from the shape of
+  the failure, not from measurement: a correct schedule sits near 1 and a stale
+  one near 0, so anything in the middle is arbitrary. They want checking against
+  a week of real service days before the 95% reviewer-precision gate in
+  `plans/missed-trip-feature-finish-plan.md` is claimed.
+- **`STATIC_SCHEDULE_STALE_AFTER_HOURS` (48) is a detector guard, not a feed
+  contract.** It deliberately does not go in `feedFreshness.ts`: that file holds
+  only deadlines Operations approved for the trust banner, and `gtfs_static` has
+  none. If Operations approves one, this should read it instead.
+- **Item 1 of the analysis — block corroboration — is not built.** This uses
+  `block_id` only to ask whether a block reported at all. Using an adjacent
+  trip's underway evidence to judge a middle trip is the larger precision lever
+  and is still open.

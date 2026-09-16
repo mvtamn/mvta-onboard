@@ -25,6 +25,19 @@
 // AND the late-arrival resolve threshold in resolveLateArrivals() - a trip
 // that shows up 45 minutes late is still a missed trip, not a resolved one.
 //
+// A silent no-show is an inference from absence, and three things other than a
+// missed trip produce the same silence. Each is checked before a trip is
+// judged, and each has its own recorded reason (migration 121) so the remedy is
+// visible: the observing feed was not current, the static schedule is too old
+// or no longer describes what the realtime feeds are carrying, or no vehicle on
+// this trip's whole block reported a position all day. The rules themselves are
+// pure functions in lib/missedTripConfidence.ts; this file only applies them.
+//
+// Nothing is escalated on a single observation either. A trip past its deadline
+// with no evidence is recorded as held, and only a LATER poll that still finds
+// nothing turns it into a finding (confirmPendingNoShows). One missed fetch
+// cannot raise a compliance candidate.
+//
 // Silent-no-show detection runs twice per poll, once for "today" and once
 // for "yesterday" (dayOffset 0 / -1 in detectSilentNoShows). GTFS scheduled
 // times legitimately exceed 24:00:00 for a trip that starts before midnight
@@ -44,6 +57,14 @@ import { agencyServiceDate, serviceDateAndGtfsSecondsToUtc } from "../lib/missed
 import { activeServiceIdsToday } from "../lib/gtfsScheduleHorizon";
 import { underwayEvidenceCoverage } from "../lib/kpiTrust";
 import { loadKpiFeedHealthRecords } from "../lib/kpiTrustStore";
+import {
+  AWAITING_CONFIRMATION,
+  NO_SHOW_CONFIRMATION_SECONDS,
+  noShowDecision,
+  scheduleAgreement,
+  staticScheduleConfidence,
+  type ScheduleConfidence,
+} from "../lib/missedTripConfidence";
 
 const GRACE_MINUTES = 30; // ops definition: never-ran OR started >30 min late = missed
 const GRACE_SECONDS = GRACE_MINUTES * 60;
@@ -52,12 +73,19 @@ function silentNoShowEnabled(): boolean {
   return process.env.GTFS_SILENT_NO_SHOW_ENABLED?.trim().toLowerCase() === "true";
 }
 
-// Whether this poll can trust "no vehicle-start evidence" to mean "the trip
-// did not run". See resolveNoShowCoverage.
-type NoShowCoverage = {
-  proven: boolean;
-  reason: string;
+// What this poll is allowed to conclude from absence, and what it is able to
+// record. See resolveDetectionConfidence; the rules themselves live in
+// missedTripConfidence.ts.
+type DetectionConfidence = {
+  /** gtfs_vehicle_positions was current, so missing evidence means something. */
+  coverageProven: boolean;
+  coverageReason: string;
+  /** The static import is recent enough to describe today's service. */
+  staticSchedule: ScheduleConfidence;
+  /** Migration 087: data_quality_status accepts 'unknown_data_gap'. */
   gapStatusSupported: boolean;
+  /** Migration 121: MonitoredMissedTrips.undecided_reason exists. */
+  reasonColumnSupported: boolean;
 };
 
 // Silent-no-show detection is an inference from absence: a scheduled trip with
@@ -71,41 +99,55 @@ type NoShowCoverage = {
 // Resolved against the shared fixed_route_missed_trips contract (the same one
 // the console's trust banner renders) rather than a local freshness rule, and
 // failing closed: an unreadable ledger counts as unproven coverage.
-async function resolveNoShowCoverage(
+//
+// The static schedule is resolved here too, and for the same reason from the
+// other direction: the feed can be current while the schedule it is being
+// compared against describes a service pattern the agency stopped running.
+async function resolveDetectionConfidence(
   pool: sql.ConnectionPool,
   context: InvocationContext,
-): Promise<NoShowCoverage> {
-  let proven = false;
-  let reason = "vehicle-position feed health could not be read";
+): Promise<DetectionConfidence> {
+  let coverageProven = false;
+  let coverageReason = "vehicle-position feed health could not be read";
+  let staticSchedule: ScheduleConfidence = {
+    trusted: false,
+    explanation: "static GTFS feed health could not be read",
+  };
   try {
-    const positions = underwayEvidenceCoverage(await loadKpiFeedHealthRecords(pool));
-    proven = positions.state === "current";
-    reason = proven
+    const health = await loadKpiFeedHealthRecords(pool);
+    const positions = underwayEvidenceCoverage(health);
+    coverageProven = positions.state === "current";
+    coverageReason = coverageProven
       ? ""
       : `gtfs_vehicle_positions is ${positions.state}` +
         (positions.last_success_at ? ` (last success ${positions.last_success_at})` : " (no successful ingestion recorded)");
+    staticSchedule = staticScheduleConfidence(health);
   } catch (err) {
-    context.error("Failed to resolve vehicle-position coverage for silent no-show detection:", err);
+    context.error("Failed to resolve feed confidence for silent no-show detection:", err);
   }
 
   // Migration 087 widens the data_quality_status CHECK. Until it is applied,
   // an undecidable trip cannot be recorded as one, so it is left untracked and
   // re-examined next poll rather than mislabelled as a confirmed no-show.
   let gapStatusSupported = false;
+  let reasonColumnSupported = false;
   try {
-    const check = await pool.request().query<{ ok: number }>(`
+    const check = await pool.request().query<{ gap_ok: number; reason_ok: number }>(`
       SELECT CASE WHEN EXISTS (
         SELECT 1 FROM sys.check_constraints
         WHERE parent_object_id = OBJECT_ID('dbo.MonitoredMissedTrips')
           AND CHARINDEX('unknown_data_gap', definition) > 0
-      ) THEN 1 ELSE 0 END AS ok
+      ) THEN 1 ELSE 0 END AS gap_ok,
+      CASE WHEN COL_LENGTH('dbo.MonitoredMissedTrips', 'undecided_reason') IS NULL
+        THEN 0 ELSE 1 END AS reason_ok
     `);
-    gapStatusSupported = check.recordset[0]?.ok === 1;
+    gapStatusSupported = check.recordset[0]?.gap_ok === 1;
+    reasonColumnSupported = check.recordset[0]?.reason_ok === 1;
   } catch (err) {
-    context.error("Failed to check whether MonitoredMissedTrips accepts unknown_data_gap:", err);
+    context.error("Failed to check MonitoredMissedTrips' detector columns:", err);
   }
 
-  return { proven, reason, gapStatusSupported };
+  return { coverageProven, coverageReason, staticSchedule, gapStatusSupported, reasonColumnSupported };
 }
 
 async function alreadyTracked(pool: sql.ConnectionPool, tripId: string, serviceDate: string): Promise<boolean> {
@@ -175,8 +217,24 @@ async function flagCanceled(pool: sql.ConnectionPool, trip: CanceledTrip, contex
 interface ScheduledTripRow {
   trip_id: string;
   route_id: string;
+  block_id: string | null;
   first_departure_seconds: number;
   first_underway_at: Date | null;
+  /** Any vehicle position at all for this trip, underway or not. */
+  first_vehicle_position_at: Date | null;
+  /** Any TripUpdate at all - the feed had heard of this trip id. */
+  first_trip_update_at: Date | null;
+  /** A MonitoredMissedTrips row already exists for this trip and date. */
+  already_tracked: boolean;
+  /** Excluded from detection by an active SpecialEvent classification. */
+  special_event: boolean;
+}
+
+/** What the detector counted this run, for the poll log. */
+interface NoShowTally {
+  pending: number;
+  undecided: number;
+  unrecordable: number;
 }
 
 // dayOffset 0 = "today" (catches trips whose 30-min grace deadline falls
@@ -191,8 +249,9 @@ async function detectSilentNoShows(
   pool: sql.ConnectionPool,
   context: InvocationContext,
   dayOffset: number,
-  coverage: NoShowCoverage,
-): Promise<number> {
+  confidence: DetectionConfidence,
+): Promise<NoShowTally> {
+  const nothing: NoShowTally = { pending: 0, undecided: 0, unrecordable: 0 };
   const scheduleTablesExist = await pool.request().query<{ ok: number }>(`
     SELECT CASE
       WHEN OBJECT_ID('dbo.GtfsCalendar', 'U') IS NOT NULL
@@ -205,75 +264,131 @@ async function detectSilentNoShows(
   `);
   if (scheduleTablesExist.recordset[0]?.ok !== 1) {
     context.warn("The complete GTFS schedule schema is unavailable - apply migration 027 before schedule-based detection can run.");
-    return 0;
+    return nothing;
   }
   const evidenceTableCheck = await pool.request().query<{ ok: number }>(`
     SELECT CASE WHEN OBJECT_ID('dbo.GtfsTripOperationalEvidence', 'U') IS NULL THEN 0 ELSE 1 END AS ok
   `);
   if (evidenceTableCheck.recordset[0]?.ok !== 1) {
     context.warn("GtfsTripOperationalEvidence does not exist - apply migration 027 before enabling silent no-shows.");
-    return 0;
+    return nothing;
   }
 
   const now = new Date();
   const { serviceDate, dow } = agencyServiceDate(now, dayOffset);
 
   const serviceIds = await activeServiceIdsToday(pool, serviceDate, dow);
-  if (serviceIds.length === 0) return 0;
+  if (serviceIds.length === 0) return nothing;
 
   const req = pool.request();
   req.input("service_date", sql.NVarChar, serviceDate);
   const serviceIdParams = serviceIds.map((_, i) => `@sid${i}`).join(", ");
   serviceIds.forEach((id, i) => req.input(`sid${i}`, sql.NVarChar, id));
 
-  // Fetch the still-unobserved/untracked scheduled trips for this service
-  // date, then compare real UTC instants in TypeScript. Comparing raw GTFS
-  // seconds with UTC seconds-since-midnight was five hours early during CDT
-  // (six during CST) and cannot safely handle DST or >24:00:00 times.
+  // Every scheduled trip for this service date with whatever the realtime feeds
+  // have recorded against it, then compare real UTC instants in TypeScript.
+  // Comparing raw GTFS seconds with UTC seconds-since-midnight was five hours
+  // early during CDT (six during CST) and cannot safely handle DST or
+  // >24:00:00 times.
   //
-  // Excludes routes actively classified as SpecialEvent (migration-016):
-  // a base-schedule trip on a route that's been overridden for a special
-  // event may legitimately not run that service day even though it's still
-  // sitting in the static GtfsScheduledTrips import - without this filter
-  // that reads as a silent no-show for a trip nobody ever intended to run.
-  // Explicit GTFS-RT cancellations (flagCanceled) aren't filtered this way
-  // since those are a real-time signal, not an inference from the schedule.
-  const candidateTrips = await req.query<ScheduledTripRow>(`
-    SELECT st.trip_id, st.route_id, st.first_departure_seconds, evidence.first_underway_at
+  // The already-tracked and SpecialEvent filters used to be WHERE clauses. They
+  // are SELECTed flags now because the schedule-agreement guard below needs the
+  // whole day's population to divide by: filtering first would measure only the
+  // trips that have not been decided yet, which on a bad day is the very set
+  // that makes the schedule look broken.
+  //
+  // SpecialEvent (migration-016): a base-schedule trip on a route that has been
+  // overridden for a special event may legitimately not run that service day
+  // even though it is still sitting in the static GtfsScheduledTrips import -
+  // without this filter that reads as a silent no-show for a trip nobody ever
+  // intended to run. Explicit GTFS-RT cancellations (flagCanceled) aren't
+  // filtered this way since those are a real-time signal, not an inference from
+  // the schedule.
+  const scheduledTrips = await req.query<ScheduledTripRow>(`
+    SELECT st.trip_id, st.route_id, st.block_id, st.first_departure_seconds,
+           evidence.first_underway_at, evidence.first_vehicle_position_at, evidence.first_trip_update_at,
+           CAST(CASE WHEN EXISTS (
+             SELECT 1 FROM MonitoredMissedTrips mmt
+             WHERE mmt.trip_id = st.trip_id AND mmt.service_date = @service_date
+           ) THEN 1 ELSE 0 END AS BIT) AS already_tracked,
+           CAST(CASE WHEN EXISTS (
+             SELECT 1 FROM RouteClassification rc
+             WHERE CAST(rc.route_id AS NVARCHAR(50)) = st.route_id
+               AND rc.route_category = 'SpecialEvent'
+               AND rc.is_active = 1
+               AND (rc.effective_start_date IS NULL OR rc.effective_start_date <= @service_date)
+               AND (rc.effective_end_date IS NULL OR rc.effective_end_date >= @service_date)
+           ) THEN 1 ELSE 0 END AS BIT) AS special_event
     FROM GtfsScheduledTrips st
     LEFT JOIN GtfsTripOperationalEvidence evidence
       ON evidence.trip_id = st.trip_id AND evidence.service_date = @service_date
     WHERE st.service_id IN (${serviceIdParams})
-      AND NOT EXISTS (
-        SELECT 1 FROM MonitoredMissedTrips mmt
-        WHERE mmt.trip_id = st.trip_id AND mmt.service_date = @service_date
-      )
-      AND NOT EXISTS (
-        SELECT 1 FROM RouteClassification rc
-        WHERE CAST(rc.route_id AS NVARCHAR(50)) = st.route_id
-          AND rc.route_category = 'SpecialEvent'
-          AND rc.is_active = 1
-          AND (rc.effective_start_date IS NULL OR rc.effective_start_date <= @service_date)
-          AND (rc.effective_end_date IS NULL OR rc.effective_end_date >= @service_date)
-      )
   `);
 
-  let flaggedCount = 0;
-  let recordedGaps = 0;
-  let unrecordableGaps = 0;
-  for (const trip of candidateTrips.recordset) {
+  // One pass over the day to establish what the day itself can support, before
+  // any single trip is judged by it.
+  //
+  // Agreement denominator: trips whose deadline has passed. A trip still within
+  // its grace window has had no chance to appear yet, and counting it would
+  // make every morning look like a schedule mismatch.
+  //
+  // Block ledger: which blocks reported a vehicle position at all today. Note
+  // it counts first_vehicle_position_at, not first_underway_at - a bus sitting
+  // at its terminal reports a position without being under way, and that is
+  // exactly the proof wanted here: the transponder is alive, so this block's
+  // silence on one trip is the trip's, not the vehicle's.
+  const deadlineFor = (trip: ScheduledTripRow): Date | null => {
+    const scheduledAt = serviceDateAndGtfsSecondsToUtc(serviceDate, trip.first_departure_seconds);
+    return scheduledAt ? new Date(scheduledAt.getTime() + GRACE_SECONDS * 1000) : null;
+  };
+  let deadlinePassed = 0;
+  let knownToFeed = 0;
+  const blockReported = new Map<string, boolean>();
+  for (const trip of scheduledTrips.recordset) {
+    if (trip.block_id) {
+      blockReported.set(trip.block_id, (blockReported.get(trip.block_id) ?? false) || trip.first_vehicle_position_at !== null);
+    }
+    const deadline = deadlineFor(trip);
+    if (!deadline || deadline.getTime() > now.getTime()) continue;
+    deadlinePassed++;
+    if (trip.first_trip_update_at !== null || trip.first_vehicle_position_at !== null) knownToFeed++;
+  }
+  const agreement = scheduleAgreement({ deadlinePassed, knownToFeed });
+
+  const tally: NoShowTally = { pending: 0, undecided: 0, unrecordable: 0 };
+  const undecidedBy = new Map<string, number>();
+  for (const trip of scheduledTrips.recordset) {
+    if (trip.already_tracked || trip.special_event) continue;
     const scheduledAt = serviceDateAndGtfsSecondsToUtc(serviceDate, trip.first_departure_seconds);
     if (!scheduledAt) continue;
     const graceDeadline = new Date(scheduledAt.getTime() + GRACE_SECONDS * 1000);
     if (graceDeadline.getTime() > now.getTime()) continue;
     if (trip.first_underway_at && trip.first_underway_at.getTime() <= graceDeadline.getTime()) continue;
 
-    // Undecidable, not missed: the feed that would have proven this trip ran
-    // was not current, so its silence says nothing about the trip.
-    if (!coverage.proven && !coverage.gapStatusSupported) {
-      unrecordableGaps++;
+    const decision = noShowDecision({
+      vehiclePositionsCurrent: confidence.coverageProven,
+      staticSchedule: confidence.staticSchedule,
+      agreement,
+      blockReported: trip.block_id ? blockReported.get(trip.block_id) ?? false : null,
+    });
+
+    // Undecidable, not missed - but the row can only say so where migration 087
+    // widened the CHECK. Without it the trip is left untracked and re-examined
+    // next poll rather than mislabelled as a confirmed no-show.
+    if (decision.outcome === "undecidable" && !confidence.gapStatusSupported) {
+      tally.unrecordable++;
+      undecidedBy.set(decision.reason, (undecidedBy.get(decision.reason) ?? 0) + 1);
       continue;
     }
+    // Holding a trip for a second poll needs somewhere to record that it is
+    // being held, which is migration 121's column. Without it the detector
+    // falls back to what it did before confirmation existed - escalate on the
+    // single observation - rather than holding rows it could never release.
+    // Degrading to the old behaviour is a known quantity; degrading to silence
+    // would turn a pending migration into a detector that reports nothing while
+    // looking healthy.
+    const confirmationAvailable = confidence.reasonColumnSupported;
+    const escalateOnSight = decision.outcome === "pending" && !confirmationAvailable;
 
     try {
       const trackReq = pool.request();
@@ -282,40 +397,108 @@ async function detectSilentNoShows(
       trackReq.input("route_id", sql.NVarChar, trip.route_id);
       trackReq.input("scheduled_departure_at", sql.DateTime2, scheduledAt);
       trackReq.input("grace_deadline_at", sql.DateTime2, graceDeadline);
-      // A data-gap row is recorded, never escalated: it stays out of the review
-      // queue and the compliance tiles, and reconcileUnderwayEvidence still
-      // resolves it if the feed recovers and late evidence arrives.
-      trackReq.input("status", sql.NVarChar, coverage.proven ? "escalated" : "watching");
-      trackReq.input("data_quality_status", sql.NVarChar, coverage.proven ? "experimental" : "unknown_data_gap");
+      // Neither outcome is normally escalated on sight. A pending row waits for
+      // a second poll (confirmPendingNoShows); an undecidable one waits for
+      // evidence that may never come. Both stay out of the review queue and the
+      // compliance tiles meanwhile, and reconcileUnderwayEvidence still resolves
+      // either if the trip turns out to have run.
+      trackReq.input("status", sql.NVarChar, escalateOnSight ? "escalated" : "watching");
+      trackReq.input(
+        "data_quality_status",
+        sql.NVarChar,
+        decision.outcome === "pending" ? "experimental" : "unknown_data_gap",
+      );
+      const reasonColumn = confirmationAvailable ? ", undecided_reason" : "";
+      const reasonValue = confirmationAvailable ? ", @undecided_reason" : "";
+      if (confirmationAvailable) {
+        trackReq.input("undecided_reason", sql.NVarChar, decision.reason);
+      }
       await trackReq.query(`
         INSERT INTO MonitoredMissedTrips (
           trip_id, service_date, route_id, scheduled_departure_at, grace_deadline_at, status, detection_type,
-          detector_version, data_quality_status
+          detector_version, data_quality_status${reasonColumn}
         )
         VALUES (
           @trip_id, @service_date, @route_id, @scheduled_departure_at, @grace_deadline_at,
-          @status, 'silent_no_show', 'gtfs-silent-v2', @data_quality_status
+          @status, 'silent_no_show', 'gtfs-silent-v3', @data_quality_status${reasonValue}
         )
       `);
-      if (coverage.proven) {
-        flaggedCount++;
-        context.log(`Missed trip flagged for review (no-show): trip ${trip.trip_id} (route ${trip.route_id}, scheduled ${scheduledAt.toISOString()})`);
+      if (decision.outcome === "pending") {
+        tally.pending++;
+        if (escalateOnSight) {
+          context.log(`Missed trip flagged for review (no-show, unconfirmed): trip ${trip.trip_id} (route ${trip.route_id}, scheduled ${scheduledAt.toISOString()})`);
+        }
       } else {
-        recordedGaps++;
+        tally.undecided++;
+        undecidedBy.set(decision.reason, (undecidedBy.get(decision.reason) ?? 0) + 1);
       }
     } catch (err) {
-      context.error(`Failed to flag no-show for trip ${trip.trip_id}:`, err);
+      context.error(`Failed to record no-show candidate for trip ${trip.trip_id}:`, err);
     }
   }
 
-  if (!coverage.proven && (recordedGaps > 0 || unrecordableGaps > 0)) {
+  if (undecidedBy.size > 0) {
+    const detail = [...undecidedBy.entries()].map(([reason, count]) => `${reason}=${count}`).join(", ");
     context.warn(
-      `Silent no-show detection could not decide ${recordedGaps + unrecordableGaps} scheduled trip(s) for ${serviceDate}: ` +
-        `${coverage.reason}. ${recordedGaps} recorded as unknown_data_gap, ` +
-        `${unrecordableGaps} left untracked (apply migration 087 to record them).`,
+      `Silent no-show detection could not decide ${tally.undecided + tally.unrecordable} scheduled trip(s) for ` +
+        `${serviceDate} (${detail}). ${tally.unrecordable} could not be recorded at all - apply migrations 087 and 121.` +
+        (confidence.coverageProven ? "" : ` Position coverage: ${confidence.coverageReason}.`) +
+        (confidence.staticSchedule.explanation ? ` Schedule: ${confidence.staticSchedule.explanation}.` : "") +
+        (agreement.explanation ? ` Agreement: ${agreement.explanation}.` : ""),
     );
   }
-  return flaggedCount;
+  return tally;
+}
+
+// Item 4 of the false-positive guards: a second observation before a detection
+// becomes a finding.
+//
+// detectSilentNoShows records a trip the first time it passes its deadline with
+// no underway evidence, and stops there. This promotes it only if a LATER poll
+// still finds nothing - the row must have been sitting for at least
+// NO_SHOW_CONFIRMATION_SECONDS, which is shorter than the five-minute poll
+// interval, so the next run always qualifies and the run that created it never
+// can.
+//
+// What that buys: a single failed feed fetch, a vendor publish that ran late, or
+// a position that landed a few seconds the wrong side of the deadline no longer
+// produces a finding on its own. It costs five minutes of latency on a
+// compliance tool nobody watches in real time.
+//
+// Runs after reconcileUnderwayEvidence, so a trip that turned out to have run in
+// the meantime is resolved (or recorded as genuinely late) before this pass can
+// see it.
+async function confirmPendingNoShows(pool: sql.ConnectionPool, context: InvocationContext): Promise<number> {
+  try {
+    const ready = await pool.request().query<{ ok: number }>(`
+      SELECT CASE WHEN COL_LENGTH('dbo.MonitoredMissedTrips', 'undecided_reason') IS NULL
+        THEN 0 ELSE 1 END AS ok
+    `);
+    if (ready.recordset[0]?.ok !== 1) return 0;
+
+    const req = pool.request();
+    req.input("reason", sql.NVarChar, AWAITING_CONFIRMATION);
+    req.input("wait_seconds", sql.Int, NO_SHOW_CONFIRMATION_SECONDS);
+    const result = await req.query(`
+      UPDATE mmt
+      SET status = 'escalated',
+          undecided_reason = NULL,
+          last_checked_at = SYSUTCDATETIME()
+      FROM MonitoredMissedTrips mmt
+      LEFT JOIN GtfsTripOperationalEvidence evidence
+        ON evidence.trip_id = mmt.trip_id AND evidence.service_date = mmt.service_date
+      WHERE mmt.undecided_reason = @reason
+        AND mmt.status = 'watching'
+        AND mmt.first_seen_watching_at <= DATEADD(SECOND, -@wait_seconds, SYSUTCDATETIME())
+        AND evidence.first_underway_at IS NULL
+    `);
+    const confirmed = result.rowsAffected[0] ?? 0;
+    if (confirmed > 0) context.log(`Missed trips confirmed on a second poll: ${confirmed}.`);
+    return confirmed;
+  } catch (err) {
+    context.error("Failed to confirm pending no-show candidates:", err);
+    return 0;
+  }
 }
 
 // Only positive vehicle progress can resolve a schedule-absence candidate.
@@ -330,9 +513,25 @@ async function reconcileUnderwayEvidence(pool: sql.ConnectionPool, context: Invo
         THEN 0 ELSE 1 END AS table_exists
     `);
     if (tableCheck.recordset[0]?.table_exists !== 1) return;
+    // Migration 121's column is cleared alongside the status wherever it
+    // exists: a decided row must not keep saying why it was undecided. The two
+    // statements are built with the column only when it is there, so an
+    // environment still on 120 reconciles exactly as before.
+    const reasonReady = await pool.request().query<{ ok: number }>(`
+      SELECT CASE WHEN COL_LENGTH('dbo.MonitoredMissedTrips', 'undecided_reason') IS NULL
+        THEN 0 ELSE 1 END AS ok
+    `);
+    const clearReason = reasonReady.recordset[0]?.ok === 1 ? "undecided_reason = NULL," : "";
+    // A held row is one the detector has not finished deciding, so late
+    // evidence decides it the same way an outage-gap row is decided: the trip
+    // ran, past its deadline, which is a missed trip by the ops definition.
+    const heldOrGap = reasonReady.recordset[0]?.ok === 1
+      ? "(mmt.data_quality_status = 'unknown_data_gap' OR mmt.undecided_reason IS NOT NULL)"
+      : "mmt.data_quality_status = 'unknown_data_gap'";
     await pool.request().query(`
       UPDATE mmt
       SET status = 'resolved',
+          ${clearReason}
           detected_late_arrival_at = evidence.first_underway_at,
           last_checked_at = SYSUTCDATETIME()
       FROM MonitoredMissedTrips mmt
@@ -346,11 +545,14 @@ async function reconcileUnderwayEvidence(pool: sql.ConnectionPool, context: Invo
 
       UPDATE mmt
       SET detected_late_arrival_at = evidence.first_underway_at,
-          -- Late evidence decides a trip the outage left undecidable: it did
-          -- run, past its grace deadline, which is a missed trip by the ops
-          -- definition. Promote it out of the data-gap bucket into the queue.
-          status = CASE WHEN mmt.data_quality_status = 'unknown_data_gap' THEN 'escalated' ELSE mmt.status END,
-          data_quality_status = CASE WHEN mmt.data_quality_status = 'unknown_data_gap' THEN 'experimental' ELSE mmt.data_quality_status END,
+          -- Late evidence decides a trip the detector left undecided - whether
+          -- an outage, a suspect schedule, a silent block, or a row still
+          -- waiting on its second poll. It did run, past its grace deadline,
+          -- which is a missed trip by the ops definition, so it is promoted out
+          -- of the held bucket into the queue.
+          status = CASE WHEN ${heldOrGap} THEN 'escalated' ELSE mmt.status END,
+          data_quality_status = CASE WHEN ${heldOrGap} THEN 'experimental' ELSE mmt.data_quality_status END,
+          ${clearReason}
           last_checked_at = SYSUTCDATETIME()
       FROM MonitoredMissedTrips mmt
       INNER JOIN GtfsTripOperationalEvidence evidence
@@ -390,16 +592,19 @@ app.timer("gtfsMissedTripsPoll", {
       }
     }
 
-    let noShowCount = 0;
+    const detected: NoShowTally = { pending: 0, undecided: 0, unrecordable: 0 };
     const noShowEnabled = silentNoShowEnabled();
     if (noShowEnabled) {
       // Both offsets run every poll - see the module header comment for why
       // "yesterday" needs rechecking too (late-evening and past-midnight
       // trips' grace deadlines fall after the calendar day rolls over).
-      const coverage = await resolveNoShowCoverage(pool, context);
+      const confidence = await resolveDetectionConfidence(pool, context);
       for (const dayOffset of [0, -1]) {
         try {
-          noShowCount += await detectSilentNoShows(pool, context, dayOffset, coverage);
+          const tally = await detectSilentNoShows(pool, context, dayOffset, confidence);
+          detected.pending += tally.pending;
+          detected.undecided += tally.undecided;
+          detected.unrecordable += tally.unrecordable;
         } catch (err) {
           context.error(`Failed to run silent no-show detection (dayOffset=${dayOffset}):`, err);
         }
@@ -410,11 +615,17 @@ app.timer("gtfsMissedTripsPoll", {
       );
     }
 
+    // Order matters: evidence first, so a trip that turned out to have run is
+    // resolved (or recorded as genuinely late) before the confirmation pass can
+    // promote it into the queue.
     await reconcileUnderwayEvidence(pool, context);
+    const confirmed = await confirmPendingNoShows(pool, context);
 
     context.log(
       `Missed-trip poll: ${feed.Entities.length} entities seen, ${canceledCount} cancellations flagged, ` +
-        `${noShowCount} silent no-shows flagged (enabled=${noShowEnabled}).`,
+        `${detected.pending} no-show candidates detected, ${confirmed} confirmed on a later poll, ` +
+        `${detected.undecided} recorded undecided, ${detected.unrecordable} unrecordable ` +
+        `(enabled=${noShowEnabled}).`,
     );
   },
 });

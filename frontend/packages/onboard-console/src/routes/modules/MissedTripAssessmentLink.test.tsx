@@ -20,7 +20,8 @@ const diagnostics: MissedTripsDiagnostics = {
   configured: true, view: "all", limit: 200, offset: 0, returned_count: 1,
   view_count: 1, total_count: 1, active_count: 1, resolved_count: 0,
   unreviewed_count: 1, confirmed_count: 0, false_positive_count: 0, routes_affected_count: 1,
-  legacy_unverified_count: 0, last_checked_at: null,
+  legacy_unverified_count: 0, unknown_data_gap_count: 0,
+  pending_confirmation_count: 0, held_undecided_count: 0, last_checked_at: null,
   silent_no_show_enabled: true, schedule_detection_status: "experimental",
   spare_enabled: false, spare_service_scope_configured: false, feed_health: [],
 };
@@ -33,7 +34,7 @@ function trip(overrides: Partial<MissedTrip> = {}): MissedTrip {
     suggested_alert_id: null, first_seen_watching_at: "2026-08-25T14:30:00Z",
     last_checked_at: "2026-08-25T14:30:00Z", validation_status: "unreviewed", reason_code: null,
     validated_by: null, validated_at: null, notes: null, detector_version: "test",
-    data_quality_status: "source_verified", source_system: "gtfs", source_record_id: null,
+    data_quality_status: "source_verified", undecided_reason: null, source_system: "gtfs", source_record_id: null,
     condition_late_start: null, condition_superseded: null, condition_late_arrival: null,
     start_delay_seconds: null, arrival_delay_seconds: null, direction_label: null,
     occurrence_review_status: null, occurrence_attribution: null,

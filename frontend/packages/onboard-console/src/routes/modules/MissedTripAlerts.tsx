@@ -131,6 +131,7 @@ function fromMissedTrip(trip: MissedTrip): MissedTripAlert {
     notes: trip.notes,
     detectorVersion: trip.detector_version,
     dataQualityStatus: trip.data_quality_status,
+    undecidedReason: trip.undecided_reason,
     sourceSystem: trip.source_system,
     sourceRecordId: trip.source_record_id,
     conditionLateStart: trip.condition_late_start,
@@ -720,6 +721,31 @@ function MissedTripsInvestigationPage({
           {diagnostics!.legacy_unverified_count.toLocaleString()} legacy candidates from the superseded
           detector are excluded from this queue. Their outcome is unknown rather than false — the evidence
           needed to decide them was never recorded — so they are retained for audit instead of reviewed.
+        </p>
+      ) : null}
+
+      {/* Same principle, different cause: these are today's trips the detector
+          has not finished deciding. Saying so is the point — a queue that is
+          quiet because detection is being careful should not look like a queue
+          that is quiet because service ran clean. */}
+      {mode === "queue" && !isPreview && ((diagnostics?.pending_confirmation_count ?? 0) > 0 || (diagnostics?.held_undecided_count ?? 0) > 0) ? (
+        <p className="empty-note" style={{ padding: "0 4px 10px" }}>
+          {(diagnostics?.pending_confirmation_count ?? 0) > 0 ? (
+            <>
+              {diagnostics!.pending_confirmation_count.toLocaleString()} candidate
+              {diagnostics!.pending_confirmation_count === 1 ? " is" : "s are"} waiting for a second poll to
+              agree before joining this queue, so one missed feed reading cannot raise a finding on its own.
+              {" "}
+            </>
+          ) : null}
+          {(diagnostics?.held_undecided_count ?? 0) > 0 ? (
+            <>
+              {diagnostics!.held_undecided_count.toLocaleString()} more {diagnostics!.held_undecided_count === 1 ? "is" : "are"} held
+              because something other than the trip explains the silence — a stale or unrecognised schedule, or a
+              block whose vehicle never reported. They are recorded, not counted, and they will join the queue if
+              evidence later shows the trip ran late.
+            </>
+          ) : null}
         </p>
       ) : null}
 

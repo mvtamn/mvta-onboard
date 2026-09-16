@@ -19,7 +19,8 @@ const diagnostics: MissedTripsDiagnostics = {
   configured: true, view: "queue", limit: 200, offset: 0, returned_count: 2,
   view_count: 2, total_count: 2, active_count: 2, resolved_count: 0,
   unreviewed_count: 2, confirmed_count: 0, false_positive_count: 0, routes_affected_count: 2,
-  legacy_unverified_count: 0, last_checked_at: null,
+  legacy_unverified_count: 0, unknown_data_gap_count: 0,
+  pending_confirmation_count: 0, held_undecided_count: 0, last_checked_at: null,
   silent_no_show_enabled: true, schedule_detection_status: "experimental",
   spare_enabled: true, spare_service_scope_configured: true, feed_health: [],
 };
@@ -32,7 +33,7 @@ function candidate(source_system: "spare" | "gtfs", route_id: string): MissedTri
     detected_late_arrival_at: null, suggested_alert_id: null, first_seen_watching_at: "2026-08-25T14:30:00Z",
     last_checked_at: "2026-08-25T14:30:00Z", validation_status: "unreviewed", reason_code: null,
     validated_by: null, validated_at: null, notes: null, detector_version: "test",
-    data_quality_status: "source_verified", source_system, source_record_id: `${source_system}-record`,
+    data_quality_status: "source_verified", undecided_reason: null, source_system, source_record_id: `${source_system}-record`,
     condition_late_start: source_system === "spare", condition_superseded: false,
     condition_late_arrival: false, start_delay_seconds: null, arrival_delay_seconds: null, direction_label: null,
     occurrence_review_status: null, occurrence_attribution: null,
@@ -101,6 +102,56 @@ describe("Missed Trips legacy exclusion", () => {
 
     expect(await screen.findByText(/Spare candidate/)).toBeInTheDocument();
     expect(screen.queryByText(/legacy candidates/)).not.toBeInTheDocument();
+  });
+});
+
+describe("Missed Trips held candidates", () => {
+  it("says how many candidates are waiting for a second poll to agree", async () => {
+    vi.mocked(api.getMissedTrips).mockResolvedValue({
+      missed_trips: [candidate("gtfs", "400")],
+      diagnostics: { ...diagnostics, pending_confirmation_count: 12 },
+    });
+
+    render(<MissedTripAlerts />);
+
+    expect(await screen.findByText(/12 candidates are waiting for a second poll/)).toBeInTheDocument();
+  });
+
+  it("says how many are held because something other than the trip explains the silence", async () => {
+    vi.mocked(api.getMissedTrips).mockResolvedValue({
+      missed_trips: [candidate("gtfs", "400")],
+      diagnostics: { ...diagnostics, held_undecided_count: 47 },
+    });
+
+    render(<MissedTripAlerts />);
+
+    expect(await screen.findByText(/47 more are held/)).toBeInTheDocument();
+  });
+
+  it("counts one candidate in the singular", async () => {
+    vi.mocked(api.getMissedTrips).mockResolvedValue({
+      missed_trips: [candidate("gtfs", "400")],
+      diagnostics: { ...diagnostics, pending_confirmation_count: 1 },
+    });
+
+    render(<MissedTripAlerts />);
+
+    expect(await screen.findByText(/1 candidate is waiting/)).toBeInTheDocument();
+  });
+
+  // A quiet queue because detection is being careful must not be silent about
+  // it - but a genuinely clear one should say nothing extra.
+  it("says nothing when nothing is held", async () => {
+    vi.mocked(api.getMissedTrips).mockResolvedValue({
+      missed_trips: [candidate("gtfs", "400")],
+      diagnostics,
+    });
+
+    render(<MissedTripAlerts />);
+
+    expect(await screen.findByText(/Spare candidate/)).toBeInTheDocument();
+    expect(screen.queryByText(/waiting for a second poll/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/are held/)).not.toBeInTheDocument();
   });
 });
 

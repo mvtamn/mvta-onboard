@@ -520,7 +520,24 @@ export interface GtfsRouteOption {
 
 export type MissedTripStatus = "watching" | "escalated" | "resolved";
 export type MissedTripValidationStatus = "unreviewed" | "confirmed" | "false_positive";
-export type MissedTripDataQualityStatus = "legacy_unverified" | "source_verified" | "experimental";
+export type MissedTripDataQualityStatus =
+  | "legacy_unverified"
+  | "source_verified"
+  | "experimental"
+  // Migration 087: the detector could not decide this trip, so it is recorded
+  // rather than counted. Never reaches the review queue or the monthly totals.
+  | "unknown_data_gap";
+
+// Migration 121: why a row is not (yet) a finding. "awaiting_confirmation" is a
+// trip detected once and held for a second poll to agree; the rest name
+// something other than the trip that explains its silence. Null on a decided
+// row, and everywhere migration 121 has not been applied.
+export type MissedTripUndecidedReason =
+  | "awaiting_confirmation"
+  | "vehicle_position_feed_not_current"
+  | "static_schedule_stale"
+  | "schedule_disagrees_with_feed"
+  | "block_never_reported";
 export type MissedTripSourceSystem = "gtfs" | "spare";
 
 // Missed Trips is a compliance/investigation tool, not a customer-alert
@@ -559,6 +576,7 @@ export interface MissedTrip {
   notes: string | null;
   detector_version: string | null;
   data_quality_status: MissedTripDataQualityStatus;
+  undecided_reason: MissedTripUndecidedReason | null;
   source_system: MissedTripSourceSystem;
   source_record_id: string | null;
   condition_late_start: boolean | null;
@@ -632,6 +650,11 @@ export interface MissedTripsDiagnostics {
   false_positive_count: number;
   routes_affected_count: number;
   legacy_unverified_count: number;
+  unknown_data_gap_count: number;
+  /** Detected, held for a second poll to agree. Not in the queue. */
+  pending_confirmation_count: number;
+  /** Held because something other than the trip explains its silence. */
+  held_undecided_count: number;
   last_checked_at: string | null;
   silent_no_show_enabled: boolean;
   schedule_detection_status: "paused" | "experimental";
