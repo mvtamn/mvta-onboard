@@ -183,6 +183,18 @@ Activating a zone version does not turn the monitor on. Service Risk & Quality w
 1. `ON_DEMAND_MONITORING_ENABLED` is `true`. It is declared in Bicep and currently `false` on dev; flip `onDemandMonitoringEnabled` in the dev parameters file and deploy. **Set `onDemandMonitoringServiceIds` at the same time** — empty is refused outright, because it once meant the hourly reconciliation read every Spare service the API key can see, not just MVTA Connect. The MVTA Connect service id does not have to be asked for: missed-trip ingestion already stores it, so `SELECT DISTINCT service_id, service_name FROM SpareMissedTripSource` on the dev database names it.
 2. `onDemandSpareReconcile` completes successfully at least once, which is what records `spare_on_demand_reconciliation` feed health and moves the On-Demand KPI trust banner off `unavailable`.
 
+### Clear the pre-activation rows first
+
+Until 1.5.215 the webhook receiver and the missed-trip ingest wrote on-demand monitor state for any Spare service, whether or not monitoring was enabled, so `MonitoredOnDemandWaits` holds requests the monitor is not for. The table has no service column, so which of those rows are foreign cannot be established after the fact, and a reconciliation scoped to MVTA Connect will never touch them. Nothing reads them today. Clear them **before** setting `onDemandMonitoringEnabled` — afterwards the same statement would delete live monitoring:
+
+```sql
+DELETE FROM dbo.OnDemandRequestZoneSnapshots;
+DELETE FROM dbo.OnDemandRequestCommitmentAudit;
+DELETE FROM dbo.MonitoredOnDemandWaits;
+```
+
+The first reconciliation after activation rebuilds the last 24 hours of scoped state.
+
 The remaining items of the activation gate in `plans/service-risk-quality-trust-implementation-plan.md` — approved source owner and contract, confirmed non-PII field mapping, a live controlled breach — have no recorded evidence in this repository.
 
 ## Notes

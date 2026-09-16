@@ -17,6 +17,7 @@ import {
   type SpareSlotRecord,
 } from "../lib/spareApi";
 import { normalizeOnDemandSpareRequest } from "../lib/onDemandSpareMonitor";
+import { admitsMonitorWrite, onDemandActivation } from "../lib/onDemandMonitoringHealth";
 import { loadActiveOperationalZones, storeOnDemandSpareRequest } from "../lib/onDemandSpareMonitorStore";
 
 const REQUEST_PAGE_SIZE = 200;
@@ -263,9 +264,20 @@ app.timer("spareMissedTripsIngest", {
       // the monitor cannot work for any request, and skipping it keeps Missed
       // Trips ingesting. The gap is warned about every run so it stays visible
       // rather than becoming a silent degradation.
+      // The ride-along is scoped by the *monitor's* activation, not by this
+      // ingest's. SPARE_MISSED_TRIP_SERVICE_IDS is three services and not all
+      // of them are MVTA Connect, so upsertRequest's own scope was letting
+      // foreign requests into monitor state - which the hourly reconciliation,
+      // scoped correctly, would then never touch or correct. Missed-trip
+      // ingestion itself is unaffected: it keeps its own scope and its own
+      // rows.
+      const activation = onDemandActivation();
+      if (!activation.active) {
+        context.log(`On-demand monitor updates skipped for this run: monitoring is ${activation.reason}.`);
+      }
       const activeZones = await loadActiveOperationalZones();
-      const zonesAvailable = activeZones.snapshot.zones.length > 0;
-      if (!zonesAvailable) {
+      const zonesAvailable = activation.active && activeZones.snapshot.zones.length > 0;
+      if (activation.active && !zonesAvailable) {
         context.warn(
           "No active on-demand operational zones are available; skipping on-demand monitor updates for this run. " +
             "Missed-trip ingestion continues. Activate a zone version in OnDemandOperationalZoneVersions to restore the monitor.",
@@ -279,7 +291,8 @@ app.timer("spareMissedTripsIngest", {
           requestWrites++;
           if (!zonesAvailable) continue;
           const normalized = normalizeOnDemandSpareRequest(row);
-          if (normalized && await storeOnDemandSpareRequest(normalized, activeZones)) monitorWrites++;
+          if (!normalized || !admitsMonitorWrite(normalized.serviceId, activation).admit) continue;
+          if (await storeOnDemandSpareRequest(normalized, activeZones)) monitorWrites++;
         }
       }
       for (const row of slots) if (await upsertSlot(pool, row)) slotWrites++;

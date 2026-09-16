@@ -1,5 +1,6 @@
 import { resolveOperationalZone, type OperationalZoneSnapshot } from "./onDemandOperationalZones";
 import { getPool, sql } from "./db";
+import { admitsMonitorWrite } from "./onDemandMonitoringHealth";
 import type { NormalizedOnDemandRequest, SpareDutyMatchingUpdate, SpareDutyVehicleUpdate } from "./onDemandSpareMonitor";
 import { CachedValue } from "./spareWebhookIntake";
 
@@ -54,6 +55,13 @@ export async function storeOnDemandSpareRequest(
   if (!activeZones.snapshot.zones.length) {
     throw new Error("No active on-demand operational zones are available");
   }
+  // The scope backstop, not the scope check. Callers decide before they spend
+  // anything - a Spare read, a gate slot - and log why; this is here so that a
+  // writer added later cannot put a foreign service into monitor state by
+  // forgetting to ask. It returns "not applied" rather than throwing on
+  // purpose: a throw here would arm the webhook intake gate's cool-down and
+  // shed unrelated deliveries, which is the cascade #181 fixed.
+  if (!admitsMonitorWrite(input.serviceId).admit) return false;
   const resolved = resolveOperationalZone(activeZones.snapshot, input.pickupCoordinate);
   const zoneId = resolved.kind === "assigned" ? resolved.zone.externalLocationId : "Unzoned";
   const zoneDbId = resolved.kind === "assigned" ? activeZones.databaseIds.get(zoneId) ?? null : null;
