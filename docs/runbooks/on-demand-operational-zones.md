@@ -180,7 +180,7 @@ The REST app is Linux (`NODE|24`), VNet-integrated, and runs from a package (`WE
 
 Activating a zone version does not turn the monitor on. Service Risk & Quality will still read **Not connected** until:
 
-1. `ON_DEMAND_MONITORING_ENABLED` is `true`. It is declared in Bicep and currently `false` on dev; flip `onDemandMonitoringEnabled` in the dev parameters file and deploy. **Set `onDemandMonitoringServiceIds` at the same time** — empty means the hourly reconciliation reads every Spare service the API key can see, not just MVTA Connect.
+1. `ON_DEMAND_MONITORING_ENABLED` is `true`. It is declared in Bicep and currently `false` on dev; flip `onDemandMonitoringEnabled` in the dev parameters file and deploy. **Set `onDemandMonitoringServiceIds` at the same time** — empty is refused outright, because it once meant the hourly reconciliation read every Spare service the API key can see, not just MVTA Connect. The MVTA Connect service id does not have to be asked for: missed-trip ingestion already stores it, so `SELECT DISTINCT service_id, service_name FROM SpareMissedTripSource` on the dev database names it.
 2. `onDemandSpareReconcile` completes successfully at least once, which is what records `spare_on_demand_reconciliation` feed health and moves the On-Demand KPI trust banner off `unavailable`.
 
 The remaining items of the activation gate in `plans/service-risk-quality-trust-implementation-plan.md` — approved source owner and contract, confirmed non-PII field mapping, a live controlled breach — have no recorded evidence in this repository.
