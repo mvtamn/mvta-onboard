@@ -6,7 +6,6 @@ vi.mock("./auth/AuthContext.js", () => ({ useAuth: vi.fn() }));
 // Route modules are stubbed: this file tests the shell, not the workspaces.
 const stub = () => null;
 vi.mock("./routes/AdminModules.js", () => ({
-  AdminAccess: stub,
   AdminEventAdministration: stub,
   AdminGovernance: stub,
   AdminIntegrations: stub,

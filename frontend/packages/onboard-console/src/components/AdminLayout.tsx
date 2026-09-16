@@ -1,7 +1,7 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.js";
 import type { AppRole } from "../auth/roles.js";
-import { IconAssessment, IconClock, IconShield, IconUsers, IconBus, IconWrench } from "./NavIcons.js";
+import { IconAssessment, IconClock, IconHistory, IconShield, IconUsers, IconBus, IconWrench } from "./NavIcons.js";
 
 const ADMIN = ["OCC.Admin"] as const;
 const ACCESS = ["OCC.Admin", "OCC.AccessAdmin"] as const;
@@ -10,17 +10,29 @@ const ACCESS = ["OCC.Admin", "OCC.AccessAdmin"] as const;
 // subject. Contractor performance is that case: who the contractor is, what
 // they are contracted to, what they are held to, and the vocabulary behind it
 // are four separate jobs on one body of work, and stacking them inside a
-// single page made each of them harder to find than it needed to be.
+// single page made each of them harder to find than it needed to be. Access &
+// Identity is the other: who has access, the groups and workloads that hold
+// it, the requests waiting on a second approver, drift against Entra, and the
+// record of it all were seven tabs on one page.
 interface AdminLink {
   to: string;
   label: string;
   icon: typeof IconShield;
   roles: readonly AppRole[];
   group?: string;
+  // Match this path exactly, so a section's overview is not also marked
+  // active on every page beneath it.
+  end?: boolean;
 }
 
 const links: readonly AdminLink[] = [
-  { to: "/admin/access", label: "Access & Identity", icon: IconShield, roles: ACCESS },
+  { to: "/admin/access", label: "Overview", icon: IconShield, roles: ACCESS, group: "Access & Identity", end: true },
+  { to: "/admin/access/people", label: "People & guests", icon: IconUsers, roles: ACCESS, group: "Access & Identity" },
+  { to: "/admin/access/groups", label: "Access groups", icon: IconUsers, roles: ACCESS, group: "Access & Identity" },
+  { to: "/admin/access/workloads", label: "Workloads", icon: IconWrench, roles: ACCESS, group: "Access & Identity" },
+  { to: "/admin/access/approvals", label: "Approvals", icon: IconClock, roles: ACCESS, group: "Access & Identity" },
+  { to: "/admin/access/health", label: "Access health", icon: IconAssessment, roles: ACCESS, group: "Access & Identity" },
+  { to: "/admin/access/activity", label: "Activity log", icon: IconHistory, roles: ACCESS, group: "Access & Identity" },
   { to: "/admin/events", label: "Event Administration", icon: IconBus, roles: ADMIN },
   { to: "/admin/service", label: "Service Configuration", icon: IconWrench, roles: ADMIN },
   { to: "/admin/service-standards", label: "Service Standards", icon: IconWrench, roles: ADMIN },
@@ -62,8 +74,8 @@ export function AdminLayout() {
           {sections(visibleLinks).map((section, index) => (
             <div key={section.group ?? `ungrouped-${index}`} className={section.group ? "admin-secondary-group" : undefined}>
               {section.group && <span className="admin-secondary-group-label">{section.group}</span>}
-              {section.items.map(({ to, label, icon: Icon }) => (
-                <NavLink key={to} to={to}>
+              {section.items.map(({ to, label, icon: Icon, end }) => (
+                <NavLink key={to} to={to} end={end}>
                   <Icon />
                   <span>{label}</span>
                 </NavLink>

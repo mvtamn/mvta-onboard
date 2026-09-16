@@ -1,12 +1,10 @@
 import { EventWorkspaceNav } from "../components/EventWorkspaceNav.js";
 import { Admin, DetourContractorSection, DetourReasonCodesSection, EventMonitoringSettingsSection, RouteClassificationSection } from "./Admin.js";
-import { AccessManagement } from "./AccessManagement.js";
 import { AuditLog } from "./AuditLog.js";
 import { EventResourceMapEditor } from "./EventResourceMapEditor.js";
 import { Subscribers } from "./Subscribers.js";
 import { IntegrationsHealth } from "./modules/IntegrationsHealth.js";
 
-export function AdminAccess() { return <AccessManagement />; }
 export function AdminServiceConfiguration() { return <><Admin /><DetourReasonCodesSection /><DetourContractorSection /></>; }
 // KPI trust lives here, and only here: one place an administrator reads every
 // stream's state, instead of a banner at the top of each module.
