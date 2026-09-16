@@ -1,0 +1,13 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 760, "h": 1420, "title": "Sign up (desktop)", "is_interactive": true },
+    { "file": "Mobile.dc.html", "x": 880, "y": 0, "w": 390, "h": 844, "title": "Sign up (phone)", "is_interactive": true },
+    { "file": "Confirm.dc.html", "x": 1390, "y": 0, "w": 760, "h": 720, "title": "After the confirmation link" },
+    { "file": "Manage.dc.html", "x": 0, "y": 1580, "w": 760, "h": 1480, "title": "Change or stop alerts", "is_interactive": true }
+  ],
+  "annotations": [
+    { "id": "what-changed", "x": 0, "y": -210, "w": 620, "text": "Rebuild of the rider alerts flow. Same brand and frame as the live app; the UX changes are:\n· Numbered sections, each with a one-line reason, instead of one long form\n· A running summary beside the form (a sticky bar on the phone) so the choice is reviewable before subscribing\n· Errors sit on the field they are about and clear as soon as you change it\n· Route picker gains search, a chosen count, and clear-selection\n· Alert types say what each one means\n· Success screen is numbered next steps, with the code box in place" },
+    { "id": "sample-data", "x": 1390, "y": 830, "w": 400, "text": "Route names and the masked contacts are sample values for the prototype. Confirmation states are switchable from the chips above this artboard." }
+  ],
+  "launch": { "view": "canvas" }
+}

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { ApiError } from "@mvta/shared";
 import { OptIn } from "./OptIn.js";
 
 // The success screen, which is now where the SMS channel is actually finished:
@@ -214,3 +215,104 @@ describe("choosing routes", () => {
     expect(api.subscribe).toHaveBeenCalledWith(expect.objectContaining({ routes: "ALL" }));
   });
 });
+
+describe("reading back what you are about to get", () => {
+  it("says what each kind of alert covers, so the words are not guesswork", async () => {
+    render(<OptIn />);
+    expect(screen.getByText(/buses running behind schedule/i)).toBeTruthy();
+    expect(screen.getByText(/equipment or a facility out of service/i)).toBeTruthy();
+  });
+
+  it("summarises the choices beside the button as they are made", async () => {
+    render(<OptIn />);
+    const summary = screen.getByRole("complementary");
+    expect(summary).toHaveTextContent(/text and email/i);
+    expect(summary).toHaveTextContent(/all 7 kinds/i);
+    expect(summary).toHaveTextContent(/every mvta route/i);
+
+    await userEvent.click(screen.getByRole("radio", { name: "Email" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: /detour/i }));
+    expect(summary).toHaveTextContent(/email only/i);
+    expect(summary).toHaveTextContent(/6 kinds/i);
+  });
+
+  it("says what confirming will involve, for the channels chosen", async () => {
+    render(<OptIn />);
+    expect(screen.getByRole("complementary")).toHaveTextContent(/text a code and email a link/i);
+    await userEvent.click(screen.getByRole("radio", { name: "Text" }));
+    expect(screen.getByRole("complementary")).toHaveTextContent(/no texts are sent until you enter it/i);
+  });
+});
+
+describe("reporting what is wrong", () => {
+  it("reports every problem at once, each on the control it is about", async () => {
+    render(<OptIn />);
+    await submit();
+    // All three, not just the first: a rider fixes the form in one pass.
+    expect(await screen.findByText(/enter your mobile number, or choose email/i)).toBeTruthy();
+    expect(screen.getByText(/enter your email address, or choose text/i)).toBeTruthy();
+    expect(screen.getByText(/please agree to receive alerts/i)).toBeTruthy();
+    expect(screen.getByLabelText(/mobile number/i)).toHaveAttribute("aria-invalid", "true");
+    // One live region, which sends them up the form rather than reading out three.
+    expect(screen.getByRole("alert")).toHaveTextContent(/check the highlighted answers/i);
+    expect(api.subscribe).not.toHaveBeenCalled();
+  });
+
+  it("names the one problem when there is only one", async () => {
+    render(<OptIn />);
+    await userEvent.type(screen.getByLabelText(/mobile number/i), "612-555-0123");
+    await userEvent.type(screen.getByLabelText(/email address/i), "rider@example.com");
+    await submit();
+    expect(await screen.findByRole("alert")).toHaveTextContent(/please agree to receive alerts/i);
+  });
+
+  it("puts a rejected field back on that field, not in a general message", async () => {
+    vi.mocked(api.subscribe).mockRejectedValueOnce(
+      new ApiError(400, "Validation failed", ["email must be a valid email address"]),
+    );
+    render(<OptIn />);
+    await userEvent.type(screen.getByLabelText(/mobile number/i), "612-555-0123");
+    await userEvent.type(screen.getByLabelText(/email address/i), "rider@example.com");
+    await agree();
+    await submit();
+    expect(await screen.findByText(/that email address doesn’t look right/i)).toBeTruthy();
+    expect(screen.getByLabelText(/email address/i)).toHaveAttribute("aria-invalid", "true");
+  });
+});
+
+describe("finding a route in a long list", () => {
+  const manyRoutes = Array.from({ length: 12 }, (_, i) => ({
+    id: `4${70 + i}`,
+    label: `4${70 + i} - ${i % 2 === 0 ? "Burnsville" : "Eagan"} - Minneapolis`,
+  }));
+
+  it("filters the list as the rider types, and says how many are chosen", async () => {
+    vi.mocked(api.getSubscribeOptions).mockResolvedValueOnce({ routes: manyRoutes, zones: [] });
+    render(<OptIn />);
+    const only = screen.getByRole("radio", { name: /only the routes i choose/i });
+    await waitFor(() => expect(only).toBeEnabled());
+    await userEvent.click(only);
+
+    const search = screen.getByRole("textbox", { name: /search routes/i });
+    await userEvent.type(search, "eagan");
+    const list = screen.getByRole("group", { name: "Routes" });
+    expect(within(list).queryByRole("checkbox", { name: /^470 /i })).toBeNull();
+    expect(within(list).getByRole("checkbox", { name: /^471 /i })).toBeTruthy();
+
+    await userEvent.click(within(list).getByRole("checkbox", { name: /^471 /i }));
+    expect(screen.getByText(/1 chosen/i)).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: /clear selection/i }));
+    expect(screen.getByText(/none chosen yet/i)).toBeTruthy();
+  });
+
+  it("tells the rider when nothing matches what they typed", async () => {
+    vi.mocked(api.getSubscribeOptions).mockResolvedValueOnce({ routes: manyRoutes, zones: [] });
+    render(<OptIn />);
+    const only = screen.getByRole("radio", { name: /only the routes i choose/i });
+    await waitFor(() => expect(only).toBeEnabled());
+    await userEvent.click(only);
+    await userEvent.type(screen.getByRole("textbox", { name: /search routes/i }), "zzz");
+    expect(screen.getByText(/nothing matches/i)).toHaveTextContent("zzz");
+  });
+});
+
