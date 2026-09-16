@@ -1,0 +1,303 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  body { margin: 0; background: #F3F2ED; color: #2C2C2A; font-family: Arial, Helvetica, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: #00553D; text-underline-offset: 2px; }
+  a:hover { color: #003D2C; }
+  ::selection { background: rgba(0, 85, 61, 0.18); }
+  .frame { max-width: 720px; margin: 0 auto; background: #fff; border: 1px solid #E4E1D9; border-radius: 14px; overflow: hidden; box-shadow: 0 1px 2px rgba(44,44,42,.05), 0 20px 44px -30px rgba(44,44,42,.55); }
+  .alertbar { display: flex; align-items: center; gap: 8px; background: #F78E1E; color: #4A1B0C; padding: 10px 20px; font-size: 13px; font-weight: bold; }
+  .nav { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; border-bottom: 1px solid #EEE; }
+  .logo { font-weight: bold; font-size: 20px; }
+  .navlinks { display: flex; gap: 20px; }
+  .navlinks a { color: #2C2C2A; text-decoration: none; font-size: 14px; font-weight: bold; }
+  .content { padding: 26px 24px 30px; }
+  .crumb { font-size: 12px; color: #6B6B6B; margin: 0 0 8px; }
+  .title { color: #00553D; font-size: 26px; line-height: 1.15; letter-spacing: -0.01em; font-weight: bold; margin: 0 0 8px; }
+  .lede { color: #4F4F4F; font-size: 14.5px; line-height: 1.55; margin: 0 0 22px; max-width: 54ch; }
+  .stack { display: flex; flex-direction: column; gap: 18px; }
+  .card { border: 1px solid #E6E3DA; border-radius: 12px; padding: 16px 18px 18px; }
+  .h2 { font-size: 15px; font-weight: bold; margin: 0 0 4px; }
+  .hint { font-size: 12.5px; line-height: 1.45; color: #4F4F4F; margin: 0 0 12px; }
+  .chan { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; border-bottom: 1px solid #F1EFE8; }
+  .chan:last-child { border-bottom: 0; }
+  .chan input { flex: none; width: 18px; height: 18px; margin: 2px 0 0; accent-color: #00553D; cursor: pointer; }
+  .chan b { display: block; font-size: 14px; }
+  .chan small { display: block; font-size: 12.5px; line-height: 1.4; color: #4F4F4F; margin-top: 3px; }
+  .err { display: flex; align-items: flex-start; gap: 6px; font-size: 12.5px; line-height: 1.4; color: #8A1F1F; margin: 10px 0 0; }
+  .err svg { flex: none; margin-top: 1px; }
+  .cats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }
+  .opt { display: flex; align-items: center; gap: 10px; padding: 10px 0; font-size: 13.5px; cursor: pointer; }
+  .opt input { flex: none; width: 18px; height: 18px; margin: 0; accent-color: #00553D; cursor: pointer; }
+  .segments { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 10px; background: #F1EFE8; margin-bottom: 12px; }
+  .seg { position: relative; display: block; }
+  .seg input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+  .seg span { display: flex; align-items: center; justify-content: center; min-height: 42px; padding: 0 10px; border-radius: 7px; font-size: 14.5px; font-weight: bold; }
+  .seg.on span { background: #00553D; color: #fff; }
+  .seg input:focus-visible + span { outline: 3px solid #F78E1E; outline-offset: 2px; }
+  .search { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; padding: 9px 11px; border: 1px solid #C8C6BF; border-radius: 8px; }
+  .search input { flex: 1 1 auto; min-width: 0; border: 0; outline: 0; font: inherit; font-size: 15px; background: transparent; }
+  .routelist { max-height: 200px; overflow-y: auto; border: 1px solid #E6E3DA; border-radius: 8px; padding: 0 12px; }
+  .routerow { display: flex; align-items: center; gap: 10px; padding: 9px 0; font-size: 13.5px; border-bottom: 1px solid #F1EFE8; cursor: pointer; }
+  .routerow:last-child { border-bottom: 0; }
+  .routerow input { flex: none; width: 18px; height: 18px; margin: 0; accent-color: #00553D; cursor: pointer; }
+  .routerow .num { flex: none; min-width: 58px; font-weight: bold; }
+  .routerow .to { color: #4F4F4F; }
+  .note { font-size: 12.5px; line-height: 1.45; color: #4F4F4F; margin: 10px 0 0; }
+  .savebar { position: sticky; bottom: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 4px; padding: 14px 0 2px; background: #fff; }
+  .btn { background: #00553D; color: #fff; border: 0; border-radius: 9px; padding: 13px 22px; font: inherit; font-size: 15px; font-weight: bold; cursor: pointer; }
+  .btn:hover:not(:disabled) { background: #003D2C; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .btn:focus-visible { outline: 3px solid rgba(0,85,61,.35); outline-offset: 2px; }
+  .btn2 { background: #fff; color: #2C2C2A; border: 1px solid #C8C6BF; border-radius: 9px; padding: 12px 18px; font: inherit; font-size: 14px; font-weight: bold; cursor: pointer; }
+  .btn2:hover { border-color: #9C9A93; }
+  .ok { display: flex; align-items: center; gap: 7px; font-size: 13.5px; font-weight: bold; color: #00553D; margin: 0; }
+  .unsub { margin-top: 26px; padding-top: 20px; border-top: 1px solid #E6E3DA; }
+  .unsub h3 { font-size: 14px; font-weight: bold; margin: 0 0 6px; }
+  .unsub p { font-size: 13px; line-height: 1.5; color: #4F4F4F; margin: 0 0 12px; max-width: 58ch; }
+  .danger { background: #fff; color: #8A1F1F; border: 1px solid #E4B4B0; border-radius: 9px; padding: 12px 18px; font: inherit; font-size: 14px; font-weight: bold; cursor: pointer; }
+  .danger:hover { background: #FFFBFB; }
+  .gone { display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; border-radius: 50%; background: #ECECEA; color: #4F4F4F; margin-bottom: 16px; }
+</style>
+</helmet>
+
+<div style="padding: 20px">
+  <div class="frame">
+    <div class="alertbar">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
+      <span>Service alerts &nbsp;|&nbsp; Real-time updates from MVTA</span>
+    </div>
+    <nav class="nav">
+      <div class="logo"><span style="color: #00553D">M</span><span style="color: #639281">V</span><span style="color: #F78E1E">TA</span></div>
+      <div class="navlinks"><a href="#">Service Alerts</a><a href="#">Get Notified</a></div>
+    </nav>
+
+    <div class="content">
+      <sc-if value="{{ isEditing }}" hint-placeholder-val="{{ true }}">
+        <div>
+          <p class="crumb">Home / Your alerts</p>
+          <h1 class="title">Your MVTA service alerts</h1>
+          <p class="lede">Change what you get, or stop it. Nothing here needs a password — this page opened from the link in your alert email.</p>
+
+          <div class="stack">
+            <div class="card">
+              <h2 class="h2">How we reach you</h2>
+              <p class="hint">Untick a channel to stop those messages. Ticking both back on is fine as long as neither is stopped.</p>
+              <label class="chan">
+                <input type="checkbox" checked="{{ keepSms }}" onChange="{{ toggleSms }}">
+                <span><b>Texts to (•••) •••-0123</b><small>{{ smsNote }}</small></span>
+              </label>
+              <label class="chan">
+                <input type="checkbox" checked="{{ keepEmail }}" onChange="{{ toggleEmail }}">
+                <span><b>Emails to r•••r@example.com</b><small>{{ emailNote }}</small></span>
+              </label>
+              <sc-if value="{{ noChannels }}" hint-placeholder-val="{{ false }}">
+                <p class="err"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v6"></path><path d="M12 16h.01"></path></svg>Keep at least one of these on. To stop everything, unsubscribe below.</p>
+              </sc-if>
+            </div>
+
+            <div class="card">
+              <h2 class="h2">Which alerts?</h2>
+              <p class="hint">At least one kind. To get none at all, unsubscribe below.</p>
+              <div class="cats">
+                <sc-for list="{{ cats }}" as="c" hint-placeholder-count="7">
+                  <label class="opt"><input type="checkbox" checked="{{ c.on }}" onChange="{{ c.toggle }}"><span>{{ c.label }}</span></label>
+                </sc-for>
+              </div>
+            </div>
+
+            <div class="card">
+              <h2 class="h2">Which routes?</h2>
+              <p class="hint">Alerts about every route, or only the ones you ride.</p>
+              <div class="segments">
+                <sc-for list="{{ routeModes }}" as="m" hint-placeholder-count="2">
+                  <label class="seg {{ m.cls }}"><input type="radio" name="routemode" checked="{{ m.on }}" onChange="{{ m.pick }}"><span>{{ m.label }}</span></label>
+                </sc-for>
+              </div>
+              <sc-if value="{{ pickingRoutes }}" hint-placeholder-val="{{ true }}">
+                <div>
+                  <div class="search">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4F4F4F" stroke-width="2.1" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>
+                    <input type="text" placeholder="Search by number or place" value="{{ query }}" onInput="{{ setQuery }}">
+                  </div>
+                  <div class="routelist">
+                    <sc-for list="{{ shownRoutes }}" as="r" hint-placeholder-count="6">
+                      <label class="routerow"><input type="checkbox" checked="{{ r.on }}" onChange="{{ r.toggle }}"><span class="num">{{ r.num }}</span><span class="to">{{ r.to }}</span></label>
+                    </sc-for>
+                  </div>
+                  <p class="note">{{ chosenNote }}</p>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+
+          <div class="savebar">
+            <button type="button" class="btn" disabled="{{ saveDisabled }}" onClick="{{ save }}">{{ saveLabel }}</button>
+            <sc-if value="{{ saved }}" hint-placeholder-val="{{ false }}">
+              <p class="ok"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>Saved. Your next alert follows these choices.</p>
+            </sc-if>
+            <sc-if value="{{ dirty }}" hint-placeholder-val="{{ false }}">
+              <p class="note" style="margin: 0">Unsaved changes</p>
+            </sc-if>
+          </div>
+
+          <div class="unsub">
+            <h3>Stop all MVTA alerts</h3>
+            <sc-if value="{{ notConfirming }}" hint-placeholder-val="{{ true }}">
+              <div>
+                <p>This stops every text and email from MVTA service alerts. You can sign up again any time.</p>
+                <button type="button" class="btn2" onClick="{{ askUnsub }}">Unsubscribe</button>
+              </div>
+            </sc-if>
+            <sc-if value="{{ confirming }}" hint-placeholder-val="{{ false }}">
+              <div>
+                <p><b>Stop all alerts to this phone and email?</b> Signing up again later means confirming again.</p>
+                <div style="display: flex; flex-wrap: wrap; gap: 12px">
+                  <button type="button" class="danger" onClick="{{ doUnsub }}">Yes, stop my alerts</button>
+                  <button type="button" class="btn2" onClick="{{ keepThem }}">Keep my alerts</button>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isGone }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <p class="crumb">Home / Your alerts</p>
+          <div class="gone"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></div>
+          <h1 class="title">Your alerts are stopped</h1>
+          <p class="lede">No more texts or emails from MVTA service alerts. This link no longer opens your settings — signing up again is how to start.</p>
+          <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 22px">
+            <button type="button" class="btn">Sign up again</button>
+            <button type="button" class="btn2">See current alerts</button>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":760,"height":1480}}'>
+const CATS = [
+  { id: "delay", label: "Delay" },
+  { id: "detour", label: "Detour" },
+  { id: "closure", label: "Closure" },
+  { id: "outage", label: "Outage" },
+  { id: "general", label: "General" },
+  { id: "emergency", label: "Emergency" },
+  { id: "demand_response_delay", label: "MVTA Connect Delay" }
+];
+
+const ROUTES = [
+  { id: "ORANGE", num: "Orange LINK", to: "Apple Valley · Burnsville · Minneapolis" },
+  { id: "420", num: "420", to: "Apple Valley · Rosemount · DCTC" },
+  { id: "436", num: "436", to: "46th St Station · MSP · Eagan" },
+  { id: "440", num: "440", to: "Burnsville · Savage" },
+  { id: "442", num: "442", to: "Burnsville · Apple Valley · Mall of America" },
+  { id: "444", num: "444", to: "Savage · Burnsville Center" },
+  { id: "460", num: "460", to: "Lakeville · Minneapolis" },
+  { id: "464", num: "464", to: "Prior Lake · Minneapolis" },
+  { id: "465", num: "465", to: "Shakopee · Minneapolis" },
+  { id: "470", num: "470", to: "Burnsville · Minneapolis" },
+  { id: "472", num: "472", to: "Eagan · Minneapolis" },
+  { id: "475", num: "475", to: "Apple Valley · Minneapolis" },
+  { id: "477", num: "477", to: "Lakeville · Apple Valley · Minneapolis" },
+  { id: "478", num: "478", to: "Rosemount · Minneapolis" },
+  { id: "480", num: "480", to: "Eagan · Mall of America" },
+  { id: "490", num: "490", to: "Rosemount · Apple Valley · Minneapolis" },
+  { id: "495", num: "495", to: "Shakopee · Mall of America" }
+];
+
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      view: "editing",
+      keepSms: true,
+      keepEmail: true,
+      cats: ["delay", "detour", "closure", "emergency"],
+      routeMode: "some",
+      routes: ["470", "472"],
+      query: "",
+      dirty: false,
+      saved: false,
+      saving: false,
+      confirming: false
+    };
+  }
+  touch(patch) {
+    this.setState(Object.assign({ dirty: true, saved: false }, patch));
+  }
+  renderVals() {
+    const s = this.state;
+    const q = s.query.trim().toLowerCase();
+    const shown = q ? ROUTES.filter((r) => (r.num + " " + r.to).toLowerCase().indexOf(q) !== -1) : ROUTES;
+    const chosen = s.routes.length;
+    return {
+      isEditing: s.view === "editing",
+      isGone: s.view === "gone",
+      keepSms: s.keepSms,
+      keepEmail: s.keepEmail,
+      query: s.query,
+      smsNote: s.keepSms ? "Confirmed on 11 September" : "Texts stop when you save.",
+      emailNote: s.keepEmail ? "Confirmed on 11 September" : "Emails stop when you save.",
+      noChannels: !s.keepSms && !s.keepEmail,
+      toggleSms: () => this.touch({ keepSms: !this.state.keepSms }),
+      toggleEmail: () => this.touch({ keepEmail: !this.state.keepEmail }),
+      cats: CATS.map((c) => ({
+        label: c.label,
+        on: s.cats.indexOf(c.id) !== -1,
+        toggle: () => {
+          const has = this.state.cats.indexOf(c.id) !== -1;
+          this.touch({ cats: has ? this.state.cats.filter((x) => x !== c.id) : this.state.cats.concat([c.id]) });
+        }
+      })),
+      routeModes: [
+        { value: "all", label: "All routes" },
+        { value: "some", label: "Only the routes I choose" }
+      ].map((m) => ({ label: m.label, on: s.routeMode === m.value, cls: s.routeMode === m.value ? "on" : "", pick: () => this.touch({ routeMode: m.value }) })),
+      pickingRoutes: s.routeMode === "some",
+      shownRoutes: shown.map((r) => ({
+        num: r.num,
+        to: r.to,
+        on: s.routes.indexOf(r.id) !== -1,
+        toggle: () => {
+          const has = this.state.routes.indexOf(r.id) !== -1;
+          this.touch({ routes: has ? this.state.routes.filter((x) => x !== r.id) : this.state.routes.concat([r.id]) });
+        }
+      })),
+      setQuery: (e) => this.setState({ query: e.target.value }),
+      chosenNote: chosen === 0 ? "No routes chosen — pick at least one, or choose All routes." : chosen === 1 ? "1 route chosen" : chosen + " routes chosen",
+      dirty: s.dirty && !s.saved,
+      saved: s.saved,
+      saveLabel: s.saving ? "Saving…" : "Save changes",
+      saveDisabled: !s.dirty || s.saving || (!s.keepSms && !s.keepEmail) || (s.routeMode === "some" && s.routes.length === 0) || s.cats.length === 0,
+      save: () => {
+        const now = this.state;
+        if (!now.dirty || now.saving) return;
+        if (!now.keepSms && !now.keepEmail) return;
+        if (now.cats.length === 0) return;
+        if (now.routeMode === "some" && now.routes.length === 0) return;
+        this.setState({ saving: true });
+        setTimeout(() => this.setState({ saving: false, dirty: false, saved: true }), 450);
+      },
+      notConfirming: !s.confirming,
+      confirming: s.confirming,
+      askUnsub: () => this.setState({ confirming: true }),
+      keepThem: () => this.setState({ confirming: false }),
+      doUnsub: () => this.setState({ view: "gone" })
+    };
+  }
+}
+</script>
+</body>
+</html>

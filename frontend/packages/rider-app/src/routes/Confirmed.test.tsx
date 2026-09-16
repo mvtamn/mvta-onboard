@@ -118,3 +118,24 @@ describe("the landing page", () => {
     expect(await screen.findByText(/couldn’t reach MVTA/i)).toBeTruthy();
   });
 });
+
+describe("what happens next", () => {
+  it("tells a confirmed rider what they will and will not get", () => {
+    renderAt("?status=confirmed&channel=email");
+    expect(screen.getByText(/no marketing, and no daily digest/i)).toBeTruthy();
+    expect(screen.getByText(/every alert carries a link to change or stop them/i)).toBeTruthy();
+  });
+
+  it("gives an expired code the way out, in order", () => {
+    renderAt("?status=expired&channel=sms");
+    const steps = screen.getAllByRole("listitem");
+    expect(steps[0]).toHaveTextContent(/ask for a new one below/i);
+    expect(steps[1]).toHaveTextContent(/works for 24 hours/i);
+  });
+
+  it("does not promise a rider who unsubscribed that anything is still being sent", () => {
+    renderAt("?status=opted_out&channel=email");
+    expect(screen.getByText(/nothing is being sent to this contact/i)).toBeTruthy();
+  });
+});
+

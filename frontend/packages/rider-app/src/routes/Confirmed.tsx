@@ -45,6 +45,14 @@ interface Outcome {
   body: string;
   /** Whether asking for a fresh link or code is the way out of this. */
   resend: boolean;
+  /**
+   * What happens next, or what to do about it - the thing a rider actually
+   * came to this page to find out. The heading says what happened; these say
+   * where that leaves them.
+   */
+  next: string[];
+  /** Whether this is an outcome to celebrate, warn about, or close off. */
+  tone: "good" | "attention" | "stopped";
 }
 
 export function describeOutcome(status: ConfirmationStatus, channel: Channel): Outcome {
@@ -64,12 +72,23 @@ export function describeOutcome(status: ConfirmationStatus, channel: Channel): O
           `If you also signed up with a ${other.contact}, that still needs confirming ` +
           `— look for the ${other.thing} we ${other.sent}.`,
         resend: false,
+        next: [
+          "We only send the kinds of alert you chose, on the routes you chose.",
+          "Nothing routine — no marketing, and no daily digest.",
+          "Every alert carries a link to change or stop them.",
+        ],
+        tone: "good",
       };
     case "already_confirmed":
       return {
         title: "You’re already confirmed",
         body: `That ${w.thing} has already been used. There’s nothing more to do.`,
         resend: false,
+        next: [
+          `You may have opened the same ${w.thing} twice, which is fine.`,
+          "Your alerts keep coming as before.",
+        ],
+        tone: "good",
       };
     case "superseded":
       return {
@@ -78,12 +97,22 @@ export function describeOutcome(status: ConfirmationStatus, channel: Channel): O
           `A newer ${w.thing} was sent after this one, and only the newest works. ` +
           `Use the most recent one we ${w.sent}.`,
         resend: true,
+        next: [
+          `Check the most recent MVTA message and use the ${w.thing} in that one.`,
+          `This older ${w.thing} stopped working when the newer one was sent.`,
+        ],
+        tone: "attention",
       };
     case "expired":
       return {
         title: `That ${w.thing} has expired`,
         body: `Confirmation ${w.thing}s last 24 hours. Ask for a new one and we’ll send it now.`,
         resend: true,
+        next: [
+          "Ask for a new one below.",
+          "It arrives in a minute or two, and works for 24 hours.",
+        ],
+        tone: "attention",
       };
     case "opted_out":
       return {
@@ -92,6 +121,11 @@ export function describeOutcome(status: ConfirmationStatus, channel: Channel): O
           `This ${w.thing} can’t turn them back on — and we won’t, without you asking. ` +
           `If you’d like alerts again, sign up below.`,
         resend: false,
+        next: [
+          "Nothing is being sent to this contact.",
+          "Signing up again asks for consent fresh, and you choose alert types and routes again.",
+        ],
+        tone: "stopped",
       };
     case "invalid":
       return {
@@ -100,6 +134,11 @@ export function describeOutcome(status: ConfirmationStatus, channel: Channel): O
           `It may have been cut short by your mail program, or already used. ` +
           `Ask for a new one and we’ll send it now.`,
         resend: true,
+        next: [
+          `Open the ${w.thing} straight from the MVTA message rather than retyping it.`,
+          "Or ask for a new one below.",
+        ],
+        tone: "attention",
       };
   }
 }
@@ -173,11 +212,33 @@ export function Confirmed() {
   const channel = readChannel(params.get("channel"));
   const outcome = describeOutcome(status, channel);
 
+  const mark =
+    outcome.tone === "good"
+      ? { className: "done-mark", path: "M20 6 9 17l-5-5" }
+      : outcome.tone === "stopped"
+        ? { className: "done-mark stopped", path: "M18 6 6 18M6 6l12 12" }
+        : { className: "done-mark attention", path: "M12 7.5v5.5M12 16.5h.01" };
+
   return (
     <>
       <p className="crumb">Home / Get Notified / Confirm</p>
+      <div className={mark.className} aria-hidden="true">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+          {outcome.tone === "attention" && <circle cx="12" cy="12" r="9" />}
+          <path d={mark.path} />
+        </svg>
+      </div>
       <h1 className="title">{outcome.title}</h1>
       <p className="subtitle">{outcome.body}</p>
+
+      <ol className="next-steps">
+        {outcome.next.map((step, index) => (
+          <li key={step}>
+            <span className="n">{index + 1}</span>
+            <span>{step}</span>
+          </li>
+        ))}
+      </ol>
 
       {outcome.resend && <ResendForm />}
 

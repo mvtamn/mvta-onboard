@@ -1,0 +1,203 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  body { margin: 0; background: #F3F2ED; color: #2C2C2A; font-family: Arial, Helvetica, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: #00553D; text-underline-offset: 2px; }
+  a:hover { color: #003D2C; }
+  ::selection { background: rgba(0, 85, 61, 0.18); }
+  .frame { max-width: 720px; margin: 0 auto; background: #fff; border: 1px solid #E4E1D9; border-radius: 14px; overflow: hidden; box-shadow: 0 1px 2px rgba(44,44,42,.05), 0 20px 44px -30px rgba(44,44,42,.55); }
+  .alertbar { display: flex; align-items: center; gap: 8px; background: #F78E1E; color: #4A1B0C; padding: 10px 20px; font-size: 13px; font-weight: bold; }
+  .nav { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; border-bottom: 1px solid #EEE; }
+  .logo { font-weight: bold; font-size: 20px; }
+  .navlinks { display: flex; gap: 20px; }
+  .navlinks a { color: #2C2C2A; text-decoration: none; font-size: 14px; font-weight: bold; }
+  .content { padding: 34px 24px 36px; }
+  .mark { display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; border-radius: 50%; margin-bottom: 16px; }
+  .mark.good { background: #E7EFEB; color: #00553D; }
+  .mark.warn { background: #FCEFD8; color: #7A4A00; }
+  .mark.stop { background: #FBE0E0; color: #8A1F1F; }
+  .title { color: #00553D; font-size: 26px; line-height: 1.15; letter-spacing: -0.01em; font-weight: bold; margin: 0 0 10px; }
+  .lede { color: #4F4F4F; font-size: 15px; line-height: 1.6; margin: 0; max-width: 56ch; }
+  .panel { margin-top: 24px; padding: 18px 20px; border: 1px solid #E6E3DA; border-radius: 12px; background: #F7F6F1; }
+  .panel h2 { font-size: 13px; font-weight: bold; letter-spacing: .04em; text-transform: uppercase; color: #4F4F4F; margin: 0 0 12px; }
+  .rows { display: flex; flex-direction: column; gap: 10px; }
+  .row { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; line-height: 1.5; }
+  .row svg { flex: none; margin-top: 2px; color: #00553D; }
+  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 24px; }
+  .btn { background: #00553D; color: #fff; border: 0; border-radius: 9px; padding: 13px 20px; font: inherit; font-size: 15px; font-weight: bold; cursor: pointer; }
+  .btn:hover { background: #003D2C; }
+  .btn:focus-visible { outline: 3px solid rgba(0,85,61,.35); outline-offset: 2px; }
+  .btn2 { background: #fff; color: #2C2C2A; border: 1px solid #C8C6BF; border-radius: 9px; padding: 13px 20px; font: inherit; font-size: 15px; font-weight: bold; cursor: pointer; }
+  .btn2:hover { border-color: #9C9A93; }
+  .sent { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: bold; color: #00553D; margin: 0; }
+  .fine { font-size: 12.5px; line-height: 1.5; color: #4F4F4F; margin: 22px 0 0; }
+</style>
+</helmet>
+
+<div style="padding: 20px">
+  <div class="frame">
+    <div class="alertbar">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
+      <span>Service alerts &nbsp;|&nbsp; Real-time updates from MVTA</span>
+    </div>
+    <nav class="nav">
+      <div class="logo"><span style="color: #00553D">M</span><span style="color: #639281">V</span><span style="color: #F78E1E">TA</span></div>
+      <div class="navlinks"><a href="#">Service Alerts</a><a href="#">Get Notified</a></div>
+    </nav>
+    <div class="content">
+      <div class="mark {{ markCls }}">
+        <sc-if value="{{ isGood }}" hint-placeholder-val="{{ true }}">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+        </sc-if>
+        <sc-if value="{{ isBad }}" hint-placeholder-val="{{ false }}">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7.5v5.5"></path><path d="M12 16.5h.01"></path></svg>
+        </sc-if>
+      </div>
+
+      <h1 class="title">{{ title }}</h1>
+      <p class="lede">{{ lede }}</p>
+
+      <div class="panel">
+        <h2>{{ panelTitle }}</h2>
+        <div class="rows">
+          <sc-for list="{{ rows }}" as="r" hint-placeholder-count="3">
+            <div class="row">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+              <span>{{ r.text }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div class="actions">
+        <sc-if value="{{ showManage }}" hint-placeholder-val="{{ true }}">
+          <button type="button" class="btn">Change what I get</button>
+        </sc-if>
+        <sc-if value="{{ showRetry }}" hint-placeholder-val="{{ false }}">
+          <button type="button" class="btn" onClick="{{ resend }}">{{ retryLabel }}</button>
+        </sc-if>
+        <button type="button" class="btn2">See current alerts</button>
+        <sc-if value="{{ didResend }}" hint-placeholder-val="{{ false }}">
+          <p class="sent"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>{{ sentNote }}</p>
+        </sc-if>
+      </div>
+
+      <p class="fine">{{ fine }}</p>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"status":{"editor":"enum","options":["confirmed","already","expired","superseded","opted_out","invalid"],"default":"confirmed","section":"State"},"channel":{"editor":"enum","options":["email","sms"],"default":"email","section":"State"},"$preview":{"width":760,"height":720}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { resent: false };
+  }
+  renderVals() {
+    const status = this.props.status || "confirmed";
+    const channel = this.props.channel || "email";
+    const isEmail = channel === "email";
+    const contact = isEmail ? "email address" : "mobile number";
+    const thing = isEmail ? "link" : "code";
+    const alerts = isEmail ? "emails" : "texts";
+
+    let title = "";
+    let lede = "";
+    let panelTitle = "What happens now";
+    let rows = [];
+    let showManage = true;
+    let showRetry = false;
+    let retryLabel = isEmail ? "Email me a new link" : "Text me a new code";
+    let good = true;
+    let fine = "Every alert we send has a link to change or stop these — no account, no password.";
+
+    if (status === "confirmed") {
+      title = "You’re all set";
+      lede = "Your " + contact + " is confirmed. Service alerts start with the next one we publish.";
+      rows = [
+        { text: "We only send the kinds of alert you picked, on the routes you picked." },
+        { text: "Nothing routine — no marketing, no daily digest." },
+        { text: "Every message has a link to change or stop your alerts." }
+      ];
+    } else if (status === "already") {
+      title = "Already confirmed";
+      lede = "This " + contact + " was confirmed earlier, so there is nothing to do. Your alerts are on.";
+      rows = [
+        { text: "You may have opened the same " + thing + " twice — that is fine." },
+        { text: "Alerts keep coming as before." }
+      ];
+    } else if (status === "superseded") {
+      title = "Use the newest " + thing;
+      lede = "We sent a newer " + thing + " after this one. Open the most recent message from MVTA and use that " + thing + " instead.";
+      panelTitle = "How to finish";
+      rows = [
+        { text: "Check the latest MVTA message in your " + (isEmail ? "inbox" : "texts") + "." },
+        { text: "This older " + thing + " stopped working when the newer one was sent." }
+      ];
+      showManage = false;
+      showRetry = true;
+      good = false;
+    } else if (status === "expired") {
+      title = "That " + thing + " has expired";
+      lede = "Confirmation " + (isEmail ? "links" : "codes") + " last 24 hours, so this one no longer works. We can send a fresh one.";
+      panelTitle = "How to finish";
+      rows = [
+        { text: "Ask for a new " + thing + " below." },
+        { text: "It arrives in a minute or two and works for 24 hours." }
+      ];
+      showManage = false;
+      showRetry = true;
+      good = false;
+    } else if (status === "opted_out") {
+      title = "This " + contact + " is unsubscribed";
+      lede = "Someone stopped alerts for this " + contact + ". To start again, sign up — we ask for consent fresh rather than turning " + alerts + " back on from a link.";
+      panelTitle = "How to start again";
+      rows = [
+        { text: "Sign up on the Get Notified page." },
+        { text: "You choose alert types and routes again." }
+      ];
+      showManage = false;
+      good = false;
+      fine = "Nothing is being sent to this " + contact + " until someone signs it up again.";
+    } else {
+      title = "That " + thing + " didn’t work";
+      lede = "We couldn’t match this " + thing + " to a subscription. It may have been mistyped, or already used.";
+      panelTitle = "What to try";
+      rows = [
+        { text: "Open the " + thing + " straight from the MVTA message rather than retyping it." },
+        { text: "Or ask for a new one below." }
+      ];
+      showManage = false;
+      showRetry = true;
+      good = false;
+    }
+
+    return {
+      title: title,
+      lede: lede,
+      panelTitle: panelTitle,
+      rows: rows,
+      showManage: showManage,
+      showRetry: showRetry,
+      retryLabel: retryLabel,
+      isGood: good,
+      isBad: !good,
+      markCls: good ? "good" : status === "opted_out" ? "stop" : "warn",
+      didResend: this.state.resent,
+      sentNote: isEmail ? "A new link is on its way." : "A new code is on its way.",
+      fine: fine,
+      resend: () => this.setState({ resent: true })
+    };
+  }
+}
+</script>
+</body>
+</html>
