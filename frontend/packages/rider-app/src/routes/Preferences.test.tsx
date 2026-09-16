@@ -86,6 +86,17 @@ beforeEach(() => {
 
 const save = () => userEvent.click(screen.getByRole("button", { name: /save changes/i }));
 
+/**
+ * A change that leaves the choices exactly as they were. Save is offered only
+ * once something has changed, so a test about what a save SENDS has to have
+ * changed something first.
+ */
+async function touch() {
+  const box = await screen.findByRole("checkbox", { name: "Detour" });
+  await userEvent.click(box);
+  await userEvent.click(box);
+}
+
 describe("the manage key", () => {
   it("is taken out of the address bar as soon as the page has it", async () => {
     renderAt(`#key=${KEY}`);
@@ -218,6 +229,7 @@ describe("saving", () => {
     expect(email).toBeDisabled();
     expect(email).not.toBeChecked();
     expect(screen.getByText(/emails are stopped.*sign up again/i)).toBeTruthy();
+    await touch();
     await save();
     expect(api.updatePreferences).toHaveBeenCalledWith(KEY, expect.objectContaining({ channels: ["sms"] }));
   });
@@ -228,6 +240,7 @@ describe("saving", () => {
     expect(await screen.findByText(/no longer run/i)).toBeTruthy();
     const list = screen.getByRole("group", { name: "Routes" });
     expect(within(list).getByRole("checkbox", { name: /^470 /i })).toBeChecked();
+    await touch();
     await save();
     // Sending 999 back would be refused by the server as an unknown route.
     expect(api.updatePreferences).toHaveBeenCalledWith(KEY, expect.objectContaining({ routes: ["470"] }));
@@ -237,6 +250,7 @@ describe("saving", () => {
     vi.mocked(api.getPreferences).mockResolvedValue(prefs({ zones: ["zone-a"] }));
     renderAt(`#key=${KEY}`);
     await screen.findByRole("heading", { name: /your mvta service alerts/i });
+    await touch();
     await save();
     // Not "ALL": a rider who could not see a zone choice has not made one.
     expect(api.updatePreferences).toHaveBeenCalledWith(KEY, expect.objectContaining({ zones: ["zone-a"] }));
@@ -273,8 +287,30 @@ describe("saving", () => {
     vi.mocked(api.updatePreferences).mockRejectedValueOnce(new ApiError(409, "opted out"));
     renderAt(`#key=${KEY}`);
     await screen.findByRole("heading", { name: /your mvta service alerts/i });
+    await touch();
     await save();
     expect(await screen.findByRole("heading", { name: /unsubscribed/i })).toBeTruthy();
+  });
+});
+
+describe("knowing whether anything is unsaved", () => {
+  it("offers Save only once something has changed", async () => {
+    renderAt(`#key=${KEY}`);
+    await screen.findByRole("heading", { name: /your mvta service alerts/i });
+    expect(screen.getByRole("button", { name: /save changes/i })).toBeDisabled();
+    expect(screen.queryByText(/unsaved changes/i)).toBeNull();
+
+    await userEvent.click(screen.getByRole("checkbox", { name: "Detour" }));
+    expect(screen.getByRole("button", { name: /save changes/i })).toBeEnabled();
+    expect(screen.getByText(/unsaved changes/i)).toBeTruthy();
+  });
+
+  it("says what unticking a channel will do, before the rider saves it", async () => {
+    renderAt(`#key=${KEY}`);
+    const texts = await screen.findByRole("checkbox", { name: /texts to/i });
+    expect(screen.queryByText(/texts stop when you save/i)).toBeNull();
+    await userEvent.click(texts);
+    expect(screen.getByText(/texts stop when you save/i)).toBeTruthy();
   });
 });
 

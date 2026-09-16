@@ -333,9 +333,14 @@ function PreferencesForm({ prefs, manageKey, justSaved, onEdited, onSaved, onOpt
   const [problem, setProblem] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirmingUnsubscribe, setConfirmingUnsubscribe] = useState(false);
+  // Saving is only offered once something has changed. A Save that is always
+  // available says nothing about whether this page holds work the server does
+  // not have yet, which is the one thing a rider leaving the page needs to know.
+  const [dirty, setDirty] = useState(false);
 
   function edited() {
     setProblem(null);
+    setDirty(true);
     onEdited();
   }
 
@@ -426,6 +431,7 @@ function PreferencesForm({ prefs, manageKey, justSaved, onEdited, onSaved, onOpt
                 checked={keepSms}
                 stopped={smsStopped}
                 pending={prefs.sms_status === "pending_confirmation"}
+                offNote="Texts stop when you save."
                 stoppedNote="Texts are stopped. To get them again, sign up again."
                 onChange={() => {
                   setKeepSms((v) => !v);
@@ -439,6 +445,7 @@ function PreferencesForm({ prefs, manageKey, justSaved, onEdited, onSaved, onOpt
                 checked={keepEmail}
                 stopped={emailStopped}
                 pending={prefs.email_status === "pending_confirmation"}
+                offNote="Emails stop when you save."
                 stoppedNote="Emails are stopped. To get them again, sign up again."
                 onChange={() => {
                   setKeepEmail((v) => !v);
@@ -477,6 +484,10 @@ function PreferencesForm({ prefs, manageKey, justSaved, onEdited, onSaved, onOpt
             edited();
           }}
           onToggle={(id) => toggle(routes, id, setRoutes)}
+          onClear={() => {
+            setRoutes(new Set());
+            edited();
+          }}
         />
 
         {offersZones && (
@@ -506,9 +517,10 @@ function PreferencesForm({ prefs, manageKey, justSaved, onEdited, onSaved, onOpt
         )}
 
         <div className="actions">
-          <button className="btn-primary" type="submit" disabled={saving}>
+          <button className="btn-primary" type="submit" disabled={saving || !dirty}>
             {saving ? "Saving…" : "Save changes"}
           </button>
+          {dirty && !saving && <p className="save-hint">Unsaved changes</p>}
           {/* Beside the button, not at the top of the page. The form is long,
               so a rider pressing Save is scrolled well past the heading, and a
               confirmation rendered up there was invisible from where they
@@ -550,6 +562,8 @@ function ChannelCheck(props: {
   stopped: boolean;
   pending: boolean;
   stoppedNote: string;
+  /** What unticking it will do, said before the rider saves rather than after. */
+  offNote?: string;
   onChange: () => void;
 }) {
   return (
@@ -560,6 +574,7 @@ function ChannelCheck(props: {
       </label>
       {props.stopped && <p className="note">{props.stoppedNote}</p>}
       {!props.stopped && props.pending && <p className="note">Waiting for you to confirm.</p>}
+      {!props.stopped && !props.checked && props.offNote && <p className="note">{props.offNote}</p>}
     </div>
   );
 }

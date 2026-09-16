@@ -1,0 +1,381 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  body { margin: 0; background: #fff; color: #2C2C2A; font-family: Arial, Helvetica, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: #00553D; text-underline-offset: 2px; }
+  a:hover { color: #003D2C; }
+  ::selection { background: rgba(0, 85, 61, 0.18); }
+  .screen { display: flex; flex-direction: column; height: 844px; background: #fff; }
+  .alertbar { display: flex; align-items: center; gap: 7px; background: #F78E1E; color: #4A1B0C; padding: 9px 16px; font-size: 12px; font-weight: bold; }
+  .nav { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #EEE; }
+  .logo { font-weight: bold; font-size: 19px; }
+  .navlinks { display: flex; gap: 14px; }
+  .navlinks a { color: #2C2C2A; text-decoration: none; font-size: 13px; font-weight: bold; }
+  .navlinks a.on { color: #00553D; }
+  .scroll { flex: 1 1 auto; overflow-y: auto; padding: 18px 16px 20px; }
+  .title { color: #00553D; font-size: 22px; line-height: 1.18; font-weight: bold; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .lede { color: #4F4F4F; font-size: 14px; line-height: 1.5; margin: 0 0 18px; }
+  .stack { display: flex; flex-direction: column; gap: 16px; }
+  .sec { display: flex; flex-direction: column; gap: 10px; }
+  .h2 { font-size: 14.5px; font-weight: bold; margin: 0; }
+  .hint { font-size: 12.5px; line-height: 1.45; color: #4F4F4F; margin: -4px 0 0; }
+  .segments { display: grid; gap: 4px; padding: 4px; border-radius: 10px; background: #F1EFE8; }
+  .segments.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .segments.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .seg { position: relative; display: block; }
+  .seg input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; }
+  .seg span { display: flex; align-items: center; justify-content: center; text-align: center; min-height: 46px; padding: 0 8px; border-radius: 7px; font-size: 14px; font-weight: bold; color: #2C2C2A; }
+  .seg.on span { background: #00553D; color: #fff; }
+  .seg input:focus-visible + span { outline: 3px solid #F78E1E; outline-offset: 2px; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field > span { font-size: 13.5px; font-weight: bold; }
+  .field input { width: 100%; font: inherit; font-size: 16px; color: #2C2C2A; padding: 13px 12px; border: 1px solid #C8C6BF; border-radius: 8px; caret-color: #00553D; }
+  .field input:focus { outline: 3px solid rgba(0,85,61,.25); border-color: #00553D; }
+  .field.bad input { border-color: #B3261E; }
+  .err { display: flex; align-items: flex-start; gap: 6px; font-size: 12.5px; line-height: 1.4; color: #8A1F1F; margin: 0; }
+  .err svg { flex: none; margin-top: 1px; }
+  .opt { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; border-bottom: 1px solid #F1EFE8; }
+  .opt:last-child { border-bottom: 0; }
+  .opt input { flex: none; width: 20px; height: 20px; margin: 1px 0 0; accent-color: #00553D; }
+  .opt b { display: block; font-size: 14px; line-height: 1.3; }
+  .opt small { display: block; font-size: 12.5px; line-height: 1.35; color: #4F4F4F; margin-top: 2px; }
+  .search { display: flex; align-items: center; gap: 8px; padding: 11px; border: 1px solid #C8C6BF; border-radius: 8px; }
+  .search input { flex: 1 1 auto; min-width: 0; border: 0; outline: 0; font: inherit; font-size: 16px; background: transparent; }
+  .routelist { max-height: 220px; overflow-y: auto; border: 1px solid #E6E3DA; border-radius: 8px; padding: 0 12px; }
+  .routerow { display: flex; align-items: center; gap: 12px; padding: 12px 0; font-size: 14px; border-bottom: 1px solid #F1EFE8; }
+  .routerow:last-child { border-bottom: 0; }
+  .routerow input { flex: none; width: 20px; height: 20px; margin: 0; accent-color: #00553D; }
+  .routerow .num { flex: none; min-width: 52px; font-weight: bold; }
+  .routerow .to { color: #4F4F4F; font-size: 13px; }
+  .consent { display: flex; align-items: flex-start; gap: 12px; padding: 14px; background: #F7F6F1; border: 1px solid #E6E3DA; border-radius: 10px; font-size: 12.5px; line-height: 1.5; color: #4F4F4F; }
+  .consent.bad { border-color: #E4B4B0; background: #FFFBFB; }
+  .consent input { flex: none; width: 20px; height: 20px; margin: 1px 0 0; accent-color: #00553D; }
+  .bar { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 12px 16px 16px; border-top: 1px solid #E6E3DA; background: #fff; box-shadow: 0 -8px 18px -14px rgba(44,44,42,.5); }
+  .barsum { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: #4F4F4F; }
+  .barsum svg { flex: none; color: #00553D; }
+  .btn { width: 100%; background: #00553D; color: #fff; border: 0; border-radius: 10px; padding: 15px 18px; font: inherit; font-size: 16px; font-weight: bold; }
+  .btn:focus-visible { outline: 3px solid rgba(0,85,61,.35); outline-offset: 2px; }
+  .btn:disabled { opacity: .45; }
+  .done { padding: 26px 16px; }
+  .done-icon { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; background: #E7EFEB; color: #00553D; margin-bottom: 14px; }
+  .steps { display: flex; flex-direction: column; gap: 12px; margin: 16px 0 0; padding: 0; list-style: none; }
+  .steps li { display: flex; align-items: flex-start; gap: 10px; font-size: 13.5px; line-height: 1.5; }
+  .steps .n { flex: none; display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: #F1EFE8; font-size: 12px; font-weight: bold; }
+  .link { background: none; border: 0; padding: 12px 2px; min-height: 44px; font: inherit; font-size: 14px; font-weight: bold; color: #00553D; text-decoration: underline; text-underline-offset: 3px; }
+  .link:focus-visible { outline: 3px solid rgba(0,85,61,.35); outline-offset: 2px; border-radius: 4px; }
+  .codebox { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; padding: 16px; border: 1px solid #E6E3DA; border-radius: 12px; background: #F7F6F1; }
+  .codebox input { letter-spacing: .3em; font-weight: bold; }
+  .ok { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: bold; color: #00553D; margin: 0; }
+  .empty { font-size: 13px; color: #4F4F4F; padding: 16px 0; margin: 0; }
+</style>
+</helmet>
+
+<div class="screen">
+  <div class="alertbar">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
+    <span>Service alerts</span>
+  </div>
+  <nav class="nav">
+    <div class="logo"><span style="color: #00553D">M</span><span style="color: #639281">V</span><span style="color: #F78E1E">TA</span></div>
+    <div class="navlinks"><a href="#">Alerts</a><a href="#" class="on">Get Notified</a></div>
+  </nav>
+
+  <sc-if value="{{ isForm }}" hint-placeholder-val="{{ true }}">
+    <div class="scroll">
+      <h1 class="title">Get service alerts</h1>
+      <p class="lede">Delays, detours and closures on the routes you ride.</p>
+      <div class="stack">
+        <div class="sec">
+          <h2 class="h2">How should we reach you?</h2>
+          <div class="segments three">
+            <sc-for list="{{ channels }}" as="ch" hint-placeholder-count="3">
+              <label class="seg {{ ch.cls }}"><input type="radio" name="channel" checked="{{ ch.on }}" onChange="{{ ch.pick }}"><span>{{ ch.label }}</span></label>
+            </sc-for>
+          </div>
+          <sc-if value="{{ wantsText }}" hint-placeholder-val="{{ true }}">
+            <label class="field {{ phoneCls }}">
+              <span>Mobile number</span>
+              <input type="tel" inputmode="tel" placeholder="(612) 555-0123" value="{{ phone }}" onInput="{{ setPhone }}">
+              <sc-if value="{{ phoneBad }}" hint-placeholder-val="{{ false }}">
+                <p class="err"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v6"></path><path d="M12 16h.01"></path></svg>{{ phoneErr }}</p>
+              </sc-if>
+            </label>
+          </sc-if>
+          <sc-if value="{{ wantsEmail }}" hint-placeholder-val="{{ true }}">
+            <label class="field {{ emailCls }}">
+              <span>Email address</span>
+              <input type="email" placeholder="you@example.com" value="{{ email }}" onInput="{{ setEmail }}">
+              <sc-if value="{{ emailBad }}" hint-placeholder-val="{{ false }}">
+                <p class="err"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v6"></path><path d="M12 16h.01"></path></svg>{{ emailErr }}</p>
+              </sc-if>
+            </label>
+          </sc-if>
+        </div>
+
+        <div class="sec">
+          <h2 class="h2">What should we send?</h2>
+          <p class="hint">All of them to start.</p>
+          <div>
+            <sc-for list="{{ cats }}" as="c" hint-placeholder-count="7">
+              <label class="opt"><input type="checkbox" checked="{{ c.on }}" onChange="{{ c.toggle }}"><span><b>{{ c.label }}</b><small>{{ c.desc }}</small></span></label>
+            </sc-for>
+          </div>
+          <sc-if value="{{ catsBad }}" hint-placeholder-val="{{ false }}">
+            <p class="err"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v6"></path><path d="M12 16h.01"></path></svg>Choose at least one kind of alert.</p>
+          </sc-if>
+        </div>
+
+        <div class="sec">
+          <h2 class="h2">Which routes?</h2>
+          <div class="segments two">
+            <sc-for list="{{ routeModes }}" as="m" hint-placeholder-count="2">
+              <label class="seg {{ m.cls }}"><input type="radio" name="routemode" checked="{{ m.on }}" onChange="{{ m.pick }}"><span>{{ m.label }}</span></label>
+            </sc-for>
+          </div>
+          <sc-if value="{{ pickingRoutes }}" hint-placeholder-val="{{ true }}">
+            <div class="sec">
+              <div class="search">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4F4F4F" stroke-width="2.1" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>
+                <input type="text" placeholder="Search routes" value="{{ query }}" onInput="{{ setQuery }}">
+              </div>
+              <div class="routelist">
+                <sc-for list="{{ shownRoutes }}" as="r" hint-placeholder-count="5">
+                  <label class="routerow"><input type="checkbox" checked="{{ r.on }}" onChange="{{ r.toggle }}"><span class="num">{{ r.num }}</span><span class="to">{{ r.to }}</span></label>
+                </sc-for>
+                <sc-if value="{{ noMatches }}" hint-placeholder-val="{{ false }}">
+                  <p class="empty">No route matches “{{ query }}”.</p>
+                </sc-if>
+              </div>
+              <p class="hint" style="margin: 0">{{ chosenCount }}</p>
+              <sc-if value="{{ routesBad }}" hint-placeholder-val="{{ false }}">
+                <p class="err"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v6"></path><path d="M12 16h.01"></path></svg>Choose at least one route, or pick All routes.</p>
+              </sc-if>
+            </div>
+          </sc-if>
+        </div>
+
+        <div class="sec">
+          <label class="consent {{ consentCls }}">
+            <input type="checkbox" checked="{{ consent }}" onChange="{{ toggleConsent }}">
+            <span>I agree to receive automated service alerts from MVTA. Message and data rates may apply. Reply STOP to unsubscribe, HELP for help. See MVTA’s <a href="#">Terms &amp; Conditions</a> and <a href="#">Privacy Policy</a>.</span>
+          </label>
+          <sc-if value="{{ consentBad }}" hint-placeholder-val="{{ false }}">
+            <p class="err"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v6"></path><path d="M12 16h.01"></path></svg>Please agree to receive alerts before subscribing.</p>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isForm }}" hint-placeholder-val="{{ true }}">
+    <div class="bar">
+      <div class="barsum">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+        <span>{{ barSummary }}</span>
+      </div>
+      <button type="button" class="btn" onClick="{{ submit }}">Subscribe</button>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isDone }}" hint-placeholder-val="{{ false }}">
+    <div class="scroll">
+      <div class="done-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div>
+      <h1 class="title">{{ doneTitle }}</h1>
+      <p class="lede">You’re not subscribed yet — one more step so we know it’s really you.</p>
+      <ol class="steps">
+        <sc-for list="{{ doneSteps }}" as="s" hint-placeholder-count="2">
+          <li><span class="n">{{ s.n }}</span><span>{{ s.text }}</span></li>
+        </sc-for>
+      </ol>
+      <sc-if value="{{ codeOpen }}" hint-placeholder-val="{{ true }}">
+        <div class="codebox">
+          <label class="field">
+            <span>Enter the 6-digit code</span>
+            <input type="text" inputmode="numeric" maxlength="6" placeholder="123456" value="{{ code }}" onInput="{{ setCode }}">
+          </label>
+          <button type="button" class="btn" disabled="{{ codeShort }}" onClick="{{ confirmCode }}">Confirm my number</button>
+          <button type="button" class="link" onClick="{{ resend }}">Send a new code</button>
+        </div>
+      </sc-if>
+      <sc-if value="{{ codeDone }}" hint-placeholder-val="{{ false }}">
+        <div class="codebox">
+          <p class="ok"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>Your number is confirmed.</p>
+        </div>
+      </sc-if>
+      <p style="margin-top: 20px"><button type="button" class="link" onClick="{{ startOver }}">Back to the form</button></p>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+const CATS = [
+  { id: "delay", label: "Delay", desc: "Buses running behind schedule" },
+  { id: "detour", label: "Detour", desc: "Stops moved or skipped" },
+  { id: "closure", label: "Closure", desc: "Roads, ramps or stations closed" },
+  { id: "outage", label: "Outage", desc: "Equipment or a facility out of service" },
+  { id: "general", label: "General", desc: "Service news that is not an incident" },
+  { id: "emergency", label: "Emergency", desc: "Urgent safety information" },
+  { id: "demand_response_delay", label: "MVTA Connect Delay", desc: "Longer waits for on-demand rides" }
+];
+
+const ROUTES = [
+  { id: "ORANGE", num: "Orange LINK", to: "Apple Valley · Burnsville · Minneapolis" },
+  { id: "420", num: "420", to: "Apple Valley · Rosemount · DCTC" },
+  { id: "436", num: "436", to: "46th St Station · MSP · Eagan" },
+  { id: "440", num: "440", to: "Burnsville · Savage" },
+  { id: "442", num: "442", to: "Burnsville · Apple Valley · Mall of America" },
+  { id: "444", num: "444", to: "Savage · Burnsville Center" },
+  { id: "460", num: "460", to: "Lakeville · Minneapolis" },
+  { id: "464", num: "464", to: "Prior Lake · Minneapolis" },
+  { id: "465", num: "465", to: "Shakopee · Minneapolis" },
+  { id: "470", num: "470", to: "Burnsville · Minneapolis" },
+  { id: "472", num: "472", to: "Eagan · Minneapolis" },
+  { id: "475", num: "475", to: "Apple Valley · Minneapolis" },
+  { id: "477", num: "477", to: "Lakeville · Apple Valley · Minneapolis" },
+  { id: "478", num: "478", to: "Rosemount · Minneapolis" },
+  { id: "480", num: "480", to: "Eagan · Mall of America" },
+  { id: "490", num: "490", to: "Rosemount · Apple Valley · Minneapolis" },
+  { id: "495", num: "495", to: "Shakopee · Mall of America" }
+];
+
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { view: "form", channel: "both", phone: "", email: "", cats: CATS.map((c) => c.id), routeMode: "all", query: "", routes: [], consent: false, errors: {}, code: "", codeDone: false };
+  }
+  wantsText() { return this.state.channel !== "email"; }
+  digits(value) { return String(value || "").replace(/\D/g, ""); }
+  validate() {
+    const s = this.state;
+    const errors = {};
+    const phone = s.phone.trim();
+    const email = s.email.trim();
+    if (this.wantsText()) {
+      if (!phone) {
+        errors.phone = s.channel === "both" ? "Enter your mobile number, or choose Email if you only want emails." : "Enter your mobile number.";
+      } else {
+        const d = this.digits(phone);
+        if (!(d.length === 10 || (d.length === 11 && d.charAt(0) === "1"))) {
+          errors.phone = "That number doesn’t look right. Enter 10 digits, like (612) 555-0123.";
+        }
+      }
+    }
+    if (this.wantsEmail()) {
+      if (!email) {
+        errors.email = s.channel === "both" ? "Enter your email address, or choose Text if you only want texts." : "Enter your email address.";
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        errors.email = "That email address doesn’t look right. Check it and try again.";
+      }
+    }
+    if (s.cats.length === 0) errors.cats = true;
+    if (s.routeMode === "some" && s.routes.length === 0) errors.routes = true;
+    if (!s.consent) errors.consent = true;
+    return errors;
+  }
+  wantsEmail() { return this.state.channel !== "text"; }
+  clearError(key) {
+    if (!this.state.errors[key]) return;
+    const errors = Object.assign({}, this.state.errors);
+    delete errors[key];
+    this.setState({ errors: errors });
+  }
+  renderVals() {
+    const s = this.state;
+    const wantsText = this.wantsText();
+    const wantsEmail = this.wantsEmail();
+    const q = s.query.trim().toLowerCase();
+    const shown = q ? ROUTES.filter((r) => (r.num + " " + r.to).toLowerCase().indexOf(q) !== -1) : ROUTES;
+    const chosen = s.routes.length;
+    const catCount = s.cats.length;
+    const parts = [];
+    parts.push(s.channel === "both" ? "Text + email" : s.channel === "text" ? "Text" : "Email");
+    parts.push(catCount === CATS.length ? "all alerts" : catCount + " alert types");
+    parts.push(s.routeMode === "all" ? "all routes" : chosen + " routes");
+    const steps = [];
+    if (wantsText) steps.push({ n: String(steps.length + 1), text: "We texted a 6-digit code to " + (s.phone || "your phone") + ". Enter it below." });
+    if (wantsEmail) steps.push({ n: String(steps.length + 1), text: "We emailed a confirmation link to " + (s.email || "your address") + ". Click it to turn emails on." });
+    return {
+      isForm: s.view === "form",
+      isDone: s.view === "done",
+      wantsText: wantsText,
+      wantsEmail: wantsEmail,
+      phone: s.phone,
+      email: s.email,
+      query: s.query,
+      consent: s.consent,
+      phoneCls: s.errors.phone ? "bad" : "",
+      emailCls: s.errors.email ? "bad" : "",
+      phoneBad: !!s.errors.phone,
+      emailBad: !!s.errors.email,
+      phoneErr: s.errors.phone || "",
+      emailErr: s.errors.email || "",
+      catsBad: !!s.errors.cats,
+      routesBad: !!s.errors.routes,
+      consentCls: s.errors.consent ? "bad" : "",
+      consentBad: !!s.errors.consent,
+      channels: [
+        { value: "text", label: "Text" },
+        { value: "email", label: "Email" },
+        { value: "both", label: "Both" }
+      ].map((c) => ({ label: c.label, on: s.channel === c.value, cls: s.channel === c.value ? "on" : "", pick: () => this.setState({ channel: c.value, errors: {} }) })),
+      cats: CATS.map((c) => ({
+        label: c.label,
+        desc: c.desc,
+        on: s.cats.indexOf(c.id) !== -1,
+        toggle: () => {
+          const has = this.state.cats.indexOf(c.id) !== -1;
+          this.setState({ cats: has ? this.state.cats.filter((x) => x !== c.id) : this.state.cats.concat([c.id]) });
+          this.clearError("cats");
+        }
+      })),
+      routeModes: [
+        { value: "all", label: "All routes" },
+        { value: "some", label: "Routes I choose" }
+      ].map((m) => ({ label: m.label, on: s.routeMode === m.value, cls: s.routeMode === m.value ? "on" : "", pick: () => { this.setState({ routeMode: m.value }); this.clearError("routes"); } })),
+      pickingRoutes: s.routeMode === "some",
+      shownRoutes: shown.map((r) => ({
+        num: r.num,
+        to: r.to,
+        on: s.routes.indexOf(r.id) !== -1,
+        toggle: () => {
+          const has = this.state.routes.indexOf(r.id) !== -1;
+          this.setState({ routes: has ? this.state.routes.filter((x) => x !== r.id) : this.state.routes.concat([r.id]) });
+          this.clearError("routes");
+        }
+      })),
+      noMatches: shown.length === 0,
+      chosenCount: chosen === 0 ? "No routes chosen" : chosen === 1 ? "1 route chosen" : chosen + " routes chosen",
+      code: s.code,
+      codeOpen: !s.codeDone,
+      codeDone: s.codeDone,
+      codeShort: s.code.length !== 6,
+      setCode: (e) => this.setState({ code: e.target.value.replace(/\D/g, "").slice(0, 6) }),
+      confirmCode: () => { if (this.state.code.length === 6) this.setState({ codeDone: true }); },
+      resend: () => this.setState({ code: "" }),
+      barSummary: parts.join(" · "),
+      setPhone: (e) => { this.setState({ phone: e.target.value }); this.clearError("phone"); },
+      setEmail: (e) => { this.setState({ email: e.target.value }); this.clearError("email"); },
+      setQuery: (e) => this.setState({ query: e.target.value }),
+      toggleConsent: () => { this.setState({ consent: !this.state.consent }); this.clearError("consent"); },
+      submit: () => {
+        const errors = this.validate();
+        if (Object.keys(errors).length > 0) { this.setState({ errors: errors }); return; }
+        this.setState({ errors: {}, view: "done" });
+      },
+      doneTitle: s.channel === "both" ? "Check your phone and email" : s.channel === "text" ? "Check your phone" : "Check your email",
+      doneSteps: steps,
+      startOver: () => this.setState({ view: "form", code: "", codeDone: false })
+    };
+  }
+}
+</script>
+</body>
+</html>

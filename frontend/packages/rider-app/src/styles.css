@@ -199,6 +199,64 @@ body {
 .section > .note { margin: 0; font-size: 13px; line-height: 1.45; }
 .form.optin .checks.list { gap: 0; max-height: 300px; padding: 2px 14px; border-color: #e6e3da; border-radius: 8px; }
 
+/* Subscribe page, rebuilt (see design/rider-subscribe). Each question is a
+   card with a number and one line saying why it is asked, and the choices are
+   summarised beside the button so a rider can read back what they are about to
+   get before they commit to it. */
+.optin-layout { display: grid; grid-template-columns: minmax(0, 1fr) 208px; gap: 22px; align-items: start; }
+.step-card { display: flex; flex-direction: column; gap: 0; border: 1px solid #e6e3da; border-radius: 12px; padding: 15px 16px 17px; margin: 0; min-width: 0; }
+/* An invalid section is outlined as well as tinted: colour alone is not a state. */
+.step-card.invalid { border-color: #e4b4b0; background: #fffbfb; }
+.step-head { display: flex; align-items: center; gap: 9px; padding: 0; }
+.step-num { flex: none; display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: #e7efeb; color: #00553d; font-size: 12px; font-weight: bold; }
+.step-card .section-title { margin: 0; }
+.step-why { font-size: 12.5px; line-height: 1.45; color: #4f4f4f; margin: 4px 0 12px 31px; }
+.step-body { margin-left: 31px; }
+.field-error { display: flex; align-items: flex-start; gap: 6px; font-size: 12.5px; line-height: 1.4; color: #8a1f1f; margin: 6px 0 0; }
+.field-error::before { content: "!"; flex: none; display: flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-top: 1px; border-radius: 50%; background: #8a1f1f; color: #fff; font-size: 10px; font-weight: bold; }
+/* Two columns, each a name and a line saying what it covers - "Outage" on its
+   own is a word riders have to guess at. */
+.checks.described { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }
+.check.described { align-items: flex-start; padding: 9px 6px 9px 0; border-radius: 8px; }
+.check.described:hover { background: #f6f5f1; }
+.check.described b { display: block; font-weight: bold; }
+.check.described small { display: block; font-size: 12px; line-height: 1.35; color: #4f4f4f; margin-top: 2px; }
+/* The route list runs to every route MVTA operates, so it is searchable and
+   says how many are chosen; without that, "only the routes I choose" is a
+   scroll-and-hunt. */
+.list-search { display: flex; align-items: center; gap: 8px; margin: 12px 0 10px; padding: 9px 11px; border: 1px solid #c8c6bf; border-radius: 8px; }
+.list-search:focus-within { border-color: #00553d; outline: 3px solid rgba(0, 85, 61, 0.25); }
+.list-search input { flex: 1 1 auto; min-width: 0; border: 0; padding: 0; font: inherit; font-size: 16px; color: #2c2c2a; background: transparent; }
+.list-search input:focus { outline: none; }
+.list-search input::placeholder { color: #767676; }
+.list-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 9px; font-size: 12.5px; color: #4f4f4f; }
+.link-btn { background: none; border: 0; padding: 0; font: inherit; font-size: 12.5px; font-weight: bold; color: #00553d; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.link-btn:hover { color: #00442f; }
+.link-btn:focus-visible { outline: 3px solid rgba(0, 85, 61, 0.35); outline-offset: 2px; border-radius: 2px; }
+.list-empty { font-size: 13px; color: #4f4f4f; margin: 0; padding: 12px 0; }
+.summary { display: flex; flex-direction: column; gap: 11px; padding: 15px 16px; border: 1px solid #e6e3da; border-radius: 12px; background: #f7f6f1; }
+.summary h2 { font-size: 12px; font-weight: bold; letter-spacing: 0.04em; text-transform: uppercase; color: #4f4f4f; margin: 0; }
+.summary dl { display: flex; flex-direction: column; gap: 8px; margin: 0; }
+.summary dt { font-size: 11.5px; font-weight: bold; color: #4f4f4f; }
+.summary dd { font-size: 13px; line-height: 1.4; margin: 1px 0 0; }
+/* The subscribe button's 220px floor is for a full-width form; in the
+   summary column it would push the card past the card it sits in. */
+.summary .btn-primary { width: 100%; min-width: 0; }
+.summary-note { font-size: 12px; line-height: 1.45; color: #4f4f4f; margin: 0; }
+/* What to do next, in the order it has to happen. */
+.next-steps { display: flex; flex-direction: column; gap: 12px; margin: 18px 0 0; padding: 0; list-style: none; }
+.next-steps li { display: flex; align-items: flex-start; gap: 11px; font-size: 14px; line-height: 1.5; }
+.next-steps .n { flex: none; display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: #f1efe8; font-size: 12px; font-weight: bold; }
+.panel { margin-top: 18px; padding: 16px 18px; border: 1px solid #e6e3da; border-radius: 12px; background: #f7f6f1; }
+.panel .form { gap: 12px; }
+.panel .field { max-width: 220px; }
+.done-mark { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; background: #e7efeb; color: #00553d; font-size: 22px; font-weight: bold; margin: 0 0 14px; }
+.done-mark.stopped { background: #ececea; color: #4f4f4f; }
+.done-mark.attention { background: #fcefd8; color: #7a4a00; }
+/* Manage page: saving is only offered once something has changed, and an
+   unticked channel says what saving will do rather than only looking off. */
+.save-hint { font-size: 12.5px; color: #4f4f4f; margin: 0; }
+
 @media (max-width: 560px) {
   body { padding: 12px; }
   .alertbar { padding: 9px 16px; font-size: 12px; }
@@ -209,4 +267,11 @@ body {
   .contact-fields { grid-template-columns: minmax(0, 1fr); }
   .checks.grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .form.optin .submit { align-self: stretch; }
+  .optin-layout { grid-template-columns: minmax(0, 1fr); }
+  .checks.described { grid-template-columns: minmax(0, 1fr); }
+  .step-why { margin-left: 0; }
+  .step-body { margin-left: 0; }
+  .summary .btn-primary { padding: 15px 22px; font-size: 16px; }
+  /* A thumb, not a mouse: 42px is the desktop segment height. */
+  .segment span { min-height: 46px; }
 }
