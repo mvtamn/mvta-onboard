@@ -5,6 +5,10 @@ export type OnDemandMonitorState = "active" | "completed" | "cancelled";
 
 export interface NormalizedOnDemandRequest {
   requestId: string;
+  // Which Spare service the request belongs to. Carried so that every writer
+  // can be held to the monitored scope without re-reading the source record;
+  // null when Spare sent no attribution, which is never admitted.
+  serviceId: string | null;
   dutyId: string | null;
   vehicleId: string | null;
   sourceUpdatedAt: Date;
@@ -58,6 +62,7 @@ export function normalizeOnDemandSpareRequest(value: SpareRequestRecord): Normal
   const status = spareString(value.status, 40);
   return {
     requestId,
+    serviceId: spareString(value.serviceId, 64),
     dutyId: spareString(value.dutyId, 100) ?? spareString(value.lockedToDutyId, 100),
     vehicleId: spareString(value.vehicleId, 100),
     sourceUpdatedAt,

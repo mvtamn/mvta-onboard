@@ -625,6 +625,18 @@ restarts, not the old cascade.
    breach that creates one internal Suggested Alert and sends no rider
    communication. Nothing in the code checks these; they are a judgement.
 
+### Every monitor writer is scoped — 1.5.215
+
+Scoping the reconciliation did not give a scoped table: `onDemandSpareWebhook`
+wrote every `requestStatus` and ETA delivery for any service whether or not
+monitoring was enabled, and the monitor write riding along on
+`spareMissedTripsIngest` was scoped to `SPARE_MISSED_TRIP_SERVICE_IDS` (three
+services) and also ran regardless of the flag. All writers now go through
+`admitsMonitorWrite(serviceId)`, with a silent backstop inside
+`storeOnDemandSpareRequest`. Rows written before that are **not** reclassified
+— the table has no service column — so clear them before activation; the
+runbook has the statement.
+
 ### Activation sequence, once those are in hand
 
 1. Seed the zone version and activate it - `docs/runbooks/on-demand-operational-zones.md`.
