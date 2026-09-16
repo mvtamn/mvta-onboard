@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.216] - 2026-09-16
+
+- **The Subscribe button stays inside its summary card.** 1.5.213 put the button in a 208px column and lifted its 220px minimum width with `.summary .btn-primary`, but the older `.form.optin .submit` has three classes to that rule's two, so the minimum survived and the button ran 12px or more past the card's edge. The override now matches that selector. Measured at 994px and 375px: the button ends exactly at the card's inner edge.
+- **The Text / Email / Both choice no longer sits on the field labels.** Inside the numbered cards the contact fields lost the gap they had as siblings in a flex section, so "Mobile number" and "Email address" touched the bottom of the segment track. Each card body is now a column with a 14px gap, and a section's own error sits 8px under what it is about rather than a full gap below.
+- **No empty heading in the routes card.** The card already carries "Which routes?" as its heading, so the picker inside it is given no legend - but it still rendered an empty `<legend>`, which a screen reader can announce and which took a line. It now renders one only when there is text for it.
+
 ## [1.5.214] - 2026-09-15
 
 - **The On-Demand reconciliation would have failed on its first real run, hourly, and looked like Spare's fault.** `onDemandSpareReconcile` paged `GET /v1/requests` with no update window and no `orderDirection`: it read the whole history of the service, 200 rows at a time, and threw `exceeded the 10,000-row safety cap` once the collection was larger than that - which for MVTA Connect it long since is. Which end of the history those pages came from was Spare's choice, not ours, so the run could exhaust its cap on records from years ago without ever seeing an active request. Nothing had caught it because `ON_DEMAND_MONITORING_ENABLED` is false on dev and the handler returns before the read; the defect was waiting on the activation, not visible in it.
