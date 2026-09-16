@@ -25,13 +25,16 @@
 // AND the late-arrival resolve threshold in resolveLateArrivals() - a trip
 // that shows up 45 minutes late is still a missed trip, not a resolved one.
 //
-// A silent no-show is an inference from absence, and three things other than a
+// A silent no-show is an inference from absence, and four things other than a
 // missed trip produce the same silence. Each is checked before a trip is
 // judged, and each has its own recorded reason (migration 121) so the remedy is
 // visible: the observing feed was not current, the static schedule is too old
-// or no longer describes what the realtime feeds are carrying, or no vehicle on
-// this trip's whole block reported a position all day. The rules themselves are
-// pure functions in lib/missedTripConfidence.ts; this file only applies them.
+// or no longer describes what the realtime feeds are carrying, no vehicle on
+// this trip's whole block reported a position all day, or the block's bus
+// demonstrably operated both before and after this trip and so was working
+// throughout the window the trip is supposed to have vanished from. The rules
+// themselves are pure functions in lib/missedTripConfidence.ts; this file only
+// applies them.
 //
 // Nothing is escalated on a single observation either. A trip past its deadline
 // with no evidence is recorded as held, and only a LATER poll that still finds
@@ -60,9 +63,11 @@ import { loadKpiFeedHealthRecords } from "../lib/kpiTrustStore";
 import {
   AWAITING_CONFIRMATION,
   NO_SHOW_CONFIRMATION_SECONDS,
+  blockContinuity,
   noShowDecision,
   scheduleAgreement,
   staticScheduleConfidence,
+  type BlockTripEvidence,
   type ScheduleConfidence,
 } from "../lib/missedTripConfidence";
 
@@ -332,21 +337,29 @@ async function detectSilentNoShows(
   // its grace window has had no chance to appear yet, and counting it would
   // make every morning look like a schedule mismatch.
   //
-  // Block ledger: which blocks reported a vehicle position at all today. Note
-  // it counts first_vehicle_position_at, not first_underway_at - a bus sitting
-  // at its terminal reports a position without being under way, and that is
-  // exactly the proof wanted here: the transponder is alive, so this block's
-  // silence on one trip is the trip's, not the vehicle's.
+  // Block ledger: every block's trips in one list, each carrying whether it
+  // reported a position at all and whether it demonstrably operated. The two
+  // are different questions and both are asked. A position proves the
+  // transponder is alive, so a block with none all day cannot testify about any
+  // of its trips; operating proves the bus was actually working that trip, which
+  // is what makes it a witness for its neighbours. blockContinuity reads this
+  // per candidate.
   const deadlineFor = (trip: ScheduledTripRow): Date | null => {
     const scheduledAt = serviceDateAndGtfsSecondsToUtc(serviceDate, trip.first_departure_seconds);
     return scheduledAt ? new Date(scheduledAt.getTime() + GRACE_SECONDS * 1000) : null;
   };
   let deadlinePassed = 0;
   let knownToFeed = 0;
-  const blockReported = new Map<string, boolean>();
+  const blocks = new Map<string, BlockTripEvidence[]>();
   for (const trip of scheduledTrips.recordset) {
     if (trip.block_id) {
-      blockReported.set(trip.block_id, (blockReported.get(trip.block_id) ?? false) || trip.first_vehicle_position_at !== null);
+      const blockTrips = blocks.get(trip.block_id) ?? [];
+      blockTrips.push({
+        departureSeconds: trip.first_departure_seconds,
+        operated: trip.first_underway_at !== null,
+        reportedPosition: trip.first_vehicle_position_at !== null,
+      });
+      blocks.set(trip.block_id, blockTrips);
     }
     const deadline = deadlineFor(trip);
     if (!deadline || deadline.getTime() > now.getTime()) continue;
@@ -365,11 +378,12 @@ async function detectSilentNoShows(
     if (graceDeadline.getTime() > now.getTime()) continue;
     if (trip.first_underway_at && trip.first_underway_at.getTime() <= graceDeadline.getTime()) continue;
 
+    const blockTrips = trip.block_id ? blocks.get(trip.block_id) : undefined;
     const decision = noShowDecision({
       vehiclePositionsCurrent: confidence.coverageProven,
       staticSchedule: confidence.staticSchedule,
       agreement,
-      blockReported: trip.block_id ? blockReported.get(trip.block_id) ?? false : null,
+      block: blockTrips ? blockContinuity(blockTrips, trip.first_departure_seconds) : null,
     });
 
     // Undecidable, not missed - but the row can only say so where migration 087

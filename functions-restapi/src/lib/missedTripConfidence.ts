@@ -17,9 +17,15 @@
 //      below. A static import that predates a service change leaves trip ids in
 //      GtfsScheduledTrips that the realtime feed will never emit, so every one
 //      of them is a guaranteed false no-show until the next sync lands.
-//   3. Was THIS bus reporting?     blockReportedEvidence below. Feed health is
+//   3. Was THIS bus reporting?     blockContinuity below. Feed health is
 //      agency-wide; one dead AVL unit is invisible to it and silences an entire
 //      block's worth of trips while the feed reads current.
+//   4. What was the block doing?   blockContinuity again. A block is one
+//      vehicle's day in order, so its other trips are the closest thing GTFS
+//      has to a witness. A bus that demonstrably operated both before and after
+//      the trip in question was in service throughout the window the trip is
+//      supposed to have vanished from - which is far more often a trip id the
+//      detector failed to match than a bus that evaporated for half an hour.
 //
 // And one confirmation rule: a trip is held for a second poll before it becomes
 // a finding, so a single missed fetch, a slow publish or a position that lands a
@@ -70,7 +76,8 @@ export type UndecidedReason =
   | "vehicle_position_feed_not_current"
   | "static_schedule_stale"
   | "schedule_disagrees_with_feed"
-  | "block_never_reported";
+  | "block_never_reported"
+  | "block_ran_around_this_trip";
 
 /** The value stored while a detected trip waits for a second poll to agree. */
 export const AWAITING_CONFIRMATION = "awaiting_confirmation";
@@ -158,6 +165,49 @@ export function scheduleAgreement(input: ScheduleAgreementInput): ScheduleConfid
   return { trusted: true, explanation: null };
 }
 
+/** One trip on a block, as the block's own running order sees it. */
+export interface BlockTripEvidence {
+  /** GTFS first-departure seconds - the block's running order. */
+  departureSeconds: number;
+  /** Positive progress past the first stop: this trip demonstrably operated. */
+  operated: boolean;
+  /** Any vehicle position at all arrived against this trip. */
+  reportedPosition: boolean;
+}
+
+export interface BlockContinuity {
+  /** Any vehicle position on any trip of this block, all day. */
+  anyPosition: boolean;
+  /** A trip scheduled EARLIER on this block demonstrably operated. */
+  operatedBefore: boolean;
+  /** A trip scheduled LATER on this block demonstrably operated. */
+  operatedAfter: boolean;
+}
+
+/**
+ * What the rest of a block was doing around one of its trips.
+ *
+ * A block is one vehicle's day in order, so its other trips are the closest
+ * thing GTFS has to a witness for any one of them. Ties are excluded on both
+ * sides - "earlier" and "later" are strict - so a trip is never its own
+ * witness, and neither is one leaving at the same second.
+ */
+export function blockContinuity(
+  blockTrips: readonly BlockTripEvidence[],
+  departureSeconds: number,
+): BlockContinuity {
+  let anyPosition = false;
+  let operatedBefore = false;
+  let operatedAfter = false;
+  for (const trip of blockTrips) {
+    if (trip.reportedPosition) anyPosition = true;
+    if (!trip.operated) continue;
+    if (trip.departureSeconds < departureSeconds) operatedBefore = true;
+    if (trip.departureSeconds > departureSeconds) operatedAfter = true;
+  }
+  return { anyPosition, operatedBefore, operatedAfter };
+}
+
 export interface NoShowEvidenceContext {
   /** underwayEvidenceCoverage said gtfs_vehicle_positions is current. */
   vehiclePositionsCurrent: boolean;
@@ -166,11 +216,11 @@ export interface NoShowEvidenceContext {
   /** scheduleAgreement for this service date. */
   agreement: ScheduleConfidence;
   /**
-   * Whether any vehicle position arrived for any trip on this trip's block
-   * today. `null` when the trip carries no block_id, which is not evidence
-   * either way - an older static import predates the column.
+   * What the rest of this trip's block did today. `null` when the trip carries
+   * no block_id, which is not evidence either way - an older static import
+   * predates the column, and some feeds omit it.
    */
-  blockReported: boolean | null;
+  block: BlockContinuity | null;
 }
 
 /**
@@ -204,8 +254,34 @@ export function noShowDecision(context: NoShowEvidenceContext): NoShowDecision {
   // in, raises it as a Missed Pullout through fixedRouteDepartureOutcome.ts. So
   // holding it here costs nothing that is not caught elsewhere, and spares the
   // queue an entire block's worth of trips every time a transponder dies.
-  if (context.blockReported === false) {
+  if (context.block && !context.block.anyPosition) {
     return { outcome: "undecidable", reason: "block_never_reported" };
+  }
+  // The block kept working on both sides of this trip. Its bus demonstrably
+  // operated something earlier and something later, so the vehicle was in
+  // service through the window in which this trip is supposed to have vanished.
+  //
+  // Two things produce that, and GTFS cannot separate them. Either the trip ran
+  // under an id this detector did not match - a re-issued trip id, a
+  // substitution, a producer labelling it differently - which is a data
+  // artifact and not a missed trip. Or dispatch turned the bus short, skipping
+  // this trip to recover the schedule, which IS a missed trip and a routine one.
+  //
+  // So this is recorded, not counted. That is a real recall cost on the skipped
+  // turn, and it is taken deliberately: the alternative is escalating every
+  // labelling artifact into a finding no reviewer can disprove, and the skipped
+  // turn is exactly what the retrospective Avail feed reports independently,
+  // at the stop level, without depending on GTFS trip ids at all
+  // (availMissedTripsFeed.ts). The row keeps its reason and stays visible in
+  // view=all and in the console's held count; it is not discarded.
+  //
+  // Note what is NOT held: a block whose evidence stops and never resumes. That
+  // is a bus that went out of service mid-day, every remaining trip on it is
+  // genuinely missed, and it is the highest-precision pattern the detector has.
+  // A block that starts late is the same story from the other end. Both reach
+  // the queue untouched, because only one side of them has a witness.
+  if (context.block?.operatedBefore && context.block.operatedAfter) {
+    return { outcome: "undecidable", reason: "block_ran_around_this_trip" };
   }
   return { outcome: "pending", reason: AWAITING_CONFIRMATION };
 }

@@ -741,9 +741,9 @@ function MissedTripsInvestigationPage({
           {(diagnostics?.held_undecided_count ?? 0) > 0 ? (
             <>
               {diagnostics!.held_undecided_count.toLocaleString()} more {diagnostics!.held_undecided_count === 1 ? "is" : "are"} held
-              because something other than the trip explains the silence — a stale or unrecognised schedule, or a
-              block whose vehicle never reported. They are recorded, not counted, and they will join the queue if
-              evidence later shows the trip ran late.
+              because something other than the trip explains the silence — a stale or unrecognised schedule, a block
+              whose vehicle never reported, or a bus that kept working either side of the trip. They are recorded,
+              not counted, and they will join the queue if evidence later shows the trip ran late.
             </>
           ) : null}
         </p>

@@ -460,7 +460,7 @@ Use it for vendor reconciliation and aggregate compliance only after the filter/
 are confirmed. It cannot replace the GTFS/vehicle-evidence path for individual live candidates,
 and many null-time rows will remain `unmatched` by design.
 
-## Implemented (2026-09-15) — guards for the three remaining false-positive mechanisms
+## Implemented (2026-09-15) — guards for the four remaining false-positive mechanisms
 
 Hypotheses 2 (static schedule staleness vs. RT trip_id) and 5 (no confirmation
 before escalation) from "Working hypothesis: current iteration is surfacing
@@ -488,7 +488,23 @@ version `gtfs-silent-v3`; reasons recorded in
    `block_never_reported` rather than escalated. The first case is not lost: it
    is detected by Avail pullout through `fixedRouteDepartureOutcome.ts`, which
    knows whether an operator logged in.
-3. **Two-poll confirmation.** Nothing escalates on one observation. A detection
+3. **Block corroboration.** A block is one vehicle's day in order, so its other
+   trips are the closest thing GTFS has to a witness. When the block's bus
+   demonstrably operated a trip before the candidate and a trip after it, it was
+   in service throughout the window the candidate vanished from, and the row is
+   recorded as `block_ran_around_this_trip`. Two things produce that pattern and
+   GTFS cannot separate them: a trip id the detector failed to match, which is
+   not a missed trip, or a turn dispatch cut short, which is. The recall cost on
+   the second is taken deliberately - the alternative escalates every labelling
+   artifact, and the skipped turn is exactly what the retrospective Avail feed
+   reports independently at the stop level, with no dependence on GTFS trip ids.
+
+   Deliberately NOT held: a block whose evidence stops and never resumes (a bus
+   out of service mid-day - every remaining trip genuinely missed, and the
+   highest-precision pattern the detector has), and a block that starts late.
+   Both have a witness on one side only, both reach the queue untouched, and
+   both carry their own tests.
+4. **Two-poll confirmation.** Nothing escalates on one observation. A detection
    is held as `awaiting_confirmation` and promoted only by a later poll that
    still finds no evidence (`confirmPendingNoShows`, 240 s - under the
    five-minute interval, so the next run always qualifies and the creating run
@@ -505,6 +521,10 @@ pulling real rows and measuring - is now also the calibration these thresholds
 need; the agreement floor and sample size in particular were chosen from the
 shape of the failure, not from measurement.
 
-Item 1 of the ranked list that produced this work - using an adjacent trip's
-underway evidence on the same block to judge a middle trip - remains open, and
-is the larger precision lever.
+All four items of the ranked list that produced this work are now built. What
+remains is measurement, not code: the agreement floor, the sample size and the
+48-hour static limit want calibrating, and the block rule in particular should
+be checked against how often MVTA actually cuts turns short - if skipped turns
+are common, the recall cost of `block_ran_around_this_trip` is larger than
+assumed and the rule may need the Avail reconciliation behind it before it can
+stay.

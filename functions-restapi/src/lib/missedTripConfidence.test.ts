@@ -5,10 +5,12 @@ import {
   NO_SHOW_CONFIRMATION_SECONDS,
   SCHEDULE_AGREEMENT_MIN_SAMPLE,
   STATIC_SCHEDULE_STALE_AFTER_HOURS,
+  blockContinuity,
   confirmationDue,
   noShowDecision,
   scheduleAgreement,
   staticScheduleConfidence,
+  type BlockTripEvidence,
   type NoShowEvidenceContext,
 } from "./missedTripConfidence";
 import type { KpiFeedHealth } from "./kpiTrust";
@@ -33,7 +35,7 @@ function context(overrides: Partial<NoShowEvidenceContext> = {}): NoShowEvidence
     vehiclePositionsCurrent: true,
     staticSchedule: trusted,
     agreement: trusted,
-    blockReported: true,
+    block: { anyPosition: true, operatedBefore: false, operatedAfter: false },
     ...overrides,
   };
 }
@@ -105,21 +107,24 @@ test("a schedule the feeds do not recognise decides nothing", () => {
 });
 
 test("a block that never reported a position decides nothing", () => {
-  assert.deepEqual(noShowDecision(context({ blockReported: false })), {
-    outcome: "undecidable",
-    reason: "block_never_reported",
-  });
+  assert.deepEqual(
+    noShowDecision(context({ block: { anyPosition: false, operatedBefore: false, operatedAfter: false } })),
+    { outcome: "undecidable", reason: "block_never_reported" },
+  );
 });
 
 test("a trip with no block id is still judged - an absent column is not evidence", () => {
-  assert.equal(noShowDecision(context({ blockReported: null })).outcome, "pending");
+  assert.equal(noShowDecision(context({ block: null })).outcome, "pending");
 });
 
 test("the broadest explanation wins over the narrowest", () => {
   // A stale schedule makes the block question meaningless: those trip ids were
   // never going to appear whatever the buses did.
   const verdict = noShowDecision(
-    context({ staticSchedule: { trusted: false, explanation: "old" }, blockReported: false }),
+    context({
+      staticSchedule: { trusted: false, explanation: "old" },
+      block: { anyPosition: false, operatedBefore: false, operatedAfter: false },
+    }),
   );
   assert.equal(verdict.reason, "static_schedule_stale");
 });
@@ -129,6 +134,84 @@ test("an outage outranks a stale schedule", () => {
     context({ vehiclePositionsCurrent: false, staticSchedule: { trusted: false, explanation: "old" } }),
   );
   assert.equal(verdict.reason, "vehicle_position_feed_not_current");
+});
+
+// A block's trips, in the order one bus runs them. `operated` is positive
+// progress past the first stop; `reportedPosition` is any position at all.
+function blockTrip(departureSeconds: number, operated: boolean, reportedPosition = true): BlockTripEvidence {
+  return { departureSeconds, operated, reportedPosition };
+}
+
+const MIDDAY = 12 * 3600;
+
+test("a block reports operating on both sides of a mid-block trip", () => {
+  const verdict = blockContinuity(
+    [blockTrip(MIDDAY - 3600, true), blockTrip(MIDDAY, false), blockTrip(MIDDAY + 3600, true)],
+    MIDDAY,
+  );
+  assert.deepEqual(verdict, { anyPosition: true, operatedBefore: true, operatedAfter: true });
+});
+
+test("a trip is never its own witness", () => {
+  const verdict = blockContinuity([blockTrip(MIDDAY, true)], MIDDAY);
+  assert.equal(verdict.operatedBefore, false);
+  assert.equal(verdict.operatedAfter, false);
+});
+
+test("a trip leaving at the same second is not a witness either", () => {
+  const verdict = blockContinuity([blockTrip(MIDDAY, true), blockTrip(MIDDAY, true)], MIDDAY);
+  assert.equal(verdict.operatedBefore, false);
+  assert.equal(verdict.operatedAfter, false);
+});
+
+test("a block that only reported positions has no witnesses, but is not silent", () => {
+  // Positions arrived, so the transponder is alive; nothing progressed past a
+  // first stop, so nothing can vouch for a neighbour.
+  const verdict = blockContinuity([blockTrip(MIDDAY - 3600, false), blockTrip(MIDDAY + 3600, false)], MIDDAY);
+  assert.deepEqual(verdict, { anyPosition: true, operatedBefore: false, operatedAfter: false });
+});
+
+test("a block with no position on any trip is silent", () => {
+  const verdict = blockContinuity(
+    [blockTrip(MIDDAY - 3600, false, false), blockTrip(MIDDAY + 3600, false, false)],
+    MIDDAY,
+  );
+  assert.equal(verdict.anyPosition, false);
+});
+
+test("a bus that operated either side of this trip decides nothing", () => {
+  assert.deepEqual(
+    noShowDecision(context({ block: { anyPosition: true, operatedBefore: true, operatedAfter: true } })),
+    { outcome: "undecidable", reason: "block_ran_around_this_trip" },
+  );
+});
+
+// The two patterns this guard must NOT swallow. Both are genuine missed trips
+// with only one side of a witness, and both are the highest-value findings the
+// detector produces.
+test("a block whose evidence stops and never resumes is still a candidate", () => {
+  // The bus went out of service mid-day: every remaining trip is missed.
+  assert.equal(
+    noShowDecision(context({ block: { anyPosition: true, operatedBefore: true, operatedAfter: false } })).outcome,
+    "pending",
+  );
+});
+
+test("a block that started late is still a candidate", () => {
+  // Nothing before, service afterwards: the early trips genuinely did not run.
+  assert.equal(
+    noShowDecision(context({ block: { anyPosition: true, operatedBefore: false, operatedAfter: true } })).outcome,
+    "pending",
+  );
+});
+
+test("a silent block outranks the question of what it ran", () => {
+  // anyPosition false makes operatedBefore/After unreachable in practice; the
+  // ordering is asserted so a future edit cannot quietly invert it.
+  const verdict = noShowDecision(
+    context({ block: { anyPosition: false, operatedBefore: true, operatedAfter: true } }),
+  );
+  assert.equal(verdict.reason, "block_never_reported");
 });
 
 test("a trip detected in this run cannot be confirmed by it", () => {

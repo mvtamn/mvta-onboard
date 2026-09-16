@@ -24,6 +24,12 @@
 --                                      on this trip's block all day, so this
 --                                      block's silence is the vehicle's, not
 --                                      the trip's.
+--   block_ran_around_this_trip       - the block's bus demonstrably operated a
+--                                      trip before this one and a trip after
+--                                      it, so it was in service throughout the
+--                                      window this trip vanished from. Either a
+--                                      trip id that was not matched, or a
+--                                      skipped turn; GTFS cannot separate them.
 -- A row with undecided_reason IS NOT NULL is not a finding: the review queue
 -- and its tiles exclude it, and nothing promotes it into compliance until the
 -- detector clears the reason.

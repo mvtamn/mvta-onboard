@@ -537,7 +537,8 @@ export type MissedTripUndecidedReason =
   | "vehicle_position_feed_not_current"
   | "static_schedule_stale"
   | "schedule_disagrees_with_feed"
-  | "block_never_reported";
+  | "block_never_reported"
+  | "block_ran_around_this_trip";
 export type MissedTripSourceSystem = "gtfs" | "spare";
 
 // Missed Trips is a compliance/investigation tool, not a customer-alert

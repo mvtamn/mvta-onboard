@@ -749,10 +749,11 @@ SQL login as the other apps, so no database user is needed),
 
 ## Missed-trip false-positive guards — status (2026-09-15)
 
-Built on `claude/onboard-surfaces-missed-trips-9a74aa`. Items 2, 3 and 4 of the
+Built on `claude/onboard-surfaces-missed-trips-9a74aa`. All four items of the
 false-positive analysis in `plans/missed-trip-detection-logic-gaps.md`: a stale
-or unrecognised static schedule, a block whose vehicle never reported, and
-escalation on a single observation. Rules in
+or unrecognised static schedule, a block whose vehicle never reported, a block
+whose bus kept working either side of the trip, and escalation on a single
+observation. Rules in
 `functions-restapi/src/lib/missedTripConfidence.ts`, applied by
 `gtfsMissedTripsPoll.ts`. Detector version `gtfs-silent-v3`.
 
@@ -787,7 +788,11 @@ effect on the next deploy.
   contract.** It deliberately does not go in `feedFreshness.ts`: that file holds
   only deadlines Operations approved for the trust banner, and `gtfs_static` has
   none. If Operations approves one, this should read it instead.
-- **Item 1 of the analysis — block corroboration — is not built.** This uses
-  `block_id` only to ask whether a block reported at all. Using an adjacent
-  trip's underway evidence to judge a middle trip is the larger precision lever
-  and is still open.
+- **The block rule trades recall for precision, and the trade is unmeasured.**
+  `block_ran_around_this_trip` holds a trip whose block operated on both sides of
+  it. That catches unmatched trip ids, which is the point, but it also catches a
+  turn dispatch cut short to recover schedule — a real missed trip. Worth asking
+  Operations how often MVTA cuts turns; if it is common, this rule wants the
+  Avail retrospective reconciliation behind it before it stays. The counts are
+  visible meanwhile: the poll log breaks the undecided total down by reason, and
+  the console reports the held count.
