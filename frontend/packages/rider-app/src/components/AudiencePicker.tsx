@@ -54,7 +54,9 @@ export function AudiencePicker(props: {
 
   return (
     <fieldset className={section ? "section" : "field"}>
-      <legend className={section ? "section-title" : undefined}>{props.legend}</legend>
+      {/* The subscribe form's card already carries the question as its heading,
+          so it passes no legend; an empty one would still take a line. */}
+      {props.legend && <legend className={section ? "section-title" : undefined}>{props.legend}</legend>}
       <div className={section ? "segments two" : "radios"}>
         {choices.map((choice) => (
           <label key={choice.mode} className={section ? "segment" : "check"}>

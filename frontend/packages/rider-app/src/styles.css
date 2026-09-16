@@ -211,7 +211,9 @@ body {
 .step-num { flex: none; display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: #e7efeb; color: #00553d; font-size: 12px; font-weight: bold; }
 .step-card .section-title { margin: 0; }
 .step-why { font-size: 12.5px; line-height: 1.45; color: #4f4f4f; margin: 4px 0 12px 31px; }
-.step-body { margin-left: 31px; }
+.step-body { display: flex; flex-direction: column; gap: 14px; margin-left: 31px; min-width: 0; }
+/* A section's own error sits under what it is about, not a full gap below it. */
+.step-body > .field-error { margin-top: -6px; }
 .field-error { display: flex; align-items: flex-start; gap: 6px; font-size: 12.5px; line-height: 1.4; color: #8a1f1f; margin: 6px 0 0; }
 .field-error::before { content: "!"; flex: none; display: flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-top: 1px; border-radius: 50%; background: #8a1f1f; color: #fff; font-size: 10px; font-weight: bold; }
 /* Two columns, each a name and a line saying what it covers - "Outage" on its
@@ -239,9 +241,10 @@ body {
 .summary dl { display: flex; flex-direction: column; gap: 8px; margin: 0; }
 .summary dt { font-size: 11.5px; font-weight: bold; color: #4f4f4f; }
 .summary dd { font-size: 13px; line-height: 1.4; margin: 1px 0 0; }
-/* The subscribe button's 220px floor is for a full-width form; in the
-   summary column it would push the card past the card it sits in. */
-.summary .btn-primary { width: 100%; min-width: 0; }
+/* The subscribe button's 220px floor is for a full-width form; in the 208px
+   summary column it pushed the button out past the card. Matched to
+   `.form.optin .submit`'s three classes, or that rule's floor wins. */
+.form.optin .summary .submit { width: 100%; min-width: 0; align-self: stretch; }
 .summary-note { font-size: 12px; line-height: 1.45; color: #4f4f4f; margin: 0; }
 /* What to do next, in the order it has to happen. */
 .next-steps { display: flex; flex-direction: column; gap: 12px; margin: 18px 0 0; padding: 0; list-style: none; }
