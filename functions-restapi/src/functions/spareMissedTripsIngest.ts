@@ -6,7 +6,7 @@ import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { runFeedsIngestion } from "../lib/feedRun";
 import {
-  fetchSparePage,
+  fetchSpareCollection,
   fetchSpareUpdatedWindow,
   positiveEnvInteger,
   spareNumber,
@@ -16,8 +16,8 @@ import {
   type SpareRequestRecord,
   type SpareSlotRecord,
 } from "../lib/spareApi";
-import { normalizeOnDemandSpareRequest } from "../lib/onDemandSpareMonitor";
-import { admitsMonitorWrite, onDemandActivation } from "../lib/onDemandMonitoringHealth";
+import { onDemandActivation } from "../lib/onDemandMonitoringHealth";
+import { admitOnDemandRequest } from "../lib/onDemandRequestSource";
 import { loadActiveOperationalZones, storeOnDemandSpareRequest } from "../lib/onDemandSpareMonitorStore";
 
 const REQUEST_PAGE_SIZE = 200;
@@ -39,33 +39,8 @@ function scopedServiceIds(): ReadonlySet<string> {
   );
 }
 
-async function fetchPickupSlotsForDuty(
-  dutyId: string,
-  maxRows: number,
-): Promise<SpareSlotRecord[]> {
-  const rows: SpareSlotRecord[] = [];
-  let skip = 0;
-  let reportedTotal = 0;
-  while (rows.length < maxRows) {
-    const query = new URLSearchParams({
-      dutyId,
-      type: "pickup",
-      orderBy: "updatedAt",
-      orderDirection: "ASC",
-      limit: String(Math.min(SLOT_PAGE_SIZE, maxRows - rows.length)),
-      skip: String(skip),
-    });
-    const page = await fetchSparePage<SpareSlotRecord>("/v1/slots", query);
-    reportedTotal = page.total;
-    rows.push(...page.data);
-    skip += page.data.length;
-    if (page.data.length === 0 || skip >= page.total) break;
-    if (skip > 50_000) throw new Error("Spare /v1/slots duty pagination exceeded the documented skip limit");
-  }
-  if (rows.length >= maxRows && reportedTotal > rows.length) {
-    throw new Error(`Spare /v1/slots duty ${dutyId} exceeded the ${maxRows}-row safety cap`);
-  }
-  return rows;
+function fetchPickupSlotsForDuty(dutyId: string, maxRows: number): Promise<SpareSlotRecord[]> {
+  return fetchSpareCollection<SpareSlotRecord>("/v1/slots", { dutyId, type: "pickup" }, SLOT_PAGE_SIZE, maxRows);
 }
 
 export async function fetchSlotsForRequestDuties(
@@ -247,14 +222,15 @@ app.timer("spareMissedTripsIngest", {
       const maxRows = positiveEnvInteger("SPARE_MISSED_TRIP_MAX_ROWS", DEFAULT_MAX_ROWS, 50_000);
       const fromSeconds = nowSeconds - lookbackMinutes * 60;
       const requests = await fetchSpareUpdatedWindow<SpareRequestRecord>(
-        "/v1/requests", fromSeconds, nowSeconds, REQUEST_PAGE_SIZE, maxRows,
+        fromSeconds, nowSeconds, REQUEST_PAGE_SIZE, maxRows,
       );
       const slots = await fetchSlotsForRequestDuties(requests, maxRows);
       const pool = await getPool();
       // The on-demand wait-time monitor rides along on this ingest, but it is a
-      // separate concern with a separate dependency: storeOnDemandSpareRequest
-      // throws when no operational zone version is active, and that throw used
-      // to escape the loop and abandon the whole run. Missed-trip ingestion
+      // separate concern with a separate dependency: it needs an active
+      // operational zone version. When storeOnDemandSpareRequest threw on a
+      // zone gap, that throw escaped the loop and abandoned the whole run (it
+      // now reports no_active_zones instead). Missed-trip ingestion
       // needs no zones at all, so a zone-configuration gap was taking down a
       // pipeline that does not depend on it - the requests already upserted
       // stayed, the slots never ran, and no health was recorded. That is the
@@ -264,8 +240,8 @@ app.timer("spareMissedTripsIngest", {
       // the monitor cannot work for any request, and skipping it keeps Missed
       // Trips ingesting. The gap is warned about every run so it stays visible
       // rather than becoming a silent degradation.
-      // The ride-along is scoped by the *monitor's* activation, not by this
-      // ingest's. SPARE_MISSED_TRIP_SERVICE_IDS is three services and not all
+      // The ride-along is scoped by the *monitor's* activation, through
+      // admitOnDemandRequest, not by this ingest's. SPARE_MISSED_TRIP_SERVICE_IDS is three services and not all
       // of them are MVTA Connect, so upsertRequest's own scope was letting
       // foreign requests into monitor state - which the hourly reconciliation,
       // scoped correctly, would then never touch or correct. Missed-trip
@@ -290,9 +266,9 @@ app.timer("spareMissedTripsIngest", {
         if (await upsertRequest(pool, row)) {
           requestWrites++;
           if (!zonesAvailable) continue;
-          const normalized = normalizeOnDemandSpareRequest(row);
-          if (!normalized || !admitsMonitorWrite(normalized.serviceId, activation).admit) continue;
-          if (await storeOnDemandSpareRequest(normalized, activeZones)) monitorWrites++;
+          const admission = admitOnDemandRequest(row, activation);
+          if (!admission.admit) continue;
+          if (await storeOnDemandSpareRequest(admission.request, activeZones) === "applied") monitorWrites++;
         }
       }
       for (const row of slots) if (await upsertSlot(pool, row)) slotWrites++;
