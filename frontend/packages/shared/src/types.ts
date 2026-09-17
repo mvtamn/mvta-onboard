@@ -973,6 +973,14 @@ export type DetourLifecycleState =
 export type DetourReadiness =
   | "needs_occ_review" | "ready_for_avail_entry" | "avail_conflict" | "in_avail"
   | "ready_for_manual_operations" | "closed";
+// The acts a person can be offered on a Detour, decided server-side by the
+// Detour workflow module (functions-restapi/src/lib/detourWorkflow).
+export type DetourOfferedAct =
+  | "avail_entry.entered" | "avail_entry.conflict" | "avail_entry.not_entered"
+  | "manual_fallback" | "close" | "override_conflict" | "complete_re_review";
+export type DetourActAvailability =
+  | { available: true }
+  | { available: false; code: string; reason: string };
 export type DetourCommunicationStatus = "draft" | "published" | "failed";
 export type DetourCommunicationDeliveryStatus = "not_requested" | "queued" | "sent" | "delivered" | "partially_sent" | "failed" | "skipped";
 
@@ -1129,6 +1137,8 @@ export interface Detour extends DetourReportFields {
   avail_entry_confirmed_by?: string | null;
   avail_entry_confirmed_at?: string | null;
   readiness?: DetourReadiness;
+  // Absent from an API older than the Detour workflow module.
+  available_acts?: Record<DetourOfferedAct, DetourActAvailability>;
   communication_status?: "published" | "draft" | "needs_communication" | "not_available";
   workflow_label?: string;
   next_action?: string;

@@ -15,6 +15,8 @@ import {
 import { useAuth } from "../auth/AuthContext.js";
 import { api } from "../config.js";
 import { detourMatchesSearch } from "../lib/detourSearch.js";
+import { actOffer, availEntryOffer } from "../lib/detourActs.js";
+import { nextStepLabel } from "../lib/detourLabels.js";
 import { useAppDialog } from "../components/AppDialog.js";
 import { DetourOperationalRecord } from "../components/DetourOperationalRecord.js";
 import { DetourWorkflowHistorySection } from "../components/DetourWorkflowHistorySection.js";
@@ -321,6 +323,11 @@ export function Detours() {
   async function recordAvailEntry(d: Detour) {
     const result = await prompt({ title: "Record Avail result", description: "Enter entered, conflict, or not_entered.", label: "Avail result", defaultValue: d.avail_entry_result ?? "entered", confirmLabel: "Continue", required: true });
     if (result !== "entered" && result !== "conflict" && result !== "not_entered") return;
+    const offer = actOffer(d, `avail_entry.${result}`);
+    if (!offer.enabled) {
+      setLoadError(offer.reason ?? `An Avail result of ${result.replace("_", " ")} cannot be recorded for this detour now.`);
+      return;
+    }
     const externalId = result === "entered"
       ? await prompt({ title: "Record Avail Detour ID", label: "Avail Detour ID", defaultValue: d.external_detour_id ?? "", confirmLabel: "Continue", required: true })
       : null;
@@ -609,7 +616,7 @@ export function Detours() {
                               <p><b>Workflow:</b> {DETOUR_LIFECYCLE_LABELS[d.lifecycle_state]}</p>
                             ) : null}
                             {d.readiness ? (
-                              <p><b>Next step:</b> {d.readiness === "ready_for_avail_entry" ? "Enter this detour in Avail" : d.readiness === "avail_conflict" ? "Resolve the Avail conflict" : d.readiness === "in_avail" ? "In Avail; close it when the detour ends" : d.readiness === "ready_for_manual_operations" ? "Ready for manual operations" : d.readiness === "needs_occ_review" ? "Needs OCC review" : "Closed"}</p>
+                              <p><b>Next step:</b> {nextStepLabel(d.readiness)}</p>
                             ) : null}
                             {d.communication_status ? <p><b>Communications:</b> {d.communication_status.replace("_", " ")}</p> : null}
                             {d.conflicts?.length ? (
@@ -618,16 +625,16 @@ export function Detours() {
                                 {d.conflicts.map((c) => `${c.label} · ${c.status.replace(/_/g, " ")} · ${c.start_date || "open"} → ${c.end_date || "open"} · shares ${c.shared.join(", ")}`).join("; ")}
                                 {d.conflict_status === "overridden"
                                   ? ` — ${d.conflict_override_reason} (${d.conflict_override_by}${d.conflict_override_at ? `, ${dateTimeLabel(d.conflict_override_at)}` : ""})`
-                                  : canWrite ? <> <button className="btn-sm" onClick={() => overrideConflict(d)}>Override with reason</button></> : null}
+                                  : canWrite && actOffer(d, "override_conflict").enabled ? <> <button className="btn-sm" onClick={() => overrideConflict(d)}>Override with reason</button></> : null}
                               </p>
                             ) : null}
                             {d.review_status === "needs_review" ? (
                               <p className="warn-note">
                                 <b>Needs OCC re-review:</b> {d.review_reason}
-                                {canWrite ? <> <button className="btn-sm" onClick={() => completeReview(d)}>Mark review complete</button></> : null}
+                                {canWrite && actOffer(d, "complete_re_review").enabled ? <> <button className="btn-sm" onClick={() => completeReview(d)}>Mark review complete</button></> : null}
                               </p>
                             ) : null}
-                            {canWrite && d.lifecycle_state !== "closed" ? <p><button className="btn-sm" onClick={() => closeDetour(d)}>Close detour</button></p> : null}
+                            {canWrite && actOffer(d, "close").enabled ? <p><button className="btn-sm" onClick={() => closeDetour(d)}>Close detour</button></p> : null}
                             <DetourOperationalRecord detour={d} />
                             {d.fulfillment_mode === "avail" && d.avail_entry_result ? (
                               <p><b>Avail entry:</b> {d.avail_entry_result.replace("_", " ")}
@@ -635,15 +642,17 @@ export function Detours() {
                                 {d.avail_entry_confirmed_by ? ` · ${d.avail_entry_confirmed_by}` : ""}
                               </p>
                             ) : null}
-                            {canWrite && d.fulfillment_mode === "avail" &&
-                              (d.lifecycle_state === "awaiting_fulfillment" || d.lifecycle_state === "fulfillment_failed") ? (
+                            {canWrite && availEntryOffer(d).show ? (
                               <p>
                                 <button className="btn-sm" onClick={() => recordAvailEntry(d)}>Record human Avail entry</button>
-                                {d.conflict_status === "unresolved" ? <span className="td-dim"> Confirming the entry is blocked until the conflict above is overridden.</span> : null}
+                                {availEntryOffer(d).entered.reason ? <span className="td-dim"> Confirming it as entered: {availEntryOffer(d).entered.reason}</span> : null}
                               </p>
                             ) : null}
-                            {canWrite && d.fulfillment_mode === "avail" && d.lifecycle_state === "fulfillment_failed" ? (
-                              <p><button className="btn-sm" onClick={() => useManualFallback(d)}>Use fixed-route manual exception</button></p>
+                            {canWrite && actOffer(d, "manual_fallback").show ? (
+                              <p>
+                                <button className="btn-sm" disabled={!actOffer(d, "manual_fallback").enabled} onClick={() => useManualFallback(d)}>Use fixed-route manual exception</button>
+                                {actOffer(d, "manual_fallback").reason ? <span className="td-dim"> {actOffer(d, "manual_fallback").reason}</span> : null}
+                              </p>
                             ) : null}
                             <DetourCommunicationsSection detour={d} contractor={contractor} canWrite={canWrite} />
                             {numberYearMismatch(d.internal_number, d.start_date) ? (
