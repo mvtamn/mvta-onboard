@@ -1,6 +1,5 @@
--- Migration 124: the Missed-trip case module's review outcomes, operating
--- window, and reporting view (increment 2; 123 was taken by the OTP daily
--- direction key).
+-- Migration 125: the Missed-trip case module's review outcomes, operating
+-- window, and reporting view (increment 2; 123 and 124 were taken by other changes).
 --
 -- 1. Four Missed-trip review outcomes (CONTEXT.md): Confirmed missed trip
 --    ('confirmed'), Timely service, Partial-service failure and Indeterminate.
@@ -20,7 +19,7 @@
 --    has passed - and while it is unknown.
 -- 5. vw_MissedTrip keeps every column it had and adds the module's
 --    classification. The CROSS APPLY below is missedTripCaseSql("m", "mtc",
---    no promoted detectors) verbatim - migration124.db.contract.test.ts fails if
+--    no promoted detectors) verbatim - migration125.db.contract.test.ts fails if
 --    the two drift - so the view reports every detector as in Shadow detection
 --    (CountsTowardAssessment = 0); promotion is an app setting SQL cannot read.
 --
@@ -28,10 +27,10 @@
 -- the rewrites find nothing on a second pass, and the view is CREATE OR ALTER.
 -- Apply it before deploying the code that writes the new outcomes and columns.
 --
--- Rows written here carry the note text "migration 124" (see sql/README.md).
+-- Rows written here carry the note text "migration 125" (see sql/README.md).
 
 IF OBJECT_ID('dbo.MonitoredMissedTrips', 'U') IS NULL OR OBJECT_ID('dbo.MissedTripReviewHistory', 'U') IS NULL
-  THROW 50124, 'Migration 124 requires MonitoredMissedTrips and MissedTripReviewHistory (migrations 011 and 026).', 1;
+  THROW 50125, 'Migration 125 requires MonitoredMissedTrips and MissedTripReviewHistory (migrations 011 and 026).', 1;
 GO
 
 IF OBJECT_ID('dbo.GtfsScheduledTrips', 'U') IS NOT NULL AND COL_LENGTH('dbo.GtfsScheduledTrips', 'last_arrival_seconds') IS NULL
@@ -101,7 +100,7 @@ GO
 
 DECLARE @cases INT = (SELECT COUNT(*) FROM dbo.MonitoredMissedTrips WHERE validation_status = 'false_positive');
 DECLARE @history INT = (SELECT COUNT(*) FROM dbo.MissedTripReviewHistory WHERE validation_status = 'false_positive' OR previous_validation_status = 'false_positive');
-PRINT CONCAT('Migration 124 before: ', @cases, ' case(s) and ', @history, ' history row(s) name false_positive.');
+PRINT CONCAT('Migration 125 before: ', @cases, ' case(s) and ', @history, ' history row(s) name false_positive.');
 GO
 
 SET XACT_ABORT ON;
@@ -112,7 +111,7 @@ UPDATE dbo.MonitoredMissedTrips SET validation_status = 'timely_service' WHERE v
 UPDATE dbo.MissedTripReviewHistory
 SET validation_status = 'timely_service',
     notes = LEFT(CONCAT(notes, CASE WHEN notes IS NULL THEN N'' ELSE N' ' END,
-                        N'[Recorded as false_positive; migration 124 names this outcome Timely service.]'), 1000)
+                        N'[Recorded as false_positive; migration 125 names this outcome Timely service.]'), 1000)
 WHERE validation_status = 'false_positive';
 
 UPDATE dbo.MissedTripReviewHistory SET previous_validation_status = 'timely_service' WHERE previous_validation_status = 'false_positive';
@@ -226,4 +225,4 @@ LEFT JOIN dbo.ComplianceOccurrences occurrence
   ON occurrence.source_ref = CONCAT(N'MonitoredMissedTrips:',ISNULL(m.source_system,N'gtfs'),N':',ISNULL(m.source_record_id,m.trip_id),N'|',m.service_date);
 GO
 
-PRINT 'Migration 124 applied: four missed-trip review outcomes, superseding reviews, Expected operating window, vw_MissedTrip classification.';
+PRINT 'Migration 125 applied: four missed-trip review outcomes, superseding reviews, Expected operating window, vw_MissedTrip classification.';

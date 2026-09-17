@@ -165,7 +165,7 @@ export function assessmentOutcome(alert: MissedTripAlert): { label: string; deta
   const month = alert.occurrenceServiceMonth ? formatServiceMonth(alert.occurrenceServiceMonth) : formatServiceMonth(alert.serviceDate.slice(0, 6));
   if (alert.validationStatus !== "confirmed") {
     // Stored as `timely_service`, `partial_service_failure` or `indeterminate`
-    // since migration 124 (`false_positive` before it): none is a missed trip.
+    // since migration 125 (`false_positive` before it): none is a missed trip.
     return { label: "Not assessed", detail: "Reviewed as not a missed trip, so there is nothing to charge.", tone: "excluded" };
   }
   if (!alert.occurrenceReviewStatus) {
@@ -1209,7 +1209,7 @@ function pivotMonthlySummary(summary: MissedTripsMonthlySummaryRow[]): MonthlyRo
     if (r.detection_type === "silent_no_show") row.noShows += r.trip_count;
     if (r.detection_type?.startsWith("spare_")) row.spareCandidates += r.trip_count;
     if (r.validation_status === "confirmed") row.confirmed += r.trip_count;
-    // Timely service; `false_positive` is its name before migration 124.
+    // Timely service; `false_positive` is its name before migration 125.
     if (r.validation_status === "false_positive" || r.validation_status === "timely_service") row.falsePositive += r.trip_count;
     if (r.validation_status === "unreviewed") row.unreviewed += r.trip_count;
     row.total += r.trip_count;

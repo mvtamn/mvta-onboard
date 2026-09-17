@@ -45,7 +45,7 @@ import { WINDOWED_DETECTOR_VERSION } from "../classify";
 import type { RunObservation, RunRef } from "../types";
 
 export const GTFS_CANCEL_DETECTOR = "gtfs-cancel-v1";
-// v4: cases carry their Expected operating window (migration 124).
+// v4: cases carry their Expected operating window (migration 125).
 export const GTFS_SILENT_DETECTOR = WINDOWED_DETECTOR_VERSION;
 
 const GRACE_SECONDS = 30 * 60;

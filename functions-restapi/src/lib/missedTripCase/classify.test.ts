@@ -107,9 +107,9 @@ test("the four review outcomes, with false_positive read as Timely service", () 
   }
 });
 
-test("migration 124's vw_MissedTrip classifies with missedTripCaseSql verbatim", () => {
+test("migration 125's vw_MissedTrip classifies with missedTripCaseSql verbatim", () => {
   const squash = (text: string) => text.replace(/\s+/g, " ").trim();
-  const migration = readFileSync(join(process.cwd(), "sql", "migration-124-missed-trip-review-outcomes-and-window.sql"), "utf8");
+  const migration = readFileSync(join(process.cwd(), "sql", "migration-125-missed-trip-review-outcomes-and-window.sql"), "utf8");
   assert.ok(squash(migration).includes(squash(missedTripCaseSql("m", "mtc", new Set()))),
-    "regenerate the CROSS APPLY in migration 124 from missedTripCaseSql(\"m\", \"mtc\", new Set())");
+    "regenerate the CROSS APPLY in migration 125 from missedTripCaseSql(\"m\", \"mtc\", new Set())");
 });

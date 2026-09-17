@@ -158,7 +158,7 @@ app.timer("gtfsStopsSync", {
              AND COL_LENGTH('dbo.GtfsScheduledTrips', 'first_stop_sequence') IS NOT NULL
              AND COL_LENGTH('dbo.GtfsScheduledTrips', 'block_id') IS NOT NULL
             THEN 1 ELSE 0 END AS table_exists,
-          -- Migration 124: the final stop's arrival, which ends a run's
+          -- Migration 125: the final stop's arrival, which ends a run's
           -- Expected operating window. Until it is applied the column is left out.
           CASE WHEN COL_LENGTH('dbo.GtfsScheduledTrips', 'last_arrival_seconds') IS NULL THEN 0 ELSE 1 END AS last_arrival_ready
         `);
