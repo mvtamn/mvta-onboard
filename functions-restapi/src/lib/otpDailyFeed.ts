@@ -12,7 +12,7 @@
 // on 2026-08-22; the URL's param list remains inferred by analogy - Start/End Date swapped in for
 // OtpByRouteStopDayAgg's single ServiceDate, same threshold/outlier params
 // otherwise. The envelope key is confirmed as lowercase "otp" from live
-// responses. The diagnostic below names unexpected keys - do not remove it.
+// responses. availClient.ts names unexpected keys - do not remove that diagnostic.
 export interface AvailOtpDailyReport {
   CalendarDate: string;
   Time24Hour: number;
@@ -34,64 +34,6 @@ export interface AvailOtpDailyReport {
   Latitude: number | null;
   Longitude: number | null;
   Direction: string | null;
-}
-
-export interface AvailOtpDailyEnvelope {
-  errors: string[];
-  result: {
-    otp?: AvailOtpDailyReport[];
-    OtpByRouteStopDayHour?: AvailOtpDailyReport[];
-  };
-  success: boolean;
-}
-
-const EARLY_THRESHOLD = 1; // same enum-constrained values as otpMonthlyFeed.ts
-const LATE_THRESHOLD = 5;
-const EARLY_OUTLIER_MINUTES = 15;
-const LATE_OUTLIER_MINUTES = 30;
-const SHOW_MISSED_STOPS = 0;
-const INCLUDE_OUTLIERS = 1;
-const SHOW_DETOURS = 1;
-
-function formatDateMmDdYyyy(date: Date): string {
-  const y = date.getUTCFullYear();
-  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const d = String(date.getUTCDate()).padStart(2, "0");
-  return `${m}-${d}-${y}`;
-}
-
-// baseUrl is the agency-level URL with no trailing path segments, e.g.
-// "https://avail360-api.myavail.cloud/OtpByRouteStopDayHour/v1/MVTA".
-export async function fetchOtpDailyReports(
-  baseUrl: string,
-  apiKey: string,
-  startDate: Date,
-  endDate: Date,
-): Promise<AvailOtpDailyReport[]> {
-  const url =
-    `${baseUrl.replace(/\/+$/, "")}/${formatDateMmDdYyyy(startDate)}/${formatDateMmDdYyyy(endDate)}` +
-    `/${EARLY_THRESHOLD}/${LATE_THRESHOLD}/${EARLY_OUTLIER_MINUTES}/${LATE_OUTLIER_MINUTES}` +
-    `/${SHOW_MISSED_STOPS}/${INCLUDE_OUTLIERS}/${SHOW_DETOURS}`;
-  const res = await fetch(url, {
-    headers: { "Ocp-Apim-Subscription-Key": apiKey },
-  });
-  if (!res.ok) {
-    throw new Error(`Avail OTP Daily request failed: ${res.status}`);
-  }
-  const payload = (await res.json()) as AvailOtpDailyEnvelope;
-  if (!payload.success) {
-    throw new Error(`Avail OTP Daily API returned success=false: ${payload.errors?.join(", ") || "no error detail"}`);
-  }
-  const rows = payload.result?.otp ?? payload.result?.OtpByRouteStopDayHour;
-  if (rows !== undefined) return rows;
-
-  const actualKeys = payload.result ? Object.keys(payload.result) : [];
-  if (actualKeys.length > 0) {
-    throw new Error(
-      `Avail OTP Daily response has no "otp" key under result - found [${actualKeys.join(", ")}] instead. Update otpDailyFeed.ts.`,
-    );
-  }
-  return [];
 }
 
 export interface MappedOtpDaily {

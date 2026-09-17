@@ -1,19 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { mapMissedTripReport, fetchMissedTripReports, type AvailMissedTripReport } from "./availMissedTripsFeed";
-
-// Same fetch-stub convention as otpMonthlyFeed.test.ts/availDetoursFeed.test.ts.
-function withFetchStub(response: unknown, run: () => Promise<void>): Promise<void> {
-  const original = global.fetch;
-  global.fetch = (async () => ({
-    ok: true,
-    status: 200,
-    json: async () => response,
-  })) as unknown as typeof fetch;
-  return run().finally(() => {
-    global.fetch = original;
-  });
-}
+import { mapMissedTripReport, type AvailMissedTripReport } from "./availMissedTripsFeed";
 
 // Fixture from OTP-Feed-Evaluation-and-Recommendation.md's own example response.
 const BIRMINGHAM_EXPRESS: AvailMissedTripReport = {
@@ -68,27 +55,3 @@ test("combines Avail's HH:mm start time with CalendarDate in agency-local time",
   });
   assert.strictEqual(mapped?.departure_trip_start_time?.toISOString(), "2026-07-29T19:31:00.000Z");
 });
-
-test("fetchMissedTripReports returns the rows under the real (lowercase) envelope key", () =>
-  withFetchStub(
-    { success: true, errors: [], result: { missed: [BIRMINGHAM_EXPRESS] } },
-    async () => {
-      const rows = await fetchMissedTripReports("https://example.test/MissedTripsByRouteStopDay/v1/MVTA", "key", new Date(), new Date());
-      assert.strictEqual(rows.length, 1);
-      assert.strictEqual(rows[0].RouteID, 100);
-    },
-  ));
-
-test("fetchMissedTripReports throws naming the real key when the guessed key is wrong", () =>
-  withFetchStub({ success: true, errors: [], result: { MissedTripsByRouteStopDay: [BIRMINGHAM_EXPRESS] } }, async () => {
-    await assert.rejects(
-      () => fetchMissedTripReports("https://example.test/MissedTripsByRouteStopDay/v1/MVTA", "key", new Date(), new Date()),
-      /MissedTripsByRouteStopDay/,
-    );
-  }));
-
-test("fetchMissedTripReports returns an empty array when result is genuinely empty", () =>
-  withFetchStub({ success: true, errors: [], result: {} }, async () => {
-    const rows = await fetchMissedTripReports("https://example.test/MissedTripsByRouteStopDay/v1/MVTA", "key", new Date(), new Date());
-    assert.deepStrictEqual(rows, []);
-  }));

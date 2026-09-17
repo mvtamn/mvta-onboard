@@ -1,7 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import {
-  fetchPulloutReports,
   mapPulloutReport,
   unknownPulloutStatuses,
   type AvailPulloutReport,
@@ -37,25 +36,6 @@ const EXPIRED_PULLOUT: AvailPulloutReport = {
   LogonID: null,
   VehicleLabel: null,
 };
-
-test("fetches the confirmed property-level Pullout path without a date suffix", async () => {
-  let requestedUrl = "";
-  const original = global.fetch;
-  global.fetch = (async (url: string) => {
-    requestedUrl = url;
-    return {
-      ok: true,
-      status: 200,
-      json: async () => ({ success: true, errors: [], result: { Pullout: [] } }),
-    };
-  }) as unknown as typeof fetch;
-  try {
-    await fetchPulloutReports("https://example.test/Pullout/v1/MVTA/", "key");
-  } finally {
-    global.fetch = original;
-  }
-  assert.strictEqual(requestedUrl, "https://example.test/Pullout/v1/MVTA");
-});
 
 test("maps a Late Relief pullout report", () => {
   const mapped = mapPulloutReport(LATE_RELIEF);

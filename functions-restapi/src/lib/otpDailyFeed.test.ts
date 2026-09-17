@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { mapOtpDailyReport, fetchOtpDailyReports, type AvailOtpDailyReport } from "./otpDailyFeed";
+import { mapOtpDailyReport, type AvailOtpDailyReport } from "./otpDailyFeed";
 
 // Core fields and types confirmed from Avail's live OTP Daily response on
 // 2026-08-22. The fixture intentionally contains no rider or location data.
@@ -26,18 +26,6 @@ const CONFIRMED_SAMPLE: AvailOtpDailyReport = {
   Longitude: -93.27,
   Direction: "N",
 };
-
-function withFetchStub(response: unknown, run: () => Promise<void>): Promise<void> {
-  const original = global.fetch;
-  global.fetch = (async () => ({
-    ok: true,
-    status: 200,
-    json: async () => response,
-  })) as unknown as typeof fetch;
-  return run().finally(() => {
-    global.fetch = original;
-  });
-}
 
 test("maps a well-formed daily OTP report", () => {
   const mapped = mapOtpDailyReport(CONFIRMED_SAMPLE);
@@ -65,37 +53,3 @@ test("treats optional percent/lat-long fields as null when absent", () => {
   assert.strictEqual(mapped!.latitude, null);
   assert.strictEqual(mapped!.direction, null);
 });
-
-test("fetchOtpDailyReports returns the rows under Avail's lowercase otp envelope key", () =>
-  withFetchStub(
-    { success: true, errors: [], result: { otp: [CONFIRMED_SAMPLE], results: [] } },
-    async () => {
-      const rows = await fetchOtpDailyReports("https://example.test/OtpByRouteStopDayHour/v1/MVTA", "key", new Date(), new Date());
-      assert.strictEqual(rows.length, 1);
-      assert.strictEqual(rows[0].RouteFareboxID, 446);
-    },
-  ));
-
-test("fetchOtpDailyReports returns the rows when the documented envelope key matches", () =>
-  withFetchStub(
-    { success: true, errors: [], result: { OtpByRouteStopDayHour: [CONFIRMED_SAMPLE] } },
-    async () => {
-      const rows = await fetchOtpDailyReports("https://example.test/OtpByRouteStopDayHour/v1/MVTA", "key", new Date(), new Date());
-      assert.strictEqual(rows.length, 1);
-      assert.strictEqual(rows[0].RouteFareboxID, 446);
-    },
-  ));
-
-test("fetchOtpDailyReports throws naming the real key when the guessed key is wrong", () =>
-  withFetchStub({ success: true, errors: [], result: { otpByRouteStopDayHour: [CONFIRMED_SAMPLE] } }, async () => {
-    await assert.rejects(
-      () => fetchOtpDailyReports("https://example.test/OtpByRouteStopDayHour/v1/MVTA", "key", new Date(), new Date()),
-      /otpByRouteStopDayHour/,
-    );
-  }));
-
-test("fetchOtpDailyReports returns an empty array when result is genuinely empty", () =>
-  withFetchStub({ success: true, errors: [], result: {} }, async () => {
-    const rows = await fetchOtpDailyReports("https://example.test/OtpByRouteStopDayHour/v1/MVTA", "key", new Date(), new Date());
-    assert.deepStrictEqual(rows, []);
-  }));
