@@ -932,6 +932,47 @@ export interface OtpMonthlyStopRow {
   updated_at: string;
 }
 
+/**
+ * The OTP month measurement (functions-restapi/src/lib/otpMonth, ADR 0033).
+ * The server decides what counts - fixed-route service, minus approved Stop
+ * Exclusions - and the console displays the figures rather than computing any.
+ */
+export interface OtpFigure {
+  departures: number;
+  ontime: number;
+  /** Share on time, 0-1. Null when there are no departures to divide by. */
+  pct: number | null;
+}
+
+export interface OtpRouteFigure {
+  route_id: number;
+  route_label: string | null;
+  route_category: RouteCategory | string;
+  raw: OtpFigure;
+  excluded: OtpFigure;
+  /** Official Departure OTP for the route. */
+  assessable: OtpFigure;
+  /** Null when the route has no assessable departures to judge. */
+  below_target: boolean | null;
+}
+
+/** Where the target came from: the month's frozen rule set, the current catalog, or Attachment G's default. */
+export type OtpTargetSource = "period_rule_set" | "catalog" | "default";
+
+export interface OtpMonthMeasurement {
+  service_month: string;
+  target: number;
+  target_source: OtpTargetSource;
+  raw: OtpFigure;
+  excluded: OtpFigure;
+  assessable: OtpFigure;
+  routes: OtpRouteFigure[];
+  routes_below_target: number;
+  /** Weather days recorded for the month. They are NOT applied (ADR 0033). */
+  weather_days_recorded: number;
+  feed_ready: boolean;
+}
+
 export interface OtpMonthlyRouteRollup {
   route_id: number;
   route_label: string | null;
@@ -1380,7 +1421,8 @@ export interface DetourWorkflowHistoryEntry {
 // Route Classification - see detour-and-event-module-implementation-plan.md
 // (Part A). No Avail feed distinguishes fixed-route from special-event
 // RouteIDs, so this is the one place MVTA OnBoard itself decides.
-export type RouteCategory = "FixedRoute" | "SpecialEvent" | "OnDemand";
+/** NonRevenue (migration 128): deadhead, training, maintenance, pivot - service that carries no passengers and is outside the fixed-route standards. */
+export type RouteCategory = "FixedRoute" | "SpecialEvent" | "OnDemand" | "NonRevenue";
 
 export interface RouteClassificationRow {
   route_id: number;
@@ -1424,6 +1466,7 @@ export const ROUTE_CATEGORY_LABELS: Record<RouteCategory, string> = {
   FixedRoute: "Fixed route",
   SpecialEvent: "Special event",
   OnDemand: "On-demand",
+  NonRevenue: "Non-revenue",
 };
 
 export interface AppSettingRow {
@@ -1622,9 +1665,14 @@ export interface OtpSettingsRow {
 
 export interface OtpMonthlyTrendPoint {
   service_month: string;
+  /** Official Departure OTP: what the assessment scores. */
   total: number;
   ontime: number;
   pct_ontime: number | null;
+  /** Every departure the feed holds, before exclusions and the route filter. */
+  raw_total?: number;
+  raw_ontime?: number;
+  raw_pct_ontime?: number | null;
 }
 
 // POST /otp-historical-backfill - fills one month outside the daily
@@ -1885,16 +1933,28 @@ export interface AgreementStandardAssignment {
 export interface ContractorRecord { id: string; name: string; contract_start_date: string; contract_end_date: string | null; is_active: boolean }
 export interface AssessmentPeriod { id: string; contractor_id: string; contractor_name: string; service_month: string; status: AssessmentPeriodStatus; input_revision: number; computed_revision: number | null; proposed_total: number; final_total: number | null; supersedes_period_id?: string | null }
 export interface PeriodKpiAssessment { id: string; period_id: string; standard_id: string; code: string; name: string; standard_type: string; priority: string; metric_display: string; /** "412,300 miles ÷ 31 road calls": how a figure made from parts was made (migration 115); null or absent otherwise. */ metric_working?: string | null; target_display?: string; variance_pct?: number | null; tier_label: AssessmentTierLabel; assessment_outcome?: AssessmentTierLabel | "not_assessable" | null; occurrence_count: number; base_amount?: number; relief_amount?: number; escalation_multiplier?: number; proposed_amount: number; final_amount: number | null; manager_action: ManagerAssessmentAction; manager_reason: string | null; recommended_action?: Exclude<ManagerAssessmentAction,"pending"> | null; recommended_amount?: number | null; cap_required?: boolean; cap_reason?: string | null; consecutive_months_below?: number; data_completeness_pct: number | null }
+/**
+ * Which source observation an occurrence was raised from. One shape per
+ * source, so the console never splits the stored reference itself.
+ */
+export type OccurrenceSource =
+  | { kind: "missed_trip"; system: "gtfs" | "spare"; record_id: string; service_date: string }
+  | { kind: "fixed_route_departure"; service_date: string; block: string; run: string }
+  | { kind: "on_demand_departure"; duty_id: string };
+
 export interface ComplianceOccurrence {
   id: string; standard_id: string; standard_code: string; standard_name: string;
   contractor_id: string; contractor_name: string; service_date: string; quantity: number;
   description: string; source: string; review_status: string; attribution: string;
-  // The observation this was raised from, e.g.
-  // "MonitoredMissedTrips:gtfs:<trip>|<date>" or
-  // "FixedRouteDepartures:avail_pullout:<date>|<block>|<run>". The console
-  // shows the readable tail so a reviewer can find the row in Compliance;
-  // occurrenceSourceLabel() in the assessment module does the parsing.
+  // The machine key of the observation this was raised from. The server reads
+  // it for us: use `observation`, never this string.
   source_ref?: string | null;
+  /**
+   * The observation this occurrence was raised from, as the server parsed it
+   * (lib/occurrenceIntake owns the format). Null for a hand-entered
+   * occurrence, and on a server that predates this field.
+   */
+  observation?: OccurrenceSource | null;
   /**
    * A reviewer's figure for a penalty the contract states as a range rather
    * than a number - damage reimbursement, say. Null on a ranged band means the

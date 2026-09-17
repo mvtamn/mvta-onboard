@@ -11,7 +11,15 @@ import { parseConnectionString, sql } from "./db";
 // and superseded_by a self-referencing foreign key, and only the database
 // enforces either. The first entry for a month always worked; the second -
 // the "Change" button - answered 500 on dev on 2026-09-10.
+//
+// It also pins what a figure does to the month it belongs to. A hand-entered
+// figure is an Assessable Input: a closed month is refused and never written,
+// and a shared one takes the Material Assessment Change (ADR 0009). Only the
+// real migrations have the validation columns, the share table and the
+// Issuance Proof those rules touch.
 const connectionString = process.env.DECISION_MATRIX_TEST_SQL_CONNECTION_STRING;
+
+const MIGRATIONS = ["030-contractor-performance-assessment", "032b-governed-performance-assessment", "065-assessment-causality", "102-agreement-scoped-standards", "103-period-resolver-key", "104-measurement-source-kinds", "105-reference-values", "107-penalty-scaling", "108-team-and-owner-lists", "109-window-modes-and-staffing-split", "110-standard-category", "111-issuance-proof", "112a-period-rules-lock", "112b-share-binds-reviewed-items", "113-owner-principal", "114-cap-withdrawn"];
 
 const CONTRACTOR = "c0000000-0000-4000-8000-000000000002";
 const DATABASE = "mvta_manual_metric_contract";
@@ -46,19 +54,46 @@ async function rows(pool: sql.ConnectionPool, standardId: string): Promise<Row[]
 }
 const lower = (value: string | null) => value?.toLowerCase() ?? null;
 
-async function write(pool: sql.ConnectionPool, standardId: string, figure: { metricValue: number; numerator?: number; denominator?: number; sourceNote: string }) {
+type Figure = { metricValue: number; numerator?: number; denominator?: number; sourceNote: string };
+
+async function save(pool: sql.ConnectionPool, standardId: string, month: string, figure: Figure) {
   const tx = new sql.Transaction(pool); await tx.begin();
   try {
-    const written = await writeManualMetric(tx, { standardId, contractorId: CONTRACTOR, serviceMonth: "202608", enteredBy: "contract-test", ...figure });
+    const outcome = await writeManualMetric(tx, { standardId, contractorId: CONTRACTOR, serviceMonth: month, enteredBy: "contract-test", ...figure });
+    if (!outcome.ok) { await tx.rollback(); return outcome; }
     await tx.commit();
-    return written;
+    return outcome;
   } catch (e) { try { await tx.rollback(); } catch { /* aborted */ } throw e; }
+}
+
+// The superseding subtests use 202608, which no period was ever opened for.
+async function write(pool: sql.ConnectionPool, standardId: string, figure: Figure) {
+  const outcome = await save(pool, standardId, "202608", figure);
+  assert.ok(outcome.ok, "the figure was refused");
+  return outcome.written;
+}
+
+async function period(pool: sql.ConnectionPool, month: string, status: string) {
+  await pool.request().query(`INSERT AssessmentPeriods(contractor_id,service_month,status,input_revision,validation_shared_at)
+    VALUES('${CONTRACTOR}','${month}','${status}',0,${status === "in_validation" ? "SYSUTCDATETIME()" : "NULL"})`);
+}
+
+async function periodState(pool: sql.ConnectionPool, month: string) {
+  return (await pool.request().query<{ status: string; input_revision: number; validation_shared_at: Date | null }>(
+    `SELECT status,input_revision,validation_shared_at FROM AssessmentPeriods WHERE contractor_id='${CONTRACTOR}' AND service_month='${month}'`)).recordset[0];
+}
+
+async function liveFigures(pool: sql.ConnectionPool, month: string): Promise<number> {
+  return (await pool.request().query<{ n: number }>(
+    `SELECT COUNT(*) n FROM ManualMetricEntries WHERE contractor_id='${CONTRACTOR}' AND service_month='${month}'`)).recordset[0].n;
 }
 
 test("changing a hand-entered figure against real SQL", { skip: !connectionString && "DECISION_MATRIX_TEST_SQL_CONNECTION_STRING not set" }, async t => {
   const pool = await ownDatabase(connectionString!);
   try {
-    for (const b of batches(readFileSync(join(process.cwd(), "sql", "migration-030-contractor-performance-assessment.sql"), "utf8"))) await pool.request().batch(b);
+    for (const m of MIGRATIONS) {
+      for (const b of batches(readFileSync(join(process.cwd(), "sql", `migration-${m}.sql`), "utf8"))) await pool.request().batch(b);
+    }
     await pool.request().batch(`INSERT Contractors(id,name,contract_start_date,contract_end_date,is_active,updated_by) VALUES('${CONTRACTOR}','Transit Operations','20260101','20261231',1,'contract-test');`);
     const standardId = (await pool.request().query<{ id: string }>(`SELECT id FROM ContractorPerformanceStandards WHERE code='AVG_MILES_ROAD_CALLS'`)).recordset[0].id;
 
@@ -92,6 +127,41 @@ test("changing a hand-entered figure against real SQL", { skip: !connectionStrin
       assert.equal(lower(third.supersededId), live.id);
       const after = await rows(pool, standardId);
       assert.deepEqual(after.filter(r => r.superseded_by === null).map(r => r.id), [lower(third.id)]);
+    });
+
+    await t.test("a drafting month is bumped, and a reviewed one goes stale", async () => {
+      await period(pool, "202605", "in_review");
+      assert.ok((await save(pool, standardId, "202605", { metricValue: 11000, sourceNote: "M5 road call report" })).ok);
+      assert.deepEqual(await periodState(pool, "202605").then(p => [p.status, p.input_revision]), ["stale", 1]);
+    });
+
+    await t.test("an issued month is refused: nothing written, nothing bumped", async () => {
+      await period(pool, "202604", "issued");
+      const outcome = await save(pool, standardId, "202604", { metricValue: 9000, sourceNote: "M5 road call report" });
+      assert.equal(outcome.ok ? "ok" : outcome.refusal.code, "period_closed");
+      assert.equal(await liveFigures(pool, "202604"), 0, "the figure was not stored");
+      assert.deepEqual(await periodState(pool, "202604").then(p => [p.status, p.input_revision]), ["issued", 0]);
+    });
+
+    await t.test("a shared month takes the material change: the share is withdrawn and the proof voided", async () => {
+      await period(pool, "202606", "in_validation");
+      const periodId = (await pool.request().query<{ id: string }>(`SELECT id FROM AssessmentPeriods WHERE contractor_id='${CONTRACTOR}' AND service_month='202606'`)).recordset[0].id;
+      // A Shared Validation Draft, and the live Issuance Proof rendered from it.
+      await pool.request().batch(`
+        DECLARE @report UNIQUEIDENTIFIER=NEWID();
+        INSERT ComplianceReports(id,period_id,contractor_id,service_month,issuance_type,version,blob_path,content_sha256,assessed_total,generated_by)
+          VALUES(@report,'${periodId}','${CONTRACTOR}','202606','final',1,'proofs/202606-v1.html',REPLICATE('a',64),0,'contract-test');
+        INSERT ValidationDraftShares(period_id,report_id,recipient,delivery_method,sender_attestation,shared_by,shared_at,validation_ends_on)
+          VALUES('${periodId}',@report,'ops@example.com','email','Sent to the contractor','contract-test',SYSUTCDATETIME(),'2026-07-15');`);
+
+      assert.ok((await save(pool, standardId, "202606", { metricValue: 10500, sourceNote: "M5 road call report" })).ok);
+
+      const shared = await periodState(pool, "202606");
+      assert.deepEqual([shared.status, shared.input_revision, shared.validation_shared_at], ["stale", 1, null], "the month goes back through recompute and re-share");
+      const live = (await pool.request().query<{ shares: number; proofs: number }>(`
+        SELECT (SELECT COUNT(*) FROM ValidationDraftShares WHERE period_id='${periodId}' AND superseded_at IS NULL) shares,
+               (SELECT COUNT(*) FROM ComplianceReports WHERE period_id='${periodId}' AND voided_at IS NULL) proofs`)).recordset[0];
+      assert.deepEqual([live.shares, live.proofs], [0, 0], "the share is withdrawn and the proof voided, as for any other change to a shared month");
     });
   } finally {
     await pool.close();

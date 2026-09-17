@@ -19,12 +19,12 @@
 // excusable delay, or MVTA-directed - so one sitting settles both, instead of
 // the old path where the candidate poll raised an `undetermined` row minutes
 // later and someone re-reviewed it in a different module. See
-// lib/assessment/occurrenceIntake.ts for why the link never fails the review.
+// lib/occurrenceIntake (REVIEW_HANDOFF_EXPLANATIONS) for why the link never fails the review.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
 import { requireRole, PUBLISH_ROLES } from "../lib/auth";
 import { validateMissedTripValidation } from "../lib/validation";
-import type { OccurrenceAttribution } from "../lib/assessment/occurrenceIntake";
+import type { OccurrenceAttribution } from "../lib/occurrenceIntake";
 import { actOnMissedTripCase, handOffExplanation, type CaseAct, type StoredReviewOutcome } from "../lib/missedTripCase";
 
 app.http("missedTripsValidate", {

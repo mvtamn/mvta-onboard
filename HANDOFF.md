@@ -615,8 +615,18 @@ the history of how it got here; its blocker 1 (zones) was resolved in 1.5.236.
 2. **Confirm deliveries moved** (that section's step 6).
 3. **Merge this PR after 10pm Central**, when deliveries fall to about 100-180
    an hour. It is a parameters change, so it runs an infra deploy that restarts
-   the REST app. `spareWebhookOnRestApi: false` (step 7 there) can ride in the
-   same deploy once step 2 holds.
+   the REST app. It also carries `spareWebhookOnRestApi: false`, step 7 of that
+   cutover, retiring the now-idle receiver on the REST app.
+
+   Steps 1 and 2 are **done**: Spare repointed at 17:54 UTC on 2026-09-17.
+   Deliveries were refused with 401 for about two hours because the receiver's
+   identity had no role assignments, so its `SPARE_WEBHOOK_AUTH_SECRET` Key
+   Vault reference resolved to the literal `@Microsoft.KeyVault(...)` string -
+   step 2 of that cutover had never been carried out. After the Key Vault
+   Secrets User grant (19:37 UTC) and a restart (20:34 UTC) every delivery was
+   accepted. Its `alwaysOn` was also off and was turned on by hand; PR #293 is
+   the durable fix. The two storage data-plane grants are still outstanding,
+   and the app runs without them.
 4. **At the next hour**, `onDemandSpareReconcile` records the first
    `spare_on_demand_reconciliation` success; the On-Demand KPI trust state and
    Service Risk & Quality should move off unavailable / Not connected.

@@ -24,6 +24,9 @@ param decisionMatrixLibrarySiteId string = ''
 @description('Graph drive id of that library. Both this and the site id must be set for browsing to be configured.')
 param decisionMatrixLibraryDriveId string = ''
 
+@description('Folder inside that library whose documents are reported when no Procedure references them, relative to the library root (e.g. _SOPs). "/" walks the whole library. Empty leaves the report saying no SOP folder is configured.')
+param decisionMatrixSopFolder string = ''
+
 @description('Application (client) id of the dedicated SharePoint document-reading registration. Empty falls back to the API application, which only dev has granted. Its secret is read from Key Vault secret decision-matrix-health-client-secret and never appears here.')
 param decisionMatrixHealthClientId string = ''
 
@@ -142,6 +145,7 @@ module restApiFunction 'modules/functionapp.bicep' = {
     aadClientId: aadClientId
     decisionMatrixLibrarySiteId: decisionMatrixLibrarySiteId
     decisionMatrixLibraryDriveId: decisionMatrixLibraryDriveId
+    decisionMatrixSopFolder: decisionMatrixSopFolder
     decisionMatrixHealthClientId: decisionMatrixHealthClientId
     frontDoorId: frontDoorId
     allowedCorsOrigins: allowedCorsOrigins
