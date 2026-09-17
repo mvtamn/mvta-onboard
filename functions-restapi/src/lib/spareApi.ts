@@ -170,19 +170,23 @@ export function positiveEnvInteger(name: string, fallback: number, maximum: numb
   return Number.isInteger(parsed) && parsed > 0 ? Math.min(parsed, maximum) : fallback;
 }
 
-// Every bounded read of a Spare collection goes through here: an update window,
-// an explicit sort direction, and a row cap that fails loudly.
+// Every paged read of a Spare collection goes through here: a filter, an
+// explicit sort direction, a page size, and a row cap that fails loudly.
 //
-// The window is the part that matters. An unbounded read of /v1/requests pages
-// the whole history of the service, so the row cap is reached by records from
-// years ago and the run dies before it ever sees today - and with no
-// orderDirection, which end of the history a page comes from is Spare's choice,
-// not ours. Both callers read "what changed since we last looked", which is a
-// window, so neither has any use for an unbounded read.
-export async function fetchSpareUpdatedWindow<T>(
-  path: "/v1/requests",
-  fromSeconds: number,
-  toSeconds: number,
+// The filter is the part that matters for requests. An unbounded read of
+// /v1/requests pages the whole history of the service, so the row cap is
+// reached by records from years ago and the run dies before it ever sees today
+// - and with no orderDirection, which end of the history a page comes from is
+// Spare's choice, not ours. Requests are read by update window; slots by duty.
+//
+// The loop used to exist three times: here for requests, copied into the
+// missed-trip ingest for pickup slots (with the skip ceiling written as a bare
+// 50_000), and not at all in the departures poll, which read one page of start
+// slots and silently dropped anything past it. A read that would be truncated
+// now throws instead, wherever it comes from.
+export async function fetchSpareCollection<T>(
+  path: "/v1/requests" | "/v1/slots",
+  filter: Record<string, string>,
   pageSize: number,
   maxRows: number,
   fetchPage: SparePageFetcher = fetchSparePage,
@@ -192,8 +196,7 @@ export async function fetchSpareUpdatedWindow<T>(
   let reportedTotal = 0;
   while (rows.length < maxRows) {
     const query = new URLSearchParams({
-      fromUpdatedAt: String(fromSeconds),
-      toUpdatedAt: String(toSeconds),
+      ...filter,
       orderBy: "updatedAt",
       orderDirection: "ASC",
       limit: String(Math.min(pageSize, maxRows - rows.length)),
@@ -207,9 +210,27 @@ export async function fetchSpareUpdatedWindow<T>(
     if (skip > MAX_SKIP) throw new Error(`Spare ${path} pagination exceeded the documented skip limit`);
   }
   if (rows.length >= maxRows && reportedTotal > rows.length) {
-    throw new Error(`Spare ${path} update window exceeded the ${maxRows}-row safety cap`);
+    throw new Error(`Spare ${path} read exceeded the ${maxRows}-row safety cap`);
   }
   return rows;
+}
+
+// The requests updated inside [fromSeconds, toSeconds]: what changed since a
+// reader last looked.
+export function fetchSpareUpdatedWindow<T>(
+  fromSeconds: number,
+  toSeconds: number,
+  pageSize: number,
+  maxRows: number,
+  fetchPage: SparePageFetcher = fetchSparePage,
+): Promise<T[]> {
+  return fetchSpareCollection<T>(
+    "/v1/requests",
+    { fromUpdatedAt: String(fromSeconds), toUpdatedAt: String(toSeconds) },
+    pageSize,
+    maxRows,
+    fetchPage,
+  );
 }
 
 async function fetchSpareResource<T>(

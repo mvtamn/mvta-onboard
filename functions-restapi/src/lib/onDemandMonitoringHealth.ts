@@ -54,7 +54,9 @@ export type MonitorWriteDecision =
 // one either.
 //
 // The same three-way answer as onDemandActivation, with the record's service
-// added, so every writer asks one question and gets one contract. A record
+// added. Its one caller is admitOnDemandRequest (onDemandRequestSource.ts),
+// which every writer goes through, and whose admitted type is the only thing
+// the monitor store accepts. A record
 // with no service id is never admitted: an unattributable request cannot be
 // shown to belong to MVTA Connect, and guessing in the permissive direction is
 // how the table got mixed in the first place.

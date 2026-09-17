@@ -1,7 +1,7 @@
 import { resolveOperationalZone, type OperationalZoneSnapshot } from "./onDemandOperationalZones";
 import { getPool, sql } from "./db";
-import { admitsMonitorWrite } from "./onDemandMonitoringHealth";
-import type { NormalizedOnDemandRequest, SpareDutyMatchingUpdate, SpareDutyVehicleUpdate } from "./onDemandSpareMonitor";
+import type { SpareDutyMatchingUpdate, SpareDutyVehicleUpdate } from "./onDemandSpareMonitor";
+import type { MonitoredOnDemandRequest } from "./onDemandRequestSource";
 import { CachedValue } from "./spareWebhookIntake";
 
 type ActiveZoneRow = {
@@ -47,21 +47,27 @@ export function loadActiveOperationalZonesCached(): Promise<ActiveOperationalZon
   return activeZonesCache.get();
 }
 
+// applied: the monitor row changed. unchanged: the source record was no newer
+// than the row already held, or the request had already left the active state.
+// no_active_zones: nothing was written because no zone version is active.
+export type OnDemandStoreOutcome = "applied" | "unchanged" | "no_active_zones";
+
+// Accepts only a request onDemandRequestSource has admitted to the monitored
+// scope, so scope needs no re-check here.
+//
+// A missing active zone version is reported, not thrown. It is a configuration
+// gap every caller meets on every record, and what it means differs by caller:
+// the authoritative reconciliation records it as a feed failure, while the
+// webhook and the missed-trip ingest skip the monitor write and carry on - a
+// throw from here once armed the webhook intake gate's cool-down and shed
+// unrelated deliveries (#181), and took down the missed-trip ingest that does
+// not need zones at all (2026-09-03).
 export async function storeOnDemandSpareRequest(
-  input: NormalizedOnDemandRequest,
+  input: MonitoredOnDemandRequest,
   activeZones: ActiveOperationalZones,
   now = new Date(),
-): Promise<boolean> {
-  if (!activeZones.snapshot.zones.length) {
-    throw new Error("No active on-demand operational zones are available");
-  }
-  // The scope backstop, not the scope check. Callers decide before they spend
-  // anything - a Spare read, a gate slot - and log why; this is here so that a
-  // writer added later cannot put a foreign service into monitor state by
-  // forgetting to ask. It returns "not applied" rather than throwing on
-  // purpose: a throw here would arm the webhook intake gate's cool-down and
-  // shed unrelated deliveries, which is the cascade #181 fixed.
-  if (!admitsMonitorWrite(input.serviceId).admit) return false;
+): Promise<OnDemandStoreOutcome> {
+  if (!activeZones.snapshot.zones.length) return "no_active_zones";
   const resolved = resolveOperationalZone(activeZones.snapshot, input.pickupCoordinate);
   const zoneId = resolved.kind === "assigned" ? resolved.zone.externalLocationId : "Unzoned";
   const zoneDbId = resolved.kind === "assigned" ? activeZones.databaseIds.get(zoneId) ?? null : null;
@@ -138,7 +144,7 @@ export async function storeOnDemandSpareRequest(
     COMMIT;
     SELECT CAST(CASE WHEN EXISTS (SELECT 1 FROM @changes) THEN 1 ELSE 0 END AS bit) AS applied;
   `);
-  return result.recordset[0]?.applied ?? false;
+  return result.recordset[0]?.applied ? "applied" : "unchanged";
 }
 
 export async function storeSpareDutyVehicle(update: SpareDutyVehicleUpdate): Promise<void> {

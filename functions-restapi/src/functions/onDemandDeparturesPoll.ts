@@ -18,10 +18,13 @@ import { getPool, sql } from "../lib/db";
 import { runFeedIngestion } from "../lib/feedRun";
 import { agencyServiceDate, serviceDateAndGtfsSecondsToUtc } from "../lib/missedTripTime";
 import { driverLabelFrom, DriverLabelResolver, driverRecordShape, labelsToBackfill, onDemandDeparturesEnabled, resolveOnDemandDeparture, VehicleLabelResolver, type DriverLabel, type ResolvedOnDemandDeparture, type StoredDepartureLabels } from "../lib/onDemandDepartures";
-import { fetchSpareDriver, fetchSpareDuty, fetchSparePage, fetchSpareVehicle, type SpareDutyRecord, type SpareSlotRecord } from "../lib/spareApi";
+import { fetchSpareCollection, fetchSpareDriver, fetchSpareDuty, fetchSpareVehicle, type SpareDutyRecord, type SpareSlotRecord } from "../lib/spareApi";
 
 const DUTY_CONCURRENCY = 8;
-// A duty has one start-location slot; a handful allows for re-planning.
+// A duty has one start-location slot; a handful allows for re-planning. More
+// than this is not a duty this poll understands, so the read fails for that
+// duty (counted with the duties that could not be read) rather than measuring
+// a departure from a truncated list.
 const START_SLOT_LIMIT = 20;
 // Today's and yesterday's duties, plus any older row still awaiting an
 // actual. Well above a day of MVTA Connect duties; the cap is a safety stop
@@ -73,18 +76,12 @@ async function labelCoverage(pool: sql.ConnectionPool, withVehicleIdentifier: bo
 const LABEL_BACKFILL_ROWS = 300;
 const LABEL_BACKFILL_DAYS = 60;
 
-async function fetchStartLocationSlots(dutyId: string): Promise<SpareSlotRecord[]> {
-  const page = await fetchSparePage<SpareSlotRecord>("/v1/slots", new URLSearchParams({
-    dutyId,
-    type: "startLocation",
-    // updatedAt is the one sort key this repo has seen Spare honour; the
-    // resolver orders by scheduled time itself.
-    orderBy: "updatedAt",
-    orderDirection: "ASC",
-    limit: String(START_SLOT_LIMIT),
-    skip: "0",
-  }));
-  return page.data;
+function fetchStartLocationSlots(dutyId: string): Promise<SpareSlotRecord[]> {
+  // updatedAt is the one sort key this repo has seen Spare honour; the
+  // resolver orders by scheduled time itself.
+  return fetchSpareCollection<SpareSlotRecord>(
+    "/v1/slots", { dutyId, type: "startLocation" }, START_SLOT_LIMIT, START_SLOT_LIMIT,
+  );
 }
 
 export async function fetchDutyDeparture(

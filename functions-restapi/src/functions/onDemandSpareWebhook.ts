@@ -9,7 +9,8 @@
 // a pool this receiver once drained for every other function in the app.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { hasSpareWebhookAuthorization, spareWebhookEventType, spareWebhookSchema } from "../lib/spareWebhookPolicy";
-import { normalizeOnDemandSpareRequest, normalizeSpareDutyMatchingStatus, normalizeSpareEtaUpdates, normalizeSpareVehicleLocation } from "../lib/onDemandSpareMonitor";
+import { normalizeSpareDutyMatchingStatus, normalizeSpareEtaUpdates, normalizeSpareVehicleLocation } from "../lib/onDemandSpareMonitor";
+import { admitOnDemandRequest, rereadOnDemandRequest } from "../lib/onDemandRequestSource";
 import {
   type ActiveOperationalZones,
   loadActiveOperationalZonesCached,
@@ -17,8 +18,8 @@ import {
   storeSpareDutyMatching,
   storeSpareDutyVehicle,
 } from "../lib/onDemandSpareMonitorStore";
-import { fetchSpareRequest, type SpareRequestRecord } from "../lib/spareApi";
-import { admitsMonitorWrite, onDemandActivation } from "../lib/onDemandMonitoringHealth";
+import type { SpareRequestRecord } from "../lib/spareApi";
+import { onDemandActivation } from "../lib/onDemandMonitoringHealth";
 import { ContractSchemaLog, IntakeGate, PeriodicLog, VehicleWriteCoalescer } from "../lib/spareWebhookIntake";
 
 // Four of the pool's ten connections at most; the pollers behind the KPI
@@ -98,19 +99,18 @@ app.http("onDemandSpareWebhook", {
     }
 
     if (eventType === "requestStatus") {
-      const normalized = normalizeOnDemandSpareRequest((data ?? {}) as SpareRequestRecord);
-      if (!normalized) return { status: 202, jsonBody: { status: "accepted" } };
       // Scope decided from the delivery itself, before a gate slot or a zone
       // load is spent on a request for a service the monitor is not for.
-      const decision = admitsMonitorWrite(normalized.serviceId, activation);
-      if (!decision.admit) {
-        report(context, decision.reason, eventType);
+      const admission = admitOnDemandRequest((data ?? {}) as SpareRequestRecord, activation);
+      if (!admission.admit) {
+        if (admission.reason === "unusable") return { status: 202, jsonBody: { status: "accepted" } };
+        report(context, admission.reason, eventType);
         return { status: 202, jsonBody: { status: "accepted", stored: false } };
       }
       return respond(await gate.run(async () => {
         const activeZones = await loadActiveOperationalZonesCached();
         if (!hasActiveZones(activeZones, context)) return;
-        await storeOnDemandSpareRequest(normalized, activeZones);
+        await storeOnDemandSpareRequest(admission.request, activeZones);
       }), context, eventType);
     }
 
@@ -126,32 +126,30 @@ app.http("onDemandSpareWebhook", {
       // nowhere to go, and each one costs a Spare API call.
       if (!hasActiveZones(activeZones, context)) return;
       for (const update of updates) {
-        const record = await fetchSpareRequest<SpareRequestRecord>(update.requestId);
-        const normalized = normalizeOnDemandSpareRequest(record);
-        if (!normalized) continue;
         // An ETA payload carries no service attribution, so unlike
         // requestStatus this scope check can only happen after the
         // authoritative re-read. The read is spent either way; the write is
         // not.
-        const decision = admitsMonitorWrite(normalized.serviceId, activation);
-        if (!decision.admit) {
-          report(context, decision.reason, eventType);
+        const admission = await rereadOnDemandRequest(update.requestId, activation);
+        if (!admission.admit) {
+          if (admission.reason !== "unusable") report(context, admission.reason, eventType);
           continue;
         }
-        await storeOnDemandSpareRequest(normalized, activeZones);
+        await storeOnDemandSpareRequest(admission.request, activeZones);
       }
     }), context, eventType);
   },
 });
 
 // A missing active zone version is a configuration gap, not a transient
-// fault: the next delivery will meet it too. storeOnDemandSpareRequest throws
-// on it, which the gate could only read as a failure, and every failure armed
+// fault: the next delivery will meet it too. storeOnDemandSpareRequest used to
+// throw on it, which the gate could only read as a failure, and every failure armed
 // the fifteen-second cool-down - which then refused vehicleLocation and
 // dutyMatchingStatus deliveries that need no zones at all. On dev that shed
 // roughly two of every five deliveries all day while the console still read
-// Not connected. Skip the monitor write and accept the delivery instead;
-// spareMissedTripsIngest already guards its own run the same way.
+// Not connected. The store now reports the gap instead of throwing; this check
+// stays so the gap is logged, and so the ETA path does not spend a Spare read
+// per update on a write that cannot happen.
 function hasActiveZones(zones: ActiveOperationalZones, context: InvocationContext): boolean {
   if (zones.snapshot.zones.length > 0) return true;
   if (zoneGapLog.shouldReport()) {
