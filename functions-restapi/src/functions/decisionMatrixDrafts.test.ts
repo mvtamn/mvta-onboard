@@ -229,7 +229,7 @@ test("an Admin can read a Draft with ordered content and independently reported 
     request: () => ({
       input() { return this; },
       async query(statement: string) {
-        if (statement.includes("JOIN ProcedureRevisions")) return { recordset: [{ procedure_id: "draft-vehicle-collision", condition_key: "vehicle-collision", condition: "Vehicle collision", revision: 1, lifecycle_state: "Draft", concurrency_token: "0x0000000000000002" }] };
+        if (statement.includes("JOIN ProcedureRevisions")) return { recordset: [{ procedure_id: "draft-vehicle-collision", condition_key: "vehicle-collision", condition: "Vehicle collision", revision: 1, lifecycle_state: "Draft", concurrency_token: "\0\0\0\0\0\0\0\x02" }] };
         if (statement.includes("ProcedureCriteria")) return { recordset: [{ criterion_id: "00000000-0000-0000-0000-000000000002", criterion_kind: "applies", criterion_text: "First criterion" }, { criterion_id: "00000000-0000-0000-0000-000000000001", criterion_kind: "excludes", criterion_text: "Second criterion" }] };
         if (statement.includes("ProcedureImmediateActions")) return { recordset: [{ action_id: "00000000-0000-0000-0000-000000000003", action_kind: "required", instruction: "First action" }] };
         return { recordset: [{ reference_id: "00000000-0000-0000-0000-000000000004", document_type: "SOP", is_primary: true, document_code: "SOP-OCC-001", site_id: "site-1", drive_id: "drive-1", item_id: "item-1", expected_version: "3.0", expected_file_name: "SOP-OCC-001.docx", expected_mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", web_url: "https://mvtamn.sharepoint.com/sites/Operations/Shared%20Documents/SOP-OCC-001.docx", health_status: "Needs review", checked_at: null }] };

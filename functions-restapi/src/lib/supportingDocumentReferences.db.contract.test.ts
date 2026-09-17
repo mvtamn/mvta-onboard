@@ -87,6 +87,7 @@ test("a Draft save keeps a kept reference's document and health, and refuses wha
     // Choose a new primary Reference first, keep the Form with a new code, and
     // demote the SOP - a new document, a reorder and a primary move in one save.
     let body = await read(procedureId);
+    assert.match(body.concurrency_token, /^0x[0-9A-F]{16}$/i, "a Draft read returns the token a save accepts");
     const sopId = idOf(body, "item-sop");
     const formId = idOf(body, "item-form");
     const first = await save(procedureId, body.concurrency_token, [

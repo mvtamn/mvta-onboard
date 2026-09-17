@@ -341,6 +341,9 @@ export async function getDecisionMatrixProcedureDraft(request: HttpRequest, cont
     ]);
     return { status: 200, jsonBody: {
       ...record.recordset[0],
+      // The same token create, save and clone return. Returned raw, a Draft
+      // read and then saved failed its concurrency check with SQL 8114.
+      concurrency_token: concurrencyToken(record.recordset[0]?.concurrency_token),
       tags: (() => { try { const value = JSON.parse(String(record.recordset[0]?.tags_json ?? "[]")); return Array.isArray(value) ? value : []; } catch { return []; } })(),
       criteria: criteria.recordset.map((row) => ({ id: row.criterion_id, kind: row.criterion_kind, text: row.criterion_text })),
       immediate_actions: actions.recordset.map((row) => ({ id: row.action_id, kind: row.action_kind, instruction: row.instruction })),
