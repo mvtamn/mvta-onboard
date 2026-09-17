@@ -1,24 +1,12 @@
 // GET /feed-checks - staff-only, PII-free upstream feed diagnostics.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { probeAvail } from "../lib/availClient";
 import { getPool } from "../lib/db";
 import { ledgerFeedChecks, summarizeFeedResponse, type FeedCheck } from "../lib/feedCheckResponse";
 import { feedHealthTableReady } from "../lib/kpiFeedHealth";
 import { loadKpiFeedHealthRecords } from "../lib/kpiTrustStore";
 import { fetchSparePage, type SpareRequestRecord } from "../lib/spareApi";
-
-function dateMmDdYyyy(date: Date): string {
-  return `${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}-${date.getUTCFullYear()}`;
-}
-
-function chicagoDateTime(date: Date): string {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
-  }).formatToParts(date);
-  const value = (type: string) => parts.find((part) => part.type === type)?.value ?? "00";
-  return `${value("year")}-${value("month")}-${value("day")}%20${value("hour")}:${value("minute")}:${value("second")}`;
-}
 
 async function checkJson(name: string, url: string, auth?: Record<string, string>): Promise<FeedCheck> {
   try {
@@ -98,10 +86,6 @@ app.http("feedChecks", {
     yesterday.setUTCDate(yesterday.getUTCDate() - 1);
     const weekAgo = new Date(now);
     weekAgo.setUTCDate(weekAgo.getUTCDate() - 7);
-    const key = process.env.AVAIL_AVL_REPORTS_API_KEY?.trim();
-    const configured = (name: string, url: string | undefined) => url?.trim()
-      ? key ? checkJson(name, url.trim(), { "Ocp-Apim-Subscription-Key": key }) : Promise.resolve({ name, configured: false, error: "Subscription key unavailable" } satisfies FeedCheck)
-      : Promise.resolve({ name, configured: false } satisfies FeedCheck);
     const avlStart = new Date(now.getTime() - 10 * 60_000);
     const nowSeconds = Math.floor(now.getTime() / 1000);
 
@@ -111,19 +95,13 @@ app.http("feedChecks", {
       checkJson("GTFS VehiclePositions", process.env.GTFS_RT_VEHICLE_URL?.trim() ?? ""),
       checkJson("GTFS Alerts", process.env.GTFS_RT_ALERT_URL?.trim() ?? ""),
       checkStaticGtfs(process.env.GTFS_STATIC_URL),
-      configured("Avail AVL", process.env.AVAIL_AVL_REPORTS_URL?.trim()
-        ? `${process.env.AVAIL_AVL_REPORTS_URL!.trim().replace(/\/+$/, "")}/MVTA/${chicagoDateTime(avlStart)}/${chicagoDateTime(now)}`
-        : undefined),
-      configured("Avail Pullout", process.env.AVAIL_PULLOUT_URL),
-      configured("Avail OTP Monthly", process.env.AVAIL_OTP_MONTHLY_URL?.trim()
-        ? `${process.env.AVAIL_OTP_MONTHLY_URL!.trim()}/${dateMmDdYyyy(now)}/1/5/15/30/0/1/1`
-        : undefined),
-      configured("Avail OTP Daily", process.env.AVAIL_OTP_DAILY_URL?.trim()
-        ? `${process.env.AVAIL_OTP_DAILY_URL!.trim()}/${dateMmDdYyyy(yesterday)}/${dateMmDdYyyy(yesterday)}/1/5/15/30/0/1/1`
-        : undefined),
-      configured("Avail Missed Trips", process.env.AVAIL_MISSED_TRIPS_URL?.trim()
-        ? `${process.env.AVAIL_MISSED_TRIPS_URL!.trim()}/${dateMmDdYyyy(weekAgo)}/${dateMmDdYyyy(now)}/0/0`
-        : undefined),
+      // Through the adapter the polls use, so each check sends the poll's own
+      // request: same URL (including the /MVTA handling), auth and timeout.
+      probeAvail("avl", { start: avlStart, end: now }),
+      probeAvail("pullout", {}),
+      probeAvail("otp_monthly", { month: now }),
+      probeAvail("otp_daily", { start: yesterday, end: yesterday }),
+      probeAvail("missed_trips", { start: weekAgo, end: now }),
       checkSpareRequests(nowSeconds),
       ]),
       spareMissedTripPipelineChecks(),

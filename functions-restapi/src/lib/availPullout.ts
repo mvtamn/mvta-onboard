@@ -23,37 +23,6 @@ export interface AvailPulloutReport {
   VehicleLabel: string | null;
 }
 
-export interface AvailPulloutEnvelope {
-  errors: string[];
-  result: {
-    Pullout: AvailPulloutReport[];
-    results: { RefreshTime: string; Property: string }[];
-  };
-  success: boolean;
-}
-
-// The confirmed OpenAPI path is exactly /Pullout/v1/{Property}; unlike AVL
-// Reports, Pullout does not accept a date segment.
-export async function fetchPulloutReports(
-  baseUrl: string,
-  apiKey: string,
-): Promise<AvailPulloutReport[]> {
-  const url = baseUrl.replace(/\/+$/, "");
-  const res = await fetch(url, {
-    headers: { "Ocp-Apim-Subscription-Key": apiKey },
-  });
-  if (!res.ok) {
-    throw new Error(`Avail Pullout Reports request failed: ${res.status}`);
-  }
-  const payload = (await res.json()) as AvailPulloutEnvelope;
-  if (!payload.success) {
-    throw new Error(
-      `Avail Pullout Reports API returned success=false: ${payload.errors?.join(", ") || "no error detail"}`,
-    );
-  }
-  return payload.result?.Pullout ?? [];
-}
-
 export interface MappedPullout {
   service_date: string;
   block: number;

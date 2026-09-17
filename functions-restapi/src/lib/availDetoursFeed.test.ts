@@ -1,20 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { groupDetourReports, fetchDetours, type AvailDetourReport } from "./availDetoursFeed";
-
-// Stubs global.fetch for the duration of one test, restoring it afterward -
-// same convention as otpMonthlyFeed.test.ts's fetch stub.
-function withFetchStub(response: unknown, run: () => Promise<void>): Promise<void> {
-  const original = global.fetch;
-  global.fetch = (async () => ({
-    ok: true,
-    status: 200,
-    json: async () => response,
-  })) as unknown as typeof fetch;
-  return run().finally(() => {
-    global.fetch = original;
-  });
-}
+import { groupDetourReports, type AvailDetourReport } from "./availDetoursFeed";
 
 // Fixture shaped after detour-module-build-brief.md's own sample: DetourID 30
 // comes back as two rows, one per direction, sharing the same DetourID.
@@ -83,24 +69,3 @@ test("null/blank StartDate and EndDate map to null, not a malformed string", () 
   assert.strictEqual(grouped[0].start_date, null);
   assert.strictEqual(grouped[0].end_date, null);
 });
-
-test("fetchDetours returns the rows under the real (lowercase) envelope key", () =>
-  withFetchStub({ success: true, errors: [], result: { detours: [DETOUR_30_INBOUND] } }, async () => {
-    const rows = await fetchDetours("https://example.test/Detours/v1/MVTA", "key");
-    assert.strictEqual(rows.length, 1);
-    assert.strictEqual(rows[0].DetourID, 30);
-  }));
-
-test("fetchDetours throws naming the real key when the guessed key is wrong", () =>
-  withFetchStub({ success: true, errors: [], result: { Detours: [DETOUR_30_INBOUND] } }, async () => {
-    await assert.rejects(
-      () => fetchDetours("https://example.test/Detours/v1/MVTA", "key"),
-      /Detours/,
-    );
-  }));
-
-test("fetchDetours returns an empty array when result is genuinely empty", () =>
-  withFetchStub({ success: true, errors: [], result: {} }, async () => {
-    const rows = await fetchDetours("https://example.test/Detours/v1/MVTA", "key");
-    assert.deepStrictEqual(rows, []);
-  }));

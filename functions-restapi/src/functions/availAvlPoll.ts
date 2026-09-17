@@ -9,7 +9,8 @@
 // is due. The event path never creates a second Avail polling stream.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { fetchAvlReports, mapAvlReport } from "../lib/availAvl";
+import { mapAvlReport, type AvailAvlReport } from "../lib/availAvl";
+import { availConfig, fetchAvail } from "../lib/availClient";
 import { detectEventGeofenceCrossings } from "../lib/eventGeofenceDetection";
 import { detectMonitoringAreaTests } from "../lib/monitoringAreaTest";
 import { detectionWindowSeconds, shouldAcceptObservation } from "../lib/eventProcessing";
@@ -149,10 +150,9 @@ app.timer("availAvlPoll", {
   // atomically below. Azure timer CRON cannot be changed without redeploying.
   schedule: "*/15 * * * * *",
   handler: async (_timer: Timer, context: InvocationContext) => {
-    const baseUrl = process.env.AVAIL_AVL_REPORTS_URL;
-    const apiKey = process.env.AVAIL_AVL_REPORTS_API_KEY;
-    if (!baseUrl || !apiKey) {
-      context.warn("AVAIL_AVL_REPORTS_URL/AVAIL_AVL_REPORTS_API_KEY are not configured - skipping this run.");
+    const { config, missing } = availConfig("avl");
+    if (!config) {
+      context.warn(`${missing.join("/")} not configured - skipping this run.`);
       return;
     }
 
@@ -185,9 +185,9 @@ app.timer("availAvlPoll", {
     let fetchFailed = false;
     if (sharedDue) {
       await runFeedIngestion("avail_avl", context, async () => {
-        let reports: Awaited<ReturnType<typeof fetchAvlReports>>;
+        let reports: AvailAvlReport[];
         try {
-          reports = await fetchAvlReports(baseUrl, apiKey, twoMinutesAgo, now);
+          reports = await fetchAvail("avl", { start: twoMinutesAgo, end: now }, config);
           await safeHealth(pool, "shared_avl_ingestion", "healthy", `Fetched ${reports.length} reports.`);
         } catch (err) {
           // Recorded rather than thrown: this runs every fifteen seconds, and a
