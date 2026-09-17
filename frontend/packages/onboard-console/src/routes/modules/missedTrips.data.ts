@@ -1,7 +1,7 @@
 import type { AssessmentPeriodStatus, OccurrenceAttribution, OccurrenceReviewStatus } from "@mvta/shared";
 
 export type MissedTripAlertStatus = "watching" | "escalated" | "resolved";
-export type MissedTripValidationStatus = "unreviewed" | "confirmed" | "false_positive";
+export type MissedTripValidationStatus = "unreviewed" | "confirmed" | "false_positive" | "timely_service" | "partial_service_failure" | "indeterminate";
 
 // Which of the two independent detection signals fired (gtfsMissedTripsPoll.ts) -
 // added by migration-023 (backend column: detection_type). null means a row

@@ -20,8 +20,8 @@ import { loadCases, writeDecision } from "./store";
 //   (queue, totals, monthly summary, Dispatch Log, compliance candidates) uses
 //   the SQL; the review endpoint uses the TypeScript.
 //
-// The table is built by hand to the shape migrations 011, 023, 026, 029, 087
-// and 121 leave it in (as migration106.db.contract.test.ts does), without the
+// The table is built by hand to the shape migrations 011, 023, 026, 029, 087,
+// 121 and 125 leave it in (migration125.db.contract.test.ts applies 125 itself) (as migration106.db.contract.test.ts does), without the
 // SuggestedAlerts foreign key. See subscriberResend.db.contract.test.ts on why
 // the contract job runs one file at a time.
 const connectionString = process.env.DECISION_MATRIX_TEST_SQL_CONNECTION_STRING;
@@ -38,14 +38,14 @@ CREATE TABLE dbo.MonitoredMissedTrips (
   status NVARCHAR(20) NOT NULL DEFAULT 'escalated', detected_late_arrival_at DATETIME2 NULL,
   suggested_alert_id UNIQUEIDENTIFIER NULL,
   first_seen_watching_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(), last_checked_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
-  validation_status NVARCHAR(20) NOT NULL DEFAULT 'unreviewed', validated_by NVARCHAR(200) NULL, validated_at DATETIME2 NULL,
+  validation_status NVARCHAR(30) NOT NULL DEFAULT 'unreviewed', validated_by NVARCHAR(200) NULL, validated_at DATETIME2 NULL,
   notes NVARCHAR(1000) NULL, detection_type NVARCHAR(30) NULL, reason_code NVARCHAR(30) NULL,
   detector_version NVARCHAR(30) NULL, data_quality_status NVARCHAR(30) NOT NULL DEFAULT 'legacy_unverified',
   source_system NVARCHAR(20) NOT NULL DEFAULT 'gtfs', source_record_id NVARCHAR(100) NULL, evidence_json NVARCHAR(MAX) NULL,
-  undecided_reason NVARCHAR(60) NULL,
+  undecided_reason NVARCHAR(60) NULL, expected_window_end_at DATETIME2 NULL,
   CONSTRAINT PK_MonitoredMissedTrips PRIMARY KEY (trip_id, service_date),
   CONSTRAINT CK_MonitoredMissedTrips_Status CHECK (status IN ('watching', 'escalated', 'resolved')),
-  CONSTRAINT CK_MonitoredMissedTrips_ValidationStatus CHECK (validation_status IN ('unreviewed', 'confirmed', 'false_positive')),
+  CONSTRAINT CK_MonitoredMissedTrips_ValidationStatus CHECK (validation_status IN ('unreviewed', 'confirmed', 'timely_service', 'partial_service_failure', 'indeterminate', 'false_positive')),
   CONSTRAINT CK_MonitoredMissedTrips_DataQuality CHECK (data_quality_status IN ('legacy_unverified', 'source_verified', 'experimental', 'unknown_data_gap')),
   CONSTRAINT CK_MonitoredMissedTrips_SourceSystem CHECK (source_system IN ('gtfs', 'spare')),
   CONSTRAINT CK_MonitoredMissedTrips_DetectionType CHECK (detection_type IS NULL OR detection_type IN
@@ -54,11 +54,12 @@ CREATE TABLE dbo.MonitoredMissedTrips (
 CREATE TABLE dbo.MissedTripReviewHistory (
   review_id BIGINT IDENTITY(1,1) PRIMARY KEY,
   trip_id NVARCHAR(100) NOT NULL, service_date NVARCHAR(20) NOT NULL,
-  previous_validation_status NVARCHAR(20) NOT NULL, validation_status NVARCHAR(20) NOT NULL,
+  previous_validation_status NVARCHAR(30) NOT NULL, validation_status NVARCHAR(30) NOT NULL,
   reason_code NVARCHAR(30) NOT NULL, notes NVARCHAR(1000) NULL, reviewed_by NVARCHAR(200) NOT NULL,
   reviewed_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+  review_kind NVARCHAR(20) NULL, review_reason NVARCHAR(1000) NULL,
   CONSTRAINT FK_MissedTripReviewHistory_Trip FOREIGN KEY (trip_id, service_date) REFERENCES dbo.MonitoredMissedTrips(trip_id, service_date),
-  CONSTRAINT CK_MissedTripReviewHistory_Status CHECK (validation_status IN ('confirmed', 'false_positive'))
+  CONSTRAINT CK_MissedTripReviewHistory_Status CHECK (validation_status IN ('confirmed', 'timely_service', 'partial_service_failure', 'indeterminate', 'false_positive'))
 );
 `;
 
@@ -176,6 +177,38 @@ test("Missed-trip cases against SQL Server", skip, async (t) => {
       assert.ok(!missing.ok && missing.refusal.code === "not_found");
     });
 
+    await t.test("a second review supersedes with a reason, a legacy record needs a rereview, and confirming waits for evidence", async () => {
+      const key = { tripId: "SUP", serviceDate: DAY };
+      await observeMissedTrips(pool, [gtfs("SUP", { kind: "cancellation" })], T0);
+      const fields = { reasonCode: "OPERATOR", notes: null, attribution: "undetermined" as const };
+      assert.ok((await actOnMissedTripCase(pool, key, { act: "record_review", outcome: "confirmed", ...fields }, reviewer)).ok);
+      const again = await actOnMissedTripCase(pool, key, { act: "record_review", outcome: "timely_service", ...fields }, reviewer);
+      assert.ok(!again.ok && again.refusal.code === "already_reviewed");
+      const superseded = await actOnMissedTripCase(pool, key, { act: "supersede_review", outcome: "timely_service", reason: "AVL shows it left on time", ...fields }, reviewer);
+      assert.ok(superseded.ok && superseded.classification.review_outcome === "timely_service");
+      const history = (await pool.request().query<{ previous_validation_status: string; validation_status: string; review_kind: string; review_reason: string | null }>(
+        "SELECT previous_validation_status, validation_status, review_kind, review_reason FROM dbo.MissedTripReviewHistory WHERE trip_id = 'SUP' ORDER BY review_id",
+      )).recordset;
+      assert.deepEqual(history, [
+        { previous_validation_status: "unreviewed", validation_status: "confirmed", review_kind: "review", review_reason: null },
+        { previous_validation_status: "confirmed", validation_status: "timely_service", review_kind: "supersede", review_reason: "AVL shows it left on time" },
+      ]);
+
+      await pool.request().query(`INSERT INTO dbo.MonitoredMissedTrips (trip_id, service_date, route_id, scheduled_departure_at, grace_deadline_at, status, detection_type, data_quality_status)
+        VALUES ('LEG2', '${DAY}', '460', '2026-09-17T14:00:00', '2026-09-17T14:30:00', 'escalated', 'silent_no_show', 'legacy_unverified')`);
+      const legacyKey = { tripId: "LEG2", serviceDate: DAY };
+      const plain = await actOnMissedTripCase(pool, legacyKey, { act: "record_review", outcome: "indeterminate", ...fields }, reviewer);
+      assert.ok(!plain.ok && plain.refusal.code === "legacy_record");
+      const rereviewed = await actOnMissedTripCase(pool, legacyKey, { act: "rereview_legacy", outcome: "indeterminate", reason: "Rechecked against the radio log", ...fields }, reviewer);
+      assert.ok(rereviewed.ok && rereviewed.classification.lifecycle === "reviewed" && !rereviewed.classification.legacy);
+
+      await pool.request().query(`INSERT INTO dbo.MonitoredMissedTrips (trip_id, service_date, route_id, scheduled_departure_at, grace_deadline_at, status, detection_type, data_quality_status, source_system, detector_version, expected_window_end_at)
+        VALUES ('WAIT', '${DAY}', '460', '2026-09-17T14:00:00', '2026-09-17T14:30:00', 'escalated', 'silent_no_show', 'experimental', 'gtfs', 'gtfs-silent-v4', DATEADD(DAY, 1, SYSUTCDATETIME()))`);
+      const early = await actOnMissedTripCase(pool, { tripId: "WAIT", serviceDate: DAY }, { act: "record_review", outcome: "confirmed", ...fields }, reviewer);
+      assert.ok(!early.ok && early.refusal.code === "awaiting_evidence");
+      assert.equal((await read(pool, "WAIT"))?.validation_status, "unreviewed");
+    });
+
     await t.test("the SQL classification agrees with the TypeScript classification on every row", async () => {
       // One of each shape the rules distinguish, on top of what the passes above left.
       await pool.request().query(`INSERT INTO dbo.MonitoredMissedTrips
@@ -185,17 +218,31 @@ test("Missed-trip cases against SQL Server", skip, async (t) => {
         ('K2', '${DAY}', '460', '2026-09-17T14:00:00', '2026-09-17T14:30:00', 'escalated', 'unreviewed', 'silent_no_show', 'experimental', 'gtfs', NULL, '2026-09-17T14:50:00'),
         ('K3', '${DAY}', '460', '2026-09-17T14:00:00', '2026-09-17T14:30:00', 'watching', 'unreviewed', 'silent_no_show', 'experimental', 'gtfs', NULL, NULL),
         ('K4', '${DAY}', '460', '2026-09-17T14:00:00', '2026-09-17T14:30:00', 'resolved', 'false_positive', 'silent_no_show', 'experimental', 'gtfs', NULL, NULL),
-        ('K5', '${DAY}', '460', '2026-09-17T14:00:00', '2026-09-17T14:30:00', 'escalated', 'confirmed', 'silent_no_show', 'legacy_unverified', 'gtfs', NULL, NULL)`);
+        ('K5', '${DAY}', '460', '2026-09-17T14:00:00', '2026-09-17T14:30:00', 'escalated', 'confirmed', 'silent_no_show', 'legacy_unverified', 'gtfs', NULL, NULL),
+        ('K6', '${DAY}', '460', '2026-09-17T14:00:00', '2026-09-17T14:30:00', 'escalated', 'partial_service_failure', 'silent_no_show', 'experimental', 'gtfs', NULL, NULL),
+        ('K7', '${DAY}', '460', '2026-09-17T14:00:00', '2026-09-17T14:30:00', 'escalated', 'indeterminate', 'spare_late_start', 'source_verified', 'spare', NULL, NULL)`);
+      // Silent no-shows that carry an operating window, far enough either side
+      // of now that the database clock and this process's clock agree.
+      await pool.request().query(`INSERT INTO dbo.MonitoredMissedTrips
+        (trip_id, service_date, route_id, scheduled_departure_at, grace_deadline_at, status, validation_status, detection_type, data_quality_status, source_system, detector_version, expected_window_end_at)
+        VALUES
+        ('W1', '${DAY}', '460', '2026-09-17T14:00:00', '2026-09-17T14:30:00', 'escalated', 'unreviewed', 'silent_no_show', 'experimental', 'gtfs', 'gtfs-silent-v4', DATEADD(DAY, 1, SYSUTCDATETIME())),
+        ('W2', '${DAY}', '460', '2026-09-17T14:00:00', '2026-09-17T14:30:00', 'escalated', 'unreviewed', 'silent_no_show', 'experimental', 'gtfs', 'gtfs-silent-v4', DATEADD(DAY, -1, SYSUTCDATETIME())),
+        ('W3', '${DAY}', '460', '2026-09-17T14:00:00', '2026-09-17T14:30:00', 'escalated', 'unreviewed', 'silent_no_show', 'experimental', 'gtfs', 'gtfs-silent-v4', NULL)`);
       for (const promoted of ["", "gtfs_cancellation,spare"]) {
         process.env.MISSED_TRIP_PROMOTED_DETECTORS = promoted;
         const rows = (await pool.request().query(`
           SELECT m.trip_id, m.status, m.validation_status, m.data_quality_status, m.detection_type, m.source_system,
-                 m.undecided_reason, m.grace_deadline_at, m.detected_late_arrival_at,
+                 m.undecided_reason, m.grace_deadline_at, m.detected_late_arrival_at, m.detector_version, m.expected_window_end_at,
                  mtc.lifecycle, mtc.evidence_finding, mtc.review_outcome, mtc.detector, mtc.held_reason,
                  mtc.legacy, mtc.held, mtc.in_queue, mtc.concluded, mtc.flagged_missed, mtc.counts_as_missed, mtc.counts_toward_assessment
           FROM dbo.MonitoredMissedTrips m ${missedTripCaseSql("m")}`)).recordset;
-        // NS1, C1, R1, SP1, SP2, RACE, LEG, REV from the passes above, and K1-K5.
-        assert.equal(rows.length, 13);
+        // NS1, C1, R1, SP1, SP2, RACE, LEG, REV and the review subtests' cases, plus K1-K7 and W1-W3.
+        assert.ok(rows.length >= 18);
+        assert.deepEqual(
+          rows.filter((r) => /^W\d$/.test(r.trip_id)).map((r) => [r.trip_id, r.lifecycle]).sort(),
+          [["W1", "awaiting_evidence"], ["W2", "ready_for_review"], ["W3", "awaiting_evidence"]],
+        );
         for (const row of rows) {
           const expected = classifyMissedTripCase(row);
           const actual = {

@@ -21,6 +21,10 @@ export interface RunRef {
   scheduledStartAt: Date;
   // Published Trip start + 30 minutes.
   deadlineAt: Date;
+  // The scheduled final-stop time + 30 minutes: the end of the Expected
+  // operating window. GTFS silent no-shows only; null when the schedule does
+  // not say (the case then stays Awaiting evidence).
+  operatingWindowEndAt?: Date | null;
 }
 
 // What a source observed about a run. Facts do not say what should happen to
@@ -80,7 +84,11 @@ export type MissedTripEvidenceFinding =
   | "timely_service"
   | "indeterminate";
 
-export type MissedTripReviewOutcome = "confirmed_missed_trip" | "timely_service";
+export type MissedTripReviewOutcome = "confirmed_missed_trip" | "timely_service" | "partial_service_failure" | "indeterminate";
+
+// validation_status as stored. `false_positive` predates migration 125 and is
+// read as Timely service.
+export type StoredReviewOutcome = "confirmed" | "timely_service" | "partial_service_failure" | "indeterminate";
 
 export interface MissedTripClassification {
   lifecycle: MissedTripLifecycle;
@@ -109,9 +117,33 @@ export type Actor = { kind: "person"; name: string };
 // "spare:" + request id) and service date.
 export type CaseKey = { tripId: string; serviceDate: string };
 
-export type CaseAct =
-  // Increment 1 keeps the two stored outcomes; the four CONTEXT.md outcomes and
-  // the superseding review arrive with migration 123.
-  | { act: "record_review"; outcome: "confirmed" | "false_positive"; reasonCode: string; notes: string | null; attribution: "contractor_error" | "excusable" | "mvta_directed" | "undetermined" };
+interface ReviewFields {
+  outcome: StoredReviewOutcome;
+  reasonCode: string;
+  notes: string | null;
+  attribution: "contractor_error" | "excusable" | "mvta_directed" | "undetermined";
+}
 
-export type CaseRefusalCode = "not_found";
+export type CaseAct =
+  // The first review of a case.
+  | ({ act: "record_review" } & ReviewFields)
+  // A Superseding missed-trip review: replaces an earlier outcome, which the
+  // history keeps, and says why.
+  | ({ act: "supersede_review"; reason: string } & ReviewFields)
+  // The explicit rereview a Legacy missed-trip record needs before it can be
+  // anything but legacy.
+  | ({ act: "rereview_legacy"; reason: string } & ReviewFields);
+
+export type CaseRefusalCode =
+  | "not_found"
+  | "already_reviewed"
+  | "not_reviewed"
+  | "legacy_record"
+  | "not_legacy"
+  | "reason_required"
+  | "awaiting_evidence";
+
+export interface CaseRefusal {
+  code: CaseRefusalCode;
+  sentence: string;
+}

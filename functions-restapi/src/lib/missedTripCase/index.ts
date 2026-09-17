@@ -17,9 +17,9 @@ import {
   type OccurrenceLinkOutcome,
 } from "../assessment/occurrenceIntake";
 import { classifyMissedTripCase, promotedDetectors } from "./classify";
-import { caseTripId, decideRun, type CaseState } from "./decide";
+import { caseTripId, decideReview, decideRun } from "./decide";
 import { caseKey, loadCase, loadCases, writeDecision } from "./store";
-import type { Actor, CaseAct, CaseKey, MissedTripClassification, ObserveReport, RunObservation } from "./types";
+import type { Actor, CaseAct, CaseKey, CaseRefusal, MissedTripClassification, ObserveReport, RunObservation, StoredReviewOutcome } from "./types";
 
 export * from "./types";
 export { classifyMissedTripCase, missedTripCaseSql, missedTripSourceRefSql, promotedDetectors } from "./classify";
@@ -70,16 +70,19 @@ export function handOffExplanation(outcome: ReviewHandOff): string | null {
 }
 
 export type ActOutcome =
-  | { ok: true; classification: MissedTripClassification; handOff: ReviewHandOff | null }
-  | { ok: false; refusal: { code: "not_found"; sentence: string } };
+  | { ok: true; classification: MissedTripClassification; handOff: ReviewHandOff }
+  | { ok: false; refusal: CaseRefusal };
 
-const NOT_FOUND = { ok: false as const, refusal: { code: "not_found" as const, sentence: "This missed trip was not found." } };
+const NOT_FOUND: ActOutcome = { ok: false, refusal: { code: "not_found", sentence: "This missed trip was not found." } };
 
-function classificationOf(state: CaseState): MissedTripClassification {
-  return classifyMissedTripCase(state);
-}
+const OUTCOME_NOTES: Record<StoredReviewOutcome, string> = {
+  confirmed: "",
+  timely_service: "Missed trip review found Timely service",
+  partial_service_failure: "Missed trip review found a Partial-service failure, not a missed trip",
+  indeterminate: "Missed trip review could not determine the outcome",
+};
 
-export async function actOnMissedTripCase(pool: sql.ConnectionPool, key: CaseKey, act: CaseAct, actor: Actor): Promise<ActOutcome> {
+export async function actOnMissedTripCase(pool: sql.ConnectionPool, key: CaseKey, act: CaseAct, actor: Actor, now = new Date()): Promise<ActOutcome> {
   const tx = new sql.Transaction(pool);
   await tx.begin();
   try {
@@ -88,50 +91,60 @@ export async function actOnMissedTripCase(pool: sql.ConnectionPool, key: CaseKey
       await tx.rollback();
       return NOT_FOUND;
     }
+    const decision = decideReview(current, act, now);
+    if ("refusal" in decision) {
+      await tx.rollback();
+      return { ok: false, refusal: decision.refusal };
+    }
+    const review = decision.review;
 
     await new sql.Request(tx)
       .input("trip_id", sql.NVarChar(100), key.tripId)
       .input("service_date", sql.NVarChar(20), key.serviceDate)
-      .input("validation_status", sql.NVarChar(20), act.outcome)
+      .input("validation_status", sql.NVarChar(30), review.validation_status)
+      .input("data_quality_status", sql.NVarChar(30), review.data_quality_status)
       .input("validated_by", sql.NVarChar(200), actor.name)
       .input("notes", sql.NVarChar(1000), act.notes)
       .input("reason_code", sql.NVarChar(30), act.reasonCode)
-      .input("previous_validation_status", sql.NVarChar(20), current.validation_status)
+      .input("previous_validation_status", sql.NVarChar(30), current.validation_status)
+      .input("review_kind", sql.NVarChar(20), review.review_kind)
+      .input("review_reason", sql.NVarChar(1000), review.review_reason)
       .query(`
         UPDATE MonitoredMissedTrips
         SET validation_status = @validation_status,
+            data_quality_status = @data_quality_status,
             validated_by = @validated_by,
             validated_at = SYSUTCDATETIME(),
             notes = @notes,
-            reason_code = @reason_code,
-            data_quality_status = CASE WHEN @validation_status = 'confirmed' THEN 'source_verified' ELSE data_quality_status END
+            reason_code = @reason_code
         WHERE trip_id = @trip_id AND service_date = @service_date;
 
         INSERT INTO MissedTripReviewHistory (
-          trip_id, service_date, previous_validation_status, validation_status, reason_code, notes, reviewed_by
+          trip_id, service_date, previous_validation_status, validation_status, reason_code, notes, reviewed_by,
+          review_kind, review_reason
         )
-        VALUES (@trip_id, @service_date, @previous_validation_status, @validation_status, @reason_code, @notes, @validated_by);
+        VALUES (@trip_id, @service_date, @previous_validation_status, @validation_status, @reason_code, @notes, @validated_by,
+          @review_kind, @review_reason);
       `);
     const reviewed = await loadCase(tx, key.tripId, key.serviceDate, false);
-    const classification = classificationOf(reviewed ?? current);
+    const classification = classifyMissedTripCase(reviewed ?? current, promotedDetectors(), now);
 
     // Assessment promotion: a confirmation from a detector in Shadow detection
-    // stays out of the assessment. A Timely-service review still reaches
-    // intake, so an occurrence raised before the gate existed is dismissed.
-    const promoted = promotedDetectors();
+    // stays out of the assessment. Every other outcome still reaches intake, so
+    // an occurrence raised by an earlier confirmation is dismissed.
     let handOff: ReviewHandOff;
-    if (act.outcome === "confirmed" && !promoted.has(classification.detector)) {
+    if (act.outcome === "confirmed" && !classification.counts_toward_assessment) {
       handOff = { linked: false, reason: "shadow_detection" };
     } else {
       handOff = await linkMissedTripOccurrence(tx, {
         tripId: key.tripId,
         serviceDate: key.serviceDate,
-        validationStatus: act.outcome,
+        validationStatus: act.outcome === "confirmed" ? "confirmed" : "false_positive",
         attribution: act.attribution,
         actor: actor.name,
-        note: act.outcome === "false_positive"
-          ? `Missed trip review recorded a false positive (${act.reasonCode}).`
-          : act.notes ?? `Attribution recorded at review as ${act.attribution}.`,
+        note: act.outcome === "confirmed"
+          ? act.notes ?? `Attribution recorded at review as ${act.attribution}.`
+          : `${OUTCOME_NOTES[act.outcome]} (${act.reasonCode}).`,
       });
     }
     await tx.commit();

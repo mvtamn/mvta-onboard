@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { AWAITING_CONFIRMATION } from "../missedTripConfidence";
-import { decideRun, type CaseState, type RunDecision } from "./decide";
-import type { RunFact, RunObservation } from "./types";
+import { decideReview, decideRun, type CaseState, type RunDecision } from "./decide";
+import type { CaseAct, RunFact, RunObservation } from "./types";
 
 // The case rules as tables. missedTripCase.db.contract.test.ts proves the same
 // behaviour through observeMissedTrips against SQL Server.
@@ -24,7 +24,7 @@ function stored(overrides: Partial<CaseState> = {}): CaseState {
     trip_id: "T1", service_date: "20260917", route_id: "460", scheduled_departure_at: SCHEDULED, grace_deadline_at: DEADLINE,
     status: "escalated", validation_status: "unreviewed", data_quality_status: "experimental", detection_type: "silent_no_show",
     detector_version: "gtfs-silent-v3", source_system: "gtfs", source_record_id: null, undecided_reason: null,
-    detected_late_arrival_at: null, first_seen_watching_at: new Date("2026-09-17T14:40:00Z"), evidence_json: null,
+    detected_late_arrival_at: null, first_seen_watching_at: new Date("2026-09-17T14:40:00Z"), evidence_json: null, expected_window_end_at: null,
     ...overrides,
   };
 }
@@ -114,4 +114,46 @@ test("Spare evaluations close, hold and release a case without reopening it", ()
 test("a repeated observation with nothing new changes nothing", () => {
   const confirmed = stored();
   assert.equal(decideRun(confirmed, [gtfs({ kind: "no_start_by_deadline" }), gtfs({ kind: "cancellation" })], NOW), null);
+});
+
+test("a silent no-show opens with its operating window; other cases have none", () => {
+  const windowEnd = new Date("2026-09-17T16:10:00Z");
+  const observation = gtfs({ kind: "no_start_by_deadline" });
+  const opened = decideRun(null, [{ ...observation, run: { ...observation.run, operatingWindowEndAt: windowEnd } }], NOW);
+  assert.ok(opened?.kind === "insert" && opened.row.expected_window_end_at?.getTime() === windowEnd.getTime());
+  const cancelled = decideRun(null, [gtfs({ kind: "cancellation" })], NOW);
+  assert.ok(cancelled?.kind === "insert" && cancelled.row.expected_window_end_at === null);
+});
+
+test("review acts by case state", () => {
+  const review = (act: string, extra: Partial<CaseAct> = {}): CaseAct =>
+    ({ act, outcome: "timely_service", reasonCode: "RAN", notes: null, attribution: "undetermined", reason: "Radio log shows it ran", ...extra }) as CaseAct;
+  const unreviewed = stored();
+  const reviewed = stored({ validation_status: "confirmed", data_quality_status: "source_verified" });
+  const legacy = stored({ data_quality_status: "legacy_unverified" });
+  const refusal = (state: CaseState, act: CaseAct) => {
+    const d = decideReview(state, act, NOW);
+    return "refusal" in d ? d.refusal.code : null;
+  };
+  assert.equal(refusal(unreviewed, review("record_review")), null);
+  assert.equal(refusal(reviewed, review("record_review")), "already_reviewed");
+  assert.equal(refusal(reviewed, review("supersede_review")), null);
+  assert.equal(refusal(unreviewed, review("supersede_review")), "not_reviewed");
+  assert.equal(refusal(reviewed, review("supersede_review", { reason: "  " })), "reason_required");
+  assert.equal(refusal(legacy, review("record_review")), "legacy_record");
+  assert.equal(refusal(legacy, review("rereview_legacy")), null);
+  assert.equal(refusal(unreviewed, review("rereview_legacy")), "not_legacy");
+
+  const rereviewed = decideReview(legacy, review("rereview_legacy"), NOW);
+  assert.ok("review" in rereviewed);
+  assert.deepEqual([rereviewed.review.data_quality_status, rereviewed.review.review_kind], ["source_verified", "legacy_rereview"]);
+
+  // Confirming waits for evidence; other outcomes do not.
+  const held = stored({ status: "watching", undecided_reason: AWAITING_CONFIRMATION });
+  assert.equal(refusal(held, review("record_review", { outcome: "confirmed" })), "awaiting_evidence");
+  assert.equal(refusal(held, review("record_review", { outcome: "indeterminate" })), null);
+  const windowOpen = stored({ detector_version: "gtfs-silent-v4", expected_window_end_at: new Date(NOW.getTime() + 3_600_000) });
+  assert.equal(refusal(windowOpen, review("record_review", { outcome: "confirmed" })), "awaiting_evidence");
+  const windowClosed = { ...windowOpen, expected_window_end_at: new Date(NOW.getTime() - 60_000) };
+  assert.equal(refusal(windowClosed, review("record_review", { outcome: "confirmed" })), null);
 });

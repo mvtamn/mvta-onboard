@@ -519,7 +519,9 @@ export interface GtfsRouteOption {
 }
 
 export type MissedTripStatus = "watching" | "escalated" | "resolved";
-export type MissedTripValidationStatus = "unreviewed" | "confirmed" | "false_positive";
+// Migration 125 adds the four Missed-trip review outcomes; `false_positive` is
+// Timely service's name before it.
+export type MissedTripValidationStatus = "unreviewed" | "confirmed" | "false_positive" | "timely_service" | "partial_service_failure" | "indeterminate";
 export type MissedTripDataQualityStatus =
   | "legacy_unverified"
   | "source_verified"
