@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ApiError, type GtfsRouteOption, type MissedTrip, type MissedTripReview, type MissedTripsDiagnostics, type MissedTripsMonthlySummaryRow, type OccurrenceAttribution, type OtpReasonCode } from "@mvta/shared";
+import { ApiError, type GtfsRouteOption, type MissedTrip, type MissedTripReview, type MissedTripReviewDecision, type MissedTripsDiagnostics, type MissedTripsMonthlySummaryRow, type OccurrenceAttribution, type OtpReasonCode } from "@mvta/shared";
 import { Link } from "react-router-dom";
 import { api } from "../../config.js";
 import { MISSED_TRIP_ALERTS, type MissedTripAlert } from "./missedTrips.data.js";
+import {
+  REVIEW_DECISIONS, buildReviewRequest, confirmBlockedReason, findingLabel, heldReasonLabel, inView,
+  lifecycleClass, lifecycleLabel, outcomeClass, outcomeLabel, reviewMode,
+} from "./missedTripReview.js";
 import { LiveBanner } from "../../components/LiveSignal.js";
 import "./serviceRisk.css";
 
@@ -143,6 +147,12 @@ function fromMissedTrip(trip: MissedTrip): MissedTripAlert {
     occurrenceAttribution: trip.occurrence_attribution,
     occurrenceServiceMonth: trip.occurrence_service_month,
     occurrencePeriodStatus: trip.occurrence_period_status,
+    lifecycle: trip.lifecycle,
+    evidenceFinding: trip.evidence_finding,
+    reviewOutcome: trip.review_outcome,
+    heldReason: trip.held_reason,
+    inQueue: Boolean(trip.in_queue),
+    concluded: Boolean(trip.concluded),
   };
 }
 
@@ -181,35 +191,6 @@ export function assessmentOutcome(alert: MissedTripAlert): { label: string; deta
       : `Charged to the contractor in the ${month} assessment. The period recomputes to include it.`,
     tone: "counted",
   };
-}
-
-// A detection hit isn't a confirmed missed trip yet - only a human review
-// (validationStatus === "confirmed") should earn the alarming "Missed"
-// wording/color. Until then it's a candidate under investigation, so an
-// escalated-but-unreviewed row reads as "Potential missed" in amber rather
-// than a flat, unearned "Missed" in red.
-function statusClass(status: MissedTripAlert["status"], validationStatus: MissedTripAlert["validationStatus"]): string {
-  if (status === "watching") return "pill-warning";
-  if (status === "resolved") return "pill-success";
-  return validationStatus === "confirmed" ? "pill-danger" : "pill-warning";
-}
-
-function statusLabel(status: MissedTripAlert["status"], validationStatus: MissedTripAlert["validationStatus"]): string {
-  if (status === "watching") return "Watching";
-  if (status === "resolved") return "Operated within window";
-  return validationStatus === "confirmed" ? "Missed" : "Potential missed";
-}
-
-function validationClass(status: MissedTripAlert["validationStatus"]): string {
-  if (status === "unreviewed") return "pill-warning";
-  if (status === "confirmed") return "pill-danger";
-  return "pill-muted";
-}
-
-function validationLabel(status: MissedTripAlert["validationStatus"]): string {
-  if (status === "unreviewed") return "Unreviewed";
-  if (status === "confirmed") return "Confirmed";
-  return "False positive";
 }
 
 // "Is there any way to determine why the flag exists?" - added by
@@ -346,6 +327,8 @@ function MissedTripsInvestigationPage({
   const [selectedId, setSelectedId] = useState(MISSED_TRIP_ALERTS[0].id);
   const [notesDraft, setNotesDraft] = useState("");
   const [reasonDraft, setReasonDraft] = useState("");
+  // Why a recorded review is being changed, or a legacy record rereviewed.
+  const [changeReasonDraft, setChangeReasonDraft] = useState("");
   // Attachment G's second question, asked at the same sitting as the first.
   // "undetermined" is the honest default: it raises the occurrence and leaves
   // the attribution to the Performance Assessment queue, which is exactly what
@@ -355,7 +338,7 @@ function MissedTripsInvestigationPage({
   const [validateError, setValidateError] = useState<string | null>(null);
   const [assessmentNotice, setAssessmentNotice] = useState<string | null>(null);
   const [previewValidations, setPreviewValidations] = useState<
-    Record<string, Pick<MissedTripAlert, "validationStatus" | "reasonCode" | "validatedBy" | "validatedAt" | "notes">>
+    Record<string, Pick<MissedTripAlert, "validationStatus" | "reasonCode" | "validatedBy" | "validatedAt" | "notes" | "lifecycle" | "inQueue" | "concluded">>
   >({});
   const [reasonCodes, setReasonCodes] = useState<OtpReasonCode[]>([]);
   const [reviews, setReviews] = useState<MissedTripReview[]>([]);
@@ -390,9 +373,7 @@ function MissedTripsInvestigationPage({
   // already-settled history; the Monthly Assessments tab is where that
   // history belongs.
   const activeAlerts = useMemo(
-    () => alerts.filter((a) => mode === "queue"
-      ? a.status !== "resolved" && a.validationStatus === "unreviewed"
-      : a.status === "resolved" || a.validationStatus !== "unreviewed"),
+    () => alerts.filter((a) => inView(a, mode)),
     [alerts, mode],
   );
   const sourceAlerts = useMemo(
@@ -455,6 +436,7 @@ function MissedTripsInvestigationPage({
   useEffect(() => {
     setNotesDraft(selected?.notes ?? "");
     setReasonDraft(selected?.reasonCode ?? "");
+    setChangeReasonDraft("");
     setValidateError(null);
   }, [selected?.id, selected?.notes, selected?.reasonCode]);
 
@@ -498,9 +480,7 @@ function MissedTripsInvestigationPage({
               ? "Schedule-based no-show detection is paused while start-evidence validation is completed. Explicit cancellations remain active."
               : null,
         );
-        const mappedActive = mapped.filter((m) => mode === "queue"
-          ? m.status !== "resolved" && m.validationStatus === "unreviewed"
-          : m.status === "resolved" || m.validationStatus !== "unreviewed");
+        const mappedActive = mapped.filter((m) => inView(m, mode));
         if (mappedActive.length > 0) {
           setSelectedId((current) => (mappedActive.some((m) => m.id === current) ? current : mappedActive[0].id));
         }
@@ -519,41 +499,44 @@ function MissedTripsInvestigationPage({
     return () => window.clearInterval(intervalId);
   }, [load]);
 
-  async function validate(alert: MissedTripAlert, validationStatus: "confirmed" | "false_positive") {
+  async function validate(alert: MissedTripAlert, decision: MissedTripReviewDecision) {
     setValidateError(null);
-    if (!reasonDraft) {
-      setValidateError("Select a reason before saving the review.");
+    const request = buildReviewRequest(alert, decision, {
+      reasonCode: reasonDraft, notes: notesDraft, attribution: attributionDraft, changeReason: changeReasonDraft,
+    });
+    if ("error" in request) {
+      setValidateError(request.error);
       return;
     }
     if (isPreview) {
       setPreviewValidations((current) => ({
         ...current,
         [alert.id]: {
-          validationStatus,
+          validationStatus: decision,
           reasonCode: reasonDraft || null,
           validatedBy: "Dev User (mock, preview only)",
           validatedAt: new Date().toISOString(),
           notes: notesDraft || null,
+          lifecycle: "reviewed",
+          inQueue: false,
+          concluded: true,
         },
       }));
       return;
     }
     setValidating(true);
     try {
-      const result = await api.validateMissedTrip({
-        trip_id: alert.tripId,
-        service_date: alert.serviceDate,
-        validation_status: validationStatus,
-        notes: notesDraft || undefined,
-        reason_code: reasonDraft,
-        attribution: validationStatus === "confirmed" ? attributionDraft : undefined,
-      });
+      const result = await api.validateMissedTrip(request.input);
       // The review committed either way. When the assessment side could not
-      // take it - no Agreement, a closed month - say so here rather than
-      // leaving the reviewer to discover it in another module, or not at all.
+      // take it - no Agreement, a closed month, a detector still in Shadow
+      // detection - say so here rather than leaving the reviewer to discover it
+      // in another module, or not at all.
       setAssessmentNotice(result.assessment.linked ? null : result.assessment.explanation);
+      setChangeReasonDraft("");
       load();
     } catch (err) {
+      // A refusal (already reviewed, awaiting evidence) comes back as a
+      // sentence the reviewer can act on.
       setValidateError(err instanceof ApiError ? err.message : "The review could not be saved.");
     } finally {
       setValidating(false);
@@ -570,7 +553,7 @@ function MissedTripsInvestigationPage({
   // so it falls back to counting the fixture data directly.
   const unreviewed = !isPreview && diagnostics ? diagnostics.unreviewed_count : activeAlerts.filter((a) => a.validationStatus === "unreviewed").length;
   const confirmed = !isPreview && diagnostics ? diagnostics.confirmed_count : activeAlerts.filter((a) => a.validationStatus === "confirmed").length;
-  const falsePositives = !isPreview && diagnostics ? diagnostics.false_positive_count : activeAlerts.filter((a) => a.validationStatus === "false_positive").length;
+  const falsePositives = !isPreview && diagnostics ? diagnostics.false_positive_count : activeAlerts.filter((a) => a.reviewOutcome === "timely_service" || a.validationStatus === "false_positive" || a.validationStatus === "timely_service").length;
   const routesAffected = !isPreview && diagnostics ? diagnostics.routes_affected_count : new Set(activeAlerts.map((a) => a.route)).size;
   const spareCandidates = activeAlerts.filter((a) => a.sourceSystem === "spare").length;
   // Only a required feed can undermine the no-show inference this module draws
@@ -602,13 +585,15 @@ function MissedTripsInvestigationPage({
       onReasonChange={setReasonDraft}
       notesDraft={notesDraft}
       onNotesChange={setNotesDraft}
+      changeReasonDraft={changeReasonDraft}
+      onChangeReasonChange={setChangeReasonDraft}
       attributionDraft={attributionDraft}
       onAttributionChange={setAttributionDraft}
       validating={validating}
       validateError={validateError}
       assessmentNotice={assessmentNotice}
       reviews={reviews}
-      onValidate={(status) => void validate(selected, status)}
+      onValidate={(decision) => void validate(selected, decision)}
     />
   ) : (
     <aside className="risk-detail missed-trip-detail risk-empty-state" aria-label="No trip selected">
@@ -840,16 +825,16 @@ function MissedTripsInvestigationPage({
                         <td>{routeLabel(alert.route, routesById, alert.sourceSystem)}</td>
                         <td className="td-dim">{alert.direction ?? "—"}</td>
                         <td>
-                          <span className={`pill-sm ${statusClass(alert.status, alert.validationStatus)}`}>
-                            {statusLabel(alert.status, alert.validationStatus)}
+                          <span className={`pill-sm ${lifecycleClass(alert)}`}>
+                            {lifecycleLabel(alert)}
                           </span>
                           <div className="td-dim" style={{ marginTop: 4 }}>
                             {timeLabel(alert.graceDeadlineAt)} · {agoLabel(minutesAgo(alert.graceDeadlineAt))}
                           </div>
                         </td>
                         <td>
-                          <span className={`pill-sm ${validationClass(alert.validationStatus)}`}>
-                            {validationLabel(alert.validationStatus)}
+                          <span className={`pill-sm ${outcomeClass(alert.validationStatus)}`}>
+                            {outcomeLabel(alert.validationStatus)}
                           </span>
                           {age ? <div style={{ marginTop: 4 }}><span className={`pill-sm ${age.className}`}>{age.label}</span></div> : null}
                         </td>
@@ -926,14 +911,14 @@ function MissedTripsInvestigationPage({
                     <small>{sourceLabel(alert.sourceSystem)} · scheduled {timeLabel(alert.scheduledDepartureAt)}</small>
                   </span>
                   <span className="risk-departure">
-                    <span className={`pill-sm ${statusClass(alert.status, alert.validationStatus)}`}>
-                      {statusLabel(alert.status, alert.validationStatus)}
+                    <span className={`pill-sm ${lifecycleClass(alert)}`}>
+                      {lifecycleLabel(alert)}
                     </span>
                     <small>{timeLabel(alert.graceDeadlineAt)} · {agoLabel(minutesAgo(alert.graceDeadlineAt))}</small>
                   </span>
                   <span className="risk-threshold">
-                    <span className={`pill-sm ${validationClass(alert.validationStatus)}`}>
-                      {validationLabel(alert.validationStatus)}
+                    <span className={`pill-sm ${outcomeClass(alert.validationStatus)}`}>
+                      {outcomeLabel(alert.validationStatus)}
                     </span>
                     {age ? <small><span className={`pill-sm ${age.className}`}>{age.label}</span></small> : null}
                   </span>
@@ -982,6 +967,8 @@ function MissedTripDetail({
   onReasonChange,
   notesDraft,
   onNotesChange,
+  changeReasonDraft,
+  onChangeReasonChange,
   attributionDraft,
   onAttributionChange,
   validating,
@@ -997,15 +984,19 @@ function MissedTripDetail({
   onReasonChange: (value: string) => void;
   notesDraft: string;
   onNotesChange: (value: string) => void;
+  changeReasonDraft: string;
+  onChangeReasonChange: (value: string) => void;
   attributionDraft: OccurrenceAttribution;
   onAttributionChange: (value: OccurrenceAttribution) => void;
   validating: boolean;
   validateError: string | null;
   assessmentNotice: string | null;
   reviews: MissedTripReview[];
-  onValidate: (status: "confirmed" | "false_positive") => void;
+  onValidate: (decision: MissedTripReviewDecision) => void;
 }) {
   const reviewed = alert.validationStatus !== "unreviewed";
+  const mode = reviewMode(alert);
+  const confirmBlocked = mode === "review" ? confirmBlockedReason(alert) : null;
   const outcome = assessmentOutcome(alert);
 
   return (
@@ -1018,8 +1009,8 @@ function MissedTripDetail({
             Service date {formatServiceDate(alert.serviceDate)} · <span className="mono-ref">Ref {alert.tripId}</span>
           </p>
         </div>
-        <span className={`pill-sm ${statusClass(alert.status, alert.validationStatus)}`}>
-          {statusLabel(alert.status, alert.validationStatus)}
+        <span className={`pill-sm ${lifecycleClass(alert)}`}>
+          {lifecycleLabel(alert)}
         </span>
       </div>
 
@@ -1031,7 +1022,8 @@ function MissedTripDetail({
 
       <dl className="risk-facts">
         <div><dt>Source</dt><dd>{alert.sourceSystem === "spare" ? "Spare Requests + Slots" : "GTFS / GTFS-RT"}</dd></div>
-        <div><dt>Detection status</dt><dd>{statusLabel(alert.status, alert.validationStatus)}</dd></div>
+        <div><dt>Where it stands</dt><dd>{alert.lifecycle === "awaiting_evidence" ? heldReasonLabel(alert.heldReason) : lifecycleLabel(alert)}</dd></div>
+        <div><dt>Evidence finding</dt><dd>{findingLabel(alert.evidenceFinding)}</dd></div>
         <div><dt>Detection type</dt><dd>{detectionTypeLabel(alert.detectionType)}</dd></div>
         <div><dt>Evidence quality</dt><dd>{dataQualityLabel(alert.dataQualityStatus)}</dd></div>
         <div><dt>Detector version</dt><dd>{alert.detectorVersion ?? "Legacy — not recorded"}</dd></div>
@@ -1058,13 +1050,13 @@ function MissedTripDetail({
       <div className="risk-detail-section">
         <div className="risk-section-title-row">
           <h4>Investigation</h4>
-          <span className={`pill-sm ${validationClass(alert.validationStatus)}`}>
-            {validationLabel(alert.validationStatus)}
+          <span className={`pill-sm ${outcomeClass(alert.validationStatus)}`}>
+            {outcomeLabel(alert.validationStatus)}
           </span>
         </div>
         {reviewed ? (
           <p className="risk-unknown">
-            {alert.validatedBy ?? "A reviewer"} recorded this as {validationLabel(alert.validationStatus).toLowerCase()}
+            {alert.validatedBy ?? "A reviewer"} recorded this as {outcomeLabel(alert.validationStatus).toLowerCase()}
             {alert.validatedAt ? ` at ${timeLabel(alert.validatedAt)}` : ""}.
           </p>
         ) : null}
@@ -1079,7 +1071,7 @@ function MissedTripDetail({
           <option value="">Select a reason…</option>
           {reasonCodes.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
         </select>
-        {!reasonDraft ? <p className="risk-unknown">A reason is required for either review outcome.</p> : null}
+        {!reasonDraft ? <p className="risk-unknown">A reason is required for every review outcome.</p> : null}
 
         <label htmlFor="missed-trip-notes" className="field-label">Investigation notes</label>
         <textarea
@@ -1109,21 +1101,49 @@ function MissedTripDetail({
         </select>
         <p className="risk-unknown">
           {attributionDraft === "contractor_error"
-            ? `Confirming adds this to the ${formatServiceMonth(alert.serviceDate.slice(0, 6))} performance assessment as a charged occurrence.`
+            ? `Confirming adds this to the ${formatServiceMonth(alert.serviceDate.slice(0, 6))} performance assessment as a charged occurrence, once its detector is out of Shadow detection.`
             : attributionDraft === "undetermined"
-              ? "Confirming raises the occurrence but leaves whose error it was to the Performance Assessment module."
-              : "Confirming records the occurrence against the month without charging a penalty."}
+              ? "Confirming raises the occurrence but leaves whose error it was to the Performance Assessment module, once its detector is out of Shadow detection."
+              : "Confirming records the occurrence against the month without charging a penalty, once its detector is out of Shadow detection."}
         </p>
+
+        {mode !== "review" ? (
+          <>
+            <label htmlFor="missed-trip-change-reason" className="field-label">
+              {mode === "supersede" ? "Why this review is changing" : "Why this legacy record is being rereviewed"}
+            </label>
+            <textarea
+              id="missed-trip-change-reason"
+              className="compose"
+              rows={2}
+              value={changeReasonDraft}
+              onChange={(event) => onChangeReasonChange(event.target.value)}
+              placeholder={mode === "supersede" ? "e.g. AVL playback shows it left the first stop on time." : "e.g. Rechecked against the dispatch log."}
+            />
+            <p className="risk-unknown">
+              {mode === "supersede"
+                ? "The earlier review stays in the history below."
+                : "This record came from the retired detector; a reason is required to record an outcome."}
+            </p>
+          </>
+        ) : null}
 
         {validateError ? <p className="risk-action-error">{validateError}</p> : null}
         {assessmentNotice ? <p className="risk-unknown">{assessmentNotice}</p> : null}
-        <div className="risk-actions">
-          <button className="btn-primary" disabled={validating || !reasonDraft} onClick={() => onValidate("confirmed")}>
-            {validating ? "Saving…" : "Confirm missed trip"}
-          </button>
-          <button className="btn-sm" disabled={validating || !reasonDraft} onClick={() => onValidate("false_positive")}>
-            Mark false positive
-          </button>
+        {confirmBlocked ? <p className="risk-unknown">{confirmBlocked}</p> : null}
+        <div className="risk-actions" role="group" aria-label="Review outcome">
+          {REVIEW_DECISIONS.map((decision) => (
+            <button
+              key={decision.value}
+              className={decision.value === "confirmed" ? "btn-primary" : "btn-sm"}
+              title={decision.hint}
+              disabled={validating || !reasonDraft || (decision.value === "confirmed" && confirmBlocked !== null)
+                || (mode !== "review" && !changeReasonDraft.trim())}
+              onClick={() => onValidate(decision.value)}
+            >
+              {validating && decision.value === "confirmed" ? "Saving…" : decision.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -1145,7 +1165,7 @@ function MissedTripDetail({
           <h4>Review history</h4>
           {reviews.map((review) => (
             <p className="risk-unknown" key={review.review_id}>
-              <strong>{validationLabel(review.validation_status)}</strong> · {review.reason_code} · {review.reviewed_by}
+              <strong>{outcomeLabel(review.validation_status)}</strong> · {review.reason_code} · {review.reviewed_by}
               {review.reviewed_at ? ` at ${timeLabel(review.reviewed_at)}` : ""}
               {review.notes ? <><br />{review.notes}</> : null}
             </p>

@@ -126,7 +126,7 @@ app.http("missedTripsList", {
                mmt.suggested_alert_id, mmt.first_seen_watching_at, mmt.last_checked_at,
                mmt.validation_status, mmt.reason_code, mmt.validated_by, mmt.validated_at, mmt.notes,
                mmt.detector_version, mmt.data_quality_status, mmt.undecided_reason,
-               mtc.lifecycle, mtc.evidence_finding, mtc.review_outcome, mtc.held_reason, mtc.in_queue,
+               mtc.lifecycle, mtc.evidence_finding, mtc.review_outcome, mtc.held_reason, mtc.in_queue, mtc.concluded,
                mmt.source_system, mmt.source_record_id,
                sme.condition_late_start, sme.condition_superseded, sme.condition_late_arrival,
                sme.start_delay_seconds, sme.arrival_delay_seconds,
