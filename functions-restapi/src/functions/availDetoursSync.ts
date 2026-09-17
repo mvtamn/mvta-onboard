@@ -24,6 +24,7 @@
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchDetours, groupDetourReports, type MappedDetour } from "../lib/availDetoursFeed";
+import { runFeedIngestion } from "../lib/feedRun";
 import { performDetourActIn, type Actor } from "../lib/detourWorkflow";
 
 const AVAIL_SYNC: Actor = { kind: "avail_sync" };
@@ -66,113 +67,113 @@ app.timer("availDetoursSync", {
       return;
     }
 
-    let reports;
-    try {
-      reports = await fetchDetours(baseUrl, apiKey);
-    } catch (err) {
-      context.error("Failed to fetch Avail Detours:", err);
-      return;
-    }
+    // Ledgered so a failing detour feed no longer looks exactly like a quiet
+    // one. No KPI declares it, so it informs the Admin page without gating a
+    // stream.
+    await runFeedIngestion("avail_detours", context, async () => {
+      const reports = await fetchDetours(baseUrl, apiKey);
 
-    const grouped = groupDetourReports(reports);
-    const pool = await getPool();
+      const grouped = groupDetourReports(reports);
+      const pool = await getPool();
 
-    let inserted = 0;
-    let updated = 0;
-    let skipped = 0;
+      let inserted = 0;
+      let updated = 0;
+      let skipped = 0;
 
-    for (const detour of grouped) {
-      const lookupReq = new sql.Request(pool);
-      lookupReq.input("external_detour_id", sql.NVarChar, detour.external_detour_id);
-      let existing: ExistingDetourRow | undefined;
-      try {
-        const existingResult = await lookupReq.query<ExistingDetourRow>(`
-          SELECT id, last_edited_manually, source
-          FROM Detours
-          WHERE external_detour_id = @external_detour_id AND is_deleted = 0
-        `);
-        existing = existingResult.recordset[0];
-      } catch (err) {
-        context.error(`Failed to look up Avail detour ${detour.external_detour_id}:`, err);
-        continue;
-      }
-
-      const tx = new sql.Transaction(pool);
-      try {
-        await tx.begin();
-
-        if (!existing) {
-          const insertReq = new sql.Request(tx);
-          insertReq.input("closure", sql.NVarChar, detour.closure);
-          insertReq.input("start_date", sql.Date, detour.start_date);
-          insertReq.input("end_date", sql.Date, detour.end_date);
-          insertReq.input("external_detour_id", sql.NVarChar, detour.external_detour_id);
-          insertReq.input("created_by", sql.NVarChar, "avail-sync");
-          const insertResult = await insertReq.query<{ id: string }>(`
-            INSERT INTO Detours (
-              closure, start_date, end_date, source, external_detour_id,
-              created_by, avail_last_seen_at
-            )
-            OUTPUT INSERTED.id
-            VALUES (
-              @closure, @start_date, @end_date, 'avail', @external_detour_id,
-              @created_by, SYSUTCDATETIME()
-            )
-          `);
-          const detourId = insertResult.recordset[0].id;
-          await insertSegments(tx, detourId, detour.segments);
-          await recordObservation(tx, detourId, detour.external_detour_id, "new");
-          await tx.commit();
-          inserted += 1;
-          continue;
-        }
-
-        if (existing.source === "manual" || existing.last_edited_manually) {
-          // A human-entered Avail ID links the feed observation to the
-          // OnBoard-owned record without changing its provenance or manually
-          // entered details. Avail remains authoritative for the observation,
-          // not for whether this row was created through OnBoard.
-          const touchReq = new sql.Request(tx);
-          touchReq.input("id", sql.UniqueIdentifier, existing.id);
-          await touchReq.query("UPDATE Detours SET avail_last_seen_at = SYSUTCDATETIME() WHERE id = @id");
-          await recordObservation(tx, existing.id, detour.external_detour_id, "preserved");
-          await tx.commit();
-          skipped += 1;
-          continue;
-        }
-
-        const updateReq = new sql.Request(tx);
-        updateReq.input("id", sql.UniqueIdentifier, existing.id);
-        updateReq.input("closure", sql.NVarChar, detour.closure);
-        updateReq.input("start_date", sql.Date, detour.start_date);
-        updateReq.input("end_date", sql.Date, detour.end_date);
-        await updateReq.query(`
-          UPDATE Detours
-          SET closure = @closure, start_date = @start_date, end_date = @end_date,
-              avail_last_seen_at = SYSUTCDATETIME()
-          WHERE id = @id
-        `);
-
-        const deleteSegReq = new sql.Request(tx);
-        deleteSegReq.input("detour_id", sql.UniqueIdentifier, existing.id);
-        await deleteSegReq.query("DELETE FROM DetourSegments WHERE detour_id = @detour_id");
-        await insertSegments(tx, existing.id, detour.segments);
-        await recordObservation(tx, existing.id, detour.external_detour_id, "refreshed");
-
-        await tx.commit();
-        updated += 1;
-      } catch (err) {
+      for (const detour of grouped) {
+        const lookupReq = new sql.Request(pool);
+        lookupReq.input("external_detour_id", sql.NVarChar, detour.external_detour_id);
+        let existing: ExistingDetourRow | undefined;
         try {
-          await tx.rollback();
-        } catch {
-          /* already rolled back / not begun */
+          const existingResult = await lookupReq.query<ExistingDetourRow>(`
+            SELECT id, last_edited_manually, source
+            FROM Detours
+            WHERE external_detour_id = @external_detour_id AND is_deleted = 0
+          `);
+          existing = existingResult.recordset[0];
+        } catch (err) {
+          context.error(`Failed to look up Avail detour ${detour.external_detour_id}:`, err);
+          continue;
         }
-        context.error(`Failed to sync Avail detour ${detour.external_detour_id}:`, err);
-      }
-    }
 
-    context.log(
-      `Avail Detours sync: ${grouped.length} detours seen, ${inserted} inserted, ${updated} updated, ${skipped} skipped (manually edited).`,
-    );
+        const tx = new sql.Transaction(pool);
+        try {
+          await tx.begin();
+
+          if (!existing) {
+            const insertReq = new sql.Request(tx);
+            insertReq.input("closure", sql.NVarChar, detour.closure);
+            insertReq.input("start_date", sql.Date, detour.start_date);
+            insertReq.input("end_date", sql.Date, detour.end_date);
+            insertReq.input("external_detour_id", sql.NVarChar, detour.external_detour_id);
+            insertReq.input("created_by", sql.NVarChar, "avail-sync");
+            const insertResult = await insertReq.query<{ id: string }>(`
+              INSERT INTO Detours (
+                closure, start_date, end_date, source, external_detour_id,
+                created_by, avail_last_seen_at
+              )
+              OUTPUT INSERTED.id
+              VALUES (
+                @closure, @start_date, @end_date, 'avail', @external_detour_id,
+                @created_by, SYSUTCDATETIME()
+              )
+            `);
+            const detourId = insertResult.recordset[0].id;
+            await insertSegments(tx, detourId, detour.segments);
+            await recordObservation(tx, detourId, detour.external_detour_id, "new");
+            await tx.commit();
+            inserted += 1;
+            continue;
+          }
+
+          if (existing.source === "manual" || existing.last_edited_manually) {
+            // A human-entered Avail ID links the feed observation to the
+            // OnBoard-owned record without changing its provenance or manually
+            // entered details. Avail remains authoritative for the observation,
+            // not for whether this row was created through OnBoard.
+            const touchReq = new sql.Request(tx);
+            touchReq.input("id", sql.UniqueIdentifier, existing.id);
+            await touchReq.query("UPDATE Detours SET avail_last_seen_at = SYSUTCDATETIME() WHERE id = @id");
+            await recordObservation(tx, existing.id, detour.external_detour_id, "preserved");
+            await tx.commit();
+            skipped += 1;
+            continue;
+          }
+
+          const updateReq = new sql.Request(tx);
+          updateReq.input("id", sql.UniqueIdentifier, existing.id);
+          updateReq.input("closure", sql.NVarChar, detour.closure);
+          updateReq.input("start_date", sql.Date, detour.start_date);
+          updateReq.input("end_date", sql.Date, detour.end_date);
+          await updateReq.query(`
+            UPDATE Detours
+            SET closure = @closure, start_date = @start_date, end_date = @end_date,
+                avail_last_seen_at = SYSUTCDATETIME()
+            WHERE id = @id
+          `);
+
+          const deleteSegReq = new sql.Request(tx);
+          deleteSegReq.input("detour_id", sql.UniqueIdentifier, existing.id);
+          await deleteSegReq.query("DELETE FROM DetourSegments WHERE detour_id = @detour_id");
+          await insertSegments(tx, existing.id, detour.segments);
+          await recordObservation(tx, existing.id, detour.external_detour_id, "refreshed");
+
+          await tx.commit();
+          updated += 1;
+        } catch (err) {
+          try {
+            await tx.rollback();
+          } catch {
+            /* already rolled back / not begun */
+          }
+          context.error(`Failed to sync Avail detour ${detour.external_detour_id}:`, err);
+        }
+      }
+
+      context.log(
+        `Avail Detours sync: ${grouped.length} detours seen, ${inserted} inserted, ${updated} updated, ${skipped} skipped (manually edited).`,
+      );
+      return { kind: "stored", received: grouped.length, stored: inserted + updated + skipped, noun: "detours" };
+    });
   },
 });

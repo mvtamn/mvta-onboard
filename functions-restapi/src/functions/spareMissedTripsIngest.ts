@@ -4,7 +4,7 @@
 // deliberately neither logged nor stored.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
+import { runFeedsIngestion } from "../lib/feedRun";
 import {
   fetchSparePage,
   fetchSpareUpdatedWindow,
@@ -234,14 +234,14 @@ app.timer("spareMissedTripsIngest", {
       context.log("Spare missed-trip ingestion is disabled (SPARE_MISSED_TRIPS_ENABLED is not true).");
       return;
     }
-    // Everything below runs inside the guard so a throw cannot leave the
+    // Everything below runs inside runFeedsIngestion so a throw cannot leave the
     // health ledger frozen on its last success. Unguarded, a failing fetch
     // skipped recordFeedHealth entirely and wrote no failure either, so the
     // rows kept their old last_success_at with a null last_failure_reason -
     // indistinguishable from a feed that simply had not run yet. A real
     // twelve-hour Spare outage hid behind exactly that on 2026-09-03, while
     // spare_missed_trips detection went on consuming stale data.
-    try {
+    await runFeedsIngestion(["spare_requests", "spare_slots"], context, async () => {
       const nowSeconds = Math.floor(Date.now() / 1000);
       const lookbackMinutes = positiveEnvInteger("SPARE_MISSED_TRIP_LOOKBACK_MINUTES", DEFAULT_LOOKBACK_MINUTES, 7 * 24 * 60);
       const maxRows = positiveEnvInteger("SPARE_MISSED_TRIP_MAX_ROWS", DEFAULT_MAX_ROWS, 50_000);
@@ -298,25 +298,17 @@ app.timer("spareMissedTripsIngest", {
       for (const row of slots) if (await upsertSlot(pool, row)) slotWrites++;
       const maxRequestUpdatedAt = requests.reduce((max, row) => Math.max(max, spareNumber(row.updatedAt) ?? 0), 0);
       const maxSlotUpdatedAt = slots.reduce((max, row) => Math.max(max, spareNumber(row.updatedAt) ?? 0), 0);
-      await recordFeedHealth(pool, "spare_requests", requestWrites, maxRequestUpdatedAt || null);
-      await recordFeedHealth(pool, "spare_slots", slotWrites, maxSlotUpdatedAt || null);
       context.log(
         `Spare Missed Trips ingestion: ${requests.length} requests fetched/${requestWrites} stored; ` +
           `${slots.length} slots fetched/${slotWrites} stored; ${monitorWrites} on-demand monitor updates.`,
       );
-    } catch (err) {
-      // Both feeds are recorded: Slots are fetched from the duties named by
-      // Requests, so a Requests failure takes Slots down with it and marking
-      // only one would understate the outage.
-      context.error("Spare Missed Trips ingestion failed:", err);
-      try {
-        const pool = await getPool();
-        await recordFeedFailure(pool, "spare_requests", err);
-        await recordFeedFailure(pool, "spare_slots", err);
-      } catch (healthError) {
-        context.error("Failed to record Spare Missed Trips feed failure:", healthError);
-      }
-      throw err;
-    }
+      // received is what was written, not what was fetched: the upserts decline
+      // out-of-scope services and unusable rows on purpose, and a write that
+      // fails throws out of this run rather than being counted as a shortfall.
+      return {
+        spare_requests: { kind: "stored", received: requestWrites, stored: requestWrites, sourceTimestampSeconds: maxRequestUpdatedAt || null },
+        spare_slots: { kind: "stored", received: slotWrites, stored: slotWrites, sourceTimestampSeconds: maxSlotUpdatedAt || null },
+      };
+    });
   },
 });

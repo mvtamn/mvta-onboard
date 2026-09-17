@@ -17,7 +17,11 @@ export type KpiFeedName =
   | "spare_slots"
   | "spare_duties"
   | "spare_on_demand_reconciliation"
-  | "on_demand_zones";
+  | "on_demand_zones"
+  // Ledgered for delivery evidence on the Integrations & Data Health page; no
+  // KPI declares them, so they never decide a trust state.
+  | "gtfs_alerts"
+  | "avail_detours";
 
 export interface KpiFeedHealth {
   feed_name: KpiFeedName;

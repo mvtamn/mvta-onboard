@@ -26,7 +26,7 @@ import {
   subtractMonths,
   upsertOtpMonthlyReport,
 } from "../lib/otpMonthlyFeed";
-import { feedHealthOutcome, recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
+import { runFeedIngestion } from "../lib/feedRun";
 
 const TRAILING_MONTHS = 3; // current + prior 2
 
@@ -41,76 +41,62 @@ app.timer("otpMonthlyFeedPoll", {
     }
 
     const now = new Date();
-    const pool = await getPool();
+    await runFeedIngestion("avail_otp_monthly", context, async () => {
+      const pool = await getPool();
+      let receivedReports = 0;
+      let storedReports = 0;
+      const failedMonths: string[] = [];
+      for (let i = 0; i < TRAILING_MONTHS; i++) {
+        const targetDate = subtractMonths(now, i);
+        const serviceMonth = serviceMonthOf(targetDate);
 
-    let receivedReports = 0;
-    let storedReports = 0;
-    let completedFetches = 0;
-    for (let i = 0; i < TRAILING_MONTHS; i++) {
-      const targetDate = subtractMonths(now, i);
-      const serviceMonth = serviceMonthOf(targetDate);
-
-      let reports;
-      try {
-        reports = await fetchOtpMonthlyReports(baseUrl, apiKey, targetDate);
-      } catch (err) {
-        context.error(`Failed to fetch Avail OTP Monthly reports for ${serviceMonth}:`, err);
-        try { await recordFeedFailure(pool, "avail_otp_monthly", err); } catch (healthError) { context.error("Failed to record Avail OTP Monthly feed failure:", healthError); }
-        continue;
-      }
-
-      completedFetches++;
-
-      let upsertedCount = 0;
-      for (const report of reports) {
-        let mapped;
+        let reports;
         try {
-          mapped = mapOtpMonthlyReport(report, serviceMonth);
+          reports = await fetchOtpMonthlyReports(baseUrl, apiKey, targetDate);
         } catch (err) {
-          context.error(`Failed to map Avail OTP Monthly report for route ${report.RouteID}/stop ${report.StopID}:`, err);
+          // One month failing must not stop the others refreshing, but it does
+          // stop this run claiming coverage of the whole trailing window.
+          context.error(`Failed to fetch Avail OTP Monthly reports for ${serviceMonth}:`, err);
+          failedMonths.push(`${serviceMonth} (${err instanceof Error ? err.message : String(err)})`);
           continue;
         }
-        if (!mapped) continue;
 
-        try {
-          await upsertOtpMonthlyReport(pool, mapped);
-          upsertedCount++;
-        } catch (err) {
-          context.error(`Failed to upsert Avail OTP Monthly report for route ${mapped.route_id}/stop ${mapped.stop_id}:`, err);
-        }
-      }
+        let upsertedCount = 0;
+        for (const report of reports) {
+          let mapped;
+          try {
+            mapped = mapOtpMonthlyReport(report, serviceMonth);
+          } catch (err) {
+            context.error(`Failed to map Avail OTP Monthly report for route ${report.RouteID}/stop ${report.StopID}:`, err);
+            continue;
+          }
+          if (!mapped) continue;
 
-      context.log(`Avail OTP Monthly poll: ${reports.length} reports seen, ${upsertedCount} rows upserted for ${serviceMonth}.`);
-      receivedReports += reports.length;
-      storedReports += upsertedCount;
-    }
-    if (completedFetches === TRAILING_MONTHS) {
-      // The coverage guard above already withholds health when a month failed
-      // to fetch. This is the other half: every month fetched, and none of what
-      // came back could be stored.
-      const outcome = feedHealthOutcome(receivedReports, storedReports, "OTP Monthly reports");
-      if (outcome.kind === "failure") {
-        context.error(`Avail OTP Monthly poll: ${outcome.reason}`);
-        try {
-          await recordFeedFailure(pool, "avail_otp_monthly", new Error(outcome.reason));
-        } catch (healthError) {
-          context.error("Failed to record Avail OTP Monthly feed failure:", healthError);
+          try {
+            await upsertOtpMonthlyReport(pool, mapped);
+            upsertedCount++;
+          } catch (err) {
+            context.error(`Failed to upsert Avail OTP Monthly report for route ${mapped.route_id}/stop ${mapped.stop_id}:`, err);
+          }
         }
-        return;
+
+        context.log(`Avail OTP Monthly poll: ${reports.length} reports seen, ${upsertedCount} rows upserted for ${serviceMonth}.`);
+        receivedReports += reports.length;
+        storedReports += upsertedCount;
       }
-      if (outcome.unstoredCount > 0) {
-        context.warn(`Avail OTP Monthly poll: ${outcome.unstoredCount} of ${receivedReports} reports were not stored.`);
+      if (failedMonths.length > 0) {
+        return {
+          kind: "failed",
+          reason: `${failedMonths.length}/${TRAILING_MONTHS} coverage months could not be fetched: ${failedMonths.join("; ")}`,
+        };
       }
-      try {
-        await recordFeedHealth(pool, "avail_otp_monthly", outcome.entityCount, null, {
-          startAt: subtractMonths(now, TRAILING_MONTHS - 1),
-          endAt: now,
-        });
-      } catch (healthError) {
-        context.error("Failed to update Avail OTP Monthly feed health:", healthError);
-      }
-    } else {
-      context.warn(`Avail OTP Monthly feed health was not advanced: ${completedFetches}/${TRAILING_MONTHS} coverage months completed.`);
-    }
+      return {
+        kind: "stored",
+        received: receivedReports,
+        stored: storedReports,
+        noun: "OTP Monthly reports",
+        coverage: { startAt: subtractMonths(now, TRAILING_MONTHS - 1), endAt: now },
+      };
+    });
   },
 });

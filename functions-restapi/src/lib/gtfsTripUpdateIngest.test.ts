@@ -19,16 +19,18 @@ function harness(overrides: Partial<TripUpdateIngestDeps> = {}) {
   const deps: TripUpdateIngestDeps = {
     fetchFeed: async () => feedOf(3),
     connect: async () => pool as never,
-    recordHealth: (async (_pool, feedName, entityCount, sourceTimestamp) => {
-      health.push({ feedName, entityCount, sourceTimestamp: sourceTimestamp ?? null });
-    }) as TripUpdateIngestDeps["recordHealth"],
-    recordFailure: (async (_pool, feedName) => {
-      failures.push(feedName);
-    }) as TripUpdateIngestDeps["recordFailure"],
+    ledger: {
+      recordHealth: async (feedName, entityCount, sourceTimestamp) => {
+        health.push({ feedName, entityCount, sourceTimestamp: sourceTimestamp ?? null });
+      },
+      recordFailure: async (feedName) => {
+        failures.push(feedName);
+      },
+    },
     ...overrides,
   };
   const errors: string[] = [];
-  const context = { error: (...args: unknown[]) => errors.push(String(args[0])) };
+  const context = { log: () => {}, warn: () => {}, error: (...args: unknown[]) => errors.push(String(args[0])) };
   return { deps, context, health, failures, errors, pool };
 }
 
@@ -88,14 +90,17 @@ test("a ledger write that fails does not cost the caller the feed", async () => 
   // row could be updated. Losing the feed here would turn a ledger problem into
   // a missed detection cycle.
   const h = harness({
-    recordHealth: (async () => {
-      throw new Error("ledger unavailable");
-    }) as TripUpdateIngestDeps["recordHealth"],
+    ledger: {
+      recordHealth: async () => {
+        throw new Error("ledger unavailable");
+      },
+      recordFailure: async () => {},
+    },
   });
 
   const ingest = await readTripUpdateFeed("https://feed.test", h.context, h.deps);
 
   assert.ok(ingest, "the feed must still reach the poller");
   assert.equal(ingest!.feed.Entities.length, 3);
-  assert.ok(h.errors.some((line) => line.includes("Failed to update TripUpdate feed health")));
+  assert.ok(h.errors.some((line) => line.includes("Failed to record gtfs_trip_updates feed health")));
 });

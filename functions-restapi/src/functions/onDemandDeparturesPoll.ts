@@ -15,7 +15,7 @@
 // are stored as ids.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { feedHealthOutcome, recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
+import { runFeedIngestion } from "../lib/feedRun";
 import { agencyServiceDate, serviceDateAndGtfsSecondsToUtc } from "../lib/missedTripTime";
 import { driverLabelFrom, DriverLabelResolver, driverRecordShape, labelsToBackfill, onDemandDeparturesEnabled, resolveOnDemandDeparture, VehicleLabelResolver, type DriverLabel, type ResolvedOnDemandDeparture, type StoredDepartureLabels } from "../lib/onDemandDepartures";
 import { fetchSpareDriver, fetchSpareDuty, fetchSparePage, fetchSpareVehicle, type SpareDutyRecord, type SpareSlotRecord } from "../lib/spareApi";
@@ -253,9 +253,9 @@ app.timer("onDemandDeparturesPoll", {
     const withDriverLabel = ready.recordset[0]?.with_driver_label === 1;
     if (!withDriverLabel) context.warn("OnDemandDepartures has no driver_name column (migration 100); driver names are not recorded.");
 
-    // Guarded as a whole, like the missed-trips ingest: a throw must land in
-    // the health ledger as a failure, never leave it frozen on a stale success.
-    try {
+    // A throw must land in the health ledger as a failure, never leave it
+    // frozen on a stale success; runFeedIngestion records it and rethrows.
+    await runFeedIngestion("spare_duties", context, async () => {
       const dutyIds = await workingSet(pool);
       let stored = 0;
       let undated = 0;
@@ -295,27 +295,20 @@ app.timer("onDemandDeparturesPoll", {
         context.warn(`On-demand departures poll: working set hit the ${MAX_DUTIES_PER_RUN}-duty cap; some duties wait for the next run.`);
       }
 
-      // Undated duties were skipped deliberately, so they are not loss.
-      const outcome = feedHealthOutcome(dutyIds.length - undated, stored, "duties");
-      if (outcome.kind === "failure") {
-        context.error(`On-demand departures poll: ${outcome.reason}`);
-        await recordFeedFailure(pool, "spare_duties", new Error(outcome.reason));
-        return;
-      }
-      await recordFeedHealth(pool, "spare_duties", outcome.entityCount, maxSourceUpdatedAt || null, {
-        startAt: serviceDateAndGtfsSecondsToUtc(agencyServiceDate(new Date(), -1).serviceDate, 0),
-        endAt: new Date(),
-      });
       context.log(`On-demand departures poll: ${dutyIds.length} duties in the working set, ${stored} rows upserted.`);
-    } catch (err) {
-      context.error("On-demand departures poll failed:", err);
-      try {
-        await recordFeedFailure(pool, "spare_duties", err);
-      } catch (healthError) {
-        context.error("Failed to record on-demand departures feed failure:", healthError);
-      }
-      throw err;
-    }
+      // Undated duties were skipped deliberately, so they are not loss.
+      return {
+        kind: "stored",
+        received: dutyIds.length - undated,
+        stored,
+        noun: "duties",
+        sourceTimestampSeconds: maxSourceUpdatedAt || null,
+        coverage: {
+          startAt: serviceDateAndGtfsSecondsToUtc(agencyServiceDate(new Date(), -1).serviceDate, 0),
+          endAt: new Date(),
+        },
+      };
+    });
 
     // After the feed's health is settled: a label backfill that fails must
     // not read as a departures feed that failed.
