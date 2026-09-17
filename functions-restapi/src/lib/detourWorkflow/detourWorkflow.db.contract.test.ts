@@ -67,6 +67,13 @@ const FRESH_DATABASE_ADJUSTMENTS: Record<string, (text: string) => string> = {
   ),
 };
 
+async function applyMigration(pool: sql.ConnectionPool, file: string) {
+  const text = readFileSync(join(process.cwd(), "sql", file), "utf8");
+  for (const batch of text.split(/^\s*GO\s*$/gim).map((p) => p.trim()).filter(Boolean)) {
+    await pool.request().batch(batch);
+  }
+}
+
 async function reset(pool: sql.ConnectionPool) {
   await pool.request().batch(DROP);
   for (const file of MIGRATIONS) {
@@ -91,6 +98,8 @@ interface Seed {
   start?: string;
   end?: string | null;
   reviewStatus?: "current" | "needs_review";
+  source?: "manual" | "avail";
+  fulfillmentChangeReason?: string;
 }
 
 // A Detour whose workflow has already started (one history row).
@@ -102,10 +111,12 @@ async function seed(pool: sql.ConnectionPool, s: Seed): Promise<string> {
     .input("start", sql.Date, s.start ?? "2026-09-20")
     .input("end", sql.Date, s.end === undefined ? "2026-10-20" : s.end)
     .input("review", sql.NVarChar(20), s.reviewStatus ?? "current")
+    .input("source", sql.NVarChar(10), s.source ?? "manual")
+    .input("change_reason", sql.NVarChar(1000), s.fulfillmentChangeReason ?? null)
     .query<{ id: string }>(`
-      INSERT INTO Detours (closure, start_date, end_date, source, created_by, fulfillment_mode, lifecycle_state, review_status)
+      INSERT INTO Detours (closure, start_date, end_date, source, created_by, fulfillment_mode, lifecycle_state, review_status, fulfillment_change_reason)
       OUTPUT INSERTED.id
-      VALUES (@closure, @start, @end, 'manual', 'seed', @mode, @state, @review)`)).recordset[0].id;
+      VALUES (@closure, @start, @end, @source, 'seed', @mode, @state, @review, @change_reason)`)).recordset[0].id;
   if (s.routes) {
     await pool.request().input("id", sql.UniqueIdentifier, id).input("routes", sql.NVarChar(200), s.routes)
       .query("INSERT INTO DetourSegments (detour_id, routes, sort_order) VALUES (@id, @routes, 0)");
@@ -306,6 +317,41 @@ test("Detour workflow acts against SQL Server", skip, async (t) => {
       assert.equal(stored.lifecycle_state, entry.ok && !close.ok ? "fulfillment_failed" : "closed");
       assert.equal((await history(pool, raced)).length, [entry, close].filter((o) => o.ok).length);
     });
+  } finally {
+    await pool.close();
+  }
+});
+
+test("migration 122 retires approved and marks Avail-feed Detours Avail-backed, once", skip, async () => {
+  const pool = await new sql.ConnectionPool(parseConnectionString(connectionString!)).connect();
+  try {
+    await reset(pool);
+    const approvedAvail = await seed(pool, { closure: "Aspen", mode: "avail", state: "approved" });
+    const approvedManual = await seed(pool, { closure: "Basswood", mode: "mobility_manual", state: "approved" });
+    const fromFeed = await seed(pool, { closure: "Chokecherry", source: "avail", mode: "fixed_route_manual", state: "closed" });
+    const fellBack = await seed(pool, { closure: "Dogwood", source: "avail", mode: "fixed_route_manual", state: "fulfilled", fulfillmentChangeReason: "Avail could not model it" });
+    const untouched = await seed(pool, { closure: "Elderberry", mode: "fixed_route_manual", state: "fulfilled" });
+
+    await applyMigration(pool, "migration-122-detour-workflow-states.sql");
+    // Re-runnable: a second pass changes nothing and writes no history.
+    await applyMigration(pool, "migration-122-detour-workflow-states.sql");
+
+    assert.deepEqual([(await row(pool, approvedAvail)).lifecycle_state, (await row(pool, approvedManual)).lifecycle_state], ["awaiting_fulfillment", "fulfilled"]);
+    assert.deepEqual((await history(pool, approvedAvail)).map((h) => [h.event_type, h.from_state, h.to_state, h.changed_by]), [["state_transition", "approved", "awaiting_fulfillment", "migration-122"]]);
+    const feed = await row(pool, fromFeed);
+    assert.deepEqual([feed.fulfillment_mode, feed.lifecycle_state, feed.avail_build_confirmed_at], ["avail", "closed", null]);
+    assert.equal((await history(pool, fromFeed)).length, 1);
+    assert.equal((await row(pool, fellBack)).fulfillment_mode, "fixed_route_manual");
+    assert.equal((await history(pool, fellBack)).length, 0);
+    assert.equal((await history(pool, untouched)).length, 0);
+
+    await assert.rejects(
+      pool.request().input("id", sql.UniqueIdentifier, untouched).query("UPDATE Detours SET lifecycle_state = 'approved' WHERE id = @id"),
+      /CK_Detours_LifecycleState/,
+    );
+    // The module no longer has a legacy row to refuse.
+    const closed = await performDetourAct(pool, approvedManual, { act: "close", reason: "Done" }, occ);
+    assert.ok(closed.ok);
   } finally {
     await pool.close();
   }

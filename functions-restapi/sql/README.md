@@ -41,6 +41,9 @@ called afterwards:
 - `migration-088a`: dismissed candidates carry
   `reviewed_by = 'migration-088-garage-departure-variance'` and a review note
   beginning `Dismissed by migration 088:`.
+- `migration-122`: Detours it moved carry `workflow_updated_by = 'migration-122'`,
+  and their `DetourWorkflowHistory` rows carry `changed_by = 'migration-122'`
+  with a detail ending `by migration 122` or `Set by migration 122`.
 
 Console output (`PRINT`), error text (`THROW`) and comments describe the file
 and are renamed with it.
