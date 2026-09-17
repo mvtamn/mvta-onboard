@@ -869,7 +869,15 @@ The controlled link between a Procedure Revision and a source document stored
 in SharePoint. It identifies the expected document and its validation state,
 but does not author or overwrite Procedure content. A Procedure Revision may
 have multiple Supporting Document References, all frozen with that revision.
+A new reference can only be to a document in the Approved Document Library;
+a reference an author keeps keeps the document it already names.
 _Avoid_: content sync, procedure source of truth
+
+**Approved Document Library**:
+The one SharePoint library that Procedure authors choose source documents
+from. An author picks a document in it; which library that is belongs to
+OnBoard, never to the author.
+_Avoid_: any granted site, SOP folder, document location
 
 **Primary Supporting Document Reference**:
 The one required Supporting Document Reference for a Procedure Revision. It

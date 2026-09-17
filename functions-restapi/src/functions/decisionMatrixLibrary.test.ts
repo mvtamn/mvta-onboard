@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { HttpRequest, type InvocationContext } from "@azure/functions";
 import type { LibraryListing } from "../lib/sharepointLibrary";
-import { browseDecisionMatrixLibrary, libraryConfig, browsingCredential, setDecisionMatrixLibraryForTests } from "./decisionMatrixLibrary";
+import { approvedLibraryItems, browseDecisionMatrixLibrary, libraryConfig, browsingCredential, setDecisionMatrixLibraryForTests } from "./decisionMatrixLibrary";
 
 const context = { error: () => undefined } as unknown as InvocationContext;
 
@@ -76,6 +76,10 @@ test("a listing is returned with the counts the picker shows", async () => {
     assert.equal(body.diagnostics.path, "_SOPs");
     assert.equal(body.diagnostics.folder_count, 1);
     assert.equal(body.diagnostics.file_count, 1);
+    // A chosen document no longer carries the library it came from; the
+    // server fills that in when the Draft is saved.
+    assert.equal("site_id" in body.diagnostics, false);
+    assert.equal("drive_id" in body.diagnostics, false);
   });
   setDecisionMatrixLibraryForTests(null);
 });
@@ -132,5 +136,18 @@ test("browsing reads as the sign-in application even when the documents applicat
     ONBOARD_API_CLIENT_ID: undefined, ONBOARD_API_CLIENT_SECRET: undefined,
   }, async () => {
     assert.equal(browsingCredential(), null, "the documents application must not stand in for browsing");
+  });
+});
+
+test("reading a chosen document with no library or no credential says which settings are missing, instead of failing", async () => {
+  await withSettings({ DECISION_MATRIX_LIBRARY_SITE_ID: undefined, DECISION_MATRIX_LIBRARY_DRIVE_ID: undefined }, async () => {
+    const read = await approvedLibraryItems().readItem("item-1");
+    assert.ok(read.outcome === "not_configured");
+    assert.match(read.reason, /DECISION_MATRIX_LIBRARY_SITE_ID/);
+  });
+  await withSettings({ ...CONFIGURED, AZURE_TENANT_ID: undefined, ONBOARD_API_CLIENT_ID: undefined, ONBOARD_API_CLIENT_SECRET: undefined }, async () => {
+    const read = await approvedLibraryItems().readItem("item-1");
+    assert.ok(read.outcome === "not_configured");
+    assert.match(read.reason, /ONBOARD_API_CLIENT_ID/);
   });
 });

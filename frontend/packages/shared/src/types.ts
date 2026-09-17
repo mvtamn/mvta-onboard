@@ -344,9 +344,6 @@ export interface DecisionMatrixLibraryDiagnostics {
   outcome: "ok" | "not_configured" | "forbidden" | "not_found" | "failed";
   path: string;
   reason: string | null;
-  /** Which library was read. Configuration on the server, so the picker learns it here. */
-  site_id?: string;
-  drive_id?: string;
   folder_count?: number;
   file_count?: number;
 }
@@ -379,8 +376,9 @@ export interface ProcedureImmediateActionDraft {
   instruction: string;
 }
 
+/** A Supporting Document Reference as stored: the document is SharePoint's facts, read on the server. */
 export interface SupportingDocumentReferenceDraft {
-  id?: string;
+  id: string;
   document_type: SupportingDocumentType;
   is_primary: boolean;
   document_code: string;
@@ -395,6 +393,17 @@ export interface SupportingDocumentReferenceDraft {
   checked_at?: string | null;
 }
 
+/**
+ * What a Draft save says about a reference. A newly chosen document is named by
+ * its item and the version the picker showed; the server reads the rest from
+ * the Approved Document Library. A kept reference is named by its id and keeps
+ * its document and health. Sending a site, drive or any other document fact is
+ * refused.
+ */
+export type SupportingDocumentReferenceInput =
+  | { document_type: SupportingDocumentType; is_primary?: boolean; document_code: string; item_id: string; seen_version: string }
+  | { id: string; document_type: SupportingDocumentType; is_primary?: boolean; document_code: string };
+
 export interface ProcedureDraftInput {
   procedure_id?: string;
   condition_key?: string;
@@ -408,11 +417,12 @@ export interface ProcedureDraftInput {
   tags?: string[];
   criteria: ProcedureCriterionDraft[];
   immediate_actions: ProcedureImmediateActionDraft[];
-  document_references: SupportingDocumentReferenceDraft[];
+  document_references: SupportingDocumentReferenceInput[];
   concurrency_token?: string;
 }
 
-export interface ProcedureDraft extends ProcedureDraftInput {
+export interface ProcedureDraft extends Omit<ProcedureDraftInput, "document_references"> {
+  document_references: SupportingDocumentReferenceDraft[];
   procedure_id: string;
   condition_key: string;
   condition: string;

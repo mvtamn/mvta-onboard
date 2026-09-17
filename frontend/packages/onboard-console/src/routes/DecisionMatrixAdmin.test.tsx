@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { ApiError } from "@mvta/shared";
 import { DecisionMatrixAdmin } from "./DecisionMatrixAdmin.js";
 
-vi.mock("../config.js", () => ({ api: { getDecisionMatrixGovernanceQueue: vi.fn(), getDecisionMatrixAudit: vi.fn(), getDecisionMatrixMatchRules: vi.fn(), getDecisionMatrix: vi.fn(), getDecisionMatrixLegacyCandidates: vi.fn(), checkDecisionMatrixProcedureReferences: vi.fn(), governDecisionMatrixProcedureRevision: vi.fn() } }));
+vi.mock("../config.js", () => ({ api: { getDecisionMatrixGovernanceQueue: vi.fn(), getDecisionMatrixAudit: vi.fn(), getDecisionMatrixMatchRules: vi.fn(), getDecisionMatrix: vi.fn(), getDecisionMatrixLegacyCandidates: vi.fn(), checkDecisionMatrixProcedureReferences: vi.fn(), governDecisionMatrixProcedureRevision: vi.fn(), getDecisionMatrixLibrary: vi.fn(), createDecisionMatrixProcedureDraft: vi.fn() } }));
 import { api } from "../config.js";
 
 /** Every surface connected and empty: the state a migrated database starts in. */
@@ -107,6 +107,29 @@ describe("Decision Matrix administration", () => {
     }
     // The SOP's own code is a human fact and stays.
     expect(screen.getByLabelText("Primary SOP code")).toBeInTheDocument();
+  });
+
+  // The server reads the site, drive, name, type and link from the Approved
+  // Document Library. The form says which item, the version the picker showed,
+  // and the SOP code - nothing SharePoint owns.
+  it("creates a Draft naming only the chosen item, the version it showed, and the SOP code", async () => {
+    vi.mocked(api.getDecisionMatrixLibrary).mockResolvedValue({
+      entries: [{ item_id: "item-sop", name: "SOP-OCC-001.docx", kind: "file", path: "_SOPs/SOP-OCC-001.docx", mime_type: "application/pdf", size_bytes: 2048, etag: '"{A},3"', last_modified_at: null, child_count: null, web_url: "https://mvtamn.sharepoint.com/SOP-OCC-001.docx" }],
+      diagnostics: { configured: true, outcome: "ok", path: "", reason: null, folder_count: 0, file_count: 1 },
+    });
+    vi.mocked(api.createDecisionMatrixProcedureDraft).mockResolvedValue({ procedure_id: "vehicle-collision", revision: 1, lifecycle_state: "Draft", concurrency_token: "0x01" });
+    render(<DecisionMatrixAdmin />);
+    const user = userEvent.setup();
+    await screen.findByRole("button", { name: "Create Draft" });
+    for (const [label, value] of [["Procedure ID", "vehicle-collision"], ["Condition key", "vehicle-collision"], ["Condition", "Vehicle collision"], ["Criterion", "A collision is reported."], ["Immediate action", "Notify command staff."], ["Severity meaning", "Hold service."], ["Owner team", "Operations Control Center"], ["Effective date", "2026-09-20"], ["Next review date", "2027-03-20"], ["Primary SOP code", "SOP-OCC-001"]]) {
+      await user.type(screen.getByLabelText(label, { exact: true }), value);
+    }
+    await user.click(screen.getByRole("button", { name: /Browse the approved library/i }));
+    await user.click(await screen.findByRole("button", { name: /SOP-OCC-001\.docx/ }));
+    await user.click(screen.getByRole("button", { name: "Create Draft" }));
+    expect(vi.mocked(api.createDecisionMatrixProcedureDraft).mock.calls[0]?.[0].document_references).toEqual([
+      { document_type: "SOP", is_primary: true, document_code: "SOP-OCC-001", item_id: "item-sop", seen_version: '"{A},3"' },
+    ]);
   });
 
   describe("document checks on a governance row", () => {

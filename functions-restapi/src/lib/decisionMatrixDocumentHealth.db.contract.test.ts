@@ -6,6 +6,7 @@ import test from "node:test";
 import { HttpRequest, type InvocationContext } from "@azure/functions";
 import { parseConnectionString, sql } from "./db";
 import { createDecisionMatrixProcedureDraft } from "../functions/decisionMatrixDrafts";
+import { createInMemoryLibraryItems } from "./sharepointLibrary";
 import { checkDecisionMatrixProcedureReferences, governDecisionMatrixProcedureRevision } from "../functions/decisionMatrixProcedureGovernance";
 import { createInMemoryMetadataReader, documentCheckStatus, revisionsDueForHealthCheck, type MetadataRead } from "./decisionMatrixDocumentHealth";
 
@@ -18,6 +19,9 @@ const context = { error: () => undefined } as unknown as InvocationContext;
 const ADMIN = "decision-matrix-health-contract-admin";
 const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const MATCHING: MetadataRead = { kind: "found", document: { version: "3.0", file_name: "SOP-HEALTH.docx", mime_type: DOCX } };
+const LIBRARY = createInMemoryLibraryItems({ site_id: "site-health", drive_id: "drive-health" }, {
+  "item-health": { name: "SOP-HEALTH.docx", kind: "file", mime_type: DOCX, etag: "3.0", web_url: "https://mvtamn.sharepoint.com/sites/TransitOperationsHub2/Shared%20Documents/SOP-HEALTH.docx" },
+});
 
 function requestFor(url: string, body: unknown, params: Record<string, string> = {}): HttpRequest {
   const principal = Buffer.from(JSON.stringify({ userId: ADMIN, claims: [{ typ: "roles", val: "OCC.Admin" }] })).toString("base64");
@@ -73,11 +77,9 @@ test("document health is observed by the application, recorded by one writer, an
       immediate_actions: [{ kind: "required", instruction: "Do the thing." }],
       document_references: [{
         document_type: "SOP", is_primary: true, document_code: "SOP-HEALTH",
-        site_id: "site-health", drive_id: "drive-health", item_id: "item-health",
-        expected_version: "3.0", expected_file_name: "SOP-HEALTH.docx", expected_mime_type: DOCX,
-        web_url: "https://mvtamn.sharepoint.com/sites/TransitOperationsHub2/Shared%20Documents/SOP-HEALTH.docx",
+        item_id: "item-health", seen_version: "3.0",
       }],
-    }), context);
+    }), context, LIBRARY);
     assert.equal(created.status, 201);
     const submitted = await governDecisionMatrixProcedureRevision(
       requestFor(lifecycleUrl(procedureId), { action: "submit_for_review", reason: "Ready." }, params(procedureId)),

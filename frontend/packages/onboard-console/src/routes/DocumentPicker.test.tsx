@@ -8,14 +8,11 @@ import { DocumentPicker, missingFacts } from "./DocumentPicker.js";
 vi.mock("../config.js", () => ({ api: { getDecisionMatrixLibrary: vi.fn() } }));
 import { api } from "../config.js";
 
-const SITE = "mvtamn.sharepoint.com,aaa,bbb";
-const DRIVE = "drive-1";
-
 function ok(entries: DecisionMatrixLibraryEntry[], path = ""): { entries: DecisionMatrixLibraryEntry[]; diagnostics: DecisionMatrixLibraryDiagnostics } {
   return {
     entries,
     diagnostics: {
-      configured: true, outcome: "ok", path, reason: null, site_id: SITE, drive_id: DRIVE,
+      configured: true, outcome: "ok", path, reason: null,
       folder_count: entries.filter((e) => e.kind === "folder").length,
       file_count: entries.filter((e) => e.kind === "file").length,
     },
@@ -48,26 +45,23 @@ describe("Document picker", () => {
     expect(vi.mocked(api.getDecisionMatrixLibrary)).toHaveBeenLastCalledWith("_SOPs");
   });
 
-  it("hands back everything a document reference needs, so nothing is typed by hand", async () => {
+  // The server reads the site, drive, name, type and link for itself; the
+  // picker says only which item, and the version it showed.
+  it("hands back the item and the version it showed, and nothing SharePoint owns", async () => {
     vi.mocked(api.getDecisionMatrixLibrary).mockResolvedValue(ok([file("SOP-1.pdf", "_SOPs/SOP-1.pdf")], "_SOPs"));
     const chosen = vi.fn();
     render(<DocumentPicker onChoose={chosen} />);
     await userEvent.setup().click(await screen.findByRole("button", { name: /SOP-1\.pdf/ }));
     expect(chosen).toHaveBeenCalledWith({
-      site_id: SITE,
-      drive_id: DRIVE,
       item_id: "id-SOP-1.pdf",
-      expected_version: '"etag-SOP-1.pdf"',
-      expected_file_name: "SOP-1.pdf",
-      expected_mime_type: "application/pdf",
-      web_url: "https://mvtamn.sharepoint.com/SOP-1.pdf",
+      seen_version: '"etag-SOP-1.pdf"',
+      file_name: "SOP-1.pdf",
       path: "_SOPs/SOP-1.pdf",
     });
   });
 
-  // A reference saved with an empty expected version fails its first health
-  // check, and the failure reads as the document having changed.
-  it("refuses a file SharePoint did not fully describe, and says what is missing", async () => {
+  // With no version there is nothing for the save to compare with SharePoint.
+  it("refuses a file SharePoint gave no version, and says so", async () => {
     vi.mocked(api.getDecisionMatrixLibrary).mockResolvedValue(ok([file("NoTag.pdf", "NoTag.pdf", { etag: null })]));
     const chosen = vi.fn();
     render(<DocumentPicker onChoose={chosen} />);
@@ -78,11 +72,9 @@ describe("Document picker", () => {
     expect(chosen).not.toHaveBeenCalled();
   });
 
-  it("will not choose a document when the server did not say which library it read", () => {
-    const entry = file("SOP-1.pdf", "SOP-1.pdf");
-    const withoutLibrary = { configured: true, outcome: "ok", path: "", reason: null } as DecisionMatrixLibraryDiagnostics;
-    expect(missingFacts(entry, withoutLibrary)).toContain("which library it is in");
-    expect(missingFacts(entry, { ...withoutLibrary, site_id: SITE, drive_id: DRIVE })).toEqual([]);
+  it("needs only a version from the listing; the server reads the file type and link itself", () => {
+    expect(missingFacts(file("SOP-1.pdf", "SOP-1.pdf", { mime_type: null, web_url: null }))).toEqual([]);
+    expect(missingFacts(file("SOP-1.pdf", "SOP-1.pdf", { etag: null }))).toEqual(["a version"]);
   });
 
   it("tells apart the ways a library can be unreadable", async () => {

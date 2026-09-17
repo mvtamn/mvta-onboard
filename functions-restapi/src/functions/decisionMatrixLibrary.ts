@@ -1,7 +1,7 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { ClientSecretCredential } from "@azure/identity";
 import { ADMIN_ROLES, requireRole } from "../lib/auth";
-import { createSharePointLibrary, type LibraryConfig, type SharePointLibrary } from "../lib/sharepointLibrary";
+import { createSharePointLibrary, type LibraryConfig, type LibraryItemReader, type SharePointLibrary } from "../lib/sharepointLibrary";
 
 function setting(name: string): string | null {
   const value = process.env[name];
@@ -49,10 +49,29 @@ function productionLibrary(config: LibraryConfig): SharePointLibrary | null {
   });
 }
 
-let overrideLibrary: SharePointLibrary | null = null;
+const NO_LIBRARY_REASON = "No approved SharePoint library is configured. Set DECISION_MATRIX_LIBRARY_SITE_ID and DECISION_MATRIX_LIBRARY_DRIVE_ID.";
+const NO_CREDENTIAL_REASON = "No credential is configured for browsing SharePoint. Set AZURE_TENANT_ID, ONBOARD_API_CLIENT_ID and ONBOARD_API_CLIENT_SECRET.";
+
+let overrideLibrary: Pick<SharePointLibrary, "listFolder"> | null = null;
 /** Test seam: the handler is the piece worth testing, not Graph. */
-export function setDecisionMatrixLibraryForTests(library: SharePointLibrary | null) {
+export function setDecisionMatrixLibraryForTests(library: Pick<SharePointLibrary, "listFolder"> | null) {
   overrideLibrary = library;
+}
+
+/**
+ * The Approved Document Library, for reading the one document an author chose.
+ *
+ * Choosing a document is authoring, so it reads as the same identity browsing
+ * does. It always answers: an environment with no library or no credential
+ * reads every item as not_configured, with the setting to fix, so a caller has
+ * no null to forget.
+ */
+export function approvedLibraryItems(): LibraryItemReader {
+  const config = libraryConfig();
+  const library = config ? productionLibrary(config) : null;
+  if (library) return library;
+  const reason = config ? NO_CREDENTIAL_REASON : NO_LIBRARY_REASON;
+  return { readItem: async () => ({ outcome: "not_configured", reason }) };
 }
 
 export async function browseDecisionMatrixLibrary(request: HttpRequest, context: InvocationContext) {
@@ -71,7 +90,7 @@ export async function browseDecisionMatrixLibrary(request: HttpRequest, context:
           configured: false,
           outcome: "not_configured",
           path: "",
-          reason: "No approved SharePoint library is configured. Set DECISION_MATRIX_LIBRARY_SITE_ID and DECISION_MATRIX_LIBRARY_DRIVE_ID.",
+          reason: NO_LIBRARY_REASON,
         },
       },
     };
@@ -87,7 +106,7 @@ export async function browseDecisionMatrixLibrary(request: HttpRequest, context:
           configured: false,
           outcome: "not_configured",
           path: "",
-          reason: "No credential is configured for browsing SharePoint. Set AZURE_TENANT_ID, ONBOARD_API_CLIENT_ID and ONBOARD_API_CLIENT_SECRET.",
+          reason: NO_CREDENTIAL_REASON,
         },
       },
     };
@@ -103,7 +122,7 @@ export async function browseDecisionMatrixLibrary(request: HttpRequest, context:
         status: 200,
         jsonBody: {
           entries: [],
-          diagnostics: { configured: true, outcome: listing.outcome, path: listing.path, reason: listing.reason, site_id: config.site_id, drive_id: config.drive_id },
+          diagnostics: { configured: true, outcome: listing.outcome, path: listing.path, reason: listing.reason },
         },
       };
     }
@@ -116,12 +135,9 @@ export async function browseDecisionMatrixLibrary(request: HttpRequest, context:
           outcome: "ok",
           path: listing.path,
           reason: null,
-          // The site and drive are configuration, so the picker cannot know
-          // them and a chosen document needs them. Reporting which library was
-          // read is also the only way a reader can tell which one they are
-          // looking at.
-          site_id: config.site_id,
-          drive_id: config.drive_id,
+          // No site or drive: they are configuration, and a chosen document
+          // no longer carries them. The server fills them in when the Draft is
+          // saved (lib/supportingDocumentReferences.ts).
           folder_count: listing.entries.filter((entry) => entry.kind === "folder").length,
           file_count: listing.entries.filter((entry) => entry.kind === "file").length,
         },

@@ -8,6 +8,7 @@ import { parseConnectionString, sql } from "../lib/db";
 import { cloneDecisionMatrixProcedureDraft, createDecisionMatrixProcedureDraft, getDecisionMatrixProcedureDraft, saveDecisionMatrixProcedureDraft } from "./decisionMatrixDrafts";
 import { governDecisionMatrixProcedureRevision } from "./decisionMatrixProcedureGovernance";
 import { createInMemoryMetadataReader } from "../lib/decisionMatrixDocumentHealth";
+import { createInMemoryLibraryItems } from "../lib/sharepointLibrary";
 
 const connectionString = process.env.DECISION_MATRIX_TEST_SQL_CONNECTION_STRING;
 const context = { error: () => undefined } as unknown as InvocationContext;
@@ -63,15 +64,14 @@ test("Decision Matrix Draft API persists ordered content, rejects stale saves, a
       document_type: "SOP",
       is_primary: true,
       document_code: "SOP-OCC-CONTRACT",
-      site_id: "site-contract",
-      drive_id: "drive-contract",
       item_id: "item-contract",
-      expected_version: "3.0",
-      expected_file_name: "SOP-OCC-CONTRACT.docx",
-      expected_mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      web_url: "https://mvtamn.sharepoint.com/sites/Operations/Shared%20Documents/SOP-OCC-CONTRACT.docx",
-    }],
+      seen_version: "3.0",
+    }] as Array<Record<string, unknown>>,
   };
+  // The Approved Document Library, as the Draft save reads it.
+  const library = createInMemoryLibraryItems({ site_id: "site-contract", drive_id: "drive-contract" }, {
+    "item-contract": { name: "SOP-OCC-CONTRACT.docx", kind: "file", mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", etag: "3.0", web_url: "https://mvtamn.sharepoint.com/sites/Operations/Shared%20Documents/SOP-OCC-CONTRACT.docx" },
+  });
 
   await contractPool.connect();
   try {
@@ -83,6 +83,7 @@ test("Decision Matrix Draft API persists ordered content, rejects stale saves, a
     const created = await createDecisionMatrixProcedureDraft(
       requestFor("POST", "https://example.test/api/manage/decision-matrix/procedures", draft),
       context,
+      library,
     );
     assert.equal(created.status, 201);
     const createdBody = created.jsonBody as { concurrency_token: string };
@@ -100,22 +101,26 @@ test("Decision Matrix Draft API persists ordered content, rejects stale saves, a
       context,
     );
     assert.equal(read.status, 200);
-    const readBody = read.jsonBody as { criteria: Array<{ text: string }>; immediate_actions: Array<{ instruction: string }>; document_references: Array<{ health_status: string }> };
+    const readBody = read.jsonBody as { criteria: Array<{ text: string }>; immediate_actions: Array<{ instruction: string }>; document_references: Array<{ id: string; document_type: string; is_primary: boolean; document_code: string; health_status: string }> };
     assert.deepEqual(readBody.criteria.map((criterion) => criterion.text), ["First persisted criterion.", "Second persisted criterion."]);
     assert.deepEqual(readBody.immediate_actions.map((action) => action.instruction), ["First persisted action.", "Second persisted action."]);
     assert.equal(readBody.document_references[0]?.health_status, "Needs review");
+    // Saving again keeps the reference by its id, as the console does.
+    const keptReferences = readBody.document_references.map(({ id, document_type, is_primary, document_code }) => ({ id, document_type, is_primary, document_code }));
 
     const saved = await saveDecisionMatrixProcedureDraft(
-      requestFor("PUT", `https://example.test/api/manage/decision-matrix/procedures/${procedureId}/revisions/1`, { ...draft, concurrency_token: createdBody.concurrency_token }, { procedureId, revision: "1" }),
+      requestFor("PUT", `https://example.test/api/manage/decision-matrix/procedures/${procedureId}/revisions/1`, { ...draft, document_references: keptReferences, concurrency_token: createdBody.concurrency_token }, { procedureId, revision: "1" }),
       context,
+      library,
     );
     assert.equal(saved.status, 200);
     const savedBody = saved.jsonBody as { concurrency_token: string };
     assert.notEqual(savedBody.concurrency_token, createdBody.concurrency_token);
 
     const stale = await saveDecisionMatrixProcedureDraft(
-      requestFor("PUT", `https://example.test/api/manage/decision-matrix/procedures/${procedureId}/revisions/1`, { ...draft, concurrency_token: createdBody.concurrency_token }, { procedureId, revision: "1" }),
+      requestFor("PUT", `https://example.test/api/manage/decision-matrix/procedures/${procedureId}/revisions/1`, { ...draft, document_references: keptReferences, concurrency_token: createdBody.concurrency_token }, { procedureId, revision: "1" }),
       context,
+      library,
     );
     assert.equal(stale.status, 409);
 
@@ -174,9 +179,10 @@ test("Decision Matrix Draft API persists ordered content, rejects stale saves, a
         condition: "Approved replacement Procedure",
         criteria: draft.criteria.map(({ kind, text }) => ({ kind, text })),
         immediate_actions: draft.immediate_actions.map(({ kind, instruction }) => ({ kind, instruction })),
-        document_references: draft.document_references.map(({ document_type, is_primary, document_code, site_id, drive_id, item_id, expected_version, expected_file_name, expected_mime_type, web_url }) => ({ document_type, is_primary, document_code, site_id, drive_id, item_id, expected_version, expected_file_name, expected_mime_type, web_url })),
+        document_references: draft.document_references,
       }),
       context,
+      library,
     );
     assert.equal(replacement.status, 201);
     assert.equal((await governDecisionMatrixProcedureRevision(requestFor("POST", `https://example.test/api/manage/decision-matrix/procedures/${replacementProcedureId}/revisions/1/lifecycle`, { action: "submit_for_review", reason: "Replacement is ready." }, { procedureId: replacementProcedureId, revision: "1" }), context, validDocument)).status, 200);
