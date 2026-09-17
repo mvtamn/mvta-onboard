@@ -2,19 +2,10 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
 import { getPool } from "../lib/db";
-import { summarizeFeedResponse } from "../lib/feedCheckResponse";
+import { ledgerFeedChecks, summarizeFeedResponse, type FeedCheck } from "../lib/feedCheckResponse";
 import { feedHealthTableReady } from "../lib/kpiFeedHealth";
-
-type FeedCheck = {
-  name: string;
-  configured: boolean;
-  status?: number;
-  records?: number;
-  keys?: string[];
-  error?: string;
-  freshness?: "current" | "stale";
-  last_success_at?: string;
-};
+import { loadKpiFeedHealthRecords } from "../lib/kpiTrustStore";
+import { fetchSparePage, type SpareRequestRecord } from "../lib/spareApi";
 
 function dateMmDdYyyy(date: Date): string {
   return `${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}-${date.getUTCFullYear()}`;
@@ -53,6 +44,25 @@ async function checkStaticGtfs(url: string | undefined): Promise<FeedCheck> {
   }
 }
 
+// Probed through the same client the ingests use, so the check follows
+// SPARE_API_BASE_URL, auth and timeout exactly as they do rather than calling
+// a hard-coded host of its own.
+async function checkSpareRequests(nowSeconds: number): Promise<FeedCheck> {
+  const name = "Spare Requests";
+  if (!process.env.SPARE_API_KEY?.trim()) return { name, configured: false, error: "API key unavailable" };
+  try {
+    const page = await fetchSparePage<SpareRequestRecord>("/v1/requests", new URLSearchParams({
+      fromUpdatedAt: String(nowSeconds - 7200),
+      toUpdatedAt: String(nowSeconds),
+      limit: "1",
+      skip: "0",
+    }));
+    return { name, configured: true, status: 200, ...summarizeFeedResponse(page) };
+  } catch (error) {
+    return { name, configured: true, error: error instanceof Error ? error.message : "Request failed" };
+  }
+}
+
 async function spareMissedTripPipelineChecks(): Promise<FeedCheck[]> {
   const configured = process.env.SPARE_MISSED_TRIPS_ENABLED?.trim().toLowerCase() === "true";
   if (!configured) {
@@ -63,27 +73,10 @@ async function spareMissedTripPipelineChecks(): Promise<FeedCheck[]> {
     if (!await feedHealthTableReady(pool)) {
       return ["Requests", "Slots"].map((name) => ({ name: `Spare missed-trip ${name} ingestion`, configured: true, error: "Pipeline health table is not ready" }));
     }
-    const result = await pool.request().query<{
-      feed_name: "spare_requests" | "spare_slots";
-      last_success_at: Date | null;
-      last_entity_count: number | null;
-    }>(`
-      SELECT feed_name, last_success_at, last_entity_count
-      FROM KpiFeedHealth
-      WHERE feed_name IN ('spare_requests', 'spare_slots')
-    `);
-    const rows = new Map(result.recordset.map((row) => [row.feed_name, row]));
-    return (["spare_requests", "spare_slots"] as const).map((feedName) => {
-      const row = rows.get(feedName);
-      const lastSuccessAt = row?.last_success_at ?? null;
-      return {
-        name: `Spare missed-trip ${feedName === "spare_requests" ? "Requests" : "Slots"} ingestion`,
-        configured: true,
-        records: row?.last_entity_count ?? 0,
-        freshness: lastSuccessAt && lastSuccessAt.getTime() >= Date.now() - 35 * 60_000 ? "current" : "stale",
-        last_success_at: lastSuccessAt?.toISOString(),
-      };
-    });
+    return ledgerFeedChecks([
+      { name: "Spare missed-trip Requests ingestion", feedName: "spare_requests" },
+      { name: "Spare missed-trip Slots ingestion", feedName: "spare_slots" },
+    ], await loadKpiFeedHealthRecords(pool));
   } catch (error) {
     return ["Requests", "Slots"].map((name) => ({
       name: `Spare missed-trip ${name} ingestion`, configured: true,
@@ -110,7 +103,6 @@ app.http("feedChecks", {
       ? key ? checkJson(name, url.trim(), { "Ocp-Apim-Subscription-Key": key }) : Promise.resolve({ name, configured: false, error: "Subscription key unavailable" } satisfies FeedCheck)
       : Promise.resolve({ name, configured: false } satisfies FeedCheck);
     const avlStart = new Date(now.getTime() - 10 * 60_000);
-    const spareKey = process.env.SPARE_API_KEY?.trim();
     const nowSeconds = Math.floor(now.getTime() / 1000);
 
     const [checks, sparePipelineChecks] = await Promise.all([
@@ -132,9 +124,7 @@ app.http("feedChecks", {
       configured("Avail Missed Trips", process.env.AVAIL_MISSED_TRIPS_URL?.trim()
         ? `${process.env.AVAIL_MISSED_TRIPS_URL!.trim()}/${dateMmDdYyyy(weekAgo)}/${dateMmDdYyyy(now)}/0/0`
         : undefined),
-      spareKey
-        ? checkJson("Spare Requests", `https://api.us.sparelabs.com/v1/requests?fromUpdatedAt=${nowSeconds - 7200}&toUpdatedAt=${nowSeconds}&limit=1&skip=0`, { Authorization: `Bearer ${spareKey}` })
-        : Promise.resolve({ name: "Spare Requests", configured: false, error: "API key unavailable" } satisfies FeedCheck),
+      checkSpareRequests(nowSeconds),
       ]),
       spareMissedTripPipelineChecks(),
     ]);

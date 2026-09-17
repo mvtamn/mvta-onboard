@@ -17,7 +17,7 @@ import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool } from "../lib/db";
 import { fetchMissedTripReports, mapMissedTripReport, replaceMissedTripsForMonths } from "../lib/availMissedTripsFeed";
 import { serviceMonthOf, subtractMonths } from "../lib/otpMonthlyFeed";
-import { feedHealthOutcome, recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
+import { runFeedIngestion } from "../lib/feedRun";
 
 const TRAILING_MONTHS = 3; // current + prior 2
 
@@ -39,70 +39,43 @@ app.timer("availMissedTripsPoll", {
     const windowStart = firstOfMonth(subtractMonths(now, TRAILING_MONTHS - 1));
     const targetMonths = Array.from({ length: TRAILING_MONTHS }, (_, i) => serviceMonthOf(subtractMonths(now, i)));
 
-    let reports;
-    try {
-      reports = await fetchMissedTripReports(baseUrl, apiKey, windowStart, now);
-    } catch (err) {
-      context.error("Failed to fetch Avail Missed Trips reports:", err);
-      try {
-        await recordFeedFailure(await getPool(), "avail_missed_trips", err);
-      } catch (healthError) {
-        context.error("Failed to record Avail Missed Trips feed failure:", healthError);
-      }
-      return;
-    }
+    await runFeedIngestion("avail_missed_trips", context, async () => {
+      const reports = await fetchMissedTripReports(baseUrl, apiKey, windowStart, now);
 
-    const mapped = reports
-      .map((report) => {
-        try {
-          return mapMissedTripReport(report);
-        } catch (err) {
-          context.error(`Failed to map Avail Missed Trips report for route ${report.RouteID}:`, err);
-          return null;
-        }
-      })
-      .filter((m): m is NonNullable<typeof m> => m !== null);
+      const mapped = reports
+        .map((report) => {
+          try {
+            return mapMissedTripReport(report);
+          } catch (err) {
+            context.error(`Failed to map Avail Missed Trips report for route ${report.RouteID}:`, err);
+            return null;
+          }
+        })
+        .filter((m): m is NonNullable<typeof m> => m !== null);
 
-    const pool = await getPool();
-    // replaceMissedTripsForMonths DELETEs the target months before inserting,
-    // so an empty mapped set does not merely record nothing - it erases months
-    // of retained evidence and then reports a clean run. Reports that all
-    // failed to map are a source or contract problem, not an instruction to
-    // discard the rows already held.
-    const outcome = feedHealthOutcome(reports.length, mapped.length, "missed-trip reports");
-    if (outcome.kind === "failure") {
-      context.error(`Avail Missed Trips poll: ${outcome.reason} Retained rows for ${targetMonths.join(", ")} are left in place.`);
-      try {
-        await recordFeedFailure(pool, "avail_missed_trips", new Error(outcome.reason));
-      } catch (healthError) {
-        context.error("Failed to record Avail Missed Trips feed failure:", healthError);
+      // replaceMissedTripsForMonths DELETEs the target months before inserting,
+      // so an empty mapped set does not merely record nothing - it erases months
+      // of retained evidence and then reports a clean run. Reports that all
+      // failed to map are a source or contract problem, not an instruction to
+      // discard the rows already held, so the reload is not attempted and the
+      // report below is recorded as the failure it is.
+      if (reports.length > 0 && mapped.length === 0) {
+        context.warn(`Avail Missed Trips poll: retained rows for ${targetMonths.join(", ")} are left in place.`);
+      } else {
+        // A failed reload leaves the table holding the previous rows, so its
+        // throw has to reach the ledger rather than a claimed success.
+        await replaceMissedTripsForMonths(await getPool(), targetMonths, mapped);
+        context.log(
+          `Avail Missed Trips poll: ${reports.length} reports seen, ${mapped.length} rows reloaded across ${targetMonths.join(", ")}.`,
+        );
       }
-      return;
-    }
-    if (outcome.unstoredCount > 0) {
-      context.warn(`Avail Missed Trips poll: ${outcome.unstoredCount} of ${reports.length} reports could not be mapped.`);
-    }
-
-    try {
-      await replaceMissedTripsForMonths(pool, targetMonths, mapped);
-      context.log(
-        `Avail Missed Trips poll: ${reports.length} reports seen, ${mapped.length} rows reloaded across ${targetMonths.join(", ")}.`,
-      );
-    } catch (err) {
-      // A failed reload leaves the table holding the previous month's rows, so
-      // the ledger must not go on claiming a success it did not have.
-      context.error(`Failed to refresh AvailMissedTripsRouteStopDay for ${targetMonths.join(", ")}:`, err);
-      try {
-        await recordFeedFailure(pool, "avail_missed_trips", err);
-      } catch (healthError) {
-        context.error("Failed to record Avail Missed Trips feed failure:", healthError);
-      }
-      return;
-    }
-    try {
-      await recordFeedHealth(pool, "avail_missed_trips", outcome.entityCount, null, { startAt: windowStart, endAt: now });
-    } catch (err) {
-      context.error("Failed to record Avail Missed Trips feed health:", err);
-    }
+      return {
+        kind: "stored",
+        received: reports.length,
+        stored: mapped.length,
+        noun: "missed-trip reports",
+        coverage: { startAt: windowStart, endAt: now },
+      };
+    });
   },
 });

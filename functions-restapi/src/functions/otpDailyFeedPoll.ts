@@ -15,7 +15,7 @@
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchOtpDailyReports, mapOtpDailyReport } from "../lib/otpDailyFeed";
-import { feedHealthOutcome, recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
+import { runFeedIngestion } from "../lib/feedRun";
 
 const RETENTION_DAYS = 90;
 
@@ -43,135 +43,111 @@ app.timer("otpDailyFeedPoll", {
     }
 
     const target = yesterday();
-    let reports;
-    try {
-      reports = await fetchOtpDailyReports(baseUrl, apiKey, target, target);
-    } catch (err) {
-      context.error("Failed to fetch Avail OTP Daily reports:", err);
-      try {
-        await recordFeedFailure(await getPool(), "avail_otp_daily", err);
-      } catch (healthError) {
-        context.error("Failed to record Avail OTP Daily feed failure:", healthError);
+    await runFeedIngestion("avail_otp_daily", context, async () => {
+      const reports = await fetchOtpDailyReports(baseUrl, apiKey, target, target);
+      const pool = await getPool();
+
+      // A missing table is a failure of this feed, not a quiet skip: the ledger
+      // would otherwise keep reading as whatever it last said.
+      const tableCheck = await pool.request().query<{ table_exists: number }>(`
+        SELECT CASE WHEN OBJECT_ID('dbo.OtpDailyRouteStopHour', 'U') IS NULL THEN 0 ELSE 1 END AS table_exists
+      `);
+      if (tableCheck.recordset[0]?.table_exists !== 1) {
+        return { kind: "failed", reason: "OtpDailyRouteStopHour does not exist (migration 020 not applied)." };
       }
-      return;
-    }
 
-    const pool = await getPool();
+      let upsertedCount = 0;
+      for (const report of reports) {
+        let mapped;
+        try {
+          mapped = mapOtpDailyReport(report);
+        } catch (err) {
+          context.error(`Failed to map Avail OTP Daily report for route ${report.RouteFareboxID}/stop ${report.StopID}:`, err);
+          continue;
+        }
+        if (!mapped) continue;
 
-    const tableCheck = await pool.request().query<{ table_exists: number }>(`
-      SELECT CASE WHEN OBJECT_ID('dbo.OtpDailyRouteStopHour', 'U') IS NULL THEN 0 ELSE 1 END AS table_exists
-    `);
-    if (tableCheck.recordset[0]?.table_exists !== 1) {
-      context.warn("OtpDailyRouteStopHour table doesn't exist yet (migration-020 not run) - skipping this run.");
-      return;
-    }
+        try {
+          const request = pool.request();
+          request.input("calendar_date", sql.Char(8), mapped.calendar_date);
+          request.input("hour_of_day", sql.TinyInt, mapped.hour_of_day);
+          request.input("route_id", sql.Int, mapped.route_id);
+          request.input("stop_id", sql.Int, mapped.stop_id);
+          request.input("stop_name", sql.NVarChar, mapped.stop_name);
+          request.input("route_label", sql.NVarChar, mapped.route_label);
+          request.input("pct_early", sql.Float, mapped.pct_early);
+          request.input("pct_ontime", sql.Float, mapped.pct_ontime);
+          request.input("pct_late", sql.Float, mapped.pct_late);
+          request.input("pct_not_ontime", sql.Float, mapped.pct_not_ontime);
+          request.input("pct_missed", sql.Float, mapped.pct_missed);
+          request.input("early", sql.Int, mapped.early);
+          request.input("ontime", sql.Int, mapped.ontime);
+          request.input("late", sql.Int, mapped.late);
+          request.input("missed", sql.Int, mapped.missed);
+          request.input("actual_departures", sql.Int, mapped.actual_departures);
+          request.input("total", sql.Int, mapped.total);
+          request.input("latitude", sql.Float, mapped.latitude);
+          request.input("longitude", sql.Float, mapped.longitude);
+          request.input("direction", sql.NVarChar, mapped.direction);
+          await request.query(`
+            MERGE OtpDailyRouteStopHour WITH (HOLDLOCK) AS target
+            USING (
+              SELECT @calendar_date AS calendar_date, @route_id AS route_id,
+                     @stop_id AS stop_id, @hour_of_day AS hour_of_day
+            ) AS src
+            ON target.calendar_date = src.calendar_date AND target.route_id = src.route_id
+               AND target.stop_id = src.stop_id AND target.hour_of_day = src.hour_of_day
+            WHEN MATCHED THEN
+              UPDATE SET
+                stop_name = @stop_name, route_label = @route_label,
+                pct_early = @pct_early, pct_ontime = @pct_ontime, pct_late = @pct_late,
+                pct_not_ontime = @pct_not_ontime, pct_missed = @pct_missed,
+                early = @early, ontime = @ontime, late = @late, missed = @missed,
+                actual_departures = @actual_departures, total = @total,
+                latitude = @latitude, longitude = @longitude, direction = @direction,
+                updated_at = SYSUTCDATETIME()
+            WHEN NOT MATCHED THEN
+              INSERT (
+                calendar_date, hour_of_day, route_id, stop_id, stop_name, route_label,
+                pct_early, pct_ontime, pct_late, pct_not_ontime, pct_missed,
+                early, ontime, late, missed, actual_departures, total,
+                latitude, longitude, direction
+              )
+              VALUES (
+                @calendar_date, @hour_of_day, @route_id, @stop_id, @stop_name, @route_label,
+                @pct_early, @pct_ontime, @pct_late, @pct_not_ontime, @pct_missed,
+                @early, @ontime, @late, @missed, @actual_departures, @total,
+                @latitude, @longitude, @direction
+              );
+          `);
+          upsertedCount++;
+        } catch (err) {
+          context.error(`Failed to upsert Avail OTP Daily report for route ${mapped.route_id}/stop ${mapped.stop_id}:`, err);
+        }
+      }
 
-    let upsertedCount = 0;
-    for (const report of reports) {
-      let mapped;
+      let purgedCount = 0;
       try {
-        mapped = mapOtpDailyReport(report);
+        const purgeReq = pool.request();
+        purgeReq.input("cutoff", sql.Char(8), calendarDateNDaysAgo(RETENTION_DAYS));
+        const purgeResult = await purgeReq.query("DELETE FROM OtpDailyRouteStopHour WHERE calendar_date < @cutoff");
+        purgedCount = purgeResult.rowsAffected[0] ?? 0;
       } catch (err) {
-        context.error(`Failed to map Avail OTP Daily report for route ${report.RouteFareboxID}/stop ${report.StopID}:`, err);
-        continue;
+        context.error("Failed to purge old OtpDailyRouteStopHour rows:", err);
       }
-      if (!mapped) continue;
 
-      try {
-        const request = pool.request();
-        request.input("calendar_date", sql.Char(8), mapped.calendar_date);
-        request.input("hour_of_day", sql.TinyInt, mapped.hour_of_day);
-        request.input("route_id", sql.Int, mapped.route_id);
-        request.input("stop_id", sql.Int, mapped.stop_id);
-        request.input("stop_name", sql.NVarChar, mapped.stop_name);
-        request.input("route_label", sql.NVarChar, mapped.route_label);
-        request.input("pct_early", sql.Float, mapped.pct_early);
-        request.input("pct_ontime", sql.Float, mapped.pct_ontime);
-        request.input("pct_late", sql.Float, mapped.pct_late);
-        request.input("pct_not_ontime", sql.Float, mapped.pct_not_ontime);
-        request.input("pct_missed", sql.Float, mapped.pct_missed);
-        request.input("early", sql.Int, mapped.early);
-        request.input("ontime", sql.Int, mapped.ontime);
-        request.input("late", sql.Int, mapped.late);
-        request.input("missed", sql.Int, mapped.missed);
-        request.input("actual_departures", sql.Int, mapped.actual_departures);
-        request.input("total", sql.Int, mapped.total);
-        request.input("latitude", sql.Float, mapped.latitude);
-        request.input("longitude", sql.Float, mapped.longitude);
-        request.input("direction", sql.NVarChar, mapped.direction);
-        await request.query(`
-          MERGE OtpDailyRouteStopHour WITH (HOLDLOCK) AS target
-          USING (
-            SELECT @calendar_date AS calendar_date, @route_id AS route_id,
-                   @stop_id AS stop_id, @hour_of_day AS hour_of_day
-          ) AS src
-          ON target.calendar_date = src.calendar_date AND target.route_id = src.route_id
-             AND target.stop_id = src.stop_id AND target.hour_of_day = src.hour_of_day
-          WHEN MATCHED THEN
-            UPDATE SET
-              stop_name = @stop_name, route_label = @route_label,
-              pct_early = @pct_early, pct_ontime = @pct_ontime, pct_late = @pct_late,
-              pct_not_ontime = @pct_not_ontime, pct_missed = @pct_missed,
-              early = @early, ontime = @ontime, late = @late, missed = @missed,
-              actual_departures = @actual_departures, total = @total,
-              latitude = @latitude, longitude = @longitude, direction = @direction,
-              updated_at = SYSUTCDATETIME()
-          WHEN NOT MATCHED THEN
-            INSERT (
-              calendar_date, hour_of_day, route_id, stop_id, stop_name, route_label,
-              pct_early, pct_ontime, pct_late, pct_not_ontime, pct_missed,
-              early, ontime, late, missed, actual_departures, total,
-              latitude, longitude, direction
-            )
-            VALUES (
-              @calendar_date, @hour_of_day, @route_id, @stop_id, @stop_name, @route_label,
-              @pct_early, @pct_ontime, @pct_late, @pct_not_ontime, @pct_missed,
-              @early, @ontime, @late, @missed, @actual_departures, @total,
-              @latitude, @longitude, @direction
-            );
-        `);
-        upsertedCount++;
-      } catch (err) {
-        context.error(`Failed to upsert Avail OTP Daily report for route ${mapped.route_id}/stop ${mapped.stop_id}:`, err);
-      }
-    }
-
-    let purgedCount = 0;
-    try {
-      const purgeReq = pool.request();
-      purgeReq.input("cutoff", sql.Char(8), calendarDateNDaysAgo(RETENTION_DAYS));
-      const purgeResult = await purgeReq.query("DELETE FROM OtpDailyRouteStopHour WHERE calendar_date < @cutoff");
-      purgedCount = purgeResult.rowsAffected[0] ?? 0;
-    } catch (err) {
-      context.error("Failed to purge old OtpDailyRouteStopHour rows:", err);
-    }
-
-    context.log(
-      `Avail OTP Daily poll: ${reports.length} reports seen, ${upsertedCount} rows upserted, ${purgedCount} old rows purged.`,
-    );
-    // Every skip in the loop above is a mapping or upsert failure, so the
-    // shortfall is real loss and feedHealthOutcome's rule applies directly.
-    const outcome = feedHealthOutcome(reports.length, upsertedCount, "OTP Daily reports");
-    if (outcome.kind === "failure") {
-      context.error(`Avail OTP Daily poll: ${outcome.reason}`);
-      try {
-        await recordFeedFailure(pool, "avail_otp_daily", new Error(outcome.reason));
-      } catch (healthError) {
-        context.error("Failed to record Avail OTP Daily feed failure:", healthError);
-      }
-      return;
-    }
-    if (outcome.unstoredCount > 0) {
-      context.warn(`Avail OTP Daily poll: ${outcome.unstoredCount} of ${reports.length} reports were not stored.`);
-    }
-
-    try {
-      await recordFeedHealth(pool, "avail_otp_daily", outcome.entityCount, null, {
-        startAt: target,
-        endAt: new Date(target.getTime() + 24 * 60 * 60_000),
-      });
-    } catch (healthError) {
-      context.error("Failed to update Avail OTP Daily feed health:", healthError);
-    }
+      context.log(
+        `Avail OTP Daily poll: ${reports.length} reports seen, ${upsertedCount} rows upserted, ${purgedCount} old rows purged.`,
+      );
+      // Every skip in the loop above is a mapping or upsert failure, so the
+      // shortfall is real loss and the stored-count rule applies directly.
+      return {
+        kind: "stored",
+        received: reports.length,
+        stored: upsertedCount,
+        noun: "OTP Daily reports",
+        coverage: { startAt: target, endAt: new Date(target.getTime() + 24 * 60 * 60_000) },
+      };
+    });
   },
 });

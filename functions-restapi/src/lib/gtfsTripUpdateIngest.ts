@@ -23,8 +23,8 @@
 // consumer did not write it. Per-poller processing failures therefore belong in
 // that poller's own diagnostics, never here.
 import { getPool, type sql } from "./db";
+import { runFeedIngestion, sqlFeedLedger, type FeedLedger } from "./feedRun";
 import { fetchTripUpdateFeed, type GtfsRtTripUpdateFeedMessage } from "./gtfsTripUpdates";
-import { recordFeedFailure, recordFeedHealth } from "./kpiFeedHealth";
 
 export interface TripUpdateIngest {
   feed: GtfsRtTripUpdateFeedMessage;
@@ -36,44 +36,38 @@ export interface TripUpdateIngest {
 export interface TripUpdateIngestDeps {
   fetchFeed: (url: string) => Promise<GtfsRtTripUpdateFeedMessage>;
   connect: () => Promise<sql.ConnectionPool>;
-  recordHealth: typeof recordFeedHealth;
-  recordFailure: typeof recordFeedFailure;
+  ledger: FeedLedger;
 }
 
 const LIVE: TripUpdateIngestDeps = {
   fetchFeed: fetchTripUpdateFeed,
   connect: getPool,
-  recordHealth: recordFeedHealth,
-  recordFailure: recordFeedFailure,
+  ledger: sqlFeedLedger,
 };
 
 // Fetches the feed and records the delivery, returning null when the fetch
 // failed - the failure is already recorded, so callers just return.
 export async function readTripUpdateFeed(
   feedUrl: string,
-  context: { error: (...args: unknown[]) => void },
+  context: { log: (...args: unknown[]) => void; warn: (...args: unknown[]) => void; error: (...args: unknown[]) => void },
   deps: TripUpdateIngestDeps = LIVE,
 ): Promise<TripUpdateIngest | null> {
-  let feed: GtfsRtTripUpdateFeedMessage;
+  let feed: GtfsRtTripUpdateFeedMessage | null = null;
   try {
-    feed = await deps.fetchFeed(feedUrl);
-  } catch (err) {
-    context.error("Failed to fetch GTFS-RT TripUpdate feed:", err);
-    try {
-      await deps.recordFailure(await deps.connect(), "gtfs_trip_updates", err);
-    } catch (healthError) {
-      context.error("Failed to record TripUpdate feed failure:", healthError);
-    }
+    // Delivery, not storage: every entity handed over counts as received and
+    // stored, so this row can never call a delivery failed for what one of its
+    // two consumers went on to do with it.
+    await runFeedIngestion("gtfs_trip_updates", context, async () => {
+      feed = await deps.fetchFeed(feedUrl);
+      return {
+        kind: "stored",
+        received: feed.Entities.length,
+        stored: feed.Entities.length,
+        sourceTimestampSeconds: feed.Header?.Timestamp ?? null,
+      };
+    }, deps.ledger);
+  } catch {
     return null;
   }
-
-  const pool = await deps.connect();
-  try {
-    await deps.recordHealth(pool, "gtfs_trip_updates", feed.Entities.length, feed.Header?.Timestamp ?? null);
-  } catch (err) {
-    // A ledger write must not cost us the delivery. Both pollers have work to
-    // do with this feed whether or not its trust row could be updated.
-    context.error("Failed to update TripUpdate feed health:", err);
-  }
-  return { feed, pool };
+  return feed ? { feed, pool: await deps.connect() } : null;
 }
