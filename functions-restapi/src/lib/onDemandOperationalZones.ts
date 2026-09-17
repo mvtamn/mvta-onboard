@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import AdmZip from "adm-zip";
 import { polygonContains, type Point, validatePolygon } from "./geofence";
 import { parseCsvLine } from "./gtfsStatic";
@@ -100,7 +101,19 @@ export function loadOperationalZones(version: string, feed: GeoJsonFeatureCollec
     throw new Error("GTFS-Flex feed has duplicate Operational zones");
   }
   if (zoneIds.length !== expected.size) {
-    throw new Error("GTFS-Flex feed is missing expected Operational zones");
+    // Named in full because this reason is what feed health and the Zone
+    // geometry panel show: when Spare renames a zone's location id, the new id
+    // is exactly what the person fixing ON_DEMAND_OPERATIONAL_ZONE_IDS needs.
+    // Ids and names only, never geometry.
+    const found = new Set(zoneIds);
+    const missing = [...expected].filter((id) => !found.has(id));
+    const published = features.flatMap((feature) => typeof feature.id === "string"
+      ? [`${typeof feature.properties?.stop_name === "string" ? feature.properties.stop_name : "(unnamed)"} (${feature.id})`]
+      : []);
+    throw new Error(
+      `GTFS-Flex feed is missing expected Operational zones: ${missing.join(", ")}. ` +
+        `Spare published: ${published.length ? published.join("; ") : "no locations"}.`,
+    );
   }
   return {
     version,
@@ -124,10 +137,57 @@ function feedVersion(feedInfo: string): string {
   return version;
 }
 
-export function loadOperationalZonesFromGtfsFlexArchive(archiveBuffer: Buffer): OperationalZoneSnapshot {
+// A location Spare publishes that MVTA has not chosen as an Operational zone:
+// the reference boundary, or a service area added upstream. Only its identity
+// and name are kept, never its geometry.
+export interface UnmonitoredLocation {
+  id: string;
+  name: string | null;
+}
+
+export interface ZoneFeed {
+  snapshot: OperationalZoneSnapshot;
+  unmonitoredLocations: UnmonitoredLocation[];
+  // What makes this a distinct Zone version: a hash of the monitored zones'
+  // identities, names and geometry, and nothing else.
+  zoneVersionSha256: string;
+}
+
+// JSON with object keys in a fixed order, so the same geometry always hashes
+// the same whatever order a publisher happens to write its keys in.
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+// Spare stamps the export time into feed_version, feed_info.txt and the
+// archive itself on every call (confirmed 2026-09-17), so neither the archive
+// bytes nor feed_version can say whether the zones changed. The zones sorted by
+// id can. See ADR 0031.
+export function zoneVersionSha256(snapshot: OperationalZoneSnapshot): string {
+  const zones = [...snapshot.zones]
+    .sort((a, b) => (a.externalLocationId < b.externalLocationId ? -1 : a.externalLocationId > b.externalLocationId ? 1 : 0))
+    .map((zone) => ({ id: zone.externalLocationId, name: zone.name, geometry: zone.geometry }));
+  return createHash("sha256").update(canonicalJson(zones)).digest("hex");
+}
+
+export function loadOperationalZonesFromGtfsFlexArchive(archiveBuffer: Buffer): ZoneFeed {
   const archive = new AdmZip(archiveBuffer);
   const locations = JSON.parse(archiveText(archive, "locations.geojson")) as GeoJsonFeatureCollection;
-  return loadOperationalZones(feedVersion(archiveText(archive, "feed_info.txt")), locations);
+  const expected = expectedOperationalZoneIds();
+  const snapshot = loadOperationalZones(feedVersion(archiveText(archive, "feed_info.txt")), locations);
+  return {
+    snapshot,
+    zoneVersionSha256: zoneVersionSha256(snapshot),
+    unmonitoredLocations: (locations.features ?? []).flatMap((feature) =>
+      typeof feature.id === "string" && !expected.has(feature.id)
+        ? [{ id: feature.id, name: typeof feature.properties?.stop_name === "string" ? feature.properties.stop_name : null }]
+        : []),
+  };
 }
 
 function geometryContains(geometry: ZoneGeometry, point: Point): boolean {

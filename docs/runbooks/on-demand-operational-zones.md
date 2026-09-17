@@ -1,122 +1,85 @@
 # On-Demand operational zones runbook
 
-This runbook puts GTFS-Flex service-area geometry into force for the on-demand wait monitor. Without an **active** zone version, `loadActiveOperationalZones` returns an empty set, every pickup resolves against nothing, and Service Risk & Quality reports no on-demand risk regardless of what Spare is sending.
-
-The importer has existed since PRs #184/#185. **No zone version has ever been active in dev.** As of 2026-09-07 the receiver is still logging the gap once a minute through every service day, and the daily poller skips every run for want of a source URL.
-
-| Capability | State |
-| --- | --- |
-| GTFS-Flex parser, geometry validation, point-in-polygon resolver | Written and tested since migration 074 |
-| `onDemandZonesSync` daily poller (09:30 UTC) | Written; **skips every run** — `ON_DEMAND_ZONE_FLEX_URL` is unset |
-| Console upload (`OnDemandZoneGeometryAdmin` → `POST /api/on-demand-zone-versions/upload`) | Added 1.5.185; the path to use today |
-| `scripts/importOnDemandZones.ts` hand-seeding | Written; never run. Superseded by the console upload |
-| `GET`/`POST /api/on-demand-zone-versions` | Written; never used |
-| Activation attribution (migration 098) | Written; **applied state on dev unverified** |
+This runbook covers the GTFS-Flex service-area geometry the on-demand wait monitor resolves pickups against. Without an **active** zone version, `loadActiveOperationalZones` returns an empty set, every pickup resolves against nothing, and Service Risk & Quality reports no on-demand risk regardless of what Spare is sending.
 
 Zones are a prerequisite for the monitor, not the switch that starts it. See [What this does not do](#what-this-does-not-do).
 
-## Which path to take
+## Where zones come from
 
-There are three ways in, and the choice is not preference — it depends on whether a published feed URL exists, and on whether the console is reachable.
+Operational zones are pulled daily from the GTFS-Flex feed Spare generates for MVTA ([ADR 0031](../adr/0031-pull-operational-zones-from-spare-and-version-by-geometry.md)):
 
-| | Daily poller | Console upload | Hand-seeding script |
-| --- | --- | --- | --- |
-| Needs | `ON_DEMAND_ZONE_FLEX_URL` set to a reachable archive | A `.zip` on disk and `OCC.Admin` | A `.zip` on disk and an SSH session |
-| Runs | 09:30 UTC daily, unattended | Once, by a person, in the browser | Once, by a person, inside the container |
-| Records feed health | Yes (`on_demand_zones`) | No | No |
-| Use when | MVTA or Spare publishes a GTFS-Flex URL | **Today** — no URL is known | The console is unreachable |
+```
+https://api.us.sparelabs.com/v1/gtfs/generate/organization/93f6f01b-286f-4d79-931a-1ef22b848886
+```
 
-All three share the same parser, the same source hash, the same transactional write, and the same first-import activation rule, so a hand-seeded version is indistinguishable from a polled one. A later poll of identical bytes is recognised as already imported rather than duplicated.
+It is set as `onDemandZoneFlexUrl` in `infra-phase1/parameters/phase1-dev.parameters.json` and flows to `ON_DEMAND_ZONE_FLEX_URL` through `main-phase1.bicep` and `modules/functionapp.bicep`. Do **not** set it with `az functionapp config appsettings set`: that appSettings block is the complete desired state, and a hand-set value is removed by the next infra deploy.
 
-**Prefer the poller the moment a URL exists.** Set `onDemandZoneFlexUrl` in `infra-phase1/parameters/phase1-dev.parameters.json` and deploy; nothing else changes. The upload and the script exist because waiting for a URL kept the monitor down indefinitely — and because the archive is exported from Spare by hand, so there may never be a URL to poll.
+The endpoint answers anonymously; OnBoard sends no Spare key to it. It returns an 11-file GTFS-Flex `.zip` of about 97 KB in 5 to 7 seconds (measured 2026-09-17), of which OnBoard reads `locations.geojson` and `feed_info.txt`.
 
-## What you need
+There is no upload. The console upload and the `importOnDemandZones.ts` hand-seeding script existed only while no URL was known, and were removed in 1.5.236.
 
-A **GTFS-Flex archive** (`.zip`) containing `locations.geojson` and `feed_info.txt` with a `feed_version`, from Spare or from MVTA's GTFS-Flex export.
+| Capability | Where |
+| --- | --- |
+| Daily pull, 09:30 UTC | `onDemandZonesSync`, recording `on_demand_zones` feed health |
+| Parse, identify and import a Zone version | `loadOperationalZonesFromGtfsFlexArchive`, `importOperationalZoneVersion` |
+| Review the feed and versions, activate one | Console: **Administration · MVTA Connect → Service Standards → Zone geometry**; API: `GET`/`POST /api/on-demand-zone-versions` |
 
-MVTA's fixed-route `google_transit.zip` is **not** this file. It contains 11 files and no `locations.geojson`; it is the wrong feed entirely.
+## Which locations are Operational zones
 
-The archive must contain exactly the expected operational zones — by default the two pilot areas:
+Spare publishes more locations than MVTA monitors (on 2026-09-17: the two pilot zones and the Eagan reference boundary). Which of them are Operational zones is MVTA's choice, set by `ON_DEMAND_OPERATIONAL_ZONE_IDS` (comma-separated), defaulting to the two pilot areas:
 
 | Location id | Name |
 | --- | --- |
 | `location_id__b413a052-36eb-43de-97f7-59fe9f99f839` | Central Zone, Apple Valley |
 | `location_id__ad56cc1c-48cc-495b-948b-661aae320fd8` | Shakopee – Prior Lake Boundaries |
 
-Other features in the feed, including the Eagan reference boundary, are ignored. An archive missing either expected zone is **refused**, deliberately: importing a feed that silently lost a zone would shrink the monitored service area with nothing to show for it.
+- **A listed zone missing from the feed fails the pull.** Feed health records the reason, and the active version stays in force. Importing a feed that silently lost a zone would shrink the monitored service area with nothing to show for it.
+- **A location Spare publishes that is not listed is ignored**, but its id and name are recorded with the pull and shown on the Zone geometry panel as *Also published by Spare, not monitored*. That is how a new service area upstream becomes visible. To monitor it, add its id to `onDemandOperationalZoneIds` in the dev parameters file.
 
-To adopt a third zone, or to follow an upstream location-id rename, set `ON_DEMAND_OPERATIONAL_ZONE_IDS` (comma-separated) rather than editing code — `expectedOperationalZoneIds()` falls back to the two pilot ids when it is unset.
+## What makes a new version
 
-## Preconditions
+A Zone version is identified by a hash of the monitored zones' ids, names and geometry (`zone_version_sha256`, migration 127). Spare stamps the export time into `feed_version`, `feed_info.txt` and the archive on every call, so neither can say whether anything changed; they are kept on the version only as a record of the export it was first imported from.
 
-- `OCC.Admin` to upload or activate. Any staff read role can list versions.
-- Migration 098 applied, for activation to be attributed. It is **not** a hard prerequisite: `activationAuditSupported()` probes for the column on every call, so activation and the listing both work on a database the migration has not reached — the actor is simply not recorded. Apply it first if you want the audit trail, which is the point of having it.
-- For Path D only: network reach to the database. See the warning below.
+Each pull ends in one of:
 
-> **The dev SQL server has `publicNetworkAccess: Disabled`.** The seeding script connects directly with `SQL_CONNECTION_STRING`, so it **cannot be run from a laptop**. Run it from inside the VNet — the Function App container is the practical place, and the compiled script ships in the deployment package. Do not re-open public network access to work around this; that was closed deliberately. **The console upload is not subject to this**: it reaches the database through the REST app, which is already inside the VNet, which is the reason to prefer Path A.
+- **Same zones as an existing version** - the normal case. No row is added; that version's `last_seen_at`, `last_seen_feed_version` and unmonitored locations are updated. Logged as *export … carries the same N zones as an existing version; nothing to do*.
+- **First version ever** - imported and activated at once, because there is no live geometry to protect.
+- **Changed zones** - imported **inactive**, with a warning: *imported feed version … as INACTIVE version <id>*. Go to [Activate a version](#activate-a-version).
 
-## Path A — upload from the console
+A fetch failure or a rejected archive records an `on_demand_zones` feed failure, so a broken zone source shows up in KPI trust and on the panel rather than going quiet.
 
-The way in for an archive exported from Spare by hand. Needs `OCC.Admin` and nothing else — no SSH, no connection string, no base64.
+## Run a pull now
 
-1. Export the GTFS-Flex feed from Spare to a `.zip` on your machine.
-2. In the console, open **Administration · MVTA Connect → Service Standards** and find **Zone geometry**. It states whether any version is in force.
-3. Choose the archive and press **Upload and import**. It is parsed before the database is touched, so a malformed archive, or one missing an expected zone, is refused there with the reason — `GTFS-Flex archive is missing locations.geojson` means you exported the fixed-route feed.
-4. Read the outcome, which is one of the same three the script reports:
-   - *Imported and activated* — no version was active, so the first import activates itself. Go to [Verify](#verify).
-   - *Imported as inactive* — another version is already active; activate it from the version list when the change is intended ([Path C](#path-c--activate-an-imported-version) explains why this is separate).
-   - *Already stored under this feed version* — these exact bytes are known. Check whether that version is the active one before assuming there is nothing to do.
+The timer runs at **09:30 UTC daily**. To run it immediately, trigger it rather than redeploying: from the Portal (Function App → Functions → `onDemandZonesSync` → Test/Run), or
 
-Re-run this whenever the service area moves. The archive is not stored; only the parsed geometry, the feed version and the source hash are.
+```bash
+curl -sS -X POST "https://func-mvta-restapi-dev.azurewebsites.net/admin/functions/onDemandZonesSync" -H "x-functions-key: $MASTER_KEY" -H "Content-Type: application/json" -d '{}'
+```
 
-## Path B — the daily poller
+`/admin/functions/...` is the Functions runtime's own endpoint, unrelated to the reserved `admin/` route prefix that put this app's console routes on `manage/` in #178.
 
-Once a GTFS-Flex URL exists:
+## Activate a version
 
-1. Set `onDemandZoneFlexUrl` in `infra-phase1/parameters/phase1-dev.parameters.json` and merge — it flows to `ON_DEMAND_ZONE_FLEX_URL` through `main-phase1.bicep` and `modules/functionapp.bicep`. Do **not** set it with `az functionapp config appsettings set`: that appSettings block is the complete desired state and a hand-set value is removed by the next infra deploy.
-2. The timer runs at **09:30 UTC daily**. To exercise it immediately, trigger it rather than redeploying — from the Portal (Function App → Functions → `onDemandZonesSync` → Test/Run), or:
+Activation is separate from import because it swaps the boundaries a live monitor resolves pickups against, which changes which requests are judged in-zone and how quality results are split from then on. That is an Operations decision, not a timer's side effect, and it is also the guard against a broken or partial generation upstream.
 
-   ```bash
-   curl -sS -X POST "https://func-mvta-restapi-dev.azurewebsites.net/admin/functions/onDemandZonesSync" -H "x-functions-key: $MASTER_KEY" -H "Content-Type: application/json" -d '{}'
-   ```
+In the console, **Zone geometry** lists each version with its zone count, when it was imported, when Spare last published it, and who activated it. Press **Activate** on the version to put in force (`OCC.Admin`). Check its zone count and the feed status above the list first.
 
-   `/admin/functions/...` here is the **Functions runtime's** own endpoint, not an app route — it is unrelated to the reserved `admin/` route prefix that forced this app's console routes onto `manage/` in #178.
-3. Watch for one of these in Application Insights:
-   - `imported and activated feed version …` — first import, now live.
-   - `feed version … is already imported …; nothing to do` — the normal no-op. Unchanged geometry hashes to the version already stored, so a daily poll does not create a row every morning.
-   - **A warning**: `imported feed version … as INACTIVE version <id>` — new geometry is waiting for a human. This is warned rather than logged precisely so a revision sitting unactivated for weeks is visible. Go to Path C.
+The API equivalent:
 
-A fetch failure or a rejected archive records an `on_demand_zones` feed failure, so a broken zone source shows up in KPI trust rather than going quiet.
+```bash
+curl -sS "https://<console-host>/api/on-demand-zone-versions" -H "Authorization: Bearer $TOKEN"
+curl -sS -X POST "https://<console-host>/api/on-demand-zone-versions" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{"version_id":"<VERSION_ID>"}'
+```
 
-## Path C — activate an imported version
+| Status | Meaning |
+| --- | --- |
+| `200 {"activated": true, …}` | In force. The previous version was deactivated in the same transaction. |
+| `200 {"activated": false, …}` | Already the active version; nothing changed. |
+| `400` | `version_id` is not a GUID. |
+| `404` | No version with that id. |
+| `409` | That version has no zones. Refused - activating it would take the monitor down exactly as having none does, while reporting success. |
 
-Activation is separate from import for one reason: it swaps the boundaries a live monitor resolves pickups against, which changes which requests are judged in-zone. That is an Operations decision, not a timer's side effect. The exception is the very first import, which activates itself — there is no live geometry to protect, and a manual step there would only extend an outage.
-
-1. **List what is imported** (any staff read role):
-
-   ```bash
-   curl -sS "https://<console-host>/api/on-demand-zone-versions" -H "Authorization: Bearer $TOKEN"
-   ```
-
-   Each version carries `id`, `feed_version`, `source_sha256`, `zone_count`, `is_active`, `imported_at`/`imported_by`, and — once migration 098 is applied — `activated_at`/`activated_by`. Check `zone_count` and `feed_version` before activating anything.
-
-2. **Activate one** (`OCC.Admin`):
-
-   ```bash
-   curl -sS -X POST "https://<console-host>/api/on-demand-zone-versions" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{"version_id":"<VERSION_ID>"}'
-   ```
-
-   Responses:
-
-   | Status | Meaning |
-   | --- | --- |
-   | `200 {"activated": true, …}` | In force. The previous version was deactivated in the same transaction. |
-   | `200 {"activated": false, …}` | Already the active version; nothing changed. |
-   | `400` | `version_id` is not a GUID. |
-   | `404` | No version with that id. |
-   | `409` | That version has no zones. Refused — activating it would take the monitor down exactly as having none does, while reporting success. |
-
-The swap clears the previous active row and sets the new one inside one serializable transaction, because the filtered unique index on `is_active = 1` rejects the naive ordering.
+The `GET` also returns `feed`: whether the URL is configured, when it was last checked and whether that check succeeded (with the reason if not), and when the next check is due.
 
 ### Getting a token
 
@@ -130,62 +93,30 @@ const entry = Object.keys(localStorage)
 copy(entry.secret);
 ```
 
-Then `read -rs TOKEN && export TOKEN`. The token is short-lived; take a fresh one on a `401`. It is a credential — do not paste it into a shared channel or commit it. Alternatively copy the `Authorization` header from any `/api/` request in the DevTools Network tab.
-
-## Path D — hand-seed from inside the container
-
-Kept for the case the console is unreachable. [Path A](#path-a--upload-from-the-console) does the same import with the same code and needs no SSH session.
-
-The REST app is Linux (`NODE|24`), VNet-integrated, and runs from a package (`WEBSITE_RUN_FROM_PACKAGE=1`), so `/home/site/wwwroot` is a read-only mount that already contains `dist/src/scripts/importOnDemandZones.js` and the production `node_modules`. `SQL_CONNECTION_STRING` is already in the container's environment as a Key Vault reference.
-
-1. **Open an SSH session** to the container, from the Azure Portal (Function App → Development Tools → SSH) or:
-
-   ```bash
-   az webapp ssh -n func-mvta-restapi-dev -g rg-mvta-onboard-dev
-   ```
-
-2. **Get the archive into the container.** `/home/site/wwwroot` is read-only; write to `/tmp`. Either `curl` it from a location the container can reach, or paste it base64-encoded:
-
-   ```bash
-   base64 -d > /tmp/mvta-connect-flex.zip
-   ```
-
-3. **Run the import:**
-
-   ```bash
-   cd /home/site/wwwroot && node dist/src/scripts/importOnDemandZones.js /tmp/mvta-connect-flex.zip
-   ```
-
-   It prints the feed version and the zone names it parsed **before** touching the database — a malformed archive, or one missing an expected zone, fails there rather than after a transaction is open. Then one of:
-
-   - `Imported and activated version <id>. The on-demand zone monitor is now live.` — no version was active, so the first import activates itself. Skip to [Verify](#verify).
-   - `Imported version <id> as INACTIVE, because another version is already active.` — go to [Path C](#path-c--activate-an-imported-version).
-   - `Already imported as version <id>; nothing changed.` — these exact bytes are already stored under this feed version. Check whether that version is the active one before assuming there is nothing to do.
-
-4. **Delete the archive** from `/tmp` when done.
+Then `read -rs TOKEN && export TOKEN`. The token is short-lived; take a fresh one on a `401`. It is a credential - do not paste it into a shared channel or commit it.
 
 ## Verify
 
-1. `GET /api/on-demand-zone-versions` shows exactly one version with `is_active: true` and the expected `zone_count`.
-2. Within about a minute — the active-zone set is cached for 60 seconds — these stop appearing in Application Insights:
+1. `GET /api/on-demand-zone-versions` shows exactly one version with `is_active: true`, the expected `zone_count`, and `feed.last_check_succeeded: true`.
+2. A second pull adds no version: the list is unchanged apart from `last_seen_at`.
+3. Within about a minute - the active-zone set is cached for 60 seconds - the *No active on-demand operational zones* messages stop in Application Insights:
 
    ```
    traces | where timestamp > ago(15m) and message has "operational zones"
    ```
 
-   Both `onDemandSpareWebhook` (once a minute, severity Warning) and `spareMissedTripsIngest` (once per quarter-hour run) report the gap today. Both should fall silent.
-3. On the next service day, on-demand requests should resolve to a zone rather than `Unzoned`. Requests ingested while no version was active were recorded without a zone and are **not** retrospectively reclassified — inventing assignments after the fact would fabricate evidence rather than recover it.
+4. On the next service day with monitoring on, on-demand requests resolve to a zone rather than `Unzoned`. Requests ingested while no version was active were recorded without a zone and are **not** reclassified - inventing assignments after the fact would fabricate evidence.
 
 ## What this does not do
 
-Activating a zone version does not turn the monitor on. Service Risk & Quality will still read **Not connected** until:
+Activating a zone version does not turn the monitor on. Service Risk & Quality still reads **Not connected** until:
 
-1. `ON_DEMAND_MONITORING_ENABLED` is `true`. It is declared in Bicep and currently `false` on dev; flip `onDemandMonitoringEnabled` in the dev parameters file and deploy. **Set `onDemandMonitoringServiceIds` at the same time** — empty is refused outright, because it once meant the hourly reconciliation read every Spare service the API key can see, not just MVTA Connect. The MVTA Connect service id does not have to be asked for: missed-trip ingestion already stores it, so `SELECT DISTINCT service_id, service_name FROM SpareMissedTripSource` on the dev database names it.
-2. `onDemandSpareReconcile` completes successfully at least once, which is what records `spare_on_demand_reconciliation` feed health and moves the On-Demand KPI trust banner off `unavailable`.
+1. `ON_DEMAND_MONITORING_ENABLED` is `true`. Flip `onDemandMonitoringEnabled` in the dev parameters file and deploy, and **set `onDemandMonitoringServiceIds` at the same time** - empty is refused outright. The MVTA Connect service id is already stored by missed-trip ingestion: `SELECT DISTINCT service_id, service_name FROM SpareMissedTripSource`.
+2. `onDemandSpareReconcile` completes successfully at least once, which records `spare_on_demand_reconciliation` feed health and moves the On-Demand KPI trust state off `unavailable`.
 
 ### Clear the pre-activation rows first
 
-Until 1.5.215 the webhook receiver and the missed-trip ingest wrote on-demand monitor state for any Spare service, whether or not monitoring was enabled, so `MonitoredOnDemandWaits` holds requests the monitor is not for. The table has no service column, so which of those rows are foreign cannot be established after the fact, and a reconciliation scoped to MVTA Connect will never touch them. Nothing reads them today. Clear them **before** setting `onDemandMonitoringEnabled` — afterwards the same statement would delete live monitoring:
+Until 1.5.215 the webhook receiver and the missed-trip ingest wrote on-demand monitor state for any Spare service, whether or not monitoring was enabled, so `MonitoredOnDemandWaits` holds requests the monitor is not for. The table has no service column, so which rows are foreign cannot be established after the fact. Clear them **before** setting `onDemandMonitoringEnabled` - afterwards the same statement would delete live monitoring:
 
 ```sql
 DELETE FROM dbo.OnDemandRequestZoneSnapshots;
@@ -195,10 +126,10 @@ DELETE FROM dbo.MonitoredOnDemandWaits;
 
 The first reconciliation after activation rebuilds the last 24 hours of scoped state.
 
-The remaining items of the activation gate in `plans/service-risk-quality-trust-implementation-plan.md` — approved source owner and contract, confirmed non-PII field mapping, a live controlled breach — have no recorded evidence in this repository.
+The remaining items of the activation gate in `plans/service-risk-quality-trust-implementation-plan.md` - approved source owner and contract, confirmed non-PII field mapping, a live controlled breach - have no recorded evidence in this repository.
 
 ## Notes
 
-- `on_demand_zones` is a **supporting** dependency of the On-Demand trust stream with no freshness deadline. A service area unchanged for a year is correct, not stale; only a never-imported feed is a fault. Supporting dependencies do not set `contract_pending`, so this does not put the stream into review.
-- The feed-health count is the zones the *imported* version carries, not what is in force. An import that lands and waits for activation leaves the monitor on the previous geometry — that gap is reported by the poller's warning and by the versions endpoint, not by feed health.
-- Import is idempotent on `(feed_version, source_sha256)`, the natural key migration 074 already declared. Hashing the raw archive is what distinguishes a genuine republication from a reused `feed_version` whose contents moved underneath it.
+- `on_demand_zones` is a **supporting** dependency of the On-Demand trust stream with no freshness deadline. A service area unchanged for a year is correct, not stale; only a never-imported feed is a fault.
+- The feed-health count is the zones the pulled export carries, not what is in force. A changed version waiting for activation leaves the monitor on the previous geometry; that gap is reported by the pull's warning and on the Zone geometry panel, not by feed health.
+- Versions imported before migration 127 have no identity and are never matched by a pull. On dev none existed.

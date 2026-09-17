@@ -24,23 +24,29 @@ function fakePool(recordsets: readonly unknown[][]): sql.ConnectionPool {
   } as unknown as sql.ConnectionPool;
 }
 
-const snapshot = { version: "zone-feed-v1", zones: [] };
+const feed = {
+  snapshot: { version: "exported-at_2026-09-18T09:30:02Z", zones: [] },
+  zoneVersionSha256: "e".repeat(64),
+  unmonitoredLocations: [],
+};
 
-test("hashes the archive bytes, not the parsed geometry", () => {
-  // source_sha256 is half of the natural key that makes a daily poll of
-  // unchanged geometry a no-op, so it has to be stable across calls and has to
-  // move when the bytes move - including when a publisher reuses a feed_version
-  // for changed contents.
-  assert.equal(sourceSha256(Buffer.from("zones")), sourceSha256(Buffer.from("zones")));
-  assert.notEqual(sourceSha256(Buffer.from("zones")), sourceSha256(Buffer.from("zones ")));
-  assert.match(sourceSha256(Buffer.from("zones")), /^[0-9a-f]{64}$/);
+test("a pull on a database without migration 127 fails with the step to take, not a SQL error", async () => {
+  // Merging this change deploys the feed URL, so the 09:30 UTC pull can run
+  // before the migration is applied. The reason reaches feed health and the
+  // Zone geometry panel, so it has to say what to do.
+  await assert.rejects(
+    importOperationalZoneVersion(fakePool([[{ supported: 0 }]]), feed, sourceSha256(Buffer.from("zones")), "onDemandZonesSync"),
+    /apply migration 127/,
+  );
 });
 
-test("re-importing identical bytes is a no-op rather than a new version", async () => {
+test("a pull whose zones match an existing version is a no-op rather than a new version", async () => {
+  // The lookup answers with the matching version; the transactional insert,
+  // which this stub cannot serve, must never be reached.
   const result = await importOperationalZoneVersion(
-    fakePool([[{ id: "11111111-1111-1111-1111-111111111111" }]]),
-    snapshot,
-    sourceSha256(Buffer.from("zones")),
+    fakePool([[{ supported: 1 }], [{ id: "11111111-1111-1111-1111-111111111111" }]]),
+    feed,
+    sourceSha256(Buffer.from("a fresh export of the same zones")),
     "onDemandZonesSync",
   );
   assert.equal(result.imported, false);

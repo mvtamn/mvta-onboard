@@ -9,7 +9,9 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
 import { ADMIN_ROLES, requireRole, STAFF_READ_ROLES } from "../lib/auth";
-import { activateOperationalZoneVersion, activationAuditSupported } from "../lib/onDemandZoneImport";
+import { loadKpiFeedHealthRecords } from "../lib/kpiTrustStore";
+import { ZONE_FEED_NAME, zoneFeedStatus } from "../lib/onDemandZoneFeedStatus";
+import { activateOperationalZoneVersion, activationAuditSupported, zoneVersionIdentitySupported } from "../lib/onDemandZoneImport";
 import { isGuid } from "../lib/validation";
 
 app.http("onDemandZoneVersions", {
@@ -28,14 +30,29 @@ app.http("onDemandZoneVersions", {
         const attribution = await activationAuditSupported(pool)
           ? "v.activated_by, v.activated_at,"
           : "CAST(NULL AS NVARCHAR(200)) AS activated_by, CAST(NULL AS DATETIME2) AS activated_at,";
-        const versions = await pool.request().query(`
+        // Likewise migration 127's last-seen columns.
+        const lastSeen = await zoneVersionIdentitySupported(pool)
+          ? "v.last_seen_at, v.last_seen_feed_version, v.unmonitored_locations_json,"
+          : "CAST(NULL AS DATETIME2) AS last_seen_at, CAST(NULL AS NVARCHAR(200)) AS last_seen_feed_version, CAST(NULL AS NVARCHAR(MAX)) AS unmonitored_locations_json,";
+        const versions = await pool.request().query<{ unmonitored_locations_json: string | null } & Record<string, unknown>>(`
           SELECT v.id, v.feed_version, v.source_sha256, v.is_active, v.imported_at, v.imported_by,
             ${attribution}
+            ${lastSeen}
             (SELECT COUNT(*) FROM dbo.OnDemandOperationalZones z WHERE z.zone_version_id = v.id) AS zone_count
           FROM dbo.OnDemandOperationalZoneVersions v
           ORDER BY v.imported_at DESC
         `);
-        return { status: 200, jsonBody: { versions: versions.recordset } };
+        const health = (await loadKpiFeedHealthRecords(pool)).find((record) => record.feed_name === ZONE_FEED_NAME);
+        return {
+          status: 200,
+          jsonBody: {
+            feed: zoneFeedStatus({ configured: Boolean(process.env.ON_DEMAND_ZONE_FLEX_URL?.trim()), health, now: new Date() }),
+            versions: versions.recordset.map(({ unmonitored_locations_json, ...version }) => ({
+              ...version,
+              unmonitored_locations: unmonitored_locations_json ? JSON.parse(unmonitored_locations_json) : [],
+            })),
+          },
+        };
       }
 
       let body: Record<string, unknown> | null;

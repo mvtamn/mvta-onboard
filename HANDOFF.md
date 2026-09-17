@@ -602,21 +602,14 @@ restarts, not the old cascade.
 
 ### What is still blocking, and who owns it
 
-1. **The GTFS-Flex archive - Operations.** No zone version has ever been
-   active; `onDemandSpareWebhook` was still logging the gap at 04:02 UTC on
-   2026-09-08 (1,475 warnings in 24 h, once a minute through the service day).
-   The importer is complete (#184/#185) but has nothing to import. **As of
-   1.5.185 the way in is no longer the blocker**: Service Standards -> Zone
-   geometry takes the archive as a file upload (`OCC.Admin`), so the SSH and
-   base64 path nobody ever executed is now a fallback. What is still owed is
-   the archive itself, exported from Spare.
-   `ON_DEMAND_ZONE_FLEX_URL` is unset so `onDemandZonesSync` skips every run,
-   and no published GTFS-Flex URL is known for MVTA Connect - MVTA's
-   fixed-route `google_transit.zip` is not it (eleven files, no
-   `locations.geojson`). The archive needs `locations.geojson`, a
-   `feed_info.txt` carrying `feed_version`, and both pilot zones
-   (`location_id__b413a052-...` Apple Valley, `location_id__ad56cc1c-...`
-   Shakopee - Prior Lake). One missing zone fails the import by design.
+1. **The GTFS-Flex archive - resolved 2026-09-17 (1.5.236).** Spare now
+   generates MVTA's GTFS-Flex feed at a stable URL, and `onDemandZonesSync`
+   pulls it daily at 09:30 UTC (`onDemandZoneFlexUrl` in the dev parameters
+   file). The console upload and the hand-seeding script are removed. A Zone
+   version is identified by its monitored geometry (migration 127), because
+   Spare stamps the export time into every archive; a changed zone set lands
+   inactive for an `OCC.Admin` to activate. See ADR 0031 and
+   `docs/runbooks/on-demand-operational-zones.md`.
 
 2. **The MVTA Connect service id - already in hand, nobody had looked.**
    `ON_DEMAND_MONITORING_SERVICE_IDS` was treated as something Spare had to
@@ -655,11 +648,8 @@ runbook has the statement.
 
 ### Activation sequence, once those are in hand
 
-1. Seed the zone version and activate it - `docs/runbooks/on-demand-operational-zones.md`.
-   Note `scripts/importOnDemandZones.ts` needs `SQL_CONNECTION_STRING` and dev
-   SQL has `publicNetworkAccess: Disabled`, so it cannot run from a laptop; the
-   runbook routes it through the REST app's container, a path reasoned from the
-   deployment shape and **not yet executed by anyone**.
+1. Confirm a zone version is active - the first pull from Spare activates
+   itself; see `docs/runbooks/on-demand-operational-zones.md`, Verify.
 2. Set `onDemandMonitoringEnabled: true` **and**
    `onDemandMonitoringServiceIds` together in
    `infra-phase1/parameters/phase1-dev.parameters.json`, then deploy. Empty

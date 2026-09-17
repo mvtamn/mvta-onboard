@@ -1260,8 +1260,27 @@ _Avoid_: permanent zone setting, informal exception
 
 **Operational zone**:
 A versioned GTFS-Flex service area that classifies an on-demand request by its
-pickup coordinate for service-quality monitoring.
-_Avoid_: route, vehicle territory
+pickup coordinate for service-quality monitoring. Its geometry comes only from
+the GTFS-Flex feed Spare generates for MVTA; OnBoard versions that geometry but
+never authors, corrects or keeps a zone Spare does not publish. Which of Spare's
+published locations are Operational zones is MVTA's choice, not Spare's: a
+reference boundary, or a new service area MVTA has not chosen to monitor, is
+not one.
+_Avoid_: route, vehicle territory, uploaded zone, local zone, reference boundary
+
+**Zone version**:
+One set of Operational zones as Spare published them. A new Zone version exists
+only when the monitored zones themselves change - their identities, names or
+geometry - never merely because Spare produced a fresh export of the same
+zones.
+_Avoid_: export, feed version, archive
+
+**Zone version activation**:
+The deliberate step that puts a newly imported Zone version into
+force. The first version ever imported is in force at once; any later change
+from Spare waits for a person to activate it, because it changes how requests
+are assigned to zones and how quality results are split from then on.
+_Avoid_: automatic zone update, import
 
 **Reconciliation**:
 The hourly refresh of authoritative active-request data used to recover from
