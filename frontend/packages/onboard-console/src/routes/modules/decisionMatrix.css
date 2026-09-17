@@ -156,3 +156,8 @@
 .dmx-check-result { padding-left: 10px; border-left: 3px solid var(--border, #d8dee5); }
 .dmx-check-result.attention { border-left-color: var(--warning, #b7791f); }
 .dmx-check-result.valid { border-left-color: var(--success, #2f855a); }
+.dmx-unreferenced { margin-top: 8px; }
+.dmx-unreferenced summary { cursor: pointer; color: var(--text); }
+.dmx-unreferenced ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.dmx-unreferenced li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding-left: 10px; border-left: 3px solid var(--border, #d8dee5); color: var(--text); }
+.dmx-unreferenced li > span { min-width: 0; overflow-wrap: anywhere; }

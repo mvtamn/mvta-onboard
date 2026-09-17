@@ -895,6 +895,13 @@ from. An author picks a document in it; which library that is belongs to
 OnBoard, never to the author.
 _Avoid_: any granted site, SOP folder, document location
 
+**Unreferenced SOP**:
+A document in the Approved Document Library's SOP folder that no Draft, Under
+review or Approved Procedure Revision references. It is a prompt that a
+Procedure may be missing, not a fault; a document used only by Superseded or
+Retired revisions is unreferenced again.
+_Avoid_: orphan document, sync change, unhealthy reference
+
 **Primary Supporting Document Reference**:
 The one required Supporting Document Reference for a Procedure Revision. It
 is an SOP or Reference and provides the unambiguous source-document action;
