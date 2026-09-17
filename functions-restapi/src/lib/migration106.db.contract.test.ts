@@ -3,10 +3,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import {
-  fixedRouteDepartureSourceRefSql,
-  onDemandDepartureSourceRefSql,
+  occurrenceSourceRefSql,
   settledServiceDateExclusive,
-} from "../functions/complianceCandidatesPoll";
+} from "./occurrenceIntake/sources";
 import { parseConnectionString, sql } from "./db";
 
 // Runs migration 106 against a real SQL Server (the CI contract job's
@@ -23,7 +22,7 @@ import { parseConnectionString, sql } from "./db";
 //   IsAssessable must reproduce resolveOtpFixedRoute's filter exactly, or the
 //   drill-through disagrees with the scorecard above it.
 //
-//   SourceRef must be byte-identical to what complianceCandidatesPoll writes,
+//   SourceRef must be byte-identical to what the occurrence intake module writes,
 //   or the occurrence join is empty and every departure reads as compliant.
 //   The poll's own expressions are imported and run against the same rows
 //   rather than restated, so the two cannot drift apart.
@@ -282,9 +281,9 @@ test("migration 106 reporting views expose the raw OTP, missed-trip and garage-d
     // --- The occurrence join can only work if SourceRef is byte-identical to
     // what the candidate poll writes. Run the poll's own expressions.
     const refs = (await pool.request().query<{ ref: string }>(`
-      SELECT ${fixedRouteDepartureSourceRefSql()} ref FROM dbo.FixedRouteDepartures d
+      SELECT ${occurrenceSourceRefSql("fixed_route_departure", "d")} ref FROM dbo.FixedRouteDepartures d
       UNION ALL
-      SELECT ${onDemandDepartureSourceRefSql()} ref FROM dbo.OnDemandDepartures d
+      SELECT ${occurrenceSourceRefSql("on_demand_departure", "d")} ref FROM dbo.OnDemandDepartures d
     `)).recordset.map((r) => r.ref).sort();
     assert.deepEqual(departures.map((r) => r.SourceRef).sort(), refs);
 

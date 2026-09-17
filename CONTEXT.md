@@ -803,6 +803,10 @@ _Avoid_: closed, resolved
 The progression of an Assessment Period through Open, Under Review, In Validation, Finalized, and Issued. Stale identifies material input change; an issued assessment is never moved backward and corrections proceed through supersession.
 _Avoid_: computation status, report status
 
+**Compliance occurrence**:
+One instance of a performance standard not being met, attributed to the Assessment Contractor of the single Agreement whose term covers its service date. It is raised as a candidate from an automated observation or entered manually, and settled by Candidate Resolution. It never changes a Finalized or Issued Assessment Period; a correction reopens or supersedes that period.
+_Avoid_: violation, penalty, active-contractor occurrence
+
 **Unassigned Candidate**:
 An automated observation that cannot be placed unambiguously within the Assessment Contractor's Agreement term. It cannot contribute to an Assessment Period.
 _Avoid_: contractor occurrence, ignored candidate
