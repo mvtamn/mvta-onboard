@@ -253,9 +253,12 @@ test("occurrence intake against real SQL", { skip: !connectionString && "DECISIO
     });
 
     await t.test("a figure outside the contract's band is refused", async () => {
-      const damage = (await pool.request().query<{ standard_id: string; penalty_amount_min: number; penalty_amount_max: number }>(
-        "SELECT TOP 1 standard_id, penalty_amount_min, penalty_amount_max FROM ContractorStandardTiers WHERE penalty_amount_min IS NOT NULL AND penalty_amount_max IS NOT NULL AND effective_end_date IS NULL")).recordset[0];
-      if (!damage) return; // the catalog carries no ranged band in this migration set
+      // The migrations seed no ranged band, so one is added the way the
+      // Performance Standards admin stores it: $2,500-$10,000 per occurrence.
+      const shutdown = await standardId(pool, "SHUTDOWN_VEHICLE");
+      await pool.request().query(`INSERT ContractorStandardTiers(standard_id,tier_order,tier_label,penalty_basis,penalty_amount,penalty_amount_min,penalty_amount_max,effective_start_date,updated_by)
+        VALUES('${shutdown}',99,'tier1','per_unit',0,2500,10000,'20260101','${ACTOR}')`);
+      const damage = { standard_id: shutdown, penalty_amount_min: 2500, penalty_amount_max: 10000 };
       await pool.request().query(`INSERT AgreementStandards(agreement_id,standard_id,is_scored,effective_start_date,updated_by) VALUES('${AGREEMENT}','${damage.standard_id}',1,'20260101','${ACTOR}')`);
       const occurrence = await inTx(pool, tx => recordOccurrence(tx, manual(damage.standard_id, "20260720"), ACTOR));
       assert.ok(occurrence.ok);
