@@ -15,13 +15,16 @@ export function fulfillmentPathLabel(d: Pick<Detour, "fulfillment_mode">): strin
 }
 
 export function readinessLabel(d: Pick<Detour, "readiness" | "review_status" | "conflict_status">): string {
+  const reReview = d.review_status === "needs_review";
   const base = d.readiness === "ready_for_avail_entry" ? "Ready for Avail entry"
     : d.readiness === "avail_conflict" ? "Avail conflict"
+    : d.readiness === "in_avail" ? "In Avail"
     : d.readiness === "ready_for_manual_operations" ? "Ready for manual operations"
     : d.readiness === "closed" ? "Closed"
+    : reReview ? "Needs OCC re-review"
     : "Needs OCC review";
   const flags = [
-    d.review_status === "needs_review" ? "Needs OCC re-review" : null,
+    reReview && base !== "Needs OCC re-review" ? "Needs OCC re-review" : null,
     d.conflict_status === "unresolved" ? "Conflict needs override" : d.conflict_status === "overridden" ? "Conflict overridden" : null,
   ].filter(Boolean);
   return flags.length ? `${base} · ${flags.join(" · ")}` : base;

@@ -550,7 +550,8 @@ _Avoid_: failed Avail detour, unofficial detour
 ## Avail build confirmation
 
 The explicit operational confirmation that an intended Detour was successfully
-created in Avail. Approval alone is not build confirmation.
+created in Avail. Neither approval nor an Avail feed sighting is build
+confirmation.
 _Avoid_: approved detour, presumed active
 
 ## Internal detour view
@@ -607,12 +608,29 @@ _Avoid_: lifecycle state
 
 ## Workflow state
 
-The operational progress of an authoritative Detour, such as approval,
-fulfillment readiness or confirmation, fulfillment failure, and closure. It is
-separate from temporal status, fulfillment mode, and communication eligibility.
-Intake decisions such as rejection and duplication belong to Detour intake, not
-to the authoritative Detour workflow.
+The operational progress of an authoritative Detour: awaiting fulfillment,
+fulfilled, fulfillment failed, or closed. It is separate from temporal status,
+fulfillment mode, and communication eligibility. Approval is the promotion of a
+Detour intake and is not a stored Workflow state; intake decisions such as
+rejection and duplication belong to Detour intake.
 _Avoid_: temporal status, communication readiness
+
+## Detour workflow act
+
+A named, audited act on an authoritative Detour: promotion, direct creation,
+Avail entry result, manual fallback, closure, Conflict override, recording an
+edit, completing re-review, or an Avail feed observation. Workflow state,
+fulfillment mode, Outstanding re-review, and Conflict override never change
+except through one.
+_Avoid_: state change, status update, set state
+
+## Outstanding re-review
+
+The condition of an open authoritative Detour whose closure, dates, riders
+directed, segments, location, or geometry actually changed since OCC last
+reviewed it. It withholds Avail build confirmation and manual fallback until
+OCC completes the re-review; saving unchanged values does not raise it.
+_Avoid_: stale review, needs approval
 
 ## Detour communication eligibility
 

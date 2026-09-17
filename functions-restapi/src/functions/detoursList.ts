@@ -12,9 +12,8 @@ import { app, type HttpRequest, type InvocationContext } from "@azure/functions"
 import { getPool, sql } from "../lib/db";
 import { requireRole, DETOUR_READ_ROLES } from "../lib/auth";
 import { computeDetourStatus, toDateOnly, toTimeOnly, type DetourStatus } from "../lib/detourStatus";
-import { computeDetourReadiness } from "../lib/detourReadiness";
 import { contractorFromSettings, requiredAudiences, type ContractorNotification } from "../lib/detourContractor";
-import { conflictStatus, detourConflicts, detourStopNameLookup, loadDetourConflictScopes, parseOverrideIds } from "../lib/detourConflicts";
+import { readDetourWorkflows } from "../lib/detourWorkflow";
 
 interface DetourRow {
   id: string;
@@ -231,11 +230,9 @@ app.http("detoursList", {
       // on the edit form, and range-filters on it - and an ISO timestamp
       // breaks all three (a date input silently rejects the value and
       // renders BLANK, so saving an edit would have wiped the dates).
-      // Detour-to-Detour conflicts for every open record, from the same
-      // matcher intake uses for likely duplicates. One scope load per call.
-      const scopes = await loadDetourConflictScopes(pool);
-      const scopeById = new Map(scopes.map((s) => [s.id, s]));
-      const stopName = await detourStopNameLookup(pool);
+      // Conflicts and the next step come from the Detour workflow module,
+      // the same decision the workflow acts enforce. One load per call.
+      const workflows = await readDetourWorkflows(pool, detours.map((d) => d.id));
 
       const withStatus = detours.map((d) => ({
         ...d,
@@ -251,16 +248,9 @@ app.http("detoursList", {
         // ISO timestamp nobody can read as a time of day.
         ...(hasLocation ? { location: d.location ?? null } : {}),
         ...(hasGeometry ? { geometry_json: d.geometry_json ?? null } : {}),
-        ...(() => {
-          const scope = scopeById.get(d.id);
-          const conflicts = scope ? detourConflicts(scope, scopes, stopName) : [];
-          const override = hasConflictOverride ? { reason: d.conflict_override_reason ?? null, by: d.conflict_override_by ?? null, at: d.conflict_override_at ?? null, ids: parseOverrideIds(d.conflict_override_ids) } : null;
-          return {
-            conflicts,
-            conflict_status: conflictStatus(conflicts, override),
-            ...(hasConflictOverride ? { conflict_override_reason: d.conflict_override_reason ?? null, conflict_override_by: d.conflict_override_by ?? null, conflict_override_at: d.conflict_override_at ?? null } : {}),
-          };
-        })(),
+        conflicts: workflows.get(d.id)?.conflicts ?? [],
+        conflict_status: workflows.get(d.id)?.conflict_status ?? "none",
+        ...(hasConflictOverride ? { conflict_override_reason: d.conflict_override_reason ?? null, conflict_override_by: d.conflict_override_by ?? null, conflict_override_at: d.conflict_override_at ?? null } : {}),
         ...(hasWindowFields ? { start_time: toTimeOnly(d.start_time), end_time: toTimeOnly(d.end_time), time_window_status: d.time_window_status ?? null, affected_stops_and_stations: d.affected_stops_and_stations ?? null, operational_impacts: d.operational_impacts ?? null, confirmation_contact: d.confirmation_contact ?? null } : {}),
         ...(hasOperationalFields || contractor.name ? {
           required_audiences: requiredAudiences({ notification_audiences: parseList(d.notification_audiences), service_impact: d.service_impact ?? null }, contractor),
@@ -274,7 +264,7 @@ app.http("detoursList", {
           };
         })() : {}),
         ...(hasReviewFields ? { review_status: d.review_status, review_reason: d.review_reason, closure_reason: d.closure_reason } : {}),
-        readiness: hasWorkflowFields ? computeDetourReadiness(d.fulfillment_mode, d.lifecycle_state as any) : undefined,
+        readiness: workflows.get(d.id)?.next_step,
         segments: segmentsByDetour.get(d.id) ?? [],
       }));
 

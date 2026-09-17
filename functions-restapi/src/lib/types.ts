@@ -148,7 +148,6 @@ export interface CreateDetourBody extends DetourReportBody {
   spare_emailed?: boolean;
   segments?: DetourSegmentBody[];
   fulfillment_mode?: DetourFulfillmentMode;
-  lifecycle_state?: DetourLifecycleState;
 }
 
 export interface UpdateDetourBody extends DetourReportBody {
@@ -162,8 +161,6 @@ export interface UpdateDetourBody extends DetourReportBody {
   expired_email_sent?: boolean;
   spare_emailed?: boolean;
   segments?: DetourSegmentBody[];
-  fulfillment_mode?: DetourFulfillmentMode;
-  lifecycle_state?: DetourLifecycleState;
 }
 
 // Published Detour communication handed to the dispatch app for email

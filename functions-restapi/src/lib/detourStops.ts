@@ -4,10 +4,16 @@
 // all. Stop ids come from two sources: stops within STOP_MATCH_M of a
 // drawn shape, and "#stop_id" markers in the affected-stops text (which is
 // what the map's "add selected stops" writes).
-import type { ConnectionPool } from "mssql";
+import { ConnectionPool, Request, type Transaction } from "mssql";
 import { boundingBox, distanceToGeometry, type DetourGeometry } from "./geoNearby";
 
 export const STOP_MATCH_M = 100;
+
+// A request on a pool, or on a transaction so the read sees (and waits
+// behind) that transaction's locks.
+export function requestOn(db: ConnectionPool | Transaction): Request {
+  return db instanceof ConnectionPool ? new Request(db) : new Request(db);
+}
 
 export interface StopIndexEntry { stop_id: string; stop_name: string; stop_lat: number; stop_lon: number; }
 
@@ -31,9 +37,9 @@ export function stopIdsForRecord(index: StopIndexEntry[], geometry: DetourGeomet
 
 // Every stop with coordinates, once per request. A few thousand rows; the
 // bounding-box prefilter keeps the per-record cost small.
-export async function loadStopIndex(pool: ConnectionPool): Promise<StopIndexEntry[]> {
+export async function loadStopIndex(db: ConnectionPool | Transaction): Promise<StopIndexEntry[]> {
   try {
-    const result = await pool.request().query<StopIndexEntry>("SELECT stop_id, stop_name, stop_lat, stop_lon FROM GtfsStops WHERE stop_lat IS NOT NULL AND stop_lon IS NOT NULL");
+    const result = await requestOn(db).query<StopIndexEntry>("SELECT stop_id, stop_name, stop_lat, stop_lon FROM GtfsStops WHERE stop_lat IS NOT NULL AND stop_lon IS NOT NULL");
     return result.recordset;
   } catch { return []; }
 }

@@ -12,6 +12,8 @@ import { validateCreateDetour } from "../lib/validation";
 import { detourNumberYear } from "../lib/detourNumbering";
 import { allocateDetourNumber } from "../lib/detourNumberAllocator";
 import type { CreateDetourBody } from "../lib/types";
+import { actorFrom, performDetourActIn } from "../lib/detourWorkflow";
+import { refusalResponse } from "../lib/detourWorkflowResponse";
 
 interface InsertedDetour {
   id: string;
@@ -52,7 +54,7 @@ app.http("detoursCreate", {
     // pre-migration they are silently dropped rather than failing the create,
     // so the console keeps working through the deploy gap between the code
     // shipping and the migration being run.
-    const schemaCheck = await pool.request().query<{ numbering_ready: number; reporting_ready: number; workflow_ready: number }>(`
+    const schemaCheck = await pool.request().query<{ numbering_ready: number; reporting_ready: number }>(`
       SELECT
         CASE
           WHEN OBJECT_ID('dbo.DetourNumberSequences', 'U') IS NOT NULL
@@ -60,15 +62,10 @@ app.http("detoursCreate", {
           THEN 1 ELSE 0 END AS numbering_ready,
         CASE
           WHEN COL_LENGTH('dbo.Detours', 'reason_code') IS NOT NULL
-          THEN 1 ELSE 0 END AS reporting_ready,
-        CASE
-          WHEN COL_LENGTH('dbo.Detours', 'fulfillment_mode') IS NOT NULL
-           AND COL_LENGTH('dbo.Detours', 'lifecycle_state') IS NOT NULL
-          THEN 1 ELSE 0 END AS workflow_ready
+          THEN 1 ELSE 0 END AS reporting_ready
     `);
     const numberingReady = schemaCheck.recordset[0]?.numbering_ready === 1;
     const reportingReady = schemaCheck.recordset[0]?.reporting_ready === 1;
-    const workflowReady = schemaCheck.recordset[0]?.workflow_ready === 1;
     if (!numberingReady) {
       context.warn(
         "DetourNumberSequences/Detours.internal_number not present (migration-024 not run) - creating this detour without an internal number.",
@@ -99,10 +96,6 @@ app.http("detoursCreate", {
       insertReq.input("expired_email_sent", sql.Bit, body.expired_email_sent ?? false);
       insertReq.input("spare_emailed", sql.Bit, body.spare_emailed ?? false);
       insertReq.input("created_by", sql.NVarChar, createdBy);
-      if (workflowReady) {
-        insertReq.input("fulfillment_mode", sql.NVarChar(30), body.fulfillment_mode ?? "fixed_route_manual");
-        insertReq.input("lifecycle_state", sql.NVarChar(30), body.lifecycle_state ?? "fulfilled");
-      }
       if (internalNumber !== null) {
         insertReq.input("internal_number", sql.NVarChar, internalNumber);
       }
@@ -128,7 +121,6 @@ app.http("detoursCreate", {
         INSERT INTO Detours (
           number, closure, start_date, end_date, is_monitor_only, riders_directed,
           email_sent, expired_email_sent, spare_emailed, source, created_by
-          ${workflowReady ? ", fulfillment_mode, lifecycle_state" : ""}
           ${internalNumber !== null ? ", internal_number" : ""}
           ${reportingReady ? `, ${REPORTING_COLUMNS}` : ""}
         )
@@ -136,7 +128,6 @@ app.http("detoursCreate", {
         VALUES (
           @number, @closure, @start_date, @end_date, @is_monitor_only, @riders_directed,
           @email_sent, @expired_email_sent, @spare_emailed, 'manual', @created_by
-          ${workflowReady ? ", @fulfillment_mode, @lifecycle_state" : ""}
           ${internalNumber !== null ? ", @internal_number" : ""}
           ${reportingReady ? `, ${REPORTING_VALUES}` : ""}
         )
@@ -155,18 +146,12 @@ app.http("detoursCreate", {
         `);
       }
 
-      if (workflowReady) {
-        const historyReq = new sql.Request(tx);
-        historyReq.input("detour_id", sql.UniqueIdentifier, inserted.id);
-        historyReq.input("event_type", sql.NVarChar(30), "created");
-        historyReq.input("to_state", sql.NVarChar(30), body.lifecycle_state ?? "fulfilled");
-        historyReq.input("source", sql.NVarChar(20), "manual");
-        historyReq.input("changed_by", sql.NVarChar(200), createdBy);
-        await historyReq.query(`
-          INSERT INTO DetourWorkflowHistory
-            (detour_id, event_type, to_state, source, changed_by)
-          VALUES (@detour_id, @event_type, @to_state, @source, @changed_by)
-        `);
+      // The Detour workflow module sets the fulfillment mode and starting
+      // Workflow state and writes the creation history entry.
+      const started = await performDetourActIn(tx, inserted.id, { act: "create", mode: body.fulfillment_mode ?? "fixed_route_manual" }, actorFrom(authResult.principal));
+      if (!started.ok) {
+        await tx.rollback();
+        return refusalResponse(started.refusal);
       }
 
       await tx.commit();
@@ -176,6 +161,7 @@ app.http("detoursCreate", {
           id: inserted.id,
           created_at: inserted.created_at,
           internal_number: internalNumber,
+          lifecycle_state: started.detour.lifecycle_state,
         },
       };
     } catch (err) {

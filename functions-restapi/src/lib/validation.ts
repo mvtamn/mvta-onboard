@@ -397,9 +397,6 @@ export const MAX_DETOUR_RESOLUTION_NOTES_LENGTH = 1000;
 export const VALID_DETOUR_SEVERITIES = ["minor", "moderate", "major"] as const;
 export const VALID_DETOUR_FULFILLMENT_MODES = ["avail", "fixed_route_manual", "mobility_manual"] as const;
 export const MAX_DETOUR_FULFILLMENT_CHANGE_REASON_LENGTH = 1000;
-export const VALID_DETOUR_LIFECYCLE_STATES = [
-  "approved", "awaiting_fulfillment", "fulfilled", "fulfillment_failed", "closed",
-] as const;
 export const DETOUR_REPORT_FLAG_FIELDS = [
   "radio_notified",
   "dispatch_board_notified",
@@ -543,8 +540,8 @@ export function validateCreateDetour(body: UnknownBody): string[] {
   if (body.fulfillment_mode !== undefined && !VALID_DETOUR_FULFILLMENT_MODES.includes(body.fulfillment_mode as (typeof VALID_DETOUR_FULFILLMENT_MODES)[number])) {
     errors.push(`fulfillment_mode must be one of: ${VALID_DETOUR_FULFILLMENT_MODES.join(", ")}`);
   }
-  if (body.lifecycle_state !== undefined && !VALID_DETOUR_LIFECYCLE_STATES.includes(body.lifecycle_state as (typeof VALID_DETOUR_LIFECYCLE_STATES)[number])) {
-    errors.push(`lifecycle_state must be one of: ${VALID_DETOUR_LIFECYCLE_STATES.join(", ")}`);
+  if (body.lifecycle_state !== undefined) {
+    errors.push("lifecycle_state cannot be chosen: a new Detour starts awaiting Avail entry when Avail-backed and fulfilled otherwise");
   }
   errors.push(...validateDetourReport(body));
 
@@ -780,8 +777,8 @@ export function validateUpdateDetour(body: UnknownBody): string[] {
   if (body.fulfillment_mode !== undefined && !VALID_DETOUR_FULFILLMENT_MODES.includes(body.fulfillment_mode as (typeof VALID_DETOUR_FULFILLMENT_MODES)[number])) {
     errors.push(`fulfillment_mode must be one of: ${VALID_DETOUR_FULFILLMENT_MODES.join(", ")}`);
   }
-  if (body.lifecycle_state !== undefined && !VALID_DETOUR_LIFECYCLE_STATES.includes(body.lifecycle_state as (typeof VALID_DETOUR_LIFECYCLE_STATES)[number])) {
-    errors.push(`lifecycle_state must be one of: ${VALID_DETOUR_LIFECYCLE_STATES.join(", ")}`);
+  if (body.lifecycle_state !== undefined) {
+    errors.push("lifecycle_state cannot be chosen: a new Detour starts awaiting Avail entry when Avail-backed and fulfilled otherwise");
   }
 
   return errors;

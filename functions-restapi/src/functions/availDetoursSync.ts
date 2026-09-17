@@ -26,6 +26,17 @@ import { getPool, sql } from "../lib/db";
 import { availConfig, fetchAvail } from "../lib/availClient";
 import { groupDetourReports, type MappedDetour } from "../lib/availDetoursFeed";
 import { runFeedIngestion } from "../lib/feedRun";
+import { performDetourActIn, type Actor } from "../lib/detourWorkflow";
+
+const AVAIL_SYNC: Actor = { kind: "avail_sync" };
+
+// The observation is a Detour workflow act: a new row becomes an Avail-backed,
+// fulfilled Detour without Avail build confirmation, and every sighting is
+// recorded once in the workflow history.
+async function recordObservation(tx: sql.Transaction, detourId: string, externalDetourId: string, kind: "new" | "refreshed" | "preserved"): Promise<void> {
+  const outcome = await performDetourActIn(tx, detourId, { act: "avail_observation", externalDetourId, kind }, AVAIL_SYNC);
+  if (!outcome.ok) throw new Error(`Avail observation refused for ${externalDetourId}: ${outcome.refusal.sentence}`);
+}
 
 interface ExistingDetourRow {
   id: string;
@@ -109,17 +120,7 @@ app.timer("availDetoursSync", {
             `);
             const detourId = insertResult.recordset[0].id;
             await insertSegments(tx, detourId, detour.segments);
-            const historyReq = new sql.Request(tx);
-            historyReq.input("detour_id", sql.UniqueIdentifier, detourId);
-            historyReq.input("event_type", sql.NVarChar(30), "source_observation");
-            historyReq.input("source", sql.NVarChar(20), "avail");
-            historyReq.input("detail", sql.NVarChar(1000), `Observed Avail detour ${detour.external_detour_id}`);
-            historyReq.input("changed_by", sql.NVarChar(200), "avail-sync");
-            await historyReq.query(`
-              INSERT INTO DetourWorkflowHistory
-                (detour_id, event_type, source, detail, changed_by)
-              VALUES (@detour_id, @event_type, @source, @detail, @changed_by)
-            `);
+            await recordObservation(tx, detourId, detour.external_detour_id, "new");
             await tx.commit();
             inserted += 1;
             continue;
@@ -133,17 +134,7 @@ app.timer("availDetoursSync", {
             const touchReq = new sql.Request(tx);
             touchReq.input("id", sql.UniqueIdentifier, existing.id);
             await touchReq.query("UPDATE Detours SET avail_last_seen_at = SYSUTCDATETIME() WHERE id = @id");
-            const historyReq = new sql.Request(tx);
-            historyReq.input("detour_id", sql.UniqueIdentifier, existing.id);
-            historyReq.input("event_type", sql.NVarChar(30), "source_observation");
-            historyReq.input("source", sql.NVarChar(20), "avail");
-            historyReq.input("detail", sql.NVarChar(1000), `Observed Avail detour ${detour.external_detour_id}; preserved OnBoard record`);
-            historyReq.input("changed_by", sql.NVarChar(200), "avail-sync");
-            await historyReq.query(`
-              INSERT INTO DetourWorkflowHistory
-                (detour_id, event_type, source, detail, changed_by)
-              VALUES (@detour_id, @event_type, @source, @detail, @changed_by)
-            `);
+            await recordObservation(tx, existing.id, detour.external_detour_id, "preserved");
             await tx.commit();
             skipped += 1;
             continue;
@@ -165,17 +156,7 @@ app.timer("availDetoursSync", {
           deleteSegReq.input("detour_id", sql.UniqueIdentifier, existing.id);
           await deleteSegReq.query("DELETE FROM DetourSegments WHERE detour_id = @detour_id");
           await insertSegments(tx, existing.id, detour.segments);
-          const historyReq = new sql.Request(tx);
-          historyReq.input("detour_id", sql.UniqueIdentifier, existing.id);
-          historyReq.input("event_type", sql.NVarChar(30), "source_observation");
-          historyReq.input("source", sql.NVarChar(20), "avail");
-          historyReq.input("detail", sql.NVarChar(1000), `Observed Avail detour ${detour.external_detour_id}`);
-          historyReq.input("changed_by", sql.NVarChar(200), "avail-sync");
-          await historyReq.query(`
-            INSERT INTO DetourWorkflowHistory
-              (detour_id, event_type, source, detail, changed_by)
-            VALUES (@detour_id, @event_type, @source, @detail, @changed_by)
-          `);
+          await recordObservation(tx, existing.id, detour.external_detour_id, "refreshed");
 
           await tx.commit();
           updated += 1;

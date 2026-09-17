@@ -7,8 +7,27 @@
 // the Detours table is small enough to load whole (there is no pagination
 // anywhere in the module), so the comparison runs once per list call
 // rather than as a query per row.
-import { dateWindowsOverlap, type DateWindow } from "./detourWorkflow";
 import { geometryDistance, type DetourGeometry } from "./geoNearby";
+
+export interface DateWindow {
+  start_date: string | null;
+  end_date: string | null;
+}
+
+function dayNumber(value: string | null): number | null {
+  if (!value) return null;
+  const time = Date.parse(`${value}T00:00:00Z`);
+  return Number.isNaN(time) ? null : time;
+}
+
+// Inclusive, and an open end runs forever in that direction.
+export function dateWindowsOverlap(a: DateWindow, b: DateWindow): boolean {
+  const aStart = dayNumber(a.start_date) ?? Number.MIN_SAFE_INTEGER;
+  const bStart = dayNumber(b.start_date) ?? Number.MIN_SAFE_INTEGER;
+  const aEnd = dayNumber(a.end_date) ?? Number.MAX_SAFE_INTEGER;
+  const bEnd = dayNumber(b.end_date) ?? Number.MAX_SAFE_INTEGER;
+  return aStart <= bEnd && bStart <= aEnd;
+}
 
 export interface DuplicateScope extends DateWindow {
   id: string;
