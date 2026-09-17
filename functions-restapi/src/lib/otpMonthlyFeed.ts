@@ -34,25 +34,6 @@ export interface OtpMonthlyReport {
   Total: number;
 }
 
-export interface OtpMonthlyEnvelope {
-  errors: string[];
-  result: {
-    otp: OtpMonthlyReport[];
-    results?: { RefreshTime: string; Property: string }[];
-  };
-  success: boolean;
-}
-
-// Both otpMonthlyFeed.ts and availMissedTripsFeed.ts use MM-DD-YYYY per the
-// doc ("Pass any service date (MM-DD-YYYY)") - unlike AVL/Pullout's
-// YYYY-MM-DD. Defined once here since this file is authored first.
-export function formatDateMmDdYyyy(date: Date): string {
-  const y = date.getUTCFullYear();
-  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const d = String(date.getUTCDate()).padStart(2, "0");
-  return `${m}-${d}-${y}`;
-}
-
 export function serviceMonthOf(date: Date): string {
   const y = date.getUTCFullYear();
   const m = String(date.getUTCMonth() + 1).padStart(2, "0");
@@ -68,52 +49,6 @@ export function serviceMonthOf(date: Date): string {
 // a month that was empty on day 1 but populated by Avail days later.
 export function subtractMonths(date: Date, months: number): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - months, 1));
-}
-
-const EARLY_THRESHOLD = 1; // fixed, enum-constrained per the API schema
-const LATE_THRESHOLD = 5; // fixed, enum-constrained per the API schema
-const EARLY_OUTLIER_MINUTES = 15; // owner decision - separate from the threshold above
-const LATE_OUTLIER_MINUTES = 30; // owner decision
-const SHOW_MISSED_STOPS = 0;
-const INCLUDE_OUTLIERS = 1;
-const SHOW_DETOURS = 1;
-
-// baseUrl is the agency-level URL with no trailing path segments, e.g.
-// "https://avail360-api.myavail.cloud/OtpByRouteStopDayAgg/v1/MVTA".
-export async function fetchOtpMonthlyReports(
-  baseUrl: string,
-  apiKey: string,
-  date: Date = new Date(),
-): Promise<OtpMonthlyReport[]> {
-  const url =
-    `${baseUrl.replace(/\/+$/, "")}/${formatDateMmDdYyyy(date)}` +
-    `/${EARLY_THRESHOLD}/${LATE_THRESHOLD}/${EARLY_OUTLIER_MINUTES}/${LATE_OUTLIER_MINUTES}` +
-    `/${SHOW_MISSED_STOPS}/${INCLUDE_OUTLIERS}/${SHOW_DETOURS}`;
-  const res = await fetch(url, {
-    headers: { "Ocp-Apim-Subscription-Key": apiKey },
-  });
-  if (!res.ok) {
-    throw new Error(`Avail OTP Monthly request failed: ${res.status}`);
-  }
-  const payload = (await res.json()) as OtpMonthlyEnvelope;
-  if (!payload.success) {
-    throw new Error(
-      `Avail OTP Monthly API returned success=false: ${payload.errors?.join(", ") || "no error detail"}`,
-    );
-  }
-  const rows = payload.result?.otp;
-  if (rows !== undefined) return rows;
-
-  // Kept as a safety net even though the key is now confirmed - if Avail
-  // ever changes it again, this stays loud instead of silently returning
-  // zero rows.
-  const actualKeys = payload.result ? Object.keys(payload.result) : [];
-  if (actualKeys.length > 0) {
-    throw new Error(
-      `Avail OTP Monthly response has no "otp" key under result - found [${actualKeys.join(", ")}] instead. Update the guessed key in otpMonthlyFeed.ts.`,
-    );
-  }
-  return [];
 }
 
 export interface MappedOtpMonthlyReport {

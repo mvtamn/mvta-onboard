@@ -21,8 +21,8 @@
 // ENVELOPE KEY CONFIRMED live 2026-08-05: originally guessed as
 // result.Detours (the Operation-ID-matches-array-key pattern observed for
 // AVL Reports/Pullout/OTP Monthly/Missed Trips), which was wrong - the real
-// key is lowercase result.detours. See the note on AvailDetoursEnvelope
-// below. The brief's open question #4 flagged this same-key-name risk, and
+// key is lowercase result.detours, as the endpoint definition in
+// availClient.ts records. The brief's open question #4 flagged this same-key-name risk, and
 // it was justified; the sibling DetourStops feed is still unverified.
 export interface AvailDetourReport {
   DetourID: number;
@@ -35,52 +35,6 @@ export interface AvailDetourReport {
   IsActive?: boolean;
   Cause?: string | null;
   Effect?: string | null;
-}
-
-export interface AvailDetoursEnvelope {
-  errors: string[];
-  result: {
-    // CONFIRMED live 2026-08-05: the guessed "Detours" (capital D) key was
-    // wrong - the diagnostic added same-day caught it throwing "found
-    // [detours, results] instead" on every run once Avail actually had a
-    // real detour to return. Real key is lowercase "detours"; "results"
-    // is a sibling metadata array (RefreshTime/Property), the same pattern
-    // already documented for Pullout's envelope.
-    detours: AvailDetourReport[];
-    results?: { RefreshTime: string; Property: string }[];
-  };
-  success: boolean;
-}
-
-// baseUrl is the full agency-level URL, e.g.
-// "https://avail360-api.myavail.cloud/Detours/v1/MVTA" - no date suffix.
-export async function fetchDetours(baseUrl: string, apiKey: string): Promise<AvailDetourReport[]> {
-  const res = await fetch(baseUrl, {
-    headers: { "Ocp-Apim-Subscription-Key": apiKey },
-  });
-  if (!res.ok) {
-    throw new Error(`Avail Detours request failed: ${res.status}`);
-  }
-  const payload = (await res.json()) as AvailDetoursEnvelope;
-  if (!payload.success) {
-    throw new Error(`Avail Detours API returned success=false: ${payload.errors?.join(", ") || "no error detail"}`);
-  }
-  const rows = payload.result?.detours;
-  if (rows !== undefined) return rows;
-
-  // The expected envelope key wasn't found. If result carries any OTHER key,
-  // that's almost certainly the real array key - surface the actual key
-  // names (never the data itself) rather than silently syncing zero detours
-  // forever. This diagnostic is what caught the original capital-D "Detours"
-  // guess being wrong on 2026-08-05; keep it in place in case Avail renames
-  // the key again.
-  const actualKeys = payload.result ? Object.keys(payload.result) : [];
-  if (actualKeys.length > 0) {
-    throw new Error(
-      `Avail Detours response has no "detours" key under result - found [${actualKeys.join(", ")}] instead. Update the expected key in availDetoursFeed.ts.`,
-    );
-  }
-  return [];
 }
 
 export interface MappedDetourSegment {

@@ -14,7 +14,8 @@
 // function's logs after first deploy rather than assuming success.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { fetchOtpDailyReports, mapOtpDailyReport } from "../lib/otpDailyFeed";
+import { availConfig, fetchAvail } from "../lib/availClient";
+import { mapOtpDailyReport } from "../lib/otpDailyFeed";
 import { runFeedIngestion } from "../lib/feedRun";
 
 const RETENTION_DAYS = 90;
@@ -35,16 +36,15 @@ function calendarDateNDaysAgo(days: number): string {
 app.timer("otpDailyFeedPoll", {
   schedule: "0 30 3 * * *",
   handler: async (_timer: Timer, context: InvocationContext) => {
-    const baseUrl = process.env.AVAIL_OTP_DAILY_URL;
-    const apiKey = process.env.AVAIL_AVL_REPORTS_API_KEY;
-    if (!baseUrl || !apiKey) {
-      context.warn("AVAIL_OTP_DAILY_URL/AVAIL_AVL_REPORTS_API_KEY are not configured - skipping this run.");
+    const { config, missing } = availConfig("otp_daily");
+    if (!config) {
+      context.warn(`${missing.join("/")} not configured - skipping this run.`);
       return;
     }
 
     const target = yesterday();
     await runFeedIngestion("avail_otp_daily", context, async () => {
-      const reports = await fetchOtpDailyReports(baseUrl, apiKey, target, target);
+      const reports = await fetchAvail("otp_daily", { start: target, end: target }, config);
       const pool = await getPool();
 
       // A missing table is a failure of this feed, not a quiet skip: the ledger

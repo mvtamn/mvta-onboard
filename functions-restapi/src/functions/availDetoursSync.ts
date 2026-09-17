@@ -23,7 +23,8 @@
 // in Avail even though it isn't touching the editable fields.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { fetchDetours, groupDetourReports, type MappedDetour } from "../lib/availDetoursFeed";
+import { availConfig, fetchAvail } from "../lib/availClient";
+import { groupDetourReports, type MappedDetour } from "../lib/availDetoursFeed";
 import { runFeedIngestion } from "../lib/feedRun";
 import { performDetourActIn, type Actor } from "../lib/detourWorkflow";
 
@@ -60,10 +61,9 @@ async function insertSegments(tx: sql.Transaction, detourId: string, segments: M
 app.timer("availDetoursSync", {
   schedule: "0 */15 * * * *",
   handler: async (_timer: Timer, context: InvocationContext) => {
-    const baseUrl = process.env.AVAIL_DETOURS_URL;
-    const apiKey = process.env.AVAIL_AVL_REPORTS_API_KEY;
-    if (!baseUrl || !apiKey) {
-      context.warn("AVAIL_DETOURS_URL/AVAIL_AVL_REPORTS_API_KEY are not configured - skipping this run.");
+    const { config, missing } = availConfig("detours");
+    if (!config) {
+      context.warn(`${missing.join("/")} not configured - skipping this run.`);
       return;
     }
 
@@ -71,7 +71,7 @@ app.timer("availDetoursSync", {
     // one. No KPI declares it, so it informs the Admin page without gating a
     // stream.
     await runFeedIngestion("avail_detours", context, async () => {
-      const reports = await fetchDetours(baseUrl, apiKey);
+      const reports = await fetchAvail("detours", {}, config);
 
       const grouped = groupDetourReports(reports);
       const pool = await getPool();

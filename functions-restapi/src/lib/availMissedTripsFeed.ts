@@ -5,7 +5,7 @@
 // over an explicit Start_Date/End_Date range with a real CalendarDate per
 // record.
 //
-// Owner decisions baked into fetchMissedTripReports below: Full Trip Only=0
+// Owner decisions baked into the request (availClient.ts): Full Trip Only=0
 // (count a trip as missed if either the departure or arrival stop was
 // missed - the broader reading, matching the owner's own stated definition
 // of a contractor-fault missed trip) and Include Deadheads=0 (excluded,
@@ -17,7 +17,6 @@
 // pattern as otpMonthlyFeed.ts ("OtpByRouteStopDayAgg" -> "otp") and
 // Detours ("Detours" -> "detours"). This feed was never actually empty.
 import sql from "mssql";
-import { formatDateMmDdYyyy } from "./otpMonthlyFeed";
 import { calendarDateAndTimeToUtc } from "./missedTripTime";
 
 export interface AvailMissedTripReport {
@@ -33,56 +32,6 @@ export interface AvailMissedTripReport {
   ArrivalMissed: number;
   EntireTripMissed: number;
   DepartureTripStartTime: string | null;
-}
-
-export interface AvailMissedTripsEnvelope {
-  errors: string[];
-  result: {
-    missed: AvailMissedTripReport[];
-    results?: { RefreshTime: string; Property: string }[];
-  };
-  success: boolean;
-}
-
-const FULL_TRIP_ONLY = 0; // owner decision - broader: either end missed counts
-const INCLUDE_DEADHEADS = 0; // owner decision - exclude non-revenue moves
-
-// baseUrl is the agency-level URL with no trailing path segments, e.g.
-// "https://avail360-api.myavail.cloud/MissedTripsByRouteStopDay/v1/MVTA".
-export async function fetchMissedTripReports(
-  baseUrl: string,
-  apiKey: string,
-  startDate: Date,
-  endDate: Date,
-): Promise<AvailMissedTripReport[]> {
-  const url =
-    `${baseUrl.replace(/\/+$/, "")}/${formatDateMmDdYyyy(startDate)}/${formatDateMmDdYyyy(endDate)}` +
-    `/${FULL_TRIP_ONLY}/${INCLUDE_DEADHEADS}`;
-  const res = await fetch(url, {
-    headers: { "Ocp-Apim-Subscription-Key": apiKey },
-  });
-  if (!res.ok) {
-    throw new Error(`Avail Missed Trips request failed: ${res.status}`);
-  }
-  const payload = (await res.json()) as AvailMissedTripsEnvelope;
-  if (!payload.success) {
-    throw new Error(
-      `Avail Missed Trips API returned success=false: ${payload.errors?.join(", ") || "no error detail"}`,
-    );
-  }
-  const rows = payload.result?.missed;
-  if (rows !== undefined) return rows;
-
-  // Kept as a safety net even though the key is now confirmed - if Avail
-  // ever changes it again, this stays loud instead of silently returning
-  // zero rows.
-  const actualKeys = payload.result ? Object.keys(payload.result) : [];
-  if (actualKeys.length > 0) {
-    throw new Error(
-      `Avail Missed Trips response has no "missed" key under result - found [${actualKeys.join(", ")}] instead. Update the guessed key in availMissedTripsFeed.ts.`,
-    );
-  }
-  return [];
 }
 
 export interface MappedMissedTrip {
