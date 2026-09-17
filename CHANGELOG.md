@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.241] - 2026-09-17
+
+- **A hand-entered figure is an Assessable Input.** `writeManualMetric` was the fifth copy of `UPDATE AssessmentPeriods ... WHERE status<>'finalized'`, missed by 1.5.239 because it is not an occurrence write. It now runs `assessableInputChangedSql` (`lib/assessment/materialChange.ts`) like every other Assessable Input: a drafting month is bumped, a reviewed one goes stale, and a month `in_validation` takes the Material Assessment Change - share withdrawn, live Issuance Proof voided (ADR 0009, ADR 0029). Before, an issued month's `input_revision` was bumped, and a shared month was changed silently under a contractor still reviewing it.
+- **A closed month refuses the figure.** `writeManualMetric` returns `{ok:false, refusal}` for a `finalized` or `issued` month and writes nothing; `PUT /api/manual-metrics` answers 409 `{error, code:'period_closed'}` with intake's sentence, which the Assessment module's error banner shows as it is. The console already hid the entry form for those months, so this catches a page left open and a direct call. The period's status is read under `UPDLOCK,HOLDLOCK` inside the caller's transaction, so a finalize running alongside cannot let a figure through behind it.
+- **Tests.** `manualMetricWrite.db.contract.test.ts` (the `decision-matrix-contract` job) now applies the full assessment migration list and covers a drafting month bumped, an issued month refused and unbumped with nothing stored, and a shared month withdrawn with its proof voided. No migration.
+
 ## [1.5.240] - 2026-09-17
 
 - **The Occurrence Log reads the observation the server parsed.** `GET /compliance-occurrences` returns `observation` (`{kind, …}` from `parseOccurrenceSource`), and `occurrenceSourceLabel` - now its own file, `routes/modules/assessment/occurrenceSource.ts`, with tests - turns it into the module name and reference a reviewer acts on. The console no longer splits `source_ref` itself, so the reference format has one owner (`lib/occurrenceIntake`). A missed trip observed by Spare reads **Missed Trips · On-Demand**; before, an on-demand trip was labelled the same as a fixed-route one. PR 2 of 2 for candidate #3 of the 2026-09-16 architecture review; PR 1 was 1.5.239.
