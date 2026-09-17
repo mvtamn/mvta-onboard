@@ -29,8 +29,9 @@ import { app, type HttpRequest, type InvocationContext } from "@azure/functions"
 import { getPool } from "../lib/db";
 import { requireRole, ADMIN_ROLES } from "../lib/auth";
 import { validateOtpHistoricalBackfill } from "../lib/validation";
-import { fetchOtpMonthlyReports, mapOtpMonthlyReport, upsertOtpMonthlyReport } from "../lib/otpMonthlyFeed";
-import { fetchMissedTripReports, mapMissedTripReport, replaceMissedTripsForMonths } from "../lib/availMissedTripsFeed";
+import { availConfig, fetchAvail } from "../lib/availClient";
+import { mapOtpMonthlyReport, upsertOtpMonthlyReport } from "../lib/otpMonthlyFeed";
+import { mapMissedTripReport, replaceMissedTripsForMonths } from "../lib/availMissedTripsFeed";
 
 function monthToDate(yyyymm: string): Date {
   return new Date(Date.UTC(Number(yyyymm.slice(0, 4)), Number(yyyymm.slice(4, 6)) - 1, 1));
@@ -63,13 +64,13 @@ app.http("otpHistoricalBackfill", {
     }
     const { month } = raw as { month: string };
 
-    const otpBaseUrl = process.env.AVAIL_OTP_MONTHLY_URL;
-    const missedBaseUrl = process.env.AVAIL_MISSED_TRIPS_URL;
-    const apiKey = process.env.AVAIL_AVL_REPORTS_API_KEY;
-    if (!otpBaseUrl || !missedBaseUrl || !apiKey) {
+    const otp = availConfig("otp_monthly");
+    const missed = availConfig("missed_trips");
+    if (!otp.config || !missed.config) {
+      const unset = [...new Set([...(otp.missing ?? []), ...(missed.missing ?? [])])];
       return {
         status: 500,
-        jsonBody: { error: "AVAIL_OTP_MONTHLY_URL/AVAIL_MISSED_TRIPS_URL/AVAIL_AVL_REPORTS_API_KEY are not configured." },
+        jsonBody: { error: `${unset.join("/")} not configured.` },
       };
     }
 
@@ -77,7 +78,7 @@ app.http("otpHistoricalBackfill", {
 
     let otpResult: { reports_seen: number; upserted: number; error?: string };
     try {
-      const reports = await fetchOtpMonthlyReports(otpBaseUrl, apiKey, monthToDate(month));
+      const reports = await fetchAvail("otp_monthly", { month: monthToDate(month) }, otp.config);
       let upserted = 0;
       for (const report of reports) {
         const mapped = mapOtpMonthlyReport(report, month);
@@ -100,7 +101,7 @@ app.http("otpHistoricalBackfill", {
       const windowEndCandidate = lastDayOfMonth(month);
       const windowEnd = windowEndCandidate.getTime() < now.getTime() ? windowEndCandidate : now;
 
-      const reports = await fetchMissedTripReports(missedBaseUrl, apiKey, windowStart, windowEnd);
+      const reports = await fetchAvail("missed_trips", { start: windowStart, end: windowEnd }, missed.config);
       const mapped = reports
         .map((report) => mapMissedTripReport(report))
         .filter((m): m is NonNullable<typeof m> => m !== null);

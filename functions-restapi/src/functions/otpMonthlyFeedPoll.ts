@@ -19,8 +19,8 @@
 // human to notice and manually re-trigger.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool } from "../lib/db";
+import { availConfig, fetchAvail } from "../lib/availClient";
 import {
-  fetchOtpMonthlyReports,
   mapOtpMonthlyReport,
   serviceMonthOf,
   subtractMonths,
@@ -33,10 +33,9 @@ const TRAILING_MONTHS = 3; // current + prior 2
 app.timer("otpMonthlyFeedPoll", {
   schedule: "0 0 3 * * *",
   handler: async (_timer: Timer, context: InvocationContext) => {
-    const baseUrl = process.env.AVAIL_OTP_MONTHLY_URL;
-    const apiKey = process.env.AVAIL_AVL_REPORTS_API_KEY;
-    if (!baseUrl || !apiKey) {
-      context.warn("AVAIL_OTP_MONTHLY_URL/AVAIL_AVL_REPORTS_API_KEY are not configured - skipping this run.");
+    const { config, missing } = availConfig("otp_monthly");
+    if (!config) {
+      context.warn(`${missing.join("/")} not configured - skipping this run.`);
       return;
     }
 
@@ -52,7 +51,7 @@ app.timer("otpMonthlyFeedPoll", {
 
         let reports;
         try {
-          reports = await fetchOtpMonthlyReports(baseUrl, apiKey, targetDate);
+          reports = await fetchAvail("otp_monthly", { month: targetDate }, config);
         } catch (err) {
           // One month failing must not stop the others refreshing, but it does
           // stop this run claiming coverage of the whole trailing window.

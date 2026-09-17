@@ -8,22 +8,22 @@
 // differs.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { fetchPulloutReports, mapPulloutReport, unknownPulloutStatuses } from "../lib/availPullout";
+import { availConfig, fetchAvail } from "../lib/availClient";
+import { mapPulloutReport, unknownPulloutStatuses } from "../lib/availPullout";
 import { agencyServiceDate, serviceDateAndGtfsSecondsToUtc } from "../lib/missedTripTime";
 import { runFeedIngestion } from "../lib/feedRun";
 
 app.timer("fixedRouteDeparturesPoll", {
   schedule: "0 */5 * * * *",
   handler: async (_timer: Timer, context: InvocationContext) => {
-    const baseUrl = process.env.AVAIL_PULLOUT_URL;
-    const apiKey = process.env.AVAIL_AVL_REPORTS_API_KEY;
-    if (!baseUrl || !apiKey) {
-      context.warn("AVAIL_PULLOUT_URL/AVAIL_AVL_REPORTS_API_KEY are not configured - skipping this run.");
+    const { config, missing } = availConfig("pullout");
+    if (!config) {
+      context.warn(`${missing.join("/")} not configured - skipping this run.`);
       return;
     }
 
     await runFeedIngestion("avail_pullout", context, async () => {
-      const reports = await fetchPulloutReports(baseUrl, apiKey);
+      const reports = await fetchAvail("pullout", {}, config);
 
       // A status nobody has accounted for is the first symptom of the compliance
       // rule going quiet: its allowlist raises nothing for a value it does not

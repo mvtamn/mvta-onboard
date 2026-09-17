@@ -15,7 +15,8 @@
 // instead of hourly over the current month alone.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool } from "../lib/db";
-import { fetchMissedTripReports, mapMissedTripReport, replaceMissedTripsForMonths } from "../lib/availMissedTripsFeed";
+import { availConfig, fetchAvail } from "../lib/availClient";
+import { mapMissedTripReport, replaceMissedTripsForMonths } from "../lib/availMissedTripsFeed";
 import { serviceMonthOf, subtractMonths } from "../lib/otpMonthlyFeed";
 import { runFeedIngestion } from "../lib/feedRun";
 
@@ -28,10 +29,9 @@ function firstOfMonth(date: Date): Date {
 app.timer("availMissedTripsPoll", {
   schedule: "0 0 3 * * *",
   handler: async (_timer: Timer, context: InvocationContext) => {
-    const baseUrl = process.env.AVAIL_MISSED_TRIPS_URL;
-    const apiKey = process.env.AVAIL_AVL_REPORTS_API_KEY;
-    if (!baseUrl || !apiKey) {
-      context.warn("AVAIL_MISSED_TRIPS_URL/AVAIL_AVL_REPORTS_API_KEY are not configured - skipping this run.");
+    const { config, missing } = availConfig("missed_trips");
+    if (!config) {
+      context.warn(`${missing.join("/")} not configured - skipping this run.`);
       return;
     }
 
@@ -40,7 +40,7 @@ app.timer("availMissedTripsPoll", {
     const targetMonths = Array.from({ length: TRAILING_MONTHS }, (_, i) => serviceMonthOf(subtractMonths(now, i)));
 
     await runFeedIngestion("avail_missed_trips", context, async () => {
-      const reports = await fetchMissedTripReports(baseUrl, apiKey, windowStart, now);
+      const reports = await fetchAvail("missed_trips", { start: windowStart, end: now }, config);
 
       const mapped = reports
         .map((report) => {
