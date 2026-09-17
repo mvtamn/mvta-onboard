@@ -3,24 +3,11 @@ import { app, type HttpRequest, type InvocationContext } from "@azure/functions"
 import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
 import { probeAvail } from "../lib/availClient";
 import { getPool } from "../lib/db";
+import { probeGtfsRtFeed } from "../lib/gtfsRtReader";
 import { ledgerFeedChecks, summarizeFeedResponse, type FeedCheck } from "../lib/feedCheckResponse";
 import { feedHealthTableReady } from "../lib/kpiFeedHealth";
 import { loadKpiFeedHealthRecords } from "../lib/kpiTrustStore";
 import { fetchSparePage, type SpareRequestRecord } from "../lib/spareApi";
-
-async function checkJson(name: string, url: string, auth?: Record<string, string>): Promise<FeedCheck> {
-  try {
-    const response = await fetch(url, {
-      headers: auth,
-      signal: AbortSignal.timeout(30_000),
-    });
-    if (!response.ok) return { name, configured: true, status: response.status };
-    const summary = summarizeFeedResponse(await response.json());
-    return { name, configured: true, status: response.status, ...summary };
-  } catch (error) {
-    return { name, configured: true, error: error instanceof Error ? error.message : "Request failed" };
-  }
-}
 
 async function checkStaticGtfs(url: string | undefined): Promise<FeedCheck> {
   if (!url?.trim()) return { name: "GTFS static", configured: false };
@@ -91,9 +78,10 @@ app.http("feedChecks", {
 
     const [checks, sparePipelineChecks] = await Promise.all([
       Promise.all([
-      checkJson("GTFS TripUpdates", process.env.GTFS_RT_TRIPUPDATE_URL?.trim() ?? ""),
-      checkJson("GTFS VehiclePositions", process.env.GTFS_RT_VEHICLE_URL?.trim() ?? ""),
-      checkJson("GTFS Alerts", process.env.GTFS_RT_ALERT_URL?.trim() ?? ""),
+      // Through the reader the polls use: same setting, timeout and body checks.
+      probeGtfsRtFeed("trip_updates"),
+      probeGtfsRtFeed("vehicle_positions"),
+      probeGtfsRtFeed("alerts"),
       checkStaticGtfs(process.env.GTFS_STATIC_URL),
       // Through the adapter the polls use, so each check sends the poll's own
       // request: same URL (including the /MVTA handling), auth and timeout.

@@ -1,4 +1,4 @@
-// GTFS-Realtime VehiclePosition feed - fetch + transform into a live
+// GTFS-Realtime VehiclePosition feed - transform into a live
 // position/occupancy reading. The third and final official GTFS-RT feed
 // type (Alert: gtfsRealtime.ts, TripUpdate: gtfsTripUpdates.ts). Purely
 // monitoring data - no alerting concept here, nothing ever escalates into
@@ -46,14 +46,6 @@ export interface GtfsRtVehiclePositionEntity {
 export type GtfsRtVehiclePositionFeedMessage = Omit<GtfsRtFeedMessage, "Entities"> & {
   Entities: GtfsRtVehiclePositionEntity[];
 };
-
-export async function fetchVehiclePositionFeed(url: string): Promise<GtfsRtVehiclePositionFeedMessage> {
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`GTFS-RT VehiclePosition feed request failed: ${res.status}`);
-  }
-  return (await res.json()) as GtfsRtVehiclePositionFeedMessage;
-}
 
 export interface MappedVehiclePosition {
   trip_id: string;
