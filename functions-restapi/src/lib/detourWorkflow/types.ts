@@ -4,11 +4,10 @@ import type { LikelyDuplicate } from "../detourDuplicates";
 export const DETOUR_FULFILLMENT_MODES = ["avail", "fixed_route_manual", "mobility_manual"] as const;
 export type DetourFulfillmentMode = (typeof DETOUR_FULFILLMENT_MODES)[number];
 
-// `approved` is not a Workflow state: promotion is the approval (ADR-0030).
-// Rows still holding it predate migration 122 and are refused until it runs.
+// `approved` is not a Workflow state: promotion is the approval (ADR-0030,
+// migration 122).
 export const DETOUR_LIFECYCLE_STATES = ["awaiting_fulfillment", "fulfilled", "fulfillment_failed", "closed"] as const;
 export type DetourLifecycleState = (typeof DETOUR_LIFECYCLE_STATES)[number];
-export const LEGACY_APPROVED_STATE = "approved";
 
 export type AvailEntryResult = "entered" | "conflict" | "not_entered";
 
@@ -45,7 +44,6 @@ export type DetourAct =
 
 export type RefusalCode =
   | "not_found"
-  | "legacy_approved_state"
   | "already_started"
   | "not_allowed_from_state"
   | "not_avail_backed"

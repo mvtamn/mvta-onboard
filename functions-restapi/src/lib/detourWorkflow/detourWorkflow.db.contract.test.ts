@@ -290,12 +290,6 @@ test("Detour workflow acts against SQL Server", skip, async (t) => {
       ]);
     });
 
-    await t.test("a Detour still in the retired Approved state is refused until migration 122", async () => {
-      const id = await seed(pool, { closure: "Juniper", state: "approved" });
-      const outcome = await performDetourAct(pool, id, { act: "close", reason: "x" }, occ);
-      assert.ok(!outcome.ok && outcome.refusal.code === "legacy_approved_state");
-    });
-
     await t.test("two people acting at once are decided one after the other", async () => {
       const id = await seed(pool, { closure: "Kestrel", state: "awaiting_fulfillment" });
       const outcomes = await Promise.all([
@@ -349,7 +343,7 @@ test("migration 122 retires approved and marks Avail-feed Detours Avail-backed, 
       pool.request().input("id", sql.UniqueIdentifier, untouched).query("UPDATE Detours SET lifecycle_state = 'approved' WHERE id = @id"),
       /CK_Detours_LifecycleState/,
     );
-    // The module no longer has a legacy row to refuse.
+    // A formerly approved Detour takes workflow acts like any other.
     const closed = await performDetourAct(pool, approvedManual, { act: "close", reason: "Done" }, occ);
     assert.ok(closed.ok);
   } finally {
