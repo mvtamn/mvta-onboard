@@ -574,6 +574,58 @@ IDs, then migrate one legacy candidate end to end — draft, check documents,
 submit, approve, read it as a controller. That last step exercises the
 lifecycle, the audit trail, the health check and the reader in one pass.
 
+## On-Demand service-quality monitor — activation (2026-09-17)
+
+**Approved by the project owner on 2026-09-17** and switched on by the PR that
+adds this section (dev parameters: `onDemandMonitoringEnabled: true`,
+`onDemandMonitoringServiceIds` set). The status section below (2026-09-08) is
+the history of how it got here; its blocker 1 (zones) was resolved in 1.5.236.
+
+- **Scope: all three MVTA Connect services**, an explicit choice by the owner:
+  `18b6ed3e-...` MVTA Connect, `d7046565-...` MVTA Connect - Eagan,
+  `7c31648d-...` MVTA Connect Shakopee - Prior Lake (names from
+  `SpareMissedTripSource`). The same set happens to be
+  `spareMissedTripServiceIds`; it is set on its own parameter, not derived from
+  it (ADR 0026). Eagan has no Operational zone, so its requests are recorded
+  Unzoned (monitoring-incomplete) - expected, not a fault.
+- **Activation gate: approved with four items still unevidenced** - approved
+  source owner and contract, confirmed non-PII field mapping and
+  pickup-commitment semantics, verified authenticated webhook delivery, and a
+  live controlled breach that creates one internal Suggested Alert and sends no
+  rider communication. The controlled breach is the first check to run once
+  the monitor is current. Suggested Alerts are staff drafts; nothing reaches a
+  rider without a staff action.
+- **Pre-activation rows:** none to clear. `MonitoredOnDemandWaits`,
+  `OnDemandRequestZoneSnapshots` and `OnDemandRequestCommitmentAudit` were all
+  empty on 2026-09-17.
+- **Zones:** one active version (Central Zone, Apple Valley; Shakopee - Prior
+  Lake Boundaries), pulled from Spare 2026-09-17 16:20 UTC.
+
+### Merge order
+
+1. **Spare repoints the webhook** to
+   `https://func-mvta-sparehook-dev.azurewebsites.net/api/on-demand-webhooks/spare`
+   (see "Spare webhook receiver on its own app", step 5). On 2026-09-17 Spare
+   still posted about 105,000 deliveries a day to the REST app, 6,000-6,700 an
+   hour from 6am to 6pm Central; the receiver app was ready (health 200, 401
+   without the secret, current package) and had received none. With the
+   monitor on, each requestStatus delivery becomes a database write and each
+   ETA delivery a Spare re-read - the load that saturated the REST app on
+   2026-09-05 - so it should land on the receiver's own plan.
+2. **Confirm deliveries moved** (that section's step 6).
+3. **Merge this PR after 10pm Central**, when deliveries fall to about 100-180
+   an hour. It is a parameters change, so it runs an infra deploy that restarts
+   the REST app. `spareWebhookOnRestApi: false` (step 7 there) can ride in the
+   same deploy once step 2 holds.
+4. **At the next hour**, `onDemandSpareReconcile` records the first
+   `spare_on_demand_reconciliation` success; the On-Demand KPI trust state and
+   Service Risk & Quality should move off unavailable / Not connected.
+5. **Watch the 5-7am Central ramp** on the receiver: `onDemandSpareWebhook`
+   requests by `cloud_RoleName`, 503 sheds, p95 duration.
+
+If Spare cannot repoint soon, the fallback is step 3 alone, overnight, with the
+receiver still on the REST app, and a close watch on the morning ramp.
+
 ## On-Demand service-quality monitor — status (2026-09-08)
 
 **The monitor is off and has never run against real data.** Everything code can
