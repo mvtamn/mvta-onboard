@@ -13,7 +13,15 @@ import { getPool, sql } from "../lib/db";
 import { requireRole, DETOUR_READ_ROLES } from "../lib/auth";
 import { computeDetourStatus, toDateOnly, toTimeOnly, type DetourStatus } from "../lib/detourStatus";
 import { contractorFromSettings, requiredAudiences, type ContractorNotification } from "../lib/detourContractor";
-import { readDetourWorkflows } from "../lib/detourWorkflow";
+import { readDetourWorkflows, type ActAvailability, type OfferedAct } from "../lib/detourWorkflow";
+
+function availableActsBody(acts: Record<OfferedAct, ActAvailability> | undefined) {
+  if (!acts) return undefined;
+  return Object.fromEntries(Object.entries(acts).map(([key, availability]) => [
+    key,
+    availability.available ? { available: true } : { available: false, code: availability.refusal.code, reason: availability.refusal.sentence },
+  ]));
+}
 
 interface DetourRow {
   id: string;
@@ -265,6 +273,9 @@ app.http("detoursList", {
         })() : {}),
         ...(hasReviewFields ? { review_status: d.review_status, review_reason: d.review_reason, closure_reason: d.closure_reason } : {}),
         readiness: workflows.get(d.id)?.next_step,
+        // What a person may do next, from the decision the acts enforce; the
+        // console offers buttons from this instead of reading raw state.
+        available_acts: availableActsBody(workflows.get(d.id)?.acts),
         segments: segmentsByDetour.get(d.id) ?? [],
       }));
 
