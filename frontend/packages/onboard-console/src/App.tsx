@@ -45,8 +45,15 @@ import { DetourReports } from "./routes/DetourReports.js";
 import { DetourIntake } from "./routes/DetourIntake.js";
 import { Changelog } from "./routes/Changelog.js";
 import { AdminLayout } from "./components/AdminLayout.js";
+import { AccessLayout } from "./routes/access/AccessUi.js";
+import { AccessOverview } from "./routes/access/AccessOverview.js";
+import { AccessGroups, AccessPeople, AccessWorkloads } from "./routes/access/AccessInventory.js";
+import { AddAccess } from "./routes/access/AddAccess.js";
+import { AccessApprovals } from "./routes/access/AccessApprovals.js";
+import { AccessHealth } from "./routes/access/AccessHealth.js";
+import { AccessActivity } from "./routes/access/AccessActivity.js";
 import { OnDemandServiceStandardsAdmin } from "./routes/OnDemandServiceStandardsAdmin.js";
-import { AdminAccess, AdminEventAdministration, AdminGovernance, AdminIntegrations, AdminServiceConfiguration, AdminSubscribers } from "./routes/AdminModules.js";
+import { AdminEventAdministration, AdminGovernance, AdminIntegrations, AdminServiceConfiguration, AdminSubscribers } from "./routes/AdminModules.js";
 import { OtpComplianceAdmin } from "./routes/OtpComplianceAdmin.js";
 import { PerformanceStandardsAdmin } from "./routes/PerformanceStandardsAdmin.js";
 import { PerformanceContractorsAdmin } from "./routes/PerformanceContractorsAdmin.js";
@@ -611,7 +618,19 @@ function AuthenticatedApp({ account, roles, signOut }: {
               <Route path="/admin/access-management" element={<CompatibilityRedirect to="/admin/access" />} />
               <Route path="/admin" element={<RequireRole allowed={[...ACCESS_MANAGEMENT, ...ADMIN]}><AdminLayout /></RequireRole>}>
                 <Route index element={<Navigate to="service" replace />} />
-                <Route path="access" element={<RequireRole allowed={[...ACCESS_MANAGEMENT]}><AdminAccess /></RequireRole>} />
+                {/* Access & Identity is seven pages under one heading; they share
+                    one load through AccessLayout. */}
+                <Route path="access" element={<RequireRole allowed={[...ACCESS_MANAGEMENT]}><AccessLayout /></RequireRole>}>
+                  <Route index element={<AccessOverview />} />
+                  <Route path="people" element={<AccessPeople />} />
+                  <Route path="groups" element={<AccessGroups />} />
+                  <Route path="workloads" element={<AccessWorkloads />} />
+                  <Route path="add" element={<AddAccess />} />
+                  <Route path="approvals" element={<AccessApprovals />} />
+                  <Route path="health" element={<AccessHealth />} />
+                  <Route path="activity" element={<AccessActivity />} />
+                  <Route path="*" element={<Navigate to="/admin/access" replace />} />
+                </Route>
                 <Route path="events" element={<RequireRole allowed={[...ADMIN]}><AdminEventAdministration /></RequireRole>} />
                 <Route path="service" element={<RequireRole allowed={[...ADMIN]}><AdminServiceConfiguration /></RequireRole>} />
                 <Route path="integrations" element={<RequireRole allowed={[...ADMIN]}><AdminIntegrations /></RequireRole>} />
