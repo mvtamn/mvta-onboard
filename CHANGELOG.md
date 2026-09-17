@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.231] - 2026-09-17
+
+- **An SMS reply can confirm any live code for the number.** `confirmSms` read only the newest live SMS confirmation for a phone (`TOP 1 … ORDER BY created_at DESC`), so a rider with two pending signups who replied to the first text got `incorrect_code` and spent an attempt. It now reads every live confirmation for the number; a code naming one of them confirms that one (the live `(channel, token)` index keeps it unambiguous), and `mergeOnConfirm` resolves the other signup exactly as before.
+- **A wrong code counts against every eligible live code for the number**, and `attemptsRemaining` reports the most-used one. Counting only one would let each extra signup buy a guesser five more tries. With no eligible code, the newest code's own state is returned, as before. Refusals are still reported against the newest code's subscriber. No migration.
+- **Verified.** `subscriberMerge.db.contract.test.ts` adds replying to the first of two texts (confirms that record, retires the other, voids its code); `subscriberConfirmation.db.contract.test.ts` adds a wrong code counting against both of two signups up to the cap, after which neither code works. The existing single-code, stale-code, crossed-number and already-confirmed contract tests are unchanged. REST API unit suite passes; typecheck clean.
+
 ## [1.5.230] - 2026-09-17
 
 - **Missed Trips reviews use the Missed-trip case module's terms.** The review panel offers the four outcomes (`REVIEW_DECISIONS` in `routes/modules/missedTripReview.ts`); a case already reviewed shows "Why this review is changing" and sends `supersede_reason`, a legacy record shows "Why this legacy record is being rereviewed" and sends `rereview_reason`, and Confirmed missed trip is disabled with the held reason while a case is Open or Awaiting evidence. Attribution is sent only with a confirmation. The API's refusal sentence is shown as the error.

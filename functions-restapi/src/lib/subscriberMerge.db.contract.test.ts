@@ -81,12 +81,9 @@ interface Seed {
    * Codes this record has out. `issuedMinutesAgo` pins created_at; omitted
    * means now.
    *
-   * confirmSms answers with the NEWEST live code for a number, so wherever two
-   * records hold live codes for one phone, which is newer is part of the setup
-   * and must be written down. Left to SYSUTCDATETIME() defaults, two inserts a
-   * millisecond apart can share a created_at, and ORDER BY created_at DESC
-   * then picks either row - the confirmation silently becomes an
-   * incorrect_code on the other record and nothing merges.
+   * Which of two records' codes is newer is the order the rider received the
+   * texts in, so tests that hold two live codes for one phone write it down
+   * rather than leave it to two SYSUTCDATETIME() defaults a millisecond apart.
    */
   tokens?: { channel: "sms" | "email"; token: string; issuedMinutesAgo?: number }[];
 }
@@ -357,6 +354,42 @@ test("with no confirmed duplicate, the record in hand survives and the unconfirm
     assert.equal((await liveTokenOwner(pool, "555555"))!.superseded, true);
     assert.equal((await inTx(pool, (tx) => confirmSms(tx, PHONE, "555555"))).outcome, "already_confirmed");
     assert.deepEqual(await audienceFor(pool, PHONE), [confirming]);
+  } finally {
+    await pool.close();
+  }
+});
+
+test("a rider who signed up twice can reply to the first text", skip, async () => {
+  const pool = await new sql.ConnectionPool(parseConnectionString(connectionString!)).connect();
+  try {
+    await reset(pool);
+    // Two signups, two texts. The first text proves the number exactly as well
+    // as the second; answering it with "incorrect code" would cost the rider a
+    // try for using a code we really sent them.
+    const first = await seed(pool, {
+      phone: PHONE,
+      categories: '["delay"]',
+      tokens: [{ channel: "sms", token: "131313", issuedMinutesAgo: 60 }],
+    });
+    const second = await seed(pool, {
+      phone: PHONE,
+      categories: '["closure"]',
+      tokens: [{ channel: "sms", token: "141414" }],
+    });
+
+    const result = await inTx(pool, (tx) => confirmSms(tx, PHONE, "131313"));
+    assert.equal(result.outcome, "confirmed");
+    assert.equal(result.subscriberId, first, "the record whose code was named");
+
+    // The merge resolves the other signup the same way it would have the other
+    // way round: retired, its code dead, its unproven choices left behind.
+    const folded = await read(pool, second);
+    assert.equal(folded.status, "merged");
+    assert.equal(folded.merged_into, first);
+    assert.equal((await liveTokenOwner(pool, "141414"))!.superseded, true);
+    assert.deepEqual(JSON.parse((await read(pool, first)).categories), ["delay"]);
+    assert.deepEqual(await audienceFor(pool, PHONE), [first]);
+    assert.equal((await inTx(pool, (tx) => confirmSms(tx, PHONE, "141414"))).outcome, "already_confirmed");
   } finally {
     await pool.close();
   }

@@ -154,8 +154,19 @@ export async function confirmEmail(tx: Transaction, token: string): Promise<Conf
  * in. A number that arrives in any other shape matches nothing and reads as
  * "not_found", which is indistinguishable from never having subscribed.
  *
- * A wrong code is counted against the live confirmation for that number and
- * reported as "incorrect_code" - distinct from "not_found", which says no live
+ * A number can hold several live codes at once: every signup with it issues
+ * one, and duplicates are only merged when one of them confirms. A code that
+ * names ANY of them confirms that one - a rider who signed up twice and
+ * replies to the first text has proved the number exactly as well as one who
+ * replies to the second - and the merge then resolves the rest.
+ *
+ * A wrong code is counted against EVERY live code for the number and reported
+ * as "incorrect_code". Accepting several codes without that would multiply a
+ * guesser's odds by however many signups they could create for one number;
+ * counting each guess against all of them keeps every code that can still
+ * accept at the same five tries it would have alone.
+ *
+ * "incorrect_code" is distinct from "not_found", which says no live
  * confirmation exists at all. The two must NOT be distinguished to an
  * arbitrary caller: over the inbound-SMS path the sender owns the number and
  * can learn nothing they do not already know, but an HTTP endpoint that takes
@@ -169,58 +180,74 @@ export async function confirmSms(
 ): Promise<ConfirmResult> {
   const find = new sql.Request(tx);
   find.input("phone", sql.NVarChar(20), phoneNumber);
-  // The live confirmation for this number. Newest first, so a resend that
-  // raced its own supersede still lands on the code the rider is holding.
+  // Every live confirmation for this number, newest first. The newest is the
+  // one a refusal is reported against: it is the signup the rider is most
+  // likely waiting on.
   const found = await find.query<ConfirmationRow>(
-    `SELECT TOP 1 ${SELECT_COLUMNS}
+    `SELECT ${SELECT_COLUMNS}
        FROM SubscriberConfirmations c WITH(UPDLOCK, HOLDLOCK)
        JOIN Subscribers s ON s.subscriber_id = c.subscriber_id
       WHERE c.channel = 'sms'
         AND s.phone_number = @phone
         AND c.confirmed_at IS NULL
         AND c.superseded_at IS NULL
-      ORDER BY c.created_at DESC`,
+      ORDER BY c.created_at DESC, c.confirmation_id DESC`,
   );
-  const row = found.recordset[0] ?? null;
-  if (!row) {
+  const rows = found.recordset;
+  if (rows.length === 0) {
     // Either no such number, or its confirmation is already spent. A rider who
     // replies with the same code twice lands here; increment 3 answers that
     // the same way it answers success, since from the rider's side it is.
     return { outcome: await spentSmsExists(tx, phoneNumber) ? "already_confirmed" : "not_found" };
   }
 
-  const state = classifyConfirmation(row, new Date());
-  if (state !== "eligible") {
-    return { outcome: state, subscriberId: row.subscriber_id, channel: "sms" };
-  }
-
-  if (row.token !== code) {
-    // A rider who asked for another code is holding two texts, and the older
-    // one still looks current. Before counting this as a guess, check whether
-    // it is a code we really did send to this number - and if so, say which
-    // state it is in rather than calling it wrong, and do not spend one of the
-    // five attempts on it. Otherwise using the wrong text costs the rider a
-    // try and tells them nothing about why.
-    //
-    // This gives a guesser nothing. Reaching it means naming a code that was
-    // actually issued to this number, which is exactly as hard as naming the
-    // live one.
-    const stale = await findSpentSmsToken(tx, phoneNumber, code);
-    if (stale) {
-      return { outcome: stale, subscriberId: row.subscriber_id, channel: "sms" };
+  const now = new Date();
+  // UX_SubConfirm_Channel_Token makes a live code unique per channel, so at
+  // most one row can match.
+  const named = rows.find((row) => row.token === code);
+  if (named) {
+    const state = classifyConfirmation(named, now);
+    if (state !== "eligible") {
+      return { outcome: state, subscriberId: named.subscriber_id, channel: "sms" };
     }
-
-    const attempts = await countAttempt(tx, row.confirmation_id);
-    return {
-      outcome: "incorrect_code",
-      subscriberId: row.subscriber_id,
-      channel: "sms",
-      attemptsRemaining: Math.max(0, MAX_CONFIRM_ATTEMPTS - attempts),
-    };
+    const survivorId = await markConfirmed(tx, named);
+    return { outcome: "confirmed", subscriberId: survivorId, channel: "sms" };
   }
 
-  const survivorId = await markConfirmed(tx, row);
-  return { outcome: "confirmed", subscriberId: survivorId, channel: "sms" };
+  // Only a code that could still be accepted is worth guessing against, so
+  // only those are counted. With none, the newest code's own state is the
+  // answer, as it was when there could only be one.
+  const eligible = rows.filter((row) => classifyConfirmation(row, now) === "eligible");
+  const newestState = classifyConfirmation(rows[0], now);
+  if (eligible.length === 0 && newestState !== "eligible") {
+    return { outcome: newestState, subscriberId: rows[0].subscriber_id, channel: "sms" };
+  }
+
+  // A rider who asked for another code is holding two texts, and the older
+  // one still looks current. Before counting this as a guess, check whether it
+  // is a code we really did send to this number - and if so, say which state
+  // it is in rather than calling it wrong, and do not spend one of the five
+  // attempts on it. Otherwise using the wrong text costs the rider a try and
+  // tells them nothing about why.
+  //
+  // This gives a guesser nothing. Reaching it means naming a code that was
+  // actually issued to this number, which is exactly as hard as naming a live
+  // one.
+  const stale = await findSpentSmsToken(tx, phoneNumber, code);
+  if (stale) {
+    return { outcome: stale, subscriberId: eligible[0].subscriber_id, channel: "sms" };
+  }
+
+  let attempts = 0;
+  for (const row of eligible) {
+    attempts = Math.max(attempts, await countAttempt(tx, row.confirmation_id));
+  }
+  return {
+    outcome: "incorrect_code",
+    subscriberId: eligible[0].subscriber_id,
+    channel: "sms",
+    attemptsRemaining: Math.max(0, MAX_CONFIRM_ATTEMPTS - attempts),
+  };
 }
 
 /**
