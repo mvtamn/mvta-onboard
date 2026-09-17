@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assertSpareSlotsFilter, fetchSpareUpdatedWindow, positiveEnvInteger, spareNumber, spareServiceName, spareString, spareTimestamp, type SparePage } from "./spareApi";
+import { assertSpareSlotsFilter, fetchSpareCollection, fetchSpareUpdatedWindow, positiveEnvInteger, spareNumber, spareServiceName, spareString, spareTimestamp, type SparePage } from "./spareApi";
 
 test("Spare field guards accept only bounded values of the expected type", () => {
   assert.equal(spareString(" request-1 ", 64), "request-1");
@@ -34,7 +34,7 @@ test("pages a bounded window until the reported total is reached", async () => {
   const skips: string[] = [];
   let call = 0;
   const rows = await fetchSpareUpdatedWindow<{ id: string }>(
-    "/v1/requests", 100, 200, 2, 100,
+    100, 200, 2, 100,
     async (_path, query) => {
       skips.push(query.get("skip")!);
       return pages[call++] as never;
@@ -42,6 +42,32 @@ test("pages a bounded window until the reported total is reached", async () => {
   );
   assert.deepEqual(rows.map((row) => row.id), ["a", "b", "c"]);
   assert.deepEqual(skips, ["0", "2"]);
+});
+
+test("pages a duty's slots with the same loop, filter and order as requests", async () => {
+  // The missed-trip ingest used to carry its own copy of this loop.
+  const queries: URLSearchParams[] = [];
+  const pages: SparePage<{ id: string }>[] = [
+    { total: 3, limit: 2, skip: 0, data: [{ id: "s1" }, { id: "s2" }] },
+    { total: 3, limit: 2, skip: 2, data: [{ id: "s3" }] },
+  ];
+  let call = 0;
+  const rows = await fetchSpareCollection<{ id: string }>("/v1/slots", { dutyId: "duty-1", type: "pickup" }, 2, 100,
+    async (path, query) => { assert.equal(path, "/v1/slots"); queries.push(query); return pages[call++] as never; });
+  assert.deepEqual(rows.map((row) => row.id), ["s1", "s2", "s3"]);
+  assert.equal(queries[0].get("dutyId"), "duty-1");
+  assert.equal(queries[0].get("type"), "pickup");
+  assert.equal(queries[0].get("orderDirection"), "ASC");
+  assert.deepEqual(queries.map((query) => query.get("skip")), ["0", "2"]);
+});
+
+test("a read Spare would have truncated throws instead of returning part of it", async () => {
+  // The departures poll read one page of start slots and dropped the rest.
+  await assert.rejects(
+    fetchSpareCollection("/v1/slots", { dutyId: "duty-1", type: "startLocation" }, 20, 20,
+      async () => ({ total: 23, limit: 20, skip: 0, data: Array.from({ length: 20 }, (_, i) => ({ id: `s${i}` })) }) as never),
+    /Spare \/v1\/slots read exceeded the 20-row safety cap/,
+  );
 });
 
 test("an environment override outside the allowed range falls back", () => {
