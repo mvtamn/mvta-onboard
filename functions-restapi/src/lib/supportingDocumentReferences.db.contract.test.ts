@@ -12,7 +12,10 @@ import { createInMemoryLibraryItems } from "./sharepointLibrary";
 // job's container), through the Draft handlers the console uses. Its own
 // file: getPool() caches one global pool, which each contract file closes.
 const connectionString = process.env.DECISION_MATRIX_TEST_SQL_CONNECTION_STRING;
-const context = { error: () => undefined } as unknown as InvocationContext;
+// What the handlers log, so a 500 fails with the database's own error rather
+// than only "could not be saved".
+const logged: string[] = [];
+const context = { error: (...args: unknown[]) => { logged.push(args.map((arg) => arg instanceof Error ? `${arg.message}${(arg as { number?: number }).number ? ` (SQL ${(arg as { number?: number }).number})` : ""}` : String(arg)).join(" ")); } } as unknown as InvocationContext;
 const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const PROCEDURES_URL = "https://example.test/api/manage/decision-matrix/procedures";
 
@@ -75,7 +78,7 @@ test("a Draft save keeps a kept reference's document and health, and refuses wha
       { document_type: "SOP", is_primary: true, document_code: "SOP-REF", item_id: "item-sop", seen_version: '"{A},1"' },
       { document_type: "Form", document_code: "FORM-REF", item_id: "item-form", seen_version: '"{B},1"' },
     ])), context, library);
-    assert.equal(created.status, 201);
+    assert.equal(created.status, 201, logged.join(" | "));
     assert.deepEqual((await rows(procedureId)).map((row) => [row.item_id, row.site_id, row.health_status]), [["item-sop", "site-references", "Needs review"], ["item-form", "site-references", "Needs review"]]);
 
     // Stand in for the health module having checked both documents.
@@ -91,7 +94,7 @@ test("a Draft save keeps a kept reference's document and health, and refuses wha
       { id: formId, document_type: "Form", document_code: "FORM-REF-2" },
       { id: sopId, document_type: "SOP", is_primary: false, document_code: "SOP-REF" },
     ]);
-    assert.equal(first.status, 200, JSON.stringify(first.jsonBody));
+    assert.equal(first.status, 200, `${JSON.stringify(first.jsonBody)} ${logged.join(" | ")}`);
     assert.deepEqual((await rows(procedureId)).map(({ item_id, sort_order, is_primary, document_code, health_status, checked_at }) => [item_id, sort_order, is_primary, document_code, health_status, checked_at]), [
       ["item-reference", 1, true, "REF-REF", "Needs review", null],
       ["item-form", 2, false, "FORM-REF-2", "Valid", "2026-09-17T05:00:00"],
@@ -104,7 +107,7 @@ test("a Draft save keeps a kept reference's document and health, and refuses wha
       { id: sopId, document_type: "SOP", is_primary: true, document_code: "SOP-REF" },
       { id: idOf(body, "item-reference"), document_type: "Reference", is_primary: false, document_code: "REF-REF" },
     ]);
-    assert.equal(second.status, 200, JSON.stringify(second.jsonBody));
+    assert.equal(second.status, 200, `${JSON.stringify(second.jsonBody)} ${logged.join(" | ")}`);
     assert.deepEqual((await rows(procedureId)).map(({ item_id, is_primary, health_status }) => [item_id, is_primary, health_status]), [["item-sop", true, "Valid"], ["item-reference", false, "Needs review"]]);
 
     // Refusals change nothing, and a refusal inside the transaction rolls the
