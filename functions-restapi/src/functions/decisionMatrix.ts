@@ -3,13 +3,16 @@ import { OnBehalfOfCredential } from "@azure/identity";
 import { DECISION_MATRIX_READ_ROLES, requireRole } from "../lib/auth";
 import { getPool, sql } from "../lib/db";
 import { DECISION_MATRIX_SURFACES, surfaceReady } from "../lib/decisionMatrixReadiness";
+import { isInlineImageMime } from "../lib/supportingDocumentReferences";
 
 type RevisionRow = { procedure_id: string; revision: number; condition_key: string; condition: string; severity: string; severity_meaning: string; owner_team: string; owner_contact: string | null; effective_at: Date; next_review_at: Date; tags_json: string };
 type CriterionRow = { procedure_id: string; revision: number; criterion_id: string; criterion_kind: string; criterion_text: string };
 type ActionRow = { procedure_id: string; revision: number; action_id: string; action_kind: string; instruction: string };
 type ReferenceRow = { procedure_id: string; revision: number; reference_id: string; document_type: string; is_primary: boolean; document_code: string; expected_file_name: string; expected_mime_type: string; web_url: string; health_status: "Valid" | "Needs review" | "Unavailable"; checked_at: Date | null; health_reason: string | null };
 
-export function isInlineImageMime(mime: string): boolean { return mime.toLowerCase() === "image/png" || mime.toLowerCase() === "image/jpeg"; }
+// The image rule is the Supporting Document Reference module's, so a rendition
+// that could never be shown is refused when it is chosen, not here.
+export { isInlineImageMime };
 
 // The reader's five tables all arrive together in migration 076. A database
 // that has not been migrated is a different condition from a query that

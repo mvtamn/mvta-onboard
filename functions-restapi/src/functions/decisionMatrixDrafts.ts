@@ -2,28 +2,16 @@ import { randomUUID } from "node:crypto";
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { ADMIN_ROLES, requireRole } from "../lib/auth";
 import { getPool, sql } from "../lib/db";
+import type { LibraryItemReader } from "../lib/sharepointLibrary";
+import { prepareSupportingDocumentReferences, ReferenceRefusal, type PreparedReferences } from "../lib/supportingDocumentReferences";
+import { approvedLibraryItems } from "./decisionMatrixLibrary";
 
 const SEVERITIES = new Set(["Stop service", "Restrict service", "Routine / no escalation"]);
 const CRITERION_KINDS = new Set(["applies", "excludes"]);
 const ACTION_KINDS = new Set(["required", "conditional", "informational"]);
-const DOCUMENT_TYPES = new Set(["SOP", "Reference", "Form", "Map", "QRG", "Visual rendition"]);
-const SHAREPOINT_HOST = process.env.DECISION_MATRIX_SHAREPOINT_HOST ?? "mvtamn.sharepoint.com";
 
 type CriterionInput = { id?: string; kind: string; text: string };
 type ActionInput = { id?: string; kind: string; instruction: string };
-type DocumentReferenceInput = {
-  id?: string;
-  document_type: string;
-  is_primary?: boolean;
-  document_code: string;
-  site_id: string;
-  drive_id: string;
-  item_id: string;
-  expected_version: string;
-  expected_file_name: string;
-  expected_mime_type: string;
-  web_url: string;
-};
 type DraftInput = {
   procedure_id?: string;
   condition_key?: string;
@@ -37,7 +25,7 @@ type DraftInput = {
   tags?: string[];
   criteria?: CriterionInput[];
   immediate_actions?: ActionInput[];
-  document_references?: DocumentReferenceInput[];
+  document_references?: unknown;
   concurrency_token?: string;
 };
 
@@ -69,70 +57,48 @@ function date(value: unknown): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function isApprovedSharePointUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" && url.hostname === SHAREPOINT_HOST;
-  } catch {
-    return false;
-  }
-}
-
-function parseDraft(value: unknown, requireIdentity: boolean): { input: Required<Pick<DraftInput, "criteria" | "immediate_actions" | "document_references">> & DraftInput; error?: string } {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return { input: { criteria: [], immediate_actions: [], document_references: [] }, error: "Request body must be a JSON object." };
+function parseDraft(value: unknown, requireIdentity: boolean): { input: Required<Pick<DraftInput, "criteria" | "immediate_actions">> & DraftInput; error?: string } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return { input: { criteria: [], immediate_actions: [] }, error: "Request body must be a JSON object." };
   const body = value as DraftInput;
   const criteria = body.criteria ?? [];
   const immediateActions = body.immediate_actions ?? [];
-  const documentReferences = body.document_references ?? [];
-  if (!Array.isArray(criteria) || !Array.isArray(immediateActions) || !Array.isArray(documentReferences)) {
-    return { input: { criteria: [], immediate_actions: [], document_references: [] }, error: "criteria, immediate_actions, and document_references must be arrays." };
+  if (!Array.isArray(criteria) || !Array.isArray(immediateActions)) {
+    return { input: { criteria: [], immediate_actions: [] }, error: "criteria and immediate_actions must be arrays." };
   }
   if (requireIdentity && (!text(body.procedure_id, 100, "procedure_id", true) || !text(body.condition_key, 100, "condition_key", true) || !text(body.condition, 200, "condition", true))) {
-    return { input: { criteria, immediate_actions: immediateActions, document_references: documentReferences }, error: "procedure_id, condition_key, and condition are required." };
+    return { input: { criteria, immediate_actions: immediateActions }, error: "procedure_id, condition_key, and condition are required." };
   }
-  if (body.severity !== undefined && !SEVERITIES.has(body.severity)) return { input: { criteria, immediate_actions: immediateActions, document_references: documentReferences }, error: "severity must be Stop service, Restrict service, or Routine / no escalation." };
-  if (body.severity_meaning !== undefined && !text(body.severity_meaning, 300, "severity_meaning", true)) return { input: { criteria, immediate_actions: immediateActions, document_references: documentReferences }, error: "severity_meaning must be a non-empty value of 300 characters or fewer." };
-  if (body.owner_team !== undefined && !text(body.owner_team, 200, "owner_team", true)) return { input: { criteria, immediate_actions: immediateActions, document_references: documentReferences }, error: "owner_team must be a non-empty value of 200 characters or fewer." };
-  if (body.owner_contact !== undefined && body.owner_contact !== null && body.owner_contact !== "" && !text(body.owner_contact, 320, "owner_contact", true)) return { input: { criteria, immediate_actions: immediateActions, document_references: documentReferences }, error: "owner_contact must be 320 characters or fewer." };
-  if (body.effective_at !== undefined && !date(body.effective_at)) return { input: { criteria, immediate_actions: immediateActions, document_references: documentReferences }, error: "effective_at must be an ISO date." };
-  if (body.next_review_at !== undefined && !date(body.next_review_at)) return { input: { criteria, immediate_actions: immediateActions, document_references: documentReferences }, error: "next_review_at must be an ISO date." };
-  if (body.tags !== undefined && (!Array.isArray(body.tags) || body.tags.some((tag) => !text(tag, 80, "tag", true)))) return { input: { criteria, immediate_actions: immediateActions, document_references: documentReferences }, error: "tags must be an array of non-empty values of 80 characters or fewer." };
+  if (body.severity !== undefined && !SEVERITIES.has(body.severity)) return { input: { criteria, immediate_actions: immediateActions }, error: "severity must be Stop service, Restrict service, or Routine / no escalation." };
+  if (body.severity_meaning !== undefined && !text(body.severity_meaning, 300, "severity_meaning", true)) return { input: { criteria, immediate_actions: immediateActions }, error: "severity_meaning must be a non-empty value of 300 characters or fewer." };
+  if (body.owner_team !== undefined && !text(body.owner_team, 200, "owner_team", true)) return { input: { criteria, immediate_actions: immediateActions }, error: "owner_team must be a non-empty value of 200 characters or fewer." };
+  if (body.owner_contact !== undefined && body.owner_contact !== null && body.owner_contact !== "" && !text(body.owner_contact, 320, "owner_contact", true)) return { input: { criteria, immediate_actions: immediateActions }, error: "owner_contact must be 320 characters or fewer." };
+  if (body.effective_at !== undefined && !date(body.effective_at)) return { input: { criteria, immediate_actions: immediateActions }, error: "effective_at must be an ISO date." };
+  if (body.next_review_at !== undefined && !date(body.next_review_at)) return { input: { criteria, immediate_actions: immediateActions }, error: "next_review_at must be an ISO date." };
+  if (body.tags !== undefined && (!Array.isArray(body.tags) || body.tags.some((tag) => !text(tag, 80, "tag", true)))) return { input: { criteria, immediate_actions: immediateActions }, error: "tags must be an array of non-empty values of 80 characters or fewer." };
 
   const seenCriteria = new Set<string>();
   for (const criterion of criteria) {
-    if (!criterion || typeof criterion !== "object" || !CRITERION_KINDS.has(criterion.kind) || !text(criterion.text, 1000, "criterion text", true)) return { input: { criteria, immediate_actions: immediateActions, document_references: documentReferences }, error: "Each Criterion needs an applies/excludes kind and text." };
-    if (criterion.id && (!/^[0-9a-f-]{36}$/i.test(criterion.id) || seenCriteria.has(criterion.id))) return { input: { criteria, immediate_actions: immediateActions, document_references: documentReferences }, error: "Criterion identities must be unique UUIDs." };
+    if (!criterion || typeof criterion !== "object" || !CRITERION_KINDS.has(criterion.kind) || !text(criterion.text, 1000, "criterion text", true)) return { input: { criteria, immediate_actions: immediateActions }, error: "Each Criterion needs an applies/excludes kind and text." };
+    if (criterion.id && (!/^[0-9a-f-]{36}$/i.test(criterion.id) || seenCriteria.has(criterion.id))) return { input: { criteria, immediate_actions: immediateActions }, error: "Criterion identities must be unique UUIDs." };
     if (criterion.id) seenCriteria.add(criterion.id);
   }
   const seenActions = new Set<string>();
   for (const action of immediateActions) {
-    if (!action || typeof action !== "object" || !ACTION_KINDS.has(action.kind) || !text(action.instruction, 2000, "action instruction", true)) return { input: { criteria, immediate_actions: immediateActions, document_references: documentReferences }, error: "Each Immediate Action needs a required, conditional, or informational kind and instruction." };
-    if (action.id && (!/^[0-9a-f-]{36}$/i.test(action.id) || seenActions.has(action.id))) return { input: { criteria, immediate_actions: immediateActions, document_references: documentReferences }, error: "Immediate Action identities must be unique UUIDs." };
+    if (!action || typeof action !== "object" || !ACTION_KINDS.has(action.kind) || !text(action.instruction, 2000, "action instruction", true)) return { input: { criteria, immediate_actions: immediateActions }, error: "Each Immediate Action needs a required, conditional, or informational kind and instruction." };
+    if (action.id && (!/^[0-9a-f-]{36}$/i.test(action.id) || seenActions.has(action.id))) return { input: { criteria, immediate_actions: immediateActions }, error: "Immediate Action identities must be unique UUIDs." };
     if (action.id) seenActions.add(action.id);
   }
-  const seenReferences = new Set<string>();
-  let primaryCount = 0;
-  for (const reference of documentReferences) {
-    if (!reference || typeof reference !== "object" || !DOCUMENT_TYPES.has(reference.document_type)) return { input: { criteria, immediate_actions: immediateActions, document_references: documentReferences }, error: "Each Supporting Document Reference needs a supported document type." };
-    if (reference.is_primary) {
-      primaryCount++;
-      if (reference.document_type !== "SOP" && reference.document_type !== "Reference") return { input: { criteria, immediate_actions: immediateActions, document_references: documentReferences }, error: "Only an SOP or Reference can be primary." };
-    }
-    if ([reference.document_code, reference.site_id, reference.drive_id, reference.item_id, reference.expected_version, reference.expected_file_name, reference.expected_mime_type].some((field) => !text(field, 500, "document reference", true))) return { input: { criteria, immediate_actions: immediateActions, document_references: documentReferences }, error: "Each Supporting Document Reference needs SharePoint identity and expected metadata." };
-    const webUrl = text(reference.web_url, 2000, "web_url", true);
-    if (!webUrl || !isApprovedSharePointUrl(webUrl)) return { input: { criteria, immediate_actions: immediateActions, document_references: documentReferences }, error: "Supporting Document Reference web_url must use the approved SharePoint host." };
-    if (reference.id && (!/^[0-9a-f-]{36}$/i.test(reference.id) || seenReferences.has(reference.id))) return { input: { criteria, immediate_actions: immediateActions, document_references: documentReferences }, error: "Supporting Document Reference identities must be unique UUIDs." };
-    if (reference.id) seenReferences.add(reference.id);
-  }
-  if (primaryCount > 1) return { input: { criteria, immediate_actions: immediateActions, document_references: documentReferences }, error: "A Draft can have only one primary Supporting Document Reference." };
-  return { input: { ...body, criteria, immediate_actions: immediateActions, document_references: documentReferences } };
+  return { input: { ...body, criteria, immediate_actions: immediateActions } };
 }
 
-async function replaceDraftContent(transaction: sql.Transaction, procedureId: string, revision: number, input: Required<Pick<DraftInput, "criteria" | "immediate_actions" | "document_references">>) {
+// Criteria and Immediate Actions are replaced wholesale. Supporting Document
+// References are not: they are written by lib/supportingDocumentReferences.ts,
+// which keeps a kept reference's document and health.
+async function replaceDraftContent(transaction: sql.Transaction, procedureId: string, revision: number, input: Required<Pick<DraftInput, "criteria" | "immediate_actions">>) {
   const remove = transaction.request();
   remove.input("procedure_id", sql.NVarChar, procedureId);
   remove.input("revision", sql.Int, revision);
-  await remove.query("DELETE FROM ProcedureCriteria WHERE procedure_id=@procedure_id AND revision=@revision; DELETE FROM ProcedureImmediateActions WHERE procedure_id=@procedure_id AND revision=@revision; DELETE FROM ProcedureDocumentReferences WHERE procedure_id=@procedure_id AND revision=@revision;");
+  await remove.query("DELETE FROM ProcedureCriteria WHERE procedure_id=@procedure_id AND revision=@revision; DELETE FROM ProcedureImmediateActions WHERE procedure_id=@procedure_id AND revision=@revision;");
   for (const [index, criterion] of input.criteria.entries()) {
     const insert = transaction.request();
     criterion.id ??= randomUUID();
@@ -155,26 +121,6 @@ async function replaceDraftContent(transaction: sql.Transaction, procedureId: st
     insert.input("instruction", sql.NVarChar, action.instruction.trim());
     await insert.query("INSERT INTO ProcedureImmediateActions(action_id,procedure_id,revision,sort_order,action_kind,instruction) VALUES(@id,@procedure_id,@revision,@sort_order,@kind,@instruction)");
   }
-  for (const [index, reference] of input.document_references.entries()) {
-    const insert = transaction.request();
-    reference.id ??= randomUUID();
-    reference.is_primary ??= false;
-    insert.input("id", sql.UniqueIdentifier, reference.id);
-    insert.input("procedure_id", sql.NVarChar, procedureId);
-    insert.input("revision", sql.Int, revision);
-    insert.input("sort_order", sql.Int, index + 1);
-    insert.input("document_type", sql.NVarChar, reference.document_type);
-    insert.input("is_primary", sql.Bit, reference.is_primary ? 1 : 0);
-    insert.input("document_code", sql.NVarChar, reference.document_code.trim());
-    insert.input("site_id", sql.NVarChar, reference.site_id.trim());
-    insert.input("drive_id", sql.NVarChar, reference.drive_id.trim());
-    insert.input("item_id", sql.NVarChar, reference.item_id.trim());
-    insert.input("expected_version", sql.NVarChar, reference.expected_version.trim());
-    insert.input("expected_file_name", sql.NVarChar, reference.expected_file_name.trim());
-    insert.input("expected_mime_type", sql.NVarChar, reference.expected_mime_type.trim());
-    insert.input("web_url", sql.NVarChar, reference.web_url.trim());
-    await insert.query("INSERT INTO ProcedureDocumentReferences(reference_id,procedure_id,revision,sort_order,document_type,is_primary,document_code,site_id,drive_id,item_id,expected_version,expected_file_name,expected_mime_type,web_url) VALUES(@id,@procedure_id,@revision,@sort_order,@document_type,@is_primary,@document_code,@site_id,@drive_id,@item_id,@expected_version,@expected_file_name,@expected_mime_type,@web_url)");
-  }
 }
 
 async function recordDraftAudit(transaction: sql.Transaction, procedureId: string, revision: number, actor: string, eventType: "draft_created" | "draft_saved" | "revision_cloned", details: Record<string, unknown> = {}) {
@@ -188,7 +134,19 @@ async function recordDraftAudit(transaction: sql.Transaction, procedureId: strin
   await audit.query("IF OBJECT_ID('dbo.ProcedureAuditEvents', 'U') IS NOT NULL INSERT INTO ProcedureAuditEvents(event_id,procedure_id,revision,event_type,actor,details_json) VALUES(@id,@procedure_id,@revision,@event_type,@actor,@details)");
 }
 
-export async function createDecisionMatrixProcedureDraft(request: HttpRequest, context: InvocationContext) {
+function refusalResponse(error: unknown) {
+  return error instanceof ReferenceRefusal ? { status: error.status, jsonBody: { error: error.message } } : null;
+}
+
+// Only the Procedures table's own keys make a create a duplicate. Every other
+// failure used to be answered "already exists" too, which sent an author to
+// rename a Procedure that was not a duplicate.
+function isDuplicateProcedure(error: unknown): boolean {
+  const failure = error as { number?: unknown; message?: unknown } | null;
+  return !!failure && (failure.number === 2627 || failure.number === 2601) && typeof failure.message === "string" && /object 'dbo\.Procedures'/.test(failure.message);
+}
+
+export async function createDecisionMatrixProcedureDraft(request: HttpRequest, context: InvocationContext, library: LibraryItemReader = approvedLibraryItems()) {
   const auth = requireRole(request, ADMIN_ROLES);
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   let body: unknown;
@@ -201,6 +159,8 @@ export async function createDecisionMatrixProcedureDraft(request: HttpRequest, c
   const condition = text(input.condition, 200, "condition", true)!;
   const actor = auth.principal.userId;
   if (!actor) return { status: 401, jsonBody: { error: "A stable Admin identity is required to author a Procedure Draft." } };
+  let references: PreparedReferences;
+  try { references = await prepareSupportingDocumentReferences(input.document_references, library); } catch (error) { const refused = refusalResponse(error); if (refused) return refused; throw error; }
   const pool = await getPool();
   const transaction = new sql.Transaction(pool);
   try {
@@ -223,6 +183,7 @@ export async function createDecisionMatrixProcedureDraft(request: HttpRequest, c
     insertRevision.input("tags_json", sql.NVarChar, JSON.stringify(input.tags ?? []));
     const created = await insertRevision.query<{ concurrency_token: string }>("INSERT INTO ProcedureRevisions(procedure_id,revision,severity,severity_meaning,owner_team,owner_contact,effective_at,next_review_at,tags_json,created_by,updated_by) OUTPUT CONVERT(varchar(34),INSERTED.row_version,1) AS concurrency_token VALUES(@procedure_id,1,@severity,@severity_meaning,@owner_team,@owner_contact,@effective_at,@next_review_at,@tags_json,@actor,@actor)");
     await replaceDraftContent(transaction, procedureId, 1, input);
+    const written = await references.write(transaction, procedureId, 1);
     await recordDraftAudit(transaction, procedureId, 1, actor, "draft_created");
     await transaction.commit();
     return { status: 201, jsonBody: {
@@ -233,12 +194,15 @@ export async function createDecisionMatrixProcedureDraft(request: HttpRequest, c
       tags: input.tags ?? [],
       criteria: input.criteria,
       immediate_actions: input.immediate_actions,
-      document_references: input.document_references.map((reference) => ({ ...reference, health_status: "Needs review", checked_at: null })),
+      document_references: written.map((reference) => ({ ...reference, health_status: "Needs review", checked_at: null })),
     } };
   } catch (error) {
     await transaction.rollback().catch(() => undefined);
+    const refused = refusalResponse(error);
+    if (refused) return refused;
+    if (isDuplicateProcedure(error)) return { status: 409, jsonBody: { error: "Procedure identity or condition key already exists." } };
     context.error("Decision Matrix Draft creation failed", error);
-    return { status: 409, jsonBody: { error: "Procedure identity or condition key already exists." } };
+    return { status: 500, jsonBody: { error: "Draft could not be created." } };
   }
 }
 
@@ -300,7 +264,7 @@ export async function cloneDecisionMatrixProcedureDraft(request: HttpRequest, co
   }
 }
 
-export async function saveDecisionMatrixProcedureDraft(request: HttpRequest, context: InvocationContext) {
+export async function saveDecisionMatrixProcedureDraft(request: HttpRequest, context: InvocationContext, library: LibraryItemReader = approvedLibraryItems()) {
   const auth = requireRole(request, ADMIN_ROLES);
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   const procedureId = request.params.procedureId;
@@ -314,6 +278,8 @@ export async function saveDecisionMatrixProcedureDraft(request: HttpRequest, con
   if (!text(input.concurrency_token, 34, "concurrency_token", true)) return { status: 400, jsonBody: { error: "concurrency_token is required to save a Draft." } };
   const actor = auth.principal.userId;
   if (!actor) return { status: 401, jsonBody: { error: "A stable Admin identity is required to author a Procedure Draft." } };
+  let references: PreparedReferences;
+  try { references = await prepareSupportingDocumentReferences(input.document_references, library); } catch (error) { const refused = refusalResponse(error); if (refused) return refused; throw error; }
   const pool = await getPool();
   const transaction = new sql.Transaction(pool);
   try {
@@ -336,11 +302,14 @@ export async function saveDecisionMatrixProcedureDraft(request: HttpRequest, con
       return { status: 409, jsonBody: { error: "This Draft changed or is no longer editable. Refresh to compare the latest revision before saving again." } };
     }
     await replaceDraftContent(transaction, procedureId, revision, input);
+    await references.write(transaction, procedureId, revision);
     await recordDraftAudit(transaction, procedureId, revision, actor, "draft_saved");
     await transaction.commit();
     return { status: 200, jsonBody: { procedure_id: procedureId, revision, lifecycle_state: "Draft", concurrency_token: concurrencyToken(changed.recordset[0].concurrency_token) } };
   } catch (error) {
     await transaction.rollback().catch(() => undefined);
+    const refused = refusalResponse(error);
+    if (refused) return refused;
     context.error("Decision Matrix Draft save failed", error);
     return { status: 500, jsonBody: { error: "Draft could not be saved." } };
   }

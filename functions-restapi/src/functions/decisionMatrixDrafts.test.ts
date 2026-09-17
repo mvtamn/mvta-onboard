@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { HttpRequest, type InvocationContext } from "@azure/functions";
 import * as db from "../lib/db";
+import { createInMemoryLibraryItems } from "../lib/sharepointLibrary";
 import { cloneDecisionMatrixProcedureDraft, concurrencyToken, createDecisionMatrixProcedureDraft, getDecisionMatrixProcedureDraft, saveDecisionMatrixProcedureDraft } from "./decisionMatrixDrafts";
 
 function requestFor(roles: string[], body: unknown): HttpRequest {
@@ -33,17 +34,16 @@ const completeDraft = {
   document_references: [{
     document_type: "SOP",
     is_primary: true,
-    sort_order: 1,
     document_code: "SOP-OCC-001",
-    site_id: "site-1",
-    drive_id: "drive-1",
     item_id: "item-1",
-    expected_version: "3.0",
-    expected_file_name: "SOP-OCC-001.docx",
-    expected_mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    web_url: "https://mvtamn.sharepoint.com/sites/Operations/Shared%20Documents/SOP-OCC-001.docx",
+    seen_version: "3.0",
   }],
 };
+
+const library = createInMemoryLibraryItems({ site_id: "site-1", drive_id: "drive-1" }, {
+  "item-1": { name: "SOP-OCC-001.docx", kind: "file", mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", etag: "3.0", web_url: "https://mvtamn.sharepoint.com/sites/Operations/Shared%20Documents/SOP-OCC-001.docx" },
+  "item-refused": { outcome: "forbidden", reason: "SharePoint refused OnBoard's read of this library." },
+});
 
 const context = { error: () => undefined } as unknown as InvocationContext;
 
@@ -61,20 +61,84 @@ test("a QRG cannot be the primary Supporting Document Reference", async () => {
   const response = await createDecisionMatrixProcedureDraft(requestFor(["OCC.Admin"], {
     ...completeDraft,
     document_references: [{ ...completeDraft.document_references[0], document_type: "QRG" }],
-  }), context);
+  }), context, library);
 
   assert.equal(response.status, 400);
   assert.deepEqual(response.jsonBody, { error: "Only an SOP or Reference can be primary." });
 });
 
-test("a Supporting Document Reference must point to the approved SharePoint host", async () => {
-  const response = await createDecisionMatrixProcedureDraft(requestFor(["OCC.Admin"], {
-    ...completeDraft,
-    document_references: [{ ...completeDraft.document_references[0], web_url: "https://example.test/not-sharepoint.docx" }],
-  }), context);
+// A console loaded before this change still sends the site and drive it was
+// handed. It gets a reason, not a reference to whatever library it named.
+test("a Draft that names a SharePoint site and drive is refused before anything is written", async () => {
+  const originalGetPool = db.getPool;
+  let connected = false;
+  Object.defineProperty(db, "getPool", { configurable: true, value: async () => { connected = true; return {}; } });
+  try {
+    const response = await createDecisionMatrixProcedureDraft(requestFor(["OCC.Admin"], {
+      ...completeDraft,
+      document_references: [{ ...completeDraft.document_references[0], site_id: "site-1", drive_id: "drive-1" }],
+    }), context, library);
+    assert.equal(response.status, 400);
+    assert.match((response.jsonBody as { error: string }).error, /sends site_id, drive_id, which OnBoard reads from SharePoint itself/);
+    assert.equal(connected, false);
+  } finally {
+    Object.defineProperty(db, "getPool", { configurable: true, value: originalGetPool });
+  }
+});
 
-  assert.equal(response.status, 400);
-  assert.deepEqual(response.jsonBody, { error: "Supporting Document Reference web_url must use the approved SharePoint host." });
+test("a document SharePoint refuses to read is answered with SharePoint's reason, and no transaction is opened", async () => {
+  const originalGetPool = db.getPool;
+  let connected = false;
+  Object.defineProperty(db, "getPool", { configurable: true, value: async () => { connected = true; return {}; } });
+  try {
+    const response = await createDecisionMatrixProcedureDraft(requestFor(["OCC.Admin"], {
+      ...completeDraft,
+      document_references: [{ ...completeDraft.document_references[0], item_id: "item-refused" }],
+    }), context, library);
+    assert.deepEqual(response, { status: 409, jsonBody: { error: "SharePoint refused OnBoard's read of this library." } });
+    assert.equal(connected, false);
+  } finally {
+    Object.defineProperty(db, "getPool", { configurable: true, value: originalGetPool });
+  }
+});
+
+function failingCreate(failure: unknown) {
+  return class FailingTransaction {
+    async begin() { return undefined; }
+    async commit() { return undefined; }
+    async rollback() { return undefined; }
+    request() {
+      return {
+        input() { return this; },
+        async query(statement: string) {
+          if (statement.includes("INSERT INTO Procedures(")) throw failure;
+          return { recordset: [] };
+        },
+      };
+    }
+  };
+}
+
+async function createFailingWith(failure: unknown) {
+  const originalGetPool = db.getPool;
+  const originalTransaction = db.sql.Transaction;
+  Object.defineProperty(db, "getPool", { configurable: true, value: async () => ({}) });
+  Object.defineProperty(db.sql, "Transaction", { configurable: true, value: failingCreate(failure) });
+  try {
+    return await createDecisionMatrixProcedureDraft(requestFor(["OCC.Admin"], completeDraft), context, library);
+  } finally {
+    Object.defineProperty(db, "getPool", { configurable: true, value: originalGetPool });
+    Object.defineProperty(db.sql, "Transaction", { configurable: true, value: originalTransaction });
+  }
+}
+
+// Every failure used to be answered "already exists", which sent an author to
+// rename a Procedure that was not a duplicate.
+test("only a duplicate Procedure is reported as one; any other failure is a 500", async () => {
+  const duplicate = Object.assign(new Error("Violation of PRIMARY KEY constraint 'PK__Procedur__1'. Cannot insert duplicate key in object 'dbo.Procedures'. The duplicate key value is (draft-vehicle-collision)."), { number: 2627 });
+  assert.deepEqual(await createFailingWith(duplicate), { status: 409, jsonBody: { error: "Procedure identity or condition key already exists." } });
+  const truncated = Object.assign(new Error("String or binary data would be truncated in table 'dbo.Procedures', column 'condition'."), { number: 2628 });
+  assert.deepEqual(await createFailingWith(truncated), { status: 500, jsonBody: { error: "Draft could not be created." } });
 });
 
 test("a stale Draft save is rejected before its ordered content is replaced", async () => {
@@ -103,7 +167,7 @@ test("a stale Draft save is rejected before its ordered content is replaced", as
   });
 
   try {
-    const response = await saveDecisionMatrixProcedureDraft(request, context);
+    const response = await saveDecisionMatrixProcedureDraft(request, context, library);
     assert.equal(response.status, 409);
     assert.deepEqual(response.jsonBody, { error: "This Draft changed or is no longer editable. Refresh to compare the latest revision before saving again." });
     assert.equal(queries, 1);
@@ -136,8 +200,8 @@ test("an Admin-created Draft returns stable ordered Criterion, Action, and Docum
   Object.defineProperty(db, "getPool", { configurable: true, value: async () => ({}) });
   Object.defineProperty(db.sql, "Transaction", { configurable: true, value: CreateTransaction });
   try {
-    const response = await createDecisionMatrixProcedureDraft(requestFor(["OCC.Admin"], completeDraft), context);
-    const body = response.jsonBody as { criteria: Array<{ id: string; kind: string }>; immediate_actions: Array<{ id: string; kind: string }>; document_references: Array<{ id: string; document_type: string; is_primary: boolean }> };
+    const response = await createDecisionMatrixProcedureDraft(requestFor(["OCC.Admin"], completeDraft), context, library);
+    const body = response.jsonBody as { criteria: Array<{ id: string; kind: string }>; immediate_actions: Array<{ id: string; kind: string }>; document_references: Array<{ id: string; document_type: string; is_primary: boolean; site_id: string; expected_file_name: string; health_status: string }> };
 
     assert.equal(response.status, 201);
     assert.match(body.criteria[0]?.id ?? "", /^[0-9a-f-]{36}$/i);
@@ -147,6 +211,9 @@ test("an Admin-created Draft returns stable ordered Criterion, Action, and Docum
     assert.match(body.document_references[0]?.id ?? "", /^[0-9a-f-]{36}$/i);
     assert.deepEqual(body.document_references[0]?.document_type, "SOP");
     assert.equal(body.document_references[0]?.is_primary, true);
+    assert.equal(body.document_references[0]?.site_id, "site-1", "the site is the library's, read on the server");
+    assert.equal(body.document_references[0]?.expected_file_name, "SOP-OCC-001.docx");
+    assert.equal(body.document_references[0]?.health_status, "Needs review");
     assert.equal(statements.some((statement) => statement.includes("ProcedureCriteria")), true);
     assert.equal(statements.some((statement) => statement.includes("ProcedureImmediateActions")), true);
     assert.equal(statements.some((statement) => statement.includes("ProcedureDocumentReferences")), true);

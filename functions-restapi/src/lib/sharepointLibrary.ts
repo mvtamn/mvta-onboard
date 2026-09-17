@@ -126,6 +126,49 @@ function inReadingOrder(a: LibraryEntry, b: LibraryEntry): number {
   return a.name.localeCompare(b.name, "en", { sensitivity: "base", numeric: true });
 }
 
+// Two different faults with two different fixers. The application holds
+// Sites.Selected with admin consent, which grants nothing on its own: a 403
+// means the token was accepted and the per-site grant (POST
+// /sites/{id}/permissions) is missing - a SharePoint administrator's act, not
+// an Entra portal change. A 401 means the token itself was refused, so no site
+// grant would help. The earlier single message sent people to Entra for a 403
+// on 2026-09-11..14. See docs/runbooks/decision-matrix-sharepoint-documents.md
+// step 4. Listing a folder and reading a chosen document share these words, so
+// the picker and the Draft save describe one fault the same way.
+function refusal(status: number): string | null {
+  if (status === 403) return "SharePoint refused OnBoard's read of this library. A SharePoint administrator must grant the OnBoard application read access on this site (step 4 of the SharePoint documents runbook). This is a missing site grant, not a missing folder.";
+  if (status === 401) return "SharePoint did not accept OnBoard's sign-in, so the library was never read. OnBoard's application credential or its consent needs checking. This is not a missing folder, and a site grant will not fix it.";
+  return null;
+}
+
+/** One item of the Approved Document Library, as SharePoint describes it now. */
+export interface LibraryItem {
+  site_id: string;
+  drive_id: string;
+  item_id: string;
+  name: string;
+  kind: "folder" | "file";
+  mime_type: string | null;
+  etag: string | null;
+  web_url: string | null;
+}
+
+// "not_configured" belongs here as well as on the handler: whoever reads an
+// item needs to know that no library could be asked, and saying so is not an
+// outage.
+export type LibraryItemRead =
+  | { outcome: "ok"; item: LibraryItem }
+  | { outcome: "not_configured" | "forbidden" | "not_found" | "failed"; reason: string };
+
+/** What saving a Supporting Document Reference needs from the library: one item, by id. */
+export interface LibraryItemReader {
+  readItem(itemId: string): Promise<LibraryItemRead>;
+}
+
+function itemUrl(config: LibraryConfig, itemId: string): string {
+  return `https://graph.microsoft.com/v1.0/sites/${encodeURIComponent(config.site_id)}/drives/${encodeURIComponent(config.drive_id)}/items/${encodeURIComponent(itemId)}?$select=id,name,folder,file,eTag,webUrl`;
+}
+
 export function createSharePointLibrary(config: LibraryConfig, getToken: TokenProvider, fetchGraph: GraphFetch = fetch) {
   async function listFolder(rawPath: string | null | undefined): Promise<LibraryListing> {
     let path: string;
@@ -142,20 +185,8 @@ export function createSharePointLibrary(config: LibraryConfig, getToken: TokenPr
       // otherwise silently show only the first page.
       while (url) {
         const response: Response = await fetchGraph(url, { headers: { Authorization: `Bearer ${token}` } });
-        // Two different faults with two different fixers. The application
-        // holds Sites.Selected with admin consent, which grants nothing on its
-        // own: a 403 means the token was accepted and the per-site grant
-        // (POST /sites/{id}/permissions) is missing - a SharePoint
-        // administrator's act, not an Entra portal change. A 401 means the
-        // token itself was refused, so no site grant would help. The earlier
-        // single message sent people to Entra for a 403 on 2026-09-11..14.
-        // See docs/runbooks/decision-matrix-sharepoint-documents.md step 4.
-        if (response.status === 403) {
-          return { outcome: "forbidden", path, reason: "SharePoint refused OnBoard's read of this library. A SharePoint administrator must grant the OnBoard application read access on this site (step 4 of the SharePoint documents runbook). This is a missing site grant, not a missing folder." };
-        }
-        if (response.status === 401) {
-          return { outcome: "forbidden", path, reason: "SharePoint did not accept OnBoard's sign-in, so the library was never read. OnBoard's application credential or its consent needs checking. This is not a missing folder, and a site grant will not fix it." };
-        }
+        const refused = refusal(response.status);
+        if (refused) return { outcome: "forbidden", path, reason: refused };
         if (response.status === 404) {
           return { outcome: "not_found", path, reason: path ? "SharePoint has no folder at that path." : "SharePoint has no document library at the configured site and drive." };
         }
@@ -173,7 +204,54 @@ export function createSharePointLibrary(config: LibraryConfig, getToken: TokenPr
     }
   }
 
-  return { listFolder };
+  // The item is addressed inside the configured drive, so an id from another
+  // library is not found here rather than read from wherever it lives.
+  async function readItem(itemId: string): Promise<LibraryItemRead> {
+    try {
+      const token = await getToken();
+      const response = await fetchGraph(itemUrl(config, itemId), { headers: { Authorization: `Bearer ${token}` } });
+      const refused = refusal(response.status);
+      if (refused) return { outcome: "forbidden", reason: refused };
+      // Graph answers 400 for an id it cannot parse. Either way there is no
+      // such document in this library.
+      if (response.status === 404 || response.status === 400) {
+        return { outcome: "not_found", reason: "SharePoint has no document with that id in the approved library. Choose the document again." };
+      }
+      if (!response.ok) throw new Error(`Microsoft Graph returned ${response.status}.`);
+      const entry = toEntry(await response.json() as GraphItem, "");
+      if (!entry) throw new Error("Microsoft Graph described the item without an id or name.");
+      return {
+        outcome: "ok",
+        item: { site_id: config.site_id, drive_id: config.drive_id, item_id: entry.item_id, name: entry.name, kind: entry.kind, mime_type: entry.mime_type, etag: entry.etag, web_url: entry.web_url },
+      };
+    } catch (error) {
+      return { outcome: "failed", reason: error instanceof Error ? `SharePoint could not be read: ${error.message}` : "SharePoint could not be read." };
+    }
+  }
+
+  return { listFolder, readItem };
+}
+
+/**
+ * The library as tests hold it: items by id, with the site and drive of the
+ * configuration they stand in for. Anything not listed is not in the library;
+ * a value that is not an item answers as that outcome instead.
+ */
+export function createInMemoryLibraryItems(
+  config: LibraryConfig,
+  items: Record<string, Omit<LibraryItem, "site_id" | "drive_id" | "item_id"> | Exclude<LibraryItemRead, { outcome: "ok" }>>,
+): LibraryItemReader & { reads: string[] } {
+  const reads: string[] = [];
+  return {
+    reads,
+    async readItem(itemId) {
+      reads.push(itemId);
+      const found = items[itemId];
+      if (!found) return { outcome: "not_found", reason: "SharePoint has no document with that id in the approved library. Choose the document again." };
+      if ("outcome" in found) return found;
+      return { outcome: "ok", item: { ...found, site_id: config.site_id, drive_id: config.drive_id, item_id: itemId } };
+    },
+  };
 }
 
 export type SharePointLibrary = ReturnType<typeof createSharePointLibrary>;

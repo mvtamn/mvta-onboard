@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createSharePointLibrary, normalizeLibraryPath, InvalidLibraryPathError } from "./sharepointLibrary";
+import { createInMemoryLibraryItems, createSharePointLibrary, normalizeLibraryPath, InvalidLibraryPathError } from "./sharepointLibrary";
 
 const config = { site_id: "site,aaa,bbb", drive_id: "drive-1" };
 
@@ -128,4 +128,53 @@ test("the unreadable answers do not share a message", async () => {
     if (listing.outcome !== "ok") reasons.add(listing.reason);
   }
   assert.equal(reasons.size, 4, `expected four distinct reasons, got ${JSON.stringify([...reasons])}`);
+});
+
+test("a chosen item is read inside the configured library, as SharePoint describes it now", async () => {
+  const { urls, fetchGraph } = graphReturning([{ body: file("SOP-1.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document") }]);
+  const read = await createSharePointLibrary(config, async () => "token", fetchGraph).readItem("item/../other");
+  assert.deepEqual(read, {
+    outcome: "ok",
+    item: { site_id: config.site_id, drive_id: config.drive_id, item_id: "id-SOP-1.docx", name: "SOP-1.docx", kind: "file", mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", etag: "etag-SOP-1.docx", web_url: "https://sp/SOP-1.docx" },
+  });
+  assert.equal(urls[0], `https://graph.microsoft.com/v1.0/sites/${encodeURIComponent(config.site_id)}/drives/drive-1/items/item%2F..%2Fother?$select=id,name,folder,file,eTag,webUrl`);
+});
+
+test("a chosen folder is reported as a folder, so it cannot pass for a document", async () => {
+  const { fetchGraph } = graphReturning([{ body: folder("_SOPs") }]);
+  const read = await createSharePointLibrary(config, async () => "token", fetchGraph).readItem("id-_SOPs");
+  assert.equal(read.outcome === "ok" && read.item.kind, "folder");
+});
+
+// Reading one item refuses in the same words as listing a folder, so the
+// picker and the Draft save never describe one fault two ways.
+test("reading an item keeps apart a missing grant, a refused sign-in, a missing item and an outage", async () => {
+  const answers = [];
+  for (const status of [403, 401, 404, 400, 503]) {
+    const { fetchGraph } = graphReturning([{ status }]);
+    answers.push(await createSharePointLibrary(config, async () => "token", fetchGraph).readItem("item-1"));
+  }
+  assert.deepEqual(answers.map((answer) => answer.outcome), ["forbidden", "forbidden", "not_found", "not_found", "failed"]);
+  const { fetchGraph } = graphReturning([{ status: 403 }]);
+  const listing = await createSharePointLibrary(config, async () => "token", fetchGraph).listFolder("");
+  assert.equal(answers[0].outcome !== "ok" && answers[0].reason, listing.outcome !== "ok" && listing.reason);
+});
+
+test("a token that cannot be acquired is a failed read, not a thrown error", async () => {
+  const { urls, fetchGraph } = graphReturning([{ body: {} }]);
+  const read = await createSharePointLibrary(config, async () => { throw new Error("AADSTS7000222: client secret expired"); }, fetchGraph).readItem("item-1");
+  assert.deepEqual(read, { outcome: "failed", reason: "SharePoint could not be read: AADSTS7000222: client secret expired" });
+  assert.equal(urls.length, 0);
+});
+
+test("the in-memory library answers from its items, reads anything else as missing, and records what was asked", async () => {
+  const library = createInMemoryLibraryItems(config, {
+    "item-1": { name: "SOP.pdf", kind: "file", mime_type: "application/pdf", etag: "e1", web_url: "https://mvtamn.sharepoint.com/SOP.pdf" },
+    "item-2": { outcome: "failed", reason: "down" },
+  });
+  const found = await library.readItem("item-1");
+  assert.equal(found.outcome === "ok" && found.item.site_id, config.site_id);
+  assert.deepEqual(await library.readItem("item-2"), { outcome: "failed", reason: "down" });
+  assert.equal((await library.readItem("item-9")).outcome, "not_found");
+  assert.deepEqual(library.reads, ["item-1", "item-2", "item-9"]);
 });
