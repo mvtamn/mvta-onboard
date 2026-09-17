@@ -114,18 +114,19 @@ test("resolveDirectionLabels leaves direction_label null when no trip in the gro
   assert.strictEqual(resolved[1].direction_label, null);
 });
 
-test("parseStopTimesCsv reduces to the earliest stop_sequence's departure per trip", () => {
+test("parseStopTimesCsv reduces to the first stop's departure and the last stop's arrival per trip", () => {
   const csv =
     "trip_id,arrival_time,departure_time,stop_id,stop_sequence\n" +
     "t1,08:00:00,08:00:00,100,2\n" +
     "t1,07:55:00,07:55:00,99,1\n" +
-    "t1,08:10:00,08:10:00,101,3\n";
+    "t1,08:09:00,08:10:00,101,3\n";
   const rows = parseStopTimesCsv(csv);
   assert.deepStrictEqual(rows, [{
     trip_id: "t1",
     first_departure_seconds: 7 * 3600 + 55 * 60,
     first_stop_id: "99",
     first_stop_sequence: 1,
+    last_arrival_seconds: 8 * 3600 + 9 * 60,
   }]);
 });
 
@@ -137,6 +138,7 @@ test("parseStopTimesCsv handles GTFS past-midnight times over 24:00:00", () => {
     first_departure_seconds: 25 * 3600 + 10 * 60,
     first_stop_id: "50",
     first_stop_sequence: 1,
+    last_arrival_seconds: 25 * 3600 + 10 * 60,
   }]);
 });
 

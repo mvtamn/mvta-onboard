@@ -7,7 +7,7 @@ const CASE_COLUMNS = `
   m.trip_id, m.service_date, m.route_id, m.scheduled_departure_at, m.grace_deadline_at, m.status,
   m.validation_status, m.data_quality_status, m.detection_type, m.detector_version,
   ISNULL(m.source_system, N'gtfs') AS source_system, m.source_record_id, m.undecided_reason,
-  m.detected_late_arrival_at, m.first_seen_watching_at, m.evidence_json`;
+  m.detected_late_arrival_at, m.first_seen_watching_at, m.evidence_json, m.expected_window_end_at`;
 
 export function caseKey(tripId: string, serviceDate: string): string {
   return `${tripId}|${serviceDate}`;
@@ -74,15 +74,16 @@ export async function writeDecision(pool: sql.ConnectionPool, decision: RunDecis
       .input("undecided_reason", sql.NVarChar(60), row.undecided_reason)
       .input("detected_late_arrival_at", sql.DateTime2, row.detected_late_arrival_at)
       .input("evidence_json", sql.NVarChar(sql.MAX), row.evidence_json)
+      .input("expected_window_end_at", sql.DateTime2, row.expected_window_end_at)
       .query(`
         INSERT INTO MonitoredMissedTrips (
           trip_id, service_date, route_id, scheduled_departure_at, grace_deadline_at, status, detection_type,
           detector_version, data_quality_status, source_system, source_record_id, undecided_reason,
-          detected_late_arrival_at, evidence_json
+          detected_late_arrival_at, evidence_json, expected_window_end_at
         )
         SELECT @trip_id, @service_date, @route_id, @scheduled_departure_at, @grace_deadline_at, @status, @detection_type,
                @detector_version, @data_quality_status, @source_system, @source_record_id, @undecided_reason,
-               @detected_late_arrival_at, @evidence_json
+               @detected_late_arrival_at, @evidence_json, @expected_window_end_at
         WHERE NOT EXISTS (SELECT 1 FROM MonitoredMissedTrips WHERE trip_id = @trip_id AND service_date = @service_date)`);
     return (result.rowsAffected[0] ?? 0) > 0;
   }

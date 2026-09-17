@@ -41,10 +41,12 @@ import {
   type BlockTripEvidence,
   type ScheduleConfidence,
 } from "../../missedTripConfidence";
+import { WINDOWED_DETECTOR_VERSION } from "../classify";
 import type { RunObservation, RunRef } from "../types";
 
 export const GTFS_CANCEL_DETECTOR = "gtfs-cancel-v1";
-export const GTFS_SILENT_DETECTOR = "gtfs-silent-v3";
+// v4: cases carry their Expected operating window (migration 124).
+export const GTFS_SILENT_DETECTOR = WINDOWED_DETECTOR_VERSION;
 
 const GRACE_SECONDS = 30 * 60;
 
@@ -138,6 +140,7 @@ interface ScheduledTripRow {
   route_id: string;
   block_id: string | null;
   first_departure_seconds: number;
+  last_arrival_seconds: number | null;
   first_underway_at: Date | null;
   first_vehicle_position_at: Date | null;
   first_trip_update_at: Date | null;
@@ -165,7 +168,7 @@ async function silentNoShowObservations(
   // SpecialEvent (migration 016): a base-schedule trip on a route overridden for
   // a special event may legitimately not run, though still in the static import.
   const scheduled = await req.query<ScheduledTripRow>(`
-    SELECT st.trip_id, st.route_id, st.block_id, st.first_departure_seconds,
+    SELECT st.trip_id, st.route_id, st.block_id, st.first_departure_seconds, st.last_arrival_seconds,
            evidence.first_underway_at, evidence.first_vehicle_position_at, evidence.first_trip_update_at,
            CAST(CASE WHEN EXISTS (
              SELECT 1 FROM RouteClassification rc
@@ -220,7 +223,9 @@ async function silentNoShowObservations(
       agreement,
       block: blockTrips ? blockContinuity(blockTrips, trip.first_departure_seconds) : null,
     });
-    const run: RunRef = { source: "gtfs", runId: trip.trip_id, serviceDate, routeId: trip.route_id, ...times };
+    const finalStop = trip.last_arrival_seconds === null ? null : serviceDateAndGtfsSecondsToUtc(serviceDate, trip.last_arrival_seconds);
+    const operatingWindowEndAt = finalStop ? new Date(finalStop.getTime() + GRACE_SECONDS * 1000) : null;
+    const run: RunRef = { source: "gtfs", runId: trip.trip_id, serviceDate, routeId: trip.route_id, ...times, operatingWindowEndAt };
     if (decision.outcome === "pending") {
       tally.noShows++;
       observations.push({ run, detectorVersion: GTFS_SILENT_DETECTOR, fact: { kind: "no_start_by_deadline" } });

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { classifyMissedTripCase, missedTripCaseSql, promotedDetectors, type ClassifiableCase } from "./classify";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { classifyMissedTripCase, missedTripCaseSql, promotedDetectors, WINDOWED_DETECTOR_VERSION, type ClassifiableCase } from "./classify";
 
 const DEADLINE = new Date("2026-09-17T14:30:00Z");
 
@@ -8,7 +10,7 @@ function row(overrides: Partial<ClassifiableCase> = {}): ClassifiableCase {
   return {
     status: "escalated", validation_status: "unreviewed", data_quality_status: "experimental",
     detection_type: "silent_no_show", source_system: "gtfs", undecided_reason: null,
-    grace_deadline_at: DEADLINE, detected_late_arrival_at: null, ...overrides,
+    grace_deadline_at: DEADLINE, detected_late_arrival_at: null, detector_version: "gtfs-silent-v3", expected_window_end_at: null, ...overrides,
   };
 }
 
@@ -72,4 +74,42 @@ test("promotion names are checked before they reach SQL", () => {
   assert.match(missedTripCaseSql("m", "mtc", promotedDetectors("spare")), /IN \(N'spare'\)/);
   assert.match(missedTripCaseSql("m", "mtc", new Set()), /1 = 0/);
   assert.throws(() => missedTripCaseSql("m; DROP"), TypeError);
+});
+
+test("a v4 silent no-show waits in Awaiting evidence until its operating window has ended", () => {
+  const now = new Date("2026-09-17T18:00:00Z");
+  const windowed = row({ detector_version: WINDOWED_DETECTOR_VERSION });
+  const cases: [Partial<ClassifiableCase>, string, string | null][] = [
+    [{ expected_window_end_at: new Date("2026-09-17T19:00:00Z") }, "awaiting_evidence", "awaiting_operating_window"],
+    [{ expected_window_end_at: null }, "awaiting_evidence", "awaiting_operating_window"],
+    [{ expected_window_end_at: new Date("2026-09-17T17:00:00Z") }, "ready_for_review", null],
+  ];
+  for (const [overrides, lifecycle, reason] of cases) {
+    const c = classifyMissedTripCase({ ...windowed, ...overrides }, none, now);
+    assert.deepEqual([c.lifecycle, c.held_reason, c.flagged_missed], [lifecycle, reason, lifecycle === "ready_for_review"]);
+  }
+  // Earlier detector versions, cancellations and Spare cases have no window to wait for.
+  assert.equal(classifyMissedTripCase(row({ detector_version: "gtfs-silent-v3" }), none, now).lifecycle, "ready_for_review");
+  assert.equal(classifyMissedTripCase({ ...windowed, detection_type: "explicit_cancellation" }, none, now).lifecycle, "ready_for_review");
+});
+
+test("the four review outcomes, with false_positive read as Timely service", () => {
+  const outcomes: [string, string, boolean][] = [
+    ["confirmed", "confirmed_missed_trip", true],
+    ["timely_service", "timely_service", false],
+    ["false_positive", "timely_service", false],
+    ["partial_service_failure", "partial_service_failure", false],
+    ["indeterminate", "indeterminate", false],
+  ];
+  for (const [stored, outcome, missed] of outcomes) {
+    const c = classifyMissedTripCase(row({ validation_status: stored }), none);
+    assert.deepEqual([c.review_outcome, c.counts_as_missed, c.lifecycle], [outcome, missed, "reviewed"]);
+  }
+});
+
+test("migration 124's vw_MissedTrip classifies with missedTripCaseSql verbatim", () => {
+  const squash = (text: string) => text.replace(/\s+/g, " ").trim();
+  const migration = readFileSync(join(process.cwd(), "sql", "migration-124-missed-trip-review-outcomes-and-window.sql"), "utf8");
+  assert.ok(squash(migration).includes(squash(missedTripCaseSql("m", "mtc", new Set()))),
+    "regenerate the CROSS APPLY in migration 124 from missedTripCaseSql(\"m\", \"mtc\", new Set())");
 });

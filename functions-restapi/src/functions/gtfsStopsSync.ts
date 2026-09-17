@@ -78,6 +78,7 @@ app.timer("gtfsStopsSync", {
 
         const routeTableCheck = await new sql.Request(tx).query<{
           table_exists: number;
+          last_arrival_ready: number;
         }>(`
           SELECT CASE WHEN OBJECT_ID('dbo.GtfsRoutes', 'U') IS NULL
             THEN 0 ELSE 1 END AS table_exists
@@ -147,6 +148,7 @@ app.timer("gtfsStopsSync", {
 
         const scheduleTableCheck = await new sql.Request(tx).query<{
           table_exists: number;
+          last_arrival_ready: number;
         }>(`
           SELECT CASE
             WHEN OBJECT_ID('dbo.GtfsCalendar', 'U') IS NOT NULL
@@ -155,9 +157,13 @@ app.timer("gtfsStopsSync", {
              AND COL_LENGTH('dbo.GtfsScheduledTrips', 'first_stop_id') IS NOT NULL
              AND COL_LENGTH('dbo.GtfsScheduledTrips', 'first_stop_sequence') IS NOT NULL
              AND COL_LENGTH('dbo.GtfsScheduledTrips', 'block_id') IS NOT NULL
-            THEN 1 ELSE 0 END AS table_exists
+            THEN 1 ELSE 0 END AS table_exists,
+          -- Migration 124: the final stop's arrival, which ends a run's
+          -- Expected operating window. Until it is applied the column is left out.
+          CASE WHEN COL_LENGTH('dbo.GtfsScheduledTrips', 'last_arrival_seconds') IS NULL THEN 0 ELSE 1 END AS last_arrival_ready
         `);
         const scheduleTablesExist = scheduleTableCheck.recordset[0]?.table_exists === 1;
+        const lastArrivalReady = scheduleTableCheck.recordset[0]?.last_arrival_ready === 1;
         let scheduledTripCount = 0;
         if (scheduleTablesExist) {
           const scheduleByTrip = new Map(scheduledTrips.map((t) => [t.trip_id, t]));
@@ -211,14 +217,15 @@ app.timer("gtfsStopsSync", {
             insertReq.input("first_stop_id", sql.NVarChar, schedule.first_stop_id);
             insertReq.input("first_stop_sequence", sql.Int, schedule.first_stop_sequence);
             insertReq.input("block_id", sql.NVarChar, trip.block_id);
+            insertReq.input("last_arrival_seconds", sql.Int, schedule.last_arrival_seconds);
             await insertReq.query(`
               INSERT INTO GtfsScheduledTrips (
                 trip_id, route_id, service_id, first_departure_seconds,
-                first_stop_id, first_stop_sequence, block_id
+                first_stop_id, first_stop_sequence, block_id${lastArrivalReady ? ", last_arrival_seconds" : ""}
               )
               VALUES (
                 @trip_id, @route_id, @service_id, @first_departure_seconds,
-                @first_stop_id, @first_stop_sequence, @block_id
+                @first_stop_id, @first_stop_sequence, @block_id${lastArrivalReady ? ", @last_arrival_seconds" : ""}
               )
             `);
             scheduledTripCount++;

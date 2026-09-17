@@ -134,7 +134,10 @@ const E164_RE = /^\+[1-9]\d{7,14}$/;
 // the double opt-in confirmation, not by regex.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const VALID_MISSED_TRIP_VALIDATION_STATUSES = ["confirmed", "false_positive"] as const;
+// The four Missed-trip review outcomes, plus `false_positive`, which older
+// callers send for Timely service.
+const VALID_MISSED_TRIP_VALIDATION_STATUSES = ["confirmed", "timely_service", "partial_service_failure", "indeterminate", "false_positive"] as const;
+const MAX_MISSED_TRIP_REVIEW_REASON_LENGTH = 1000; // MissedTripReviewHistory.review_reason
 export const VALID_OCCURRENCE_ATTRIBUTIONS = ["contractor_error", "excusable", "mvta_directed", "undetermined"] as const;
 export const MAX_MISSED_TRIP_NOTES_LENGTH = 1000; // MonitoredMissedTrips.notes NVARCHAR(1000)
 
@@ -195,11 +198,21 @@ export function validateMissedTripValidation(body: UnknownBody): string[] {
   if (body.attribution !== undefined && !includes(VALID_OCCURRENCE_ATTRIBUTIONS, body.attribution)) {
     errors.push(`attribution must be one of: ${VALID_OCCURRENCE_ATTRIBUTIONS.join(", ")}`);
   }
-  // A false positive is not a missed trip, so there is nothing to attribute.
-  if (body.validation_status === "false_positive" && body.attribution !== undefined && body.attribution !== "undetermined") {
-    errors.push("attribution cannot be set on a false positive - there is no occurrence to attribute");
+  // Only a Confirmed missed trip has anything to attribute.
+  if (body.validation_status !== "confirmed" && body.attribution !== undefined && body.attribution !== "undetermined") {
+    errors.push("attribution can only be set on a confirmed missed trip - there is no occurrence to attribute");
   }
 
+  // A superseding review and a legacy rereview each say why; at most one applies.
+  for (const field of ["supersede_reason", "rereview_reason"] as const) {
+    if (body[field] !== undefined && body[field] !== null &&
+        (typeof body[field] !== "string" || (body[field] as string).trim() === "" || (body[field] as string).length > MAX_MISSED_TRIP_REVIEW_REASON_LENGTH)) {
+      errors.push(`${field} must be a non-empty string of at most ${MAX_MISSED_TRIP_REVIEW_REASON_LENGTH} characters if provided`);
+    }
+  }
+  if (typeof body.supersede_reason === "string" && typeof body.rereview_reason === "string") {
+    errors.push("send supersede_reason or rereview_reason, not both");
+  }
   return errors;
 }
 
