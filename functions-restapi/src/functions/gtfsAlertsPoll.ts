@@ -17,21 +17,22 @@
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { runFeedIngestion } from "../lib/feedRun";
-import { fetchAlertFeed, mapAlertEntity } from "../lib/gtfsRealtime";
+import { mapAlertEntity } from "../lib/gtfsRealtime";
+import { fetchGtfsRtFeed, gtfsRtFeedUrl, gtfsRtUrlSetting } from "../lib/gtfsRtReader";
 
 app.timer("gtfsAlertsPoll", {
   schedule: "0 */5 * * * *",
   handler: async (_timer: Timer, context: InvocationContext) => {
-    const feedUrl = process.env.GTFS_RT_ALERT_URL;
+    const feedUrl = gtfsRtFeedUrl("alerts");
     if (!feedUrl) {
-      context.warn("GTFS_RT_ALERT_URL is not configured - skipping this run.");
+      context.warn(`${gtfsRtUrlSetting("alerts")} is not configured - skipping this run.`);
       return;
     }
 
     // Ledgered so a broken alert feed no longer looks exactly like a quiet one.
     // No KPI declares it, so it informs the Admin page without gating a stream.
     await runFeedIngestion("gtfs_alerts", context, async () => {
-      const feed = await fetchAlertFeed(feedUrl);
+      const feed = await fetchGtfsRtFeed("alerts", feedUrl);
 
       const pool = await getPool();
       let insertedCount = 0;

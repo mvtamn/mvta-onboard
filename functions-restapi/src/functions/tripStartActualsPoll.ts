@@ -2,15 +2,20 @@
 // actual starts (plans/dispatch-log-spec.md §4.2, §5). The rule itself is in
 // lib/tripStartActuals.ts, with the feed measurements that decided it.
 //
-// This is a third reader of a feed two five-minute pollers already share
-// through readTripUpdateFeed, which records the gtfs_trip_updates health row
-// once per delivery. This poll deliberately does NOT go through it: a
-// one-minute reader writing the same ledger would make that row describe a
-// cadence neither of the other consumers has, and the trust contract names
-// the feed, not the poller. Fetch failures are logged here instead.
+// The third reader of the TripUpdate feed, after the two five-minute pollers.
+// It fetches through the same reader (timeout, body checks) but deliberately
+// does NOT record the delivery on gtfs_trip_updates. Service Risk's live
+// indicator treats each new last_success_at on that row as a delivery on the
+// five-minute poll grid (context/feedArrivals.ts): a one-minute writer would
+// fire the arrival flash on this poll's stamp before the delay data it
+// announces had changed, and would keep the indicator live while
+// gtfsDelaysPoll itself was failing. KPI trust gains nothing in return - the
+// row's contract is 15 minutes, which the five-minute pollers already meet.
+// Fetch failures are logged here instead.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { fetchTripUpdateFeed, type GtfsRtTripUpdate } from "../lib/gtfsTripUpdates";
+import { fetchGtfsRtFeed, gtfsRtFeedUrl, gtfsRtUrlSetting } from "../lib/gtfsRtReader";
+import type { GtfsRtTripUpdate } from "../lib/gtfsTripUpdates";
 import { agencyServiceDate } from "../lib/missedTripTime";
 import { LINGER_WINDOW_SECONDS, planCapture, type StartCapture, type TripStartRow } from "../lib/tripStartActuals";
 import type { TripStartActualSource, TripStartStatus } from "../lib/tripStartTypes";
@@ -149,9 +154,9 @@ export async function runActualsPoll(
 app.timer("tripStartActualsPoll", {
   schedule: "0 * * * * *",
   handler: async (_timer: Timer, context: InvocationContext) => {
-    const feedUrl = process.env.GTFS_RT_TRIPUPDATE_URL;
+    const feedUrl = gtfsRtFeedUrl("trip_updates");
     if (!feedUrl) {
-      context.warn("GTFS_RT_TRIPUPDATE_URL is not configured - skipping this run.");
+      context.warn(`${gtfsRtUrlSetting("trip_updates")} is not configured - skipping this run.`);
       return;
     }
     const pool = await getPool();
@@ -161,7 +166,7 @@ app.timer("tripStartActualsPoll", {
     }
     let feed;
     try {
-      feed = await fetchTripUpdateFeed(feedUrl);
+      feed = await fetchGtfsRtFeed("trip_updates", feedUrl);
     } catch (err) {
       context.error("Trip-start actuals: failed to fetch the GTFS-RT TripUpdate feed:", err);
       return;

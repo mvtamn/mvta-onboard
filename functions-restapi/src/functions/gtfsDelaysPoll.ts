@@ -10,8 +10,8 @@
 // auto-publishes to riders - escalated rows go through the same
 // suggestedAlertsApprove flow as everything else in that queue.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
-import { sql } from "../lib/db";
-import { readTripUpdateFeed } from "../lib/gtfsTripUpdateIngest";
+import { getPool, sql } from "../lib/db";
+import { gtfsRtFeedUrl, gtfsRtUrlSetting, readTripUpdateDelivery } from "../lib/gtfsRtReader";
 import { loadKpiTrust } from "../lib/kpiTrustStore";
 import {
   mapTripUpdateEntity,
@@ -256,15 +256,16 @@ async function escalateToSuggestedAlert(
 app.timer("gtfsDelaysPoll", {
   schedule: GTFS_DELAYS_POLL_SCHEDULE,
   handler: async (_timer: Timer, context: InvocationContext) => {
-    const feedUrl = process.env.GTFS_RT_TRIPUPDATE_URL;
+    const feedUrl = gtfsRtFeedUrl("trip_updates");
     if (!feedUrl) {
-      context.warn("GTFS_RT_TRIPUPDATE_URL is not configured - skipping this run.");
+      context.warn(`${gtfsRtUrlSetting("trip_updates")} is not configured - skipping this run.`);
       return;
     }
 
-    const ingest = await readTripUpdateFeed(feedUrl, context);
-    if (!ingest) return;
-    const { feed, pool } = ingest;
+    const delivery = await readTripUpdateDelivery(feedUrl, context);
+    if (!delivery) return;
+    const { feed } = delivery;
+    const pool = await getPool();
     let escalatedCount = 0;
 
     const observedTableCheck = await pool.request().query<{ table_exists: number }>(`
@@ -331,8 +332,8 @@ app.timer("gtfsDelaysPoll", {
       context.error("Failed to clean up stale MonitoredTripDelays rows:", err);
     }
 
-    // No feed-health record here: readTripUpdateFeed writes gtfs_trip_updates at
-    // delivery, once, for both pollers that read this feed. The comment this
+    // No feed-health record here: readTripUpdateDelivery writes gtfs_trip_updates
+    // at delivery, for every consumer that reads this feed. The comment this
     // replaces claimed the row meant the feed had been "successfully processed",
     // which it could not - gtfsMissedTripsPoll overwrote the row from its own
     // fetch on the same five-minute schedule.

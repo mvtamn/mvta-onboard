@@ -1,9 +1,10 @@
-// GTFS-Realtime Alert feed - fetch + transform into a SuggestedAlerts row.
+// GTFS-Realtime Alert feed - transform into a SuggestedAlerts row. Fetching is
+// gtfsRtReader.ts's job.
 //
 // MVTA's InfoPoint (Avail/DoubleMap) feed serves the standard GTFS-RT Alert
 // schema as plain JSON via a `debug=true` query param, instead of the usual
 // protobuf binary. That's an internal/unofficial access path, not something
-// to hand to vendors - if it ever becomes unreliable, only fetchAlertFeed's
+// to hand to vendors - if it ever becomes unreliable, only gtfsRtReader.ts's
 // request + parsing needs to change to a protobuf client; everything below
 // it (the mapped shape, the poller, the DB insert) stays the same.
 //
@@ -53,14 +54,6 @@ export interface GtfsRtEntity {
 export interface GtfsRtFeedMessage {
   Header: { GtfsRealtimeVersion: string; incrementality: number; Timestamp: number };
   Entities: GtfsRtEntity[];
-}
-
-export async function fetchAlertFeed(url: string): Promise<GtfsRtFeedMessage> {
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`GTFS-RT Alert feed request failed: ${res.status}`);
-  }
-  return (await res.json()) as GtfsRtFeedMessage;
 }
 
 export interface MappedSuggestedAlert {

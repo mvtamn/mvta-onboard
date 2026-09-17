@@ -52,14 +52,6 @@ export type GtfsRtTripUpdateFeedMessage = Omit<GtfsRtFeedMessage, "Entities"> & 
   Entities: GtfsRtTripUpdateEntity[];
 };
 
-export async function fetchTripUpdateFeed(url: string): Promise<GtfsRtTripUpdateFeedMessage> {
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`GTFS-RT TripUpdate feed request failed: ${res.status}`);
-  }
-  return (await res.json()) as GtfsRtTripUpdateFeedMessage;
-}
-
 export interface MappedTripDelay {
   trip_id: string;
   route_id: string;

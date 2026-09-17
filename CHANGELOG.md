@@ -5,6 +5,20 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.233] - 2026-09-17
+
+- **One module fetches the GTFS-Realtime feeds.** TripUpdate, VehiclePosition and Alert were fetched by four copies of a bare `fetch(url)`, plus a fifth in `/feed-checks`. None had a timeout, so a hung InfoPoint response held the Function App's worker indefinitely. None checked that a 200 body was a feed, so an HTML maintenance page became a thrown "Entities is not iterable" inside a poller. `lib/gtfsRtReader.ts` now owns it: `fetchGtfsRtFeed(feed, url)` applies a 30-second timeout, rejects a non-JSON body or one without an `Entities` array, and names the feed in every error. `gtfsRtFeedUrl` reads each feed's setting. `fetchTripUpdateFeed`, `fetchVehiclePositionFeed` and `fetchAlertFeed` are removed from the mapping modules, which keep their types and mappers.
+- **The TripUpdate delivery rule moves with it.** `readTripUpdateDelivery` replaces `readTripUpdateFeed` (`lib/gtfsTripUpdateIngest.ts`, removed). `gtfsDelaysPoll` and `gtfsMissedTripsPoll` record `gtfs_trip_updates` through it exactly as before: delivery, not what either stored.
+- **The one-minute trip-start poll still does not record the delivery, on purpose.** It now fetches through the reader, so it gets the timeout and body checks, but writes nothing to the ledger. Service Risk's live indicator (`context/feedArrivals.ts`) reads each new `last_success_at` on that row as a delivery on the five-minute poll grid. A one-minute writer would fire the arrival flash before the delay data it announces had changed, and would keep the indicator live while `gtfsDelaysPoll` itself was failing. KPI trust gains nothing in return: the row's contract is 15 minutes, which the five-minute polls already meet. The reason is now written in the poll, the reader and `plans/dispatch-log-spec.md`.
+- **Why the timers were not merged.** Fetching TripUpdate once per cadence would mean one one-minute timer running all three consumers. Measured on dev over three days, `gtfsDelaysPoll` takes 11 s at p50 and 23 s at p95 (129 s max), and `gtfsMissedTripsPoll` 4 s and 11 s, so the combined run would overrun its minute at p99 and delay Dispatch Log actual starts. The feed is still fetched once a minute by trip-start and every five minutes by the other two.
+- **Feed checks.** The three GTFS-RT rows on Integrations & Data Health go through `probeGtfsRtFeed`, the same fetch the polls use. An unset feed URL now reads as not configured; it used to be reported as a failed request to an empty address. The local `checkJson` helper is removed.
+- **Verified.** 8 tests in `lib/gtfsRtReader.test.ts`:
+  - fetching: every fetch carries a timeout; a non-JSON body, a JSON body without `Entities`, and an HTTP failure each fail naming the feed
+  - the TripUpdate delivery rule: the 5 tests carried over from `gtfsTripUpdateIngest.test.ts`
+  - the feed check: unset, OK, and failed, reading the poll's own setting
+
+  Full REST API suite passes; typecheck clean. Not exercised against dev yet.
+
 ## [1.5.232] - 2026-09-17
 
 - **An SMS reply can confirm any live code for the number.** `confirmSms` read only the newest live SMS confirmation for a phone (`TOP 1 … ORDER BY created_at DESC`), so a rider with two pending signups who replied to the first text got `incorrect_code` and spent an attempt. It now reads every live confirmation for the number; a code naming one of them confirms that one (the live `(channel, token)` index keeps it unambiguous), and `mergeOnConfirm` resolves the other signup exactly as before.

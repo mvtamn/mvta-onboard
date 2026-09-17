@@ -10,21 +10,23 @@
 // only saved for staff to review. It does NOT auto-insert into SuggestedAlerts -
 // preparing a rider notice is a separate, explicit staff action.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
-import { readTripUpdateFeed } from "../lib/gtfsTripUpdateIngest";
+import { getPool } from "../lib/db";
+import { gtfsRtFeedUrl, gtfsRtUrlSetting, readTripUpdateDelivery } from "../lib/gtfsRtReader";
 import { observeMissedTrips } from "../lib/missedTripCase";
 import { gtfsObservations, silentNoShowEnabled } from "../lib/missedTripCase/adapters/gtfs";
 
 app.timer("gtfsMissedTripsPoll", {
   schedule: "0 */5 * * * *",
   handler: async (_timer: Timer, context: InvocationContext) => {
-    const feedUrl = process.env.GTFS_RT_TRIPUPDATE_URL;
+    const feedUrl = gtfsRtFeedUrl("trip_updates");
     if (!feedUrl) {
-      context.warn("GTFS_RT_TRIPUPDATE_URL is not configured - skipping this run.");
+      context.warn(`${gtfsRtUrlSetting("trip_updates")} is not configured - skipping this run.`);
       return;
     }
-    const ingest = await readTripUpdateFeed(feedUrl, context);
-    if (!ingest) return;
-    const { feed, pool } = ingest;
+    const delivery = await readTripUpdateDelivery(feedUrl, context);
+    if (!delivery) return;
+    const { feed } = delivery;
+    const pool = await getPool();
 
     const noShowEnabled = silentNoShowEnabled();
     if (!noShowEnabled) {

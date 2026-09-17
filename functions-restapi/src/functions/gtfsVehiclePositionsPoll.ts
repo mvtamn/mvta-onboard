@@ -11,21 +11,22 @@
 // reading.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { fetchVehiclePositionFeed, mapVehiclePositionEntity } from "../lib/gtfsVehiclePositions";
+import { fetchGtfsRtFeed, gtfsRtFeedUrl, gtfsRtUrlSetting } from "../lib/gtfsRtReader";
+import { mapVehiclePositionEntity } from "../lib/gtfsVehiclePositions";
 import { agencyServiceDate } from "../lib/missedTripTime";
 import { runFeedIngestion } from "../lib/feedRun";
 
 app.timer("gtfsVehiclePositionsPoll", {
   schedule: "0 */5 * * * *",
   handler: async (_timer: Timer, context: InvocationContext) => {
-    const feedUrl = process.env.GTFS_RT_VEHICLE_URL;
+    const feedUrl = gtfsRtFeedUrl("vehicle_positions");
     if (!feedUrl) {
-      context.warn("GTFS_RT_VEHICLE_URL is not configured - skipping this run.");
+      context.warn(`${gtfsRtUrlSetting("vehicle_positions")} is not configured - skipping this run.`);
       return;
     }
 
     await runFeedIngestion("gtfs_vehicle_positions", context, async () => {
-      const feed = await fetchVehiclePositionFeed(feedUrl);
+      const feed = await fetchGtfsRtFeed("vehicle_positions", feedUrl);
       const pool = await getPool();
       const evidenceCheck = await pool.request().query<{ table_exists: number }>(`
         SELECT CASE WHEN OBJECT_ID('dbo.GtfsTripOperationalEvidence', 'U') IS NULL THEN 0 ELSE 1 END AS table_exists
