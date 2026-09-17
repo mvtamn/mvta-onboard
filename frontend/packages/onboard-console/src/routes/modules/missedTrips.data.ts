@@ -1,7 +1,7 @@
-import type { AssessmentPeriodStatus, OccurrenceAttribution, OccurrenceReviewStatus } from "@mvta/shared";
+import type { AssessmentPeriodStatus, MissedTripEvidenceFinding, MissedTripLifecycle, MissedTripReviewOutcome, OccurrenceAttribution, OccurrenceReviewStatus } from "@mvta/shared";
 
 export type MissedTripAlertStatus = "watching" | "escalated" | "resolved";
-export type MissedTripValidationStatus = "unreviewed" | "confirmed" | "false_positive";
+export type MissedTripValidationStatus = "unreviewed" | "confirmed" | "false_positive" | "timely_service" | "partial_service_failure" | "indeterminate";
 
 // Which of the two independent detection signals fired (gtfsMissedTripsPoll.ts) -
 // added by migration-023 (backend column: detection_type). null means a row
@@ -64,6 +64,12 @@ export interface MissedTripAlert {
   occurrenceAttribution: OccurrenceAttribution | null;
   occurrenceServiceMonth: string | null;
   occurrencePeriodStatus: AssessmentPeriodStatus | null;
+  lifecycle: MissedTripLifecycle;
+  evidenceFinding: MissedTripEvidenceFinding;
+  reviewOutcome: MissedTripReviewOutcome | null;
+  heldReason: string | null;
+  inQueue: boolean;
+  concluded: boolean;
 }
 
 // Preview-only fallback shown when the console can't reach the authenticated
@@ -99,6 +105,7 @@ export const MISSED_TRIP_ALERTS: MissedTripAlert[] = [
     startDelaySeconds: null,
     arrivalDelaySeconds: null,
     occurrenceReviewStatus: null, occurrenceAttribution: null, occurrenceServiceMonth: null, occurrencePeriodStatus: null,
+    lifecycle: "ready_for_review", evidenceFinding: "advance_cancellation", reviewOutcome: null, heldReason: null, inQueue: true, concluded: false,
   },
   {
     id: "preview-440-1",
@@ -129,5 +136,6 @@ export const MISSED_TRIP_ALERTS: MissedTripAlert[] = [
     startDelaySeconds: null,
     arrivalDelaySeconds: null,
     occurrenceReviewStatus: null, occurrenceAttribution: null, occurrenceServiceMonth: null, occurrencePeriodStatus: null,
+    lifecycle: "reviewed", evidenceFinding: "late_trip_start", reviewOutcome: "confirmed_missed_trip", heldReason: null, inQueue: false, concluded: true,
   },
 ];

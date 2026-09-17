@@ -519,7 +519,9 @@ export interface GtfsRouteOption {
 }
 
 export type MissedTripStatus = "watching" | "escalated" | "resolved";
-export type MissedTripValidationStatus = "unreviewed" | "confirmed" | "false_positive";
+// Migration 125 adds the four Missed-trip review outcomes; `false_positive` is
+// Timely service's name before it.
+export type MissedTripValidationStatus = "unreviewed" | "confirmed" | "false_positive" | "timely_service" | "partial_service_failure" | "indeterminate";
 export type MissedTripDataQualityStatus =
   | "legacy_unverified"
   | "source_verified"
@@ -558,6 +560,17 @@ export type MissedTripDetectionType =
   | "spare_late_arrival"
   | "spare_multiple";
 
+// The Missed-trip case module's classification of a case
+// (functions-restapi/src/lib/missedTripCase/classify.ts). The console shows
+// these rather than working them out from the status columns.
+export type MissedTripLifecycle = "open" | "awaiting_evidence" | "ready_for_review" | "closed_by_evidence" | "reviewed" | "legacy";
+export type MissedTripEvidenceFinding =
+  | "advance_cancellation" | "suspected_no_show" | "late_trip_start"
+  | "on_demand_service_failure" | "timely_service" | "indeterminate";
+export type MissedTripReviewOutcome = "confirmed_missed_trip" | "timely_service" | "partial_service_failure" | "indeterminate";
+// validation_status values a reviewer can record.
+export type MissedTripReviewDecision = "confirmed" | "timely_service" | "partial_service_failure" | "indeterminate";
+
 export interface MissedTrip {
   trip_id: string;
   service_date: string;
@@ -595,6 +608,14 @@ export interface MissedTrip {
   occurrence_attribution: OccurrenceAttribution | null;
   occurrence_service_month: string | null;
   occurrence_period_status: AssessmentPeriodStatus | null;
+  lifecycle: MissedTripLifecycle;
+  evidence_finding: MissedTripEvidenceFinding;
+  review_outcome: MissedTripReviewOutcome | null;
+  // Why the case is Awaiting evidence: a MissedTripUndecidedReason,
+  // "unknown_data_gap", or "awaiting_operating_window".
+  held_reason: string | null;
+  in_queue: boolean;
+  concluded: boolean;
 }
 
 export type OccurrenceReviewStatus = "candidate" | "confirmed" | "dismissed";
@@ -614,9 +635,13 @@ export type MissedTripAssessmentLink =
 export interface ValidateMissedTripInput {
   trip_id: string;
   service_date: string;
-  validation_status: "confirmed" | "false_positive";
+  validation_status: MissedTripReviewDecision;
   notes?: string;
   reason_code: string;
+  /** Required to change a review already recorded; the earlier one stays in the history. */
+  supersede_reason?: string;
+  /** Required to record an outcome on a Legacy missed-trip record. */
+  rereview_reason?: string;
   /**
    * Whose error this was, decided at the moment of review. Omitted means
    * "undetermined": the occurrence is raised but waits in the Performance

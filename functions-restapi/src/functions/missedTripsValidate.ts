@@ -2,7 +2,10 @@
 // missed trip. Missed Trips is an investigation tool, not a customer-alert
 // feed: detection only saves a candidate to MonitoredMissedTrips
 // (gtfsMissedTripsPoll.ts); a staff member investigates it and records the
-// outcome here (confirmed - it really was a missed trip - or false_positive).
+// outcome here: Confirmed missed trip, Timely service, Partial-service failure
+// or Indeterminate (older callers' `false_positive` is Timely service). A second
+// review of the same case supersedes the first and needs `supersede_reason`; a
+// legacy record needs `rereview_reason`.
 // Preparing a rider notice, if warranted, stays a separate action via the
 // existing /suggested-alerts/prepare flow - this endpoint never touches
 // SuggestedAlerts. Gated to Publisher/Admin plus the dedicated OCC.Compliance
@@ -22,7 +25,7 @@ import { getPool } from "../lib/db";
 import { requireRole, PUBLISH_ROLES } from "../lib/auth";
 import { validateMissedTripValidation } from "../lib/validation";
 import type { OccurrenceAttribution } from "../lib/assessment/occurrenceIntake";
-import { actOnMissedTripCase, handOffExplanation } from "../lib/missedTripCase";
+import { actOnMissedTripCase, handOffExplanation, type CaseAct, type StoredReviewOutcome } from "../lib/missedTripCase";
 
 app.http("missedTripsValidate", {
   route: "missed-trips/validate",
@@ -48,24 +51,37 @@ app.http("missedTripsValidate", {
 
     const tripId = body.trip_id as string;
     const serviceDate = body.service_date as string;
-    const validationStatus = body.validation_status as "confirmed" | "false_positive";
+    const requested = body.validation_status as string;
+    const outcome = (requested === "false_positive" ? "timely_service" : requested) as StoredReviewOutcome;
     const reasonCode = body.reason_code as string;
+    const fields = {
+      outcome,
+      reasonCode,
+      notes: (body.notes as string | undefined) ?? null,
+      attribution: (body.attribution as OccurrenceAttribution | undefined) ?? "undetermined",
+    };
+    const act: CaseAct = typeof body.supersede_reason === "string"
+      ? { act: "supersede_review", reason: body.supersede_reason, ...fields }
+      : typeof body.rereview_reason === "string"
+        ? { act: "rereview_legacy", reason: body.rereview_reason, ...fields }
+        : { act: "record_review", ...fields };
     try {
-      const outcome = await actOnMissedTripCase(await getPool(), { tripId, serviceDate }, {
-        act: "record_review",
-        outcome: validationStatus,
-        reasonCode,
-        notes: (body.notes as string | undefined) ?? null,
-        attribution: (body.attribution as OccurrenceAttribution | undefined) ?? "undetermined",
-      }, { kind: "person", name: authResult.principal.userDetails ?? "onboard-console" });
-      if (!outcome.ok) return { status: 404, jsonBody: { error: "Missed trip not found" } };
-      const handOff = outcome.handOff;
+      const result = await actOnMissedTripCase(await getPool(), { tripId, serviceDate }, act, {
+        kind: "person", name: authResult.principal.userDetails ?? "onboard-console",
+      });
+      if (!result.ok) {
+        return {
+          status: result.refusal.code === "not_found" ? 404 : 409,
+          jsonBody: { error: result.refusal.sentence, code: result.refusal.code },
+        };
+      }
+      const handOff = result.handOff;
       return {
         status: 200,
         jsonBody: {
-          trip_id: tripId, service_date: serviceDate, validation_status: validationStatus, reason_code: reasonCode,
-          classification: outcome.classification,
-          assessment: !handOff || handOff.linked ? handOff : { ...handOff, explanation: handOffExplanation(handOff) },
+          trip_id: tripId, service_date: serviceDate, validation_status: outcome, reason_code: reasonCode,
+          classification: result.classification,
+          assessment: handOff.linked ? handOff : { ...handOff, explanation: handOffExplanation(handOff) },
         },
       };
     } catch (err) {

@@ -15,7 +15,8 @@
 // the second-poll confirmation - so a trip that turned out to have run is
 // closed before confirmation could promote it.
 import { AWAITING_CONFIRMATION, NO_SHOW_CONFIRMATION_SECONDS } from "../missedTripConfidence";
-import type { RunObservation } from "./types";
+import { classifyMissedTripCase } from "./classify";
+import type { CaseAct, CaseRefusal, RunObservation, StoredReviewOutcome } from "./types";
 
 export type CaseStatus = "watching" | "escalated" | "resolved";
 
@@ -37,6 +38,8 @@ export interface CaseState {
   detected_late_arrival_at: Date | null;
   first_seen_watching_at: Date;
   evidence_json: string | null;
+  // Set once, when a silent no-show case is opened; never rewritten.
+  expected_window_end_at: Date | null;
 }
 
 export type DecisionOutcome = "created" | "held" | "confirmed" | "closed_by_evidence" | "evidence_recorded";
@@ -93,6 +96,7 @@ function created(observations: RunObservation[], now: Date): CaseState | null {
       detected_late_arrival_at: null,
       first_seen_watching_at: now,
       evidence_json: evidenceJson(observation.evidence),
+      expected_window_end_at: null as Date | null,
     };
     if (fact.kind === "cancellation") {
       return { ...base, status: "escalated", detection_type: "explicit_cancellation", data_quality_status: "source_verified", undecided_reason: null };
@@ -101,10 +105,10 @@ function created(observations: RunObservation[], now: Date): CaseState | null {
       return { ...base, status: "escalated", detection_type: fact.detectionType, data_quality_status: "source_verified", undecided_reason: null, detected_late_arrival_at: fact.arrivedAt };
     }
     if (fact.kind === "no_start_by_deadline") {
-      return { ...base, status: "watching", detection_type: "silent_no_show", data_quality_status: "experimental", undecided_reason: AWAITING_CONFIRMATION };
+      return { ...base, status: "watching", detection_type: "silent_no_show", data_quality_status: "experimental", undecided_reason: AWAITING_CONFIRMATION, expected_window_end_at: run.operatingWindowEndAt ?? null };
     }
     if (fact.kind === "undecidable") {
-      return { ...base, status: "watching", detection_type: "silent_no_show", data_quality_status: "unknown_data_gap", undecided_reason: clipReason(fact.reason) };
+      return { ...base, status: "watching", detection_type: "silent_no_show", data_quality_status: "unknown_data_gap", undecided_reason: clipReason(fact.reason), expected_window_end_at: run.operatingWindowEndAt ?? null };
     }
   }
   return null;
@@ -206,4 +210,55 @@ export function decideRun(snapshot: CaseState | null, observations: RunObservati
         : decided.status === "watching" && snapshot.status !== "watching" ? "held"
           : "evidence_recorded";
   return { kind: "update", key: { trip_id: snapshot.trip_id, service_date: snapshot.service_date }, expect: { status: snapshot.status, validation_status: snapshot.validation_status }, set, outcome };
+}
+
+export type ReviewKind = "review" | "supersede" | "legacy_rereview";
+
+export interface ReviewDecision {
+  validation_status: StoredReviewOutcome;
+  data_quality_status: string;
+  review_kind: ReviewKind;
+  review_reason: string | null;
+}
+
+function refuseReview(code: CaseRefusal["code"], sentence: string): { refusal: CaseRefusal } {
+  return { refusal: { code, sentence } };
+}
+
+// What a person may do to a case, decided from the case as stored.
+export function decideReview(state: CaseState, act: CaseAct, now: Date): { refusal: CaseRefusal } | { review: ReviewDecision } {
+  const legacy = state.data_quality_status === "legacy_unverified";
+  const reviewed = state.validation_status !== "unreviewed";
+  const reason = act.act === "record_review" ? null : act.reason.trim();
+
+  if (act.act === "rereview_legacy") {
+    if (!legacy) return refuseReview("not_legacy", "This case is not a legacy record; review it or supersede its review instead.");
+  } else if (legacy) {
+    return refuseReview("legacy_record", "This case came from the retired detector. Rereview it with a reason to record an outcome.");
+  }
+  if (act.act === "record_review" && reviewed) {
+    return refuseReview("already_reviewed", "This case has already been reviewed. Supersede the review with a reason to change it.");
+  }
+  if (act.act === "supersede_review" && !reviewed) {
+    return refuseReview("not_reviewed", "This case has no review to supersede yet.");
+  }
+  if (act.act !== "record_review" && !reason) {
+    return refuseReview("reason_required", act.act === "supersede_review"
+      ? "Say why the earlier review is being superseded."
+      : "Say why this legacy record is being rereviewed.");
+  }
+  if (act.outcome === "confirmed" && !reviewed && !legacy) {
+    const lifecycle = classifyMissedTripCase(state, new Set(), now).lifecycle;
+    if (lifecycle === "open" || lifecycle === "awaiting_evidence") {
+      return refuseReview("awaiting_evidence", "This case is still awaiting evidence. It can be confirmed as a missed trip once its operating window has ended and detection has decided it.");
+    }
+  }
+  return {
+    review: {
+      validation_status: act.outcome,
+      data_quality_status: legacy || act.outcome === "confirmed" ? "source_verified" : state.data_quality_status,
+      review_kind: act.act === "record_review" ? "review" : act.act === "supersede_review" ? "supersede" : "legacy_rereview",
+      review_reason: reason ? reason.slice(0, 1000) : null,
+    },
+  };
 }
