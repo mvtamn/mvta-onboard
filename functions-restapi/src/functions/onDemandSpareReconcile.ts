@@ -1,6 +1,7 @@
 // Hourly authoritative reconciliation for the on-demand wait monitor. The
 // webhook receiver may make records fresher, but only this complete source
-// read advances the health record exposed to OCC.
+// read advances the currency record exposed to OCC: the
+// spare_on_demand_reconciliation row of KpiFeedHealth.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool } from "../lib/db";
 import { runFeedIngestion } from "../lib/feedRun";
@@ -9,7 +10,6 @@ import { onDemandActivation } from "../lib/onDemandMonitoringHealth";
 import { normalizeOnDemandSpareRequest } from "../lib/onDemandSpareMonitor";
 import {
   loadActiveOperationalZones,
-  recordOnDemandAuthoritativeReconciliation,
   storeOnDemandSpareRequest,
 } from "../lib/onDemandSpareMonitorStore";
 import {
@@ -73,9 +73,9 @@ app.timer("onDemandSpareReconcile", {
     }
     const reconciledAt = new Date();
     // Everything that decides whether this reconciliation happened runs inside
-    // runFeedIngestion. The zone load, the monitor writes and the health-table
-    // write used to sit after the fetch guard, so a zone gap (the store throws
-    // when no zone version is active) escaped without recording anything: the
+    // runFeedIngestion. The zone load and the monitor writes used to sit after
+    // the fetch guard, so a zone gap (the store throws when no zone version is
+    // active) escaped without recording anything: the
     // On-Demand stream would have aged to Stale with no reason given - the
     // 2026-09-03 failure mode, already fixed in the missed-trip ingest.
     const result = await runFeedIngestion("spare_on_demand_reconciliation", context, async () => {
@@ -94,26 +94,20 @@ app.timer("onDemandSpareReconcile", {
       );
       const zones = await loadActiveOperationalZones();
       let writes = 0;
-      let latestSourceUpdateAt: Date | null = null;
       const activeRequestIds = new Set<string>();
       for (const request of requests) {
         const normalized = normalizeOnDemandSpareRequest(request);
         if (!normalized) continue;
         if (await storeOnDemandSpareRequest(normalized, zones, reconciledAt)) writes++;
         if (normalized.state === "active") activeRequestIds.add(normalized.requestId);
-        if (!latestSourceUpdateAt || normalized.sourceUpdatedAt > latestSourceUpdateAt) {
-          latestSourceUpdateAt = normalized.sourceUpdatedAt;
-        }
       }
-      await recordOnDemandAuthoritativeReconciliation({
-        reconciledAt,
-        latestSourceUpdateAt,
-        activeRequestCount: activeRequestIds.size,
-      });
       context.log(`On-demand reconciliation: ${requests.length} source requests checked; ${writes} monitor records updated.`);
       // This complete source read - not the missed-trip ingestion - is what
-      // makes On-Demand KPI trust current. A zero-active reconciliation still
-      // covers the source through reconciledAt, so it reads as current-but-empty
+      // makes On-Demand KPI trust current, and the only record of it: the
+      // monitoring state the console and the intervention evaluator show is a
+      // projection of this row (onDemandMonitoringStatus), not a second table.
+      // A zero-active reconciliation still covers the source through
+      // reconciledAt, so it reads as current-but-empty (no_active_service)
       // rather than unavailable.
       return {
         kind: "stored",

@@ -1317,10 +1317,13 @@ source freshness.
 _Avoid_: raw webhook archive, rider record
 
 **Degraded feed**:
-The trust state entered when the authoritative Reconciliation has not completed
-within 90 minutes. Last-known risks remain visible, but new Service-quality
-interventions are suspended until current data returns.
-_Avoid_: no risks, healthy feed
+The operator-facing name for the On-Demand KPI trust stream when it is not
+Current: the authoritative Reconciliation has not completed within 90 minutes,
+or has never completed. Last-known risks remain visible, but new
+Service-quality interventions are suspended until current data returns. It is
+the same verdict the Admin KPI trust view shows as Stale or unavailable, read
+from the same record, never a separate health check.
+_Avoid_: no risks, healthy feed, on-demand monitoring health
 
 **Service-standard authority**:
 The Service Operations administrator authority to set the all-zones Service
