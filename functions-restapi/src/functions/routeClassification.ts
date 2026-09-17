@@ -20,7 +20,7 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { requireRole, STAFF_READ_ROLES, PUBLISH_ROLES } from "../lib/auth";
-import { validateRouteClassification } from "../lib/validation";
+import { validateRouteClassification, VALID_ROUTE_CATEGORIES } from "../lib/validation";
 
 interface RouteClassificationRow {
   route_id: number;
@@ -166,7 +166,7 @@ app.http("routeClassificationUpsert", {
       return { status: 400, jsonBody: { error: "Validation failed", details: errors } };
     }
     const body = raw as {
-      route_category: "FixedRoute" | "SpecialEvent" | "OnDemand";
+      route_category: (typeof VALID_ROUTE_CATEGORIES)[number];
       route_label?: string | null;
       route_color?: string | null;
       effective_start_date?: string | null;

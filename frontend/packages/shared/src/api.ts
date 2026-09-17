@@ -94,6 +94,8 @@ import type {
   OtpHistoricalBackfillInput,
   OtpHistoricalBackfillResponse,
   OtpMonthlyRouteRollup,
+  OtpMonthMeasurement,
+  OtpTargetSource,
   OtpMonthlyStopRow,
   OtpMonthlyTrendPoint,
   OtpReasonCode,
@@ -985,7 +987,9 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       const suffix = month ? `?month=${month}` : "";
       return request<{
         stops: OtpMonthlyStopRow[];
+        /** The same routes as `measurement.routes`, with the official figure as pct_ontime. */
         routes: OtpMonthlyRouteRollup[];
+        measurement: OtpMonthMeasurement;
         diagnostics: {
           configured: boolean;
           table_ready: boolean;
@@ -993,6 +997,8 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
           record_count: number;
           routes_below_target: number;
           target: number;
+          target_source: OtpTargetSource;
+          weather_days_recorded: number;
         };
       }>(`/api/otp-monthly${suffix}`, {}, true);
     },
