@@ -146,8 +146,8 @@ test("OTP month measurement against real SQL", { skip: !connectionString && "DEC
         INSERT Contractors(id,name,contract_start_date,contract_end_date,is_active,updated_by) VALUES('${CONTRACTOR}','Transit Operations','20260101','20261231',1,'${ACTOR}');
         INSERT PerformanceAgreements(id,contractor_id,starts_on,ends_on,is_active,created_by) VALUES('${AGREEMENT}','${CONTRACTOR}','2026-01-01','2026-12-31',1,'${ACTOR}');
         INSERT AssessmentPeriods(id,contractor_id,agreement_id,service_month,status) VALUES('${PERIOD}','${CONTRACTOR}','${AGREEMENT}','202608','in_review');
-        INSERT AssessmentPeriodStandards(period_id,standard_id,code,standard_type,direction,is_safety_critical,measurement_source,sort_order,target_value)
-          SELECT '${PERIOD}',id,code,standard_type,direction,is_safety_critical,measurement_source,sort_order,0.90 FROM ContractorPerformanceStandards WHERE code='OTP_FIXED_ROUTE';
+        INSERT AssessmentPeriodStandards(period_id,standard_id,code,name,standard_type,direction,is_safety_critical,measurement_source,sort_order,target_value)
+          SELECT '${PERIOD}',id,code,name,standard_type,direction,is_safety_critical,measurement_source,sort_order,0.90 FROM ContractorPerformanceStandards WHERE code='OTP_FIXED_ROUTE';
         INSERT AssessmentPeriodTiers(period_id,standard_id,tier_order,tier_label,bound_low,bound_high,qualifier_code,penalty_basis,penalty_amount,triggers_cap)
           SELECT '${PERIOD}',standard_id,1,'meets',0.90,NULL,NULL,'none',0,0 FROM AssessmentPeriodStandards WHERE period_id='${PERIOD}';`);
       const measurement = await measureOtpMonth(pool, "202608");
