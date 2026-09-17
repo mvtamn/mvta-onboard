@@ -1,5 +1,8 @@
 import type { Transaction } from "mssql";
 import { sql } from "../db";
+import { isClosedPeriod, refusal } from "../occurrenceIntake/decide";
+import type { IntakeRefusal } from "../occurrenceIntake/types";
+import { assessableInputChangedSql } from "./materialChange";
 
 // Saving a hand-entered monthly figure.
 //
@@ -37,7 +40,23 @@ export interface ManualMetricWritten {
   supersededId: string | null;
 }
 
-export async function writeManualMetric(tx: Transaction, input: ManualMetricWrite): Promise<ManualMetricWritten> {
+export type ManualMetricOutcome = { ok: true; written: ManualMetricWritten } | { ok: false; refusal: IntakeRefusal };
+
+export async function writeManualMetric(tx: Transaction, input: ManualMetricWrite): Promise<ManualMetricOutcome> {
+  // A hand-entered figure is an Assessable Input, so it is refused and never
+  // written once the month is finalized or issued - the same rule occurrence
+  // intake applies, and the same sentence. The console already hides the form
+  // for those months; this catches a stale page and a direct API call. The
+  // lock holds the status still until the caller's transaction ends, so a
+  // finalize running alongside cannot let the figure through behind it.
+  const period = new sql.Request(tx);
+  period.input("contractor", sql.UniqueIdentifier, input.contractorId);
+  period.input("month", sql.Char(6), input.serviceMonth);
+  const status = (await period.query<{ status: string }>(
+    `SELECT status FROM AssessmentPeriods WITH(UPDLOCK,HOLDLOCK) WHERE contractor_id=@contractor AND service_month=@month`,
+  )).recordset[0]?.status;
+  if (isClosedPeriod(status)) return { ok: false, refusal: refusal("period_closed") };
+
   const find = new sql.Request(tx);
   find.input("standard", sql.UniqueIdentifier, input.standardId);
   find.input("contractor", sql.UniqueIdentifier, input.contractorId);
@@ -71,13 +90,15 @@ export async function writeManualMetric(tx: Transaction, input: ManualMetricWrit
     await supersede.query(`UPDATE ManualMetricEntries SET superseded_by=@new WHERE id=@old; UPDATE ManualMetricEntries SET superseded_by=NULL WHERE id=@new;`);
   }
 
-  // A changed input marks the month stale until it is recomputed; a month
-  // already finalized keeps the figures it was scored with.
-  const stale = new sql.Request(tx);
-  stale.input("contractor", sql.UniqueIdentifier, input.contractorId);
-  stale.input("month", sql.Char(6), input.serviceMonth);
-  await stale.query(
-    `UPDATE AssessmentPeriods SET input_revision=input_revision+1,status=CASE WHEN status IN('in_review','stale') THEN 'stale' ELSE status END WHERE contractor_id=@contractor AND service_month=@month AND status<>'finalized'`,
-  );
-  return { id, supersededId };
+  // The month is told its input changed by the shared rule: a drafting month
+  // is bumped (a reviewed one goes stale) and a month already shared for
+  // validation takes the Material Assessment Change - the share is withdrawn
+  // and the live Issuance Proof voided (ADR 0009). Before, a shared month was
+  // bumped silently and an issued one was bumped too.
+  const changed = new sql.Request(tx);
+  changed.input("contractor", sql.UniqueIdentifier, input.contractorId);
+  changed.input("month", sql.Char(6), input.serviceMonth);
+  changed.input("actor", sql.NVarChar(200), input.enteredBy);
+  await changed.query(assessableInputChangedSql("contractor", "month", "actor"));
+  return { ok: true, written: { id, supersededId } };
 }
