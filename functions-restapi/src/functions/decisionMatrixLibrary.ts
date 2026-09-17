@@ -19,29 +19,27 @@ export function libraryConfig(): LibraryConfig | null {
   return site && drive ? { site_id: site, drive_id: drive } : null;
 }
 
-// Reading a library is app-only: Sites.Selected is an application permission,
-// and the sync that shares this credential runs on a timer with no signed-in
-// user to borrow an identity from.
+// Browsing the library is app-only - Sites.Selected is an application
+// permission - and it reads as the sign-in application, explicitly.
 //
-// The dedicated document credential is preferred where it exists, because the
-// runbook's separate registration keeps SharePoint access off the app that
-// signs users in. On dev the permission was granted to the API app instead, so
-// its credential is the fallback rather than an error - one identity doing both
-// jobs is a narrower posture than the feature simply not working.
-export function documentCredential(): { tenantId: string; clientId: string; clientSecret: string } | null {
+// It used to prefer the dedicated Decision Matrix documents application where
+// that was configured, falling back to the sign-in application. That preference
+// would have moved browsing onto the integrity monitor the moment its settings
+// appeared, which is the "alternate user-access path" ADR 0025 rules out for
+// that identity: listing folders and file names for an Admin is not checking a
+// reference. Whether the integrity monitor may also list the library during
+// authoring is an open question, deliberately not settled by which settings
+// happen to exist. Document health reads as the documents application and
+// never this one; see lib/decisionMatrixDocumentHealth.ts.
+export function browsingCredential(): { tenantId: string; clientId: string; clientSecret: string } | null {
   const tenantId = setting("AZURE_TENANT_ID");
-  if (!tenantId) return null;
-  const dedicatedId = setting("DECISION_MATRIX_HEALTH_CLIENT_ID");
-  const dedicatedSecret = setting("DECISION_MATRIX_HEALTH_CLIENT_SECRET");
-  if (dedicatedId && dedicatedSecret) return { tenantId, clientId: dedicatedId, clientSecret: dedicatedSecret };
-  const apiId = setting("ONBOARD_API_CLIENT_ID");
-  const apiSecret = setting("ONBOARD_API_CLIENT_SECRET");
-  if (apiId && apiSecret) return { tenantId, clientId: apiId, clientSecret: apiSecret };
-  return null;
+  const clientId = setting("ONBOARD_API_CLIENT_ID");
+  const clientSecret = setting("ONBOARD_API_CLIENT_SECRET");
+  return tenantId && clientId && clientSecret ? { tenantId, clientId, clientSecret } : null;
 }
 
 function productionLibrary(config: LibraryConfig): SharePointLibrary | null {
-  const credential = documentCredential();
+  const credential = browsingCredential();
   if (!credential) return null;
   const secret = new ClientSecretCredential(credential.tenantId, credential.clientId, credential.clientSecret);
   return createSharePointLibrary(config, async () => {
@@ -89,7 +87,7 @@ export async function browseDecisionMatrixLibrary(request: HttpRequest, context:
           configured: false,
           outcome: "not_configured",
           path: "",
-          reason: "No credential is configured for reading SharePoint. Set AZURE_TENANT_ID with either DECISION_MATRIX_HEALTH_CLIENT_ID/_SECRET or ONBOARD_API_CLIENT_ID/_SECRET.",
+          reason: "No credential is configured for browsing SharePoint. Set AZURE_TENANT_ID, ONBOARD_API_CLIENT_ID and ONBOARD_API_CLIENT_SECRET.",
         },
       },
     };

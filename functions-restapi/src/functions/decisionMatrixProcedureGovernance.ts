@@ -1,89 +1,20 @@
-import { randomUUID } from "node:crypto";
 import { app, type HttpRequest, type InvocationContext, type Timer } from "@azure/functions";
-import { ClientSecretCredential, OnBehalfOfCredential } from "@azure/identity";
 import { ADMIN_ROLES, requireRole } from "../lib/auth";
 import { getPool, sql } from "../lib/db";
-import { createGraphDocumentChecker, type DocumentReferenceChecker } from "../lib/decisionMatrixDocumentHealth";
+import {
+  DAILY_CHECK_ACTOR,
+  documentHealthReader,
+  refreshRevisionHealth,
+  revisionsDueForHealthCheck,
+  type DocumentMetadataReader,
+} from "../lib/decisionMatrixDocumentHealth";
+import { recordProcedureAuditEvent as recordAudit } from "../lib/procedureAudit";
 
 type LifecycleAction = "submit_for_review" | "return_to_draft" | "approve" | "retire" | "withdraw";
-type ReferenceRow = { reference_id: string; site_id: string; drive_id: string; item_id: string; expected_version: string; expected_file_name: string; expected_mime_type: string };
 
 function actorFor(request: HttpRequest) {
   const principal = requireRole(request, ADMIN_ROLES);
   return principal.authorized ? principal.principal.userId ?? null : null;
-}
-
-function requiredSetting(name: string): string {
-  const value = process.env[name]?.trim();
-  if (!value) throw new Error(`${name} is required for delegated SharePoint document checks.`);
-  return value;
-}
-
-function productionChecker(): DocumentReferenceChecker {
-  return createGraphDocumentChecker(async (assertion) => {
-    const credential = new OnBehalfOfCredential({
-      tenantId: requiredSetting("AZURE_TENANT_ID"),
-      clientId: requiredSetting("ONBOARD_API_CLIENT_ID"),
-      clientSecret: requiredSetting("ONBOARD_API_CLIENT_SECRET"),
-      userAssertionToken: assertion,
-    });
-    const token = await credential.getToken("https://graph.microsoft.com/.default");
-    if (!token?.token) throw new Error("Microsoft Graph delegated token acquisition returned no token.");
-    return token.token;
-  });
-}
-
-function dailyChecker(): DocumentReferenceChecker {
-  const tenantId = requiredSetting("AZURE_TENANT_ID");
-  const clientId = requiredSetting("DECISION_MATRIX_HEALTH_CLIENT_ID");
-  const clientSecret = requiredSetting("DECISION_MATRIX_HEALTH_CLIENT_SECRET");
-  const credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
-  return createGraphDocumentChecker(async () => {
-    const token = await credential.getToken("https://graph.microsoft.com/.default");
-    if (!token?.token) throw new Error("Microsoft Graph background token acquisition returned no token.");
-    return token.token;
-  });
-}
-
-async function recordAudit(executor: { request: () => sql.Request }, procedureId: string, revision: number, eventType: string, actor: string, reason: string | null, details: Record<string, unknown> = {}) {
-  const request = executor.request();
-  request.input("id", sql.UniqueIdentifier, randomUUID());
-  request.input("procedure_id", sql.NVarChar, procedureId);
-  request.input("revision", sql.Int, revision);
-  request.input("event_type", sql.NVarChar, eventType);
-  request.input("actor", sql.NVarChar, actor);
-  request.input("reason", sql.NVarChar, reason);
-  request.input("details", sql.NVarChar, JSON.stringify(details));
-  await request.query("INSERT INTO ProcedureAuditEvents(event_id,procedure_id,revision,event_type,actor,reason,details_json) VALUES(@id,@procedure_id,@revision,@event_type,@actor,@reason,@details)");
-}
-
-async function checkReferences(procedureId: string, revision: number, actor: string, userAssertion: string | undefined, checker: DocumentReferenceChecker) {
-  const pool = await getPool();
-  const references = await pool.request().input("procedure_id", sql.NVarChar, procedureId).input("revision", sql.Int, revision)
-    .query<ReferenceRow>("SELECT reference_id,site_id,drive_id,item_id,expected_version,expected_file_name,expected_mime_type FROM ProcedureDocumentReferences WHERE procedure_id=@procedure_id AND revision=@revision ORDER BY sort_order");
-  const transaction = new sql.Transaction(pool);
-  await transaction.begin();
-  try {
-    const outcomes = [];
-    for (const reference of references.recordset) {
-      const outcome = await checker(reference, userAssertion);
-      const update = transaction.request();
-      update.input("reference_id", sql.UniqueIdentifier, reference.reference_id);
-      update.input("health_status", sql.NVarChar, outcome.health_status);
-      update.input("observed_version", sql.NVarChar, outcome.observed_version);
-      update.input("observed_file_name", sql.NVarChar, outcome.observed_file_name);
-      update.input("observed_mime_type", sql.NVarChar, outcome.observed_mime_type);
-      update.input("reason", sql.NVarChar, outcome.reason);
-      await update.query("UPDATE ProcedureDocumentReferences SET health_status=@health_status,checked_at=SYSUTCDATETIME(),observed_version=@observed_version,observed_file_name=@observed_file_name,observed_mime_type=@observed_mime_type,health_reason=@reason WHERE reference_id=@reference_id");
-      await recordAudit(transaction, procedureId, revision, "document_checked", actor, outcome.reason, { reference_id: reference.reference_id, health_status: outcome.health_status });
-      outcomes.push({ reference_id: reference.reference_id, health_status: outcome.health_status, reason: outcome.reason });
-    }
-    await transaction.commit();
-    return outcomes;
-  } catch (error) {
-    await transaction.rollback().catch(() => undefined);
-    throw error;
-  }
 }
 
 async function revisionIsComplete(executor: { request: () => sql.Request }, procedureId: string, revision: number, requireValidPrimary: boolean) {
@@ -97,7 +28,7 @@ async function revisionIsComplete(executor: { request: () => sql.Request }, proc
   return gate.recordset[0]?.complete === 1;
 }
 
-export async function governDecisionMatrixProcedureRevision(request: HttpRequest, context: InvocationContext, checker: DocumentReferenceChecker = productionChecker()) {
+export async function governDecisionMatrixProcedureRevision(request: HttpRequest, context: InvocationContext, reader: DocumentMetadataReader | null = documentHealthReader()) {
   const auth = requireRole(request, ADMIN_ROLES);
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   const procedureId = request.params.procedureId;
@@ -113,8 +44,25 @@ export async function governDecisionMatrixProcedureRevision(request: HttpRequest
   const actor = actorFor(request);
   if (!actor) return { status: 401, jsonBody: { error: "A stable Admin identity is required for Procedure governance." } };
   try {
-    if (action === "submit_for_review" || action === "approve") {
-      await checkReferences(procedureId, revision, actor, request.headers.get("x-ms-token-aad-access-token") ?? undefined, checker);
+    // Submitting and approving both refresh document health first, and
+    // approval then gates on that fresh result. A Valid recorded this morning
+    // cannot say the SOP was not edited since, and approval is when a revision
+    // starts telling controllers what to do. There is no fallback to an earlier
+    // observation: refusing approval during an outage costs a wait, and
+    // approval is never the urgent path - withdrawal is, and it checks nothing.
+    const documentCheck = action === "submit_for_review" || action === "approve"
+      ? await refreshRevisionHealth(procedureId, revision, actor, reader)
+      : null;
+    if (documentCheck?.outcome === "not_configured") {
+      return {
+        status: 409,
+        jsonBody: {
+          error: action === "approve"
+            ? "Approval needs a fresh document check, and document checks are not configured here, so nothing was checked."
+            : "Submission needs a fresh document check, and document checks are not configured here, so nothing was checked.",
+          details: { document_check: documentCheck },
+        },
+      };
     }
     const pool = await getPool();
     const transaction = new sql.Transaction(pool);
@@ -127,7 +75,7 @@ export async function governDecisionMatrixProcedureRevision(request: HttpRequest
       if (state !== allowed[action]) { await transaction.rollback(); return { status: 409, jsonBody: { error: `Cannot ${action.replaceAll("_", " ")} a ${state} Procedure Revision.` } }; }
       if ((action === "submit_for_review" || action === "approve") && !await revisionIsComplete(transaction, procedureId, revision, action === "approve")) {
         await transaction.rollback();
-        return { status: 409, jsonBody: { error: action === "approve" ? "Publication requires complete guidance and a currently Valid primary SOP or Reference." : "Review requires complete guidance and a primary SOP or Reference." } };
+        return { status: 409, jsonBody: { error: action === "approve" ? "Publication requires complete guidance and a currently Valid primary SOP or Reference." : "Review requires complete guidance and a primary SOP or Reference.", details: { document_check: documentCheck } } };
       }
       if (action === "retire") {
         const replacement = Number(body.replacement_revision);
@@ -151,27 +99,31 @@ export async function governDecisionMatrixProcedureRevision(request: HttpRequest
   } catch (error) { context.error("Decision Matrix Procedure governance failed", error); return { status: 500, jsonBody: { error: "Procedure governance is temporarily unavailable." } }; }
 }
 
-export async function checkDecisionMatrixProcedureReferences(request: HttpRequest, context: InvocationContext, checker: DocumentReferenceChecker = productionChecker()) {
+export async function checkDecisionMatrixProcedureReferences(request: HttpRequest, context: InvocationContext, reader: DocumentMetadataReader | null = documentHealthReader()) {
   const auth = requireRole(request, ADMIN_ROLES);
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   const procedureId = request.params.procedureId; const revision = Number(request.params.revision);
   if (!procedureId || !Number.isInteger(revision)) return { status: 400, jsonBody: { error: "procedureId and integer revision are required." } };
   const actor = actorFor(request);
   if (!actor) return { status: 401, jsonBody: { error: "A stable Admin identity is required for Procedure governance." } };
-  try { return { status: 200, jsonBody: { document_references: await checkReferences(procedureId, revision, actor, request.headers.get("x-ms-token-aad-access-token") ?? undefined, checker) } }; }
+  // "Not configured" answers 200: the question was well formed and the answer
+  // is known. A 5xx would read in the console as an outage.
+  try { return { status: 200, jsonBody: await refreshRevisionHealth(procedureId, revision, actor, reader) }; }
   catch (error) { context.error("Decision Matrix document check failed", error); return { status: 500, jsonBody: { error: "Document references could not be checked." } }; }
 }
 
 app.http("decisionMatrixProcedureLifecycle", { route: "manage/decision-matrix/procedures/{procedureId}/revisions/{revision}/lifecycle", methods: ["POST"], authLevel: "anonymous", handler: governDecisionMatrixProcedureRevision });
 app.http("decisionMatrixProcedureDocumentCheck", { route: "manage/decision-matrix/procedures/{procedureId}/revisions/{revision}/document-references/check", methods: ["POST"], authLevel: "anonymous", handler: checkDecisionMatrixProcedureReferences });
 app.timer("decisionMatrixDocumentHealth", { schedule: "0 0 5 * * *", handler: async (_timer: Timer, context: InvocationContext) => {
-  let checker: DocumentReferenceChecker;
-  try { checker = dailyChecker(); }
-  catch (error) { context.warn(error instanceof Error ? error.message : "Decision Matrix document health identity is not configured."); return; }
-  const pool = await getPool();
-  const revisions = await pool.request().query<{ procedure_id: string; revision: number }>("SELECT DISTINCT procedure_id,revision FROM ProcedureDocumentReferences WHERE checked_at IS NULL OR checked_at<DATEADD(DAY,-1,SYSUTCDATETIME())");
-  for (const revision of revisions.recordset) {
-    try { await checkReferences(revision.procedure_id, revision.revision, "Decision Matrix daily health check", "background-health-check", checker); }
+  const reader = documentHealthReader();
+  if (!reader) {
+    // Skipping writes nothing, per ADR 0025. The old warning called this path
+    // "delegated", which it never was.
+    context.warn("Decision Matrix document health was not checked: DECISION_MATRIX_HEALTH_CLIENT_ID and DECISION_MATRIX_HEALTH_CLIENT_SECRET are not configured.");
+    return;
+  }
+  for (const due of await revisionsDueForHealthCheck()) {
+    try { await refreshRevisionHealth(due.procedure_id, due.revision, DAILY_CHECK_ACTOR, reader); }
     catch (error) { context.error("Decision Matrix daily document check failed", error); }
   }
 } });
