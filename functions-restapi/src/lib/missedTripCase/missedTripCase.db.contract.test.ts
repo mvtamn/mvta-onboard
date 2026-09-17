@@ -21,7 +21,7 @@ import { loadCases, writeDecision } from "./store";
 //   the SQL; the review endpoint uses the TypeScript.
 //
 // The table is built by hand to the shape migrations 011, 023, 026, 029, 087,
-// 121 and 124 leave it in (migration124.db.contract.test.ts applies 124 itself) (as migration106.db.contract.test.ts does), without the
+// 121 and 125 leave it in (migration125.db.contract.test.ts applies 125 itself) (as migration106.db.contract.test.ts does), without the
 // SuggestedAlerts foreign key. See subscriberResend.db.contract.test.ts on why
 // the contract job runs one file at a time.
 const connectionString = process.env.DECISION_MATRIX_TEST_SQL_CONNECTION_STRING;

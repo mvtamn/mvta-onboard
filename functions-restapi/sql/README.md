@@ -44,8 +44,8 @@ called afterwards:
 - `migration-122`: Detours it moved carry `workflow_updated_by = 'migration-122'`,
   and their `DetourWorkflowHistory` rows carry `changed_by = 'migration-122'`
   with a detail ending `by migration 122` or `Set by migration 122`.
-- `migration-124`: `MissedTripReviewHistory` rows it rewrote from `false_positive`
-  carry a note ending `migration 124 names this outcome Timely service.]`.
+- `migration-125`: `MissedTripReviewHistory` rows it rewrote from `false_positive`
+  carry a note ending `migration 125 names this outcome Timely service.]`.
 
 Console output (`PRINT`), error text (`THROW`) and comments describe the file
 and are renamed with it.

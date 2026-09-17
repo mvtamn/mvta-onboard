@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { parseConnectionString, sql } from "./db";
 import { classifyMissedTripCase } from "./missedTripCase/classify";
 
-// Migration 124 against SQL Server, applied twice to tables in the shape
+// Migration 125 against SQL Server, applied twice to tables in the shape
 // migrations 011-121 left them (status columns NVARCHAR(20), with their CHECK
 // and DEFAULT constraints): the columns widen, false_positive becomes Timely service once,
 // with one note; the new columns and outcomes are accepted; and vw_MissedTrip
@@ -90,13 +90,13 @@ after(async () => {
   try { await pool.request().batch(DROP); } finally { await pool.close(); }
 });
 
-test("migration 124 names false_positive Timely service once, adds the window and review columns, and classifies vw_MissedTrip", skip, async () => {
+test("migration 125 names false_positive Timely service once, adds the window and review columns, and classifies vw_MissedTrip", skip, async () => {
   const pool = await new sql.ConnectionPool(parseConnectionString(connectionString!)).connect();
   try {
     await pool.request().batch(DROP);
     await pool.request().batch(BEFORE);
-    await applyMigration(pool, "migration-124-missed-trip-review-outcomes-and-window.sql");
-    await applyMigration(pool, "migration-124-missed-trip-review-outcomes-and-window.sql");
+    await applyMigration(pool, "migration-125-missed-trip-review-outcomes-and-window.sql");
+    await applyMigration(pool, "migration-125-missed-trip-review-outcomes-and-window.sql");
 
     const widths = (await pool.request().query<{ cases: number; history: number; previous: number; defaults: number }>(`
       SELECT COL_LENGTH('dbo.MonitoredMissedTrips', 'validation_status') cases,
@@ -115,7 +115,7 @@ test("migration 124 names false_positive Timely service once, adds the window an
       "SELECT previous_validation_status, validation_status, notes, review_kind FROM dbo.MissedTripReviewHistory ORDER BY review_id",
     )).recordset;
     assert.deepEqual(history.map((h) => [h.previous_validation_status, h.validation_status, h.review_kind]), [["unreviewed", "confirmed", "review"], ["confirmed", "timely_service", "review"]]);
-    assert.equal(history[1].notes, "AVL shows it ran [Recorded as false_positive; migration 124 names this outcome Timely service.]");
+    assert.equal(history[1].notes, "AVL shows it ran [Recorded as false_positive; migration 125 names this outcome Timely service.]");
 
     // The new outcomes, columns and window are accepted.
     await pool.request().query(`

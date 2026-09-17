@@ -86,7 +86,7 @@ export type MissedTripEvidenceFinding =
 
 export type MissedTripReviewOutcome = "confirmed_missed_trip" | "timely_service" | "partial_service_failure" | "indeterminate";
 
-// validation_status as stored. `false_positive` predates migration 124 and is
+// validation_status as stored. `false_positive` predates migration 125 and is
 // read as Timely service.
 export type StoredReviewOutcome = "confirmed" | "timely_service" | "partial_service_failure" | "indeterminate";
 
