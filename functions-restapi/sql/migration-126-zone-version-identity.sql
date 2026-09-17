@@ -7,7 +7,8 @@
 -- make every daily pull a new version. zone_version_sha256 is a hash of the
 -- monitored zones' identities, names and geometry, and is what decides whether
 -- a pull is new. source_sha256 and feed_version stay, as a record of which
--- export a version was first imported from.
+-- export a version was first imported from; migration 074's unique key on that
+-- pair is left in place, and never collides because every export differs.
 --
 -- The last_seen_* columns and unmonitored_locations_json describe the most
 -- recent pull that matched a version: when it was, which export it was, and

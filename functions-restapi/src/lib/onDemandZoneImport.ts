@@ -41,6 +41,20 @@ export async function activationAuditSupported(pool: sql.ConnectionPool): Promis
   return result.recordset[0]?.supported === 1;
 }
 
+// Migration 126 adds the Zone version identity and last-seen columns. Merging
+// the change that uses them also deploys the feed URL, so a pull can run on a
+// database the migration has not reached; the importer refuses with the step to
+// take rather than failing on an unknown column, and the versions listing
+// answers without them.
+export async function zoneVersionIdentitySupported(pool: sql.ConnectionPool): Promise<boolean> {
+  const result = await pool.request().query<{ supported: number }>(`
+    SELECT CASE WHEN COL_LENGTH('dbo.OnDemandOperationalZoneVersions', 'zone_version_sha256') IS NULL
+      OR COL_LENGTH('dbo.OnDemandOperationalZoneVersions', 'unmonitored_locations_json') IS NULL
+      THEN 0 ELSE 1 END AS supported
+  `);
+  return result.recordset[0]?.supported === 1;
+}
+
 export function sourceSha256(archive: Buffer): string {
   return createHash("sha256").update(archive).digest("hex");
 }
@@ -73,9 +87,12 @@ export async function importOperationalZoneVersion(
   archiveSha256: string,
   importedBy: string,
 ): Promise<ZoneImportResult> {
+  if (!await zoneVersionIdentitySupported(pool)) {
+    throw new Error("Zone versions cannot be identified yet: apply migration 126 (migration-126-zone-version-identity.sql), then run the pull again.");
+  }
   const { snapshot } = feed;
   const unmonitored = JSON.stringify(feed.unmonitoredLocations);
-  const seen = await pool.request()
+  const matched = await pool.request()
     .input("identity", sql.Char(64), feed.zoneVersionSha256)
     .input("feed_version", sql.NVarChar(200), snapshot.version)
     .input("unmonitored", sql.NVarChar(sql.MAX), unmonitored)
@@ -90,7 +107,7 @@ export async function importOperationalZoneVersion(
         WHERE id = @id;
       SELECT CAST(@id AS NVARCHAR(36)) AS id;
     `);
-  const alreadyImported = seen.recordset[0]?.id;
+  const alreadyImported = matched.recordset[0]?.id;
   if (alreadyImported) {
     return {
       versionId: alreadyImported,

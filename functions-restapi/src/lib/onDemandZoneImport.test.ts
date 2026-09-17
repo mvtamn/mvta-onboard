@@ -30,11 +30,21 @@ const feed = {
   unmonitoredLocations: [],
 };
 
+test("a pull on a database without migration 126 fails with the step to take, not a SQL error", async () => {
+  // Merging this change deploys the feed URL, so the 09:30 UTC pull can run
+  // before the migration is applied. The reason reaches feed health and the
+  // Zone geometry panel, so it has to say what to do.
+  await assert.rejects(
+    importOperationalZoneVersion(fakePool([[{ supported: 0 }]]), feed, sourceSha256(Buffer.from("zones")), "onDemandZonesSync"),
+    /apply migration 126/,
+  );
+});
+
 test("a pull whose zones match an existing version is a no-op rather than a new version", async () => {
   // The lookup answers with the matching version; the transactional insert,
   // which this stub cannot serve, must never be reached.
   const result = await importOperationalZoneVersion(
-    fakePool([[{ id: "11111111-1111-1111-1111-111111111111" }]]),
+    fakePool([[{ supported: 1 }], [{ id: "11111111-1111-1111-1111-111111111111" }]]),
     feed,
     sourceSha256(Buffer.from("a fresh export of the same zones")),
     "onDemandZonesSync",

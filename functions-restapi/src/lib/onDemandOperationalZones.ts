@@ -101,7 +101,19 @@ export function loadOperationalZones(version: string, feed: GeoJsonFeatureCollec
     throw new Error("GTFS-Flex feed has duplicate Operational zones");
   }
   if (zoneIds.length !== expected.size) {
-    throw new Error("GTFS-Flex feed is missing expected Operational zones");
+    // Named in full because this reason is what feed health and the Zone
+    // geometry panel show: when Spare renames a zone's location id, the new id
+    // is exactly what the person fixing ON_DEMAND_OPERATIONAL_ZONE_IDS needs.
+    // Ids and names only, never geometry.
+    const found = new Set(zoneIds);
+    const missing = [...expected].filter((id) => !found.has(id));
+    const published = features.flatMap((feature) => typeof feature.id === "string"
+      ? [`${typeof feature.properties?.stop_name === "string" ? feature.properties.stop_name : "(unnamed)"} (${feature.id})`]
+      : []);
+    throw new Error(
+      `GTFS-Flex feed is missing expected Operational zones: ${missing.join(", ")}. ` +
+        `Spare published: ${published.length ? published.join("; ") : "no locations"}.`,
+    );
   }
   return {
     version,

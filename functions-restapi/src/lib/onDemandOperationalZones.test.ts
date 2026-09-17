@@ -128,6 +128,28 @@ test("rejects an incomplete initial Operational-zone feed", () => {
   );
 });
 
+test("a missing zone's failure names what is missing and what Spare did publish", () => {
+  // If Spare renames a zone's location id the pull fails, and the new id is
+  // exactly what the person fixing ON_DEMAND_OPERATIONAL_ZONE_IDS needs. The
+  // failure reason is what the Zone geometry panel shows, so it carries both.
+  // Ids and names only, never geometry.
+  const renamed = {
+    ...zoneFeed,
+    features: zoneFeed.features.map((feature) => feature.id.endsWith("661aae320fd8")
+      ? { ...feature, id: "location_id__renamed-shakopee" }
+      : feature),
+  };
+  assert.throws(
+    () => loadOperationalZones("v2", renamed),
+    (error: Error) => {
+      assert.match(error.message, /^GTFS-Flex feed is missing expected Operational zones: location_id__ad56cc1c-48cc-495b-948b-661aae320fd8\./);
+      assert.match(error.message, /Spare published: Central Zone, Apple Valley \(location_id__b413a052-36eb-43de-97f7-59fe9f99f839\); Eagan City Boundary - REFERENCE \(location_id__57e7beb0-7416-44e0-a1f5-ac6a6f48a5cd\); Shakopee - Prior Lake Boundaries \(location_id__renamed-shakopee\)\.$/);
+      assert.doesNotMatch(error.message, /coordinates|Polygon/);
+      return true;
+    },
+  );
+});
+
 test("rejects duplicate or malformed Operational-zone geometry", () => {
   assert.throws(
     () => loadOperationalZones("v1", { ...zoneFeed, features: [...zoneFeed.features, zoneFeed.features[0]] }),

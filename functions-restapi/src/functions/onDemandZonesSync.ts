@@ -10,7 +10,7 @@ import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool } from "../lib/db";
 import { runFeedIngestion } from "../lib/feedRun";
 import { loadOperationalZonesFromGtfsFlexArchive } from "../lib/onDemandOperationalZones";
-import { ON_DEMAND_ZONES_SYNC_SCHEDULE } from "../lib/onDemandZoneFeedStatus";
+import { ON_DEMAND_ZONES_SYNC_SCHEDULE, ZONE_FEED_NAME } from "../lib/onDemandZoneFeedStatus";
 import { fetchGtfsFlexArchive, importOperationalZoneVersion, sourceSha256 } from "../lib/onDemandZoneImport";
 
 app.timer("onDemandZonesSync", {
@@ -26,7 +26,7 @@ app.timer("onDemandZonesSync", {
     }
 
     let result: Awaited<ReturnType<typeof importOperationalZoneVersion>> | undefined;
-    await runFeedIngestion("on_demand_zones", context, async () => {
+    await runFeedIngestion(ZONE_FEED_NAME, context, async () => {
       const archive = await fetchGtfsFlexArchive(feedUrl);
       const feed = loadOperationalZonesFromGtfsFlexArchive(archive);
       // Whether this is a new Zone version is decided by the monitored zones

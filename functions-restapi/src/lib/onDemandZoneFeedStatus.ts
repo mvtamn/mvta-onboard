@@ -1,7 +1,10 @@
 // What the zone geometry panel says about the feed Operational zones are
 // pulled from (ADR 0031): whether it is configured, when it was last checked
 // and how that went, and when the next check is due.
-import type { KpiFeedHealth } from "./kpiTrust";
+import type { KpiFeedHealth, KpiFeedName } from "./kpiTrust";
+
+// The ledger row the daily pull records, and the one the panel reads back.
+export const ZONE_FEED_NAME = "on_demand_zones" satisfies KpiFeedName;
 
 // Daily at 09:30 UTC (04:30 CDT, 03:30 CST), before on-demand service starts.
 // The timer's schedule is built from these, so the "next check" the panel shows
