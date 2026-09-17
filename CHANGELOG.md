@@ -5,6 +5,16 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.243] - 2026-09-17
+
+- **The console displays the OTP figure; it no longer computes one.** `computeOfficialPct` and `deriveRouteRowsFromLive` are deleted. Route Summary, the Dashboard and Monthly Assessments read the measurement `GET /otp-monthly` returns (1.5.242, ADR 0033) through the new pure `routes/modules/otp/otpFigures.ts`. Route Summary's hardcoded `official < 85` is gone: every page compares against the month's own target and says where that target came from ("from this month's assessment rules" vs "from the current performance standard"). PR 2 of 2 for candidate #4 of the 2026-09-16 architecture review.
+- **A route outside the standard says so.** Special-event, on-demand and non-revenue routes have no assessable departures, so they show a reason rather than 0% on time; the same is true of a fixed route whose every departure was excluded.
+- **Weather Exclusions explains itself.** The page states that a recorded day is kept for the record and is not removed from the OTP figures, because Avail's monthly feed is grouped by day of week rather than by date. `weather_days_recorded` for the month comes from the API.
+- **Monthly Assessments shows the assessed figure.** Where the month has an Assessment Period, the page shows that period's stored figure and status - a report never recalculates (ADR 0011). A month with no period is labelled provisional, and the preview's sample rows say they are a layout preview rather than implying an official number.
+- **Migration 128** adds the `NonRevenue` route category and reclassifies the four non-revenue RouteIDs that were classified `FixedRoute`: 999 Dead Head, 5555 Training Bus, 6666 Maintenance, 7777 Pivot. Only rows still marked `FixedRoute` are moved, so a hand correction is never undone by a re-run. None appears in the OTP feed on dev today, so no figure moves; this closes the hole before the feed opens it. `VALID_ROUTE_CATEGORIES`, `RouteCategory` and the Administration picker gain the category.
+- **A tab open across the deploy still works.** A response with no `measurement` (an older server) falls back to the sample preview rather than rendering half a figure.
+- **Verified.** `otpFigures.test.ts` (8 tests: the official/raw/delta rows, the not-measured reasons, the target and weather sentences); the console suite passes, 638 tests; the four OTP pages were walked in the mock console.
+
 ## [1.5.242] - 2026-09-17
 
 - **One module measures a month of OTP.** New `functions-restapi/src/lib/otpMonth/` returns the raw, excluded and assessable figures for a service month - agency-wide and per route - with the target the month is judged against. `resolveOtpFixedRoute`, `GET /otp-monthly` and `GET /otp-monthly-trend` all read it. Candidate #4 of the 2026-09-16 architecture review; ADR 0033; `CONTEXT.md` gains **Official Departure OTP**, **Stop Exclusion** and **Weather Day Exclusion**. No migration.

@@ -15,12 +15,13 @@ import {
 import { api } from "../config.js";
 import { useAppDialog } from "../components/AppDialog.js";
 
-const ROUTE_CATEGORIES: RouteCategory[] = ["FixedRoute", "SpecialEvent", "OnDemand"];
+const ROUTE_CATEGORIES: RouteCategory[] = ["FixedRoute", "SpecialEvent", "OnDemand", "NonRevenue"];
 const DEFAULT_ROUTE_COLOR = "#00553D";
 const ROUTE_CATEGORY_DESCRIPTIONS: Record<RouteCategory, string> = {
   FixedRoute: "Regular scheduled service",
   SpecialEvent: "Event or supplemental service",
   OnDemand: "Request-based service",
+  NonRevenue: "Deadhead, training, maintenance — carries no passengers and is outside the fixed-route standards",
 };
 
 export function EventMonitoringSettingsSection() {
