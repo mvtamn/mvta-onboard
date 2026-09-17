@@ -1487,3 +1487,12 @@ The auditable record attached to a manual communication that uses stale KPI
 context. It identifies the KPI source stream, staff member, timestamp, and
 reason; it does not change the KPI trust state.
 _Avoid_: freshness override, generic activity log
+
+## Dispatch Log language
+
+**Block**:
+The scheduling system's Vehicle Block Id: a three-digit number naming one
+vehicle's day of work within a service change, written as the Dispatch Log
+workbook writes it (`001`, `024`, `501`). The GTFS feed's versioned form
+(`1-v64`) identifies the same block but is not the Block.
+_Avoid_: block_id, GTFS block
