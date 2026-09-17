@@ -759,6 +759,18 @@ _Avoid_: manager adjustment, report edit
 The source measurement or occurrence set remaining after contractually approved exclusions are applied. Performance tiering uses the Assessable Input while preserving the raw input for explanation.
 _Avoid_: adjusted penalty, reviewed value
 
+**Official Departure OTP**:
+Fixed-route on-time performance for a service month after the route-category filter and approved Stop Exclusions are applied — the Assessable Input of the OTP standard. It is what the assessment scores and what every screen labels "official"; the raw figure is always reported beside it.
+_Avoid_: raw OTP, adjusted OTP
+
+**Stop Exclusion**:
+A reviewed and approved decision that one stop, on one route, on one day of the week, does not count toward Official Departure OTP for a service month — a recovery or layover point, or a data-quality defect. It is the only exclusion the monthly OTP feed's grain can express.
+_Avoid_: weather exclusion, dropped stop
+
+**Weather Day Exclusion**:
+A recorded weather or emergency service date. It is kept for the record and is NOT applied to Official Departure OTP: the monthly OTP feed is aggregated by day of week, not by date, so a single date cannot be removed from it (ADR 0033).
+_Avoid_: excluded day, relief day
+
 **Monetary Adjustment**:
 An Assessment Reviewer's reasoned recommendation to change a computed monetary amount without rewriting its source measurement or tier.
 _Avoid_: source correction, waiver
