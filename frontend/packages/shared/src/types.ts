@@ -2002,14 +2002,19 @@ export interface OnDemandZoneVersion {
   // Null until migration 098 is applied; the listing answers without it.
   activated_at: string | null;
   activated_by: string | null;
+  // The most recent pull whose zones matched this version (migration 126).
+  last_seen_at: string | null;
+  last_seen_feed_version: string | null;
+  // Locations Spare published in that pull that are not Operational zones.
+  unmonitored_locations: { id: string; name: string | null }[];
 }
 
-export interface OnDemandZoneUploadResult {
-  versionId: string;
-  feedVersion: string;
-  zoneCount: number;
-  imported: boolean;
-  activated: boolean;
-  zones: string[];
-  message: string;
+// The feed Operational zones are pulled from (ADR 0031).
+export interface OnDemandZoneFeedStatus {
+  configured: boolean;
+  last_checked_at: string | null;
+  last_check_succeeded: boolean | null;
+  last_failure_reason: string | null;
+  next_check_at: string | null;
 }
+

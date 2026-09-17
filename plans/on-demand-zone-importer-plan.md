@@ -3,6 +3,14 @@
 Date: 2026-09-05. **Implemented 2026-09-06**; see the status section below for
 what was built and which decision is still open.
 
+> **Superseded 2026-09-17 (1.5.235, ADR 0031).** Spare now generates the
+> GTFS-Flex feed at a stable URL and `onDemandZonesSync` pulls it daily. The
+> one-off manual load below (`importOnDemandZones.ts`, and the console upload
+> added later) is removed, and a Zone version is identified by a hash of its
+> monitored geometry rather than `(feed_version, source_sha256)`, because Spare
+> stamps the export time into every archive. The current procedure is
+> `docs/runbooks/on-demand-operational-zones.md`.
+
 Inputs:
 
 - `functions-restapi/sql/migration-074-on-demand-operational-zones.sql`

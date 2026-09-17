@@ -1,7 +1,8 @@
 // Daily import of the GTFS-Flex service-area geometry behind the on-demand wait
-// monitor. Zone boundaries change once or twice a year, so this polls for a
-// change rather than expecting one: an unchanged archive hashes to the version
-// already stored and the run is a recorded no-op.
+// monitor, pulled from the feed Spare generates for MVTA (ADR 0031). Zone
+// boundaries change once or twice a year, so this polls for a change rather
+// than expecting one: unchanged zones match the version already stored and the
+// run is a recorded no-op.
 //
 // It runs after gtfsStopsSync rather than alongside it - both pull sizeable
 // archives, and nothing here depends on the static schedule.
@@ -9,16 +10,17 @@ import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool } from "../lib/db";
 import { runFeedIngestion } from "../lib/feedRun";
 import { loadOperationalZonesFromGtfsFlexArchive } from "../lib/onDemandOperationalZones";
+import { ON_DEMAND_ZONES_SYNC_SCHEDULE } from "../lib/onDemandZoneFeedStatus";
 import { fetchGtfsFlexArchive, importOperationalZoneVersion, sourceSha256 } from "../lib/onDemandZoneImport";
 
 app.timer("onDemandZonesSync", {
-  schedule: "0 30 9 * * *",
+  schedule: ON_DEMAND_ZONES_SYNC_SCHEDULE,
   handler: async (_timer: Timer, context: InvocationContext) => {
     const feedUrl = process.env.ON_DEMAND_ZONE_FLEX_URL;
     if (!feedUrl) {
       context.warn(
         "ON_DEMAND_ZONE_FLEX_URL is not configured - skipping this run. " +
-          "The on-demand wait monitor cannot resolve pickups to zones until a GTFS-Flex source is set.",
+          "Set onDemandZoneFlexUrl to the GTFS-Flex feed Spare generates for MVTA (see docs/runbooks/on-demand-operational-zones.md).",
       );
       return;
     }
@@ -26,15 +28,19 @@ app.timer("onDemandZonesSync", {
     let result: Awaited<ReturnType<typeof importOperationalZoneVersion>> | undefined;
     await runFeedIngestion("on_demand_zones", context, async () => {
       const archive = await fetchGtfsFlexArchive(feedUrl);
-      // The hash covers the raw archive bytes, so it has to be taken before
-      // parsing - it is what makes a re-import of identical geometry a no-op.
-      const imported = await importOperationalZoneVersion(
-        await getPool(),
-        loadOperationalZonesFromGtfsFlexArchive(archive),
-        sourceSha256(archive),
-        "onDemandZonesSync",
-      );
+      const feed = loadOperationalZonesFromGtfsFlexArchive(archive);
+      // Whether this is a new Zone version is decided by the monitored zones
+      // alone (feed.zoneVersionSha256); the archive hash is kept only as a
+      // record of the export a version was first imported from, because Spare
+      // stamps the export time into the archive on every call.
+      const imported = await importOperationalZoneVersion(await getPool(), feed, sourceSha256(archive), "onDemandZonesSync");
       result = imported;
+      if (feed.unmonitoredLocations.length > 0) {
+        context.log(
+          `On-demand zones: Spare also publishes ${feed.unmonitoredLocations.length} location(s) that are not Operational zones: ` +
+            feed.unmonitoredLocations.map((location) => location.name ?? location.id).join("; ") + ".",
+        );
+      }
       // This ledger records ingestion, not what is in force: the count is the
       // zones the imported version carries. An import that lands but waits for
       // activation leaves the monitor on the previous geometry, and that gap is
@@ -45,7 +51,7 @@ app.timer("onDemandZonesSync", {
 
     if (!result.imported) {
       context.log(
-        `On-demand zones: feed version ${result.feedVersion} is already imported (${result.zoneCount} zones); nothing to do.`,
+        `On-demand zones: export ${result.feedVersion} carries the same ${result.zoneCount} zones as an existing version; nothing to do.`,
       );
       return;
     }

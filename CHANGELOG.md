@@ -5,6 +5,31 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.235] - 2026-09-17
+
+- **Operational zones come from the GTFS-Flex feed Spare generates for MVTA.** `onDemandZonesSync` pulls `https://api.us.sparelabs.com/v1/gtfs/generate/organization/93f6f01b-286f-4d79-931a-1ef22b848886` daily at 09:30 UTC. The URL is set as `onDemandZoneFlexUrl` in `infra-phase1/parameters/phase1-dev.parameters.json`, so this merge runs an infra deploy. The endpoint answers anonymously, so no Spare key is sent, and a bearer token cannot follow the setting to another host. Spare is the only source of zone geometry (ADR 0031; `CONTEXT.md` **Operational zone**, **Zone version**, **Zone version activation**).
+- **The manual upload is removed.** Gone: `POST /api/on-demand-zone-versions/upload`, the console's archive upload on **Zone geometry**, `uploadOnDemandZoneArchive`, and the never-run `scripts/importOnDemandZones.ts`. They existed only while no URL was known. Zones change once or twice a year, and a failed pull leaves the active version in force, so there is nothing for a fallback to cover.
+- **A Zone version is identified by its monitored geometry, not the archive.** Spare stamps the export time into `feed_version`, `feed_info.txt` and the archive on every call. Two fetches 75 seconds apart on 2026-09-17 differed in both, while `locations.geojson` was byte-identical. The old key, `(feed_version, source_sha256)`, would therefore have added a new inactive version every morning. `zoneVersionSha256` hashes the monitored zones' ids, names and geometry, with keys and zone order canonicalized. A pull whose zones match an existing version adds no row; it updates that version's `last_seen_at`, `last_seen_feed_version` and unmonitored locations. `feed_version` and `source_sha256` stay on the version as a record of the export it was first imported from. A changed zone set still lands inactive for an `OCC.Admin` to activate, and the first version ever still activates itself.
+- **Migration 126** adds `zone_version_sha256` with a filtered unique index (`UX_OnDemandOperationalZoneVersions_Identity`), plus `last_seen_at`, `last_seen_feed_version` and `unmonitored_locations_json`. Re-runnable. Versions imported before it have no identity and are never matched; dev has none.
+- **Locations Spare publishes that MVTA does not monitor are shown, not dropped.** The explicit zone list stays (`ON_DEMAND_OPERATIONAL_ZONE_IDS`, default the two pilot zones). A listed zone missing from the feed still fails the pull and keeps the active version. Any other location - today the Eagan reference boundary - is recorded by id and name with each pull (never its geometry). The panel lists it under *Also published by Spare, not monitored*, so a new service area upstream does not go unmonitored unnoticed.
+- **The Zone geometry panel says how the feed is doing.** `GET /api/on-demand-zone-versions` now returns `feed` (`zoneFeedStatus`): whether the URL is configured, when it was last checked and whether that check succeeded (with the reason if not), and when the next check is due. The timer's schedule is built from the same constants. Each version also shows when Spare last published it. The version list and **Activate** are unchanged.
+- **Docs.** `docs/runbooks/on-demand-operational-zones.md` is rewritten around the pulled feed. HANDOFF's On-Demand blocker 1 is marked resolved, and `plans/on-demand-zone-importer-plan.md` is marked superseded.
+- **Verified.**
+  - `onDemandOperationalZones.test.ts`, 4 new tests:
+    - unmonitored locations listed by id and name
+    - a fresh export in a different zone order keeps its identity
+    - a renamed or reshaped zone changes it
+    - a change to the reference boundary does not
+  - `onDemandZoneFeedStatus.test.ts`, 3 tests: not configured; never run, and due at the next 09:30 UTC on either side of it; the newer of success and failure decides the last check, and only a latest failure carries its reason.
+  - `onDemandZoneImport.db.contract.test.ts` runs in the CI contract job on migrations 074, 098 and 126:
+    - the first pull activates
+    - the next day's export of the same zones adds no version and records the new unmonitored area
+    - redrawn geometry lands inactive beside the active version
+    - the identity index refuses a duplicate
+  - Console `OnDemandZoneGeometryAdmin.test.tsx`: no upload; source, last and next check shown; a failed check's reason; not configured; unmonitored names listed; the existing activation tests kept.
+  - Full REST API and console suites pass; typecheck clean.
+  - Live facts about the endpoint were measured from inside the dev REST app on 2026-09-17. Not yet run against dev: that follows the merge.
+
 ## [1.5.234] - 2026-09-17
 
 - **Document Reference Health has one identity and one writer.** Submit, Approve and **Check documents** re-checked a revision's references on behalf of the Admin who clicked, through an on-behalf-of token, while the 05:00 timer checked as an application - and both wrote `ProcedureDocumentReferences.health_status`, so the last writer won and approval depended on whose SharePoint rights were in play. The on-behalf-of check only worked at all because delegated `Sites.FullControl.All` was consented to the sign-in application on 2026-09-14. `lib/decisionMatrixDocumentHealth.ts` now owns one operation, `refreshRevisionHealth`, which every trigger calls: it reads each reference's version, name and type through a `DocumentMetadataReader` port (a Graph adapter in production, an in-memory adapter in tests), records health and the `document_checked` audit event, and takes no user token. The reader is the dedicated Decision Matrix documents application (`DECISION_MATRIX_HEALTH_CLIENT_ID`/`_SECRET`) and nothing else - no fallback to the sign-in application, because a fallback is the two-identity problem again. ADR 0025 is amended to say so, and CONTEXT.md now defines health as present and unchanged, not accessible to a given person.

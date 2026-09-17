@@ -10,7 +10,7 @@
 // missing plumbing.
 import { createHash } from "node:crypto";
 import { sql } from "./db";
-import type { OperationalZoneSnapshot } from "./onDemandOperationalZones";
+import type { ZoneFeed } from "./onDemandOperationalZones";
 
 // Zone archives are small (geometry and feed_info only), so a request still
 // running after this long is hung rather than slow. An unbounded fetch inside a
@@ -23,7 +23,7 @@ export interface ZoneImportResult {
   versionId: string;
   feedVersion: string;
   zoneCount: number;
-  // False when these exact bytes at this feed_version were already imported.
+  // False when a version with these exact monitored zones already exists.
   imported: boolean;
   // True when this call made the version active, which happens only when no
   // version was active beforehand.
@@ -53,11 +53,13 @@ export async function fetchGtfsFlexArchive(url: string): Promise<Buffer> {
   return Buffer.from(await response.arrayBuffer());
 }
 
-// Import is idempotent on (feed_version, source_sha256) - the natural key
-// UQ_OnDemandOperationalZoneVersions_Source already declares. Hashing the raw
-// archive is what makes a daily poll of unchanged geometry a no-op instead of a
-// new version row every morning, and it distinguishes a genuine re-publication
-// from a republished feed_version whose contents moved underneath it.
+// Import is idempotent on the Zone version identity: a hash of the monitored
+// zones' identities, names and geometry (ADR 0031, migration 126). Spare stamps
+// the export time into feed_version and the archive on every call, so the
+// archive hash and feed_version - kept on the row as a record of the export a
+// version was first imported from - cannot say whether anything changed. A pull
+// that matches an existing version only records that it was seen: when, which
+// export, and which locations Spare published that are not Operational zones.
 //
 // A newly imported version is inactive, except when nothing is active yet.
 // Deliberate activation exists to stop operational geometry being swapped under
@@ -67,18 +69,28 @@ export async function fetchGtfsFlexArchive(url: string): Promise<Buffer> {
 // import activates itself, every subsequent one waits to be activated.
 export async function importOperationalZoneVersion(
   pool: sql.ConnectionPool,
-  snapshot: OperationalZoneSnapshot,
+  feed: ZoneFeed,
   archiveSha256: string,
   importedBy: string,
 ): Promise<ZoneImportResult> {
-  const existing = await pool.request()
+  const { snapshot } = feed;
+  const unmonitored = JSON.stringify(feed.unmonitoredLocations);
+  const seen = await pool.request()
+    .input("identity", sql.Char(64), feed.zoneVersionSha256)
     .input("feed_version", sql.NVarChar(200), snapshot.version)
-    .input("source_sha256", sql.Char(64), archiveSha256)
-    .query<{ id: string }>(`
-      SELECT id FROM dbo.OnDemandOperationalZoneVersions
-      WHERE feed_version = @feed_version AND source_sha256 = @source_sha256
+    .input("unmonitored", sql.NVarChar(sql.MAX), unmonitored)
+    .query<{ id: string | null }>(`
+      DECLARE @id UNIQUEIDENTIFIER = (
+        SELECT id FROM dbo.OnDemandOperationalZoneVersions WHERE zone_version_sha256 = @identity
+      );
+      IF @id IS NOT NULL
+        UPDATE dbo.OnDemandOperationalZoneVersions
+        SET last_seen_at = SYSUTCDATETIME(), last_seen_feed_version = @feed_version,
+            unmonitored_locations_json = @unmonitored
+        WHERE id = @id;
+      SELECT CAST(@id AS NVARCHAR(36)) AS id;
     `);
-  const alreadyImported = existing.recordset[0]?.id;
+  const alreadyImported = seen.recordset[0]?.id;
   if (alreadyImported) {
     return {
       versionId: alreadyImported,
@@ -101,10 +113,18 @@ export async function importOperationalZoneVersion(
       .input("feed_version", sql.NVarChar(200), snapshot.version)
       .input("source_sha256", sql.Char(64), archiveSha256)
       .input("imported_by", sql.NVarChar(200), importedBy)
+      .input("identity", sql.Char(64), feed.zoneVersionSha256)
+      .input("unmonitored", sql.NVarChar(sql.MAX), unmonitored)
       .query<{ id: string }>(`
         DECLARE @id UNIQUEIDENTIFIER = NEWID();
-        INSERT INTO dbo.OnDemandOperationalZoneVersions (id, feed_version, source_sha256, imported_by)
-        VALUES (@id, @feed_version, @source_sha256, @imported_by);
+        INSERT INTO dbo.OnDemandOperationalZoneVersions (
+          id, feed_version, source_sha256, imported_by,
+          zone_version_sha256, last_seen_at, last_seen_feed_version, unmonitored_locations_json
+        )
+        VALUES (
+          @id, @feed_version, @source_sha256, @imported_by,
+          @identity, SYSUTCDATETIME(), @feed_version, @unmonitored
+        );
         SELECT CAST(@id AS NVARCHAR(36)) AS id;
       `);
     const versionId = inserted.recordset[0]?.id;
