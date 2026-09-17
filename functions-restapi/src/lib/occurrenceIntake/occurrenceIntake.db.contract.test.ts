@@ -128,12 +128,14 @@ test("occurrence intake against real SQL", { skip: !connectionString && "DECISIO
     }
     await pool.request().batch(SOURCES);
     // One Agreement for 2026 that scores Missed Trips and Garage Departure
-    // from the start of the year; a second contractor whose Agreement starts in
-    // October, so October is covered twice.
+    // from the start of the year; a second Agreement starting in October, so
+    // October is covered twice. UX_Contractors_OneActive allows one active
+    // contractor today, so the second is inactive - the rule reads Agreements,
+    // and must not pick one of two however the contractors are flagged.
     await pool.request().batch(`
       INSERT Contractors(id,name,contract_start_date,contract_end_date,is_active,updated_by) VALUES
         ('${CONTRACTOR}','Transit Operations','20260101','20261231',1,'${ACTOR}'),
-        ('${OTHER_CONTRACTOR}','Second Operator','20261001','20271231',1,'${ACTOR}');
+        ('${OTHER_CONTRACTOR}','Second Operator','20261001','20271231',0,'${ACTOR}');
       INSERT PerformanceAgreements(id,contractor_id,starts_on,ends_on,is_active,created_by) VALUES
         ('${AGREEMENT}','${CONTRACTOR}','2026-01-01','2026-12-31',1,'${ACTOR}'),
         ('${OTHER_AGREEMENT}','${OTHER_CONTRACTOR}','2026-10-01','2027-12-31',1,'${ACTOR}');
