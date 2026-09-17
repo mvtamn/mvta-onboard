@@ -22,6 +22,7 @@
 // the review itself still commits.
 import type { Transaction } from "mssql";
 import { sql } from "../db";
+import { missedTripSourceRefSql } from "../missedTripCase/classify";
 
 export type OccurrenceAttribution = "contractor_error" | "excusable" | "mvta_directed" | "undetermined";
 export type OccurrenceReviewStatus = "candidate" | "confirmed" | "dismissed";
@@ -45,12 +46,10 @@ export function occurrenceStateFor(
   return { review_status: "dismissed", attribution };
 }
 
-// Mirrors the CONCAT in complianceCandidatesPoll.ts clause for clause. Both
-// sides must produce the same string or the poll would raise a second
-// occurrence for a trip this endpoint already raised - UX_CO_SourceRef would
-// then reject the poll's whole MERGE rather than just the duplicate row.
-const MISSED_TRIP_SOURCE_REF =
-  `CONCAT(N'MonitoredMissedTrips:',ISNULL(m.source_system,N'gtfs'),N':',ISNULL(m.source_record_id,m.trip_id),N'|',m.service_date)`;
+// The same reference the candidate poll builds, from one definition: if the two
+// differed the poll would raise a second occurrence for a trip this link already
+// raised, and UX_CO_SourceRef would reject the poll's whole MERGE.
+const MISSED_TRIP_SOURCE_REF = missedTripSourceRefSql("m");
 
 interface MissedTripReview {
   tripId: string;

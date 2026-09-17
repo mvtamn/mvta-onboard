@@ -8,21 +8,21 @@
 // SuggestedAlerts. Gated to Publisher/Admin plus the dedicated OCC.Compliance
 // role, so a Compliance-only user can complete the review workflow.
 //
-// A confirmed review also lands the trip in that service month's performance
-// assessment, in this same transaction. The reviewer's `attribution` answers
+// The review is an act on the case through the Missed-trip case module, which
+// records it and its history and, in the same transaction, hands a confirmed
+// trip from a promoted detector to that service month's performance
+// assessment. The reviewer's `attribution` answers
 // the second question Attachment G needs - was this the contractor's error, an
 // excusable delay, or MVTA-directed - so one sitting settles both, instead of
 // the old path where the candidate poll raised an `undetermined` row minutes
 // later and someone re-reviewed it in a different module. See
 // lib/assessment/occurrenceIntake.ts for why the link never fails the review.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
-import { getPool, sql } from "../lib/db";
+import { getPool } from "../lib/db";
 import { requireRole, PUBLISH_ROLES } from "../lib/auth";
 import { validateMissedTripValidation } from "../lib/validation";
-import {
-  linkMissedTripOccurrence, OCCURRENCE_LINK_EXPLANATIONS,
-  type OccurrenceAttribution, type OccurrenceLinkOutcome,
-} from "../lib/assessment/occurrenceIntake";
+import type { OccurrenceAttribution } from "../lib/assessment/occurrenceIntake";
+import { actOnMissedTripCase, handOffExplanation } from "../lib/missedTripCase";
 
 app.http("missedTripsValidate", {
   route: "missed-trips/validate",
@@ -48,86 +48,24 @@ app.http("missedTripsValidate", {
 
     const tripId = body.trip_id as string;
     const serviceDate = body.service_date as string;
-    const validationStatus = body.validation_status as string;
-    const notes = (body.notes as string | undefined) ?? null;
+    const validationStatus = body.validation_status as "confirmed" | "false_positive";
     const reasonCode = body.reason_code as string;
-    const attribution = ((body.attribution as OccurrenceAttribution | undefined) ?? "undetermined");
-    const validatedBy = authResult.principal.userDetails ?? "onboard-console";
-
-    let assessment: OccurrenceLinkOutcome = { linked: false, reason: "schema_not_ready" };
     try {
-      const pool = await getPool();
-      const tx = new sql.Transaction(pool);
-      await tx.begin();
-      try {
-        const currentReq = new sql.Request(tx);
-        currentReq.input("trip_id", sql.NVarChar, tripId);
-        currentReq.input("service_date", sql.NVarChar, serviceDate);
-        const current = await currentReq.query<{ validation_status: string }>(`
-          SELECT validation_status
-          FROM MonitoredMissedTrips WITH (UPDLOCK, HOLDLOCK)
-          WHERE trip_id = @trip_id AND service_date = @service_date
-        `);
-        const previousStatus = current.recordset[0]?.validation_status;
-        if (!previousStatus) {
-          await tx.rollback();
-          return { status: 404, jsonBody: { error: "Missed trip not found" } };
-        }
-        const writeReq = new sql.Request(tx);
-        writeReq.input("trip_id", sql.NVarChar, tripId);
-        writeReq.input("service_date", sql.NVarChar, serviceDate);
-        writeReq.input("validation_status", sql.NVarChar, validationStatus);
-        writeReq.input("validated_by", sql.NVarChar, validatedBy);
-        writeReq.input("notes", sql.NVarChar, notes);
-        writeReq.input("reason_code", sql.NVarChar(30), reasonCode);
-        writeReq.input("previous_validation_status", sql.NVarChar, previousStatus);
-        await writeReq.query(`
-          UPDATE MonitoredMissedTrips
-          SET validation_status = @validation_status,
-              validated_by = @validated_by,
-              validated_at = SYSUTCDATETIME(),
-              notes = @notes,
-              reason_code = @reason_code,
-              data_quality_status = CASE
-                WHEN @validation_status = 'confirmed' THEN 'source_verified'
-                ELSE data_quality_status END
-          WHERE trip_id = @trip_id AND service_date = @service_date;
-
-          INSERT INTO MissedTripReviewHistory (
-            trip_id, service_date, previous_validation_status, validation_status,
-            reason_code, notes, reviewed_by
-          )
-          VALUES (
-            @trip_id, @service_date, @previous_validation_status, @validation_status,
-            @reason_code, @notes, @validated_by
-          );
-        `);
-        // Inside the same transaction: either the review and its assessment
-        // consequence both land, or neither does. A reviewer must never see a
-        // confirmed trip whose occurrence silently failed to be raised.
-        assessment = await linkMissedTripOccurrence(tx, {
-          tripId, serviceDate, validationStatus: validationStatus as "confirmed" | "false_positive",
-          attribution, actor: validatedBy,
-          note: validationStatus === "false_positive"
-            ? `Missed trip review recorded a false positive (${reasonCode}).`
-            : notes ?? `Attribution recorded at review as ${attribution}.`,
-        });
-        await tx.commit();
-      } catch (err) {
-        try {
-          await tx.rollback();
-        } catch {
-          /* transaction already completed */
-        }
-        throw err;
-      }
+      const outcome = await actOnMissedTripCase(await getPool(), { tripId, serviceDate }, {
+        act: "record_review",
+        outcome: validationStatus,
+        reasonCode,
+        notes: (body.notes as string | undefined) ?? null,
+        attribution: (body.attribution as OccurrenceAttribution | undefined) ?? "undetermined",
+      }, { kind: "person", name: authResult.principal.userDetails ?? "onboard-console" });
+      if (!outcome.ok) return { status: 404, jsonBody: { error: "Missed trip not found" } };
+      const handOff = outcome.handOff;
       return {
         status: 200,
         jsonBody: {
           trip_id: tripId, service_date: serviceDate, validation_status: validationStatus, reason_code: reasonCode,
-          assessment: assessment.linked
-            ? assessment
-            : { ...assessment, explanation: OCCURRENCE_LINK_EXPLANATIONS[assessment.reason] },
+          classification: outcome.classification,
+          assessment: !handOff || handOff.linked ? handOff : { ...handOff, explanation: handOffExplanation(handOff) },
         },
       };
     } catch (err) {

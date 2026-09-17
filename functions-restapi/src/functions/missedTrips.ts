@@ -5,6 +5,7 @@
 // writes come from gtfsMissedTripsPoll.ts. Mirrors tripDelays.ts's shape.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
+import { missedTripCaseSql, missedTripSourceRefSql } from "../lib/missedTripCase";
 import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
 import { missedTripFeedDependencies } from "../lib/kpiTrust";
 import { loadKpiFeedHealthRecords } from "../lib/kpiTrustStore";
@@ -81,35 +82,18 @@ app.http("missedTripsList", {
       const limit = Number.isInteger(requestedLimit) ? Math.min(2000, Math.max(1, requestedLimit)) : 200;
       const requestedOffset = Number(request.query.get("offset") ?? "0");
       const offset = Number.isInteger(requestedOffset) ? Math.max(0, requestedOffset) : 0;
-      // The review queue excludes legacy_unverified rows. They were produced by
-      // the superseded detector - the one that compared agency-local schedule
-      // times against UTC and resolved any late arrival, however late - so
-      // their outcome is unknown rather than false, and nothing a reviewer can
-      // do recovers it: the evidence needed to decide them was never recorded.
-      // Leaving them in the queue buried the candidates that can be reviewed
-      // (543 items, of which about 526 were legacy at the time this was added),
-      // which is the state Phase 0 of plans/missed-trip-feature-finish-plan.md
-      // set out to avoid. They stay in the table for audit and are still
-      // returned by view=all; the queue reports how many it left out.
+      // What is in the queue, held, concluded or legacy is the Missed-trip case
+      // module's classification (lib/missedTripCase/classify.ts), CROSS APPLYed
+      // as `mtc` onto every row here - the list and its totals read the same
+      // columns, so a tile can never count rows its list omits.
       //
-      // Held rows are excluded the same way, by the same reasoning. A row with
-      // an undecided_reason is one the detector has not finished deciding -
-      // either it is waiting for a second poll to agree, or something other
-      // than the trip explains its silence (migration 121). Neither is a
-      // finding, and neither is a thing a reviewer can act on.
-      const heldReady = await pool.request().query<{ ready: number }>(`
-        SELECT CASE WHEN COL_LENGTH('dbo.MonitoredMissedTrips', 'undecided_reason') IS NULL
-          THEN 0 ELSE 1 END AS ready
-      `);
-      const heldReadable = heldReady.recordset[0]?.ready === 1;
-      const notHeld = heldReadable ? " AND mmt.undecided_reason IS NULL" : "";
+      // Legacy missed-trip records stay out of the queue: they came from the
+      // superseded detector and their outcome is unknown, not false. Held cases
+      // (Awaiting evidence) stay out too - waiting on a second poll, or silent
+      // for a reason other than the trip. Both remain available in view=all.
       const whereClause =
-        view === "queue"
-          ? "WHERE mmt.validation_status = 'unreviewed' AND mmt.status <> 'resolved'"
-            + " AND mmt.data_quality_status NOT IN ('legacy_unverified', 'unknown_data_gap')"
-            + notHeld
-          : view === "history"
-            ? "WHERE mmt.validation_status <> 'unreviewed' OR mmt.status = 'resolved'"
+        view === "queue" ? "WHERE mtc.in_queue = 1"
+          : view === "history" ? "WHERE mtc.concluded = 1"
             : "";
       // Where each reviewed trip ended up in the performance assessment. The
       // join is by source_ref, the same string occurrenceIntake.ts and the
@@ -129,8 +113,7 @@ app.http("missedTripsList", {
       const occurrenceJoin = occurrencesReady.recordset[0]?.ready
         ? `
         LEFT JOIN ComplianceOccurrences occ
-          ON occ.source_ref = CONCAT(N'MonitoredMissedTrips:', ISNULL(mmt.source_system, N'gtfs'), N':',
-                                     ISNULL(mmt.source_record_id, mmt.trip_id), N'|', mmt.service_date)
+          ON occ.source_ref = ${missedTripSourceRefSql("mmt")}
         LEFT JOIN AssessmentPeriods period
           ON period.contractor_id = occ.contractor_id AND period.service_month = occ.service_month`
         : "";
@@ -142,13 +125,13 @@ app.http("missedTripsList", {
                mmt.grace_deadline_at, mmt.status, mmt.detection_type, mmt.detected_late_arrival_at,
                mmt.suggested_alert_id, mmt.first_seen_watching_at, mmt.last_checked_at,
                mmt.validation_status, mmt.reason_code, mmt.validated_by, mmt.validated_at, mmt.notes,
-               mmt.detector_version, mmt.data_quality_status,
-               ${heldReadable ? "mmt.undecided_reason" : "CAST(NULL AS NVARCHAR(60)) AS undecided_reason"},
+               mmt.detector_version, mmt.data_quality_status, mmt.undecided_reason,
+               mtc.lifecycle, mtc.evidence_finding, mtc.review_outcome, mtc.held_reason, mtc.in_queue,
                mmt.source_system, mmt.source_record_id,
                sme.condition_late_start, sme.condition_superseded, sme.condition_late_arrival,
                sme.start_delay_seconds, sme.arrival_delay_seconds,
                td.direction_label${occurrenceColumns}
-        FROM MonitoredMissedTrips mmt
+        FROM MonitoredMissedTrips mmt ${missedTripCaseSql("mmt")}
         LEFT JOIN GtfsTripDirections td ON td.trip_id = mmt.trip_id
         LEFT JOIN SpareMissedTripEvaluations sme
           ON mmt.source_system = 'spare' AND sme.request_id = mmt.source_record_id${occurrenceJoin}
@@ -160,22 +143,12 @@ app.http("missedTripsList", {
         OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
       `);
       const missedTrips = result.recordset;
-      // Aggregates use the unqualified column names (no `mmt.` alias), so the
-      // queue predicate is rebuilt rather than reused.
-      const notHeldAggregate = heldReadable ? " AND undecided_reason IS NULL" : "";
-      const heldColumns = heldReadable
-        ? `,
-          SUM(CASE WHEN undecided_reason = 'awaiting_confirmation' THEN 1 ELSE 0 END) AS pending_confirmation_count,
-          SUM(CASE WHEN undecided_reason IS NOT NULL AND undecided_reason <> 'awaiting_confirmation' THEN 1 ELSE 0 END) AS held_undecided_count`
-        : `,
-          CAST(0 AS INT) AS pending_confirmation_count, CAST(0 AS INT) AS held_undecided_count`;
       const totals = await pool.request().query<{
         pending_confirmation_count: number;
         held_undecided_count: number;
         total_count: number;
         active_count: number;
         resolved_count: number;
-        unreviewed_count: number;
         queue_count: number;
         history_count: number;
         legacy_count: number;
@@ -187,31 +160,22 @@ app.http("missedTripsList", {
       }>(`
         SELECT
           COUNT(*) AS total_count,
-          SUM(CASE WHEN status <> 'resolved' THEN 1 ELSE 0 END) AS active_count,
-          SUM(CASE WHEN status = 'resolved' THEN 1 ELSE 0 END) AS resolved_count,
-          -- Both must match the queue's own WHERE clause above, including the
-          -- legacy exclusion: these back the "Unreviewed" tile that sits over
-          -- the queue list, and a tile that counts rows the list omits is the
-          -- mismatch this endpoint's aggregates were introduced to remove.
-          SUM(CASE WHEN validation_status = 'unreviewed' AND status <> 'resolved'
-                    AND data_quality_status NOT IN ('legacy_unverified', 'unknown_data_gap')${notHeldAggregate} THEN 1 ELSE 0 END) AS unreviewed_count,
-          SUM(CASE WHEN validation_status = 'unreviewed' AND status <> 'resolved'
-                    AND data_quality_status NOT IN ('legacy_unverified', 'unknown_data_gap')${notHeldAggregate} THEN 1 ELSE 0 END) AS queue_count,
-          SUM(CASE WHEN validation_status <> 'unreviewed' OR status = 'resolved' THEN 1 ELSE 0 END) AS history_count,
-          SUM(CASE WHEN data_quality_status = 'legacy_unverified' THEN 1 ELSE 0 END) AS legacy_count,
-          -- Trips the detector could not decide because the vehicle-position
-          -- feed was not current when their grace deadline passed. Reported so
-          -- the console can say how much of the day went unmeasured instead of
-          -- silently under-counting.
-          SUM(CASE WHEN data_quality_status = 'unknown_data_gap' THEN 1 ELSE 0 END) AS data_gap_count,
-          SUM(CASE WHEN validation_status = 'confirmed' THEN 1 ELSE 0 END) AS confirmed_count,
-          SUM(CASE WHEN validation_status = 'false_positive' THEN 1 ELSE 0 END) AS false_positive_count,
-          -- Legacy rows excluded here too: a route counted only because the
-          -- superseded detector flagged it is not a route known to be affected.
-          COUNT(DISTINCT CASE WHEN data_quality_status NOT IN ('legacy_unverified', 'unknown_data_gap')${notHeldAggregate}
-                    THEN route_id END) AS routes_affected_count,
-          MAX(last_checked_at) AS last_checked_at${heldColumns}
-        FROM MonitoredMissedTrips
+          SUM(CASE WHEN mtc.concluded = 0 THEN 1 ELSE 0 END) AS active_count,
+          SUM(CASE WHEN mtc.concluded = 1 THEN 1 ELSE 0 END) AS resolved_count,
+          SUM(CAST(mtc.in_queue AS INT)) AS queue_count,
+          SUM(CAST(mtc.concluded AS INT)) AS history_count,
+          SUM(CAST(mtc.legacy AS INT)) AS legacy_count,
+          -- Trips the detector could not decide because the evidence was not
+          -- there to decide them, so the console can say how much went
+          -- unmeasured instead of silently under-counting.
+          SUM(CASE WHEN mtc.evidence_finding = N'indeterminate' THEN 1 ELSE 0 END) AS data_gap_count,
+          SUM(CASE WHEN mtc.review_outcome = N'confirmed_missed_trip' THEN 1 ELSE 0 END) AS confirmed_count,
+          SUM(CASE WHEN mtc.review_outcome = N'timely_service' THEN 1 ELSE 0 END) AS false_positive_count,
+          COUNT(DISTINCT CASE WHEN mtc.flagged_missed = 1 THEN mmt.route_id END) AS routes_affected_count,
+          MAX(mmt.last_checked_at) AS last_checked_at,
+          SUM(CASE WHEN mtc.held_reason = N'awaiting_confirmation' THEN 1 ELSE 0 END) AS pending_confirmation_count,
+          SUM(CASE WHEN mtc.held = 1 AND mtc.held_reason <> N'awaiting_confirmation' THEN 1 ELSE 0 END) AS held_undecided_count
+        FROM MonitoredMissedTrips mmt ${missedTripCaseSql("mmt")}
       `);
       const total = totals.recordset[0];
       // Resolved through the shared KPI trust contracts rather than a local
@@ -248,7 +212,7 @@ app.http("missedTripsList", {
             total_count: total?.total_count ?? 0,
             active_count: total?.active_count ?? 0,
             resolved_count: total?.resolved_count ?? 0,
-            unreviewed_count: total?.unreviewed_count ?? 0,
+            unreviewed_count: total?.queue_count ?? 0,
             confirmed_count: total?.confirmed_count ?? 0,
             false_positive_count: total?.false_positive_count ?? 0,
             routes_affected_count: total?.routes_affected_count ?? 0,

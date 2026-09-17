@@ -4,6 +4,7 @@ import type { KpiTrustState } from "../lib/kpiTrust";
 import { loadKpiTrust } from "../lib/kpiTrustStore";
 import { agencyServiceDate } from "../lib/missedTripTime";
 import { DEPARTURE_OUTCOME_STATUSES } from "../lib/fixedRouteDepartureOutcome";
+import { missedTripCaseSql, missedTripSourceRefSql } from "../lib/missedTripCase";
 
 // How late a pullout must be before it is worth a contractor's review.
 //
@@ -303,9 +304,9 @@ app.timer("complianceCandidatesPoll", {
           SELECT standard.id standard_id,@contractor contractor_id,LEFT(m.service_date,8) service_date,
             1 quantity,CAST(NULL AS INT) duration_days,CAST(NULL AS NVARCHAR(50)) qualifier_code,
             CONCAT(N'Missed trip ',m.trip_id,N' on route ',m.route_id) description,
-            CONCAT(N'MonitoredMissedTrips:',ISNULL(m.source_system,N'gtfs'),N':',ISNULL(m.source_record_id,m.trip_id),N'|',m.service_date) source_ref
-          FROM MonitoredMissedTrips m CROSS JOIN ContractorPerformanceStandards standard
-          WHERE standard.code='MISSED_TRIPS_FR' AND m.validation_status='confirmed' AND CONVERT(date,m.service_date,112) BETWEEN @agreement_start AND @agreement_end
+            ${missedTripSourceRefSql("m")} source_ref
+          FROM MonitoredMissedTrips m ${missedTripCaseSql("m")} CROSS JOIN ContractorPerformanceStandards standard
+          WHERE standard.code='MISSED_TRIPS_FR' AND mtc.counts_toward_assessment=1 AND CONVERT(date,m.service_date,112) BETWEEN @agreement_start AND @agreement_end
             AND ((ISNULL(m.source_system,N'gtfs')=N'spare' AND @allow_spare_missed_trips=1)
               OR (ISNULL(m.source_system,N'gtfs')<>N'spare' AND @allow_fixed_missed_trips=1))
         ) source ON target.source_ref=source.source_ref

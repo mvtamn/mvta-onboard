@@ -1,0 +1,153 @@
+// One classification of a Missed-trip case, in TypeScript and in SQL.
+//
+// Every reader asks the same questions - is this in the review queue, is it
+// held, does it count as missed, does it count toward an assessment - and each
+// used to answer them with its own WHERE clause over four status columns. They
+// now read the answer: classifyMissedTripCase for a row in hand, and
+// missedTripCaseSql for a query, which CROSS APPLYs the same columns onto
+// MonitoredMissedTrips. missedTripCase.db.contract.test.ts runs both over the
+// same rows and fails if they disagree.
+import {
+  MISSED_TRIP_DETECTORS,
+  type MissedTripClassification,
+  type MissedTripDetector,
+  type MissedTripEvidenceFinding,
+  type MissedTripLifecycle,
+  type MissedTripReviewOutcome,
+} from "./types";
+
+// The stored columns classification depends on.
+export interface ClassifiableCase {
+  status: string;
+  validation_status: string;
+  data_quality_status: string;
+  detection_type: string | null;
+  source_system: string | null;
+  undecided_reason: string | null;
+  grace_deadline_at: Date;
+  detected_late_arrival_at: Date | null;
+}
+
+// Detectors out of Shadow detection, from MISSED_TRIP_PROMOTED_DETECTORS
+// (comma-separated detector families). Unknown names are ignored, so a typo
+// promotes nothing rather than something unintended.
+export function promotedDetectors(value = process.env.MISSED_TRIP_PROMOTED_DETECTORS): ReadonlySet<MissedTripDetector> {
+  const known = new Set<string>(MISSED_TRIP_DETECTORS);
+  return new Set(
+    (value ?? "").split(",").map((v) => v.trim()).filter((v): v is MissedTripDetector => known.has(v)),
+  );
+}
+
+export function detectorOf(row: Pick<ClassifiableCase, "source_system" | "detection_type">): MissedTripDetector {
+  if (row.source_system === "spare") return "spare";
+  return row.detection_type === "explicit_cancellation" ? "gtfs_cancellation" : "gtfs_silent_no_show";
+}
+
+export function classifyMissedTripCase(row: ClassifiableCase, promoted: ReadonlySet<MissedTripDetector> = promotedDetectors()): MissedTripClassification {
+  const legacy = row.data_quality_status === "legacy_unverified";
+  const reviewOutcome: MissedTripReviewOutcome | null =
+    row.validation_status === "confirmed" ? "confirmed_missed_trip"
+      : row.validation_status === "false_positive" ? "timely_service"
+        : null;
+  const reviewed = row.validation_status !== "unreviewed";
+  const resolved = row.status === "resolved";
+  const heldColumns = row.undecided_reason !== null || row.data_quality_status === "unknown_data_gap";
+  const held = !legacy && !reviewed && !resolved && heldColumns;
+
+  const lifecycle: MissedTripLifecycle =
+    legacy ? "legacy"
+      : reviewed ? "reviewed"
+        : resolved ? "closed_by_evidence"
+          : held ? "awaiting_evidence"
+            : row.status === "watching" ? "open"
+              : "ready_for_review";
+
+  const detector = detectorOf(row);
+  const evidenceFinding: MissedTripEvidenceFinding =
+    resolved && !reviewed ? "timely_service"
+      : detector === "spare" ? "on_demand_service_failure"
+        : detector === "gtfs_cancellation" ? "advance_cancellation"
+          : row.data_quality_status === "unknown_data_gap" ? "indeterminate"
+            : row.detected_late_arrival_at !== null && row.detected_late_arrival_at.getTime() > row.grace_deadline_at.getTime() ? "late_trip_start"
+              : "suspected_no_show";
+
+  const countsAsMissed = !legacy && reviewOutcome === "confirmed_missed_trip";
+  return {
+    lifecycle,
+    evidence_finding: evidenceFinding,
+    review_outcome: reviewOutcome,
+    detector,
+    held_reason: held ? row.undecided_reason ?? "unknown_data_gap" : null,
+    legacy,
+    held,
+    in_queue: lifecycle === "ready_for_review",
+    concluded: reviewed || resolved,
+    flagged_missed: lifecycle === "ready_for_review" || countsAsMissed,
+    counts_as_missed: countsAsMissed,
+    counts_toward_assessment: countsAsMissed && promoted.has(detector),
+  };
+}
+
+function bit(expression: string): string {
+  return `CAST(CASE WHEN ${expression} THEN 1 ELSE 0 END AS BIT)`;
+}
+
+// CROSS APPLYs the classification onto `alias` (a MonitoredMissedTrips row) as
+// `as`: SELECT ... FROM MonitoredMissedTrips m ${missedTripCaseSql("m")}
+// WHERE mtc.in_queue = 1. Boolean columns are BIT. Detector names in the
+// promotion list are checked against the known set before they reach SQL.
+export function missedTripCaseSql(alias: string, as = "mtc", promoted: ReadonlySet<MissedTripDetector> = promotedDetectors()): string {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(alias) || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(as)) {
+    throw new TypeError("missedTripCaseSql aliases must be plain identifiers");
+  }
+  const base = `${as}_base`;
+  const known = new Set<string>(MISSED_TRIP_DETECTORS);
+  const promotedList = [...promoted].filter((d) => known.has(d)).map((d) => `N'${d}'`);
+  const promotedPredicate = promotedList.length ? `${base}.detector IN (${promotedList.join(",")})` : "1 = 0";
+  return `
+    CROSS APPLY (SELECT
+      CASE WHEN ${alias}.data_quality_status = N'legacy_unverified' THEN 1 ELSE 0 END AS legacy,
+      CASE WHEN ${alias}.validation_status <> N'unreviewed' THEN 1 ELSE 0 END AS reviewed,
+      CASE WHEN ${alias}.status = N'resolved' THEN 1 ELSE 0 END AS resolved,
+      CASE WHEN ${alias}.data_quality_status <> N'legacy_unverified' AND ${alias}.validation_status = N'unreviewed'
+                AND ${alias}.status <> N'resolved'
+                AND (${alias}.undecided_reason IS NOT NULL OR ${alias}.data_quality_status = N'unknown_data_gap')
+           THEN 1 ELSE 0 END AS held,
+      CASE WHEN ${alias}.source_system = N'spare' THEN N'spare'
+           WHEN ${alias}.detection_type = N'explicit_cancellation' THEN N'gtfs_cancellation'
+           ELSE N'gtfs_silent_no_show' END AS detector,
+      CASE ${alias}.validation_status WHEN N'confirmed' THEN N'confirmed_missed_trip'
+           WHEN N'false_positive' THEN N'timely_service' END AS review_outcome
+    ) ${base}
+    CROSS APPLY (SELECT
+      CASE WHEN ${base}.legacy = 1 THEN N'legacy'
+           WHEN ${base}.reviewed = 1 THEN N'reviewed'
+           WHEN ${base}.resolved = 1 THEN N'closed_by_evidence'
+           WHEN ${base}.held = 1 THEN N'awaiting_evidence'
+           WHEN ${alias}.status = N'watching' THEN N'open'
+           ELSE N'ready_for_review' END AS lifecycle,
+      CASE WHEN ${base}.resolved = 1 AND ${base}.reviewed = 0 THEN N'timely_service'
+           WHEN ${base}.detector = N'spare' THEN N'on_demand_service_failure'
+           WHEN ${base}.detector = N'gtfs_cancellation' THEN N'advance_cancellation'
+           WHEN ${alias}.data_quality_status = N'unknown_data_gap' THEN N'indeterminate'
+           WHEN ${alias}.detected_late_arrival_at > ${alias}.grace_deadline_at THEN N'late_trip_start'
+           ELSE N'suspected_no_show' END AS evidence_finding,
+      ${base}.review_outcome AS review_outcome,
+      ${base}.detector AS detector,
+      CASE WHEN ${base}.held = 1 THEN ISNULL(${alias}.undecided_reason, N'unknown_data_gap') END AS held_reason,
+      CAST(${base}.legacy AS BIT) AS legacy,
+      CAST(${base}.held AS BIT) AS held,
+      ${bit(`${base}.legacy = 0 AND ${base}.reviewed = 0 AND ${base}.resolved = 0 AND ${base}.held = 0 AND ${alias}.status <> N'watching'`)} AS in_queue,
+      ${bit(`${base}.reviewed = 1 OR ${base}.resolved = 1`)} AS concluded,
+      ${bit(`${base}.legacy = 0 AND ((${base}.reviewed = 0 AND ${base}.resolved = 0 AND ${base}.held = 0 AND ${alias}.status <> N'watching') OR ${base}.review_outcome = N'confirmed_missed_trip')`)} AS flagged_missed,
+      ${bit(`${base}.legacy = 0 AND ${base}.review_outcome = N'confirmed_missed_trip'`)} AS counts_as_missed,
+      ${bit(`${base}.legacy = 0 AND ${base}.review_outcome = N'confirmed_missed_trip' AND ${promotedPredicate}`)} AS counts_toward_assessment
+    ) ${as}`;
+}
+
+// The case's reference on a ComplianceOccurrence. Shared by the review-time
+// occurrence link and the candidate poll so the two can never drift.
+export function missedTripSourceRefSql(alias: string): string {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(alias)) throw new TypeError("missedTripSourceRefSql alias must be a plain identifier");
+  return `CONCAT(N'MonitoredMissedTrips:',ISNULL(${alias}.source_system,N'gtfs'),N':',ISNULL(${alias}.source_record_id,${alias}.trip_id),N'|',${alias}.service_date)`;
+}
