@@ -13,7 +13,7 @@ export interface ActOffer {
 
 // Refusals that mean "not yet" rather than "does not apply": the control is
 // shown, disabled, with the reason, so the person knows what to do first.
-const HELD_CODES = new Set(["conflict_unresolved", "re_review_outstanding", "legacy_approved_state"]);
+const HELD_CODES = new Set(["conflict_unresolved", "re_review_outstanding"]);
 
 const HIDDEN: ActOffer = { show: false, enabled: false, reason: null };
 

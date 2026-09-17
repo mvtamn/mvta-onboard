@@ -48,7 +48,6 @@ test("Avail entry results by Workflow state and fulfillment mode", () => {
     ["avail", "closed", { act: "avail_entry", result: "conflict" }, "not_allowed_from_state", null],
     ["fixed_route_manual", "fulfilled", { act: "avail_entry", result: "entered" }, "not_avail_backed", null],
     ["mobility_manual", "fulfilled", { act: "avail_entry", result: "not_entered" }, "not_avail_backed", null],
-    ["avail", "approved", { act: "avail_entry", result: "entered" }, "legacy_approved_state", null],
   ];
   for (const [mode, state, act, code, to] of rows) {
     const decision = decide(snapshot({ fulfillment_mode: mode as WorkflowSnapshot["fulfillment_mode"], lifecycle_state: state }), act, person);
@@ -102,7 +101,6 @@ test("closing is allowed from any open state, once, and recorded", () => {
     assert.deepEqual([decision.history.event_type, decision.history.from_state, decision.history.to_state], ["state_transition", state, "closed"]);
   }
   assert.equal(refusal(decide(snapshot({ lifecycle_state: "closed" }), { act: "close", reason: "again" }, person)), "not_allowed_from_state");
-  assert.equal(refusal(decide(snapshot({ lifecycle_state: "approved" }), { act: "close", reason: "x" }, person)), "legacy_approved_state");
 });
 
 test("a conflict override needs current conflicts on an open Detour and covers exactly those", () => {
@@ -175,7 +173,6 @@ test("next step follows the decision, including a fulfilled Avail Detour", () =>
     [{ fulfillment_mode: "avail", lifecycle_state: "fulfilled" }, "in_avail"],
     [{ fulfillment_mode: "fixed_route_manual", lifecycle_state: "fulfilled" }, "ready_for_manual_operations"],
     [{ fulfillment_mode: "mobility_manual", lifecycle_state: "fulfilled", review_status: "needs_review" }, "needs_occ_review"],
-    [{ lifecycle_state: "approved" }, "needs_occ_review"],
     [{ lifecycle_state: "closed", review_status: "needs_review" }, "closed"],
   ];
   for (const [overrides, step] of rows) assert.equal(nextStep(snapshot(overrides)), step, JSON.stringify(overrides));

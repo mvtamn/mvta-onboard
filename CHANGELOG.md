@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.224] - 2026-09-17
+## [1.5.225] - 2026-09-17
 
 - **Administration is an area home, a breadcrumb and quick find, not a second menu.** The 19-link side panel in `components/AdminLayout.tsx` (seven Access & Identity links, four Performance Assessment links, and eight more between them) is gone, and the pages get its width back. Every page now lives in one of five areas, listed once in `components/adminNav.ts`: People & Access (Access & Identity, Subscribers), Service Setup (Service Configuration, Event Administration, Decision Matrix), Standards & Contracts (Service Standards, OTP Compliance, Contractor Performance), Data & Integrations (Integrations & Data Health) and Governance (Governance & Audit). A new page is one entry there.
 - **`/admin` is a home page** (`components/AdminHome.tsx`) with a card per area and a line on each page. It used to redirect to Service Configuration, which an Access Administrator cannot open.
@@ -14,6 +14,12 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **The main sidebar's Administration group is one link** to `/admin`, instead of eight.
 - **Access pages are offered only to the roles their routes accept.** The old panel listed Access & Identity, Subscribers and Governance & Audit to every Operations Administrator, and each one showed "Restricted" unless `VITE_ACCESS_ADMIN_FALLBACK` was on. The menu now uses the same role list as the routes. The routes and the API are unchanged.
 - **Verified.** `components/AdminLayout.test.tsx` has 12 tests: the home page by role, the breadcrumb and both tab strips, Service Standards not matching Service Configuration, the area switcher, and quick find (Ctrl+K, Enter to open, Esc to close, no page the role cannot open, ranking). All 70 console test files pass and the typecheck is clean. Checked in the mock-auth console at 1440px and 375px, light and dark.
+
+## [1.5.224] - 2026-09-17
+
+- **`approved` is gone from the Detour workflow code.** The `legacy_approved_state` refusal and `LEGACY_APPROVED_STATE` are removed from `lib/detourWorkflow/`, `nextStep` no longer special-cases it, `DetourLifecycleState` drops it in `functions-restapi/src/lib/types.ts` and `@mvta/shared`, `DETOUR_LIFECYCLE_LABELS` loses its "Needs OCC review" entry, and the console's held-act codes no longer list it. Checked read-only against dev on 2026-09-17: 0 of 11 Detours hold `approved`, and every `source = 'avail'` Detour is already `fulfillment_mode = 'avail'` (migration 041 set it), so nothing on dev relied on the refusal.
+- **Migration 122 is still worth running on dev.** It has not run there - `CK_Detours_LifecycleState` still admits `approved` and no `migration-122` history rows exist. With the data already in shape it will print `0` and `0` and only tighten the constraint.
+- **Verified.** The `approved` rows in `decide.test.ts` and the contract subtest that expected the refusal are removed; the migration 122 contract test still seeds `approved` rows before applying it. REST API tests pass (1007, 0 fail), console suite passes (601), typechecks clean.
 
 ## [1.5.223] - 2026-09-17
 
