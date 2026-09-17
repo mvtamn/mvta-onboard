@@ -240,7 +240,7 @@ test("Missed-trip cases against SQL Server", skip, async (t) => {
         // NS1, C1, R1, SP1, SP2, RACE, LEG, REV and the review subtests' cases, plus K1-K7 and W1-W3.
         assert.ok(rows.length >= 18);
         assert.deepEqual(
-          rows.filter((r) => /^W/.test(r.trip_id)).map((r) => [r.trip_id, r.lifecycle]).sort(),
+          rows.filter((r) => /^W\d$/.test(r.trip_id)).map((r) => [r.trip_id, r.lifecycle]).sort(),
           [["W1", "awaiting_evidence"], ["W2", "ready_for_review"], ["W3", "awaiting_evidence"]],
         );
         for (const row of rows) {

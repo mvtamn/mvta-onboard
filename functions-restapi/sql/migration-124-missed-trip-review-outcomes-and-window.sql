@@ -55,7 +55,8 @@ BEGIN
     SELECT dc.name FROM sys.default_constraints dc
     WHERE dc.parent_object_id = OBJECT_ID('dbo.MonitoredMissedTrips')
       AND dc.parent_column_id = COLUMNPROPERTY(OBJECT_ID('dbo.MonitoredMissedTrips'), 'validation_status', 'ColumnId'));
-  IF @default IS NOT NULL EXEC (N'ALTER TABLE dbo.MonitoredMissedTrips DROP CONSTRAINT ' + QUOTENAME(@default));
+  DECLARE @drop_default NVARCHAR(400) = N'ALTER TABLE dbo.MonitoredMissedTrips DROP CONSTRAINT ' + QUOTENAME(@default);
+  IF @default IS NOT NULL EXEC sp_executesql @drop_default;
   ALTER TABLE dbo.MonitoredMissedTrips ALTER COLUMN validation_status NVARCHAR(30) NOT NULL;
   ALTER TABLE dbo.MonitoredMissedTrips ADD CONSTRAINT DF_MonitoredMissedTrips_ValidationStatus DEFAULT 'unreviewed' FOR validation_status;
 END;
