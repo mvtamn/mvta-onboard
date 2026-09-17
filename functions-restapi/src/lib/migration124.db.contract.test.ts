@@ -6,7 +6,8 @@ import { parseConnectionString, sql } from "./db";
 import { classifyMissedTripCase } from "./missedTripCase/classify";
 
 // Migration 124 against SQL Server, applied twice to tables in the shape
-// migrations 011-121 left them: false_positive becomes Timely service once,
+// migrations 011-121 left them (status columns NVARCHAR(20), with their CHECK
+// and DEFAULT constraints): the columns widen, false_positive becomes Timely service once,
 // with one note; the new columns and outcomes are accepted; and vw_MissedTrip
 // keeps its columns and publishes the Missed-trip case module's classification
 // exactly as classifyMissedTripCase computes it.
@@ -96,6 +97,14 @@ test("migration 124 names false_positive Timely service once, adds the window an
     await pool.request().batch(BEFORE);
     await applyMigration(pool, "migration-124-missed-trip-review-outcomes-and-window.sql");
     await applyMigration(pool, "migration-124-missed-trip-review-outcomes-and-window.sql");
+
+    const widths = (await pool.request().query<{ cases: number; history: number; previous: number; defaults: number }>(`
+      SELECT COL_LENGTH('dbo.MonitoredMissedTrips', 'validation_status') cases,
+             COL_LENGTH('dbo.MissedTripReviewHistory', 'validation_status') history,
+             COL_LENGTH('dbo.MissedTripReviewHistory', 'previous_validation_status') previous,
+             (SELECT COUNT(*) FROM sys.default_constraints WHERE parent_object_id = OBJECT_ID('dbo.MonitoredMissedTrips')
+                AND parent_column_id = COLUMNPROPERTY(OBJECT_ID('dbo.MonitoredMissedTrips'), 'validation_status', 'ColumnId')) defaults`)).recordset[0];
+    assert.deepEqual(widths, { cases: 60, history: 60, previous: 60, defaults: 1 });
 
     const cases = (await pool.request().query<{ trip_id: string; validation_status: string }>(
       "SELECT trip_id, validation_status FROM dbo.MonitoredMissedTrips ORDER BY trip_id",

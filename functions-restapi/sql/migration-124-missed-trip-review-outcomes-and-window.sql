@@ -4,6 +4,7 @@
 --
 -- 1. Four Missed-trip review outcomes (CONTEXT.md): Confirmed missed trip
 --    ('confirmed'), Timely service, Partial-service failure and Indeterminate.
+--    The status columns widen from NVARCHAR(20) to NVARCHAR(30) to hold them.
 --    'false_positive' meant "not a missed trip", which is Timely service, so
 --    existing rows are rewritten to 'timely_service'; their review history rows
 --    get a note saying so. The CHECK constraints still admit 'false_positive',
@@ -41,6 +42,35 @@ IF COL_LENGTH('dbo.MissedTripReviewHistory', 'review_kind') IS NULL
   ALTER TABLE dbo.MissedTripReviewHistory ADD review_kind NVARCHAR(20) NULL;
 IF COL_LENGTH('dbo.MissedTripReviewHistory', 'review_reason') IS NULL
   ALTER TABLE dbo.MissedTripReviewHistory ADD review_reason NVARCHAR(1000) NULL;
+GO
+
+-- 'partial_service_failure' is 23 characters and the status columns are
+-- NVARCHAR(20). A column cannot be widened while a CHECK or DEFAULT depends on
+-- it, so those are dropped here and put back after.
+IF COL_LENGTH('dbo.MonitoredMissedTrips', 'validation_status') < 60
+BEGIN
+  IF EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_MonitoredMissedTrips_ValidationStatus' AND parent_object_id = OBJECT_ID('dbo.MonitoredMissedTrips'))
+    ALTER TABLE dbo.MonitoredMissedTrips DROP CONSTRAINT CK_MonitoredMissedTrips_ValidationStatus;
+  DECLARE @default SYSNAME = (
+    SELECT dc.name FROM sys.default_constraints dc
+    WHERE dc.parent_object_id = OBJECT_ID('dbo.MonitoredMissedTrips')
+      AND dc.parent_column_id = COLUMNPROPERTY(OBJECT_ID('dbo.MonitoredMissedTrips'), 'validation_status', 'ColumnId'));
+  IF @default IS NOT NULL EXEC (N'ALTER TABLE dbo.MonitoredMissedTrips DROP CONSTRAINT ' + QUOTENAME(@default));
+  ALTER TABLE dbo.MonitoredMissedTrips ALTER COLUMN validation_status NVARCHAR(30) NOT NULL;
+  ALTER TABLE dbo.MonitoredMissedTrips ADD CONSTRAINT DF_MonitoredMissedTrips_ValidationStatus DEFAULT 'unreviewed' FOR validation_status;
+END;
+IF COL_LENGTH('dbo.MissedTripReviewHistory', 'validation_status') < 60
+BEGIN
+  IF EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_MissedTripReviewHistory_Status' AND parent_object_id = OBJECT_ID('dbo.MissedTripReviewHistory'))
+    ALTER TABLE dbo.MissedTripReviewHistory DROP CONSTRAINT CK_MissedTripReviewHistory_Status;
+  ALTER TABLE dbo.MissedTripReviewHistory ALTER COLUMN validation_status NVARCHAR(30) NOT NULL;
+END;
+IF COL_LENGTH('dbo.MissedTripReviewHistory', 'previous_validation_status') < 60
+BEGIN
+  IF EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_MissedTripReviewHistory_PreviousStatus' AND parent_object_id = OBJECT_ID('dbo.MissedTripReviewHistory'))
+    ALTER TABLE dbo.MissedTripReviewHistory DROP CONSTRAINT CK_MissedTripReviewHistory_PreviousStatus;
+  ALTER TABLE dbo.MissedTripReviewHistory ALTER COLUMN previous_validation_status NVARCHAR(30) NOT NULL;
+END;
 GO
 
 IF EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_MonitoredMissedTrips_ValidationStatus'

@@ -38,7 +38,7 @@ CREATE TABLE dbo.MonitoredMissedTrips (
   status NVARCHAR(20) NOT NULL DEFAULT 'escalated', detected_late_arrival_at DATETIME2 NULL,
   suggested_alert_id UNIQUEIDENTIFIER NULL,
   first_seen_watching_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(), last_checked_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
-  validation_status NVARCHAR(20) NOT NULL DEFAULT 'unreviewed', validated_by NVARCHAR(200) NULL, validated_at DATETIME2 NULL,
+  validation_status NVARCHAR(30) NOT NULL DEFAULT 'unreviewed', validated_by NVARCHAR(200) NULL, validated_at DATETIME2 NULL,
   notes NVARCHAR(1000) NULL, detection_type NVARCHAR(30) NULL, reason_code NVARCHAR(30) NULL,
   detector_version NVARCHAR(30) NULL, data_quality_status NVARCHAR(30) NOT NULL DEFAULT 'legacy_unverified',
   source_system NVARCHAR(20) NOT NULL DEFAULT 'gtfs', source_record_id NVARCHAR(100) NULL, evidence_json NVARCHAR(MAX) NULL,
@@ -54,7 +54,7 @@ CREATE TABLE dbo.MonitoredMissedTrips (
 CREATE TABLE dbo.MissedTripReviewHistory (
   review_id BIGINT IDENTITY(1,1) PRIMARY KEY,
   trip_id NVARCHAR(100) NOT NULL, service_date NVARCHAR(20) NOT NULL,
-  previous_validation_status NVARCHAR(20) NOT NULL, validation_status NVARCHAR(20) NOT NULL,
+  previous_validation_status NVARCHAR(30) NOT NULL, validation_status NVARCHAR(30) NOT NULL,
   reason_code NVARCHAR(30) NOT NULL, notes NVARCHAR(1000) NULL, reviewed_by NVARCHAR(200) NOT NULL,
   reviewed_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
   review_kind NVARCHAR(20) NULL, review_reason NVARCHAR(1000) NULL,
