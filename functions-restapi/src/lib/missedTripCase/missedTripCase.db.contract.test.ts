@@ -194,7 +194,8 @@ test("Missed-trip cases against SQL Server", skip, async (t) => {
                  mtc.lifecycle, mtc.evidence_finding, mtc.review_outcome, mtc.detector, mtc.held_reason,
                  mtc.legacy, mtc.held, mtc.in_queue, mtc.concluded, mtc.flagged_missed, mtc.counts_as_missed, mtc.counts_toward_assessment
           FROM dbo.MonitoredMissedTrips m ${missedTripCaseSql("m")}`)).recordset;
-        assert.ok(rows.length >= 15);
+        // NS1, C1, R1, SP1, SP2, RACE, LEG, REV from the passes above, and K1-K5.
+        assert.equal(rows.length, 13);
         for (const row of rows) {
           const expected = classifyMissedTripCase(row);
           const actual = {
