@@ -21,12 +21,13 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { PUBLISH_ROLES, requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { loadKpiFeedHealthRecords } from "../lib/kpiTrustStore";
 import {
   ON_DEMAND_DEGRADED_AFTER_MINUTES,
   ON_DEMAND_RECONCILIATION_INTERVAL_MINUTES,
   onDemandMonitoringEnabled,
-  onDemandMonitoringState,
 } from "../lib/onDemandMonitoringHealth";
+import { onDemandMonitoringStatus } from "../lib/onDemandMonitoringStatus";
 
 // A predicted wait above this, with nothing observed yet, is a Watch: worth
 // showing before it breaches. Above the applicable standard it is a risk
@@ -111,8 +112,12 @@ export const ON_DEMAND_RISK_QUERY = `
           COALESCE(m.predicted_pickup_at, SYSUTCDATETIME()) DESC
       `;
 
+// The newest source update among the watched requests comes from the monitor
+// rows themselves, webhook deliveries included; the currency ledger records when
+// the source was last read whole, not how recent the newest request was.
 export const MONITORED_COUNT_QUERY = `
-  SELECT COUNT(*) AS monitored_request_count FROM MonitoredOnDemandWaits m WHERE ${MONITORED_PREDICATE}
+  SELECT COUNT(*) AS monitored_request_count, MAX(m.source_updated_at) AS latest_source_update_at
+  FROM MonitoredOnDemandWaits m WHERE ${MONITORED_PREDICATE}
 `;
 
 interface OnDemandRiskRow {
@@ -140,12 +145,6 @@ interface OnDemandRiskRow {
   zone_resolution: "assigned" | "missing_pickup_coordinate" | "outside_operational_zones" | "ambiguous_operational_zones" | "legacy_unknown";
 }
 
-interface OnDemandHealthRow {
-  last_authoritative_reconciliation_at: Date | null;
-  latest_source_update_at: Date | null;
-  active_request_count: number | null;
-}
-
 app.http("onDemandRisksList", {
   route: "on-demand-risks",
   methods: ["GET"],
@@ -158,25 +157,13 @@ app.http("onDemandRisksList", {
 
     try {
       const pool = await getPool();
-      const healthResult = await pool.request().query<OnDemandHealthRow>(`
-        IF OBJECT_ID('dbo.OnDemandMonitoringHealth', 'U') IS NULL
-          SELECT CAST(NULL AS DATETIME2) AS last_authoritative_reconciliation_at,
-            CAST(NULL AS DATETIME2) AS latest_source_update_at,
-            CAST(NULL AS INT) AS active_request_count;
-        ELSE
-          SELECT last_authoritative_reconciliation_at, latest_source_update_at, active_request_count
-          FROM dbo.OnDemandMonitoringHealth WHERE id = 1;
-      `);
       const enabled = onDemandMonitoringEnabled();
-      const health = healthResult.recordset[0] ?? null;
-      const state = onDemandMonitoringState(enabled, health && {
-        lastAuthoritativeReconciliationAt: health.last_authoritative_reconciliation_at,
-        latestSourceUpdateAt: health.latest_source_update_at,
-        activeRequestCount: health.active_request_count,
-      });
+      // The same ledger and the same verdict as KPI trust and the Admin page.
+      const { state, lastAuthoritativeReconciliationAt, activeRequestCount } =
+        onDemandMonitoringStatus(enabled, await loadKpiFeedHealthRecords(pool));
       const riskQuery = pool.request();
       riskQuery.input("show_last_known", sql.Bit, state === "degraded");
-      riskQuery.input("reconciled_at", sql.DateTime2, health?.last_authoritative_reconciliation_at ?? null);
+      riskQuery.input("reconciled_at", sql.DateTime2, lastAuthoritativeReconciliationAt);
       riskQuery.input("watch_minutes", sql.Int, WATCH_PREDICTED_MINUTES);
       riskQuery.input("critical_margin", sql.Int, CRITICAL_MARGIN_MINUTES);
       const result = await riskQuery.query<OnDemandRiskRow>(ON_DEMAND_RISK_QUERY);
@@ -186,8 +173,8 @@ app.http("onDemandRisksList", {
       // service day and a nearly-broken one.
       const monitoredQuery = pool.request();
       monitoredQuery.input("show_last_known", sql.Bit, state === "degraded");
-      monitoredQuery.input("reconciled_at", sql.DateTime2, health?.last_authoritative_reconciliation_at ?? null);
-      const monitored = await monitoredQuery.query<{ monitored_request_count: number }>(MONITORED_COUNT_QUERY);
+      monitoredQuery.input("reconciled_at", sql.DateTime2, lastAuthoritativeReconciliationAt);
+      const monitored = await monitoredQuery.query<{ monitored_request_count: number; latest_source_update_at: Date | null }>(MONITORED_COUNT_QUERY);
 
       const risks = result.recordset.map((row) => ({
         ...row,
@@ -201,9 +188,9 @@ app.http("onDemandRisksList", {
           risks: enabled ? risks : [],
           diagnostics: {
             state,
-            last_authoritative_reconciliation_at: health?.last_authoritative_reconciliation_at?.toISOString() ?? null,
-            latest_source_update_at: health?.latest_source_update_at?.toISOString() ?? null,
-            active_request_count: enabled ? health?.active_request_count ?? null : null,
+            last_authoritative_reconciliation_at: lastAuthoritativeReconciliationAt?.toISOString() ?? null,
+            latest_source_update_at: enabled ? monitored.recordset[0]?.latest_source_update_at?.toISOString() ?? null : null,
+            active_request_count: enabled ? activeRequestCount : null,
             monitored_request_count: enabled ? monitored.recordset[0]?.monitored_request_count ?? 0 : null,
             reconciliation_interval_minutes: ON_DEMAND_RECONCILIATION_INTERVAL_MINUTES,
             degraded_after_minutes: ON_DEMAND_DEGRADED_AFTER_MINUTES,
