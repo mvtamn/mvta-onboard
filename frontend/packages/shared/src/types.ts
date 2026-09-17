@@ -932,6 +932,47 @@ export interface OtpMonthlyStopRow {
   updated_at: string;
 }
 
+/**
+ * The OTP month measurement (functions-restapi/src/lib/otpMonth, ADR 0033).
+ * The server decides what counts - fixed-route service, minus approved Stop
+ * Exclusions - and the console displays the figures rather than computing any.
+ */
+export interface OtpFigure {
+  departures: number;
+  ontime: number;
+  /** Share on time, 0-1. Null when there are no departures to divide by. */
+  pct: number | null;
+}
+
+export interface OtpRouteFigure {
+  route_id: number;
+  route_label: string | null;
+  route_category: RouteCategory | string;
+  raw: OtpFigure;
+  excluded: OtpFigure;
+  /** Official Departure OTP for the route. */
+  assessable: OtpFigure;
+  /** Null when the route has no assessable departures to judge. */
+  below_target: boolean | null;
+}
+
+/** Where the target came from: the month's frozen rule set, the current catalog, or Attachment G's default. */
+export type OtpTargetSource = "period_rule_set" | "catalog" | "default";
+
+export interface OtpMonthMeasurement {
+  service_month: string;
+  target: number;
+  target_source: OtpTargetSource;
+  raw: OtpFigure;
+  excluded: OtpFigure;
+  assessable: OtpFigure;
+  routes: OtpRouteFigure[];
+  routes_below_target: number;
+  /** Weather days recorded for the month. They are NOT applied (ADR 0033). */
+  weather_days_recorded: number;
+  feed_ready: boolean;
+}
+
 export interface OtpMonthlyRouteRollup {
   route_id: number;
   route_label: string | null;
@@ -1380,7 +1421,8 @@ export interface DetourWorkflowHistoryEntry {
 // Route Classification - see detour-and-event-module-implementation-plan.md
 // (Part A). No Avail feed distinguishes fixed-route from special-event
 // RouteIDs, so this is the one place MVTA OnBoard itself decides.
-export type RouteCategory = "FixedRoute" | "SpecialEvent" | "OnDemand";
+/** NonRevenue (migration 128): deadhead, training, maintenance, pivot - service that carries no passengers and is outside the fixed-route standards. */
+export type RouteCategory = "FixedRoute" | "SpecialEvent" | "OnDemand" | "NonRevenue";
 
 export interface RouteClassificationRow {
   route_id: number;
@@ -1424,6 +1466,7 @@ export const ROUTE_CATEGORY_LABELS: Record<RouteCategory, string> = {
   FixedRoute: "Fixed route",
   SpecialEvent: "Special event",
   OnDemand: "On-demand",
+  NonRevenue: "Non-revenue",
 };
 
 export interface AppSettingRow {
@@ -1622,9 +1665,14 @@ export interface OtpSettingsRow {
 
 export interface OtpMonthlyTrendPoint {
   service_month: string;
+  /** Official Departure OTP: what the assessment scores. */
   total: number;
   ontime: number;
   pct_ontime: number | null;
+  /** Every departure the feed holds, before exclusions and the route filter. */
+  raw_total?: number;
+  raw_ontime?: number;
+  raw_pct_ontime?: number | null;
 }
 
 // POST /otp-historical-backfill - fills one month outside the daily

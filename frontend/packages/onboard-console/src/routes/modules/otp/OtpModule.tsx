@@ -8,25 +8,28 @@ import {
   type OtpReasonCode,
   type OtpAuditEntry,
   type OtpMonthlyTrendPoint,
+  type OtpMonthMeasurement,
+  type OtpTargetSource,
+  type PeriodKpiAssessment,
 } from "@mvta/shared";
 import { api } from "../../../config.js";
 import {
   DATA,
-  computeOfficialPct,
   deriveCandidatesFromLive,
-  deriveRouteRowsFromLive,
   stopExclusionKey,
   DEFAULT_EARLY_LATE_BIAS_THRESHOLD,
   PAGE_META,
   type Candidate,
-  type RouteRow,
   type CandidateStatus,
 } from "./otpData.js";
+import { displayRoutes, percentText, previewRoutes, targetSentence, weatherSentence, type OtpDisplayRoute } from "./otpFigures.js";
 import "./otp.css";
 
 interface OtpMonthlyResponse {
   stops: OtpMonthlyStopRow[];
   routes: OtpMonthlyRouteRollup[];
+  /** Absent on a server older than 1.5.242; the console then shows the preview. */
+  measurement?: OtpMonthMeasurement;
   diagnostics: {
     configured: boolean;
     table_ready: boolean;
@@ -34,6 +37,8 @@ interface OtpMonthlyResponse {
     record_count: number;
     routes_below_target: number;
     target: number;
+    target_source?: OtpTargetSource;
+    weather_days_recorded?: number;
   };
 }
 
@@ -228,9 +233,15 @@ export function OtpModule() {
     return map;
   }, [previousMonthExclusions]);
 
-  const routeRows: RouteRow[] = useMemo(
-    () => (usingLiveOtp ? deriveRouteRowsFromLive(liveOtp!.routes) : DATA.routes),
-    [usingLiveOtp, liveOtp],
+  // The official figure per route is the server's (ADR 0033); the preview's
+  // sample data has no exclusions behind it and says so.
+  const targetPct = (usingLiveOtp ? liveOtp!.diagnostics.target : 0.85) * 100;
+  // A tab opened before this release reaches a server that sends no
+  // measurement; it then shows the preview rather than half a figure.
+  const measurement = usingLiveOtp ? liveOtp!.measurement ?? null : null;
+  const displayRows: OtpDisplayRoute[] = useMemo(
+    () => (measurement ? displayRoutes(measurement) : previewRoutes(DATA.routes, 85)),
+    [measurement],
   );
   const candidateSource: Candidate[] = useMemo(
     () => (usingLiveOtp ? deriveCandidatesFromLive(liveOtp!.stops, threshold) : DATA.candidates),
@@ -436,12 +447,11 @@ export function OtpModule() {
 
       {page === "dashboard" && (
         <DashboardPage
-          routeRows={routeRows}
-          candidateSource={candidateSource}
+          displayRows={displayRows}
           statuses={statuses}
           weatherCount={dateExclusions.length}
-          liveRoutesBelowTarget={usingLiveOtp ? liveOtp!.diagnostics.routes_below_target : null}
-          targetPct={(usingLiveOtp ? liveOtp!.diagnostics.target : 0.85) * 100}
+          measurement={measurement}
+          targetPct={targetPct}
         />
       )}
       {page === "queue" && (
@@ -461,42 +471,47 @@ export function OtpModule() {
         />
       )}
       {page === "routes" && (
-        <RouteSummaryPage routeRows={routeRows} candidateSource={candidateSource} statuses={statuses} />
+        <RouteSummaryPage displayRows={displayRows} targetPct={targetPct} measurement={measurement} />
       )}
       {page === "weather" && (
-        <WeatherPage dateExclusions={dateExclusions} reasonCodes={dateReasonCodes} onAdd={addDateExclusion} />
+        <WeatherPage
+          dateExclusions={dateExclusions}
+          reasonCodes={dateReasonCodes}
+          onAdd={addDateExclusion}
+          recordedThisMonth={liveOtp?.diagnostics.weather_days_recorded ?? 0}
+        />
       )}
-      {page === "monthly" && <MonthlyAssessmentsPage otp={liveOtp} />}
+      {page === "monthly" && <MonthlyAssessmentsPage otp={liveOtp} displayRows={displayRows} targetPct={targetPct} />}
       {page === "audit" && <AuditStreamPage serviceMonth={serviceMonth} />}
     </div>
   );
 }
 
 function DashboardPage({
-  routeRows,
-  candidateSource,
+  displayRows,
   statuses,
   weatherCount,
-  liveRoutesBelowTarget,
+  measurement,
   targetPct,
 }: {
-  routeRows: RouteRow[];
-  candidateSource: Candidate[];
+  displayRows: OtpDisplayRoute[];
   statuses: CandidateStatus[];
   weatherCount: number;
-  liveRoutesBelowTarget: number | null;
+  measurement: OtpMonthMeasurement | null;
   targetPct: number;
 }) {
   const approved = statuses.filter((s) => s === "approved").length;
   const rejected = statuses.filter((s) => s === "rejected").length;
   const pending = statuses.length - approved - rejected;
-  const below =
-    liveRoutesBelowTarget ?? routeRows.filter((r) => computeOfficialPct(r, candidateSource, statuses) < targetPct).length;
+  // The server counts this on the official figure - fixed-route service with
+  // approved exclusions removed - which is what this card has always claimed
+  // to show and, until ADR 0033, never did.
+  const below = measurement ? measurement.routes_below_target : displayRows.filter((r) => r.status === "below").length;
   const cards = [
     { label: "Pending review", value: pending, sub: "Candidate stops", color: "#F78E1E" },
     { label: "Approved", value: approved, sub: "Active exclusion rules", color: "#00553D" },
     { label: `Routes below ${targetPct}%`, value: below, sub: "Official departure OTP", color: "#8A1F1F" },
-    { label: "Weather exclusions", value: weatherCount, sub: "Logged this year", color: "#417B68" },
+    { label: "Weather exclusions", value: weatherCount, sub: "Recorded, not applied", color: "#417B68" },
   ];
   return (
     <>
@@ -509,6 +524,16 @@ function DashboardPage({
           </div>
         ))}
       </div>
+      {measurement ? (
+        <div className="subcard empty-note" style={{ marginBottom: 16 }}>
+          {targetSentence(targetPct, measurement.target_source)}{" "}
+          Official {percentText(Math.round((measurement.assessable.pct ?? 0) * 1000) / 10)} of{" "}
+          {measurement.assessable.departures.toLocaleString()} measured departures
+          {measurement.excluded.departures > 0
+            ? `, with ${measurement.excluded.departures.toLocaleString()} departures outside the standard or excluded.`
+            : "."}
+        </div>
+      ) : null}
       <OtpTrendChart />
     </>
   );
@@ -731,39 +756,53 @@ function ReviewQueuePage({
 }
 
 function RouteSummaryPage({
-  routeRows,
-  candidateSource,
-  statuses,
+  displayRows,
+  targetPct,
+  measurement,
 }: {
-  routeRows: RouteRow[];
-  candidateSource: Candidate[];
-  statuses: CandidateStatus[];
+  displayRows: OtpDisplayRoute[];
+  targetPct: number;
+  measurement: OtpMonthMeasurement | null;
 }) {
+  const target = `${Math.round(targetPct * 10) / 10}%`;
   return (
-    <div className="subcard" style={{ overflow: "hidden" }}>
-      <table className="data">
-        <thead>
-          <tr><th>Route</th><th>Departure events</th><th>Raw OTP %</th><th>Official OTP %</th><th>Δ from exclusions</th><th>Status vs. 85%</th></tr>
-        </thead>
-        <tbody>
-          {routeRows.map((r) => {
-            const official = computeOfficialPct(r, candidateSource, statuses);
-            const delta = Math.round((official - r.pct_raw) * 10) / 10;
-            const below = official < 85;
-            return (
-              <tr key={r.route}>
-                <td><span className="route-chip">RT {r.route}</span></td>
-                <td>{r.total}</td>
-                <td>{r.pct_raw}%</td>
-                <td><b>{official}%</b></td>
-                <td className={delta > 0 ? "ok-text" : "muted"}>{delta > 0 ? "+" : ""}{delta} pts</td>
-                <td>{below ? <span className="pill-sm pill-danger">Below 85%</span> : <span className="pill-sm pill-success">Meets 85%</span>}</td>
+    <>
+      <div className="subcard empty-note" style={{ marginBottom: 16 }}>
+        {measurement ? (
+          <>
+            {targetSentence(targetPct, measurement.target_source)} Official Departure OTP is fixed-route service
+            only, with approved stop exclusions removed.
+          </>
+        ) : (
+          "Sample data: no exclusions or route classification sit behind these rows, so only the raw figure is shown. The official figure appears once the OTP Monthly feed has rows for the month."
+        )}
+      </div>
+      <div className="subcard" style={{ overflow: "hidden" }}>
+        <table className="data">
+          <thead>
+            <tr><th>Route</th><th>Departure events</th><th>Raw OTP %</th><th>Official OTP %</th><th>Δ from exclusions</th><th>Status vs. {target}</th></tr>
+          </thead>
+          <tbody>
+            {displayRows.map((r) => (
+              <tr key={r.key}>
+                <td><span className="route-chip">RT {r.label}</span></td>
+                <td>{r.departures}</td>
+                <td>{percentText(r.rawPct)}</td>
+                <td><b>{percentText(r.officialPct)}</b></td>
+                <td className={(r.deltaPoints ?? 0) > 0 ? "ok-text" : "muted"}>
+                  {r.deltaPoints === null ? "—" : `${r.deltaPoints > 0 ? "+" : ""}${r.deltaPoints} pts`}
+                </td>
+                <td>
+                  {r.status === "below" ? <span className="pill-sm pill-danger">Below {target}</span>
+                    : r.status === "meets" ? <span className="pill-sm pill-success">Meets {target}</span>
+                      : <span className="muted">{r.note}</span>}
+                </td>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 
@@ -771,10 +810,12 @@ function WeatherPage({
   dateExclusions,
   reasonCodes,
   onAdd,
+  recordedThisMonth,
 }: {
   dateExclusions: OtpDateExclusion[];
   reasonCodes: OtpReasonCode[];
   onAdd: (input: { scope: "Agency" | "Route"; route_id: number | null; service_date: string; reason_code: string; notes: string }) => Promise<void>;
+  recordedThisMonth: number;
 }) {
   const [scope, setScope] = useState<"Agency" | "Route">("Agency");
   const [routeIdInput, setRouteIdInput] = useState("");
@@ -812,6 +853,9 @@ function WeatherPage({
 
   return (
     <>
+      <div className="subcard empty-note" style={{ marginBottom: 16 }}>
+        {weatherSentence(recordedThisMonth)}
+      </div>
       <div className="subcard" style={{ marginBottom: 16 }}>
         {error ? <p className="error-text">{error}</p> : null}
         <div className="field-grid">
@@ -889,46 +933,98 @@ function WeatherPage({
 // Removing this section means GET /avail-missed-trips currently has no UI
 // consumer anywhere in the app - the feed/poller/table still exist and
 // keep collecting data, just nothing renders it right now.
-function MonthlyAssessmentsPage({ otp }: { otp: OtpMonthlyResponse | null }) {
-  const otpReady = Boolean(otp?.diagnostics.table_ready && otp.routes.length > 0);
+function MonthlyAssessmentsPage({
+  otp,
+  displayRows,
+  targetPct,
+}: {
+  otp: OtpMonthlyResponse | null;
+  displayRows: OtpDisplayRoute[];
+  targetPct: number;
+}) {
   const serviceMonth = otp?.diagnostics.service_month ?? null;
+  const measurement = otp?.measurement ?? null;
+  const [assessed, setAssessed] = useState<{ status: string; assessment: PeriodKpiAssessment | null } | null>(null);
+
+  // What the month was actually assessed at, where it has been assessed. A
+  // report never recalculates (ADR 0011), so a month with an Assessment Period
+  // shows that period's stored figure rather than today's live one - they
+  // differ the moment an exclusion is approved after the month was scored.
+  useEffect(() => {
+    if (!serviceMonth) { setAssessed(null); return; }
+    let active = true;
+    void (async () => {
+      try {
+        const { periods } = await api.getAssessmentPeriods();
+        const period = periods.find((p) => p.service_month === serviceMonth);
+        if (!period) { if (active) setAssessed(null); return; }
+        const { assessments } = await api.getPeriodAssessments(period.id);
+        if (active) setAssessed({ status: period.status, assessment: assessments.find((a) => a.code === "OTP_FIXED_ROUTE") ?? null });
+      } catch {
+        if (active) setAssessed(null);
+      }
+    })();
+    return () => { active = false; };
+  }, [serviceMonth]);
+
+  const target = `${Math.round(targetPct * 10) / 10}%`;
+  const officialPct = measurement?.assessable.pct !== null && measurement?.assessable.pct !== undefined
+    ? Math.round(measurement.assessable.pct * 1000) / 10
+    : null;
 
   return (
     <>
       <div className="subcard empty-note" style={{ marginBottom: 16 }}>
-        {serviceMonth ? `Service month: ${formatServiceMonth(serviceMonth)}` : "No finalized months yet."}
+        {serviceMonth ? `Service month: ${formatServiceMonth(serviceMonth)}` : "No month selected."}
+      </div>
+
+      <div className="subcard" style={{ padding: "12px 16px", marginBottom: 16 }}>
+        <h2 style={{ marginTop: 0 }}>Agency figure</h2>
+        {assessed?.assessment ? (
+          <p>
+            Assessed at <b>{assessed.assessment.metric_display}</b> ({assessed.assessment.tier_label}), from the
+            assessment of this month, whose status is {assessed.status}. That figure is the one the contractor was
+            shown; it is not recalculated here.
+          </p>
+        ) : measurement ? (
+          <p>
+            Provisional: this month has no assessment yet, so this is the live figure.{" "}
+            <b>{percentText(officialPct)}</b> official of{" "}
+            {measurement.assessable.departures.toLocaleString()} measured departures.
+          </p>
+        ) : (
+          <p>Sample data: no month has been measured here yet, so there is no figure to show.</p>
+        )}
+        {measurement ? <p className="muted">{targetSentence(targetPct, measurement.target_source)}</p> : null}
       </div>
 
       <div className="subcard" style={{ overflow: "hidden" }}>
         <h2 style={{ padding: "12px 16px 0" }}>OTP by route (Avail OTP Monthly)</h2>
-        {otpReady ? (
+        {measurement && displayRows.length > 0 ? (
           <table className="data">
             <thead>
-              <tr><th>Route</th><th>Total departures</th><th>On-time</th><th>OTP %</th><th>Status vs. 85%</th></tr>
+              <tr><th>Route</th><th>Departure events</th><th>Official OTP %</th><th>Status vs. {target}</th></tr>
             </thead>
             <tbody>
-              {otp!.routes.map((r) => {
-                const pct = r.pct_ontime !== null ? Math.round(r.pct_ontime * 1000) / 10 : null;
-                return (
-                  <tr key={r.route_id}>
-                    <td><span className="route-chip">RT {r.route_label ?? r.route_id}</span></td>
-                    <td>{r.total}</td>
-                    <td>{r.ontime}</td>
-                    <td>{pct !== null ? `${pct}%` : "—"}</td>
-                    <td>
-                      {pct !== null ? (
-                        pct < 85 ? <span className="pill-sm pill-danger">Below 85%</span> : <span className="pill-sm pill-success">Meets 85%</span>
-                      ) : "—"}
-                    </td>
-                  </tr>
-                );
-              })}
+              {displayRows.map((r) => (
+                <tr key={r.key}>
+                  <td><span className="route-chip">RT {r.label}</span></td>
+                  <td>{r.departures}</td>
+                  <td>{percentText(r.officialPct)}</td>
+                  <td>
+                    {r.status === "below" ? <span className="pill-sm pill-danger">Below {target}</span>
+                      : r.status === "meets" ? <span className="pill-sm pill-success">Meets {target}</span>
+                        : <span className="muted">{r.note}</span>}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         ) : (
           <div className="empty-note" style={{ textAlign: "center", padding: "30px 20px" }}>
             The OTP Monthly feed (AVAIL_OTP_MONTHLY_URL) has not been configured or has no rows for
-            this month yet.
+            this month yet, so there is nothing to assess. The sample rows on Route Summary are a preview
+            of the layout only.
           </div>
         )}
       </div>

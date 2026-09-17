@@ -844,7 +844,10 @@ export function validateUpdateDetourReasonCode(body: UnknownBody): string[] {
 }
 
 // PUT /route-classification/{routeId}
-export const VALID_ROUTE_CATEGORIES = ["FixedRoute", "SpecialEvent", "OnDemand"] as const;
+// NonRevenue (migration 128) is service that carries no passengers - deadhead,
+// training, maintenance, pivot. Like SpecialEvent and OnDemand it is outside
+// the fixed-route OTP measurement (ADR 0033).
+export const VALID_ROUTE_CATEGORIES = ["FixedRoute", "SpecialEvent", "OnDemand", "NonRevenue"] as const;
 export const MAX_ROUTE_LABEL_LENGTH = 100;
 
 export function validateRouteClassification(body: UnknownBody): string[] {

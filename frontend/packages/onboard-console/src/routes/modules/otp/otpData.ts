@@ -5,7 +5,7 @@
 // otpReasonCodes.ts/otpStopExclusions.ts/otpDateExclusions.ts/otpSettings.ts)
 // rather than hardcoded here - this file now holds only the mock preview
 // data and the pure derivation functions shared between live and mock modes.
-import type { OtpMonthlyStopRow, OtpMonthlyRouteRollup } from "@mvta/shared";
+import type { OtpMonthlyStopRow } from "@mvta/shared";
 
 export interface RouteRow {
   route: string;
@@ -85,23 +85,12 @@ export const PAGE_META: Record<string, { title: string; sub: string }> = {
   audit: { title: "Audit Stream", sub: "Full history of exclusion rule and finalization actions" },
 };
 
-// Official OTP % for a route, excluding stops approved for exclusion.
-// Takes the candidate array explicitly (rather than reading DATA.candidates
-// directly) so the same function works whether candidates came from the
-// mock DATA or a live Avail feed pull (see deriveCandidatesFromLive below).
-export function computeOfficialPct(r: RouteRow, candidates: Candidate[], statuses: CandidateStatus[]): number {
-  let excludedEvents = 0;
-  let excludedOnTime = 0;
-  candidates.forEach((c, i) => {
-    if (c.route === r.route && statuses[i] === "approved") {
-      excludedEvents += c.n;
-      excludedOnTime += Math.round((c.n * c.ontime_pct) / 100);
-    }
-  });
-  const newTotal = r.total - excludedEvents;
-  const newOnTime = r.ontime - excludedOnTime;
-  return newTotal > 0 ? Math.round((newOnTime / newTotal) * 1000) / 10 : r.pct_raw;
-}
+// Official Departure OTP is the server's figure now (ADR 0033): the console
+// asks GET /otp-monthly for the month's measurement and displays it
+// (otpFigures.ts). computeOfficialPct used to recompute it here from rows the
+// browser had flagged itself, against a hardcoded 85, so Route Summary, the
+// Dashboard and the contractor's assessment could each show a different
+// official percentage for the same month.
 
 // A stop/route/day-of-week row is flagged for exclusion review when its
 // early or late percentage exceeds this share of departures - a clear,
@@ -125,9 +114,8 @@ export function deriveCandidatesFromLive(
   return stops
     .filter((s) => (s.pct_early ?? 0) > threshold || (s.pct_late ?? 0) > threshold)
     .map((s) => ({
-      // Must match deriveRouteRowsFromLive's route_label-first convention
-      // exactly, or computeOfficialPct's c.route === r.route match silently
-      // never fires for any route that has a label (which is most of them).
+      // The label the route is known by, so a candidate and its route line up
+      // under one name in the queue.
       route: s.route_label ?? String(s.route_id),
       route_id: s.route_id,
       stopName: s.stop_name ?? `Stop ${s.stop_id}`,
@@ -141,17 +129,6 @@ export function deriveCandidatesFromLive(
       missed_pct: Math.round((s.pct_missed ?? 0) * 1000) / 10,
       avg_var: null,
     }));
-}
-
-// Builds the Route Summary/Dashboard's per-route rows from a live OTP
-// Monthly feed pull's route rollup.
-export function deriveRouteRowsFromLive(routes: OtpMonthlyRouteRollup[]): RouteRow[] {
-  return routes.map((r) => ({
-    route: r.route_label ?? String(r.route_id),
-    total: r.total,
-    ontime: r.ontime,
-    pct_raw: r.pct_ontime !== null ? Math.round(r.pct_ontime * 1000) / 10 : 0,
-  }));
 }
 
 // Composite key matching OtpStopExclusions' unique constraint - used to
