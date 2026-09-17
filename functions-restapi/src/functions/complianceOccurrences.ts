@@ -2,29 +2,90 @@ import { app, type HttpRequest, type InvocationContext } from "@azure/functions"
 import { COMPLIANCE_READ_ROLES, COMPLIANCE_WRITE_ROLES, requireRole } from "../lib/auth";
 import { rangedPenaltyBoundsSql } from "../lib/assessment/rangedPenalty";
 import { agreementScope } from "../lib/assessment/schemaScope";
-import { materialChangeSql } from "../lib/assessment/materialChange";
 import { getPool, sql } from "../lib/db";
+import { parseOccurrenceSource, recordOccurrence, resolveOccurrence, setAssessedAmount, type IntakeOutcome, type IntakeRefusal } from "../lib/occurrenceIntake";
 import { isGuid, isServiceMonth, validateComplianceOccurrence } from "../lib/validation";
 
 app.http("complianceOccurrencesList", { route:"compliance-occurrences",methods:["GET"],authLevel:"anonymous",handler:async(request:HttpRequest,context:InvocationContext)=>{
   const auth=requireRole(request,COMPLIANCE_READ_ROLES);if(!auth.authorized)return{status:auth.status,jsonBody:{error:auth.message}};
-  try{const pool=await getPool();const check=await pool.request().query<{ready:number}>(`SELECT CASE WHEN OBJECT_ID('dbo.ComplianceOccurrences','U') IS NULL THEN 0 ELSE 1 END ready`);if(!check.recordset[0]?.ready)return{status:200,jsonBody:{occurrences:[],diagnostics:{table_ready:false}}};const scope=await agreementScope(pool);const q=pool.request();const contractor=request.query.get("contractor_id"),month=request.query.get("service_month"),status=request.query.get("review_status");const limit=Math.min(2000,Math.max(1,Number(request.query.get("limit")??500)||500)),offset=Math.max(0,Number(request.query.get("offset")??0)||0);q.input("contractor",sql.UniqueIdentifier,isGuid(contractor)?contractor:null);q.input("month",sql.Char(6),isServiceMonth(month)?month:null);q.input("status",sql.NVarChar(20),["candidate","confirmed","dismissed"].includes(String(status))?status:null);q.input("limit",sql.Int,limit);q.input("offset",sql.Int,offset);const result=await q.query(`SELECT o.*,s.code standard_code,s.name standard_name,c.name contractor_name,bounds.penalty_amount_min,bounds.penalty_amount_max FROM ComplianceOccurrences o JOIN ContractorPerformanceStandards s ON s.id=o.standard_id JOIN Contractors c ON c.id=o.contractor_id ${rangedPenaltyBoundsSql("o",scope.scoped)} WHERE (@contractor IS NULL OR o.contractor_id=@contractor) AND (@month IS NULL OR o.service_month=@month) AND (@status IS NULL OR o.review_status=@status) ORDER BY o.service_date DESC,o.created_at DESC OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY`);return{status:200,jsonBody:{occurrences:result.recordset,diagnostics:{table_ready:true}}};}
+  try{const pool=await getPool();const check=await pool.request().query<{ready:number}>(`SELECT CASE WHEN OBJECT_ID('dbo.ComplianceOccurrences','U') IS NULL THEN 0 ELSE 1 END ready`);if(!check.recordset[0]?.ready)return{status:200,jsonBody:{occurrences:[],diagnostics:{table_ready:false}}};const scope=await agreementScope(pool);const q=pool.request();const contractor=request.query.get("contractor_id"),month=request.query.get("service_month"),status=request.query.get("review_status");const limit=Math.min(2000,Math.max(1,Number(request.query.get("limit")??500)||500)),offset=Math.max(0,Number(request.query.get("offset")??0)||0);q.input("contractor",sql.UniqueIdentifier,isGuid(contractor)?contractor:null);q.input("month",sql.Char(6),isServiceMonth(month)?month:null);q.input("status",sql.NVarChar(20),["candidate","confirmed","dismissed"].includes(String(status))?status:null);q.input("limit",sql.Int,limit);q.input("offset",sql.Int,offset);const result=await q.query(`SELECT o.*,s.code standard_code,s.name standard_name,c.name contractor_name,bounds.penalty_amount_min,bounds.penalty_amount_max FROM ComplianceOccurrences o JOIN ContractorPerformanceStandards s ON s.id=o.standard_id JOIN Contractors c ON c.id=o.contractor_id ${rangedPenaltyBoundsSql("o",scope.scoped)} WHERE (@contractor IS NULL OR o.contractor_id=@contractor) AND (@month IS NULL OR o.service_month=@month) AND (@status IS NULL OR o.review_status=@status) ORDER BY o.service_date DESC,o.created_at DESC OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY`);return{status:200,jsonBody:{occurrences:result.recordset.map(o=>({...o,source:parseOccurrenceSource(o.source_ref)})),diagnostics:{table_ready:true}}};}
   catch(error){context.error("GET compliance occurrences failed",error);return{status:500,jsonBody:{error:"Internal server error"}};}
 }});
 
-app.http("complianceOccurrencesCreate", { route:"compliance-occurrences",methods:["POST"],authLevel:"anonymous",handler:async(request:HttpRequest,context:InvocationContext)=>{
-  const auth=requireRole(request,COMPLIANCE_WRITE_ROLES);if(!auth.authorized)return{status:auth.status,jsonBody:{error:auth.message}};let body:Record<string,unknown>;try{body=await request.json() as Record<string,unknown>;}catch{return{status:400,jsonBody:{error:"Request body must be valid JSON"}};}const errors=validateComplianceOccurrence(body);if(errors.length)return{status:400,jsonBody:{error:"Validation failed",details:errors}};
-  const pool=await getPool();const tx=new sql.Transaction(pool);try{await tx.begin();const req=new sql.Request(tx);const id=crypto.randomUUID();req.input("id",sql.UniqueIdentifier,id);req.input("standard",sql.UniqueIdentifier,body.standard_id);req.input("contractor",sql.UniqueIdentifier,body.contractor_id);req.input("date",sql.Char(8),body.service_date);req.input("quantity",sql.Int,body.quantity??1);req.input("duration",sql.Int,body.duration_days??null);req.input("qualifier",sql.NVarChar(50),body.qualifier_code??null);req.input("description",sql.NVarChar(2000),String(body.description).trim());req.input("actor",sql.NVarChar(200),auth.principal.userDetails??"onboard-console");await req.query(`INSERT ComplianceOccurrences(id,standard_id,contractor_id,service_date,quantity,duration_days,qualifier_code,description,source,review_status,attribution,created_by) VALUES(@id,@standard,@contractor,@date,@quantity,@duration,@qualifier,@description,'manual','confirmed','contractor_error',@actor); UPDATE AssessmentPeriods SET input_revision=input_revision+1,status=CASE WHEN status IN('in_review','stale') THEN 'stale' ELSE status END WHERE contractor_id=@contractor AND service_month=LEFT(@date,6) AND status<>'finalized';`);await tx.commit();return{status:201,jsonBody:{id}};}
-  catch(error){try{await tx.rollback();}catch{/*done*/}context.error("POST compliance occurrence failed",error);return{status:500,jsonBody:{error:"Internal server error"}};}
-}});
+// Every write goes through the occurrence intake module, which assigns the
+// contractor from the Agreement, refuses a finalized or issued month, and
+// tells the month its input changed. A refusal is a 409 carrying the module's
+// code and sentence; a missing occurrence is a 404.
+function refused(refusal: IntakeRefusal) {
+  return { status: refusal.code === "not_found" ? 404 : 409, jsonBody: { error: refusal.sentence, code: refusal.code } };
+}
 
-app.http("complianceOccurrencePatch", { route:"compliance-occurrences/{id}",methods:["PATCH"],authLevel:"anonymous",handler:async(request:HttpRequest,context:InvocationContext)=>{
-  const auth=requireRole(request,COMPLIANCE_WRITE_ROLES);if(!auth.authorized)return{status:auth.status,jsonBody:{error:auth.message}};if(!isGuid(request.params.id))return{status:400,jsonBody:{error:"Invalid occurrence id"}};let body:Record<string,unknown>;try{body=await request.json() as Record<string,unknown>;}catch{return{status:400,jsonBody:{error:"Request body must be valid JSON"}};}if(!["candidate","confirmed","dismissed"].includes(String(body.review_status))||!["contractor_error","excusable","mvta_directed","undetermined"].includes(String(body.attribution)))return{status:400,jsonBody:{error:"Valid review_status and attribution are required"}};
-  const pool=await getPool();const tx=new sql.Transaction(pool);try{await tx.begin();const req=new sql.Request(tx);req.input("id",sql.UniqueIdentifier,request.params.id);req.input("status",sql.NVarChar(20),body.review_status);req.input("attribution",sql.NVarChar(30),body.attribution);req.input("reason",sql.NVarChar(1000),body.dismiss_reason??null);req.input("relief",sql.UniqueIdentifier,isGuid(body.relief_id)?body.relief_id:null);req.input("relief_given",sql.Bit,body.relief_id===undefined?0:1);req.input("actor",sql.NVarChar(200),auth.principal.userDetails??"onboard-console");if(body.relief_id!==undefined&&body.relief_id!==null&&!isGuid(body.relief_id)){await tx.rollback();return{status:400,jsonBody:{error:"relief_id must be a claim id or null"}};}
-    if(isGuid(body.relief_id)){const claimCheck=new sql.Request(tx);claimCheck.input("id",sql.UniqueIdentifier,request.params.id);claimCheck.input("relief",sql.UniqueIdentifier,body.relief_id);const ok=(await claimCheck.query<{ok:number}>(`SELECT COUNT(*) ok FROM ExcusableDelayClaims c JOIN ComplianceOccurrences o ON o.id=@id WHERE c.id=@relief AND c.contractor_id=o.contractor_id AND c.service_month=o.service_month AND c.status<>'denied'`)).recordset[0]?.ok;if(!ok){await tx.rollback();return{status:409,jsonBody:{error:"The claim must belong to the same contractor and month and not be denied"}};}}
-    const result=await req.query<{contractor_id:string;service_month:string}>(`UPDATE ComplianceOccurrences SET review_status=@status,attribution=@attribution,dismiss_reason=@reason,relief_id=CASE WHEN @relief_given=1 THEN @relief ELSE relief_id END,reviewed_by=@actor,reviewed_at=SYSUTCDATETIME() OUTPUT inserted.contractor_id,inserted.service_month WHERE id=@id;`);const row=result.recordset[0];if(!row){await tx.rollback();return{status:404,jsonBody:{error:"Occurrence not found"}};}const stale=new sql.Request(tx);stale.input("contractor",sql.UniqueIdentifier,row.contractor_id);stale.input("month",sql.Char(6),row.service_month);await stale.query(`UPDATE AssessmentPeriods SET input_revision=input_revision+1,status=CASE WHEN status IN('in_review','stale') THEN 'stale' ELSE status END WHERE contractor_id=@contractor AND service_month=@month AND status<>'finalized';`);await tx.commit();return{status:200,jsonBody:{id:request.params.id}};}
-  catch(error){try{await tx.rollback();}catch{/*done*/}context.error("PATCH compliance occurrence failed",error);return{status:500,jsonBody:{error:"Internal server error"}};}
-}});
+type Handler = (request: HttpRequest, context: InvocationContext) => Promise<{ status: number; jsonBody: unknown }>;
+
+async function inTransaction(write: (tx: sql.Transaction) => Promise<IntakeOutcome>, onOk: (outcome: Extract<IntakeOutcome, { ok: true }>) => { status: number; jsonBody: unknown }, context: InvocationContext, label: string) {
+  const pool = await getPool();
+  const tx = new sql.Transaction(pool);
+  try {
+    await tx.begin();
+    const outcome = await write(tx);
+    if (!outcome.ok) { await tx.rollback(); return refused(outcome.refusal); }
+    await tx.commit();
+    return onOk(outcome);
+  } catch (error) {
+    try { await tx.rollback(); } catch { /* the transaction is already resolved */ }
+    context.error(`${label} failed`, error);
+    return { status: 500, jsonBody: { error: "Internal server error" } };
+  }
+}
+
+async function jsonBody(request: HttpRequest): Promise<Record<string, unknown> | null> {
+  try { return await request.json() as Record<string, unknown>; } catch { return null; }
+}
+
+const actorOf = (auth: { principal: { userDetails?: string | null } }) => auth.principal.userDetails ?? "onboard-console";
+
+const create: Handler = async (request, context) => {
+  const auth = requireRole(request, COMPLIANCE_WRITE_ROLES);
+  if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
+  const body = await jsonBody(request);
+  if (!body) return { status: 400, jsonBody: { error: "Request body must be valid JSON" } };
+  const errors = validateComplianceOccurrence(body);
+  if (errors.length) return { status: 400, jsonBody: { error: "Validation failed", details: errors } };
+  return inTransaction(tx => recordOccurrence(tx, {
+    kind: "manual",
+    standardId: String(body.standard_id),
+    serviceDate: String(body.service_date),
+    quantity: typeof body.quantity === "number" ? body.quantity : 1,
+    durationDays: typeof body.duration_days === "number" ? body.duration_days : null,
+    qualifierCode: typeof body.qualifier_code === "string" ? body.qualifier_code : null,
+    description: String(body.description).trim(),
+    contractorId: isGuid(body.contractor_id) ? body.contractor_id : null,
+  }, actorOf(auth)), outcome => ({ status: 201, jsonBody: { id: outcome.occurrence.id, contractor_id: outcome.occurrence.contractorId } }), context, "POST compliance occurrence");
+};
+
+const REVIEW_STATUSES = ["candidate", "confirmed", "dismissed"] as const;
+const ATTRIBUTIONS = ["contractor_error", "excusable", "mvta_directed", "undetermined"] as const;
+
+const resolve: Handler = async (request, context) => {
+  const auth = requireRole(request, COMPLIANCE_WRITE_ROLES);
+  if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
+  if (!isGuid(request.params.id)) return { status: 400, jsonBody: { error: "Invalid occurrence id" } };
+  const body = await jsonBody(request);
+  if (!body) return { status: 400, jsonBody: { error: "Request body must be valid JSON" } };
+  const status = REVIEW_STATUSES.find(v => v === body.review_status), attribution = ATTRIBUTIONS.find(v => v === body.attribution);
+  if (!status || !attribution) return { status: 400, jsonBody: { error: "Valid review_status and attribution are required" } };
+  if (body.relief_id !== undefined && body.relief_id !== null && !isGuid(body.relief_id)) return { status: 400, jsonBody: { error: "relief_id must be a claim id or null" } };
+  const id = request.params.id;
+  return inTransaction(tx => resolveOccurrence(tx, id, {
+    reviewStatus: status,
+    attribution,
+    dismissReason: typeof body.dismiss_reason === "string" ? body.dismiss_reason : null,
+    reliefId: body.relief_id === undefined ? undefined : (body.relief_id as string | null),
+  }, actorOf(auth)), () => ({ status: 200, jsonBody: { id } }), context, "PATCH compliance occurrence");
+};
+
+app.http("complianceOccurrencesCreate", { route: "compliance-occurrences", methods: ["POST"], authLevel: "anonymous", handler: create });
+app.http("complianceOccurrencePatch", { route: "compliance-occurrences/{id}", methods: ["PATCH"], authLevel: "anonymous", handler: resolve });
 
 // A reviewer's figure for one occurrence on a ranged band.
 //
@@ -32,15 +93,17 @@ app.http("complianceOccurrencePatch", { route:"compliance-occurrences/{id}",meth
 // reimbursement runs $2,500-$10,000 - so the contract sets the bounds and a
 // person sets the figure on the facts. It is a judgement, so it is recorded
 // with who made it and why, and the month cannot read as complete while any
-// confirmed occurrence on a ranged band is still waiting for one.
+// confirmed occurrence on a ranged band is still waiting for one. A figure
+// outside the contract's bounds is refused while the reviewer is looking at
+// it, not at month-end close.
 app.http("complianceOccurrenceAmount", {
   route: "compliance-occurrences/{id}/assessed-amount", methods: ["PUT"], authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
     const auth = requireRole(request, COMPLIANCE_WRITE_ROLES);
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     if (!isGuid(request.params.id)) return { status: 400, jsonBody: { error: "Invalid occurrence id" } };
-    let body: Record<string, unknown>;
-    try { body = await request.json() as Record<string, unknown>; } catch { return { status: 400, jsonBody: { error: "Request body must be valid JSON" } }; }
+    const body = await jsonBody(request);
+    if (!body) return { status: 400, jsonBody: { error: "Request body must be valid JSON" } };
     const clearing = body.assessed_amount === null;
     if (!clearing && (typeof body.assessed_amount !== "number" || !Number.isFinite(body.assessed_amount) || body.assessed_amount < 0)) {
       return { status: 400, jsonBody: { error: "assessed_amount must be a non-negative number, or null to clear it" } };
@@ -54,63 +117,8 @@ app.http("complianceOccurrenceAmount", {
       `SELECT CASE WHEN COL_LENGTH('dbo.ComplianceOccurrences','assessed_amount') IS NULL THEN 0 ELSE 1 END ready`);
     if (!ready.recordset[0]?.ready) return { status: 409, jsonBody: { error: "Migration 107 has not been applied to this database yet" } };
 
-    const tx = new sql.Transaction(pool);
-    try {
-      await tx.begin();
-      const bounds = new sql.Request(tx);
-      bounds.input("id", sql.UniqueIdentifier, request.params.id);
-      // The bounds come from the ranged band on the occurrence's own standard.
-      // Checking here means a figure outside the contract is refused while the
-      // reviewer is looking at it, not at month-end close.
-      const found = await bounds.query<{ contractor_id: string; service_month: string; min_amount: number | null; max_amount: number | null }>(`
-        SELECT TOP 1 o.contractor_id, o.service_month,
-          (SELECT TOP 1 t.penalty_amount_min FROM ContractorStandardTiers t
-             WHERE t.standard_id=o.standard_id AND t.penalty_amount_min IS NOT NULL AND t.effective_end_date IS NULL
-             ORDER BY t.tier_order) min_amount,
-          (SELECT TOP 1 t.penalty_amount_max FROM ContractorStandardTiers t
-             WHERE t.standard_id=o.standard_id AND t.penalty_amount_max IS NOT NULL AND t.effective_end_date IS NULL
-             ORDER BY t.tier_order) max_amount
-        FROM ComplianceOccurrences o WHERE o.id=@id
-      `);
-      const row = found.recordset[0];
-      if (!row) { await tx.rollback(); return { status: 404, jsonBody: { error: "Occurrence not found" } }; }
-      if (!clearing && row.min_amount !== null && row.max_amount !== null) {
-        const amount = body.assessed_amount as number;
-        if (amount < row.min_amount || amount > row.max_amount) {
-          await tx.rollback();
-          return { status: 400, jsonBody: { error: `The contract sets this penalty between ${row.min_amount} and ${row.max_amount}. ${amount} is outside that range.` } };
-        }
-      }
-
-      const write = new sql.Request(tx);
-      write.input("id", sql.UniqueIdentifier, request.params.id);
-      write.input("amount", sql.Decimal(12, 2), clearing ? null : body.assessed_amount);
-      write.input("note", sql.NVarChar(1000), clearing ? null : String(body.note).trim());
-      write.input("actor", sql.NVarChar(200), auth.principal.userDetails ?? "onboard-console");
-      await write.query(`
-        UPDATE ComplianceOccurrences
-        SET assessed_amount=@amount, assessed_amount_note=@note,
-            assessed_by=CASE WHEN @amount IS NULL THEN NULL ELSE @actor END,
-            assessed_at=CASE WHEN @amount IS NULL THEN NULL ELSE SYSUTCDATETIME() END
-        WHERE id=@id;
-      `);
-      const stale = new sql.Request(tx);
-      stale.input("contractor", sql.UniqueIdentifier, row.contractor_id);
-      stale.input("month", sql.Char(6), row.service_month);
-      await stale.query(`
-        UPDATE AssessmentPeriods SET input_revision=input_revision+1,
-          status=CASE WHEN status IN('in_review','stale') THEN 'stale' ELSE status END
-        WHERE contractor_id=@contractor AND service_month=@month AND status<>'finalized';
-      `);
-      // Linking or unlinking a claim changes the Assessable Input; on a month
-      // already shared it is a Material Assessment Change (ADR 0009).
-      if(body.relief_id!==undefined){const shared=new sql.Request(tx);shared.input("contractor",sql.UniqueIdentifier,row.contractor_id);shared.input("month",sql.Char(6),row.service_month);const periods=(await shared.query<{id:string}>(`SELECT id FROM AssessmentPeriods WHERE contractor_id=@contractor AND service_month=@month AND status IN('in_validation','finalized')`)).recordset;for(const period of periods){const change=new sql.Request(tx);change.input("period",sql.UniqueIdentifier,period.id);change.input("actor",sql.NVarChar(200),auth.principal.userDetails??"onboard-console");await change.query(materialChangeSql("period","actor"));}}
-      await tx.commit();
-      return { status: 200, jsonBody: { id: request.params.id } };
-    } catch (error) {
-      try { await tx.rollback(); } catch { /* the transaction is already resolved */ }
-      context.error("PUT compliance occurrence assessed amount failed", error);
-      return { status: 500, jsonBody: { error: "Internal server error" } };
-    }
+    const id = request.params.id;
+    const amount = clearing ? null : { amount: body.assessed_amount as number, note: String(body.note).trim() };
+    return inTransaction(tx => setAssessedAmount(tx, id, amount, actorOf(auth)), () => ({ status: 200, jsonBody: { id } }), context, "PUT compliance occurrence assessed amount");
   },
 });

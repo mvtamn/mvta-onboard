@@ -5,7 +5,8 @@
 // writes come from gtfsMissedTripsPoll.ts. Mirrors tripDelays.ts's shape.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { missedTripCaseSql, missedTripSourceRefSql } from "../lib/missedTripCase";
+import { missedTripCaseSql } from "../lib/missedTripCase";
+import { occurrenceSourceRefSql } from "../lib/occurrenceIntake/sources";
 import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
 import { missedTripFeedDependencies } from "../lib/kpiTrust";
 import { loadKpiFeedHealthRecords } from "../lib/kpiTrustStore";
@@ -96,9 +97,8 @@ app.http("missedTripsList", {
           : view === "history" ? "WHERE mtc.concluded = 1"
             : "";
       // Where each reviewed trip ended up in the performance assessment. The
-      // join is by source_ref, the same string occurrenceIntake.ts and the
-      // candidate poll both build, and it is written as a correlated subquery
-      // guarded by OBJECT_ID so an environment without the assessment tables
+      // join is by source_ref, the one reference lib/occurrenceIntake builds,
+      // and it is guarded by OBJECT_ID so an environment without the assessment tables
       // returns the list unchanged rather than failing.
       const occurrencesReady = await pool.request().query<{ ready: number }>(`
         SELECT CASE WHEN OBJECT_ID('dbo.ComplianceOccurrences','U') IS NULL THEN 0 ELSE 1 END ready
@@ -113,7 +113,7 @@ app.http("missedTripsList", {
       const occurrenceJoin = occurrencesReady.recordset[0]?.ready
         ? `
         LEFT JOIN ComplianceOccurrences occ
-          ON occ.source_ref = ${missedTripSourceRefSql("mmt")}
+          ON occ.source_ref = ${occurrenceSourceRefSql("missed_trip", "mmt")}
         LEFT JOIN AssessmentPeriods period
           ON period.contractor_id = occ.contractor_id AND period.service_month = occ.service_month`
         : "";

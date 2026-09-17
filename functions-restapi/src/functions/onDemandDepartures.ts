@@ -14,7 +14,7 @@ import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
 import { agencyServiceDate } from "../lib/missedTripTime";
 import { onDemandDeparturesEnabled } from "../lib/onDemandDepartures";
 import { isJudged, onDemandDepartureOutcome, type OnDemandDepartureOutcome } from "../lib/onDemandDepartureOutcome";
-import { garageDepartureVarianceSeconds, onDemandDepartureSourceRefSql, settledServiceDateExclusive } from "./complianceCandidatesPoll";
+import { garageDepartureVarianceSeconds, occurrenceSourceRefSql, settledServiceDateExclusive } from "../lib/occurrenceIntake/sources";
 
 const DEFAULT_TREND_DAYS = 14;
 
@@ -99,7 +99,7 @@ app.http("onDemandDeparturesList", {
         : "";
       const occurrenceJoin = occurrencesReady
         ? `
-        LEFT JOIN ComplianceOccurrences occ ON occ.source_ref = ${onDemandDepartureSourceRefSql()}
+        LEFT JOIN ComplianceOccurrences occ ON occ.source_ref = ${occurrenceSourceRefSql("on_demand_departure", "d")}
         LEFT JOIN AssessmentPeriods period
           ON period.contractor_id = occ.contractor_id AND period.service_month = occ.service_month`
         : "";

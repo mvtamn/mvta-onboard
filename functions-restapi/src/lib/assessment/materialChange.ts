@@ -20,3 +20,21 @@ export function materialChangeSql(periodParam: string, actorParam: string): stri
         UPDATE AssessmentPeriods SET input_revision=input_revision+1,status=CASE WHEN status IN('in_review','in_validation','finalized') THEN 'stale' ELSE status END,validation_shared_at=NULL,validation_ends_on=NULL,validation_shared_by=NULL,validation_recipient=NULL,validation_method=NULL,validation_attestation=NULL WHERE id=@${periodParam} AND status<>'issued';
         ${voidLiveIssuanceProofSql(periodParam, actorParam)}`;
 }
+
+// An Assessable Input for one contractor's month changed: an occurrence was
+// raised, resolved, or given a figure. A shared month takes the material
+// change above; a drafting month has its revision bumped (and a reviewed one
+// goes stale); a finalized or issued month is never touched - callers refuse
+// the write before it happens. `contractorParam`, `monthParam` and
+// `actorParam` name parameters the caller has already bound.
+export function assessableInputChangedSql(contractorParam: string, monthParam: string, actorParam: string): string {
+  return `
+        DECLARE @shared_period UNIQUEIDENTIFIER=(SELECT id FROM AssessmentPeriods WHERE contractor_id=@${contractorParam} AND service_month=@${monthParam} AND status='in_validation');
+        IF @shared_period IS NOT NULL
+        BEGIN
+        ${materialChangeSql("shared_period", actorParam)}
+        END
+        ELSE
+          UPDATE AssessmentPeriods SET input_revision=input_revision+1,status=CASE WHEN status IN('in_review','stale') THEN 'stale' ELSE status END
+          WHERE contractor_id=@${contractorParam} AND service_month=@${monthParam} AND status IN('open','in_review','stale','reopened');`;
+}
