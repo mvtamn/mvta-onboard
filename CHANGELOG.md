@@ -5,6 +5,16 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.224] - 2026-09-17
+
+- **Administration is an area home, a breadcrumb and quick find, not a second menu.** The 19-link side panel in `components/AdminLayout.tsx` (seven Access & Identity links, four Performance Assessment links, and eight more between them) is gone, and the pages get its width back. Every page now lives in one of five areas, listed once in `components/adminNav.ts`: People & Access (Access & Identity, Subscribers), Service Setup (Service Configuration, Event Administration, Decision Matrix), Standards & Contracts (Service Standards, OTP Compliance, Contractor Performance), Data & Integrations (Integrations & Data Health) and Governance (Governance & Audit). A new page is one entry there.
+- **`/admin` is a home page** (`components/AdminHome.tsx`) with a card per area and a line on each page. It used to redirect to Service Configuration, which an Access Administrator cannot open.
+- **Inside a page** a bar names the path (Administration / area / page). The area is a button that opens every area and page the role can open. Access & Identity's seven routes and Contractor Performance's four (Contractors, Agreements, Standards, Lists) are tabs under that bar. At phone width the current tab scrolls into view.
+- **Quick find** (`components/AdminQuickFind.tsx`) opens on Cmd+K or Ctrl+K anywhere under `/admin`, or from the Find button. It searches page and tab names, ranks a name match above an area match, and moves with the arrow keys, Enter and Esc.
+- **The main sidebar's Administration group is one link** to `/admin`, instead of eight.
+- **Access pages are offered only to the roles their routes accept.** The old panel listed Access & Identity, Subscribers and Governance & Audit to every Operations Administrator, and each one showed "Restricted" unless `VITE_ACCESS_ADMIN_FALLBACK` was on. The menu now uses the same role list as the routes. The routes and the API are unchanged.
+- **Verified.** `components/AdminLayout.test.tsx` has 12 tests: the home page by role, the breadcrumb and both tab strips, Service Standards not matching Service Configuration, the area switcher, and quick find (Ctrl+K, Enter to open, Esc to close, no page the role cannot open, ranking). All 70 console test files pass and the typecheck is clean. Checked in the mock-auth console at 1440px and 375px, light and dark.
+
 ## [1.5.222] - 2026-09-17
 
 - **Migration 122 brings stored Detours in line with the workflow acts (ADR-0030).** Rows still in `approved` move to the starting state for their fulfillment mode (`awaiting_fulfillment` when Avail-backed, `fulfilled` otherwise). Detours with `source = 'avail'` that took the `fixed_route_manual` column default become `fulfillment_mode = 'avail'`, keeping their Workflow state and without an Avail build confirmation; a row with a `fulfillment_change_reason` was changed on purpose and is left alone. Each moved row gets one `DetourWorkflowHistory` entry with `changed_by = 'migration-122'` (listed in `sql/README.md`). `CK_Detours_LifecycleState` no longer admits `approved`. Re-runnable, and it prints counts before and after.
