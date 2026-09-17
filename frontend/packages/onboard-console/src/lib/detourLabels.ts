@@ -14,6 +14,18 @@ export function fulfillmentPathLabel(d: Pick<Detour, "fulfillment_mode">): strin
   }
 }
 
+// The next step as an instruction, for the Detours page.
+export function nextStepLabel(readiness: Detour["readiness"]): string {
+  switch (readiness) {
+    case "ready_for_avail_entry": return "Enter this detour in Avail";
+    case "avail_conflict": return "Resolve the Avail conflict";
+    case "in_avail": return "In Avail; close it when the detour ends";
+    case "ready_for_manual_operations": return "Ready for manual operations";
+    case "closed": return "Closed";
+    default: return "Needs OCC review";
+  }
+}
+
 export function readinessLabel(d: Pick<Detour, "readiness" | "review_status" | "conflict_status">): string {
   const reReview = d.review_status === "needs_review";
   const base = d.readiness === "ready_for_avail_entry" ? "Ready for Avail entry"

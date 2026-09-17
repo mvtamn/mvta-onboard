@@ -5,6 +5,11 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.223] - 2026-09-17
+
+- **The Detours page offers the acts the workflow module allows.** `GET /detours` now returns `available_acts` per Detour, built from `readDetourWorkflows` - the same decision the acts enforce - as `{ available: true }` or `{ available: false, code, reason }` for `avail_entry.entered|conflict|not_entered`, `manual_fallback`, `close`, `override_conflict` and `complete_re_review`. `lib/detourActs.ts` turns that into what the page shows: an available act is offered; a held one (`conflict_unresolved`, `re_review_outstanding`, `legacy_approved_state`) is shown disabled or annotated with the server's sentence; any other refusal hides the control. `routes/Detours.tsx` no longer decides Close, Override, Mark review complete, Record human Avail entry or the manual exception from `lifecycle_state`/`fulfillment_mode`, and checks the chosen Avail result before asking for an Avail ID. The next-step wording moved to `nextStepLabel` in `lib/detourLabels.ts`. `DetourOfferedAct` and `DetourActAvailability` are in `@mvta/shared`.
+- **Verified.** 5 tests in `lib/detourActs.test.ts`; console typecheck clean; REST API tests pass. Walked through in the mock-auth console with stubbed data for a conflicted Detour, one with an outstanding re-review after a failed Avail entry, and one in Avail.
+
 ## [1.5.222] - 2026-09-17
 
 - **Migration 122 brings stored Detours in line with the workflow acts (ADR-0030).** Rows still in `approved` move to the starting state for their fulfillment mode (`awaiting_fulfillment` when Avail-backed, `fulfilled` otherwise). Detours with `source = 'avail'` that took the `fixed_route_manual` column default become `fulfillment_mode = 'avail'`, keeping their Workflow state and without an Avail build confirmation; a row with a `fulfillment_change_reason` was changed on purpose and is left alone. Each moved row gets one `DetourWorkflowHistory` entry with `changed_by = 'migration-122'` (listed in `sql/README.md`). `CK_Detours_LifecycleState` no longer admits `approved`. Re-runnable, and it prints counts before and after.
