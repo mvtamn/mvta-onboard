@@ -1,7 +1,7 @@
 // What the missed-trip review panel says and allows, from the classification
 // the API returns (lifecycle, finding, outcome). The rules themselves live in
 // the Missed-trip case module; this only turns them into words and requests.
-import type { MissedTripReviewDecision, MissedTripValidationStatus, OccurrenceAttribution, ValidateMissedTripInput } from "@mvta/shared";
+import type { MissedTripReviewDecision, MissedTripSourceSystem, MissedTripsMonthlySummaryRow, MissedTripValidationStatus, OccurrenceAttribution, ValidateMissedTripInput } from "@mvta/shared";
 import type { MissedTripAlert } from "./missedTrips.data.js";
 
 export const REVIEW_DECISIONS: { value: MissedTripReviewDecision; label: string; hint: string }[] = [
@@ -128,4 +128,58 @@ export function buildReviewRequest(
       ...(mode === "rereview" ? { rereview_reason: changeReason } : {}),
     },
   };
+}
+
+// The monthly table's rows, summed from what the server classified.
+//
+// Every bucket here is a column the Missed-trip case module emits
+// (counts_as_missed, review_outcome, lifecycle). The console used to read the
+// stored validation_status and decide for itself which values meant confirmed
+// and which meant timely service - carrying `false_positive`, the name that
+// outcome had before migration 125, as a second spelling the module had
+// already retired.
+export interface MissedTripMonthlyRow {
+  service_month: string;
+  route_id: string;
+  source_system: MissedTripSourceSystem;
+  cancellations: number;
+  noShows: number;
+  spareCandidates: number;
+  /** Confirmed missed trips: what the month counts. */
+  confirmedMissed: number;
+  /** Of those, the ones from a detector out of Shadow detection. */
+  countingTowardAssessment: number;
+  timelyService: number;
+  /** Partial-service failure or indeterminate: reviewed, not counted. */
+  otherOutcome: number;
+  awaitingReview: number;
+  total: number;
+}
+
+export function pivotMonthlySummary(summary: MissedTripsMonthlySummaryRow[]): MissedTripMonthlyRow[] {
+  const byKey = new Map<string, MissedTripMonthlyRow>();
+  for (const r of summary) {
+    const key = `${r.service_month}-${r.source_system}-${r.route_id}`;
+    const row = byKey.get(key) ?? {
+      service_month: r.service_month,
+      route_id: r.route_id,
+      source_system: r.source_system,
+      cancellations: 0, noShows: 0, spareCandidates: 0,
+      confirmedMissed: 0, countingTowardAssessment: 0,
+      timelyService: 0, otherOutcome: 0, awaitingReview: 0, total: 0,
+    };
+    if (r.detector === "gtfs_cancellation") row.cancellations += r.trip_count;
+    if (r.detector === "gtfs_silent_no_show") row.noShows += r.trip_count;
+    if (r.detector === "spare") row.spareCandidates += r.trip_count;
+    if (r.counts_as_missed) row.confirmedMissed += r.trip_count;
+    if (r.counts_toward_assessment) row.countingTowardAssessment += r.trip_count;
+    if (r.review_outcome === "timely_service") row.timelyService += r.trip_count;
+    if (r.review_outcome === "partial_service_failure" || r.review_outcome === "indeterminate") row.otherOutcome += r.trip_count;
+    if (r.lifecycle === "ready_for_review") row.awaitingReview += r.trip_count;
+    row.total += r.trip_count;
+    byKey.set(key, row);
+  }
+  return [...byKey.values()].sort(
+    (a, b) => b.service_month.localeCompare(a.service_month) || a.route_id.localeCompare(b.route_id, undefined, { numeric: true }),
+  );
 }

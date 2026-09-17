@@ -573,6 +573,8 @@ export type MissedTripDetectionType =
 // The Missed-trip case module's classification of a case
 // (functions-restapi/src/lib/missedTripCase/classify.ts). The console shows
 // these rather than working them out from the status columns.
+/** A detector family; promotion out of Shadow detection is granted per family. */
+export type MissedTripDetector = "gtfs_cancellation" | "gtfs_silent_no_show" | "spare";
 export type MissedTripLifecycle = "open" | "awaiting_evidence" | "ready_for_review" | "closed_by_evidence" | "reviewed" | "legacy";
 export type MissedTripEvidenceFinding =
   | "advance_cancellation" | "suspected_no_show" | "late_trip_start"
@@ -712,14 +714,23 @@ export interface MissedTripsDiagnostics {
   }>;
 }
 
-// GET /missed-trips-monthly-summary - one row per (month, route, detection
-// type, outcome) combination; the console pivots this into a table.
+// GET /missed-trips-monthly-summary - one row per (month, route, detector,
+// outcome) combination; the console pivots this into a table. The buckets are
+// the Missed-trip case module's own classification, not the stored
+// validation_status: what counts as a missed trip is decided once, on the
+// server (CONTEXT "Missed-trip case lifecycle").
 export interface MissedTripsMonthlySummaryRow {
   service_month: string;
   route_id: string;
   source_system: MissedTripSourceSystem;
   detection_type: MissedTripDetectionType | null;
-  validation_status: MissedTripValidationStatus;
+  detector: MissedTripDetector;
+  lifecycle: MissedTripLifecycle;
+  evidence_finding: MissedTripEvidenceFinding;
+  review_outcome: MissedTripReviewOutcome | null;
+  counts_as_missed: boolean;
+  /** A confirmed missed trip from a detector out of Shadow detection. */
+  counts_toward_assessment: boolean;
   trip_count: number;
 }
 
