@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MissedTrip, MissedTripsDiagnostics } from "@mvta/shared";
@@ -38,6 +38,8 @@ function candidate(source_system: "spare" | "gtfs", route_id: string): MissedTri
     condition_late_arrival: false, start_delay_seconds: null, arrival_delay_seconds: null, direction_label: null,
     occurrence_review_status: null, occurrence_attribution: null,
     occurrence_service_month: null, occurrence_period_status: null,
+    lifecycle: "ready_for_review", evidence_finding: source_system === "spare" ? "on_demand_service_failure" : "suspected_no_show",
+    review_outcome: null, held_reason: null, in_queue: true, concluded: false,
   };
 }
 
@@ -224,5 +226,34 @@ describe("agoLabel", () => {
 
   it("renders an em dash when there is no timestamp", () => {
     expect(agoLabel(null)).toBe("—");
+  });
+});
+
+describe("Missed Trips review outcomes", () => {
+  it("offers the four outcomes and sends the one chosen", async () => {
+    vi.mocked(api.getReasonCodes).mockResolvedValue({ reason_codes: [{ code: "RAN", label: "Ran per AVL" }] } as never);
+    vi.mocked(api.getMissedTrips).mockResolvedValue({ missed_trips: [candidate("gtfs", "460")], diagnostics });
+    vi.mocked(api.validateMissedTrip).mockResolvedValue({ trip_id: "gtfs-trip", service_date: "20260825", validation_status: "partial_service_failure", reason_code: "RAN", assessment: { linked: false, reason: "shadow_detection", explanation: "Shadow" } });
+    render(<MissedTripAlerts />);
+    const group = await screen.findByRole("group", { name: "Review outcome" });
+    for (const label of ["Confirmed missed trip", "Timely service", "Partial-service failure", "Indeterminate"]) {
+      expect(within(group).getByRole("button", { name: label })).toBeTruthy();
+    }
+    await userEvent.selectOptions(await screen.findByLabelText("Reason"), "RAN");
+    await userEvent.click(within(group).getByRole("button", { name: "Partial-service failure" }));
+    expect(api.validateMissedTrip).toHaveBeenCalledWith(expect.objectContaining({ validation_status: "partial_service_failure", reason_code: "RAN", attribution: undefined }));
+    expect(vi.mocked(api.validateMissedTrip).mock.calls[0][0]).not.toHaveProperty("supersede_reason");
+  });
+
+  it("holds confirmation while a case is awaiting evidence, and says why", async () => {
+    vi.mocked(api.getReasonCodes).mockResolvedValue({ reason_codes: [{ code: "RAN", label: "Ran per AVL" }] } as never);
+    const held = { ...candidate("gtfs", "460"), lifecycle: "awaiting_evidence" as const, held_reason: "awaiting_operating_window", in_queue: true };
+    vi.mocked(api.getMissedTrips).mockResolvedValue({ missed_trips: [held], diagnostics });
+    render(<MissedTripAlerts />);
+    await userEvent.selectOptions(await screen.findByLabelText("Reason"), "RAN");
+    const group = await screen.findByRole("group", { name: "Review outcome" });
+    expect((within(group).getByRole("button", { name: "Confirmed missed trip" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(group).getByRole("button", { name: "Indeterminate" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByText(/Not ready to confirm: waiting for the trip's scheduled run to end/)).toBeTruthy();
   });
 });

@@ -39,6 +39,8 @@ function trip(overrides: Partial<MissedTrip> = {}): MissedTrip {
     start_delay_seconds: null, arrival_delay_seconds: null, direction_label: null,
     occurrence_review_status: null, occurrence_attribution: null,
     occurrence_service_month: null, occurrence_period_status: null,
+    lifecycle: "ready_for_review", evidence_finding: "suspected_no_show", review_outcome: null,
+    held_reason: null, in_queue: true, concluded: false,
     ...overrides,
   } as MissedTrip;
 }
@@ -73,19 +75,19 @@ describe("confirming a missed trip lands it in the month's assessment", () => {
     view();
     await user.selectOptions(await screen.findByLabelText("Reason"), "OPERATOR");
     await user.selectOptions(screen.getByLabelText("Attribution"), "mvta_directed");
-    await user.click(screen.getByText("Confirm missed trip"));
+    await user.click(screen.getByText("Confirmed missed trip"));
     expect(api.validateMissedTrip).toHaveBeenCalledWith(expect.objectContaining({
       trip_id: "trip-1", validation_status: "confirmed", attribution: "mvta_directed",
     }));
   });
 
-  it("never attributes a false positive - there is no occurrence to attribute", async () => {
+  it("never attributes Timely service - there is no occurrence to attribute", async () => {
     const user = userEvent.setup();
     view();
     await user.selectOptions(await screen.findByLabelText("Reason"), "OPERATOR");
-    await user.click(screen.getByText("Mark false positive"));
+    await user.click(screen.getByText("Timely service"));
     expect(api.validateMissedTrip).toHaveBeenCalledWith(expect.objectContaining({
-      validation_status: "false_positive", attribution: undefined,
+      validation_status: "timely_service", attribution: undefined,
     }));
   });
 
@@ -99,7 +101,7 @@ describe("confirming a missed trip lands it in the month's assessment", () => {
     const user = userEvent.setup();
     view();
     await user.selectOptions(await screen.findByLabelText("Reason"), "OPERATOR");
-    await user.click(screen.getByText("Confirm missed trip"));
+    await user.click(screen.getByText("Confirmed missed trip"));
     expect(await screen.findByText(/no active Performance Agreement covers this contractor/)).toBeInTheDocument();
   });
 
@@ -107,6 +109,7 @@ describe("confirming a missed trip lands it in the month's assessment", () => {
     vi.mocked(api.getMissedTrips).mockResolvedValue({
       missed_trips: [trip({
         validation_status: "confirmed", validated_by: "A reviewer", reason_code: "OPERATOR",
+        lifecycle: "reviewed", review_outcome: "confirmed_missed_trip", in_queue: false, concluded: true,
         occurrence_review_status: "confirmed",
         occurrence_attribution: "contractor_error", occurrence_service_month: "202608",
         occurrence_period_status: "in_review",
@@ -123,7 +126,7 @@ describe("confirming a missed trip lands it in the month's assessment", () => {
 
   it("says plainly when a confirmed trip produced no occurrence at all", async () => {
     vi.mocked(api.getMissedTrips).mockResolvedValue({
-      missed_trips: [trip({ validation_status: "confirmed", validated_by: "A reviewer", reason_code: "OPERATOR" })],
+      missed_trips: [trip({ validation_status: "confirmed", validated_by: "A reviewer", reason_code: "OPERATOR", lifecycle: "reviewed", review_outcome: "confirmed_missed_trip", in_queue: false, concluded: true })],
       diagnostics: { ...diagnostics, unreviewed_count: 0, confirmed_count: 1 },
     });
     const user = userEvent.setup();
