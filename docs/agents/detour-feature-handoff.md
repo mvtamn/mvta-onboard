@@ -26,7 +26,7 @@ Implementation references:
 - `functions-restapi/src/lib/detourWorkflow.ts`
 - `functions-restapi/sql/migration-046-detour-orthogonal-state.sql`
 - `functions-restapi/src/functions/detourWorkflowHistory.ts`
-- `functions-restapi/src/functions/detoursWorkflow.ts`
+- `functions-restapi/src/lib/detourWorkflow/` (the only writer of Detour workflow state and history; ADR-0030)
 - `functions-restapi/src/functions/availDetoursSync.ts`
 - `functions-restapi/src/functions/detourIntake.ts`
 - `frontend/packages/shared/src/types.ts`

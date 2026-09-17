@@ -7,11 +7,17 @@
 // (Part B5), preserving the human correction rather than silently reverting
 // it. Harmless no-op for source='manual' rows (they're never touched by the
 // sync regardless).
+//
+// Every save is recorded through the Detour workflow module before the fields
+// change, which raises Outstanding re-review only when a reviewed fact
+// actually changes value.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { requireRole, DETOUR_WRITE_ROLES } from "../lib/auth";
 import { validateUpdateDetour, isGuid } from "../lib/validation";
 import type { UpdateDetourBody } from "../lib/types";
+import { actorFrom, performDetourActIn, type ReviewedFacts } from "../lib/detourWorkflow";
+import { refusalResponse } from "../lib/detourWorkflowResponse";
 
 interface UpdatedDetour {
   id: string;
@@ -58,9 +64,6 @@ app.http("detoursUpdate", {
              THEN 0 ELSE 1 END AS reporting_ready
     `);
     const reportingReady = schemaCheck.recordset[0]?.reporting_ready === 1;
-    const reviewSchema = await pool.request().query<{ ready: number }>("SELECT CASE WHEN COL_LENGTH('dbo.Detours', 'review_status') IS NULL THEN 0 ELSE 1 END AS ready");
-    const reviewReady = reviewSchema.recordset[0]?.ready === 1;
-    const materialChange = body.closure !== undefined || body.start_date !== undefined || body.end_date !== undefined || body.riders_directed !== undefined || body.segments !== undefined;
     if (!reportingReady) {
       context.warn(
         "Detours reporting columns not present (migration-025 not run) - any reason code, severity or reporting detail in this PATCH is being ignored.",
@@ -71,6 +74,24 @@ app.http("detoursUpdate", {
     try {
       await tx.begin();
 
+      const proposed: Partial<ReviewedFacts> = {};
+      if (body.closure !== undefined) proposed.closure = body.closure;
+      if (body.start_date !== undefined) proposed.start_date = body.start_date;
+      if (body.end_date !== undefined) proposed.end_date = body.end_date;
+      if (body.riders_directed !== undefined) proposed.riders_directed = body.riders_directed;
+      if (body.segments !== undefined) {
+        // In stored order: the rows below are written with sort_order ?? index.
+        proposed.segments = body.segments
+          .map((seg, i) => ({ seg, order: seg.sort_order ?? i }))
+          .sort((a, b) => a.order - b.order)
+          .map(({ seg }) => ({ routes: seg.routes, directions: seg.directions ?? null }));
+      }
+      const recorded = await performDetourActIn(tx, id, { act: "record_edit", proposed }, actorFrom(authResult.principal));
+      if (!recorded.ok) {
+        await tx.rollback();
+        return refusalResponse(recorded.refusal);
+      }
+
       const updateReq = new sql.Request(tx);
       updateReq.input("id", sql.UniqueIdentifier, id);
       updateReq.input("updated_by", sql.NVarChar, updatedBy);
@@ -80,10 +101,6 @@ app.http("detoursUpdate", {
         "updated_by = @updated_by",
         "last_edited_manually = CASE WHEN source = 'avail' THEN 1 ELSE last_edited_manually END",
       ];
-      if (reviewReady && materialChange) {
-        sets.push("review_status = 'needs_review'", "review_reason = @review_reason");
-        updateReq.input("review_reason", sql.NVarChar(1000), "Material operational details changed; OCC review required before next steps");
-      }
       if (body.number !== undefined) {
         sets.push("number = @number");
         updateReq.input("number", sql.NVarChar, body.number);
@@ -179,29 +196,6 @@ app.http("detoursUpdate", {
             VALUES (@detour_id, @routes, @directions, @sort_order)
           `);
         }
-      }
-
-      const historyReady = await new sql.Request(tx).query<{ ready: number }>(
-        "SELECT CASE WHEN OBJECT_ID('dbo.DetourWorkflowHistory', 'U') IS NULL THEN 0 ELSE 1 END AS ready",
-      );
-      if (historyReady.recordset[0]?.ready === 1) {
-        const currentReq = new sql.Request(tx);
-        currentReq.input("id", sql.UniqueIdentifier, id);
-        const current = (await currentReq.query<{ source: "manual" | "avail"; lifecycle_state: string }>(
-          "SELECT source, lifecycle_state FROM Detours WHERE id = @id",
-        )).recordset[0];
-        const historyReq = new sql.Request(tx);
-        historyReq.input("detour_id", sql.UniqueIdentifier, id);
-        historyReq.input("event_type", sql.NVarChar(30), "manual_correction");
-        historyReq.input("to_state", sql.NVarChar(30), current?.lifecycle_state ?? null);
-        historyReq.input("source", sql.NVarChar(20), current?.source ?? "manual");
-        historyReq.input("detail", sql.NVarChar(1000), "Manual correction to authoritative Detour fields");
-        historyReq.input("changed_by", sql.NVarChar(200), updatedBy);
-        await historyReq.query(`
-          INSERT INTO DetourWorkflowHistory
-            (detour_id, event_type, to_state, source, detail, changed_by)
-          VALUES (@detour_id, @event_type, @to_state, @source, @detail, @changed_by)
-        `);
       }
 
       await tx.commit();

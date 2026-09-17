@@ -1,13 +1,12 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
-import { getPool, sql } from "../lib/db";
+import { getPool } from "../lib/db";
 import { DETOUR_WRITE_ROLES, requireRole } from "../lib/auth";
 import { isGuid } from "../lib/validation";
+import { actorFrom, performDetourAct } from "../lib/detourWorkflow";
+import { refusalResponse } from "../lib/detourWorkflowResponse";
 
-// The only path back from review_status = 'needs_review'. detoursUpdate
-// flags every material edit for OCC re-review; without this the flag was
-// permanent. Clearing it is an audited act: the reason it was raised and
-// any notes go into DetourWorkflowHistory as a manual_correction so the
-// record shows who looked at the change and when.
+// The only path back from Outstanding re-review. Completing it is audited:
+// the reason it was raised and any notes go into the workflow history.
 app.http("detoursReviewComplete", {
   route: "detours/{id}/review-complete", methods: ["POST"], authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
@@ -20,28 +19,11 @@ app.http("detoursReviewComplete", {
     if (body.notes !== undefined && body.notes !== null && (typeof body.notes !== "string" || body.notes.length > 1000)) {
       return { status: 400, jsonBody: { error: "notes must be a string of at most 1000 characters if provided" } };
     }
-    const notes = typeof body.notes === "string" && body.notes.trim() ? body.notes.trim() : null;
     try {
-      const pool = await getPool();
-      const schema = await pool.request().query<{ ready: number }>("SELECT CASE WHEN COL_LENGTH('dbo.Detours', 'review_status') IS NULL OR OBJECT_ID('dbo.DetourWorkflowHistory', 'U') IS NULL THEN 0 ELSE 1 END AS ready");
-      if (schema.recordset[0]?.ready !== 1) return { status: 503, jsonBody: { error: "Re-review tracking is not configured" } };
-      const actor = auth.principal.userDetails || "system";
-      const tx = new sql.Transaction(pool);
-      await tx.begin();
-      try {
-        const current = (await new sql.Request(tx).input("id", sql.UniqueIdentifier, id)
-          .query<{ review_status: string; review_reason: string | null; lifecycle_state: string | null }>("SELECT review_status, review_reason, lifecycle_state FROM Detours WHERE id=@id AND is_deleted=0")).recordset[0];
-        if (!current) { await tx.rollback(); return { status: 404, jsonBody: { error: "Detour not found" } }; }
-        if (current.review_status !== "needs_review") { await tx.rollback(); return { status: 409, jsonBody: { error: "Detour is not awaiting OCC re-review" } }; }
-        await new sql.Request(tx).input("id", sql.UniqueIdentifier, id).input("actor", sql.NVarChar(200), actor)
-          .query("UPDATE Detours SET review_status='current', review_reason=NULL, updated_by=@actor, updated_at=SYSUTCDATETIME() WHERE id=@id");
-        const detail = `OCC re-review completed${current.review_reason ? ` (raised: ${current.review_reason})` : ""}${notes ? `: ${notes}` : ""}`.slice(0, 1000);
-        await new sql.Request(tx).input("detour_id", sql.UniqueIdentifier, id).input("state", sql.NVarChar(30), current.lifecycle_state)
-          .input("detail", sql.NVarChar(1000), detail).input("actor", sql.NVarChar(200), actor)
-          .query("INSERT INTO DetourWorkflowHistory (detour_id, event_type, from_state, to_state, source, detail, changed_by) VALUES (@detour_id, 'manual_correction', @state, @state, 'manual', @detail, @actor)");
-        await tx.commit();
-        return { status: 200, jsonBody: { id, review_status: "current", reviewed_by: actor } };
-      } catch (err) { await tx.rollback(); throw err; }
+      const actor = actorFrom(auth.principal);
+      const outcome = await performDetourAct(await getPool(), id, { act: "complete_re_review", notes: typeof body.notes === "string" ? body.notes : null }, actor);
+      if (!outcome.ok) return refusalResponse(outcome.refusal);
+      return { status: 200, jsonBody: { id, review_status: outcome.detour.review_status, reviewed_by: actor.kind === "person" ? actor.name : null } };
     } catch (err) { context.error("POST detour review-complete failed:", err); return { status: 500, jsonBody: { error: "Internal server error" } }; }
   },
 });

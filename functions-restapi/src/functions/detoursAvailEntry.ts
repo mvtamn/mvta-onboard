@@ -1,11 +1,13 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
-import { getPool, sql } from "../lib/db";
+import { getPool } from "../lib/db";
 import { DETOUR_WRITE_ROLES, requireRole } from "../lib/auth";
 import { isGuid, validateAvailEntryConfirmation } from "../lib/validation";
-import { conflictStatus, detourConflicts, loadDetourConflictScopes, parseOverrideIds } from "../lib/detourConflicts";
+import { actorFrom, performDetourAct, type AvailEntryResult } from "../lib/detourWorkflow";
+import { refusalResponse } from "../lib/detourWorkflowResponse";
 
-type AvailEntryResult = "entered" | "conflict" | "not_entered";
-
+// Records what happened when someone tried to build the Detour in Avail.
+// Confirming it as entered is refused while a conflict is unresolved or an
+// OCC re-review is outstanding; recording a failed or deferred attempt is not.
 app.http("detoursAvailEntry", {
   route: "detours/{id}/avail-entry",
   methods: ["POST"],
@@ -26,98 +28,15 @@ app.http("detoursAvailEntry", {
     if (errors.length) return { status: 400, jsonBody: { error: "Validation failed", details: errors } };
 
     const result = body.result as AvailEntryResult;
-    const changedBy = auth.principal.userDetails || "system";
     try {
-      const pool = await getPool();
-      const schema = await pool.request().query<{ ready: number }>(`
-        SELECT CASE WHEN COL_LENGTH('dbo.Detours', 'avail_entry_result') IS NOT NULL
-                         AND COL_LENGTH('dbo.Detours', 'avail_entry_confirmed_by') IS NOT NULL
-                         AND COL_LENGTH('dbo.Detours', 'avail_entry_confirmed_at') IS NOT NULL
-                    THEN 1 ELSE 0 END AS ready
-      `);
-      if (schema.recordset[0]?.ready !== 1) {
-        return { status: 503, jsonBody: { error: "Avail entry tracking is not configured" } };
-      }
-
-      const currentReq = pool.request();
-      currentReq.input("id", sql.UniqueIdentifier, id);
-      const currentResult = await currentReq.query<{
-        fulfillment_mode: string;
-        lifecycle_state: string;
-      }>(`SELECT fulfillment_mode, lifecycle_state FROM Detours WHERE id = @id AND is_deleted = 0`);
-      const current = currentResult.recordset[0];
-      if (!current) return { status: 404, jsonBody: { error: "Detour not found" } };
-      if (current.fulfillment_mode !== "avail") {
-        return { status: 409, jsonBody: { error: "Only Avail-backed Detours can record an Avail entry" } };
-      }
-      if (current.lifecycle_state !== "awaiting_fulfillment" && current.lifecycle_state !== "fulfillment_failed") {
-        return { status: 409, jsonBody: { error: `Cannot record Avail entry from ${current.lifecycle_state}` } };
-      }
-
-      // Confirming the Avail build is the point at which the Detour becomes
-      // real for riders, so an unresolved conflict with another open Detour
-      // must be overridden with a reason first. Recording a failed or
-      // deferred attempt is always allowed.
-      if (result === "entered") {
-        const conflictSchema = await pool.request().query<{ ready: number }>("SELECT CASE WHEN COL_LENGTH('dbo.Detours', 'conflict_override_reason') IS NULL THEN 0 ELSE 1 END AS ready");
-        if (conflictSchema.recordset[0]?.ready === 1) {
-          const scopes = await loadDetourConflictScopes(pool);
-          const subject = scopes.find((s) => s.id === id);
-          const conflicts = subject ? detourConflicts(subject, scopes) : [];
-          const overrideRow = (await pool.request().input("id", sql.UniqueIdentifier, id).query<{ conflict_override_reason: string | null; conflict_override_by: string | null; conflict_override_at: Date | null; conflict_override_ids: string | null }>("SELECT conflict_override_reason, conflict_override_by, conflict_override_at, conflict_override_ids FROM Detours WHERE id=@id")).recordset[0];
-          const status = conflictStatus(conflicts, overrideRow ? { reason: overrideRow.conflict_override_reason, by: overrideRow.conflict_override_by, at: overrideRow.conflict_override_at, ids: parseOverrideIds(overrideRow.conflict_override_ids) } : null);
-          if (status === "unresolved") {
-            return { status: 409, jsonBody: { error: `This Detour conflicts with ${conflicts.map((c) => c.label).join(", ")}. Record a conflict override with a reason before confirming the Avail entry.`, conflicts } };
-          }
-        }
-      }
-
-      const nextState = result === "entered" ? "fulfilled" : result === "conflict" ? "fulfillment_failed" : "awaiting_fulfillment";
-      const detail = typeof body.detail === "string" ? body.detail.trim() : null;
-      const tx = new sql.Transaction(pool);
-      await tx.begin();
-      try {
-        const updateReq = new sql.Request(tx);
-        updateReq.input("id", sql.UniqueIdentifier, id);
-        updateReq.input("external_detour_id", sql.NVarChar(100), body.external_detour_id ?? null);
-        updateReq.input("result", sql.NVarChar(20), result);
-        updateReq.input("changed_by", sql.NVarChar(200), changedBy);
-        updateReq.input("lifecycle_state", sql.NVarChar(30), nextState);
-        await updateReq.query(`
-          UPDATE Detours
-          SET external_detour_id = COALESCE(@external_detour_id, external_detour_id),
-              avail_entry_result = @result,
-              avail_entry_confirmed_by = @changed_by,
-              avail_entry_confirmed_at = SYSUTCDATETIME(),
-              lifecycle_state = @lifecycle_state,
-              workflow_updated_by = @changed_by,
-              workflow_updated_at = SYSUTCDATETIME(),
-              avail_build_confirmed_at = CASE WHEN @result = 'entered' THEN SYSUTCDATETIME() ELSE NULL END,
-              updated_by = @changed_by,
-              updated_at = SYSUTCDATETIME()
-          WHERE id = @id AND is_deleted = 0
-        `);
-
-        const historyReq = new sql.Request(tx);
-        historyReq.input("detour_id", sql.UniqueIdentifier, id);
-        historyReq.input("from_state", sql.NVarChar(30), current.lifecycle_state);
-        historyReq.input("to_state", sql.NVarChar(30), nextState);
-        historyReq.input("source", sql.NVarChar(20), "manual");
-        historyReq.input("detail", sql.NVarChar(1000), detail ?? `Human Avail entry result: ${result}`);
-        historyReq.input("changed_by", sql.NVarChar(200), changedBy);
-        await historyReq.query(`
-          INSERT INTO DetourWorkflowHistory
-            (detour_id, event_type, from_state, to_state, source, detail, changed_by)
-          VALUES (@detour_id, 'fulfillment_confirmation', @from_state, @to_state,
-                  @source, @detail, @changed_by)
-        `);
-        await tx.commit();
-      } catch (err) {
-        await tx.rollback();
-        throw err;
-      }
-
-      return { status: 200, jsonBody: { id, result, lifecycle_state: nextState } };
+      const outcome = await performDetourAct(await getPool(), id, {
+        act: "avail_entry",
+        result,
+        externalDetourId: typeof body.external_detour_id === "string" ? body.external_detour_id : null,
+        detail: typeof body.detail === "string" ? body.detail : null,
+      }, actorFrom(auth.principal));
+      if (!outcome.ok) return refusalResponse(outcome.refusal);
+      return { status: 200, jsonBody: { id, result, lifecycle_state: outcome.detour.lifecycle_state } };
     } catch (err) {
       context.error("POST /detours/{id}/avail-entry failed:", err);
       return { status: 500, jsonBody: { error: "Internal server error" } };

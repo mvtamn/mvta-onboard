@@ -971,7 +971,7 @@ export type DetourFulfillmentMode = "avail" | "fixed_route_manual" | "mobility_m
 export type DetourLifecycleState =
   | "approved" | "awaiting_fulfillment" | "fulfilled" | "fulfillment_failed" | "closed";
 export type DetourReadiness =
-  | "needs_occ_review" | "ready_for_avail_entry" | "avail_conflict"
+  | "needs_occ_review" | "ready_for_avail_entry" | "avail_conflict" | "in_avail"
   | "ready_for_manual_operations" | "closed";
 export type DetourCommunicationStatus = "draft" | "published" | "failed";
 export type DetourCommunicationDeliveryStatus = "not_requested" | "queued" | "sent" | "delivered" | "partially_sent" | "failed" | "skipped";

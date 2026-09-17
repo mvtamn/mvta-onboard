@@ -6,6 +6,8 @@ import { toDateOnly, toTimeOnly } from "../lib/detourStatus";
 import { detourNumberYear } from "../lib/detourNumbering";
 import { allocateDetourNumber } from "../lib/detourNumberAllocator";
 import type { DetourFulfillmentMode } from "../lib/types";
+import { actorFrom, performDetourActIn } from "../lib/detourWorkflow";
+import { refusalResponse } from "../lib/detourWorkflowResponse";
 import { intakeReviewRefusal, intakeStatusAfterUpdate, isOpenIntakeStatus, type DetourIntakeStatus, type DetourIntakeReviewOutcome } from "../lib/detourIntakeTransitions";
 import { findLikelyDuplicates, type DuplicateCandidate } from "../lib/detourDuplicates";
 import { parseGeometryJson } from "../lib/geoNearby";
@@ -382,7 +384,6 @@ app.http("detourIntakePromote", {
     const errors = validatePromoteDetourIntake(body);
     if (errors.length) return { status: 400, jsonBody: { error: "Validation failed", details: errors } };
     const fulfillmentMode = body.fulfillment_mode as DetourFulfillmentMode;
-    const lifecycleState = fulfillmentMode === "avail" ? "awaiting_fulfillment" : "fulfilled";
     try {
       const pool = await getPool();
       const tx = new sql.Transaction(pool);
@@ -418,8 +419,6 @@ app.http("detourIntakePromote", {
         detourReq.input("affected_stops_and_stations", sql.NVarChar(2000), intake.affected_stops_and_stations ?? null);
         detourReq.input("operational_impacts", sql.NVarChar(2000), intake.operational_impacts ?? null);
         detourReq.input("confirmation_contact", sql.NVarChar(500), intake.confirmation_contact ?? null);
-        detourReq.input("fulfillment_mode", sql.NVarChar(30), fulfillmentMode);
-        detourReq.input("lifecycle_state", sql.NVarChar(30), lifecycleState);
         detourReq.input("workflow_owner", sql.NVarChar(200), auth.principal.userDetails || "system");
         detourReq.input("created_by", sql.NVarChar(200), auth.principal.userDetails || "system");
         detourReq.input("internal_number", sql.NVarChar(50), internalNumber);
@@ -432,14 +431,14 @@ app.http("detourIntakePromote", {
         detourReq.input("evidence_reference", sql.NVarChar(1000), intake.evidence_reference ?? null);
         const detourResult = await detourReq.query<{ id: string; created_at: Date }>(`
           INSERT INTO Detours
-            (id, internal_number, closure, start_date, end_date, riders_directed, source, fulfillment_mode,
-             lifecycle_state, workflow_owner, workflow_updated_by, workflow_updated_at, created_by,
+            (id, internal_number, closure, start_date, end_date, riders_directed, source,
+             workflow_owner, created_by,
              service_impact, service_area, action_instructions, notification_audiences,
              notification_channels, evidence_notes, evidence_reference, start_time, end_time, time_window_status,
              affected_stops_and_stations, operational_impacts, confirmation_contact${locationReady ? ", location" : ""}${geometryReady ? ", geometry_json" : ""})
           OUTPUT INSERTED.id, INSERTED.created_at
-          VALUES (@id, @internal_number, @closure, @start_date, @end_date, @riders_directed, 'manual', @fulfillment_mode,
-                  @lifecycle_state, @workflow_owner, @workflow_owner, SYSUTCDATETIME(), @created_by,
+          VALUES (@id, @internal_number, @closure, @start_date, @end_date, @riders_directed, 'manual',
+                  @workflow_owner, @created_by,
                   @service_impact, @service_area, @action_instructions, @notification_audiences,
                   @notification_channels, @evidence_notes, @evidence_reference, @start_time, @end_time, @time_window_status,
                   @affected_stops_and_stations, @operational_impacts, @confirmation_contact${locationReady ? ", @location" : ""}${geometryReady ? ", @geometry_json" : ""})
@@ -461,18 +460,10 @@ app.http("detourIntakePromote", {
         attachmentsReq.input("detour_id", sql.UniqueIdentifier, detour.id);
         attachmentsReq.input("intake_id", sql.UniqueIdentifier, id);
         await attachmentsReq.query("UPDATE DetourImages SET detour_id=@detour_id,intake_id=NULL WHERE intake_id=@intake_id");
-        const historyReq = new sql.Request(tx);
-        historyReq.input("detour_id", sql.UniqueIdentifier, detour.id);
-        historyReq.input("event_type", sql.NVarChar(30), "state_transition");
-        historyReq.input("to_state", sql.NVarChar(30), lifecycleState);
-        historyReq.input("source", sql.NVarChar(20), "manual");
-        historyReq.input("detail", sql.NVarChar(1000), "Promoted from Detour Intake");
-        historyReq.input("changed_by", sql.NVarChar(200), auth.principal.userDetails || "system");
-        await historyReq.query(`
-          INSERT INTO DetourWorkflowHistory
-            (detour_id, event_type, to_state, source, detail, changed_by)
-          VALUES (@detour_id, @event_type, @to_state, @source, @detail, @changed_by)
-        `);
+        // Promotion is the approval: the workflow module sets the fulfillment
+        // mode and starting Workflow state and writes the history entry.
+        const started = await performDetourActIn(tx, detour.id, { act: "promote", mode: fulfillmentMode }, actorFrom(auth.principal));
+        if (!started.ok) { await tx.rollback(); return refusalResponse(started.refusal); }
         const promoteReq = new sql.Request(tx);
         promoteReq.input("id", sql.UniqueIdentifier, id);
         promoteReq.input("detour_id", sql.UniqueIdentifier, id);
@@ -481,7 +472,7 @@ app.http("detourIntakePromote", {
           reviewed_by = @reviewed_by, reviewed_at = SYSUTCDATETIME(), updated_by = @reviewed_by,
           updated_at = SYSUTCDATETIME() WHERE id = @id`);
         await tx.commit();
-        return { status: 201, jsonBody: { id: detour.id, created_at: detour.created_at, lifecycle_state: lifecycleState } };
+        return { status: 201, jsonBody: { id: detour.id, created_at: detour.created_at, lifecycle_state: started.detour.lifecycle_state } };
       } catch (err) {
         await tx.rollback();
         throw err;

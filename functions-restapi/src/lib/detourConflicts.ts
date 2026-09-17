@@ -3,12 +3,13 @@
 // window - the same signal intake uses for likely duplicates, applied
 // Detour to Detour. Proceeding anyway requires an explicit, reasoned
 // override (migration 090), which covers the conflicts known when it was
-// recorded; a conflict that appears afterwards reopens the question.
-import type { ConnectionPool } from "mssql";
+// recorded; a conflict that appears afterwards reopens the question. Loading
+// and deciding live in the Detour workflow module (lib/detourWorkflow).
+import type { ConnectionPool, Transaction } from "mssql";
 import { findLikelyDuplicates, type DuplicateCandidate, type LikelyDuplicate } from "./detourDuplicates";
 import { toDateOnly } from "./detourStatus";
 import { parseGeometryJson } from "./geoNearby";
-import { loadStopIndex, stopIdsForRecord, stopNameLookup, type StopIndexEntry } from "./detourStops";
+import { loadStopIndex, requestOn, stopIdsForRecord, stopNameLookup, type StopIndexEntry } from "./detourStops";
 
 export type DetourConflictStatus = "none" | "unresolved" | "overridden";
 
@@ -44,35 +45,31 @@ export function conflictStatus(conflicts: LikelyDuplicate[], override: DetourCon
 
 interface ScopeRow {
   id: string; internal_number: string | null; number: string | null; closure: string; location: string | null;
-  service_area: string | null; start_date: Date | null; end_date: Date | null; lifecycle_state: string | null; segment_routes: string | null;
+  service_area: string | null; start_date: Date | null; end_date: Date | null; lifecycle_state: string; segment_routes: string | null;
   geometry_json: string | null;
   affected_stops_and_stations: string | null;
 }
 
-// Every Detour that can conflict: not deleted, not closed. Column presence
-// follows the migrations the same way detoursList does.
-export async function loadDetourConflictScopes(pool: ConnectionPool): Promise<DetourConflictScope[]> {
-  const schema = await pool.request().query<{ workflow: number; intake: number; location: number; geometry: number; stops: number }>(`
-    SELECT CASE WHEN COL_LENGTH('dbo.Detours', 'lifecycle_state') IS NULL THEN 0 ELSE 1 END AS workflow,
-           CASE WHEN COL_LENGTH('dbo.Detours', 'service_area') IS NULL THEN 0 ELSE 1 END AS intake,
-           CASE WHEN COL_LENGTH('dbo.Detours', 'location') IS NULL THEN 0 ELSE 1 END AS location,
-           CASE WHEN COL_LENGTH('dbo.Detours', 'geometry_json') IS NULL THEN 0 ELSE 1 END AS geometry,
-           CASE WHEN COL_LENGTH('dbo.Detours', 'affected_stops_and_stations') IS NULL THEN 0 ELSE 1 END AS stops`);
-  const f = schema.recordset[0];
-  const rows = await pool.request().query<ScopeRow>(`
-    SELECT d.id, ${f?.workflow ? "d.internal_number" : "NULL AS internal_number"}, d.number, d.closure,
-           ${f?.location ? "d.location" : "NULL AS location"}, ${f?.intake ? "d.service_area" : "NULL AS service_area"},
-           d.start_date, d.end_date, ${f?.workflow ? "d.lifecycle_state" : "NULL AS lifecycle_state"},
-           ${f?.geometry ? "d.geometry_json" : "NULL AS geometry_json"},
-           ${f?.stops ? "d.affected_stops_and_stations" : "NULL AS affected_stops_and_stations"},
+export interface DetourConflictContext {
+  // Every Detour that can conflict: not deleted, not closed.
+  scopes: DetourConflictScope[];
+  stopName: (id: string) => string;
+}
+
+// One scope and stop-index load, from a pool or from inside the caller's
+// transaction (the Detour workflow module reads it under its row lock).
+export async function loadDetourConflictContext(db: ConnectionPool | Transaction): Promise<DetourConflictContext> {
+  const rows = await requestOn(db).query<ScopeRow>(`
+    SELECT d.id, d.internal_number, d.number, d.closure, d.location, d.service_area,
+           d.start_date, d.end_date, d.lifecycle_state, d.geometry_json, d.affected_stops_and_stations,
            (SELECT STRING_AGG(s.routes, '; ') FROM DetourSegments s WHERE s.detour_id = d.id) AS segment_routes
     FROM Detours d
-    WHERE d.is_deleted = 0 ${f?.workflow ? "AND (d.lifecycle_state IS NULL OR d.lifecycle_state <> 'closed')" : ""}`);
-  const stopIndex = await loadStopIndex(pool);
-  return rows.recordset.map((d) => {
+    WHERE d.is_deleted = 0 AND d.lifecycle_state <> 'closed'`);
+  const stopIndex = await loadStopIndex(db);
+  const scopes = rows.recordset.map((d) => {
     const geometry = parseGeometryJson(d.geometry_json);
     return {
-      kind: "detour" as const, id: d.id, label: d.internal_number || d.number || d.closure, status: d.lifecycle_state ?? "recorded",
+      kind: "detour" as const, id: d.id, label: d.internal_number || d.number || d.closure, status: d.lifecycle_state,
       place_text: [d.closure, d.location].filter(Boolean).join(" "),
       route_texts: [d.segment_routes, d.service_area].filter((v): v is string => Boolean(v)),
       start_date: toDateOnly(d.start_date), end_date: toDateOnly(d.end_date),
@@ -80,10 +77,6 @@ export async function loadDetourConflictScopes(pool: ConnectionPool): Promise<De
       stop_ids: stopIdsForRecord(stopIndex, geometry, d.affected_stops_and_stations),
     };
   });
-}
-
-// Stop names for the shared-stop explanation; one index load per request.
-export async function detourStopNameLookup(pool: ConnectionPool): Promise<(id: string) => string> {
-  return stopNameLookup(await loadStopIndex(pool));
+  return { scopes, stopName: stopNameLookup(stopIndex) };
 }
 export type { StopIndexEntry };

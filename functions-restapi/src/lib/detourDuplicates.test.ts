@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { findLikelyDuplicates, placeTokens, routeTokens, type DuplicateCandidate, type DuplicateScope } from "./detourDuplicates";
+import { dateWindowsOverlap, findLikelyDuplicates, placeTokens, routeTokens, type DuplicateCandidate, type DuplicateScope } from "./detourDuplicates";
 
 const subject: DuplicateScope = {
   id: "new", place_text: "Cedar Ave bridge closed between 5th St and Main",
@@ -83,4 +83,9 @@ test("a shared GTFS stop is a likely duplicate, named by the lookup, ranked abov
     candidate({ id: "stop", place_text: "", stop_ids: ["S2", "S7"] }),
   ], (id) => ({ S2: "Cedar & 6th" } as Record<string, string>)[id] ?? `#${id}`);
   assert.deepStrictEqual(matches.map((m) => [m.id, m.reasons, m.shared]), [["stop", ["stops"], ["Cedar & 6th"]]]);
+});
+
+test("date windows overlap inclusively and support open-ended ranges", () => {
+  assert.equal(dateWindowsOverlap({ start_date: "2026-08-01", end_date: "2026-08-10" }, { start_date: "2026-08-10", end_date: "2026-08-20" }), true);
+  assert.equal(dateWindowsOverlap({ start_date: "2026-08-01", end_date: "2026-08-10" }, { start_date: "2026-08-11", end_date: null }), false);
 });
