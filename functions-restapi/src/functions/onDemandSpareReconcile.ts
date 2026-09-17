@@ -3,7 +3,7 @@
 // read advances the health record exposed to OCC.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool } from "../lib/db";
-import { recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
+import { runFeedIngestion } from "../lib/feedRun";
 import { evaluateOnDemandInterventions } from "../lib/onDemandInterventions";
 import { onDemandActivation } from "../lib/onDemandMonitoringHealth";
 import { normalizeOnDemandSpareRequest } from "../lib/onDemandSpareMonitor";
@@ -72,65 +72,64 @@ app.timer("onDemandSpareReconcile", {
       return;
     }
     const reconciledAt = new Date();
-    const pool = await getPool();
-    if (!activation.active) {
-      // Refused rather than run unscoped: reading every service the key can
-      // see would look like a healthy reconciliation while covering the wrong
-      // population. Recorded as a feed failure so the misconfiguration shows
-      // up in KPI trust instead of going quiet.
-      const err = new Error("ON_DEMAND_MONITORING_ENABLED is true but ON_DEMAND_MONITORING_SERVICE_IDS is empty; refusing to reconcile every Spare service.");
-      context.error(err.message);
-      try { await recordFeedFailure(pool, "spare_on_demand_reconciliation", err); } catch (healthError) {
-        context.error("Failed to record on-demand reconciliation feed failure:", healthError);
+    // Everything that decides whether this reconciliation happened runs inside
+    // runFeedIngestion. The zone load, the monitor writes and the health-table
+    // write used to sit after the fetch guard, so a zone gap (the store throws
+    // when no zone version is active) escaped without recording anything: the
+    // On-Demand stream would have aged to Stale with no reason given - the
+    // 2026-09-03 failure mode, already fixed in the missed-trip ingest.
+    const result = await runFeedIngestion("spare_on_demand_reconciliation", context, async () => {
+      if (!activation.active) {
+        // Refused rather than run unscoped: reading every service the key can
+        // see would look like a healthy reconciliation while covering the wrong
+        // population. Recorded as a feed failure so the misconfiguration shows
+        // up in KPI trust instead of going quiet.
+        return {
+          kind: "failed",
+          reason: "ON_DEMAND_MONITORING_ENABLED is true but ON_DEMAND_MONITORING_SERVICE_IDS is empty; refusing to reconcile every Spare service.",
+        };
       }
-      return;
-    }
-    let requests: SpareRequestRecord[];
-    try {
-      requests = await fetchAuthoritativeRequests(
+      const requests = await fetchAuthoritativeRequests(
         activation.serviceIds, Math.floor(reconciledAt.getTime() / 1000),
       );
-    } catch (err) {
-      context.error("On-demand authoritative reconciliation failed:", err);
-      try { await recordFeedFailure(pool, "spare_on_demand_reconciliation", err); } catch (healthError) {
-        context.error("Failed to record on-demand reconciliation feed failure:", healthError);
+      const zones = await loadActiveOperationalZones();
+      let writes = 0;
+      let latestSourceUpdateAt: Date | null = null;
+      const activeRequestIds = new Set<string>();
+      for (const request of requests) {
+        const normalized = normalizeOnDemandSpareRequest(request);
+        if (!normalized) continue;
+        if (await storeOnDemandSpareRequest(normalized, zones, reconciledAt)) writes++;
+        if (normalized.state === "active") activeRequestIds.add(normalized.requestId);
+        if (!latestSourceUpdateAt || normalized.sourceUpdatedAt > latestSourceUpdateAt) {
+          latestSourceUpdateAt = normalized.sourceUpdatedAt;
+        }
       }
-      throw err;
-    }
-    const zones = await loadActiveOperationalZones();
-    let writes = 0;
-    let latestSourceUpdateAt: Date | null = null;
-    const activeRequestIds = new Set<string>();
-    for (const request of requests) {
-      const normalized = normalizeOnDemandSpareRequest(request);
-      if (!normalized) continue;
-      if (await storeOnDemandSpareRequest(normalized, zones, reconciledAt)) writes++;
-      if (normalized.state === "active") activeRequestIds.add(normalized.requestId);
-      if (!latestSourceUpdateAt || normalized.sourceUpdatedAt > latestSourceUpdateAt) {
-        latestSourceUpdateAt = normalized.sourceUpdatedAt;
-      }
-    }
-    await recordOnDemandAuthoritativeReconciliation({
-      reconciledAt,
-      latestSourceUpdateAt,
-      activeRequestCount: activeRequestIds.size,
-    });
-    // Evaluated here too, on the freshest possible state, rather than waiting
-    // up to five minutes for onDemandInterventionsEvaluate. Both callers share
-    // one implementation and one debounce, so a breach seen by both is still
-    // two observations of a sustained condition, not a shortcut past it.
-    await evaluateOnDemandInterventions(pool, reconciledAt, reconciledAt);
-    try {
+      await recordOnDemandAuthoritativeReconciliation({
+        reconciledAt,
+        latestSourceUpdateAt,
+        activeRequestCount: activeRequestIds.size,
+      });
+      context.log(`On-demand reconciliation: ${requests.length} source requests checked; ${writes} monitor records updated.`);
       // This complete source read - not the missed-trip ingestion - is what
       // makes On-Demand KPI trust current. A zero-active reconciliation still
       // covers the source through reconciledAt, so it reads as current-but-empty
       // rather than unavailable.
-      await recordFeedHealth(pool, "spare_on_demand_reconciliation", activeRequestIds.size, null, {
-        endAt: reconciledAt,
-      });
-    } catch (healthError) {
-      context.error("Failed to update on-demand reconciliation feed health:", healthError);
-    }
-    context.log(`On-demand reconciliation: ${requests.length} source requests checked; ${writes} monitor records updated.`);
+      return {
+        kind: "stored",
+        received: activeRequestIds.size,
+        stored: activeRequestIds.size,
+        coverage: { endAt: reconciledAt },
+      };
+    });
+    if (result.kind !== "health") return;
+
+    // Evaluated here too, on the freshest possible state, rather than waiting
+    // up to five minutes for onDemandInterventionsEvaluate. Both callers share
+    // one implementation and one debounce, so a breach seen by both is still
+    // two observations of a sustained condition, not a shortcut past it.
+    // It runs after the feed is settled: an evaluation that fails is not a
+    // reconciliation that failed.
+    await evaluateOnDemandInterventions(await getPool(), reconciledAt, reconciledAt);
   },
 });

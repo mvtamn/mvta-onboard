@@ -7,7 +7,7 @@
 // archives, and nothing here depends on the static schedule.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool } from "../lib/db";
-import { recordFeedFailure, recordFeedHealth } from "../lib/kpiFeedHealth";
+import { runFeedIngestion } from "../lib/feedRun";
 import { loadOperationalZonesFromGtfsFlexArchive } from "../lib/onDemandOperationalZones";
 import { fetchGtfsFlexArchive, importOperationalZoneVersion, sourceSha256 } from "../lib/onDemandZoneImport";
 
@@ -23,37 +23,25 @@ app.timer("onDemandZonesSync", {
       return;
     }
 
-    const pool = await getPool();
-    let result;
-    try {
+    let result: Awaited<ReturnType<typeof importOperationalZoneVersion>> | undefined;
+    await runFeedIngestion("on_demand_zones", context, async () => {
       const archive = await fetchGtfsFlexArchive(feedUrl);
       // The hash covers the raw archive bytes, so it has to be taken before
       // parsing - it is what makes a re-import of identical geometry a no-op.
-      result = await importOperationalZoneVersion(
-        pool,
+      const imported = await importOperationalZoneVersion(
+        await getPool(),
         loadOperationalZonesFromGtfsFlexArchive(archive),
         sourceSha256(archive),
         "onDemandZonesSync",
       );
-    } catch (err) {
-      context.error("On-demand operational zone import failed:", err);
-      try {
-        await recordFeedFailure(pool, "on_demand_zones", err);
-      } catch (healthError) {
-        context.error("Failed to record on-demand zone feed failure:", healthError);
-      }
-      return;
-    }
-
-    try {
+      result = imported;
       // This ledger records ingestion, not what is in force: the count is the
       // zones the imported version carries. An import that lands but waits for
       // activation leaves the monitor on the previous geometry, and that gap is
       // reported by the warning below and by the versions endpoint, not here.
-      await recordFeedHealth(pool, "on_demand_zones", result.zoneCount, null, { endAt: new Date() });
-    } catch (healthError) {
-      context.error("Failed to record on-demand zone feed health:", healthError);
-    }
+      return { kind: "stored", received: imported.zoneCount, stored: imported.zoneCount, coverage: { endAt: new Date() } };
+    });
+    if (!result) return;
 
     if (!result.imported) {
       context.log(

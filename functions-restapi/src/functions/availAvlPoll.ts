@@ -14,7 +14,8 @@ import { detectEventGeofenceCrossings } from "../lib/eventGeofenceDetection";
 import { detectMonitoringAreaTests } from "../lib/monitoringAreaTest";
 import { detectionWindowSeconds, shouldAcceptObservation } from "../lib/eventProcessing";
 import { recordEventHealth, recordTelemetryDiagnostic } from "../lib/eventHealth";
-import { feedHealthOutcome, recordFeedFailure, recordFeedHealth, type FeedHealthOutcome } from "../lib/kpiFeedHealth";
+import { feedHealthOutcome, type FeedHealthOutcome } from "../lib/kpiFeedHealth";
+import { runFeedIngestion } from "../lib/feedRun";
 
 type PollPool = Awaited<ReturnType<typeof getPool>>;
 
@@ -174,94 +175,116 @@ app.timer("availAvlPoll", {
     const now = new Date();
     const twoMinutesAgo = new Date(now.getTime() - 2 * 60 * 1000);
 
-    let reports: Awaited<ReturnType<typeof fetchAvlReports>> = [];
-    if (sharedDue) {
-      try {
-        reports = await fetchAvlReports(baseUrl, apiKey, twoMinutesAgo, now);
-        await safeHealth(pool, "shared_avl_ingestion", "healthy", `Fetched ${reports.length} reports.`);
-      } catch (err) {
-        context.error("Failed to fetch Avail AVL Reports:", err);
-        try { await recordFeedFailure(pool, "avail_avl", err); } catch (healthError) { context.error("Failed to record Avail AVL feed failure:", healthError); }
-        await safeHealth(pool, "shared_avl_ingestion", "failed", "Avail AVL fetch failed.", err);
-        return;
-      }
-    }
-
     const tableCheck = await pool.request().query<{ table_exists: number }>(`
       SELECT CASE WHEN OBJECT_ID('dbo.EventVehicleCurrentPosition', 'U') IS NULL THEN 0 ELSE 1 END AS table_exists
     `);
 
+    let reportCount = 0;
     let upsertedCount = 0;
-    // Kept apart because they mean different things to feed health: a report
-    // with no usable position and a MERGE that threw are losses, while
-    // shouldAcceptObservation declining an out-of-order observation is this
-    // poller doing its job on a latest-state table.
-    let mappedCount = 0;
-    let attemptedWrites = 0;
     let staleSkips = 0;
-    let coverageStartMs = Number.POSITIVE_INFINITY;
-    let coverageEndMs = Number.NEGATIVE_INFINITY;
-
-    for (const report of sharedDue ? reports : []) {
-      let mapped;
-      try {
-        mapped = mapAvlReport(report);
-      } catch (err) {
-        context.error(`Failed to map Avail AVL report for vehicle ${report.Vehicle}:`, err);
-        await safeDiagnostic(pool, "shared_avl_ingestion", "invalid_report", "Avail AVL report could not be mapped.", Number(report.Vehicle));
-        continue;
-      }
-      if (!mapped) {
-        await safeDiagnostic(pool, "shared_avl_ingestion", "invalid_report", "Avail AVL report was missing usable position data.", Number(report.Vehicle));
-        continue;
-      }
-      mappedCount++;
-      coverageStartMs = Math.min(coverageStartMs, mapped.report_timestamp.getTime());
-      coverageEndMs = Math.max(coverageEndMs, mapped.report_timestamp.getTime());
-      if (mapped.latitude < 43 || mapped.latitude > 46 || mapped.longitude < -95.5 || mapped.longitude > -92) {
-        await safeDiagnostic(pool, "shared_avl_ingestion", "out_of_bounds", "Avail AVL report coordinates were outside the MVTA operating bounds.", mapped.vehicle_id);
-      }
-
-      try {
-        const current = (await pool.request().input("vehicle_id", sql.Int, mapped.vehicle_id).query<{ report_timestamp: Date }>(
-          "SELECT report_timestamp FROM AvailAvlVehiclePositions WHERE vehicle_id=@vehicle_id",
-        )).recordset[0];
-        if (!shouldAcceptObservation(current, mapped)) {
-          staleSkips++;
-          continue;
+    let fetchFailed = false;
+    if (sharedDue) {
+      await runFeedIngestion("avail_avl", context, async () => {
+        let reports: Awaited<ReturnType<typeof fetchAvlReports>>;
+        try {
+          reports = await fetchAvlReports(baseUrl, apiKey, twoMinutesAgo, now);
+          await safeHealth(pool, "shared_avl_ingestion", "healthy", `Fetched ${reports.length} reports.`);
+        } catch (err) {
+          // Recorded rather than thrown: this runs every fifteen seconds, and a
+          // vendor outage is already on the ledger and in event health.
+          fetchFailed = true;
+          context.error("Failed to fetch Avail AVL Reports:", err);
+          await safeHealth(pool, "shared_avl_ingestion", "failed", "Avail AVL fetch failed.", err);
+          return { kind: "failed", reason: `Avail AVL fetch failed: ${err instanceof Error ? err.message : String(err)}` };
         }
-        attemptedWrites++;
-        const request = pool.request();
-        request.input("vehicle_id", sql.Int, mapped.vehicle_id);
-        request.input("route", sql.Int, mapped.route);
-        request.input("block", sql.Int, mapped.block);
-        request.input("run", sql.Int, mapped.run);
-        request.input("trip", sql.Int, mapped.trip);
-        request.input("latitude", sql.Float, mapped.latitude);
-        request.input("longitude", sql.Float, mapped.longitude);
-        request.input("heading", sql.Float, mapped.heading);
-        request.input("direction", sql.NVarChar, mapped.direction);
-        request.input("report_timestamp", sql.DateTime2, mapped.report_timestamp);
-        await request.query(`
-          MERGE AvailAvlVehiclePositions WITH (HOLDLOCK) AS target
-          USING (SELECT @vehicle_id AS vehicle_id) AS src
-          ON target.vehicle_id = src.vehicle_id
-          WHEN MATCHED THEN
-            UPDATE SET
-              route = @route, block = @block, run = @run, trip = @trip,
-              latitude = @latitude, longitude = @longitude, heading = @heading,
-              direction = @direction, report_timestamp = @report_timestamp,
-              updated_at = SYSUTCDATETIME()
-          WHEN NOT MATCHED THEN
-            INSERT (vehicle_id, route, block, run, trip, latitude, longitude, heading, direction, report_timestamp)
-            VALUES (@vehicle_id, @route, @block, @run, @trip, @latitude, @longitude, @heading, @direction, @report_timestamp);
-        `);
-        upsertedCount++;
-      } catch (err) {
-        context.error(`Failed to upsert Avail AVL position for vehicle ${mapped.vehicle_id}:`, err);
-      }
+        reportCount = reports.length;
 
+        // Kept apart because they mean different things to feed health: a report
+        // with no usable position and a MERGE that threw are losses, while
+        // shouldAcceptObservation declining an out-of-order observation is this
+        // poller doing its job on a latest-state table.
+        let mappedCount = 0;
+        let attemptedWrites = 0;
+        let coverageStartMs = Number.POSITIVE_INFINITY;
+        let coverageEndMs = Number.NEGATIVE_INFINITY;
+
+        for (const report of reports) {
+          let mapped;
+          try {
+            mapped = mapAvlReport(report);
+          } catch (err) {
+            context.error(`Failed to map Avail AVL report for vehicle ${report.Vehicle}:`, err);
+            await safeDiagnostic(pool, "shared_avl_ingestion", "invalid_report", "Avail AVL report could not be mapped.", Number(report.Vehicle));
+            continue;
+          }
+          if (!mapped) {
+            await safeDiagnostic(pool, "shared_avl_ingestion", "invalid_report", "Avail AVL report was missing usable position data.", Number(report.Vehicle));
+            continue;
+          }
+          mappedCount++;
+          coverageStartMs = Math.min(coverageStartMs, mapped.report_timestamp.getTime());
+          coverageEndMs = Math.max(coverageEndMs, mapped.report_timestamp.getTime());
+          if (mapped.latitude < 43 || mapped.latitude > 46 || mapped.longitude < -95.5 || mapped.longitude > -92) {
+            await safeDiagnostic(pool, "shared_avl_ingestion", "out_of_bounds", "Avail AVL report coordinates were outside the MVTA operating bounds.", mapped.vehicle_id);
+          }
+
+          try {
+            const current = (await pool.request().input("vehicle_id", sql.Int, mapped.vehicle_id).query<{ report_timestamp: Date }>(
+              "SELECT report_timestamp FROM AvailAvlVehiclePositions WHERE vehicle_id=@vehicle_id",
+            )).recordset[0];
+            if (!shouldAcceptObservation(current, mapped)) {
+              staleSkips++;
+              continue;
+            }
+            attemptedWrites++;
+            const request = pool.request();
+            request.input("vehicle_id", sql.Int, mapped.vehicle_id);
+            request.input("route", sql.Int, mapped.route);
+            request.input("block", sql.Int, mapped.block);
+            request.input("run", sql.Int, mapped.run);
+            request.input("trip", sql.Int, mapped.trip);
+            request.input("latitude", sql.Float, mapped.latitude);
+            request.input("longitude", sql.Float, mapped.longitude);
+            request.input("heading", sql.Float, mapped.heading);
+            request.input("direction", sql.NVarChar, mapped.direction);
+            request.input("report_timestamp", sql.DateTime2, mapped.report_timestamp);
+            await request.query(`
+              MERGE AvailAvlVehiclePositions WITH (HOLDLOCK) AS target
+              USING (SELECT @vehicle_id AS vehicle_id) AS src
+              ON target.vehicle_id = src.vehicle_id
+              WHEN MATCHED THEN
+                UPDATE SET
+                  route = @route, block = @block, run = @run, trip = @trip,
+                  latitude = @latitude, longitude = @longitude, heading = @heading,
+                  direction = @direction, report_timestamp = @report_timestamp,
+                  updated_at = SYSUTCDATETIME()
+              WHEN NOT MATCHED THEN
+                INSERT (vehicle_id, route, block, run, trip, latitude, longitude, heading, direction, report_timestamp)
+                VALUES (@vehicle_id, @route, @block, @run, @trip, @latitude, @longitude, @heading, @direction, @report_timestamp);
+            `);
+            upsertedCount++;
+          } catch (err) {
+            context.error(`Failed to upsert Avail AVL position for vehicle ${mapped.vehicle_id}:`, err);
+          }
+
+        }
+
+        const outcome = avlHealthOutcome(reports.length, mappedCount, attemptedWrites, upsertedCount);
+        if (outcome.kind === "failure") return { kind: "failed", reason: outcome.reason };
+        return {
+          kind: "stored",
+          received: attemptedWrites,
+          stored: upsertedCount,
+          noun: "AVL positions",
+          coverage: {
+            // An empty successful request still covers the requested window.
+            startAt: Number.isFinite(coverageStartMs) ? new Date(coverageStartMs) : twoMinutesAgo,
+            endAt: Number.isFinite(coverageEndMs) ? new Date(coverageEndMs) : now,
+          },
+        };
+      });
     }
+    if (fetchFailed) return;
 
     // Current-position tables are operational state, not history. Removing
     // stale rows prevents buses that signed off (or left event service) from
@@ -297,33 +320,9 @@ app.timer("availAvlPoll", {
     }
 
     context.log(
-      `Avail AVL Reports poll: ${reports.length} reports seen, ${upsertedCount} vehicles upserted, ` +
+      `Avail AVL Reports poll: ${reportCount} reports seen, ${upsertedCount} vehicles upserted, ` +
       `${staleSkips} out-of-order observations declined, ` +
       `${eventDue ? "event projection due" : "event projection deferred"}.`,
     );
-    if (sharedDue) {
-      const outcome = avlHealthOutcome(reports.length, mappedCount, attemptedWrites, upsertedCount);
-      if (outcome.kind === "failure") {
-        context.error(`Avail AVL Reports poll: ${outcome.reason}`);
-        try {
-          await recordFeedFailure(pool, "avail_avl", new Error(outcome.reason));
-        } catch (healthError) {
-          context.error("Failed to record Avail AVL feed failure:", healthError);
-        }
-        return;
-      }
-      if (outcome.unstoredCount > 0) {
-        context.warn(`Avail AVL Reports poll: ${outcome.unstoredCount} of ${attemptedWrites} attempted position writes did not land.`);
-      }
-      try {
-        await recordFeedHealth(pool, "avail_avl", outcome.entityCount, null, {
-          // An empty successful request still covers the requested window.
-          startAt: Number.isFinite(coverageStartMs) ? new Date(coverageStartMs) : twoMinutesAgo,
-          endAt: Number.isFinite(coverageEndMs) ? new Date(coverageEndMs) : now,
-        });
-      } catch (healthError) {
-        context.error("Failed to update Avail AVL feed health:", healthError);
-      }
-    }
   },
 });
