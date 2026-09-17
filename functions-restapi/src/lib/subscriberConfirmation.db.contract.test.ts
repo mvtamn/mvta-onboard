@@ -203,6 +203,37 @@ test("a wrong code is counted against the live confirmation and capped", skip, a
   }
 });
 
+test("with two signups for one number, a wrong code counts against both", skip, async () => {
+  const pool = await new sql.ConnectionPool(parseConnectionString(connectionString!)).connect();
+  try {
+    await reset(pool);
+    // Either signup's code confirms the number. If a wrong guess were counted
+    // against only one of them, every extra signup for a number would buy a
+    // guesser five more tries at it.
+    await seed(pool, { phone: "+16125550142", smsToken: "151515" });
+    await seed(pool, { phone: "+16125550142", smsToken: "161616" });
+
+    for (let i = 1; i <= MAX_CONFIRM_ATTEMPTS; i++) {
+      const wrong = await inTx(pool, (tx) => confirmSms(tx, "+16125550142", "000000"));
+      assert.equal(wrong.outcome, "incorrect_code");
+      assert.equal(wrong.attemptsRemaining, MAX_CONFIRM_ATTEMPTS - i);
+    }
+
+    const attempts = await pool.request().query<{ attempts: number }>(
+      "SELECT attempts FROM dbo.SubscriberConfirmations WHERE channel='sms'",
+    );
+    assert.deepEqual(attempts.recordset.map((r) => r.attempts), [MAX_CONFIRM_ATTEMPTS, MAX_CONFIRM_ATTEMPTS]);
+
+    // Past the cap neither code works, and the next guess is not counted as a
+    // fresh try against anything.
+    assert.equal((await inTx(pool, (tx) => confirmSms(tx, "+16125550142", "151515"))).outcome, "too_many_attempts");
+    assert.equal((await inTx(pool, (tx) => confirmSms(tx, "+16125550142", "161616"))).outcome, "too_many_attempts");
+    assert.equal((await inTx(pool, (tx) => confirmSms(tx, "+16125550142", "000000"))).outcome, "too_many_attempts");
+  } finally {
+    await pool.close();
+  }
+});
+
 test("a code only works for the number it was sent to", skip, async () => {
   const pool = await new sql.ConnectionPool(parseConnectionString(connectionString!)).connect();
   try {
