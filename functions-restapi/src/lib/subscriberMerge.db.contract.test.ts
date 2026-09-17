@@ -77,7 +77,18 @@ interface Seed {
   zones?: string | null;
   /** Hours ago this record's consent was recorded; omitted means never. */
   optedInHoursAgo?: number;
-  tokens?: { channel: "sms" | "email"; token: string }[];
+  /**
+   * Codes this record has out. `issuedMinutesAgo` pins created_at; omitted
+   * means now.
+   *
+   * confirmSms answers with the NEWEST live code for a number, so wherever two
+   * records hold live codes for one phone, which is newer is part of the setup
+   * and must be written down. Left to SYSUTCDATETIME() defaults, two inserts a
+   * millisecond apart can share a created_at, and ORDER BY created_at DESC
+   * then picks either row - the confirmation silently becomes an
+   * incorrect_code on the other record and nothing merges.
+   */
+  tokens?: { channel: "sms" | "email"; token: string; issuedMinutesAgo?: number }[];
 }
 
 async function seed(pool: sql.ConnectionPool, s: Seed): Promise<string> {
@@ -107,9 +118,10 @@ async function seed(pool: sql.ConnectionPool, s: Seed): Promise<string> {
       .input("s", sql.UniqueIdentifier, id)
       .input("c", sql.NVarChar(10), t.channel)
       .input("t", sql.NVarChar(100), t.token)
+      .input("ago", sql.Int, t.issuedMinutesAgo ?? 0)
       .query(
-        `INSERT dbo.SubscriberConfirmations (subscriber_id, channel, token, expires_at)
-         VALUES (@s, @c, @t, DATEADD(hour, 24, SYSUTCDATETIME()))`,
+        `INSERT dbo.SubscriberConfirmations (subscriber_id, channel, token, created_at, expires_at)
+         VALUES (@s, @c, @t, DATEADD(minute, -@ago, SYSUTCDATETIME()), DATEADD(hour, 24, SYSUTCDATETIME()))`,
       );
   }
   return id;
@@ -324,7 +336,8 @@ test("with no confirmed duplicate, the record in hand survives and the unconfirm
     const abandoned = await seed(pool, {
       phone: PHONE,
       categories: '["closure"]',
-      tokens: [{ channel: "sms", token: "555555" }],
+      // Sent first; the rider is replying to the later text.
+      tokens: [{ channel: "sms", token: "555555", issuedMinutesAgo: 60 }],
     });
     const confirming = await seed(pool, {
       phone: PHONE,
@@ -363,11 +376,14 @@ test("a record confirmed on its other channel is kept, but loses its claim on th
       emailStatus: "confirmed",
       status: "confirmed",
       optedInHoursAgo: 500,
-      tokens: [{ channel: "sms", token: "777777" }],
+      // Sent first; the rider is replying to the later text.
+      tokens: [{ channel: "sms", token: "777777", issuedMinutesAgo: 60 }],
     });
     const confirming = await seed(pool, { phone: PHONE, tokens: [{ channel: "sms", token: "888888" }] });
 
-    await inTx(pool, (tx) => confirmSms(tx, PHONE, "888888"));
+    const result = await inTx(pool, (tx) => confirmSms(tx, PHONE, "888888"));
+    assert.equal(result.outcome, "confirmed");
+    assert.equal(result.subscriberId, confirming);
 
     const kept = await read(pool, emailer);
     assert.equal(kept.status, "confirmed", "an email subscription the rider proved");
