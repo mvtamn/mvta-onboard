@@ -4,15 +4,9 @@
 // repo to build one from; this is % only, per the owner's decision. Any
 // staff role, plus OCC.Compliance.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
-import { getPool, sql } from "../lib/db";
+import { getPool } from "../lib/db";
 import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
-
-interface TrendRow {
-  service_month: string;
-  total: number;
-  ontime: number;
-  pct_ontime: number | null;
-}
+import { measureOtpTrend } from "../lib/otpMonth";
 
 const DEFAULT_MONTHS = 6;
 const MAX_MONTHS = 24;
@@ -32,27 +26,25 @@ app.http("otpMonthlyTrendList", {
 
     try {
       const pool = await getPool();
-      const tableCheck = await pool.request().query<{ table_exists: number }>(`
-        SELECT CASE WHEN OBJECT_ID('dbo.OtpMonthlyRouteStopDay', 'U') IS NULL THEN 0 ELSE 1 END AS table_exists
-      `);
-      if (tableCheck.recordset[0]?.table_exists !== 1) {
-        return { status: 200, jsonBody: { trend: [] } };
-      }
-
-      const req = pool.request();
-      req.input("months", sql.Int, months);
-      const result = await req.query<TrendRow>(`
-        SELECT TOP (@months) service_month,
-               SUM(ISNULL(total, 0)) AS total, SUM(ISNULL(ontime, 0)) AS ontime,
-               CASE WHEN SUM(ISNULL(total, 0)) > 0
-                 THEN CAST(SUM(ISNULL(ontime, 0)) AS FLOAT) / SUM(ISNULL(total, 0))
-                 ELSE NULL END AS pct_ontime
-        FROM OtpMonthlyRouteStopDay
-        GROUP BY service_month
-        ORDER BY service_month DESC
-      `);
-      // Oldest-first for a left-to-right trend chart.
-      return { status: 200, jsonBody: { trend: result.recordset.reverse() } };
+      // The assessable figure, from the OTP month measurement module: the same
+      // number the scorecard shows. The chart used to plot the raw agency
+      // rollup, so the Dashboard and the assessment disagreed by whatever the
+      // exclusions and non-fixed-route service came to.
+      const measured = await measureOtpTrend(pool, months);
+      return {
+        status: 200,
+        jsonBody: {
+          trend: measured.map((month) => ({
+            service_month: month.service_month,
+            total: month.assessable.departures,
+            ontime: month.assessable.ontime,
+            pct_ontime: month.assessable.pct,
+            raw_total: month.raw.departures,
+            raw_ontime: month.raw.ontime,
+            raw_pct_ontime: month.raw.pct,
+          })),
+        },
+      };
     } catch (err) {
       context.error("GET /otp-monthly-trend failed:", err);
       return { status: 500, jsonBody: { error: "Internal server error" } };
