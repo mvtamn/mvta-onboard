@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.224] - 2026-09-17
+
+- **`approved` is gone from the Detour workflow code.** The `legacy_approved_state` refusal and `LEGACY_APPROVED_STATE` are removed from `lib/detourWorkflow/`, `nextStep` no longer special-cases it, `DetourLifecycleState` drops it in `functions-restapi/src/lib/types.ts` and `@mvta/shared`, `DETOUR_LIFECYCLE_LABELS` loses its "Needs OCC review" entry, and the console's held-act codes no longer list it. Checked read-only against dev on 2026-09-17: 0 of 11 Detours hold `approved`, and every `source = 'avail'` Detour is already `fulfillment_mode = 'avail'` (migration 041 set it), so nothing on dev relied on the refusal.
+- **Migration 122 is still worth running on dev.** It has not run there - `CK_Detours_LifecycleState` still admits `approved` and no `migration-122` history rows exist. With the data already in shape it will print `0` and `0` and only tighten the constraint.
+- **Verified.** The `approved` rows in `decide.test.ts` and the contract subtest that expected the refusal are removed; the migration 122 contract test still seeds `approved` rows before applying it. REST API tests pass (1007, 0 fail), console suite passes (601), typechecks clean.
+
 ## [1.5.223] - 2026-09-17
 
 - **The Detours page offers the acts the workflow module allows.** `GET /detours` now returns `available_acts` per Detour, built from `readDetourWorkflows` - the same decision the acts enforce - as `{ available: true }` or `{ available: false, code, reason }` for `avail_entry.entered|conflict|not_entered`, `manual_fallback`, `close`, `override_conflict` and `complete_re_review`. `lib/detourActs.ts` turns that into what the page shows: an available act is offered; a held one (`conflict_unresolved`, `re_review_outstanding`, `legacy_approved_state`) is shown disabled or annotated with the server's sentence; any other refusal hides the control. `routes/Detours.tsx` no longer decides Close, Override, Mark review complete, Record human Avail entry or the manual exception from `lifecycle_state`/`fulfillment_mode`, and checks the chosen Avail result before asking for an Avail ID. The next-step wording moved to `nextStepLabel` in `lib/detourLabels.ts`. `DetourOfferedAct` and `DetourActAvailability` are in `@mvta/shared`.

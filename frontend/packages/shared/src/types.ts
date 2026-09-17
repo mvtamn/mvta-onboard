@@ -969,7 +969,7 @@ export interface AvailMissedTripsRouteRollup {
 export type DetourStatus = "monitor" | "upcoming" | "active" | "recently_finished" | "expired";
 export type DetourFulfillmentMode = "avail" | "fixed_route_manual" | "mobility_manual";
 export type DetourLifecycleState =
-  | "approved" | "awaiting_fulfillment" | "fulfilled" | "fulfillment_failed" | "closed";
+  | "awaiting_fulfillment" | "fulfilled" | "fulfillment_failed" | "closed";
 export type DetourReadiness =
   | "needs_occ_review" | "ready_for_avail_entry" | "avail_conflict" | "in_avail"
   | "ready_for_manual_operations" | "closed";
@@ -1041,7 +1041,6 @@ export interface DetourHistoricalImportRow {
 }
 
 export const DETOUR_LIFECYCLE_LABELS: Record<DetourLifecycleState, string> = {
-  approved: "Needs OCC review",
   awaiting_fulfillment: "Awaiting fulfillment",
   fulfilled: "Fulfilled",
   fulfillment_failed: "Fulfillment failed",

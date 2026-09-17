@@ -115,7 +115,6 @@ export interface DetourSegmentBody {
 export type DetourSeverity = "minor" | "moderate" | "major";
 export type DetourFulfillmentMode = "avail" | "fixed_route_manual" | "mobility_manual";
 export type DetourLifecycleState =
-  | "approved"
   | "awaiting_fulfillment"
   | "fulfilled"
   | "fulfillment_failed"

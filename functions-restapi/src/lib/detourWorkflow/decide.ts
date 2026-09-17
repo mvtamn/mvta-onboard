@@ -6,7 +6,6 @@
 import { conflictStatus } from "../detourConflicts";
 import type { LikelyDuplicate } from "../detourDuplicates";
 import {
-  LEGACY_APPROVED_STATE,
   type Actor,
   type ActAvailability,
   type AvailEntryResult,
@@ -22,7 +21,7 @@ import {
 
 export interface WorkflowSnapshot {
   id: string;
-  // A string, not DetourLifecycleState: a pre-122 row can still hold `approved`.
+  // As stored; the column's CHECK constraint holds it to DetourLifecycleState.
   lifecycle_state: string;
   fulfillment_mode: DetourFulfillmentMode;
   review_status: "current" | "needs_review";
@@ -70,7 +69,6 @@ const STATE_WORDS: Record<string, string> = {
   fulfilled: "fulfilled",
   fulfillment_failed: "held by a failed Avail entry",
   closed: "closed",
-  approved: "approved",
 };
 
 function refuse(code: RefusalCode, sentence: string, conflicts?: LikelyDuplicate[]): Decision {
@@ -116,8 +114,6 @@ export function decide(snapshot: WorkflowSnapshot, act: DetourAct, actor: Actor)
     throw new TypeError(`${act.act} needs the Detour's conflicts loaded`);
   }
   const state = snapshot.lifecycle_state;
-  const legacy = state === LEGACY_APPROVED_STATE;
-  const legacyRefusal = () => refuse("legacy_approved_state", "This Detour still holds the retired Approved state and cannot change until migration 122 updates it.");
 
   switch (act.act) {
     case "promote":
@@ -142,7 +138,6 @@ export function decide(snapshot: WorkflowSnapshot, act: DetourAct, actor: Actor)
     }
 
     case "avail_entry": {
-      if (legacy) return legacyRefusal();
       if (snapshot.fulfillment_mode !== "avail") return refuse("not_avail_backed", "Only an Avail-backed Detour can record an Avail entry.");
       if (state !== "awaiting_fulfillment" && state !== "fulfillment_failed") {
         return refuse("not_allowed_from_state", `An Avail entry can be recorded only while the Detour awaits Avail entry or after a failed attempt; this Detour is ${STATE_WORDS[state] ?? state}.`);
@@ -169,7 +164,6 @@ export function decide(snapshot: WorkflowSnapshot, act: DetourAct, actor: Actor)
     }
 
     case "manual_fallback": {
-      if (legacy) return legacyRefusal();
       if (snapshot.fulfillment_mode !== "avail") return refuse("not_avail_backed", "A manual fallback is available only for an Avail-backed Detour after an Avail conflict.");
       if (state !== "fulfillment_failed") return refuse("not_allowed_from_state", "A manual fallback is available only after an Avail conflict.");
       if (snapshot.review_status === "needs_review") {
@@ -182,7 +176,6 @@ export function decide(snapshot: WorkflowSnapshot, act: DetourAct, actor: Actor)
     }
 
     case "close": {
-      if (legacy) return legacyRefusal();
       if (state === "closed") return refuse("not_allowed_from_state", "This Detour is already closed.");
       return {
         patch: { lifecycle_state: "closed", workflow: true, closure_reason: act.reason.trim() },
@@ -251,7 +244,7 @@ export function offeredActs(snapshot: WorkflowSnapshot): Record<OfferedAct, ActA
 export function nextStep(snapshot: WorkflowSnapshot): DetourReadiness {
   const state = snapshot.lifecycle_state;
   if (state === "closed") return "closed";
-  if (state === LEGACY_APPROVED_STATE || snapshot.review_status === "needs_review") return "needs_occ_review";
+  if (snapshot.review_status === "needs_review") return "needs_occ_review";
   if (snapshot.fulfillment_mode === "avail") {
     if (state === "awaiting_fulfillment") return "ready_for_avail_entry";
     if (state === "fulfillment_failed") return "avail_conflict";
