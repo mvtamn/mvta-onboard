@@ -5,6 +5,13 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.240] - 2026-09-17
+
+- **The Occurrence Log reads the observation the server parsed.** `GET /compliance-occurrences` returns `observation` (`{kind, …}` from `parseOccurrenceSource`), and `occurrenceSourceLabel` - now its own file, `routes/modules/assessment/occurrenceSource.ts`, with tests - turns it into the module name and reference a reviewer acts on. The console no longer splits `source_ref` itself, so the reference format has one owner (`lib/occurrenceIntake`). A missed trip observed by Spare reads **Missed Trips · On-Demand**; before, an on-demand trip was labelled the same as a fixed-route one. PR 2 of 2 for candidate #3 of the 2026-09-16 architecture review; PR 1 was 1.5.239.
+- **Fixed: the parsed field no longer overwrites `source`.** 1.5.239 returned the parsed observation as `source`, which is also the stored column saying whether an occurrence is `manual` or `auto_candidate`. Any reader of that column saw an object instead. The parsed value is now `observation`, and `source` is the column again. Caught while wiring the console; no stored data was affected.
+- **Refusals already reach the reviewer.** The Assessment module's error banner shows the API's message, so 1.5.239's sentences ("No single active Performance Agreement covers this service date…") appear as they are. No change was needed.
+- **Verified.** `occurrenceSource.test.ts` (4 sources plus the hand-entered case); the console suite passes (91 tests). Shared types gain `OccurrenceSource`. No migration.
+
 ## [1.5.239] - 2026-09-17
 
 - **One module writes compliance occurrences.** New `functions-restapi/src/lib/occurrenceIntake/` owns every write to `ComplianceOccurrences`: `raiseCandidates` (the nightly pass), `recordOccurrence` (hand entry and the missed-trip review hand-off), `resolveOccurrence` (status, attribution, relief link) and `setAssessedAmount`. `complianceCandidatesPoll` is now a timer that only decides which feeds are trusted. `POST`/`PATCH /compliance-occurrences` and `PUT .../assessed-amount` call the module. `lib/assessment/occurrenceIntake.ts` is gone. Candidate #3 of the 2026-09-16 architecture review; `CONTEXT.md` gains **Compliance occurrence**.

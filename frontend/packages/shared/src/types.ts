@@ -1885,16 +1885,28 @@ export interface AgreementStandardAssignment {
 export interface ContractorRecord { id: string; name: string; contract_start_date: string; contract_end_date: string | null; is_active: boolean }
 export interface AssessmentPeriod { id: string; contractor_id: string; contractor_name: string; service_month: string; status: AssessmentPeriodStatus; input_revision: number; computed_revision: number | null; proposed_total: number; final_total: number | null; supersedes_period_id?: string | null }
 export interface PeriodKpiAssessment { id: string; period_id: string; standard_id: string; code: string; name: string; standard_type: string; priority: string; metric_display: string; /** "412,300 miles ÷ 31 road calls": how a figure made from parts was made (migration 115); null or absent otherwise. */ metric_working?: string | null; target_display?: string; variance_pct?: number | null; tier_label: AssessmentTierLabel; assessment_outcome?: AssessmentTierLabel | "not_assessable" | null; occurrence_count: number; base_amount?: number; relief_amount?: number; escalation_multiplier?: number; proposed_amount: number; final_amount: number | null; manager_action: ManagerAssessmentAction; manager_reason: string | null; recommended_action?: Exclude<ManagerAssessmentAction,"pending"> | null; recommended_amount?: number | null; cap_required?: boolean; cap_reason?: string | null; consecutive_months_below?: number; data_completeness_pct: number | null }
+/**
+ * Which source observation an occurrence was raised from. One shape per
+ * source, so the console never splits the stored reference itself.
+ */
+export type OccurrenceSource =
+  | { kind: "missed_trip"; system: "gtfs" | "spare"; record_id: string; service_date: string }
+  | { kind: "fixed_route_departure"; service_date: string; block: string; run: string }
+  | { kind: "on_demand_departure"; duty_id: string };
+
 export interface ComplianceOccurrence {
   id: string; standard_id: string; standard_code: string; standard_name: string;
   contractor_id: string; contractor_name: string; service_date: string; quantity: number;
   description: string; source: string; review_status: string; attribution: string;
-  // The observation this was raised from, e.g.
-  // "MonitoredMissedTrips:gtfs:<trip>|<date>" or
-  // "FixedRouteDepartures:avail_pullout:<date>|<block>|<run>". The console
-  // shows the readable tail so a reviewer can find the row in Compliance;
-  // occurrenceSourceLabel() in the assessment module does the parsing.
+  // The machine key of the observation this was raised from. The server reads
+  // it for us: use `observation`, never this string.
   source_ref?: string | null;
+  /**
+   * The observation this occurrence was raised from, as the server parsed it
+   * (lib/occurrenceIntake owns the format). Null for a hand-entered
+   * occurrence, and on a server that predates this field.
+   */
+  observation?: OccurrenceSource | null;
   /**
    * A reviewer's figure for a penalty the contract states as a range rather
    * than a number - damage reimbursement, say. Null on a ranged band means the
