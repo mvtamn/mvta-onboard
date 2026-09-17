@@ -94,8 +94,8 @@ async function inTx(pool: sql.ConnectionPool, write: (tx: sql.Transaction) => Pr
 }
 
 async function period(pool: sql.ConnectionPool, month: string, status: string, contractor = CONTRACTOR) {
-  await pool.request().query(`INSERT AssessmentPeriods(contractor_id,service_month,status,ramp_up_stage,input_revision,agreement_id,validation_shared_at)
-    VALUES('${contractor}','${month}','${status}','full',0,'${contractor === CONTRACTOR ? AGREEMENT : OTHER_AGREEMENT}',${status === "in_validation" ? "SYSUTCDATETIME()" : "NULL"})`);
+  await pool.request().query(`INSERT AssessmentPeriods(contractor_id,service_month,status,input_revision,agreement_id,validation_shared_at)
+    VALUES('${contractor}','${month}','${status}',0,'${contractor === CONTRACTOR ? AGREEMENT : OTHER_AGREEMENT}',${status === "in_validation" ? "SYSUTCDATETIME()" : "NULL"})`);
 }
 
 async function periodState(pool: sql.ConnectionPool, month: string) {
@@ -174,7 +174,7 @@ test("occurrence intake against real SQL", { skip: !connectionString && "DECISIO
       // An occurrence written before its month closed can no longer be resolved or given a figure.
       const early = await inTx(pool, tx => recordOccurrence(tx, manual(garage, "20260410"), ACTOR));
       assert.ok(early.ok);
-      await pool.request().query(`INSERT AssessmentPeriods(contractor_id,service_month,status,ramp_up_stage) VALUES('${CONTRACTOR}','202604','issued','full')`);
+      await pool.request().query(`INSERT AssessmentPeriods(contractor_id,service_month,status) VALUES('${CONTRACTOR}','202604','issued')`);
       const resolution = { reviewStatus: "dismissed" as const, attribution: "undetermined" as const, dismissReason: "no" };
       assert.equal(refusalCode(await inTx(pool, tx => resolveOccurrence(tx, early.occurrence.id, resolution, ACTOR))), "period_closed");
       assert.equal(refusalCode(await inTx(pool, tx => setAssessedAmount(tx, early.occurrence.id, { amount: 1, note: "x" }, ACTOR))), "period_closed");
