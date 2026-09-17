@@ -16,6 +16,7 @@ import { publishMessageCreated } from "../lib/events";
 import { loadKpiTrust } from "../lib/kpiTrustStore";
 import type { Category, PrepareSuggestedAlertBody, Severity } from "../lib/types";
 import { parseStringList } from "../lib/stringList";
+import { linkMissedTripRiderAlert } from "../lib/missedTripCase";
 
 interface SuggestedAlertRow {
   alert_id: string;
@@ -94,13 +95,7 @@ async function linkPreparedAlertToRisk(
       typeof body.detail.service_date === "string"
         ? body.detail.service_date
         : null;
-    linkReq.input("service_date", sql.NVarChar, serviceDate);
-    await linkReq.query(`
-      UPDATE MonitoredMissedTrips
-      SET suggested_alert_id = @alert_id
-      WHERE trip_id = @trip_id
-        AND (@service_date IS NULL OR service_date = @service_date)
-    `);
+    await linkMissedTripRiderAlert(tx, tripId, serviceDate, alertId);
   } else {
     await linkReq.query(`
       UPDATE MonitoredOnDemandWaits

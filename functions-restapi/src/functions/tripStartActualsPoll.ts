@@ -14,6 +14,7 @@ import { fetchTripUpdateFeed, type GtfsRtTripUpdate } from "../lib/gtfsTripUpdat
 import { agencyServiceDate } from "../lib/missedTripTime";
 import { LINGER_WINDOW_SECONDS, planCapture, type StartCapture, type TripStartRow } from "../lib/tripStartActuals";
 import type { TripStartActualSource, TripStartStatus } from "../lib/tripStartTypes";
+import { missedTripCaseSql } from "../lib/missedTripCase";
 
 interface WorkingRow {
   service_date: string;
@@ -82,9 +83,11 @@ async function loadWorkingSet(pool: sql.ConnectionPool, now: Date): Promise<Work
     LEFT JOIN GtfsScheduledTrips st ON st.trip_id = l.trip_id
     LEFT JOIN GtfsTripOperationalEvidence ev
       ON ev.trip_id = l.trip_id AND ev.service_date = CAST(l.service_date AS NVARCHAR(20))
-    LEFT JOIN MonitoredMissedTrips mmt
-      ON mmt.trip_id = l.trip_id AND mmt.service_date = CAST(l.service_date AS NVARCHAR(20))
-     AND mmt.validation_status <> 'false_positive'
+    OUTER APPLY (
+      SELECT TOP 1 m.trip_id FROM MonitoredMissedTrips m ${missedTripCaseSql("m")}
+      WHERE m.trip_id = l.trip_id AND m.service_date = CAST(l.service_date AS NVARCHAR(20))
+        AND mtc.flagged_missed = 1
+    ) mmt
     WHERE l.service_date IN (@today, @yesterday)
       AND (l.start_status IS NULL OR l.start_status <> 'canceled')
       AND (

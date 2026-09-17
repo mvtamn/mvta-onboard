@@ -1,8 +1,8 @@
 // GET /missed-trips-monthly-summary - the aggregate view behind Missed
-// Trips' Monthly Assessments page. Buckets source-verified rows by the
-// agency-local service_date month x route x detection_type x review outcome.
-// Legacy rows are deliberately excluded: they were produced before the
-// timezone/evidence correction and cannot be presented as compliance facts.
+// Trips' Monthly Assessments page. Buckets cases that are findings - Ready for
+// review or Reviewed, per the Missed-trip case module - by the agency-local
+// service_date month x route x detection_type x review outcome. Held, open,
+// closed-by-evidence and Legacy missed-trip records are excluded.
 // The console pivots this
 // into a per-route/month table client-side rather than the backend
 // pre-shaping one specific table layout, same "return the facts, let the
@@ -10,6 +10,7 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
 import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { missedTripCaseSql } from "../lib/missedTripCase";
 
 interface MissedTripsSummaryRow {
   service_month: string;
@@ -40,15 +41,15 @@ app.http("missedTripsMonthlySummary", {
 
       const result = await pool.request().query<MissedTripsSummaryRow>(`
         SELECT
-          LEFT(service_date, 6) AS service_month,
-          route_id,
-          source_system,
-          detection_type,
-          validation_status,
+          LEFT(m.service_date, 6) AS service_month,
+          m.route_id,
+          m.source_system,
+          m.detection_type,
+          m.validation_status,
           COUNT(*) AS trip_count
-        FROM MonitoredMissedTrips
-        WHERE data_quality_status = 'source_verified'
-        GROUP BY LEFT(service_date, 6), route_id, source_system, detection_type, validation_status
+        FROM MonitoredMissedTrips m ${missedTripCaseSql("m")}
+        WHERE mtc.lifecycle IN (N'ready_for_review', N'reviewed')
+        GROUP BY LEFT(m.service_date, 6), m.route_id, m.source_system, m.detection_type, m.validation_status
         ORDER BY service_month DESC, route_id
       `);
       return { status: 200, jsonBody: { summary: result.recordset } };

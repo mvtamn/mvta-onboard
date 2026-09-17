@@ -1085,7 +1085,8 @@ _Avoid_: overwritten review, reopened decision
 **Late-arrival failure**:
 A contract-specific service-quality failure based on arrival performance. It
 is distinct from the missed-trip rule based on Trip start unless the governing
-agreement explicitly equates them.
+agreement explicitly equates them. The on-demand agreement does: an on-demand
+drop-off 30 or more minutes late is a Missed-trip evidence finding.
 _Avoid_: missed trip, late start
 
 **Qualifying progress evidence**:
@@ -1137,7 +1138,8 @@ promotion. A detector leaves Shadow detection only after a complete service
 week demonstrates at least 95 percent precision while reporting indeterminate
 and unmatched cases separately; on-demand service-quality additionally requires
 two complete service weeks, dispatcher agreement, and no unresolved feed-health
-issue.
+issue. Cases from a detector in Shadow detection can be reviewed but never
+reach Assessment promotion.
 _Avoid_: production truth, enabled detector
 
 **Missed-trip review authority**:
@@ -1153,8 +1155,10 @@ _Avoid_: live telemetry, temporary feed data
 
 **Missed-trip case lifecycle**:
 The workflow progression of a Missed-trip case: Open, Awaiting evidence, Ready
-for review, Reviewed, or Superseded. Lifecycle state is separate from the
-Missed-trip evidence finding and Missed-trip review outcome.
+for review, Closed by evidence, Reviewed, or Superseded. Lifecycle state is
+separate from the Missed-trip evidence finding and Missed-trip review outcome.
+A Suspected no-show stays Awaiting evidence until its Expected operating window
+ends.
 _Avoid_: resolved status, evidence finding
 
 **Timely-service closure**:
