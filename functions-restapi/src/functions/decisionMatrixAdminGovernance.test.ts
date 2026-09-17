@@ -77,7 +77,17 @@ test("a partly migrated database reports each surface separately rather than one
 test("a fully migrated database reports every admin surface connected", async () => {
   await withTables(ALL_TABLES, async () => {
     const queue = await listDecisionMatrixGovernanceQueue(adminRequest("https://example.test/api/manage/decision-matrix/governance-queue"), context);
-    assert.deepEqual(queue.jsonBody, { procedures: [], diagnostics: { table_ready: true, required_migration: "076" } });
+    // The queue also says whether document checks are working. On an empty
+    // database with no documents application: not configured, nothing current,
+    // and refusals unknown (null) because migration 126's column is absent.
+    assert.deepEqual(queue.jsonBody, {
+      procedures: [],
+      diagnostics: {
+        table_ready: true,
+        required_migration: "076",
+        document_checks: { configured: false, current_revision_count: 0, never_checked_reference_count: 0, oldest_check_at: null, overdue: false, refused_reference_count: null },
+      },
+    });
 
     const audit = await listDecisionMatrixAudit(adminRequest("https://example.test/api/manage/decision-matrix/audit"), context);
     assert.deepEqual(audit.jsonBody, { audit_events: [], diagnostics: { table_ready: true, required_migration: "078" } });

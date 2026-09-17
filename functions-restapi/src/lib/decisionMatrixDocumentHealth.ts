@@ -209,6 +209,11 @@ export async function refreshRevisionHealth(
     observations.push(assess(reference, await reader.read(reference)));
   }
 
+  // Migration 126 adds health_outcome. Checking first keeps checks working on a
+  // database it has not reached; T-SQL binds every column before running, so
+  // naming a missing one fails the whole UPDATE rather than skipping it.
+  const recordOutcome = await hasHealthOutcomeColumn(pool);
+
   // Health and its audit events commit together, and on their own: they
   // describe SharePoint, so they stand whether or not the lifecycle decision
   // that asked for them goes on to succeed.
@@ -223,7 +228,8 @@ export async function refreshRevisionHealth(
       update.input("observed_file_name", sql.NVarChar, observation.observed?.file_name ?? null);
       update.input("observed_mime_type", sql.NVarChar, observation.observed?.mime_type ?? null);
       update.input("reason", sql.NVarChar, observation.reason);
-      await update.query("UPDATE ProcedureDocumentReferences SET health_status=@health_status,checked_at=SYSUTCDATETIME(),observed_version=@observed_version,observed_file_name=@observed_file_name,observed_mime_type=@observed_mime_type,health_reason=@reason WHERE reference_id=@reference_id");
+      update.input("outcome", sql.NVarChar, observation.outcome);
+      await update.query(`UPDATE ProcedureDocumentReferences SET health_status=@health_status,checked_at=SYSUTCDATETIME(),observed_version=@observed_version,observed_file_name=@observed_file_name,observed_mime_type=@observed_mime_type,health_reason=@reason${recordOutcome ? ",health_outcome=@outcome" : ""} WHERE reference_id=@reference_id`);
       await recordProcedureAuditEvent(transaction, procedureId, revision, "document_checked", requestedBy, observation.reason, {
         reference_id: observation.reference_id,
         health_status: observation.health_status,
@@ -240,6 +246,71 @@ export async function refreshRevisionHealth(
     throw error;
   }
   return { outcome: "checked", reason: null, document_references: observations };
+}
+
+export async function hasHealthOutcomeColumn(pool: sql.ConnectionPool): Promise<boolean> {
+  const check = await pool.request().query<{ ok: number }>(
+    "SELECT CASE WHEN COL_LENGTH('dbo.ProcedureDocumentReferences','health_outcome') IS NULL THEN 0 ELSE 1 END AS ok");
+  return check.recordset[0]?.ok === 1;
+}
+
+/**
+ * A check older than this is overdue. The daily run is at 05:00 UTC; two hours
+ * of slack keeps a slow morning from looking like a stopped timer.
+ */
+export const HEALTH_CHECK_OVERDUE_HOURS = 26;
+
+/** What the governance workspace needs to say whether document checks are working. */
+export type DocumentCheckStatus = {
+  /** Whether the documents application is configured. A settings check, not a SharePoint call. */
+  configured: boolean;
+  /** Approved and Under review revisions that carry references: what controllers read and what awaits approval. */
+  current_revision_count: number;
+  never_checked_reference_count: number;
+  oldest_check_at: string | null;
+  /** Any current reference never checked, or last checked more than HEALTH_CHECK_OVERDUE_HOURS ago. */
+  overdue: boolean;
+  /** References whose latest check SharePoint refused. Null until migration 126 has run. */
+  refused_reference_count: number | null;
+};
+
+/**
+ * Whether document checks are actually happening, derived from the health
+ * record itself rather than from a separate record of timer runs.
+ *
+ * A run log would be a second account of the same facts, able to disagree with
+ * the health rows - and the timer skipped silently for eight days with only a
+ * log line to show for it. This reads what the checks left behind: how old the
+ * oldest observation is, how many were never made, and how many SharePoint
+ * refused. With no current revisions there is nothing to be stale, but
+ * `configured` still says whether checks could run at all.
+ */
+export async function documentCheckStatus(env: NodeJS.ProcessEnv = process.env): Promise<DocumentCheckStatus> {
+  const pool = await getPool();
+  const withOutcome = await hasHealthOutcomeColumn(pool);
+  const status = await pool.request()
+    .input("overdue_hours", sql.Int, HEALTH_CHECK_OVERDUE_HOURS)
+    .query<{ current_revision_count: number | null; never_checked: number | null; oldest_check_at: Date | null; overdue_count: number | null; refused: number | null }>(`
+      SELECT
+        COUNT(DISTINCT CONCAT(d.procedure_id, '|', d.revision)) AS current_revision_count,
+        SUM(CASE WHEN d.checked_at IS NULL THEN 1 ELSE 0 END) AS never_checked,
+        MIN(d.checked_at) AS oldest_check_at,
+        SUM(CASE WHEN d.checked_at IS NULL OR d.checked_at < DATEADD(HOUR, -@overdue_hours, SYSUTCDATETIME()) THEN 1 ELSE 0 END) AS overdue_count,
+        ${withOutcome ? "SUM(CASE WHEN d.health_outcome='forbidden' THEN 1 ELSE 0 END)" : "CAST(NULL AS INT)"} AS refused
+      FROM ProcedureDocumentReferences d
+      JOIN ProcedureRevisions r ON r.procedure_id=d.procedure_id AND r.revision=d.revision
+      WHERE r.lifecycle_state IN ('Approved','Under review')`);
+  const row = status.recordset[0];
+  const oldest = row?.oldest_check_at ?? null;
+  return {
+    configured: documentCheckCredential(env) !== null,
+    current_revision_count: row?.current_revision_count ?? 0,
+    never_checked_reference_count: row?.never_checked ?? 0,
+    oldest_check_at: oldest ? new Date(oldest).toISOString() : null,
+    overdue: (row?.overdue_count ?? 0) > 0,
+    // SUM over no rows is NULL; with the column present that means none refused.
+    refused_reference_count: withOutcome ? row?.refused ?? 0 : null,
+  };
 }
 
 /**

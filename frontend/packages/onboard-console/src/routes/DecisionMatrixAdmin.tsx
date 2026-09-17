@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import type { DecisionMatrixAuditEvent, DecisionMatrixDocumentCheck, DecisionMatrixGovernanceProcedure, DecisionMatrixMatchRule, DecisionMatrixReaderProcedure, DecisionMatrixSurfaceDiagnostics } from "@mvta/shared";
+import type { DecisionMatrixAuditEvent, DecisionMatrixDocumentCheck, DecisionMatrixDocumentCheckStatus, DecisionMatrixGovernanceProcedure, DecisionMatrixMatchRule, DecisionMatrixReaderProcedure, DecisionMatrixSurfaceDiagnostics } from "@mvta/shared";
 import { ApiError } from "@mvta/shared";
 import { api } from "../config.js";
 import { DocumentPicker, folderOf, type ChosenDocument } from "./DocumentPicker.js";
@@ -48,12 +48,43 @@ function SurfaceNotice({ surface, label }: { surface: Surface; label: string }) 
   return null;
 }
 
+/**
+ * What the governance workspace should say about document checks, or nothing.
+ *
+ * Not configured comes first and stands alone: when no check can run, every
+ * other symptom - never checked, overdue - is its consequence, and listing them
+ * would send an Admin after the wrong thing. With no current revisions there is
+ * nothing to be stale, so only "not configured" can appear.
+ */
+export function documentCheckNotices(status: DecisionMatrixDocumentCheckStatus | null | undefined): Array<{ heading: string; detail: string }> {
+  if (!status) return [];
+  if (!status.configured) {
+    return [{ heading: "Document checks aren't set up here.", detail: "Nothing has been checked, and Submit and Approve are refused until they are. The SharePoint documents runbook lists the steps." }];
+  }
+  if (status.current_revision_count === 0) return [];
+  const notices: Array<{ heading: string; detail: string }> = [];
+  const refused = status.refused_reference_count ?? 0;
+  if (refused > 0) {
+    notices.push({
+      heading: refused === 1 ? "SharePoint refused 1 document check." : `SharePoint refused ${refused} document checks.`,
+      detail: "Those documents were never inspected, so this is about OnBoard's access, not the documents - usually a site grant that was never issued or a credential that has expired. Each row's Check documents result says which.",
+    });
+  }
+  if (status.overdue) {
+    notices.push(status.never_checked_reference_count > 0 && !status.oldest_check_at
+      ? { heading: "Documents on current Procedures have never been checked.", detail: "The daily check should have reached them by now; it may not be running." }
+      : { heading: `Some documents haven't been checked since ${status.oldest_check_at ? new Date(status.oldest_check_at).toLocaleDateString() : "they were added"}.`, detail: "The daily check runs every morning; it may not be running." });
+  }
+  return notices;
+}
+
 export function DecisionMatrixAdmin() {
+  const [documentChecks, setDocumentChecks] = useState<DecisionMatrixDocumentCheckStatus | null>(null);
   const [queue, setQueue] = useState<DecisionMatrixGovernanceProcedure[]>([]); const [audit, setAudit] = useState<DecisionMatrixAuditEvent[]>([]); const [rules, setRules] = useState<DecisionMatrixMatchRule[]>([]); const [procedures, setProcedures] = useState<DecisionMatrixReaderProcedure[]>([]); const [candidates, setCandidates] = useState<Array<{ procedure_id: string; revision: number; condition: string; mapping_status: string }>>([]);
   const [governance, setGovernance] = useState<Surface>(LOADING); const [auditSurface, setAuditSurface] = useState<Surface>(LOADING); const [ruleSurface, setRuleSurface] = useState<Surface>(LOADING); const [readerSurface, setReaderSurface] = useState<Surface>(LOADING); const [candidateSurface, setCandidateSurface] = useState<Surface>(LOADING);
   async function refresh() {
     const [queueResult, auditResult, ruleResult, readerResult, migrationResult] = await Promise.allSettled([api.getDecisionMatrixGovernanceQueue(), api.getDecisionMatrixAudit(), api.getDecisionMatrixMatchRules(), api.getDecisionMatrix(), api.getDecisionMatrixLegacyCandidates()]);
-    setGovernance(settled(queueResult)); setQueue(queueResult.status === "fulfilled" ? queueResult.value.procedures : []);
+    setGovernance(settled(queueResult)); setQueue(queueResult.status === "fulfilled" ? queueResult.value.procedures : []); setDocumentChecks(queueResult.status === "fulfilled" ? queueResult.value.diagnostics.document_checks ?? null : null);
     setAuditSurface(settled(auditResult)); setAudit(auditResult.status === "fulfilled" ? auditResult.value.audit_events : []);
     setRuleSurface(settled(ruleResult)); setRules(ruleResult.status === "fulfilled" ? ruleResult.value.match_rules : []);
     setCandidateSurface(settled(migrationResult)); setCandidates(migrationResult.status === "fulfilled" ? migrationResult.value.candidates : []);
@@ -70,6 +101,7 @@ export function DecisionMatrixAdmin() {
     <header className="dmx-hero"><span className="dmx-eyebrow">Administration · Decision Matrix</span><h1>Procedure governance</h1><p>Author Drafts, review lifecycle evidence, check SharePoint document references, and inspect audit history. Controller reading remains in OCC Tools.</p></header>
     {signedOut ? <div className="dmx-state dmx-state-warning" role="alert"><strong>Your sign-in has expired.</strong> Reload the page to sign in again. Nothing below could be read, and nothing is wrong with the Decision Matrix.</div> : null}
     {!signedOut && missing.length ? <div className="dmx-state dmx-state-warning" role="status"><strong>{disconnected ? "Decision Matrix is not connected." : "Decision Matrix is partly connected."}</strong> This environment's database is missing the tables from migration{missing.length === 1 ? "" : "s"} {missing.join(", ")}. Each section below says whether its own tables are present; the ones that are keep working.</div> : null}
+    {!signedOut && governance.state === "ready" ? documentCheckNotices(documentChecks).map((notice) => <div key={notice.heading} className="dmx-state dmx-state-warning" role="status"><strong>{notice.heading}</strong> {notice.detail}</div>) : null}
     <button className="btn-sm" type="button" onClick={() => void refresh()}>Refresh governance data</button>
     <DraftEntry surface={governance} onCreated={refresh} />
     <section className="dmx-admin"><h2>Operational review queue</h2><SurfaceNotice surface={governance} label="governance queue" />{governance.state === "ready" ? (queue.length ? <div className="dmx-admin-table"><table className="data"><thead><tr><th>Procedure</th><th>State</th><th>Review</th><th>Document health</th><th>Actions</th></tr></thead><tbody>{queue.map((item) => <GovernanceRow key={`${item.procedure_id}-${item.revision}`} item={item} onChanged={refresh} />)}</tbody></table></div> : <p className="dmx-empty">No Procedure revision is awaiting a governance decision.</p>) : null}</section>

@@ -7,7 +7,7 @@ import { HttpRequest, type InvocationContext } from "@azure/functions";
 import { parseConnectionString, sql } from "./db";
 import { createDecisionMatrixProcedureDraft } from "../functions/decisionMatrixDrafts";
 import { checkDecisionMatrixProcedureReferences, governDecisionMatrixProcedureRevision } from "../functions/decisionMatrixProcedureGovernance";
-import { createInMemoryMetadataReader, revisionsDueForHealthCheck, type MetadataRead } from "./decisionMatrixDocumentHealth";
+import { createInMemoryMetadataReader, documentCheckStatus, revisionsDueForHealthCheck, type MetadataRead } from "./decisionMatrixDocumentHealth";
 
 // Document Reference Health against a real SQL Server (the CI contract job's
 // container), through the handlers Admins and the timer actually use. Its own
@@ -42,6 +42,9 @@ async function ensureTables(pool: sql.ConnectionPool) {
   if (!tables.recordset[0]?.procedures) await applyMigration(pool, "migration-076-procedure-drafts-and-document-references.sql");
   if (!tables.recordset[0]?.audit) await applyMigration(pool, "migration-078-procedure-governance-audit.sql");
   if (!tables.recordset[0]?.tags) await applyMigration(pool, "migration-080-decision-matrix-search-and-match-rules.sql");
+  // Migration 126 is declared re-runnable, which is a promise; keep it by running it twice.
+  await applyMigration(pool, "migration-126-document-reference-health-outcome.sql");
+  await applyMigration(pool, "migration-126-document-reference-health-outcome.sql");
 }
 
 const lifecycleUrl = (procedureId: string) => `https://example.test/api/manage/decision-matrix/procedures/${procedureId}/revisions/1/lifecycle`;
@@ -88,6 +91,9 @@ test("document health is observed by the application, recorded by one writer, an
   await pool.connect();
   try {
     await ensureTables(pool);
+    // The contract database is shared, so the notice's counts are compared as
+    // changes from here rather than as absolute numbers.
+    const before = await documentCheckStatus({});
 
     // A check records who caused it, that the application looked, and what it saw.
     const recorded = await createUnderReview("recorded");
@@ -171,6 +177,33 @@ test("document health is observed by the application, recorded by one writer, an
       .query("UPDATE ProcedureRevisions SET lifecycle_state='Retired' WHERE procedure_id=@procedure_id");
     const due = (await revisionsDueForHealthCheck()).map((revision) => revision.procedure_id).filter((id) => procedureIds.includes(id)).sort();
     assert.deepEqual(due, [recorded, refused].sort(), "Approved and Under review revisions are due; a Retired one is not");
+
+    // Migration 126: each check records why health is what it is.
+    const outcomes = await pool.request().input("recorded", sql.NVarChar, recorded).input("refused", sql.NVarChar, refused)
+      .query<{ procedure_id: string; health_outcome: string }>("SELECT procedure_id,health_outcome FROM ProcedureDocumentReferences WHERE procedure_id IN (@recorded,@refused)");
+    const outcomeFor = (procedureId: string) => outcomes.recordset.find((row) => row.procedure_id === procedureId)?.health_outcome;
+    assert.equal(outcomeFor(recorded), "ok", "a read document records ok");
+    assert.equal(outcomeFor(refused), "failed", "the last check of this one was an outage");
+    await assert.rejects(
+      pool.request().input("procedure_id", sql.NVarChar, recorded).query("UPDATE ProcedureDocumentReferences SET health_outcome='not_configured' WHERE procedure_id=@procedure_id"),
+      /CK_ProcedureDocumentReferences_HealthOutcome|conflicted/i,
+      "not_configured is never recorded, so the column refuses it",
+    );
+
+    // The governance notice reads what the checks left behind. SharePoint now
+    // refuses the one Under review revision's document: one more refusal.
+    const refusedAgain = await checkDecisionMatrixProcedureReferences(requestFor(checkUrl(refused), {}, params(refused)), context, createInMemoryMetadataReader({ "item-health": { kind: "grant_missing" } }));
+    assert.equal(refusedAgain.status, 200);
+    const after = await documentCheckStatus({});
+    assert.equal((after.refused_reference_count ?? 0) - (before.refused_reference_count ?? 0), 1, "a refused check is counted");
+    assert.equal(after.overdue, true, "a current revision last checked two days ago is overdue");
+    assert.ok(after.oldest_check_at !== null && Date.parse(after.oldest_check_at) < Date.now() - 24 * 60 * 60 * 1000, "the oldest check is the aged one");
+    assert.ok(after.current_revision_count >= 2, "the Approved and Under review contract revisions are current");
+
+    // Configured is a settings check: the documents application, and only it.
+    assert.equal(after.configured, false, "nothing configured in this environment");
+    assert.equal((await documentCheckStatus({ AZURE_TENANT_ID: "t", ONBOARD_API_CLIENT_ID: "sign-in", ONBOARD_API_CLIENT_SECRET: "s" })).configured, false, "the sign-in application does not count");
+    assert.equal((await documentCheckStatus({ AZURE_TENANT_ID: "t", DECISION_MATRIX_HEALTH_CLIENT_ID: "documents", DECISION_MATRIX_HEALTH_CLIENT_SECRET: "s" })).configured, true);
   } finally {
     for (const procedureId of procedureIds) {
       await pool.request().input("procedure_id", sql.NVarChar, procedureId).query("DELETE FROM Procedures WHERE procedure_id=@procedure_id").catch(() => undefined);

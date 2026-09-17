@@ -109,6 +109,18 @@ Steps in **bold** are tenant or SharePoint actions and cannot be done from this 
 
 Steps 8-10 depend only on step 1 and can run alongside steps 2-7.
 
+**Migration 126** (`health_outcome` on `ProcedureDocumentReferences`) can be applied at any point; the code checks for the column before writing it. Until it is applied, the governance workspace can say whether document checks are configured and whether they have gone stale, but cannot count checks SharePoint refused - and it says nothing about refusals rather than implying there were none.
+
+## Reading the governance workspace notice
+
+Administration › Decision Matrix shows a notice above the review queue when document checks are not working. It is derived from the health record itself, not from a log of timer runs:
+
+| Notice | Means | Look at |
+| --- | --- | --- |
+| Document checks aren't set up here | `DECISION_MATRIX_HEALTH_CLIENT_ID` or `_SECRET` is missing, so nothing is checked and Submit and Approve are refused. Shown alone: every other symptom follows from it | Steps 2-6 above |
+| SharePoint refused N document checks | The latest check of N current references got a 401 or 403 | Each row's Check documents result: a missing site grant names step 4; a rejected credential usually means the client secret expired |
+| Some documents haven't been checked since … / have never been checked | A current reference's last check is more than 26 hours old, or was never made | The `decisionMatrixDocumentHealth` timer's runs in Application Insights |
+
 ## Verification
 
 Work down this list. Each step distinguishes a different failure, so do not skip ahead.
