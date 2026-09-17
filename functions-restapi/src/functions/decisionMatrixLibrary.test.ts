@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { HttpRequest, type InvocationContext } from "@azure/functions";
 import type { LibraryListing } from "../lib/sharepointLibrary";
-import { browseDecisionMatrixLibrary, libraryConfig, documentCredential, setDecisionMatrixLibraryForTests } from "./decisionMatrixLibrary";
+import { browseDecisionMatrixLibrary, libraryConfig, browsingCredential, setDecisionMatrixLibraryForTests } from "./decisionMatrixLibrary";
 
 const context = { error: () => undefined } as unknown as InvocationContext;
 
@@ -114,29 +114,23 @@ test("the site and drive are configuration, so a path cannot redirect the read",
   });
 });
 
-// The runbook provisions a dedicated registration; dev granted Sites.Selected
-// to the API app instead. Both must work, and the dedicated one must win where
-// it exists.
-test("the dedicated document credential is preferred, and the API app's is the fallback", async () => {
+// Browsing is pinned to the sign-in application. The dedicated documents
+// application is the integrity monitor, and letting its settings silently
+// take over browsing would hand it the alternate user-access path ADR 0025
+// rules out - so its presence must change nothing here.
+test("browsing reads as the sign-in application even when the documents application is configured", async () => {
   await withSettings({
     AZURE_TENANT_ID: "tenant",
-    DECISION_MATRIX_HEALTH_CLIENT_ID: "dedicated", DECISION_MATRIX_HEALTH_CLIENT_SECRET: "dedicated-secret",
-    ONBOARD_API_CLIENT_ID: "api", ONBOARD_API_CLIENT_SECRET: "api-secret",
+    DECISION_MATRIX_HEALTH_CLIENT_ID: "documents-app", DECISION_MATRIX_HEALTH_CLIENT_SECRET: "documents-secret",
+    ONBOARD_API_CLIENT_ID: "sign-in-app", ONBOARD_API_CLIENT_SECRET: "sign-in-secret",
   }, async () => {
-    assert.equal(documentCredential()?.clientId, "dedicated");
+    assert.equal(browsingCredential()?.clientId, "sign-in-app");
   });
   await withSettings({
     AZURE_TENANT_ID: "tenant",
-    DECISION_MATRIX_HEALTH_CLIENT_ID: undefined, DECISION_MATRIX_HEALTH_CLIENT_SECRET: undefined,
-    ONBOARD_API_CLIENT_ID: "api", ONBOARD_API_CLIENT_SECRET: "api-secret",
-  }, async () => {
-    assert.equal(documentCredential()?.clientId, "api");
-  });
-  await withSettings({
-    AZURE_TENANT_ID: "tenant",
-    DECISION_MATRIX_HEALTH_CLIENT_ID: undefined, DECISION_MATRIX_HEALTH_CLIENT_SECRET: undefined,
+    DECISION_MATRIX_HEALTH_CLIENT_ID: "documents-app", DECISION_MATRIX_HEALTH_CLIENT_SECRET: "documents-secret",
     ONBOARD_API_CLIENT_ID: undefined, ONBOARD_API_CLIENT_SECRET: undefined,
   }, async () => {
-    assert.equal(documentCredential(), null);
+    assert.equal(browsingCredential(), null, "the documents application must not stand in for browsing");
   });
 });

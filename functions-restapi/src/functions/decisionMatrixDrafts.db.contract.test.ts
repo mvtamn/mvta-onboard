@@ -7,6 +7,7 @@ import { HttpRequest, type InvocationContext } from "@azure/functions";
 import { parseConnectionString, sql } from "../lib/db";
 import { cloneDecisionMatrixProcedureDraft, createDecisionMatrixProcedureDraft, getDecisionMatrixProcedureDraft, saveDecisionMatrixProcedureDraft } from "./decisionMatrixDrafts";
 import { governDecisionMatrixProcedureRevision } from "./decisionMatrixProcedureGovernance";
+import { createInMemoryMetadataReader } from "../lib/decisionMatrixDocumentHealth";
 
 const connectionString = process.env.DECISION_MATRIX_TEST_SQL_CONNECTION_STRING;
 const context = { error: () => undefined } as unknown as InvocationContext;
@@ -118,7 +119,12 @@ test("Decision Matrix Draft API persists ordered content, rejects stale saves, a
     );
     assert.equal(stale.status, 409);
 
-    const validDocument = async () => ({ health_status: "Valid" as const, observed_version: "3.0", observed_file_name: "SOP-OCC-CONTRACT.docx", observed_mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", reason: null });
+    // The document is read through the module production uses, and Valid is
+    // what comparing it with the reference concludes - not a value handed in.
+    // A fixed Valid here is how "approval depends on who clicks" passed CI.
+    const validDocument = createInMemoryMetadataReader({
+      "item-contract": { kind: "found", document: { version: "3.0", file_name: "SOP-OCC-CONTRACT.docx", mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" } },
+    });
     const review = await governDecisionMatrixProcedureRevision(
       requestFor("POST", `https://example.test/api/manage/decision-matrix/procedures/${procedureId}/revisions/1/lifecycle`, { action: "submit_for_review", reason: "Ready for governance review." }, { procedureId, revision: "1" }),
       context,

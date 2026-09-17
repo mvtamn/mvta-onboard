@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { ApiError } from "@mvta/shared";
 import { DecisionMatrixAdmin } from "./DecisionMatrixAdmin.js";
 
-vi.mock("../config.js", () => ({ api: { getDecisionMatrixGovernanceQueue: vi.fn(), getDecisionMatrixAudit: vi.fn(), getDecisionMatrixMatchRules: vi.fn(), getDecisionMatrix: vi.fn(), getDecisionMatrixLegacyCandidates: vi.fn() } }));
+vi.mock("../config.js", () => ({ api: { getDecisionMatrixGovernanceQueue: vi.fn(), getDecisionMatrixAudit: vi.fn(), getDecisionMatrixMatchRules: vi.fn(), getDecisionMatrix: vi.fn(), getDecisionMatrixLegacyCandidates: vi.fn(), checkDecisionMatrixProcedureReferences: vi.fn(), governDecisionMatrixProcedureRevision: vi.fn() } }));
 import { api } from "../config.js";
 
 /** Every surface connected and empty: the state a migrated database starts in. */
@@ -106,5 +107,45 @@ describe("Decision Matrix administration", () => {
     }
     // The SOP's own code is a human fact and stays.
     expect(screen.getByLabelText("Primary SOP code")).toBeInTheDocument();
+  });
+
+  describe("document checks on a governance row", () => {
+    const underReview = { procedure_id: "occ-collision", condition_key: "vehicle-collision", condition: "Vehicle Collision", revision: 2, lifecycle_state: "Under review" as const, next_review_at: null, review_overdue: false, unhealthy_reference_count: 0, unchecked_reference_count: 1 };
+    const refusedByGrant = { reference_id: "ref-1", expected_file_name: "SOP-Collision.docx", outcome: "forbidden" as const, health_status: "Unavailable" as const, reason: "SharePoint refused OnBoard's document check, so the document was never inspected. A SharePoint administrator must grant the Decision Matrix documents application read access on this site.", observed: null };
+
+    beforeEach(() => {
+      vi.mocked(api.getDecisionMatrixGovernanceQueue).mockResolvedValue({ procedures: [underReview], diagnostics: { table_ready: true, required_migration: "076" } });
+    });
+
+    // Every outcome used to collapse into "Document references could not be
+    // checked.", so the reason written for the Admin never reached them.
+    it("lists what the check found, reference by reference, with the reason", async () => {
+      vi.mocked(api.checkDecisionMatrixProcedureReferences).mockResolvedValue({ outcome: "checked", reason: null, document_references: [refusedByGrant] });
+      render(<DecisionMatrixAdmin />);
+      await userEvent.setup().click(await screen.findByRole("button", { name: "Check documents" }));
+      const results = await screen.findByRole("list", { name: "Document check results" });
+      expect(within(results).getByText("SOP-Collision.docx")).toBeInTheDocument();
+      expect(results).toHaveTextContent("Unavailable");
+      expect(results).toHaveTextContent("grant the Decision Matrix documents application read access");
+      expect(screen.queryByText("Document references could not be checked.")).not.toBeInTheDocument();
+    });
+
+    it("says checks are not configured rather than reporting a document problem", async () => {
+      vi.mocked(api.checkDecisionMatrixProcedureReferences).mockResolvedValue({ outcome: "not_configured", reason: "Document checks are not configured, so nothing was checked and nothing was recorded.", document_references: [] });
+      render(<DecisionMatrixAdmin />);
+      await userEvent.setup().click(await screen.findByRole("button", { name: "Check documents" }));
+      expect(await screen.findByText(/Document checks are not configured/)).toBeInTheDocument();
+      expect(screen.queryByRole("list", { name: "Document check results" })).not.toBeInTheDocument();
+    });
+
+    it("shows why a refused approval was refused, from the check it just made", async () => {
+      vi.mocked(api.governDecisionMatrixProcedureRevision).mockRejectedValue(new ApiError(409, "Publication requires complete guidance and a currently Valid primary SOP or Reference.", { document_check: { outcome: "checked", reason: null, document_references: [refusedByGrant] } }));
+      render(<DecisionMatrixAdmin />);
+      const user = userEvent.setup();
+      await user.type(await screen.findByLabelText("Reason for lifecycle decision"), "Publish.");
+      await user.click(screen.getByRole("button", { name: "Approve" }));
+      expect(await screen.findByText(/currently Valid primary SOP/)).toBeInTheDocument();
+      expect(screen.getByRole("list", { name: "Document check results" })).toHaveTextContent("grant the Decision Matrix documents application read access");
+    });
   });
 });

@@ -878,12 +878,13 @@ any other references are ordered, labelled supporting material.
 _Avoid_: arbitrary first link, visual rendition
 
 **Document Reference Health**:
-The observed availability and revision alignment of a Supporting Document
-Reference. A failed check makes the reference visible as needing review but
-does not silently revise, hide, or retire its approved Procedure Revision.
-An updated source document also requires a reviewed Procedure Revision before
-it becomes the referenced approved version.
-_Avoid_: procedure status, content freshness
+Whether the source document a Supporting Document Reference expects is present
+and unchanged, as last observed — not whether any particular person can open
+it. A failed check makes the reference visible as needing review but does not
+silently revise, hide, or retire its approved Procedure Revision, and an updated
+source document still requires a reviewed Procedure Revision before it becomes
+the referenced approved version.
+_Avoid_: procedure status, content freshness, access check
 
 **Procedure Match Rule**:
 An explicit, source-qualified rule that recommends a Procedure for an

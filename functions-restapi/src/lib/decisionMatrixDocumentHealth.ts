@@ -1,4 +1,151 @@
-export type DocumentReferenceIdentity = {
+import { ClientSecretCredential } from "@azure/identity";
+import { getPool, sql } from "./db";
+import { recordProcedureAuditEvent } from "./procedureAudit";
+
+// Document Reference Health: whether the source document a Supporting Document
+// Reference expects is present and unchanged, as last observed. See CONTEXT.md
+// and the 2026-09-17 amendment to ADR 0025.
+//
+// This module is the only writer of that record. It used to have two: the
+// daily timer checked as the application, and Submit, Approve and Check
+// documents checked on behalf of whichever Admin clicked, using that Admin's
+// own SharePoint rights. Both wrote the same columns, so the last writer won
+// and whether a Procedure Revision could be approved depended on who pressed
+// the button. Now every check - scheduled or on demand - is made by the one
+// dedicated integrity-monitor identity, and there is no user token anywhere
+// in it.
+
+/** Where a Supporting Document Reference says its source document lives. */
+export type DocumentLocation = { site_id: string; drive_id: string; item_id: string };
+
+/** What SharePoint reported about an item. */
+export type ObservedDocument = { version: string | null; file_name: string | null; mime_type: string | null };
+
+/**
+ * One metadata read. A refusal is kept apart from a failure, and 401 from 403,
+ * because each has a different owner: a credential that no longer works, a
+ * site grant that was never issued, a file that is not there, an outage.
+ */
+export type MetadataRead =
+  | { kind: "found"; document: ObservedDocument }
+  | { kind: "credential_rejected" }
+  | { kind: "grant_missing" }
+  | { kind: "not_found" }
+  | { kind: "failed"; detail: string };
+
+/**
+ * The seam. Health needs one thing from SharePoint - an item's version, name
+ * and type - and two adapters satisfy it: Microsoft Graph in production, an
+ * in-memory set of documents in tests.
+ */
+export interface DocumentMetadataReader {
+  read(location: DocumentLocation): Promise<MetadataRead>;
+}
+
+/** Why a reference's health is what it is. "ok" covers both Valid and Needs review: the document was read. */
+export type ObservationOutcome = "ok" | "forbidden" | "not_found" | "failed";
+
+export type ReferenceHealth = {
+  reference_id: string;
+  expected_file_name: string;
+  outcome: ObservationOutcome;
+  health_status: "Valid" | "Needs review" | "Unavailable";
+  reason: string | null;
+  observed: ObservedDocument | null;
+};
+
+export type RevisionHealthRefresh =
+  | { outcome: "checked"; reason: null; document_references: ReferenceHealth[] }
+  | { outcome: "not_configured"; reason: string; document_references: [] };
+
+/** The actor recorded for checks nobody asked for. */
+export const DAILY_CHECK_ACTOR = "Decision Matrix daily health check";
+
+export const NOT_CONFIGURED_REASON =
+  "Document checks are not configured, so nothing was checked and nothing was recorded. OnBoard checks documents only as the Decision Matrix documents application, and DECISION_MATRIX_HEALTH_CLIENT_ID and DECISION_MATRIX_HEALTH_CLIENT_SECRET are not set.";
+
+const MISMATCH_REASON = "The SharePoint document metadata no longer matches this Procedure Revision.";
+const GRANT_MISSING_REASON =
+  "SharePoint refused OnBoard's document check, so the document was never inspected. A SharePoint administrator must grant the Decision Matrix documents application read access on this site (step 4 of the SharePoint documents runbook). This is not a problem with the document.";
+const CREDENTIAL_REJECTED_REASON =
+  "SharePoint rejected the Decision Matrix documents application's credential, so the document was never inspected. Its client secret may have expired or been replaced. This is a configuration fault, not a problem with the document.";
+const NOT_FOUND_REASON =
+  "SharePoint has no document at the site, drive and item this Procedure records. It may have been moved, replaced with a new item, or deleted.";
+
+type GraphFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
+
+/** The production adapter: Microsoft Graph, as whichever identity `getToken` belongs to. */
+export function createGraphMetadataReader(getToken: () => Promise<string>, fetchGraph: GraphFetch = fetch): DocumentMetadataReader {
+  return {
+    async read(location) {
+      try {
+        const token = await getToken();
+        const response = await fetchGraph(
+          `https://graph.microsoft.com/v1.0/sites/${encodeURIComponent(location.site_id)}/drives/${encodeURIComponent(location.drive_id)}/items/${encodeURIComponent(location.item_id)}?$select=eTag,name,file`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        if (response.status === 401) return { kind: "credential_rejected" };
+        if (response.status === 403) return { kind: "grant_missing" };
+        if (response.status === 404) return { kind: "not_found" };
+        if (!response.ok) return { kind: "failed", detail: `Microsoft Graph returned ${response.status}.` };
+        const item = await response.json() as { eTag?: unknown; name?: unknown; file?: { mimeType?: unknown } };
+        return {
+          kind: "found",
+          document: {
+            version: typeof item.eTag === "string" ? item.eTag : null,
+            file_name: typeof item.name === "string" ? item.name : null,
+            mime_type: typeof item.file?.mimeType === "string" ? item.file.mimeType : null,
+          },
+        };
+      } catch (error) {
+        return { kind: "failed", detail: error instanceof Error ? error.message : "Microsoft Graph could not be reached." };
+      }
+    },
+  };
+}
+
+/** The test adapter: documents keyed by item id; anything absent reads as not found. Records what it was asked for. */
+export function createInMemoryMetadataReader(documents: Record<string, MetadataRead>): DocumentMetadataReader & { reads: DocumentLocation[] } {
+  const reads: DocumentLocation[] = [];
+  return {
+    reads,
+    async read(location) {
+      reads.push(location);
+      return documents[location.item_id] ?? { kind: "not_found" };
+    },
+  };
+}
+
+/**
+ * The identity documents are checked as: the dedicated Decision Matrix
+ * documents application, and nothing else.
+ *
+ * There is deliberately no fallback to the sign-in application. A fallback
+ * would make the identity doing the checking depend on which settings happen
+ * to be present - which is the two-identity problem this module exists to end.
+ */
+export function documentCheckCredential(env: NodeJS.ProcessEnv = process.env): { tenantId: string; clientId: string; clientSecret: string } | null {
+  const value = (name: string) => env[name]?.trim() || null;
+  const tenantId = value("AZURE_TENANT_ID");
+  const clientId = value("DECISION_MATRIX_HEALTH_CLIENT_ID");
+  const clientSecret = value("DECISION_MATRIX_HEALTH_CLIENT_SECRET");
+  return tenantId && clientId && clientSecret ? { tenantId, clientId, clientSecret } : null;
+}
+
+/** The production reader, or null when documents cannot be checked here. */
+export function documentHealthReader(env: NodeJS.ProcessEnv = process.env): DocumentMetadataReader | null {
+  const credential = documentCheckCredential(env);
+  if (!credential) return null;
+  const secret = new ClientSecretCredential(credential.tenantId, credential.clientId, credential.clientSecret);
+  return createGraphMetadataReader(async () => {
+    const token = await secret.getToken("https://graph.microsoft.com/.default");
+    if (!token?.token) throw new Error("Microsoft Graph application token acquisition returned no token.");
+    return token.token;
+  });
+}
+
+type ReferenceRow = {
+  reference_id: string;
   site_id: string;
   drive_id: string;
   item_id: string;
@@ -7,74 +154,108 @@ export type DocumentReferenceIdentity = {
   expected_mime_type: string;
 };
 
-export type DocumentHealthResult = {
-  health_status: "Valid" | "Needs review" | "Unavailable";
-  observed_version: string | null;
-  observed_file_name: string | null;
-  observed_mime_type: string | null;
-  reason: string | null;
-};
-
-export type DocumentReferenceChecker = (reference: DocumentReferenceIdentity, userAssertion?: string) => Promise<DocumentHealthResult>;
-type TokenProvider = (userAssertion: string) => Promise<string>;
-type GraphFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
-
-export function createGraphDocumentChecker(getDelegatedToken: TokenProvider, fetchGraph: GraphFetch = fetch): DocumentReferenceChecker {
-  return async (reference, userAssertion) => {
-    if (!userAssertion) {
-      return { health_status: "Needs review", observed_version: null, observed_file_name: null, observed_mime_type: null, reason: "A delegated Admin session is required to check this SharePoint document." };
+function assess(reference: ReferenceRow, read: MetadataRead): ReferenceHealth {
+  const base = { reference_id: reference.reference_id, expected_file_name: reference.expected_file_name };
+  switch (read.kind) {
+    case "found": {
+      const matches = read.document.version === reference.expected_version
+        && read.document.file_name === reference.expected_file_name
+        && read.document.mime_type === reference.expected_mime_type;
+      return { ...base, outcome: "ok", health_status: matches ? "Valid" : "Needs review", reason: matches ? null : MISMATCH_REASON, observed: read.document };
     }
-    try {
-      const token = await getDelegatedToken(userAssertion);
-      const response = await fetchGraph(`https://graph.microsoft.com/v1.0/sites/${encodeURIComponent(reference.site_id)}/drives/${encodeURIComponent(reference.drive_id)}/items/${encodeURIComponent(reference.item_id)}?$select=eTag,name,file`, {
-        headers: { Authorization: `Bearer ${token}` },
+    case "credential_rejected":
+      return { ...base, outcome: "forbidden", health_status: "Unavailable", reason: CREDENTIAL_REJECTED_REASON, observed: null };
+    case "grant_missing":
+      return { ...base, outcome: "forbidden", health_status: "Unavailable", reason: GRANT_MISSING_REASON, observed: null };
+    case "not_found":
+      return { ...base, outcome: "not_found", health_status: "Unavailable", reason: NOT_FOUND_REASON, observed: null };
+    case "failed":
+      return { ...base, outcome: "failed", health_status: "Unavailable", reason: `SharePoint check failed: ${read.detail}`, observed: null };
+  }
+}
+
+/**
+ * Refresh the health of every Supporting Document Reference on one Procedure
+ * Revision, and record what was seen.
+ *
+ * `requestedBy` is who caused the check - an Admin, or DAILY_CHECK_ACTOR - and
+ * is recorded as the audit actor. It is never used to read SharePoint: the
+ * event also records that the application made the observation, so nobody
+ * later reads "this Admin approved it" as "this Admin could open that SOP".
+ *
+ * With no reader, nothing is checked and nothing is written. A missing
+ * credential says nothing about any document, and recording it as Unavailable
+ * is how a configuration gap comes to look like a document problem.
+ */
+export async function refreshRevisionHealth(
+  procedureId: string,
+  revision: number,
+  requestedBy: string,
+  reader: DocumentMetadataReader | null,
+): Promise<RevisionHealthRefresh> {
+  if (!reader) return { outcome: "not_configured", reason: NOT_CONFIGURED_REASON, document_references: [] };
+
+  const pool = await getPool();
+  const references = await pool.request()
+    .input("procedure_id", sql.NVarChar, procedureId)
+    .input("revision", sql.Int, revision)
+    .query<ReferenceRow>("SELECT reference_id,site_id,drive_id,item_id,expected_version,expected_file_name,expected_mime_type FROM ProcedureDocumentReferences WHERE procedure_id=@procedure_id AND revision=@revision ORDER BY sort_order");
+
+  // Every SharePoint round trip happens before a transaction opens. The old
+  // loop held one open across each Graph call, keeping locks while it waited
+  // on another service.
+  const observations: ReferenceHealth[] = [];
+  for (const reference of references.recordset) {
+    observations.push(assess(reference, await reader.read(reference)));
+  }
+
+  // Health and its audit events commit together, and on their own: they
+  // describe SharePoint, so they stand whether or not the lifecycle decision
+  // that asked for them goes on to succeed.
+  const transaction = new sql.Transaction(pool);
+  await transaction.begin();
+  try {
+    for (const observation of observations) {
+      const update = transaction.request();
+      update.input("reference_id", sql.UniqueIdentifier, observation.reference_id);
+      update.input("health_status", sql.NVarChar, observation.health_status);
+      update.input("observed_version", sql.NVarChar, observation.observed?.version ?? null);
+      update.input("observed_file_name", sql.NVarChar, observation.observed?.file_name ?? null);
+      update.input("observed_mime_type", sql.NVarChar, observation.observed?.mime_type ?? null);
+      update.input("reason", sql.NVarChar, observation.reason);
+      await update.query("UPDATE ProcedureDocumentReferences SET health_status=@health_status,checked_at=SYSUTCDATETIME(),observed_version=@observed_version,observed_file_name=@observed_file_name,observed_mime_type=@observed_mime_type,health_reason=@reason WHERE reference_id=@reference_id");
+      await recordProcedureAuditEvent(transaction, procedureId, revision, "document_checked", requestedBy, observation.reason, {
+        reference_id: observation.reference_id,
+        health_status: observation.health_status,
+        outcome: observation.outcome,
+        observed_by: "application",
+        observed_version: observation.observed?.version ?? null,
+        observed_file_name: observation.observed?.file_name ?? null,
+        observed_mime_type: observation.observed?.mime_type ?? null,
       });
-      // 401, 403 and 404 used to collapse into one message that blamed the
-      // document. They are three different faults with three different owners:
-      // a credential SharePoint would not accept, a library OnBoard was never
-      // granted, and a file that is genuinely not where the Procedure says it
-      // is. Only the last is about the document.
-      //
-      // The distinction is not academic. On 2026-09-06 the tenant had consented
-      // no SharePoint permission of any kind, so Graph answered 403 to every
-      // request - and every reference in the system would have reported that
-      // SharePoint had not made the document available, while the documents sat
-      // untouched and correct. An Admin reading that goes looking in SharePoint,
-      // which is the one place the answer is not. See
-      // docs/runbooks/decision-matrix-sharepoint-documents.md.
-      //
-      // All three remain Unavailable - the column allows only Valid, Needs
-      // review and Unavailable, and a document that could not be inspected must
-      // not present itself as checked. What changes is what the reason says.
-      if (response.status === 401 || response.status === 403) {
-        return {
-          health_status: "Unavailable",
-          observed_version: null,
-          observed_file_name: null,
-          observed_mime_type: null,
-          reason: response.status === 403
-            // The daily check reads as the application, where a 403 is the
-            // missing per-site grant; a check a person runs reads on their
-            // behalf, where it can also be their own SharePoint access.
-            // Neither is fixed in Entra.
-            ? "SharePoint refused OnBoard's read of this library, so the document was never inspected. A SharePoint administrator must grant the OnBoard application read access on this site (step 4 of the SharePoint documents runbook); if a person ran this check, it can also mean they cannot open the library. This is not a problem with the document."
-            : "SharePoint rejected OnBoard's credential, so the document was never inspected. This is a configuration fault, not a problem with the document.",
-        };
-      }
-      if (response.status === 404) {
-        return { health_status: "Unavailable", observed_version: null, observed_file_name: null, observed_mime_type: null, reason: "SharePoint has no document at the site, drive and item this Procedure records. It may have been moved, replaced with a new item, or deleted." };
-      }
-      if (!response.ok) throw new Error(`Microsoft Graph returned ${response.status}.`);
-      const item = await response.json() as { eTag?: unknown; name?: unknown; file?: { mimeType?: unknown } };
-      const observedVersion = typeof item.eTag === "string" ? item.eTag : null;
-      const observedName = typeof item.name === "string" ? item.name : null;
-      const observedMime = typeof item.file?.mimeType === "string" ? item.file.mimeType : null;
-      if (observedVersion === reference.expected_version && observedName === reference.expected_file_name && observedMime === reference.expected_mime_type) {
-        return { health_status: "Valid", observed_version: observedVersion, observed_file_name: observedName, observed_mime_type: observedMime, reason: null };
-      }
-      return { health_status: "Needs review", observed_version: observedVersion, observed_file_name: observedName, observed_mime_type: observedMime, reason: "The SharePoint document metadata no longer matches this Procedure Revision." };
-    } catch (error) {
-      return { health_status: "Unavailable", observed_version: null, observed_file_name: null, observed_mime_type: null, reason: error instanceof Error ? `SharePoint check failed: ${error.message}` : "SharePoint check failed." };
     }
-  };
+    await transaction.commit();
+  } catch (error) {
+    await transaction.rollback().catch(() => undefined);
+    throw error;
+  }
+  return { outcome: "checked", reason: null, document_references: observations };
+}
+
+/**
+ * The revisions the daily check refreshes: Approved, which controllers read,
+ * and Under review, which is waiting on an approval decision - where any
+ * reference is unchecked or more than a day old. Drafts are checked when they
+ * are submitted; Superseded and Retired revisions are history nothing gates on,
+ * and a Draft cloned from one starts unchecked anyway.
+ */
+export async function revisionsDueForHealthCheck(): Promise<Array<{ procedure_id: string; revision: number }>> {
+  const pool = await getPool();
+  const due = await pool.request().query<{ procedure_id: string; revision: number }>(`
+    SELECT DISTINCT d.procedure_id,d.revision
+    FROM ProcedureDocumentReferences d
+    JOIN ProcedureRevisions r ON r.procedure_id=d.procedure_id AND r.revision=d.revision
+    WHERE r.lifecycle_state IN ('Approved','Under review')
+      AND (d.checked_at IS NULL OR d.checked_at<DATEADD(DAY,-1,SYSUTCDATETIME()))`);
+  return due.recordset;
 }

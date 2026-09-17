@@ -4,26 +4,21 @@ This runbook authorizes OnBoard to read the approved SOP library in SharePoint. 
 
 | Capability | State |
 | --- | --- |
-| Document health checks on Procedure references | Written; returns `Unavailable` for every document today |
-| Inline rendition preview (QRG images) | Written; fails today |
-| Daily document-health timer | Written; exits early, no credential configured |
-| Browse SharePoint and select a guide | Shipped in 1.5.185/1.5.186; site and drive configured on dev, so it reads once the site grant exists |
+| Document health checks (Check documents, Submit, Approve, and the daily timer) | Read only as the dedicated documents application. With it unconfigured, every check answers "not configured", records nothing, and Submit and Approve are refused |
+| Inline rendition preview (QRG images) | Delegated: reads with the viewer's own SharePoint access |
+| Browse SharePoint and select a guide | Reads as the sign-in application (`ONBOARD_API_CLIENT_ID`), never the documents application; needs that application's own site grant |
 | Keep a Procedure in sync with its source location | Proposed; migration 116 holds the schema, nothing reads or writes it yet |
 
 As with `access-management-entra.md`, application deployment and tenant authorization are deliberately separate. Never place a secret in this repository: client secrets, the SharePoint ones included, live in the environment's Key Vault and are referenced from Bicep. Non-secret identifiers - the Graph site id and drive id of an approved library - belong in the environment's parameters file alongside the application id and the role and group ids already there, because the Bicep app-settings list is the complete desired state and a value set by hand survives only until the next infrastructure deploy. They are addresses, not authorization: reading the library still requires the `Sites.Selected` grant of step 4 and the secret of step 5, and publishing an address grants nothing on its own.
 
-## Why this is needed, precisely
+## Two identities, two jobs
 
-`createGraphDocumentChecker` exchanges the caller's token for a Microsoft Graph token using `https://graph.microsoft.com/.default`. That scope resolves to **the union of permissions already consented for the application** — it does not request anything new. The OnBoard application's consented delegated scopes are all identity and directory permissions (`User.*`, `GroupMember.*`, `Application.Read.All`, `AppRoleAssignment.ReadWrite.All`, `AuditLog.Read.All`). None of them grant SharePoint or Files access.
+OnBoard reads SharePoint as two different applications, and keeping them apart is deliberate (ADR 0025, amended 2026-09-17).
 
-Graph therefore answers `403` to every drive-item request, and the checker maps `401`/`403`/`404` alike to:
+- **The Decision Matrix documents application** is the integrity monitor. It makes every Document Reference Health check - the daily timer, **Check documents**, and the checks Submit and Approve run before they decide - and nothing else. It holds `Sites.Selected` with `read` on the approved site, and reads only an item's version, name and type. There is no fallback: if `DECISION_MATRIX_HEALTH_CLIENT_ID` or `_SECRET` is missing, checks report "not configured" and record nothing.
+- **The sign-in application** (`ONBOARD_API_CLIENT_ID`) browses the library for the Draft picker. It needs its own `Sites.Selected` grant on the same site. Whether browsing should move onto the documents application is an open question, not settled by which settings exist.
 
-```
-health_status: "Unavailable"
-reason: "SharePoint did not make the document available to this Admin."
-```
-
-That message describes a permissions problem as a document problem. Nobody has encountered it because no Procedure has been authored yet, so no document reference has ever been checked.
+A check never uses the Admin's own SharePoint rights. It used to: Submit, Approve and Check documents read on behalf of whoever clicked, while the daily timer read as the application, and both wrote the same health record - so whether a revision could be approved depended on who pressed the button, and it rested on a delegated `Sites.FullControl.All` consented to the sign-in application on 2026-09-14. Opening a source document and previewing a Document Rendition still read on the viewer's behalf, which needs only delegated `Files.Read.All`.
 
 ## Which identity, and why not the existing one
 
@@ -87,13 +82,32 @@ Perform these in order. Steps 1–5 are tenant actions and cannot be done from t
    | `DECISION_MATRIX_HEALTH_CLIENT_ID` | The `decisionMatrixHealthClientId` parameter |
    | `DECISION_MATRIX_HEALTH_CLIENT_SECRET` | A Key Vault reference to `decision-matrix-health-client-secret`, the secret stored in step 5 |
 
-   Both are emitted together or not at all, so a client id without its secret cannot reach the app - that half-configured state reads at runtime as a document problem rather than as a missing credential. An empty parameter emits neither and leaves the library reads falling back to the API application, which is dev's arrangement today.
+   Both are emitted together or not at all, so a client id without its secret cannot reach the app - that half-configured state reads at runtime as a document problem rather than as a missing credential. An empty parameter emits neither, and document checks then report "not configured" rather than reading as any other application.
 
    The secret never appears in this repository, in an app setting, or in a pipeline variable: the app's managed identity reads it from the vault at runtime, and rotating it is a vault operation with no redeploy.
 
    `AZURE_TENANT_ID` is already declared and is reused as-is.
 
 7. **Deploy the infrastructure**, then confirm the Function App restarted with both settings present.
+
+## Rollout on an environment that has not had it
+
+Do these in this order. The order is not a preference: the code that pins browsing to the sign-in application and moves every check onto the documents application must be live **before** `decisionMatrixHealthClientId` is set. Set it first, and the previous code's credential preference moves library browsing onto the documents application - the alternate user-access path ADR 0025 rules out for that identity - while Approve keeps checking on the Admin's behalf alongside an application-only daily check, which is the two-writer fault this change exists to remove.
+
+Steps in **bold** are tenant or SharePoint actions and cannot be done from this repository or by CI.
+
+1. Merge and deploy the application change. With no documents application configured, checks report "not configured" and nothing is written.
+2. **Run `scripts/setup-decision-matrix-documents-identity.sh` from a network the environment's Key Vault accepts** - the dev vault denies public network access, so the wizard's secret step fails from anywhere else. Run its preflight first: it tells you within seconds whether the account can read `GET /sites/{site-id}/permissions`, and if it cannot, the site-grant stage needs a SharePoint administrator.
+3. **When the wizard asks for the site id, enter the site that holds the approved library for this environment** - the value of `decisionMatrixLibrarySiteId` in `infra-phase1/parameters/phase1-{env}.parameters.json`. On dev that is the Transit Operations Hub site, not the Operations site. The wizard grants on whatever it is given.
+4. **In the same session, issue the sign-in application's own grant on that site**, with the same call as step 4 below and `application.id` set to `ONBOARD_API_CLIENT_ID`. Browsing needs it, and without browsing no Draft can be given its primary SOP.
+5. **Read both grants back** with `GET https://graph.microsoft.com/v1.0/sites/{site-id}/permissions`. Each application should appear by its id with role `read`. Record the two permission ids for revocation.
+6. Set `decisionMatrixHealthClientId` in the parameters file through a pull request, then deploy the infrastructure.
+7. Verify: **Check documents** on a test Procedure reads Valid, its `document_checked` audit event carries `observed_by: application`, and the picker lists the library.
+8. **On the sign-in application, add delegated `Files.Read.All` and grant admin consent.** This keeps Document Rendition preview working once full control is gone.
+9. Verify that preview still opens for an Admin who has SharePoint access to the library.
+10. **Remove delegated `Sites.FullControl.All` from the sign-in application in both places: its requested API permissions, and the organization-wide consent grant.** Removing only the grant leaves it in the requested permissions, and the next "Grant admin consent" restores it.
+
+Steps 8-10 depend only on step 1 and can run alongside steps 2-7.
 
 ## Verification
 

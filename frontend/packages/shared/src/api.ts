@@ -132,7 +132,6 @@ import type {
 export interface TokenRequestOptions {
   authenticationContext?: string;
   forceRefresh?: boolean;
-  delegatedSharePoint?: boolean;
 }
 
 export type TokenProvider = (options?: TokenRequestOptions) => Promise<string | null>;
@@ -287,6 +286,26 @@ export interface DecisionMatrixGovernanceProcedure {
   unchecked_reference_count: number;
 }
 
+/** One Supporting Document Reference as a document check just saw it. */
+export interface DecisionMatrixReferenceHealth {
+  reference_id: string;
+  expected_file_name: string;
+  /** Why health is what it is. "ok" covers Valid and Needs review: the document was read. */
+  outcome: "ok" | "forbidden" | "not_found" | "failed";
+  health_status: "Valid" | "Needs review" | "Unavailable";
+  reason: string | null;
+  observed: { version: string | null; file_name: string | null; mime_type: string | null } | null;
+}
+
+/**
+ * The result of refreshing a revision's document health. "not_configured"
+ * means nothing was checked and nothing recorded - it is not a statement about
+ * any document.
+ */
+export type DecisionMatrixDocumentCheck =
+  | { outcome: "checked"; reason: null; document_references: DecisionMatrixReferenceHealth[] }
+  | { outcome: "not_configured"; reason: string; document_references: [] };
+
 export interface DecisionMatrixAuditEvent {
   event_id: string;
   procedure_id: string;
@@ -414,7 +433,6 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       const token = await getToken(typeof authenticated === "object" ? authenticated : undefined);
       if (token) {
         headers.set("Authorization", `Bearer ${token}`);
-        if (typeof authenticated === "object" && authenticated.delegatedSharePoint) headers.set("x-ms-token-aad-access-token", token);
       }
     }
 
@@ -701,11 +719,13 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     },
 
     governDecisionMatrixProcedureRevision(procedureId: string, revision: number, input: { action: "submit_for_review" | "return_to_draft" | "approve" | "retire" | "withdraw"; reason: string; replacement_procedure_id?: string; replacement_revision?: number; confirm_withdrawal?: boolean }) {
-      return request<{ procedure_id: string; revision: number; lifecycle_state: string }>(`/api/manage/decision-matrix/procedures/${encodeURIComponent(procedureId)}/revisions/${revision}/lifecycle`, { method: "POST", body: JSON.stringify(input) }, { delegatedSharePoint: true });
+      return request<{ procedure_id: string; revision: number; lifecycle_state: string }>(`/api/manage/decision-matrix/procedures/${encodeURIComponent(procedureId)}/revisions/${revision}/lifecycle`, { method: "POST", body: JSON.stringify(input) }, true);
     },
 
+    // Document checks are made by OnBoard's documents application, never with
+    // the caller's own SharePoint rights, so this sends no delegated token.
     checkDecisionMatrixProcedureReferences(procedureId: string, revision: number) {
-      return request<{ document_references: Array<{ reference_id: string; health_status: string; reason: string | null }> }>(`/api/manage/decision-matrix/procedures/${encodeURIComponent(procedureId)}/revisions/${revision}/document-references/check`, { method: "POST" }, { delegatedSharePoint: true });
+      return request<DecisionMatrixDocumentCheck>(`/api/manage/decision-matrix/procedures/${encodeURIComponent(procedureId)}/revisions/${revision}/document-references/check`, { method: "POST" }, true);
     },
 
     /** Browse the one approved SharePoint library. `path` is relative to its root; omit it for the root. */
