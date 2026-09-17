@@ -306,6 +306,19 @@ export type DecisionMatrixDocumentCheck =
   | { outcome: "checked"; reason: null; document_references: DecisionMatrixReferenceHealth[] }
   | { outcome: "not_configured"; reason: string; document_references: [] };
 
+/**
+ * Whether document checks are working, derived from what checks left behind.
+ * `refused_reference_count` is null until migration 126 has been applied.
+ */
+export interface DecisionMatrixDocumentCheckStatus {
+  configured: boolean;
+  current_revision_count: number;
+  never_checked_reference_count: number;
+  oldest_check_at: string | null;
+  overdue: boolean;
+  refused_reference_count: number | null;
+}
+
 export interface DecisionMatrixAuditEvent {
   event_id: string;
   procedure_id: string;
@@ -711,7 +724,7 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     },
 
     getDecisionMatrixGovernanceQueue() {
-      return request<{ procedures: DecisionMatrixGovernanceProcedure[]; diagnostics: DecisionMatrixSurfaceDiagnostics }>("/api/manage/decision-matrix/governance-queue", {}, true);
+      return request<{ procedures: DecisionMatrixGovernanceProcedure[]; diagnostics: DecisionMatrixSurfaceDiagnostics & { document_checks?: DecisionMatrixDocumentCheckStatus } }>("/api/manage/decision-matrix/governance-queue", {}, true);
     },
 
     getDecisionMatrixAudit() {

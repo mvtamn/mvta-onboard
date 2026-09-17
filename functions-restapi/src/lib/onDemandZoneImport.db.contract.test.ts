@@ -8,7 +8,7 @@ import { zoneVersionSha256 } from "./onDemandOperationalZones";
 import { importOperationalZoneVersion } from "./onDemandZoneImport";
 
 // Zone version import against a real SQL Server (the CI contract job's
-// container), on the schema migrations 074, 098 and 126 build.
+// container), on the schema migrations 074, 098 and 127 build.
 //
 // What only a database shows: that a daily pull of the same zones - which Spare
 // exports with a new feed_version and new archive bytes every time - is one
@@ -71,8 +71,8 @@ test("a daily pull of the same zones is one version, and a changed zone set wait
     for (const file of ["migration-074-on-demand-operational-zones.sql", "migration-098-on-demand-zone-activation-audit.sql"]) {
       await apply(pool, file);
     }
-    await apply(pool, "migration-126-zone-version-identity.sql");
-    await apply(pool, "migration-126-zone-version-identity.sql"); // re-runnable
+    await apply(pool, "migration-127-zone-version-identity.sql");
+    await apply(pool, "migration-127-zone-version-identity.sql"); // re-runnable
 
     // First pull: nothing is active, so it goes into force.
     const first = await importOperationalZoneVersion(pool, feed("exported-at_2026-09-17T09:30:01Z"), "a".repeat(64), "onDemandZonesSync");

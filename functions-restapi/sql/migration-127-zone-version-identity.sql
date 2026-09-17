@@ -1,4 +1,4 @@
--- Migration 126: a Zone version is identified by its monitored geometry.
+-- Migration 127: a Zone version is identified by its monitored geometry.
 --
 -- Operational zones are now pulled daily from the GTFS-Flex feed Spare
 -- generates for MVTA (ADR 0031). Spare stamps the export time into
@@ -22,7 +22,7 @@
 -- Re-runnable.
 
 IF OBJECT_ID(N'dbo.OnDemandOperationalZoneVersions', N'U') IS NULL
-  THROW 50126, 'Migration 126 requires OnDemandOperationalZoneVersions (migration 074).', 1;
+  THROW 50127, 'Migration 127 requires OnDemandOperationalZoneVersions (migration 074).', 1;
 GO
 
 IF COL_LENGTH(N'dbo.OnDemandOperationalZoneVersions', N'zone_version_sha256') IS NULL
@@ -52,4 +52,4 @@ IF NOT EXISTS (
     WHERE zone_version_sha256 IS NOT NULL;
 GO
 
-PRINT 'Migration 126 applied: Zone versions are identified by their monitored geometry.';
+PRINT 'Migration 127 applied: Zone versions are identified by their monitored geometry.';

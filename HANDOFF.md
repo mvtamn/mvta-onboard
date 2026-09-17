@@ -602,11 +602,11 @@ restarts, not the old cascade.
 
 ### What is still blocking, and who owns it
 
-1. **The GTFS-Flex archive - resolved 2026-09-17 (1.5.235).** Spare now
+1. **The GTFS-Flex archive - resolved 2026-09-17 (1.5.236).** Spare now
    generates MVTA's GTFS-Flex feed at a stable URL, and `onDemandZonesSync`
    pulls it daily at 09:30 UTC (`onDemandZoneFlexUrl` in the dev parameters
    file). The console upload and the hand-seeding script are removed. A Zone
-   version is identified by its monitored geometry (migration 126), because
+   version is identified by its monitored geometry (migration 127), because
    Spare stamps the export time into every archive; a changed zone set lands
    inactive for an `OCC.Admin` to activate. See ADR 0031 and
    `docs/runbooks/on-demand-operational-zones.md`.

@@ -30,13 +30,13 @@ const feed = {
   unmonitoredLocations: [],
 };
 
-test("a pull on a database without migration 126 fails with the step to take, not a SQL error", async () => {
+test("a pull on a database without migration 127 fails with the step to take, not a SQL error", async () => {
   // Merging this change deploys the feed URL, so the 09:30 UTC pull can run
   // before the migration is applied. The reason reaches feed health and the
   // Zone geometry panel, so it has to say what to do.
   await assert.rejects(
     importOperationalZoneVersion(fakePool([[{ supported: 0 }]]), feed, sourceSha256(Buffer.from("zones")), "onDemandZonesSync"),
-    /apply migration 126/,
+    /apply migration 127/,
   );
 });
 

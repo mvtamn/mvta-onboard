@@ -16,7 +16,7 @@ It is set as `onDemandZoneFlexUrl` in `infra-phase1/parameters/phase1-dev.parame
 
 The endpoint answers anonymously; OnBoard sends no Spare key to it. It returns an 11-file GTFS-Flex `.zip` of about 97 KB in 5 to 7 seconds (measured 2026-09-17), of which OnBoard reads `locations.geojson` and `feed_info.txt`.
 
-There is no upload. The console upload and the `importOnDemandZones.ts` hand-seeding script existed only while no URL was known, and were removed in 1.5.235.
+There is no upload. The console upload and the `importOnDemandZones.ts` hand-seeding script existed only while no URL was known, and were removed in 1.5.236.
 
 | Capability | Where |
 | --- | --- |
@@ -38,7 +38,7 @@ Spare publishes more locations than MVTA monitors (on 2026-09-17: the two pilot 
 
 ## What makes a new version
 
-A Zone version is identified by a hash of the monitored zones' ids, names and geometry (`zone_version_sha256`, migration 126). Spare stamps the export time into `feed_version`, `feed_info.txt` and the archive on every call, so neither can say whether anything changed; they are kept on the version only as a record of the export it was first imported from.
+A Zone version is identified by a hash of the monitored zones' ids, names and geometry (`zone_version_sha256`, migration 127). Spare stamps the export time into `feed_version`, `feed_info.txt` and the archive on every call, so neither can say whether anything changed; they are kept on the version only as a record of the export it was first imported from.
 
 Each pull ends in one of:
 
@@ -132,4 +132,4 @@ The remaining items of the activation gate in `plans/service-risk-quality-trust-
 
 - `on_demand_zones` is a **supporting** dependency of the On-Demand trust stream with no freshness deadline. A service area unchanged for a year is correct, not stale; only a never-imported feed is a fault.
 - The feed-health count is the zones the pulled export carries, not what is in force. A changed version waiting for activation leaves the monitor on the previous geometry; that gap is reported by the pull's warning and on the Zone geometry panel, not by feed health.
-- Versions imported before migration 126 have no identity and are never matched by a pull. On dev none existed.
+- Versions imported before migration 127 have no identity and are never matched by a pull. On dev none existed.

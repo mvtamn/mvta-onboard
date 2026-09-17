@@ -30,7 +30,7 @@ app.http("onDemandZoneVersions", {
         const attribution = await activationAuditSupported(pool)
           ? "v.activated_by, v.activated_at,"
           : "CAST(NULL AS NVARCHAR(200)) AS activated_by, CAST(NULL AS DATETIME2) AS activated_at,";
-        // Likewise migration 126's last-seen columns.
+        // Likewise migration 127's last-seen columns.
         const lastSeen = await zoneVersionIdentitySupported(pool)
           ? "v.last_seen_at, v.last_seen_feed_version, v.unmonitored_locations_json,"
           : "CAST(NULL AS DATETIME2) AS last_seen_at, CAST(NULL AS NVARCHAR(200)) AS last_seen_feed_version, CAST(NULL AS NVARCHAR(MAX)) AS unmonitored_locations_json,";

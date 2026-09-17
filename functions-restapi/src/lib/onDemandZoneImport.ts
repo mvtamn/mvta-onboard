@@ -41,7 +41,7 @@ export async function activationAuditSupported(pool: sql.ConnectionPool): Promis
   return result.recordset[0]?.supported === 1;
 }
 
-// Migration 126 adds the Zone version identity and last-seen columns. Merging
+// Migration 127 adds the Zone version identity and last-seen columns. Merging
 // the change that uses them also deploys the feed URL, so a pull can run on a
 // database the migration has not reached; the importer refuses with the step to
 // take rather than failing on an unknown column, and the versions listing
@@ -68,7 +68,7 @@ export async function fetchGtfsFlexArchive(url: string): Promise<Buffer> {
 }
 
 // Import is idempotent on the Zone version identity: a hash of the monitored
-// zones' identities, names and geometry (ADR 0031, migration 126). Spare stamps
+// zones' identities, names and geometry (ADR 0031, migration 127). Spare stamps
 // the export time into feed_version and the archive on every call, so the
 // archive hash and feed_version - kept on the row as a record of the export a
 // version was first imported from - cannot say whether anything changed. A pull
@@ -88,7 +88,7 @@ export async function importOperationalZoneVersion(
   importedBy: string,
 ): Promise<ZoneImportResult> {
   if (!await zoneVersionIdentitySupported(pool)) {
-    throw new Error("Zone versions cannot be identified yet: apply migration 126 (migration-126-zone-version-identity.sql), then run the pull again.");
+    throw new Error("Zone versions cannot be identified yet: apply migration 127 (migration-127-zone-version-identity.sql), then run the pull again.");
   }
   const { snapshot } = feed;
   const unmonitored = JSON.stringify(feed.unmonitoredLocations);
