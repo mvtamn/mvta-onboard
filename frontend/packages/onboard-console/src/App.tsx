@@ -44,6 +44,7 @@ import { Detours } from "./routes/Detours.js";
 import { DetourReports } from "./routes/DetourReports.js";
 import { DetourIntake } from "./routes/DetourIntake.js";
 import { Changelog } from "./routes/Changelog.js";
+import { AdminHome } from "./components/AdminHome.js";
 import { AdminLayout } from "./components/AdminLayout.js";
 import { AccessLayout } from "./routes/access/AccessUi.js";
 import { AccessOverview } from "./routes/access/AccessOverview.js";
@@ -376,16 +377,10 @@ function AuthenticatedApp({ account, roles, signOut }: {
     {
       id: "administration",
       name: "Administration",
-      cluster: <IconGear />,
+      // One link: /admin lists every area, and the pages inside it carry
+      // their own breadcrumb, tabs and quick find (components/adminNav.ts).
       entries: navEntries(
-        canManageAccess && { to: "/admin/access", label: "Access & Identity", desc: "Roles, sign-in, and who can reach which workspace", icon: <IconShield /> },
-        isAdmin && { to: "/admin/events", label: "Event Administration", desc: "The event catalog and the resources behind it", icon: <IconBus /> },
-        isAdmin && { to: "/admin/service", label: "Service Configuration", desc: "Routes, feeds, and service-day configuration", icon: <IconWrench /> },
-        isAdmin && { to: "/admin/integrations", label: "Integrations & Data Health", desc: "Connector status and feed freshness", icon: <IconWrench /> },
-        isAdmin && { to: "/admin/decision-matrix", label: "Decision Matrix", desc: "The thresholds behind suggested alerts", icon: <IconWrench /> },
-        isAdmin && { to: "/admin/otp-compliance", label: "OTP Compliance", desc: "On-time performance rules and tolerances", icon: <IconWrench /> },
-        isAdmin && { to: "/admin/performance/standards", label: "Performance Setup", desc: "Contractors, agreements, the standards catalog and its lists", icon: <IconAssessment /> },
-        canManageAccess && { to: "/admin/governance", label: "Governance & Audit", desc: "The audit log, retention, and governance settings", icon: <IconClock /> },
+        (canManageAccess || isAdmin) && { to: "/admin", label: "Administration", desc: "Access, service setup, standards, integrations and governance", icon: <IconGear /> },
       ),
     },
   ].filter((category) => category.entries.length > 0);
@@ -617,7 +612,7 @@ function AuthenticatedApp({ account, roles, signOut }: {
               <Route path="/changelog" element={<Changelog />} />
               <Route path="/admin/access-management" element={<CompatibilityRedirect to="/admin/access" />} />
               <Route path="/admin" element={<RequireRole allowed={[...ACCESS_MANAGEMENT, ...ADMIN]}><AdminLayout /></RequireRole>}>
-                <Route index element={<Navigate to="service" replace />} />
+                <Route index element={<AdminHome />} />
                 {/* Access & Identity is seven pages under one heading; they share
                     one load through AccessLayout. */}
                 <Route path="access" element={<RequireRole allowed={[...ACCESS_MANAGEMENT]}><AccessLayout /></RequireRole>}>
