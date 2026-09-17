@@ -2,6 +2,7 @@ import { app, type HttpRequest, type InvocationContext } from "@azure/functions"
 import { ADMIN_ROLES, requireRole } from "../lib/auth";
 import { getPool } from "../lib/db";
 import { DECISION_MATRIX_SURFACES, surfaceReady } from "../lib/decisionMatrixReadiness";
+import { documentCheckStatus } from "../lib/decisionMatrixDocumentHealth";
 
 function requireAdmin(request: HttpRequest) {
   const auth = requireRole(request, ADMIN_ROLES);
@@ -22,7 +23,10 @@ export async function listDecisionMatrixGovernanceQueue(request: HttpRequest, co
       FROM Procedures p JOIN ProcedureRevisions r ON r.procedure_id=p.procedure_id
       WHERE r.lifecycle_state IN ('Draft','Under review','Approved')
       ORDER BY CASE WHEN r.lifecycle_state='Under review' THEN 0 WHEN r.next_review_at<SYSUTCDATETIME() THEN 1 ELSE 2 END,p.condition,r.revision DESC`);
-    return { status: 200, jsonBody: { procedures: result.recordset, diagnostics: { table_ready: true, required_migration: surface.migration } } };
+    // Whether document checks are working rides with the queue: it is what an
+    // Admin reads before submitting or approving, and both depend on checks.
+    const documentChecks = await documentCheckStatus();
+    return { status: 200, jsonBody: { procedures: result.recordset, diagnostics: { table_ready: true, required_migration: surface.migration, document_checks: documentChecks } } };
   } catch (error) { context.error("GET Decision Matrix governance queue failed", error); return { status: 500, jsonBody: { error: "Decision Matrix governance queue is temporarily unavailable." } }; }
 }
 

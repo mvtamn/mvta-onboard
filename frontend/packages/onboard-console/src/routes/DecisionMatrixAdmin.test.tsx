@@ -148,4 +148,63 @@ describe("Decision Matrix administration", () => {
       expect(screen.getByRole("list", { name: "Document check results" })).toHaveTextContent("grant the Decision Matrix documents application read access");
     });
   });
+
+  describe("the document checks notice", () => {
+    const status = (overrides: Record<string, unknown>) => ({ configured: true, current_revision_count: 2, never_checked_reference_count: 0, oldest_check_at: "2026-09-15T05:00:00.000Z", overdue: false, refused_reference_count: 0, ...overrides });
+    function queueWith(documentChecks: Record<string, unknown>) {
+      vi.mocked(api.getDecisionMatrixGovernanceQueue).mockResolvedValue({ procedures: [], diagnostics: { table_ready: true, required_migration: "076", document_checks: status(documentChecks) } });
+    }
+
+    // Everything else is a consequence of this, and would send an Admin after
+    // the wrong fault if it were listed alongside.
+    it("says checks aren't set up, and nothing else, when no documents application is configured", async () => {
+      queueWith({ configured: false, overdue: true, never_checked_reference_count: 3, oldest_check_at: null, refused_reference_count: 2 });
+      render(<DecisionMatrixAdmin />);
+      expect(await screen.findByText("Document checks aren't set up here.")).toBeInTheDocument();
+      expect(screen.queryByText(/SharePoint refused/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/never been checked|haven't been checked since/)).not.toBeInTheDocument();
+    });
+
+    it("says it even when there is nothing current to check", async () => {
+      queueWith({ configured: false, current_revision_count: 0, overdue: false, oldest_check_at: null });
+      render(<DecisionMatrixAdmin />);
+      expect(await screen.findByText("Document checks aren't set up here.")).toBeInTheDocument();
+    });
+
+    it("counts refused checks and says they are about access, not the documents", async () => {
+      queueWith({ refused_reference_count: 2 });
+      render(<DecisionMatrixAdmin />);
+      expect(await screen.findByText("SharePoint refused 2 document checks.")).toBeInTheDocument();
+      expect(screen.getByText(/this is about OnBoard's access, not the documents/)).toBeInTheDocument();
+    });
+
+    it("says when checks have gone stale, naming the oldest", async () => {
+      queueWith({ overdue: true, oldest_check_at: "2026-09-09T05:00:00.000Z" });
+      render(<DecisionMatrixAdmin />);
+      expect(await screen.findByText(/Some documents haven't been checked since/)).toBeInTheDocument();
+    });
+
+    it("says current documents have never been checked when no check was ever made", async () => {
+      queueWith({ overdue: true, never_checked_reference_count: 2, oldest_check_at: null });
+      render(<DecisionMatrixAdmin />);
+      expect(await screen.findByText("Documents on current Procedures have never been checked.")).toBeInTheDocument();
+    });
+
+    it("says nothing when checks are configured, current and unrefused", async () => {
+      queueWith({});
+      render(<DecisionMatrixAdmin />);
+      await screen.findByText(/No Procedure revision is awaiting/);
+      expect(screen.queryByText(/Document checks aren't set up|SharePoint refused|been checked/)).not.toBeInTheDocument();
+    });
+
+    // Refusals are counted from a column migration 126 adds; before it runs the
+    // count is unknown, which is not the same as none - so no claim is made.
+    it("makes no claim about refusals before the outcome column exists", async () => {
+      queueWith({ refused_reference_count: null, overdue: true });
+      render(<DecisionMatrixAdmin />);
+      expect(await screen.findByText(/haven't been checked since/)).toBeInTheDocument();
+      expect(screen.queryByText(/SharePoint refused/)).not.toBeInTheDocument();
+    });
+  });
 });
+
