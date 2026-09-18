@@ -1083,6 +1083,21 @@ export interface DetourCommunicationReceipt {
   reported_at: string | null;
   updated_at: string;
 }
+/**
+ * A channel a Detour communication can go out on, as the server defines it
+ * (migration 132). `sent` channels have a delivery port behind them; `recorded`
+ * ones are things a person does elsewhere - a road sign, an Avail message -
+ * and OnBoard only writes down that they happened.
+ */
+export type DetourChannel = "email" | "sms" | "teams" | "digital_signage" | "avl_messaging";
+
+export interface DetourChannelOption {
+  channel: DetourChannel;
+  label: string;
+  kind: "sent" | "recorded";
+  needs_recipients: boolean;
+}
+
 export interface DetourCommunication {
   id: string; detour_id: string; audience: string; channel: string;
   recipients: string | null; content: string; status: DetourCommunicationStatus;
@@ -1098,6 +1113,8 @@ export interface DetourCommunication {
   sent_subject?: string | null;
   sent_body?: string | null;
   sent_recipients?: string | null;
+  /** When a recorded message actually went out, which may precede published_at. */
+  occurred_at?: string | null;
   receipts?: DetourCommunicationReceipt[];
 }
 // Contractor notification settings as GET /detours reports them

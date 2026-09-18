@@ -1,4 +1,4 @@
-import type { Detour, DetourAudienceEligibility, DetourCommunication, DetourCommunicationEligibility, DetourContractorNotification } from "@mvta/shared";
+import type { Detour, DetourAudienceEligibility, DetourChannelOption, DetourCommunication, DetourCommunicationEligibility, DetourContractorNotification } from "@mvta/shared";
 import { dateLabel } from "./detourDates.js";
 
 // Prefill for the Detour communications composer.
@@ -119,4 +119,39 @@ export function draftCommunicationText(detour: Pick<Detour, "internal_number" | 
   ];
   const text = lines.filter((line): line is string => line !== null).join("\n").replace(/\n{3,}/g, "\n\n").trim();
   return audience ? `To ${audience}\n\n${text}` : text;
+}
+
+// What the buttons beside one saved draft should be.
+//
+// A channel OnBoard sends (email, text, Teams) offers Send, and is refused
+// while the Detour blocks sending. A recorded channel - a road sign, an Avail
+// message - never offers Send, and is NOT refused by a closed Detour, because
+// writing down on Tuesday what went out on Monday is an accurate record rather
+// than a late send (server: eligibility.ts).
+export interface CommunicationAction {
+  canSend: boolean;
+  /** Asks for the date it went out before recording. */
+  isRecorded: boolean;
+  /** The label on the button that marks it done. */
+  recordLabel: string;
+  /** The sentence to show, or undefined when nothing blocks it. */
+  blocked?: string;
+}
+
+export function communicationAction(
+  communication: Pick<DetourCommunication, "channel" | "recipients" | "status" | "delivery_status">,
+  option: DetourChannelOption | undefined,
+  sendBlock: string | undefined,
+): CommunicationAction {
+  const isRecorded = option?.kind === "recorded";
+  const canSend = !isRecorded && (communication.channel === "teams"
+    || ((communication.channel === "email" || communication.channel === "sms") && Boolean(communication.recipients)));
+  return {
+    canSend,
+    isRecorded,
+    recordLabel: isRecorded
+      ? `Record ${option?.label ?? "it"} went out`
+      : canSend ? "Mark published (sent elsewhere)" : "Mark published",
+    blocked: isRecorded ? undefined : sendBlock,
+  };
 }
