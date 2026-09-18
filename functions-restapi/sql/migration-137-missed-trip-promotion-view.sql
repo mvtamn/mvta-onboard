@@ -1,61 +1,32 @@
--- Migration 135: Evidence conflict on a Missed-trip case (ADR-0035).
+-- Migration 137: vw_MissedTrip reads the detector promotion history.
 --
--- Avail's retrospective report reaches cases as a third source adapter. Where
--- it contradicts what a case already concluded, the case records the conflict
--- and stops: it is never reopened, never re-closed, and no review outcome is
--- rewritten. An Evidence conflict blocks Assessment promotion while leaving the
--- operational outcome intact, so two exact-matched sources that disagree cannot
--- quietly become a charge against the contractor, and cannot quietly be dropped.
+-- Migration 134 made promotion a dated decision in MissedTripDetectorPromotions
+-- (ADR-0036). Until now SQL could not read promotion at all, so every view
+-- definition reported CountsTowardAssessment with promotion hard-coded off and
+-- the warehouse disagreed with the app the moment anything was promoted.
 --
--- 1. evidence_conflict_at  - when the contradiction was first recorded. NULL is
---    "no conflict", and the column is the whole state: a conflict is not a
---    lifecycle, and it does not move a case out of Reviewed or Closed by
---    evidence.
--- 2. evidence_conflict_reason - what disagreed, in the reviewer's words, with
---    both sources named. Cleared with the timestamp when a reviewer resolves it.
+-- Migrations are append-only, so this file - not 134 - is the current definer of
+-- the view, and migration 135 now guards its own definition off once the
+-- promotion table exists. The CROSS APPLY below is
+-- missedTripCaseSql("m", "mtc", PROMOTION_HISTORY) verbatim; classify.test.ts
+-- fails if the two drift.
 --
--- Idempotent: safe to re-run. No data is rewritten - every existing case starts
--- with no conflict, which is what they have.
+-- Both gates are in the column now: a case counts toward an assessment when its
+-- detector was promoted ON THAT CASE'S SERVICE DATE (134) and no source is
+-- contradicting the review (135).
+--
+-- Nothing is promoted by this migration. With an empty history every detector
+-- reads as unpromoted, exactly as the hard-coded definition did, so no figure
+-- moves when it is applied.
+--
+-- Re-runnable: the view is CREATE OR ALTER. Apply it after 134 and 135.
+
+IF OBJECT_ID('dbo.MissedTripDetectorPromotions', 'U') IS NULL
+  THROW 50137, 'Migration 137 requires MissedTripDetectorPromotions (migration 134).', 1;
+GO
 
 IF COL_LENGTH('dbo.MonitoredMissedTrips', 'evidence_conflict_at') IS NULL
-BEGIN
-    ALTER TABLE dbo.MonitoredMissedTrips ADD evidence_conflict_at DATETIME2 NULL;
-END
-GO
-
-IF COL_LENGTH('dbo.MonitoredMissedTrips', 'evidence_conflict_reason') IS NULL
-BEGIN
-    ALTER TABLE dbo.MonitoredMissedTrips ADD evidence_conflict_reason NVARCHAR(300) NULL;
-END
-GO
-
--- The queue reads conflicted cases first when it filters for them, and the
--- assessment gate asks the same question on every promotion check.
-IF NOT EXISTS (
-    SELECT 1 FROM sys.indexes
-    WHERE name = 'IX_MonitoredMissedTrips_EvidenceConflict'
-      AND object_id = OBJECT_ID('dbo.MonitoredMissedTrips')
-)
-BEGIN
-    CREATE INDEX IX_MonitoredMissedTrips_EvidenceConflict
-        ON dbo.MonitoredMissedTrips (evidence_conflict_at)
-        WHERE evidence_conflict_at IS NOT NULL;
-END
-GO
-
--- 3. vw_MissedTrip is regenerated so the reporting layer classifies with the
---    same rule the code does (classify.test.ts asserts this file contains
---    missedTripCaseSql's output verbatim). It gains HasEvidenceConflict and
---    EvidenceConflictReason, and its CountsTowardAssessment now excludes a case
---    with an unresolved conflict - the Assessment evidence gate, in the view
---    Power BI reads.
--- Migration 137 regenerates this view to read the detector promotion history.
--- This file is re-runnable, so without the guard a re-run would put back a
--- definition in which every detector reads as unpromoted, and the reporting
--- layer would drop the promotion gate with nothing failing. Same guard this
--- file carries against migration 125.
-IF OBJECT_ID('dbo.MissedTripDetectorPromotions', 'U') IS NOT NULL
-  SET NOEXEC ON;
+  THROW 50137, 'Migration 137 requires evidence_conflict_at (migration 135).', 1;
 GO
 
 CREATE OR ALTER VIEW dbo.vw_MissedTrip AS
@@ -109,7 +80,6 @@ SELECT
   m.evidence_conflict_reason EvidenceConflictReason,
   mtc.counts_toward_assessment CountsTowardAssessment
 FROM dbo.MonitoredMissedTrips m
-
     CROSS APPLY (SELECT
       CASE WHEN m.data_quality_status = N'legacy_unverified' THEN 1 ELSE 0 END AS legacy,
       CASE WHEN m.validation_status <> N'unreviewed' THEN 1 ELSE 0 END AS reviewed,
@@ -154,7 +124,9 @@ FROM dbo.MonitoredMissedTrips m
       CAST(CASE WHEN mtc_base.legacy = 0 AND ((mtc_base.reviewed = 0 AND mtc_base.resolved = 0 AND mtc_base.held = 0 AND m.status <> N'watching') OR mtc_base.review_outcome = N'confirmed_missed_trip') THEN 1 ELSE 0 END AS BIT) AS flagged_missed,
       CAST(CASE WHEN mtc_base.legacy = 0 AND mtc_base.review_outcome = N'confirmed_missed_trip' THEN 1 ELSE 0 END AS BIT) AS counts_as_missed,
       CAST(CASE WHEN m.evidence_conflict_at IS NOT NULL THEN 1 ELSE 0 END AS BIT) AS evidence_conflict,
-      CAST(CASE WHEN mtc_base.legacy = 0 AND mtc_base.review_outcome = N'confirmed_missed_trip' AND 1 = 0 AND m.evidence_conflict_at IS NULL THEN 1 ELSE 0 END AS BIT) AS counts_toward_assessment
+      CAST(CASE WHEN mtc_base.legacy = 0 AND mtc_base.review_outcome = N'confirmed_missed_trip' AND ((SELECT TOP 1 p.promoted FROM dbo.MissedTripDetectorPromotions p
+        WHERE p.detector = mtc_base.detector AND p.effective_service_date <= LEFT(m.service_date, 8)
+        ORDER BY p.effective_service_date DESC, p.decided_at DESC) = 1) AND m.evidence_conflict_at IS NULL THEN 1 ELSE 0 END AS BIT) AS counts_toward_assessment
     ) mtc
 LEFT JOIN dbo.RouteClassification classification
   ON classification.route_id = TRY_CONVERT(int, m.route_id)
@@ -165,7 +137,4 @@ LEFT JOIN dbo.ComplianceOccurrences occurrence
   ON occurrence.source_ref = CONCAT(N'MonitoredMissedTrips:',ISNULL(m.source_system,N'gtfs'),N':',ISNULL(m.source_record_id,m.trip_id),N'|',m.service_date);
 GO
 
-SET NOEXEC OFF;
-GO
-
-PRINT 'Migration 135 applied: Evidence conflict on a Missed-trip case, and vw_MissedTrip regenerated.';
+PRINT 'Migration 137 applied: vw_MissedTrip classifies with the detector promotion history.';

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import { parseConnectionString, sql } from "../db";
+import { forgetPromotionCache } from "../missedTripCase/promotion";
 import {
   parseOccurrenceSource,
   raiseCandidates,
@@ -35,6 +36,17 @@ const DATABASE = "mvta_occurrence_intake_contract";
 const MIGRATIONS = ["030-contractor-performance-assessment", "032b-governed-performance-assessment", "065-assessment-causality", "102-agreement-scoped-standards", "103-period-resolver-key", "104-measurement-source-kinds", "105-reference-values", "107-penalty-scaling", "108-team-and-owner-lists", "109-window-modes-and-staffing-split", "110-standard-category", "111-issuance-proof", "112a-period-rules-lock", "112b-share-binds-reviewed-items", "113-owner-principal", "114-cap-withdrawn"];
 
 const SOURCES = `
+-- Migration 134's promotion history, with the silent no-show detector out of
+-- Shadow detection from before these cases: only a promoted detector raises a
+-- candidate, and only for the service dates it was promoted for.
+CREATE TABLE dbo.MissedTripDetectorPromotions (
+  id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),
+  detector NVARCHAR(40) NOT NULL, effective_service_date CHAR(8) NOT NULL, promoted BIT NOT NULL,
+  reason NVARCHAR(1000) NOT NULL, measured_precision DECIMAL(5,4) NULL, sample_size INT NULL,
+  decided_by NVARCHAR(200) NOT NULL, decided_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
+INSERT dbo.MissedTripDetectorPromotions (detector, effective_service_date, promoted, reason, decided_by)
+  VALUES (N'gtfs_silent_no_show', N'20260101', 1, N'contract test', N'test@example.com');
 CREATE TABLE dbo.MonitoredMissedTrips (
   trip_id NVARCHAR(100) NOT NULL, service_date NVARCHAR(20) NOT NULL, route_id NVARCHAR(50) NOT NULL,
   scheduled_departure_at DATETIME2 NOT NULL, grace_deadline_at DATETIME2 NOT NULL,
@@ -123,8 +135,7 @@ const refusalCode = (outcome: IntakeOutcome) => outcome.ok ? "ok" : outcome.refu
 
 test("occurrence intake against real SQL", { skip: !connectionString && "DECISION_MATRIX_TEST_SQL_CONNECTION_STRING not set" }, async t => {
   const pool = await ownDatabase(connectionString!);
-  const promoted = process.env.MISSED_TRIP_PROMOTED_DETECTORS;
-  process.env.MISSED_TRIP_PROMOTED_DETECTORS = "gtfs_silent_no_show";
+  forgetPromotionCache();
   try {
     for (const m of MIGRATIONS) {
       for (const b of batches(readFileSync(join(process.cwd(), "sql", `migration-${m}.sql`), "utf8"))) await pool.request().batch(b);
@@ -271,7 +282,7 @@ test("occurrence intake against real SQL", { skip: !connectionString && "DECISIO
       assert.equal(refusalCode(await inTx(pool, tx => setAssessedAmount(tx, occurrence.occurrence.id, null, ACTOR))), "ok");
     });
   } finally {
-    if (promoted === undefined) delete process.env.MISSED_TRIP_PROMOTED_DETECTORS; else process.env.MISSED_TRIP_PROMOTED_DETECTORS = promoted;
+    forgetPromotionCache();
     await pool.close();
     await dropDatabase(connectionString!);
   }

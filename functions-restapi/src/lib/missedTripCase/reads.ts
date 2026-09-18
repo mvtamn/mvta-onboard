@@ -19,6 +19,7 @@
 import { sql } from "../db";
 import { occurrenceSourceRefSql } from "../occurrenceIntake/sources";
 import { missedTripCaseSql } from "./classify";
+import { detectorPromotionWindows } from "./promotion";
 import type { MissedTripEvidenceFinding, MissedTripLifecycle, MissedTripReviewOutcome } from "./types";
 
 export type CaseView = "queue" | "history" | "all";
@@ -255,6 +256,9 @@ export type MonthlySummaryResult =
 // itself what "confirmed" and "timely service" meant.
 export async function readMissedTripMonthlySummary(pool: sql.ConnectionPool): Promise<MonthlySummaryResult> {
   if (!(await caseTablesReady(pool)).cases) return { ready: false };
+  // The summary reports which detections count toward an assessment, so it
+  // needs the promotion history behind that column.
+  const promoted = await detectorPromotionWindows(pool);
   const result = await pool.request().query<MissedTripsSummaryRow>(`
     SELECT
       LEFT(m.service_date, 6) AS service_month,
@@ -268,7 +272,7 @@ export async function readMissedTripMonthlySummary(pool: sql.ConnectionPool): Pr
       mtc.counts_as_missed,
       mtc.counts_toward_assessment,
       COUNT(*) AS trip_count
-    FROM MonitoredMissedTrips m ${missedTripCaseSql("m")}
+    FROM MonitoredMissedTrips m ${missedTripCaseSql("m", "mtc", promoted)}
     WHERE mtc.lifecycle IN (N'ready_for_review', N'reviewed')
     GROUP BY LEFT(m.service_date, 6), m.route_id, m.source_system, m.detection_type,
       mtc.detector, mtc.lifecycle, mtc.evidence_finding, mtc.review_outcome,

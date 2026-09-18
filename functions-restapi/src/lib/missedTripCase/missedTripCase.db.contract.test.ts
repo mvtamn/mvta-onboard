@@ -3,6 +3,7 @@ import test, { after } from "node:test";
 import { parseConnectionString, sql } from "../db";
 import { AWAITING_CONFIRMATION } from "../missedTripConfidence";
 import { actOnMissedTripCase, classifyMissedTripCase, missedTripCaseSql, observeMissedTrips, type RunFact, type RunObservation } from "./index";
+import { PROMOTION_HISTORY, promotionWindows, type DetectorPromotionEntry, type MissedTripDetector, type PromotionWindow } from "./index";
 import { MAX_CASE_LIMIT, readMissedTripCases, readMissedTripMonthlySummary } from "./reads";
 import { WINDOWED_DETECTOR_VERSION } from "./classify";
 import { decideRun } from "./decide";
@@ -29,6 +30,7 @@ import { loadCases, writeDecision } from "./store";
 const connectionString = process.env.DECISION_MATRIX_TEST_SQL_CONNECTION_STRING;
 
 const DROP = `
+IF OBJECT_ID('dbo.MissedTripDetectorPromotions','U') IS NOT NULL DROP TABLE dbo.MissedTripDetectorPromotions;
 IF OBJECT_ID('dbo.MissedTripReviewHistory','U') IS NOT NULL DROP TABLE dbo.MissedTripReviewHistory;
 IF OBJECT_ID('dbo.MonitoredMissedTrips','U') IS NOT NULL DROP TABLE dbo.MonitoredMissedTrips;
 IF OBJECT_ID('dbo.GtfsTripDirections','U') IS NOT NULL DROP TABLE dbo.GtfsTripDirections;
@@ -74,6 +76,12 @@ CREATE TABLE dbo.MissedTripReviewHistory (
   CONSTRAINT FK_MissedTripReviewHistory_Trip FOREIGN KEY (trip_id, service_date) REFERENCES dbo.MonitoredMissedTrips(trip_id, service_date),
   CONSTRAINT CK_MissedTripReviewHistory_Status CHECK (validation_status IN ('confirmed', 'timely_service', 'partial_service_failure', 'indeterminate', 'false_positive'))
 );
+CREATE TABLE dbo.MissedTripDetectorPromotions (
+  id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),
+  detector NVARCHAR(40) NOT NULL, effective_service_date CHAR(8) NOT NULL, promoted BIT NOT NULL,
+  reason NVARCHAR(1000) NOT NULL, measured_precision DECIMAL(5,4) NULL, sample_size INT NULL,
+  decided_by NVARCHAR(200) NOT NULL, decided_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
 `;
 
 const DAY = "20260917";
@@ -98,6 +106,11 @@ async function read(pool: sql.ConnectionPool, tripId: string): Promise<CaseRow |
   )).recordset[0];
 }
 
+const promotion = (detector: MissedTripDetector, on: string, promoted = true): DetectorPromotionEntry => ({
+  detector, effective_service_date: on, promoted, reason: "contract test",
+  measured_precision: 0.95, sample_size: 100, decided_by: "test@example.com", decided_at: new Date(`2026-01-01T00:00:00Z`),
+});
+
 const skip = { skip: !connectionString && "DECISION_MATRIX_TEST_SQL_CONNECTION_STRING not set" };
 const reviewer = { kind: "person" as const, name: "occ@example.com" };
 
@@ -108,7 +121,6 @@ after(async () => {
 });
 
 test("Missed-trip cases against SQL Server", skip, async (t) => {
-  delete process.env.MISSED_TRIP_PROMOTED_DETECTORS;
   const pool = await new sql.ConnectionPool(parseConnectionString(connectionString!)).connect();
   try {
     await pool.request().batch(DROP);
@@ -242,16 +254,26 @@ test("Missed-trip cases against SQL Server", skip, async (t) => {
         ('W1', '${DAY}', '460', '2026-09-17T14:00:00', '2026-09-17T14:30:00', 'escalated', 'unreviewed', 'silent_no_show', 'experimental', 'gtfs', 'gtfs-silent-v4', DATEADD(DAY, 1, SYSUTCDATETIME())),
         ('W2', '${DAY}', '460', '2026-09-17T14:00:00', '2026-09-17T14:30:00', 'escalated', 'unreviewed', 'silent_no_show', 'experimental', 'gtfs', 'gtfs-silent-v4', DATEADD(DAY, -1, SYSUTCDATETIME())),
         ('W3', '${DAY}', '460', '2026-09-17T14:00:00', '2026-09-17T14:30:00', 'escalated', 'unreviewed', 'silent_no_show', 'experimental', 'gtfs', 'gtfs-silent-v4', NULL)`);
-      for (const promoted of ["", "gtfs_cancellation,spare"]) {
-        process.env.MISSED_TRIP_PROMOTED_DETECTORS = promoted;
+      // Promotion is dated, so the fragment is checked with nothing promoted,
+      // with two detectors promoted from before these cases' service date, and
+      // with a promotion that starts after it - which must count for nothing.
+      const cases: { name: string; windows: PromotionWindow[] }[] = [
+        { name: "nothing promoted", windows: [] },
+        { name: "promoted before", windows: promotionWindows([
+          promotion("gtfs_cancellation", "20260101"), promotion("spare", "20260101")]) },
+        { name: "promoted after", windows: promotionWindows([promotion("spare", "20261201")]) },
+        { name: "promoted then demoted", windows: promotionWindows([
+          promotion("spare", "20260101"), promotion("spare", "20260801", false)]) },
+      ];
+      for (const { name, windows } of cases) {
         const rows = (await pool.request().query(`
-          SELECT m.trip_id, m.status, m.validation_status, m.data_quality_status, m.detection_type, m.source_system,
+          SELECT m.trip_id, m.service_date, m.status, m.validation_status, m.data_quality_status, m.detection_type, m.source_system,
                  m.undecided_reason, m.grace_deadline_at, m.detected_late_arrival_at, m.detector_version, m.expected_window_end_at,
                  m.evidence_conflict_at,
                  mtc.lifecycle, mtc.evidence_finding, mtc.review_outcome, mtc.detector, mtc.held_reason,
                  mtc.legacy, mtc.held, mtc.in_queue, mtc.concluded, mtc.flagged_missed, mtc.counts_as_missed,
                  mtc.evidence_conflict, mtc.counts_toward_assessment
-          FROM dbo.MonitoredMissedTrips m ${missedTripCaseSql("m")}`)).recordset;
+          FROM dbo.MonitoredMissedTrips m ${missedTripCaseSql("m", "mtc", windows)}`)).recordset;
         // NS1, C1, R1, SP1, SP2, RACE, LEG, REV and the review subtests' cases, plus K1-K7 and W1-W3.
         assert.ok(rows.length >= 18);
         assert.deepEqual(
@@ -259,7 +281,7 @@ test("Missed-trip cases against SQL Server", skip, async (t) => {
           [["W1", "awaiting_evidence"], ["W2", "ready_for_review"], ["W3", "awaiting_evidence"]],
         );
         for (const row of rows) {
-          const expected = classifyMissedTripCase(row);
+          const expected = classifyMissedTripCase(row, windows);
           const actual = {
             lifecycle: row.lifecycle, evidence_finding: row.evidence_finding, review_outcome: row.review_outcome ?? null,
             detector: row.detector, held_reason: row.held_reason ?? null, legacy: row.legacy, held: row.held,
@@ -267,10 +289,31 @@ test("Missed-trip cases against SQL Server", skip, async (t) => {
             counts_as_missed: row.counts_as_missed, evidence_conflict: row.evidence_conflict,
             counts_toward_assessment: row.counts_toward_assessment,
           };
-          assert.deepEqual(actual, expected, `${row.trip_id} with promoted="${promoted}"`);
+          assert.deepEqual(actual, expected, `${row.trip_id} with ${name}`);
         }
       }
-      delete process.env.MISSED_TRIP_PROMOTED_DETECTORS;
+
+      // vw_MissedTrip cannot be handed compiled windows - nothing regenerates
+      // it when a promotion is recorded - so it reads the history table itself.
+      // The two must answer identically, or the warehouse drifts from the app.
+      const history = [promotion("gtfs_cancellation", "20260101"), promotion("spare", "20260101"),
+        promotion("spare", "20260801", false)];
+      for (const entry of history) {
+        await pool.request()
+          .input("d", sql.NVarChar(40), entry.detector)
+          .input("e", sql.Char(8), entry.effective_service_date)
+          .input("p", sql.Bit, entry.promoted ? 1 : 0)
+          .query(`INSERT INTO dbo.MissedTripDetectorPromotions (detector, effective_service_date, promoted, reason, decided_by)
+                  VALUES (@d, @e, @p, N'contract test', N'test@example.com')`);
+      }
+      const both = (await pool.request().query(`
+        SELECT m.trip_id, viaHistory.counts_toward_assessment AS by_history, viaWindows.counts_toward_assessment AS by_windows
+        FROM dbo.MonitoredMissedTrips m
+          ${missedTripCaseSql("m", "viaHistory", PROMOTION_HISTORY)}
+          ${missedTripCaseSql("m", "viaWindows", promotionWindows(history))}`)).recordset;
+      for (const row of both) {
+        assert.equal(row.by_history, row.by_windows, `${row.trip_id}: the view and the app disagree on promotion`);
+      }
     });
 
 

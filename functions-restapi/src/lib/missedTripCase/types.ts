@@ -4,9 +4,9 @@
 
 export type MissedTripSource = "gtfs" | "spare" | "avail";
 
-// A detector family. Promotion out of Shadow detection is granted per family
-// (MISSED_TRIP_PROMOTED_DETECTORS); a new detector version stays promoted or
-// not with its family.
+// A detector family. Promotion out of Shadow detection is granted per family,
+// from a service date, and recorded in the promotion history (promotion.ts); a
+// new detector version stays promoted or not with its family.
 export const MISSED_TRIP_DETECTORS = ["gtfs_cancellation", "gtfs_silent_no_show", "spare"] as const;
 
 // How strongly a record from another system is tied to a Scheduled-run

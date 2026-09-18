@@ -7,8 +7,8 @@
 // missedTripCaseSql for a query, which CROSS APPLYs the same columns onto
 // MonitoredMissedTrips. missedTripCase.db.contract.test.ts runs both over the
 // same rows and fails if they disagree.
+import { isPromotedOn, promotionWindowsSql, type PromotionSource, type PromotionWindow } from "./promotion";
 import {
-  MISSED_TRIP_DETECTORS,
   type MissedTripClassification,
   type MissedTripDetector,
   type MissedTripEvidenceFinding,
@@ -18,6 +18,8 @@ import {
 
 // The stored columns classification depends on.
 export interface ClassifiableCase {
+  /** Service date key (YYYYMMDD); which day's promotion decision applies. */
+  service_date: string;
   status: string;
   // ADR-0035. Null is no conflict; the column is the whole state.
   evidence_conflict_at?: Date | null;
@@ -38,16 +40,6 @@ export interface ClassifiableCase {
 export const WINDOWED_DETECTOR_VERSION = "gtfs-silent-v4";
 export const AWAITING_OPERATING_WINDOW = "awaiting_operating_window";
 
-// Detectors out of Shadow detection, from MISSED_TRIP_PROMOTED_DETECTORS
-// (comma-separated detector families). Unknown names are ignored, so a typo
-// promotes nothing rather than something unintended.
-export function promotedDetectors(value = process.env.MISSED_TRIP_PROMOTED_DETECTORS): ReadonlySet<MissedTripDetector> {
-  const known = new Set<string>(MISSED_TRIP_DETECTORS);
-  return new Set(
-    (value ?? "").split(",").map((v) => v.trim()).filter((v): v is MissedTripDetector => known.has(v)),
-  );
-}
-
 export function detectorOf(row: Pick<ClassifiableCase, "source_system" | "detection_type">): MissedTripDetector {
   if (row.source_system === "spare") return "spare";
   return row.detection_type === "explicit_cancellation" ? "gtfs_cancellation" : "gtfs_silent_no_show";
@@ -55,7 +47,7 @@ export function detectorOf(row: Pick<ClassifiableCase, "source_system" | "detect
 
 export function classifyMissedTripCase(
   row: ClassifiableCase,
-  promoted: ReadonlySet<MissedTripDetector> = promotedDetectors(),
+  promoted: readonly PromotionWindow[] = [],
   now: Date = new Date(),
 ): MissedTripClassification {
   const legacy = row.data_quality_status === "legacy_unverified";
@@ -107,7 +99,10 @@ export function classifyMissedTripCase(
     flagged_missed: lifecycle === "ready_for_review" || countsAsMissed,
     counts_as_missed: countsAsMissed,
     evidence_conflict: evidenceConflict,
-    counts_toward_assessment: countsAsMissed && promoted.has(detector) && !evidenceConflict,
+    // Two independent gates: the detector has to have been promoted on this
+    // case's service date, and no source may be contradicting the review.
+    counts_toward_assessment:
+      countsAsMissed && isPromotedOn(promoted, detector, row.service_date) && !evidenceConflict,
   };
 }
 
@@ -117,16 +112,16 @@ function bit(expression: string): string {
 
 // CROSS APPLYs the classification onto `alias` (a MonitoredMissedTrips row) as
 // `as`: SELECT ... FROM MonitoredMissedTrips m ${missedTripCaseSql("m")}
-// WHERE mtc.in_queue = 1. Boolean columns are BIT. Detector names in the
-// promotion list are checked against the known set before they reach SQL.
-export function missedTripCaseSql(alias: string, as = "mtc", promoted: ReadonlySet<MissedTripDetector> = promotedDetectors()): string {
+// WHERE mtc.in_queue = 1. Boolean columns are BIT. `promoted` is the promotion
+// history compiled into spans (promotion.ts); it reaches SQL as literals, and
+// no windows means every detector is still in Shadow detection - which is the
+// right default only for a query that does not read counts_toward_assessment.
+export function missedTripCaseSql(alias: string, as = "mtc", promoted: PromotionSource = []): string {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(alias) || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(as)) {
     throw new TypeError("missedTripCaseSql aliases must be plain identifiers");
   }
   const base = `${as}_base`;
-  const known = new Set<string>(MISSED_TRIP_DETECTORS);
-  const promotedList = [...promoted].filter((d) => known.has(d)).map((d) => `N'${d}'`);
-  const promotedPredicate = promotedList.length ? `${base}.detector IN (${promotedList.join(",")})` : "1 = 0";
+  const promotedPredicate = `(${promotionWindowsSql(`${base}.detector`, `${alias}.service_date`, promoted)})`;
   return `
     CROSS APPLY (SELECT
       CASE WHEN ${alias}.data_quality_status = N'legacy_unverified' THEN 1 ELSE 0 END AS legacy,

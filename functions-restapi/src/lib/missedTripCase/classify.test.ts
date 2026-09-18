@@ -2,20 +2,22 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { classifyMissedTripCase, missedTripCaseSql, promotedDetectors, WINDOWED_DETECTOR_VERSION, type ClassifiableCase } from "./classify";
-import type { MissedTripDetector } from "./types";
+import { classifyMissedTripCase, missedTripCaseSql, WINDOWED_DETECTOR_VERSION, type ClassifiableCase } from "./classify";
+import { PROMOTION_HISTORY, type PromotionWindow } from "./promotion";
 
 const DEADLINE = new Date("2026-09-17T14:30:00Z");
 
 function row(overrides: Partial<ClassifiableCase> = {}): ClassifiableCase {
   return {
+    service_date: "20260917",
     status: "escalated", validation_status: "unreviewed", data_quality_status: "experimental",
     detection_type: "silent_no_show", source_system: "gtfs", undecided_reason: null,
     grace_deadline_at: DEADLINE, detected_late_arrival_at: null, detector_version: "gtfs-silent-v3", expected_window_end_at: null, ...overrides,
   };
 }
 
-const none = new Set<never>();
+const none: PromotionWindow[] = [];
+const promoted = (detector: PromotionWindow["detector"], from = "20260901"): PromotionWindow[] => [{ detector, from, until: null }];
 
 test("lifecycle and the queue follow one rule", () => {
   const rows: [Partial<ClassifiableCase>, string, boolean][] = [
@@ -53,9 +55,11 @@ test("only a Confirmed missed trip from a promoted detector counts toward assess
   const confirmed = row({ validation_status: "confirmed", data_quality_status: "source_verified" });
   assert.equal(classifyMissedTripCase(confirmed, none).counts_as_missed, true);
   assert.equal(classifyMissedTripCase(confirmed, none).counts_toward_assessment, false);
-  assert.equal(classifyMissedTripCase(confirmed, promotedDetectors("gtfs_silent_no_show")).counts_toward_assessment, true);
-  assert.equal(classifyMissedTripCase({ ...confirmed, source_system: "spare", detection_type: "spare_late_start" }, promotedDetectors("gtfs_silent_no_show")).counts_toward_assessment, false);
-  assert.equal(classifyMissedTripCase({ ...confirmed, data_quality_status: "legacy_unverified" }, promotedDetectors("gtfs_silent_no_show")).counts_toward_assessment, false);
+  assert.equal(classifyMissedTripCase(confirmed, promoted("gtfs_silent_no_show")).counts_toward_assessment, true);
+  assert.equal(classifyMissedTripCase({ ...confirmed, source_system: "spare", detection_type: "spare_late_start" }, promoted("gtfs_silent_no_show")).counts_toward_assessment, false);
+  // The decision has a date: a case from before it does not count.
+  assert.equal(classifyMissedTripCase({ ...confirmed, service_date: "20260831" }, promoted("gtfs_silent_no_show")).counts_toward_assessment, false);
+  assert.equal(classifyMissedTripCase({ ...confirmed, data_quality_status: "legacy_unverified" }, promoted("gtfs_silent_no_show")).counts_toward_assessment, false);
 });
 
 test("findings name what the evidence shows", () => {
@@ -71,9 +75,10 @@ test("findings name what the evidence shows", () => {
 });
 
 test("promotion names are checked before they reach SQL", () => {
-  assert.deepEqual([...promotedDetectors(" spare, gtfs_cancellation ,nope,'; DROP")], ["spare", "gtfs_cancellation"]);
-  assert.match(missedTripCaseSql("m", "mtc", promotedDetectors("spare")), /IN \(N'spare'\)/);
-  assert.match(missedTripCaseSql("m", "mtc", new Set()), /1 = 0/);
+  assert.match(missedTripCaseSql("m", "mtc", promoted("spare")),
+    /mtc_base\.detector = N'spare' AND LEFT\(m\.service_date, 8\) >= N'20260901'/);
+  assert.match(missedTripCaseSql("m", "mtc", none), /1 = 0/);
+  assert.match(missedTripCaseSql("m", "mtc", PROMOTION_HISTORY), /MissedTripDetectorPromotions/);
   assert.throws(() => missedTripCaseSql("m; DROP"), TypeError);
 });
 
@@ -124,12 +129,24 @@ test("migration 106 can no longer replace the classified vw_MissedTrip", () => {
 
 test("the newest vw_MissedTrip classifies with missedTripCaseSql verbatim", () => {
   // Migrations are append-only, so the view is redefined by whichever migration
-  // last changed the classification - 135 for the Evidence conflict. Older
-  // definitions are guarded off rather than edited.
+  // last changed the classification - 137, which reads the promotion history.
+  // Older definitions are guarded off rather than edited.
   const squash = (text: string) => text.replace(/\s+/g, " ").trim();
+  const migration = readFileSync(join(process.cwd(), "sql", "migration-137-missed-trip-promotion-view.sql"), "utf8");
+  assert.ok(squash(migration).includes(squash(missedTripCaseSql("m", "mtc", PROMOTION_HISTORY))),
+    "regenerate the CROSS APPLY in migration 137 from missedTripCaseSql(\"m\", \"mtc\", PROMOTION_HISTORY)");
+});
+
+test("migration 135 no longer replaces the promotion-aware vw_MissedTrip", () => {
+  // 137 is the newest definer, so 135's own view has to be guarded off the same
+  // way it guarded 125 - otherwise a re-run puts back a definition where every
+  // detector reads as unpromoted.
   const migration = readFileSync(join(process.cwd(), "sql", "migration-135-missed-trip-evidence-conflict.sql"), "utf8");
-  assert.ok(squash(migration).includes(squash(missedTripCaseSql("m", "mtc", new Set()))),
-    "regenerate the CROSS APPLY in migration 135 from missedTripCaseSql(\"m\", \"mtc\", new Set())");
+  const guard = migration.indexOf("IF OBJECT_ID('dbo.MissedTripDetectorPromotions', 'U') IS NOT NULL\n  SET NOEXEC ON;");
+  const view = migration.indexOf("CREATE OR ALTER VIEW dbo.vw_MissedTrip");
+  const off = migration.indexOf("SET NOEXEC OFF;");
+  assert.ok(guard > -1, "migration 135 must skip its vw_MissedTrip once migration 137 has run");
+  assert.ok(guard < view && view < off, "the guard must open before the view and close after it");
 });
 
 test("migration 125 no longer replaces the conflict-aware vw_MissedTrip", () => {
@@ -147,12 +164,12 @@ test("migration 125 no longer replaces the conflict-aware vw_MissedTrip", () => 
 
 test("an unresolved Evidence conflict blocks Assessment promotion without changing the outcome", () => {
   const confirmed = row({ validation_status: "confirmed", source_system: "spare" });
-  const promoted = new Set<MissedTripDetector>(["spare"]);
-  const clean = classifyMissedTripCase(confirmed, promoted);
+  const spare = promoted("spare");
+  const clean = classifyMissedTripCase(confirmed, spare);
   assert.equal(clean.counts_toward_assessment, true);
   assert.equal(clean.evidence_conflict, false);
 
-  const conflicted = classifyMissedTripCase({ ...confirmed, evidence_conflict_at: new Date() }, promoted);
+  const conflicted = classifyMissedTripCase({ ...confirmed, evidence_conflict_at: new Date() }, spare);
   assert.equal(conflicted.evidence_conflict, true);
   assert.equal(conflicted.counts_toward_assessment, false, "the gate blocks promotion");
   assert.equal(conflicted.counts_as_missed, true, "the operational outcome is untouched");
