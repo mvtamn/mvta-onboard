@@ -13,6 +13,7 @@ import { findLikelyDuplicates, type DuplicateCandidate } from "../lib/detourDupl
 import { parseGeometryJson } from "../lib/geoNearby";
 import { loadStopIndex, stopIdsForRecord, stopNameLookup } from "../lib/detourStops";
 import { detourIntakeSelectColumns } from "../lib/detourIntakeColumns";
+import { channelOptions, needsRecipients } from "../lib/detourCommunication";
 import { toDateOnly as dateOnly } from "../lib/detourStatus";
 
 const INTAKE_STATUSES = ["pending_review", "needs_information", "accepted", "rejected", "duplicate", "withdrawn"] as const;
@@ -144,6 +145,11 @@ app.http("detourIntakeList", {
         status: 200,
         jsonBody: {
           intake: intake.map((row) => ({ ...row, likely_duplicates: likelyDuplicatesById.get(row.id) ?? [] })),
+          // The channels a communication can actually go out on, from the one
+          // module that names them (migration 132). Intake used to carry its
+          // own list - "radio" and "dispatch board" among them - so a detour
+          // could require a channel the composer had no way to offer.
+          channels: channelOptions().map((option) => ({ ...option, needs_recipients: needsRecipients(option.channel) })),
         },
       };
     } catch (err) {

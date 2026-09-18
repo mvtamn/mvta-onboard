@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { type CreateDetourIntakeInput, type DetourFulfillmentMode, type DetourImage, type DetourIntake, type DetourIntakeStatus, type DetourLikelyDuplicate, type DetourSegmentInput } from "@mvta/shared";
+import { type CreateDetourIntakeInput, type DetourChannelOption, type DetourFulfillmentMode, type DetourImage, type DetourIntake, type DetourIntakeStatus, type DetourLikelyDuplicate, type DetourSegmentInput } from "@mvta/shared";
+import { channelChips, retiredHint, toggleChannel } from "../lib/detourIntakeChannels.js";
 import { api } from "../config.js";
 import { dateTimeLabel } from "../lib/detourDates.js";
 import { DETOUR_ATTACHMENT_ACCEPT, isImageAttachment } from "../components/DetourAttachments.js";
@@ -45,7 +46,6 @@ interface IntakeFormState {
   geometry: string | null;
 }
 
-const KNOWN_CHANNELS = ["email", "radio", "Teams", "dispatch board"];
 
 function splitList(text: string): string[] {
   return text.split(/[;,]/).map((item) => item.trim()).filter(Boolean);
@@ -54,7 +54,7 @@ function splitList(text: string): string[] {
 const BLANK_FORM: IntakeFormState = {
   source: "", description: "", location: "", start: "", end: "", startTime: "", endTime: "", windowStatus: "pending",
   affectedStops: "", operationalImpacts: "", confirmationContact: "", impact: "fixed_route", serviceArea: "", instructions: "",
-  fulfillment: "avail", audiences: ["operators", "operations management"], channels: ["email", "radio"], evidenceNotes: "", evidenceReference: "", segments: [],
+  fulfillment: "avail", audiences: ["operators", "operations management"], channels: ["email"], evidenceNotes: "", evidenceReference: "", segments: [],
   geometry: null,
 };
 
@@ -108,10 +108,16 @@ export function DetourIntake() {
   const [duplicateKind, setDuplicateKind] = useState<"detour" | "intake">("detour");
   const [files, setFiles] = useState<File[]>([]);
   const [savedIntakeId, setSavedIntakeId] = useState<string | null>(null);
+  const [channels, setChannels] = useState<DetourChannelOption[]>([]);
 
   async function load() {
-    try { setRows((await api.getDetourIntake()).intake); }
-    catch (err) { setError(err instanceof Error ? err.message : "Could not load intake"); }
+    try {
+      const result = await api.getDetourIntake();
+      setRows(result.intake);
+      // The channels a communication can go out on, named by the server rather
+      // than by this form (see ChannelChips).
+      if (result.channels) setChannels(result.channels);
+    } catch (err) { setError(err instanceof Error ? err.message : "Could not load intake"); }
   }
   useEffect(() => { void load(); }, []);
 
@@ -391,7 +397,7 @@ export function DetourIntake() {
               </div>
               <div className={`intake-field intake-field-wide ${invalid("channels") ? "is-invalid" : ""}`}>
                 <span className="intake-field-label"><span>Required channels <span className="req">*</span></span></span>
-                <ChannelChips values={form.channels} onChange={(values) => set("channels", values)} />
+                <ChannelChips values={form.channels} available={channels} onChange={(values) => set("channels", values)} />
                 <span className={`intake-help ${invalid("channels") ? "is-error" : ""}`}>{invalid("channels") ? <><IconAlert />Pick at least one channel.</> : "Email and Teams can be sent from OnBoard; radio and the dispatch board are recorded when done."}</span>
               </div>
             </div>
@@ -502,19 +508,27 @@ function LikelyDuplicates({ row, onPick }: { row: DetourIntake; onPick: (match: 
   </div>;
 }
 
-// Chips for a fixed set of channels with an escape hatch for anything else.
-// Selection is the console's tab-switch anatomy so it reads the same everywhere.
-function ChannelChips({ values, onChange }: { values: string[]; onChange: (values: string[]) => void }) {
-  const [other, setOther] = useState<string | null>(null);
-  const has = (channel: string) => values.some((v) => v.toLowerCase() === channel.toLowerCase());
-  const toggle = (channel: string) => onChange(has(channel) ? values.filter((v) => v.toLowerCase() !== channel.toLowerCase()) : [...values, channel]);
-  const custom = values.filter((v) => !KNOWN_CHANNELS.some((k) => k.toLowerCase() === v.toLowerCase()));
+// Chips for the channels a communication can actually go out on. The list comes
+// from the server with the intake rows, so this form and the composer in
+// Detours & Closures cannot disagree about what exists. A value the record
+// already carries that is no longer offered stays visible and removable -
+// "radio" and "dispatch board" were both offered here once.
+function ChannelChips({ values, available, onChange }: {
+  values: string[];
+  available: DetourChannelOption[];
+  onChange: (values: string[]) => void;
+}) {
+  const chips = channelChips(available, values);
   return <div className="chip-toggles" role="group" aria-label="Required channels">
-    {KNOWN_CHANNELS.map((channel) => <button key={channel} type="button" className="chip-toggle" aria-pressed={has(channel)} onClick={() => toggle(channel)}>{channel === "email" ? "Email" : channel === "radio" ? "Radio" : channel}</button>)}
-    {custom.map((channel) => <button key={channel} type="button" className="chip-toggle" aria-pressed="true" onClick={() => toggle(channel)}>{channel}</button>)}
-    {other === null
-      ? <button type="button" className="chip-toggle is-add" onClick={() => setOther("")}>+ Other</button>
-      : <input autoFocus value={other} placeholder="Channel name, then Enter" aria-label="Other channel" style={{ maxWidth: 200 }} onChange={(e) => setOther(e.target.value)} onBlur={() => { if (other.trim()) toggle(other.trim()); setOther(null); }} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (other.trim()) toggle(other.trim()); setOther(null); } if (e.key === "Escape") setOther(null); }} />}
+    {chips.map((chip) => <button
+      key={chip.channel}
+      type="button"
+      className={chip.retired ? "chip-toggle is-retired" : "chip-toggle"}
+      aria-pressed={chip.selected}
+      title={chip.retired ? retiredHint(chip.label) : undefined}
+      onClick={() => onChange(toggleChannel(values, chip))}
+    >{chip.retired ? `${chip.label} · no longer offered` : chip.label}</button>)}
+    {available.length === 0 && <small>Loading the channels this environment can use.</small>}
   </div>;
 }
 
