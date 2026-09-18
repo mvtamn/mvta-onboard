@@ -14,6 +14,7 @@ import {
 } from "@mvta/shared";
 import { api } from "../config.js";
 import { useAppDialog } from "../components/AppDialog.js";
+import { changedSettings, DETOUR_SETTING_KEYS, missingSettingMigrations, settingExists, type DetourSettingKey } from "../lib/detourSettings.js";
 
 const ROUTE_CATEGORIES: RouteCategory[] = ["FixedRoute", "SpecialEvent", "OnDemand", "NonRevenue"];
 const DEFAULT_ROUTE_COLOR = "#00553D";
@@ -587,22 +588,31 @@ export function DetourContractorSection() {
       .catch((err) => setError(err instanceof ApiError ? err.message : "Could not load contractor settings."));
   }, []);
 
-  const configured = settings?.some((s) => s.setting_key === "contractor_name") ?? false;
-  const current = (key: string) => settings?.find((s) => s.setting_key === key)?.setting_value ?? "";
-  const dirty = name.trim() !== current("contractor_name") || recipients.trim() !== current("contractor_recipients") || audiences.trim() !== current("default_audiences");
+  // Each field belongs to its own setting row: a missing seed hides that field
+  // and nothing else. Migration 089 was never applied on dev, which used to
+  // hide the default audiences field (migration 133) along with it.
+  const edited = { contractor_name: name, contractor_recipients: recipients, default_audiences: audiences };
+  const has = (key: DetourSettingKey) => settingExists(settings, key);
+  const changed = changedSettings(settings, edited);
+  const missing = missingSettingMigrations(settings);
+  const dirty = changed.length > 0;
   const badAddresses = recipients.split(/[,;\s]+/).filter(Boolean).filter((a) => !a.includes("@"));
 
   async function save() {
     if (badAddresses.length) { setError(`Not email addresses: ${badAddresses.join(", ")}`); return; }
     setSaving(true); setError(null); setOkMsg(null);
     try {
-      const updatedName = await api.updateAppSetting("detour", "contractor_name", name.trim());
-      const updatedRecipients = await api.updateAppSetting("detour", "contractor_recipients", recipients.trim());
-      const updatedAudiences = await api.updateAppSetting("detour", "default_audiences", audiences.trim());
-      setSettings((prev) => (prev ?? []).map((s) => s.setting_key === "contractor_name" ? updatedName
-        : s.setting_key === "contractor_recipients" ? updatedRecipients
-          : s.setting_key === "default_audiences" ? updatedAudiences : s));
-      setOkMsg(name.trim() ? `Contractor set to ${name.trim()}; fixed-route Detours now require a communication to them.` : "Contractor cleared; no contractor audience is required.");
+      // Only the keys that exist and actually changed: an update to a key with
+      // no row would change nothing and report success.
+      const saved = await Promise.all(changed.map(async (key) => [key, await api.updateAppSetting("detour", key, edited[key].trim())] as const));
+      const byKey = new Map(saved);
+      setSettings((prev) => (prev ?? []).map((s) => byKey.get(s.setting_key as DetourSettingKey) ?? s));
+      // Say what the save actually did: only the settings that changed.
+      const said = changed.map((key) => key === "contractor_name"
+        ? (name.trim() ? `contractor set to ${name.trim()}` : "contractor cleared")
+        : key === "contractor_recipients" ? "recipients updated"
+          : (audiences.trim() ? `default audiences set to ${audiences.trim()}` : "default audiences cleared"));
+      setOkMsg(`Saved: ${said.join("; ")}.`);
     } catch (err) { setError(err instanceof ApiError ? err.message : "Could not save contractor settings."); }
     finally { setSaving(false); }
   }
@@ -617,27 +627,35 @@ export function DetourContractorSection() {
         {error ? <p className="error-text">{error}</p> : null}
         {okMsg ? <p className="ok-text">{okMsg}</p> : null}
         {settings === null && !error ? <p className="muted">Loading…</p> : null}
-        {settings !== null && !configured ? <p className="muted">Contractor settings are not seeded in this environment (migration 089).</p> : null}
-        {configured ? (
+        {settings !== null && missing.length ? (
+          <p className="muted">Not seeded in this environment: {missing.map((m) => `migration ${m}`).join(", ")}. The settings those migrations add are not shown.</p>
+        ) : null}
+        {settings !== null && missing.length === DETOUR_SETTING_KEYS.length ? null : (
           <div className="field-grid">
-            <div>
-              <p className="field-label">Contractor name <span className="hint">(audience label; blank = none)</span></p>
-              <input className="f" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. SST" />
-            </div>
-            <div>
-              <p className="field-label">Recipient addresses <span className="hint">(comma-separated)</span></p>
-              <input className="f" value={recipients} onChange={(e) => setRecipients(e.target.value)} placeholder="dispatch@contractor.com, ops@contractor.com" />
-            </div>
-            <div>
-              <p className="field-label">Default audiences <span className="hint">(comma-separated; used when a Detour names none)</span></p>
-              <input className="f" value={audiences} onChange={(e) => setAudiences(e.target.value)} placeholder="Operators, Operations management" />
-              <p className="hint">A Detour from the Avail feed names no audiences of its own, so without this it can never be marked communicated.</p>
-            </div>
+            {has("contractor_name") ? (
+              <div>
+                <p className="field-label">Contractor name <span className="hint">(audience label; blank = none)</span></p>
+                <input className="f" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. SST" />
+              </div>
+            ) : null}
+            {has("contractor_recipients") ? (
+              <div>
+                <p className="field-label">Recipient addresses <span className="hint">(comma-separated)</span></p>
+                <input className="f" value={recipients} onChange={(e) => setRecipients(e.target.value)} placeholder="dispatch@contractor.com, ops@contractor.com" />
+              </div>
+            ) : null}
+            {has("default_audiences") ? (
+              <div>
+                <p className="field-label">Default audiences <span className="hint">(comma-separated; used when a Detour names none)</span></p>
+                <input className="f" value={audiences} onChange={(e) => setAudiences(e.target.value)} placeholder="Operators, Operations management" />
+                <p className="hint">A Detour from the Avail feed names no audiences of its own, so without this it can never be marked communicated.</p>
+              </div>
+            ) : null}
             <div style={{ alignSelf: "end" }}>
               <button className="btn-post" disabled={saving || !dirty} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</button>
             </div>
           </div>
-        ) : null}
+        )}
       </div>
     </>
   );
