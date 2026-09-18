@@ -759,6 +759,18 @@ _Avoid_: manager adjustment, report edit
 The source measurement or occurrence set remaining after contractually approved exclusions are applied. Performance tiering uses the Assessable Input while preserving the raw input for explanation.
 _Avoid_: adjusted penalty, reviewed value
 
+**Official Departure OTP**:
+Fixed-route on-time performance for a service month after the route-category filter and approved Stop Exclusions are applied — the Assessable Input of the OTP standard. It is what the assessment scores and what every screen labels "official"; the raw figure is always reported beside it.
+_Avoid_: raw OTP, adjusted OTP
+
+**Stop Exclusion**:
+A reviewed and approved decision that one stop, on one route, on one day of the week, does not count toward Official Departure OTP for a service month — a recovery or layover point, or a data-quality defect. It is the only exclusion the monthly OTP feed's grain can express.
+_Avoid_: weather exclusion, dropped stop
+
+**Weather Day Exclusion**:
+A recorded weather or emergency service date. It is kept for the record and is NOT applied to Official Departure OTP: the monthly OTP feed is aggregated by day of week, not by date, so a single date cannot be removed from it (ADR 0033).
+_Avoid_: excluded day, relief day
+
 **Monetary Adjustment**:
 An Assessment Reviewer's reasoned recommendation to change a computed monetary amount without rewriting its source measurement or tier.
 _Avoid_: source correction, waiver
@@ -802,6 +814,10 @@ _Avoid_: closed, resolved
 **Assessment Lifecycle**:
 The progression of an Assessment Period through Open, Under Review, In Validation, Finalized, and Issued. Stale identifies material input change; an issued assessment is never moved backward and corrections proceed through supersession.
 _Avoid_: computation status, report status
+
+**Compliance occurrence**:
+One instance of a performance standard not being met, attributed to the Assessment Contractor of the single Agreement whose term covers its service date. It is raised as a candidate from an automated observation or entered manually, and settled by Candidate Resolution. It never changes a Finalized or Issued Assessment Period; a correction reopens or supersedes that period.
+_Avoid_: violation, penalty, active-contractor occurrence
 
 **Unassigned Candidate**:
 An automated observation that cannot be placed unambiguously within the Assessment Contractor's Agreement term. It cannot contribute to an Assessment Period.
@@ -878,6 +894,13 @@ The one SharePoint library that Procedure authors choose source documents
 from. An author picks a document in it; which library that is belongs to
 OnBoard, never to the author.
 _Avoid_: any granted site, SOP folder, document location
+
+**Unreferenced SOP**:
+A document in the Approved Document Library's SOP folder that no Draft, Under
+review or Approved Procedure Revision references. It is a prompt that a
+Procedure may be missing, not a fault; a document used only by Superseded or
+Retired revisions is unreferenced again.
+_Avoid_: orphan document, sync change, unhealthy reference
 
 **Primary Supporting Document Reference**:
 The one required Supporting Document Reference for a Procedure Revision. It

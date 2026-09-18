@@ -94,6 +94,8 @@ import type {
   OtpHistoricalBackfillInput,
   OtpHistoricalBackfillResponse,
   OtpMonthlyRouteRollup,
+  OtpMonthMeasurement,
+  OtpTargetSource,
   OtpMonthlyStopRow,
   OtpMonthlyTrendPoint,
   OtpReasonCode,
@@ -318,6 +320,32 @@ export interface DecisionMatrixDocumentCheckStatus {
   oldest_check_at: string | null;
   overdue: boolean;
   refused_reference_count: number | null;
+}
+
+/** A document in the SOP folder that no Draft, Under review or Approved revision references. */
+export interface DecisionMatrixUnreferencedSop {
+  item_id: string;
+  name: string;
+  /** Its folder, relative to the library root. */
+  folder: string;
+  /** Its path, relative to the library root, as the picker reports one. */
+  path: string;
+  /** The version the last walk saw; null when SharePoint reported none. */
+  etag: string | null;
+  mime_type: string | null;
+  first_seen_at: string;
+  last_modified_at: string | null;
+}
+
+export interface DecisionMatrixUnreferencedSops {
+  walk: {
+    status: "not_configured" | "not_connected" | "not_walked" | "ok" | "forbidden" | "not_found" | "failed";
+    reason: string | null;
+    folder: string | null;
+    walked_at: string | null;
+    overdue: boolean;
+  };
+  documents: DecisionMatrixUnreferencedSop[];
 }
 
 export interface DecisionMatrixAuditEvent {
@@ -752,6 +780,11 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       );
     },
 
+    /** SOPs in the approved library's SOP folder that no current Procedure uses, from the last daily walk. */
+    getDecisionMatrixUnreferencedSops() {
+      return request<DecisionMatrixUnreferencedSops>("/api/manage/decision-matrix/library/unreferenced", {}, true);
+    },
+
     getDecisionMatrixLegacyCandidates() {
       return request<{ candidates: Array<{ procedure_id: string; revision: number; condition: string; mapping_status: string }>; diagnostics: DecisionMatrixSurfaceDiagnostics }>("/api/manage/decision-matrix/legacy-candidates", {}, true);
     },
@@ -996,7 +1029,9 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       const suffix = month ? `?month=${month}` : "";
       return request<{
         stops: OtpMonthlyStopRow[];
+        /** The same routes as `measurement.routes`, with the official figure as pct_ontime. */
         routes: OtpMonthlyRouteRollup[];
+        measurement: OtpMonthMeasurement;
         diagnostics: {
           configured: boolean;
           table_ready: boolean;
@@ -1004,6 +1039,8 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
           record_count: number;
           routes_below_target: number;
           target: number;
+          target_source: OtpTargetSource;
+          weather_days_recorded: number;
         };
       }>(`/api/otp-monthly${suffix}`, {}, true);
     },

@@ -5,7 +5,7 @@ import { api } from "../../config.js";
 import { MISSED_TRIP_ALERTS, type MissedTripAlert } from "./missedTrips.data.js";
 import {
   REVIEW_DECISIONS, buildReviewRequest, confirmBlockedReason, findingLabel, heldReasonLabel, inView,
-  lifecycleClass, lifecycleLabel, outcomeClass, outcomeLabel, reviewMode,
+  lifecycleClass, lifecycleLabel, outcomeClass, outcomeLabel, pivotMonthlySummary, reviewMode,
 } from "./missedTripReview.js";
 import { LiveBanner } from "../../components/LiveSignal.js";
 import "./serviceRisk.css";
@@ -553,7 +553,7 @@ function MissedTripsInvestigationPage({
   // so it falls back to counting the fixture data directly.
   const unreviewed = !isPreview && diagnostics ? diagnostics.unreviewed_count : activeAlerts.filter((a) => a.validationStatus === "unreviewed").length;
   const confirmed = !isPreview && diagnostics ? diagnostics.confirmed_count : activeAlerts.filter((a) => a.validationStatus === "confirmed").length;
-  const falsePositives = !isPreview && diagnostics ? diagnostics.false_positive_count : activeAlerts.filter((a) => a.reviewOutcome === "timely_service" || a.validationStatus === "false_positive" || a.validationStatus === "timely_service").length;
+  const falsePositives = !isPreview && diagnostics ? diagnostics.false_positive_count : activeAlerts.filter((a) => a.reviewOutcome === "timely_service").length;
   const routesAffected = !isPreview && diagnostics ? diagnostics.routes_affected_count : new Set(activeAlerts.map((a) => a.route)).size;
   const spareCandidates = activeAlerts.filter((a) => a.sourceSystem === "spare").length;
   // Only a required feed can undermine the no-show inference this module draws
@@ -1176,50 +1176,6 @@ function MissedTripDetail({
   );
 }
 
-interface MonthlyRow {
-  service_month: string;
-  route_id: string;
-  source_system: "gtfs" | "spare";
-  cancellations: number;
-  noShows: number;
-  spareCandidates: number;
-  confirmed: number;
-  falsePositive: number;
-  unreviewed: number;
-  total: number;
-}
-
-function pivotMonthlySummary(summary: MissedTripsMonthlySummaryRow[]): MonthlyRow[] {
-  const byKey = new Map<string, MonthlyRow>();
-  for (const r of summary) {
-    const key = `${r.service_month}-${r.source_system}-${r.route_id}`;
-    const row = byKey.get(key) ?? {
-      service_month: r.service_month,
-      route_id: r.route_id,
-      source_system: r.source_system,
-      cancellations: 0,
-      noShows: 0,
-      spareCandidates: 0,
-      confirmed: 0,
-      falsePositive: 0,
-      unreviewed: 0,
-      total: 0,
-    };
-    if (r.detection_type === "explicit_cancellation") row.cancellations += r.trip_count;
-    if (r.detection_type === "silent_no_show") row.noShows += r.trip_count;
-    if (r.detection_type?.startsWith("spare_")) row.spareCandidates += r.trip_count;
-    if (r.validation_status === "confirmed") row.confirmed += r.trip_count;
-    // Timely service; `false_positive` is its name before migration 125.
-    if (r.validation_status === "false_positive" || r.validation_status === "timely_service") row.falsePositive += r.trip_count;
-    if (r.validation_status === "unreviewed") row.unreviewed += r.trip_count;
-    row.total += r.trip_count;
-    byKey.set(key, row);
-  }
-  return [...byKey.values()].sort(
-    (a, b) => b.service_month.localeCompare(a.service_month) || a.route_id.localeCompare(b.route_id, undefined, { numeric: true }),
-  );
-}
-
 // Monthly Assessments - requested alongside the rest of this pass, mirroring
 // OTP Compliance's own Monthly Assessments page for the same "how are we
 // trending, not just what's pending right now" question.
@@ -1263,9 +1219,10 @@ function MissedTripsMonthlyPage({ routesById }: { routesById: Map<string, GtfsRo
             <th>Cancellations</th>
             <th>No-shows</th>
             <th>Spare candidates</th>
-            <th>Confirmed</th>
-            <th>False positives</th>
-            <th>Unreviewed</th>
+            <th>Confirmed missed</th>
+            <th>Timely service</th>
+            <th>Other outcome</th>
+            <th>Awaiting review</th>
             <th>Total</th>
           </tr>
         </thead>
@@ -1277,9 +1234,15 @@ function MissedTripsMonthlyPage({ routesById }: { routesById: Map<string, GtfsRo
               <td>{r.cancellations}</td>
               <td>{r.noShows}</td>
               <td>{r.spareCandidates}</td>
-              <td>{r.confirmed}</td>
-              <td>{r.falsePositive}</td>
-              <td>{r.unreviewed}</td>
+              <td>
+                {r.confirmedMissed}
+                {r.confirmedMissed > r.countingTowardAssessment
+                  ? <small className="muted"> ({r.countingTowardAssessment} assessed)</small>
+                  : null}
+              </td>
+              <td>{r.timelyService}</td>
+              <td>{r.otherOutcome}</td>
+              <td>{r.awaitingReview}</td>
               <td><b>{r.total}</b></td>
             </tr>
           ))}

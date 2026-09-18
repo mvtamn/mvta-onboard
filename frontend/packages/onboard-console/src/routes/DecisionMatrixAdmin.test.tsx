@@ -2,9 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ApiError } from "@mvta/shared";
-import { DecisionMatrixAdmin } from "./DecisionMatrixAdmin.js";
+import { DecisionMatrixAdmin, unreferencedSopNotice } from "./DecisionMatrixAdmin.js";
+import type { DecisionMatrixUnreferencedSops } from "@mvta/shared";
 
-vi.mock("../config.js", () => ({ api: { getDecisionMatrixGovernanceQueue: vi.fn(), getDecisionMatrixAudit: vi.fn(), getDecisionMatrixMatchRules: vi.fn(), getDecisionMatrix: vi.fn(), getDecisionMatrixLegacyCandidates: vi.fn(), checkDecisionMatrixProcedureReferences: vi.fn(), governDecisionMatrixProcedureRevision: vi.fn(), getDecisionMatrixLibrary: vi.fn(), createDecisionMatrixProcedureDraft: vi.fn() } }));
+vi.mock("../config.js", () => ({ api: { getDecisionMatrixGovernanceQueue: vi.fn(), getDecisionMatrixAudit: vi.fn(), getDecisionMatrixMatchRules: vi.fn(), getDecisionMatrix: vi.fn(), getDecisionMatrixLegacyCandidates: vi.fn(), checkDecisionMatrixProcedureReferences: vi.fn(), governDecisionMatrixProcedureRevision: vi.fn(), getDecisionMatrixLibrary: vi.fn(), createDecisionMatrixProcedureDraft: vi.fn(), getDecisionMatrixUnreferencedSops: vi.fn() } }));
 import { api } from "../config.js";
 
 /** Every surface connected and empty: the state a migrated database starts in. */
@@ -14,7 +15,14 @@ function connected() {
   vi.mocked(api.getDecisionMatrixMatchRules).mockResolvedValue({ match_rules: [], diagnostics: { table_ready: true, required_migration: "080" } });
   vi.mocked(api.getDecisionMatrixLegacyCandidates).mockResolvedValue({ candidates: [], diagnostics: { table_ready: true, required_migration: "079" } });
   vi.mocked(api.getDecisionMatrix).mockResolvedValue({ procedures: [], diagnostics: { table_ready: true, procedure_count: 0 } });
+  vi.mocked(api.getDecisionMatrixUnreferencedSops).mockResolvedValue(walked([]));
 }
+
+function walked(documents: DecisionMatrixUnreferencedSops["documents"], walk: Partial<DecisionMatrixUnreferencedSops["walk"]> = {}): DecisionMatrixUnreferencedSops {
+  return { walk: { status: "ok", reason: null, folder: "_SOPs", walked_at: new Date().toISOString(), overdue: false, ...walk }, documents };
+}
+
+const newSop = { item_id: "item-new", name: "SOP-OCC-014 Bus bridge.docx", folder: "_SOPs/_OCC Documents", path: "_SOPs/_OCC Documents/SOP-OCC-014 Bus bridge.docx", etag: '"{N},2"', mime_type: "application/pdf", first_seen_at: "2026-09-16T06:30:00.000Z", last_modified_at: null };
 
 /** No Decision Matrix migration has run at all. */
 function unmigrated() {
@@ -231,3 +239,48 @@ describe("Decision Matrix administration", () => {
   });
 });
 
+describe("SOPs no Procedure uses", () => {
+  it("counts them only when the last walk finished recently", () => {
+    expect(unreferencedSopNotice(walked([newSop]))).toEqual({ heading: "1 SOP in _SOPs isn't used by any Procedure.", detail: "No Draft, Under review or Approved revision references them. Newest first.", documents: [newSop] });
+    expect(unreferencedSopNotice(walked([newSop, { ...newSop, item_id: "item-2" }]))?.heading).toBe("2 SOPs in _SOPs aren't used by any Procedure.");
+    expect(unreferencedSopNotice(walked([]))).toBeNull();
+    expect(unreferencedSopNotice(null)).toBeNull();
+  });
+
+  // A zero from a walk that never ran, was refused or stopped running must not
+  // read as "every SOP is covered".
+  it("says what is wrong instead of a count when the walk cannot be trusted", () => {
+    const cases: Array<[Partial<DecisionMatrixUnreferencedSops["walk"]>, RegExp]> = [
+      [{ status: "not_configured", folder: null, reason: "No SOP folder is configured." }, /New SOPs aren't looked for here/],
+      [{ status: "not_connected", reason: "This environment's database is missing the tables from migration 116." }, /can't be reported yet/],
+      [{ status: "not_walked", walked_at: null, reason: "The walk runs every morning." }, /_SOPs hasn't been walked yet/],
+      [{ status: "forbidden", reason: "SharePoint refused OnBoard's read of this library." }, /last walk of _SOPs didn't finish/],
+      [{ overdue: true, walked_at: "2026-09-10T06:30:00.000Z" }, /_SOPs hasn't been walked since/],
+    ];
+    for (const [walk, heading] of cases) {
+      const notice = unreferencedSopNotice(walked([newSop], walk));
+      expect(notice?.heading).toMatch(heading);
+      expect(notice?.documents).toBeUndefined();
+    }
+  });
+
+  it("starts a Draft with the SOP already chosen", async () => {
+    vi.mocked(api.getDecisionMatrixUnreferencedSops).mockResolvedValue(walked([newSop]));
+    render(<DecisionMatrixAdmin />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText("Show them"));
+    const list = screen.getByRole("list", { name: "SOPs no Procedure uses" });
+    await user.click(within(list).getByRole("button", { name: "Create Draft from this" }));
+    expect(screen.getByRole("button", { name: "Choose a different document" })).toBeInTheDocument();
+    expect(screen.getAllByText("SOP-OCC-014 Bus bridge.docx", { selector: "strong" }).length).toBe(2);
+    expect(screen.getByText("in _SOPs/_OCC Documents", { selector: ".dmx-chosen .dmx-meta" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Procedure ID")).toHaveFocus();
+  });
+
+  it("a report that cannot be read leaves the rest of the workspace working", async () => {
+    vi.mocked(api.getDecisionMatrixUnreferencedSops).mockRejectedValue(new ApiError(500, "Unreferenced SOPs are temporarily unavailable."));
+    render(<DecisionMatrixAdmin />);
+    expect(await screen.findByRole("button", { name: "Create Draft" })).toBeInTheDocument();
+    expect(screen.queryByText(/aren't used by any Procedure|isn't used by any Procedure/)).not.toBeInTheDocument();
+  });
+});

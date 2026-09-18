@@ -7,8 +7,7 @@ import { app, type HttpRequest, type InvocationContext } from "@azure/functions"
 import { getPool, sql } from "../lib/db";
 import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
 import { serviceMonthOf } from "../lib/otpMonthlyFeed";
-
-const FALLBACK_OFFICIAL_OTP_THRESHOLD = 0.85;
+import { measureOtpMonth } from "../lib/otpMonth";
 
 interface OtpMonthlyStopRow {
   service_month: string;
@@ -31,19 +30,20 @@ interface OtpMonthlyStopRow {
   updated_at: Date;
 }
 
-interface OtpMonthlyRouteRollup {
-  route_id: number;
-  route_label: string | null;
-  total: number;
-  ontime: number;
-  pct_ontime: number | null;
-}
-
 function resolveMonth(request: HttpRequest): string {
   const param = request.query.get("month");
   return param && /^\d{6}$/.test(param) ? param : serviceMonthOf(new Date());
 }
 
+// The stop rows the Review Queue works from, and the month's measurement.
+//
+// The figures - raw, excluded, assessable, per route and agency-wide, the
+// target and where the target came from - are the OTP month measurement
+// module's (lib/otpMonth), the same answer the assessment scores and the
+// reporting view publishes. This handler used to roll the routes up itself
+// with no exclusions and no route-category filter, and look the target up by
+// effective date, so the console's "Official departure OTP" card counted raw
+// routes against a target a finalized month might not have been judged by.
 app.http("otpMonthlyList", {
   route: "otp-monthly",
   methods: ["GET"],
@@ -61,80 +61,41 @@ app.http("otpMonthlyList", {
 
     try {
       const pool = await getPool();
-
-      const tableCheck = await pool.request().query<{ table_exists: number }>(`
-        SELECT CASE WHEN OBJECT_ID('dbo.OtpMonthlyRouteStopDay', 'U') IS NULL
-          THEN 0 ELSE 1 END AS table_exists
-      `);
-      if (tableCheck.recordset[0]?.table_exists !== 1) {
-        return {
-          status: 200,
-          jsonBody: {
-            stops: [],
-            routes: [],
-            diagnostics: {
-              configured,
-              table_ready: false,
-              service_month: serviceMonth,
-              record_count: 0,
-              routes_below_target: 0,
-              target: FALLBACK_OFFICIAL_OTP_THRESHOLD,
-            },
-          },
-        };
-      }
-
-      const req = pool.request();
-      req.input("service_month", sql.Char(6), serviceMonth);
-      const stopsResult = await req.query<OtpMonthlyStopRow>(`
-        SELECT service_month, route_id, stop_id, day_of_week, stop_name, route_label,
-               pct_early, pct_ontime, pct_late, pct_not_ontime, pct_missed,
-               early, ontime, late, missed, actual_departures, total, updated_at
-        FROM OtpMonthlyRouteStopDay
-        WHERE service_month = @service_month
-        ORDER BY route_id, stop_id, day_of_week
-      `);
-
-      const routesReq = pool.request();
-      routesReq.input("service_month", sql.Char(6), serviceMonth);
-      const routesResult = await routesReq.query<OtpMonthlyRouteRollup>(`
-        SELECT route_id, MAX(route_label) AS route_label,
-               SUM(ISNULL(total, 0)) AS total, SUM(ISNULL(ontime, 0)) AS ontime,
-               CASE WHEN SUM(ISNULL(total, 0)) > 0
-                 THEN CAST(SUM(ISNULL(ontime, 0)) AS FLOAT) / SUM(ISNULL(total, 0))
-                 ELSE NULL END AS pct_ontime
-        FROM OtpMonthlyRouteStopDay
-        WHERE service_month = @service_month
-        GROUP BY route_id
-        ORDER BY route_id
-      `);
-
-      const routes = routesResult.recordset;
-      const targetResult = await pool.request().query<{ bound_low: number }>(`
-        SELECT TOP 1 tier.bound_low FROM ContractorStandardTiers tier
-        JOIN ContractorPerformanceStandards standard ON standard.id=tier.standard_id
-        WHERE standard.code='OTP_FIXED_ROUTE' AND tier.tier_label='meets'
-          AND tier.effective_start_date<=CONCAT('${serviceMonth}','01')
-          AND (tier.effective_end_date IS NULL OR tier.effective_end_date>=CONCAT('${serviceMonth}','01'))
-        ORDER BY tier.effective_start_date DESC
-      `).catch(() => ({ recordset: [] as { bound_low: number }[] }));
-      const target = Number(targetResult.recordset[0]?.bound_low ?? FALLBACK_OFFICIAL_OTP_THRESHOLD);
-      const routesBelowTarget = routes.filter(
-        (r) => r.pct_ontime !== null && r.pct_ontime < target,
-      ).length;
+      const measurement = await measureOtpMonth(pool, serviceMonth);
+      const stops = measurement.feed_ready
+        ? (await pool.request().input("service_month", sql.Char(6), serviceMonth).query<OtpMonthlyStopRow>(`
+            SELECT service_month, route_id, stop_id, day_of_week, stop_name, route_label,
+                   pct_early, pct_ontime, pct_late, pct_not_ontime, pct_missed,
+                   early, ontime, late, missed, actual_departures, total, updated_at
+            FROM OtpMonthlyRouteStopDay
+            WHERE service_month = @service_month
+            ORDER BY route_id, stop_id, day_of_week
+          `)).recordset
+        : [];
 
       return {
         status: 200,
         jsonBody: {
-          stops: stopsResult.recordset,
-          routes,
+          stops,
+          // Kept for readers that predate the measurement: the same routes,
+          // with the assessable figure as pct_ontime rather than the raw one.
+          routes: measurement.routes.map((route) => ({
+            route_id: route.route_id,
+            route_label: route.route_label,
+            total: route.assessable.departures,
+            ontime: route.assessable.ontime,
+            pct_ontime: route.assessable.pct,
+          })),
+          measurement,
           diagnostics: {
             configured,
-            table_ready: true,
+            table_ready: measurement.feed_ready,
             service_month: serviceMonth,
-            record_count: stopsResult.recordset.length,
-            routes_below_target: routesBelowTarget,
-            target,
+            record_count: stops.length,
+            routes_below_target: measurement.routes_below_target,
+            target: measurement.target,
+            target_source: measurement.target_source,
+            weather_days_recorded: measurement.weather_days_recorded,
           },
         },
       };

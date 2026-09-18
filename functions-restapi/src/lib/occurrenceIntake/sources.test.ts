@@ -1,15 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  assessmentContractorSql,
   departureSourceAllowed,
-  fixedRouteDepartureSourceRefSql,
   garageDepartureCandidatePredicate,
   garageDepartureVarianceSeconds,
+  observingSystem,
+  observingSystemSql,
+  occurrenceSourceRefSql,
   onDemandDepartureCandidatePredicate,
-  onDemandDepartureSourceRefSql,
+  parseOccurrenceSource,
   settledServiceDateExclusive,
-} from "./complianceCandidatesPoll";
+} from "./sources";
 
 test("defaults to the ten-minute variance the integration spec named", () => {
   assert.equal(garageDepartureVarianceSeconds(undefined), 600);
@@ -164,8 +165,8 @@ test("source references name their source system so one departure cannot score t
   // ADR 0028. Migration 097 rewrote the pre-existing fixed-route references
   // into this shape; the on-demand one is keyed by duty id alone because a
   // duty is one departure however its service date is later revised.
-  assert.match(fixedRouteDepartureSourceRefSql(), /^CONCAT\(N'FixedRouteDepartures:avail_pullout:',d\.service_date,N'\|',d\.block,N'\|',d\.run\)$/);
-  assert.match(onDemandDepartureSourceRefSql(), /^CONCAT\(N'OnDemandDepartures:spare_duties:',d\.duty_id\)$/);
+  assert.match(occurrenceSourceRefSql("fixed_route_departure", "d"), /^CONCAT\(N'FixedRouteDepartures:avail_pullout:',d\.service_date,N'\|',d\.block,N'\|',d\.run\)$/);
+  assert.match(occurrenceSourceRefSql("on_demand_departure", "d"), /^CONCAT\(N'OnDemandDepartures:spare_duties:',d\.duty_id\)$/);
 });
 
 test("a departure feed raises candidates when current or current-but-empty, and never otherwise", () => {
@@ -179,12 +180,36 @@ test("a departure feed raises candidates when current or current-but-empty, and 
   assert.equal(departureSourceAllowed(undefined), false);
 });
 
-test("refuses to attribute candidates when more than one contractor is active", () => {
-  const guard = assessmentContractorSql();
-  // Zero and more-than-one both fail closed; the poller never picks a winner.
-  assert.match(guard, /@active_contractors=0 THROW 50001/);
-  assert.match(guard, /@active_contractors>1 THROW 50003/);
-  // The winner-by-recency rule is gone: no TOP 1, no ORDER BY updated_at.
-  assert.doesNotMatch(guard, /TOP 1/i);
-  assert.doesNotMatch(guard, /updated_at/);
+test("a stored reference reads back as the source that built it", () => {
+  assert.deepEqual(parseOccurrenceSource("FixedRouteDepartures:avail_pullout:20260904|1305|2"),
+    { kind: "fixed_route_departure", service_date: "20260904", block: "1305", run: "2" });
+  assert.deepEqual(parseOccurrenceSource("MonitoredMissedTrips:gtfs:4401|20260712"),
+    { kind: "missed_trip", system: "gtfs", record_id: "4401", service_date: "20260712" });
+  assert.deepEqual(parseOccurrenceSource("MonitoredMissedTrips:spare:req:9|20260712"),
+    { kind: "missed_trip", system: "spare", record_id: "req:9", service_date: "20260712" });
+  assert.deepEqual(parseOccurrenceSource("OnDemandDepartures:spare_duties:d-1"), { kind: "on_demand_departure", duty_id: "d-1" });
+  for (const ref of [null, undefined, "", "test:20260712", "MonitoredMissedTrips:other:1|20260712", "FixedRouteDepartures:avail_pullout:20260904"]) {
+    assert.equal(parseOccurrenceSource(ref), null, String(ref));
+  }
+});
+
+test("the observing system follows the source, in TypeScript and SQL alike", () => {
+  const cases: [string, string | null][] = [
+    ["FixedRouteDepartures:avail_pullout:20260904|1305|2", "Avail_CAD_AVL"],
+    ["MonitoredMissedTrips:gtfs:4401|20260712", "Avail_CAD_AVL"],
+    ["MonitoredMissedTrips:spare:abc|20260712", "Spare"],
+    ["OnDemandDepartures:spare_duties:d1", "Spare"],
+  ];
+  const sqlCase = observingSystemSql("o.source_ref");
+  for (const [ref, system] of cases) {
+    assert.equal(observingSystem(parseOccurrenceSource(ref)), system);
+    const prefix = ref.slice(0, ref.indexOf(":", ref.indexOf(":") + 1) + 1);
+    assert.ok(sqlCase.includes(`LIKE '${prefix}%' THEN '${system}'`), `${prefix} in SQL`);
+  }
+  assert.equal(observingSystem(null), null);
+});
+
+test("reference aliases are checked before they reach SQL", () => {
+  assert.throws(() => occurrenceSourceRefSql("fixed_route_departure", "d; DROP"), TypeError);
+  assert.match(occurrenceSourceRefSql("missed_trip", "m"), /^CONCAT\(N'MonitoredMissedTrips:',ISNULL\(m\.source_system,N'gtfs'\)/);
 });

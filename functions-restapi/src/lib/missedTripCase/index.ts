@@ -12,10 +12,12 @@
 // rows into observations; the module never reads a source's tables.
 import { sql } from "../db";
 import {
-  linkMissedTripOccurrence,
-  OCCURRENCE_LINK_EXPLANATIONS,
-  type OccurrenceLinkOutcome,
-} from "../assessment/occurrenceIntake";
+  occurrenceStateFor,
+  recordOccurrence,
+  REVIEW_HANDOFF_EXPLANATIONS,
+  type IntakeRefusalCode,
+  type OccurrenceReviewStatus,
+} from "../occurrenceIntake";
 import { classifyMissedTripCase, promotedDetectors } from "./classify";
 import { caseTripId, decideReview, decideRun } from "./decide";
 import { caseKey, loadCase, loadCases, writeDecision } from "./store";
@@ -59,14 +61,16 @@ export async function observeMissedTrips(pool: sql.ConnectionPool, observations:
   return report;
 }
 
-export type ReviewHandOff = OccurrenceLinkOutcome | { linked: false; reason: "shadow_detection" };
+export type ReviewHandOff =
+  | { linked: true; occurrence_id: string; service_month: string; review_status: OccurrenceReviewStatus; standard_code: "MISSED_TRIPS_FR" }
+  | { linked: false; reason: IntakeRefusalCode | "shadow_detection" };
 
 export const SHADOW_DETECTION_EXPLANATION =
   "The review was saved. This case comes from a detector still in Shadow detection, so it is not added to a performance assessment.";
 
 export function handOffExplanation(outcome: ReviewHandOff): string | null {
   if (outcome.linked) return null;
-  return outcome.reason === "shadow_detection" ? SHADOW_DETECTION_EXPLANATION : OCCURRENCE_LINK_EXPLANATIONS[outcome.reason];
+  return outcome.reason === "shadow_detection" ? SHADOW_DETECTION_EXPLANATION : REVIEW_HANDOFF_EXPLANATIONS[outcome.reason] ?? REVIEW_HANDOFF_EXPLANATIONS.schema_not_ready;
 }
 
 export type ActOutcome =
@@ -136,16 +140,20 @@ export async function actOnMissedTripCase(pool: sql.ConnectionPool, key: CaseKey
     if (act.outcome === "confirmed" && !classification.counts_toward_assessment) {
       handOff = { linked: false, reason: "shadow_detection" };
     } else {
-      handOff = await linkMissedTripOccurrence(tx, {
+      const state = occurrenceStateFor(act.outcome === "confirmed" ? "confirmed" : "false_positive", act.attribution);
+      const recorded = await recordOccurrence(tx, {
+        kind: "missed_trip_review",
         tripId: key.tripId,
         serviceDate: key.serviceDate,
-        validationStatus: act.outcome === "confirmed" ? "confirmed" : "false_positive",
-        attribution: act.attribution,
-        actor: actor.name,
+        reviewStatus: state.review_status,
+        attribution: state.attribution,
         note: act.outcome === "confirmed"
           ? act.notes ?? `Attribution recorded at review as ${act.attribution}.`
           : `${OUTCOME_NOTES[act.outcome]} (${act.reasonCode}).`,
-      });
+      }, actor.name);
+      handOff = recorded.ok
+        ? { linked: true, occurrence_id: recorded.occurrence.id, service_month: recorded.occurrence.serviceMonth, review_status: state.review_status, standard_code: "MISSED_TRIPS_FR" }
+        : { linked: false, reason: recorded.refusal.code };
     }
     await tx.commit();
     return { ok: true, classification, handOff };

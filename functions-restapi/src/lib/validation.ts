@@ -320,7 +320,9 @@ export function validateManualMetric(body: UnknownBody): string[] {
 export function validateComplianceOccurrence(body: UnknownBody): string[] {
   const errors: string[] = [];
   if (!isGuid(body.standard_id)) errors.push("standard_id must be a GUID");
-  if (!isGuid(body.contractor_id)) errors.push("contractor_id must be a GUID");
+  // The contractor comes from the Agreement covering the service date. A caller
+  // may still name one; the intake module refuses it if it is not that one.
+  if (body.contractor_id !== undefined && body.contractor_id !== null && !isGuid(body.contractor_id)) errors.push("contractor_id must be a GUID when given");
   if (!isServiceDate(body.service_date)) errors.push("service_date must be YYYYMMDD");
   if (typeof body.description !== "string" || body.description.trim() === "" || body.description.length > 2000) {
     errors.push("description is required and must be at most 2000 characters");
@@ -842,7 +844,10 @@ export function validateUpdateDetourReasonCode(body: UnknownBody): string[] {
 }
 
 // PUT /route-classification/{routeId}
-export const VALID_ROUTE_CATEGORIES = ["FixedRoute", "SpecialEvent", "OnDemand"] as const;
+// NonRevenue (migration 128) is service that carries no passengers - deadhead,
+// training, maintenance, pivot. Like SpecialEvent and OnDemand it is outside
+// the fixed-route OTP measurement (ADR 0033).
+export const VALID_ROUTE_CATEGORIES = ["FixedRoute", "SpecialEvent", "OnDemand", "NonRevenue"] as const;
 export const MAX_ROUTE_LABEL_LENGTH = 100;
 
 export function validateRouteClassification(body: UnknownBody): string[] {
@@ -1340,7 +1345,9 @@ export function validateReferenceValue(body: UnknownBody): string[] {
 
 export function validatePerformanceAgreement(body: UnknownBody): string[] {
   const errors: string[] = [];
-  if (!isGuid(body.contractor_id)) errors.push("contractor_id must be a GUID");
+  // The contractor comes from the Agreement covering the service date. A caller
+  // may still name one; the intake module refuses it if it is not that one.
+  if (body.contractor_id !== undefined && body.contractor_id !== null && !isGuid(body.contractor_id)) errors.push("contractor_id must be a GUID when given");
   if (!isServiceDate(body.starts_on)) errors.push("starts_on must be YYYYMMDD");
   if (!isServiceDate(body.ends_on)) errors.push("ends_on must be YYYYMMDD");
   if (isServiceDate(body.starts_on) && isServiceDate(body.ends_on) && String(body.ends_on) < String(body.starts_on)) {

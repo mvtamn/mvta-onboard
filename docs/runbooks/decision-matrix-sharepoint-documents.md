@@ -16,7 +16,7 @@ As with `access-management-entra.md`, application deployment and tenant authoriz
 OnBoard reads SharePoint as two different applications, and keeping them apart is deliberate (ADR 0025, amended 2026-09-17).
 
 - **The Decision Matrix documents application** is the integrity monitor. It makes every Document Reference Health check - the daily timer, **Check documents**, and the checks Submit and Approve run before they decide - and nothing else. It holds `Sites.Selected` with `read` on the approved site, and reads only an item's version, name and type. There is no fallback: if `DECISION_MATRIX_HEALTH_CLIENT_ID` or `_SECRET` is missing, checks report "not configured" and record nothing.
-- **The sign-in application** (`ONBOARD_API_CLIENT_ID`) browses the library for the Draft picker. It needs its own `Sites.Selected` grant on the same site. Whether browsing should move onto the documents application is an open question, not settled by which settings exist.
+- **The sign-in application** (`ONBOARD_API_CLIENT_ID`) browses the library for the Draft picker, reads a chosen document when a Draft is saved, and walks the SOP folder each morning for SOPs no Procedure uses. It needs its own `Sites.Selected` grant on the same site. All three list or read what an Admin can already browse, which is why they share an identity rather than borrowing the integrity monitor's.
 
 A check never uses the Admin's own SharePoint rights. It used to: Submit, Approve and Check documents read on behalf of whoever clicked, while the daily timer read as the application, and both wrote the same health record - so whether a revision could be approved depended on who pressed the button, and it rested on a delegated `Sites.FullControl.All` consented to the sign-in application on 2026-09-14. Opening a source document and previewing a Document Rendition still read on the viewer's behalf, which needs only delegated `Files.Read.All`.
 
@@ -120,6 +120,21 @@ Administration › Decision Matrix shows a notice above the review queue when do
 | Document checks aren't set up here | `DECISION_MATRIX_HEALTH_CLIENT_ID` or `_SECRET` is missing, so nothing is checked and Submit and Approve are refused. Shown alone: every other symptom follows from it | Steps 2-6 above |
 | SharePoint refused N document checks | The latest check of N current references got a 401 or 403 | Each row's Check documents result: a missing site grant names step 4; a rejected credential usually means the client secret expired |
 | Some documents haven't been checked since … / have never been checked | A current reference's last check is more than 26 hours old, or was never made | The `decisionMatrixDocumentHealth` timer's runs in Application Insights |
+
+### SOPs no Procedure uses
+
+`decisionMatrixSopFolderWalk` runs at 06:30 UTC. It walks `DECISION_MATRIX_SOP_FOLDER` (dev: `_SOPs`; `/` is the whole library; unset is not configured) as the sign-in application and records what it saw in migration 116's tables. The same workspace then shows one of these:
+
+| Notice | Means | Look at |
+| --- | --- | --- |
+| N SOPs in _SOPs aren't used by any Procedure | The last walk finished within 26 hours, and N documents have no reference on a Draft, Under review or Approved revision. **Show them** lists each, and **Create Draft from this** opens the Draft form with it chosen | Nothing is wrong; these want a Procedure, or a decision that they don't |
+| New SOPs aren't looked for here | No library, no sign-in application credential, or no `DECISION_MATRIX_SOP_FOLDER` | The reason names the setting |
+| New SOPs can't be reported yet | Migration 116 (or 076) has not been applied | Apply it |
+| _SOPs hasn't been walked yet | Settings are in place and the walk has not run since; it runs every morning | Wait for 06:30 UTC, or trigger `decisionMatrixSopFolderWalk` |
+| The last walk of _SOPs didn't finish | SharePoint refused part of the folder, a folder was not there, the folder is over the walk's size limits, or the read failed. Nothing is marked gone by an unfinished walk | The reason; a refusal is the sign-in application's site grant (step 4) |
+| _SOPs hasn't been walked since … | The last walk is more than 26 hours old | The `decisionMatrixSopFolderWalk` timer's runs in Application Insights |
+
+Revised or removed SOPs that a Procedure *does* use are Document Reference Health's to report, not this walk's.
 
 ## Verification
 

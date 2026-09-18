@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { OCCURRENCE_LINK_EXPLANATIONS, occurrenceStateFor } from "./assessment/occurrenceIntake";
-import { validateMissedTripValidation } from "./validation";
+import { occurrenceStateFor, REVIEW_HANDOFF_EXPLANATIONS } from "./index";
+import { validateMissedTripValidation } from "../validation";
 
 test("a confirmed trip attributed to the contractor is charged to the month", () => {
   assert.deepStrictEqual(occurrenceStateFor("confirmed", "contractor_error"),
@@ -34,7 +34,7 @@ test("a false positive dismisses the occurrence whatever attribution is passed",
 });
 
 test("every non-linking reason has an explanation naming what to fix", () => {
-  for (const [reason, explanation] of Object.entries(OCCURRENCE_LINK_EXPLANATIONS)) {
+  for (const [reason, explanation] of Object.entries(REVIEW_HANDOFF_EXPLANATIONS)) {
     assert.ok(explanation.length > 20, `${reason} needs a usable explanation`);
     assert.ok(/review was saved/i.test(explanation), `${reason} must say the review still committed`);
   }

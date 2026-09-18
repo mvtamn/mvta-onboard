@@ -67,11 +67,23 @@ export function setDecisionMatrixLibraryForTests(library: Pick<SharePointLibrary
  * no null to forget.
  */
 export function approvedLibraryItems(): LibraryItemReader {
+  const approved = approvedLibrary();
+  if ("library" in approved) return approved.library;
+  return { readItem: async () => ({ outcome: "not_configured", reason: approved.reason }) };
+}
+
+/**
+ * The Approved Document Library as the sign-in application reads it, with the
+ * settings that name it - or the reason it cannot be read here. The daily SOP
+ * folder walk lists what an Admin can already browse, so it reads as the same
+ * identity rather than as the documents application, which only checks
+ * references (ADR 0025).
+ */
+export function approvedLibrary(): { config: LibraryConfig; library: SharePointLibrary } | { config: LibraryConfig | null; reason: string } {
   const config = libraryConfig();
-  const library = config ? productionLibrary(config) : null;
-  if (library) return library;
-  const reason = config ? NO_CREDENTIAL_REASON : NO_LIBRARY_REASON;
-  return { readItem: async () => ({ outcome: "not_configured", reason }) };
+  if (!config) return { config: null, reason: NO_LIBRARY_REASON };
+  const library = productionLibrary(config);
+  return library ? { config, library } : { config, reason: NO_CREDENTIAL_REASON };
 }
 
 export async function browseDecisionMatrixLibrary(request: HttpRequest, context: InvocationContext) {

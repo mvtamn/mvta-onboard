@@ -65,6 +65,9 @@ param decisionMatrixLibrarySiteId string = ''
 @description('Graph drive id of that library. Both this and the site id must be set for browsing to be configured.')
 param decisionMatrixLibraryDriveId string = ''
 
+@description('Folder inside that library whose unreferenced documents the daily walk reports, relative to the library root. "/" is the whole library; empty = not configured.')
+param decisionMatrixSopFolder string = ''
+
 @description('Application (client) id of the dedicated SharePoint document-reading registration - the identity of steps 1-5 of docs/runbooks/decision-matrix-sharepoint-documents.md. Empty falls back to the API application where that has been granted the library, which is dev only.')
 param decisionMatrixHealthClientId string = ''
 
@@ -258,6 +261,13 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         // docs/runbooks/decision-matrix-sharepoint-documents.md.
         { name: 'DECISION_MATRIX_LIBRARY_SITE_ID', value: decisionMatrixLibrarySiteId }
         { name: 'DECISION_MATRIX_LIBRARY_DRIVE_ID', value: decisionMatrixLibraryDriveId }
+      ] : [], !empty(decisionMatrixLibrarySiteId) && !empty(decisionMatrixLibraryDriveId) && !empty(decisionMatrixSopFolder) ? [
+        // Where in that library SOPs live. The daily walk reports documents
+        // here that no current Procedure references; forms and maps elsewhere
+        // in the library stay out of the count. An app setting cannot hold an
+        // empty value distinctly from a missing one, so "/" means the whole
+        // library and empty means not configured.
+        { name: 'DECISION_MATRIX_SOP_FOLDER', value: decisionMatrixSopFolder }
       ] : [], !empty(decisionMatrixHealthClientId) ? [
         // The dedicated document-reading identity. It is separate from the API
         // application on purpose: that one carries the delegated scopes the
