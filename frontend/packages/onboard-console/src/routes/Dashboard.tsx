@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { NavLink } from "react-router-dom";
-import type { ActiveMessage, Severity, SuggestedAlert } from "@mvta/shared";
+import type { ActiveMessage, DetourIntake, Severity, SuggestedAlert } from "@mvta/shared";
 import { MessagesTable } from "../components/MessagesTable.js";
 import { Sidebar } from "../components/Sidebar.js";
 import { LiveSignal, signalStateFor } from "../components/LiveSignal.js";
 import { dataStateLabel, type LiveStats, type OperationalDataState } from "../hooks/useLiveStats.js";
 import { useFeedFreshness } from "../hooks/useFeedFreshness.js";
+import { usePendingIntake } from "../hooks/usePendingIntake.js";
+import { pendingIntakes, waitingHours, waitingLabel } from "../lib/intakeQueue.js";
 
 // Dashboard: triage-first metrics and next actions, followed by published
 // communications. Compose remains available from its dedicated route. `stats` comes from App.tsx's single useLiveStats()
@@ -42,9 +44,10 @@ export function Dashboard({ stats, onChanged }: { stats: LiveStats; onChanged?: 
     return knownActiveMessages.filter((message) => new Date(message.expires_at).getTime() <= cutoff).length;
   }, [knownActiveMessages, now]);
 
+  const { intake } = usePendingIntake();
   const triageItems = useMemo(
-    () => buildTriageItems(knownActiveMessages, stats.pending, stats.activeState, stats.pendingState, now),
-    [knownActiveMessages, stats.pending, stats.activeState, stats.pendingState, now],
+    () => buildTriageItems(knownActiveMessages, stats.pending, stats.activeState, stats.pendingState, now, intake),
+    [knownActiveMessages, stats.pending, stats.activeState, stats.pendingState, now, intake],
   );
   const shownItems = triageItems.slice(0, TRIAGE_SHOWN);
 
@@ -161,7 +164,7 @@ function DashboardMetric({ label, value, tone = "" }: { label: string; value: st
 
 export const TRIAGE_SHOWN = 5;
 
-type TriageKind = "alert" | "suggested" | "feed";
+type TriageKind = "alert" | "suggested" | "feed" | "intake";
 
 type TriageItem = {
   id: string;
@@ -194,8 +197,12 @@ const TIER_FEED_DOWN = 0;
 const TIER_EXPIRED = 1;
 const TIER_EXPIRING = 2;
 const TIER_SUGGESTED_HIGH = 3;
-const TIER_FEED_STALE = 4;
-const TIER_SUGGESTED_LOW = 5;
+// A detour request nobody has answered. Below a live alert, above a low
+// suggestion: somebody outside OCC is waiting on it, and until this queue
+// carried them the only way to find one was to open the Intake page.
+const TIER_INTAKE = 4;
+const TIER_FEED_STALE = 5;
+const TIER_SUGGESTED_LOW = 6;
 
 // Most urgent first, which is the opposite of the SEVERITIES array's order.
 const SEVERITY_ORDER: Record<Severity, number> = { critical: 0, major: 1, minor: 2, informational: 3 };
@@ -206,6 +213,7 @@ function buildTriageItems(
   activeState: OperationalDataState,
   pendingState: OperationalDataState,
   now = Date.now(),
+  intake: DetourIntake[] | null = null,
 ): TriageItem[] {
   const items: Array<TriageItem & { rank: TriageRank }> = [];
   const cutoff = now + 60 * 60 * 1000;
@@ -290,6 +298,27 @@ function buildTriageItems(
       // A feed that is not answering outranks everything: nothing below it in
       // the queue can be trusted to be complete.
       rank: { tier: stale ? TIER_FEED_STALE : TIER_FEED_DOWN, a: feed.order, b: 0 },
+    });
+  }
+
+  // Detour requests waiting on OCC. Oldest first: the queue's job is to stop
+  // one sitting unanswered, so the wait is the thing that ranks them.
+  for (const request of pendingIntakes(intake)) {
+    const hours = waitingHours(request, now);
+    const title = request.description || "Detour request";
+    items.push({
+      id: `intake-${request.id}`,
+      kind: "intake",
+      kindLabel: "Detour request",
+      title: triageTitle(title),
+      fullTitle: title,
+      meta: [request.created_by || "Unknown requester", request.location || "No location given"],
+      status: waitingLabel(hours),
+      statusTone: hours >= 24 ? "attention" : "",
+      action: "Review request",
+      to: "/detour-intake",
+      tone: hours >= 24 ? "attention" : "info",
+      rank: { tier: TIER_INTAKE, a: -hours, b: 0 },
     });
   }
 
