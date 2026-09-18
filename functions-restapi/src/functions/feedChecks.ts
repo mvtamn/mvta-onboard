@@ -8,6 +8,7 @@ import { ledgerFeedChecks, summarizeFeedResponse, type FeedCheck } from "../lib/
 import { feedHealthTableReady } from "../lib/kpiFeedHealth";
 import { loadKpiFeedHealthRecords } from "../lib/kpiTrustStore";
 import { missedTripDetectionSettings } from "../lib/missedTripCase";
+import { schemaDriftChecks } from "../lib/schemaDrift";
 import { fetchSparePage, type SpareRequestRecord } from "../lib/spareApi";
 
 async function checkStaticGtfs(url: string | undefined): Promise<FeedCheck> {
@@ -36,6 +37,20 @@ async function checkSpareRequests(nowSeconds: number): Promise<FeedCheck> {
     return { name, configured: true, status: 200, ...summarizeFeedResponse(page) };
   } catch (error) {
     return { name, configured: true, error: error instanceof Error ? error.message : "Request failed" };
+  }
+}
+
+// A schema problem must not take the feed checks down with it: the rest of
+// the page is still worth reading.
+async function checkSchema(): Promise<FeedCheck[]> {
+  try {
+    return await schemaDriftChecks(await getPool());
+  } catch (error) {
+    return [{
+      name: "Database schema",
+      configured: true,
+      error: error instanceof Error ? error.message : "Schema check failed",
+    }];
   }
 }
 
@@ -77,7 +92,7 @@ app.http("feedChecks", {
     const avlStart = new Date(now.getTime() - 10 * 60_000);
     const nowSeconds = Math.floor(now.getTime() / 1000);
 
-    const [checks, sparePipelineChecks] = await Promise.all([
+    const [checks, sparePipelineChecks, schemaChecks] = await Promise.all([
       Promise.all([
       // Through the reader the polls use: same setting, timeout and body checks.
       probeGtfsRtFeed("trip_updates"),
@@ -94,7 +109,14 @@ app.http("feedChecks", {
       checkSpareRequests(nowSeconds),
       ]),
       spareMissedTripPipelineChecks(),
+      // Whether this database has the schema the deployed code expects. A
+      // merge can ship a read of a column nobody has applied yet, and nothing
+      // else says so - see lib/schemaDrift.ts.
+      checkSchema(),
     ]);
-    return { status: 200, jsonBody: { checked_at: now.toISOString(), checks: [...checks, ...sparePipelineChecks] } };
+    return {
+      status: 200,
+      jsonBody: { checked_at: now.toISOString(), checks: [...checks, ...sparePipelineChecks, ...schemaChecks] },
+    };
   },
 });
