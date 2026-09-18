@@ -258,6 +258,13 @@ module spareWebhookFunction 'modules/functionapp.bicep' = {
     frontDoorId: ''
     includeSpareApiKey: true
     onDemandOperationalZoneIds: onDemandOperationalZoneIds
+    // The receiver resolves the activation in its own process
+    // (onDemandActivation reads the environment), so the switch and its scope
+    // have to reach this app too. Without them admitsMonitorWrite refuses
+    // every delivery as 'disabled', and moving the receiver onto its own app
+    // buys a receiver that writes nothing.
+    onDemandMonitoringEnabled: onDemandMonitoringEnabled
+    onDemandMonitoringServiceIds: onDemandMonitoringServiceIds
     manageRoleAssignments: manageRoleAssignments
   }
 }
