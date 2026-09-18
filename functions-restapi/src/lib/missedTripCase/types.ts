@@ -2,12 +2,19 @@
 // Callers speak these terms; how they map onto MonitoredMissedTrips' columns is
 // the module's business (decide.ts, classify.ts, store.ts).
 
-export type MissedTripSource = "gtfs" | "spare";
+export type MissedTripSource = "gtfs" | "spare" | "avail";
 
 // A detector family. Promotion out of Shadow detection is granted per family
 // (MISSED_TRIP_PROMOTED_DETECTORS); a new detector version stays promoted or
 // not with its family.
 export const MISSED_TRIP_DETECTORS = ["gtfs_cancellation", "gtfs_silent_no_show", "spare"] as const;
+
+// How strongly a record from another system is tied to a Scheduled-run
+// identity. Avail names no trip, so the link is built from route, service date
+// and Published Trip start. A probable link is recorded and shown but changes
+// nothing until a reviewer confirms it (ADR-0035).
+export const EVIDENCE_MATCH_CONFIDENCE = ["exact", "probable", "unmatched"] as const;
+export type EvidenceMatchConfidence = (typeof EVIDENCE_MATCH_CONFIDENCE)[number];
 export type MissedTripDetector = (typeof MISSED_TRIP_DETECTORS)[number];
 
 // One scheduled run on one service date, as a source names it.
@@ -45,7 +52,13 @@ export type RunFact =
   | { kind: "no_failure" }
   // Spare: the evaluation could not decide. Holds an existing case; never
   // creates one.
-  | { kind: "evaluation_gap"; reason: string };
+  | { kind: "evaluation_gap"; reason: string }
+  // Avail: its retrospective report says the whole run did not operate.
+  // Corroborates a case; never opens one (ADR-0035).
+  | { kind: "retrospective_missed" }
+  // Avail: the run operated but missed a scheduled stop - a Partial-service
+  // failure, not a whole missed trip.
+  | { kind: "retrospective_partial"; missedDeparture: boolean; missedArrival: boolean };
 
 export type SpareDetectionType = "spare_late_start" | "spare_superseded" | "spare_late_arrival" | "spare_multiple";
 
@@ -107,7 +120,12 @@ export interface MissedTripClassification {
   flagged_missed: boolean;
   // A Confirmed missed trip.
   counts_as_missed: boolean;
-  // A Confirmed missed trip from a detector out of Shadow detection.
+  // Two exact-matched sources support incompatible findings. Never resolved by
+  // an undocumented source priority: it waits for a reviewer, and blocks
+  // Assessment promotion meanwhile (ADR-0035).
+  evidence_conflict: boolean;
+  // A Confirmed missed trip from a detector out of Shadow detection, with no
+  // unresolved Evidence conflict.
   counts_toward_assessment: boolean;
 }
 

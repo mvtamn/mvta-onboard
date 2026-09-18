@@ -19,6 +19,8 @@ import {
 // The stored columns classification depends on.
 export interface ClassifiableCase {
   status: string;
+  // ADR-0035. Null is no conflict; the column is the whole state.
+  evidence_conflict_at?: Date | null;
   validation_status: string;
   data_quality_status: string;
   detection_type: string | null;
@@ -88,6 +90,9 @@ export function classifyMissedTripCase(
               : "suspected_no_show";
 
   const countsAsMissed = !legacy && reviewOutcome === "confirmed_missed_trip";
+  // Assessment evidence gate: an unresolved contradiction between two
+  // exact-matched sources blocks promotion without touching the outcome.
+  const evidenceConflict = (row.evidence_conflict_at ?? null) !== null;
   return {
     lifecycle,
     evidence_finding: evidenceFinding,
@@ -101,7 +106,8 @@ export function classifyMissedTripCase(
     concluded: reviewed || resolved,
     flagged_missed: lifecycle === "ready_for_review" || countsAsMissed,
     counts_as_missed: countsAsMissed,
-    counts_toward_assessment: countsAsMissed && promoted.has(detector),
+    evidence_conflict: evidenceConflict,
+    counts_toward_assessment: countsAsMissed && promoted.has(detector) && !evidenceConflict,
   };
 }
 
@@ -165,7 +171,8 @@ export function missedTripCaseSql(alias: string, as = "mtc", promoted: ReadonlyS
       ${bit(`${base}.reviewed = 1 OR ${base}.resolved = 1`)} AS concluded,
       ${bit(`${base}.legacy = 0 AND ((${base}.reviewed = 0 AND ${base}.resolved = 0 AND ${base}.held = 0 AND ${alias}.status <> N'watching') OR ${base}.review_outcome = N'confirmed_missed_trip')`)} AS flagged_missed,
       ${bit(`${base}.legacy = 0 AND ${base}.review_outcome = N'confirmed_missed_trip'`)} AS counts_as_missed,
-      ${bit(`${base}.legacy = 0 AND ${base}.review_outcome = N'confirmed_missed_trip' AND ${promotedPredicate}`)} AS counts_toward_assessment
+      ${bit(`${alias}.evidence_conflict_at IS NOT NULL`)} AS evidence_conflict,
+      ${bit(`${base}.legacy = 0 AND ${base}.review_outcome = N'confirmed_missed_trip' AND ${promotedPredicate} AND ${alias}.evidence_conflict_at IS NULL`)} AS counts_toward_assessment
     ) ${as}`;
 }
 

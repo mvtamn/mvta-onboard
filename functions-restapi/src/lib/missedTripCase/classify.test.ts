@@ -3,6 +3,7 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { classifyMissedTripCase, missedTripCaseSql, promotedDetectors, WINDOWED_DETECTOR_VERSION, type ClassifiableCase } from "./classify";
+import type { MissedTripDetector } from "./types";
 
 const DEADLINE = new Date("2026-09-17T14:30:00Z");
 
@@ -121,9 +122,40 @@ test("migration 106 can no longer replace the classified vw_MissedTrip", () => {
   assert.ok(guard < view && view < off, "the guard must open before the view and close after it");
 });
 
-test("migration 125's vw_MissedTrip classifies with missedTripCaseSql verbatim", () => {
+test("the newest vw_MissedTrip classifies with missedTripCaseSql verbatim", () => {
+  // Migrations are append-only, so the view is redefined by whichever migration
+  // last changed the classification - 135 for the Evidence conflict. Older
+  // definitions are guarded off rather than edited.
   const squash = (text: string) => text.replace(/\s+/g, " ").trim();
-  const migration = readFileSync(join(process.cwd(), "sql", "migration-125-missed-trip-review-outcomes-and-window.sql"), "utf8");
+  const migration = readFileSync(join(process.cwd(), "sql", "migration-135-missed-trip-evidence-conflict.sql"), "utf8");
   assert.ok(squash(migration).includes(squash(missedTripCaseSql("m", "mtc", new Set()))),
-    "regenerate the CROSS APPLY in migration 125 from missedTripCaseSql(\"m\", \"mtc\", new Set())");
+    "regenerate the CROSS APPLY in migration 135 from missedTripCaseSql(\"m\", \"mtc\", new Set())");
+});
+
+test("migration 125 no longer replaces the conflict-aware vw_MissedTrip", () => {
+  // Same shape of guard migration 106 carries against 125: 125 is re-runnable,
+  // so without this its pre-conflict definition would come back and the
+  // reporting layer would drop the Assessment evidence gate with nothing
+  // failing.
+  const migration = readFileSync(join(process.cwd(), "sql", "migration-125-missed-trip-review-outcomes-and-window.sql"), "utf8");
+  const guard = migration.indexOf("IF COL_LENGTH('dbo.MonitoredMissedTrips', 'evidence_conflict_at') IS NOT NULL\n  SET NOEXEC ON;");
+  const view = migration.indexOf("CREATE OR ALTER VIEW dbo.vw_MissedTrip");
+  const off = migration.indexOf("SET NOEXEC OFF;");
+  assert.ok(guard > -1, "migration 125 must skip its vw_MissedTrip once migration 135 has run");
+  assert.ok(guard < view && view < off, "the guard must open before the view and close after it");
+});
+
+test("an unresolved Evidence conflict blocks Assessment promotion without changing the outcome", () => {
+  const confirmed = row({ validation_status: "confirmed", source_system: "spare" });
+  const promoted = new Set<MissedTripDetector>(["spare"]);
+  const clean = classifyMissedTripCase(confirmed, promoted);
+  assert.equal(clean.counts_toward_assessment, true);
+  assert.equal(clean.evidence_conflict, false);
+
+  const conflicted = classifyMissedTripCase({ ...confirmed, evidence_conflict_at: new Date() }, promoted);
+  assert.equal(conflicted.evidence_conflict, true);
+  assert.equal(conflicted.counts_toward_assessment, false, "the gate blocks promotion");
+  assert.equal(conflicted.counts_as_missed, true, "the operational outcome is untouched");
+  assert.equal(conflicted.review_outcome, "confirmed_missed_trip");
+  assert.equal(conflicted.lifecycle, "reviewed", "a conflict is not a lifecycle");
 });
