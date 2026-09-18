@@ -305,6 +305,28 @@ test("Missed-trip cases against SQL Server", skip, async (t) => {
       assert.equal(gated.counts_toward_assessment, false);
     });
 
+
+    await t.test("a review settles an Evidence conflict, and the assessment gate lifts", async () => {
+      await pool.request().query(`INSERT INTO dbo.MonitoredMissedTrips
+        (trip_id, service_date, route_id, scheduled_departure_at, grace_deadline_at, status, validation_status, detection_type, data_quality_status, source_system, detector_version, evidence_conflict_at, evidence_conflict_reason)
+        VALUES ('AV2', '${DAY}', '460', '2026-09-17T14:00:00', '2026-09-17T14:30:00', 'escalated', 'unreviewed', 'silent_no_show', 'experimental', 'gtfs', 'gtfs-silent-v4', SYSUTCDATETIME(), 'Avail reports this run as missed; the case concluded Timely service.')`);
+
+      const before = (await pool.request().query<{ counts_toward_assessment: boolean }>(`
+        SELECT mtc.counts_toward_assessment FROM dbo.MonitoredMissedTrips m ${missedTripCaseSql("m")} WHERE m.trip_id = 'AV2'`)).recordset[0];
+      assert.equal(before.counts_toward_assessment, false);
+
+      const acted = await actOnMissedTripCase(pool, { tripId: "AV2", serviceDate: DAY },
+        { act: "record_review", outcome: "confirmed", reasonCode: "RAN", notes: "Checked both sources.", attribution: "contractor_error" },
+        reviewer, T0);
+      assert.equal(acted.ok, true);
+
+      const after = (await pool.request().query<{ evidence_conflict_at: Date | null; evidence_conflict_reason: string | null; validation_status: string }>(
+        "SELECT evidence_conflict_at, evidence_conflict_reason, validation_status FROM dbo.MonitoredMissedTrips WHERE trip_id = 'AV2'")).recordset[0];
+      assert.equal(after.evidence_conflict_at, null, "the review settled it");
+      assert.equal(after.evidence_conflict_reason, null);
+      assert.equal(after.validation_status, "confirmed");
+    });
+
     // Candidate 2: the list and its totals are one answer. They are two
     // queries over the same CROSS APPLY, so only real rows can prove a tile
     // never counts what its list omits. Runs last, over every case the

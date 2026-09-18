@@ -3,7 +3,7 @@ import type { MissedTripsMonthlySummaryRow } from "@mvta/shared";
 import {
   AGING_HOURS, OVERDUE_HOURS, agingBadge, assessmentOutcome, buildReviewRequest, confirmBlockedReason,
   dataQualityLabel, detectionTypeLabel, formatServiceMonth, inView, lifecycleLabel, outcomeLabel,
-  pivotMonthlySummary, reviewMode, routeLabel, sourceLabel, tripCode,
+  conflictNotice, pivotMonthlySummary, reviewMode, routeLabel, sourceLabel, tripCode,
 } from "./missedTripReview.js";
 
 const base = { tripId: "T1", serviceDate: "20260917", lifecycle: "ready_for_review" as const, validationStatus: "unreviewed" as const, heldReason: null };
@@ -239,5 +239,72 @@ describe("service months", () => {
     expect(formatServiceMonth("202609")).toBe("09/2026");
     expect(formatServiceMonth("2026-09")).toBe("2026-09");
     expect(formatServiceMonth("")).toBe("");
+  });
+});
+
+describe("sources that disagree", () => {
+  const conflicted = {
+    evidenceConflict: true,
+    evidenceConflictReason: "Avail reports this run as missed; the case concluded Timely service.",
+    validationStatus: "unreviewed" as const,
+  };
+
+  it("says nothing when the sources agree", () => {
+    expect(conflictNotice({ ...conflicted, evidenceConflict: false })).toBe(null);
+  });
+
+  it("repeats what the server said disagreed", () => {
+    const notice = conflictNotice(conflicted);
+    expect(notice?.label).toBe("Sources disagree");
+    expect(notice?.detail).toContain("Avail reports this run as missed");
+  });
+
+  it("still explains itself when the server recorded no reason", () => {
+    for (const reason of [null, "", "   "]) {
+      const notice = conflictNotice({ ...conflicted, evidenceConflictReason: reason });
+      expect(notice?.detail).toBe("Two sources disagree about whether this run operated.");
+    }
+  });
+
+  it("asks an unreviewed case for a review, and a reviewed one for a change", () => {
+    expect(conflictNotice(conflicted)?.action).toContain("Review it with both sources");
+    const reviewed = conflictNotice({ ...conflicted, validationStatus: "confirmed" });
+    expect(reviewed?.action).toContain("Change the review");
+  });
+
+  it("always says the assessment is what is held", () => {
+    for (const status of ["unreviewed", "confirmed", "timely_service"] as const) {
+      expect(conflictNotice({ ...conflicted, validationStatus: status })?.action)
+        .toContain("performance assessment");
+    }
+  });
+});
+
+describe("the assessment line under a conflict", () => {
+  const confirmed = {
+    serviceDate: "20260917",
+    validationStatus: "confirmed" as const,
+    occurrenceServiceMonth: "202609",
+    occurrenceReviewStatus: "assigned",
+    occurrenceAttribution: null,
+    occurrencePeriodStatus: null,
+    evidenceConflict: false,
+    evidenceConflictReason: null,
+  };
+
+  it("does not claim a conflicted case is counted", () => {
+    // The server's Assessment evidence gate holds it out whatever the review
+    // said, so "Counted in 09/2026" would be untrue of the server.
+    expect(assessmentOutcome(confirmed as never)?.label).toBe("Counted in 09/2026");
+    const held = assessmentOutcome({ ...confirmed, evidenceConflict: true } as never);
+    expect(held?.label).toBe("Held — sources disagree");
+    expect(held?.tone).toBe("pending");
+  });
+
+  it("holds a conflicted case out whatever the review said", () => {
+    for (const status of ["confirmed", "timely_service", "indeterminate"] as const) {
+      const held = assessmentOutcome({ ...confirmed, validationStatus: status, evidenceConflict: true } as never);
+      expect(held?.label).toBe("Held — sources disagree");
+    }
   });
 });

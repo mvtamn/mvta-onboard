@@ -40,6 +40,7 @@ function candidate(source_system: "spare" | "gtfs", route_id: string): MissedTri
     occurrence_service_month: null, occurrence_period_status: null,
     lifecycle: "ready_for_review", evidence_finding: source_system === "spare" ? "on_demand_service_failure" : "suspected_no_show",
     review_outcome: null, held_reason: null, in_queue: true, concluded: false,
+    evidence_conflict: false, evidence_conflict_reason: null,
   };
 }
 
