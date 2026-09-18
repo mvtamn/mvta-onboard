@@ -461,8 +461,8 @@ export interface MyAccessRole {
   name: string;
   purpose: string;
   locked: boolean;
-  /** "entra" while the caller still arrives with app roles in their token. */
-  source: "onboard" | "entra";
+  /** Always "onboard" since the cutover; a token grants nobody anything. */
+  source: "onboard";
   scope: string | null;
   expiresAt: string | null;
 }
