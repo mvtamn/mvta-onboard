@@ -5,6 +5,13 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.262] - 2026-09-18
+
+- **One place for the words Missed Trips puts on a case.** Half the module's vocabulary lived in `missedTripReview.ts` and was tested; the other half - the detector name, the evidence-quality label, the route and trip code, review urgency (Aging/Overdue), and where a confirmed trip landed in the performance assessment - was private to the 1253-line `MissedTripAlerts.tsx` and had no tests, because reaching it meant rendering the page. It moved, with its reasoning comments intact. `MissedTripAlerts.tsx` drops to 1119 lines and is now rendering.
+- **20 new tests** over rules that had none, including the ones with real judgement in them: a route never reads "Route 420 · 420", a trip code falls back to whichever half exists, urgency stops once someone has reviewed however old the row is, and each assessment outcome - not linked, awaiting attribution, recorded but not charged, counted in a month that may already be finalized - says the right thing.
+- **No wording changes**, and no page split: the four pages inside `MissedTripAlerts.tsx` stay where they are for now.
+- **Found, not fixed:** a case held for an unknown data gap is labelled "Legacy — unverified", because the label falls through to legacy for anything that is not source-verified or experimental. Its own label is worth adding, separately.
+
 ## [1.5.258] - 2026-09-18
 
 - **Fixed: migration 092 could not be applied to any database.** It adds the delivery columns and then, **in the same batch**, a CHECK naming `delivery_status`. SQL Server compiles a batch before executing it, so that reference fails with "Invalid column name" and the whole batch is abandoned - nothing added, and quietly enough that a run looks uneventful. The CHECK now runs through `EXEC`, as migration 061's does. The file is edited rather than superseded because it had **never applied anywhere**: dev is the only environment, and it was tried there twice.

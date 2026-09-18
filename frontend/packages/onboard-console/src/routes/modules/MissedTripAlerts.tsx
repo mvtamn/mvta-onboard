@@ -4,8 +4,10 @@ import { Link } from "react-router-dom";
 import { api } from "../../config.js";
 import { MISSED_TRIP_ALERTS, type MissedTripAlert } from "./missedTrips.data.js";
 import {
-  REVIEW_DECISIONS, buildReviewRequest, confirmBlockedReason, findingLabel, heldReasonLabel, inView,
+  REVIEW_DECISIONS, agingBadge, assessmentOutcome, buildReviewRequest, confirmBlockedReason,
+  dataQualityLabel, detectionTypeLabel, findingLabel, formatServiceMonth, heldReasonLabel, inView,
   lifecycleClass, lifecycleLabel, outcomeClass, outcomeLabel, pivotMonthlySummary, reviewMode,
+  routeLabel, sourceLabel, tripCode,
 } from "./missedTripReview.js";
 import { LiveBanner } from "../../components/LiveSignal.js";
 import "./serviceRisk.css";
@@ -50,62 +52,6 @@ export function agoLabel(minutes: number | null): string {
   const days = Math.floor(hours / 24);
   const remainingHours = hours % 24;
   return remainingHours === 0 ? `${days}d ago` : `${days}d ${remainingHours}h ago`;
-}
-
-// Missed Trips feeds the Contractor Performance Assessment's MISSED_TRIPS_FR
-// KPI once a reviewer confirms a row (plans/ContractorPerformanceAssessment_
-// Design.md SS3/SS6 - "Auto-candidate from MonitoredMissedTrips
-// (validation_status='confirmed')") - and that assessment computes on a
-// monthly, per-contractor-month cadence. An unreviewed trip sitting for days
-// isn't just clutter in this queue: if it slips past its service month's
-// assessment period before anyone reviews it, catching it later means
-// reopening an already-finalized period, which the design treats as a
-// deliberate manager decision, not a side effect. Age is measured from
-// firstSeenWatchingAt (when the row was first flagged), not from now vs.
-// scheduled time, since that's when the review clock actually starts.
-const AGING_HOURS = 24;
-const OVERDUE_HOURS = 72;
-
-function reviewAgeHours(firstSeenWatchingAt: string): number | null {
-  const date = new Date(firstSeenWatchingAt);
-  return Number.isNaN(date.getTime()) ? null : (Date.now() - date.getTime()) / 3_600_000;
-}
-
-// Only unreviewed rows carry review urgency - once a reviewer has acted
-// there's nothing left pending, however old the row is.
-function agingBadge(alert: MissedTripAlert): { label: string; className: string } | null {
-  if (alert.validationStatus !== "unreviewed") return null;
-  const hours = reviewAgeHours(alert.firstSeenWatchingAt);
-  if (hours === null) return null;
-  if (hours >= OVERDUE_HOURS) return { label: "Overdue", className: "pill-danger" };
-  if (hours >= AGING_HOURS) return { label: "Aging", className: "pill-warning" };
-  return null;
-}
-
-// Trip identifier the way staff actually recognize it - scheduled departure
-// time + direction (e.g. "1245-SB"), the same time+direction convention
-// Avail's own reports use for their "Trip" column - not the raw GTFS
-// trip_id (e.g. "t52C-b2E-sl2B-v62"), which is an opaque static-feed key
-// that means nothing to a reviewer scanning a list. Falls back to whichever
-// half is available if the other is missing (direction_label can be null -
-// see GtfsTripDirections' migration-007 comment).
-function tripCode(scheduledDepartureAt: string | null, direction: string | null): string {
-  const time = scheduledDepartureAt ? new Date(scheduledDepartureAt) : null;
-  const timePart =
-    time && !Number.isNaN(time.getTime())
-      ? `${String(time.getHours()).padStart(2, "0")}${String(time.getMinutes()).padStart(2, "0")}`
-      : null;
-  if (timePart && direction) return `${timePart}-${direction}`;
-  return timePart ?? direction ?? "—";
-}
-
-// "YYYYMM" -> "MM/YYYY" - a small local duplicate of the same helper OTP's
-// module keeps for itself (otp/OtpModule.tsx's formatServiceMonth); this
-// module isn't otherwise coupled to OTP's code, so it gets its own copy
-// rather than importing across unrelated console modules for two lines.
-function formatServiceMonth(yyyymm: string): string {
-  if (!/^\d{6}$/.test(yyyymm)) return yyyymm;
-  return `${yyyymm.slice(4, 6)}/${yyyymm.slice(0, 4)}`;
 }
 
 function formatServiceDate(yyyymmdd: string): string {
@@ -154,80 +100,6 @@ function fromMissedTrip(trip: MissedTrip): MissedTripAlert {
     inQueue: Boolean(trip.in_queue),
     concluded: Boolean(trip.concluded),
   };
-}
-
-// What a reviewed trip's assessment state is, in the reviewer's words. This is
-// the answer to "where did my decision go", which the module could not
-// previously give: confirming a trip raised nothing visible, and the occurrence
-// it eventually produced lived in a different module behind a second review.
-export function assessmentOutcome(alert: MissedTripAlert): { label: string; detail: string; tone: "counted" | "pending" | "excluded" } | null {
-  if (alert.validationStatus === "unreviewed") return null;
-  const month = alert.occurrenceServiceMonth ? formatServiceMonth(alert.occurrenceServiceMonth) : formatServiceMonth(alert.serviceDate.slice(0, 6));
-  if (alert.validationStatus !== "confirmed") {
-    // Stored as `timely_service`, `partial_service_failure` or `indeterminate`
-    // since migration 125 (`false_positive` before it): none is a missed trip.
-    return { label: "Not assessed", detail: "Reviewed as not a missed trip, so there is nothing to charge.", tone: "excluded" };
-  }
-  if (!alert.occurrenceReviewStatus) {
-    return {
-      label: "Not linked",
-      detail: `Confirmed, but no performance-assessment occurrence exists for ${month}. The service date may fall outside the active Agreement, or the month may already be finalized.`,
-      tone: "pending",
-    };
-  }
-  if (alert.occurrenceReviewStatus === "candidate") {
-    return { label: "Awaiting attribution", detail: `Raised against the ${month} assessment, waiting on whose error it was before it can be charged.`, tone: "pending" };
-  }
-  if (alert.occurrenceReviewStatus === "dismissed") {
-    const because = alert.occurrenceAttribution === "excusable" ? "an excusable delay"
-      : alert.occurrenceAttribution === "mvta_directed" ? "MVTA-directed" : "dismissed on review";
-    return { label: "Recorded, not charged", detail: `In the ${month} assessment as ${because}, so it carries no penalty.`, tone: "excluded" };
-  }
-  const finalized = alert.occurrencePeriodStatus === "finalized" || alert.occurrencePeriodStatus === "issued";
-  return {
-    label: `Counted in ${month}`,
-    detail: finalized
-      ? `Charged to the contractor in the ${month} assessment, which is now ${alert.occurrencePeriodStatus}.`
-      : `Charged to the contractor in the ${month} assessment. The period recomputes to include it.`,
-    tone: "counted",
-  };
-}
-
-// "Is there any way to determine why the flag exists?" - added by
-// migration-023. Rows flagged before that migration ran read back null;
-// shown honestly rather than guessed.
-function detectionTypeLabel(type: MissedTripAlert["detectionType"]): string {
-  if (type === "explicit_cancellation") return "Explicit cancellation (GTFS-RT)";
-  if (type === "silent_no_show") return "Scheduled no-show (never observed)";
-  if (type === "spare_late_start") return "Spare pickup started over 30 minutes late";
-  if (type === "spare_superseded") return "Spare request superseded by the next same-duty pickup";
-  if (type === "spare_late_arrival") return "Spare dropoff arrived at least 30 minutes late";
-  if (type === "spare_multiple") return "Multiple Spare missed-trip conditions";
-  return "Unknown — flagged before detection tracking was added";
-}
-
-function dataQualityLabel(status: MissedTripAlert["dataQualityStatus"]): string {
-  if (status === "source_verified") return "Source verified";
-  if (status === "experimental") return "Experimental detector";
-  return "Legacy — unverified";
-}
-
-function sourceLabel(source: MissedTripAlert["sourceSystem"]): string {
-  return source === "spare" ? "Spare" : "GTFS-Realtime";
-}
-
-function routeLabel(routeId: string, routesById: Map<string, GtfsRouteOption>, sourceSystem: "gtfs" | "spare" = "gtfs"): string {
-  if (sourceSystem === "spare") return `Spare · ${routeId}`;
-  const r = routesById.get(routeId);
-  const shortName = r?.route_short_name?.trim();
-  const longName = r?.route_long_name?.trim();
-  // route_short_name is the same string as route_id for MVTA's numbered
-  // routes (e.g. both "420") - appending it back on would just read as
-  // "Route 420 · 420". Fall through to route_long_name (the actual
-  // descriptive name) whenever short_name doesn't add anything beyond the
-  // number already shown.
-  const name = shortName && shortName !== routeId ? shortName : longName;
-  return name ? `Route ${routeId} · ${name}` : `Route ${routeId}`;
 }
 
 function missedTripLoadError(err: unknown): string {
