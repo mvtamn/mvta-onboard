@@ -5,10 +5,17 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.260] - 2026-09-18
+## [1.5.261] - 2026-09-18
 
 - **Import from Entra says what it read.** Pressing it on dev reported nothing to import while Entra held 24 assignments across 7 people, and neither the page nor the API log said which half had gone wrong - the console never posted, so there was nothing to look at. Finding nothing is a claim about Entra, and it is now made with evidence: no principals at all names the app-role configuration (`ONBOARD_ACCESS_CONFIG_JSON` against the application's current app-role ids), groups without people names the directory read permission that expands group membership, and people without a recognised app role says so plainly. A successful import now leads with what it read - "24 read from Entra · 7 people, 24 grants, 0 skipped" - so the number written can be checked against the number found.
 - **Verified.** Console 671 tests, including the two new empty cases and the assertion that neither of them posts.
+
+## [1.5.260] - 2026-09-18
+
+- **One reading of what the missed-trip detectors are doing.** `GTFS_SILENT_NO_SHOW_ENABLED`, `SPARE_MISSED_TRIPS_ENABLED`, `SPARE_MISSED_TRIP_SERVICE_IDS` and `SPARE_CONTRACTOR_FAULT_VALUES` were each parsed at the point of use - the same `?.trim().toLowerCase() === "true"` written out five times across the two adapters, the poll, the ingest, `/feed-checks` and `GET /missed-trips`. Whether a detector is running is part of the Missed-trip case module's interface, so `missedTripDetectionSettings(env)` now answers it and nothing outside reads those variables. A typo could previously have had the console call a detector paused while the poll ran it, and nothing would have failed.
+- **Fixed: a scope of nothing but separators counted as configured.** `spare_service_scope_configured` tested the raw string for emptiness, so `" , , "` reported a configured scope over zero services. It now counts the services actually named.
+- **`env` is a parameter**, as in `availClient` and `gtfsRtReader`, so a test names the settings it wants instead of mutating a global. 7 new tests cover what counts as "true" (`1` and `yes` do not), independent gating of the two detectors, service ids keeping Spare's own casing, fault values lowercased, and the separator-only list.
+- Promotion out of Shadow detection stays in `classify.ts`: `promotedDetectors()` already had this shape and is threaded through the classification and its SQL, so it stays beside the rules it governs.
 
 ## [1.5.259] - 2026-09-18
 
