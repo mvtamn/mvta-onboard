@@ -8,6 +8,7 @@
 // Until this module existed the determination was defined and never enforced:
 // publish checked only that the row was a draft, so a closed Detour, or one
 // with an Outstanding re-review, could be emailed to riders.
+import type { DetourChannel } from "./channels";
 import type { DetourConflictStatus } from "../detourConflicts";
 import type { DetourFulfillmentMode, DetourLifecycleState } from "../detourWorkflow/types";
 
@@ -23,8 +24,8 @@ export interface CommunicationDetour {
 
 export interface CommunicationRequest {
   audience: string;
-  /** "email", "teams", or whatever the intake recorded. */
-  channel: string;
+  /** Null when the stored or submitted string names no known channel. */
+  channel: DetourChannel | null;
   recipients: string[];
 }
 
@@ -42,8 +43,10 @@ export type EligibilityRefusalCode =
   // A Likely duplicate is unresolved: two Detours may be describing the same
   // closure, and sending both would contradict itself.
   | "conflict_unresolved"
-  // An email with nobody to send it to.
-  | "no_recipients";
+  // An email or text with nobody to send it to.
+  | "no_recipients"
+  // The stored or submitted channel is not one OnBoard knows.
+  | "unknown_channel";
 
 export interface EligibilityRefusal {
   code: EligibilityRefusalCode;
@@ -63,6 +66,17 @@ export interface CommunicationEligibility {
    * because an audience typed by hand never clears "needs communication".
    */
   audience_not_required: boolean;
+}
+
+/**
+ * When a recorded channel actually carried the message. Nobody sends a road
+ * sign, so the record needs the date the thing happened, not only the date it
+ * was typed - otherwise a Detour closed weeks ago reads as communicated weeks
+ * late.
+ */
+export interface RecordedDelivery {
+  occurredAt: Date;
+  note: string | null;
 }
 
 /** Where a communication has got to, derived from what the provider reported. */

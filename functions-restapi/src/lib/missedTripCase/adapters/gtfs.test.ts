@@ -4,7 +4,7 @@
 // special-event exclusion, the agreement denominator and the day rollover -
 // which missedTripConfidence.test.ts cannot see, because by the time it runs
 // the trip has already been selected.
-import assert from "node:assert";
+import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   cancellationObservations,
@@ -216,9 +216,16 @@ test("start evidence for a trip with no known route carries an empty route", () 
 
 const silence = { log: () => {}, warn: () => {}, error: () => {} };
 
+// Captures what the pass logged, so a failure that is swallowed on purpose
+// still has to say which day or which read it was.
+function capture() {
+  const errors: string[] = [];
+  return { errors, log: { log: () => {}, warn: () => {}, error: (...args: unknown[]) => { errors.push(args.map(String).join(" ")); } } };
+}
+
 function deps(overrides: Partial<GtfsDetectionDeps> = {}): GtfsDetectionDeps {
   return {
-    scheduledDay: async (serviceDate) => day([], serviceDate),
+    scheduledDay: async ({ serviceDate }) => day([], serviceDate),
     tripStarts: async () => [],
     departureSecondsFor: async () => new Map(),
     feedHealth: async () => [],
@@ -226,18 +233,18 @@ function deps(overrides: Partial<GtfsDetectionDeps> = {}): GtfsDetectionDeps {
   };
 }
 
-const ON = { GTFS_SILENT_NO_SHOW_ENABLED: "true" } as NodeJS.ProcessEnv;
+const ON = { GTFS_SILENT_NO_SHOW_ENABLED: "true" };
 
 test("the enable flag is read from the env it is given", () => {
   assert.equal(silentNoShowEnabled(ON), true);
-  assert.equal(silentNoShowEnabled({ GTFS_SILENT_NO_SHOW_ENABLED: " TRUE " } as NodeJS.ProcessEnv), true);
-  assert.equal(silentNoShowEnabled({} as NodeJS.ProcessEnv), false);
+  assert.equal(silentNoShowEnabled({ GTFS_SILENT_NO_SHOW_ENABLED: " TRUE " }), true);
+  assert.equal(silentNoShowEnabled({}), false);
 });
 
 test("a pass detects over today and yesterday", async () => {
   const asked: string[] = [];
   await gtfsObservations([], silence, deps({
-    scheduledDay: async (serviceDate) => {
+    scheduledDay: async ({ serviceDate }) => {
       asked.push(serviceDate);
       return day([], serviceDate);
     },
@@ -245,10 +252,11 @@ test("a pass detects over today and yesterday", async () => {
   assert.deepEqual(asked, ["20260917", "20260916"]);
 });
 
-test("a day that fails to read does not stop the other day", async () => {
+test("a day that fails to read does not stop the other day, and says which", async () => {
   const asked: string[] = [];
-  const { observations } = await gtfsObservations([], silence, deps({
-    scheduledDay: async (serviceDate) => {
+  const logged = capture();
+  const { observations } = await gtfsObservations([], logged.log, deps({
+    scheduledDay: async ({ serviceDate }) => {
       asked.push(serviceDate);
       if (serviceDate === "20260917") throw new Error("read failed");
       return day([run({ trip_id: "YESTERDAY" })], serviceDate);
@@ -257,13 +265,15 @@ test("a day that fails to read does not stop the other day", async () => {
   assert.deepEqual(asked, ["20260917", "20260916"]);
   assert.equal(observations.length, 1, "yesterday was still detected");
   assert.equal(observations[0].run.runId, "YESTERDAY");
+  assert.equal(logged.errors.length, 1);
+  assert.match(logged.errors[0], /20260917.*read failed/);
 });
 
 test("with the detector paused no schedule is read, and start evidence still is", async () => {
   let scheduleReads = 0;
   let startReads = 0;
   const { observations } = await gtfsObservations([], silence, deps({
-    scheduledDay: async (serviceDate) => {
+    scheduledDay: async ({ serviceDate }) => {
       scheduleReads++;
       return day([], serviceDate);
     },
@@ -272,26 +282,28 @@ test("with the detector paused no schedule is read, and start evidence still is"
       assert.deepEqual(dates, ["20260917", "20260916"]);
       return [];
     },
-  }), PAST_DEADLINE, {} as NodeJS.ProcessEnv);
+  }), PAST_DEADLINE, {});
   assert.equal(scheduleReads, 0);
   assert.equal(startReads, 1);
   assert.deepEqual(observations, []);
 });
 
-test("feed health that cannot be read fails closed", async () => {
-  const { observations } = await gtfsObservations([], silence, deps({
+test("feed health that cannot be read fails closed, and says so", async () => {
+  const logged = capture();
+  const { observations } = await gtfsObservations([], logged.log, deps({
     feedHealth: async () => { throw new Error("ledger unreadable"); },
-    scheduledDay: async (serviceDate) => day(serviceDate === "20260917" ? [run()] : [], serviceDate),
+    scheduledDay: async ({ serviceDate }) => day(serviceDate === "20260917" ? [run()] : [], serviceDate),
   }), PAST_DEADLINE, ON);
   assert.equal(observations.length, 1);
   assert.deepEqual(observations[0].fact, { kind: "undecidable", reason: "vehicle_position_feed_not_current" });
+  assert.match(logged.errors[0], /Failed to resolve feed confidence.*ledger unreadable/);
 });
 
 test("a cancellation is looked up only when the feed carries one", async () => {
   let lookups = 0;
   await gtfsObservations([], silence, deps({
     departureSecondsFor: async () => { lookups++; return new Map(); },
-  }), PAST_DEADLINE, {} as NodeJS.ProcessEnv);
+  }), PAST_DEADLINE, {});
   assert.equal(lookups, 0);
 
   await gtfsObservations([cancelEntity("T1", SERVICE_DATE)], silence, deps({
@@ -300,6 +312,6 @@ test("a cancellation is looked up only when the feed carries one", async () => {
       assert.deepEqual(tripIds, ["T1"]);
       return new Map();
     },
-  }), PAST_DEADLINE, {} as NodeJS.ProcessEnv);
+  }), PAST_DEADLINE, {});
   assert.equal(lookups, 1);
 });

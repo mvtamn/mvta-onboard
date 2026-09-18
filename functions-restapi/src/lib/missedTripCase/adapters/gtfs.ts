@@ -81,6 +81,9 @@ export interface ScheduledDay {
   runs: ScheduledRun[];
 }
 
+// One agency service date and its weekday, as agencyServiceDate returns them.
+export type AgencyDay = ReturnType<typeof agencyServiceDate>;
+
 // Positive start evidence for one trip on one service date.
 export interface TripStartEvidence {
   trip_id: string;
@@ -93,21 +96,26 @@ export interface TripStartEvidence {
 // Injected so the detection rules can be tested without a database.
 export interface GtfsDetectionDeps {
   /** The day's scheduled runs; empty when no service id is active. */
-  scheduledDay: (serviceDate: string, dow: string) => Promise<ScheduledDay>;
+  scheduledDay: (day: AgencyDay) => Promise<ScheduledDay>;
   /** Every trip with start evidence on these service dates. */
   tripStarts: (serviceDates: string[]) => Promise<TripStartEvidence[]>;
   /**
-   * Scheduled first-departure seconds for these trip ids, by trip id. Read by
-   * trip id alone, with no service filter, so a cancellation can resolve a
-   * start time from a service pattern that is not running today - the shape
-   * this has always had.
+   * Scheduled first-departure seconds for these trip ids, by trip id.
+   *
+   * KNOWN DIVERGENCE, preserved deliberately: this reads by trip id alone,
+   * with no service filter, while scheduledDay filters by the service ids
+   * active on the date. The two therefore draw from different populations, so
+   * a cancellation can resolve its start time from a service pattern that is
+   * not running that day. Carried over unchanged rather than fixed, because
+   * the silent no-show detector is mid-Shadow detection and its precision
+   * figure has to be measured against unchanged detection.
    */
   departureSecondsFor: (tripIds: string[]) => Promise<Map<string, number>>;
   feedHealth: () => Promise<KpiFeedHealth[]>;
 }
 
 const LIVE: GtfsDetectionDeps = {
-  scheduledDay: async (serviceDate, dow) => {
+  scheduledDay: async ({ serviceDate, dow }) => {
     const pool = await getPool();
     const serviceIds = await activeServiceIdsToday(pool, serviceDate, dow);
     if (serviceIds.length === 0) return { serviceDate, runs: [] };
@@ -348,7 +356,7 @@ export function tripStartObservations(rows: readonly TripStartEvidence[], tally:
 // The service dates a pass detects over: today, and yesterday - a trip that
 // runs past midnight, or whose 30-minute deadline falls after it, only becomes
 // past-deadline once the calendar day has rolled over.
-export const DETECTED_DAY_OFFSETS = [0, -1] as const;
+const DETECTED_DAY_OFFSETS = [0, -1] as const;
 
 export async function gtfsObservations(
   entities: readonly GtfsRtTripUpdateEntity[],
@@ -366,20 +374,20 @@ export async function gtfsObservations(
     observations.push(...cancellationObservations(cancelled, secondsByTrip, now, tally));
   }
 
+  const detectedDays = DETECTED_DAY_OFFSETS.map((offset) => agencyServiceDate(now, offset));
+
   if (silentNoShowEnabled(env)) {
     const confidence = await resolveDetectionConfidence(deps, log);
-    for (const dayOffset of DETECTED_DAY_OFFSETS) {
+    for (const day of detectedDays) {
       try {
-        const { serviceDate, dow } = agencyServiceDate(now, dayOffset);
-        observations.push(...silentNoShowObservations(await deps.scheduledDay(serviceDate, dow), confidence, now, tally));
+        observations.push(...silentNoShowObservations(await deps.scheduledDay(day), confidence, now, tally));
       } catch (err) {
-        log.error(`Failed to run silent no-show detection (dayOffset=${dayOffset}):`, err);
+        log.error(`Failed to run silent no-show detection (${day.serviceDate}):`, err);
       }
     }
   }
 
-  const startDates = DETECTED_DAY_OFFSETS.map((offset) => agencyServiceDate(now, offset).serviceDate);
-  observations.push(...tripStartObservations(await deps.tripStarts(startDates), tally));
+  observations.push(...tripStartObservations(await deps.tripStarts(detectedDays.map((day) => day.serviceDate)), tally));
 
   return { observations, tally };
 }

@@ -5,11 +5,19 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.254] - 2026-09-18
+## [1.5.255] - 2026-09-18
 
 - **Fixed-route missed-trip detection reads through one seam.** Every read the GTFS detector makes - the day's scheduled runs with their operational evidence, start evidence, a cancellation's scheduled time, and feed health - is injected through `GtfsDetectionDeps` with a live default, the way `gtfsRtReader`, `feedRun` and `availClient` already do it. The rules that decide *which* trips are judged - past its 30-minute deadline, already started, on a special-event route, which service day it belongs to, and what the day's own evidence can support - are now pure functions over one Scheduled day and have tests for the first time (23 of them, no database).
 - **No change to detection.** The queries and the rules are the same; the detector is mid-Shadow-detection and its numbers stay comparable. One log-only difference: a service day with nothing scheduled no longer appends a second, usually empty, explanation to the poll's warning line.
 - **`Scheduled day` is in CONTEXT.md**, defined as what one pass read - deliberately *not* the retained `Schedule snapshot`, which the code still does not implement.
+## [1.5.254] - 2026-09-17
+
+- **Detour communication channels are named, and split into sent and recorded.** `lib/detourCommunication/channels.ts` defines five: `email`, `sms`, `teams` are sent through the delivery port; `digital_signage` and `avl_messaging` are recorded, because the signs and Avail's operator messaging are somebody else's to operate. `channel` was any non-empty string since migration 059, and the intake form offered four chips plus free text. **Radio is dropped** - no Detour has ever used it. Increment 1 of `plans/detour-communications-implementation-plan.md`; B9/B15 approved as redesigned 2026-09-17.
+- **Recording is not sending.** Eligibility splits: a recorded channel is accepted on a **closed** Detour, because a Detour closes after it ends and the AVL message that went out on Monday may be written down on Tuesday. Every other refusal still applies - an outstanding re-review, an unfulfilled Detour, an unresolved likely duplicate - and sending on a closed Detour is still refused. Asking the server to *send* a recorded channel is refused with `channel_is_recorded` rather than quietly doing nothing.
+- **Only a channel that carries an address asks for one.** Publishing demanded a recipients string for every channel; now just `email` and `sms`. Teams posts to one configured channel and carries none.
+- **Migration 132** constrains `channel` to the five names and adds `occurred_at` - when a recorded message actually went out. Existing published rows get their `published_at`. Dev holds zero `DetourCommunications` rows, so nothing is adopted; an environment that does hold rows must be checked first, since a legacy channel string fails the CHECK.
+- **Older spellings still resolve.** `detourChannel` ignores case, spaces, hyphens and underscores, so "Teams", "E-Mail", "AVL messaging" and `avl_messaging` name one channel each rather than several. An unknown name is refused (`unknown_channel`), never guessed at.
+- **Verified.** `channels.test.ts`: 10 tests over the sent/recorded split, the recipients rule, radio's absence, the older spellings, and a guard that migration 132's CHECK matches the list. The contract test gains a recorded channel accepted on a closed Detour with the date it went out, a sent channel still refused there, and a road sign refused a send. Backend 1154 tests pass.
 
 ## [1.5.253] - 2026-09-17
 
