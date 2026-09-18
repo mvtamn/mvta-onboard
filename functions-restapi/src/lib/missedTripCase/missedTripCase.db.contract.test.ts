@@ -4,6 +4,7 @@ import { parseConnectionString, sql } from "../db";
 import { AWAITING_CONFIRMATION } from "../missedTripConfidence";
 import { actOnMissedTripCase, classifyMissedTripCase, missedTripCaseSql, observeMissedTrips, type RunFact, type RunObservation } from "./index";
 import { PROMOTION_HISTORY, promotionWindows, type DetectorPromotionEntry, type MissedTripDetector, type PromotionWindow } from "./index";
+import { MAX_CASE_LIMIT, readMissedTripCases, readMissedTripMonthlySummary } from "./reads";
 import { decideRun } from "./decide";
 import { loadCases, writeDecision } from "./store";
 
@@ -31,9 +32,19 @@ const DROP = `
 IF OBJECT_ID('dbo.MissedTripDetectorPromotions','U') IS NOT NULL DROP TABLE dbo.MissedTripDetectorPromotions;
 IF OBJECT_ID('dbo.MissedTripReviewHistory','U') IS NOT NULL DROP TABLE dbo.MissedTripReviewHistory;
 IF OBJECT_ID('dbo.MonitoredMissedTrips','U') IS NOT NULL DROP TABLE dbo.MonitoredMissedTrips;
+IF OBJECT_ID('dbo.GtfsTripDirections','U') IS NOT NULL DROP TABLE dbo.GtfsTripDirections;
+IF OBJECT_ID('dbo.SpareMissedTripEvaluations','U') IS NOT NULL DROP TABLE dbo.SpareMissedTripEvaluations;
 `;
 
 const CREATE = `
+CREATE TABLE dbo.GtfsTripDirections (
+  trip_id NVARCHAR(100) NOT NULL PRIMARY KEY, direction_label NVARCHAR(10) NULL
+);
+CREATE TABLE dbo.SpareMissedTripEvaluations (
+  request_id NVARCHAR(100) NOT NULL PRIMARY KEY,
+  condition_late_start BIT NULL, condition_superseded BIT NULL, condition_late_arrival BIT NULL,
+  start_delay_seconds INT NULL, arrival_delay_seconds INT NULL
+);
 CREATE TABLE dbo.MonitoredMissedTrips (
   trip_id NVARCHAR(100) NOT NULL, service_date NVARCHAR(20) NOT NULL, route_id NVARCHAR(50) NOT NULL,
   scheduled_departure_at DATETIME2 NOT NULL, grace_deadline_at DATETIME2 NOT NULL,
@@ -45,6 +56,7 @@ CREATE TABLE dbo.MonitoredMissedTrips (
   detector_version NVARCHAR(30) NULL, data_quality_status NVARCHAR(30) NOT NULL DEFAULT 'legacy_unverified',
   source_system NVARCHAR(20) NOT NULL DEFAULT 'gtfs', source_record_id NVARCHAR(100) NULL, evidence_json NVARCHAR(MAX) NULL,
   undecided_reason NVARCHAR(60) NULL, expected_window_end_at DATETIME2 NULL,
+  evidence_conflict_at DATETIME2 NULL, evidence_conflict_reason NVARCHAR(300) NULL,
   CONSTRAINT PK_MonitoredMissedTrips PRIMARY KEY (trip_id, service_date),
   CONSTRAINT CK_MonitoredMissedTrips_Status CHECK (status IN ('watching', 'escalated', 'resolved')),
   CONSTRAINT CK_MonitoredMissedTrips_ValidationStatus CHECK (validation_status IN ('unreviewed', 'confirmed', 'timely_service', 'partial_service_failure', 'indeterminate', 'false_positive')),
@@ -256,8 +268,10 @@ test("Missed-trip cases against SQL Server", skip, async (t) => {
         const rows = (await pool.request().query(`
           SELECT m.trip_id, m.service_date, m.status, m.validation_status, m.data_quality_status, m.detection_type, m.source_system,
                  m.undecided_reason, m.grace_deadline_at, m.detected_late_arrival_at, m.detector_version, m.expected_window_end_at,
+                 m.evidence_conflict_at,
                  mtc.lifecycle, mtc.evidence_finding, mtc.review_outcome, mtc.detector, mtc.held_reason,
-                 mtc.legacy, mtc.held, mtc.in_queue, mtc.concluded, mtc.flagged_missed, mtc.counts_as_missed, mtc.counts_toward_assessment
+                 mtc.legacy, mtc.held, mtc.in_queue, mtc.concluded, mtc.flagged_missed, mtc.counts_as_missed,
+                 mtc.evidence_conflict, mtc.counts_toward_assessment
           FROM dbo.MonitoredMissedTrips m ${missedTripCaseSql("m", "mtc", windows)}`)).recordset;
         // NS1, C1, R1, SP1, SP2, RACE, LEG, REV and the review subtests' cases, plus K1-K7 and W1-W3.
         assert.ok(rows.length >= 18);
@@ -271,7 +285,8 @@ test("Missed-trip cases against SQL Server", skip, async (t) => {
             lifecycle: row.lifecycle, evidence_finding: row.evidence_finding, review_outcome: row.review_outcome ?? null,
             detector: row.detector, held_reason: row.held_reason ?? null, legacy: row.legacy, held: row.held,
             in_queue: row.in_queue, concluded: row.concluded, flagged_missed: row.flagged_missed,
-            counts_as_missed: row.counts_as_missed, counts_toward_assessment: row.counts_toward_assessment,
+            counts_as_missed: row.counts_as_missed, evidence_conflict: row.evidence_conflict,
+            counts_toward_assessment: row.counts_toward_assessment,
           };
           assert.deepEqual(actual, expected, `${row.trip_id} with ${name}`);
         }
@@ -298,6 +313,97 @@ test("Missed-trip cases against SQL Server", skip, async (t) => {
       for (const row of both) {
         assert.equal(row.by_history, row.by_windows, `${row.trip_id}: the view and the app disagree on promotion`);
       }
+    });
+
+
+    // ADR-0035: Avail corroborates and contradicts, through the same module
+    // every other source writes through.
+    await t.test("Avail contradicting a closed case records an Evidence conflict and reopens nothing", async () => {
+      await pool.request().query(`INSERT INTO dbo.MonitoredMissedTrips
+        (trip_id, service_date, route_id, scheduled_departure_at, grace_deadline_at, status, validation_status, detection_type, data_quality_status, source_system, detector_version)
+        VALUES ('AV1', '${DAY}', '460', '2026-09-17T14:00:00', '2026-09-17T14:30:00', 'resolved', 'unreviewed', 'silent_no_show', 'experimental', 'gtfs', 'gtfs-silent-v4')`);
+
+      const observation: RunObservation = {
+        run: { source: "avail", runId: "AV1", serviceDate: DAY, routeId: "460", scheduledStartAt: T0, deadlineAt: T0 },
+        detectorVersion: "avail-retrospective-v1",
+        fact: { kind: "retrospective_missed" },
+        evidence: { source: "avail", entireTripMissed: true },
+      };
+      const report = await observeMissedTrips(pool, [observation], T0);
+      assert.equal(report.created, 0, "Avail opens nothing");
+
+      const after = (await pool.request().query<{ status: string; validation_status: string; evidence_conflict_at: Date | null; evidence_conflict_reason: string | null; evidence_json: string | null }>(
+        "SELECT status, validation_status, evidence_conflict_at, evidence_conflict_reason, evidence_json FROM dbo.MonitoredMissedTrips WHERE trip_id = 'AV1'")).recordset[0];
+      assert.equal(after.status, "resolved", "the case is not reopened");
+      assert.equal(after.validation_status, "unreviewed", "no review is written");
+      assert.ok(after.evidence_conflict_at !== null, "the contradiction is recorded");
+      assert.match(after.evidence_conflict_reason ?? "", /Avail reports this run as missed/);
+      assert.match(after.evidence_json ?? "", /"avail"/);
+
+      // And the gate holds in SQL, not just in TypeScript.
+      const gated = (await pool.request().query<{ evidence_conflict: boolean; counts_toward_assessment: boolean }>(`
+        SELECT mtc.evidence_conflict, mtc.counts_toward_assessment
+        FROM dbo.MonitoredMissedTrips m ${missedTripCaseSql("m")} WHERE m.trip_id = 'AV1'`)).recordset[0];
+      assert.equal(gated.evidence_conflict, true);
+      assert.equal(gated.counts_toward_assessment, false);
+    });
+
+    // Candidate 2: the list and its totals are one answer. They are two
+    // queries over the same CROSS APPLY, so only real rows can prove a tile
+    // never counts what its list omits. Runs last, over every case the
+    // subtests above left behind - one of each lifecycle.
+    await t.test("the queue list and its totals count the same cases", async () => {
+      delete process.env.MISSED_TRIP_PROMOTED_DETECTORS;
+      const all = await readMissedTripCases(pool, { view: "all", limit: MAX_CASE_LIMIT, offset: 0 });
+      assert.equal(all.ready, true);
+      if (!all.ready) return;
+      const totals = all.totals;
+
+      assert.equal(all.cases.length, totals.total_count, "view=all lists every case the totals count");
+      assert.ok(all.cases.length >= 18, "the subtests above left a spread of lifecycles behind");
+
+      for (const [view, expected] of [["queue", totals.queue_count], ["history", totals.history_count]] as const) {
+        const read = await readMissedTripCases(pool, { view, limit: MAX_CASE_LIMIT, offset: 0 });
+        assert.equal(read.ready, true);
+        if (!read.ready) return;
+        assert.equal(read.cases.length, expected, `view=${view} lists exactly what its tile counts`);
+      }
+
+      // And the rows each view returns are the ones the classification says
+      // belong there - not merely the same number of them.
+      const queue = await readMissedTripCases(pool, { view: "queue", limit: MAX_CASE_LIMIT, offset: 0 });
+      const history = await readMissedTripCases(pool, { view: "history", limit: MAX_CASE_LIMIT, offset: 0 });
+      if (!queue.ready || !history.ready) return;
+      assert.deepEqual(
+        queue.cases.map((row) => row.trip_id).sort(),
+        all.cases.filter((row) => row.in_queue).map((row) => row.trip_id).sort(),
+      );
+      assert.deepEqual(
+        history.cases.map((row) => row.trip_id).sort(),
+        all.cases.filter((row) => row.concluded).map((row) => row.trip_id).sort(),
+      );
+
+      // Paging does not change which cases exist, only how many arrive.
+      const firstPage = await readMissedTripCases(pool, { view: "all", limit: 5, offset: 0 });
+      const secondPage = await readMissedTripCases(pool, { view: "all", limit: 5, offset: 5 });
+      if (!firstPage.ready || !secondPage.ready) return;
+      assert.equal(firstPage.cases.length, 5);
+      assert.equal(secondPage.cases.length, 5);
+      assert.equal(
+        new Set([...firstPage.cases, ...secondPage.cases].map((row) => row.trip_id)).size,
+        10,
+        "consecutive pages do not repeat a case",
+      );
+
+      // The monthly rollup buckets only findings, and counts each case once.
+      const monthly = await readMissedTripMonthlySummary(pool);
+      assert.equal(monthly.ready, true);
+      if (!monthly.ready) return;
+      assert.equal(
+        monthly.summary.reduce((sum, row) => sum + row.trip_count, 0),
+        all.cases.filter((row) => row.lifecycle === "ready_for_review" || row.lifecycle === "reviewed").length,
+        "every finding is in exactly one monthly bucket",
+      );
     });
   } finally {
     await pool.close();

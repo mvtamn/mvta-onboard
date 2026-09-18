@@ -1,4 +1,4 @@
-# 35. Promote a detector on a service date, and keep the decision
+# 36. Promote a detector on a service date, and keep the decision
 
 Date: 2026-09-18
 
