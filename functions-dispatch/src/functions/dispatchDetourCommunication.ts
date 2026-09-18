@@ -74,10 +74,13 @@ app.serviceBusQueue("dispatchDetourCommunication", {
       .input("status", sql.NVarChar(20), status)
       .input("error", sql.NVarChar(1000), error)
       .input("provider", sql.NVarChar(200), providerIds.filter(Boolean).join(",").slice(0, 200) || null)
+      // Delivery FACTS only. What state the communication is then in - sent,
+      // failed, still a draft to retry - is derived from these by the REST
+      // app's Detour communication module (lib/detourCommunication/state.ts),
+      // so the rule has one owner. This app used to write `status` and
+      // `outcome` as well, which meant two apps in two builds deciding it.
       .query(`UPDATE DetourCommunications
-              SET delivery_status=@status, delivery_completed_at=SYSUTCDATETIME(), delivery_error=@error, delivery_provider_id=@provider,
-                  status = CASE WHEN @status IN ('failed', 'skipped') THEN 'failed' ELSE status END,
-                  outcome = CASE WHEN @status = 'sent' THEN 'Sent by email to ' + ISNULL(sent_recipients, '') WHEN @status = 'partially_sent' THEN 'Partially sent by email; see delivery error' ELSE outcome END
+              SET delivery_status=@status, delivery_completed_at=SYSUTCDATETIME(), delivery_error=@error, delivery_provider_id=@provider
               WHERE id=@id`);
   },
 });
