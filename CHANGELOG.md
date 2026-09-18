@@ -5,6 +5,22 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.281] - 2026-09-18
+
+- **Detours & Closures is laid out around what OCC does there.** The pane is where the detour workflow is run, but its table answered questions nobody acts on: a Number, a Status, and a Source describing where the *record* came from. Readiness, the owner and whether anybody had been told were all inside the expanded row, or only on the Register.
+- **The columns are now: Detour · Closure · Dates · Managed in · Next action & owner · Communications.** Next action is the instruction itself - "Enter this detour in Avail", "Resolve the Avail conflict" - with the owner beneath it and anything blocking it (conflict needs override, needs OCC re-review) on the row rather than a click away.
+- **"Managed in" says Avail or Outside Avail**, because that decides what can be done with a Detour at all: one is entered and confirmed in Avail, the other never will be and is carried by a recorded manual fallback. Outside Avail is marked, and the line beneath names the Avail entry state or which manual path it is. Where the record came from is still in the expanded row, which is where provenance belongs.
+- **The communication badge is shared** with the Detour Register, so the two pages cannot disagree about whether a Detour has been communicated.
+- **Verified.** 6 new tests over the two new labels, console 750 tests pass.
+
+## [1.5.280] - 2026-09-18
+
+- **Detour Reports is now Detour Register.** "Reports" read as something staff file - which is what Detour **Intake** collects - rather than something they open, and its subtitle ("Search and export detour history") described the same set as Detours & Closures right beside it. Neither name said which page to open for what.
+- **The two subtitles now say what each page is for**, since both carry active detours and the difference is what you do there. Detours & Closures: *work active and upcoming detours - communications, Avail build, conflicts*. Detour Register: *every detour, active and past - search, filter and export, read-only*.
+- **"History" was considered and rejected**: the Register carries active detours for the team to review, so a name implying past-only would have been more misleading than "Reports". "Review" was rejected too - Detour Intake already has a review step with review outcomes, and the word would have become ambiguous.
+- **The route is unchanged** (`/detour-reports`), so existing links and bookmarks keep working.
+- **Verified.** Console 744 tests pass, typecheck clean. Past changelog entries keep the old name - they describe what shipped at the time.
+
 ## [1.5.279] - 2026-09-18
 
 - **One message per audience AND channel.** A Detour reaches an audience on every channel the record requires, and the wording is rarely the same on all of them - a text message says less than an email. The composer tracked one message per audience, so there was no way to say the same thing differently on two channels, and an audience read as told after the first one went.

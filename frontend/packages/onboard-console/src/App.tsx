@@ -79,9 +79,9 @@ const PAGE_META: { match: (path: string) => boolean; title: string; sub: string 
   { match: (p) => p === "/service-operations", title: "Service Operations", sub: "Service-alert communications and operational monitoring" },
   { match: (p) => p === "/subscribers", title: "Subscribers", sub: "Opt-in totals and recent signups" },
   { match: (p) => p === "/audit", title: "Audit Log", sub: "Search every message ever posted" },
-  { match: (p) => p === "/detours", title: "Detours & Closures", sub: "Every detour/closure in one place, Avail-built or not" },
+  { match: (p) => p === "/detours", title: "Detours & Closures", sub: "Work active and upcoming detours — communications, Avail build, conflicts" },
   { match: (p) => p === "/detour-intake", title: "Detour Intake", sub: "Create and review the complete operational Detour record" },
-  { match: (p) => p === "/detour-reports", title: "Detour Reports", sub: "Search and export detour history — read-only" },
+  { match: (p) => p === "/detour-reports", title: "Detour Register", sub: "Every detour, active and past — search, filter and export, read-only" },
   { match: (p) => p === "/admin" || p.startsWith("/admin/"), title: "Administration", sub: "Manage access, resources, configuration, integrations, and governance" },
   {
     match: (p) => p === "/event-monitoring" || p.startsWith("/events/avl"),
@@ -336,9 +336,9 @@ function AuthenticatedApp({ account, signOut }: {
       id: "specialist-operations",
       name: "Specialist Operations",
       entries: navEntries(
-        canSeeDetours && { to: "/detours", label: "Detours & Closures", desc: "Every detour and closure in one place, Avail-built or not", icon: <IconDetour /> },
+        canSeeDetours && { to: "/detours", label: "Detours & Closures", desc: "Work active and upcoming detours — communications, Avail build, conflicts", icon: <IconDetour /> },
         canSeeDetourIntake && { to: "/detour-intake", label: "Detour Intake", desc: "Create and review the complete operational Detour record", icon: <IconDetour /> },
-        canSeeDetours && { to: "/detour-reports", label: "Detour Reports", desc: "Search and export detour history — read-only", icon: <IconClock /> },
+        canSeeDetours && { to: "/detour-reports", label: "Detour Register", desc: "Every detour, active and past — search, filter and export, read-only", icon: <IconClock /> },
         canSeeOccTools && { to: "/occ", label: "OCC Tools", desc: "Service-risk prediction, procedure guidance, and vehicle monitoring", icon: <IconWrench /> },
       ),
     },

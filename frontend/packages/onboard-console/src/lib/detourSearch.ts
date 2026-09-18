@@ -3,7 +3,7 @@
 //
 // Client-side by design: GET /detours already returns every non-deleted row
 // (there is no pagination), so both the day-to-day Detours page and the
-// read-only Detour Reports page filter what they already have rather than
+// read-only Detour Register page filter what they already have rather than
 // round-tripping. FLAGGED AS AN ASSUMPTION in the plan and repeated here:
 // if real detour volume ever makes a full scan slow, this is the seam to
 // move server-side - both pages call these two functions and nothing else.
@@ -136,7 +136,7 @@ function csvCell(value: unknown): string {
   return `"${s.replace(/"/g, '""')}"`;
 }
 
-// Column order follows the Detour Reports table, then the expanded-row
+// Column order follows the Detour Register table, then the expanded-row
 // detail, then the operational record - a reader comparing the export to
 // the screen finds things where they expect them.
 const CSV_HEADERS = [
