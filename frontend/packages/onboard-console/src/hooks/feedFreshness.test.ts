@@ -26,7 +26,7 @@ describe("dashboardFeeds", () => {
   it("reports each feed from its own delivery, as dev showed it", () => {
     const [gtfs, connect] = dashboardFeeds(DEV, "ok");
     expect(gtfs).toMatchObject({ label: "GTFS-Realtime", state: "live", stateLabel: "Current", lastDeliveryAt: "2026-09-14T05:15:00.659Z" });
-    expect(connect).toMatchObject({ label: "MVTA Connect", state: "unavailable", stateLabel: "Unavailable", lastDeliveryAt: null });
+    expect(connect).toMatchObject({ label: "On-demand reconciliation", state: "unavailable", stateLabel: "Not received", lastDeliveryAt: null });
   });
 
   it("maps stale and current-but-empty streams", () => {
@@ -35,6 +35,16 @@ describe("dashboardFeeds", () => {
       on_demand: stream("current_but_empty", "spare_on_demand_reconciliation", "2026-09-14T05:00:00Z"),
     }, "ok");
     expect(feeds.map((feed) => [feed.state, feed.stateLabel])).toEqual([["stale", "Stale"], ["live", "Current · no records"]]);
+  });
+
+  // Never delivered and stopped delivering are different problems: one is a
+  // switch that was never flipped, the other an ingestion that broke.
+  it("separates a feed that never delivered from one that stopped", () => {
+    const [, connect] = dashboardFeeds({
+      fixed_route_delay: DEV.fixed_route_delay,
+      on_demand: stream("unavailable", "spare_on_demand_reconciliation", "2026-09-14T05:00:00Z"),
+    }, "ok");
+    expect(connect).toMatchObject({ state: "unavailable", stateLabel: "Unavailable" });
   });
 
   it("treats a stream the API does not report as unknown, not current", () => {
@@ -65,7 +75,7 @@ describe("dashboardFeeds", () => {
 
 describe("summarizeFeeds", () => {
   it("names the feeds behind a problem", () => {
-    expect(summarizeFeeds(dashboardFeeds(DEV, "ok"))).toEqual({ state: "unavailable", label: "MVTA Connect unavailable" });
+    expect(summarizeFeeds(dashboardFeeds(DEV, "ok"))).toEqual({ state: "unavailable", label: "On-demand reconciliation not received" });
   });
 
   it("says all feeds are current only when every one is", () => {
@@ -78,7 +88,7 @@ describe("summarizeFeeds", () => {
       fixed_route_delay: stream("stale", "gtfs_trip_updates", "2026-09-14T04:40:00Z"),
       on_demand: DEV.on_demand,
     }, "ok"));
-    expect(summary).toEqual({ state: "unavailable", label: "GTFS-Realtime stale · MVTA Connect unavailable" });
+    expect(summary).toEqual({ state: "unavailable", label: "GTFS-Realtime stale · On-demand reconciliation not received" });
   });
 
   it("does not turn a lack of access into an alarm", () => {
