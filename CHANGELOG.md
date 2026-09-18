@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.263] - 2026-09-18
+## [1.5.265] - 2026-09-18
 
 - **Detector promotion is a dated decision, not a setting.** Taking a missed-trip detector out of Shadow detection was `MISSED_TRIP_PROMOTED_DETECTORS`, a list of names. It had no date, so the moment it changed every case that detector had ever opened started counting - including confirmed cases in months already measured. It kept no reason, no measured precision and no author. And SQL could not read it, so `vw_MissedTrip` had to report every detector as unpromoted and disagreed with the app by design.
 - **Migration 134 adds an append-only promotion history.** Detector family, the **service date** the decision takes effect from, promote or demote, the reason, the measured precision and sample size it was decided on, and who decided. A case counts toward an assessment when its detector was promoted on that case's service date; the latest decision at or before it wins. Demotion leaves the months the detector was trusted for counting as they did.
