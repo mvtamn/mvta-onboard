@@ -848,7 +848,7 @@ roles in the token, so applying the migration changes no one's access.
 
 ### Steps that are the user's
 
-1. **Apply `migration-129-app-owned-roles.sql` and `migration-130-access-role-history.sql` to dev.**
+1. **Apply `migration-129-app-owned-roles.sql`, `migration-130-access-role-history.sql` and `migration-131-onboard-grant-requests.sql` to dev.**
    129 creates `AccessPeople`, `AccessRoles`, `AccessRoleActions` and
    `AccessRoleGrants` and seeds the nine roles; 130 adds `AccessRoleHistory`.
    Both are re-runnable, and 129 never overwrites a role an Access
@@ -878,8 +878,14 @@ Increment 3 moved the console onto the same answer: it calls `GET /me/access`
 once per sign-in and gates every route, link and control on the actions it
 returns, so the two sides can no longer disagree. `VITE_ACCESS_ADMIN_FALLBACK`
 is retired; `ONBOARD_ACCESS_ADMIN_FALLBACK` on the API is the only bootstrap
-switch left. Increment 4 added Access & Identity → Roles, which edits them. Left to build:
-grants written in OnBoard instead of Graph (5), and the cutover (6).
+switch left. Increment 4 added Access & Identity → Roles, which edits them. Increment 5
+adds the grant, approval, import and health API; the console moves onto it in
+the change after. Left to build: the console repoint, and the cutover (6).
+
+Once the migrations are applied, the intended order on dev is: sign in (which
+lists you), grant yourself Access Administrator through migration 129's last
+batch, then press Import from Entra once so today's assignments become OnBoard
+grants.
 
 The Entra steps — the OnBoard Users group, "Assignment required", removing the
 `OCC.*` app roles and revoking the two Graph write consents — belong to
