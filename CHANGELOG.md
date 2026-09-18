@@ -5,6 +5,14 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.259] - 2026-09-18
+
+- **Detector promotion is a dated decision, not a setting.** Taking a missed-trip detector out of Shadow detection was `MISSED_TRIP_PROMOTED_DETECTORS`, a list of names. It had no date, so the moment it changed every case that detector had ever opened started counting - including confirmed cases in months already measured. It kept no reason, no measured precision and no author. And SQL could not read it, so `vw_MissedTrip` had to report every detector as unpromoted and disagreed with the app by design.
+- **Migration 134 adds an append-only promotion history.** Detector family, the **service date** the decision takes effect from, promote or demote, the reason, the measured precision and sample size it was decided on, and who decided. A case counts toward an assessment when its detector was promoted on that case's service date; the latest decision at or before it wins. Demotion leaves the months the detector was trusted for counting as they did.
+- **Nothing is promoted by this change.** The setting was empty on dev, and an empty history means the same thing, so no figure moves. Queries carry their promotion facts as literals, so a database without migration 134 behaves exactly as before rather than failing.
+- **`vw_MissedTrip` reads the history itself**, since nothing regenerates a view when a promotion is recorded. The contract test runs both renderings over the same rows, so the warehouse agrees with the app by construction. ADR-0035 records the decision.
+- **Verified.** New `promotion.test.ts` (8 tests) covers dating, demotion, re-promotion, same-day reversal and unknown names; the missed-trip contract test now checks four promotion states, plus history against literals. Backend tests pass.
+
 ## [1.5.258] - 2026-09-18
 
 - **Fixed: migration 092 could not be applied to any database.** It adds the delivery columns and then, **in the same batch**, a CHECK naming `delivery_status`. SQL Server compiles a batch before executing it, so that reference fails with "Invalid column name" and the whole batch is abandoned - nothing added, and quietly enough that a run looks uneventful. The CHECK now runs through `EXEC`, as migration 061's does. The file is edited rather than superseded because it had **never applied anywhere**: dev is the only environment, and it was tried there twice.

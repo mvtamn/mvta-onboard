@@ -18,13 +18,15 @@ import {
   type IntakeRefusalCode,
   type OccurrenceReviewStatus,
 } from "../occurrenceIntake";
-import { classifyMissedTripCase, promotedDetectors } from "./classify";
+import { classifyMissedTripCase } from "./classify";
+import { detectorPromotionWindows } from "./promotion";
 import { caseTripId, decideReview, decideRun } from "./decide";
 import { caseKey, loadCase, loadCases, writeDecision } from "./store";
 import type { Actor, CaseAct, CaseKey, CaseRefusal, MissedTripClassification, ObserveReport, RunObservation, StoredReviewOutcome } from "./types";
 
 export * from "./types";
-export { classifyMissedTripCase, missedTripCaseSql, missedTripSourceRefSql, promotedDetectors } from "./classify";
+export { classifyMissedTripCase, missedTripCaseSql, missedTripSourceRefSql } from "./classify";
+export * from "./promotion";
 
 export async function observeMissedTrips(pool: sql.ConnectionPool, observations: RunObservation[], now = new Date()): Promise<ObserveReport> {
   const report: ObserveReport = { created: 0, held: 0, confirmed: 0, closedByEvidence: 0, evidenceRecorded: 0, skippedChanged: 0, failed: [] };
@@ -87,6 +89,8 @@ const OUTCOME_NOTES: Record<StoredReviewOutcome, string> = {
 };
 
 export async function actOnMissedTripCase(pool: sql.ConnectionPool, key: CaseKey, act: CaseAct, actor: Actor, now = new Date()): Promise<ActOutcome> {
+  // Read before the transaction opens: promotion is the same for every case.
+  const promoted = await detectorPromotionWindows(pool);
   const tx = new sql.Transaction(pool);
   await tx.begin();
   try {
@@ -131,7 +135,7 @@ export async function actOnMissedTripCase(pool: sql.ConnectionPool, key: CaseKey
           @review_kind, @review_reason);
       `);
     const reviewed = await loadCase(tx, key.tripId, key.serviceDate, false);
-    const classification = classifyMissedTripCase(reviewed ?? current, promotedDetectors(), now);
+    const classification = classifyMissedTripCase(reviewed ?? current, promoted, now);
 
     // Assessment promotion: a confirmation from a detector in Shadow detection
     // stays out of the assessment. Every other outcome still reaches intake, so

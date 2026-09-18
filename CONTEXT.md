@@ -1200,6 +1200,15 @@ issue. Cases from a detector in Shadow detection can be reviewed but never
 reach Assessment promotion.
 _Avoid_: production truth, enabled detector
 
+**Detector promotion**:
+A dated decision that a detector family leaves Shadow detection, recorded with
+the precision and sample size it was measured on, the reason, and the person who
+decided. It takes effect from a service date and applies only to cases on that
+date onward, so a promotion never changes a month already measured. The same
+record demotes a detector, which leaves the service dates it was trusted for
+counting as they did.
+_Avoid_: enabling a detector, promoted detector list, retroactive promotion
+
 **Missed-trip review authority**:
 Operations authority to determine the service outcome represented by a
 Missed-trip case. It does not determine Service attribution or assessment

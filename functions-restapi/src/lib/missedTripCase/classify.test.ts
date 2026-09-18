@@ -2,19 +2,22 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { classifyMissedTripCase, missedTripCaseSql, promotedDetectors, WINDOWED_DETECTOR_VERSION, type ClassifiableCase } from "./classify";
+import { classifyMissedTripCase, missedTripCaseSql, WINDOWED_DETECTOR_VERSION, type ClassifiableCase } from "./classify";
+import { PROMOTION_HISTORY, type PromotionWindow } from "./promotion";
 
 const DEADLINE = new Date("2026-09-17T14:30:00Z");
 
 function row(overrides: Partial<ClassifiableCase> = {}): ClassifiableCase {
   return {
+    service_date: "20260917",
     status: "escalated", validation_status: "unreviewed", data_quality_status: "experimental",
     detection_type: "silent_no_show", source_system: "gtfs", undecided_reason: null,
     grace_deadline_at: DEADLINE, detected_late_arrival_at: null, detector_version: "gtfs-silent-v3", expected_window_end_at: null, ...overrides,
   };
 }
 
-const none = new Set<never>();
+const none: PromotionWindow[] = [];
+const promoted = (detector: PromotionWindow["detector"], from = "20260901"): PromotionWindow[] => [{ detector, from, until: null }];
 
 test("lifecycle and the queue follow one rule", () => {
   const rows: [Partial<ClassifiableCase>, string, boolean][] = [
@@ -52,9 +55,11 @@ test("only a Confirmed missed trip from a promoted detector counts toward assess
   const confirmed = row({ validation_status: "confirmed", data_quality_status: "source_verified" });
   assert.equal(classifyMissedTripCase(confirmed, none).counts_as_missed, true);
   assert.equal(classifyMissedTripCase(confirmed, none).counts_toward_assessment, false);
-  assert.equal(classifyMissedTripCase(confirmed, promotedDetectors("gtfs_silent_no_show")).counts_toward_assessment, true);
-  assert.equal(classifyMissedTripCase({ ...confirmed, source_system: "spare", detection_type: "spare_late_start" }, promotedDetectors("gtfs_silent_no_show")).counts_toward_assessment, false);
-  assert.equal(classifyMissedTripCase({ ...confirmed, data_quality_status: "legacy_unverified" }, promotedDetectors("gtfs_silent_no_show")).counts_toward_assessment, false);
+  assert.equal(classifyMissedTripCase(confirmed, promoted("gtfs_silent_no_show")).counts_toward_assessment, true);
+  assert.equal(classifyMissedTripCase({ ...confirmed, source_system: "spare", detection_type: "spare_late_start" }, promoted("gtfs_silent_no_show")).counts_toward_assessment, false);
+  assert.equal(classifyMissedTripCase({ ...confirmed, data_quality_status: "legacy_unverified" }, promoted("gtfs_silent_no_show")).counts_toward_assessment, false);
+  // The decision has a date: a case from before it does not count.
+  assert.equal(classifyMissedTripCase({ ...confirmed, service_date: "20260831" }, promoted("gtfs_silent_no_show")).counts_toward_assessment, false);
 });
 
 test("findings name what the evidence shows", () => {
@@ -69,10 +74,11 @@ test("findings name what the evidence shows", () => {
   for (const [overrides, finding] of rows) assert.equal(classifyMissedTripCase(row(overrides), none).evidence_finding, finding);
 });
 
-test("promotion names are checked before they reach SQL", () => {
-  assert.deepEqual([...promotedDetectors(" spare, gtfs_cancellation ,nope,'; DROP")], ["spare", "gtfs_cancellation"]);
-  assert.match(missedTripCaseSql("m", "mtc", promotedDetectors("spare")), /IN \(N'spare'\)/);
-  assert.match(missedTripCaseSql("m", "mtc", new Set()), /1 = 0/);
+test("promotion reaches SQL as dated literals, and nothing promoted reads as Shadow detection", () => {
+  const sqlText = missedTripCaseSql("m", "mtc", promoted("spare"));
+  assert.match(sqlText, /mtc_base\.detector = N'spare' AND LEFT\(m\.service_date, 8\) >= N'20260901'/);
+  assert.match(missedTripCaseSql("m", "mtc", none), /1 = 0/);
+  assert.match(missedTripCaseSql("m", "mtc", PROMOTION_HISTORY), /MissedTripDetectorPromotions/);
   assert.throws(() => missedTripCaseSql("m; DROP"), TypeError);
 });
 
@@ -121,9 +127,9 @@ test("migration 106 can no longer replace the classified vw_MissedTrip", () => {
   assert.ok(guard < view && view < off, "the guard must open before the view and close after it");
 });
 
-test("migration 125's vw_MissedTrip classifies with missedTripCaseSql verbatim", () => {
+test("migration 134's vw_MissedTrip classifies with missedTripCaseSql verbatim", () => {
   const squash = (text: string) => text.replace(/\s+/g, " ").trim();
-  const migration = readFileSync(join(process.cwd(), "sql", "migration-125-missed-trip-review-outcomes-and-window.sql"), "utf8");
-  assert.ok(squash(migration).includes(squash(missedTripCaseSql("m", "mtc", new Set()))),
-    "regenerate the CROSS APPLY in migration 125 from missedTripCaseSql(\"m\", \"mtc\", new Set())");
+  const migration = readFileSync(join(process.cwd(), "sql", "migration-134-missed-trip-detector-promotion.sql"), "utf8");
+  assert.ok(squash(migration).includes(squash(missedTripCaseSql("m", "mtc", PROMOTION_HISTORY))),
+    "regenerate the CROSS APPLY in migration 134 from missedTripCaseSql(\"m\", \"mtc\", PROMOTION_HISTORY)");
 });

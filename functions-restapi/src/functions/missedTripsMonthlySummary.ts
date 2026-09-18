@@ -17,7 +17,7 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
 import { requireAccess } from "../lib/access/require";
-import { missedTripCaseSql } from "../lib/missedTripCase";
+import { detectorPromotionWindows, missedTripCaseSql } from "../lib/missedTripCase";
 
 interface MissedTripsSummaryRow {
   service_month: string;
@@ -44,6 +44,8 @@ app.http("missedTripsMonthlySummary", {
     }
     try {
       const pool = await getPool();
+      // The report says which detectors count, so it needs the promotion history.
+      const promoted = await detectorPromotionWindows(pool);
       const tableCheck = await pool.request().query<{ table_exists: number }>(`
         SELECT CASE WHEN OBJECT_ID('dbo.MonitoredMissedTrips', 'U') IS NULL THEN 0 ELSE 1 END AS table_exists
       `);
@@ -64,7 +66,7 @@ app.http("missedTripsMonthlySummary", {
           mtc.counts_as_missed,
           mtc.counts_toward_assessment,
           COUNT(*) AS trip_count
-        FROM MonitoredMissedTrips m ${missedTripCaseSql("m")}
+        FROM MonitoredMissedTrips m ${missedTripCaseSql("m", "mtc", promoted)}
         WHERE mtc.lifecycle IN (N'ready_for_review', N'reviewed')
         GROUP BY LEFT(m.service_date, 6), m.route_id, m.source_system, m.detection_type,
           mtc.detector, mtc.lifecycle, mtc.evidence_finding, mtc.review_outcome,

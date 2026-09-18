@@ -248,7 +248,7 @@ export function decideReview(state: CaseState, act: CaseAct, now: Date): { refus
       : "Say why this legacy record is being rereviewed.");
   }
   if (act.outcome === "confirmed" && !reviewed && !legacy) {
-    const lifecycle = classifyMissedTripCase(state, new Set(), now).lifecycle;
+    const lifecycle = classifyMissedTripCase(state, [], now).lifecycle;
     if (lifecycle === "open" || lifecycle === "awaiting_evidence") {
       return refuseReview("awaiting_evidence", "This case is still awaiting evidence. It can be confirmed as a missed trip once its operating window has ended and detection has decided it.");
     }
