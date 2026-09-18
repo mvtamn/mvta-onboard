@@ -23,7 +23,7 @@ import { DetourWorkflowHistorySection } from "../components/DetourWorkflowHistor
 import { DetourAttachmentsSection } from "../components/DetourAttachments.js";
 import { DetourMap } from "../components/DetourMap.js";
 import { SentCopy, deliveryClass, deliveryLabel } from "../components/DetourDeliveryRecord.js";
-import { audiencePlan, communicationSubject, draftCommunicationText, mailtoLink, nextAudience } from "../lib/detourCommunicationDraft.js";
+import { audiencePlan, communicationSubject, detourSendBlock, draftCommunicationText, mailtoLink, nextAudience } from "../lib/detourCommunicationDraft.js";
 import { dateLabel, dateTimeLabel, toDateInputValue } from "../lib/detourDates.js";
 
 const STATUS_TABS: { key: DetourStatus | "all"; label: string }[] = [
@@ -789,6 +789,12 @@ function DetourCommunicationsSection({ detour, contractor, canWrite }: { detour:
   }, [communications, detour.notification_audiences, detour.notification_channels]);
 
   const selected = plan.find((item) => item.audience === audienceChoice) ?? null;
+  // Detour communication eligibility, decided by the server (ADR-less but in
+  // CONTEXT, enforced since 1.5.249). The console renders the decision: a
+  // blocked Detour shows why on a disabled Send instead of offering it and
+  // failing at the server. Undefined on an older server, where Send behaves
+  // as it used to.
+  const sendBlock = detourSendBlock(plan);
   const emailable = channel.toLowerCase() === "email" && recipients.trim() !== "" && content.trim() !== "";
 
   function startDraft(forAudience: string) {
@@ -831,6 +837,9 @@ function DetourCommunicationsSection({ detour, contractor, canWrite }: { detour:
 
   return <div className="subcard" style={{ marginTop: "8px" }}>
     <b>Communications</b>{error ? <p className="error-text">{error}</p> : null}
+    {/* What the server will refuse, said once at the top rather than on each
+        button: it is a fact about the Detour, not about one message. */}
+    {sendBlock ? <p className="warn-note" style={{ marginTop: 4 }}>{sendBlock.sentence}</p> : null}
     {plan.length > 0 ? (
       <div className="intake-checklist" aria-label="Required communications">
         <strong>Required by the record</strong>
@@ -839,7 +848,7 @@ function DetourCommunicationsSection({ detour, contractor, canWrite }: { detour:
             {item.progress === "published" ? "✓" : item.progress === "draft" ? "◐" : "○"} {item.audience}
           </span>
           <span className="td-dim"> — {item.progress === "published" ? "published" : item.progress === "draft" ? "draft saved, not published" : "nothing drafted"}{item.contractor ? ` · contractor · email${item.recipients.length ? ` to ${item.recipients.join(", ")}` : " (no recipients configured - set them under Administration)"}` : item.channels.length ? ` · via ${item.channels.join(", ")}` : ""}</span>
-          {canWrite && item.progress !== "published" ? <> <button type="button" className="btn-sm" onClick={() => startDraft(item.audience)}>{item.progress === "draft" ? "Draft another" : "Draft"}</button></> : null}
+          {canWrite && item.progress !== "published" ? <> <button type="button" className="btn-sm" title={item.eligibility && !item.eligibility.may_draft ? sendBlock?.sentence : undefined} disabled={Boolean(item.eligibility && !item.eligibility.may_draft)} onClick={() => startDraft(item.audience)}>{item.progress === "draft" ? "Draft another" : "Draft"}</button></> : null}
         </li>)}</ul>
       </div>
     ) : <p className="td-dim">The record names no required audiences; communications here are recorded but do not change its communication status.</p>}
@@ -858,10 +867,14 @@ function DetourCommunicationsSection({ detour, contractor, canWrite }: { detour:
       {canWrite && (communication.status === "draft" || communication.status === "failed") ? (() => {
         const ch = communication.channel.trim().toLowerCase();
         const serverSend = ch === "teams" || (ch === "email" && Boolean(communication.recipients));
+        // The server refuses both paths for the same reasons, so both buttons
+        // carry the same explanation rather than only the one that sends.
+        const blocked = sendBlock?.sentence;
         return <>
-          {serverSend ? <> {" "}<button className="btn-sm" disabled={communication.delivery_status === "queued"} onClick={() => void sendByServer(communication)}>{communication.status === "failed" ? "Retry send" : ch === "teams" ? "Post to Teams" : "Send email"}</button></> : null}
-          {ch === "email" && communication.recipients ? <> {" "}<a className="btn-sm" href={mailtoLink(communication.recipients.split(/[,;\s]+/).filter(Boolean), communicationSubject(detour), communication.content)}>Open in email</a></> : null}
-          {" "}<button className="btn-sm" onClick={() => publish(communication)}>Mark published{serverSend ? " (sent elsewhere)" : ""}</button>
+          {serverSend ? <> {" "}<button className="btn-sm" title={blocked} disabled={Boolean(blocked) || communication.delivery_status === "queued"} onClick={() => void sendByServer(communication)}>{communication.status === "failed" ? "Retry send" : ch === "teams" ? "Post to Teams" : "Send email"}</button></> : null}
+          {ch === "email" && communication.recipients && !blocked ? <> {" "}<a className="btn-sm" href={mailtoLink(communication.recipients.split(/[,;\s]+/).filter(Boolean), communicationSubject(detour), communication.content)}>Open in email</a></> : null}
+          {" "}<button className="btn-sm" title={blocked} disabled={Boolean(blocked)} onClick={() => publish(communication)}>Mark published{serverSend ? " (sent elsewhere)" : ""}</button>
+          {blocked ? <div className="td-dim" style={{ marginTop: 4 }}>{blocked}</div> : null}
         </>;
       })() : null}
     </p>)}

@@ -5,6 +5,13 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.250] - 2026-09-17
+
+- **The Detours page renders the eligibility decision instead of deriving readiness.** `GET /detours` has returned `audience_eligibility` per required audience since 1.5.249; `audiencePlan` now carries it, and a new `detourSendBlock` picks the one thing to fix. **Send**, **Post to Teams**, **Mark published** and **Draft** are disabled with the server's own sentence, and the reason is shown once above the list rather than repeated on every button. "Open in email" is hidden while a Detour is blocked, so the mailto route cannot quietly bypass what the server refuses. PR 2 of 2 for candidate #6 of the 2026-09-16 architecture review.
+- **A missing recipient blocks its own message, not the Detour.** `detourSendBlock` ignores `no_recipients`, which is about one draft; the server still refuses that single send.
+- **A console tab older than the server still works.** With no `audience_eligibility` in the response (1.5.248 and earlier), the page behaves as it did: the console never invents a rule it does not own.
+- **Verified.** 3 new tests in `detourCommunicationDraft.test.ts` (per-audience decisions carried onto the plan, the Detour-wide block, the missing-recipient case, and the older-server fallback). Console suite 647 tests pass. Shared types gain `DetourCommunicationEligibility` and `DetourAudienceEligibility`. No migration.
+
 ## [1.5.249] - 2026-09-17
 
 - **Detour communication eligibility is enforced, not just defined.** New `functions-restapi/src/lib/detourCommunication/` decides whether an audience's communication may be drafted and sent, from the Detour workflow module's own view of the Detour (Workflow state, Outstanding re-review, Conflict override) plus the required audiences. `POST /detours/{id}/communications/{cid}/publish` asks it on both paths - the server sending it, and a person recording that they sent it elsewhere - and refuses with a named sentence: `detour_closed`, `re_review_outstanding`, `fulfillment_pending`, `fulfillment_failed`, `conflict_unresolved`, `no_recipients`. Before this, publish checked only that the row was a draft, so a closed Detour could be emailed to riders. Candidate #6 of the 2026-09-16 architecture review; `CONTEXT.md` defined the term already.
