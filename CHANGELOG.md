@@ -12,6 +12,13 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **No wording changes**, and no page split: the four pages inside `MissedTripAlerts.tsx` stay where they are for now.
 - **Found, not fixed:** a case held for an unknown data gap is labelled "Legacy — unverified", because the label falls through to legacy for anything that is not source-verified or experimental. Its own label is worth adding, separately.
 
+## [1.5.261] - 2026-09-18
+
+- **The Missed Trips list and its tiles cannot disagree.** The queue read model lived inside its endpoints: `GET /missed-trips` carried the list, thirteen totals, the paging rules, the occurrence join and two `OBJECT_ID` probes in its own body, and `GET /missed-trips-monthly-summary` stated "what counts as a finding" a second time as its own `WHERE`. Both now read through `lib/missedTripCase/reads.ts`, beside the module that already owned every write and every classification. The handlers shrink to authorization, query and response shape - 241 lines to 101, and 80 to 32.
+- **Proved, not asserted.** The list and the totals are still two queries over the same classification, so the database contract test now reads every view through the interface and checks that each view lists exactly what its tile counts, that consecutive pages never repeat a case, and that every finding lands in exactly one monthly bucket.
+- **The response shape stays with the endpoint.** The module returns cases and totals; feed health is still KPI trust's answer and the diagnostics envelope is still the endpoint's, so the module never learns what JSON the console expects.
+- **Two things the compiler found, both preserved rather than fixed:** the endpoint's row type omitted the six classification columns its own query returned, so the console was consuming columns nothing on the server named; and `?limit=` asks for one case rather than falling back to the default, as it always has. Both now have a name and a test.
+
 ## [1.5.260] - 2026-09-18
 
 - **One reading of what the missed-trip detectors are doing.** `GTFS_SILENT_NO_SHOW_ENABLED`, `SPARE_MISSED_TRIPS_ENABLED`, `SPARE_MISSED_TRIP_SERVICE_IDS` and `SPARE_CONTRACTOR_FAULT_VALUES` were each parsed at the point of use - the same `?.trim().toLowerCase() === "true"` written out five times across the two adapters, the poll, the ingest, `/feed-checks` and `GET /missed-trips`. Whether a detector is running is part of the Missed-trip case module's interface, so `missedTripDetectionSettings(env)` now answers it and nothing outside reads those variables. A typo could previously have had the console call a detector paused while the poll ran it, and nothing would have failed.
