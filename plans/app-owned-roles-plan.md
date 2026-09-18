@@ -4,6 +4,9 @@ Implements [ADR-0032](../docs/adr/0032-own-roles-in-onboard-and-keep-sign-in-in-
 Agreed 2026-09-17: roles editable and custom roles allowed (two locked);
 View + named actions per module; agency-wide grants with a nullable scope
 column; sign-in gated by Entra "Assignment required" + one OnBoard Users group.
+Roles are granted to people only, never to an Entra group; Viewer and Publisher
+keep the compliance read the API gives them today; the first seeded Access
+Administrator is Tyre Fant.
 
 ## Module catalog (code)
 
@@ -37,7 +40,7 @@ known 403s disappear.
 
 | Role | Grants |
 |---|---|
-| Viewer | View: Dashboard, Rider Alerts, Service Risk, Dispatch Log, Detours, Decision Matrix, Event AVL |
+| Viewer | View: Dashboard, Rider Alerts, Service Risk, Dispatch Log, Detours, Decision Matrix, Event AVL, Compliance Review, Performance Assessment |
 | Publisher | Viewer + Rider Alerts publish, Service Risk resolve, Detours edit + delete, Event AVL notify |
 | Detour Editor | Detours view + edit |
 | Event AVL Operator | Dashboard, Rider Alerts view; Event AVL view + message + notify |
@@ -88,10 +91,15 @@ known 403s disappear.
    `GroupMember.ReadWrite.All`; keep the read permissions people search, guest
    invites and sign-in activity still use.
 
-## Open
+## Settled 2026-09-17
 
-- Should a role be grantable to an Entra group (resolved via a `groups` claim or
-  Graph), or only to people? Plan assumes people only.
-- Viewer and Publisher can read compliance data in the API today but have no
-  page for it; the seeds drop that access. Confirm with Compliance.
-- Who is the seeded first Access Administrator on dev.
+- **People only.** A Role Grant names a person. Entra groups gate sign-in, not
+  authority, so there is no group membership lookup on the request path.
+- **Viewer and Publisher keep the compliance read**, so Compliance Review and
+  Performance Assessment become visible pages for them rather than API-only
+  access. Neither gains `review`, `work` or `decide`. Event AVL Operator drops
+  the read it has today through `STAFF_READ`; it is a monitoring role.
+- **First Access Administrator: Tyre Fant.** The seeding migration needs his
+  Entra object id and tenant id for the dev tenant, supplied when increment 1
+  is written. `ONBOARD_ACCESS_ADMIN_FALLBACK` stays on until that grant is
+  confirmed on dev, then goes at increment 6.
