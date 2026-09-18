@@ -293,6 +293,15 @@ export function agingBadge(alert: MissedTripAlert): { label: string; className: 
 // it eventually produced lived in a different module behind a second review.
 export function assessmentOutcome(alert: MissedTripAlert): { label: string; detail: string; tone: "counted" | "pending" | "excluded" } | null {
   if (alert.validationStatus === "unreviewed") return null;
+  // The Assessment evidence gate (ADR-0035) holds this out whatever the review
+  // said, so saying "Counted" here would be untrue of the server.
+  if (alert.evidenceConflict) {
+    return {
+      label: "Held — sources disagree",
+      detail: "Another source contradicts this outcome, so it is kept out of the performance assessment until the disagreement is settled.",
+      tone: "pending",
+    };
+  }
   const month = alert.occurrenceServiceMonth ? formatServiceMonth(alert.occurrenceServiceMonth) : formatServiceMonth(alert.serviceDate.slice(0, 6));
   if (alert.validationStatus !== "confirmed") {
     // Stored as `timely_service`, `partial_service_failure` or `indeterminate`
@@ -322,4 +331,45 @@ export function assessmentOutcome(alert: MissedTripAlert): { label: string; deta
       : `Charged to the contractor in the ${month} assessment. The period recomputes to include it.`,
     tone: "counted",
   };
+}
+
+// ---------------------------------------------------------------------------
+// Evidence conflict (ADR-0035).
+//
+// Two exact-matched sources support incompatible findings. The case keeps its
+// own outcome - a conflict is not a lifecycle and does not reopen anything -
+// but it blocks the performance assessment until a reviewer settles it, which
+// they do by recording a review having seen both sources.
+// ---------------------------------------------------------------------------
+
+export interface ConflictNotice {
+  label: string;
+  /** What disagreed, as the server recorded it. */
+  detail: string;
+  /** What the reviewer is being asked to do about it. */
+  action: string;
+}
+
+const CONFLICT_FALLBACK = "Two sources disagree about whether this run operated.";
+
+export function conflictNotice(
+  alert: Pick<MissedTripAlert, "evidenceConflict" | "evidenceConflictReason" | "validationStatus">,
+): ConflictNotice | null {
+  if (!alert.evidenceConflict) return null;
+  return {
+    label: "Sources disagree",
+    detail: alert.evidenceConflictReason?.trim() || CONFLICT_FALLBACK,
+    action: alert.validationStatus === "unreviewed"
+      ? "Review it with both sources in front of you. Until then it stays out of the performance assessment."
+      : "Change the review if the other source is right. Until this is settled it stays out of the performance assessment.",
+  };
+}
+
+// A conflicted case is held out of the assessment whatever its outcome, so the
+// assessment line has to say that rather than the outcome it would otherwise
+// have had.
+export function conflictBlocksAssessment(
+  alert: Pick<MissedTripAlert, "evidenceConflict">,
+): boolean {
+  return alert.evidenceConflict;
 }

@@ -5,6 +5,13 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.269] - 2026-09-18
+
+- **A disagreement between sources is now something a reviewer can see and settle.** ADR-0035 gave a Missed-trip case an Evidence conflict, but nothing rendered it: it existed only in the API and the database, and a conflict nobody can see cannot be settled. The case is flagged in the review queue and the history list, and the detail panel says what disagreed, in the words the server recorded, and what the reviewer is being asked to do about it.
+- **Recording a review settles it.** That is exactly what the ADR asks of a reviewer - an outcome reached with both sources in front of them - so the review clears the conflict and the trip becomes eligible for the performance assessment again. Nothing else clears it, and it is never cleared automatically.
+- **Fixed: the assessment line could contradict the server.** A confirmed trip held out by the Assessment evidence gate still read as "Counted in 09/2026", because the console worked that line out from the review alone. It now reads "Held — sources disagree", whatever the review said.
+- **Verified** by rendering it: the pill appears beside the lifecycle in both list layouts, and the detail callout carries the reason and the action. 696 console tests and 1223 backend tests pass, including the review that settles a conflict, proved against SQL.
+
 ## [1.5.268] - 2026-09-18
 
 - **One place for the words Missed Trips puts on a case.** Half the module's vocabulary lived in `missedTripReview.ts` and was tested; the other half - the detector name, the evidence-quality label, the route and trip code, review urgency (Aging/Overdue), and where a confirmed trip landed in the performance assessment - was private to the 1253-line `MissedTripAlerts.tsx` and had no tests, because reaching it meant rendering the page. It moved, with its reasoning comments intact. `MissedTripAlerts.tsx` drops to 1119 lines and is now rendering.
