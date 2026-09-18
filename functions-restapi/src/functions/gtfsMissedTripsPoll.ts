@@ -32,7 +32,7 @@ app.timer("gtfsMissedTripsPoll", {
     if (!noShowEnabled) {
       context.warn("GTFS silent-no-show detection is paused (GTFS_SILENT_NO_SHOW_ENABLED is not true); explicit cancellations remain active.");
     }
-    const { observations, tally } = await gtfsObservations(pool, feed.Entities, context);
+    const { observations, tally } = await gtfsObservations(feed.Entities, context);
     if (tally.undecidedBy.size > 0) {
       const detail = [...tally.undecidedBy.entries()].map(([reason, count]) => `${reason}=${count}`).join(", ");
       context.warn(`Silent no-show detection could not decide ${tally.undecidable} past-deadline trip(s) (${detail}). ${tally.warnings.join(" ")}`);

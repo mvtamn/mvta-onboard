@@ -12,6 +12,12 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **No wording changes**, and no page split: the four pages inside `MissedTripAlerts.tsx` stay where they are for now.
 - **Found, not fixed:** a case held for an unknown data gap is labelled "Legacy — unverified", because the label falls through to legacy for anything that is not source-verified or experimental. Its own label is worth adding, separately.
 
+## [1.5.259] - 2026-09-18
+
+- **Fixed-route missed-trip detection reads through one seam.** Every read the GTFS detector makes - the day's scheduled runs with their operational evidence, start evidence, a cancellation's scheduled time, and feed health - is injected through `GtfsDetectionDeps` with a live default, the way `gtfsRtReader`, `feedRun` and `availClient` already do it. The rules that decide *which* trips are judged - past its 30-minute deadline, already started, on a special-event route, which service day it belongs to, and what the day's own evidence can support - are now pure functions over one Scheduled day and have tests for the first time (23 of them, no database).
+- **No change to detection.** The queries and the rules are the same; the detector is mid-Shadow-detection and its numbers stay comparable. One log-only difference: a service day with nothing scheduled no longer appends a second, usually empty, explanation to the poll's warning line.
+- **`Scheduled day` is in CONTEXT.md**, defined as what one pass read - deliberately *not* the retained `Schedule snapshot`, which the code still does not implement.
+
 ## [1.5.258] - 2026-09-18
 
 - **Fixed: migration 092 could not be applied to any database.** It adds the delivery columns and then, **in the same batch**, a CHECK naming `delivery_status`. SQL Server compiles a batch before executing it, so that reference fails with "Invalid column name" and the whole batch is abandoned - nothing added, and quietly enough that a run looks uneventful. The CHECK now runs through `EXEC`, as migration 061's does. The file is edited rather than superseded because it had **never applied anywhere**: dev is the only environment, and it was tried there twice.

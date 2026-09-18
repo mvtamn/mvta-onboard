@@ -1250,6 +1250,15 @@ retained as the expected-run baseline for later review. A later schedule does
 not rewrite the snapshot used for an existing Missed-trip case.
 _Avoid_: current static feed, mutable schedule
 
+**Scheduled day**:
+Everything one detection pass read about the runs expected on one local service
+date: the scheduled runs, their operational evidence, and the route
+classifications in effect. It is what a pass observed, not a retained baseline
+- a later pass reads the schedule as it stands then. Distinct from a Schedule
+snapshot, which is retained and does not change under an existing Missed-trip
+case.
+_Avoid_: schedule snapshot, service day, schedule import
+
 **Post-publication cancellation**:
 A cancellation of a run after it was present in the effective Schedule
 snapshot. It creates an Advance cancellation; removing a run before the
