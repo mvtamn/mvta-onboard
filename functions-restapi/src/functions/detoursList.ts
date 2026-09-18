@@ -11,7 +11,7 @@ import { app, type HttpRequest, type InvocationContext } from "@azure/functions"
 import { getPool, sql } from "../lib/db";
 import { requireAccess } from "../lib/access/require";
 import { computeDetourStatus, toDateOnly, toTimeOnly, type DetourStatus } from "../lib/detourStatus";
-import { contractorFromSettings, requiredAudiences, type ContractorNotification } from "../lib/detourContractor";
+import { contractorFromSettings, defaultAudiencesFromSettings, requiredAudiences, type ContractorNotification } from "../lib/detourContractor";
 import { audienceEligibility, communicationStateSql, communicationStatus, deliveryColumnsReady } from "../lib/detourCommunication";
 import { readDetourWorkflows, type ActAvailability, type OfferedAct } from "../lib/detourWorkflow";
 
@@ -192,11 +192,15 @@ app.http("detoursList", {
       // Contractor notification settings (migration 089). Absent table or
       // rows means no contractor is configured, which changes nothing.
       let contractor: ContractorNotification = { name: null, recipients: [] };
+      // The audiences every Detour must reach when its own record names none -
+      // which is every Detour the Avail sync creates.
+      let defaultAudiences: string[] = [];
       try {
         const settings = await pool.request().query<{ setting_key: string; setting_value: string }>(
-          "SELECT setting_key, setting_value FROM AppSettings WHERE module = 'detour' AND setting_key IN ('contractor_name', 'contractor_recipients')",
+          "SELECT setting_key, setting_value FROM AppSettings WHERE module = 'detour' AND setting_key IN ('contractor_name', 'contractor_recipients', 'default_audiences')",
         );
         contractor = contractorFromSettings(settings.recordset);
+        defaultAudiences = defaultAudiencesFromSettings(settings.recordset);
       } catch { /* AppSettings not present in this environment */ }
 
       const detoursResult = await pool.request().query<DetourRow>(`
@@ -265,10 +269,10 @@ app.http("detoursList", {
         ...(hasConflictOverride ? { conflict_override_reason: d.conflict_override_reason ?? null, conflict_override_by: d.conflict_override_by ?? null, conflict_override_at: d.conflict_override_at ?? null } : {}),
         ...(hasWindowFields ? { start_time: toTimeOnly(d.start_time), end_time: toTimeOnly(d.end_time), time_window_status: d.time_window_status ?? null, affected_stops_and_stations: d.affected_stops_and_stations ?? null, operational_impacts: d.operational_impacts ?? null, confirmation_contact: d.confirmation_contact ?? null } : {}),
         ...(hasOperationalFields || contractor.name ? {
-          required_audiences: requiredAudiences({ notification_audiences: parseList(d.notification_audiences), service_impact: d.service_impact ?? null }, contractor),
+          required_audiences: requiredAudiences({ notification_audiences: parseList(d.notification_audiences), service_impact: d.service_impact ?? null }, contractor, defaultAudiences),
         } : {}),
         ...(hasCommunications ? (() => {
-          const required = requiredAudiences({ notification_audiences: parseList(d.notification_audiences), service_impact: d.service_impact ?? null }, contractor);
+          const required = requiredAudiences({ notification_audiences: parseList(d.notification_audiences), service_impact: d.service_impact ?? null }, contractor, defaultAudiences);
           const workflow = workflows.get(d.id);
           return {
             communications_published: d.communications_published ?? 0,

@@ -2,7 +2,7 @@ import { app, type HttpRequest, type InvocationContext } from "@azure/functions"
 import { getPool, sql } from "../lib/db";
 import { requireAccess } from "../lib/access/require";
 import { isGuid, validateDetourCommunication } from "../lib/validation";
-import { detourChannel, readContractorNotification, recordSentElsewhere, sendCommunication } from "../lib/detourCommunication";
+import { detourChannel, readDetourNotificationSettings, recordSentElsewhere, sendCommunication } from "../lib/detourCommunication";
 import { readDetourWorkflows } from "../lib/detourWorkflow";
 
 interface CommunicationRow { id: string; detour_id: string; audience: string; channel: string; recipients: string | null; content: string; status: "draft" | "published" | "failed"; outcome: string | null; created_by: string; created_at: Date; published_by: string | null; published_at: Date | null; }
@@ -80,13 +80,13 @@ app.http("detourCommunicationPublish", {
     try {
       const pool = await getPool();
       const actor = auth.principal.userDetails || "system";
-      const contractor = await readContractorNotification(pool);
+      const { contractor, defaultAudiences } = await readDetourNotificationSettings(pool);
       const workflow = (await readDetourWorkflows(pool, [id])).get(id);
       if (!workflow) return { status: 404, jsonBody: { error: "Detour not found" } };
       const outcome = send
-        ? await sendCommunication({ pool, detourId: id, communicationId, actor, contractor, workflow, context })
+        ? await sendCommunication({ pool, detourId: id, communicationId, actor, contractor, defaultAudiences, workflow, context })
         : await recordSentElsewhere({
-          pool, detourId: id, communicationId, actor, contractor, workflow,
+          pool, detourId: id, communicationId, actor, contractor, defaultAudiences, workflow,
           outcome: typeof body.outcome === "string" ? body.outcome : "Published by Operations",
           // When it actually went out. A recorded channel usually carries an
           // earlier date than today: the AVL message went out on Monday and is
