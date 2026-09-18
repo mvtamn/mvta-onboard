@@ -14,6 +14,11 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **Migration 135** adds `evidence_conflict_at` and `evidence_conflict_reason`, and regenerates `vw_MissedTrip` so the reporting layer classifies by the same rule. A case with an unresolved conflict stops reaching occurrence intake - the Assessment evidence gate - while its operational outcome stands.
 - **Verified.** 1223 backend tests pass, including 17 new ones over the matching rule (the second is noise, a different minute is a different run, two cases at the same minute is probable not a guess) and the conflict rules (nothing reopens, no review is rewritten, evidence sits beside what the live sources recorded). A database contract case proves the gate holds in SQL as well as in TypeScript.
 
+## [1.5.262] - 2026-09-18
+
+- **Import from Entra says what it read.** Pressing it on dev reported nothing to import while Entra held 24 assignments across 7 people, and neither the page nor the API log said which half had gone wrong - the console never posted, so there was nothing to look at. Finding nothing is a claim about Entra, and it is now made with evidence: no principals at all names the app-role configuration (`ONBOARD_ACCESS_CONFIG_JSON` against the application's current app-role ids), groups without people names the directory read permission that expands group membership, and people without a recognised app role says so plainly. A successful import now leads with what it read - "24 read from Entra · 7 people, 24 grants, 0 skipped" - so the number written can be checked against the number found.
+- **Verified.** Console 671 tests, including the two new empty cases and the assertion that neither of them posts.
+
 ## [1.5.261] - 2026-09-18
 
 - **The Missed Trips list and its tiles cannot disagree.** The queue read model lived inside its endpoints: `GET /missed-trips` carried the list, thirteen totals, the paging rules, the occurrence join and two `OBJECT_ID` probes in its own body, and `GET /missed-trips-monthly-summary` stated "what counts as a finding" a second time as its own `WHERE`. Both now read through `lib/missedTripCase/reads.ts`, beside the module that already owned every write and every classification. The handlers shrink to authorization, query and response shape - 241 lines to 101, and 80 to 32.
