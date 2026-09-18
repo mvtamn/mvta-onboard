@@ -4,6 +4,7 @@ import { parseConnectionString, sql } from "../db";
 import { AWAITING_CONFIRMATION } from "../missedTripConfidence";
 import { actOnMissedTripCase, classifyMissedTripCase, missedTripCaseSql, observeMissedTrips, type RunFact, type RunObservation } from "./index";
 import { MAX_CASE_LIMIT, readMissedTripCases, readMissedTripMonthlySummary } from "./reads";
+import { WINDOWED_DETECTOR_VERSION } from "./classify";
 import { decideRun } from "./decide";
 import { loadCases, writeDecision } from "./store";
 
@@ -325,6 +326,101 @@ test("Missed-trip cases against SQL Server", skip, async (t) => {
       assert.equal(after.evidence_conflict_at, null, "the review settled it");
       assert.equal(after.evidence_conflict_reason, null);
       assert.equal(after.validation_status, "confirmed");
+    });
+
+
+    // Candidate 6: the classification is stated twice - once in TypeScript for
+    // the pure decide path, once as SQL for every set-based reader - and the
+    // two must agree on every row, not merely on the rows earlier subtests
+    // happened to leave behind. This walks the rule space deliberately.
+    await t.test("TypeScript and SQL classify every combination of the deciding columns alike", async () => {
+      const DAY2 = "20260918";
+      const past = "2026-09-17T00:00:00";
+      const future = "2126-09-17T00:00:00";
+      const rows: Record<string, unknown>[] = [];
+      let n = 0;
+      for (const status of ["watching", "escalated", "resolved"])
+      for (const validation_status of ["unreviewed", "confirmed", "timely_service", "false_positive", "indeterminate"])
+      for (const data_quality_status of ["legacy_unverified", "source_verified", "experimental", "unknown_data_gap"])
+      for (const detection_type of ["explicit_cancellation", "silent_no_show", null])
+      for (const source_system of ["gtfs", "spare"])
+      for (const undecided_reason of [null, "awaiting_confirmation"])
+      for (const detector_version of [WINDOWED_DETECTOR_VERSION, "gtfs-silent-v3"])
+      for (const expected_window_end_at of [past, future, null])
+      for (const detected_late_arrival_at of ["2026-09-17T15:00:00", null]) {
+        rows.push({
+          t: `M${n++}`, d: DAY2, status, validation_status, data_quality_status, detection_type,
+          source_system, undecided_reason, detector_version, expected_window_end_at, detected_late_arrival_at,
+        });
+      }
+      // Two rows for the Assessment evidence gate, which is orthogonal to the
+      // ladders above and does not need crossing with them.
+      for (const evidence_conflict_at of [null, past]) {
+        rows.push({
+          t: `M${n++}`, d: DAY2, status: "escalated", validation_status: "confirmed",
+          data_quality_status: "source_verified", detection_type: "silent_no_show", source_system: "spare",
+          undecided_reason: null, detector_version: WINDOWED_DETECTOR_VERSION,
+          expected_window_end_at: null, detected_late_arrival_at: null, evidence_conflict_at,
+        });
+      }
+
+      // One insert, not eight thousand.
+      await pool.request()
+        .input("rows", sql.NVarChar(sql.MAX), JSON.stringify(rows))
+        .query(`
+          INSERT INTO dbo.MonitoredMissedTrips (
+            trip_id, service_date, route_id, scheduled_departure_at, grace_deadline_at, status,
+            validation_status, data_quality_status, detection_type, source_system, undecided_reason,
+            detector_version, expected_window_end_at, detected_late_arrival_at, evidence_conflict_at)
+          SELECT j.t, j.d, '460', '2026-09-17T14:00:00', '2026-09-17T14:30:00', j.status,
+                 j.validation_status, j.data_quality_status, j.detection_type, j.source_system, j.undecided_reason,
+                 j.detector_version, j.expected_window_end_at, j.detected_late_arrival_at, j.evidence_conflict_at
+          FROM OPENJSON(@rows) WITH (
+            t NVARCHAR(100) '$.t', d NVARCHAR(20) '$.d', status NVARCHAR(20) '$.status',
+            validation_status NVARCHAR(30) '$.validation_status', data_quality_status NVARCHAR(30) '$.data_quality_status',
+            detection_type NVARCHAR(30) '$.detection_type', source_system NVARCHAR(20) '$.source_system',
+            undecided_reason NVARCHAR(60) '$.undecided_reason', detector_version NVARCHAR(30) '$.detector_version',
+            expected_window_end_at DATETIME2 '$.expected_window_end_at',
+            detected_late_arrival_at DATETIME2 '$.detected_late_arrival_at',
+            evidence_conflict_at DATETIME2 '$.evidence_conflict_at') j`);
+
+      for (const promoted of ["", "gtfs_cancellation,spare,gtfs_silent_no_show"]) {
+        process.env.MISSED_TRIP_PROMOTED_DETECTORS = promoted;
+        const classified = (await pool.request().query(`
+          SELECT m.trip_id, m.status, m.validation_status, m.data_quality_status, m.detection_type, m.source_system,
+                 m.undecided_reason, m.grace_deadline_at, m.detected_late_arrival_at, m.detector_version,
+                 m.expected_window_end_at, m.evidence_conflict_at,
+                 mtc.lifecycle, mtc.evidence_finding, mtc.review_outcome, mtc.detector, mtc.held_reason,
+                 mtc.legacy, mtc.held, mtc.in_queue, mtc.concluded, mtc.flagged_missed, mtc.counts_as_missed,
+                 mtc.evidence_conflict, mtc.counts_toward_assessment
+          FROM dbo.MonitoredMissedTrips m ${missedTripCaseSql("m")}
+          WHERE m.service_date = '${DAY2}'`)).recordset;
+        assert.equal(classified.length, rows.length, "every combination came back");
+
+        const disagreements: string[] = [];
+        for (const row of classified) {
+          const expected = classifyMissedTripCase(row);
+          const actual = {
+            lifecycle: row.lifecycle, evidence_finding: row.evidence_finding, review_outcome: row.review_outcome ?? null,
+            detector: row.detector, held_reason: row.held_reason ?? null, legacy: row.legacy, held: row.held,
+            in_queue: row.in_queue, concluded: row.concluded, flagged_missed: row.flagged_missed,
+            counts_as_missed: row.counts_as_missed, evidence_conflict: row.evidence_conflict,
+            counts_toward_assessment: row.counts_toward_assessment,
+          };
+          try {
+            assert.deepEqual(actual, expected);
+          } catch {
+            disagreements.push(`${row.trip_id}: status=${row.status} validation=${row.validation_status} dq=${row.data_quality_status} ` +
+              `detection=${row.detection_type} source=${row.source_system} undecided=${row.undecided_reason} ` +
+              `version=${row.detector_version} window=${row.expected_window_end_at ? "set" : "null"} ` +
+              `SQL=${JSON.stringify(actual)} TS=${JSON.stringify(expected)}`);
+          }
+        }
+        assert.deepEqual(disagreements.slice(0, 5), [],
+          `${disagreements.length} of ${classified.length} rows classified differently with promoted="${promoted}"`);
+      }
+      delete process.env.MISSED_TRIP_PROMOTED_DETECTORS;
+      await pool.request().query(`DELETE FROM dbo.MonitoredMissedTrips WHERE service_date = '${DAY2}'`);
     });
 
     // Candidate 2: the list and its totals are one answer. They are two

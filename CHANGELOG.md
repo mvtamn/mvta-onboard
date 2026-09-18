@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.265] - 2026-09-18
+
+- **The two statements of the missed-trip classification are now held to each other deliberately.** The rule exists twice on purpose - as TypeScript for the decide path, which runs inside a transaction and must stay pure, and as SQL for every set-based reader - and a database test compares them. That test was checking whichever rows earlier subtests happened to leave behind, roughly eighteen of them, which is incidental coverage of a contractual rule. It now walks the rule space on purpose: **8,642 rows** across every combination of status, review outcome, data quality, detection type, source, hold reason, detector version, operating window, late arrival and evidence conflict, under two promotion settings, reporting the first disagreements with the row that caused them rather than a bare failure.
+- Verified locally against the TypeScript side alone (there is no database here): the matrix reaches every lifecycle, every evidence finding and every detector. The comparison itself runs in CI.
+- **No rule changed**, and the duplication is deliberately still there - see the pull request for why removing it was judged the wrong trade.
+
 ## [1.5.264] - 2026-09-18
 
 - **A disagreement between sources is now something a reviewer can see and settle.** ADR-0035 gave a Missed-trip case an Evidence conflict, but nothing rendered it: it existed only in the API and the database, and a conflict nobody can see cannot be settled. The case is flagged in the review queue and the history list, and the detail panel says what disagreed, in the words the server recorded, and what the reviewer is being asked to do about it.
