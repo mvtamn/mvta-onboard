@@ -1441,7 +1441,9 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
 
     getDetourIntake(status?: string) {
       const suffix = status ? `?status=${encodeURIComponent(status)}` : "";
-      return request<{ intake: DetourIntake[] }>(`/api/detour-intake${suffix}`, {}, true);
+      // `channels` is the authoritative list a communication can go out on,
+      // so the intake form offers exactly what the composer can use.
+      return request<{ intake: DetourIntake[]; channels?: DetourChannelOption[] }>(`/api/detour-intake${suffix}`, {}, true);
     },
 
     createDetourIntake(input: CreateDetourIntakeInput) {

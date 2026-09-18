@@ -5,13 +5,20 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.277] - 2026-09-18
+## [1.5.278] - 2026-09-18
 
 - **Integrations & Data Health says when the database is behind the code.** There is no migration runner and no schema-version table - migrations are numbered files a person applies - so a merge can ship a read of a column nobody has added yet and nothing says so. On 2026-09-18 that happened: four migrations' worth of code went live at 14:59 UTC against a database missing all four, and four timers threw `Invalid column name 'evidence_conflict_reason'` about 150 times over an hour before anyone noticed.
 - **The checks already in the code could not have caught it.** There are a dozen `OBJECT_ID('dbo.X') IS NULL` guards across the handlers and every one asks whether a *table* exists. A migration that adds a *column* to a table that already exists sails straight through them - which is exactly what happened. Requirements are declared at column granularity for that reason.
 - **It reports through the existing feed checks**, so a missing migration appears as a failed row - "Not applied to this database: MonitoredMissedTrips.evidence_conflict_at is missing. Missed-trip polls and the review queue fail outright. Run sql/migration-135-*.sql." - with no console change at all.
 - **The rule is pure and tested without a database** (13 tests): a column missing from a table that exists, a column on an absent table reported once as the table, a partly applied migration still failing, one row per migration however many things it adds, and a guard that every declared migration names a file that exists.
 
+## [1.5.277] - 2026-09-18
+
+- **Detour Intake offers the channels a communication can actually use.** The form carried its own list - `email`, `radio`, `Teams`, `dispatch board` - plus a free-text "Other" box, and seeded every new intake with email **and radio**. None of it matched the composer in Detours & Closures, which works from the five named channels (migration 132). Radio was deliberately dropped when the channels were named: nothing sends it and no detour ever used it. So an intake could require a channel nobody could ever satisfy, and it only showed up later, on a different page.
+- **The list comes from the server**, with the intake rows, from the same module the composer reads. The two cannot disagree about what exists, and adding a channel means adding it once.
+- **A channel a record already names that is no longer offered stays visible**, struck through and marked *no longer offered*, and can be removed but not re-added. The record said what it said; it is not quietly rewritten.
+- **The free-text box is gone.** A channel of one, typed into a form, is how "dispatch board" became a requirement.
+- **Verified.** 7 new tests in `detourIntakeChannels.test.ts` covering what is offered, case-insensitive matching of stored values, a retired value being kept and removable but not re-addable, and a record whose only channel is retired having nothing usable left. Console 722 tests pass; backend 1247.
 ## [1.5.276] - 2026-09-18
 
 - **The Dashboard priority queue was unreadable for the rows that needed reading.** A row title was `white-space: nowrap` with an ellipsis, and a suggested alert's title is its `draft_text`. The On-Demand wait-risk draft is ~220 characters opening with a fixed stem (`onDemandInterventions.ts` `draftText`), so on one line **every On-Demand suggestion rendered as the same truncated string**, with the zone and the predicted wait both past the cut. Titles now wrap to two lines (three below 760px), and `triageTitle()` shortens only text that genuinely overruns, preferring the first sentence - which is where the distinguishing facts are - over a hard cut. The full text stays in the `title` attribute and on the target page.
