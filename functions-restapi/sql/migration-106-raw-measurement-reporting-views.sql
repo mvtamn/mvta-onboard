@@ -190,7 +190,23 @@ GO
 -- trip undecidable (migration 087), 'legacy_unverified' is a row detected
 -- before the agency-timezone fix and retained for audit (migration 026).
 -- Counting either as a missed trip overstates the contractor's month.
+--
+-- Migration 125 REPLACED this view with one built from the Missed-trip case
+-- module's own classification fragment (Lifecycle, EvidenceFinding,
+-- ReviewOutcome, CountsAsMissed). This file stays re-runnable, so re-running it
+-- after 125 - to restore the report grants at the bottom, say - would quietly
+-- put the pre-125 definition back and drop those columns, and a report reading
+-- the view would then apply a different rule with nothing failing anywhere.
+--
+-- So the definition below is skipped once 125 has run. NOEXEC is how a batch
+-- is skipped without wrapping a CREATE OR ALTER VIEW in dynamic SQL, which
+-- must be the only statement in its batch. migration 125's own columns are the
+-- test, because they are what this definition would remove.
 -- ---------------------------------------------------------------------------
+IF COL_LENGTH('dbo.MonitoredMissedTrips', 'expected_window_end_at') IS NOT NULL
+  SET NOEXEC ON;
+GO
+
 CREATE OR ALTER VIEW dbo.vw_MissedTrip AS
 SELECT
   m.trip_id TripId,
@@ -234,6 +250,9 @@ LEFT JOIN dbo.OtpReasonCodes reason
 LEFT JOIN dbo.ComplianceOccurrences occurrence
   ON occurrence.source_ref = CONCAT(N'MonitoredMissedTrips:', ISNULL(m.source_system, N'gtfs'), N':',
                                     ISNULL(m.source_record_id, m.trip_id), N'|', m.service_date);
+GO
+
+SET NOEXEC OFF;
 GO
 
 -- ---------------------------------------------------------------------------

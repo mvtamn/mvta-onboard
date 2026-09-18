@@ -107,6 +107,20 @@ test("the four review outcomes, with false_positive read as Timely service", () 
   }
 });
 
+test("migration 106 can no longer replace the classified vw_MissedTrip", () => {
+  // Both files define the view. 106 is re-runnable - its report grants are at
+  // the bottom - so without this guard, re-running it after 125 would put the
+  // pre-classification definition back, and Power BI would read a different
+  // rule with nothing failing. The guard tests migration 125's own column,
+  // which is what the old definition would drop.
+  const migration = readFileSync(join(process.cwd(), "sql", "migration-106-raw-measurement-reporting-views.sql"), "utf8");
+  const guard = migration.indexOf("IF COL_LENGTH('dbo.MonitoredMissedTrips', 'expected_window_end_at') IS NOT NULL\n  SET NOEXEC ON;");
+  const view = migration.indexOf("CREATE OR ALTER VIEW dbo.vw_MissedTrip");
+  const off = migration.indexOf("SET NOEXEC OFF;");
+  assert.ok(guard > -1, "migration 106 must skip its vw_MissedTrip once migration 125 has run");
+  assert.ok(guard < view && view < off, "the guard must open before the view and close after it");
+});
+
 test("migration 125's vw_MissedTrip classifies with missedTripCaseSql verbatim", () => {
   const squash = (text: string) => text.replace(/\s+/g, " ").trim();
   const migration = readFileSync(join(process.cwd(), "sql", "migration-125-missed-trip-review-outcomes-and-window.sql"), "utf8");
