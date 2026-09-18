@@ -5,6 +5,15 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.263] - 2026-09-18
+
+- **Avail corroborates missed-trip cases; it does not decide them.** The vendor's own retrospective report reaches the Missed-trip case module as a third source adapter (ADR-0035). It never opens a case, never reopens or closes one, and never rewrites a review - the only thing it can change on its own is whether the case is in conflict.
+- **Avail names no trip**, so a link is built from route, local service date and Published Trip start: **exact** when those agree to the minute and name exactly one case, **probable** when the start time is missing or several cases match, **unmatched** when none does. Only an exact link becomes evidence; probable and unmatched are counted and reported, never guessed at. Unmatched is the measure of what no other source noticed, since Avail cannot open a case.
+- **Evidence is copied onto the case, not referenced.** The Avail feed replaces its whole trailing three-month window nightly and its row ids do not survive, so a reference would dangle by construction and a reviewed case's evidence would change under it.
+- **A contradiction becomes an Evidence conflict** - Avail says missed where the case concluded Timely service, or Avail says the trip ran and missed a stop where the case is a Confirmed missed trip. It is recorded once, keeps its first timestamp, and is never settled by preferring one source over the other.
+- **Migration 135** adds `evidence_conflict_at` and `evidence_conflict_reason`, and regenerates `vw_MissedTrip` so the reporting layer classifies by the same rule. A case with an unresolved conflict stops reaching occurrence intake - the Assessment evidence gate - while its operational outcome stands.
+- **Verified.** 1223 backend tests pass, including 17 new ones over the matching rule (the second is noise, a different minute is a different run, two cases at the same minute is probable not a guess) and the conflict rules (nothing reopens, no review is rewritten, evidence sits beside what the live sources recorded). A database contract case proves the gate holds in SQL as well as in TypeScript.
+
 ## [1.5.261] - 2026-09-18
 
 - **The Missed Trips list and its tiles cannot disagree.** The queue read model lived inside its endpoints: `GET /missed-trips` carried the list, thirteen totals, the paging rules, the occurrence join and two `OBJECT_ID` probes in its own body, and `GET /missed-trips-monthly-summary` stated "what counts as a finding" a second time as its own `WHERE`. Both now read through `lib/missedTripCase/reads.ts`, beside the module that already owned every write and every classification. The handlers shrink to authorization, query and response shape - 241 lines to 101, and 80 to 32.

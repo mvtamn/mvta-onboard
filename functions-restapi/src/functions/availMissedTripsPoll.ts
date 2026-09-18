@@ -19,8 +19,37 @@ import { availConfig, fetchAvail } from "../lib/availClient";
 import { mapMissedTripReport, replaceMissedTripsForMonths } from "../lib/availMissedTripsFeed";
 import { serviceMonthOf, subtractMonths } from "../lib/otpMonthlyFeed";
 import { runFeedIngestion } from "../lib/feedRun";
+import { observeMissedTrips } from "../lib/missedTripCase";
+import { availObservations } from "../lib/missedTripCase/adapters/avail";
 
 const TRAILING_MONTHS = 3; // current + prior 2
+
+async function reconcileAvailAgainstCases(context: InvocationContext): Promise<void> {
+  try {
+    const { observations, tally } = await availObservations();
+    const report = observations.length === 0
+      ? null
+      : await observeMissedTrips(await getPool(), observations);
+    for (const failure of report?.failed ?? []) {
+      context.error(`Failed to record Avail evidence for ${failure.runId} on ${failure.serviceDate}:`, failure.error);
+    }
+    context.log(
+      `Avail reconciliation: ${tally.reports} reports, ${tally.exact} exact, ${tally.probable} probable, ` +
+        `${tally.unmatched} unmatched. ${report?.evidenceRecorded ?? 0} case(s) updated, ` +
+        `${report?.skippedChanged ?? 0} changed elsewhere, ${report?.failed.length ?? 0} failed.`,
+    );
+    if (tally.probable > 0) {
+      context.warn(`${tally.probable} Avail report(s) matched more than one case, or carried no start time, and were left for a reviewer.`);
+    }
+    if (tally.unmatched > 0) {
+      context.warn(`${tally.unmatched} Avail report(s) matched no case at all - runs no other source noticed.`);
+    }
+  } catch (err) {
+    // Reconciliation failing must not make the ingestion itself look failed:
+    // the rows are stored and the next run reconciles them.
+    context.error("Avail retrospective reconciliation failed; the reloaded rows are kept:", err);
+  }
+}
 
 function firstOfMonth(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
@@ -68,6 +97,11 @@ app.timer("availMissedTripsPoll", {
         context.log(
           `Avail Missed Trips poll: ${reports.length} reports seen, ${mapped.length} rows reloaded across ${targetMonths.join(", ")}.`,
         );
+        // Retrospective reconciliation (ADR-0035). Runs on the rows just
+        // reloaded, and only corroborates: it opens no case, reopens none, and
+        // rewrites no review. A contradiction becomes an Evidence conflict for
+        // a reviewer to settle.
+        await reconcileAvailAgainstCases(context);
       }
       return {
         kind: "stored",

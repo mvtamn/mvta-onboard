@@ -81,6 +81,10 @@ export interface CaseListRow {
   held_reason: string | null;
   in_queue: boolean;
   concluded: boolean;
+  // ADR-0035: two exact-matched sources disagree. The console does not render
+  // this yet; the queue carries it so it can.
+  evidence_conflict: boolean;
+  evidence_conflict_reason: string | null;
   condition_late_start: boolean | null;
   condition_superseded: boolean | null;
   condition_late_arrival: boolean | null;
@@ -190,6 +194,7 @@ export async function readMissedTripCases(pool: sql.ConnectionPool, query: CaseQ
            mmt.validation_status, mmt.reason_code, mmt.validated_by, mmt.validated_at, mmt.notes,
            mmt.detector_version, mmt.data_quality_status, mmt.undecided_reason,
            mtc.lifecycle, mtc.evidence_finding, mtc.review_outcome, mtc.held_reason, mtc.in_queue, mtc.concluded,
+           mtc.evidence_conflict, mmt.evidence_conflict_reason,
            mmt.source_system, mmt.source_record_id,
            sme.condition_late_start, sme.condition_superseded, sme.condition_late_arrival,
            sme.start_delay_seconds, sme.arrival_delay_seconds,

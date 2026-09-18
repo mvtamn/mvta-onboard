@@ -122,6 +122,14 @@ COMMIT TRANSACTION;
 SET XACT_ABORT OFF;
 GO
 
+-- Migration 135 regenerates this view with the Evidence conflict columns. This
+-- file is re-runnable, so without the guard a re-run would put the
+-- pre-conflict definition back and Power BI would read a different rule with
+-- nothing failing. Same guard migration 106 carries against this file.
+IF COL_LENGTH('dbo.MonitoredMissedTrips', 'evidence_conflict_at') IS NOT NULL
+  SET NOEXEC ON;
+GO
+
 CREATE OR ALTER VIEW dbo.vw_MissedTrip AS
 SELECT
   m.trip_id TripId,
@@ -223,6 +231,9 @@ LEFT JOIN dbo.OtpReasonCodes reason
  AND reason.applies_to = 'missed_trip'
 LEFT JOIN dbo.ComplianceOccurrences occurrence
   ON occurrence.source_ref = CONCAT(N'MonitoredMissedTrips:',ISNULL(m.source_system,N'gtfs'),N':',ISNULL(m.source_record_id,m.trip_id),N'|',m.service_date);
+GO
+
+SET NOEXEC OFF;
 GO
 
 PRINT 'Migration 125 applied: four missed-trip review outcomes, superseding reviews, Expected operating window, vw_MissedTrip classification.';
