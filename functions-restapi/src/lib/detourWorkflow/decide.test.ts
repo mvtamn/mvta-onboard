@@ -20,6 +20,7 @@ function snapshot(overrides: Partial<WorkflowSnapshot> = {}): WorkflowSnapshot {
     id: "D1",
     lifecycle_state: "awaiting_fulfillment",
     fulfillment_mode: "avail",
+    workflow_owner: null,
     review_status: "current",
     review_reason: null,
     history_count: 1,
@@ -188,4 +189,40 @@ test("offered acts are the acts' own refusals", () => {
   assert.equal(acts.complete_re_review.available, false);
   const entered = acts["avail_entry.entered"];
   assert.ok(!entered.available && entered.refusal.code === "conflict_unresolved");
+});
+
+test("assigning says who acts next, and changes nothing else about the Detour", () => {
+  const decision = decide(snapshot(), { act: "assign", owner: "occ@example.com" }, person);
+  assert.ok("patch" in decision);
+  assert.deepEqual(decision.patch, { owner: "occ@example.com", workflow: true });
+  assert.equal(decision.history.from_state, decision.history.to_state, "assigning is not a transition");
+  assert.match(decision.history.detail ?? "", /Assigned to occ@example.com/);
+});
+
+test("handing a Detour back to nobody is a real answer", () => {
+  const decision = decide(snapshot({ workflow_owner: "occ@example.com" }), { act: "assign", owner: null }, person);
+  assert.ok("patch" in decision);
+  assert.equal(decision.patch.owner, null);
+  assert.match(decision.history.detail ?? "", /Owner cleared/);
+});
+
+test("assigning the owner it already has is refused rather than recorded", () => {
+  const same = decide(snapshot({ workflow_owner: "occ@example.com" }), { act: "assign", owner: " occ@example.com " }, person);
+  assert.ok("refusal" in same);
+  assert.equal(same.refusal.code, "no_change");
+  const empty = decide(snapshot(), { act: "assign", owner: "   " }, person);
+  assert.ok("refusal" in empty);
+  assert.equal(empty.refusal.code, "no_change");
+});
+
+test("a closed Detour has nothing left to own", () => {
+  const decision = decide(snapshot({ lifecycle_state: "closed" }), { act: "assign", owner: "occ@example.com" }, person);
+  assert.ok("refusal" in decision);
+  assert.equal(decision.refusal.code, "not_allowed_from_state");
+});
+
+test("an owner name too long for the column is refused", () => {
+  const decision = decide(snapshot(), { act: "assign", owner: "x".repeat(201) }, person);
+  assert.ok("refusal" in decision);
+  assert.equal(decision.refusal.code, "invalid_owner");
 });

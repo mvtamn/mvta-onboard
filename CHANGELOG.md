@@ -5,6 +5,14 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.282] - 2026-09-18
+
+- **A Detour can be assigned.** `workflow_owner` was written in exactly one place - when an intake was promoted, to whoever promoted it - and nothing could change it afterwards. Every Detour that arrived from the Avail feed was Unassigned permanently, which is all ten on dev. Detours & Closures asks OCC to run the workflow, and taking a Detour or handing it on is part of that.
+- **`assign` is a workflow act**, so it goes through the same module, refusals and audit trail as every other: `POST /api/detours/{id}/assign` with `detours.edit`. **Ownership is not a state** - assigning transitions nothing, never raises a re-review, and is recorded as a manual correction naming who it went to.
+- **`owner: null` hands it back to nobody**, which is a real answer rather than an empty field. Assigning the owner it already has is refused rather than written, a closed Detour has nothing left to own, and a name too long for the column is refused before it reaches SQL.
+- **On the row:** *Assign to me* (hidden from whoever already owns it) and *Reassign* / *Someone else*, under the owner in the Next action column.
+- **Verified.** 5 new tests over the act, backend 1252 pass, console 750 pass.
+
 ## [1.5.281] - 2026-09-18
 
 - **Detours & Closures is laid out around what OCC does there.** The pane is where the detour workflow is run, but its table answered questions nobody acts on: a Number, a Status, and a Source describing where the *record* came from. Readiness, the owner and whether anybody had been told were all inside the expanded row, or only on the Register.
