@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { TripStartLogTrip, TripStartVerificationAction } from "@mvta/shared";
+import { VerifiedInitials } from "./VerifiedInitials.js";
 import { SortableTable, type SortableColumn } from "../../../components/SortableTable.js";
 import {
   bucketLabel,
@@ -37,7 +38,7 @@ const PILL: Record<StartBucket, string> = {
 
 function verifiedContent(trip: TripStartLogTrip) {
   return trip.verification ? (
-    <span className="tsl-initials" title={trip.verification.verified_by}>{trip.verification.verified_initials}</span>
+    <VerifiedInitials trip={trip} />
   ) : trip.in_rotation ? (
     <span className="tsl-needs">Needs initials</span>
   ) : (

@@ -62,3 +62,17 @@ test("the same staff roles that read Fixed Route Departures read the log", () =>
   assert.ok(TRIP_START_LOG_READ_ROLES.includes("OCC.TripStartVerify"), "the contractor desk must be able to read what it verifies");
   assert.ok(!TRIP_START_LOG_READ_ROLES.includes("System.Ingestion"));
 });
+
+// The workbook's Block is the scheduling system's Vehicle Block Id (CONTEXT.md).
+// The GTFS feed writes the same block as "1-v64" - the service-change version
+// suffix is the feed's, not the block's, and the workbook pads to three digits.
+test("shows the block the way the workbook writes it, not the way GTFS does", () => {
+  assert.equal(shapeTrip({ ...base, block_id: "1-v64" }).block_id, "001");
+  assert.equal(shapeTrip({ ...base, block_id: "24-v64" }).block_id, "024");
+  assert.equal(shapeTrip({ ...base, block_id: "501-v64" }).block_id, "501");
+});
+
+test("leaves a block with no version suffix and no block at all alone", () => {
+  assert.equal(shapeTrip({ ...base, block_id: "001" }).block_id, "001");
+  assert.equal(shapeTrip({ ...base, block_id: null }).block_id, null);
+});

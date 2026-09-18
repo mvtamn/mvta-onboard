@@ -2032,6 +2032,26 @@ export interface TripStartVerification {
   note: string | null;
 }
 
+/** One change to a trip's Verified cell, from the append-only audit trail. */
+export interface TripStartVerificationEvent {
+  /** The audit row's own id; two entries can share a second. */
+  id: number;
+  /** What the cell said before; null when it was blank. */
+  previous_observation: TripStartObservation | null;
+  /** What it said after; null when the entry was cleared. */
+  observation: TripStartObservation | null;
+  recorded_by: string;
+  recorded_initials: string;
+  note: string | null;
+  recorded_at: string;
+}
+
+export interface TripStartVerificationHistoryResponse {
+  service_date: string;
+  trip_id: string;
+  events: TripStartVerificationEvent[];
+}
+
 export interface TripStartLogTrip {
   service_date: string;
   trip_id: string;

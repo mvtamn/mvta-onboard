@@ -5,6 +5,7 @@ import { useAuth } from "../../../auth/AuthContext.js";
 import { useAppDialog } from "../../../components/AppDialog.js";
 import { formatRefreshCountdown, useFixedRouteRefresh } from "../../../context/FixedRouteRefreshContext.js";
 import { LiveBanner } from "../../../components/LiveSignal.js";
+import { useVerificationHistory } from "./TripStartLogHistory.js";
 import { TripStartLogInspector } from "./TripStartLogInspector.js";
 import { TripStartLogQueryBar } from "./TripStartLogQueryBar.js";
 import { TripStartLogSummary } from "./TripStartLogSummary.js";
@@ -82,6 +83,8 @@ export function TripStartLog() {
   const [view, setView] = useState<TripStartView>("grid");
   const [filters, setFilters] = useState<TripStartFilters>(EMPTY_FILTERS);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+  // Bumped whenever an entry is recorded, so the history re-reads.
+  const [historyToken, setHistoryToken] = useState(0);
   // Sort state lives in the shell: the Grid owns the header UI, the shell
   // owns the order every view reads. Default is the workbook's - scheduled
   // start ascending.
@@ -160,6 +163,8 @@ export function TripStartLog() {
         service_date: trip.service_date, trip_id: tripId, action, note, initials,
       });
       setTrips((current) => current.map((t) => (t.trip_id === tripId ? { ...t, verification } : t)));
+      // The change belongs in the history too, so re-read it.
+      setHistoryToken((token) => token + 1);
     } catch (err) {
       setVerifyError(err instanceof ApiError ? `Could not record the verification: ${err.message}` : "Could not record the verification: the trip-start log service could not be reached.");
     }
@@ -207,6 +212,7 @@ export function TripStartLog() {
   const filtered = useMemo(() => sortTrips(applyFilters(trips, filters), sortKey, sortDir), [trips, filters, sortKey, sortDir]);
   const summary = useMemo(() => summarize(filtered), [filtered]);
   const selected = useMemo(() => trips.find((t) => t.trip_id === selectedTripId) ?? null, [trips, selectedTripId]);
+  const history = useVerificationHistory(serviceDate, selectedTripId, historyToken);
   const serviceDow = serviceDate ? dowOf(serviceDate) : null;
 
   return (
@@ -385,6 +391,7 @@ export function TripStartLog() {
 
       <TripStartLogInspector
         trip={selected}
+        history={history}
         serviceDow={serviceDow}
         canVerify={verifier}
         initials={initials}

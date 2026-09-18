@@ -126,6 +126,7 @@ import type {
   TripStartLogResponse,
   TripStartVerification,
   TripStartVerificationAction,
+  TripStartVerificationHistoryResponse,
   UpdateDetourInput,
   UpdateReasonCodeInput,
   ValidateMissedTripInput,
@@ -964,6 +965,16 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     // because the download needs the bearer token an <a href> cannot carry.
     getTripStartLogCsv(serviceDate: string) {
       return requestBlob(`/api/trip-start-log/export?date=${encodeURIComponent(serviceDate)}`);
+    },
+
+    // Every change ever made to one trip's Verified cell. Read-only, and
+    // open to everyone who can read the log.
+    getTripStartVerificationHistory(serviceDate: string, tripId: string) {
+      return request<TripStartVerificationHistoryResponse>(
+        `/api/trip-start-log/history?date=${encodeURIComponent(serviceDate)}&trip_id=${encodeURIComponent(tripId)}`,
+        {},
+        true,
+      );
     },
 
     // Record what a person saw at a trip's start (OCC.TripStartVerify or

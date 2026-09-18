@@ -1,4 +1,5 @@
-import type { TripStartLogTrip, TripStartVerificationAction } from "@mvta/shared";
+import type { TripStartLogTrip, TripStartVerificationAction, TripStartVerificationEvent } from "@mvta/shared";
+import { TripStartLogHistory } from "./TripStartLogHistory.js";
 import {
   bucketLabel,
   dayLabel,
@@ -9,6 +10,7 @@ import {
   serviceDateLabel,
   startBucket,
   timeLabel,
+  verifiedAtLabel,
 } from "./tripStartLogState.js";
 
 interface Props {
@@ -20,13 +22,15 @@ interface Props {
   initials: string;
   onVerify: (tripId: string, action: TripStartVerificationAction) => void;
   onDisposition: (tripId: string) => void;
+  /** Every change ever made to this trip's cell, newest first. */
+  history: TripStartVerificationEvent[];
 }
 
 const NEEDS_ROLE = "Requires the Trip Start Verifier role";
 
 // The persistent panel below whichever view is open (spec §4.3). Selecting in
 // any view lands here, so the views never need detail panels of their own.
-export function TripStartLogInspector({ trip, serviceDow, canVerify, initials, onVerify, onDisposition }: Props) {
+export function TripStartLogInspector({ trip, serviceDow, canVerify, initials, onVerify, onDisposition, history }: Props) {
   if (!trip) {
     return (
       <aside className="tsl-inspector" aria-label="Trip details">
@@ -63,7 +67,7 @@ export function TripStartLogInspector({ trip, serviceDow, canVerify, initials, o
           <dd>
             {trip.verification ? (
               <>
-                {observationLabel(trip.verification.observation)} · {trip.verification.verified_initials} · {timeLabel(trip.verification.verified_at)}
+                {observationLabel(trip.verification.observation)} · {trip.verification.verified_initials} · {verifiedAtLabel(trip.verification.verified_at, trip.service_date)}
                 {trip.verification.note ? <span className="td-dim"> · {trip.verification.note}</span> : null}
               </>
             ) : onList ? (
@@ -89,6 +93,7 @@ export function TripStartLogInspector({ trip, serviceDow, canVerify, initials, o
             : "Recording is for the SST OCS desk; the auto-computed status is shown beside the observation, never instead of it."}
         </small>
       </div>
+      <TripStartLogHistory events={history} serviceDate={trip.service_date} />
     </aside>
   );
 }
