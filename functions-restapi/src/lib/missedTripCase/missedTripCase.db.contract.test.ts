@@ -335,6 +335,12 @@ test("Missed-trip cases against SQL Server", skip, async (t) => {
         promotionWindows(await readDetectorPromotions(pool)).filter((w) => w.detector === "gtfs_silent_no_show"),
         [{ detector: "gtfs_silent_no_show", from: "20261101", until: null }],
       );
+
+      // Every subtest after this one reads the same database, so the decision
+      // written here is taken back out rather than left promoting a detector
+      // the rest of the file expects to be in Shadow detection.
+      await pool.request().query(
+        "DELETE FROM dbo.MissedTripDetectorPromotions WHERE detector = N'gtfs_silent_no_show' AND effective_service_date = N'20261101'");
     });
 
 
