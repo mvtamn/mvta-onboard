@@ -5,6 +5,13 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.279] - 2026-09-18
+
+- **One message per audience AND channel.** A Detour reaches an audience on every channel the record requires, and the wording is rarely the same on all of them - a text message says less than an email. The composer tracked one message per audience, so there was no way to say the same thing differently on two channels, and an audience read as told after the first one went.
+- **An audience is only told once every required channel has gone.** The required-communications list now shows a mark per channel - published, drafted or nothing - and each is drafted separately. A Detour requiring email and text is not finished after the email. The contractor is unchanged: they are reached by email alone, so email alone tells them.
+- **Starting from what you already wrote.** Drafting a second channel seeds the box from the same audience's other message, or failing that from the same channel to another audience, and says where it came from so it gets edited rather than sent as-is. Retyping the second message from scratch is how the two end up contradicting each other.
+- **OCC can add an audience the record does not name.** It joins the Detour's own list, so it is required like the rest - somebody added it deliberately, and the Detour is not fully communicated until they have been told. `PATCH /detours/{id}` accepts `notification_audiences`, and ignores it on an environment without migration 089's column rather than failing the whole edit.
+- **Verified.** Console 731 tests pass, including the new per-channel progress rules, seeding from an existing message, and refusing an audience the Detour already has whatever the casing. Backend 1247.
 ## [1.5.278] - 2026-09-18
 
 - **Access & Identity's Activity log reads the record that holds the changes.** Both it and the Overview's Recent activity read `/api/access-management/audit` alone - the Graph-era `AccessManagementAudit` table. Since roles moved into OnBoard (ADR-0032), granting writes `AccessRoleGrants` and never touches that table, so the feed could only show previews, exports, sign-in views and guest invitations: a page of "Checked a change" with every grant invisible. A new `GET /manage/access/activity` reads grants, removals, privileged requests and their decisions, and role edits straight out of the OnBoard tables - they are already append-only, so nothing is written twice - and the console merges the two feeds so the pre-cutover record is not lost.

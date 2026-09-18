@@ -58,11 +58,14 @@ app.http("detoursUpdate", {
     // batch up front, so naming a missing column fails the entire UPDATE,
     // including the pre-B6 fields the user actually meant to change. Same
     // guard detoursList.ts uses for internal_number.
-    const schemaCheck = await pool.request().query<{ reporting_ready: number }>(`
+    const schemaCheck = await pool.request().query<{ reporting_ready: number; audiences_ready: number }>(`
       SELECT CASE WHEN COL_LENGTH('dbo.Detours', 'reason_code') IS NULL
              THEN 0 ELSE 1 END AS reporting_ready
+            ,CASE WHEN COL_LENGTH('dbo.Detours', 'notification_audiences') IS NULL
+             THEN 0 ELSE 1 END AS audiences_ready
     `);
     const reportingReady = schemaCheck.recordset[0]?.reporting_ready === 1;
+    const audiencesReady = schemaCheck.recordset[0]?.audiences_ready === 1;
     if (!reportingReady) {
       context.warn(
         "Detours reporting columns not present (migration-025 not run) - any reason code, severity or reporting detail in this PATCH is being ignored.",
@@ -131,6 +134,14 @@ app.http("detoursUpdate", {
       if (body.expired_email_sent !== undefined) {
         sets.push("expired_email_sent = @expired_email_sent");
         updateReq.input("expired_email_sent", sql.Bit, body.expired_email_sent);
+      }
+      // Adding an audience the record does not name yet. The column is
+      // migration 089's; an environment without it silently ignores the field
+      // rather than failing the whole PATCH, the way the reporting fields do.
+      if (body.notification_audiences !== undefined && audiencesReady) {
+        sets.push("notification_audiences = @notification_audiences");
+        updateReq.input("notification_audiences", sql.NVarChar(1000),
+          body.notification_audiences.map((value) => value.trim()).filter(Boolean).join(", "));
       }
       if (body.spare_emailed !== undefined) {
         sets.push("spare_emailed = @spare_emailed");

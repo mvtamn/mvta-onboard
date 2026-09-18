@@ -1342,6 +1342,8 @@ export interface CreateDetourInput extends DetourReportFields {
   segments?: DetourSegmentInput[];
   fulfillment_mode?: DetourFulfillmentMode;
   lifecycle_state?: DetourLifecycleState;
+  /** Audiences this Detour must reach; an added one joins the list. */
+  notification_audiences?: string[];
 }
 
 export type DetourIntakeStatus = "draft" | "pending_review" | "needs_information" | "accepted" | "rejected" | "duplicate" | "withdrawn";
