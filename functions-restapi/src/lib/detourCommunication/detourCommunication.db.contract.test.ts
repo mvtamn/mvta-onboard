@@ -89,10 +89,9 @@ async function reset(pool: sql.ConnectionPool) {
 const CONTRACTOR = { name: "Transit Operations", recipients: ["ops@example.com"] };
 const ACTOR = "occ@example.com";
 
-// Each Detour gets its own closure: two Detours describing the same closure
-// over the same dates are Likely duplicates, and eligibility refuses those -
-// which is correct, and would otherwise refuse every seeded Detour after the
-// first for a reason the test is not about.
+// Each Detour gets its own closure AND its own operating window: two Detours
+// over the same window are Likely duplicates, and eligibility refuses those -
+// correctly, but for a reason these tests are not about.
 let seeded = 0;
 
 async function seedDetour(pool: sql.ConnectionPool, state: string, review: "current" | "needs_review" = "current"): Promise<string> {
@@ -101,10 +100,12 @@ async function seedDetour(pool: sql.ConnectionPool, state: string, review: "curr
     .input("state", sql.NVarChar(30), state)
     .input("review", sql.NVarChar(20), review)
     .input("closure", sql.NVarChar(500), `Nicollet Ave at ${seeded}th`)
+    .input("start", sql.Date, `2027-${String(seeded).padStart(2, "0")}-05`)
+    .input("end", sql.Date, `2027-${String(seeded).padStart(2, "0")}-10`)
     .query<{ id: string }>(`
       INSERT INTO Detours (closure, start_date, end_date, source, created_by, fulfillment_mode, lifecycle_state, review_status, notification_audiences, service_impact)
       OUTPUT INSERTED.id
-      VALUES (@closure, '2026-09-20', '2026-10-20', 'manual', 'seed', 'avail', @state, @review, 'Riders', 'fixed_route')`)).recordset[0].id;
+      VALUES (@closure, @start, @end, 'manual', 'seed', 'avail', @state, @review, 'Riders', 'fixed_route')`)).recordset[0].id;
   await pool.request().input("id", sql.UniqueIdentifier, id)
     .query("INSERT INTO DetourWorkflowHistory (detour_id, event_type, to_state, source, changed_by) VALUES (@id, 'created', 'seed', 'manual', 'seed')");
   return id;
@@ -144,7 +145,7 @@ test("Detour communication eligibility against SQL Server", { skip: !connectionS
       const communication = await seedCommunication(pool, detour);
       const port = fakeDeliveryPort("email", { status: "queued" });
       const outcome = await sendFor(pool, detour, communication, port);
-      assert.ok(outcome.ok);
+      assert.ok(outcome.ok, outcome.ok ? "" : `refused: ${outcome.refusal.code}`);
       assert.equal(outcome.state, "queued");
       const row = await readRow(pool, communication);
       // What went out is fixed before any attempt, and the row says queued
@@ -185,7 +186,7 @@ test("Detour communication eligibility against SQL Server", { skip: !connectionS
       const detour = await seedDetour(pool, "fulfilled");
       const communication = await seedCommunication(pool, detour);
       const outcome = await sendFor(pool, detour, communication, fakeDeliveryPort("email", { status: "skipped", error: "Delivery service is not configured" }));
-      assert.ok(outcome.ok);
+      assert.ok(outcome.ok, outcome.ok ? "" : `refused: ${outcome.refusal.code}`);
       const row = await readRow(pool, communication);
       assert.deepEqual([row.status, row.delivery_status, row.published_by], ["draft", "skipped", null]);
       assert.deepEqual(classifyCommunication(row), { state: "failed", counted: false });
@@ -218,7 +219,7 @@ test("Detour communication eligibility against SQL Server", { skip: !connectionS
       const workflow = (await readDetourWorkflows(pool, [detour])).get(detour)!;
       // No recipients is only a refusal for a send WE make.
       const recorded = await recordSentElsewhere({ pool, detourId: detour, communicationId: communication, actor: ACTOR, contractor: CONTRACTOR, workflow, outcome: "Emailed by hand" });
-      assert.ok(recorded.ok);
+      assert.ok(recorded.ok, recorded.ok ? "" : `refused: ${recorded.refusal.code}`);
       const row = await readRow(pool, communication);
       assert.deepEqual([row.status, row.delivery_status, row.outcome], ["published", "not_requested", "Emailed by hand"]);
       assert.deepEqual(classifyCommunication(row), { state: "recorded", counted: true });
