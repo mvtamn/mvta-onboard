@@ -14,6 +14,13 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **Migration 135** adds `evidence_conflict_at` and `evidence_conflict_reason`, and regenerates `vw_MissedTrip` so the reporting layer classifies by the same rule. A case with an unresolved conflict stops reaching occurrence intake - the Assessment evidence gate - while its operational outcome stands.
 - **Verified.** 1223 backend tests pass, including 17 new ones over the matching rule (the second is noise, a different minute is a different run, two cases at the same minute is probable not a guess) and the conflict rules (nothing reopens, no review is rewritten, evidence sits beside what the live sources recorded). A database contract case proves the gate holds in SQL as well as in TypeScript.
 
+## [1.5.262] - 2026-09-18
+
+- **One place for the words Missed Trips puts on a case.** Half the module's vocabulary lived in `missedTripReview.ts` and was tested; the other half - the detector name, the evidence-quality label, the route and trip code, review urgency (Aging/Overdue), and where a confirmed trip landed in the performance assessment - was private to the 1253-line `MissedTripAlerts.tsx` and had no tests, because reaching it meant rendering the page. It moved, with its reasoning comments intact. `MissedTripAlerts.tsx` drops to 1119 lines and is now rendering.
+- **20 new tests** over rules that had none, including the ones with real judgement in them: a route never reads "Route 420 · 420", a trip code falls back to whichever half exists, urgency stops once someone has reviewed however old the row is, and each assessment outcome - not linked, awaiting attribution, recorded but not charged, counted in a month that may already be finalized - says the right thing.
+- **No wording changes**, and no page split: the four pages inside `MissedTripAlerts.tsx` stay where they are for now.
+- **Found, not fixed:** a case held for an unknown data gap is labelled "Legacy — unverified", because the label falls through to legacy for anything that is not source-verified or experimental. Its own label is worth adding, separately.
+
 ## [1.5.261] - 2026-09-18
 
 - **The Missed Trips list and its tiles cannot disagree.** The queue read model lived inside its endpoints: `GET /missed-trips` carried the list, thirteen totals, the paging rules, the occurrence join and two `OBJECT_ID` probes in its own body, and `GET /missed-trips-monthly-summary` stated "what counts as a finding" a second time as its own `WHERE`. Both now read through `lib/missedTripCase/reads.ts`, beside the module that already owned every write and every classification. The handlers shrink to authorization, query and response shape - 241 lines to 101, and 80 to 32.
