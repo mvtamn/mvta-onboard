@@ -1,12 +1,14 @@
 // Granting and revoking OnBoard access (ADR-0032, increment 5).
 //
 //   GET  /manage/access/people                     - access-identity.view
+//   POST /manage/access/people                     - access-identity.manage
 //   POST /manage/access/people/{personId}/roles    - access-identity.manage
 //   POST /manage/access/grants/{grantId}/revoke    - access-identity.manage
 //   GET  /manage/access/requests                   - access-identity.view
 //   POST /manage/access/requests/{requestId}/{decision} - access-identity.approve
 //   POST /manage/access/import                     - access-identity.manage
 //   GET  /manage/access/health                     - access-identity.view
+//   GET  /manage/access/activity                   - access-identity.view
 //
 // A Privileged Access Change answers `pending_approval` rather than applying,
 // and only a second Access Administrator holding access-identity.approve can
@@ -16,11 +18,13 @@ import { getPool } from "../lib/db";
 import type { CallerPrincipal } from "../lib/auth";
 import { LEGACY_APP_ROLE_TO_ROLE_KEY } from "../lib/access";
 import { requireAccess } from "../lib/access/require";
+import { activityAvailable, listActivity } from "../lib/access/activity";
 import { RoleRuleError } from "../lib/access/roles";
 import {
   accessFindings,
   cancelRequest,
   decideRequest,
+  ensurePerson,
   grantRole,
   grantsAvailable,
   importAssignments,
@@ -85,6 +89,36 @@ app.http("accessPeopleList", {
       return { status: 200, jsonBody: { people: await listPeople(pool) } };
     } catch (error) {
       return failed(error, context, "read who holds access");
+    }
+  },
+});
+
+app.http("accessAddPerson", {
+  route: "manage/access/people",
+  methods: ["POST"],
+  authLevel: "anonymous", // authorization enforced via requireAccess below
+  handler: async (request: HttpRequest, context: InvocationContext) => {
+    const auth = await requireAccess(request, "access-identity.manage");
+    if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
+    try {
+      const pool = await getPool();
+      if (!(await grantsAvailable(pool))) return NOT_READY;
+      const input = await body(request);
+      // Who the directory says they are. The row makes them grantable; it is
+      // not access, and their first sign-in still records itself.
+      const outcome = await ensurePerson(
+        pool,
+        {
+          objectId: String(input.object_id ?? ""),
+          tenantId: typeof input.tenant_id === "string" ? input.tenant_id : null,
+          name: typeof input.name === "string" ? input.name : null,
+          email: typeof input.email === "string" ? input.email : null,
+        },
+        actorFrom(auth),
+      );
+      return { status: outcome.created ? 201 : 200, jsonBody: outcome };
+    } catch (error) {
+      return failed(error, context, "add the person");
     }
   },
 });
@@ -239,6 +273,23 @@ app.http("accessHealthFindings", {
       return { status: 200, jsonBody: { findings: await accessFindings(pool) } };
     } catch (error) {
       return failed(error, context, "read access health");
+    }
+  },
+});
+
+app.http("accessActivityList", {
+  route: "manage/access/activity",
+  methods: ["GET"],
+  authLevel: "anonymous", // authorization enforced via requireAccess below
+  handler: async (request: HttpRequest, context: InvocationContext) => {
+    const auth = await requireAccess(request, "access-identity.view");
+    if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
+    try {
+      const pool = await getPool();
+      if (!(await grantsAvailable(pool)) || !(await activityAvailable(pool))) return NOT_READY;
+      return { status: 200, jsonBody: { activity: await listActivity(pool) } };
+    } catch (error) {
+      return failed(error, context, "read what has happened to access");
     }
   },
 });

@@ -14,6 +14,7 @@ vi.mock("../../config.js", () => ({
     getAccessGrantRequests: vi.fn(),
     getAccessPrincipals: vi.fn(),
     getAccessAudit: vi.fn(),
+    getAccessActivity: vi.fn(),
     // The Roles page's own calls.
     getAccessCatalog: vi.fn(),
     getAccessRoles: vi.fn(),
@@ -115,6 +116,7 @@ beforeEach(() => {
   vi.mocked(api.getAccessGrantRequests).mockResolvedValue({ requests: [] });
   vi.mocked(api.getAccessPrincipals).mockResolvedValue({ environment: "test", access_admin_fallback: false, principals: [] });
   vi.mocked(api.getAccessAudit).mockResolvedValue({ audit: [] });
+  vi.mocked(api.getAccessActivity).mockResolvedValue({ activity: [] });
   vi.mocked(api.getAccessCatalog).mockResolvedValue({ modules: MODULES });
   vi.mocked(api.getAccessRoles).mockResolvedValue({ roles: [ACCESS_ADMIN, HELD, SYSTEM_ADMIN, DISPATCHER] });
   vi.mocked(api.getAccessRoleHistory).mockResolvedValue({ history: [] });

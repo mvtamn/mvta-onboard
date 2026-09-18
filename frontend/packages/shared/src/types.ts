@@ -1844,6 +1844,25 @@ export interface OnBoardAccessAuditEntry {
   details?: Record<string, unknown>;
 }
 
+/**
+ * One administrative act on OnBoard's own access tables (ADR-0032): a grant, a
+ * removal, a privileged request or its decision, or an edit to a role. Read
+ * from those tables rather than written a second time, which is why it carries
+ * the role and the person's name instead of a correlation id.
+ */
+export interface AccessActivityEntry {
+  id: string;
+  /** Who did it, as recorded: a name, or an object id when that is all there was. */
+  actor_name: string | null;
+  action: string;
+  target_id: string | null;
+  target_name: string | null;
+  role: string | null;
+  reason: string | null;
+  outcome: string;
+  occurred_at: string;
+}
+
 export interface OnBoardAccessMetadata {
   id: string;
   environment: string;
