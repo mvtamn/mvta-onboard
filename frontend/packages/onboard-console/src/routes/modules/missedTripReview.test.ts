@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { MissedTripsMonthlySummaryRow } from "@mvta/shared";
-import { buildReviewRequest, confirmBlockedReason, inView, lifecycleLabel, outcomeLabel, pivotMonthlySummary, reviewMode } from "./missedTripReview.js";
+import {
+  AGING_HOURS, OVERDUE_HOURS, agingBadge, assessmentOutcome, buildReviewRequest, confirmBlockedReason,
+  dataQualityLabel, detectionTypeLabel, formatServiceMonth, inView, lifecycleLabel, outcomeLabel,
+  pivotMonthlySummary, reviewMode, routeLabel, sourceLabel, tripCode,
+} from "./missedTripReview.js";
 
 const base = { tripId: "T1", serviceDate: "20260917", lifecycle: "ready_for_review" as const, validationStatus: "unreviewed" as const, heldReason: null };
 const drafts = { reasonCode: "RAN", notes: "", attribution: "contractor_error" as const, changeReason: "" };
@@ -85,5 +89,155 @@ describe("pivotMonthlySummary", () => {
       ["202607", "460", "gtfs"],
     ]);
     expect(rows[2].spareCandidates).toBe(1);
+  });
+});
+
+// The words the console puts on a case. These came out of MissedTripAlerts.tsx
+// with this move; none of them had a test there, because reaching them meant
+// rendering a 1253-line page.
+describe("what the console calls a case", () => {
+  it("names each detector, and says so honestly when the row predates detection tracking", () => {
+    expect(detectionTypeLabel("explicit_cancellation")).toBe("Explicit cancellation (GTFS-RT)");
+    expect(detectionTypeLabel("silent_no_show")).toBe("Scheduled no-show (never observed)");
+    expect(detectionTypeLabel("spare_multiple")).toBe("Multiple Spare missed-trip conditions");
+    // migration-023 added detection_type; older rows read back null.
+    expect(detectionTypeLabel(null)).toBe("Unknown — flagged before detection tracking was added");
+  });
+
+  it("names the data-quality status, defaulting to legacy rather than guessing", () => {
+    expect(dataQualityLabel("source_verified")).toBe("Source verified");
+    expect(dataQualityLabel("experimental")).toBe("Experimental detector");
+    expect(dataQualityLabel("legacy_unverified")).toBe("Legacy — unverified");
+    expect(dataQualityLabel("unknown_data_gap")).toBe("Legacy — unverified");
+  });
+
+  it("names the source system", () => {
+    expect(sourceLabel("spare")).toBe("Spare");
+    expect(sourceLabel("gtfs")).toBe("GTFS-Realtime");
+  });
+});
+
+describe("route labels", () => {
+  const routes = new Map([
+    ["420", { route_id: "420", route_short_name: "420", route_long_name: "Burnsville Express" }],
+    ["460", { route_id: "460", route_short_name: "Red", route_long_name: "Red Line" }],
+    ["999", { route_id: "999", route_short_name: "  ", route_long_name: "  " }],
+  ] as const) as never as Map<string, import("@mvta/shared").GtfsRouteOption>;
+
+  it("does not repeat the route number back at itself", () => {
+    // route_short_name is the same string as route_id for MVTA's numbered
+    // routes, so "Route 420 · 420" is what this rule exists to prevent.
+    expect(routeLabel("420", routes)).toBe("Route 420 · Burnsville Express");
+  });
+
+  it("uses the short name when it adds something", () => {
+    expect(routeLabel("460", routes)).toBe("Route 460 · Red");
+  });
+
+  it("falls back to the bare number when no name is usable", () => {
+    expect(routeLabel("999", routes)).toBe("Route 999");
+    expect(routeLabel("123", routes)).toBe("Route 123");
+  });
+
+  it("a Spare run is named by its service, not looked up as a route", () => {
+    expect(routeLabel("MVTA Connect", routes, "spare")).toBe("Spare · MVTA Connect");
+  });
+});
+
+describe("trip codes", () => {
+  it("reads as time and direction, the way Avail's own reports name a trip", () => {
+    expect(tripCode("2026-09-17T12:45:00", "SB")).toBe("1245-SB");
+    expect(tripCode("2026-09-17T09:05:00", "NB")).toBe("0905-NB");
+  });
+
+  it("falls back to whichever half exists", () => {
+    // direction_label is null whenever GtfsTripDirections has no row yet.
+    expect(tripCode("2026-09-17T12:45:00", null)).toBe("1245");
+    expect(tripCode(null, "SB")).toBe("SB");
+    expect(tripCode(null, null)).toBe("—");
+    expect(tripCode("not a date", null)).toBe("—");
+  });
+});
+
+describe("review urgency", () => {
+  const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+  const unreviewed = { validationStatus: "unreviewed" as const };
+
+  it("is Aging after a day and Overdue after three", () => {
+    expect(agingBadge({ ...unreviewed, firstSeenWatchingAt: hoursAgo(1) } as never)).toBe(null);
+    expect(agingBadge({ ...unreviewed, firstSeenWatchingAt: hoursAgo(AGING_HOURS + 1) } as never)?.label).toBe("Aging");
+    expect(agingBadge({ ...unreviewed, firstSeenWatchingAt: hoursAgo(OVERDUE_HOURS + 1) } as never)?.label).toBe("Overdue");
+  });
+
+  it("stops once someone has reviewed it, however old the row is", () => {
+    // There is nothing left pending, so urgency is not the reviewer's problem.
+    expect(agingBadge({ validationStatus: "confirmed", firstSeenWatchingAt: hoursAgo(500) } as never)).toBe(null);
+  });
+
+  it("says nothing when the timestamp cannot be read", () => {
+    expect(agingBadge({ ...unreviewed, firstSeenWatchingAt: "not a date" } as never)).toBe(null);
+  });
+});
+
+describe("where a decision went in the assessment", () => {
+  const reviewed = {
+    serviceDate: "20260917",
+    validationStatus: "confirmed" as const,
+    occurrenceServiceMonth: "202609",
+    occurrenceReviewStatus: null as string | null,
+    occurrenceAttribution: null as string | null,
+    occurrencePeriodStatus: null as string | null,
+  };
+
+  it("says nothing until someone has reviewed it", () => {
+    expect(assessmentOutcome({ ...reviewed, validationStatus: "unreviewed" } as never)).toBe(null);
+  });
+
+  it("a review that found no missed trip carries no charge", () => {
+    for (const status of ["timely_service", "partial_service_failure", "indeterminate", "false_positive"]) {
+      expect(assessmentOutcome({ ...reviewed, validationStatus: status } as never)?.tone).toBe("excluded");
+    }
+  });
+
+  it("a confirmation with no occurrence says so, and why it might have none", () => {
+    const outcome = assessmentOutcome(reviewed as never);
+    expect(outcome?.label).toBe("Not linked");
+    expect(outcome?.tone).toBe("pending");
+    expect(outcome?.detail).toContain("09/2026");
+  });
+
+  it("a raised occurrence waits on attribution before it can be charged", () => {
+    const outcome = assessmentOutcome({ ...reviewed, occurrenceReviewStatus: "candidate" } as never);
+    expect(outcome?.label).toBe("Awaiting attribution");
+    expect(outcome?.tone).toBe("pending");
+  });
+
+  it("an excusable or MVTA-directed occurrence is recorded but not charged", () => {
+    const excusable = assessmentOutcome({ ...reviewed, occurrenceReviewStatus: "dismissed", occurrenceAttribution: "excusable" } as never);
+    expect(excusable?.label).toBe("Recorded, not charged");
+    expect(excusable?.detail).toContain("an excusable delay");
+    const directed = assessmentOutcome({ ...reviewed, occurrenceReviewStatus: "dismissed", occurrenceAttribution: "mvta_directed" } as never);
+    expect(directed?.detail).toContain("MVTA-directed");
+  });
+
+  it("a charged occurrence names its month, and whether that month is settled", () => {
+    const open = assessmentOutcome({ ...reviewed, occurrenceReviewStatus: "assigned" } as never);
+    expect(open?.label).toBe("Counted in 09/2026");
+    expect(open?.detail).toContain("recomputes");
+    const finalized = assessmentOutcome({ ...reviewed, occurrenceReviewStatus: "assigned", occurrencePeriodStatus: "finalized" } as never);
+    expect(finalized?.detail).toContain("now finalized");
+  });
+
+  it("falls back to the service date's month when the occurrence names none", () => {
+    const outcome = assessmentOutcome({ ...reviewed, occurrenceServiceMonth: null } as never);
+    expect(outcome?.detail).toContain("09/2026");
+  });
+});
+
+describe("service months", () => {
+  it("reads as MM/YYYY, and passes anything else through untouched", () => {
+    expect(formatServiceMonth("202609")).toBe("09/2026");
+    expect(formatServiceMonth("2026-09")).toBe("2026-09");
+    expect(formatServiceMonth("")).toBe("");
   });
 });

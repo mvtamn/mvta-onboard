@@ -5,6 +5,13 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.268] - 2026-09-18
+
+- **One place for the words Missed Trips puts on a case.** Half the module's vocabulary lived in `missedTripReview.ts` and was tested; the other half - the detector name, the evidence-quality label, the route and trip code, review urgency (Aging/Overdue), and where a confirmed trip landed in the performance assessment - was private to the 1253-line `MissedTripAlerts.tsx` and had no tests, because reaching it meant rendering the page. It moved, with its reasoning comments intact. `MissedTripAlerts.tsx` drops to 1119 lines and is now rendering.
+- **20 new tests** over rules that had none, including the ones with real judgement in them: a route never reads "Route 420 · 420", a trip code falls back to whichever half exists, urgency stops once someone has reviewed however old the row is, and each assessment outcome - not linked, awaiting attribution, recorded but not charged, counted in a month that may already be finalized - says the right thing.
+- **No wording changes**, and no page split: the four pages inside `MissedTripAlerts.tsx` stay where they are for now.
+- **Found, not fixed:** a case held for an unknown data gap is labelled "Legacy — unverified", because the label falls through to legacy for anything that is not source-verified or experimental. Its own label is worth adding, separately.
+
 ## [1.5.267] - 2026-09-18
 
 - **A probable Avail link is now something a reviewer can answer.** 1.5.264 let Avail corroborate a case when the match is exact, and left a probable match "for a reviewer" - but nothing was written down, so each nightly run counted probable links, warned about them, and forgot them. There was never anything to confirm. Migration 136's `AvailEvidenceLinks` keeps every record in the window with how it was placed, how many cases it could have been about, and why - in words a reviewer can act on.
