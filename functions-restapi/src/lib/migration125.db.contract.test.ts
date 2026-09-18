@@ -154,6 +154,12 @@ test("migration 125 names false_positive Timely service once, adds the window an
     }
     assert.deepEqual(view.map((r) => [r.TripId, r.Lifecycle]), [["FP", "reviewed"], ["L", "legacy"], ["OK", "reviewed"], ["Q", "ready_for_review"], ["W", "awaiting_evidence"]]);
 
+    // A confirmed missed trip on 20260915 from the silent no-show detector: the
+    // only kind of case promotion can change. ('OK' was superseded above.)
+    await pool.request().query(`
+      INSERT INTO dbo.MonitoredMissedTrips (trip_id, service_date, route_id, scheduled_departure_at, grace_deadline_at, status, validation_status, detection_type, data_quality_status, detector_version)
+        VALUES ('P', '20260915', '460', '2026-09-15T14:00:00', '2026-09-15T14:30:00', 'escalated', 'confirmed', 'silent_no_show', 'source_verified', 'gtfs-silent-v3')`);
+
     // Migration 134: the promotion history, and the same view reading it.
     await applyMigration(pool, "migration-134-missed-trip-detector-promotion.sql");
     await applyMigration(pool, "migration-134-missed-trip-detector-promotion.sql");
@@ -165,8 +171,7 @@ test("migration 125 names false_positive Timely service once, adds the window an
     // An empty history says what the setting said: nothing is promoted.
     assert.deepEqual(await countsToward(), []);
 
-    // 'OK' is a confirmed missed trip on 20260915 from the silent no-show
-    // detector. A promotion from the following month does not reach it.
+    // A promotion from the following month does not reach a case on 20260915.
     const promote = async (on: string, promoted = true) => {
       await pool.request().input("e", sql.Char(8), on).input("p", sql.Bit, promoted ? 1 : 0).query(
         `INSERT INTO dbo.MissedTripDetectorPromotions (detector, effective_service_date, promoted, reason, decided_by)
@@ -175,7 +180,7 @@ test("migration 125 names false_positive Timely service once, adds the window an
     await promote("20261001");
     assert.deepEqual(await countsToward(), []);
     await promote("20260901");
-    assert.deepEqual(await countsToward(), ["OK"]);
+    assert.deepEqual(await countsToward(), ["P"]);
     // Demoted from the day before: the case stops counting.
     await promote("20260914", false);
     assert.deepEqual(await countsToward(), []);
