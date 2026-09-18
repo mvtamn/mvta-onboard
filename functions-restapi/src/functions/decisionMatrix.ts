@@ -1,6 +1,6 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { OnBehalfOfCredential } from "@azure/identity";
-import { DECISION_MATRIX_READ_ROLES, requireRole } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { getPool, sql } from "../lib/db";
 import { DECISION_MATRIX_SURFACES, surfaceReady } from "../lib/decisionMatrixReadiness";
 import { isInlineImageMime } from "../lib/supportingDocumentReferences";
@@ -29,7 +29,7 @@ function key(row: { procedure_id: string; revision: number }) { return `${row.pr
 function isHealthyPrimary(reference: Pick<ReferenceRow, "is_primary" | "health_status" | "document_type">) { return reference.is_primary && reference.health_status === "Valid" && (reference.document_type === "SOP" || reference.document_type === "Reference"); }
 
 export async function listDecisionMatrix(request: HttpRequest, context: InvocationContext) {
-  const auth = requireRole(request, DECISION_MATRIX_READ_ROLES);
+  const auth = await requireAccess(request, "decision-matrix.view");
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   const query = request.query.get("q")?.trim().slice(0, 200);
   try {
@@ -68,7 +68,7 @@ async function delegatedGraphToken(assertion: string): Promise<string> {
 }
 
 export async function previewDecisionMatrixRendition(request: HttpRequest, context: InvocationContext) {
-  const auth = requireRole(request, DECISION_MATRIX_READ_ROLES);
+  const auth = await requireAccess(request, "decision-matrix.view");
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   const { procedureId, revision: revisionParam, referenceId } = request.params; const revision = Number(revisionParam);
   if (!procedureId || !referenceId || !Number.isInteger(revision)) return { status: 400, jsonBody: { error: "Procedure, revision, and reference identities are required." } };

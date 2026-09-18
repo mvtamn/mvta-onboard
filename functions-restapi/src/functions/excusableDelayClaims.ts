@@ -3,7 +3,7 @@ import { app, type HttpRequest, type InvocationContext } from "@azure/functions"
 import { auditSql } from "../lib/assessment/audit";
 import { materialChangeSql } from "../lib/assessment/materialChange";
 import { isLateNotice } from "../lib/assessment/relief";
-import { COMPLIANCE_MANAGER_ROLES, COMPLIANCE_READ_ROLES, COMPLIANCE_WRITE_ROLES, requireRole } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { getPool, sql } from "../lib/db";
 import { isGuid, isServiceMonth } from "../lib/validation";
 
@@ -17,7 +17,7 @@ const withLate = <T extends { event_started_at: Date; notice_received_at: Date }
 app.http("excusableDelayClaimsList", {
   route: "excusable-delay-claims", methods: ["GET"], authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, COMPLIANCE_READ_ROLES);
+    const auth = await requireAccess(request, "performance-assessment.view");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const contractor = request.query.get("contractor_id"), month = request.query.get("service_month");
     if (!isGuid(contractor) || !isServiceMonth(month)) return { status: 400, jsonBody: { error: "contractor_id and service_month are required" } };
@@ -33,7 +33,7 @@ app.http("excusableDelayClaimsList", {
 app.http("excusableDelayClaimsCreate", {
   route: "excusable-delay-claims", methods: ["POST"], authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, COMPLIANCE_WRITE_ROLES);
+    const auth = await requireAccess(request, "performance-assessment.work");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     let body: Record<string, unknown>; try { body = await request.json() as Record<string, unknown>; } catch { return { status: 400, jsonBody: { error: "Request body must be valid JSON" } }; }
     const started = new Date(String(body.event_started_at)), notice = new Date(String(body.notice_received_at));
@@ -53,7 +53,7 @@ app.http("excusableDelayClaimsCreate", {
 app.http("excusableDelayClaimDecide", {
   route: "excusable-delay-claims/{id}/decision", methods: ["POST"], authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, COMPLIANCE_MANAGER_ROLES);
+    const auth = await requireAccess(request, "performance-assessment.decide");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     if (!isGuid(request.params.id)) return { status: 400, jsonBody: { error: "Invalid claim id" } };
     let body: Record<string, unknown>; try { body = await request.json() as Record<string, unknown>; } catch { return { status: 400, jsonBody: { error: "Request body must be valid JSON" } }; }

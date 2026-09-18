@@ -1,9 +1,9 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 
 app.http("eventMonitoringHealth", { route: "event-monitoring-health", methods: ["GET"], authLevel: "anonymous", handler: async (req: HttpRequest, context: InvocationContext) => {
-  const auth = requireRole(req, STAFF_READ_ROLES); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
+  const auth = await requireAccess(req, "event-avl.view"); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   try {
     const pool = await getPool();
     const eventId = req.query.get("event_id");

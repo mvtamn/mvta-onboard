@@ -1,10 +1,10 @@
 import { app, type HttpRequest } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole } from "../lib/auth";
-import { eventOperatingContextRoles } from "../lib/eventOperatingContextAuth";
+import { requireAccess } from "../lib/access/require";
+import { eventOperatingContextAction } from "../lib/eventOperatingContextAuth";
 
 async function authorized(req: HttpRequest) {
-  return requireRole(req, eventOperatingContextRoles(req.method));
+  return requireAccess(req, eventOperatingContextAction(req.method));
 }
 
 app.http("events", {

@@ -2,10 +2,10 @@
 // console's top-level Audit Log (adminMessages.ts) is: by querying the
 // records themselves rather than maintaining a separate generic log table.
 // Merges OtpStopExclusions and OtpDateExclusions into one sorted timeline.
-// Any staff role, plus OCC.Compliance.
+// Requires compliance-review.view.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 
 interface AuditEntry {
   type: "stop_exclusion" | "date_exclusion";
@@ -20,9 +20,9 @@ const MAX_LIMIT = 200;
 app.http("otpAuditStreamList", {
   route: "otp-audit-stream",
   methods: ["GET"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, [...STAFF_READ_ROLES, "OCC.Compliance"]);
+    const authResult = await requireAccess(request, "compliance-review.view");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

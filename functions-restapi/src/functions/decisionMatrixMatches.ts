@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
-import { ADMIN_ROLES, DECISION_MATRIX_READ_ROLES, requireRole } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { getPool, sql } from "../lib/db";
 import { DECISION_MATRIX_SURFACES, surfaceReady } from "../lib/decisionMatrixReadiness";
 
@@ -23,15 +23,15 @@ function parseRule(value: unknown, partial = false): { input?: { source_type?: s
   return { input: { source_type: sourceType, source_qualifier: qualifier, procedure_id: procedureId, priority, explanation, is_active: isActive as boolean | undefined } };
 }
 
-function stableAdmin(request: HttpRequest) {
-  const auth = requireRole(request, ADMIN_ROLES);
+async function stableAdmin(request: HttpRequest) {
+  const auth = await requireAccess(request, "decision-matrix.manage");
   if (!auth.authorized) return auth;
   if (!auth.principal.userId) return { authorized: false as const, status: 401, message: "A stable Admin identity is required to manage Match Rules." };
   return auth;
 }
 
 export async function listDecisionMatrixMatchRules(request: HttpRequest, context: InvocationContext) {
-  const auth = stableAdmin(request); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
+  const auth = await stableAdmin(request); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   const surface = DECISION_MATRIX_SURFACES.matchRules;
   try {
     const pool = await getPool();
@@ -42,7 +42,7 @@ export async function listDecisionMatrixMatchRules(request: HttpRequest, context
 }
 
 export async function createDecisionMatrixMatchRule(request: HttpRequest, context: InvocationContext) {
-  const auth = stableAdmin(request); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
+  const auth = await stableAdmin(request); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   let body: unknown; try { body = await request.json(); } catch { return { status: 400, jsonBody: { error: "Request body must be valid JSON." } }; }
   const parsed = parseRule(body); if (parsed.error || !parsed.input) return { status: 400, jsonBody: { error: parsed.error } };
   const input = parsed.input; const id = randomUUID();
@@ -55,7 +55,7 @@ export async function createDecisionMatrixMatchRule(request: HttpRequest, contex
 }
 
 export async function updateDecisionMatrixMatchRule(request: HttpRequest, context: InvocationContext) {
-  const auth = stableAdmin(request); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
+  const auth = await stableAdmin(request); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   const id = request.params.matchRuleId; if (!id) return { status: 400, jsonBody: { error: "matchRuleId is required." } };
   let body: unknown; try { body = await request.json(); } catch { return { status: 400, jsonBody: { error: "Request body must be valid JSON." } }; }
   const parsed = parseRule(body, true); if (parsed.error || !parsed.input) return { status: 400, jsonBody: { error: parsed.error } };
@@ -69,7 +69,7 @@ export async function updateDecisionMatrixMatchRule(request: HttpRequest, contex
 }
 
 export async function listDecisionMatrixRecommendations(request: HttpRequest, context: InvocationContext) {
-  const auth = requireRole(request, DECISION_MATRIX_READ_ROLES); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
+  const auth = await requireAccess(request, "decision-matrix.view"); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   const sourceType = request.query.get("source_type")?.trim(); const qualifier = request.query.get("source_qualifier")?.trim();
   if (!sourceType || !SOURCES.has(sourceType) || !qualifier || qualifier.length > 200) return { status: 400, jsonBody: { error: "A supported source_type and source_qualifier are required." } };
   try {

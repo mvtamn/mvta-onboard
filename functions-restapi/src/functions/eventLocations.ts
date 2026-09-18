@@ -1,10 +1,10 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, ADMIN_ROLES, STAFF_READ_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { canonicalLocationKey } from "../lib/eventLocationIdentity";
 
 app.http("eventLocations", { route: "event-locations", methods: ["GET", "POST"], authLevel: "anonymous", handler: async (req: HttpRequest, context: InvocationContext) => {
-  const auth = requireRole(req, req.method === "GET" ? [...STAFF_READ_ROLES, "OCC.Compliance"] : ADMIN_ROLES);
+  const auth = await requireAccess(req, req.method === "GET" ? "event-avl.view" : "event-avl.configure");
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   try {
     const pool = await getPool();
@@ -21,7 +21,7 @@ app.http("eventLocations", { route: "event-locations", methods: ["GET", "POST"],
 } });
 
 app.http("eventLocationUpdate", { route: "event-locations/{id}", methods: ["PATCH"], authLevel: "anonymous", handler: async (req, context) => {
-  const auth = requireRole(req, ADMIN_ROLES); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
+  const auth = await requireAccess(req, "event-avl.configure"); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   try {
     const body = await req.json() as Record<string, unknown>; const pool = await getPool();
     const current = (await pool.request().input("id", sql.UniqueIdentifier, req.params.id).query("SELECT TOP 1 * FROM EventLocations WHERE id=@id")).recordset[0] as Record<string, unknown> | undefined;

@@ -6,11 +6,11 @@
 // only writer - previewing a different threshold is a pure client-side
 // recompute over already-fetched stop rows and needs no write permission.
 //
-//   GET /otp-settings   - any staff role, plus OCC.Compliance
-//   PATCH /otp-settings - OCC.Admin only
+//   GET /otp-settings   - compliance-review.view
+//   PATCH /otp-settings - service-configuration.edit
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, STAFF_READ_ROLES, ADMIN_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { validateOtpSettings } from "../lib/validation";
 
 interface OtpSettingsRow {
@@ -24,9 +24,9 @@ const DEFAULT_THRESHOLD = 0.15;
 app.http("otpSettingsGet", {
   route: "otp-settings",
   methods: ["GET"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, [...STAFF_READ_ROLES, "OCC.Compliance"]);
+    const authResult = await requireAccess(request, "compliance-review.view");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }
@@ -55,9 +55,9 @@ app.http("otpSettingsGet", {
 app.http("otpSettingsUpdate", {
   route: "otp-settings",
   methods: ["PATCH"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, ADMIN_ROLES);
+    const authResult = await requireAccess(request, "service-configuration.edit");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

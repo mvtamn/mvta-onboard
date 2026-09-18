@@ -4,19 +4,18 @@
 // endpoint; the two share one loader so they cannot disagree about a day.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
-import { requireRole } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { agencyServiceDate } from "../lib/missedTripTime";
 import { isValidServiceDate } from "../lib/tripStartRotation";
 import { loadTripStartLogDay, tripStartLogTablesReady } from "../lib/tripStartLogRead";
 import { tripStartLogCsvFilename, tripStartLogToCsv } from "../lib/tripStartLogCsv";
-import { TRIP_START_LOG_READ_ROLES } from "./tripStartLog";
 
 app.http("tripStartLogExport", {
   route: "trip-start-log/export",
   methods: ["GET"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, TRIP_START_LOG_READ_ROLES);
+    const authResult = await requireAccess(request, "dispatch-log.view");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

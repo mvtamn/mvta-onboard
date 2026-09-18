@@ -1,7 +1,7 @@
 import { auditSql } from "../lib/assessment/audit";
 import { createHash } from "node:crypto";
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
-import { COMPLIANCE_MANAGER_ROLES, COMPLIANCE_READ_ROLES, COMPLIANCE_WRITE_ROLES, requireRole } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { downloadComplianceReport } from "../lib/blobStorage";
 import { getPool, sql } from "../lib/db";
 import { isGuid } from "../lib/validation";
@@ -10,7 +10,7 @@ import { issueFinal } from "../lib/assessment/issueFinal";
 
 
 app.http("assessmentReportsList",{route:"assessment-reports",methods:["GET"],authLevel:"anonymous",handler:async(request,context)=>{
-  const auth=requireRole(request,COMPLIANCE_READ_ROLES);if(!auth.authorized)return{status:auth.status,jsonBody:{error:auth.message}};
+  const auth=await requireAccess(request,"performance-assessment.view");if(!auth.authorized)return{status:auth.status,jsonBody:{error:auth.message}};
   const period=request.query.get("period_id");if(!isGuid(period))return{status:400,jsonBody:{error:"period_id is required"}};
   try{const pool=await getPool();const req=pool.request();req.input("period",sql.UniqueIdentifier,period);const result=await req.query(`SELECT id,period_id,service_month,issuance_type,version,supersedes_id,content_sha256,proof_sha256,assessed_total,issued_at,issued_by,voided_at,voided_by,dispute_deadline_at,supersede_reason,generated_by,generated_at FROM ComplianceReports WHERE period_id=@period ORDER BY generated_at DESC`);return{status:200,jsonBody:{reports:result.recordset}};}catch(error){context.error("GET assessment reports failed",error);return{status:500,jsonBody:{error:"Internal server error"}};}
 }});
@@ -24,7 +24,7 @@ app.http("assessmentReportsList",{route:"assessment-reports",methods:["GET"],aut
 app.http("assessmentReportsCreate",{route:"assessment-reports",methods:["POST"],authLevel:"anonymous",handler:async(request,context)=>{
   let body:Record<string,unknown>;try{body=await request.json() as Record<string,unknown>;}catch{return{status:400,jsonBody:{error:"Request body must be valid JSON"}};}
   const type=body.issuance_type;if(type!=="preliminary"&&type!=="final")return{status:400,jsonBody:{error:"issuance_type must be preliminary or final"}};
-  const auth=requireRole(request,type==="final"?COMPLIANCE_MANAGER_ROLES:COMPLIANCE_WRITE_ROLES);if(!auth.authorized)return{status:auth.status,jsonBody:{error:auth.message}};
+  const auth=await requireAccess(request,type==="final"?"performance-assessment.decide":"performance-assessment.work");if(!auth.authorized)return{status:auth.status,jsonBody:{error:auth.message}};
   if(!isGuid(body.period_id))return{status:400,jsonBody:{error:"period_id is required"}};
   try{
     const outcome=await generateArtifact(await getPool(),{periodId:body.period_id,type,actor:auth.principal.userDetails??"onboard-console",body});
@@ -34,14 +34,14 @@ app.http("assessmentReportsCreate",{route:"assessment-reports",methods:["POST"],
 }});
 
 async function streamReport(request:HttpRequest,attachment:boolean,context:InvocationContext){
-  const auth=requireRole(request,COMPLIANCE_READ_ROLES);if(!auth.authorized)return{status:auth.status,jsonBody:{error:auth.message}};if(!isGuid(request.params.id))return{status:400,jsonBody:{error:"Invalid report id"}};
+  const auth=await requireAccess(request,"performance-assessment.view");if(!auth.authorized)return{status:auth.status,jsonBody:{error:auth.message}};if(!isGuid(request.params.id))return{status:400,jsonBody:{error:"Invalid report id"}};
   try{const pool=await getPool();const req=pool.request();req.input("id",sql.UniqueIdentifier,request.params.id);const row=(await req.query<any>(`SELECT blob_path,content_sha256,service_month,issuance_type,version FROM ComplianceReports WHERE id=@id`)).recordset[0];if(!row)return{status:404,jsonBody:{error:"Report not found"}};const bytes=await downloadComplianceReport(row.blob_path);if(createHash("sha256").update(bytes).digest("hex")!==row.content_sha256)throw new Error("Archived report hash mismatch");return{status:200,headers:{"content-type":"text/html; charset=utf-8","content-disposition":`${attachment?"attachment":"inline"}; filename="assessment-${row.service_month}-${row.issuance_type}-v${row.version}.html"`},body:bytes};}catch(error){context.error("GET assessment report content failed",error);return{status:500,jsonBody:{error:"Unable to retrieve verified report"}};}
 }
 app.http("assessmentReportHtml",{route:"assessment-reports/{id}/html",methods:["GET"],authLevel:"anonymous",handler:(r,c)=>streamReport(r,false,c)});
 app.http("assessmentReportDownload",{route:"assessment-reports/{id}/download",methods:["GET"],authLevel:"anonymous",handler:(r,c)=>streamReport(r,true,c)});
 
 app.http("assessmentReportIssue",{route:"assessment-reports/{id}/issue",methods:["POST"],authLevel:"anonymous",handler:async(request,context)=>{
-  const auth=requireRole(request,COMPLIANCE_MANAGER_ROLES);if(!auth.authorized)return{status:auth.status,jsonBody:{error:auth.message}};if(!isGuid(request.params.id))return{status:400,jsonBody:{error:"Invalid report id"}};
+  const auth=await requireAccess(request,"performance-assessment.decide");if(!auth.authorized)return{status:auth.status,jsonBody:{error:auth.message}};if(!isGuid(request.params.id))return{status:400,jsonBody:{error:"Invalid report id"}};
   let body:Record<string,unknown>;try{body=await request.json() as Record<string,unknown>;}catch{return{status:400,jsonBody:{error:"Request body must be valid JSON"}};}
   if(![body.recipient,body.delivery_method,body.sender_attestation].every(value=>typeof value==="string"&&value.trim()))return{status:400,jsonBody:{error:"recipient, delivery_method, and sender_attestation are required"}};
   try{

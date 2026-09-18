@@ -1,6 +1,6 @@
-// GET /feed-checks - staff-only, PII-free upstream feed diagnostics.
+// GET /feed-checks - any OnBoard role, PII-free upstream feed diagnostics.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
-import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { requireAnyOnBoardAccess } from "../lib/access/require";
 import { probeAvail } from "../lib/availClient";
 import { getPool } from "../lib/db";
 import { probeGtfsRtFeed } from "../lib/gtfsRtReader";
@@ -65,7 +65,7 @@ app.http("feedChecks", {
   methods: ["GET"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, _context: InvocationContext) => {
-    const auth = requireRole(request, STAFF_READ_ROLES);
+    const auth = await requireAnyOnBoardAccess(request);
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
 
     const now = new Date();

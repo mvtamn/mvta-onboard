@@ -1,11 +1,11 @@
 // GET /otp-monthly - Avail OTP Monthly By Route/Stop/Day of Week compliance
 // data, backing the OTP Compliance console module's Route Summary/Review
-// Queue/Monthly Assessments pages. Any staff role, plus the dedicated
-// OCC.Compliance role, can read; all writes come from otpMonthlyFeedPoll.ts.
+// Queue/Monthly Assessments pages. compliance-review.view can read;
+// all writes come from otpMonthlyFeedPoll.ts.
 // Accepts an optional ?month=YYYYMM query param (default: current month).
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { serviceMonthOf } from "../lib/otpMonthlyFeed";
 import { measureOtpMonth } from "../lib/otpMonth";
 
@@ -47,9 +47,9 @@ function resolveMonth(request: HttpRequest): string {
 app.http("otpMonthlyList", {
   route: "otp-monthly",
   methods: ["GET"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, [...STAFF_READ_ROLES, "OCC.Compliance"]);
+    const authResult = await requireAccess(request, "compliance-review.view");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

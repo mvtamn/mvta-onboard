@@ -4,12 +4,12 @@
 // holdover from when this only served OTP; kept as-is rather than renaming
 // the table/route for a third, unrelated consumer.
 //
-//   GET /otp-reason-codes?applies_to=&active_only=  - any staff role, plus OCC.Compliance
-//   POST /otp-reason-codes                           - OCC.Admin only
-//   PATCH /otp-reason-codes/{id}                     - OCC.Admin only
+//   GET /otp-reason-codes?applies_to=&active_only=  - compliance-review.view
+//   POST /otp-reason-codes                           - service-configuration.edit
+//   PATCH /otp-reason-codes/{id}                     - service-configuration.edit
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, STAFF_READ_ROLES, ADMIN_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { validateCreateReasonCode, validateUpdateReasonCode, isGuid } from "../lib/validation";
 
 interface ReasonCodeRow {
@@ -26,9 +26,9 @@ interface ReasonCodeRow {
 app.http("otpReasonCodesList", {
   route: "otp-reason-codes",
   methods: ["GET"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, [...STAFF_READ_ROLES, "OCC.Compliance"]);
+    const authResult = await requireAccess(request, "compliance-review.view");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }
@@ -64,9 +64,9 @@ app.http("otpReasonCodesList", {
 app.http("otpReasonCodesCreate", {
   route: "otp-reason-codes",
   methods: ["POST"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, ADMIN_ROLES);
+    const authResult = await requireAccess(request, "service-configuration.edit");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }
@@ -108,9 +108,9 @@ app.http("otpReasonCodesCreate", {
 app.http("otpReasonCodesUpdate", {
   route: "otp-reason-codes/{id}",
   methods: ["PATCH"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, ADMIN_ROLES);
+    const authResult = await requireAccess(request, "service-configuration.edit");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

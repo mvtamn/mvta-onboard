@@ -1,5 +1,5 @@
 import { app, HttpRequest, type InvocationContext } from "@azure/functions";
-import { ADMIN_ROLES, requireRole } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { getPool, sql } from "../lib/db";
 import { DECISION_MATRIX_SURFACES, surfaceReady } from "../lib/decisionMatrixReadiness";
 import { createDecisionMatrixProcedureDraft } from "./decisionMatrixDrafts";
@@ -8,7 +8,7 @@ type LegacyCandidate = { procedure_id: string; revision: number; condition_key: 
 const reviewedFieldNames = ["condition", "criteria", "immediate_actions", "severity", "owner", "dates", "primary_document"];
 
 export async function listDecisionMatrixLegacyCandidates(request: HttpRequest, context: InvocationContext) {
-  const auth = requireRole(request, ADMIN_ROLES);
+  const auth = await requireAccess(request, "decision-matrix.manage");
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   const surface = DECISION_MATRIX_SURFACES.legacyCandidates;
   try {
@@ -23,7 +23,7 @@ export async function listDecisionMatrixLegacyCandidates(request: HttpRequest, c
 }
 
 export async function migrateDecisionMatrixLegacyCandidate(request: HttpRequest, context: InvocationContext) {
-  const auth = requireRole(request, ADMIN_ROLES);
+  const auth = await requireAccess(request, "decision-matrix.manage");
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   const actor = auth.principal.userId;
   const procedureId = request.params.procedureId; const revision = Number(request.params.revision);
