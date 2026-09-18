@@ -1,13 +1,13 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ApiError, type TripStartLogResponse, type TripStartLogTrip } from "@mvta/shared";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { ApiError, type TripStartLogResponse, type TripStartLogTrip, type TripStartVerificationEvent } from "@mvta/shared";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../../config.js";
 import { TripStartLog } from "./TripStartLog.js";
 import { agencyTodayServiceDate } from "./tripStartLogState.js";
 
 vi.mock("../../../config.js", () => ({
-  api: { getTripStartLog: vi.fn(), getTripStartLogCsv: vi.fn(), recordTripStartVerification: vi.fn() },
+  api: { getTripStartLog: vi.fn(), getTripStartLogCsv: vi.fn(), recordTripStartVerification: vi.fn(), getTripStartVerificationHistory: vi.fn() },
 }));
 // Viewer by default: every existing expectation about disabled verify
 // buttons holds; the verification tests switch to the SST desk role.
@@ -88,6 +88,11 @@ const DAY = [
   trip({ trip_id: "t2", block_id: "2", route_short_name: "460", scheduled_start_seconds: 5 * 3600, start_status: "late", start_delay_seconds: 120, in_rotation: true, rotation_day: "tuesday", verification: { observation: "observed_left_late", verified_by: "ocs@example.org", verified_initials: "JD", verified_at: at("10:03:00Z"), note: null } }),
   trip({ trip_id: "t3", block_id: "3", route_short_name: "Orange LINK", route_id: "425", scheduled_start_seconds: 6 * 3600, start_status: "on_time", start_delay_seconds: -20, rotation_day: "wednesday" }),
 ];
+
+// Selecting a trip always asks for its history; tests that care set their own.
+beforeEach(() => {
+  vi.mocked(api.getTripStartVerificationHistory).mockResolvedValue({ service_date: SERVICE_DATE, trip_id: "", events: [] });
+});
 
 afterEach(() => {
   cleanup();
@@ -448,5 +453,60 @@ describe("when a row was initialled", () => {
     const table = await screen.findByRole("table", { name: "Dispatch log trips" });
     const verifiedCell = within(table).getAllByRole("row")[2].querySelector(".tsl-verified");
     expect(verifiedCell?.textContent).toMatch(/[A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d{2}/);
+  });
+});
+
+describe("the history behind a cell", () => {
+  const events: TripStartVerificationEvent[] = [
+    { previous_observation: "observed_on_time", observation: null, recorded_by: "ocs@example.org", recorded_initials: "JD", note: "Entered against the wrong trip", recorded_at: at("10:40:00Z") },
+    { previous_observation: null, observation: "observed_on_time", recorded_by: "ocs@example.org", recorded_initials: "JD", note: null, recorded_at: at("10:03:00Z") },
+  ];
+
+  it("lists every change to the selected trip, newest first, clearing included", async () => {
+    vi.mocked(api.getTripStartLog).mockResolvedValueOnce(response(DAY));
+    vi.mocked(api.getTripStartVerificationHistory).mockResolvedValue({ service_date: SERVICE_DATE, trip_id: "t2", events });
+    render(<TripStartLog />);
+    const user = userEvent.setup();
+
+    const table = await screen.findByRole("table", { name: "Dispatch log trips" });
+    await user.click(within(table).getByText("460"));
+
+    expect(api.getTripStartVerificationHistory).toHaveBeenCalledWith(SERVICE_DATE, "t2");
+    const list = await screen.findByRole("list", { name: "Verification history" });
+    const items = within(list).getAllByRole("listitem");
+    expect(items).toHaveLength(2);
+    expect(items[0]).toHaveTextContent("Observed on time → cleared");
+    expect(items[0]).toHaveTextContent("Entered against the wrong trip");
+    expect(items[1]).toHaveTextContent("Blank → Observed on time");
+    expect(items[1]).toHaveTextContent("JD");
+  });
+
+  it("says nothing at all about a trip that was never touched", async () => {
+    vi.mocked(api.getTripStartLog).mockResolvedValueOnce(response(DAY));
+    vi.mocked(api.getTripStartVerificationHistory).mockResolvedValue({ service_date: SERVICE_DATE, trip_id: "t1", events: [] });
+    render(<TripStartLog />);
+    const user = userEvent.setup();
+
+    const table = await screen.findByRole("table", { name: "Dispatch log trips" });
+    await user.click(within(table).getAllByText("444")[0]);
+
+    await screen.findByRole("complementary", { name: "Trip details" });
+    expect(screen.queryByRole("list", { name: "Verification history" })).not.toBeInTheDocument();
+  });
+
+  it("re-reads the history once an entry is recorded", async () => {
+    authState.roles = ["OCC.TripStartVerify"];
+    vi.mocked(api.getTripStartLog).mockResolvedValueOnce(response(DAY));
+    vi.mocked(api.getTripStartVerificationHistory).mockResolvedValue({ service_date: SERVICE_DATE, trip_id: "t1", events: [] });
+    vi.mocked(api.recordTripStartVerification).mockResolvedValueOnce({ verification: verified("observed_on_time") });
+    render(<TripStartLog />);
+    const user = userEvent.setup();
+
+    const table = await screen.findByRole("table", { name: "Dispatch log trips" });
+    await user.click(within(table).getAllByText("444")[0]);
+    expect(api.getTripStartVerificationHistory).toHaveBeenCalledTimes(1);
+
+    await user.click(within(table).getByRole("button", { name: /for route 444 at 03:20/ }));
+    expect(api.getTripStartVerificationHistory).toHaveBeenCalledTimes(2);
   });
 });
