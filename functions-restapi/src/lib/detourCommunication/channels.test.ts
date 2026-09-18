@@ -95,3 +95,24 @@ test("migration 132 constrains the column to this list", () => {
   assert.doesNotMatch(migration, /'radio'/);
   assert.match(migration, /occurred_at/);
 });
+
+test("a migration never names a column it adds in the same batch", () => {
+  // SQL Server compiles a batch before running it, so an ALTER TABLE ADD
+  // followed by a CHECK naming that column fails with "Invalid column name"
+  // and the whole batch is abandoned - silently enough to look like a clean
+  // run. Migration 092 shipped that way and could not be applied to any
+  // database that lacked the column, which was all of them. The CHECK goes
+  // through EXEC instead.
+  const migration = readFileSync(join(process.cwd(), "sql", "migration-092-detour-communication-delivery.sql"), "utf8");
+  const batches = migration.split(/^\s*GO\s*$/gim)
+    // Text inside EXEC() is compiled when it runs, not with the batch around
+    // it - that is the whole point of routing the CHECK through it.
+    .map((batch) => batch.replace(/EXEC\s*\(\s*N?'[\s\S]*?'\s*\)/gi, ""));
+  for (const batch of batches) {
+    const adds = [...batch.matchAll(/ADD\s+(\w+)\s+NVARCHAR|ADD\s+(\w+)\s+DATETIME2/gi)].map((m) => m[1] ?? m[2]);
+    for (const column of adds) {
+      const named = new RegExp(`CHECK\\s*\\(\\s*${column}\\b`, "i");
+      assert.ok(!named.test(batch), `${column} is added and named by a CHECK in one batch; run the CHECK through EXEC`);
+    }
+  }
+});
