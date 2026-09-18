@@ -5,12 +5,20 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.277] - 2026-09-18
+## [1.5.278] - 2026-09-18
 
 - **Access & Identity's Activity log reads the record that holds the changes.** Both it and the Overview's Recent activity read `/api/access-management/audit` alone - the Graph-era `AccessManagementAudit` table. Since roles moved into OnBoard (ADR-0032), granting writes `AccessRoleGrants` and never touches that table, so the feed could only show previews, exports, sign-in views and guest invitations: a page of "Checked a change" with every grant invisible. A new `GET /manage/access/activity` reads grants, removals, privileged requests and their decisions, and role edits straight out of the OnBoard tables - they are already append-only, so nothing is written twice - and the console merges the two feeds so the pre-cutover record is not lost.
 - **An actor recorded as an object id is named.** The Graph-era rows stored `userDetails ?? userId`, which on dev is the object id, so the feed printed a raw GUID. Ids are matched against the people OnBoard knows on the way into the list, once, for both pages. The Activity log gains a Role column and searches it; Recent activity shows what changed and leaves looking to the full log.
 - **A role can be granted before the person's first sign-in.** Sign-in was the only way into `AccessPeople`, so a new starter had to be turned away by OnBoard before they could be given their role. `POST /manage/access/people` records who the directory says they are - the row grants nothing by itself, and their first sign-in still fills in the rest against the same person.
 - **Verified.** Console suite passes, including tests for the merged feed, the named actor and granting to somebody unseen; API suite 1247 pass; contract tests added against real SQL for the feed and for recording somebody from the directory. No migration; the endpoints answer 503 until migrations 129-131 are applied.
+
+## [1.5.277] - 2026-09-18
+
+- **Detour Intake offers the channels a communication can actually use.** The form carried its own list - `email`, `radio`, `Teams`, `dispatch board` - plus a free-text "Other" box, and seeded every new intake with email **and radio**. None of it matched the composer in Detours & Closures, which works from the five named channels (migration 132). Radio was deliberately dropped when the channels were named: nothing sends it and no detour ever used it. So an intake could require a channel nobody could ever satisfy, and it only showed up later, on a different page.
+- **The list comes from the server**, with the intake rows, from the same module the composer reads. The two cannot disagree about what exists, and adding a channel means adding it once.
+- **A channel a record already names that is no longer offered stays visible**, struck through and marked *no longer offered*, and can be removed but not re-added. The record said what it said; it is not quietly rewritten.
+- **The free-text box is gone.** A channel of one, typed into a form, is how "dispatch board" became a requirement.
+- **Verified.** 7 new tests in `detourIntakeChannels.test.ts` covering what is offered, case-insensitive matching of stored values, a retired value being kept and removable but not re-addable, and a record whose only channel is retired having nothing usable left. Console 722 tests pass; backend 1247.
 
 ## [1.5.276] - 2026-09-18
 
