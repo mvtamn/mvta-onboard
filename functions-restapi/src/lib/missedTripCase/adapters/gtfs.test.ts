@@ -12,7 +12,6 @@ import {
   dayEvidence,
   emptyTally,
   gtfsObservations,
-  silentNoShowEnabled,
   silentNoShowObservations,
   tripStartObservations,
   type DetectionConfidence,
@@ -21,6 +20,7 @@ import {
   type ScheduledRun,
   type TripStartEvidence,
 } from "./gtfs";
+import { missedTripDetectionSettings } from "../settings";
 import { SCHEDULE_RELATIONSHIP_CANCELED, type GtfsRtTripUpdateEntity } from "../../gtfsTripUpdates";
 
 const SERVICE_DATE = "20260917";
@@ -212,7 +212,7 @@ test("start evidence for a trip with no known route carries an empty route", () 
   assert.equal(tally.tripStarts, 1);
 });
 
-// --- the pass: rollover, the enable flag, failing closed ---------------------
+// --- the pass: rollover, the paused detector, failing closed -----------------
 
 const silence = { log: () => {}, warn: () => {}, error: () => {} };
 
@@ -233,35 +233,30 @@ function deps(overrides: Partial<GtfsDetectionDeps> = {}): GtfsDetectionDeps {
   };
 }
 
-const ON = { GTFS_SILENT_NO_SHOW_ENABLED: "true" };
-
-test("the enable flag is read from the env it is given", () => {
-  assert.equal(silentNoShowEnabled(ON), true);
-  assert.equal(silentNoShowEnabled({ GTFS_SILENT_NO_SHOW_ENABLED: " TRUE " }), true);
-  assert.equal(silentNoShowEnabled({}), false);
-});
+const ON = missedTripDetectionSettings({ GTFS_SILENT_NO_SHOW_ENABLED: "true" });
+const PAUSED = missedTripDetectionSettings({});
 
 test("a pass detects over today and yesterday", async () => {
   const asked: string[] = [];
-  await gtfsObservations([], silence, deps({
+  await gtfsObservations([], silence, ON, deps({
     scheduledDay: async ({ serviceDate }) => {
       asked.push(serviceDate);
       return day([], serviceDate);
     },
-  }), PAST_DEADLINE, ON);
+  }), PAST_DEADLINE);
   assert.deepEqual(asked, ["20260917", "20260916"]);
 });
 
 test("a day that fails to read does not stop the other day, and says which", async () => {
   const asked: string[] = [];
   const logged = capture();
-  const { observations } = await gtfsObservations([], logged.log, deps({
+  const { observations } = await gtfsObservations([], logged.log, ON, deps({
     scheduledDay: async ({ serviceDate }) => {
       asked.push(serviceDate);
       if (serviceDate === "20260917") throw new Error("read failed");
       return day([run({ trip_id: "YESTERDAY" })], serviceDate);
     },
-  }), PAST_DEADLINE, { ...ON });
+  }), PAST_DEADLINE);
   assert.deepEqual(asked, ["20260917", "20260916"]);
   assert.equal(observations.length, 1, "yesterday was still detected");
   assert.equal(observations[0].run.runId, "YESTERDAY");
@@ -272,7 +267,7 @@ test("a day that fails to read does not stop the other day, and says which", asy
 test("with the detector paused no schedule is read, and start evidence still is", async () => {
   let scheduleReads = 0;
   let startReads = 0;
-  const { observations } = await gtfsObservations([], silence, deps({
+  const { observations } = await gtfsObservations([], silence, PAUSED, deps({
     scheduledDay: async ({ serviceDate }) => {
       scheduleReads++;
       return day([], serviceDate);
@@ -282,7 +277,7 @@ test("with the detector paused no schedule is read, and start evidence still is"
       assert.deepEqual(dates, ["20260917", "20260916"]);
       return [];
     },
-  }), PAST_DEADLINE, {});
+  }), PAST_DEADLINE);
   assert.equal(scheduleReads, 0);
   assert.equal(startReads, 1);
   assert.deepEqual(observations, []);
@@ -290,10 +285,10 @@ test("with the detector paused no schedule is read, and start evidence still is"
 
 test("feed health that cannot be read fails closed, and says so", async () => {
   const logged = capture();
-  const { observations } = await gtfsObservations([], logged.log, deps({
+  const { observations } = await gtfsObservations([], logged.log, ON, deps({
     feedHealth: async () => { throw new Error("ledger unreadable"); },
     scheduledDay: async ({ serviceDate }) => day(serviceDate === "20260917" ? [run()] : [], serviceDate),
-  }), PAST_DEADLINE, ON);
+  }), PAST_DEADLINE);
   assert.equal(observations.length, 1);
   assert.deepEqual(observations[0].fact, { kind: "undecidable", reason: "vehicle_position_feed_not_current" });
   assert.match(logged.errors[0], /Failed to resolve feed confidence.*ledger unreadable/);
@@ -301,17 +296,17 @@ test("feed health that cannot be read fails closed, and says so", async () => {
 
 test("a cancellation is looked up only when the feed carries one", async () => {
   let lookups = 0;
-  await gtfsObservations([], silence, deps({
+  await gtfsObservations([], silence, PAUSED, deps({
     departureSecondsFor: async () => { lookups++; return new Map(); },
-  }), PAST_DEADLINE, {});
+  }), PAST_DEADLINE);
   assert.equal(lookups, 0);
 
-  await gtfsObservations([cancelEntity("T1", SERVICE_DATE)], silence, deps({
+  await gtfsObservations([cancelEntity("T1", SERVICE_DATE)], silence, PAUSED, deps({
     departureSecondsFor: async (tripIds) => {
       lookups++;
       assert.deepEqual(tripIds, ["T1"]);
       return new Map();
     },
-  }), PAST_DEADLINE, {});
+  }), PAST_DEADLINE);
   assert.equal(lookups, 1);
 });
