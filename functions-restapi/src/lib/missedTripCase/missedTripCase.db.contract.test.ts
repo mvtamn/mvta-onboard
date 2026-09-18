@@ -306,10 +306,14 @@ test("Missed-trip cases against SQL Server", skip, async (t) => {
     });
 
 
-    await t.test("a review settles an Evidence conflict, and the assessment gate lifts", async () => {
+    await t.test("a review settles an Evidence conflict", async () => {
       await pool.request().query(`INSERT INTO dbo.MonitoredMissedTrips
-        (trip_id, service_date, route_id, scheduled_departure_at, grace_deadline_at, status, validation_status, detection_type, data_quality_status, source_system, detector_version, evidence_conflict_at, evidence_conflict_reason)
-        VALUES ('AV2', '${DAY}', '460', '2026-09-17T14:00:00', '2026-09-17T14:30:00', 'escalated', 'unreviewed', 'silent_no_show', 'experimental', 'gtfs', 'gtfs-silent-v4', SYSUTCDATETIME(), 'Avail reports this run as missed; the case concluded Timely service.')`);
+        (trip_id, service_date, route_id, scheduled_departure_at, grace_deadline_at, status, validation_status, detection_type, data_quality_status, source_system, detector_version, expected_window_end_at, evidence_conflict_at, evidence_conflict_reason)
+        -- The Expected operating window has closed, so the case is Ready for
+        -- review. Without that it is Awaiting evidence and the module refuses
+        -- to confirm it - which is correct, and is what this fixture originally
+        -- got wrong.
+        VALUES ('AV2', '${DAY}', '460', '2026-09-17T14:00:00', '2026-09-17T14:30:00', 'escalated', 'unreviewed', 'silent_no_show', 'experimental', 'gtfs', 'gtfs-silent-v4', DATEADD(DAY, -1, SYSUTCDATETIME()), SYSUTCDATETIME(), 'Avail reports this run as missed; the case concluded Timely service.')`);
 
       const before = (await pool.request().query<{ counts_toward_assessment: boolean }>(`
         SELECT mtc.counts_toward_assessment FROM dbo.MonitoredMissedTrips m ${missedTripCaseSql("m")} WHERE m.trip_id = 'AV2'`)).recordset[0];
