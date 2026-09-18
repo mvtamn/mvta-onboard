@@ -2,13 +2,12 @@
 // records, backing the OTP Compliance console module's Monthly Assessments
 // page. Distinct from GET /missed-trips (gtfsMissedTripsPoll.ts's real-time
 // GTFS-based no-show/cancellation detection) - this is Avail's own vendor-
-// reported, contractually-scoped compliance feed. Any staff role, plus the
-// dedicated OCC.Compliance role, can read; all writes come from
-// availMissedTripsPoll.ts. Accepts an optional ?month=YYYYMM query param
+// reported, contractually-scoped compliance feed. compliance-review.view can read;
+// all writes come from availMissedTripsPoll.ts. Accepts an optional ?month=YYYYMM query param
 // (default: current month).
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { serviceMonthOf } from "../lib/otpMonthlyFeed";
 
 interface AvailMissedTripRow {
@@ -43,9 +42,9 @@ function resolveMonth(request: HttpRequest): string {
 app.http("availMissedTripsList", {
   route: "avail-missed-trips",
   methods: ["GET"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, [...STAFF_READ_ROLES, "OCC.Compliance"]);
+    const authResult = await requireAccess(request, "compliance-review.view");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

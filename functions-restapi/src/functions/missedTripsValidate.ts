@@ -8,8 +8,8 @@
 // legacy record needs `rereview_reason`.
 // Preparing a rider notice, if warranted, stays a separate action via the
 // existing /suggested-alerts/prepare flow - this endpoint never touches
-// SuggestedAlerts. Gated to Publisher/Admin plus the dedicated OCC.Compliance
-// role, so a Compliance-only user can complete the review workflow.
+// SuggestedAlerts. Gated to compliance-review.review, the action a
+// Compliance reviewer holds to complete the review workflow.
 //
 // The review is an act on the case through the Missed-trip case module, which
 // records it and its history and, in the same transaction, hands a confirmed
@@ -22,7 +22,7 @@
 // lib/occurrenceIntake (REVIEW_HANDOFF_EXPLANATIONS) for why the link never fails the review.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
-import { requireRole, PUBLISH_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { validateMissedTripValidation } from "../lib/validation";
 import type { OccurrenceAttribution } from "../lib/occurrenceIntake";
 import { actOnMissedTripCase, handOffExplanation, type CaseAct, type StoredReviewOutcome } from "../lib/missedTripCase";
@@ -30,9 +30,9 @@ import { actOnMissedTripCase, handOffExplanation, type CaseAct, type StoredRevie
 app.http("missedTripsValidate", {
   route: "missed-trips/validate",
   methods: ["POST"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, [...PUBLISH_ROLES, "OCC.Compliance"]);
+    const authResult = await requireAccess(request, "compliance-review.review");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

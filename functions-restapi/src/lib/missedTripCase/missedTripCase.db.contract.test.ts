@@ -3,6 +3,9 @@ import test, { after } from "node:test";
 import { parseConnectionString, sql } from "../db";
 import { AWAITING_CONFIRMATION } from "../missedTripConfidence";
 import { actOnMissedTripCase, classifyMissedTripCase, missedTripCaseSql, observeMissedTrips, type RunFact, type RunObservation } from "./index";
+import { PROMOTION_HISTORY, promotionWindows, readDetectorPromotions, recordDetectorPromotion, type DetectorPromotionEntry, type MissedTripDetector, type PromotionWindow } from "./index";
+import { MAX_CASE_LIMIT, readMissedTripCases, readMissedTripMonthlySummary } from "./reads";
+import { WINDOWED_DETECTOR_VERSION } from "./classify";
 import { decideRun } from "./decide";
 import { loadCases, writeDecision } from "./store";
 
@@ -27,11 +30,22 @@ import { loadCases, writeDecision } from "./store";
 const connectionString = process.env.DECISION_MATRIX_TEST_SQL_CONNECTION_STRING;
 
 const DROP = `
+IF OBJECT_ID('dbo.MissedTripDetectorPromotions','U') IS NOT NULL DROP TABLE dbo.MissedTripDetectorPromotions;
 IF OBJECT_ID('dbo.MissedTripReviewHistory','U') IS NOT NULL DROP TABLE dbo.MissedTripReviewHistory;
 IF OBJECT_ID('dbo.MonitoredMissedTrips','U') IS NOT NULL DROP TABLE dbo.MonitoredMissedTrips;
+IF OBJECT_ID('dbo.GtfsTripDirections','U') IS NOT NULL DROP TABLE dbo.GtfsTripDirections;
+IF OBJECT_ID('dbo.SpareMissedTripEvaluations','U') IS NOT NULL DROP TABLE dbo.SpareMissedTripEvaluations;
 `;
 
 const CREATE = `
+CREATE TABLE dbo.GtfsTripDirections (
+  trip_id NVARCHAR(100) NOT NULL PRIMARY KEY, direction_label NVARCHAR(10) NULL
+);
+CREATE TABLE dbo.SpareMissedTripEvaluations (
+  request_id NVARCHAR(100) NOT NULL PRIMARY KEY,
+  condition_late_start BIT NULL, condition_superseded BIT NULL, condition_late_arrival BIT NULL,
+  start_delay_seconds INT NULL, arrival_delay_seconds INT NULL
+);
 CREATE TABLE dbo.MonitoredMissedTrips (
   trip_id NVARCHAR(100) NOT NULL, service_date NVARCHAR(20) NOT NULL, route_id NVARCHAR(50) NOT NULL,
   scheduled_departure_at DATETIME2 NOT NULL, grace_deadline_at DATETIME2 NOT NULL,
@@ -43,6 +57,7 @@ CREATE TABLE dbo.MonitoredMissedTrips (
   detector_version NVARCHAR(30) NULL, data_quality_status NVARCHAR(30) NOT NULL DEFAULT 'legacy_unverified',
   source_system NVARCHAR(20) NOT NULL DEFAULT 'gtfs', source_record_id NVARCHAR(100) NULL, evidence_json NVARCHAR(MAX) NULL,
   undecided_reason NVARCHAR(60) NULL, expected_window_end_at DATETIME2 NULL,
+  evidence_conflict_at DATETIME2 NULL, evidence_conflict_reason NVARCHAR(300) NULL,
   CONSTRAINT PK_MonitoredMissedTrips PRIMARY KEY (trip_id, service_date),
   CONSTRAINT CK_MonitoredMissedTrips_Status CHECK (status IN ('watching', 'escalated', 'resolved')),
   CONSTRAINT CK_MonitoredMissedTrips_ValidationStatus CHECK (validation_status IN ('unreviewed', 'confirmed', 'timely_service', 'partial_service_failure', 'indeterminate', 'false_positive')),
@@ -60,6 +75,12 @@ CREATE TABLE dbo.MissedTripReviewHistory (
   review_kind NVARCHAR(20) NULL, review_reason NVARCHAR(1000) NULL,
   CONSTRAINT FK_MissedTripReviewHistory_Trip FOREIGN KEY (trip_id, service_date) REFERENCES dbo.MonitoredMissedTrips(trip_id, service_date),
   CONSTRAINT CK_MissedTripReviewHistory_Status CHECK (validation_status IN ('confirmed', 'timely_service', 'partial_service_failure', 'indeterminate', 'false_positive'))
+);
+CREATE TABLE dbo.MissedTripDetectorPromotions (
+  id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),
+  detector NVARCHAR(40) NOT NULL, effective_service_date CHAR(8) NOT NULL, promoted BIT NOT NULL,
+  reason NVARCHAR(1000) NOT NULL, measured_precision DECIMAL(5,4) NULL, sample_size INT NULL,
+  decided_by NVARCHAR(200) NOT NULL, decided_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
 );
 `;
 
@@ -85,6 +106,11 @@ async function read(pool: sql.ConnectionPool, tripId: string): Promise<CaseRow |
   )).recordset[0];
 }
 
+const promotion = (detector: MissedTripDetector, on: string, promoted = true): DetectorPromotionEntry => ({
+  detector, effective_service_date: on, promoted, reason: "contract test",
+  measured_precision: 0.95, sample_size: 100, decided_by: "test@example.com", decided_at: new Date(`2026-01-01T00:00:00Z`),
+});
+
 const skip = { skip: !connectionString && "DECISION_MATRIX_TEST_SQL_CONNECTION_STRING not set" };
 const reviewer = { kind: "person" as const, name: "occ@example.com" };
 
@@ -95,7 +121,6 @@ after(async () => {
 });
 
 test("Missed-trip cases against SQL Server", skip, async (t) => {
-  delete process.env.MISSED_TRIP_PROMOTED_DETECTORS;
   const pool = await new sql.ConnectionPool(parseConnectionString(connectionString!)).connect();
   try {
     await pool.request().batch(DROP);
@@ -229,14 +254,26 @@ test("Missed-trip cases against SQL Server", skip, async (t) => {
         ('W1', '${DAY}', '460', '2026-09-17T14:00:00', '2026-09-17T14:30:00', 'escalated', 'unreviewed', 'silent_no_show', 'experimental', 'gtfs', 'gtfs-silent-v4', DATEADD(DAY, 1, SYSUTCDATETIME())),
         ('W2', '${DAY}', '460', '2026-09-17T14:00:00', '2026-09-17T14:30:00', 'escalated', 'unreviewed', 'silent_no_show', 'experimental', 'gtfs', 'gtfs-silent-v4', DATEADD(DAY, -1, SYSUTCDATETIME())),
         ('W3', '${DAY}', '460', '2026-09-17T14:00:00', '2026-09-17T14:30:00', 'escalated', 'unreviewed', 'silent_no_show', 'experimental', 'gtfs', 'gtfs-silent-v4', NULL)`);
-      for (const promoted of ["", "gtfs_cancellation,spare"]) {
-        process.env.MISSED_TRIP_PROMOTED_DETECTORS = promoted;
+      // Promotion is dated, so the fragment is checked with nothing promoted,
+      // with two detectors promoted from before these cases' service date, and
+      // with a promotion that starts after it - which must count for nothing.
+      const cases: { name: string; windows: PromotionWindow[] }[] = [
+        { name: "nothing promoted", windows: [] },
+        { name: "promoted before", windows: promotionWindows([
+          promotion("gtfs_cancellation", "20260101"), promotion("spare", "20260101")]) },
+        { name: "promoted after", windows: promotionWindows([promotion("spare", "20261201")]) },
+        { name: "promoted then demoted", windows: promotionWindows([
+          promotion("spare", "20260101"), promotion("spare", "20260801", false)]) },
+      ];
+      for (const { name, windows } of cases) {
         const rows = (await pool.request().query(`
-          SELECT m.trip_id, m.status, m.validation_status, m.data_quality_status, m.detection_type, m.source_system,
+          SELECT m.trip_id, m.service_date, m.status, m.validation_status, m.data_quality_status, m.detection_type, m.source_system,
                  m.undecided_reason, m.grace_deadline_at, m.detected_late_arrival_at, m.detector_version, m.expected_window_end_at,
+                 m.evidence_conflict_at,
                  mtc.lifecycle, mtc.evidence_finding, mtc.review_outcome, mtc.detector, mtc.held_reason,
-                 mtc.legacy, mtc.held, mtc.in_queue, mtc.concluded, mtc.flagged_missed, mtc.counts_as_missed, mtc.counts_toward_assessment
-          FROM dbo.MonitoredMissedTrips m ${missedTripCaseSql("m")}`)).recordset;
+                 mtc.legacy, mtc.held, mtc.in_queue, mtc.concluded, mtc.flagged_missed, mtc.counts_as_missed,
+                 mtc.evidence_conflict, mtc.counts_toward_assessment
+          FROM dbo.MonitoredMissedTrips m ${missedTripCaseSql("m", "mtc", windows)}`)).recordset;
         // NS1, C1, R1, SP1, SP2, RACE, LEG, REV and the review subtests' cases, plus K1-K7 and W1-W3.
         assert.ok(rows.length >= 18);
         assert.deepEqual(
@@ -244,17 +281,283 @@ test("Missed-trip cases against SQL Server", skip, async (t) => {
           [["W1", "awaiting_evidence"], ["W2", "ready_for_review"], ["W3", "awaiting_evidence"]],
         );
         for (const row of rows) {
+          const expected = classifyMissedTripCase(row, windows);
+          const actual = {
+            lifecycle: row.lifecycle, evidence_finding: row.evidence_finding, review_outcome: row.review_outcome ?? null,
+            detector: row.detector, held_reason: row.held_reason ?? null, legacy: row.legacy, held: row.held,
+            in_queue: row.in_queue, concluded: row.concluded, flagged_missed: row.flagged_missed,
+            counts_as_missed: row.counts_as_missed, evidence_conflict: row.evidence_conflict,
+            counts_toward_assessment: row.counts_toward_assessment,
+          };
+          assert.deepEqual(actual, expected, `${row.trip_id} with ${name}`);
+        }
+      }
+
+      // vw_MissedTrip cannot be handed compiled windows - nothing regenerates
+      // it when a promotion is recorded - so it reads the history table itself.
+      // The two must answer identically, or the warehouse drifts from the app.
+      const history = [promotion("gtfs_cancellation", "20260101"), promotion("spare", "20260101"),
+        promotion("spare", "20260801", false)];
+      for (const entry of history) {
+        await pool.request()
+          .input("d", sql.NVarChar(40), entry.detector)
+          .input("e", sql.Char(8), entry.effective_service_date)
+          .input("p", sql.Bit, entry.promoted ? 1 : 0)
+          .query(`INSERT INTO dbo.MissedTripDetectorPromotions (detector, effective_service_date, promoted, reason, decided_by)
+                  VALUES (@d, @e, @p, N'contract test', N'test@example.com')`);
+      }
+      const both = (await pool.request().query(`
+        SELECT m.trip_id, viaHistory.counts_toward_assessment AS by_history, viaWindows.counts_toward_assessment AS by_windows
+        FROM dbo.MonitoredMissedTrips m
+          ${missedTripCaseSql("m", "viaHistory", PROMOTION_HISTORY)}
+          ${missedTripCaseSql("m", "viaWindows", promotionWindows(history))}`)).recordset;
+      for (const row of both) {
+        assert.equal(row.by_history, row.by_windows, `${row.trip_id}: the view and the app disagree on promotion`);
+      }
+
+      // Recording a decision: the module refuses what does not clear the bar,
+      // and what it writes reads back as what it decided.
+      assert.equal((await recordDetectorPromotion(pool, {
+        detector: "gtfs_cancellation", effective_service_date: "20260101", promoted: true,
+        reason: "already promoted above", measured_precision: 0.99, sample_size: 50,
+      }, "ops@example.com") as { refusal: { code: string } }).refusal.code, "no_change");
+
+      const written = await recordDetectorPromotion(pool, {
+        detector: "gtfs_silent_no_show", effective_service_date: "20261101", promoted: true,
+        reason: "97.2% over the service week of 21 September", measured_precision: 0.972, sample_size: 143,
+      }, "ops@example.com");
+      assert.ok(written.ok);
+      assert.equal(written.entry.promoted, true);
+      assert.equal(Number(written.entry.measured_precision), 0.972);
+      assert.equal(written.entry.sample_size, 143);
+      assert.equal(written.entry.decided_by, "ops@example.com");
+      assert.deepEqual(
+        promotionWindows(await readDetectorPromotions(pool)).filter((w) => w.detector === "gtfs_silent_no_show"),
+        [{ detector: "gtfs_silent_no_show", from: "20261101", until: null }],
+      );
+
+      // Every subtest after this one reads the same database, so the decision
+      // written here is taken back out rather than left promoting a detector
+      // the rest of the file expects to be in Shadow detection.
+      await pool.request().query(
+        "DELETE FROM dbo.MissedTripDetectorPromotions WHERE detector = N'gtfs_silent_no_show' AND effective_service_date = N'20261101'");
+    });
+
+
+    // ADR-0035: Avail corroborates and contradicts, through the same module
+    // every other source writes through.
+    await t.test("Avail contradicting a closed case records an Evidence conflict and reopens nothing", async () => {
+      await pool.request().query(`INSERT INTO dbo.MonitoredMissedTrips
+        (trip_id, service_date, route_id, scheduled_departure_at, grace_deadline_at, status, validation_status, detection_type, data_quality_status, source_system, detector_version)
+        VALUES ('AV1', '${DAY}', '460', '2026-09-17T14:00:00', '2026-09-17T14:30:00', 'resolved', 'unreviewed', 'silent_no_show', 'experimental', 'gtfs', 'gtfs-silent-v4')`);
+
+      const observation: RunObservation = {
+        run: { source: "avail", runId: "AV1", serviceDate: DAY, routeId: "460", scheduledStartAt: T0, deadlineAt: T0 },
+        detectorVersion: "avail-retrospective-v1",
+        fact: { kind: "retrospective_missed" },
+        evidence: { source: "avail", entireTripMissed: true },
+      };
+      const report = await observeMissedTrips(pool, [observation], T0);
+      assert.equal(report.created, 0, "Avail opens nothing");
+
+      const after = (await pool.request().query<{ status: string; validation_status: string; evidence_conflict_at: Date | null; evidence_conflict_reason: string | null; evidence_json: string | null }>(
+        "SELECT status, validation_status, evidence_conflict_at, evidence_conflict_reason, evidence_json FROM dbo.MonitoredMissedTrips WHERE trip_id = 'AV1'")).recordset[0];
+      assert.equal(after.status, "resolved", "the case is not reopened");
+      assert.equal(after.validation_status, "unreviewed", "no review is written");
+      assert.ok(after.evidence_conflict_at !== null, "the contradiction is recorded");
+      assert.match(after.evidence_conflict_reason ?? "", /Avail reports this run as missed/);
+      assert.match(after.evidence_json ?? "", /"avail"/);
+
+      // And the gate holds in SQL, not just in TypeScript.
+      const gated = (await pool.request().query<{ evidence_conflict: boolean; counts_toward_assessment: boolean }>(`
+        SELECT mtc.evidence_conflict, mtc.counts_toward_assessment
+        FROM dbo.MonitoredMissedTrips m ${missedTripCaseSql("m")} WHERE m.trip_id = 'AV1'`)).recordset[0];
+      assert.equal(gated.evidence_conflict, true);
+      assert.equal(gated.counts_toward_assessment, false);
+    });
+
+
+    await t.test("a review settles an Evidence conflict", async () => {
+      await pool.request().query(`INSERT INTO dbo.MonitoredMissedTrips
+        (trip_id, service_date, route_id, scheduled_departure_at, grace_deadline_at, status, validation_status, detection_type, data_quality_status, source_system, detector_version, expected_window_end_at, evidence_conflict_at, evidence_conflict_reason)
+        -- The Expected operating window closed before T0, so the case is Ready
+        -- for review. Without that it is Awaiting evidence and the module
+        -- refuses to confirm it - which is correct, and is what this fixture
+        -- originally got wrong.
+        --
+        -- The window is a FIXED time before T0, not SYSUTCDATETIME() minus a
+        -- day: the module is called with T0, so a window pinned to the wall
+        -- clock overtook it every day at 14:35 UTC and the test failed for the
+        -- rest of the day.
+        VALUES ('AV2', '${DAY}', '460', '2026-09-17T14:00:00', '2026-09-17T14:30:00', 'escalated', 'unreviewed', 'silent_no_show', 'experimental', 'gtfs', 'gtfs-silent-v4', '2026-09-17T14:20:00', SYSUTCDATETIME(), 'Avail reports this run as missed; the case concluded Timely service.')`);
+
+      const before = (await pool.request().query<{ counts_toward_assessment: boolean }>(`
+        SELECT mtc.counts_toward_assessment FROM dbo.MonitoredMissedTrips m ${missedTripCaseSql("m")} WHERE m.trip_id = 'AV2'`)).recordset[0];
+      assert.equal(before.counts_toward_assessment, false);
+
+      const acted = await actOnMissedTripCase(pool, { tripId: "AV2", serviceDate: DAY },
+        { act: "record_review", outcome: "confirmed", reasonCode: "RAN", notes: "Checked both sources.", attribution: "contractor_error" },
+        reviewer, T0);
+      assert.equal(acted.ok, true);
+
+      const after = (await pool.request().query<{ evidence_conflict_at: Date | null; evidence_conflict_reason: string | null; validation_status: string }>(
+        "SELECT evidence_conflict_at, evidence_conflict_reason, validation_status FROM dbo.MonitoredMissedTrips WHERE trip_id = 'AV2'")).recordset[0];
+      assert.equal(after.evidence_conflict_at, null, "the review settled it");
+      assert.equal(after.evidence_conflict_reason, null);
+      assert.equal(after.validation_status, "confirmed");
+    });
+
+
+    // Candidate 6: the classification is stated twice - once in TypeScript for
+    // the pure decide path, once as SQL for every set-based reader - and the
+    // two must agree on every row, not merely on the rows earlier subtests
+    // happened to leave behind. This walks the rule space deliberately.
+    await t.test("TypeScript and SQL classify every combination of the deciding columns alike", async () => {
+      const DAY2 = "20260918";
+      const past = "2026-09-17T00:00:00";
+      const future = "2126-09-17T00:00:00";
+      const rows: Record<string, unknown>[] = [];
+      let n = 0;
+      for (const status of ["watching", "escalated", "resolved"])
+      for (const validation_status of ["unreviewed", "confirmed", "timely_service", "false_positive", "indeterminate"])
+      for (const data_quality_status of ["legacy_unverified", "source_verified", "experimental", "unknown_data_gap"])
+      for (const detection_type of ["explicit_cancellation", "silent_no_show", null])
+      for (const source_system of ["gtfs", "spare"])
+      for (const undecided_reason of [null, "awaiting_confirmation"])
+      for (const detector_version of [WINDOWED_DETECTOR_VERSION, "gtfs-silent-v3"])
+      for (const expected_window_end_at of [past, future, null])
+      for (const detected_late_arrival_at of ["2026-09-17T15:00:00", null]) {
+        rows.push({
+          t: `M${n++}`, d: DAY2, status, validation_status, data_quality_status, detection_type,
+          source_system, undecided_reason, detector_version, expected_window_end_at, detected_late_arrival_at,
+        });
+      }
+      // Two rows for the Assessment evidence gate, which is orthogonal to the
+      // ladders above and does not need crossing with them.
+      for (const evidence_conflict_at of [null, past]) {
+        rows.push({
+          t: `M${n++}`, d: DAY2, status: "escalated", validation_status: "confirmed",
+          data_quality_status: "source_verified", detection_type: "silent_no_show", source_system: "spare",
+          undecided_reason: null, detector_version: WINDOWED_DETECTOR_VERSION,
+          expected_window_end_at: null, detected_late_arrival_at: null, evidence_conflict_at,
+        });
+      }
+
+      // One insert, not eight thousand.
+      await pool.request()
+        .input("rows", sql.NVarChar(sql.MAX), JSON.stringify(rows))
+        .query(`
+          INSERT INTO dbo.MonitoredMissedTrips (
+            trip_id, service_date, route_id, scheduled_departure_at, grace_deadline_at, status,
+            validation_status, data_quality_status, detection_type, source_system, undecided_reason,
+            detector_version, expected_window_end_at, detected_late_arrival_at, evidence_conflict_at)
+          SELECT j.t, j.d, '460', '2026-09-17T14:00:00', '2026-09-17T14:30:00', j.status,
+                 j.validation_status, j.data_quality_status, j.detection_type, j.source_system, j.undecided_reason,
+                 j.detector_version, j.expected_window_end_at, j.detected_late_arrival_at, j.evidence_conflict_at
+          FROM OPENJSON(@rows) WITH (
+            t NVARCHAR(100) '$.t', d NVARCHAR(20) '$.d', status NVARCHAR(20) '$.status',
+            validation_status NVARCHAR(30) '$.validation_status', data_quality_status NVARCHAR(30) '$.data_quality_status',
+            detection_type NVARCHAR(30) '$.detection_type', source_system NVARCHAR(20) '$.source_system',
+            undecided_reason NVARCHAR(60) '$.undecided_reason', detector_version NVARCHAR(30) '$.detector_version',
+            expected_window_end_at DATETIME2 '$.expected_window_end_at',
+            detected_late_arrival_at DATETIME2 '$.detected_late_arrival_at',
+            evidence_conflict_at DATETIME2 '$.evidence_conflict_at') j`);
+
+      for (const promoted of ["", "gtfs_cancellation,spare,gtfs_silent_no_show"]) {
+        process.env.MISSED_TRIP_PROMOTED_DETECTORS = promoted;
+        const classified = (await pool.request().query(`
+          SELECT m.trip_id, m.status, m.validation_status, m.data_quality_status, m.detection_type, m.source_system,
+                 m.undecided_reason, m.grace_deadline_at, m.detected_late_arrival_at, m.detector_version,
+                 m.expected_window_end_at, m.evidence_conflict_at,
+                 mtc.lifecycle, mtc.evidence_finding, mtc.review_outcome, mtc.detector, mtc.held_reason,
+                 mtc.legacy, mtc.held, mtc.in_queue, mtc.concluded, mtc.flagged_missed, mtc.counts_as_missed,
+                 mtc.evidence_conflict, mtc.counts_toward_assessment
+          FROM dbo.MonitoredMissedTrips m ${missedTripCaseSql("m")}
+          WHERE m.service_date = '${DAY2}'`)).recordset;
+        assert.equal(classified.length, rows.length, "every combination came back");
+
+        const disagreements: string[] = [];
+        for (const row of classified) {
           const expected = classifyMissedTripCase(row);
           const actual = {
             lifecycle: row.lifecycle, evidence_finding: row.evidence_finding, review_outcome: row.review_outcome ?? null,
             detector: row.detector, held_reason: row.held_reason ?? null, legacy: row.legacy, held: row.held,
             in_queue: row.in_queue, concluded: row.concluded, flagged_missed: row.flagged_missed,
-            counts_as_missed: row.counts_as_missed, counts_toward_assessment: row.counts_toward_assessment,
+            counts_as_missed: row.counts_as_missed, evidence_conflict: row.evidence_conflict,
+            counts_toward_assessment: row.counts_toward_assessment,
           };
-          assert.deepEqual(actual, expected, `${row.trip_id} with promoted="${promoted}"`);
+          try {
+            assert.deepEqual(actual, expected);
+          } catch {
+            disagreements.push(`${row.trip_id}: status=${row.status} validation=${row.validation_status} dq=${row.data_quality_status} ` +
+              `detection=${row.detection_type} source=${row.source_system} undecided=${row.undecided_reason} ` +
+              `version=${row.detector_version} window=${row.expected_window_end_at ? "set" : "null"} ` +
+              `SQL=${JSON.stringify(actual)} TS=${JSON.stringify(expected)}`);
+          }
         }
+        assert.deepEqual(disagreements.slice(0, 5), [],
+          `${disagreements.length} of ${classified.length} rows classified differently with promoted="${promoted}"`);
       }
       delete process.env.MISSED_TRIP_PROMOTED_DETECTORS;
+      await pool.request().query(`DELETE FROM dbo.MonitoredMissedTrips WHERE service_date = '${DAY2}'`);
+    });
+
+    // Candidate 2: the list and its totals are one answer. They are two
+    // queries over the same CROSS APPLY, so only real rows can prove a tile
+    // never counts what its list omits. Runs last, over every case the
+    // subtests above left behind - one of each lifecycle.
+    await t.test("the queue list and its totals count the same cases", async () => {
+      delete process.env.MISSED_TRIP_PROMOTED_DETECTORS;
+      const all = await readMissedTripCases(pool, { view: "all", limit: MAX_CASE_LIMIT, offset: 0 });
+      assert.equal(all.ready, true);
+      if (!all.ready) return;
+      const totals = all.totals;
+
+      assert.equal(all.cases.length, totals.total_count, "view=all lists every case the totals count");
+      assert.ok(all.cases.length >= 18, "the subtests above left a spread of lifecycles behind");
+
+      for (const [view, expected] of [["queue", totals.queue_count], ["history", totals.history_count]] as const) {
+        const read = await readMissedTripCases(pool, { view, limit: MAX_CASE_LIMIT, offset: 0 });
+        assert.equal(read.ready, true);
+        if (!read.ready) return;
+        assert.equal(read.cases.length, expected, `view=${view} lists exactly what its tile counts`);
+      }
+
+      // And the rows each view returns are the ones the classification says
+      // belong there - not merely the same number of them.
+      const queue = await readMissedTripCases(pool, { view: "queue", limit: MAX_CASE_LIMIT, offset: 0 });
+      const history = await readMissedTripCases(pool, { view: "history", limit: MAX_CASE_LIMIT, offset: 0 });
+      if (!queue.ready || !history.ready) return;
+      assert.deepEqual(
+        queue.cases.map((row) => row.trip_id).sort(),
+        all.cases.filter((row) => row.in_queue).map((row) => row.trip_id).sort(),
+      );
+      assert.deepEqual(
+        history.cases.map((row) => row.trip_id).sort(),
+        all.cases.filter((row) => row.concluded).map((row) => row.trip_id).sort(),
+      );
+
+      // Paging does not change which cases exist, only how many arrive.
+      const firstPage = await readMissedTripCases(pool, { view: "all", limit: 5, offset: 0 });
+      const secondPage = await readMissedTripCases(pool, { view: "all", limit: 5, offset: 5 });
+      if (!firstPage.ready || !secondPage.ready) return;
+      assert.equal(firstPage.cases.length, 5);
+      assert.equal(secondPage.cases.length, 5);
+      assert.equal(
+        new Set([...firstPage.cases, ...secondPage.cases].map((row) => row.trip_id)).size,
+        10,
+        "consecutive pages do not repeat a case",
+      );
+
+      // The monthly rollup buckets only findings, and counts each case once.
+      const monthly = await readMissedTripMonthlySummary(pool);
+      assert.equal(monthly.ready, true);
+      if (!monthly.ready) return;
+      assert.equal(
+        monthly.summary.reduce((sum, row) => sum + row.trip_count, 0),
+        all.cases.filter((row) => row.lifecycle === "ready_for_review" || row.lifecycle === "reviewed").length,
+        "every finding is in exactly one monthly bucket",
+      );
     });
   } finally {
     await pool.close();

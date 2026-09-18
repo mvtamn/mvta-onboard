@@ -23,7 +23,7 @@ interface Props {
   onDisposition: (tripId: string) => void;
 }
 
-const NEEDS_ROLE = "Requires the Trip Start Verifier role";
+const NEEDS_ROLE = "Recording a verification is not part of your access";
 
 const SEVERITY_PILL: Record<DispositionReason, string> = {
   missed: "pill-danger",

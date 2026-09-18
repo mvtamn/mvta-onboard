@@ -9,10 +9,15 @@ import { agencyTodayServiceDate } from "./tripStartLogState.js";
 vi.mock("../../../config.js", () => ({
   api: { getTripStartLog: vi.fn(), getTripStartLogCsv: vi.fn(), recordTripStartVerification: vi.fn() },
 }));
-// Viewer by default: every existing expectation about disabled verify
-// buttons holds; the verification tests switch to the SST desk role.
-const authState = { roles: ["OCC.Viewer"] as string[], account: { name: "Test User", username: "test.user@sst.example" }, signIn: vi.fn(), signOut: vi.fn() };
+const authState = { account: { name: "Test User", username: "test.user@sst.example" }, signIn: vi.fn(), signOut: vi.fn() };
 vi.mock("../../../auth/AuthContext.js", () => ({ useAuth: () => authState }));
+// Read-only by default: every existing expectation about disabled verify
+// buttons holds; the verification tests add the recording action.
+let actions: string[] = ["dispatch-log.view"];
+vi.mock("../../../auth/AccessContext.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../auth/AccessContext.js")>("../../../auth/AccessContext.js");
+  return { ...actual, useAccess: () => actual.accessStateWith(actions) };
+});
 const promptMock = vi.fn();
 vi.mock("../../../components/AppDialog.js", () => ({ useAppDialog: () => ({ prompt: promptMock, confirm: vi.fn() }) }));
 vi.mock("../../../context/FixedRouteRefreshContext.js", () => ({
@@ -92,7 +97,7 @@ const DAY = [
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
-  authState.roles = ["OCC.Viewer"];
+  actions = ["dispatch-log.view"];
 });
 
 function verified(observation: "observed_on_time" | "observed_left_late" | "not_observed", note: string | null = null) {
@@ -305,7 +310,7 @@ describe("Dispatch Log shell", () => {
   });
 
   it("lets the SST desk cycle the Verified cell - blank, on time, left late, blank - under their initials", async () => {
-    authState.roles = ["OCC.TripStartVerify"];
+    actions = ["dispatch-log.view", "dispatch-log.verify"];
     vi.mocked(api.getTripStartLog).mockResolvedValueOnce(response(DAY));
     vi.mocked(api.recordTripStartVerification)
       .mockResolvedValueOnce({ verification: verified("observed_on_time") })
@@ -331,7 +336,7 @@ describe("Dispatch Log shell", () => {
     expect(screen.getByRole("complementary", { name: "Trip details" })).toHaveTextContent(/Select a trip/);
   });
 
-  it("keeps recording out of reach for roles that only read", async () => {
+  it("keeps recording out of reach for people who may only read", async () => {
     vi.mocked(api.getTripStartLog).mockResolvedValueOnce(response(DAY));
     render(<TripStartLog />);
     const user = userEvent.setup();
@@ -345,7 +350,7 @@ describe("Dispatch Log shell", () => {
   });
 
   it("records a disposition as not observed with the note the prompt collected", async () => {
-    authState.roles = ["OCC.TripStartVerify"];
+    actions = ["dispatch-log.view", "dispatch-log.verify"];
     const lateOverFive = trip({
       trip_id: "t4", block_id: "4", route_short_name: "477", scheduled_start_seconds: 6 * 3600 + 30 * 60,
       scheduled_start_at: at("11:30:00Z"), actual_start_at: at("11:42:00Z"), actual_start_source: "vehicle_position",
@@ -370,7 +375,7 @@ describe("Dispatch Log shell", () => {
   });
 
   it("says when a verification could not be recorded and leaves the cell as it was", async () => {
-    authState.roles = ["OCC.Admin"];
+    actions = ["dispatch-log.view", "dispatch-log.verify"];
     vi.mocked(api.getTripStartLog).mockResolvedValueOnce(response(DAY));
     vi.mocked(api.recordTripStartVerification).mockRejectedValueOnce(new ApiError(503, "not connected"));
     render(<TripStartLog />);

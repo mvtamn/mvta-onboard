@@ -2,6 +2,7 @@
 // (sql/phase1-schema.sql), so bad input fails fast with a clear 400 error
 // instead of an opaque SQL constraint violation.
 import { validateDetourGeometry } from "./geoNearby";
+import { detourChannel, DETOUR_CHANNELS, needsRecipients } from "./detourCommunication/channels";
 import {
   VALID_CATEGORIES,
   VALID_SEVERITIES,
@@ -583,8 +584,18 @@ export function validateDetourCommunication(body: UnknownBody, publishing = fals
   for (const field of ["audience", "channel", "content"] as const) {
     if (typeof body[field] !== "string" || body[field].trim() === "") errors.push(`${field} is required and must be a non-empty string`);
   }
+  // The channel must be one OnBoard knows (migration 132). detourChannel
+  // accepts the older spellings a stored row or an open console tab may carry.
+  const channel = typeof body.channel === "string" ? detourChannel(body.channel) : null;
+  if (typeof body.channel === "string" && body.channel.trim() !== "" && !channel) {
+    errors.push(`channel must be one of: ${DETOUR_CHANNELS.join(", ")}`);
+  }
   if (typeof body.recipients !== "undefined" && body.recipients !== null && typeof body.recipients !== "string") errors.push("recipients must be a string if provided");
-  if (publishing && (typeof body.recipients !== "string" || body.recipients.trim() === "")) errors.push("recipients are required before publishing");
+  // Only a channel that carries an address needs one. A recorded channel - a
+  // road sign, an Avail message - has no recipients to give.
+  if (publishing && channel && needsRecipients(channel) && (typeof body.recipients !== "string" || body.recipients.trim() === "")) {
+    errors.push("recipients are required before publishing on this channel");
+  }
   return errors;
 }
 

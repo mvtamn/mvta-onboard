@@ -18,13 +18,33 @@ import {
   type IntakeRefusalCode,
   type OccurrenceReviewStatus,
 } from "../occurrenceIntake";
-import { classifyMissedTripCase, promotedDetectors } from "./classify";
+import { classifyMissedTripCase } from "./classify";
+import { detectorPromotionWindows } from "./promotion";
 import { caseTripId, decideReview, decideRun } from "./decide";
 import { caseKey, loadCase, loadCases, writeDecision } from "./store";
 import type { Actor, CaseAct, CaseKey, CaseRefusal, MissedTripClassification, ObserveReport, RunObservation, StoredReviewOutcome } from "./types";
 
 export * from "./types";
-export { classifyMissedTripCase, missedTripCaseSql, missedTripSourceRefSql, promotedDetectors } from "./classify";
+export { classifyMissedTripCase, missedTripCaseSql, missedTripSourceRefSql } from "./classify";
+export * from "./promotion";
+export { missedTripDetectionSettings, type MissedTripDetectionSettings } from "./settings";
+export {
+  caseQuery,
+  caseTablesReady,
+  readMissedTripCases,
+  readMissedTripMonthlySummary,
+  viewCount,
+  DEFAULT_CASE_LIMIT,
+  MAX_CASE_LIMIT,
+  type CaseListRow,
+  type CaseQuery,
+  type CaseReadResult,
+  type CaseTablesReady,
+  type CaseTotals,
+  type CaseView,
+  type MissedTripsSummaryRow,
+  type MonthlySummaryResult,
+} from "./reads";
 
 export async function observeMissedTrips(pool: sql.ConnectionPool, observations: RunObservation[], now = new Date()): Promise<ObserveReport> {
   const report: ObserveReport = { created: 0, held: 0, confirmed: 0, closedByEvidence: 0, evidenceRecorded: 0, skippedChanged: 0, failed: [] };
@@ -87,6 +107,8 @@ const OUTCOME_NOTES: Record<StoredReviewOutcome, string> = {
 };
 
 export async function actOnMissedTripCase(pool: sql.ConnectionPool, key: CaseKey, act: CaseAct, actor: Actor, now = new Date()): Promise<ActOutcome> {
+  // Read before the transaction opens: promotion is the same for every case.
+  const promoted = await detectorPromotionWindows(pool);
   const tx = new sql.Transaction(pool);
   await tx.begin();
   try {
@@ -102,6 +124,9 @@ export async function actOnMissedTripCase(pool: sql.ConnectionPool, key: CaseKey
     }
     const review = decision.review;
 
+    // Settling an Evidence conflict is exactly this act: a reviewer recording
+    // an outcome with both sources in front of them (ADR-0035). The review
+    // clears it - nothing else does, and it is never cleared automatically.
     await new sql.Request(tx)
       .input("trip_id", sql.NVarChar(100), key.tripId)
       .input("service_date", sql.NVarChar(20), key.serviceDate)
@@ -120,7 +145,9 @@ export async function actOnMissedTripCase(pool: sql.ConnectionPool, key: CaseKey
             validated_by = @validated_by,
             validated_at = SYSUTCDATETIME(),
             notes = @notes,
-            reason_code = @reason_code
+            reason_code = @reason_code,
+            evidence_conflict_at = NULL,
+            evidence_conflict_reason = NULL
         WHERE trip_id = @trip_id AND service_date = @service_date;
 
         INSERT INTO MissedTripReviewHistory (
@@ -131,7 +158,7 @@ export async function actOnMissedTripCase(pool: sql.ConnectionPool, key: CaseKey
           @review_kind, @review_reason);
       `);
     const reviewed = await loadCase(tx, key.tripId, key.serviceDate, false);
-    const classification = classifyMissedTripCase(reviewed ?? current, promotedDetectors(), now);
+    const classification = classifyMissedTripCase(reviewed ?? current, promoted, now);
 
     // Assessment promotion: a confirmation from a detector in Shadow detection
     // stays out of the assessment. Every other outcome still reaches intake, so

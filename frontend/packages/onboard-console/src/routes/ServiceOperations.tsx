@@ -1,31 +1,14 @@
 import { NavLink, Outlet } from "react-router-dom";
-import { useAuth } from "../auth/AuthContext.js";
+import { useAccess } from "../auth/AccessContext.js";
 
-const SERVICE_RISK_ROLES = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin"] as const;
-
-function hasServiceRiskAccess(roles: string[]): boolean {
-  return roles.some((role) => SERVICE_RISK_ROLES.includes(role as (typeof SERVICE_RISK_ROLES)[number]));
-}
-
-// The communications side reads the API's STAFF_READ_ROLES; roles outside it
-// would 403 on every call the Overview, Compose, Active and Suggested pages
+// The communications side - Overview, Compose, Active and Suggested - is one
+// Module Action; anyone without it would be refused by every call those pages
 // make, so those tabs are hidden for them (ADR 0015).
-const COMMUNICATIONS_ROLES = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin", "OCC.EventAVL"] as const;
-
-function hasCommunicationsAccess(roles: string[]): boolean {
-  return roles.some((role) => COMMUNICATIONS_ROLES.includes(role as (typeof COMMUNICATIONS_ROLES)[number]));
-}
-
-// Same readers as the API's trip-start log: staff roles plus Compliance.
-function hasDispatchLogAccess(roles: string[]): boolean {
-  return hasServiceRiskAccess(roles) || roles.includes("OCC.Compliance") || roles.includes("OCC.TripStartVerify");
-}
-
 export function ServiceOperations() {
-  const { roles } = useAuth();
-  const canSeeServiceRisk = hasServiceRiskAccess(roles);
-  const canSeeDispatchLog = hasDispatchLogAccess(roles);
-  const canSeeCommunications = hasCommunicationsAccess(roles);
+  const { can } = useAccess();
+  const canSeeServiceRisk = can("service-risk.view");
+  const canSeeDispatchLog = can("dispatch-log.view");
+  const canSeeCommunications = can("rider-alerts.view");
 
   return (
     <div className="service-operations">
@@ -56,5 +39,3 @@ export function ServiceOperations() {
     </div>
   );
 }
-
-export { hasCommunicationsAccess, hasDispatchLogAccess, hasServiceRiskAccess };

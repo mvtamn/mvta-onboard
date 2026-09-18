@@ -3,15 +3,15 @@
 // it). Body: { service_date, trip_id, action, note?, initials? } where action
 // is observed_on_time | observed_left_late | not_observed | clear.
 //
-// The role check is the boundary: OCC.TripStartVerify is the contractor
-// desk's additive role (plus OCC.Admin for corrections). The current
+// The access check is the boundary: dispatch-log.verify is the contractor
+// desk's action, held alongside the roles that correct it. The current
 // observation is upserted so a cell can be corrected; every change is also
 // appended to TripStartVerificationEvents. The poller's actual_* columns are
 // never touched here, and this endpoint never touches them either way - the
 // auto-computed status sits beside the observation, not instead of it.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, TRIP_START_VERIFY_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { initialsFor, validateVerificationInput } from "../lib/tripStartVerification";
 
 interface VerificationRow {
@@ -33,9 +33,9 @@ const NAME_CLAIMS = ["name", "http://schemas.xmlsoap.org/ws/2005/05/identity/cla
 app.http("tripStartLogVerify", {
   route: "trip-start-log/verify",
   methods: ["POST"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, TRIP_START_VERIFY_ROLES);
+    const authResult = await requireAccess(request, "dispatch-log.verify");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

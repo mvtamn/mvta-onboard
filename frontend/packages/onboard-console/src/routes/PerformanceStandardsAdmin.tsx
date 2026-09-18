@@ -16,7 +16,7 @@ import { api } from "../config.js";
 import { groupByCategory } from "./modules/assessment/categoryGroups.js";
 import { standardWords } from "./modules/assessment/standardWords.js";
 import { useAppDialog } from "../components/AppDialog.js";
-import { useAuth } from "../auth/AuthContext.js";
+import { useAccess } from "../auth/AccessContext.js";
 import "./modules/assessment/assessment.css";
 import "./performanceStandards.css";
 
@@ -129,9 +129,9 @@ function standardToInput(standard: ContractorPerformanceStandard): PerformanceSt
 }
 
 export function PerformanceStandardsAdmin() {
-  const { roles } = useAuth();
+  const { can } = useAccess();
   const { confirm } = useAppDialog();
-  const isAdmin = roles.includes("OCC.Admin");
+  const isAdmin = can("contractor-performance.edit");
 
   const [standards, setStandards] = useState<ContractorPerformanceStandard[]>([]);
   const [tiers, setTiers] = useState<ContractorStandardTier[]>([]);
@@ -286,7 +286,7 @@ export function PerformanceStandardsAdmin() {
         </div>
       </div>
 
-      {!isAdmin && <div className="assessment-warning">You can read the catalog. Changing a standard, a penalty band, or an Agreement assignment requires Administrator access.</div>}
+      {!isAdmin && <div className="assessment-warning">You can read the catalog. Changing a standard, a penalty band, or an Agreement assignment is not part of your access.</div>}
       {!ready && <div className="assessment-warning">Migration 102 has not been applied to this database. The catalog reads correctly, but Agreement assignment is unavailable until it runs.</div>}
       {error && <div className="assessment-error">{error}</div>}
       {notice && <div className="standards-notice">{notice}</div>}

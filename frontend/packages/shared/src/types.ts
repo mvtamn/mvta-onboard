@@ -628,6 +628,11 @@ export interface MissedTrip {
   held_reason: string | null;
   in_queue: boolean;
   concluded: boolean;
+  // Two exact-matched sources support incompatible findings (ADR-0035). It
+  // blocks the performance assessment and waits for a reviewer; it never
+  // changes the case's own outcome.
+  evidence_conflict: boolean;
+  evidence_conflict_reason: string | null;
 }
 
 export type OccurrenceReviewStatus = "candidate" | "confirmed" | "dismissed";
@@ -1083,6 +1088,21 @@ export interface DetourCommunicationReceipt {
   reported_at: string | null;
   updated_at: string;
 }
+/**
+ * A channel a Detour communication can go out on, as the server defines it
+ * (migration 132). `sent` channels have a delivery port behind them; `recorded`
+ * ones are things a person does elsewhere - a road sign, an Avail message -
+ * and OnBoard only writes down that they happened.
+ */
+export type DetourChannel = "email" | "sms" | "teams" | "digital_signage" | "avl_messaging";
+
+export interface DetourChannelOption {
+  channel: DetourChannel;
+  label: string;
+  kind: "sent" | "recorded";
+  needs_recipients: boolean;
+}
+
 export interface DetourCommunication {
   id: string; detour_id: string; audience: string; channel: string;
   recipients: string | null; content: string; status: DetourCommunicationStatus;
@@ -1098,6 +1118,8 @@ export interface DetourCommunication {
   sent_subject?: string | null;
   sent_body?: string | null;
   sent_recipients?: string | null;
+  /** When a recorded message actually went out, which may precede published_at. */
+  occurred_at?: string | null;
   receipts?: DetourCommunicationReceipt[];
 }
 // Contractor notification settings as GET /detours reports them
@@ -1188,6 +1210,33 @@ export interface DetourReportFields {
   resolution_notes?: string | null;
 }
 
+/**
+ * Why a Detour communication may not be sent (functions-restapi/src/lib/
+ * detourCommunication, CONTEXT "Detour communication eligibility"). The server
+ * decides; the console renders the decision and never re-derives it.
+ */
+export type DetourEligibilityRefusalCode =
+  | "detour_closed"
+  | "re_review_outstanding"
+  | "fulfillment_pending"
+  | "fulfillment_failed"
+  | "conflict_unresolved"
+  | "no_recipients";
+
+export interface DetourCommunicationEligibility {
+  /** Wording may be prepared: everything except a closed Detour. */
+  may_draft: boolean;
+  may_send: boolean;
+  refusal: { code: DetourEligibilityRefusalCode; sentence: string } | null;
+  /** Telling someone extra is allowed, but it never clears "needs communication". */
+  audience_not_required: boolean;
+}
+
+export interface DetourAudienceEligibility {
+  audience: string;
+  eligibility: DetourCommunicationEligibility;
+}
+
 export interface Detour extends DetourReportFields {
   id: string;
   number: string | null;
@@ -1226,6 +1275,8 @@ export interface Detour extends DetourReportFields {
   // Absent from an API older than the Detour workflow module.
   available_acts?: Record<DetourOfferedAct, DetourActAvailability>;
   communication_status?: "published" | "draft" | "needs_communication" | "not_available";
+  /** Detour communication eligibility per required audience, from the server. */
+  audience_eligibility?: DetourAudienceEligibility[];
   workflow_label?: string;
   next_action?: string;
   next_owner?: string;
@@ -2099,3 +2150,44 @@ export interface OnDemandZoneFeedStatus {
   next_check_at: string | null;
 }
 
+
+/**
+ * Missed-trip detector promotion: which detectors count toward an assessment,
+ * and since which service date. See functions-restapi promotion.ts and ADR-0035.
+ */
+export type MissedTripDetectorName = "gtfs_cancellation" | "gtfs_silent_no_show" | "spare";
+
+export interface DetectorPromotionEntry {
+  detector: MissedTripDetectorName;
+  /** Service date key (YYYYMMDD) the decision takes effect from. */
+  effective_service_date: string;
+  promoted: boolean;
+  reason: string;
+  measured_precision: number | null;
+  sample_size: number | null;
+  decided_by: string;
+  decided_at: string;
+}
+
+export interface DetectorStanding {
+  detector: MissedTripDetectorName;
+  promoted: boolean;
+  since: string | null;
+}
+
+export interface DetectorPromotionView {
+  standings: DetectorStanding[];
+  history: DetectorPromotionEntry[];
+  /** Names in the stored history this build does not know; they promote nothing. */
+  ignored: string[];
+}
+
+export interface DetectorPromotionInput {
+  detector: MissedTripDetectorName;
+  effective_service_date: string;
+  promoted: boolean;
+  reason: string;
+  measured_precision?: number | null;
+  sample_size?: number | null;
+  on_demand_conditions_met?: boolean;
+}

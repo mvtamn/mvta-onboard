@@ -1,6 +1,6 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { DETOUR_READ_ROLES, requireRole } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { boundingBox, distanceToGeometry, validateDetourGeometry } from "../lib/geoNearby";
 
 // POST /gtfs-stops/near { geometry, radius_m } - GTFS stops within radius_m
@@ -14,7 +14,7 @@ const MAX_STOPS = 200;
 app.http("gtfsStopsNear", {
   route: "gtfs-stops/near", methods: ["POST"], authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, DETOUR_READ_ROLES);
+    const auth = await requireAccess(request, "detours.view");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     let body: Record<string, unknown>;
     try { body = (await request.json()) as Record<string, unknown>; } catch { return { status: 400, jsonBody: { error: "Request body must be valid JSON" } }; }

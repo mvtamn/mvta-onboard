@@ -1,5 +1,5 @@
 // POST /messages/{id}/retract - pull a message from circulation
-// (architecture doc Section 9). Publisher/Admin only.
+// (architecture doc Section 9). rider-alerts.publish only.
 //
 // Sets status='retracted'; the public read path (messages/active) filters on
 // status='active' so the message disappears from every consumer immediately.
@@ -7,15 +7,15 @@
 // already dispatched is future work (Phase 2+) - note it, don't fake it.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, PUBLISH_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { isGuid } from "../lib/validation";
 
 app.http("messagesRetract", {
   route: "messages/{id}/retract",
   methods: ["POST"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, PUBLISH_ROLES);
+    const authResult = await requireAccess(request, "rider-alerts.publish");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

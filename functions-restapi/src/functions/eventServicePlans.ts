@@ -1,7 +1,7 @@
 import { app, type HttpRequest } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole } from "../lib/auth";
-import { eventOperatingContextRoles } from "../lib/eventOperatingContextAuth";
+import { requireAccess } from "../lib/access/require";
+import { eventOperatingContextAction } from "../lib/eventOperatingContextAuth";
 import { validateOperatingPeriod } from "../lib/eventOperatingPeriods";
 import { validateEventPlanReadiness, type EventPlanReadiness } from "../lib/eventPlanValidation";
 
@@ -50,7 +50,7 @@ async function readPlanReadiness(pool: Awaited<ReturnType<typeof getPool>>, plan
 }
 
 async function authorized(req: HttpRequest) {
-  return requireRole(req, eventOperatingContextRoles(req.method));
+  return requireAccess(req, eventOperatingContextAction(req.method));
 }
 
 app.http("eventServicePlans", { route: "event-service-plans", methods: ["GET", "POST"], authLevel: "anonymous", handler: async (req: HttpRequest) => {

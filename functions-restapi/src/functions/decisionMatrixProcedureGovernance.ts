@@ -1,5 +1,5 @@
 import { app, type HttpRequest, type InvocationContext, type Timer } from "@azure/functions";
-import { ADMIN_ROLES, requireRole } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { getPool, sql } from "../lib/db";
 import {
   DAILY_CHECK_ACTOR,
@@ -12,8 +12,8 @@ import { recordProcedureAuditEvent as recordAudit } from "../lib/procedureAudit"
 
 type LifecycleAction = "submit_for_review" | "return_to_draft" | "approve" | "retire" | "withdraw";
 
-function actorFor(request: HttpRequest) {
-  const principal = requireRole(request, ADMIN_ROLES);
+async function actorFor(request: HttpRequest) {
+  const principal = await requireAccess(request, "decision-matrix.manage");
   return principal.authorized ? principal.principal.userId ?? null : null;
 }
 
@@ -29,7 +29,7 @@ async function revisionIsComplete(executor: { request: () => sql.Request }, proc
 }
 
 export async function governDecisionMatrixProcedureRevision(request: HttpRequest, context: InvocationContext, reader: DocumentMetadataReader | null = documentHealthReader()) {
-  const auth = requireRole(request, ADMIN_ROLES);
+  const auth = await requireAccess(request, "decision-matrix.manage");
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   const procedureId = request.params.procedureId;
   const revision = Number(request.params.revision);
@@ -41,7 +41,7 @@ export async function governDecisionMatrixProcedureRevision(request: HttpRequest
   if (!["submit_for_review", "return_to_draft", "approve", "retire", "withdraw"].includes(action)) return { status: 400, jsonBody: { error: "A supported lifecycle action is required." } };
   if (!reason) return { status: 400, jsonBody: { error: "A governance reason is required." } };
   if (action === "withdraw" && body.confirm_withdrawal !== true) return { status: 400, jsonBody: { error: "Emergency withdrawal requires prominent confirmation." } };
-  const actor = actorFor(request);
+  const actor = await actorFor(request);
   if (!actor) return { status: 401, jsonBody: { error: "A stable Admin identity is required for Procedure governance." } };
   try {
     // Submitting and approving both refresh document health first, and
@@ -100,11 +100,11 @@ export async function governDecisionMatrixProcedureRevision(request: HttpRequest
 }
 
 export async function checkDecisionMatrixProcedureReferences(request: HttpRequest, context: InvocationContext, reader: DocumentMetadataReader | null = documentHealthReader()) {
-  const auth = requireRole(request, ADMIN_ROLES);
+  const auth = await requireAccess(request, "decision-matrix.manage");
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   const procedureId = request.params.procedureId; const revision = Number(request.params.revision);
   if (!procedureId || !Number.isInteger(revision)) return { status: 400, jsonBody: { error: "procedureId and integer revision are required." } };
-  const actor = actorFor(request);
+  const actor = await actorFor(request);
   if (!actor) return { status: 401, jsonBody: { error: "A stable Admin identity is required for Procedure governance." } };
   // "Not configured" answers 200: the question was well formed and the answer
   // is known. A 5xx would read in the console as an outage.

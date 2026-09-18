@@ -1,5 +1,5 @@
 import { app, type HttpRequest, type HttpResponseInit, type InvocationContext } from "@azure/functions";
-import { ADMIN_ROLES, requireRole } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 
 const RETIRED_IMPORT_MESSAGE = "SharePoint structured-content import is retired. Decision Matrix content is authored in OnBoard; SharePoint stores supporting documents only.";
 
@@ -7,7 +7,7 @@ export async function retiredDecisionMatrixSync(
   request: HttpRequest,
   context: InvocationContext,
 ): Promise<HttpResponseInit> {
-  const auth = requireRole(request, ADMIN_ROLES);
+  const auth = await requireAccess(request, "decision-matrix.manage");
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
 
   context.warn("Retired Decision Matrix SharePoint import attempted", {

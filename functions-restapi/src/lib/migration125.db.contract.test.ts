@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseConnectionString, sql } from "./db";
 import { classifyMissedTripCase } from "./missedTripCase/classify";
+import { promotionWindows, type DetectorPromotionEntry } from "./missedTripCase/promotion";
 
 // Migration 125 against SQL Server, applied twice to tables in the shape
 // migrations 011-121 left them (status columns NVARCHAR(20), with their CHECK
@@ -12,12 +13,19 @@ import { classifyMissedTripCase } from "./missedTripCase/classify";
 // keeps its columns and publishes the Missed-trip case module's classification
 // exactly as classifyMissedTripCase computes it.
 //
+// Migrations 134, 135 and 137 are applied on top, because the last of them
+// redefines the same view: the promotion history is created, the Evidence
+// conflict columns arrive, the view still agrees with classifyMissedTripCase
+// while nothing is promoted, and a promotion changes exactly the cases whose
+// service date it covers.
+//
 // See subscriberResend.db.contract.test.ts on why the contract job runs one file
 // at a time.
 const connectionString = process.env.DECISION_MATRIX_TEST_SQL_CONNECTION_STRING;
 
 const DROP = `
 IF OBJECT_ID('dbo.vw_MissedTrip','V') IS NOT NULL DROP VIEW dbo.vw_MissedTrip;
+IF OBJECT_ID('dbo.MissedTripDetectorPromotions','U') IS NOT NULL DROP TABLE dbo.MissedTripDetectorPromotions;
 IF OBJECT_ID('dbo.MissedTripReviewHistory','U') IS NOT NULL DROP TABLE dbo.MissedTripReviewHistory;
 IF OBJECT_ID('dbo.MonitoredMissedTrips','U') IS NOT NULL DROP TABLE dbo.MonitoredMissedTrips;
 IF OBJECT_ID('dbo.GtfsScheduledTrips','U') IS NOT NULL DROP TABLE dbo.GtfsScheduledTrips;
@@ -136,7 +144,7 @@ test("migration 125 names false_positive Timely service once, adds the window an
       ORDER BY v.TripId`)).recordset;
     assert.equal(view.length, 5);
     for (const row of view) {
-      const c = classifyMissedTripCase(row, new Set());
+      const c = classifyMissedTripCase(row, []);
       assert.deepEqual(
         [row.Lifecycle, row.EvidenceFinding, row.ReviewOutcome ?? null, row.Detector, row.HeldReason ?? null, row.IsLegacy, row.IsHeld,
           row.InReviewQueue, row.IsConcluded, row.IsFlaggedMissed, row.CountsAsMissed, row.CountsTowardAssessment, row.IsConfirmed],
@@ -146,6 +154,58 @@ test("migration 125 names false_positive Timely service once, adds the window an
       );
     }
     assert.deepEqual(view.map((r) => [r.TripId, r.Lifecycle]), [["FP", "reviewed"], ["L", "legacy"], ["OK", "reviewed"], ["Q", "ready_for_review"], ["W", "awaiting_evidence"]]);
+
+    // A confirmed missed trip on 20260915 from the silent no-show detector: the
+    // only kind of case promotion can change. ('OK' was superseded above.)
+    await pool.request().query(`
+      INSERT INTO dbo.MonitoredMissedTrips (trip_id, service_date, route_id, scheduled_departure_at, grace_deadline_at, status, validation_status, detection_type, data_quality_status, detector_version)
+        VALUES ('P', '20260915', '460', '2026-09-15T14:00:00', '2026-09-15T14:30:00', 'escalated', 'confirmed', 'silent_no_show', 'source_verified', 'gtfs-silent-v3')`);
+
+    // 134 creates the promotion history, 135 adds the Evidence conflict columns
+    // (its own view is guarded off once 134 has run), and 137 is the definer.
+    await applyMigration(pool, "migration-134-missed-trip-detector-promotion.sql");
+    await applyMigration(pool, "migration-135-missed-trip-evidence-conflict.sql");
+    await applyMigration(pool, "migration-137-missed-trip-promotion-view.sql");
+    await applyMigration(pool, "migration-137-missed-trip-promotion-view.sql");
+
+    const countsToward = async () => (await pool.request().query<{ TripId: string; CountsTowardAssessment: boolean }>(
+      "SELECT TripId, CountsTowardAssessment FROM dbo.vw_MissedTrip ORDER BY TripId")).recordset
+      .filter((r) => r.CountsTowardAssessment).map((r) => r.TripId);
+
+    // An empty history says what the setting said: nothing is promoted.
+    assert.deepEqual(await countsToward(), []);
+
+    // A promotion from the following month does not reach a case on 20260915.
+    const promote = async (on: string, promoted = true) => {
+      await pool.request().input("e", sql.Char(8), on).input("p", sql.Bit, promoted ? 1 : 0).query(
+        `INSERT INTO dbo.MissedTripDetectorPromotions (detector, effective_service_date, promoted, reason, decided_by)
+         VALUES (N'gtfs_silent_no_show', @e, @p, N'contract test', N'test@example.com')`);
+    };
+    await promote("20261001");
+    assert.deepEqual(await countsToward(), []);
+    await promote("20260901");
+    assert.deepEqual(await countsToward(), ["P"]);
+    // Demoted from the day before: the case stops counting.
+    await promote("20260914", false);
+    assert.deepEqual(await countsToward(), []);
+
+    // And the app says the same thing about the same rows.
+    const promotions = (await pool.request().query<DetectorPromotionEntry>(
+      `SELECT detector, effective_service_date, promoted, reason, measured_precision, sample_size, decided_by, decided_at
+       FROM dbo.MissedTripDetectorPromotions`)).recordset;
+    const windows = promotionWindows(promotions.map((h) => ({ ...h, promoted: h.promoted === true })));
+    const promotedRows = (await pool.request().query<{ TripId: string; ServiceDateKey: string; CountsTowardAssessment: boolean;
+      status: string; validation_status: string; data_quality_status: string; detection_type: string | null; source_system: string | null;
+      undecided_reason: string | null; grace_deadline_at: Date; detected_late_arrival_at: Date | null; detector_version: string | null;
+      expected_window_end_at: Date | null }>(`
+      SELECT v.TripId, v.ServiceDateKey, v.CountsTowardAssessment, m.status, m.validation_status, m.data_quality_status,
+             m.detection_type, m.source_system, m.undecided_reason, m.grace_deadline_at, m.detected_late_arrival_at,
+             m.detector_version, m.expected_window_end_at
+      FROM dbo.vw_MissedTrip v JOIN dbo.MonitoredMissedTrips m ON m.trip_id = v.TripId AND m.service_date = v.ServiceDateKey`)).recordset;
+    for (const row of promotedRows) {
+      assert.equal(row.CountsTowardAssessment,
+        classifyMissedTripCase({ ...row, service_date: row.ServiceDateKey }, windows).counts_toward_assessment, row.TripId);
+    }
   } finally {
     await pool.close();
   }

@@ -1,43 +1,35 @@
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import type { OnBoardAccessAssignment, OnBoardAccessPrincipal, OnBoardSignInInformation } from "@mvta/shared";
+import type { AccessHeldGrant, AccessPersonView, OnBoardAccessPrincipal, OnBoardSignInInformation } from "@mvta/shared";
 import { api } from "../../config.js";
 import { roleLabel } from "../../auth/roles.js";
-import { AddAccessLink, Avatar, Icon, Loading, PageHead, Pill, RoleChip } from "./AccessUi.js";
-import { HUMAN_ROLES, displayDate, displayTime, errorMessage, needsAttention, principalAccountStatus, useAccess } from "./accessData.js";
+import { useAccess as useMyAccess } from "../../auth/AccessContext.js";
+import { AddAccessLink, Avatar, GrantChip, Icon, Loading, PageHead, Pill, RoleChip, SetupNotice } from "./AccessUi.js";
+import { displayDate, displayTime, errorMessage, isPrivilegedRole, personLabel, principalAccountStatus, relativeTime, useAccess } from "./accessData.js";
 import { ExportInventoryButton } from "./ExportInventoryButton.js";
 import { RemoveAccessDialog } from "./RemoveAccessDialog.js";
 
-type Removal = { principal: OnBoardAccessPrincipal; assignment: OnBoardAccessAssignment };
+type Removal = { person: AccessPersonView; grant: AccessHeldGrant; privileged: boolean };
 
 const QUICK_FILTERS = [
-  ["direct", "Direct access"],
-  ["expiry", "Has expiry"],
-  ["attention", "Needs attention"],
-  ["missing", "Missing in Entra"],
+  ["nothing", "Holds no role"],
+  ["expiry", "Has an expiry"],
+  ["never", "Never signed in"],
 ] as const;
 type QuickFilter = (typeof QUICK_FILTERS)[number][0];
 
-function sourceText(assignment: OnBoardAccessAssignment): string {
-  if (assignment.source === "group") return `via ${assignment.source_name}`;
-  return assignment.is_exception ? "direct exception" : "direct assignment";
-}
-
-function matchesQuery(principal: OnBoardAccessPrincipal, query: string): boolean {
+function matchesQuery(person: AccessPersonView, query: string): boolean {
   if (!query) return true;
-  return principal.display_name.toLowerCase().includes(query)
-    || !!principal.sign_in_name?.toLowerCase().includes(query)
-    || principal.id.toLowerCase().includes(query)
-    || principal.effective_roles.some((role) => role.toLowerCase().includes(query) || roleLabel(role).toLowerCase().includes(query));
+  return [personLabel(person), person.email ?? "", person.objectId, ...person.roles.map((grant) => grant.roleName)]
+    .some((value) => value.toLowerCase().includes(query));
 }
 
-function soonestExpiry(principal: OnBoardAccessPrincipal): string | null {
-  return principal.assignments.map((assignment) => assignment.expires_at).filter((value): value is string => !!value).sort()[0] ?? null;
+function soonestExpiry(person: AccessPersonView): string | null {
+  return person.roles.map((grant) => grant.expiresAt).filter((value): value is string => !!value).sort()[0] ?? null;
 }
 
-function ExpiryCell({ principal }: { principal: OnBoardAccessPrincipal }) {
-  const expiry = soonestExpiry(principal);
-  if (principal.assignments.some((assignment) => assignment.lifecycle_status === "expiry_failed")) return <Pill tone="bad" icon="warn">Expiry failed</Pill>;
+function ExpiryCell({ person }: { person: AccessPersonView }) {
+  const expiry = soonestExpiry(person);
   if (!expiry) return <span className="am-muted">No expiry</span>;
   const days = (new Date(expiry).getTime() - Date.now()) / 86_400_000;
   if (days < 0) return <Pill tone="bad">Expired {displayDate(expiry)}</Pill>;
@@ -45,9 +37,14 @@ function ExpiryCell({ principal }: { principal: OnBoardAccessPrincipal }) {
   return <span>{displayDate(expiry)}</span>;
 }
 
-// People & guests: the list, and beside it whoever is selected.
+// People & guests: everyone OnBoard knows, what each of them holds, and beside
+// it whoever is selected. A person appears here once they have signed in - a
+// grant names a person, not a group, and OnBoard learns the person from the
+// sign-in - so the list is what OnBoard's own records say, not a Graph sweep.
 export function AccessPeople() {
-  const { principals, loading } = useAccess();
+  const { people, roles, notReady, loading } = useAccess();
+  const { can } = useMyAccess();
+  const canManage = can("access-identity.manage");
   const [params, setParams] = useSearchParams();
   const [query, setQuery] = useState("");
   const [role, setRole] = useState("all");
@@ -56,19 +53,21 @@ export function AccessPeople() {
   const [removal, setRemoval] = useState<Removal | null>(null);
   const show = (params.get("show") ?? "") as QuickFilter | "";
 
-  const people = useMemo(() => principals.filter((principal) => principal.principal_type === "user"), [principals]);
   const visible = useMemo(() => {
     const text = query.trim().toLowerCase();
-    return people.filter((principal) =>
-      matchesQuery(principal, text)
-      && (role === "all" || principal.effective_roles.includes(role as never))
-      && (kind === "all" || (kind === "guest") === !!principal.guest_state)
-      && (show !== "direct" || principal.assignments.some((assignment) => assignment.source === "direct"))
-      && (show !== "expiry" || principal.assignments.some((assignment) => !!assignment.expires_at))
-      && (show !== "attention" || needsAttention(principal))
-      && (show !== "missing" || principal.directory_status === "missing"));
+    return people.filter((person) =>
+      matchesQuery(person, text)
+      && (role === "all" || person.roles.some((grant) => grant.roleKey === role))
+      && (kind === "all" || person.kind === kind)
+      && (show !== "nothing" || person.roles.length === 0)
+      && (show !== "expiry" || person.roles.some((grant) => !!grant.expiresAt))
+      && (show !== "never" || !person.lastSeenAt));
   }, [kind, people, query, role, show]);
-  const selected = people.find((principal) => principal.id === selectedId) ?? null;
+  const selected = people.find((person) => person.personId === selectedId) ?? null;
+  const privilegedRole = (roleKey: string) => {
+    const known = roles.find((item) => item.key === roleKey);
+    return !!known && isPrivilegedRole(known);
+  };
 
   function setShow(value: QuickFilter) {
     const next = new URLSearchParams(params);
@@ -79,14 +78,15 @@ export function AccessPeople() {
   return <>
     <PageHead
       title="People & guests"
-      description="Everyone with OnBoard access and where it comes from. Select a person to see their access and sign-in activity."
+      description="Everyone OnBoard knows, and the roles they hold. Somebody appears here after their first sign-in; what they may do is decided by their OnBoard roles, not by Entra."
       actions={<><ExportInventoryButton /><AddAccessLink /></>}
     />
+    {notReady ? <SetupNotice message={notReady} /> : null}
     <div className="am-toolbar">
-      <label className="am-search"><Icon name="search" size={15} /><input type="search" aria-label="Search people" placeholder="Name, sign-in name or access level" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
-      <select className="am-select" aria-label="Filter access level" value={role} onChange={(event) => setRole(event.target.value)}>
-        <option value="all">All access levels</option>
-        {HUMAN_ROLES.map((item) => <option key={item} value={item}>{roleLabel(item)}</option>)}
+      <label className="am-search"><Icon name="search" size={15} /><input type="search" aria-label="Search people" placeholder="Name, email or role" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+      <select className="am-select" aria-label="Filter role" value={role} onChange={(event) => setRole(event.target.value)}>
+        <option value="all">All roles</option>
+        {roles.filter((item) => !item.archived).map((item) => <option key={item.key} value={item.key}>{item.name}</option>)}
       </select>
       <div className="am-seg" role="group" aria-label="Account type">
         {([["all", "All"], ["member", "Members"], ["guest", "Guests"]] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={kind === value} onClick={() => setKind(value)}>{label}</button>)}
@@ -99,33 +99,47 @@ export function AccessPeople() {
     {loading && people.length === 0 ? <Loading label="Loading people…" /> : <div className={selected ? "am-split" : undefined}>
       <div className="am-table-wrap">
         <table className="am-table">
-          <thead><tr><th>Person</th><th>OnBoard access</th>{selected ? null : <><th>Account</th><th>Expires</th></>}</tr></thead>
-          <tbody>{visible.length === 0 ? <tr><td colSpan={selected ? 2 : 4}><p className="am-empty">No people or guests match these filters.</p></td></tr> : visible.map((principal) => {
-            const status = principalAccountStatus(principal);
-            return <tr key={principal.id} className={principal.id === selectedId ? "is-selected" : undefined}>
+          <thead><tr><th>Person</th><th>OnBoard roles</th>{selected ? null : <><th>Last signed in</th><th>Expires</th></>}</tr></thead>
+          <tbody>{visible.length === 0 ? <tr><td colSpan={selected ? 2 : 4}><p className="am-empty">{people.length ? "No people or guests match these filters." : "Nobody has signed in to OnBoard yet."}</p></td></tr> : visible.map((person) => {
+            const name = personLabel(person);
+            return <tr key={person.personId} className={person.personId === selectedId ? "is-selected" : undefined}>
               <td><div className="am-who">
-                <Avatar name={principal.display_name} kind={principal.directory_status === "missing" ? "missing" : principal.guest_state ? "guest" : "person"} />
-                <div><button type="button" className="am-name" aria-expanded={principal.id === selectedId} onClick={() => setSelectedId(principal.id === selectedId ? null : principal.id)}>{principal.display_name}</button><small>{principal.sign_in_name || principal.id}</small></div>
+                <Avatar name={name} kind={person.kind === "guest" ? "guest" : "person"} />
+                <div><button type="button" className="am-name" aria-expanded={person.personId === selectedId} onClick={() => setSelectedId(person.personId === selectedId ? null : person.personId)}>{name}</button><small>{person.email || person.objectId}</small></div>
               </div></td>
-              <td>{principal.assignments.length ? <div className="am-stack">{principal.assignments.map((assignment) => <span key={`${assignment.role}-${assignment.source}-${assignment.source_id}`} className="am-stack" title={sourceText(assignment)}>
-                <RoleChip role={assignment.role} />{assignment.source === "direct" ? <Pill tone="warn">Direct</Pill> : null}
-              </span>)}</div> : <span className="am-muted">No access</span>}</td>
-              {selected ? null : <><td><Pill tone={status.tone}>{status.label}</Pill></td><td><ExpiryCell principal={principal} /></td></>}
+              <td>{person.roles.length
+                ? <div className="am-stack">{person.roles.map((grant) => <GrantChip key={grant.grantId} name={grant.roleName} privileged={privilegedRole(grant.roleKey)} />)}</div>
+                : <span className="am-muted">No roles</span>}</td>
+              {selected ? null : <>
+                <td>{person.lastSeenAt ? <span title={displayTime(person.lastSeenAt)}>{relativeTime(person.lastSeenAt)}</span> : <span className="am-muted">Never</span>}</td>
+                <td><ExpiryCell person={person} /></td>
+              </>}
             </tr>;
           })}</tbody>
         </table>
       </div>
-      {selected ? <PersonDetail key={selected.id} principal={selected} onClose={() => setSelectedId(null)} onRemove={(assignment) => setRemoval({ principal: selected, assignment })} /> : null}
+      {selected ? <PersonDetail
+        key={selected.personId}
+        person={selected}
+        canManage={canManage}
+        onClose={() => setSelectedId(null)}
+        onRemove={(grant) => setRemoval({ person: selected, grant, privileged: privilegedRole(grant.roleKey) })}
+      /> : null}
     </div>}
-    {removal ? <RemoveAccessDialog principal={removal.principal} assignment={removal.assignment} onClose={() => setRemoval(null)} /> : null}
+    {removal ? <RemoveAccessDialog person={removal.person} grant={removal.grant} privileged={removal.privileged} onClose={() => setRemoval(null)} /> : null}
   </>;
 }
 
-function PersonDetail({ principal, onClose, onRemove }: { principal: OnBoardAccessPrincipal; onClose: () => void; onRemove: (assignment: OnBoardAccessAssignment) => void }) {
+function PersonDetail({ person, canManage, onClose, onRemove }: {
+  person: AccessPersonView;
+  canManage: boolean;
+  onClose: () => void;
+  onRemove: (grant: AccessHeldGrant) => void;
+}) {
   const [signIns, setSignIns] = useState<OnBoardSignInInformation | null>(null);
   const [signInsLoading, setSignInsLoading] = useState(false);
   const [signInsError, setSignInsError] = useState<string | null>(null);
-  const status = principalAccountStatus(principal);
+  const name = personLabel(person);
 
   // Sign-ins are read from Entra on request and every read is audited, so
   // selecting a person does not fetch them.
@@ -133,7 +147,7 @@ function PersonDetail({ principal, onClose, onRemove }: { principal: OnBoardAcce
     setSignInsLoading(true);
     setSignInsError(null);
     try {
-      setSignIns(await api.getAccessSignIns(principal.id));
+      setSignIns(await api.getAccessSignIns(person.objectId));
     } catch (error) {
       setSignInsError(errorMessage(error, "Sign-in evidence is unavailable."));
     } finally {
@@ -141,27 +155,51 @@ function PersonDetail({ principal, onClose, onRemove }: { principal: OnBoardAcce
     }
   }
 
-  return <aside className="am-detail" aria-label={`Access for ${principal.display_name}`}>
+  return <aside className="am-detail" aria-label={`Access for ${name}`}>
     <div className="am-detail-top">
       <div className="am-detail-id">
-        <Avatar name={principal.display_name} kind={principal.directory_status === "missing" ? "missing" : principal.guest_state ? "guest" : "person"} size="lg" />
-        <div className="am-grow"><h3>{principal.display_name}</h3><small>{principal.sign_in_name || principal.id}</small></div>
+        <Avatar name={name} kind={person.kind === "guest" ? "guest" : "person"} size="lg" />
+        <div className="am-grow"><h3>{name}</h3><small>{person.email || person.objectId}</small></div>
         <button type="button" className="btn-icon" aria-label="Close details" onClick={onClose}>×</button>
       </div>
-      <div className="am-stack"><Pill tone={status.tone}>{status.label}</Pill>{principal.guest_state ? null : <Pill tone="mute">Member</Pill>}<ExpiryCell principal={principal} /></div>
+      <div className="am-stack">
+        <Pill tone={person.kind === "guest" ? "info" : "mute"}>{person.kind === "guest" ? "Guest" : "Member"}</Pill>
+        <Pill tone={person.status === "active" ? "ok" : "mute"}>{person.status === "active" ? "Active" : person.status}</Pill>
+        <ExpiryCell person={person} />
+      </div>
     </div>
     <section className="am-detail-sec">
-      <h4>OnBoard access</h4>
-      {principal.assignments.length ? principal.assignments.map((assignment) => <div key={`${assignment.role}-${assignment.source}-${assignment.source_id}`} className="am-assign">
-        <div>
-          <RoleChip role={assignment.role} />
-          <small>{sourceText(assignment)}{assignment.expires_at ? ` · expires ${displayDate(assignment.expires_at)}` : ""}{assignment.sponsor ? ` · sponsor ${assignment.sponsor}` : ""}</small>
-        </div>
-        <button type="button" className="am-btn sm" aria-label={`Remove access: ${roleLabel(assignment.role)} for ${principal.display_name}`} onClick={() => onRemove(assignment)}>Remove</button>
-      </div>) : <p className="am-fine">No effective roles.</p>}
+      <h4>Access summary</h4>
+      {person.summary.length
+        ? <ul className="am-lines">{person.summary.map((line) => <li key={line}>{line}</li>)}</ul>
+        : <p className="am-fine">Holds no role, so OnBoard shows them the No access page.</p>}
     </section>
     <section className="am-detail-sec">
+      <h4>Roles held</h4>
+      {person.roles.length ? person.roles.map((grant) => <div key={grant.grantId} className="am-assign">
+        <div>
+          <GrantChip name={grant.roleName} />
+          <small>
+            Granted {displayDate(grant.grantedAt)}{grant.grantedBy ? ` by ${grant.grantedBy}` : ""}
+            {grant.approvedBy ? ` · approved by ${grant.approvedBy}` : ""}
+            {grant.expiresAt ? ` · expires ${displayDate(grant.expiresAt)}` : ""}
+          </small>
+        </div>
+        {canManage ? <button type="button" className="am-btn sm" aria-label={`Remove access: ${grant.roleName} for ${name}`} onClick={() => onRemove(grant)}>Remove</button> : null}
+      </div>) : <p className="am-fine">No roles granted.</p>}
+    </section>
+    {person.kind === "guest" ? <section className="am-detail-sec">
+      <h4>Guest</h4>
+      <dl className="am-facts">
+        <div><dt>Sponsor</dt><dd>{person.sponsorName || "Not recorded"}</dd></div>
+        <div><dt>Organization</dt><dd>{person.organization || "Not recorded"}</dd></div>
+        <div><dt>Why</dt><dd>{person.justification || "Not recorded"}</dd></div>
+      </dl>
+      <p className="am-fine">The invitation itself is an Entra guest invitation. OnBoard records the sponsor and what they are here for.</p>
+    </section> : null}
+    <section className="am-detail-sec">
       <h4>Sign-ins{signIns ? <button type="button" className="am-btn ghost sm" disabled={signInsLoading} onClick={() => void loadSignIns()}><Icon name="refresh" size={13} />Refresh</button> : null}</h4>
+      <p className="am-fine">Last seen by OnBoard {person.lastSeenAt ? displayTime(person.lastSeenAt) : "never"}.{person.importedFrom ? ` Imported from ${person.importedFrom}.` : ""}</p>
       {!signIns ? <>
         <button type="button" className="am-btn sm" disabled={signInsLoading} onClick={() => void loadSignIns()}>{signInsLoading ? "Reading from Entra…" : "View sign-ins"}</button>
         <p className="am-fine">Read from Entra when asked, not stored in OnBoard. Each view is recorded in the activity log.</p>
@@ -183,37 +221,43 @@ function PersonDetail({ principal, onClose, onRemove }: { principal: OnBoardAcce
   </aside>;
 }
 
-// Access groups and Workloads are one table in two readings: a security group
-// that grants a level, or a workload identity that calls OnBoard unattended.
+// Access groups and Workloads are what Entra has, in two readings: a security
+// group assigned to the enterprise application, or a workload identity that
+// calls OnBoard unattended. Since ADR-0032 neither decides what a person may
+// do - a group assignment only gates sign-in - so these pages read, and the
+// grants that matter are made in People & guests.
 export function AccessPrincipalTable({ kind }: { kind: "groups" | "workloads" }) {
   const { principals, loading } = useAccess();
   const [query, setQuery] = useState("");
-  const [removal, setRemoval] = useState<Removal | null>(null);
   const isGroups = kind === "groups";
   const type = isGroups ? "group" : "service_principal";
-  const rows = principals.filter((principal) => principal.principal_type === type && matchesQuery(principal, query.trim().toLowerCase()));
+  const text = query.trim().toLowerCase();
+  const matches = (principal: OnBoardAccessPrincipal) => !text
+    || principal.display_name.toLowerCase().includes(text)
+    || !!principal.sign_in_name?.toLowerCase().includes(text)
+    || principal.id.toLowerCase().includes(text)
+    || principal.effective_roles.some((role) => role.toLowerCase().includes(text) || roleLabel(role).toLowerCase().includes(text));
+  const rows = principals.filter((principal) => principal.principal_type === type && matches(principal));
   const total = principals.filter((principal) => principal.principal_type === type).length;
-  const membersWithAccess = (groupId: string) => principals.filter((principal) => principal.principal_type === "user" && principal.assignments.some((assignment) => assignment.source_id === groupId)).length;
-  const action = isGroups ? "Remove group assignment" : "Remove workload access";
 
   return <>
     <PageHead
       title={isGroups ? "Access groups" : "Workloads"}
       description={isGroups
-        ? "Each access level is granted through an Entra security group. Removing a group’s assignment changes that group’s OnBoard access; its members stay in the group."
-        : "Apps and services that call OnBoard without a person signed in. A workload should hold only Automated System Ingestion; its access is managed apart from people and groups."}
+        ? "Security groups assigned to the OnBoard enterprise application in Entra. These decide who may sign in; what a person may do once inside is the roles they hold in People & guests."
+        : "Apps and services that call OnBoard without a person signed in. A workload holds Automated System Ingestion as an Entra app role, which is the one role OnBoard still reads from a token."}
       actions={<ExportInventoryButton />}
     />
     <div className="am-toolbar">
-      <label className="am-search"><Icon name="search" size={15} /><input type="search" aria-label={isGroups ? "Search groups" : "Search workloads"} placeholder={isGroups ? "Group or access level" : "Workload or access level"} value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+      <label className="am-search"><Icon name="search" size={15} /><input type="search" aria-label={isGroups ? "Search groups" : "Search workloads"} placeholder={isGroups ? "Group or assignment" : "Workload or assignment"} value={query} onChange={(event) => setQuery(event.target.value)} /></label>
       <span className="am-toolbar-meta" role="status">{rows.length === total ? `${total} ${isGroups ? (total === 1 ? "group" : "groups") : (total === 1 ? "workload" : "workloads")}` : `Showing ${rows.length} of ${total}`}</span>
     </div>
     {loading && total === 0 ? <Loading label="Loading…" /> : <div className="am-table-wrap">
       <table className="am-table">
         <thead><tr>
           <th>{isGroups ? "Access group" : "Workload"}</th>
-          <th>Assigned OnBoard access</th>
-          {isGroups ? <th className="num">Members with access</th> : <th>Health</th>}
+          <th>Entra app role</th>
+          {isGroups ? null : <th>Health</th>}
           <th>Account</th>
         </tr></thead>
         <tbody>{rows.length === 0 ? <tr><td colSpan={4}><p className="am-empty">{isGroups ? "No access groups match." : "No workloads match."}</p></td></tr> : rows.map((principal) => {
@@ -221,23 +265,16 @@ export function AccessPrincipalTable({ kind }: { kind: "groups" | "workloads" })
           const humanRoles = principal.assignments.filter((assignment) => assignment.role !== "System.Ingestion");
           return <tr key={principal.id}>
             <td><div className="am-who"><Avatar name={principal.display_name} kind={isGroups ? "group" : "workload"} /><div><b>{principal.display_name}</b><small>{principal.sign_in_name || principal.id}</small></div></div></td>
-            <td>{principal.assignments.length ? <div className="am-grants">{principal.assignments.map((assignment) => <div key={`${assignment.role}-${assignment.source}-${assignment.source_id}`} className="am-grant">
-              <RoleChip role={assignment.role} />
-              {assignment.expires_at ? <span className="am-fine">until {displayDate(assignment.expires_at)}</span> : null}
-              <button type="button" className="am-link" aria-label={`${action}: ${roleLabel(assignment.role)} for ${principal.display_name}`} onClick={() => setRemoval({ principal, assignment })}>Remove</button>
-            </div>)}</div> : <span className="am-muted">No effective roles</span>}</td>
-            {isGroups
-              ? <td className="num">{membersWithAccess(principal.id)}</td>
-              : <td>{humanRoles.length ? <Pill tone="bad" icon="warn">Holds a person’s role</Pill> : <Pill tone="ok">OK</Pill>}</td>}
+            <td>{principal.assignments.length ? <div className="am-stack">{principal.assignments.map((assignment) => <RoleChip key={`${assignment.role}-${assignment.source_id}`} role={assignment.role} />)}</div> : <span className="am-muted">No app role</span>}</td>
+            {isGroups ? null : <td>{humanRoles.length ? <Pill tone="bad" icon="warn">Holds a person’s app role</Pill> : <Pill tone="ok">OK</Pill>}</td>}
             <td><Pill tone={status.tone}>{status.label}</Pill></td>
           </tr>;
         })}</tbody>
       </table>
     </div>}
     <p className="am-callout"><Icon name="info" /><span>{isGroups
-      ? <><b>Why groups first.</b> Granting access through a group keeps Entra the one place to see who has what. Direct assignment to a person is still possible from Add access, and is recorded as an exception.</>
-      : <>To give a workload access, use Add access and select the workload; only Automated System Ingestion is offered for it.</>}</span></p>
-    {removal ? <RemoveAccessDialog principal={removal.principal} assignment={removal.assignment} onClose={() => setRemoval(null)} /> : null}
+      ? <><b>Sign-in only.</b> Being in one of these groups lets somebody reach OnBoard; it grants nothing inside it. Change these assignments in the Entra admin center.</>
+      : <>Automated System Ingestion stays an Entra app role: a workload identity has no person record, so a token claim is the right carrier for it.</>}</span></p>
   </>;
 }
 

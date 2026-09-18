@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Detour, DetourCommunication } from "@mvta/shared";
-import { audiencePlan, communicationSubject, draftCommunicationText, mailtoLink, nextAudience } from "./detourCommunicationDraft.js";
+import type { Detour, DetourCommunication, DetourCommunicationEligibility } from "@mvta/shared";
+import { audiencePlan, communicationAction, communicationSubject, detourSendBlock, draftCommunicationText, mailtoLink, nextAudience } from "./detourCommunicationDraft.js";
 
 const detour = {
   internal_number: "MVTA-DET-2026-0012", number: null, closure: "Cedar Ave bridge closed", location: "Cedar Ave at 5th St",
@@ -62,5 +62,85 @@ describe("mailtoLink and communicationSubject", () => {
   it("prefixes the subject with the reference when there is one", () => {
     expect(communicationSubject(detour)).toBe("[MVTA-DET-2026-0012] Detour: Cedar Ave bridge closed");
     expect(communicationSubject({ internal_number: null, number: null, closure: "X" })).toBe("Detour: X");
+  });
+});
+
+
+describe("Detour communication eligibility, as the server decided it", () => {
+  const eligible: DetourCommunicationEligibility = { may_draft: true, may_send: true, refusal: null, audience_not_required: false };
+  const closed: DetourCommunicationEligibility = {
+    may_draft: false, may_send: false, audience_not_required: false,
+    refusal: { code: "detour_closed", sentence: "This Detour is closed, so there is nothing left to tell this audience." },
+  };
+  const noRecipients: DetourCommunicationEligibility = {
+    may_draft: true, may_send: false, audience_not_required: false,
+    refusal: { code: "no_recipients", sentence: "Add at least one email recipient before sending." },
+  };
+
+  const withEligibility = (rows: { audience: string; eligibility: DetourCommunicationEligibility }[]) =>
+    ({ ...detour, required_audiences: rows.map((r) => r.audience), audience_eligibility: rows } as unknown as Detour);
+
+  it("carries each audience's decision onto its plan item", () => {
+    const plan = audiencePlan(withEligibility([
+      { audience: "Operators", eligibility: eligible },
+      { audience: "Operations management", eligibility: closed },
+    ]), []);
+    expect(plan.map((p) => [p.audience, p.eligibility?.may_send])).toEqual([["Operators", true], ["Operations management", false]]);
+    // Matching is how a person reads it, not byte-exact.
+    const cased = audiencePlan(withEligibility([{ audience: "Operators", eligibility: eligible }]), []);
+    expect(cased[0].eligibility).toBeDefined();
+  });
+
+  it("blocks sending on the Detour's own reason, not on a missing recipient", () => {
+    expect(detourSendBlock(audiencePlan(withEligibility([{ audience: "Operators", eligibility: closed }]), [])))
+      .toEqual(closed.refusal);
+    // A missing recipient is about one message, so it does not disable the
+    // whole Detour's sending - the server still refuses that one send.
+    expect(detourSendBlock(audiencePlan(withEligibility([{ audience: "Operators", eligibility: noRecipients }]), []))).toBeNull();
+    expect(detourSendBlock(audiencePlan(withEligibility([{ audience: "Operators", eligibility: eligible }]), []))).toBeNull();
+  });
+
+  it("says nothing on a server that does not send a decision", () => {
+    // 1.5.248 and earlier: the console must not invent a rule it does not own.
+    expect(detourSendBlock(audiencePlan(detour, []))).toBeNull();
+    expect(audiencePlan(detour, [])[0].eligibility).toBeUndefined();
+  });
+});
+
+describe("communicationAction", () => {
+  const sent = { channel: "email" as const, recipients: "ops@example.com", status: "draft" as const, delivery_status: undefined };
+  const emailOption = { channel: "email" as const, label: "Email", kind: "sent" as const, needs_recipients: true };
+  const avlOption = { channel: "avl_messaging" as const, label: "AVL messaging", kind: "recorded" as const, needs_recipients: false };
+  const signageOption = { channel: "digital_signage" as const, label: "Digital signage", kind: "recorded" as const, needs_recipients: false };
+
+  it("offers Send for a channel OnBoard sends, and blocks it with the server's reason", () => {
+    expect(communicationAction(sent, emailOption, undefined)).toMatchObject({ canSend: true, isRecorded: false, recordLabel: "Mark published (sent elsewhere)" });
+    expect(communicationAction(sent, emailOption, "This Detour is closed.")).toMatchObject({ canSend: true, blocked: "This Detour is closed." });
+  });
+
+  it("never offers Send for a recorded channel, and a closed Detour does not block writing one down", () => {
+    // The server allows recording on a closed Detour: Monday's AVL message may
+    // be written down on Tuesday.
+    const action = communicationAction({ ...sent, channel: "avl_messaging", recipients: null }, avlOption, "This Detour is closed.");
+    expect(action).toMatchObject({ canSend: false, isRecorded: true, recordLabel: "Record AVL messaging went out" });
+    expect(action.blocked).toBeUndefined();
+    expect(communicationAction({ ...sent, channel: "digital_signage", recipients: null }, signageOption, undefined).recordLabel)
+      .toBe("Record Digital signage went out");
+  });
+
+  it("does not offer Send for an email with no recipients", () => {
+    expect(communicationAction({ ...sent, recipients: null }, emailOption, undefined)).toMatchObject({ canSend: false, recordLabel: "Mark published" });
+  });
+
+  it("offers Send for Teams, which carries no recipients", () => {
+    const teams = { channel: "teams" as const, label: "Teams", kind: "sent" as const, needs_recipients: false };
+    expect(communicationAction({ ...sent, channel: "teams", recipients: null }, teams, undefined).canSend).toBe(true);
+  });
+
+  it("treats an unknown channel as one OnBoard does not send", () => {
+    // A server older than 1.5.254 sends no channel list; nothing is offered for
+    // sending rather than guessing at a transport.
+    expect(communicationAction({ ...sent, channel: "radio", recipients: "someone" }, undefined, undefined))
+      .toMatchObject({ canSend: false, isRecorded: false, recordLabel: "Mark published" });
   });
 });

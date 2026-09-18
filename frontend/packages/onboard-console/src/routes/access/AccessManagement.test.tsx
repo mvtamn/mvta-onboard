@@ -1,7 +1,7 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import type { OnBoardAccessChangeRecord } from "@mvta/shared";
+import { ApiError, type AccessGrantRequestView, type AccessPersonView, type AccessRoleView } from "@mvta/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppDialogProvider } from "../../components/AppDialog.js";
 import { AccessActivity } from "./AccessActivity.js";
@@ -16,25 +16,35 @@ import { actionLabel, outcomeOf } from "./auditVocabulary.js";
 
 vi.mock("../../config.js", () => ({
   api: {
-    getAccessPrincipals: vi.fn(),
-    getPendingAccessChanges: vi.fn(),
-    getAccessExpirations: vi.fn(),
-    getAccessAudit: vi.fn(),
-    getAccessSignIns: vi.fn(),
+    // OnBoard's own roles and grants (ADR-0032).
+    getAccessPeople: vi.fn(),
+    getAccessGrantRequests: vi.fn(),
+    getAccessRoles: vi.fn(),
+    grantAccessRole: vi.fn(),
+    revokeAccessGrant: vi.fn(),
+    decideAccessGrantRequest: vi.fn(),
+    importAccessFromEntra: vi.fn(),
+    getAccessHealthFindings: vi.fn(),
+    // The three things Entra is still asked.
     searchAccessDirectory: vi.fn(),
+    getAccessSignIns: vi.fn(),
     previewAccessChanges: vi.fn(),
     submitAccessChanges: vi.fn(),
-    decideAccessChange: vi.fn(),
-    cancelAccessChange: vi.fn(),
-    applyAccessExpirations: vi.fn(),
-    getAccessReconciliation: vi.fn(),
+    // The Entra inventory, still read for groups, workloads and the import.
+    getAccessPrincipals: vi.fn(),
+    getAccessAudit: vi.fn(),
     exportAccessInventory: vi.fn(),
   },
 }));
 
 vi.mock("../../auth/AuthContext.js", () => ({
-  useAuth: () => ({ account: { name: "Alex Administrator", username: "alex@mvta.com" }, roles: ["OCC.AccessAdmin"], signIn: vi.fn(), signOut: vi.fn() }),
+  useAuth: () => ({ account: { id: "actor-1", name: "Alex Administrator", username: "alex@example.com" }, signIn: vi.fn(), signOut: vi.fn() }),
 }));
+
+vi.mock("../../auth/AccessContext.js", async () => {
+  const actual = await vi.importActual<typeof import("../../auth/AccessContext.js")>("../../auth/AccessContext.js");
+  return { ...actual, useAccess: () => actual.accessStateWith(["access-identity.view", "access-identity.manage", "access-identity.approve"]) };
+});
 
 const { api } = await import("../../config.js");
 
@@ -55,29 +65,120 @@ function renderAt(path: string) {
   </MemoryRouter></AppDialogProvider>);
 }
 
+function role(overrides: Partial<AccessRoleView> & { key: string; name: string }): AccessRoleView {
+  return {
+    purpose: "",
+    locked: false,
+    allActions: false,
+    actions: [],
+    summary: [],
+    members: 0,
+    seeded: true,
+    archived: false,
+    ...overrides,
+  };
+}
+
+const VIEWER = role({
+  key: "viewer",
+  name: "Viewer",
+  purpose: "Read-only cover for the dispatch desk.",
+  actions: ["dashboard.view"],
+  summary: ["Dashboard: view only"],
+  members: 1,
+});
+
+const ACCESS_ADMIN = role({
+  key: "access-administrator",
+  name: "Access Administrator",
+  locked: true,
+  actions: ["access-identity.view", "access-identity.manage", "access-identity.approve"],
+  summary: ["Access & Identity: view; grant access and edit roles"],
+  members: 1,
+});
+
+function person(overrides: Partial<AccessPersonView> & { personId: string; objectId: string }): AccessPersonView {
+  return {
+    tenantId: "tenant-1",
+    name: null,
+    email: null,
+    kind: "member",
+    status: "active",
+    sponsorName: null,
+    organization: null,
+    justification: null,
+    importedFrom: null,
+    lastSeenAt: null,
+    roles: [],
+    actions: [],
+    summary: [],
+    ...overrides,
+  };
+}
+
+const TAYLOR = person({
+  personId: "person-1",
+  objectId: "user-1",
+  name: "Taylor Operator",
+  email: "taylor@example.com",
+  lastSeenAt: new Date(Date.now() - 3_600_000).toISOString(),
+  roles: [{ grantId: "grant-1", roleKey: "viewer", roleName: "Viewer", grantedAt: "2026-09-01T12:00:00Z", grantedBy: "Alex Administrator", approvedBy: null, expiresAt: null }],
+  actions: ["dashboard.view"],
+  summary: ["Dashboard: view only"],
+});
+
+const RILEY = person({
+  personId: "person-2",
+  objectId: "user-2",
+  name: "Riley Guest",
+  email: "riley@example.com",
+  kind: "guest",
+  sponsorName: "Alex Administrator",
+  organization: "Contoso Transit",
+  justification: "Detour planning review",
+});
+
+function grantRequest(overrides: Partial<AccessGrantRequestView> = {}): AccessGrantRequestView {
+  return {
+    requestId: "request-1",
+    personId: "person-1",
+    personName: "Taylor Operator",
+    personEmail: "taylor@example.com",
+    roleKey: "access-administrator",
+    roleName: "Access Administrator",
+    action: "grant",
+    reason: "Duty manager",
+    expiresAt: null,
+    status: "pending",
+    requestedByObjectId: "actor-1",
+    requestedByName: "alex@example.com",
+    requestedAt: "2026-09-16T12:00:00Z",
+    approvalExpiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    decidedByName: null,
+    decidedAt: null,
+    decisionReason: null,
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(api.getAccessPeople).mockResolvedValue({ people: [TAYLOR, RILEY] });
+  vi.mocked(api.getAccessGrantRequests).mockResolvedValue({ requests: [] });
+  vi.mocked(api.getAccessRoles).mockResolvedValue({ roles: [VIEWER, ACCESS_ADMIN] });
+  vi.mocked(api.getAccessAudit).mockResolvedValue({ audit: [] });
   vi.mocked(api.getAccessPrincipals).mockResolvedValue({
     environment: "test",
     access_admin_fallback: false,
     principals: [{
       id: "user-1",
       display_name: "Taylor Operator",
-      sign_in_name: "taylor@mvta.com",
+      sign_in_name: "taylor@example.com",
       principal_type: "user",
       account_enabled: true,
       guest_state: null,
       assignments: [{ role: "OCC.Viewer", source: "group", source_id: "group-1", source_name: "OnBoard Viewers" }],
       effective_roles: ["OCC.Viewer"],
-    }, {
-      id: "user-2",
-      display_name: "Riley Direct",
-      sign_in_name: "riley@mvta.com",
-      principal_type: "user",
-      account_enabled: false,
-      guest_state: null,
-      assignments: [{ role: "OCC.Compliance", source: "direct", source_id: "user-2", source_name: "Riley Direct", is_exception: true }],
-      effective_roles: ["OCC.Compliance"],
     }, {
       id: "group-1",
       display_name: "OnBoard Viewers",
@@ -98,9 +199,6 @@ beforeEach(() => {
       effective_roles: ["OCC.Viewer"],
     }],
   });
-  vi.mocked(api.getPendingAccessChanges).mockResolvedValue({ changes: [] });
-  vi.mocked(api.getAccessExpirations).mockResolvedValue({ expirations: [] });
-  vi.mocked(api.getAccessAudit).mockResolvedValue({ audit: [] });
 });
 
 afterEach(cleanup);
@@ -111,7 +209,7 @@ describe("Access & Identity vocabulary", () => {
     expect(spreadsheetSafeText("Taylor Operator")).toBe("Taylor Operator");
   });
 
-  it("names roles by their label in API messages and audit codes by words", () => {
+  it("names Entra roles by their label in API messages and audit codes by words", () => {
     expect(withRoleLabels("Configured group g-1 is not assigned to OCC.Detour on the app.")).toBe("Configured group g-1 is not assigned to Detour Manager on the app.");
     expect(actionLabel("privileged_change_requested")).toBe("Requested a privileged change");
     expect(actionLabel("something_new")).toBe("Something new");
@@ -119,21 +217,96 @@ describe("Access & Identity vocabulary", () => {
   });
 });
 
+describe("Setup", () => {
+  it("reads a 503 as an environment that has not been migrated, not as a failure", async () => {
+    vi.mocked(api.getAccessPeople).mockRejectedValue(new ApiError(503, "Roles are not set up in this environment yet."));
+    vi.mocked(api.getAccessGrantRequests).mockRejectedValue(new ApiError(503, "Roles are not set up in this environment yet."));
+    vi.mocked(api.getAccessRoles).mockRejectedValue(new ApiError(503, "Roles are not set up in this environment yet."));
+
+    renderAt("/admin/access/people");
+    expect(await screen.findByText(/OnBoard’s roles are not set up in this environment yet/)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
+
 describe("Overview", () => {
-  it("gathers what needs a decision from across the section", async () => {
-    vi.mocked(api.getPendingAccessChanges).mockResolvedValue({ changes: [pendingChange({ requested_by_id: "actor-9", requested_by_name: "sam@mvta.com" })] });
+  it("still renders when a list comes back without its field", async () => {
+    // A payload missing `audit` used to reach the page as undefined and crash
+    // it, which reads as OnBoard being broken rather than as one list that
+    // could not be read.
+    vi.mocked(api.getAccessAudit).mockResolvedValue({} as never);
+    renderAt("/admin/access");
+    expect(await screen.findByText("1 person holds no role")).toBeInTheDocument();
+  });
+
+  it("counts from OnBoard's own grants and gathers what needs a decision", async () => {
+    vi.mocked(api.getAccessGrantRequests).mockResolvedValue({ requests: [grantRequest({ requestedByObjectId: "actor-9", requestedByName: "sam@example.com" })] });
     renderAt("/admin/access");
 
     expect(await screen.findByText("1 privileged request is waiting for approval")).toBeInTheDocument();
-    expect(screen.getByText("1 person has access but a disabled or missing account")).toBeInTheDocument();
-    expect(screen.getByText("1 person holds direct access")).toBeInTheDocument();
-    expect(screen.getByText("1 holding a person’s role")).toBeInTheDocument();
+    expect(screen.getByText("1 person holds no role")).toBeInTheDocument();
+    expect(screen.getByText("1 guest · 1 holding no role")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Review approvals/ })).toHaveAttribute("href", "/admin/access/approvals");
+    // Roles, with what each allows, replace the Entra access levels table.
+    const rolesTable = screen.getByRole("table");
+    expect(within(rolesTable).getByText("Dashboard: view only")).toBeInTheDocument();
+  });
+
+  it("imports today's Entra assignments once, and says what it did", async () => {
+    vi.mocked(api.importAccessFromEntra).mockResolvedValue({ people: 1, granted: 1, skipped: 0, unknownRoles: [] });
+    renderAt("/admin/access");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Import from Entra" }));
+    // Only people are imported: a group or workload assignment grants nobody a role.
+    expect(api.importAccessFromEntra).toHaveBeenCalledWith([{
+      object_id: "user-1",
+      name: "Taylor Operator",
+      email: "taylor@example.com",
+      app_role: "OCC.Viewer",
+      via: "group OnBoard Viewers",
+    }]);
+    expect(await screen.findByText("1 read from Entra · 1 person, 1 grant, 0 skipped.")).toBeInTheDocument();
+    // Pressing it refreshes what the section holds, so a second press is honest.
+    expect(api.getAccessPeople).toHaveBeenCalledTimes(2);
+  });
+
+  // Finding nothing used to be one sentence blaming Entra, which on dev was
+  // wrong: Entra held 24 assignments and the read had gone wrong instead. Each
+  // way of finding nothing now says which one it was, and none of them posts.
+  it("says Entra returned nothing when the app roles asked about do not match", async () => {
+    vi.mocked(api.getAccessPrincipals).mockResolvedValue({ environment: "test", principals: [] } as never);
+    renderAt("/admin/access");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Import from Entra" }));
+    expect(await screen.findByText(/ONBOARD_ACCESS_CONFIG_JSON/)).toBeInTheDocument();
+    expect(api.importAccessFromEntra).not.toHaveBeenCalled();
+  });
+
+  it("names the unread group membership when Entra returns groups and no people", async () => {
+    vi.mocked(api.getAccessPrincipals).mockResolvedValue({
+      environment: "test",
+      principals: [{
+        id: "group-1",
+        display_name: "OnBoard Viewers",
+        sign_in_name: null,
+        principal_type: "group",
+        account_enabled: null,
+        guest_state: null,
+        assignments: [{ role: "OCC.Viewer", source: "direct", source_id: "a-1", source_name: "Enterprise application assignment" }],
+        effective_roles: ["OCC.Viewer"],
+      }],
+    } as never);
+    renderAt("/admin/access");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Import from Entra" }));
+    expect(await screen.findByText(/1 group and no people/)).toBeInTheDocument();
+    expect(await screen.findByText(/directory read permission/)).toBeInTheDocument();
+    expect(api.importAccessFromEntra).not.toHaveBeenCalled();
   });
 });
 
 describe("People & guests", () => {
-  it("shows effective access, and loads sign-ins for the selected person only when asked", async () => {
+  it("shows the roles held, the generated summary and guest details, and loads sign-ins only when asked", async () => {
     vi.mocked(api.getAccessSignIns).mockResolvedValue({
       directory_summary: {
         scope: "directory_wide",
@@ -151,30 +324,39 @@ describe("People & guests", () => {
     renderAt("/admin/access/people");
     const row = (await screen.findByRole("button", { name: "Taylor Operator" })).closest("tr")!;
     expect(within(row).getByText("Viewer")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "OnBoard Viewers" })).not.toBeInTheDocument();
+    // A grant names a person; there is no "via" group to report any more.
+    expect(within(row).queryByText(/via /)).not.toBeInTheDocument();
 
     await userEvent.click(within(row).getByRole("button", { name: "Taylor Operator" }));
     const detail = screen.getByRole("complementary", { name: "Access for Taylor Operator" });
-    expect(within(detail).getByText("via OnBoard Viewers")).toBeInTheDocument();
+    expect(within(detail).getByText("Dashboard: view only")).toBeInTheDocument();
+    expect(within(detail).getByText(/Granted .* by Alex Administrator/)).toBeInTheDocument();
     expect(api.getAccessSignIns).not.toHaveBeenCalled();
 
     await userEvent.click(within(detail).getByRole("button", { name: "View sign-ins" }));
+    expect(api.getAccessSignIns).toHaveBeenCalledWith("user-1");
     expect(await within(detail).findByText(/Directory-wide sign-in summary/)).toBeInTheDocument();
-    expect(within(detail).getByText(/OnBoard-specific sign-in events/)).toBeInTheDocument();
-    expect(within(detail).getByText(/not necessarily OnBoard/)).toBeInTheDocument();
     expect(within(detail).getByText("Successful · Browser")).toBeInTheDocument();
   });
 
-  it("filters to direct access from a link", async () => {
-    renderAt("/admin/access/people?show=direct");
-    expect(await screen.findByRole("button", { name: "Riley Direct" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Taylor Operator" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Direct access" })).toHaveAttribute("aria-pressed", "true");
+  it("shows a guest's sponsor and organization on their own record", async () => {
+    renderAt("/admin/access/people");
+    await userEvent.click(await screen.findByRole("button", { name: "Riley Guest" }));
+    const detail = screen.getByRole("complementary", { name: "Access for Riley Guest" });
+    expect(within(detail).getByText("Contoso Transit")).toBeInTheDocument();
+    expect(within(detail).getByText("Alex Administrator")).toBeInTheDocument();
+    expect(within(detail).getByText(/Holds no role, so OnBoard shows them the No access page/)).toBeInTheDocument();
   });
 
-  it("checks a removal from the exact group-derived source before it can be confirmed", async () => {
-    vi.mocked(api.previewAccessChanges).mockResolvedValue({ environment: "test", valid: true, items: [{ index: 0, disposition: "immediate", errors: [] }] });
-    vi.mocked(api.submitAccessChanges).mockResolvedValue({ environment: "test", results: [{ index: 0, disposition: "completed" }] });
+  it("filters to the people holding nothing from a link", async () => {
+    renderAt("/admin/access/people?show=nothing");
+    expect(await screen.findByRole("button", { name: "Riley Guest" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Taylor Operator" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Holds no role" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("revokes one grant by its id, with a reason", async () => {
+    vi.mocked(api.revokeAccessGrant).mockResolvedValue({ disposition: "applied", grantId: "grant-1" });
 
     renderAt("/admin/access/people");
     await userEvent.click(await screen.findByRole("button", { name: "Taylor Operator" }));
@@ -183,167 +365,190 @@ describe("People & guests", () => {
     expect(within(dialog).getByRole("button", { name: "Remove access" })).toBeDisabled();
 
     await userEvent.type(within(dialog).getByRole("textbox", { name: /Revocation reason/ }), "Moved to another team");
-    expect(await within(dialog).findByText("Checked: this applies as soon as you confirm.", {}, { timeout: 2000 })).toBeInTheDocument();
-    expect(api.previewAccessChanges).toHaveBeenLastCalledWith([{
-      action: "revoke",
-      principal_id: "user-1",
-      principal_type: "user",
-      role: "OCC.Viewer",
-      source: "group",
-      source_id: "group-1",
-      reason: "Moved to another team",
-    }]);
-
     await userEvent.click(within(dialog).getByRole("button", { name: "Remove access" }));
-    expect(api.submitAccessChanges).toHaveBeenCalledTimes(1);
+    // The third argument is the step-up: an ordinary role does not need one.
+    expect(api.revokeAccessGrant).toHaveBeenCalledWith("grant-1", "Moved to another team", false);
     expect(await screen.findByText("Viewer removed from Taylor Operator.")).toBeInTheDocument();
+  });
+
+  it("reads a privileged removal as waiting for a second Access Administrator", async () => {
+    vi.mocked(api.getAccessPeople).mockResolvedValue({ people: [{
+      ...TAYLOR,
+      roles: [{ grantId: "grant-9", roleKey: "access-administrator", roleName: "Access Administrator", grantedAt: "2026-09-01T12:00:00Z", grantedBy: null, approvedBy: "Sam Patel", expiresAt: null }],
+    }] });
+    vi.mocked(api.revokeAccessGrant).mockResolvedValue({ disposition: "pending_approval", requestId: "request-7" });
+
+    renderAt("/admin/access/people");
+    await userEvent.click(await screen.findByRole("button", { name: "Taylor Operator" }));
+    await userEvent.click(screen.getByRole("button", { name: "Remove access: Access Administrator for Taylor Operator" }));
+    const dialog = screen.getByRole("dialog", { name: "Remove Access Administrator from Taylor Operator?" });
+    expect(within(dialog).getByText(/a second Access Administrator decides it/)).toBeInTheDocument();
+
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /Revocation reason/ }), "Left the team");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Request removal" }));
+    expect(await screen.findByText("Removing Access Administrator from Taylor Operator is waiting for a second Access Administrator.")).toBeInTheDocument();
+    // The step-up matters: without it the server refuses the change outright
+    // instead of opening the request a second administrator can decide.
+    expect(api.revokeAccessGrant).toHaveBeenCalledWith("grant-9", "Left the team", true);
   });
 });
 
 describe("Access groups and Workloads", () => {
-  it("keeps groups on their own page and labels their action clearly", async () => {
+  it("shows Entra groups as sign-in only, with nothing to remove here", async () => {
     renderAt("/admin/access/groups");
     const groupRow = (await screen.findByText("OnBoard Viewers")).closest("tr")!;
-    expect(screen.getByRole("columnheader", { name: "Assigned OnBoard access" })).toBeInTheDocument();
-    expect(within(groupRow).getByRole("button", { name: "Remove group assignment: Viewer for OnBoard Viewers" })).toBeInTheDocument();
-    expect(within(groupRow).getByText("1")).toBeInTheDocument();
-    expect(screen.queryByText("Taylor Operator")).not.toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Entra app role" })).toBeInTheDocument();
+    expect(within(groupRow).queryByRole("button", { name: /Remove/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/it grants nothing inside it/)).toBeInTheDocument();
   });
 
-  it("flags a workload that holds a person's role", async () => {
+  it("flags a workload that holds a person's app role", async () => {
     renderAt("/admin/access/workloads");
     const row = (await screen.findByText("legacy-importer")).closest("tr")!;
-    expect(within(row).getByText("Holds a person’s role")).toBeInTheDocument();
+    expect(within(row).getByText("Holds a person’s app role")).toBeInTheDocument();
   });
 });
 
 describe("Add access", () => {
-  it("names each requested change and explains its approval state", async () => {
+  it("finds somebody in Entra and grants the role against the person OnBoard knows", async () => {
     vi.mocked(api.searchAccessDirectory).mockResolvedValue({ candidates: [{
-      id: "user-3",
-      display_name: "Morgan Manager",
-      sign_in_name: "morgan@mvta.com",
+      id: "user-1",
+      display_name: "Taylor Operator",
+      sign_in_name: "taylor@example.com",
       principal_type: "user",
       account_enabled: true,
       guest_state: null,
       assignments: [],
       effective_roles: [],
     }] });
-    vi.mocked(api.previewAccessChanges).mockResolvedValue({ environment: "test", valid: true, items: [{ index: 0, disposition: "approval_required", errors: [] }] });
-    vi.mocked(api.submitAccessChanges).mockResolvedValue({ environment: "test", results: [{ index: 0, disposition: "pending_approval" }] });
+    vi.mocked(api.grantAccessRole).mockResolvedValue({ disposition: "applied", grantId: "grant-5" });
 
     renderAt("/admin/access/add");
-    await userEvent.type(await screen.findByRole("searchbox", { name: "Search Entra directory" }), "Morgan");
+    await userEvent.type(await screen.findByRole("searchbox", { name: "Search Entra directory" }), "Taylor");
     await userEvent.click(screen.getByRole("button", { name: "Search Entra" }));
-    await userEvent.click(await screen.findByRole("checkbox", { name: /Morgan Manager/ }));
-    await userEvent.click(screen.getByRole("checkbox", { name: /Operations Administrator/ }));
+    await userEvent.click(await screen.findByRole("radio", { name: /Taylor Operator/ }));
+    // What the role allows is on the card, not behind it.
+    expect(screen.getByText("Read-only cover for the dispatch desk.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("radio", { name: /Viewer/ }));
+    await userEvent.type(screen.getByRole("textbox", { name: /Business reason/ }), "Weekend cover");
 
-    const summary = screen.getByRole("complementary", { name: "Review changes" });
-    expect(within(summary).getByText("Grant Operations Administrator to Morgan Manager")).toBeInTheDocument();
-    await userEvent.click(within(summary).getByRole("button", { name: "Check changes" }));
-    expect(await within(summary).findByText("Needs a second approver")).toBeInTheDocument();
-
-    await userEvent.click(within(summary).getByRole("button", { name: "Submit change" }));
-    expect(await within(summary).findByText("Grant Operations Administrator — Awaiting approval from another Access Administrator.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Grant role" }));
+    expect(api.grantAccessRole).toHaveBeenCalledWith("person-1", { role_key: "viewer", reason: "Weekend cover", expires_at: null }, false);
+    expect(await screen.findByText("Taylor Operator now holds Viewer.")).toBeInTheDocument();
   });
 
-  it("clears a check when a step changes", async () => {
+  it("says plainly that somebody OnBoard has not seen has not signed in yet", async () => {
     vi.mocked(api.searchAccessDirectory).mockResolvedValue({ candidates: [{
-      id: "user-3", display_name: "Morgan Manager", sign_in_name: "morgan@mvta.com", principal_type: "user",
-      account_enabled: true, guest_state: null, assignments: [], effective_roles: [],
+      id: "user-404",
+      display_name: "Morgan Manager",
+      sign_in_name: "morgan@example.com",
+      principal_type: "user",
+      account_enabled: true,
+      guest_state: null,
+      assignments: [],
+      effective_roles: [],
     }] });
-    vi.mocked(api.previewAccessChanges).mockResolvedValue({ environment: "test", valid: true, items: [{ index: 0, disposition: "immediate", errors: [] }] });
 
     renderAt("/admin/access/add");
     await userEvent.type(await screen.findByRole("searchbox", { name: "Search Entra directory" }), "Morgan");
     await userEvent.click(screen.getByRole("button", { name: "Search Entra" }));
-    await userEvent.click(await screen.findByRole("checkbox", { name: /Morgan Manager/ }));
-    await userEvent.click(screen.getByRole("checkbox", { name: /Alert Publisher/ }));
-    await userEvent.click(screen.getByRole("button", { name: "Check changes" }));
-    expect(await screen.findByRole("button", { name: "Submit change" })).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("radio", { name: /Morgan Manager/ }));
 
-    await userEvent.type(screen.getByRole("textbox", { name: /Business reason/ }), "Cover");
-    expect(screen.queryByRole("button", { name: "Submit change" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Check changes" })).toBeEnabled();
+    expect(screen.getByText(/OnBoard has not seen Morgan Manager yet/)).toBeInTheDocument();
+    expect(screen.getByText(/the first time they sign in to OnBoard/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Grant role" })).toBeDisabled();
+  });
+
+  it("reads a privileged grant as needing a second Access Administrator, not as an error", async () => {
+    vi.mocked(api.searchAccessDirectory).mockResolvedValue({ candidates: [{
+      id: "user-1", display_name: "Taylor Operator", sign_in_name: "taylor@example.com", principal_type: "user",
+      account_enabled: true, guest_state: null, assignments: [], effective_roles: [],
+    }] });
+    vi.mocked(api.grantAccessRole).mockResolvedValue({ disposition: "pending_approval", requestId: "request-3" });
+
+    renderAt("/admin/access/add");
+    await userEvent.type(await screen.findByRole("searchbox", { name: "Search Entra directory" }), "Taylor");
+    await userEvent.click(screen.getByRole("button", { name: "Search Entra" }));
+    await userEvent.click(await screen.findByRole("radio", { name: /Taylor Operator/ }));
+    await userEvent.click(screen.getByRole("radio", { name: /Access Administrator/ }));
+    await userEvent.type(screen.getByRole("textbox", { name: /Business reason/ }), "Second approver");
+
+    await userEvent.click(screen.getByRole("button", { name: "Request this role" }));
+    expect(await screen.findByText("Access Administrator for Taylor Operator is waiting for a second Access Administrator to approve it.")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
 
-function pendingChange(overrides: Record<string, unknown> = {}): OnBoardAccessChangeRecord {
-  return {
-    id: "request-1",
-    environment: "test",
-    change: { action: "grant" as const, principal_id: "user-1", principal_type: "user" as const, role: "OCC.Admin" as const, source: "group" as const, reason: "Duty manager" },
-    status: "pending" as const,
-    requested_by_id: "actor-1",
-    requested_by_name: "alex@mvta.com",
-    requested_at: "2026-08-27T12:00:00Z",
-    approval_expires_at: new Date(Date.now() + 3_600_000).toISOString(),
-    decided_by_id: null,
-    decided_by_name: null,
-    decided_at: null,
-    result: null,
-    ...overrides,
-  } as OnBoardAccessChangeRecord;
-}
-
 describe("Approvals", () => {
-  it("does not offer a requester an approval action for their own change", async () => {
-    vi.mocked(api.getPendingAccessChanges).mockResolvedValue({ changes: [pendingChange()] });
+  it("does not offer a requester a decision on their own request", async () => {
+    vi.mocked(api.getAccessGrantRequests).mockResolvedValue({ requests: [grantRequest()] });
     renderAt("/admin/access/approvals");
 
-    const card = await screen.findByRole("article", { name: "Grant Operations Administrator to Taylor Operator" });
+    const card = await screen.findByRole("article", { name: "Grant Access Administrator to Taylor Operator" });
     expect(within(card).getByText("Awaiting another Access Administrator")).toBeInTheDocument();
     expect(within(card).queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
     expect(within(card).getByRole("button", { name: "Cancel request" })).toBeInTheDocument();
   });
 
-  it("lets another administrator approve, and only reject an unverifiable request", async () => {
-    vi.mocked(api.getPendingAccessChanges).mockResolvedValue({ changes: [
-      pendingChange({ id: "request-2", requested_by_id: "actor-9", requested_by_name: "sam@mvta.com" }),
-      pendingChange({ id: "request-3", requested_by_id: "unknown", requested_by_name: "unknown", change: { action: "revoke", principal_id: "user-2", principal_type: "user", role: "OCC.AccessAdmin", source: "group", reason: "Setup" } }),
+  it("lets a second administrator approve, and shows a request past its window as expired", async () => {
+    vi.mocked(api.getAccessGrantRequests).mockResolvedValue({ requests: [
+      grantRequest({ requestId: "request-2", requestedByObjectId: "actor-9", requestedByName: "sam@example.com" }),
+      grantRequest({
+        requestId: "request-3",
+        action: "revoke",
+        personName: "Riley Guest",
+        status: "expired",
+        requestedByObjectId: "actor-9",
+        requestedByName: "sam@example.com",
+        approvalExpiresAt: new Date(Date.now() - 3_600_000).toISOString(),
+      }),
     ] });
-    vi.mocked(api.decideAccessChange).mockResolvedValue({} as never);
+    vi.mocked(api.decideAccessGrantRequest).mockResolvedValue({ status: "approved", grantId: "grant-8" });
     renderAt("/admin/access/approvals");
 
-    const other = await screen.findByRole("article", { name: "Grant Operations Administrator to Taylor Operator" });
-    const legacy = screen.getByRole("article", { name: "Remove Access Administrator from Riley Direct" });
-    expect(within(legacy).queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
-    expect(within(legacy).getByText("Can’t verify requester")).toBeInTheDocument();
+    const expired = await screen.findByRole("article", { name: "Remove Access Administrator from Riley Guest" });
+    expect(within(expired).getByText("Expired")).toBeInTheDocument();
+    expect(within(expired).queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
 
+    const other = screen.getByRole("article", { name: "Grant Access Administrator to Taylor Operator" });
     await userEvent.click(within(other).getByRole("button", { name: "Approve" }));
-    expect(api.decideAccessChange).toHaveBeenCalledWith("request-2", "approved", expect.stringMatching(/^access-approved-/));
+    // The step-up is asked for by the client; the page only names the decision.
+    expect(api.decideAccessGrantRequest).toHaveBeenCalledWith("request-2", "approve");
   });
 });
 
 describe("Access health", () => {
-  it("reads Entra on first visit, speaks in role names, and checks selected repairs before confirming", async () => {
-    const repair = { action: "grant" as const, principal_id: "group-9", principal_type: "group" as const, role: "OCC.Detour" as const, source: "direct" as const, reason: "Repair configured role-group assignment" };
-    vi.mocked(api.getAccessReconciliation).mockResolvedValue({
-      environment: "test",
-      observed_at: "2026-09-16T14:00:00Z",
-      findings: [
-        { code: "missing_role_group_assignment", severity: "error", principal_id: "group-9", role: "OCC.Detour", message: "Configured group group-9 is not assigned to OCC.Detour on the OnBoard enterprise application.", repair_change: repair },
-        { code: "direct_human_assignment", severity: "warning", principal_id: "user-2", role: "OCC.Compliance", message: "Riley Direct has direct OCC.Compliance access that requires documented exception metadata." },
-      ],
-    });
-    vi.mocked(api.previewAccessChanges).mockResolvedValue({ environment: "test", valid: true, items: [{ index: 0, disposition: "immediate", errors: [] }] });
-    vi.mocked(api.submitAccessChanges).mockResolvedValue({ environment: "test", results: [{ index: 0, disposition: "completed" }] });
+  it("reads OnBoard's own grants on first visit and points at what to do", async () => {
+    vi.mocked(api.getAccessHealthFindings).mockResolvedValue({ findings: [
+      {
+        code: "signed_in_without_access",
+        severity: "attention",
+        headline: "1 person has signed in and holds no role",
+        detail: "They can reach OnBoard but see the No access page.",
+        people: ["Riley Guest"],
+      },
+      {
+        code: "roles_nobody_holds",
+        severity: "watch",
+        headline: "1 role is held by nobody",
+        detail: "Either somebody should hold it, or it can be archived.",
+        people: ["Weekend Dispatcher"],
+      },
+    ] });
 
     renderAt("/admin/access/health");
-    expect(await screen.findByText("Configured group group-9 is not assigned to Detour Manager on the OnBoard enterprise application.")).toBeInTheDocument();
-    expect(api.getAccessReconciliation).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("link", { name: "Open in People & guests" })).toHaveAttribute("href", "/admin/access/people?show=direct");
-
-    await userEvent.click(screen.getByRole("checkbox", { name: /Select repair/ }));
-    await userEvent.click(screen.getByRole("button", { name: "Check selected repairs" }));
-    expect(api.previewAccessChanges).toHaveBeenCalledWith([repair]);
-    await userEvent.click(await screen.findByRole("button", { name: "Confirm selected repairs" }));
-    expect(api.submitAccessChanges).toHaveBeenCalledWith([repair], expect.stringMatching(/^reconcile-/));
+    expect(await screen.findByText("1 person has signed in and holds no role")).toBeInTheDocument();
+    expect(api.getAccessHealthFindings).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Riley Guest")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Show them in People & guests" })).toHaveAttribute("href", "/admin/access/people?show=nothing");
+    // The Entra reconciliation and its repairs are gone.
+    expect(screen.queryByRole("button", { name: /repairs/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Worth watching" })).toBeInTheDocument();
   });
 });
 
 describe("Activity log", () => {
-  it("shows actions in words and narrows to failures", async () => {
+  it("shows actions in words, names OnBoard people, and narrows to failures", async () => {
     vi.mocked(api.getAccessAudit).mockResolvedValue({ audit: [
       { id: "a1", environment: "test", actor_id: "x", actor_name: "Priya Shah", action: "access_grant", target_id: "user-1", reason: "Cover", outcome: "completed", correlation_id: null, occurred_at: "2026-09-16T15:00:00Z" },
       { id: "a2", environment: "test", actor_id: "y", actor_name: "Sam Patel", action: "privileged_change_blocked", target_id: null, reason: null, outcome: "blocked", correlation_id: null, occurred_at: "2026-09-15T15:00:00Z" },

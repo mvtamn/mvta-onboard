@@ -1,12 +1,13 @@
-// GET /feed-checks - staff-only, PII-free upstream feed diagnostics.
+// GET /feed-checks - any OnBoard role, PII-free upstream feed diagnostics.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
-import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { requireAnyOnBoardAccess } from "../lib/access/require";
 import { probeAvail } from "../lib/availClient";
 import { getPool } from "../lib/db";
 import { probeGtfsRtFeed } from "../lib/gtfsRtReader";
 import { ledgerFeedChecks, summarizeFeedResponse, type FeedCheck } from "../lib/feedCheckResponse";
 import { feedHealthTableReady } from "../lib/kpiFeedHealth";
 import { loadKpiFeedHealthRecords } from "../lib/kpiTrustStore";
+import { missedTripDetectionSettings } from "../lib/missedTripCase";
 import { fetchSparePage, type SpareRequestRecord } from "../lib/spareApi";
 
 async function checkStaticGtfs(url: string | undefined): Promise<FeedCheck> {
@@ -39,7 +40,7 @@ async function checkSpareRequests(nowSeconds: number): Promise<FeedCheck> {
 }
 
 async function spareMissedTripPipelineChecks(): Promise<FeedCheck[]> {
-  const configured = process.env.SPARE_MISSED_TRIPS_ENABLED?.trim().toLowerCase() === "true";
+  const configured = missedTripDetectionSettings().spareEnabled;
   if (!configured) {
     return ["Requests", "Slots"].map((name) => ({ name: `Spare missed-trip ${name} ingestion`, configured: false }));
   }
@@ -65,7 +66,7 @@ app.http("feedChecks", {
   methods: ["GET"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, _context: InvocationContext) => {
-    const auth = requireRole(request, STAFF_READ_ROLES);
+    const auth = await requireAnyOnBoardAccess(request);
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
 
     const now = new Date();

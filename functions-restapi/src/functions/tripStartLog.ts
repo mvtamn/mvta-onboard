@@ -4,11 +4,11 @@
 // query parameter: the console's three views filter, sort and group the same
 // rows client-side, so there is one endpoint and the views cannot disagree.
 //
-// Read-only. Rows are written by tripStartLogMaterialize; the same staff
-// roles that read Fixed Route Departures read this.
+// Read-only. Rows are written by tripStartLogMaterialize; dispatch-log.view
+// reads this, as it reads Fixed Route Departures.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
-import { requireRole, TRIP_START_LOG_READ_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { agencyServiceDate } from "../lib/missedTripTime";
 import { isValidServiceDate, rotationWeekOffset } from "../lib/tripStartRotation";
 import { loadTripStartLogDay, tripStartLogTablesReady } from "../lib/tripStartLogRead";
@@ -20,14 +20,13 @@ export { shapeTrip, type TripStartLogTrip } from "../lib/tripStartLogRead";
 
 // Read roles live in lib/auth.ts beside the verify roles; re-exported for the
 // export endpoint and tests.
-export { TRIP_START_LOG_READ_ROLES } from "../lib/auth";
 
 app.http("tripStartLogGet", {
   route: "trip-start-log",
   methods: ["GET"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, TRIP_START_LOG_READ_ROLES);
+    const authResult = await requireAccess(request, "dispatch-log.view");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

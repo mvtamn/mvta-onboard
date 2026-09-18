@@ -6,7 +6,10 @@ import { api } from "../../../config.js";
 import { Relief } from "./Relief.js";
 
 vi.mock("../../../config.js", () => ({ api: { getExcusableDelayClaims: vi.fn(), createExcusableDelayClaim: vi.fn(), decideExcusableDelayClaim: vi.fn(), getSystemOutages: vi.fn(), createSystemOutage: vi.fn(), endSystemOutage: vi.fn() } }));
-vi.mock("../../../auth/AuthContext.js", () => ({ useAuth: () => ({ roles: ["OCC.ComplianceManager"] }) }));
+vi.mock("../../../auth/AccessContext.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../auth/AccessContext.js")>("../../../auth/AccessContext.js");
+  return { ...actual, useAccess: () => actual.accessStateWith(["performance-assessment.view", "performance-assessment.work", "performance-assessment.decide"]) };
+});
 vi.mock("../../../components/AppDialog.js", () => ({ useAppDialog: () => ({ prompt: vi.fn().mockResolvedValue("Documentation reviewed") }) }));
 
 const period: AssessmentPeriod = { id: "p1", contractor_id: "c1", contractor_name: "Transit Operations", service_month: "202607", status: "in_review", input_revision: 1, computed_revision: 1, proposed_total: 1500, final_total: null };

@@ -8,7 +8,7 @@
 // Storage SAS minting (blobStorage.ts) and Service Bus (events.ts).
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { DefaultAzureCredential } from "@azure/identity";
-import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { requireAnyOnBoardAccess } from "../lib/access/require";
 
 const MAPS_SCOPE = "https://atlas.microsoft.com/.default";
 
@@ -21,9 +21,9 @@ function getCredential(): DefaultAzureCredential {
 app.http("mapsToken", {
   route: "maps/token",
   methods: ["GET"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, [...STAFF_READ_ROLES, "OCC.Compliance"]);
+    const authResult = await requireAnyOnBoardAccess(request);
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

@@ -1,16 +1,16 @@
 // PATCH /messages/{id} - edit a message's summary and/or expiration
-// (architecture doc Section 9). Publisher/Admin only.
+// (architecture doc Section 9). rider-alerts.publish only.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, PUBLISH_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { validateUpdateMessage, isGuid } from "../lib/validation";
 
 app.http("messagesUpdate", {
   route: "messages/{id}",
   methods: ["PATCH"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, PUBLISH_ROLES);
+    const authResult = await requireAccess(request, "rider-alerts.publish");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

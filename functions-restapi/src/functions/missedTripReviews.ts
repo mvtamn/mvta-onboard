@@ -1,14 +1,14 @@
 // GET /missed-trips/reviews - append-only review history for one candidate.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 
 app.http("missedTripReviewsList", {
   route: "missed-trips/reviews",
   methods: ["GET"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, [...STAFF_READ_ROLES, "OCC.Compliance"]);
+    const authResult = await requireAccess(request, "compliance-review.view");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

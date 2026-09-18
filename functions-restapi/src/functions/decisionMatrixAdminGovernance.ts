@@ -1,16 +1,16 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
-import { ADMIN_ROLES, requireRole } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { getPool } from "../lib/db";
 import { DECISION_MATRIX_SURFACES, surfaceReady } from "../lib/decisionMatrixReadiness";
 import { documentCheckStatus } from "../lib/decisionMatrixDocumentHealth";
 
-function requireAdmin(request: HttpRequest) {
-  const auth = requireRole(request, ADMIN_ROLES);
+async function requireAdmin(request: HttpRequest) {
+  const auth = await requireAccess(request, "decision-matrix.manage");
   return auth.authorized ? null : { status: auth.status, jsonBody: { error: auth.message } };
 }
 
 export async function listDecisionMatrixGovernanceQueue(request: HttpRequest, context: InvocationContext) {
-  const denied = requireAdmin(request); if (denied) return denied;
+  const denied = await requireAdmin(request); if (denied) return denied;
   const surface = DECISION_MATRIX_SURFACES.governance;
   try {
     const pool = await getPool();
@@ -31,7 +31,7 @@ export async function listDecisionMatrixGovernanceQueue(request: HttpRequest, co
 }
 
 export async function listDecisionMatrixAudit(request: HttpRequest, context: InvocationContext) {
-  const denied = requireAdmin(request); if (denied) return denied;
+  const denied = await requireAdmin(request); if (denied) return denied;
   const surface = DECISION_MATRIX_SURFACES.audit;
   try {
     const pool = await getPool();

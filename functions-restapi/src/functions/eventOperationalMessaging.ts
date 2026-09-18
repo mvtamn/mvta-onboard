@@ -1,6 +1,6 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { EVENT_AVL_WRITE_ROLES, requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 
 function responseFor(servicePlanId: string, row: { automatic_teams_enabled: boolean; updated_by: string | null; updated_at: Date } | undefined) {
   return {
@@ -18,7 +18,7 @@ app.http("eventOperationalMessaging", {
   methods: ["GET", "PATCH"],
   authLevel: "anonymous",
   handler: async (req: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(req, req.method === "GET" ? STAFF_READ_ROLES : EVENT_AVL_WRITE_ROLES);
+    const auth = await requireAccess(req, req.method === "GET" ? "event-avl.view" : "event-avl.message");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const servicePlanId = req.query.get("service_plan_id");
     if (!servicePlanId) return { status: 400, jsonBody: { error: "service_plan_id is required" } };

@@ -6,7 +6,10 @@ import { api } from "../../../config.js";
 import { Caps } from "./Caps.js";
 
 vi.mock("../../../config.js", () => ({ api: { getAssessmentCaps: vi.fn(), transitionAssessmentCap: vi.fn(), createAssessmentCap: vi.fn() } }));
-vi.mock("../../../auth/AuthContext.js", () => ({ useAuth: () => ({ roles: ["OCC.ComplianceManager"] }) }));
+vi.mock("../../../auth/AccessContext.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../auth/AccessContext.js")>("../../../auth/AccessContext.js");
+  return { ...actual, useAccess: () => actual.accessStateWith(["performance-assessment.view", "performance-assessment.work", "performance-assessment.decide"]) };
+});
 const confirm = vi.fn(async (_options?: unknown) => false);
 vi.mock("../../../components/AppDialog.js", () => ({ useAppDialog: () => ({ prompt: vi.fn().mockResolvedValue("Verified two clean months"), confirm }) }));
 

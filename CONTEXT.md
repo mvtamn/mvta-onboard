@@ -995,9 +995,34 @@ The selection of an existing Entra user or group and the granting of OnBoard
 access. It does not copy credentials or mirror the directory into OnBoard.
 _Avoid_: AD import, user import, account creation
 
+**Module Action**:
+A named thing a person may do in one OnBoard module, written `module.action`
+(`detours.delete`). Every module has `view`; a module a person cannot view is
+hidden from navigation and its API refuses them. Modules and their actions are
+defined in code and are the only vocabulary a Role can use.
+_Avoid_: permission string, scope, claim
+
+**Role**:
+A named, editable bundle of Module Actions with a purpose written by an Access
+Administrator. Two Roles are locked, System Administrator and Access
+Administrator, and cannot be edited or deleted.
+_Avoid_: app role, group, security level
+
+**Role Grant**:
+A Role held by one person, recorded in OnBoard and keyed by Entra object id,
+until it is revoked or expires. It names a person, never an Entra group.
+_Avoid_: assignment, membership
+
+**Access Summary**:
+The plain-English description of what a Role or a person's access grants,
+generated from the Module Actions held rather than stored, so it cannot
+describe access that is no longer there.
+_Avoid_: role description, permission list
+
 **Effective Access**:
-The complete set of OnBoard capabilities a human receives from direct app-role
-assignments and direct membership in assigned Entra groups.
+The complete set of Module Actions a human receives from their active Role
+Grants, resolved by the server for each request. Entra decides who may sign in;
+Effective Access decides what they may then do (ADR-0032).
 _Avoid_: primary role, imported permissions
 
 **OnBoard Access Management**:
@@ -1013,8 +1038,9 @@ person an Access Administrator.
 _Avoid_: OCC Admin, Entra admin, user manager
 
 **Privileged Access Change**:
-A grant or revocation of `OCC.Admin` or `OCC.AccessAdmin` authority. It requires
-approval by a second, distinct authorized person.
+A grant or revocation of a locked Role - System Administrator or Access
+Administrator - or an edit that adds an Access & Identity action to any Role.
+It requires approval by a second, distinct authorized person.
 _Avoid_: ordinary role change, self-approval
 
 **Guest Sponsorship**:
@@ -1174,6 +1200,15 @@ issue. Cases from a detector in Shadow detection can be reviewed but never
 reach Assessment promotion.
 _Avoid_: production truth, enabled detector
 
+**Detector promotion**:
+A dated decision that a detector family leaves Shadow detection, recorded with
+the precision and sample size it was measured on, the reason, and the person who
+decided. It takes effect from a service date and applies only to cases on that
+date onward, so a promotion never changes a month already measured. The same
+record demotes a detector, which leaves the service dates it was trusted for
+counting as they did.
+_Avoid_: enabling a detector, promoted detector list, retroactive promotion
+
 **Missed-trip review authority**:
 Operations authority to determine the service outcome represented by a
 Missed-trip case. It does not determine Service attribution or assessment
@@ -1223,6 +1258,15 @@ The authoritative passenger schedule effective for one local service date and
 retained as the expected-run baseline for later review. A later schedule does
 not rewrite the snapshot used for an existing Missed-trip case.
 _Avoid_: current static feed, mutable schedule
+
+**Scheduled day**:
+Everything one detection pass read about the runs expected on one local service
+date: the scheduled runs, their operational evidence, and the route
+classifications in effect. It is what a pass observed, not a retained baseline
+- a later pass reads the schedule as it stands then. Distinct from a Schedule
+snapshot, which is retained and does not change under an existing Missed-trip
+case.
+_Avoid_: schedule snapshot, service day, schedule import
 
 **Post-publication cancellation**:
 A cancellation of a run after it was present in the effective Schedule
