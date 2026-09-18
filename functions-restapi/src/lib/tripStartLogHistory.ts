@@ -5,6 +5,7 @@
 import { sql } from "./db";
 
 export interface TripStartVerificationEventRow {
+  id: number;
   previous_observation: string | null;
   observation: string | null;
   recorded_by: string;
@@ -14,6 +15,9 @@ export interface TripStartVerificationEventRow {
 }
 
 export interface TripStartVerificationEvent {
+  /** The append-only row's own id: two entries can share a second, so only
+   *  this tells them apart, for ordering and for listing them. */
+  id: number;
   /** What the cell said before; null when it was blank. */
   previous_observation: string | null;
   /** What it said after; null when the entry was cleared. */
@@ -26,6 +30,7 @@ export interface TripStartVerificationEvent {
 
 export function shapeVerificationEvent(row: TripStartVerificationEventRow): TripStartVerificationEvent {
   return {
+    id: row.id,
     previous_observation: row.previous_observation,
     observation: row.observation,
     recorded_by: row.recorded_by,
@@ -52,7 +57,7 @@ export async function loadTripStartVerificationHistory(
   req.input("service_date", sql.Char(8), serviceDate);
   req.input("trip_id", sql.NVarChar, tripId);
   const result = await req.query<TripStartVerificationEventRow>(`
-    SELECT previous_observation, observation, recorded_by, recorded_initials, note, recorded_at
+    SELECT id, previous_observation, observation, recorded_by, recorded_initials, note, recorded_at
     FROM TripStartVerificationEvents
     WHERE service_date = @service_date AND trip_id = @trip_id
     ORDER BY recorded_at DESC, id DESC

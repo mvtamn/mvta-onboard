@@ -56,7 +56,7 @@ export function TripStartLogHistory({ events, serviceDate }: { events: TripStart
       <h4>History</h4>
       <ul aria-label="Verification history">
         {events.map((event) => (
-          <li key={`${event.recorded_at}-${event.recorded_by}`}>
+          <li key={event.id}>
             <span className="tsl-history-when">{verifiedAtLabel(event.recorded_at, serviceDate)}</span>
             <span className="tsl-initials" title={event.recorded_by}>{event.recorded_initials}</span>
             <span className="tsl-history-change">{changeLabel(event)}</span>

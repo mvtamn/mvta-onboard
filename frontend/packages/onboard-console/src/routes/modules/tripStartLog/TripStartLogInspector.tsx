@@ -10,6 +10,7 @@ import {
   serviceDateLabel,
   startBucket,
   timeLabel,
+  verifiedAtLabel,
 } from "./tripStartLogState.js";
 
 interface Props {
@@ -66,7 +67,7 @@ export function TripStartLogInspector({ trip, serviceDow, canVerify, initials, o
           <dd>
             {trip.verification ? (
               <>
-                {observationLabel(trip.verification.observation)} · {trip.verification.verified_initials} · {timeLabel(trip.verification.verified_at)}
+                {observationLabel(trip.verification.observation)} · {trip.verification.verified_initials} · {verifiedAtLabel(trip.verification.verified_at, trip.service_date)}
                 {trip.verification.note ? <span className="td-dim"> · {trip.verification.note}</span> : null}
               </>
             ) : onList ? (

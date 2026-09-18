@@ -1963,6 +1963,8 @@ export interface TripStartVerification {
 
 /** One change to a trip's Verified cell, from the append-only audit trail. */
 export interface TripStartVerificationEvent {
+  /** The audit row's own id; two entries can share a second. */
+  id: number;
   /** What the cell said before; null when it was blank. */
   previous_observation: TripStartObservation | null;
   /** What it said after; null when the entry was cleared. */

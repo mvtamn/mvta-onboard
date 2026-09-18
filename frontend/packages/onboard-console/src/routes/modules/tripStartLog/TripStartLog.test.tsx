@@ -458,8 +458,8 @@ describe("when a row was initialled", () => {
 
 describe("the history behind a cell", () => {
   const events: TripStartVerificationEvent[] = [
-    { previous_observation: "observed_on_time", observation: null, recorded_by: "ocs@example.org", recorded_initials: "JD", note: "Entered against the wrong trip", recorded_at: at("10:40:00Z") },
-    { previous_observation: null, observation: "observed_on_time", recorded_by: "ocs@example.org", recorded_initials: "JD", note: null, recorded_at: at("10:03:00Z") },
+    { id: 2, previous_observation: "observed_on_time", observation: null, recorded_by: "ocs@example.org", recorded_initials: "JD", note: "Entered against the wrong trip", recorded_at: at("10:40:00Z") },
+    { id: 1, previous_observation: null, observation: "observed_on_time", recorded_by: "ocs@example.org", recorded_initials: "JD", note: null, recorded_at: at("10:03:00Z") },
   ];
 
   it("lists every change to the selected trip, newest first, clearing included", async () => {
