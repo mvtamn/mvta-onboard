@@ -22,7 +22,7 @@ export const OTP_STANDARD_CODE = "OTP_FIXED_ROUTE";
 // hardcode in two places.
 export const DEFAULT_OTP_TARGET = 0.85;
 
-type Executor = sql.ConnectionPool | sql.Transaction;
+export type Executor = sql.ConnectionPool | sql.Transaction;
 const request = (executor: Executor) => executor instanceof sql.Transaction ? new sql.Request(executor) : executor.request();
 
 const figure = (departures: number, ontime: number): OtpFigure => ({

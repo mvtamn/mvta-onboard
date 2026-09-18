@@ -984,6 +984,32 @@ export interface OtpMonthMeasurement {
   feed_ready: boolean;
 }
 
+/**
+ * A Flagged Stop: a stop, on one route, on one day of the week, whose early or
+ * late share of departures exceeds the Early/Late Bias Threshold for a service
+ * month, putting it in front of a reviewer (CONTEXT "Flagged Stop").
+ *
+ * The server decides this - fixed-route service only, at the stored threshold
+ * or a trial one - and the console renders the list rather than deriving it
+ * (functions-restapi/src/lib/otpFlaggedStops.ts, ADR 0034). Being flagged
+ * decides nothing; only an approved Stop Exclusion changes a figure.
+ *
+ * Shares are 0-1, as the feed stores them. The monthly feed carries no
+ * direction and no average-seconds variance, so neither travels.
+ */
+export interface FlaggedStop {
+  route_id: number;
+  route_label: string | null;
+  stop_id: number;
+  stop_name: string | null;
+  day_of_week: string;
+  total: number;
+  pct_early: number;
+  pct_ontime: number;
+  pct_late: number;
+  pct_missed: number;
+}
+
 export interface OtpMonthlyRouteRollup {
   route_id: number;
   route_label: string | null;
