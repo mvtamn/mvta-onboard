@@ -836,3 +836,34 @@ effect on the next deploy.
   Avail retrospective reconciliation behind it before it stays. The counts are
   visible meanwhile: the poll log breaks the undecided total down by reason, and
   the console reports the held count.
+
+## App-owned roles — status (2026-09-17)
+
+ADR-0032 splits the two questions RBAC was answering with one Entra token:
+Entra decides who may sign in, OnBoard decides what they may do. The plan is
+`plans/app-owned-roles-plan.md` — module catalog, the nine seeded roles, six
+increments. Increment 1 (this change) is the vocabulary and the records only.
+Nothing enforces them: every endpoint still calls `requireRole` against the app
+roles in the token, so applying the migration changes no one's access.
+
+### Steps that are the user's
+
+1. **Apply `functions-restapi/sql/migration-129-app-owned-roles.sql` to dev.**
+   It creates `AccessPeople`, `AccessRoles`, `AccessRoleActions` and
+   `AccessRoleGrants` and seeds the nine roles. Re-runnable, and it never
+   overwrites a role an Access Administrator later edits.
+2. **Grant yourself the first Access Administrator.** The migration's last
+   batch does it once you paste your Entra object id into
+   `@firstAccessAdminObjectId` — `az ad signed-in-user show --query id -o tsv`
+   with the MVTA account, not the Azure subscription account. Until then it
+   prints that nothing was granted, and `ONBOARD_ACCESS_ADMIN_FALLBACK` is what
+   lets an OCC.Admin reach Access & Identity.
+3. **Check `GET /api/me/access` on dev** once the migration is applied. It
+   should report `rolesInOnBoard: true`, your roles with `source: "onboard"`
+   for anything granted here and `"entra"` for app roles still in your token,
+   and an Access Summary naming each module in words.
+
+The Entra steps — the OnBoard Users group, "Assignment required", removing the
+`OCC.*` app roles and revoking the two Graph write consents — belong to
+increments 5 and 6 and are listed in the plan. Do none of them yet: the app
+roles in the token are still what authorizes every request.
