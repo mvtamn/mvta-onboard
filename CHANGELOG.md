@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.246] - 2026-09-17
+## [1.5.249] - 2026-09-17
 
 - **Detour communication eligibility is enforced, not just defined.** New `functions-restapi/src/lib/detourCommunication/` decides whether an audience's communication may be drafted and sent, from the Detour workflow module's own view of the Detour (Workflow state, Outstanding re-review, Conflict override) plus the required audiences. `POST /detours/{id}/communications/{cid}/publish` asks it on both paths - the server sending it, and a person recording that they sent it elsewhere - and refuses with a named sentence: `detour_closed`, `re_review_outstanding`, `fulfillment_pending`, `fulfillment_failed`, `conflict_unresolved`, `no_recipients`. Before this, publish checked only that the row was a draft, so a closed Detour could be emailed to riders. Candidate #6 of the 2026-09-16 architecture review; `CONTEXT.md` defined the term already.
 - **`GET /detours` returns the decision per audience** (`audience_eligibility`), and `communication_status` comes from the module instead of an inline expression in the list handler. The console renders it in the next release.
