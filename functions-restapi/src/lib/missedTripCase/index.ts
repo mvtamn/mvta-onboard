@@ -26,6 +26,23 @@ import type { Actor, CaseAct, CaseKey, CaseRefusal, MissedTripClassification, Ob
 export * from "./types";
 export { classifyMissedTripCase, missedTripCaseSql, missedTripSourceRefSql, promotedDetectors } from "./classify";
 export { missedTripDetectionSettings, type MissedTripDetectionSettings } from "./settings";
+export {
+  caseQuery,
+  caseTablesReady,
+  readMissedTripCases,
+  readMissedTripMonthlySummary,
+  viewCount,
+  DEFAULT_CASE_LIMIT,
+  MAX_CASE_LIMIT,
+  type CaseListRow,
+  type CaseQuery,
+  type CaseReadResult,
+  type CaseTablesReady,
+  type CaseTotals,
+  type CaseView,
+  type MissedTripsSummaryRow,
+  type MonthlySummaryResult,
+} from "./reads";
 
 export async function observeMissedTrips(pool: sql.ConnectionPool, observations: RunObservation[], now = new Date()): Promise<ObserveReport> {
   const report: ObserveReport = { created: 0, held: 0, confirmed: 0, closedByEvidence: 0, evidenceRecorded: 0, skippedChanged: 0, failed: [] };
