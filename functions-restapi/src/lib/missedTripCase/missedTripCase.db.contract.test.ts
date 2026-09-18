@@ -306,6 +306,7 @@ test("Missed-trip cases against SQL Server", skip, async (t) => {
       assert.equal(gated.counts_toward_assessment, false);
     });
 
+<<<<<<< HEAD
 
     await t.test("a review settles an Evidence conflict, and the assessment gate lifts", async () => {
       await pool.request().query(`INSERT INTO dbo.MonitoredMissedTrips
@@ -328,6 +329,7 @@ test("Missed-trip cases against SQL Server", skip, async (t) => {
       assert.equal(after.validation_status, "confirmed");
     });
 
+<<<<<<< HEAD
 
     // Candidate 6: the classification is stated twice - once in TypeScript for
     // the pure decide path, once as SQL for every set-based reader - and the
@@ -423,6 +425,10 @@ test("Missed-trip cases against SQL Server", skip, async (t) => {
       await pool.request().query(`DELETE FROM dbo.MonitoredMissedTrips WHERE service_date = '${DAY2}'`);
     });
 
+=======
+=======
+>>>>>>> origin/claude/missed-trip-console-labels
+>>>>>>> origin/claude/missed-trip-conflict-console
     // Candidate 2: the list and its totals are one answer. They are two
     // queries over the same CROSS APPLY, so only real rows can prove a tile
     // never counts what its list omits. Runs last, over every case the
