@@ -848,10 +848,12 @@ roles in the token, so applying the migration changes no one's access.
 
 ### Steps that are the user's
 
-1. **Apply `functions-restapi/sql/migration-129-app-owned-roles.sql` to dev.**
-   It creates `AccessPeople`, `AccessRoles`, `AccessRoleActions` and
-   `AccessRoleGrants` and seeds the nine roles. Re-runnable, and it never
-   overwrites a role an Access Administrator later edits.
+1. **Apply `migration-129-app-owned-roles.sql` and `migration-130-access-role-history.sql` to dev.**
+   129 creates `AccessPeople`, `AccessRoles`, `AccessRoleActions` and
+   `AccessRoleGrants` and seeds the nine roles; 130 adds `AccessRoleHistory`.
+   Both are re-runnable, and 129 never overwrites a role an Access
+   Administrator later edits. Until they are applied, Access & Identity →
+   Roles shows a setup notice instead of the page.
 2. **Grant yourself the first Access Administrator.** The migration's last
    batch does it once you paste your Entra object id into
    `@firstAccessAdminObjectId` — `az ad signed-in-user show --query id -o tsv`
@@ -876,8 +878,8 @@ Increment 3 moved the console onto the same answer: it calls `GET /me/access`
 once per sign-in and gates every route, link and control on the actions it
 returns, so the two sides can no longer disagree. `VITE_ACCESS_ADMIN_FALLBACK`
 is retired; `ONBOARD_ACCESS_ADMIN_FALLBACK` on the API is the only bootstrap
-switch left. Left to build: the Roles page (increment 4), grants written in
-OnBoard instead of Graph (5), and the cutover (6).
+switch left. Increment 4 added Access & Identity → Roles, which edits them. Left to build:
+grants written in OnBoard instead of Graph (5), and the cutover (6).
 
 The Entra steps — the OnBoard Users group, "Assignment required", removing the
 `OCC.*` app roles and revoking the two Graph write consents — belong to

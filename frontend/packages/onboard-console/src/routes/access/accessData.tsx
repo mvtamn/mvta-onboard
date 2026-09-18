@@ -12,7 +12,7 @@ import {
 import { api } from "../../config.js";
 import { roleLabel } from "../../auth/roles.js";
 
-// Access & Identity used to be one page with seven tabs. It is now seven
+// Access & Identity used to be one page with seven tabs. It is now eight
 // pages under one Administration heading, and they share one load: the
 // inventory, the approval queue, due expiries and the audit trail are read
 // once when the section opens, so moving between its pages does not re-query

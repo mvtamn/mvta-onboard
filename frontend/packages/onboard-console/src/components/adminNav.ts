@@ -52,6 +52,7 @@ export const ADMIN_AREAS: readonly AdminArea[] = [
           { to: "/admin/access/people", label: "People & guests" },
           { to: "/admin/access/groups", label: "Access groups" },
           { to: "/admin/access/workloads", label: "Workloads" },
+          { to: "/admin/access/roles", label: "Roles" },
           { to: "/admin/access/approvals", label: "Approvals" },
           { to: "/admin/access/health", label: "Access health" },
           { to: "/admin/access/activity", label: "Activity log" },
