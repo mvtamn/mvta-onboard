@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Detour, DetourCommunication } from "@mvta/shared";
+import type { Detour, DetourCommunication, DetourCommunicationEligibility } from "@mvta/shared";
 import { audiencePlan, communicationSubject, detourSendBlock, draftCommunicationText, mailtoLink, nextAudience } from "./detourCommunicationDraft.js";
 
 const detour = {
@@ -67,17 +67,17 @@ describe("mailtoLink and communicationSubject", () => {
 
 
 describe("Detour communication eligibility, as the server decided it", () => {
-  const eligible = { may_draft: true, may_send: true, refusal: null, audience_not_required: false };
-  const closed = {
+  const eligible: DetourCommunicationEligibility = { may_draft: true, may_send: true, refusal: null, audience_not_required: false };
+  const closed: DetourCommunicationEligibility = {
     may_draft: false, may_send: false, audience_not_required: false,
-    refusal: { code: "detour_closed" as const, sentence: "This Detour is closed, so there is nothing left to tell this audience." },
+    refusal: { code: "detour_closed", sentence: "This Detour is closed, so there is nothing left to tell this audience." },
   };
-  const noRecipients = {
+  const noRecipients: DetourCommunicationEligibility = {
     may_draft: true, may_send: false, audience_not_required: false,
-    refusal: { code: "no_recipients" as const, sentence: "Add at least one email recipient before sending." },
+    refusal: { code: "no_recipients", sentence: "Add at least one email recipient before sending." },
   };
 
-  const withEligibility = (rows: { audience: string; eligibility: typeof eligible }[]) =>
+  const withEligibility = (rows: { audience: string; eligibility: DetourCommunicationEligibility }[]) =>
     ({ ...detour, required_audiences: rows.map((r) => r.audience), audience_eligibility: rows } as unknown as Detour);
 
   it("carries each audience's decision onto its plan item", () => {
