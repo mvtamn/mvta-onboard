@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.263] - 2026-09-18
+## [1.5.265] - 2026-09-18
 
 - **One place for the words Missed Trips puts on a case.** Half the module's vocabulary lived in `missedTripReview.ts` and was tested; the other half - the detector name, the evidence-quality label, the route and trip code, review urgency (Aging/Overdue), and where a confirmed trip landed in the performance assessment - was private to the 1253-line `MissedTripAlerts.tsx` and had no tests, because reaching it meant rendering the page. It moved, with its reasoning comments intact. `MissedTripAlerts.tsx` drops to 1119 lines and is now rendering.
 - **20 new tests** over rules that had none, including the ones with real judgement in them: a route never reads "Route 420 · 420", a trip code falls back to whichever half exists, urgency stops once someone has reviewed however old the row is, and each assessment outcome - not linked, awaiting attribution, recorded but not charged, counted in a month that may already be finalized - says the right thing.
