@@ -767,6 +767,14 @@ _Avoid_: raw OTP, adjusted OTP
 A reviewed and approved decision that one stop, on one route, on one day of the week, does not count toward Official Departure OTP for a service month — a recovery or layover point, or a data-quality defect. It is the only exclusion the monthly OTP feed's grain can express.
 _Avoid_: weather exclusion, dropped stop
 
+**Flagged Stop**:
+A stop, on one route, on one day of the week, whose early or late share of departures exceeds the Early/Late Bias Threshold for a service month, putting it in front of a reviewer. Being flagged decides nothing: it counts toward Official Departure OTP exactly as before unless a reviewer turns it into an approved Stop Exclusion. It is not a Candidate — no Agreement, occurrence, or Candidate Resolution is involved.
+_Avoid_: exclusion candidate, OTP candidate, biased stop
+
+**Early/Late Bias Threshold**:
+The share of departures, above which a stop's early or late running makes it a Flagged Stop. It is an operational review setting an administrator can change, not a contractual figure: moving it changes who gets looked at, never what a month scored.
+_Avoid_: OTP threshold, tolerance
+
 **Weather Day Exclusion**:
 A recorded weather or emergency service date. It is kept for the record and is NOT applied to Official Departure OTP: the monthly OTP feed is aggregated by day of week, not by date, so a single date cannot be removed from it (ADR 0033).
 _Avoid_: excluded day, relief day
