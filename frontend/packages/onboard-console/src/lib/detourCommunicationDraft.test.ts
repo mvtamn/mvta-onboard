@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Detour, DetourCommunication } from "@mvta/shared";
-import { audiencePlan, communicationSubject, draftCommunicationText, mailtoLink, nextAudience } from "./detourCommunicationDraft.js";
+import type { Detour, DetourCommunication, DetourCommunicationEligibility } from "@mvta/shared";
+import { audiencePlan, communicationSubject, detourSendBlock, draftCommunicationText, mailtoLink, nextAudience } from "./detourCommunicationDraft.js";
 
 const detour = {
   internal_number: "MVTA-DET-2026-0012", number: null, closure: "Cedar Ave bridge closed", location: "Cedar Ave at 5th St",
@@ -62,5 +62,47 @@ describe("mailtoLink and communicationSubject", () => {
   it("prefixes the subject with the reference when there is one", () => {
     expect(communicationSubject(detour)).toBe("[MVTA-DET-2026-0012] Detour: Cedar Ave bridge closed");
     expect(communicationSubject({ internal_number: null, number: null, closure: "X" })).toBe("Detour: X");
+  });
+});
+
+
+describe("Detour communication eligibility, as the server decided it", () => {
+  const eligible: DetourCommunicationEligibility = { may_draft: true, may_send: true, refusal: null, audience_not_required: false };
+  const closed: DetourCommunicationEligibility = {
+    may_draft: false, may_send: false, audience_not_required: false,
+    refusal: { code: "detour_closed", sentence: "This Detour is closed, so there is nothing left to tell this audience." },
+  };
+  const noRecipients: DetourCommunicationEligibility = {
+    may_draft: true, may_send: false, audience_not_required: false,
+    refusal: { code: "no_recipients", sentence: "Add at least one email recipient before sending." },
+  };
+
+  const withEligibility = (rows: { audience: string; eligibility: DetourCommunicationEligibility }[]) =>
+    ({ ...detour, required_audiences: rows.map((r) => r.audience), audience_eligibility: rows } as unknown as Detour);
+
+  it("carries each audience's decision onto its plan item", () => {
+    const plan = audiencePlan(withEligibility([
+      { audience: "Operators", eligibility: eligible },
+      { audience: "Operations management", eligibility: closed },
+    ]), []);
+    expect(plan.map((p) => [p.audience, p.eligibility?.may_send])).toEqual([["Operators", true], ["Operations management", false]]);
+    // Matching is how a person reads it, not byte-exact.
+    const cased = audiencePlan(withEligibility([{ audience: "Operators", eligibility: eligible }]), []);
+    expect(cased[0].eligibility).toBeDefined();
+  });
+
+  it("blocks sending on the Detour's own reason, not on a missing recipient", () => {
+    expect(detourSendBlock(audiencePlan(withEligibility([{ audience: "Operators", eligibility: closed }]), [])))
+      .toEqual(closed.refusal);
+    // A missing recipient is about one message, so it does not disable the
+    // whole Detour's sending - the server still refuses that one send.
+    expect(detourSendBlock(audiencePlan(withEligibility([{ audience: "Operators", eligibility: noRecipients }]), []))).toBeNull();
+    expect(detourSendBlock(audiencePlan(withEligibility([{ audience: "Operators", eligibility: eligible }]), []))).toBeNull();
+  });
+
+  it("says nothing on a server that does not send a decision", () => {
+    // 1.5.248 and earlier: the console must not invent a rule it does not own.
+    expect(detourSendBlock(audiencePlan(detour, []))).toBeNull();
+    expect(audiencePlan(detour, [])[0].eligibility).toBeUndefined();
   });
 });

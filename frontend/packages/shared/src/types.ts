@@ -1188,6 +1188,33 @@ export interface DetourReportFields {
   resolution_notes?: string | null;
 }
 
+/**
+ * Why a Detour communication may not be sent (functions-restapi/src/lib/
+ * detourCommunication, CONTEXT "Detour communication eligibility"). The server
+ * decides; the console renders the decision and never re-derives it.
+ */
+export type DetourEligibilityRefusalCode =
+  | "detour_closed"
+  | "re_review_outstanding"
+  | "fulfillment_pending"
+  | "fulfillment_failed"
+  | "conflict_unresolved"
+  | "no_recipients";
+
+export interface DetourCommunicationEligibility {
+  /** Wording may be prepared: everything except a closed Detour. */
+  may_draft: boolean;
+  may_send: boolean;
+  refusal: { code: DetourEligibilityRefusalCode; sentence: string } | null;
+  /** Telling someone extra is allowed, but it never clears "needs communication". */
+  audience_not_required: boolean;
+}
+
+export interface DetourAudienceEligibility {
+  audience: string;
+  eligibility: DetourCommunicationEligibility;
+}
+
 export interface Detour extends DetourReportFields {
   id: string;
   number: string | null;
@@ -1226,6 +1253,8 @@ export interface Detour extends DetourReportFields {
   // Absent from an API older than the Detour workflow module.
   available_acts?: Record<DetourOfferedAct, DetourActAvailability>;
   communication_status?: "published" | "draft" | "needs_communication" | "not_available";
+  /** Detour communication eligibility per required audience, from the server. */
+  audience_eligibility?: DetourAudienceEligibility[];
   workflow_label?: string;
   next_action?: string;
   next_owner?: string;

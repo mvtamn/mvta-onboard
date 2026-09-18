@@ -1,4 +1,4 @@
-import type { Detour, DetourCommunication, DetourContractorNotification } from "@mvta/shared";
+import type { Detour, DetourAudienceEligibility, DetourCommunication, DetourCommunicationEligibility, DetourContractorNotification } from "@mvta/shared";
 import { dateLabel } from "./detourDates.js";
 
 // Prefill for the Detour communications composer.
@@ -16,6 +16,12 @@ export type AudienceProgress = "published" | "draft" | "none";
 export interface AudiencePlanItem {
   audience: string;
   progress: AudienceProgress;
+  /**
+   * Detour communication eligibility for this audience, as the server decided
+   * it. Undefined on a server older than 1.5.249, where the console shows the
+   * old behaviour rather than guessing at a rule it does not own.
+   */
+  eligibility?: DetourCommunicationEligibility;
   // Channels required by the record. The composer defaults to the first.
   channels: string[];
   // The configured fixed-route contractor: always by email, to the
@@ -34,14 +40,38 @@ function key(value: string): string {
 // required_audiences is server-computed and includes the configured
 // contractor on fixed-route Detours; notification_audiences is the
 // fallback for a response from before migration 089.
-export function audiencePlan(detour: Pick<Detour, "notification_audiences" | "notification_channels" | "required_audiences">, communications: DetourCommunication[], contractor?: DetourContractorNotification | null): AudiencePlanItem[] {
+export function audiencePlan(
+  detour: Pick<Detour, "notification_audiences" | "notification_channels" | "required_audiences" | "audience_eligibility">,
+  communications: DetourCommunication[],
+  contractor?: DetourContractorNotification | null,
+): AudiencePlanItem[] {
   const channels = detour.notification_channels ?? [];
+  const decided = new Map((detour.audience_eligibility ?? []).map((row: DetourAudienceEligibility) => [key(row.audience), row.eligibility]));
   return (detour.required_audiences ?? detour.notification_audiences ?? []).map((audience) => {
     const mine = communications.filter((c) => key(c.audience) === key(audience));
     const progress: AudienceProgress = mine.some((c) => c.status === "published") ? "published" : mine.length > 0 ? "draft" : "none";
     const isContractor = Boolean(contractor?.name && key(contractor.name) === key(audience));
-    return { audience, progress, channels: isContractor ? ["email"] : channels, contractor: isContractor, recipients: isContractor ? contractor!.recipients : [] };
+    return {
+      audience, progress,
+      eligibility: decided.get(key(audience)),
+      channels: isContractor ? ["email"] : channels,
+      contractor: isContractor,
+      recipients: isContractor ? contractor!.recipients : [],
+    };
   });
+}
+
+/**
+ * What the Detour as a whole allows, for controls that are not tied to one
+ * audience (the Send button on a saved draft). Drafting is refused only by a
+ * closed Detour; sending is refused by the first thing to fix, and every
+ * audience shares that reason apart from missing recipients.
+ */
+export function detourSendBlock(plan: AudiencePlanItem[]): { code: string; sentence: string } | null {
+  const decided = plan.map((item) => item.eligibility).filter(Boolean) as DetourCommunicationEligibility[];
+  if (decided.length === 0) return null;
+  const blocking = decided.find((e) => e.refusal && e.refusal.code !== "no_recipients");
+  return blocking?.refusal ?? null;
 }
 
 // A mailto: link carrying recipients, subject, and body, so a draft can be
