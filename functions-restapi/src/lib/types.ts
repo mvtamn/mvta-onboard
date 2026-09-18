@@ -150,6 +150,8 @@ export interface CreateDetourBody extends DetourReportBody {
 }
 
 export interface UpdateDetourBody extends DetourReportBody {
+  /** Audiences this Detour must reach; an OCC addition joins the list. */
+  notification_audiences?: string[];
   number?: string | null;
   closure?: string;
   start_date?: string | null;

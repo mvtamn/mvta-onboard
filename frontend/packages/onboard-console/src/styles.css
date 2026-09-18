@@ -1178,6 +1178,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
    removable, and visibly not one of the choices. */
 .chip-toggle.is-retired[aria-pressed="true"] { background: var(--surface-bg); border-color: var(--border-strong); border-style: dashed; color: var(--text-muted); font-weight: 600; text-decoration: line-through; }
 .chip-toggle:focus-visible { outline: 2px solid var(--brand-green); outline-offset: 2px; }
+/* Per-channel progress on one required audience: the wording differs per
+   channel, so each is drafted, published and shown separately. */
+.comm-channel-marks { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-left: 8px; }
+.comm-channel-mark { background: var(--surface-bg); border: 1px solid var(--border-strong); border-radius: 6px; color: var(--text-dim); cursor: pointer; font-family: inherit; font-size: 11px; font-weight: 700; line-height: 1; padding: 5px 8px; }
+.comm-channel-mark.is-published { border-color: var(--brand-green); color: var(--brand-green); }
+.comm-channel-mark.is-none { border-style: dashed; color: var(--text-muted); }
+.comm-channel-mark:disabled { cursor: default; opacity: 0.6; }
+.comm-add-audience { display: flex; gap: 8px; margin-top: 10px; }
+.comm-add-audience input { flex: 1 1 auto; max-width: 320px; }
 .dropzone { align-items: center; background: var(--surface-alt-bg); border: 1px dashed var(--border-strong); border-radius: 8px; color: var(--text-dim); cursor: pointer; display: flex; font-size: 12px; font-weight: 400; gap: 10px; justify-content: center; padding: 18px; }
 .dropzone svg { color: var(--text-muted); }
 .dropzone:focus-within { border-color: var(--brand-green); }

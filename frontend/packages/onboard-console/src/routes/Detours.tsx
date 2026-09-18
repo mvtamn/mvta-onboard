@@ -23,7 +23,7 @@ import { DetourWorkflowHistorySection } from "../components/DetourWorkflowHistor
 import { DetourAttachmentsSection } from "../components/DetourAttachments.js";
 import { DetourMap } from "../components/DetourMap.js";
 import { SentCopy, deliveryClass, deliveryLabel } from "../components/DetourDeliveryRecord.js";
-import { audiencePlan, communicationAction, communicationSubject, detourSendBlock, draftCommunicationText, mailtoLink, nextAudience } from "../lib/detourCommunicationDraft.js";
+import { audienceAddError, audiencePlan, communicationAction, communicationSubject, copyFrom, detourSendBlock, draftCommunicationText, mailtoLink, nextAudience, withAudience } from "../lib/detourCommunicationDraft.js";
 import { dateLabel, dateTimeLabel, toDateInputValue } from "../lib/detourDates.js";
 
 const STATUS_TABS: { key: DetourStatus | "all"; label: string }[] = [
@@ -654,7 +654,7 @@ export function Detours() {
                                 {actOffer(d, "manual_fallback").reason ? <span className="td-dim"> {actOffer(d, "manual_fallback").reason}</span> : null}
                               </p>
                             ) : null}
-                            <DetourCommunicationsSection detour={d} contractor={contractor} canWrite={canWrite} />
+                            <DetourCommunicationsSection detour={d} contractor={contractor} canWrite={canWrite} onDetourChanged={load} />
                             {numberYearMismatch(d.internal_number, d.start_date) ? (
                               <p className="warn-note">
                                 This detour's internal reference was issued for{" "}
@@ -766,7 +766,7 @@ function todayInputValue(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
-function DetourCommunicationsSection({ detour, contractor, canWrite }: { detour: Detour; contractor: DetourContractorNotification | null; canWrite: boolean }) {
+function DetourCommunicationsSection({ detour, contractor, canWrite, onDetourChanged }: { detour: Detour; contractor: DetourContractorNotification | null; canWrite: boolean; onDetourChanged: () => void }) {
   const [communications, setCommunications] = useState<import("@mvta/shared").DetourCommunication[]>([]);
   const [audienceChoice, setAudienceChoice] = useState<string>("");
   const [audienceOther, setAudienceOther] = useState("");
@@ -781,6 +781,9 @@ function DetourCommunicationsSection({ detour, contractor, canWrite }: { detour:
   const [recipients, setRecipients] = useState("");
   const [content, setContent] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // Where the draft's wording was copied from, so the writer knows to edit it.
+  const [seededFrom, setSeededFrom] = useState<string | null>(null);
+  const [newAudience, setNewAudience] = useState("");
   const [saving, setSaving] = useState(false);
 
   const plan = audiencePlan(detour, communications, contractor);
@@ -816,7 +819,7 @@ function DetourCommunicationsSection({ detour, contractor, canWrite }: { detour:
   const sendBlock = detourSendBlock(plan);
   const emailable = channel.toLowerCase() === "email" && recipients.trim() !== "" && content.trim() !== "";
 
-  function startDraft(forAudience: string) {
+  function startDraft(forAudience: string, forChannel?: string) {
     const item = plan.find((p) => p.audience === forAudience);
     setAudienceChoice(forAudience);
     if (item?.contractor) {
@@ -825,11 +828,34 @@ function DetourCommunicationsSection({ detour, contractor, canWrite }: { detour:
       setChannelChoice(requiredChannels.some((c) => c.toLowerCase() === "email") ? requiredChannels.find((c) => c.toLowerCase() === "email")! : OTHER);
       if (!requiredChannels.some((c) => c.toLowerCase() === "email")) setChannelOther("email");
       setRecipients(item.recipients.join(", "));
+    } else if (forChannel) {
+      setChannelChoice(forChannel);
     } else if (!channelChoice || channelChoice === OTHER) {
       setChannelChoice(requiredChannels[0] ?? OTHER);
     }
-    setContent(draftCommunicationText(detour, forAudience));
+    // An existing message for this Detour is a better start than the template:
+    // the email and the text say the same thing at different lengths, and
+    // retyping the second is how the two end up disagreeing. It is a starting
+    // point - whoever writes it still edits it.
+    const seed = forChannel ? copyFrom(communications, forAudience, forChannel) : null;
+    setContent(seed ? seed.content : draftCommunicationText(detour, forAudience));
+    setSeededFrom(seed?.from ?? null);
     setError(null);
+  }
+
+  async function addAudience() {
+    const problem = audienceAddError(detour.notification_audiences ?? [], newAudience);
+    if (problem) { setError(problem); return; }
+    setSaving(true); setError(null);
+    try {
+      await api.updateDetour(detour.id, {
+        notification_audiences: withAudience(detour.notification_audiences ?? [], newAudience),
+      });
+      setNewAudience("");
+      onDetourChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not add the audience");
+    } finally { setSaving(false); }
   }
 
   async function save() {
@@ -875,9 +901,34 @@ function DetourCommunicationsSection({ detour, contractor, canWrite }: { detour:
           <span className={item.progress === "published" ? "ok-text" : item.progress === "draft" ? "" : "warn-note"}>
             {item.progress === "published" ? "✓" : item.progress === "draft" ? "◐" : "○"} {item.audience}
           </span>
-          <span className="td-dim"> — {item.progress === "published" ? "published" : item.progress === "draft" ? "draft saved, not published" : "nothing drafted"}{item.contractor ? ` · contractor · email${item.recipients.length ? ` to ${item.recipients.join(", ")}` : " (no recipients configured - set them under Administration)"}` : item.channels.length ? ` · via ${item.channels.join(", ")}` : ""}</span>
-          {canWrite && item.progress !== "published" ? <> <button type="button" className="btn-sm" title={item.eligibility && !item.eligibility.may_draft ? sendBlock?.sentence : undefined} disabled={Boolean(item.eligibility && !item.eligibility.may_draft)} onClick={() => startDraft(item.audience)}>{item.progress === "draft" ? "Draft another" : "Draft"}</button></> : null}
+          <span className="td-dim"> — {item.progress === "published" ? "published" : item.progress === "draft" ? "not published on every channel yet" : "nothing drafted"}{item.contractor ? ` · contractor${item.recipients.length ? ` · email to ${item.recipients.join(", ")}` : " · email (no recipients configured - set them under Administration)"}` : ""}</span>
+          {/* One line per required channel: the wording differs per channel, so
+              the progress does too. Drafting starts on the channel that is
+              missing rather than on the audience in general. */}
+          {item.perChannel.length > 0 && <span className="comm-channel-marks">
+            {item.perChannel.map((state) => <button
+              key={state.channel}
+              type="button"
+              className={`comm-channel-mark is-${state.progress}`}
+              disabled={!canWrite || Boolean(item.eligibility && !item.eligibility.may_draft)}
+              title={item.eligibility && !item.eligibility.may_draft ? sendBlock?.sentence : `${state.progress === "published" ? "Published" : state.progress === "draft" ? "Drafted" : "Nothing yet"} · ${state.channel}`}
+              onClick={() => startDraft(item.audience, state.channel)}
+            >{state.progress === "published" ? "✓" : state.progress === "draft" ? "◐" : "○"} {state.channel}</button>)}
+          </span>}
         </li>)}</ul>
+        {canWrite && <div className="comm-add-audience">
+          {/* An audience the record does not name yet. It joins the Detour's own
+              list, so it is required like the rest: somebody added it on
+              purpose, and the Detour is not fully communicated without it. */}
+          <input
+            aria-label="Add an audience"
+            placeholder="Add an audience, e.g. Burnsville PD"
+            value={newAudience}
+            onChange={(event) => setNewAudience(event.target.value)}
+            onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void addAudience(); } }}
+          />
+          <button type="button" className="btn-sm" disabled={saving || !newAudience.trim()} onClick={() => void addAudience()}>Add audience</button>
+        </div>}
       </div>
     ) : <p className="td-dim">The record names no required audiences; communications here are recorded but do not change its communication status.</p>}
     {communications.map((communication) => <p key={communication.id}>
@@ -933,7 +984,8 @@ function DetourCommunicationsSection({ detour, contractor, canWrite }: { detour:
         <label>Recipients<input value={recipients} onChange={(e) => setRecipients(e.target.value)} placeholder="Distribution list or team" /></label>
       ) : null}
       <label>Message
-        <textarea value={content} rows={6} onChange={(e) => setContent(e.target.value)} placeholder="Use Draft beside an audience to start from the record" />
+        <textarea value={content} rows={6} onChange={(e) => { setContent(e.target.value); setSeededFrom(null); }} placeholder="Choose a channel beside an audience to start from the record, or from what you have already written" />
+        {seededFrom && <small className="td-dim">Started from {seededFrom}. Edit it for this channel - a text message says less than an email.</small>}
       </label>
       <span>
         <button type="button" className="btn-sm" onClick={() => setContent(draftCommunicationText(detour, audience || undefined))}>Fill from record</button>{" "}
