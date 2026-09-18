@@ -14,6 +14,7 @@ import { admitOnDemandRequest, rereadOnDemandRequest } from "../lib/onDemandRequ
 import {
   type ActiveOperationalZones,
   loadActiveOperationalZonesCached,
+  monitoredRequestIds,
   storeOnDemandSpareRequest,
   storeSpareDutyMatching,
   storeSpareDutyVehicle,
@@ -21,6 +22,7 @@ import {
 import type { SpareRequestRecord } from "../lib/spareApi";
 import { onDemandActivation } from "../lib/onDemandMonitoringHealth";
 import { ContractSchemaLog, IntakeGate, PeriodicLog, VehicleWriteCoalescer } from "../lib/spareWebhookIntake";
+import { etaUpdatesToRead, WebhookEventCounter, type WebhookDeliveryOutcome } from "../lib/spareWebhookCounts";
 
 // Four of the pool's ten connections at most; the pollers behind the KPI
 // feeds need the rest. Eight seconds is generous for one MERGE on a healthy
@@ -36,6 +38,10 @@ const zoneGapLog = new PeriodicLog(60_000);
 // is for another service: a receiver taking a webhook a second must say why it
 // is writing nothing, without becoming the flood it is refusing.
 const notAdmittedLog = new PeriodicLog(60_000);
+// What is arriving, by type and outcome, once a minute. Counts only: which
+// subscriptions are worth keeping cannot be answered from the request table,
+// which sees one route for all four event types.
+const eventCounts = new WebhookEventCounter(60_000);
 
 const UNAVAILABLE = {
   status: 503,
@@ -60,6 +66,12 @@ app.http("onDemandSpareWebhook", {
     const eventType = spareWebhookEventType(payload);
     if (!eventType) return { status: 422, jsonBody: { error: "Webhook event type is not supported" } };
 
+    const count = (outcome: WebhookDeliveryOutcome) => {
+      eventCounts.record(eventType, outcome);
+      const due = eventCounts.due();
+      if (due) context.log(JSON.stringify({ event: "spare_webhook_counts", ...due }));
+    };
+
     // Deliberately log schema names only: webhook values may contain rider or
     // location data. This temporary diagnostic closes the source-contract gap,
     // and a field set it has already reported teaches nothing new.
@@ -77,6 +89,7 @@ app.http("onDemandSpareWebhook", {
     // us to have stored anything.
     const activation = onDemandActivation();
     if (!activation.active) {
+      count("not_admitted");
       report(context, activation.reason, eventType);
       return { status: 202, jsonBody: { status: "accepted", stored: false } };
     }
@@ -85,16 +98,19 @@ app.http("onDemandSpareWebhook", {
     // write. Most vehicle locations do not.
     if (eventType === "vehicleLocation") {
       const update = normalizeSpareVehicleLocation(data);
-      if (!update) return { status: 202, jsonBody: { status: "accepted" } };
+      if (!update) { count("unusable"); return { status: 202, jsonBody: { status: "accepted" } }; }
       if (!vehicleWrites.shouldWrite(update.dutyId, update.vehicleId)) {
+        count("coalesced");
         return { status: 202, jsonBody: { status: "accepted", coalesced: true } };
       }
+      count("stored");
       return respond(await gate.run(() => storeSpareDutyVehicle(update)), context, eventType);
     }
 
     if (eventType === "dutyMatchingStatus") {
       const update = normalizeSpareDutyMatchingStatus(data);
-      if (!update) return { status: 202, jsonBody: { status: "accepted" } };
+      if (!update) { count("unusable"); return { status: 202, jsonBody: { status: "accepted" } }; }
+      count("stored");
       return respond(await gate.run(() => storeSpareDutyMatching(update)), context, eventType);
     }
 
@@ -103,10 +119,12 @@ app.http("onDemandSpareWebhook", {
       // load is spent on a request for a service the monitor is not for.
       const admission = admitOnDemandRequest((data ?? {}) as SpareRequestRecord, activation);
       if (!admission.admit) {
+        count(admission.reason === "unusable" ? "unusable" : "not_admitted");
         if (admission.reason === "unusable") return { status: 202, jsonBody: { status: "accepted" } };
         report(context, admission.reason, eventType);
         return { status: 202, jsonBody: { status: "accepted", stored: false } };
       }
+      count("stored");
       return respond(await gate.run(async () => {
         const activeZones = await loadActiveOperationalZonesCached();
         if (!hasActiveZones(activeZones, context)) return;
@@ -119,13 +137,19 @@ app.http("onDemandSpareWebhook", {
     // reverse a newer Request Status or a confirmed pickup. The outbound read
     // sits inside the gate too: it is what the delivery costs.
     const updates = normalizeSpareEtaUpdates(data);
-    if (updates.length === 0) return { status: 202, jsonBody: { status: "accepted" } };
+    if (updates.length === 0) { count("unusable"); return { status: 202, jsonBody: { status: "accepted" } }; }
     return respond(await gate.run(async () => {
       const activeZones = await loadActiveOperationalZonesCached();
       // Checked before the outbound reads: without zones their results have
       // nowhere to go, and each one costs a Spare API call.
       if (!hasActiveZones(activeZones, context)) return;
-      for (const update of updates) {
+      // An ETA for a request the monitor is not tracking has no wait to
+      // update, and the read that would prove it costs a Spare API call per
+      // update. See etaUpdatesToRead.
+      const { read, skipped } = etaUpdatesToRead(updates, await monitoredRequestIds(updates.map((update) => update.requestId)));
+      for (let i = 0; i < skipped; i++) count("skipped_not_monitored");
+      for (const update of read) {
+        count("read");
         // An ETA payload carries no service attribution, so unlike
         // requestStatus this scope check can only happen after the
         // authoritative re-read. The read is spent either way; the write is
