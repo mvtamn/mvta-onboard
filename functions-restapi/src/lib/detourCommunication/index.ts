@@ -73,7 +73,7 @@ async function load(pool: sql.ConnectionPool, detourId: string, communicationId:
  * (candidate #1), which is what decides them; the audiences come from the
  * record and the configured contractor.
  */
-export function detourFrom(row: CommunicationRow, workflow: DetourWorkflowView, contractor: ContractorNotification): CommunicationDetour {
+export function detourFrom(row: CommunicationRow, workflow: DetourWorkflowView, contractor: ContractorNotification, defaultAudiences: string[] = []): CommunicationDetour {
   return {
     lifecycle_state: workflow.lifecycle_state,
     fulfillment_mode: workflow.fulfillment_mode,
@@ -82,6 +82,7 @@ export function detourFrom(row: CommunicationRow, workflow: DetourWorkflowView, 
     required_audiences: requiredAudiences(
       { notification_audiences: (row.notification_audiences ?? "").split(",").map((a) => a.trim()).filter(Boolean), service_impact: row.service_impact },
       contractor,
+      defaultAudiences,
     ),
   };
 }
@@ -97,6 +98,8 @@ interface SendInput {
   communicationId: string;
   actor: string;
   contractor: ContractorNotification;
+  /** Audiences a Detour must reach when its record names none. */
+  defaultAudiences?: string[];
   workflow: DetourWorkflowView;
   context: InvocationContext;
   /** Tests pass a fake; production resolves one from the channel. */
@@ -124,7 +127,7 @@ export async function sendCommunication(input: SendInput): Promise<SendOutcome> 
     return { ok: false, status: 409, refusal: refusal("channel_is_recorded", "This channel is recorded, not sent. Record that it went out instead.") };
   }
   const recipients = parseRecipients(row.recipients);
-  const eligibility = communicationEligibility(detourFrom(row, input.workflow, input.contractor), {
+  const eligibility = communicationEligibility(detourFrom(row, input.workflow, input.contractor, input.defaultAudiences), {
     audience: row.audience, channel, recipients,
   });
   if (!eligibility.may_send) return { ok: false, status: 409, refusal: eligibility.refusal! };
@@ -190,7 +193,7 @@ export async function recordSentElsewhere(input: Omit<SendInput, "port" | "conte
   const channel = detourChannel(row.channel);
   if (!channel) return { ok: false, status: 409, refusal: eligibilityRefusal("unknown_channel") };
   const eligibility = communicationEligibility(
-    detourFrom(row, input.workflow, input.contractor),
+    detourFrom(row, input.workflow, input.contractor, input.defaultAudiences),
     { audience: row.audience, channel, recipients: parseRecipients(row.recipients) },
   );
   // Recipients are the sender's business when they sent it themselves.
