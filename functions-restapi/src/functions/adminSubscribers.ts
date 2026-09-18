@@ -1,10 +1,10 @@
 // GET /manage/subscribers/summary - subscriber counts for the console sidebar
-// and Subscribers tab. Any staff role gets the counts; ONLY Admins also get
-// the recent-signups list, and even that is PII-masked (last-4 phone, masked
-// email) - full contact details never leave the API.
+// and Subscribers tab. subscribers.view gets the counts; subscribers.detail is
+// what adds the recent-signups list, and even that is PII-masked (last-4 phone,
+// masked email) - full contact details never leave the API.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
-import { requireRole, STAFF_READ_ROLES, ADMIN_ROLES, getCallerPrincipal } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { summaryFromCounts } from "../lib/subscribersSummary";
 
 function maskPhone(phone: string | null): string | null {
@@ -22,9 +22,9 @@ function maskEmail(email: string | null): string | null {
 app.http("adminSubscribersSummary", {
   route: "manage/subscribers/summary",
   methods: ["GET"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, STAFF_READ_ROLES);
+    const authResult = await requireAccess(request, "subscribers.view");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }
@@ -55,10 +55,8 @@ app.http("adminSubscribersSummary", {
       const summary = summaryFromCounts(counts.recordset[0]);
       const jsonBody: Record<string, unknown> = { summary };
 
-      // Recent list is Admin-only and PII-masked.
-      const principal = getCallerPrincipal(request);
-      const isAdmin = principal?.roles.some((r) => ADMIN_ROLES.includes(r)) ?? false;
-      if (isAdmin) {
+      // The recent list needs its own action, and stays PII-masked.
+      if (authResult.access.actions.includes("subscribers.detail")) {
         const recent = await pool.request().query<{
           subscriber_id: string;
           phone_number: string | null;

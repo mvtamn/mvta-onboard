@@ -1,16 +1,16 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
-import { ADMIN_ROLES, COMPLIANCE_READ_ROLES, requireRole } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { getPool, sql } from "../lib/db";
 import { isReferenceDomain, isSystemDomain } from "../lib/assessment/referenceValues";
 import { isGuid, validateReferenceValue } from "../lib/validation";
 
 // The vocabulary behind every picker in the standards configurator.
 //
-// Reads are open to the compliance roles - a manager needs the labels to read
-// a scorecard - and every write is OCC.Admin. The guardrail lives here rather
-// than in the console: a system-domain value is what the scoring engine
-// branches on, so it can be renamed, reordered and retired but never invented
-// or destroyed. See lib/assessment/referenceValues.ts for why.
+// Reads are performance-assessment.view - a manager needs the labels to read
+// a scorecard - and every write is contractor-performance.edit. The guardrail
+// lives here rather than in the console: a system-domain value is what the
+// scoring engine branches on, so it can be renamed, reordered and retired but
+// never invented or destroyed. See lib/assessment/referenceValues.ts for why.
 
 async function referenceReady(pool: Awaited<ReturnType<typeof getPool>>): Promise<boolean> {
   const check = await pool.request().query<{ ready: number }>(
@@ -22,7 +22,7 @@ async function referenceReady(pool: Awaited<ReturnType<typeof getPool>>): Promis
 app.http("referenceValuesList", {
   route: "reference-values", methods: ["GET"], authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, COMPLIANCE_READ_ROLES);
+    const auth = await requireAccess(request, "performance-assessment.view");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     try {
       const pool = await getPool();
@@ -43,7 +43,7 @@ app.http("referenceValuesList", {
 app.http("referenceValuePut", {
   route: "reference-values/{id}", methods: ["PUT"], authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, ADMIN_ROLES);
+    const auth = await requireAccess(request, "contractor-performance.edit");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const id = request.params.id;
     if (!isGuid(id)) return { status: 400, jsonBody: { error: "Invalid reference value id" } };
@@ -116,7 +116,7 @@ app.http("referenceValuePut", {
 app.http("referenceValueDelete", {
   route: "reference-values/{id}", methods: ["DELETE"], authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, ADMIN_ROLES);
+    const auth = await requireAccess(request, "contractor-performance.edit");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const id = request.params.id;
     if (!isGuid(id)) return { status: 400, jsonBody: { error: "Invalid reference value id" } };

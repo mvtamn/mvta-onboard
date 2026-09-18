@@ -1,13 +1,12 @@
 // GET /missed-trips - the currently-tracked missed-trip candidates (explicit
 // cancellations and schedule-based silent no-shows), backing the console's
-// Missed Trips view (now under the Compliance tab). Any staff role, plus the
-// dedicated OCC.Compliance role, can read; this is visibility only - all
-// writes come from gtfsMissedTripsPoll.ts. Mirrors tripDelays.ts's shape.
+// Missed Trips view (now under the Compliance tab). compliance-review.view can read;
+// this is visibility only - all writes come from gtfsMissedTripsPoll.ts. Mirrors tripDelays.ts's shape.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { missedTripCaseSql } from "../lib/missedTripCase";
 import { occurrenceSourceRefSql } from "../lib/occurrenceIntake/sources";
-import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { missedTripFeedDependencies } from "../lib/kpiTrust";
 import { loadKpiFeedHealthRecords } from "../lib/kpiTrustStore";
 
@@ -54,9 +53,9 @@ interface MissedTripRow {
 app.http("missedTripsList", {
   route: "missed-trips",
   methods: ["GET"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, [...STAFF_READ_ROLES, "OCC.Compliance"]);
+    const authResult = await requireAccess(request, "compliance-review.view");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

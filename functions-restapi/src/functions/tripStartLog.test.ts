@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { shapeTrip, TRIP_START_LOG_READ_ROLES } from "./tripStartLog";
+import { SEEDED_ROLES, seededRole } from "../lib/access";
+import { shapeTrip } from "./tripStartLog";
 
 const base = {
   service_date: "20260908",
@@ -56,9 +57,12 @@ test("carries the human observation as its own object when one exists", () => {
   });
 });
 
-test("the same staff roles that read Fixed Route Departures read the log", () => {
-  assert.ok(TRIP_START_LOG_READ_ROLES.includes("OCC.Viewer"));
-  assert.ok(TRIP_START_LOG_READ_ROLES.includes("OCC.Compliance"));
-  assert.ok(TRIP_START_LOG_READ_ROLES.includes("OCC.TripStartVerify"), "the contractor desk must be able to read what it verifies");
-  assert.ok(!TRIP_START_LOG_READ_ROLES.includes("System.Ingestion"));
+test("the roles that read Fixed Route Departures read the log, and the desk that verifies it can read it", () => {
+  const holders = SEEDED_ROLES.filter(role => role.actions.includes("dispatch-log.view")).map(role => role.key);
+  assert.ok(holders.includes("viewer"));
+  assert.ok(holders.includes("compliance-analyst"));
+  assert.ok(holders.includes("trip-start-verifier"), "the contractor desk must be able to read what it verifies");
+  // The administrator reads it through the wildcard, and a workload identity
+  // holds no human action at all.
+  assert.ok(seededRole("system-administrator")?.allActions);
 });

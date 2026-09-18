@@ -1,5 +1,4 @@
-// PATCH /detours/{id} - partial edit. Publisher/Admin plus the dedicated
-// OCC.Detour role - see DETOUR_WRITE_ROLES in auth.ts.
+// PATCH /detours/{id} - partial edit. detours.edit.
 //
 // If the row being edited is source='avail' (came from the future Avail
 // sync, Part B4), this stamps last_edited_manually=1 unconditionally - the
@@ -13,7 +12,7 @@
 // actually changes value.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, DETOUR_WRITE_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { validateUpdateDetour, isGuid } from "../lib/validation";
 import type { UpdateDetourBody } from "../lib/types";
 import { actorFrom, performDetourActIn, type ReviewedFacts } from "../lib/detourWorkflow";
@@ -27,9 +26,9 @@ interface UpdatedDetour {
 app.http("detoursUpdate", {
   route: "detours/{id}",
   methods: ["PATCH"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, DETOUR_WRITE_ROLES);
+    const authResult = await requireAccess(request, "detours.edit");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

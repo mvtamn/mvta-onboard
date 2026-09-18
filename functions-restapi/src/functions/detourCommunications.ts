@@ -1,6 +1,6 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { DETOUR_READ_ROLES, DETOUR_WRITE_ROLES, requireRole } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { isGuid, validateDetourCommunication } from "../lib/validation";
 import { readContractorNotification, recordSentElsewhere, sendCommunication } from "../lib/detourCommunication";
 import { readDetourWorkflows } from "../lib/detourWorkflow";
@@ -10,7 +10,7 @@ interface CommunicationRow { id: string; detour_id: string; audience: string; ch
 app.http("detourCommunicationsList", {
   route: "detours/{id}/communications", methods: ["GET"], authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, DETOUR_READ_ROLES);
+    const auth = await requireAccess(request, "detours.view");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const id = request.params.id;
     if (!isGuid(id)) return { status: 400, jsonBody: { error: "id must be a GUID" } };
@@ -40,7 +40,7 @@ app.http("detourCommunicationsList", {
 app.http("detourCommunicationCreate", {
   route: "detours/{id}/communications", methods: ["POST"], authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, DETOUR_WRITE_ROLES);
+    const auth = await requireAccess(request, "detours.edit");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const id = request.params.id;
     if (!isGuid(id)) return { status: 400, jsonBody: { error: "id must be a GUID" } };
@@ -68,7 +68,7 @@ app.http("detourCommunicationCreate", {
 app.http("detourCommunicationPublish", {
   route: "detours/{id}/communications/{communicationId}/publish", methods: ["POST"], authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, DETOUR_WRITE_ROLES);
+    const auth = await requireAccess(request, "detours.edit");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const id = request.params.id; const communicationId = request.params.communicationId;
     if (!isGuid(id) || !isGuid(communicationId)) return { status: 400, jsonBody: { error: "ids must be GUIDs" } };

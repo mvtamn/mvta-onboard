@@ -6,14 +6,13 @@
 // can be created. Reads work the same way in reverse - this endpoint hands
 // back a fresh short-lived SAS read URL per image, never a permanent or
 // public URL. Writes sit at the same tier as editing the detour itself
-// (Publisher/Admin plus OCC.Detour - DETOUR_ATTACHMENT_WRITE_ROLES), per the
-// owner's original B3 decision. OCC.Compliance is deliberately NOT a writer:
-// it previously had attachment writes without detour edit access, which
-// contradicted that rule. Reads follow DETOUR_READ_ROLES, which does include
-// OCC.Compliance.
+// (detours.edit), per the owner's original B3 decision: attaching to a detour
+// is editing it, and nobody writes attachments without also being able to edit
+// what they are attached to. Reads are detours.view, and intake attachments
+// are detours.intake.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, DETOUR_READ_ROLES, DETOUR_ATTACHMENT_WRITE_ROLES, DETOUR_INTAKE_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { validateUploadUrlRequest, validateCreateDetourImage, validateDetourIntakeAttachment, validateDetourIntakeAttachmentUpload, isGuid } from "../lib/validation";
 import { getUploadSasUrl, getReadSasUrl, buildDetourImageBlobPath, buildDetourIntakeImageBlobPath, BlobStorageNotConfiguredError } from "../lib/blobStorage";
 
@@ -48,9 +47,9 @@ async function listImages(ownerColumn: "detour_id" | "intake_id", ownerId: strin
 app.http("detourImagesUploadUrl", {
   route: "detours/{id}/images/upload-url",
   methods: ["POST"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, DETOUR_ATTACHMENT_WRITE_ROLES);
+    const authResult = await requireAccess(request, "detours.edit");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }
@@ -88,9 +87,9 @@ app.http("detourImagesUploadUrl", {
 app.http("detourImagesCreate", {
   route: "detours/{id}/images",
   methods: ["POST"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, DETOUR_ATTACHMENT_WRITE_ROLES);
+    const authResult = await requireAccess(request, "detours.edit");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }
@@ -146,9 +145,9 @@ app.http("detourImagesCreate", {
 app.http("detourImagesList", {
   route: "detours/{id}/images",
   methods: ["GET"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, DETOUR_READ_ROLES);
+    const authResult = await requireAccess(request, "detours.view");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }
@@ -207,7 +206,7 @@ app.http("detourIntakeImagesUploadUrl", {
   methods: ["POST"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, DETOUR_INTAKE_ROLES);
+    const auth = await requireAccess(request, "detours.intake");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const intakeId = request.params.id;
     if (!isGuid(intakeId)) return { status: 400, jsonBody: { error: "id must be a GUID" } };
@@ -234,7 +233,7 @@ app.http("detourIntakeImagesCreate", {
   methods: ["POST"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, DETOUR_INTAKE_ROLES);
+    const auth = await requireAccess(request, "detours.intake");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const intakeId = request.params.id;
     if (!isGuid(intakeId)) return { status: 400, jsonBody: { error: "id must be a GUID" } };
@@ -261,7 +260,7 @@ app.http("detourIntakeImagesList", {
   methods: ["GET"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, DETOUR_INTAKE_ROLES);
+    const auth = await requireAccess(request, "detours.intake");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const intakeId = request.params.id;
     if (!isGuid(intakeId)) return { status: 400, jsonBody: { error: "id must be a GUID" } };

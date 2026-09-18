@@ -1,5 +1,5 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
-import { COMPLIANCE_READ_ROLES, requireRole } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { getPool, sql } from "../lib/db";
 import { isGuid, isServiceMonth } from "../lib/validation";
 
@@ -11,7 +11,7 @@ import { isGuid, isServiceMonth } from "../lib/validation";
 app.http("manualMetricsOpen", {
   route: "manual-metrics/open", methods: ["GET"], authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, COMPLIANCE_READ_ROLES);
+    const auth = await requireAccess(request, "performance-assessment.view");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const month = request.query.get("service_month");
     if (!isServiceMonth(month)) return { status: 400, jsonBody: { error: "service_month is required" } };
