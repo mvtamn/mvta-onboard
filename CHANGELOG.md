@@ -5,6 +5,14 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.274] - 2026-09-18
+
+- **Detour Intake offers the channels a communication can actually use.** The form carried its own list - `email`, `radio`, `Teams`, `dispatch board` - plus a free-text "Other" box, and seeded every new intake with email **and radio**. None of it matched the composer in Detours & Closures, which works from the five named channels (migration 132). Radio was deliberately dropped when the channels were named: nothing sends it and no detour ever used it. So an intake could require a channel nobody could ever satisfy, and it only showed up later, on a different page.
+- **The list comes from the server**, with the intake rows, from the same module the composer reads. The two cannot disagree about what exists, and adding a channel means adding it once.
+- **A channel a record already names that is no longer offered stays visible**, struck through and marked *no longer offered*, and can be removed but not re-added. The record said what it said; it is not quietly rewritten.
+- **The free-text box is gone.** A channel of one, typed into a form, is how "dispatch board" became a requirement.
+- **Verified.** 7 new tests in `detourIntakeChannels.test.ts` covering what is offered, case-insensitive matching of stored values, a retired value being kept and removable but not re-addable, and a record whose only channel is retired having nothing usable left. Console 722 tests pass; backend 1247.
+
 ## [1.5.273] - 2026-09-18
 
 - **Fixed: migration 061 could not be applied to any database that needed it.** It adds `review_status` to `Detours` and then, **in the same batch**, a CHECK naming that column. SQL Server compiles a batch before executing it, so the reference fails with "Invalid column name" and the whole batch is abandoned - nothing added, and quietly enough that a run looks uneventful. Exactly the defect migration 092 had. The CHECK now runs through `EXEC`.
