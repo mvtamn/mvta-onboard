@@ -1,7 +1,7 @@
 import { DETOUR_LIFECYCLE_LABELS, type Detour } from "@mvta/shared";
 
 // Human labels for the workflow-side fields of a Detour, shared by the
-// Detour Reports table and its CSV export so the two can never disagree
+// Detour Register table and its CSV export so the two can never disagree
 // about what a row says. Detours.tsx phrases its "next step" as an
 // instruction ("Enter this detour in Avail") and keeps its own copy.
 

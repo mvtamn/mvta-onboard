@@ -5,6 +5,14 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.280] - 2026-09-18
+
+- **Detour Reports is now Detour Register.** "Reports" read as something staff file - which is what Detour **Intake** collects - rather than something they open, and its subtitle ("Search and export detour history") described the same set as Detours & Closures right beside it. Neither name said which page to open for what.
+- **The two subtitles now say what each page is for**, since both carry active detours and the difference is what you do there. Detours & Closures: *work active and upcoming detours - communications, Avail build, conflicts*. Detour Register: *every detour, active and past - search, filter and export, read-only*.
+- **"History" was considered and rejected**: the Register carries active detours for the team to review, so a name implying past-only would have been more misleading than "Reports". "Review" was rejected too - Detour Intake already has a review step with review outcomes, and the word would have become ambiguous.
+- **The route is unchanged** (`/detour-reports`), so existing links and bookmarks keep working.
+- **Verified.** Console 744 tests pass, typecheck clean. Past changelog entries keep the old name - they describe what shipped at the time.
+
 ## [1.5.279] - 2026-09-18
 
 - **One message per audience AND channel.** A Detour reaches an audience on every channel the record requires, and the wording is rarely the same on all of them - a text message says less than an email. The composer tracked one message per audience, so there was no way to say the same thing differently on two channels, and an audience read as told after the first one went.

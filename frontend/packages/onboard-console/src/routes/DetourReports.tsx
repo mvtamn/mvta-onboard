@@ -28,7 +28,7 @@ import { DetourMap } from "../components/DetourMap.js";
 import { DetourDeliveryRecord } from "../components/DetourDeliveryRecord.js";
 import "./modules/detourReports.css";
 
-// Detour Reports - Part B7 of detour-module-consolidated-plan.md.
+// Detour Register - Part B7 of detour-module-consolidated-plan.md.
 //
 // Read-only by design. Detours.tsx stays the day-to-day entry/edit
 // workspace; this page exists so compliance and ops leadership can search
@@ -223,7 +223,7 @@ export function DetourReports() {
   return (
     <>
       <div className="panel-header">
-        <span>Detour Reports</span>
+        <span>Detour Register</span>
         <span className="chip" style={{ marginRight: 0 }}>Read-only</span>
       </div>
       <div className="panel-body">

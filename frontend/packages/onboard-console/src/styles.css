@@ -104,7 +104,7 @@ body {
 
 /* ---------- collapsed (icon-only) rail ---------- */
 /* Desktop affordance for reclaiming ~170px of width on map/table-heavy pages
-   (Event AVL, Detour Reports). Labels are replaced by native title tooltips
+   (Event AVL, Detour Register). Labels are replaced by native title tooltips
    rather than shrunk, and every group's links stay rendered while collapsed so
    no destination becomes unreachable behind a hidden group heading. */
 .nav-sidebar { transition: width .18s ease; }
