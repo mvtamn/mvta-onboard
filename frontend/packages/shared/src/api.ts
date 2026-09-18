@@ -1044,11 +1044,29 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     getAccessPeople() {
       return request<{ people: AccessPersonView[] }>("/api/manage/access/people", {}, true);
     },
-    grantAccessRole(personId: string, input: { role_key: string; reason: string; expires_at?: string | null }) {
-      return request<AccessGrantOutcome>(`/api/manage/access/people/${encodeURIComponent(personId)}/roles`, { method: "POST", body: JSON.stringify(input) }, true);
+    /**
+     * `privileged` asks Entra for the stepped-up token the server requires
+     * before a locked or access-managing Role changes hands. Without it the
+     * server refuses with "needs a recent sign-in confirmation" instead of
+     * opening the request for a second Access Administrator.
+     */
+    grantAccessRole(
+      personId: string,
+      input: { role_key: string; reason: string; expires_at?: string | null },
+      privileged = false,
+    ) {
+      return request<AccessGrantOutcome>(
+        `/api/manage/access/people/${encodeURIComponent(personId)}/roles`,
+        { method: "POST", body: JSON.stringify(input) },
+        privileged ? { authenticationContext: privilegedAuthenticationContext } : true,
+      );
     },
-    revokeAccessGrant(grantId: string, reason: string) {
-      return request<AccessGrantOutcome>(`/api/manage/access/grants/${encodeURIComponent(grantId)}/revoke`, { method: "POST", body: JSON.stringify({ reason }) }, true);
+    revokeAccessGrant(grantId: string, reason: string, privileged = false) {
+      return request<AccessGrantOutcome>(
+        `/api/manage/access/grants/${encodeURIComponent(grantId)}/revoke`,
+        { method: "POST", body: JSON.stringify({ reason }) },
+        privileged ? { authenticationContext: privilegedAuthenticationContext } : true,
+      );
     },
     getAccessGrantRequests() {
       return request<{ requests: AccessGrantRequestView[] }>("/api/manage/access/requests", {}, true);

@@ -1,84 +1,120 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../config.js";
-import { AddAccessLink, Icon, Loading, PageHead, RoleChip } from "./AccessUi.js";
-import { HUMAN_ROLES, displayTime, errorMessage, idempotencyKey, relativeTime, useAccess } from "./accessData.js";
+import { useAccess as useMyAccess } from "../../auth/AccessContext.js";
+import { AddAccessLink, GrantChip, Icon, Loading, PageHead, SetupNotice } from "./AccessUi.js";
+import { displayTime, errorMessage, isPrivilegedRole, relativeTime, useAccess } from "./accessData.js";
 import { actionLabel, outcomeNeedsLook } from "./auditVocabulary.js";
 import { ExportInventoryButton } from "./ExportInventoryButton.js";
 
 // The landing page of Access & Identity: what needs a decision, gathered from
-// the pages it lives on, and a picture of who has what.
+// the pages it lives on, and a picture of who holds what.
 export function AccessOverview() {
-  const { principals, pending, expirations, audit, loading, busy, setBusy, setError, setNotice, load, reconciliation, principalName } = useAccess();
+  const { people, requests, roles, findings, notReady, audit, loading, busy, setBusy, setError, setNotice, load, principalName } = useAccess();
+  const { can } = useMyAccess();
+  const canManage = can("access-identity.manage");
+  const [imported, setImported] = useState<string | null>(null);
 
-  if (loading && principals.length === 0) return <><PageHead title="Overview" description="Who can reach OnBoard, how they got that access, and what needs a decision." /><Loading label="Loading Access Management…" /></>;
+  if (loading && people.length === 0 && !notReady) {
+    return <><PageHead title="Overview" description="Who can do what in OnBoard, and what needs a decision." /><Loading label="Loading Access & Identity…" /></>;
+  }
 
-  const people = principals.filter((principal) => principal.principal_type === "user");
-  const groups = principals.filter((principal) => principal.principal_type === "group");
-  const workloads = principals.filter((principal) => principal.principal_type === "service_principal");
-  const guests = people.filter((principal) => !!principal.guest_state).length;
-  const direct = people.filter((principal) => principal.assignments.some((assignment) => assignment.source === "direct")).length;
-  const unavailable = people.filter((principal) => principal.directory_status === "missing" || principal.account_enabled === false).length;
-  const misassignedWorkloads = workloads.filter((principal) => principal.assignments.some((assignment) => assignment.role !== "System.Ingestion")).length;
-  const soonest = pending.map((change) => change.approval_expires_at).filter((value): value is string => !!value).sort()[0];
-  const findings = reconciliation?.findings ?? [];
+  const guests = people.filter((person) => person.kind === "guest").length;
+  const withoutRoles = people.filter((person) => person.roles.length === 0).length;
+  const pending = requests.filter((request) => request.status === "pending");
+  const soonest = pending.map((request) => request.approvalExpiresAt).sort()[0];
+  const live = roles.filter((role) => !role.archived);
+  const recent = [...audit].sort((a, b) => b.occurred_at.localeCompare(a.occurred_at)).slice(0, 6);
 
-  async function applyExpirations() {
+  // The one-time catch-up: today's Entra app-role assignments become OnBoard
+  // grants. Pressing it twice is safe - a person who already holds the role is
+  // counted as skipped rather than granted it again.
+  async function importFromEntra() {
     setBusy(true);
     try {
-      const response = await api.applyAccessExpirations(idempotencyKey("expiry"));
-      setNotice(`Processed ${response.results.length} due access ${response.results.length === 1 ? "expiry" : "expiries"}.`);
+      const inventory = await api.getAccessPrincipals();
+      const assignments = inventory.principals
+        .filter((principal) => principal.principal_type === "user")
+        .flatMap((principal) => principal.assignments.map((assignment) => ({
+          object_id: principal.id,
+          name: principal.display_name,
+          email: principal.sign_in_name,
+          app_role: assignment.role,
+          via: assignment.source === "group" ? `group ${assignment.source_name}` : "direct assignment",
+        })));
+      if (assignments.length === 0) {
+        setImported("Entra has no app-role assignments to import.");
+        return;
+      }
+      const outcome = await api.importAccessFromEntra(assignments);
+      const summary = `${outcome.people} ${outcome.people === 1 ? "person" : "people"}, ${outcome.granted} ${outcome.granted === 1 ? "grant" : "grants"}, ${outcome.skipped} skipped`
+        + (outcome.unknownRoles.length ? `. No OnBoard role matches ${outcome.unknownRoles.join(", ")}, so those were left out.` : ".");
+      setImported(summary);
+      setNotice(`Imported from Entra: ${summary}`);
+      setError(null);
       await load();
-    } catch (expiryError) {
-      setError(errorMessage(expiryError, "Due access could not be removed."));
+    } catch (importError) {
+      setError(errorMessage(importError, "The Entra assignments could not be imported."));
     } finally {
       setBusy(false);
     }
   }
 
-  const recent = [...audit].sort((a, b) => b.occurred_at.localeCompare(a.occurred_at)).slice(0, 6);
-
   return <>
     <PageHead
       title="Overview"
-      description="Who can reach OnBoard, how they got that access, and what needs a decision. Microsoft Entra ID stays the source of truth: OnBoard never stores passwords or disables accounts."
+      description="What a person may do in OnBoard is decided by the roles they hold here. Entra decides who may sign in, and nothing else: OnBoard never stores passwords or disables accounts."
       actions={<><ExportInventoryButton /><AddAccessLink /></>}
     />
+    {notReady ? <SetupNotice message={notReady} /> : null}
 
     <div className="am-stats">
-      <Link className="am-stat" to="/admin/access/people"><span><Icon name="users" size={13} />People &amp; guests</span><strong>{people.length}</strong><small>{guests} {guests === 1 ? "guest" : "guests"} · {direct} with direct access</small></Link>
-      <Link className="am-stat" to="/admin/access/groups"><span><Icon name="layers" size={13} />Access groups</span><strong>{groups.length}</strong><small>Security groups assigned to OnBoard</small></Link>
-      <Link className="am-stat" to="/admin/access/workloads"><span><Icon name="cpu" size={13} />Workloads</span><strong>{workloads.length}</strong><small>{misassignedWorkloads ? `${misassignedWorkloads} holding a person’s role` : "All hold only system access"}</small></Link>
+      <Link className="am-stat" to="/admin/access/people"><span><Icon name="users" size={13} />People &amp; guests</span><strong>{people.length}</strong><small>{guests} {guests === 1 ? "guest" : "guests"} · {withoutRoles} holding no role</small></Link>
+      <Link className="am-stat" to="/admin/access/roles"><span><Icon name="layers" size={13} />Roles</span><strong>{live.length}</strong><small>{live.filter((role) => role.members === 0).length} held by nobody</small></Link>
+      <Link className="am-stat" to="/admin/access/approvals"><span><Icon name="approve" size={13} />Waiting for a decision</span><strong>{pending.length}</strong><small>{soonest ? `The first expires ${relativeTime(soonest)}` : "Nothing is waiting"}</small></Link>
     </div>
 
     <section className="am-card" aria-labelledby="am-todo-title">
       <div className="am-card-head"><h3 id="am-todo-title">Needs a decision</h3></div>
       <ul className="am-todo">
-        {pending.length ? <li><span className="am-todo-ic"><Icon name="approve" size={17} /></span><div className="am-todo-text"><b>{pending.length} privileged {pending.length === 1 ? "request is" : "requests are"} waiting for approval</b><small>{soonest ? `The first one expires ${relativeTime(soonest)}. ` : ""}A request can’t be approved by the person who made it.</small></div><Link className="am-btn sm" to="/admin/access/approvals">Review approvals<Icon name="chevron" size={13} /></Link></li> : null}
-        {expirations.length ? <li><span className="am-todo-ic"><Icon name="clock" size={17} /></span><div className="am-todo-text"><b>{expirations.length} {expirations.length === 1 ? "assignment is" : "assignments are"} due to expire</b><small>Removing them ends OnBoard access only; the Entra accounts stay enabled.</small></div><button type="button" className="am-btn sm" disabled={busy} onClick={() => void applyExpirations()}>Remove due access</button></li> : null}
-        {findings.length ? <li><span className="am-todo-ic bad"><Icon name="pulse" size={17} /></span><div className="am-todo-text"><b>{findings.length} access health {findings.length === 1 ? "finding" : "findings"}</b><small>Checked against Entra {displayTime(reconciliation!.observed_at)}</small></div><Link className="am-btn sm" to="/admin/access/health">Open Access health<Icon name="chevron" size={13} /></Link></li> : null}
-        {unavailable ? <li><span className="am-todo-ic bad"><Icon name="warn" size={17} /></span><div className="am-todo-text"><b>{unavailable} {unavailable === 1 ? "person has" : "people have"} access but a disabled or missing account</b><small>Their OnBoard access outlives the account it was granted to.</small></div><Link className="am-btn sm" to="/admin/access/people?show=attention">Show them<Icon name="chevron" size={13} /></Link></li> : null}
-        {direct ? <li><span className="am-todo-ic info"><Icon name="info" size={17} /></span><div className="am-todo-text"><b>{direct} {direct === 1 ? "person holds" : "people hold"} direct access</b><small>Direct assignments are audited exceptions. Group access is the default.</small></div><Link className="am-btn sm" to="/admin/access/people?show=direct">Show them<Icon name="chevron" size={13} /></Link></li> : null}
-        {!pending.length && !expirations.length && !findings.length && !unavailable && !direct
-          ? <li><span className="am-todo-ic info"><Icon name="check" size={17} /></span><div className="am-todo-text"><b>Nothing needs a decision</b><small>{reconciliation ? "Access health was clean when last checked." : "Access health compares OnBoard with Entra when you open it."}</small></div>{reconciliation ? null : <Link className="am-btn sm" to="/admin/access/health">Check access health<Icon name="chevron" size={13} /></Link>}</li>
+        {pending.length ? <li><span className="am-todo-ic"><Icon name="approve" size={17} /></span><div className="am-todo-text"><b>{pending.length} privileged {pending.length === 1 ? "request is" : "requests are"} waiting for approval</b><small>{soonest ? `The first one expires ${relativeTime(soonest)}. ` : ""}A request can’t be decided by the person who made it.</small></div><Link className="am-btn sm" to="/admin/access/approvals">Review approvals<Icon name="chevron" size={13} /></Link></li> : null}
+        {withoutRoles ? <li><span className="am-todo-ic info"><Icon name="warn" size={17} /></span><div className="am-todo-text"><b>{withoutRoles} {withoutRoles === 1 ? "person holds" : "people hold"} no role</b><small>They can sign in and see the No access page. Grant a role, or leave them if that is intended.</small></div><Link className="am-btn sm" to="/admin/access/people?show=nothing">Show them<Icon name="chevron" size={13} /></Link></li> : null}
+        {findings?.length ? <li><span className="am-todo-ic bad"><Icon name="pulse" size={17} /></span><div className="am-todo-text"><b>{findings.length} access health {findings.length === 1 ? "finding" : "findings"}</b><small>{findings[0]!.headline}</small></div><Link className="am-btn sm" to="/admin/access/health">Open Access health<Icon name="chevron" size={13} /></Link></li> : null}
+        {!pending.length && !withoutRoles && !findings?.length
+          ? <li><span className="am-todo-ic info"><Icon name="check" size={17} /></span><div className="am-todo-text"><b>Nothing needs a decision</b><small>{findings ? "Access health was clean when last checked." : "Access health looks at OnBoard’s grants when you open it."}</small></div>{findings ? null : <Link className="am-btn sm" to="/admin/access/health">Check access health<Icon name="chevron" size={13} /></Link>}</li>
           : null}
       </ul>
     </section>
 
+    {canManage ? <section className="am-card" aria-labelledby="am-import-title">
+      <div className="am-card-head"><h3 id="am-import-title">Import from Entra</h3><span>One-time catch-up</span></div>
+      <p className="am-callout"><Icon name="info" /><span>
+        Before roles moved into OnBoard, access was Entra app-role assignments. This reads those assignments and writes the matching OnBoard grants, so people who already had access keep it without signing in again and being granted by hand.
+        It is safe to press twice: somebody who already holds the role is counted as skipped, never granted it twice. Entra assignments are not changed.
+      </span></p>
+      <div className="am-toolbar">
+        <button type="button" className="am-btn" disabled={busy || !!notReady} onClick={() => void importFromEntra()}><Icon name="download" />Import from Entra</button>
+        {imported ? <span className="am-toolbar-meta" role="status">{imported}</span> : null}
+      </div>
+    </section> : null}
+
     <div className="am-two">
       <section className="am-card" aria-labelledby="am-levels-title">
-        <div className="am-card-head"><h3 id="am-levels-title">Access levels</h3><span>Who holds each, and through which groups</span></div>
+        <div className="am-card-head"><h3 id="am-levels-title">Roles</h3><Link className="am-link" to="/admin/access/roles">Edit roles</Link></div>
         <div className="am-table-wrap flush">
           <table className="am-table">
-            <thead><tr><th>Access level</th><th>Granted through</th><th className="num">People</th></tr></thead>
-            <tbody>{HUMAN_ROLES.map((role) => {
-              const via = groups.filter((group) => group.assignments.some((assignment) => assignment.role === role));
-              const holders = people.filter((person) => person.effective_roles.includes(role)).length;
-              return <tr key={role}>
-                <td><RoleChip role={role} /></td>
-                <td>{via.length ? via.map((group) => <span key={group.id} className="am-mono am-block">{group.display_name}</span>) : <span className="am-muted">No group assigned</span>}</td>
-                <td className="num">{holders}</td>
-              </tr>;
-            })}</tbody>
+            <thead><tr><th>Role</th><th>What it allows</th><th className="num">People</th></tr></thead>
+            <tbody>{live.length === 0
+              ? <tr><td colSpan={3}><p className="am-empty">{notReady ? "Roles are not set up in this environment yet." : "No roles are defined yet."}</p></td></tr>
+              : live.map((role) => <tr key={role.key}>
+                <td><GrantChip name={role.name} privileged={isPrivilegedRole(role)} /></td>
+                <td>{role.allActions
+                  ? <span>Everything outside Access &amp; Identity</span>
+                  : role.summary.length
+                    ? <ul className="am-lines">{role.summary.slice(0, 3).map((line) => <li key={line}>{line}</li>)}{role.summary.length > 3 ? <li className="am-muted">and {role.summary.length - 3} more</li> : null}</ul>
+                    : <span className="am-muted">Nothing yet</span>}</td>
+                <td className="num">{role.members}</td>
+              </tr>)}</tbody>
           </table>
         </div>
       </section>

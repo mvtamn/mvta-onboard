@@ -879,8 +879,10 @@ once per sign-in and gates every route, link and control on the actions it
 returns, so the two sides can no longer disagree. `VITE_ACCESS_ADMIN_FALLBACK`
 is retired; `ONBOARD_ACCESS_ADMIN_FALLBACK` on the API is the only bootstrap
 switch left. Increment 4 added Access & Identity → Roles, which edits them. Increment 5
-adds the grant, approval, import and health API; the console moves onto it in
-the change after. Left to build: the console repoint, and the cutover (6).
+added the grant, approval, import and health API and moved Access & Identity
+onto it. Left to build: the cutover (6) - stop reading app roles from the
+token, remove the OCC.* app roles from the registration, and revoke the two
+Graph write consents.
 
 Once the migrations are applied, the intended order on dev is: sign in (which
 lists you), grant yourself Access Administrator through migration 129's last

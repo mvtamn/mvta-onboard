@@ -5,6 +5,16 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.253] - 2026-09-17
+
+- **Access & Identity reads and writes OnBoard's own grants.** The last half of increment 5. People & guests lists everyone OnBoard has seen with the roles they hold, when they last signed in, and the Access Summary those roles add up to; granting picks a real role (with its summary on the card) and writes a grant; removing revokes one by its id with a reason. The group-versus-direct "assignment source" language is gone - a grant names a person.
+- **Approvals decide OnBoard requests.** A Privileged Access Change reads as waiting for a second Access Administrator rather than as an error, your own request offers only Cancel, and a request past its window shows as expired instead of actionable. Granting or removing a privileged role now asks Entra for the stepped-up token the server requires, so it opens the request instead of being refused with "needs a recent sign-in confirmation".
+- **Import from Entra, once.** The Overview carries the one-time catch-up: it reads the Entra assignments the inventory still returns, posts them, and reports what it did ("14 people, 22 grants, 3 skipped"). Safe to press twice, and it says so.
+- **Access health reports OnBoard's own findings** - signed in but holding nothing, access about to end, fewer than two people able to manage access, roles nobody holds - and the Entra reconciliation and repair flow is deleted. Access groups and Workloads become read-only Entra inventory: they gate sign-in and grant nothing, so their Remove buttons are gone. The inventory export is relabelled as Entra's.
+- **Fixed: one missing field could take the whole section down.** The shared load set each list straight from its payload, so a response without `audit` reached the Overview as `undefined` and crashed it behind the error boundary - which reads as OnBoard being broken rather than as one list that could not be read. Every list now defaults to empty, with a test that renders the page from a payload missing its field.
+- **Still Entra's, deliberately:** finding a person in the directory, inviting a guest, and sign-in activity. A guest is invited in Entra and appears here after their first sign-in, where their OnBoard role is granted.
+- **Verified.** Console 660 tests across 75 files, including the setup notice, the import payload and its report, revoke-by-grant-id, privileged grant and removal reading as pending approval with the step-up requested, the unknown-person message, and expired approvals. Walked in mock preview against stubbed data: People & guests, Approvals, Access health and the Overview with Import from Entra all render, and the Overview survives the payload that used to crash it.
+
 ## [1.5.252] - 2026-09-17
 
 - **OnBoard grants its own access.** Increment 5 of ADR-0032 adds the API behind it: `GET /manage/access/people` (everyone OnBoard has seen, with what each holds and the Access Summary it adds up to), grant and revoke, the pending-decision list, approve/reject/cancel, the one-time Entra import, and access health. An ordinary grant is written straight to `AccessRoleGrants` and decides access within one resolver cache window.

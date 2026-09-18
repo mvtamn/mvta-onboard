@@ -1,23 +1,29 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type PropsWithChildren } from "react";
 import {
   ApiError,
+  type AccessGrantRequestView,
+  type AccessHealthFinding,
+  type AccessPersonView,
+  type AccessRoleView,
   type OnBoardAccessAuditEntry,
-  type OnBoardAccessChangeRecord,
-  type OnBoardAccessMetadata,
   type OnBoardAccessPrincipal,
-  type OnBoardAccessReconciliationReport,
   type OnBoardAccessRole,
   type OnBoardDirectoryChange,
 } from "@mvta/shared";
 import { api } from "../../config.js";
 import { roleLabel } from "../../auth/roles.js";
 
-// Access & Identity used to be one page with seven tabs. It is now eight
-// pages under one Administration heading, and they share one load: the
-// inventory, the approval queue, due expiries and the audit trail are read
-// once when the section opens, so moving between its pages does not re-query
-// Entra. Access health is the exception - it reads Entra live and costs a
-// Graph sweep - so it is fetched on first visit to that page and kept.
+// Access & Identity is eight pages under one Administration heading, and they
+// share one load: who holds access, what is waiting for a decision, the roles
+// to choose from and the administrative audit are read once when the section
+// opens, so moving between its pages does not re-query.
+//
+// Since ADR-0032 the answer to "who may do what" is OnBoard's own: people,
+// roles and grants come from `/api/manage/access/*`. Entra is still asked
+// three things and no more - find a person in the directory, invite a guest,
+// and show sign-in activity - so the Entra inventory is still read here for
+// the Access groups and Workloads pages and for naming audit targets.
+// Access health is a separate read, kept on first visit to that page.
 
 export const HUMAN_ROLES: OnBoardAccessRole[] = [
   "OCC.Viewer",
@@ -29,9 +35,28 @@ export const HUMAN_ROLES: OnBoardAccessRole[] = [
   "OCC.AccessAdmin",
 ];
 
-// Changes to these need a second, recently signed-in Access Administrator.
+// Changes to these Entra app roles needed a second, recently signed-in Access
+// Administrator. They still describe the legacy assignments the groups and
+// workloads pages show.
 export const PRIVILEGED_ROLES: readonly string[] = ["OCC.Admin", "OCC.AccessAdmin"];
 export const isPrivileged = (role: string) => PRIVILEGED_ROLES.includes(role);
+
+/** Actions in this module are what makes a Role privileged (ADR-0032). */
+const ACCESS_ACTION_PREFIX = "access-identity.";
+
+/**
+ * Granting or removing one of these is a Privileged Access Change: it needs a
+ * second Access Administrator. The rule is the server's; it is repeated here so
+ * a page can say so before somebody presses the button, never to decide.
+ */
+export function isPrivilegedRole(role: Pick<AccessRoleView, "locked" | "actions">): boolean {
+  return role.locked || role.actions.some((action) => action.startsWith(ACCESS_ACTION_PREFIX));
+}
+
+/** What to call somebody: their name, else their sign-in, else their object id. */
+export function personLabel(person: Pick<AccessPersonView, "name" | "email" | "objectId">): string {
+  return person.name || person.email || person.objectId;
+}
 
 export type PreviewResult = Awaited<ReturnType<typeof api.previewAccessChanges>>;
 export type SubmitResult = Awaited<ReturnType<typeof api.submitAccessChanges>>;
@@ -60,6 +85,15 @@ export function errorMessage(error: unknown, fallback: string): string {
     return `We could not reach this Access Management service. Please try again; if it continues, contact an administrator. (${message})`;
   }
   return message;
+}
+
+/**
+ * The access API answers 503 with a plain message until migrations 129-131 are
+ * applied. That is a state of the environment, not a failure of the page, so it
+ * is shown as a setup notice rather than as a red error.
+ */
+export function setupNotice(error: unknown): string | null {
+  return error instanceof ApiError && error.status === 503 ? error.message : null;
 }
 
 export function idempotencyKey(prefix: string): string {
@@ -104,17 +138,17 @@ export function principalAccountStatus(principal: OnBoardAccessPrincipal): { ton
   return { tone: "ok", label: "Enabled" };
 }
 
-export function needsAttention(principal: OnBoardAccessPrincipal): boolean {
-  return principal.directory_status === "missing"
-    || principal.account_enabled === false
-    || principal.assignments.some((assignment) => assignment.source === "direct" && principal.principal_type === "user")
-    || principal.assignments.some((assignment) => assignment.lifecycle_status === "expiry_failed");
-}
-
 interface AccessState {
+  /** Who OnBoard knows, and what each of them holds (ADR-0032). */
+  people: AccessPersonView[];
+  /** Privileged changes waiting for a second Access Administrator. */
+  requests: AccessGrantRequestView[];
+  /** The roles a grant can name. */
+  roles: AccessRoleView[];
+  /** Set while migrations 129-131 have not been applied here. */
+  notReady: string | null;
+  /** The Entra inventory, still read for Access groups, Workloads and audit names. */
   principals: OnBoardAccessPrincipal[];
-  pending: OnBoardAccessChangeRecord[];
-  expirations: OnBoardAccessMetadata[];
   audit: OnBoardAccessAuditEntry[];
   environment: string;
   accessAdminFallback: boolean;
@@ -125,19 +159,21 @@ interface AccessState {
   setError: (error: string | null) => void;
   notice: string | null;
   setNotice: (notice: string | null) => void;
-  load: (afterSubmission?: boolean) => Promise<void>;
-  reconciliation: OnBoardAccessReconciliationReport | null;
-  reconciliationLoading: boolean;
-  loadReconciliation: () => Promise<void>;
+  load: () => Promise<void>;
+  findings: AccessHealthFinding[] | null;
+  findingsLoading: boolean;
+  loadFindings: () => Promise<void>;
   principalName: (id: string) => string;
 }
 
 const AccessContext = createContext<AccessState | null>(null);
 
 export function AccessProvider({ children }: PropsWithChildren) {
+  const [people, setPeople] = useState<AccessPersonView[]>([]);
+  const [requests, setRequests] = useState<AccessGrantRequestView[]>([]);
+  const [roles, setRoles] = useState<AccessRoleView[]>([]);
+  const [notReady, setNotReady] = useState<string | null>(null);
   const [principals, setPrincipals] = useState<OnBoardAccessPrincipal[]>([]);
-  const [pending, setPending] = useState<OnBoardAccessChangeRecord[]>([]);
-  const [expirations, setExpirations] = useState<OnBoardAccessMetadata[]>([]);
   const [audit, setAudit] = useState<OnBoardAccessAuditEntry[]>([]);
   const [environment, setEnvironment] = useState("");
   const [accessAdminFallback, setAccessAdminFallback] = useState(false);
@@ -145,61 +181,74 @@ export function AccessProvider({ children }: PropsWithChildren) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [reconciliation, setReconciliation] = useState<OnBoardAccessReconciliationReport | null>(null);
-  const [reconciliationLoading, setReconciliationLoading] = useState(false);
+  const [findings, setFindings] = useState<AccessHealthFinding[] | null>(null);
+  const [findingsLoading, setFindingsLoading] = useState(false);
 
-  const load = useCallback(async (afterSubmission = false) => {
+  const load = useCallback(async () => {
     setLoading(true);
-    const [accessResult, changesResult, expiryResult, auditResult] = await Promise.allSettled([
+    const results = await Promise.allSettled([
+      api.getAccessPeople(),
+      api.getAccessGrantRequests(),
+      api.getAccessRoles(),
       api.getAccessPrincipals(),
-      api.getPendingAccessChanges(),
-      api.getAccessExpirations(),
       api.getAccessAudit(),
     ] as const);
+    const [peopleResult, requestsResult, rolesResult, inventoryResult, auditResult] = results;
     try {
-      if (accessResult.status === "fulfilled") {
-        setPrincipals(accessResult.value.principals);
-        setEnvironment(accessResult.value.environment);
-        setAccessAdminFallback(accessResult.value.access_admin_fallback);
+      // Each list defaults to empty rather than to undefined: a payload without
+      // the field - an older API, a proxy returning something else - used to
+      // reach a page as `undefined` and crash it, which reads as OnBoard being
+      // broken rather than as a list that could not be read.
+      if (peopleResult.status === "fulfilled") setPeople(peopleResult.value.people ?? []);
+      if (requestsResult.status === "fulfilled") setRequests(requestsResult.value.requests ?? []);
+      if (rolesResult.status === "fulfilled") setRoles(rolesResult.value.roles ?? []);
+      if (inventoryResult.status === "fulfilled") {
+        setPrincipals(inventoryResult.value.principals ?? []);
+        setEnvironment(inventoryResult.value.environment);
+        setAccessAdminFallback(inventoryResult.value.access_admin_fallback);
       }
-      if (changesResult.status === "fulfilled") setPending(changesResult.value.changes);
-      if (expiryResult.status === "fulfilled") setExpirations(expiryResult.value.expirations);
-      if (auditResult.status === "fulfilled") setAudit(auditResult.value.audit);
-      const failed = [accessResult, changesResult, expiryResult, auditResult].find((result) => result.status === "rejected");
-      if (failed?.status === "rejected") {
-        setError(afterSubmission
-          ? "The access request was saved, but live Microsoft Entra data could not be refreshed. Do not submit it again."
-          : errorMessage(failed.reason, "Access Management could not be loaded."));
-      } else {
-        setError(null);
-      }
+      if (auditResult.status === "fulfilled") setAudit(auditResult.value.audit ?? []);
+
+      const rejected = results.filter((result) => result.status === "rejected");
+      setNotReady(rejected.map((result) => setupNotice(result.reason)).find(Boolean) ?? null);
+      const failed = rejected.find((result) => !setupNotice(result.reason));
+      setError(failed ? errorMessage(failed.reason, "Access & Identity could not be loaded.") : null);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const loadReconciliation = useCallback(async () => {
-    setReconciliationLoading(true);
+  const loadFindings = useCallback(async () => {
+    setFindingsLoading(true);
     try {
-      setReconciliation(await api.getAccessReconciliation());
+      setFindings((await api.getAccessHealthFindings()).findings);
+      setNotReady(null);
       setError(null);
-    } catch (reconcileError) {
-      setError(errorMessage(reconcileError, "Access reconciliation failed."));
+    } catch (healthError) {
+      const setup = setupNotice(healthError);
+      if (setup) setNotReady(setup);
+      else setError(errorMessage(healthError, "Access health could not be read."));
     } finally {
-      setReconciliationLoading(false);
+      setFindingsLoading(false);
     }
   }, []);
 
   useEffect(() => { void load(); }, [load]);
 
   const value = useMemo<AccessState>(() => {
+    // An audit or inventory row names an Entra object id; a reader wants a name.
     const names = new Map(principals.map((principal) => [principal.id, principal.display_name]));
+    for (const person of people) {
+      names.set(person.objectId, personLabel(person));
+      names.set(person.personId, personLabel(person));
+    }
     return {
-      principals, pending, expirations, audit, environment, accessAdminFallback, loading, busy, setBusy,
-      error, setError, notice, setNotice, load, reconciliation, reconciliationLoading, loadReconciliation,
+      people, requests, roles, notReady, principals, audit, environment, accessAdminFallback,
+      loading, busy, setBusy, error, setError, notice, setNotice, load,
+      findings, findingsLoading, loadFindings,
       principalName: (id: string) => names.get(id) ?? id,
     };
-  }, [accessAdminFallback, audit, busy, environment, error, expirations, load, loadReconciliation, loading, notice, pending, principals, reconciliation, reconciliationLoading]);
+  }, [accessAdminFallback, audit, busy, environment, error, findings, findingsLoading, load, loadFindings, loading, notReady, notice, people, principals, requests, roles]);
 
   return <AccessContext.Provider value={value}>{children}</AccessContext.Provider>;
 }
