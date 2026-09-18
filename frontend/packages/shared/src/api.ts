@@ -130,6 +130,9 @@ import type {
   UpdateDetourInput,
   UpdateReasonCodeInput,
   ValidateMissedTripInput,
+  DetectorPromotionEntry,
+  DetectorPromotionInput,
+  DetectorPromotionView,
 } from "./types.js";
 
 export interface TokenRequestOptions {
@@ -992,6 +995,18 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<{ request_id: string; status: "resolved" }>(
         `/api/on-demand-risks/${encodeURIComponent(requestId)}/resolve`,
         { method: "POST", body: JSON.stringify(reason ? { reason } : {}) },
+        true,
+      );
+    },
+
+    getMissedTripDetectorPromotions() {
+      return request<DetectorPromotionView>("/api/missed-trip-detector-promotions", {}, true);
+    },
+
+    recordMissedTripDetectorPromotion(input: DetectorPromotionInput) {
+      return request<DetectorPromotionEntry>(
+        "/api/missed-trip-detector-promotions",
+        { method: "POST", body: JSON.stringify(input) },
         true,
       );
     },

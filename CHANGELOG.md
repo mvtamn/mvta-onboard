@@ -5,11 +5,22 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.272] - 2026-09-18
+
+- **Administration → Missed-trip Detectors.** The page that takes a detector out of Shadow detection, and puts it back. Each detector shows where it stands - counting toward assessments since a service date, or in Shadow detection, where its cases are still reviewed but never assessed - and the decisions behind it are listed with their evidence, reason and author.
+- **A promotion has to show its working.** The form asks for the precision measured over a complete service week and the number of cases it covers, and refuses a promotion below 95% precision, naming what it measured against what it needed (CONTEXT's bar, enforced in `decidePromotion` rather than left to the form). The on-demand detector additionally asks the person to confirm the two complete service weeks, dispatcher agreement and absence of unresolved feed-health issues that CONTEXT requires; the confirmation is written into the stored reason.
+- **A demotion asks for a date and a reason, and nothing else.** Taking a misfiring detector back out should never be the harder thing to do.
+- **A decision that would change nothing is refused** rather than recorded as a decision that did. `GET/POST /api/missed-trip-detector-promotions`, read with `compliance-review.view` and written with `service-configuration.edit`.
+- **Detector names this build does not know are reported**, not ignored, so a decision that promotes nothing cannot look applied.
+- **Verified.** 7 new tests for the page, 10 for its pure helpers, 7 more for the server's decision, plus the write path in the missed-trip contract test. Console 686 tests pass; backend tests pass.
+
 ## [1.5.271] - 2026-09-18
 
 - **Detector promotion is a dated decision, not a setting.** Taking a missed-trip detector out of Shadow detection was `MISSED_TRIP_PROMOTED_DETECTORS`, a list of names. It had no date, so the moment it changed every case that detector had ever opened started counting - including confirmed cases in months already measured. It kept no reason, no measured precision and no author. And SQL could not read it, so `vw_MissedTrip` had to report every detector as unpromoted and disagreed with the app by design.
 - **Migration 134 adds an append-only promotion history.** Detector family, the **service date** the decision takes effect from, promote or demote, the reason, the measured precision and sample size it was decided on, and who decided. A case counts toward an assessment when its detector was promoted on that case's service date; the latest decision at or before it wins. Demotion leaves the months the detector was trusted for counting as they did.
 - **Nothing is promoted by this change.** The setting was empty on dev, and an empty history means the same thing, so no figure moves. Queries carry their promotion facts as literals, so a database without migration 134 behaves exactly as before rather than failing.
+- **`vw_MissedTrip` reads the history itself**, since nothing regenerates a view when a promotion is recorded. The contract test runs both renderings over the same rows, so the warehouse agrees with the app by construction. ADR-0035 records the decision.
+- **Verified.** New `promotion.test.ts` (8 tests) covers dating, demotion, re-promotion, same-day reversal and unknown names; the missed-trip contract test now checks four promotion states, plus history against literals. Backend tests pass.
 - **`vw_MissedTrip` reads the history itself**, since nothing regenerates a view when a promotion is recorded. The contract test runs both renderings over the same rows, so the warehouse agrees with the app by construction. ADR-0036 records the decision.
 - **Verified.** New `promotion.test.ts` (8 tests) covers dating, demotion, re-promotion, same-day reversal and unknown names; the missed-trip contract test now checks four promotion states, plus history against literals. Backend tests pass.
 ## [1.5.270] - 2026-09-18

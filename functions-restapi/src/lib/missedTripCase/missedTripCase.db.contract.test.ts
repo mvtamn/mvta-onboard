@@ -3,7 +3,7 @@ import test, { after } from "node:test";
 import { parseConnectionString, sql } from "../db";
 import { AWAITING_CONFIRMATION } from "../missedTripConfidence";
 import { actOnMissedTripCase, classifyMissedTripCase, missedTripCaseSql, observeMissedTrips, type RunFact, type RunObservation } from "./index";
-import { PROMOTION_HISTORY, promotionWindows, type DetectorPromotionEntry, type MissedTripDetector, type PromotionWindow } from "./index";
+import { PROMOTION_HISTORY, promotionWindows, readDetectorPromotions, recordDetectorPromotion, type DetectorPromotionEntry, type MissedTripDetector, type PromotionWindow } from "./index";
 import { MAX_CASE_LIMIT, readMissedTripCases, readMissedTripMonthlySummary } from "./reads";
 import { WINDOWED_DETECTOR_VERSION } from "./classify";
 import { decideRun } from "./decide";
@@ -314,6 +314,33 @@ test("Missed-trip cases against SQL Server", skip, async (t) => {
       for (const row of both) {
         assert.equal(row.by_history, row.by_windows, `${row.trip_id}: the view and the app disagree on promotion`);
       }
+
+      // Recording a decision: the module refuses what does not clear the bar,
+      // and what it writes reads back as what it decided.
+      assert.equal((await recordDetectorPromotion(pool, {
+        detector: "gtfs_cancellation", effective_service_date: "20260101", promoted: true,
+        reason: "already promoted above", measured_precision: 0.99, sample_size: 50,
+      }, "ops@example.com") as { refusal: { code: string } }).refusal.code, "no_change");
+
+      const written = await recordDetectorPromotion(pool, {
+        detector: "gtfs_silent_no_show", effective_service_date: "20261101", promoted: true,
+        reason: "97.2% over the service week of 21 September", measured_precision: 0.972, sample_size: 143,
+      }, "ops@example.com");
+      assert.ok(written.ok);
+      assert.equal(written.entry.promoted, true);
+      assert.equal(Number(written.entry.measured_precision), 0.972);
+      assert.equal(written.entry.sample_size, 143);
+      assert.equal(written.entry.decided_by, "ops@example.com");
+      assert.deepEqual(
+        promotionWindows(await readDetectorPromotions(pool)).filter((w) => w.detector === "gtfs_silent_no_show"),
+        [{ detector: "gtfs_silent_no_show", from: "20261101", until: null }],
+      );
+
+      // Every subtest after this one reads the same database, so the decision
+      // written here is taken back out rather than left promoting a detector
+      // the rest of the file expects to be in Shadow detection.
+      await pool.request().query(
+        "DELETE FROM dbo.MissedTripDetectorPromotions WHERE detector = N'gtfs_silent_no_show' AND effective_service_date = N'20261101'");
     });
 
 
@@ -353,11 +380,16 @@ test("Missed-trip cases against SQL Server", skip, async (t) => {
     await t.test("a review settles an Evidence conflict", async () => {
       await pool.request().query(`INSERT INTO dbo.MonitoredMissedTrips
         (trip_id, service_date, route_id, scheduled_departure_at, grace_deadline_at, status, validation_status, detection_type, data_quality_status, source_system, detector_version, expected_window_end_at, evidence_conflict_at, evidence_conflict_reason)
-        -- The Expected operating window has closed, so the case is Ready for
-        -- review. Without that it is Awaiting evidence and the module refuses
-        -- to confirm it - which is correct, and is what this fixture originally
-        -- got wrong.
-        VALUES ('AV2', '${DAY}', '460', '2026-09-17T14:00:00', '2026-09-17T14:30:00', 'escalated', 'unreviewed', 'silent_no_show', 'experimental', 'gtfs', 'gtfs-silent-v4', DATEADD(DAY, -1, SYSUTCDATETIME()), SYSUTCDATETIME(), 'Avail reports this run as missed; the case concluded Timely service.')`);
+        -- The Expected operating window closed before T0, so the case is Ready
+        -- for review. Without that it is Awaiting evidence and the module
+        -- refuses to confirm it - which is correct, and is what this fixture
+        -- originally got wrong.
+        --
+        -- The window is a FIXED time before T0, not SYSUTCDATETIME() minus a
+        -- day: the module is called with T0, so a window pinned to the wall
+        -- clock overtook it every day at 14:35 UTC and the test failed for the
+        -- rest of the day.
+        VALUES ('AV2', '${DAY}', '460', '2026-09-17T14:00:00', '2026-09-17T14:30:00', 'escalated', 'unreviewed', 'silent_no_show', 'experimental', 'gtfs', 'gtfs-silent-v4', '2026-09-17T14:20:00', SYSUTCDATETIME(), 'Avail reports this run as missed; the case concluded Timely service.')`);
 
       const before = (await pool.request().query<{ counts_toward_assessment: boolean }>(`
         SELECT mtc.counts_toward_assessment FROM dbo.MonitoredMissedTrips m ${missedTripCaseSql("m")} WHERE m.trip_id = 'AV2'`)).recordset[0];

@@ -2150,3 +2150,44 @@ export interface OnDemandZoneFeedStatus {
   next_check_at: string | null;
 }
 
+
+/**
+ * Missed-trip detector promotion: which detectors count toward an assessment,
+ * and since which service date. See functions-restapi promotion.ts and ADR-0035.
+ */
+export type MissedTripDetectorName = "gtfs_cancellation" | "gtfs_silent_no_show" | "spare";
+
+export interface DetectorPromotionEntry {
+  detector: MissedTripDetectorName;
+  /** Service date key (YYYYMMDD) the decision takes effect from. */
+  effective_service_date: string;
+  promoted: boolean;
+  reason: string;
+  measured_precision: number | null;
+  sample_size: number | null;
+  decided_by: string;
+  decided_at: string;
+}
+
+export interface DetectorStanding {
+  detector: MissedTripDetectorName;
+  promoted: boolean;
+  since: string | null;
+}
+
+export interface DetectorPromotionView {
+  standings: DetectorStanding[];
+  history: DetectorPromotionEntry[];
+  /** Names in the stored history this build does not know; they promote nothing. */
+  ignored: string[];
+}
+
+export interface DetectorPromotionInput {
+  detector: MissedTripDetectorName;
+  effective_service_date: string;
+  promoted: boolean;
+  reason: string;
+  measured_precision?: number | null;
+  sample_size?: number | null;
+  on_demand_conditions_met?: boolean;
+}
