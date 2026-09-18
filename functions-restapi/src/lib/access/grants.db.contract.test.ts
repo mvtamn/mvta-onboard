@@ -234,7 +234,9 @@ test("granting OnBoard access against real SQL", { skip: !connectionString && "D
 
       const granted = activity.find((entry) => entry.action === "access_grant" && entry.role === "Publisher");
       assert.equal(granted?.actor_name, "Alice");
-      assert.equal(granted?.target_name, CHRIS.slice(0, 5));
+      // The name is read now, not copied when the grant was written: the Entra
+      // import above corrected it to "Chris", and the feed says so.
+      assert.equal(granted?.target_name, "Chris");
       assert.equal(granted?.outcome, "completed");
 
       const removed = activity.find((entry) => entry.action === "access_revoke" && entry.role === "Publisher");
