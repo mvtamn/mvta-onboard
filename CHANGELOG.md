@@ -5,6 +5,15 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.265] - 2026-09-18
+
+- **Avail's missed-trip report is now evidence on a case.** Since migration 015 it has been a third pipeline with its own table and its own page, never touching the cases GTFS and Spare produce - a trip could be a confirmed missed trip in one and absent from the other with nothing noticing. ADR-0036 settles what it is: evidence, matched to cases OnBoard already holds. It opens no cases and confirms none.
+- **Matching is recorded with its confidence, as CONTEXT has always said it should be.** Exact needs the service date, route, scheduled start to the minute and Avail's departure stop all to agree. Agreement on time but not on stop is probable, which a reviewer confirms before it affects anything. Two cases sharing a route, day and start time are unmatched - a link that cannot name one case is not a link.
+- **Incidents are matched against cases, not against the schedule**, which the daily GTFS sync overwrites. The case carries the scheduled start stamped when it opened; the schedule is consulted only for the first stop, and its absence downgrades a match rather than failing it.
+- **Links survive the nightly rebuild.** The Avail table is deleted and re-inserted in full every night, so links are keyed by the incident's own route/stop/day/start tuple. An incident the feed stops reporting is marked, not deleted - and a link that moves to a different case loses the confirmation it was given.
+- **Migration 135** adds `MissedTripSourceLinks`; nothing is reconciled by applying it and no figure moves. Reconciliation runs nightly at 03:30 UTC, half an hour after the Avail reload.
+- **Verified.** 10 tests for the matcher and a DB contract test covering re-runs over a rebuilt feed, a confirmation surviving an unchanged run, a moved link losing it, an incident going missing and coming back, and the evidence reading back on a case. Backend tests pass.
+
 ## [1.5.258] - 2026-09-18
 
 - **Fixed: migration 092 could not be applied to any database.** It adds the delivery columns and then, **in the same batch**, a CHECK naming `delivery_status`. SQL Server compiles a batch before executing it, so that reference fails with "Invalid column name" and the whole batch is abandoned - nothing added, and quietly enough that a run looks uneventful. The CHECK now runs through `EXEC`, as migration 061's does. The file is edited rather than superseded because it had **never applied anywhere**: dev is the only environment, and it was tried there twice.
