@@ -16,7 +16,7 @@ import { useAccess } from "../auth/AccessContext.js";
 import { api } from "../config.js";
 import { detourMatchesSearch } from "../lib/detourSearch.js";
 import { actOffer, availEntryOffer } from "../lib/detourActs.js";
-import { nextStepLabel } from "../lib/detourLabels.js";
+import { communicationStatusLabel, COMMUNICATION_PILL, managedInLabel, nextStepLabel, readinessFlags } from "../lib/detourLabels.js";
 import { useAppDialog } from "../components/AppDialog.js";
 import { DetourOperationalRecord } from "../components/DetourOperationalRecord.js";
 import { DetourWorkflowHistorySection } from "../components/DetourWorkflowHistorySection.js";
@@ -566,12 +566,18 @@ export function Detours() {
           <div className="subcard" style={{ overflow: "hidden" }}>
             <table className="data">
               <thead>
+                {/* OCC runs the detour workflow from this pane, so the columns
+                    are the ones they act on: where it is managed, what it needs
+                    next and from whom, and whether anybody has been told.
+                    Where the record came from is in the expanded row - it is
+                    provenance, not a thing to do. */}
                 <tr>
-                  <th>Number</th>
+                  <th>Detour</th>
                   <th>Closure</th>
                   <th>Dates</th>
-                  <th>Status</th>
-                  <th>Source</th>
+                  <th>Managed in</th>
+                  <th>Next action &amp; owner</th>
+                  <th>Communications</th>
                   {canWrite ? <th>Actions</th> : null}
                 </tr>
               </thead>
@@ -580,15 +586,33 @@ export function Detours() {
                   <Fragment key={d.id}>
                     <tr style={{ cursor: "pointer" }} onClick={() => setExpandedId(expandedId === d.id ? null : d.id)}>
                       <td>
-                        {d.number || "—"}
-                        {d.internal_number ? (
-                          <div className="td-dim" style={{ fontSize: "0.85em" }}>{d.internal_number}</div>
-                        ) : null}
+                        {d.internal_number || d.number || "—"}
+                        <div className="td-dim" style={{ fontSize: "0.85em" }}>
+                          <span className={`pill-sm ${STATUS_PILL[d.status]}`}>{DETOUR_STATUS_LABELS[d.status]}</span>
+                        </div>
                       </td>
                       <td>{d.closure}</td>
                       <td className="td-dim">{dateLabel(d.start_date)} – {dateLabel(d.end_date)}</td>
-                      <td><span className={`pill-sm ${STATUS_PILL[d.status]}`}>{DETOUR_STATUS_LABELS[d.status]}</span></td>
-                      <td className="td-dim">{d.source === "avail" ? "Avail feed" : d.external_detour_id ? "OnBoard · Avail linked" : "OnBoard manual"}</td>
+                      <td>
+                        {/* Whether this Detour lives in Avail or is operated
+                            outside it decides what OCC can do with it at all. */}
+                        <span className={managedInLabel(d).outside ? "detour-managed is-outside" : "detour-managed"}>
+                          {managedInLabel(d).label}
+                        </span>
+                        <div className="td-dim" style={{ fontSize: "0.85em" }}>{managedInLabel(d).detail}</div>
+                      </td>
+                      <td>
+                        <b>{nextStepLabel(d.readiness)}</b>
+                        <div className="td-dim" style={{ fontSize: "0.85em" }}>{d.workflow_owner || "Unassigned"}</div>
+                        {readinessFlags(d).map((flag) => (
+                          <div key={flag.text} className={flag.bad ? "warn-note" : "td-dim"} style={{ fontSize: "0.85em" }}>{flag.text}</div>
+                        ))}
+                      </td>
+                      <td>
+                        <span className={`pill-sm ${COMMUNICATION_PILL[d.communication_status ?? ""] ?? "pill-muted"}`}>
+                          {communicationStatusLabel(d)}
+                        </span>
+                      </td>
                       {canWrite ? (
                         <td onClick={(e) => e.stopPropagation()}>
                           <button className="btn-sm" onClick={() => openEditForm(d)}>Edit</button>

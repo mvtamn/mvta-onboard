@@ -1211,6 +1211,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .comm-channel-mark:disabled { cursor: default; opacity: 0.6; }
 .comm-add-audience { display: flex; gap: 8px; margin-top: 10px; }
 .comm-add-audience input { flex: 1 1 auto; max-width: 320px; }
+/* Where a Detour is managed. Outside Avail is the one that changes what OCC
+   can do with it, so it is the one that stands out. */
+.detour-managed { font-weight: 700; }
+.detour-managed.is-outside { color: #9a6b2a; }
 .dropzone { align-items: center; background: var(--surface-alt-bg); border: 1px dashed var(--border-strong); border-radius: 8px; color: var(--text-dim); cursor: pointer; display: flex; font-size: 12px; font-weight: 400; gap: 10px; justify-content: center; padding: 18px; }
 .dropzone svg { color: var(--text-muted); }
 .dropzone:focus-within { border-color: var(--brand-green); }

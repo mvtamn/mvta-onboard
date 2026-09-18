@@ -73,3 +73,56 @@ export function availEntryLabel(d: Pick<Detour, "fulfillment_mode" | "avail_entr
   if (d.fulfillment_mode !== "avail") return "";
   return d.avail_entry_result?.replace("_", " ") ?? "Entry not recorded";
 }
+
+/**
+ * Where this Detour is actually managed, for the working pane.
+ *
+ * OCC runs the workflow from Detours & Closures, and the first thing that
+ * decides what they can do is whether the Detour lives in Avail or is operated
+ * outside it: an Avail Detour is entered and confirmed there, a manual one never
+ * will be and is carried by a recorded fallback instead. The old Source column
+ * answered a different question - where the record came from - which is in the
+ * expanded row and is not what anybody acts on.
+ */
+export function managedInLabel(
+  d: Pick<Detour, "fulfillment_mode" | "avail_entry_result" | "source" | "external_detour_id">,
+): { label: string; detail: string; outside: boolean } {
+  if (d.fulfillment_mode === "avail") {
+    return { label: "Avail", detail: availEntryLabel(d), outside: false };
+  }
+  if (d.fulfillment_mode === "fixed_route_manual" || d.fulfillment_mode === "mobility_manual") {
+    return {
+      label: "Outside Avail",
+      detail: d.fulfillment_mode === "fixed_route_manual" ? "Fixed-route manual" : "Mobility manual",
+      outside: true,
+    };
+  }
+  // No path decided yet: say so rather than implying one.
+  return { label: "Not decided", detail: sourceLabel(d), outside: false };
+}
+
+/**
+ * The pill class for a communication status. Shared, because Detours & Closures
+ * and the Detour Register show the same badge and must not drift apart.
+ */
+export const COMMUNICATION_PILL: Record<string, string> = {
+  published: "pill-success",
+  draft: "pill-accent",
+  needs_communication: "pill-warning",
+};
+
+/**
+ * What is wrong with this Detour beyond its next step, worst first. These are
+ * the things that stop OCC acting, so they are shown on the row rather than
+ * waiting inside it - an unresolved conflict blocks the Avail entry, and an
+ * outstanding re-review makes whatever is communicated possibly untrue.
+ */
+export function readinessFlags(
+  d: Pick<Detour, "conflict_status" | "review_status" | "conflicts">,
+): { text: string; bad: boolean }[] {
+  const flags: { text: string; bad: boolean }[] = [];
+  if (d.conflict_status === "unresolved") flags.push({ text: "Conflict needs override", bad: true });
+  if (d.review_status === "needs_review") flags.push({ text: "Needs OCC re-review", bad: true });
+  if (d.conflict_status === "overridden") flags.push({ text: "Conflict overridden", bad: false });
+  return flags;
+}

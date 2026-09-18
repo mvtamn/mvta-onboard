@@ -20,7 +20,7 @@ import {
   type DetourFilters,
 } from "../lib/detourSearch.js";
 import { dateLabel, dateTimeLabel } from "../lib/detourDates.js";
-import { availEntryLabel, communicationStatusLabel, createdByLabel, fulfillmentPathLabel, readinessLabel, sourceLabel, workflowLabel } from "../lib/detourLabels.js";
+import { availEntryLabel, communicationStatusLabel, COMMUNICATION_PILL, createdByLabel, fulfillmentPathLabel, readinessLabel, sourceLabel, workflowLabel } from "../lib/detourLabels.js";
 import { DetourOperationalRecord } from "../components/DetourOperationalRecord.js";
 import { DetourWorkflowHistorySection } from "../components/DetourWorkflowHistorySection.js";
 import { DetourAttachmentsSection } from "../components/DetourAttachments.js";
@@ -56,12 +56,6 @@ const STATUS_PILL: Record<DetourStatus, string> = {
   monitor: "pill-warning",
   recently_finished: "pill-muted",
   expired: "pill-muted",
-};
-
-const COMMUNICATION_PILL: Record<string, string> = {
-  published: "pill-success",
-  draft: "pill-accent",
-  needs_communication: "pill-warning",
 };
 
 // The status the page opens on. EMPTY_FILTERS stays the "nothing narrowed"
