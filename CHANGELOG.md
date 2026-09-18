@@ -5,6 +5,15 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.283] - 2026-09-18
+
+- **A detour request now reaches OCC without anybody going to look for it.** Submitting an intake notified nobody: no email, no Teams post, no queue entry, nothing in the dispatch app, and the Dashboard never fetched intake at all. The only way OCC learned that somebody had asked for a detour was to open Detour Intake and notice.
+- **Requests waiting on OCC are on the Dashboard queue**, ranked below a rider alert about to expire and above a low-priority suggestion, **oldest first** - the queue's job is to stop one sitting unanswered, so the wait is what orders them. The row says who asked, where, and how long it has been waiting; past a day it turns to the attention tone.
+- **Only `pending_review` counts.** An intake returned as `needs_information` is waiting on whoever raised it, not on OCC, and putting it in their queue would be asking them to act on something that is not their move.
+- **A count beside Detour Intake in the navigation**, so the number is visible from any page. It is hidden at zero, and a failed read leaves it hidden rather than showing 0 - "none waiting" and "could not ask" are different, and a badge that reads 0 when the API is down hides work.
+- **This does not reach anyone outside the console.** An intake arriving overnight still waits for somebody to sign in. Notifying by Teams or email needs the delivery plumbing that increment 3 of the communications plan and `DETOUR_TEAMS_WEBHOOK_URL` are still waiting on.
+- **Verified.** 8 tests for what counts as waiting and how the wait reads, 3 more for the queue's ordering. Console 761 tests pass.
+
 ## [1.5.282] - 2026-09-18
 
 - **A Detour can be assigned.** `workflow_owner` was written in exactly one place - when an intake was promoted, to whoever promoted it - and nothing could change it afterwards. Every Detour that arrived from the Avail feed was Unassigned permanently, which is all ten on dev. Detours & Closures asks OCC to run the workflow, and taking a Detour or handing it on is part of that.
