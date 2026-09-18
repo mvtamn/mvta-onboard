@@ -244,12 +244,13 @@ test("granting OnBoard access against real SQL", { skip: !connectionString && "D
       // The same grant appears once as given and once as taken away.
       assert.equal(granted!.id.replace(":granted", ""), removed!.id.replace(":revoked", ""));
 
-      const asked = activity.find((entry) => entry.action === "privileged_change_requested" && entry.role === "Access Administrator");
-      assert.equal(asked?.actor_name, "Alice");
-      assert.equal(asked?.outcome, "approved");
-      const approved = activity.find((entry) => entry.action === "privileged_change_approved" && entry.role === "Access Administrator");
-      assert.equal(approved?.actor_name, "Ben");
-      assert.equal(approved?.reason, "Agreed.");
+      // Both administrators asked for the other, so the request is found by who
+      // it was about rather than by being the only one of its kind.
+      const ben = BEN.slice(0, 5);
+      const asked = activity.find((entry) => entry.action === "privileged_change_requested" && entry.target_name === ben);
+      assert.deepEqual([asked?.actor_name, asked?.role, asked?.outcome], ["Alice", "Access Administrator", "approved"]);
+      const approved = activity.find((entry) => entry.action === "privileged_change_approved" && entry.target_name === ben);
+      assert.deepEqual([approved?.actor_name, approved?.reason], ["Ben", "Agreed."]);
 
       const cancelled = activity.find((entry) => entry.action === "privileged_change_cancelled");
       assert.equal(cancelled?.outcome, "cancelled");
