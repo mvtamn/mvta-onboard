@@ -13,8 +13,9 @@ import { promotionWindows, type DetectorPromotionEntry } from "./missedTripCase/
 // keeps its columns and publishes the Missed-trip case module's classification
 // exactly as classifyMissedTripCase computes it.
 //
-// Migration 134 is applied on top, because it regenerates the same view: the
-// promotion history is created, the view still agrees with classifyMissedTripCase
+// Migrations 134, 135 and 137 are applied on top, because the last of them
+// redefines the same view: the promotion history is created, the Evidence
+// conflict columns arrive, the view still agrees with classifyMissedTripCase
 // while nothing is promoted, and a promotion changes exactly the cases whose
 // service date it covers.
 //
@@ -160,9 +161,12 @@ test("migration 125 names false_positive Timely service once, adds the window an
       INSERT INTO dbo.MonitoredMissedTrips (trip_id, service_date, route_id, scheduled_departure_at, grace_deadline_at, status, validation_status, detection_type, data_quality_status, detector_version)
         VALUES ('P', '20260915', '460', '2026-09-15T14:00:00', '2026-09-15T14:30:00', 'escalated', 'confirmed', 'silent_no_show', 'source_verified', 'gtfs-silent-v3')`);
 
-    // Migration 134: the promotion history, and the same view reading it.
+    // 134 creates the promotion history, 135 adds the Evidence conflict columns
+    // (its own view is guarded off once 134 has run), and 137 is the definer.
     await applyMigration(pool, "migration-134-missed-trip-detector-promotion.sql");
-    await applyMigration(pool, "migration-134-missed-trip-detector-promotion.sql");
+    await applyMigration(pool, "migration-135-missed-trip-evidence-conflict.sql");
+    await applyMigration(pool, "migration-137-missed-trip-promotion-view.sql");
+    await applyMigration(pool, "migration-137-missed-trip-promotion-view.sql");
 
     const countsToward = async () => (await pool.request().query<{ TripId: string; CountsTowardAssessment: boolean }>(
       "SELECT TripId, CountsTowardAssessment FROM dbo.vw_MissedTrip ORDER BY TripId")).recordset
