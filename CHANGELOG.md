@@ -5,18 +5,25 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.258] - 2026-09-18
+## [1.5.259] - 2026-09-18
 
 - **One reading of what the missed-trip detectors are doing.** `GTFS_SILENT_NO_SHOW_ENABLED`, `SPARE_MISSED_TRIPS_ENABLED`, `SPARE_MISSED_TRIP_SERVICE_IDS` and `SPARE_CONTRACTOR_FAULT_VALUES` were each parsed at the point of use - the same `?.trim().toLowerCase() === "true"` written out five times across the two adapters, the poll, the ingest, `/feed-checks` and `GET /missed-trips`. Whether a detector is running is part of the Missed-trip case module's interface, so `missedTripDetectionSettings(env)` now answers it and nothing outside reads those variables. A typo could previously have had the console call a detector paused while the poll ran it, and nothing would have failed.
 - **Fixed: a scope of nothing but separators counted as configured.** `spare_service_scope_configured` tested the raw string for emptiness, so `" , , "` reported a configured scope over zero services. It now counts the services actually named.
 - **`env` is a parameter**, as in `availClient` and `gtfsRtReader`, so a test names the settings it wants instead of mutating a global. 7 new tests cover what counts as "true" (`1` and `yes` do not), independent gating of the two detectors, service ids keeping Spare's own casing, fault values lowercased, and the separator-only list.
 - Promotion out of Shadow detection stays in `classify.ts`: `promotedDetectors()` already had this shape and is threaded through the classification and its SQL, so it stays beside the rules it governs.
 
-## [1.5.257] - 2026-09-18
+## [1.5.258] - 2026-09-18
 
 - **Fixed-route missed-trip detection reads through one seam.** Every read the GTFS detector makes - the day's scheduled runs with their operational evidence, start evidence, a cancellation's scheduled time, and feed health - is injected through `GtfsDetectionDeps` with a live default, the way `gtfsRtReader`, `feedRun` and `availClient` already do it. The rules that decide *which* trips are judged - past its 30-minute deadline, already started, on a special-event route, which service day it belongs to, and what the day's own evidence can support - are now pure functions over one Scheduled day and have tests for the first time (23 of them, no database).
 - **No change to detection.** The queries and the rules are the same; the detector is mid-Shadow-detection and its numbers stay comparable. One log-only difference: a service day with nothing scheduled no longer appends a second, usually empty, explanation to the poll's warning line.
 - **`Scheduled day` is in CONTEXT.md**, defined as what one pass read - deliberately *not* the retained `Schedule snapshot`, which the code still does not implement.
+
+## [1.5.257] - 2026-09-18
+
+- **Fixed: one missing seed row hid every detour setting.** The Administration panel rendered its fields only when `contractor_name` existed. Migration 089 was never applied on dev, so that row is absent - and the **default audiences** field added in 1.5.255 was hidden with it, even though its own row (migration 133) was there. The audiences could not be set at all, which left increment 2 unusable on the only environment there is.
+- **Each field now belongs to its own setting.** A field shows when its row exists; the note names the migrations this environment is missing (`migration 089`) rather than claiming the whole panel is unseeded. New pure helpers in `routes/modules/../lib/detourSettings.ts`.
+- **Saving writes only what changed**, and only keys that exist - an update to an absent key changes nothing and would have reported success. The message says what was saved rather than always describing the contractor.
+- **Verified.** 4 new tests in `detourSettings.test.ts`, including dev's exact shape today (migration 133 applied, 089 never). Console 669 tests pass.
 
 ## [1.5.256] - 2026-09-18
 
