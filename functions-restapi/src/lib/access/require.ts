@@ -15,6 +15,16 @@ import { actionLabel, findModule } from "./catalog";
 import { resolveEffectiveAccess } from "./index";
 import { INGESTION_APP_ROLE } from "./seeds";
 import type { EffectiveAccess } from "./types";
+import type { sql } from "../db";
+
+/**
+ * Handlers never pass this. Tests do, so a case can say "this person holds
+ * Publisher" the way the cutover means it - as a grant in the tables - instead
+ * of as an app role in a token, which now grants nothing.
+ */
+export interface AccessLookup {
+  executor?: sql.ConnectionPool | sql.Transaction;
+}
 
 export type AccessResult =
   | { authorized: true; principal: CallerPrincipal; access: EffectiveAccess }
@@ -35,12 +45,12 @@ export function describeAction(action: string): string {
  * and inherits no human authority, the rule requireRole enforced by refusing
  * the combination outright.
  */
-export async function requireAccess(request: HttpRequest, action: string): Promise<AccessResult> {
+export async function requireAccess(request: HttpRequest, action: string, lookup: AccessLookup = {}): Promise<AccessResult> {
   const principal = getCallerPrincipal(request);
   if (!principal) {
     return { authorized: false, status: 401, message: "Not authenticated." };
   }
-  const access = await resolveEffectiveAccess(principal);
+  const access = await resolveEffectiveAccess(principal, lookup);
   if (access.ingestion) {
     return {
       authorized: false,
@@ -65,12 +75,12 @@ export async function requireAccess(request: HttpRequest, action: string): Promi
  * page needs and none of them owns. The gate is holding any OnBoard access at
  * all, which is what the old staff-read set meant here.
  */
-export async function requireAnyOnBoardAccess(request: HttpRequest): Promise<AccessResult> {
+export async function requireAnyOnBoardAccess(request: HttpRequest, lookup: AccessLookup = {}): Promise<AccessResult> {
   const principal = getCallerPrincipal(request);
   if (!principal) {
     return { authorized: false, status: 401, message: "Not authenticated." };
   }
-  const access = await resolveEffectiveAccess(principal);
+  const access = await resolveEffectiveAccess(principal, lookup);
   if (access.ingestion || access.actions.length === 0) {
     return {
       authorized: false,
@@ -86,13 +96,13 @@ export async function requireAnyOnBoardAccess(request: HttpRequest): Promise<Acc
  * alert draft. `System.Ingestion` passes on its app role alone and gains no
  * other authority; a human needs the action.
  */
-export async function requireAccessOrIngestion(request: HttpRequest, action: string): Promise<AccessResult> {
+export async function requireAccessOrIngestion(request: HttpRequest, action: string, lookup: AccessLookup = {}): Promise<AccessResult> {
   const principal = getCallerPrincipal(request);
   if (principal?.roles.includes(INGESTION_APP_ROLE)) {
-    const access = await resolveEffectiveAccess(principal);
+    const access = await resolveEffectiveAccess(principal, lookup);
     if (access.ingestion) return { authorized: true, principal, access };
   }
-  return requireAccess(request, action);
+  return requireAccess(request, action, lookup);
 }
 
 /**
@@ -100,10 +110,10 @@ export async function requireAccessOrIngestion(request: HttpRequest, action: str
  * two modules - the Audit Log, which Governance and Access Administrators both
  * read - and never to soften a single module's own gate.
  */
-export async function requireAnyAccess(request: HttpRequest, actions: string[]): Promise<AccessResult> {
+export async function requireAnyAccess(request: HttpRequest, actions: string[], lookup: AccessLookup = {}): Promise<AccessResult> {
   let last: AccessResult = { authorized: false, status: 403, message: "Requires OnBoard access." };
   for (const action of actions) {
-    const result = await requireAccess(request, action);
+    const result = await requireAccess(request, action, lookup);
     if (result.authorized) return result;
     last = result;
     if (result.status === 401) return result;

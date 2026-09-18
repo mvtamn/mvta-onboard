@@ -2,17 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { HttpRequest } from "@azure/functions";
 import { clearAccessCache } from "./index";
+import { fakeAccessDb, type FakeGrant } from "./testSupport";
 import { describeAction, requireAccess, requireAccessOrIngestion, requireAnyAccess, requireAnyOnBoardAccess } from "./require";
 
-// No SQL connection is configured in the unit suite, so the resolver falls back
-// to the seeded roles keyed by the app roles in the token - the same path every
-// environment runs until migration 129 is applied.
-function requestFor(roles: string[], method = "GET"): HttpRequest {
+// Since the cutover a token says who the caller is and nothing about what they
+// may do, so each case states what the person holds as a grant.
+function requestFor(appRoles: string[] = [], method = "GET"): HttpRequest {
   const principal = Buffer.from(
     JSON.stringify({
       userId: "oid-1",
       userDetails: "someone@example.com",
-      claims: [{ typ: "tid", val: "tenant-1" }, ...roles.map((val) => ({ typ: "roles", val }))],
+      claims: [{ typ: "tid", val: "tenant-1" }, ...appRoles.map((val) => ({ typ: "roles", val }))],
     }),
   ).toString("base64");
   return new HttpRequest({
@@ -22,17 +22,21 @@ function requestFor(roles: string[], method = "GET"): HttpRequest {
   });
 }
 
+const holding = (...roleKeys: string[]): { executor: ReturnType<typeof fakeAccessDb> } => ({
+  executor: fakeAccessDb(roleKeys.map((roleKey): FakeGrant => ({ objectId: "oid-1", roleKey }))),
+});
+
 test("requireAccess", async (t) => {
   t.beforeEach(() => clearAccessCache());
 
   await t.test("admits the caller who holds the action", async () => {
-    const result = await requireAccess(requestFor(["OCC.TripStartVerify"]), "dispatch-log.verify");
+    const result = await requireAccess(requestFor(), "dispatch-log.verify", holding("trip-start-verifier"));
     assert.equal(result.authorized, true);
     assert.equal(result.authorized && result.principal.userId, "oid-1");
   });
 
   await t.test("refuses the caller who does not, in words they can act on", async () => {
-    const result = await requireAccess(requestFor(["OCC.Viewer"]), "detours.delete");
+    const result = await requireAccess(requestFor(), "detours.delete", holding("viewer"));
     assert.deepEqual(result, {
       authorized: false,
       status: 403,
@@ -40,8 +44,9 @@ test("requireAccess", async (t) => {
     });
   });
 
-  await t.test("says so when the caller holds nothing at all", async () => {
-    const result = await requireAccess(requestFor([]), "dashboard.view");
+  await t.test("an app role in the token is not access", async () => {
+    // Before the cutover this call was authorized. That is the change.
+    const result = await requireAccess(requestFor(["OCC.Admin"]), "detours.delete", holding());
     assert.equal(result.authorized, false);
     assert.match(result.authorized === false ? result.message : "", /no OnBoard role yet/);
   });
@@ -50,12 +55,13 @@ test("requireAccess", async (t) => {
     const result = await requireAccess(
       new HttpRequest({ method: "GET", url: "https://example.test/api/anything" }),
       "dashboard.view",
+      holding("viewer"),
     );
     assert.deepEqual(result, { authorized: false, status: 401, message: "Not authenticated." });
   });
 
   await t.test("a workload identity is refused every human action", async () => {
-    const result = await requireAccess(requestFor(["System.Ingestion"]), "rider-alerts.publish");
+    const result = await requireAccess(requestFor(["System.Ingestion"]), "rider-alerts.publish", holding("publisher"));
     assert.deepEqual(result, {
       authorized: false,
       status: 403,
@@ -64,33 +70,38 @@ test("requireAccess", async (t) => {
   });
 
   await t.test("the administrator's wildcard stops at Access & Identity", async () => {
-    assert.equal((await requireAccess(requestFor(["OCC.Admin"]), "detours.intake")).authorized, true);
-    assert.equal((await requireAccess(requestFor(["OCC.Admin"]), "access-identity.manage")).authorized, false);
+    const admin = holding("system-administrator");
+    assert.equal((await requireAccess(requestFor(), "detours.intake", admin)).authorized, true);
+    assert.equal((await requireAccess(requestFor(), "access-identity.manage", admin)).authorized, false);
   });
 
   await t.test("requireAnyAccess admits either reader and names both when it refuses", async () => {
     assert.equal(
-      (await requireAnyAccess(requestFor(["OCC.AccessAdmin"]), ["governance-audit.view", "access-identity.view"]))
+      (await requireAnyAccess(requestFor(), ["governance-audit.view", "access-identity.view"], holding("access-administrator")))
         .authorized,
       true,
     );
-    const refused = await requireAnyAccess(requestFor(["OCC.Detour"]), ["governance-audit.view", "access-identity.view"]);
+    const refused = await requireAnyAccess(
+      requestFor(),
+      ["governance-audit.view", "access-identity.view"],
+      holding("detour-editor"),
+    );
     assert.equal(refused.authorized, false);
     assert.match(refused.authorized === false ? refused.message : "", /Governance & Audit.*Access & Identity/s);
   });
 
   await t.test("shared reference data asks only for some OnBoard access", async () => {
-    assert.equal((await requireAnyOnBoardAccess(requestFor(["OCC.Detour"]))).authorized, true);
-    assert.equal((await requireAnyOnBoardAccess(requestFor([]))).authorized, false);
+    assert.equal((await requireAnyOnBoardAccess(requestFor(), holding("detour-editor"))).authorized, true);
+    assert.equal((await requireAnyOnBoardAccess(requestFor(), holding())).authorized, false);
     // A workload identity is not a person browsing the console.
-    assert.equal((await requireAnyOnBoardAccess(requestFor(["System.Ingestion"]))).authorized, false);
+    assert.equal((await requireAnyOnBoardAccess(requestFor(["System.Ingestion"]), holding("publisher"))).authorized, false);
   });
 
   await t.test("the shared ingestion route admits the workload identity and publishers only", async () => {
     const action = "rider-alerts.publish";
-    assert.equal((await requireAccessOrIngestion(requestFor(["System.Ingestion"]), action)).authorized, true);
-    assert.equal((await requireAccessOrIngestion(requestFor(["OCC.Publisher"]), action)).authorized, true);
-    assert.equal((await requireAccessOrIngestion(requestFor(["OCC.Viewer"]), action)).authorized, false);
+    assert.equal((await requireAccessOrIngestion(requestFor(["System.Ingestion"]), action, holding())).authorized, true);
+    assert.equal((await requireAccessOrIngestion(requestFor(), action, holding("publisher"))).authorized, true);
+    assert.equal((await requireAccessOrIngestion(requestFor(), action, holding("viewer"))).authorized, false);
   });
 
   await t.test("describeAction reads as the Roles page does", () => {

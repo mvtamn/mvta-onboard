@@ -1,15 +1,24 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { afterEach } from "node:test";
 import { HttpRequest, type InvocationContext } from "@azure/functions";
 import type { LibraryListing } from "../lib/sharepointLibrary";
 import { approvedLibraryItems, browseDecisionMatrixLibrary, libraryConfig, browsingCredential, setDecisionMatrixLibraryForTests } from "./decisionMatrixLibrary";
+import { useAccessExecutorForTests } from "../lib/access";
+import { fakeAccessDb } from "../lib/access/testSupport";
+
+// Since the cutover an app role in a token grants nobody anything, so a case
+// states what its caller holds as a Role Grant, the way production reads it.
+function holding(...roleKeys: string[]) {
+  useAccessExecutorForTests(fakeAccessDb(roleKeys.map((roleKey) => ({ objectId: "*", roleKey }))));
+}
+
+afterEach(() => useAccessExecutorForTests(null));
 
 const context = { error: () => undefined } as unknown as InvocationContext;
 
 function adminRequest(path?: string): HttpRequest {
   const principal = Buffer.from(JSON.stringify({
     claims: [
-      { typ: "roles", val: "OCC.Admin" },
       { typ: "http://schemas.microsoft.com/identity/claims/objectidentifier", val: "admin-oid" },
     ],
   })).toString("base64");
@@ -41,12 +50,18 @@ function libraryReturning(listing: LibraryListing) {
 }
 
 test("browsing the approved library requires an Admin", async () => {
-  const principal = Buffer.from(JSON.stringify({ claims: [{ typ: "roles", val: "OCC.Publisher" }] })).toString("base64");
+  holding("publisher");
+  const principal = Buffer.from(JSON.stringify({ userId: "publisher-oid" })).toString("base64");
   const request = new HttpRequest({ method: "GET", url: "https://example.test/api/manage/decision-matrix/library", headers: { "x-ms-client-principal": principal } });
-  assert.equal((await browseDecisionMatrixLibrary(request, context)).status, 403);
+  const response = await browseDecisionMatrixLibrary(request, context);
+  assert.equal(response.status, 403);
+  // Names the role the caller really holds, so the refusal cannot pass by the
+  // caller holding nothing at all.
+  assert.match((response.jsonBody as { error: string }).error, /Your roles are: Publisher\./);
 });
 
 test("an environment with no approved library says which settings name it", async () => {
+  holding("system-administrator");
   await withSettings({ DECISION_MATRIX_LIBRARY_SITE_ID: undefined, DECISION_MATRIX_LIBRARY_DRIVE_ID: undefined }, async () => {
     const response = await browseDecisionMatrixLibrary(adminRequest(), context);
     assert.equal(response.status, 200);
@@ -60,6 +75,7 @@ test("an environment with no approved library says which settings name it", asyn
 });
 
 test("a listing is returned with the counts the picker shows", async () => {
+  holding("system-administrator");
   await withSettings(CONFIGURED, async () => {
     libraryReturning({
       outcome: "ok",
@@ -88,6 +104,7 @@ test("a listing is returned with the counts the picker shows", async () => {
 // Answering 500 would be the console's cue to report an outage, which is the
 // mistake the Decision Matrix has already made twice.
 test("a library that is not readable answers 200 and names which kind of not readable", async () => {
+  holding("system-administrator");
   for (const [outcome, fragment] of [["forbidden", /must grant the OnBoard application read access/], ["not_found", /no folder/], ["failed", /could not be read/]] as const) {
     await withSettings(CONFIGURED, async () => {
       libraryReturning({ outcome, path: "_SOPs", reason: outcome === "forbidden" ? "SharePoint refused OnBoard's read of this library. A SharePoint administrator must grant the OnBoard application read access on this site." : outcome === "not_found" ? "SharePoint has no folder at that path." : "SharePoint could not be read: boom" } as LibraryListing);
@@ -104,6 +121,7 @@ test("a library that is not readable answers 200 and names which kind of not rea
 });
 
 test("the requested path reaches the library unchanged, so the library owns validation", async () => {
+  holding("system-administrator");
   await withSettings(CONFIGURED, async () => {
     const asked = libraryReturning({ outcome: "ok", path: "_SOPs/_OCC Documents", entries: [] });
     await browseDecisionMatrixLibrary(adminRequest("_SOPs/_OCC Documents"), context);

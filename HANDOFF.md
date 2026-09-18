@@ -880,14 +880,17 @@ returns, so the two sides can no longer disagree. `VITE_ACCESS_ADMIN_FALLBACK`
 is retired; `ONBOARD_ACCESS_ADMIN_FALLBACK` on the API is the only bootstrap
 switch left. Increment 4 added Access & Identity → Roles, which edits them. Increment 5
 added the grant, approval, import and health API and moved Access & Identity
-onto it. Left to build: the cutover (6) - stop reading app roles from the
-token, remove the OCC.* app roles from the registration, and revoke the two
-Graph write consents.
+onto it. Increment 6 is the cutover itself: the resolver no longer reads app roles from
+a token, the Entra-era Graph write flow is gone, and `docs/runbooks/access-cutover.md`
+is the order to run it in. **Do not deploy increment 6 to an environment that
+has not been migrated and imported**: from that build on, a token grants nobody
+anything, so an unmigrated environment leaves everybody on the No access page.
 
 Once the migrations are applied, the intended order on dev is: sign in (which
 lists you), grant yourself Access Administrator through migration 129's last
 batch, then press Import from Entra once so today's assignments become OnBoard
-grants.
+grants. Steps 1-5 of `docs/runbooks/access-cutover.md` are that sequence in
+full, and they all precede deploying the cutover build.
 
 The Entra steps — the OnBoard Users group, "Assignment required", removing the
 `OCC.*` app roles and revoking the two Graph write consents — belong to

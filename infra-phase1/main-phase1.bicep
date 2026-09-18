@@ -80,7 +80,6 @@ param riderAppBaseUrl string = ''
 param accessManagementConfigJson string = ''
 
 @description('Temporary bootstrap only: allow OCC.Admin to operate Access Management until OCC.AccessAdmin is provisioned.')
-param accessAdminFallback bool = false
 
 @description('Conditional Access authentication-context value required for privileged role requests and approvals.')
 param privilegedAuthContext string = 'c1'
@@ -169,7 +168,6 @@ module restApiFunction 'modules/functionapp.bicep' = {
     manageRoleAssignments: manageRoleAssignments
     enableAccessManagement: !empty(accessManagementConfigJson)
     accessManagementConfigJson: accessManagementConfigJson
-    accessAdminFallback: accessAdminFallback
     privilegedAuthContext: privilegedAuthContext
     gtfsRtTripUpdateUrl: gtfsRtTripUpdateUrl
     gtfsStaticUrl: gtfsStaticUrl

@@ -1,13 +1,23 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { afterEach } from "node:test";
 import { HttpRequest, type InvocationContext } from "@azure/functions";
 import * as db from "../lib/db";
 import { isInlineImageMime, listDecisionMatrix } from "./decisionMatrix";
+import { useAccessExecutorForTests } from "../lib/access";
+import { fakeAccessDb } from "../lib/access/testSupport";
+
+// Since the cutover an app role in a token grants nobody anything, so a case
+// states what its caller holds as a Role Grant, the way production reads it.
+function holding(...roleKeys: string[]) {
+  useAccessExecutorForTests(fakeAccessDb(roleKeys.map((roleKey) => ({ objectId: "*", roleKey }))));
+}
+
+afterEach(() => useAccessExecutorForTests(null));
 
 const context = { error: () => undefined } as unknown as InvocationContext;
 
 function readerRequest(): HttpRequest {
-  const principal = Buffer.from(JSON.stringify({ claims: [{ typ: "roles", val: "OCC.Viewer" }] })).toString("base64");
+  const principal = Buffer.from(JSON.stringify({ userId: "reader-oid" })).toString("base64");
   return new HttpRequest({ method: "GET", url: "https://example.test/api/decision-matrix", headers: { "x-ms-client-principal": principal } });
 }
 
@@ -38,13 +48,18 @@ test("the approved Procedure reader requires a staff role", async () => {
 });
 
 test("Event AVL alone cannot read the Decision Matrix", async () => {
-  const principal = Buffer.from(JSON.stringify({ claims: [{ typ: "roles", val: "OCC.EventAVL" }] })).toString("base64");
+  holding("event-avl-operator");
+  const principal = Buffer.from(JSON.stringify({ userId: "event-avl-oid" })).toString("base64");
   const request = new HttpRequest({ method: "GET", url: "https://example.test/api/decision-matrix", headers: { "x-ms-client-principal": principal } });
   const response = await listDecisionMatrix(request, context);
   assert.equal(response.status, 403);
+  // Names the role the caller really holds, so the refusal cannot pass by the
+  // caller holding nothing at all.
+  assert.match((response.jsonBody as { error: string }).error, /Your roles are: Event AVL Operator\./);
 });
 
 test("a database without the Procedure tables reads as not connected, not as a failure", async () => {
+  holding("viewer");
   await withPool(false, async () => {
     const response = await listDecisionMatrix(readerRequest(), context);
     assert.equal(response.status, 200);
@@ -53,6 +68,7 @@ test("a database without the Procedure tables reads as not connected, not as a f
 });
 
 test("a migrated database with nothing approved reports it is connected and empty", async () => {
+  holding("viewer");
   await withPool(true, async () => {
     const response = await listDecisionMatrix(readerRequest(), context);
     assert.equal(response.status, 200);

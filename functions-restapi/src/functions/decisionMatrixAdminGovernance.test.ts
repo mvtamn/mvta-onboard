@@ -1,22 +1,39 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { afterEach } from "node:test";
 import { HttpRequest, type InvocationContext } from "@azure/functions";
 import * as db from "../lib/db";
 import { listDecisionMatrixAudit, listDecisionMatrixGovernanceQueue } from "./decisionMatrixAdminGovernance";
 import { listDecisionMatrixMatchRules } from "./decisionMatrixMatches";
 import { listDecisionMatrixLegacyCandidates } from "./decisionMatrixLegacyMigration";
+import { useAccessExecutorForTests } from "../lib/access";
+import { fakeAccessDb } from "../lib/access/testSupport";
+
+// Since the cutover an app role in a token grants nobody anything, so a case
+// states what its caller holds as a Role Grant, the way production reads it.
+function holding(...roleKeys: string[]) {
+  useAccessExecutorForTests(fakeAccessDb(roleKeys.map((roleKey) => ({ objectId: "*", roleKey }))));
+}
+
+afterEach(() => useAccessExecutorForTests(null));
 
 const context = { error: () => undefined } as unknown as InvocationContext;
 
 test("only Admins can inspect the Decision Matrix governance queue and audit", async () => {
-  const principal = Buffer.from(JSON.stringify({ claims: [{ typ: "roles", val: "OCC.Publisher" }] })).toString("base64");
+  holding("publisher");
+  const principal = Buffer.from(JSON.stringify({ userId: "publisher-oid" })).toString("base64");
   const request = new HttpRequest({ method: "GET", url: "https://example.test/api/manage/decision-matrix/governance-queue", headers: { "x-ms-client-principal": principal } });
-  assert.equal((await listDecisionMatrixGovernanceQueue(request, context)).status, 403);
-  assert.equal((await listDecisionMatrixAudit(request, context)).status, 403);
+  const queue = await listDecisionMatrixGovernanceQueue(request, context);
+  const audit = await listDecisionMatrixAudit(request, context);
+  assert.equal(queue.status, 403);
+  assert.equal(audit.status, 403);
+  // Names the role the caller really holds, so the refusal cannot pass by the
+  // caller holding nothing at all.
+  assert.match((queue.jsonBody as { error: string }).error, /Your roles are: Publisher\./);
+  assert.match((audit.jsonBody as { error: string }).error, /Your roles are: Publisher\./);
 });
 
 function adminRequest(url: string): HttpRequest {
-  const principal = Buffer.from(JSON.stringify({ claims: [{ typ: "roles", val: "OCC.Admin" }, { typ: "http://schemas.microsoft.com/identity/claims/objectidentifier", val: "admin-oid" }] })).toString("base64");
+  const principal = Buffer.from(JSON.stringify({ claims: [{ typ: "http://schemas.microsoft.com/identity/claims/objectidentifier", val: "admin-oid" }] })).toString("base64");
   return new HttpRequest({ method: "GET", url, headers: { "x-ms-client-principal": principal } });
 }
 
@@ -43,6 +60,7 @@ async function withTables(present: string[], run: () => Promise<void>) {
 const ALL_TABLES = ["Procedures", "ProcedureRevisions", "ProcedureCriteria", "ProcedureImmediateActions", "ProcedureDocumentReferences", "ProcedureAuditEvents", "ProcedureMatchRules", "DecisionMatrixProcedures", "DecisionMatrixLegacyMigrations"];
 
 test("an unmigrated database reads as not connected on every admin surface, and each names its own migration", async () => {
+  holding("system-administrator");
   await withTables([], async () => {
     const queue = await listDecisionMatrixGovernanceQueue(adminRequest("https://example.test/api/manage/decision-matrix/governance-queue"), context);
     assert.equal(queue.status, 200);
@@ -63,6 +81,7 @@ test("an unmigrated database reads as not connected on every admin surface, and 
 });
 
 test("a partly migrated database reports each surface separately rather than one verdict", async () => {
+  holding("system-administrator");
   // What the dev database looks like today: 051 and 079 have run, so the
   // legacy tables are there, and nothing from 076, 078 or 080 is.
   await withTables(["DecisionMatrixProcedures", "DecisionMatrixLegacyMigrations"], async () => {
@@ -75,6 +94,7 @@ test("a partly migrated database reports each surface separately rather than one
 });
 
 test("a fully migrated database reports every admin surface connected", async () => {
+  holding("system-administrator");
   await withTables(ALL_TABLES, async () => {
     const queue = await listDecisionMatrixGovernanceQueue(adminRequest("https://example.test/api/manage/decision-matrix/governance-queue"), context);
     // The queue also says whether document checks are working. On an empty

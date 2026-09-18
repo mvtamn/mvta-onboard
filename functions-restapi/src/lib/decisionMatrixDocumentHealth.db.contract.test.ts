@@ -2,13 +2,15 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import test from "node:test";
+import test, { after, before } from "node:test";
 import { HttpRequest, type InvocationContext } from "@azure/functions";
 import { parseConnectionString, sql } from "./db";
 import { createDecisionMatrixProcedureDraft } from "../functions/decisionMatrixDrafts";
 import { createInMemoryLibraryItems } from "./sharepointLibrary";
 import { checkDecisionMatrixProcedureReferences, governDecisionMatrixProcedureRevision } from "../functions/decisionMatrixProcedureGovernance";
 import { createInMemoryMetadataReader, documentCheckStatus, revisionsDueForHealthCheck, type MetadataRead } from "./decisionMatrixDocumentHealth";
+import { useAccessExecutorForTests } from "./access";
+import { fakeAccessDb } from "./access/testSupport";
 
 // Document Reference Health against a real SQL Server (the CI contract job's
 // container), through the handlers Admins and the timer actually use. Its own
@@ -23,8 +25,15 @@ const LIBRARY = createInMemoryLibraryItems({ site_id: "site-health", drive_id: "
   "item-health": { name: "SOP-HEALTH.docx", kind: "file", mime_type: DOCX, etag: "3.0", web_url: "https://mvtamn.sharepoint.com/sites/TransitOperationsHub2/Shared%20Documents/SOP-HEALTH.docx" },
 });
 
+// The caller's authority is no longer in the token: since the cutover it comes
+// from Role Grants. What this file proves is the SQL underneath the handlers,
+// so the caller holds System Administrator through the access seam rather than
+// through rows this test would otherwise have to insert.
+before(() => useAccessExecutorForTests(fakeAccessDb([{ objectId: "*", roleKey: "system-administrator" }])));
+after(() => useAccessExecutorForTests(null));
+
 function requestFor(url: string, body: unknown, params: Record<string, string> = {}): HttpRequest {
-  const principal = Buffer.from(JSON.stringify({ userId: ADMIN, claims: [{ typ: "roles", val: "OCC.Admin" }] })).toString("base64");
+  const principal = Buffer.from(JSON.stringify({ userId: ADMIN })).toString("base64");
   return new HttpRequest({
     method: "POST",
     url,

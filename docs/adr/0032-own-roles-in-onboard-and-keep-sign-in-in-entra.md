@@ -1,6 +1,6 @@
 # Own Roles in OnBoard and Keep Sign-in in Entra
 
-**Status:** proposed
+**Status:** accepted
 
 Entra decides who may sign in to OnBoard. OnBoard decides what a signed-in
 person may do. A Role is an OnBoard record: a name, a purpose written by an

@@ -123,11 +123,11 @@ export const SEEDED_ROLES: SeededRole[] = [
 ];
 
 /**
- * The Entra app role each seeded role replaces. Until the cutover (increment 6)
- * the resolver reads these as well, so access keeps working in every
- * environment between deploying the code and granting people their roles here.
- * `System.Ingestion` is deliberately absent: workload identities have no person
- * record and keep their app role for good (ADR-0032).
+ * The Entra app role each seeded role replaced. Since the cutover the resolver
+ * does not read these at all - a token grants nobody anything - and the table
+ * survives for one job: translating the one-time import of the assignments that
+ * existed before. `System.Ingestion` is deliberately absent, because a workload
+ * identity has no person record and keeps its app role for good (ADR-0032).
  */
 export const LEGACY_APP_ROLE_TO_ROLE_KEY: Record<string, string> = {
   "OCC.Viewer": "viewer",

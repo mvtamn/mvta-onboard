@@ -1791,20 +1791,6 @@ export interface OnBoardDirectoryChange {
   expires_at?: string;
 }
 
-export interface OnBoardAccessChangeRecord {
-  id: string;
-  environment: string;
-  change: OnBoardDirectoryChange;
-  status: "pending" | "applying" | "approved" | "rejected" | "cancelled" | "expired" | "failed";
-  requested_by_id: string;
-  requested_by_name: string;
-  requested_at: string;
-  approval_expires_at?: string;
-  decided_by_id: string | null;
-  decided_by_name: string | null;
-  decided_at: string | null;
-  result: { status: string; correlation_id: string | null; message?: string } | null;
-}
 
 export interface OnBoardAccessAuditEntry {
   id?: string;
@@ -1856,20 +1842,7 @@ export interface OnBoardSignInInformation {
   };
 }
 
-export interface OnBoardAccessReconciliationFinding {
-  code: string;
-  severity: "info" | "warning" | "error";
-  message: string;
-  principal_id?: string;
-  role?: OnBoardAccessRole;
-  repair_change?: OnBoardDirectoryChange;
-}
 
-export interface OnBoardAccessReconciliationReport {
-  environment: string;
-  observed_at: string;
-  findings: OnBoardAccessReconciliationFinding[];
-}
 
 export type AssessmentPeriodStatus = "open" | "in_review" | "in_validation" | "stale" | "finalized" | "issued" | "reopened";
 export type AssessmentTierLabel = "meets" | "warning" | "tier1" | "tier2";

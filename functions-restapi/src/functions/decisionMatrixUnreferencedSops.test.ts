@@ -1,14 +1,29 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { afterEach } from "node:test";
 import { HttpRequest, type InvocationContext } from "@azure/functions";
 import { listUnreferencedSops, walkSopFolder } from "./decisionMatrixUnreferencedSops";
+import { useAccessExecutorForTests } from "../lib/access";
+import { fakeAccessDb } from "../lib/access/testSupport";
+
+// Since the cutover an app role in a token grants nobody anything, so a case
+// states what its caller holds as a Role Grant, the way production reads it.
+function holding(...roleKeys: string[]) {
+  useAccessExecutorForTests(fakeAccessDb(roleKeys.map((roleKey) => ({ objectId: "*", roleKey }))));
+}
+
+afterEach(() => useAccessExecutorForTests(null));
 
 const context = { error: () => undefined, log: () => undefined, warn: () => undefined } as unknown as InvocationContext;
 
 test("the Unreferenced SOP report is for Admins", async () => {
-  const principal = Buffer.from(JSON.stringify({ claims: [{ typ: "roles", val: "OCC.Publisher" }] })).toString("base64");
+  holding("publisher");
+  const principal = Buffer.from(JSON.stringify({ userId: "publisher-oid" })).toString("base64");
   const request = new HttpRequest({ method: "GET", url: "https://example.test/api/manage/decision-matrix/library/unreferenced", headers: { "x-ms-client-principal": principal } });
-  assert.equal((await listUnreferencedSops(request, context)).status, 403);
+  const response = await listUnreferencedSops(request, context);
+  assert.equal(response.status, 403);
+  // Names the role the caller really holds, so the refusal cannot pass by the
+  // caller holding nothing at all.
+  assert.match((response.jsonBody as { error: string }).error, /Your roles are: Publisher\./);
 });
 
 // A walk that cannot run says why and touches nothing: no database connection

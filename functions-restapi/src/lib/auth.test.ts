@@ -2,18 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { HttpRequest } from "@azure/functions";
 import { readFileSync } from "node:fs";
-import { DETOUR_INTAKE_ROLES, getCallerPrincipal, INGESTION_ROLES, PUBLISH_ROLES, requireRole } from "./auth";
+import { getCallerPrincipal } from "./auth";
+import { fakeAccessDb } from "./access/testSupport";
+import { requireAccess } from "./access/require";
 
-test("System.Ingestion is isolated from human publishing authority", () => {
-  assert.deepEqual(PUBLISH_ROLES, ["OCC.Publisher", "OCC.Admin"]);
-  assert.deepEqual(INGESTION_ROLES, ["System.Ingestion"]);
-});
-
-test("Detour Intake is restricted to administrators while reports remain separately readable", () => {
-  assert.deepEqual(DETOUR_INTAKE_ROLES, ["OCC.Admin"]);
-});
-
-test("a mixed ingestion and human-role token is denied at the server boundary", () => {
+// The role sets this file used to assert live in the seeded roles now, and what
+// they mean is proved in src/lib/access. What stays here is the principal
+// itself: who Easy Auth says is calling.
+test("a mixed ingestion and human-role token is denied at the server boundary", async () => {
   const principal = Buffer.from(JSON.stringify({
     userId: "mixed-principal",
     claims: [
@@ -27,11 +23,18 @@ test("a mixed ingestion and human-role token is denied at the server boundary", 
     headers: { "x-ms-client-principal": principal },
   });
 
-  assert.deepEqual(requireRole(request, PUBLISH_ROLES), {
-    authorized: false,
-    status: 403,
-    message: "System.Ingestion cannot be combined with a human OnBoard role.",
-  });
+  // A workload identity inherits nothing, whatever else its token carries and
+  // whatever anyone granted the person behind the object id.
+  assert.deepEqual(
+    await requireAccess(request, "rider-alerts.publish", {
+      executor: fakeAccessDb([{ objectId: "mixed-principal", roleKey: "publisher" }]),
+    }),
+    {
+      authorized: false,
+      status: 403,
+      message: "System.Ingestion holds no human OnBoard access.",
+    },
+  );
 });
 
 test("uses the Entra object ID claim when Easy Auth omits its wrapper identity", () => {

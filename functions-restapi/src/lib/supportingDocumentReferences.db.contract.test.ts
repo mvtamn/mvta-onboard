@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import test from "node:test";
+import test, { after, before } from "node:test";
 import { HttpRequest, type InvocationContext } from "@azure/functions";
 import { parseConnectionString, sql } from "./db";
 import { createDecisionMatrixProcedureDraft, getDecisionMatrixProcedureDraft, saveDecisionMatrixProcedureDraft } from "../functions/decisionMatrixDrafts";
 import { createInMemoryLibraryItems } from "./sharepointLibrary";
+import { useAccessExecutorForTests } from "./access";
+import { fakeAccessDb } from "./access/testSupport";
 
 // Supporting Document References against a real SQL Server (the CI contract
 // job's container), through the Draft handlers the console uses. Its own
@@ -25,8 +27,15 @@ const library = createInMemoryLibraryItems({ site_id: "site-references", drive_i
   "item-reference": { name: "Reference-REF.pdf", kind: "file", mime_type: "application/pdf", etag: '"{C},1"', web_url: "https://mvtamn.sharepoint.com/sites/Ops/Reference-REF.pdf" },
 });
 
+// The caller's authority is no longer in the token: since the cutover it comes
+// from Role Grants. What this file proves is the SQL underneath the handlers,
+// so the caller holds System Administrator through the access seam rather than
+// through rows this test would otherwise have to insert.
+before(() => useAccessExecutorForTests(fakeAccessDb([{ objectId: "*", roleKey: "system-administrator" }])));
+after(() => useAccessExecutorForTests(null));
+
 function requestFor(method: string, url: string, body?: unknown, params: Record<string, string> = {}): HttpRequest {
-  const principal = Buffer.from(JSON.stringify({ userId: "document-reference-contract-admin", claims: [{ typ: "roles", val: "OCC.Admin" }] })).toString("base64");
+  const principal = Buffer.from(JSON.stringify({ userId: "document-reference-contract-admin" })).toString("base64");
   return new HttpRequest({ method, url, params, headers: { "content-type": "application/json", "x-ms-client-principal": principal }, body: body === undefined ? undefined : { string: JSON.stringify(body) } });
 }
 

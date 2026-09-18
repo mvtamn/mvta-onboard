@@ -985,6 +985,12 @@ _Avoid_: alert, Event, Service Plan
 
 ## Access management language
 
+**OnBoard Sign-in Gate**:
+Entra's decision that somebody may sign in to OnBoard at all: "Assignment
+required" on the enterprise application plus membership of the OnBoard Users
+group. It carries no authority inside OnBoard, which comes from Role Grants.
+_Avoid_: app role, permission
+
 **Access Principal**:
 A human user, Entra group, or workload identity that may receive access to
 MVTA OnBoard. An Access Principal is not a locally managed login account.

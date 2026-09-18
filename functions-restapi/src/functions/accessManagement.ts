@@ -42,8 +42,6 @@ function getProductionHandler() {
     directory,
     store: new SqlAccessManagementStore(),
     environment: config.environment,
-    allowAdminFallback: process.env.ONBOARD_ACCESS_ADMIN_FALLBACK === "true",
-    privilegedAuthContext: process.env.ONBOARD_PRIVILEGED_AUTH_CONTEXT?.trim() || "c1",
   });
   return productionHandler;
 }
@@ -70,20 +68,21 @@ const accessManagementHandler = async (request: HttpRequest, context: Invocation
     }
 };
 
+// What Entra still does for OnBoard (ADR-0032, increment 6): read the
+// directory, invite a guest, report sign-in activity. The routes that wrote
+// app-role assignments or group membership - submitting a grant or revoke, its
+// decision and cancellation, the expiry sweep and the reconciliation report -
+// are gone; `changes` now accepts only `action: "invite_guest"`.
+//
 // Use ordinary Functions routes rather than a catch-all. The Node v4 host on
 // this App Service plan registers catch-all routes but does not dispatch them.
 const accessManagementRoutes = [
   ["accessManagementPrincipals", "access-management/principals", ["GET"]],
   ["accessManagementDirectorySearch", "access-management/directory/search", ["GET"]],
-  ["accessManagementChanges", "access-management/changes", ["GET", "POST"]],
+  ["accessManagementChanges", "access-management/changes", ["POST"]],
   ["accessManagementPreview", "access-management/changes/preview", ["POST"]],
-  ["accessManagementDecision", "access-management/changes/{id}/decision", ["POST"]],
-  ["accessManagementCancellation", "access-management/changes/{id}/cancel", ["POST"]],
   ["accessManagementSignIns", "access-management/principals/{id}/sign-ins", ["GET"]],
   ["accessManagementAudit", "access-management/audit", ["GET"]],
-  ["accessManagementExpirations", "access-management/expirations", ["GET"]],
-  ["accessManagementApplyExpirations", "access-management/expirations/apply", ["POST"]],
-  ["accessManagementReconciliation", "access-management/reconciliation", ["GET"]],
   ["accessManagementExport", "access-management/export", ["POST"]],
 ] as const;
 

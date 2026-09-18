@@ -1,15 +1,24 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { afterEach } from "node:test";
 import { HttpRequest, type InvocationContext } from "@azure/functions";
 import * as db from "../lib/db";
 import { createInMemoryLibraryItems } from "../lib/sharepointLibrary";
 import { cloneDecisionMatrixProcedureDraft, concurrencyToken, createDecisionMatrixProcedureDraft, getDecisionMatrixProcedureDraft, saveDecisionMatrixProcedureDraft } from "./decisionMatrixDrafts";
+import { useAccessExecutorForTests } from "../lib/access";
+import { fakeAccessDb } from "../lib/access/testSupport";
 
-function requestFor(roles: string[], body: unknown): HttpRequest {
+// Since the cutover an app role in a token grants nobody anything, so a case
+// states what its caller holds as a Role Grant, the way production reads it.
+function holding(...roleKeys: string[]) {
+  useAccessExecutorForTests(fakeAccessDb(roleKeys.map((roleKey) => ({ objectId: "*", roleKey }))));
+}
+
+afterEach(() => useAccessExecutorForTests(null));
+
+function requestFor(body: unknown): HttpRequest {
   const principal = Buffer.from(JSON.stringify({
     userId: "admin-1",
     userDetails: "admin@mvta.com",
-    claims: roles.map((role) => ({ typ: "roles", val: role })),
   })).toString("base64");
   return new HttpRequest({
     method: "POST",
@@ -53,12 +62,17 @@ test("normalizes a SQL row-version buffer to the concurrency token returned by t
 });
 
 test("only an Admin can create a Decision Matrix Procedure Draft", async () => {
-  const response = await createDecisionMatrixProcedureDraft(requestFor(["OCC.Publisher"], completeDraft), context);
+  holding("publisher");
+  const response = await createDecisionMatrixProcedureDraft(requestFor(completeDraft), context);
   assert.equal(response.status, 403);
+  // Names the role the caller really holds, so the refusal cannot pass by the
+  // caller holding nothing at all.
+  assert.match((response.jsonBody as { error: string }).error, /Your roles are: Publisher\./);
 });
 
 test("a QRG cannot be the primary Supporting Document Reference", async () => {
-  const response = await createDecisionMatrixProcedureDraft(requestFor(["OCC.Admin"], {
+  holding("system-administrator");
+  const response = await createDecisionMatrixProcedureDraft(requestFor({
     ...completeDraft,
     document_references: [{ ...completeDraft.document_references[0], document_type: "QRG" }],
   }), context, library);
@@ -70,11 +84,12 @@ test("a QRG cannot be the primary Supporting Document Reference", async () => {
 // A console loaded before this change still sends the site and drive it was
 // handed. It gets a reason, not a reference to whatever library it named.
 test("a Draft that names a SharePoint site and drive is refused before anything is written", async () => {
+  holding("system-administrator");
   const originalGetPool = db.getPool;
   let connected = false;
   Object.defineProperty(db, "getPool", { configurable: true, value: async () => { connected = true; return {}; } });
   try {
-    const response = await createDecisionMatrixProcedureDraft(requestFor(["OCC.Admin"], {
+    const response = await createDecisionMatrixProcedureDraft(requestFor({
       ...completeDraft,
       document_references: [{ ...completeDraft.document_references[0], site_id: "site-1", drive_id: "drive-1" }],
     }), context, library);
@@ -87,11 +102,12 @@ test("a Draft that names a SharePoint site and drive is refused before anything 
 });
 
 test("a document SharePoint refuses to read is answered with SharePoint's reason, and no transaction is opened", async () => {
+  holding("system-administrator");
   const originalGetPool = db.getPool;
   let connected = false;
   Object.defineProperty(db, "getPool", { configurable: true, value: async () => { connected = true; return {}; } });
   try {
-    const response = await createDecisionMatrixProcedureDraft(requestFor(["OCC.Admin"], {
+    const response = await createDecisionMatrixProcedureDraft(requestFor({
       ...completeDraft,
       document_references: [{ ...completeDraft.document_references[0], item_id: "item-refused" }],
     }), context, library);
@@ -125,7 +141,7 @@ async function createFailingWith(failure: unknown) {
   Object.defineProperty(db, "getPool", { configurable: true, value: async () => ({}) });
   Object.defineProperty(db.sql, "Transaction", { configurable: true, value: failingCreate(failure) });
   try {
-    return await createDecisionMatrixProcedureDraft(requestFor(["OCC.Admin"], completeDraft), context, library);
+    return await createDecisionMatrixProcedureDraft(requestFor(completeDraft), context, library);
   } finally {
     Object.defineProperty(db, "getPool", { configurable: true, value: originalGetPool });
     Object.defineProperty(db.sql, "Transaction", { configurable: true, value: originalTransaction });
@@ -135,6 +151,7 @@ async function createFailingWith(failure: unknown) {
 // Every failure used to be answered "already exists", which sent an author to
 // rename a Procedure that was not a duplicate.
 test("only a duplicate Procedure is reported as one; any other failure is a 500", async () => {
+  holding("system-administrator");
   const duplicate = Object.assign(new Error("Violation of PRIMARY KEY constraint 'PK__Procedur__1'. Cannot insert duplicate key in object 'dbo.Procedures'. The duplicate key value is (draft-vehicle-collision)."), { number: 2627 });
   assert.deepEqual(await createFailingWith(duplicate), { status: 409, jsonBody: { error: "Procedure identity or condition key already exists." } });
   const truncated = Object.assign(new Error("String or binary data would be truncated in table 'dbo.Procedures', column 'condition'."), { number: 2628 });
@@ -142,6 +159,7 @@ test("only a duplicate Procedure is reported as one; any other failure is a 500"
 });
 
 test("a stale Draft save is rejected before its ordered content is replaced", async () => {
+  holding("system-administrator");
   let queries = 0;
   class StaleTransaction {
     async begin() { return undefined; }
@@ -162,7 +180,7 @@ test("a stale Draft save is rejected before its ordered content is replaced", as
     method: "PUT",
     url: "https://example.test/api/manage/decision-matrix/procedures/draft-vehicle-collision/revisions/1",
     params: { procedureId: "draft-vehicle-collision", revision: "1" },
-    headers: { "content-type": "application/json", "x-ms-client-principal": Buffer.from(JSON.stringify({ userId: "admin-1", claims: [{ typ: "roles", val: "OCC.Admin" }] })).toString("base64") },
+    headers: { "content-type": "application/json", "x-ms-client-principal": Buffer.from(JSON.stringify({ userId: "admin-1" })).toString("base64") },
     body: { string: JSON.stringify({ ...completeDraft, concurrency_token: "0x0000000000000001" }) },
   });
 
@@ -178,6 +196,7 @@ test("a stale Draft save is rejected before its ordered content is replaced", as
 });
 
 test("an Admin-created Draft returns stable ordered Criterion, Action, and Document Reference identities", async () => {
+  holding("system-administrator");
   const statements: string[] = [];
   class CreateTransaction {
     async begin() { return undefined; }
@@ -200,7 +219,7 @@ test("an Admin-created Draft returns stable ordered Criterion, Action, and Docum
   Object.defineProperty(db, "getPool", { configurable: true, value: async () => ({}) });
   Object.defineProperty(db.sql, "Transaction", { configurable: true, value: CreateTransaction });
   try {
-    const response = await createDecisionMatrixProcedureDraft(requestFor(["OCC.Admin"], completeDraft), context, library);
+    const response = await createDecisionMatrixProcedureDraft(requestFor(completeDraft), context, library);
     const body = response.jsonBody as { criteria: Array<{ id: string; kind: string }>; immediate_actions: Array<{ id: string; kind: string }>; document_references: Array<{ id: string; document_type: string; is_primary: boolean; site_id: string; expected_file_name: string; health_status: string }> };
 
     assert.equal(response.status, 201);
@@ -224,6 +243,7 @@ test("an Admin-created Draft returns stable ordered Criterion, Action, and Docum
 });
 
 test("an Admin can read a Draft with ordered content and independently reported document health", async () => {
+  holding("system-administrator");
   const originalGetPool = db.getPool;
   Object.defineProperty(db, "getPool", { configurable: true, value: async () => ({
     request: () => ({
@@ -240,7 +260,7 @@ test("an Admin can read a Draft with ordered content and independently reported 
     method: "GET",
     url: "https://example.test/api/manage/decision-matrix/procedures/draft-vehicle-collision/revisions/1",
     params: { procedureId: "draft-vehicle-collision", revision: "1" },
-    headers: { "x-ms-client-principal": Buffer.from(JSON.stringify({ claims: [{ typ: "roles", val: "OCC.Admin" }] })).toString("base64") },
+    headers: { "x-ms-client-principal": Buffer.from(JSON.stringify({ userId: "admin-1" })).toString("base64") },
   });
 
   try {
@@ -267,6 +287,7 @@ test("an Admin can read a Draft with ordered content and independently reported 
 });
 
 test("an Admin clones a Procedure Revision before changing its document references", async () => {
+  holding("system-administrator");
   const statements: string[] = [];
   class CloneTransaction {
     async begin() { return undefined; }
@@ -292,7 +313,7 @@ test("an Admin clones a Procedure Revision before changing its document referenc
     method: "POST",
     url: "https://example.test/api/manage/decision-matrix/procedures/draft-vehicle-collision/revisions",
     params: { procedureId: "draft-vehicle-collision" },
-    headers: { "content-type": "application/json", "x-ms-client-principal": Buffer.from(JSON.stringify({ userId: "admin-1", claims: [{ typ: "roles", val: "OCC.Admin" }] })).toString("base64") },
+    headers: { "content-type": "application/json", "x-ms-client-principal": Buffer.from(JSON.stringify({ userId: "admin-1" })).toString("base64") },
     body: { string: JSON.stringify({ source_revision: 1 }) },
   });
 

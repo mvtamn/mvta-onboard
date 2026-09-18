@@ -8,101 +8,11 @@ const config: AccessEnvironmentConfig = {
   service_principal_id: "onboard-sp",
   guest_redirect_url: "https://onboard.example.test/",
   roles: {
-    "OCC.Viewer": { app_role_id: "role-viewer", group_id: "group-viewers" },
-    "OCC.Detour": { app_role_id: "role-detour", group_id: "group-detour" },
+    "OCC.Viewer": { app_role_id: "role-viewer" },
+    "OCC.Detour": { app_role_id: "role-detour" },
     "System.Ingestion": { app_role_id: "role-ingestion" },
   },
 };
-
-test("group access revocation deletes only the membership reference", async () => {
-  const requests: Array<{ url: string; method: string }> = [];
-  const directory = new GraphAccessDirectory(
-    config,
-    async (assertion) => {
-      assert.equal(assertion, "api-access-token");
-      return "graph-access-token";
-    },
-    async (input, init) => {
-      requests.push({ url: String(input), method: init?.method ?? "GET" });
-      return new Response(null, { status: 204, headers: { "request-id": "graph-request-1" } });
-    },
-  );
-
-  const result = await directory.applyChange({
-    action: "revoke",
-    principal_id: "user-1",
-    principal_type: "user",
-    role: "OCC.Detour",
-    source: "group",
-    source_id: "group-detour",
-    reason: "Coverage ended",
-  }, "test", { user_assertion: "api-access-token" });
-
-  assert.deepEqual(requests, [{
-    url: "https://graph.microsoft.com/v1.0/groups/group-detour/members/user-1/$ref",
-    method: "DELETE",
-  }]);
-  assert.deepEqual(result, { status: "completed", correlation_id: "graph-request-1", source_id: "group-detour" });
-});
-
-test("group revocation removes the exact OnBoard-assigned source group", async () => {
-  const requests: Array<{ url: string; method: string }> = [];
-  const directory = new GraphAccessDirectory(
-    config,
-    async () => "graph-access-token",
-    async (input, init) => {
-      const request = { url: decodeURIComponent(String(input)), method: init?.method ?? "GET" };
-      requests.push(request);
-      if (request.method === "GET") {
-        return Response.json({ value: [
-          { principalId: "legacy-detour-group", appRoleId: "role-detour" },
-        ] });
-      }
-      return new Response(null, { status: 204, headers: { "request-id": "legacy-revoke-1" } });
-    },
-  );
-
-  const result = await directory.applyChange({
-    action: "revoke",
-    principal_id: "user-1",
-    principal_type: "user",
-    role: "OCC.Detour",
-    source: "group",
-    source_id: "legacy-detour-group",
-    reason: "Remove legacy source",
-  }, "test", { user_assertion: "api-token" });
-
-  assert.equal(requests[1]?.url, "https://graph.microsoft.com/v1.0/groups/legacy-detour-group/members/user-1/$ref");
-  assert.deepEqual(result, { status: "completed", correlation_id: "legacy-revoke-1", source_id: "legacy-detour-group" });
-});
-
-test("group access grant posts a directory reference and awaits verification", async () => {
-  let request: { url: string; method: string; body: string | null } | null = null;
-  const directory = new GraphAccessDirectory(
-    config,
-    async () => "graph-access-token",
-    async (input, init) => {
-      request = { url: String(input), method: init?.method ?? "GET", body: String(init?.body ?? "") || null };
-      return new Response(null, { status: 204, headers: { "request-id": "graph-request-2" } });
-    },
-  );
-
-  const result = await directory.applyChange({
-    action: "grant",
-    principal_id: "user-1",
-    principal_type: "user",
-    role: "OCC.Detour",
-    source: "group",
-    reason: "Detour coverage",
-  }, "test", { user_assertion: "api-token" });
-
-  assert.deepEqual(request, {
-    url: "https://graph.microsoft.com/v1.0/groups/group-detour/members/$ref",
-    method: "POST",
-    body: JSON.stringify({ "@odata.id": "https://graph.microsoft.com/v1.0/directoryObjects/user-1" }),
-  });
-  assert.deepEqual(result, { status: "pending_verification", correlation_id: "graph-request-2", source_id: "group-detour" });
-});
 
 test("guest recovery looks up an existing Entra guest by exact email", async () => {
   let requestedUrl = "";
@@ -121,117 +31,43 @@ test("guest recovery looks up an existing Entra guest by exact email", async () 
   assert.deepEqual(result, { principal_id: "existing-guest" });
 });
 
-test("direct access grant is scoped to the configured OnBoard service principal and app role", async () => {
-  let requestBody: unknown = null;
+test("a guest invitation writes the invitation and nothing else", async () => {
+  const requests: Array<{ url: string; method: string; body: unknown }> = [];
   const directory = new GraphAccessDirectory(
     config,
     async () => "graph-access-token",
     async (input, init) => {
-      assert.equal(String(input), "https://graph.microsoft.com/v1.0/servicePrincipals/onboard-sp/appRoleAssignedTo");
-      requestBody = JSON.parse(String(init?.body));
-      return Response.json({ id: "assignment-1" }, { status: 201, headers: { "request-id": "graph-request-3" } });
+      requests.push({
+        url: String(input),
+        method: init?.method ?? "GET",
+        body: init?.body ? JSON.parse(String(init.body)) : null,
+      });
+      return Response.json({ invitedUser: { id: "guest-user-1" } }, { status: 201, headers: { "request-id": "invite-1" } });
     },
   );
 
-  const result = await directory.applyChange({
-    action: "grant",
-    principal_id: "user-1",
-    principal_type: "user",
-    role: "OCC.Detour",
-    source: "direct",
-    reason: "Audited exception",
-  }, "test", { user_assertion: "api-token" });
-
-  assert.deepEqual(requestBody, {
-    principalId: "user-1",
-    resourceId: "onboard-sp",
-    appRoleId: "role-detour",
-  });
-  assert.deepEqual(result, { status: "pending_verification", correlation_id: "graph-request-3" });
-});
-
-test("direct access revocation deletes the matching app-role assignment", async () => {
-  const requests: Array<{ url: string; method: string }> = [];
-  const directory = new GraphAccessDirectory(
-    config,
-    async () => "graph-access-token",
-    async (input, init) => {
-      const request = { url: decodeURIComponent(String(input)), method: init?.method ?? "GET" };
-      requests.push(request);
-      if (request.method === "GET") {
-        return Response.json({ value: [
-          { id: "assignment-other", principalId: "user-1", appRoleId: "role-viewer" },
-          { id: "assignment-detour", principalId: "user-1", appRoleId: "role-detour" },
-        ] });
-      }
-      return new Response(null, { status: 204, headers: { "request-id": "graph-request-4" } });
-    },
-  );
-
-  const result = await directory.applyChange({
-    action: "revoke",
-    principal_id: "user-1",
-    principal_type: "user",
-    role: "OCC.Detour",
-    source: "direct",
-    reason: "Exception ended",
-  }, "test", { user_assertion: "api-token" });
-
-  assert.equal(requests[1]?.url, "https://graph.microsoft.com/v1.0/servicePrincipals/onboard-sp/appRoleAssignedTo/assignment-detour");
-  assert.equal(requests[1]?.method, "DELETE");
-  assert.deepEqual(result, { status: "completed", correlation_id: "graph-request-4" });
-});
-
-test("guest onboarding creates a B2B invitation before adding OnBoard group access", async () => {
-  const requests: Array<{ url: string; body: unknown }> = [];
-  const directory = new GraphAccessDirectory(
-    config,
-    async () => "graph-access-token",
-    async (input, init) => {
-      requests.push({ url: String(input), body: init?.body ? JSON.parse(String(init.body)) : null });
-      if (String(input).endsWith("/invitations")) {
-        return Response.json({ invitedUser: { id: "guest-user-1" } }, { status: 201, headers: { "request-id": "invite-1" } });
-      }
-      return new Response(null, { status: 204, headers: { "request-id": "membership-1" } });
-    },
-  );
-
-  const result = await directory.applyChange({
+  const result = await directory.inviteGuest({
     action: "invite_guest",
     principal_id: "contractor@example.com",
     principal_type: "user",
-    role: "OCC.Viewer",
-    source: "group",
     reason: "Project access",
     sponsor: "sponsor@mvta.com",
     organization: "Example Contractor",
     expires_at: "2026-09-01T00:00:00Z",
   }, "test", { user_assertion: "api-token" });
 
-  assert.deepEqual(requests, [
-    {
-      url: "https://graph.microsoft.com/v1.0/invitations",
-      body: {
-        invitedUserEmailAddress: "contractor@example.com",
-        inviteRedirectUrl: "https://onboard.example.test/",
-        sendInvitationMessage: true,
-      },
+  // One call, and it is the invitation: no appRoleAssignedTo POST and no group
+  // membership reference, because the role is an OnBoard Role Grant now.
+  assert.deepEqual(requests, [{
+    url: "https://graph.microsoft.com/v1.0/invitations",
+    method: "POST",
+    body: {
+      invitedUserEmailAddress: "contractor@example.com",
+      inviteRedirectUrl: "https://onboard.example.test/",
+      sendInvitationMessage: true,
     },
-    {
-      url: "https://graph.microsoft.com/v1.0/groups/group-viewers/members/$ref",
-      body: { "@odata.id": "https://graph.microsoft.com/v1.0/directoryObjects/guest-user-1" },
-    },
-  ]);
-  assert.deepEqual(result, {
-    status: "pending_verification",
-    correlation_id: "membership-1",
-    principal_id: "guest-user-1",
-    source_id: "group-viewers",
-    steps: [
-      { step: "invitation", status: "completed", correlation_id: "invite-1" },
-      { step: "access_assignment", status: "pending_verification", correlation_id: "membership-1" },
-    ],
-  });
+  }]);
+  assert.deepEqual(result, { principal_id: "guest-user-1", correlation_id: "invite-1" });
 });
 
 test("directory listing distinguishes direct assignments from direct group membership", async () => {
@@ -312,7 +148,7 @@ test("directory listing distinguishes direct assignments from direct group membe
   ]);
 });
 
-test("directory listing retains a missing assigned object for reconciliation", async () => {
+test("directory listing retains a missing assigned object rather than dropping it", async () => {
   const directory = new GraphAccessDirectory(
     config,
     async () => "graph-access-token",
@@ -337,7 +173,6 @@ test("directory listing retains a missing assigned object for reconciliation", a
   assert.equal(principals[0]?.directory_status, "missing");
   assert.equal(principals[0]?.assignments[0]?.source_id, "orphan-assignment");
 });
-
 test("sign-in lookup keeps directory summary separate from OnBoard-filtered events", async () => {
   const requestedUrls: string[] = [];
   const directory = new GraphAccessDirectory(
