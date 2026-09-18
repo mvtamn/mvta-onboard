@@ -346,20 +346,39 @@ body {
 .dashboard-queue { background: var(--surface-bg); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 2px 8px rgba(0, 0, 0, .04); padding: 16px; }
 .dashboard-section-heading { align-items: center; display: flex; gap: 12px; justify-content: space-between; margin-bottom: 10px; }
 .dashboard-section-heading h2 { color: var(--text); font-size: 17px; margin: 3px 0 0; }
-.dashboard-eyebrow { color: var(--brand-green); font-size: 10px; font-weight: 900; letter-spacing: .08em; }
+/* --brand-green is a fill token that stays constant across themes, so as text
+   it sits at ~1.9:1 on the dark surface; --brand-green-text lightens there. */
+.dashboard-eyebrow { color: var(--brand-green-text); font-size: 10px; font-weight: 900; letter-spacing: .08em; }
 .dashboard-queue-list { display: grid; }
-.dashboard-queue-row { align-items: center; border-bottom: 1px solid var(--border-soft); display: grid; gap: 10px; grid-template-columns: 7px minmax(0, 1fr) auto; min-width: 0; padding: 11px 0; }
+.dashboard-queue-row { align-items: stretch; border-bottom: 1px solid var(--border-soft); display: grid; gap: 12px; grid-template-columns: 3px minmax(0, 1fr) auto; min-height: 62px; min-width: 0; padding: 13px 0; }
 .dashboard-queue-row:last-child { border-bottom: 0; }
-.dashboard-queue-row strong, .dashboard-queue-row > div > span { display: block; overflow: hidden; text-overflow: ellipsis; }
-.dashboard-queue-row strong { color: var(--text); white-space: nowrap; }
-.dashboard-queue-row > div > span { color: var(--text-muted); font-size: 11px; margin-top: 2px; white-space: nowrap; }
-.dashboard-queue-signal { background: var(--highlight-border); border-radius: 4px; height: 34px; width: 7px; }
+.dashboard-queue-text { min-width: 0; }
+/* Two lines, not one ellipsised line: a Suggested Alert's draft text is ~220
+   characters and the facts that tell two of them apart sit past a one-line cut.
+   Dashboard.tsx has already shortened the string; this is the backstop. */
+.dashboard-queue-title { -webkit-box-orient: vertical; -webkit-line-clamp: 2; color: var(--text); display: -webkit-box; font-size: 13.5px; font-weight: 600; line-height: 1.35; margin: 0; overflow: hidden; }
+.dashboard-queue-meta { align-items: center; color: var(--text-dim); display: flex; flex-wrap: wrap; font-size: 11.5px; gap: 6px; line-height: 1.4; margin: 5px 0 0; min-width: 0; }
+.dashboard-queue-facts { min-width: 0; overflow-wrap: anywhere; }
+.dashboard-queue-kind { border-radius: 4px; flex-shrink: 0; font-size: 9.5px; font-weight: 800; letter-spacing: .06em; padding: 2px 5px; text-transform: uppercase; }
+.dashboard-queue-kind.alert { background: var(--pill-warning-bg); color: var(--pill-warning-fg); }
+.dashboard-queue-kind.suggested { background: var(--pill-accent-bg); color: var(--pill-accent-fg); }
+.dashboard-queue-kind.feed { background: var(--pill-danger-bg); color: var(--pill-danger-fg); }
+.dashboard-queue-signal { background: var(--highlight-border); border-radius: 2px; width: 3px; }
 .dashboard-queue-signal.critical { background: var(--danger-text); }
 .dashboard-queue-signal.attention { background: var(--highlight-border); }
 .dashboard-queue-signal.info { background: var(--pill-accent-fg); }
-.dashboard-queue-action { color: var(--text-dim); font-size: 13px; font-weight: 800; text-align: right; text-decoration: none; white-space: nowrap; }
+.dashboard-queue-rail { align-items: flex-end; display: flex; flex-direction: column; gap: 3px; justify-content: center; min-width: 104px; text-align: right; }
+.dashboard-queue-status { color: var(--text-dim); font-size: 11px; font-weight: 700; white-space: nowrap; }
+.dashboard-queue-status.critical { color: var(--danger-text); }
+.dashboard-queue-status.attention { color: var(--pill-warning-fg); }
+.dashboard-queue-action { color: var(--brand-green-text); font-size: 12.5px; font-weight: 800; text-decoration: none; white-space: nowrap; }
 .dashboard-queue-action:hover { text-decoration: underline; }
-.dashboard-queue-action.critical, .dashboard-queue-action.attention { color: var(--danger-text); }
+.dashboard-queue-footer { align-items: center; border-top: 1px solid var(--border-soft); color: var(--text-dim); display: flex; font-size: 11.5px; gap: 12px; justify-content: space-between; margin-top: 4px; padding-top: 11px; }
+.dashboard-queue-footer a { color: var(--brand-green-text); font-size: 12px; font-weight: 800; text-decoration: none; white-space: nowrap; }
+.dashboard-queue-footer a:hover { text-decoration: underline; }
+.dashboard-queue-empty { padding: 12px 0; }
+.dashboard-queue-empty strong { color: var(--text); display: block; font-size: 13.5px; font-weight: 600; }
+.dashboard-queue-empty span { color: var(--text-dim); display: block; font-size: 11.5px; margin-top: 3px; }
 .dashboard-published-card { background: var(--surface-bg); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 2px 8px rgba(0, 0, 0, .04); margin-top: 20px; padding: 16px; }
 .dashboard-published-header { align-items: center; display: flex; gap: 16px; justify-content: space-between; margin-bottom: 14px; }
 .dashboard-published-header h2 { color: var(--text); font-size: 21px; margin: 3px 0 0; }
@@ -886,9 +905,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   }
   .dashboard-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dashboard-triage-grid { grid-template-columns: 1fr; }
-  .dashboard-queue-row { align-items: start; grid-template-columns: 7px minmax(0, 1fr); }
-  .dashboard-queue-row .dashboard-queue-action { grid-column: 2; justify-self: start; }
-  .dashboard-queue-row > div > span { white-space: normal; }
+  .dashboard-queue-row { grid-template-columns: 3px minmax(0, 1fr); row-gap: 6px; }
+  /* A third line: the column is narrow enough here that two lines cut an
+     On-Demand draft before its wait time. */
+  .dashboard-queue-row .dashboard-queue-title { -webkit-line-clamp: 3; }
+  .dashboard-queue-row .dashboard-queue-signal { grid-row: 1 / -1; }
+  .dashboard-queue-row .dashboard-queue-rail { align-items: center; flex-direction: row; grid-column: 2; justify-content: space-between; min-width: 0; text-align: left; width: 100%; }
+  /* Thumb-sized target once the action is the row's own line. */
+  .dashboard-queue-row .dashboard-queue-action { align-items: center; display: inline-flex; min-height: 44px; }
   .messages-toolbar { align-items: stretch; flex-direction: column; }
   .messages-toolbar label, .messages-toolbar .f { width: 100%; }
   .messages-result-count { margin-left: 0; }
