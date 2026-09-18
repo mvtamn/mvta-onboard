@@ -59,6 +59,7 @@ import { AccessActivity } from "./routes/access/AccessActivity.js";
 import { OnDemandServiceStandardsAdmin } from "./routes/OnDemandServiceStandardsAdmin.js";
 import { AdminEventAdministration, AdminGovernance, AdminIntegrations, AdminServiceConfiguration, AdminSubscribers } from "./routes/AdminModules.js";
 import { OtpComplianceAdmin } from "./routes/OtpComplianceAdmin.js";
+import { MissedTripDetectorsAdmin } from "./routes/MissedTripDetectorsAdmin.js";
 import { PerformanceStandardsAdmin } from "./routes/PerformanceStandardsAdmin.js";
 import { PerformanceContractorsAdmin } from "./routes/PerformanceContractorsAdmin.js";
 import { PerformanceAgreementsAdmin } from "./routes/PerformanceAgreementsAdmin.js";
@@ -622,6 +623,7 @@ function AuthenticatedApp({ account, signOut }: {
                 <Route path="service-standards" element={<RequireAccess action="service-configuration.edit"><OnDemandServiceStandardsAdmin /></RequireAccess>} />
                 <Route path="decision-matrix" element={<RequireAccess action="decision-matrix.manage"><DecisionMatrixAdmin /></RequireAccess>} />
                 <Route path="otp-compliance" element={<RequireAccess action="service-configuration.edit"><OtpComplianceAdmin /></RequireAccess>} />
+                <Route path="missed-trip-detectors" element={<RequireAccess action="service-configuration.edit"><MissedTripDetectorsAdmin /></RequireAccess>} />
                 {/* Performance assessment administration is four separate
                     jobs on one body of work, so each has its own section. The
                     old single-page path is kept as a redirect - it shipped and

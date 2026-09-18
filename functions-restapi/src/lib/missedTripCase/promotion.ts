@@ -175,3 +175,157 @@ export async function detectorPromotionWindows(pool: sql.ConnectionPool, now = D
 export function forgetPromotionCache(): void {
   cached = null;
 }
+
+// ---------------------------------------------------------------------------
+// Making the decision
+
+/** CONTEXT's bar: a complete service week at 95 percent precision. */
+export const PRECISION_BAR = 0.95;
+
+export interface PromotionRequest {
+  detector: string;
+  effective_service_date: string;
+  promoted: boolean;
+  reason: string;
+  measured_precision?: number | null;
+  sample_size?: number | null;
+  /**
+   * On-demand service quality additionally requires two complete service weeks,
+   * dispatcher agreement, and no unresolved feed-health issue (CONTEXT: Shadow
+   * detection). Nothing measures those, so promoting the Spare detector means
+   * saying they are met; the answer is written into the record.
+   */
+  on_demand_conditions_met?: boolean;
+}
+
+export type PromotionRefusalCode =
+  | "unknown_detector"
+  | "bad_service_date"
+  | "reason_required"
+  | "evidence_required"
+  | "below_precision_bar"
+  | "on_demand_conditions"
+  | "no_change";
+
+export interface PromotionRefusal { code: PromotionRefusalCode; sentence: string }
+
+export type PromotionDecision =
+  | { ok: true; entry: Omit<DetectorPromotionEntry, "decided_at" | "decided_by"> }
+  | { ok: false; refusal: PromotionRefusal };
+
+const refuse = (code: PromotionRefusalCode, sentence: string): PromotionDecision => ({ ok: false, refusal: { code, sentence } });
+
+const ON_DEMAND_NOTE =
+  "Two complete service weeks, dispatcher agreement and no unresolved feed-health issue confirmed.";
+
+/**
+ * Whether this promotion or demotion may be recorded, and what gets recorded.
+ *
+ * The precision bar is CONTEXT's, enforced here rather than left to whoever
+ * fills the form: a detector that has not met it is not promoted, and the
+ * refusal says what it measured against what it needed. Demotion asks for none
+ * of that - taking a misfiring detector back out should never be the harder
+ * thing to do.
+ */
+export function decidePromotion(
+  history: readonly DetectorPromotionEntry[],
+  request: PromotionRequest,
+): PromotionDecision {
+  if (!known(request.detector)) {
+    return refuse("unknown_detector", `OnBoard has no detector called "${request.detector}".`);
+  }
+  const detector = request.detector;
+  const on = (request.effective_service_date ?? "").trim();
+  if (!SERVICE_DATE_KEY.test(on)) {
+    return refuse("bad_service_date", "Give the service date the decision applies from, as YYYYMMDD.");
+  }
+  const reason = (request.reason ?? "").trim();
+  if (!reason) {
+    return refuse("reason_required", request.promoted
+      ? "Say what this detector measured, and over which service week."
+      : "Say why this detector is being taken back out.");
+  }
+
+  const precision = request.measured_precision ?? null;
+  const sample = request.sample_size ?? null;
+  if (request.promoted) {
+    if (precision === null || sample === null || sample <= 0) {
+      return refuse("evidence_required",
+        "Record the precision measured over a complete service week, and how many cases it was measured on.");
+    }
+    if (precision < PRECISION_BAR) {
+      return refuse("below_precision_bar",
+        `This detector measured ${(precision * 100).toFixed(1)}% precision. A detector leaves Shadow detection at ${PRECISION_BAR * 100}% over a complete service week.`);
+    }
+    if (detector === "spare" && request.on_demand_conditions_met !== true) {
+      return refuse("on_demand_conditions",
+        "On-demand service quality also needs two complete service weeks, dispatcher agreement and no unresolved feed-health issue. Confirm those before promoting this detector.");
+    }
+  }
+
+  // Nothing to record if the detector is already in the state being asked for
+  // on that date - it would read as a decision that changed something.
+  const windows = promotionWindows(history);
+  if (isPromotedOn(windows, detector, on) === request.promoted) {
+    return refuse("no_change", request.promoted
+      ? "This detector already counts on that service date."
+      : "This detector is already in Shadow detection on that service date.");
+  }
+
+  return {
+    ok: true,
+    entry: {
+      detector,
+      effective_service_date: on,
+      promoted: request.promoted,
+      reason: detector === "spare" && request.promoted ? `${reason} ${ON_DEMAND_NOTE}` : reason,
+      measured_precision: request.promoted ? precision : precision ?? null,
+      sample_size: request.promoted ? sample : sample ?? null,
+    },
+  };
+}
+
+/** Records a decision. The history is append-only, so this only ever inserts. */
+export async function recordDetectorPromotion(
+  pool: sql.ConnectionPool,
+  request: PromotionRequest,
+  decidedBy: string,
+): Promise<{ ok: true; entry: DetectorPromotionEntry } | { ok: false; refusal: PromotionRefusal }> {
+  const decision = decidePromotion(await readDetectorPromotions(pool), request);
+  if (!decision.ok) return decision;
+  const { entry } = decision;
+  const written = (await pool.request()
+    .input("detector", sql.NVarChar(40), entry.detector)
+    .input("effective", sql.Char(8), entry.effective_service_date)
+    .input("promoted", sql.Bit, entry.promoted ? 1 : 0)
+    .input("reason", sql.NVarChar(1000), entry.reason)
+    .input("precision", sql.Decimal(5, 4), entry.measured_precision)
+    .input("sample", sql.Int, entry.sample_size)
+    .input("by", sql.NVarChar(200), decidedBy)
+    .query<DetectorPromotionEntry>(`
+      INSERT INTO dbo.MissedTripDetectorPromotions
+        (detector, effective_service_date, promoted, reason, measured_precision, sample_size, decided_by)
+      OUTPUT INSERTED.detector, INSERTED.effective_service_date, INSERTED.promoted, INSERTED.reason,
+             INSERTED.measured_precision, INSERTED.sample_size, INSERTED.decided_by, INSERTED.decided_at
+      VALUES (@detector, @effective, @promoted, @reason, @precision, @sample, @by)`)).recordset[0];
+  forgetPromotionCache();
+  return { ok: true, entry: { ...written, promoted: written.promoted === true || (written.promoted as unknown) === 1 } };
+}
+
+/** Where each detector stands today, for the page that shows it. */
+export interface DetectorStanding {
+  detector: MissedTripDetector;
+  promoted: boolean;
+  /** The service date it has counted from, when it counts today. */
+  since: string | null;
+}
+
+export function detectorStandings(
+  windows: readonly PromotionWindow[],
+  today: string,
+): DetectorStanding[] {
+  return MISSED_TRIP_DETECTORS.map((detector) => {
+    const open = windows.find((w) => w.detector === detector && today >= w.from && w.until === null);
+    return { detector, promoted: Boolean(open), since: open?.from ?? null };
+  });
+}

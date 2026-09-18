@@ -78,6 +78,7 @@ export const ADMIN_AREAS: readonly AdminArea[] = [
     pages: [
       { to: "/admin/service-standards", label: "Service Standards", desc: "The standards on-demand service is measured against", icon: "target", action: "service-configuration.edit" },
       { to: "/admin/otp-compliance", label: "OTP Compliance", desc: "On-time performance rules and tolerances", icon: "clock", action: "service-configuration.edit" },
+      { to: "/admin/missed-trip-detectors", label: "Missed-trip Detectors", desc: "Which detectors count toward an assessment, and since when", icon: "target", action: "service-configuration.edit" },
       {
         to: "/admin/performance/contractors",
         base: "/admin/performance",

@@ -1,0 +1,86 @@
+/* Missed-trip Detectors: standing cards, the decision form, and the record of
+   decisions. Shares the Service Risk module shell. */
+.detector-standings {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  margin-bottom: 20px;
+}
+
+.detector-card {
+  border: 1px solid var(--border, #d8d8d2);
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: var(--surface, #fff);
+  display: grid;
+  gap: 6px;
+}
+
+.detector-card.is-promoted { border-color: #2f6f4f; }
+
+.detector-card header { display: grid; gap: 2px; }
+.detector-card header small { color: var(--muted, #6b6b66); }
+
+.detector-state {
+  justify-self: start;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #ece9e1;
+  color: #55524a;
+}
+
+.detector-state.is-promoted { background: #dff0e5; color: #205640; }
+
+.detector-card p { margin: 0; font-size: 0.9rem; }
+
+.detector-decision, .detector-history {
+  border: 1px solid var(--border, #d8d8d2);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+  background: var(--surface, #fff);
+}
+
+.detector-decision h3, .detector-history h3 { margin: 0 0 6px; }
+.detector-note, .detector-empty { color: var(--muted, #6b6b66); font-size: 0.9rem; max-width: 70ch; }
+
+.detector-fields {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin: 14px 0;
+}
+
+.detector-fields label { display: grid; gap: 4px; align-content: start; }
+.detector-fields label > span { font-weight: 600; font-size: 0.9rem; }
+.detector-fields label small { color: var(--muted, #6b6b66); font-size: 0.8rem; }
+.detector-reason { grid-column: 1 / -1; }
+.detector-confirm { grid-column: 1 / -1; grid-template-columns: auto 1fr; align-items: start; }
+
+.detector-error { color: #9a2a2a; }
+.detector-saved { color: #205640; }
+.detector-live { min-height: 1.2em; margin-top: 8px; }
+
+.detector-warning {
+  border-left: 3px solid #9a6b2a;
+  padding: 8px 12px;
+  background: #fbf4e6;
+  margin-bottom: 16px;
+}
+
+.detector-history-row {
+  border-top: 1px solid var(--border, #e6e4de);
+  padding: 12px 0;
+  display: grid;
+  gap: 3px;
+}
+
+.detector-history-row p { margin: 0; }
+.detector-history-row small { color: var(--muted, #6b6b66); }
+
+@media (max-width: 720px) {
+  .detector-fields { grid-template-columns: 1fr; }
+}

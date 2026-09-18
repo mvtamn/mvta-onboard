@@ -3,7 +3,7 @@ import test, { after } from "node:test";
 import { parseConnectionString, sql } from "../db";
 import { AWAITING_CONFIRMATION } from "../missedTripConfidence";
 import { actOnMissedTripCase, classifyMissedTripCase, missedTripCaseSql, observeMissedTrips, type RunFact, type RunObservation } from "./index";
-import { PROMOTION_HISTORY, promotionWindows, type DetectorPromotionEntry, type MissedTripDetector, type PromotionWindow } from "./index";
+import { PROMOTION_HISTORY, promotionWindows, readDetectorPromotions, recordDetectorPromotion, type DetectorPromotionEntry, type MissedTripDetector, type PromotionWindow } from "./index";
 import { decideRun } from "./decide";
 import { loadCases, writeDecision } from "./store";
 
@@ -298,6 +298,27 @@ test("Missed-trip cases against SQL Server", skip, async (t) => {
       for (const row of both) {
         assert.equal(row.by_history, row.by_windows, `${row.trip_id}: the view and the app disagree on promotion`);
       }
+
+      // Recording a decision: the module refuses what does not clear the bar,
+      // and what it writes reads back as what it decided.
+      assert.equal((await recordDetectorPromotion(pool, {
+        detector: "gtfs_cancellation", effective_service_date: "20260101", promoted: true,
+        reason: "already promoted above", measured_precision: 0.99, sample_size: 50,
+      }, "ops@example.com") as { refusal: { code: string } }).refusal.code, "no_change");
+
+      const written = await recordDetectorPromotion(pool, {
+        detector: "gtfs_silent_no_show", effective_service_date: "20261101", promoted: true,
+        reason: "97.2% over the service week of 21 September", measured_precision: 0.972, sample_size: 143,
+      }, "ops@example.com");
+      assert.ok(written.ok);
+      assert.equal(written.entry.promoted, true);
+      assert.equal(Number(written.entry.measured_precision), 0.972);
+      assert.equal(written.entry.sample_size, 143);
+      assert.equal(written.entry.decided_by, "ops@example.com");
+      assert.deepEqual(
+        promotionWindows(await readDetectorPromotions(pool)).filter((w) => w.detector === "gtfs_silent_no_show"),
+        [{ detector: "gtfs_silent_no_show", from: "20261101", until: null }],
+      );
     });
   } finally {
     await pool.close();
