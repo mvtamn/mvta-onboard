@@ -27,7 +27,7 @@ export const AVAIL_DETECTOR = "avail-retrospective-v1";
 
 // Avail restates the trailing three months on every daily run, so the window
 // read here is the window that can still change.
-const DEFAULT_LOOKBACK_DAYS = 95;
+export const DEFAULT_LOOKBACK_DAYS = 95;
 
 /** One Avail missed-trip record, as the adapter reads it. */
 export interface AvailMissedTripRow {
@@ -179,14 +179,20 @@ export function availMissedTripsReady(env: NodeJS.ProcessEnv = process.env): boo
   return Boolean(env.AVAIL_MISSED_TRIPS_URL?.trim() && env.AVAIL_AVL_REPORTS_API_KEY?.trim());
 }
 
+/** One record and how it was placed, for whoever needs to keep the link. */
+export interface MatchedAvailReport {
+  row: AvailMissedTripRow;
+  match: AvailMatch;
+}
+
 export async function availObservations(
   deps: AvailDetectionDeps = LIVE,
   sinceDays = DEFAULT_LOOKBACK_DAYS,
-): Promise<{ observations: RunObservation[]; tally: AvailMatchTally }> {
+): Promise<{ observations: RunObservation[]; tally: AvailMatchTally; matches: MatchedAvailReport[] }> {
   const tally = emptyAvailTally();
   const reports = await deps.reports(sinceDays);
   tally.reports = reports.length;
-  if (reports.length === 0) return { observations: [], tally };
+  if (reports.length === 0) return { observations: [], tally, matches: [] };
 
   const serviceDates = [...new Set(reports.map((r) => r.calendar_date))];
   const byRouteDay = new Map<string, MatchableCase[]>();
@@ -198,8 +204,10 @@ export async function availObservations(
   }
 
   const observations: RunObservation[] = [];
+  const matches: MatchedAvailReport[] = [];
   for (const row of reports) {
     const match = matchAvailReport(row, byRouteDay);
+    matches.push({ row, match });
     if (match.confidence === "exact" && match.matched) {
       tally.exact++;
       const observation = availObservation(row, match.matched);
@@ -210,5 +218,5 @@ export async function availObservations(
       tally.unmatched++;
     }
   }
-  return { observations, tally };
+  return { observations, tally, matches };
 }
