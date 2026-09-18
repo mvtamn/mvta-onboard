@@ -571,6 +571,7 @@ export function DetourContractorSection() {
   const [settings, setSettings] = useState<AppSettingRow[] | null>(null);
   const [name, setName] = useState("");
   const [recipients, setRecipients] = useState("");
+  const [audiences, setAudiences] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -581,13 +582,14 @@ export function DetourContractorSection() {
         setSettings(settings);
         setName(settings.find((s) => s.setting_key === "contractor_name")?.setting_value ?? "");
         setRecipients(settings.find((s) => s.setting_key === "contractor_recipients")?.setting_value ?? "");
+        setAudiences(settings.find((s) => s.setting_key === "default_audiences")?.setting_value ?? "");
       })
       .catch((err) => setError(err instanceof ApiError ? err.message : "Could not load contractor settings."));
   }, []);
 
   const configured = settings?.some((s) => s.setting_key === "contractor_name") ?? false;
   const current = (key: string) => settings?.find((s) => s.setting_key === key)?.setting_value ?? "";
-  const dirty = name.trim() !== current("contractor_name") || recipients.trim() !== current("contractor_recipients");
+  const dirty = name.trim() !== current("contractor_name") || recipients.trim() !== current("contractor_recipients") || audiences.trim() !== current("default_audiences");
   const badAddresses = recipients.split(/[,;\s]+/).filter(Boolean).filter((a) => !a.includes("@"));
 
   async function save() {
@@ -596,7 +598,10 @@ export function DetourContractorSection() {
     try {
       const updatedName = await api.updateAppSetting("detour", "contractor_name", name.trim());
       const updatedRecipients = await api.updateAppSetting("detour", "contractor_recipients", recipients.trim());
-      setSettings((prev) => (prev ?? []).map((s) => s.setting_key === "contractor_name" ? updatedName : s.setting_key === "contractor_recipients" ? updatedRecipients : s));
+      const updatedAudiences = await api.updateAppSetting("detour", "default_audiences", audiences.trim());
+      setSettings((prev) => (prev ?? []).map((s) => s.setting_key === "contractor_name" ? updatedName
+        : s.setting_key === "contractor_recipients" ? updatedRecipients
+          : s.setting_key === "default_audiences" ? updatedAudiences : s));
       setOkMsg(name.trim() ? `Contractor set to ${name.trim()}; fixed-route Detours now require a communication to them.` : "Contractor cleared; no contractor audience is required.");
     } catch (err) { setError(err instanceof ApiError ? err.message : "Could not save contractor settings."); }
     finally { setSaving(false); }
@@ -622,6 +627,11 @@ export function DetourContractorSection() {
             <div>
               <p className="field-label">Recipient addresses <span className="hint">(comma-separated)</span></p>
               <input className="f" value={recipients} onChange={(e) => setRecipients(e.target.value)} placeholder="dispatch@contractor.com, ops@contractor.com" />
+            </div>
+            <div>
+              <p className="field-label">Default audiences <span className="hint">(comma-separated; used when a Detour names none)</span></p>
+              <input className="f" value={audiences} onChange={(e) => setAudiences(e.target.value)} placeholder="Operators, Operations management" />
+              <p className="hint">A Detour from the Avail feed names no audiences of its own, so without this it can never be marked communicated.</p>
             </div>
             <div style={{ alignSelf: "end" }}>
               <button className="btn-post" disabled={saving || !dirty} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</button>

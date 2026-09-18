@@ -5,11 +5,19 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.255] - 2026-09-18
+## [1.5.256] - 2026-09-18
 
 - **Fixed-route missed-trip detection reads through one seam.** Every read the GTFS detector makes - the day's scheduled runs with their operational evidence, start evidence, a cancellation's scheduled time, and feed health - is injected through `GtfsDetectionDeps` with a live default, the way `gtfsRtReader`, `feedRun` and `availClient` already do it. The rules that decide *which* trips are judged - past its 30-minute deadline, already started, on a special-event route, which service day it belongs to, and what the day's own evidence can support - are now pure functions over one Scheduled day and have tests for the first time (23 of them, no database).
 - **No change to detection.** The queries and the rules are the same; the detector is mid-Shadow-detection and its numbers stay comparable. One log-only difference: a service day with nothing scheduled no longer appends a second, usually empty, explanation to the poll's warning line.
 - **`Scheduled day` is in CONTEXT.md**, defined as what one pass read - deliberately *not* the retained `Schedule snapshot`, which the code still does not implement.
+## [1.5.255] - 2026-09-18
+
+- **Default audiences for Detours that name none.** `default_audiences` joins the contractor settings under Administration: a comma-separated list of the audiences every Detour must reach when its own record names nobody. Increment 2 of `plans/detour-communications-implementation-plan.md`.
+- **Why it exists.** Intake asks whoever types a Detour who must hear about it, which serves the two Detours a month entered that way. The Avail sync writes closure, dates, routes and an external id, and no audiences at all (`availDetoursSync.ts`) - so on dev **all 11 Detours have `notification_audiences` NULL**, every one reads "needs communication", and the composer offers nowhere to send. A default list gives a feed Detour the same obligations as a typed one.
+- **A Detour that names its own audiences is taken at its word** - it does not acquire the whole default list. The contractor rule is untouched: still added on fixed-route service, still absent on mobility, still never duplicated.
+- **Migration 133** seeds the setting empty. Until an administrator fills it in, nothing changes anywhere. The seed is needed because `PUT /app-settings` only updates rows that already exist.
+- **Verified.** 5 new tests in `detourContractor.test.ts` (defaults applied, own audiences kept, the contractor rule unchanged, empty defaults preserving the old behaviour exactly, and the list parsed as an administrator types it - commas, semicolons or newlines). Backend 1159 tests pass, console 660.
+
 ## [1.5.254] - 2026-09-17
 
 - **Detour communication channels are named, and split into sent and recorded.** `lib/detourCommunication/channels.ts` defines five: `email`, `sms`, `teams` are sent through the delivery port; `digital_signage` and `avl_messaging` are recorded, because the signs and Avail's operator messaging are somebody else's to operate. `channel` was any non-empty string since migration 059, and the intake form offered four chips plus free text. **Radio is dropped** - no Detour has ever used it. Increment 1 of `plans/detour-communications-implementation-plan.md`; B9/B15 approved as redesigned 2026-09-17.
