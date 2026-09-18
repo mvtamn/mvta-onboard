@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.264] - 2026-09-18
+## [1.5.265] - 2026-09-18
 
 - **A disagreement between sources is now something a reviewer can see and settle.** ADR-0035 gave a Missed-trip case an Evidence conflict, but nothing rendered it: it existed only in the API and the database, and a conflict nobody can see cannot be settled. The case is flagged in the review queue and the history list, and the detail panel says what disagreed, in the words the server recorded, and what the reviewer is being asked to do about it.
 - **Recording a review settles it.** That is exactly what the ADR asks of a reviewer - an outcome reached with both sources in front of them - so the review clears the conflict and the trip becomes eligible for the performance assessment again. Nothing else clears it, and it is never cleared automatically.
