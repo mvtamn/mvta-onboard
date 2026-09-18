@@ -5,6 +5,14 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.273] - 2026-09-18
+
+- **Fixed: migration 061 could not be applied to any database that needed it.** It adds `review_status` to `Detours` and then, **in the same batch**, a CHECK naming that column. SQL Server compiles a batch before executing it, so the reference fails with "Invalid column name" and the whole batch is abandoned - nothing added, and quietly enough that a run looks uneventful. Exactly the defect migration 092 had. The CHECK now runs through `EXEC`.
+- **Why it mattered.** `review_status`, `review_reason` and `closure_reason` are columns `GET /detours` selects, so **Detours & Closures and Detour Reports both answered 500 on dev** for as long as the migration had never landed. Applied to dev today; both pages read the same endpoint, so both are fixed by it.
+- **Migration 069b had the same defect**, latent: it adds `DetourImages.intake_id` and CHECKs it in the same batch, and only ever applied where that column already existed. A fresh database would have failed. Its CHECK goes through `EXEC` too.
+- **The guard now reads every migration, not one.** PR #353 added a test for this shape but pointed it at migration 092 alone, so 061 and 069b went on failing. `migrationBatches.test.ts` scans every file in `sql/`, ignores text inside `EXEC(...)` and `EXEC sys.sp_executesql N'...'` (compiled when it runs), and allows a column-level constraint written into the `ADD` itself - which is one statement and legal, as migration 091 does it.
+- **Verified.** Backend 1247 tests pass. Migration 061 applied to dev and its five columns and CHECK confirmed present.
+
 ## [1.5.272] - 2026-09-18
 
 - **Administration → Missed-trip Detectors.** The page that takes a detector out of Shadow detection, and puts it back. Each detector shows where it stands - counting toward assessments since a service date, or in Shadow detection, where its cases are still reviewed but never assessed - and the decisions behind it are listed with their evidence, reason and author.
