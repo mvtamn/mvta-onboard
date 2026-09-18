@@ -72,6 +72,9 @@ test("a communication's state comes from what the provider reported", () => {
     ["published", "skipped", "failed", false],
     // A person sent it themselves: published with no delivery of ours.
     ["published", null, "recorded", true],
+    // Migration 092's default means exactly that, and is not a delivery.
+    ["published", "not_requested", "recorded", true],
+    ["draft", "not_requested", "draft", false],
     ["failed", null, "failed", false],
   ];
   for (const [status, delivery_status, state, counted] of cases) {

@@ -60,12 +60,18 @@ const MIGRATIONS = [
   "migration-093-detour-communication-receipts.sql",
 ];
 
-// 061 adds review_status and its CHECK in one batch, which does not compile on
-// an empty database; the migration file is not edited, since dev has run it.
+// Two migrations add a column and then name it in the same batch, which SQL
+// Server compiles before the column exists. Neither file is edited, since dev
+// has run both; the CHECK runs through EXEC here instead.
 const FRESH_DATABASE_ADJUSTMENTS: Record<string, (text: string) => string> = {
   "migration-061-detour-rereview-closure.sql": (text) => text.replace(
     "ALTER TABLE dbo.Detours ADD CONSTRAINT CK_Detours_ReviewStatus CHECK (review_status IN ('current', 'needs_review'));",
     "EXEC(N'ALTER TABLE dbo.Detours ADD CONSTRAINT CK_Detours_ReviewStatus CHECK (review_status IN (''current'', ''needs_review''))');",
+  ),
+  "migration-092-detour-communication-delivery.sql": (text) => text.replace(
+    `  ALTER TABLE DetourCommunications ADD CONSTRAINT CK_DetourCommunications_DeliveryStatus
+    CHECK (delivery_status IN ('not_requested', 'queued', 'sent', 'partially_sent', 'failed', 'skipped'));`,
+    `  EXEC(N'ALTER TABLE DetourCommunications ADD CONSTRAINT CK_DetourCommunications_DeliveryStatus CHECK (delivery_status IN (''not_requested'', ''queued'', ''sent'', ''partially_sent'', ''failed'', ''skipped''))');`,
   ),
 };
 
@@ -152,7 +158,7 @@ test("Detour communication eligibility against SQL Server", { skip: !connectionS
       assert.ok(!recorded.ok);
       assert.equal(recorded.refusal.code, "detour_closed");
       const row = await readRow(pool, communication);
-      assert.deepEqual([row.status, row.delivery_status, row.published_by], ["draft", null, null]);
+      assert.deepEqual([row.status, row.delivery_status, row.published_by], ["draft", "not_requested", null]);
       assert.equal(port.sent.length, 0, "nothing reached the transport");
     });
 
@@ -179,7 +185,7 @@ test("Detour communication eligibility against SQL Server", { skip: !connectionS
       // Including the rows the dispatch app writes delivery facts for: it
       // records what the provider said and never touches status or outcome.
       const detour = await seedDetour(pool, "fulfilled");
-      for (const [status, delivery] of [["published", "sent"], ["published", "partially_sent"], ["published", "failed"], ["published", null], ["draft", null]] as const) {
+      for (const [status, delivery] of [["published", "sent"], ["published", "partially_sent"], ["published", "failed"], ["published", "not_requested"], ["draft", "not_requested"]] as const) {
         const id = await seedCommunication(pool, detour);
         await pool.request().input("id", sql.UniqueIdentifier, id).input("s", sql.NVarChar(20), status).input("d", sql.NVarChar(20), delivery)
           .query("UPDATE DetourCommunications SET status=@s, delivery_status=@d WHERE id=@id");
@@ -204,7 +210,7 @@ test("Detour communication eligibility against SQL Server", { skip: !connectionS
       const recorded = await recordSentElsewhere({ pool, detourId: detour, communicationId: communication, actor: ACTOR, contractor: CONTRACTOR, workflow, outcome: "Emailed by hand" });
       assert.ok(recorded.ok);
       const row = await readRow(pool, communication);
-      assert.deepEqual([row.status, row.delivery_status, row.outcome], ["published", null, "Emailed by hand"]);
+      assert.deepEqual([row.status, row.delivery_status, row.outcome], ["published", "not_requested", "Emailed by hand"]);
       assert.deepEqual(classifyCommunication(row), { state: "recorded", counted: true });
     });
   } finally {

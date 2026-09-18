@@ -21,9 +21,16 @@ function alias(name: string): string {
 export interface ClassifiableCommunication {
   /** The row's own status: what a person did with it. */
   status: string;
-  /** Null where migration 092 has not run, or where nothing was ever sent. */
+  /**
+   * What the provider reported. Migration 092 defaults it to 'not_requested',
+   * which means the same as absent: nothing was ever handed to a transport,
+   * so the row's own status is the whole story.
+   */
   delivery_status: string | null;
 }
+
+/** Migration 092's default: no delivery was ever attempted. */
+export const NOT_REQUESTED = "not_requested";
 
 /**
  * `hasDelivery` is false where migration 092 has not been applied: there is no
@@ -31,7 +38,7 @@ export interface ClassifiableCommunication {
  */
 export function communicationStateSql(aliasName: string, as = "cst", hasDelivery = true): string {
   const c = alias(aliasName);
-  const delivery = hasDelivery ? `${c}.delivery_status` : `CAST(NULL AS NVARCHAR(20))`;
+  const delivery = hasDelivery ? `NULLIF(${c}.delivery_status, N'${NOT_REQUESTED}')` : `CAST(NULL AS NVARCHAR(20))`;
   return `CROSS APPLY (
     SELECT CAST(CASE
       WHEN ${delivery} = N'queued' THEN N'queued'
@@ -49,7 +56,8 @@ export function communicationStateSql(aliasName: string, as = "cst", hasDelivery
 
 /** The same rule in TypeScript, for a caller that already holds the row. */
 export function classifyCommunication(row: ClassifiableCommunication, hasDelivery = true): { state: string; counted: boolean } {
-  const delivery = hasDelivery ? row.delivery_status : null;
+  const requested = row.delivery_status === NOT_REQUESTED ? null : row.delivery_status;
+  const delivery = hasDelivery ? requested : null;
   const state = delivery === "queued" ? "queued"
     : delivery === "sent" || delivery === "partially_sent" ? "sent"
       : delivery === "failed" || delivery === "skipped" ? "failed"
