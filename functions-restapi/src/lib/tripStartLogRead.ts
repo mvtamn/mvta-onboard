@@ -62,11 +62,24 @@ export interface TripStartLogTrip {
   } | null;
 }
 
+// The Block the workbook prints (CONTEXT.md): the scheduling system's Vehicle
+// Block Id, three digits. GTFS carries the same block with a service-change
+// version suffix and no padding ("1-v64" is the workbook's "001"), and that
+// suffix belongs to the feed, not to the block. Converted on read so days
+// already materialized read right too; the stored value stays as the feed
+// wrote it, because missed-trip grouping needs the version to tell two
+// service changes apart.
+export function workbookBlock(blockId: string | null): string | null {
+  if (!blockId) return null;
+  const match = /^(\d+)(?:-v\d+)?$/.exec(blockId.trim());
+  return match ? match[1].padStart(3, "0") : blockId;
+}
+
 export function shapeTrip(row: TripStartLogRow): TripStartLogTrip {
   return {
     service_date: row.service_date,
     trip_id: row.trip_id,
-    block_id: row.block_id,
+    block_id: workbookBlock(row.block_id),
     route_id: row.route_id,
     route_short_name: row.route_short_name,
     direction_id: row.direction_id,
