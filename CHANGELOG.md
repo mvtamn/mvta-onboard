@@ -5,6 +5,13 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.256] - 2026-09-18
+
+- **One reading of what the missed-trip detectors are doing.** `GTFS_SILENT_NO_SHOW_ENABLED`, `SPARE_MISSED_TRIPS_ENABLED`, `SPARE_MISSED_TRIP_SERVICE_IDS` and `SPARE_CONTRACTOR_FAULT_VALUES` were each parsed at the point of use - the same `?.trim().toLowerCase() === "true"` written out five times across the two adapters, the poll, the ingest, `/feed-checks` and `GET /missed-trips`. Whether a detector is running is part of the Missed-trip case module's interface, so `missedTripDetectionSettings(env)` now answers it and nothing outside reads those variables. A typo could previously have had the console call a detector paused while the poll ran it, and nothing would have failed.
+- **Fixed: a scope of nothing but separators counted as configured.** `spare_service_scope_configured` tested the raw string for emptiness, so `" , , "` reported a configured scope over zero services. It now counts the services actually named.
+- **`env` is a parameter**, as in `availClient` and `gtfsRtReader`, so a test names the settings it wants instead of mutating a global. 7 new tests cover what counts as "true" (`1` and `yes` do not), independent gating of the two detectors, service ids keeping Spare's own casing, fault values lowercased, and the separator-only list.
+- Promotion out of Shadow detection stays in `classify.ts`: `promotedDetectors()` already had this shape and is threaded through the classification and its SQL, so it stays beside the rules it governs.
+
 ## [1.5.255] - 2026-09-18
 
 - **Fixed-route missed-trip detection reads through one seam.** Every read the GTFS detector makes - the day's scheduled runs with their operational evidence, start evidence, a cancellation's scheduled time, and feed health - is injected through `GtfsDetectionDeps` with a live default, the way `gtfsRtReader`, `feedRun` and `availClient` already do it. The rules that decide *which* trips are judged - past its 30-minute deadline, already started, on a special-event route, which service day it belongs to, and what the day's own evidence can support - are now pure functions over one Scheduled day and have tests for the first time (23 of them, no database).

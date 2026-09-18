@@ -48,6 +48,7 @@ import {
   type ScheduleConfidence,
 } from "../../missedTripConfidence";
 import { WINDOWED_DETECTOR_VERSION } from "../classify";
+import { missedTripDetectionSettings, type MissedTripDetectionSettings } from "../settings";
 import type { RunObservation, RunRef } from "../types";
 
 export const GTFS_CANCEL_DETECTOR = "gtfs-cancel-v1";
@@ -55,10 +56,6 @@ export const GTFS_CANCEL_DETECTOR = "gtfs-cancel-v1";
 export const GTFS_SILENT_DETECTOR = WINDOWED_DETECTOR_VERSION;
 
 const GRACE_SECONDS = 30 * 60;
-
-export function silentNoShowEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.GTFS_SILENT_NO_SHOW_ENABLED?.trim().toLowerCase() === "true";
-}
 
 // One scheduled run as the detector reads it, with the operational evidence
 // and route classification that apply to it on this service date.
@@ -361,9 +358,9 @@ const DETECTED_DAY_OFFSETS = [0, -1] as const;
 export async function gtfsObservations(
   entities: readonly GtfsRtTripUpdateEntity[],
   log: FeedRunLog,
+  settings: MissedTripDetectionSettings = missedTripDetectionSettings(),
   deps: GtfsDetectionDeps = LIVE,
   now = new Date(),
-  env: NodeJS.ProcessEnv = process.env,
 ): Promise<{ observations: RunObservation[]; tally: GtfsObservationTally }> {
   const tally = emptyTally();
   const observations: RunObservation[] = [];
@@ -376,7 +373,7 @@ export async function gtfsObservations(
 
   const detectedDays = DETECTED_DAY_OFFSETS.map((offset) => agencyServiceDate(now, offset));
 
-  if (silentNoShowEnabled(env)) {
+  if (settings.silentNoShowEnabled) {
     const confidence = await resolveDetectionConfidence(deps, log);
     for (const day of detectedDays) {
       try {

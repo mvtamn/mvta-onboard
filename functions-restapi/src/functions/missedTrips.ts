@@ -4,7 +4,7 @@
 // this is visibility only - all writes come from gtfsMissedTripsPoll.ts. Mirrors tripDelays.ts's shape.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { missedTripCaseSql } from "../lib/missedTripCase";
+import { missedTripCaseSql, missedTripDetectionSettings } from "../lib/missedTripCase";
 import { occurrenceSourceRefSql } from "../lib/occurrenceIntake/sources";
 import { requireAccess } from "../lib/access/require";
 import { missedTripFeedDependencies } from "../lib/kpiTrust";
@@ -195,8 +195,9 @@ app.http("missedTripsList", {
       const configured = Boolean(
         process.env.GTFS_RT_TRIPUPDATE_URL?.trim() && process.env.GTFS_STATIC_URL?.trim(),
       );
-      const silentNoShowEnabled = process.env.GTFS_SILENT_NO_SHOW_ENABLED?.trim().toLowerCase() === "true";
-      const spareEnabled = process.env.SPARE_MISSED_TRIPS_ENABLED?.trim().toLowerCase() === "true";
+      // What the console reports as running is what the module says is
+      // running - not this handler's own reading of the same variables.
+      const settings = missedTripDetectionSettings();
       return {
         status: 200,
         jsonBody: {
@@ -224,10 +225,10 @@ app.http("missedTripsList", {
             // vehicle never reported.
             held_undecided_count: total?.held_undecided_count ?? 0,
             last_checked_at: total?.last_checked_at?.toISOString() ?? null,
-            silent_no_show_enabled: silentNoShowEnabled,
-            schedule_detection_status: silentNoShowEnabled ? "experimental" : "paused",
-            spare_enabled: spareEnabled,
-            spare_service_scope_configured: Boolean(process.env.SPARE_MISSED_TRIP_SERVICE_IDS?.trim()),
+            silent_no_show_enabled: settings.silentNoShowEnabled,
+            schedule_detection_status: settings.silentNoShowEnabled ? "experimental" : "paused",
+            spare_enabled: settings.spareEnabled,
+            spare_service_scope_configured: settings.spareServiceIds.size > 0,
             feed_health: feedHealth,
           },
         },

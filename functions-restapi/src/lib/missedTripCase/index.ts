@@ -25,6 +25,7 @@ import type { Actor, CaseAct, CaseKey, CaseRefusal, MissedTripClassification, Ob
 
 export * from "./types";
 export { classifyMissedTripCase, missedTripCaseSql, missedTripSourceRefSql, promotedDetectors } from "./classify";
+export { missedTripDetectionSettings, type MissedTripDetectionSettings } from "./settings";
 
 export async function observeMissedTrips(pool: sql.ConnectionPool, observations: RunObservation[], now = new Date()): Promise<ObserveReport> {
   const report: ObserveReport = { created: 0, held: 0, confirmed: 0, closedByEvidence: 0, evidenceRecorded: 0, skippedChanged: 0, failed: [] };
