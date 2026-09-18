@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.263] - 2026-09-18
+## [1.5.264] - 2026-09-18
 
 - **Avail corroborates missed-trip cases; it does not decide them.** The vendor's own retrospective report reaches the Missed-trip case module as a third source adapter (ADR-0035). It never opens a case, never reopens or closes one, and never rewrites a review - the only thing it can change on its own is whether the case is in conflict.
 - **Avail names no trip**, so a link is built from route, local service date and Published Trip start: **exact** when those agree to the minute and name exactly one case, **probable** when the start time is missing or several cases match, **unmatched** when none does. Only an exact link becomes evidence; probable and unmatched are counted and reported, never guessed at. Unmatched is the measure of what no other source noticed, since Avail cannot open a case.
