@@ -33,8 +33,13 @@ vi.mock("../../config.js", () => ({
 }));
 
 vi.mock("../../auth/AuthContext.js", () => ({
-  useAuth: () => ({ account: { name: "Alex Administrator", username: "alex@mvta.com" }, roles: ["OCC.AccessAdmin"], signIn: vi.fn(), signOut: vi.fn() }),
+  useAuth: () => ({ account: { name: "Alex Administrator", username: "alex@mvta.com" }, signIn: vi.fn(), signOut: vi.fn() }),
 }));
+
+vi.mock("../../auth/AccessContext.js", async () => {
+  const actual = await vi.importActual<typeof import("../../auth/AccessContext.js")>("../../auth/AccessContext.js");
+  return { ...actual, useAccess: () => actual.accessStateWith(["access-identity.view", "access-identity.manage", "access-identity.approve"]) };
+});
 
 const { api } = await import("../../config.js");
 

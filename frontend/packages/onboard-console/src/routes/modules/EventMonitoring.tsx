@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type EventGeofence, type EventGeofenceNotification, type EventLocation, type EventScopeException, type EventVehiclePosition } from "@mvta/shared";
 import { useEventWorkspace } from "../../context/EventWorkspaceContext.js";
+import { useAccess } from "../../auth/AccessContext.js";
 import { useAuth } from "../../auth/AuthContext.js";
 import "./eventMonitoring.css";
 import { activePlansMissingPublishedScope, defaultMonitoringEventId, defaultMonitoringServicePlanId, deriveEventMonitoringDataState, isEventNotificationHistoryStatus, isOpenEventNotificationStatus } from "./eventMonitoringState.js";
@@ -40,12 +41,13 @@ function RefreshLiveDataButton({ refreshing, onRefresh }: { refreshing: boolean;
 }
 
 export function EventMonitoring({ fieldView = false }: { fieldView?: boolean }) {
-  const { account, roles, signIn } = useAuth();
+  const { account, signIn } = useAuth();
+  const { can } = useAccess();
   const { selection, selectEvent, selectServicePlan, selectRevision } = useEventWorkspace();
   const { eventId: selectedEventId, servicePlanId: selectedPlanId } = selection;
-  const canManageAssignments = roles.includes("OCC.Admin");
-  const canManageEventMessaging = roles.includes("OCC.EventAVL") || roles.includes("OCC.Admin");
-  const canManageNotificationActions = roles.some((role) => ["OCC.EventAVL", "OCC.Publisher", "OCC.Admin"].includes(role));
+  const canManageAssignments = can("event-avl.configure");
+  const canManageEventMessaging = can("event-avl.message");
+  const canManageNotificationActions = can("event-avl.notify");
   const [search, setSearch] = useState("");
   const [mapStyle, setMapStyle] = useState<MapStyle>("road");
   const [traffic, setTraffic] = useState(false);
@@ -164,7 +166,7 @@ export function EventMonitoring({ fieldView = false }: { fieldView?: boolean }) 
         </details>
       </div>
     </>}
-    {notificationDrawer && <div className="evmon-drawer-backdrop" role="presentation" onClick={() => setNotificationDrawer(false)}><aside className="evmon-drawer" role="dialog" aria-label="Event AVL status queue" onClick={(event) => event.stopPropagation()}><div className="evmon-drawer-header"><strong>{eventQueue.length} open status items</strong><button onClick={() => setNotificationDrawer(false)}>Close</button></div>{actionError && <p role="alert">{actionError}</p>}{eventQueue.map((notification) => <div className="panel-body" key={notification.id}><strong>{displayNotificationStatus(notification.status)}</strong><p>{notification.message_body}</p>{notification.status === "sending" ? <small>Sending to Teams…</small> : <>{actionsBlocked && <small>Actions paused while monitoring is degraded.</small>}{canManageNotificationActions && !actionsBlocked && <div><button className="btn-sm" onClick={() => void reviewNotification(notification.id, "acknowledge")}>Acknowledge</button> <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "send")}>Approve and send</button> <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "dismiss")}>Dismiss</button></div>}{!canManageNotificationActions && <small>Event AVL Manager or Publisher access is required for notification actions.</small>}</>}</div>)}</aside></div>}
+    {notificationDrawer && <div className="evmon-drawer-backdrop" role="presentation" onClick={() => setNotificationDrawer(false)}><aside className="evmon-drawer" role="dialog" aria-label="Event AVL status queue" onClick={(event) => event.stopPropagation()}><div className="evmon-drawer-header"><strong>{eventQueue.length} open status items</strong><button onClick={() => setNotificationDrawer(false)}>Close</button></div>{actionError && <p role="alert">{actionError}</p>}{eventQueue.map((notification) => <div className="panel-body" key={notification.id}><strong>{displayNotificationStatus(notification.status)}</strong><p>{notification.message_body}</p>{notification.status === "sending" ? <small>Sending to Teams…</small> : <>{actionsBlocked && <small>Actions paused while monitoring is degraded.</small>}{canManageNotificationActions && !actionsBlocked && <div><button className="btn-sm" onClick={() => void reviewNotification(notification.id, "acknowledge")}>Acknowledge</button> <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "send")}>Approve and send</button> <button className="btn-sm" onClick={() => void reviewNotification(notification.id, "dismiss")}>Dismiss</button></div>}{!canManageNotificationActions && <small>Sending and dismissing notifications is not part of your access.</small>}</>}</div>)}</aside></div>}
     <a className="evmon-field-view-link" href={fieldViewUrl} target="_blank" rel="noopener noreferrer">Open Event AVL field window ↗</a>
   </section>;
 }

@@ -4,7 +4,6 @@ import {
   EMPTY_FILTERS,
   agencyTodayServiceDate,
   applyFilters,
-  canVerify,
   initialsFromAccount,
   nextVerifyAction,
   hourMarks,
@@ -198,12 +197,6 @@ describe("verification", () => {
     expect(nextVerifyAction(v("observed_on_time"))).toBe("observed_left_late");
     expect(nextVerifyAction(v("observed_left_late"))).toBe("clear");
     expect(nextVerifyAction(v("not_observed"))).toBe("clear");
-  });
-
-  it("lets the SST desk role and Admin record, and no one else", () => {
-    expect(canVerify(["OCC.TripStartVerify"])).toBe(true);
-    expect(canVerify(["OCC.Admin"])).toBe(true);
-    expect(canVerify(["OCC.Viewer", "OCC.Compliance", "OCC.Publisher"])).toBe(false);
   });
 
   it("derives workbook initials from the account", () => {

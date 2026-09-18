@@ -28,7 +28,7 @@ vi.mock("../config.js", () => ({
 }));
 
 vi.mock("../auth/AuthContext.js", () => ({
-  useAuth: () => ({ signIn: vi.fn(), signOut: vi.fn(), account: { name: "Test User", username: "test@mvta.com" }, roles: ["OCC.Admin"] }),
+  useAuth: () => ({ signIn: vi.fn(), signOut: vi.fn(), account: { name: "Test User", username: "test@mvta.com" } }),
 }));
 
 vi.mock("./modules/EventScopeMap.js", () => ({

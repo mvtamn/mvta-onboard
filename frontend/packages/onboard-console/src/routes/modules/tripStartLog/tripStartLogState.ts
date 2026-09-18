@@ -372,12 +372,6 @@ export function hourLabel(atMs: number): string {
 
 // --- verification (spec §8 step 6) ---------------------------------------------
 
-export const VERIFY_ROLES = ["OCC.TripStartVerify", "OCC.Admin"] as const;
-
-export function canVerify(roles: readonly string[]): boolean {
-  return roles.some((role) => (VERIFY_ROLES as readonly string[]).includes(role));
-}
-
 /** The workbook cell's one-click cycle: blank -> on time -> left late -> blank. */
 export function nextVerifyAction(trip: Pick<TripStartLogTrip, "verification">): TripStartVerificationAction {
   switch (trip.verification?.observation) {

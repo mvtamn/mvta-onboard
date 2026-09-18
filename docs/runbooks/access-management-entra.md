@@ -63,7 +63,7 @@ The deployment writes the following REST API settings:
 - `ONBOARD_ACCESS_ADMIN_FALLBACK`
 - `ONBOARD_PRIVILEGED_AUTH_CONTEXT`
 
-Set the frontend repository variable `VITE_ACCESS_ADMIN_FALLBACK=true` only during bootstrap, matching the API setting. Once `OCC.AccessAdmin` is assigned and verified, set both fallback values to `false` and redeploy.
+Set `ONBOARD_ACCESS_ADMIN_FALLBACK=true` on the API only during bootstrap. Once an Access Administrator is granted and verified, set it to `false` and redeploy. The console has no fallback of its own: since ADR-0032 it shows what `GET /me/access` returns, so the API setting is the only switch.
 
 ## Shift session and privileged step-up
 
