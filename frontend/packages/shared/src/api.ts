@@ -75,10 +75,7 @@ import type {
   OccurrenceAttribution,
   OccurrenceReviewStatus,
   OnBoardAccessAuditEntry,
-  OnBoardAccessChangeRecord,
-  OnBoardAccessMetadata,
   OnBoardAccessPrincipal,
-  OnBoardAccessReconciliationReport,
   OnBoardDirectoryChange,
   OnBoardSignInInformation,
   OnDemandDeparture,
@@ -465,8 +462,8 @@ export interface MyAccessRole {
   name: string;
   purpose: string;
   locked: boolean;
-  /** "entra" while the caller still arrives with app roles in their token. */
-  source: "onboard" | "entra";
+  /** Always "onboard" since the cutover; a token grants nobody anything. */
+  source: "onboard";
   scope: string | null;
   expiresAt: string | null;
 }
@@ -1857,7 +1854,7 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     },
 
     getAccessPrincipals() {
-      return request<{ environment: string; access_admin_fallback: boolean; principals: OnBoardAccessPrincipal[] }>(
+      return request<{ environment: string; principals: OnBoardAccessPrincipal[] }>(
         "/api/access-management/principals", {}, true,
       );
     },
@@ -1888,25 +1885,6 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
         privileged ? { authenticationContext: privilegedAuthenticationContext } : true,
       );
     },
-    getPendingAccessChanges() {
-      return request<{ changes: OnBoardAccessChangeRecord[] }>(
-        "/api/access-management/changes", {}, true,
-      );
-    },
-    decideAccessChange(id: string, decision: "approved" | "rejected", idempotencyKey: string) {
-      return request<{ change_id: string; status: string; result: { status: string; correlation_id: string | null } | null }>(
-        `/api/access-management/changes/${encodeURIComponent(id)}/decision`,
-        { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ decision }) },
-        { authenticationContext: privilegedAuthenticationContext },
-      );
-    },
-    cancelAccessChange(id: string, reason: string) {
-      return request<{ change_id: string; status: "cancelled" }>(
-        `/api/access-management/changes/${encodeURIComponent(id)}/cancel`,
-        { method: "POST", body: JSON.stringify({ reason }) },
-        true,
-      );
-    },
     getAccessSignIns(principalId: string) {
       return request<OnBoardSignInInformation>(
         `/api/access-management/principals/${encodeURIComponent(principalId)}/sign-ins`, {}, true,
@@ -1915,23 +1893,6 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     getAccessAudit() {
       return request<{ audit: OnBoardAccessAuditEntry[] }>(
         "/api/access-management/audit", {}, true,
-      );
-    },
-    getAccessExpirations() {
-      return request<{ expirations: OnBoardAccessMetadata[] }>(
-        "/api/access-management/expirations", {}, true,
-      );
-    },
-    applyAccessExpirations(idempotencyKey: string) {
-      return request<{ environment: string; results: Array<{ metadata_id: string; disposition: string; message?: string }> }>(
-        "/api/access-management/expirations/apply",
-        { method: "POST", headers: { "Idempotency-Key": idempotencyKey } },
-        true,
-      );
-    },
-    getAccessReconciliation() {
-      return request<OnBoardAccessReconciliationReport>(
-        "/api/access-management/reconciliation", {}, true,
       );
     },
     exportAccessInventory() {

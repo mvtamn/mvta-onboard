@@ -24,7 +24,6 @@ param complianceReportsStorageAccountName string = ''
 param manageRoleAssignments bool = false
 param enableAccessManagement bool = false
 param accessManagementConfigJson string = ''
-param accessAdminFallback bool = false
 param privilegedAuthContext string = 'c1'
 param gtfsRtTripUpdateUrl string = ''
 param gtfsStaticUrl string = ''
@@ -245,7 +244,6 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'ONBOARD_API_CLIENT_SECRET', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/onboard-api-client-secret/)' }
         { name: 'ONBOARD_ENVIRONMENT', value: environment }
         { name: 'ONBOARD_ACCESS_CONFIG_JSON', value: accessManagementConfigJson }
-        { name: 'ONBOARD_ACCESS_ADMIN_FALLBACK', value: string(accessAdminFallback) }
         { name: 'ONBOARD_PRIVILEGED_AUTH_CONTEXT', value: privilegedAuthContext }
       ] : [], !empty(decisionMatrixLibrarySiteId) && !empty(decisionMatrixLibraryDriveId) ? [
         // The one approved SharePoint library the Decision Matrix picker may

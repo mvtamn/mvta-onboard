@@ -2,22 +2,30 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import test from "node:test";
+import test, { after, before } from "node:test";
 import { HttpRequest, type InvocationContext } from "@azure/functions";
 import { parseConnectionString, sql } from "../lib/db";
 import { cloneDecisionMatrixProcedureDraft, createDecisionMatrixProcedureDraft, getDecisionMatrixProcedureDraft, saveDecisionMatrixProcedureDraft } from "./decisionMatrixDrafts";
 import { governDecisionMatrixProcedureRevision } from "./decisionMatrixProcedureGovernance";
 import { createInMemoryMetadataReader } from "../lib/decisionMatrixDocumentHealth";
 import { createInMemoryLibraryItems } from "../lib/sharepointLibrary";
+import { useAccessExecutorForTests } from "../lib/access";
+import { fakeAccessDb } from "../lib/access/testSupport";
 
 const connectionString = process.env.DECISION_MATRIX_TEST_SQL_CONNECTION_STRING;
 const context = { error: () => undefined } as unknown as InvocationContext;
+
+// The caller's authority is no longer in the token: since the cutover it comes
+// from Role Grants. What this file proves is the SQL underneath the handlers,
+// so the caller holds System Administrator through the access seam rather than
+// through rows this test would otherwise have to insert.
+before(() => useAccessExecutorForTests(fakeAccessDb([{ objectId: "*", roleKey: "system-administrator" }])));
+after(() => useAccessExecutorForTests(null));
 
 function requestFor(method: string, url: string, body?: unknown, params: Record<string, string> = {}): HttpRequest {
   const principal = Buffer.from(JSON.stringify({
     userId: "decision-matrix-contract-admin",
     userDetails: "decision-matrix-contract-admin@mvta.com",
-    claims: [{ typ: "roles", val: "OCC.Admin" }],
   })).toString("base64");
   return new HttpRequest({
     method,

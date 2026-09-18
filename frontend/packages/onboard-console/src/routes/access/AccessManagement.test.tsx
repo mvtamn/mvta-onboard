@@ -169,7 +169,7 @@ beforeEach(() => {
   vi.mocked(api.getAccessAudit).mockResolvedValue({ audit: [] });
   vi.mocked(api.getAccessPrincipals).mockResolvedValue({
     environment: "test",
-    access_admin_fallback: false,
+
     principals: [{
       id: "user-1",
       display_name: "Taylor Operator",

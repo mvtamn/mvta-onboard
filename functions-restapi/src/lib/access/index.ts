@@ -7,16 +7,17 @@
 // window instead of waiting for the next token refresh, and a new role is a
 // migration rather than a manual app-role registration.
 //
-// Two transitional paths are deliberate and both end at increment 6:
-//   - Until migration 129 is applied, the tables are absent and the seeded
-//     roles are read straight from code, keyed by the app role in the token.
-//   - Once applied, app roles in the token still resolve to their replacement
-//     role, so access keeps working between deploying the code and granting
-//     people their roles here.
+// The cutover (increment 6) is done: the `roles` claim in the token no longer
+// grants a person anything. Only `System.Ingestion` is still read from a token,
+// because a workload identity has no person record to grant anything to.
+//
+// A consequence worth stating plainly: until migrations 129-131 are applied and
+// people have been granted their roles, nobody holds anything. Applying the
+// migrations and running the one-time import is part of deploying this.
 import { getPool, sql } from "../db";
 import type { CallerPrincipal } from "../auth";
 import { accessSummaryLines, allActionKeysExceptAccess, isKnownAction } from "./catalog";
-import { INGESTION_APP_ROLE, LEGACY_APP_ROLE_TO_ROLE_KEY, SEEDED_ROLES } from "./seeds";
+import { INGESTION_APP_ROLE } from "./seeds";
 import type { AccessRole, EffectiveAccess, HeldRole } from "./types";
 
 export * from "./catalog";
@@ -45,19 +46,21 @@ export function clearAccessCache(): void {
   cache.clear();
 }
 
-function cacheKey(principal: CallerPrincipal): string {
-  return `${principal.userId ?? ""}|${principal.claims.tid?.[0] ?? ""}|${[...principal.roles].sort().join(",")}`;
+let testExecutor: Executor | null = null;
+
+/**
+ * Tests only. Since the cutover a token grants nobody anything, so a test that
+ * exercises a handler has to say what the caller holds the way production does
+ * - as rows. This points the resolver at a stand-in for those rows (see
+ * testSupport.ts) instead of at the pool. Production never calls it.
+ */
+export function useAccessExecutorForTests(executor: Executor | null): void {
+  testExecutor = executor;
+  cache.clear();
 }
 
-function toRole(seed: (typeof SEEDED_ROLES)[number]): AccessRole {
-  return {
-    key: seed.key,
-    name: seed.name,
-    purpose: seed.purpose,
-    locked: !!seed.locked,
-    allActions: !!seed.allActions,
-    actions: seed.actions,
-  };
+function cacheKey(principal: CallerPrincipal): string {
+  return `${principal.userId ?? ""}|${principal.claims.tid?.[0] ?? ""}|${[...principal.roles].sort().join(",")}`;
 }
 
 interface RoleRow {
@@ -200,7 +203,7 @@ async function resolve(principal: CallerPrincipal, given?: Executor): Promise<Ef
     return ingestionAccess(principal, false);
   }
 
-  let executor: Executor | null = given ?? null;
+  let executor: Executor | null = given ?? testExecutor ?? null;
   let ready = false;
   if (!executor) {
     try {
@@ -215,7 +218,10 @@ async function resolve(principal: CallerPrincipal, given?: Executor): Promise<Ef
     ready = await tablesReady(executor);
   }
 
-  const roles: AccessRole[] = ready && executor ? await loadRoles(executor) : SEEDED_ROLES.map(toRole);
+  // Without the tables there is nothing to read: an unmigrated environment
+  // grants nobody anything rather than falling back to the token, which is the
+  // safe direction and says so loudly on the No access page.
+  const roles: AccessRole[] = ready && executor ? await loadRoles(executor) : [];
   const byKey = new Map(roles.map((r) => [r.key, r]));
 
   const held: { role: AccessRole; source: HeldRole["source"]; scope: string | null; expiresAt: Date | null }[] = [];
@@ -228,14 +234,6 @@ async function resolve(principal: CallerPrincipal, given?: Executor): Promise<Ef
       seen.add(role.key);
       held.push({ role, source: "onboard", scope: grant.scope, expiresAt: grant.expires_at });
     }
-  }
-
-  for (const appRole of principal.roles) {
-    const roleKey = LEGACY_APP_ROLE_TO_ROLE_KEY[appRole];
-    const role = roleKey ? byKey.get(roleKey) : undefined;
-    if (!role || seen.has(role.key)) continue;
-    seen.add(role.key);
-    held.push({ role, source: "entra", scope: null, expiresAt: null });
   }
 
   return assemble(principal, held, ready);

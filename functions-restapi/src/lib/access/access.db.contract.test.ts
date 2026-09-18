@@ -14,7 +14,7 @@ import { archiveRole, createRole, restoreRole, roleHistory, updateRole } from ".
 //   the nine seeded roles landing exactly as seeds.ts describes them;
 //   a grant deciding access, and a revoked, expired or suspended one not;
 //   a re-run leaving an Access Administrator's edits alone;
-//   an app role in the token still working beside an OnBoard grant.
+//   an app role in the token adding nothing to what was granted.
 //
 // Tables come from the real migration, in a database of its own (see
 // assessmentLifecycle.db.contract.test.ts).
@@ -97,13 +97,12 @@ test("app-owned roles against real SQL", { skip: !connectionString && "DECISION_
       assert.ok(access.summary.some((line) => line.startsWith("Performance Assessment: view;")));
     });
 
-    await t.test("an app role in the token still works beside an OnBoard grant", async () => {
+    await t.test("an app role in the token adds nothing to what was granted", async () => {
+      // The cutover (increment 6): OCC.Detour used to resolve to Detour Editor
+      // alongside the grant. A token now says who the caller is, and no more.
       const access = await resolve(["OCC.Detour"]);
-      assert.deepEqual(
-        access.roles.map((r) => [r.key, r.source]).sort(),
-        [["compliance-manager", "onboard"], ["detour-editor", "entra"]],
-      );
-      assert.ok(access.actions.includes("detours.edit"));
+      assert.deepEqual(access.roles.map((r) => [r.key, r.source]), [["compliance-manager", "onboard"]]);
+      assert.ok(!access.actions.includes("detours.edit"));
     });
 
     await t.test("a revoked grant stops deciding access at once", async () => {

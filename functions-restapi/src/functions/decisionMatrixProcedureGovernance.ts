@@ -12,9 +12,27 @@ import { recordProcedureAuditEvent as recordAudit } from "../lib/procedureAudit"
 
 type LifecycleAction = "submit_for_review" | "return_to_draft" | "approve" | "retire" | "withdraw";
 
-async function actorFor(request: HttpRequest) {
-  const principal = await requireAccess(request, "decision-matrix.manage");
-  return principal.authorized ? principal.principal.userId ?? null : null;
+/**
+ * The governance actor, or the answer to send instead. Refusals used to
+ * collapse into one 401 saying a stable Admin identity was required, which told
+ * somebody holding the wrong role to fix their sign-in. A caller without the
+ * action now gets that answer in its own words, and the identity check stays
+ * for the one case it is about: Easy Auth naming nobody, which leaves the audit
+ * trail with no author.
+ */
+async function actorFor(request: HttpRequest): Promise<
+  { ok: true; actor: string } | { ok: false; response: { status: number; jsonBody: { error: string } } }
+> {
+  const auth = await requireAccess(request, "decision-matrix.manage");
+  if (!auth.authorized) return { ok: false, response: { status: auth.status, jsonBody: { error: auth.message } } };
+  const actor = auth.principal.userId;
+  if (!actor) {
+    return {
+      ok: false,
+      response: { status: 401, jsonBody: { error: "A stable Admin identity is required for Procedure governance." } },
+    };
+  }
+  return { ok: true, actor };
 }
 
 async function revisionIsComplete(executor: { request: () => sql.Request }, procedureId: string, revision: number, requireValidPrimary: boolean) {
@@ -41,8 +59,9 @@ export async function governDecisionMatrixProcedureRevision(request: HttpRequest
   if (!["submit_for_review", "return_to_draft", "approve", "retire", "withdraw"].includes(action)) return { status: 400, jsonBody: { error: "A supported lifecycle action is required." } };
   if (!reason) return { status: 400, jsonBody: { error: "A governance reason is required." } };
   if (action === "withdraw" && body.confirm_withdrawal !== true) return { status: 400, jsonBody: { error: "Emergency withdrawal requires prominent confirmation." } };
-  const actor = await actorFor(request);
-  if (!actor) return { status: 401, jsonBody: { error: "A stable Admin identity is required for Procedure governance." } };
+  const acting = await actorFor(request);
+  if (!acting.ok) return acting.response;
+  const actor = acting.actor;
   try {
     // Submitting and approving both refresh document health first, and
     // approval then gates on that fresh result. A Valid recorded this morning
@@ -104,8 +123,9 @@ export async function checkDecisionMatrixProcedureReferences(request: HttpReques
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   const procedureId = request.params.procedureId; const revision = Number(request.params.revision);
   if (!procedureId || !Number.isInteger(revision)) return { status: 400, jsonBody: { error: "procedureId and integer revision are required." } };
-  const actor = await actorFor(request);
-  if (!actor) return { status: 401, jsonBody: { error: "A stable Admin identity is required for Procedure governance." } };
+  const acting = await actorFor(request);
+  if (!acting.ok) return acting.response;
+  const actor = acting.actor;
   // "Not configured" answers 200: the question was well formed and the answer
   // is known. A 5xx would read in the console as an outage.
   try { return { status: 200, jsonBody: await refreshRevisionHealth(procedureId, revision, actor, reader) }; }

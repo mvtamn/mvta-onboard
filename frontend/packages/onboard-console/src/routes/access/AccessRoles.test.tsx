@@ -113,7 +113,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(api.getAccessPeople).mockResolvedValue({ people: [] });
   vi.mocked(api.getAccessGrantRequests).mockResolvedValue({ requests: [] });
-  vi.mocked(api.getAccessPrincipals).mockResolvedValue({ environment: "test", access_admin_fallback: false, principals: [] });
+  vi.mocked(api.getAccessPrincipals).mockResolvedValue({ environment: "test", principals: [] });
   vi.mocked(api.getAccessAudit).mockResolvedValue({ audit: [] });
   vi.mocked(api.getAccessCatalog).mockResolvedValue({ modules: MODULES });
   vi.mocked(api.getAccessRoles).mockResolvedValue({ roles: [ACCESS_ADMIN, HELD, SYSTEM_ADMIN, DISPATCHER] });

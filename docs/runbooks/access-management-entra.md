@@ -1,6 +1,16 @@
 # Access Management Entra deployment runbook
 
-This runbook enables **Admin > Access Management** after the application code and `migration-052-access-management.sql` are deployed. It deliberately separates application deployment from tenant authorization. Do not place tenant secrets or real group identifiers in this repository.
+**Superseded by `access-cutover.md` (ADR-0032).** OnBoard owns its roles and
+grants now: the app roles below no longer decide what anybody may do, the
+delegated Graph *write* permissions are revoked at the cutover, and the
+bootstrap fallback no longer exists. What remains true here is the Entra side
+that still matters - the enterprise application, "Assignment required", the
+security group that decides who may sign in, the read permissions behind
+directory search, guest invitations and sign-in activity, and the licensing and
+retention preconditions. Kept for that, and for reading what an environment
+provisioned before the cutover looks like.
+
+This runbook enabled **Admin > Access Management** after the application code and `migration-052-access-management.sql` were deployed. It deliberately separates application deployment from tenant authorization. Do not place tenant secrets or real group identifiers in this repository.
 
 ## Preconditions
 
@@ -10,9 +20,11 @@ This runbook enables **Admin > Access Management** after the application code an
 - Confirm the IT-controlled Entra/Portal break-glass path and at least one recoverable human Access Administrator before disabling the bootstrap fallback.
 - Apply the database migration before enabling the UI or API configuration.
 
-## Canonical roles
+## Canonical roles (historical)
 
-Register these app-role values on each environment's OnBoard application:
+These app-role values were what OnBoard read before the cutover. New
+environments register only `System.Ingestion`; the human roles are seeded by
+migration 129 and granted in Access & Identity.
 
 - `OCC.Viewer`
 - `OCC.Publisher`

@@ -151,7 +151,6 @@ interface AccessState {
   principals: OnBoardAccessPrincipal[];
   audit: OnBoardAccessAuditEntry[];
   environment: string;
-  accessAdminFallback: boolean;
   loading: boolean;
   busy: boolean;
   setBusy: (busy: boolean) => void;
@@ -176,7 +175,6 @@ export function AccessProvider({ children }: PropsWithChildren) {
   const [principals, setPrincipals] = useState<OnBoardAccessPrincipal[]>([]);
   const [audit, setAudit] = useState<OnBoardAccessAuditEntry[]>([]);
   const [environment, setEnvironment] = useState("");
-  const [accessAdminFallback, setAccessAdminFallback] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -205,7 +203,6 @@ export function AccessProvider({ children }: PropsWithChildren) {
       if (inventoryResult.status === "fulfilled") {
         setPrincipals(inventoryResult.value.principals ?? []);
         setEnvironment(inventoryResult.value.environment);
-        setAccessAdminFallback(inventoryResult.value.access_admin_fallback);
       }
       if (auditResult.status === "fulfilled") setAudit(auditResult.value.audit ?? []);
 
@@ -243,12 +240,12 @@ export function AccessProvider({ children }: PropsWithChildren) {
       names.set(person.personId, personLabel(person));
     }
     return {
-      people, requests, roles, notReady, principals, audit, environment, accessAdminFallback,
+      people, requests, roles, notReady, principals, audit, environment,
       loading, busy, setBusy, error, setError, notice, setNotice, load,
       findings, findingsLoading, loadFindings,
       principalName: (id: string) => names.get(id) ?? id,
     };
-  }, [accessAdminFallback, audit, busy, environment, error, findings, findingsLoading, load, loadFindings, loading, notReady, notice, people, principals, requests, roles]);
+  }, [audit, busy, environment, error, findings, findingsLoading, load, loadFindings, loading, notReady, notice, people, principals, requests, roles]);
 
   return <AccessContext.Provider value={value}>{children}</AccessContext.Provider>;
 }

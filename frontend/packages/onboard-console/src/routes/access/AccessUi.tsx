@@ -39,9 +39,8 @@ export function AccessLayout() {
 }
 
 function AccessFrame() {
-  const { error, notice, setNotice, accessAdminFallback } = useAccess();
+  const { error, notice, setNotice } = useAccess();
   return <div className="am">
-    {accessAdminFallback ? <p className="am-callout attn" role="status"><Icon name="warn" /><span><b>Temporary setup mode is on.</b> Operations Administrators can manage access until Access Administrators are assigned. Remove this setting after verification.</span></p> : null}
     {error ? <p className="am-callout bad" role="alert"><Icon name="warn" /><span>{error}</span></p> : null}
     {notice ? <p className="am-callout ok" role="status"><Icon name="check" /><span className="am-grow">{notice}</span><button type="button" className="am-btn ghost sm" onClick={() => setNotice(null)}>Dismiss</button></p> : null}
     <Outlet />

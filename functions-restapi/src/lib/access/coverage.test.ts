@@ -9,8 +9,8 @@ import { isKnownAction } from "./catalog";
 // the console and the API drifted apart in the first place - one side kept a
 // list the other had changed - so it fails here rather than in production.
 //
-// src/lib/auth.ts keeps requireRole and its role sets until increment 6, when
-// the token stops carrying app roles at all.
+// Since the cutover there is no requireRole anywhere to fall back to: auth.ts
+// answers who the caller is, and nothing about what they may do.
 const FUNCTIONS = join(process.cwd(), "src", "functions");
 
 function handlerFiles(): string[] {

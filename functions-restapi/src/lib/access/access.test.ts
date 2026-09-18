@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { CallerPrincipal } from "../auth";
+import { fakeAccessDb } from "./testSupport";
 import {
   accessSummaryLines,
   actionKey,
@@ -21,22 +22,6 @@ const principal = (roles: string[], userId = "oid-1"): CallerPrincipal => ({
   roles,
   claims: { tid: ["tenant-1"], name: ["Someone"] },
 });
-
-/**
- * The resolver reaching a database that has not had migration 129 applied.
- * Increment 1 ships before the migration is run, so this is the live path on
- * every environment until then.
- */
-const noTables = {
-  request: () => ({
-    input() {
-      return this;
-    },
-    async query() {
-      return { recordset: [{ ready: 0 }] };
-    },
-  }),
-} as never;
 
 test("the catalog", async (t) => {
   await t.test("every module key is unique and every action belongs to a module", () => {
@@ -115,45 +100,52 @@ test("the seeded roles", async (t) => {
   });
 });
 
-test("resolving Effective Access before migration 129 is applied", async (t) => {
-  const resolve = (roles: string[]) =>
-    resolveEffectiveAccess(principal(roles), { executor: noTables, useCache: false });
+test("resolving Effective Access after the cutover", async (t) => {
+  const resolve = (grants: { objectId: string; roleKey: string }[], roles: string[] = [], ready = true) =>
+    resolveEffectiveAccess(principal(roles), { executor: fakeAccessDb(grants, { ready }), useCache: false });
 
-  await t.test("an app role in the token resolves to the role that replaces it", async () => {
-    const access = await resolve(["OCC.TripStartVerify"]);
-    assert.equal(access.rolesInOnBoard, false);
-    assert.deepEqual(access.roles.map((r) => [r.key, r.source]), [["trip-start-verifier", "entra"]]);
+  await t.test("a grant in OnBoard is what a person holds", async () => {
+    const access = await resolve([{ objectId: "oid-1", roleKey: "trip-start-verifier" }]);
+    assert.equal(access.rolesInOnBoard, true);
+    assert.deepEqual(access.roles.map((r) => [r.key, r.source]), [["trip-start-verifier", "onboard"]]);
     assert.deepEqual(access.actions, ["dispatch-log.verify", "dispatch-log.view"]);
     assert.deepEqual(access.summary, ["Dispatch Log: view; Record trip-start verifications"]);
   });
 
-  await t.test("OCC.Admin holds every action except managing access", async () => {
-    const access = await resolve(["OCC.Admin"]);
-    assert.ok(access.actions.includes("detours.intake"));
-    assert.ok(access.actions.includes("service-configuration.edit"));
-    assert.ok(!access.actions.some((a) => a.startsWith("access-identity.")));
+  await t.test("an app role in the token grants nothing at all", async () => {
+    // The whole point of the cutover: OCC.Admin used to be everything.
+    const access = await resolve([], ["OCC.Admin", "OCC.Publisher"]);
+    assert.deepEqual(access.actions, []);
+    assert.deepEqual(access.roles, []);
   });
 
-  await t.test("two app roles combine", async () => {
-    const access = await resolve(["OCC.Detour", "OCC.TripStartVerify"]);
+  await t.test("two grants combine", async () => {
+    const access = await resolve([
+      { objectId: "oid-1", roleKey: "detour-editor" },
+      { objectId: "oid-1", roleKey: "trip-start-verifier" },
+    ]);
     assert.deepEqual(access.roles.map((r) => r.key).sort(), ["detour-editor", "trip-start-verifier"]);
     assert.ok(access.actions.includes("detours.edit"));
     assert.ok(access.actions.includes("dispatch-log.verify"));
   });
 
-  await t.test("a workload identity inherits no human authority", async () => {
-    const access = await resolve(["System.Ingestion"]);
-    assert.equal(access.ingestion, true);
-    assert.deepEqual(access.actions, []);
-    // Even paired with a human app role, which requireRole refused outright.
-    const paired = await resolve(["System.Ingestion", "OCC.Admin"]);
-    assert.deepEqual(paired.actions, []);
+  await t.test("the wildcard role holds every action except managing access", async () => {
+    const access = await resolve([{ objectId: "oid-1", roleKey: "system-administrator" }]);
+    assert.ok(access.actions.includes("detours.intake"));
+    assert.ok(access.actions.includes("service-configuration.edit"));
+    assert.ok(!access.actions.some((a) => a.startsWith("access-identity.")));
   });
 
-  await t.test("an unknown app role grants nothing", async () => {
-    const access = await resolve(["OCC.Something"]);
+  await t.test("a workload identity inherits no human authority", async () => {
+    const access = await resolve([{ objectId: "oid-1", roleKey: "system-administrator" }], ["System.Ingestion"]);
+    assert.equal(access.ingestion, true);
     assert.deepEqual(access.actions, []);
-    assert.deepEqual(access.summary, []);
+  });
+
+  await t.test("an environment without the tables grants nobody anything", async () => {
+    const access = await resolve([{ objectId: "oid-1", roleKey: "publisher" }], ["OCC.Admin"], false);
+    assert.equal(access.rolesInOnBoard, false);
+    assert.deepEqual(access.actions, []);
     assert.equal(access.person.objectId, "oid-1");
   });
 });
