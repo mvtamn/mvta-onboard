@@ -20,13 +20,14 @@ import { mapMissedTripReport, replaceMissedTripsForMonths } from "../lib/availMi
 import { serviceMonthOf, subtractMonths } from "../lib/otpMonthlyFeed";
 import { runFeedIngestion } from "../lib/feedRun";
 import { observeMissedTrips } from "../lib/missedTripCase";
-import { availObservations } from "../lib/missedTripCase/adapters/avail";
+import { availObservations, DEFAULT_LOOKBACK_DAYS } from "../lib/missedTripCase/adapters/avail";
+import { availLinksReady, linksFrom, recordAvailLinks } from "../lib/missedTripCase/adapters/availLinks";
 
 const TRAILING_MONTHS = 3; // current + prior 2
 
 async function reconcileAvailAgainstCases(context: InvocationContext): Promise<void> {
   try {
-    const { observations, tally } = await availObservations();
+    const { observations, tally, matches } = await availObservations();
     const report = observations.length === 0
       ? null
       : await observeMissedTrips(await getPool(), observations);
@@ -38,6 +39,18 @@ async function reconcileAvailAgainstCases(context: InvocationContext): Promise<v
         `${tally.unmatched} unmatched. ${report?.evidenceRecorded ?? 0} case(s) updated, ` +
         `${report?.skippedChanged ?? 0} changed elsewhere, ${report?.failed.length ?? 0} failed.`,
     );
+    // Left for a reviewer means left somewhere a reviewer can find it. The
+    // links outlive the run; without them a probable match is counted, warned
+    // about and forgotten, and nothing can ever be confirmed.
+    const pool = await getPool();
+    if (await availLinksReady(pool)) {
+      const links = await recordAvailLinks(pool, linksFrom(matches), DEFAULT_LOOKBACK_DAYS);
+      if (links.retracted > 0) {
+        context.warn(`Avail no longer reports ${links.retracted} record(s) it reported before. Any case they corroborated has lost that corroboration.`);
+      }
+    } else {
+      context.warn("AvailEvidenceLinks is missing - has migration 136 been run? Probable links are counted but not kept.");
+    }
     if (tally.probable > 0) {
       context.warn(`${tally.probable} Avail report(s) matched more than one case, or carried no start time, and were left for a reviewer.`);
     }

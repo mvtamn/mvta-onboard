@@ -5,6 +5,15 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.267] - 2026-09-18
+
+- **A probable Avail link is now something a reviewer can answer.** 1.5.264 let Avail corroborate a case when the match is exact, and left a probable match "for a reviewer" - but nothing was written down, so each nightly run counted probable links, warned about them, and forgot them. There was never anything to confirm. Migration 136's `AvailEvidenceLinks` keeps every record in the window with how it was placed, how many cases it could have been about, and why - in words a reviewer can act on.
+- **Confirming is what makes the record corroborate the case.** The adapter refuses to guess between candidates, so the person names one, and the named case has to be on the route and service date the record reports or the confirmation is refused. The evidence is stored as reviewer-placed, so nothing later reads it as a link the match itself was sure of. Rejecting closes the link and changes nothing.
+- **Avail withdrawing a record is now visible.** The feed restates its trailing window nightly, so a record that stops being reported is corroboration being taken back - possibly from a case already reviewed on the strength of it. The link is marked rather than forgotten, and it comes back if the feed reports it again.
+- **An answer survives a run that finds the same thing, and does not survive one that places the record elsewhere** - that is no longer the link the reviewer agreed to.
+- `GET /api/avail-evidence-links` (`compliance-review.view`) lists what is outstanding; `POST /api/avail-evidence-links/{id}` (`compliance-review.review`) answers one. No console page yet.
+- **Verified.** 6 tests for the link and its wording, and a DB contract test covering re-runs, the exact-link refusal, confirming without naming a case, naming a case on the wrong route, a confirmation reaching the case's evidence, an answer surviving an unchanged run and not surviving a moved one, and a retraction clearing when the record returns.
+
 ## [1.5.264] - 2026-09-18
 
 - **Avail corroborates missed-trip cases; it does not decide them.** The vendor's own retrospective report reaches the Missed-trip case module as a third source adapter (ADR-0035). It never opens a case, never reopens or closes one, and never rewrites a review - the only thing it can change on its own is whether the case is in conflict.
