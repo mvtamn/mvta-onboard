@@ -23,7 +23,7 @@ import { DetourWorkflowHistorySection } from "../components/DetourWorkflowHistor
 import { DetourAttachmentsSection } from "../components/DetourAttachments.js";
 import { DetourMap } from "../components/DetourMap.js";
 import { SentCopy, deliveryClass, deliveryLabel } from "../components/DetourDeliveryRecord.js";
-import { audiencePlan, communicationSubject, detourSendBlock, draftCommunicationText, mailtoLink, nextAudience } from "../lib/detourCommunicationDraft.js";
+import { audiencePlan, communicationAction, communicationSubject, detourSendBlock, draftCommunicationText, mailtoLink, nextAudience } from "../lib/detourCommunicationDraft.js";
 import { dateLabel, dateTimeLabel, toDateInputValue } from "../lib/detourDates.js";
 
 const STATUS_TABS: { key: DetourStatus | "all"; label: string }[] = [
@@ -759,11 +759,24 @@ export function Detours() {
 // has a published communication under exactly that name. Free text is
 // still available for an audience the record did not anticipate.
 const OTHER = "__other__";
+// A recorded message cannot have gone out in the future, and the date input
+// wants YYYY-MM-DD in the browser's own day.
+function todayInputValue(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
 function DetourCommunicationsSection({ detour, contractor, canWrite }: { detour: Detour; contractor: DetourContractorNotification | null; canWrite: boolean }) {
   const [communications, setCommunications] = useState<import("@mvta/shared").DetourCommunication[]>([]);
   const [audienceChoice, setAudienceChoice] = useState<string>("");
   const [audienceOther, setAudienceOther] = useState("");
   const [channelChoice, setChannelChoice] = useState<string>("");
+  // The channels the server allows, and which of them it sends (migration 132).
+  // Kept server-side so the console cannot drift from the CHECK constraint.
+  const [channelOptions, setChannelOptions] = useState<import("@mvta/shared").DetourChannelOption[]>([]);
+  // When a recorded message actually went out - an AVL message sent on Monday
+  // may be written down on Tuesday.
+  const [occurredOn, setOccurredOn] = useState("");
   const [channelOther, setChannelOther] = useState("");
   const [recipients, setRecipients] = useState("");
   const [content, setContent] = useState("");
@@ -775,7 +788,9 @@ function DetourCommunicationsSection({ detour, contractor, canWrite }: { detour:
   const audience = audienceChoice === OTHER ? audienceOther.trim() : audienceChoice;
   const channel = channelChoice === OTHER ? channelOther.trim() : channelChoice;
 
-  const load = () => api.getDetourCommunications(detour.id).then((r) => setCommunications(r.communications)).catch(() => setError("Could not load communications"));
+  const load = () => api.getDetourCommunications(detour.id)
+    .then((r) => { setCommunications(r.communications); if (r.channels) setChannelOptions(r.channels); })
+    .catch(() => setError("Could not load communications"));
   useEffect(() => { void load(); }, [detour.id]);
 
   // Open the composer on the next unmet audience whenever the plan changes
@@ -789,6 +804,10 @@ function DetourCommunicationsSection({ detour, contractor, canWrite }: { detour:
   }, [communications, detour.notification_audiences, detour.notification_channels]);
 
   const selected = plan.find((item) => item.audience === audienceChoice) ?? null;
+  const chosenChannel = channelOptions.find((option) => option.channel === channelChoice) ?? null;
+  // A recorded channel is something a person does elsewhere: it has no address
+  // to send to, and saving it is followed by writing down when it happened.
+  const recordingOnly = chosenChannel?.kind === "recorded";
   // Detour communication eligibility, decided by the server (ADR-less but in
   // CONTEXT, enforced since 1.5.249). The console renders the decision: a
   // blocked Detour shows why on a disabled Send instead of offering it and
@@ -817,7 +836,11 @@ function DetourCommunicationsSection({ detour, contractor, canWrite }: { detour:
     if (!audience || !channel || !content.trim()) return;
     setSaving(true); setError(null);
     try {
-      await api.createDetourCommunication(detour.id, { audience, channel, recipients: recipients || null, content });
+      await api.createDetourCommunication(detour.id, {
+        audience, channel,
+        recipients: chosenChannel?.needs_recipients === false ? null : recipients || null,
+        content,
+      });
       setContent(""); setRecipients(""); await load();
     } catch (err) { setError(err instanceof ApiError ? err.message : "Could not save communication"); }
     finally { setSaving(false); }
@@ -828,11 +851,16 @@ function DetourCommunicationsSection({ detour, contractor, canWrite }: { detour:
     catch (err) { setError(err instanceof ApiError ? err.message : "Could not send communication"); await load(); }
   }
   async function publish(communication: import("@mvta/shared").DetourCommunication) {
-    const outcome = communication.channel.toLowerCase() === "email" && communication.recipients
+    const option = channelOptions.find((o) => o.channel === communication.channel);
+    const label = option?.label ?? communication.channel;
+    const outcome = communication.channel === "email" && communication.recipients
       ? `Sent by email to ${communication.recipients}`
-      : `Published via ${communication.channel}`;
-    try { await api.publishDetourCommunication(detour.id, communication.id, outcome); await load(); }
-    catch (err) { setError(err instanceof ApiError ? err.message : "Could not publish communication"); }
+      : `Sent via ${label}`;
+    // A date typed here is the day it went out; without one the server records
+    // now, which is right for something being marked as it happens.
+    const occurred = occurredOn ? new Date(`${occurredOn}T12:00:00`).toISOString() : undefined;
+    try { await api.publishDetourCommunication(detour.id, communication.id, outcome, false, occurred); setOccurredOn(""); await load(); }
+    catch (err) { setError(err instanceof ApiError ? err.message : "Could not record communication"); }
   }
 
   return <div className="subcard" style={{ marginTop: "8px" }}>
@@ -856,6 +884,8 @@ function DetourCommunicationsSection({ detour, contractor, canWrite }: { detour:
       <b>{communication.audience} · {communication.channel}:</b> {communication.status}
       {communication.recipients ? ` · ${communication.recipients}` : ""}
       {communication.published_by ? <span className="td-dim"> · {communication.published_by}{communication.published_at ? ` ${dateTimeLabel(communication.published_at)}` : ""}</span> : null}
+      {communication.occurred_at && communication.published_at && communication.occurred_at.slice(0, 10) !== communication.published_at.slice(0, 10)
+        ? <span className="td-dim"> · went out {dateTimeLabel(communication.occurred_at)}</span> : null}
       {communication.status === "published" && communication.outcome ? <span className="td-dim"> · {communication.outcome}</span> : null}
       {communication.delivery_status && communication.delivery_status !== "not_requested" ? (
         <span className={deliveryClass(communication)}>
@@ -865,15 +895,17 @@ function DetourCommunicationsSection({ detour, contractor, canWrite }: { detour:
       ) : null}
       <SentCopy communication={communication} />
       {canWrite && (communication.status === "draft" || communication.status === "failed") ? (() => {
-        const ch = communication.channel.trim().toLowerCase();
-        const serverSend = ch === "teams" || (ch === "email" && Boolean(communication.recipients));
-        // The server refuses both paths for the same reasons, so both buttons
-        // carry the same explanation rather than only the one that sends.
-        const blocked = sendBlock?.sentence;
+        const option = channelOptions.find((o) => o.channel === communication.channel);
+        const { canSend: serverSend, isRecorded: recorded, recordLabel, blocked } =
+          communicationAction(communication, option, sendBlock?.sentence);
+        const ch = communication.channel;
         return <>
           {serverSend ? <> {" "}<button className="btn-sm" title={blocked} disabled={Boolean(blocked) || communication.delivery_status === "queued"} onClick={() => void sendByServer(communication)}>{communication.status === "failed" ? "Retry send" : ch === "teams" ? "Post to Teams" : "Send email"}</button></> : null}
           {ch === "email" && communication.recipients && !blocked ? <> {" "}<a className="btn-sm" href={mailtoLink(communication.recipients.split(/[,;\s]+/).filter(Boolean), communicationSubject(detour), communication.content)}>Open in email</a></> : null}
-          {" "}<button className="btn-sm" title={blocked} disabled={Boolean(blocked)} onClick={() => publish(communication)}>Mark published{serverSend ? " (sent elsewhere)" : ""}</button>
+          {recorded ? <> {" "}<label className="td-dim">Went out<input type="date" value={occurredOn} max={todayInputValue()} onChange={(e) => setOccurredOn(e.target.value)} style={{ marginLeft: 4 }} /></label></> : null}
+          {" "}<button className="btn-sm" title={blocked} disabled={Boolean(blocked)} onClick={() => publish(communication)}>
+            {recordLabel}
+          </button>
           {blocked ? <div className="td-dim" style={{ marginTop: 4 }}>{blocked}</div> : null}
         </>;
       })() : null}
@@ -888,12 +920,18 @@ function DetourCommunicationsSection({ detour, contractor, canWrite }: { detour:
       </label>
       <label>Channel
         <select value={channelChoice} onChange={(e) => setChannelChoice(e.target.value)}>
-          {requiredChannels.map((item) => <option key={item} value={item}>{item}</option>)}
-          <option value={OTHER}>Other…</option>
+          <option value="">Choose a channel…</option>
+          {channelOptions.map((option) => (
+            <option key={option.channel} value={option.channel}>
+              {option.label}{option.kind === "recorded" ? " (recorded)" : ""}
+            </option>
+          ))}
         </select>
-        {channelChoice === OTHER ? <input value={channelOther} onChange={(e) => setChannelOther(e.target.value)} placeholder="email, radio, Teams…" /> : null}
+        {recordingOnly ? <span className="td-dim">OnBoard does not send this one. Save it, then record when it went out.</span> : null}
       </label>
-      <label>Recipients<input value={recipients} onChange={(e) => setRecipients(e.target.value)} placeholder="Distribution list or team" /></label>
+      {chosenChannel?.needs_recipients !== false ? (
+        <label>Recipients<input value={recipients} onChange={(e) => setRecipients(e.target.value)} placeholder="Distribution list or team" /></label>
+      ) : null}
       <label>Message
         <textarea value={content} rows={6} onChange={(e) => setContent(e.target.value)} placeholder="Use Draft beside an audience to start from the record" />
       </label>

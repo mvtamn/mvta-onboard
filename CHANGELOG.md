@@ -7,6 +7,12 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 ## [1.5.256] - 2026-09-18
 
+- **The composer offers the channels the server allows.** `GET /detours/{id}/communications` now returns `channels` - each with its label, whether OnBoard sends or records it, and whether it needs recipients - and the console renders that list instead of the record's free-text channels plus an "Other…" escape. The console keeps no channel list of its own, so it cannot drift from migration 132's CHECK constraint. Increment 4 of `plans/detour-communications-implementation-plan.md`.
+- **A recorded channel behaves like what it is.** No recipients field, no Send button, and a date input for **when the message actually went out**, carried to the server as `occurred_at`. The row shows that date whenever it differs from the day it was recorded, so a detour communicated on Monday and written up on Tuesday reads correctly.
+- **Recording stays available on a closed detour**, where sending is refused: the block that disables Send does not disable writing down what already happened.
+- **The publish outcome reads in words** - "Sent via AVL messaging" rather than "Published via avl_messaging".
+- **Verified.** 5 new tests for `communicationAction` (Send offered only for a channel OnBoard sends, a recorded channel never blocked by a closed detour, email with no recipients, Teams carrying none, and an unknown channel from an older server treated as unsendable). Console 665 tests pass, backend 1159. The mock console cannot reach an API, so the composer itself could not be walked in a browser; the decisions it renders are covered by those tests instead.
+
 - **The cutover: a token no longer says what anybody may do.** Increment 6 of ADR-0032, now accepted. The resolver stops mapping `OCC.*` app roles to roles entirely - Effective Access comes only from Role Grants - and an environment whose tables are missing grants nobody anything rather than falling back to the token, because that is the safe direction. `System.Ingestion` is the one app role still read: a workload identity has no person record.
 - **`requireRole` and the twelve role sets are deleted.** `src/lib/auth.ts` is 78 lines that answer who the caller is and nothing about what they may do.
 - **The Entra-era write flow is gone**, along with the Graph calls the consents being revoked allowed: submitting grants and revocations, decisions, cancels, the expiry sweep and reconciliation - about 1,300 lines across the handler, the Graph client and the store. What Entra still does: finding a person, inviting a guest, and sign-in activity. The changes route survives narrowed to `invite_guest`, and a batch containing a grant or revoke is refused whole so it cannot half-apply. A guest invitation now invites and stops; their OnBoard role is granted afterwards as a Role Grant.
@@ -15,6 +21,7 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **Tests say what a person holds, not what their token claims.** A seam (`useAccessExecutorForTests`, `fakeAccessDb`) lets a unit test state access as rows, the way production reads it; 26 handler tests moved onto it, and each refusal case now also asserts the message, so a refusal cannot pass because the caller happened to hold nothing at all.
 - **`docs/runbooks/access-cutover.md`** is the order to run this in, and the Entra runbook is marked superseded. **Do not deploy this build to an environment that has not been migrated and imported**: migrations 129-131, the first Access Administrator, one sign-in, then Import from Entra - all before the deploy, or everybody lands on No access.
 - **Verified.** Backend 1134 passing, console 660 passing.
+
 
 ## [1.5.255] - 2026-09-18
 

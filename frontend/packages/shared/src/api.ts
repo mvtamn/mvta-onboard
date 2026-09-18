@@ -32,6 +32,7 @@ import type {
   DecisionMatrixLibraryDiagnostics,
   Detour,
   DetourCommunication,
+  DetourChannelOption,
   DetourContractorNotification,
   DetourFulfillmentMode,
   DetourHistoricalImportResult,
@@ -1298,7 +1299,7 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     },
 
     getDetourCommunications(id: string) {
-      return request<{ communications: DetourCommunication[] }>(`/api/detours/${id}/communications`, {}, true);
+      return request<{ communications: DetourCommunication[]; channels?: DetourChannelOption[] }>(`/api/detours/${id}/communications`, {}, true);
     },
 
     createDetourCommunication(id: string, input: { audience: string; channel: string; recipients?: string | null; content: string }) {
@@ -1307,8 +1308,14 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
 
     // send=true asks the server to deliver by email and freezes the sent
     // snapshot; otherwise publishing records a human send with `outcome`.
-    publishDetourCommunication(detourId: string, communicationId: string, outcome?: string, send = false) {
-      return request<DetourCommunication>(`/api/detours/${detourId}/communications/${communicationId}/publish`, { method: "POST", body: JSON.stringify({ outcome, send }) }, true);
+    /**
+     * `send` asks the server to deliver. Without it, this records that a person
+     * sent it elsewhere - a road sign, an Avail message, an email from their own
+     * client - and `occurred_at` is when that actually happened, which may
+     * precede today.
+     */
+    publishDetourCommunication(detourId: string, communicationId: string, outcome?: string, send = false, occurred_at?: string) {
+      return request<DetourCommunication>(`/api/detours/${detourId}/communications/${communicationId}/publish`, { method: "POST", body: JSON.stringify({ outcome, send, occurred_at }) }, true);
     },
 
     getDetourHistoricalImports(importBatchId?: string) {
