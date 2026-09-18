@@ -120,6 +120,12 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
       linuxFxVersion: 'NODE|24'
       minTlsVersion: '1.2'
       ftpsState: 'Disabled'
+      // A Basic plan unloads an idle host unless Always On is set, and only a
+      // loaded host listens to Service Bus or runs timers. The dispatch app has
+      // no HTTP traffic of its own to keep it loaded, so from 2026-09-05 its
+      // queue triggers stopped reading: confirmation messages sat until their
+      // one-day TTL and were dead-lettered unsent. Included in Basic at no cost.
+      alwaysOn: true
       // Explicit CORS: only the declared origins may call the API from a
       // browser. Empty array => no override (Azure default). See main-phase1.
       cors: empty(allowedCorsOrigins) ? null : {
