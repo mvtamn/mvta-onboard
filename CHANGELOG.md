@@ -11,14 +11,14 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - Verified locally against the TypeScript side alone (there is no database here): the matrix reaches every lifecycle, every evidence finding and every detector. The comparison itself runs in CI.
 - **No rule changed**, and the duplication is deliberately still there - see the pull request for why removing it was judged the wrong trade.
 
-## [1.5.264] - 2026-09-18
+## [1.5.265] - 2026-09-18
 
 - **A disagreement between sources is now something a reviewer can see and settle.** ADR-0035 gave a Missed-trip case an Evidence conflict, but nothing rendered it: it existed only in the API and the database, and a conflict nobody can see cannot be settled. The case is flagged in the review queue and the history list, and the detail panel says what disagreed, in the words the server recorded, and what the reviewer is being asked to do about it.
 - **Recording a review settles it.** That is exactly what the ADR asks of a reviewer - an outcome reached with both sources in front of them - so the review clears the conflict and the trip becomes eligible for the performance assessment again. Nothing else clears it, and it is never cleared automatically.
 - **Fixed: the assessment line could contradict the server.** A confirmed trip held out by the Assessment evidence gate still read as "Counted in 09/2026", because the console worked that line out from the review alone. It now reads "Held — sources disagree", whatever the review said.
 - **Verified** by rendering it: the pill appears beside the lifecycle in both list layouts, and the detail callout carries the reason and the action. 696 console tests and 1223 backend tests pass, including the review that settles a conflict, proved against SQL.
 
-## [1.5.263] - 2026-09-18
+## [1.5.264] - 2026-09-18
 
 - **Avail corroborates missed-trip cases; it does not decide them.** The vendor's own retrospective report reaches the Missed-trip case module as a third source adapter (ADR-0035). It never opens a case, never reopens or closes one, and never rewrites a review - the only thing it can change on its own is whether the case is in conflict.
 - **Avail names no trip**, so a link is built from route, local service date and Published Trip start: **exact** when those agree to the minute and name exactly one case, **probable** when the start time is missing or several cases match, **unmatched** when none does. Only an exact link becomes evidence; probable and unmatched are counted and reported, never guessed at. Unmatched is the measure of what no other source noticed, since Avail cannot open a case.
@@ -27,12 +27,17 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **Migration 135** adds `evidence_conflict_at` and `evidence_conflict_reason`, and regenerates `vw_MissedTrip` so the reporting layer classifies by the same rule. A case with an unresolved conflict stops reaching occurrence intake - the Assessment evidence gate - while its operational outcome stands.
 - **Verified.** 1223 backend tests pass, including 17 new ones over the matching rule (the second is noise, a different minute is a different run, two cases at the same minute is probable not a guess) and the conflict rules (nothing reopens, no review is rewritten, evidence sits beside what the live sources recorded). A database contract case proves the gate holds in SQL as well as in TypeScript.
 
-## [1.5.262] - 2026-09-18
+## [1.5.263] - 2026-09-18
 
 - **One place for the words Missed Trips puts on a case.** Half the module's vocabulary lived in `missedTripReview.ts` and was tested; the other half - the detector name, the evidence-quality label, the route and trip code, review urgency (Aging/Overdue), and where a confirmed trip landed in the performance assessment - was private to the 1253-line `MissedTripAlerts.tsx` and had no tests, because reaching it meant rendering the page. It moved, with its reasoning comments intact. `MissedTripAlerts.tsx` drops to 1119 lines and is now rendering.
 - **20 new tests** over rules that had none, including the ones with real judgement in them: a route never reads "Route 420 · 420", a trip code falls back to whichever half exists, urgency stops once someone has reviewed however old the row is, and each assessment outcome - not linked, awaiting attribution, recorded but not charged, counted in a month that may already be finalized - says the right thing.
 - **No wording changes**, and no page split: the four pages inside `MissedTripAlerts.tsx` stay where they are for now.
 - **Found, not fixed:** a case held for an unknown data gap is labelled "Legacy — unverified", because the label falls through to legacy for anything that is not source-verified or experimental. Its own label is worth adding, separately.
+
+## [1.5.262] - 2026-09-18
+
+- **Import from Entra says what it read.** Pressing it on dev reported nothing to import while Entra held 24 assignments across 7 people, and neither the page nor the API log said which half had gone wrong - the console never posted, so there was nothing to look at. Finding nothing is a claim about Entra, and it is now made with evidence: no principals at all names the app-role configuration (`ONBOARD_ACCESS_CONFIG_JSON` against the application's current app-role ids), groups without people names the directory read permission that expands group membership, and people without a recognised app role says so plainly. A successful import now leads with what it read - "24 read from Entra · 7 people, 24 grants, 0 skipped" - so the number written can be checked against the number found.
+- **Verified.** Console 671 tests, including the two new empty cases and the assertion that neither of them posts.
 
 ## [1.5.261] - 2026-09-18
 
