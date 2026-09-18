@@ -7,14 +7,14 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 ## [1.5.267] - 2026-09-18
 
-- **A probable Avail link is now something a reviewer can answer.** 1.5.263 let Avail corroborate a case when the match is exact, and left a probable match "for a reviewer" - but nothing was written down, so each nightly run counted probable links, warned about them, and forgot them. There was never anything to confirm. Migration 136's `AvailEvidenceLinks` keeps every record in the window with how it was placed, how many cases it could have been about, and why - in words a reviewer can act on.
+- **A probable Avail link is now something a reviewer can answer.** 1.5.264 let Avail corroborate a case when the match is exact, and left a probable match "for a reviewer" - but nothing was written down, so each nightly run counted probable links, warned about them, and forgot them. There was never anything to confirm. Migration 136's `AvailEvidenceLinks` keeps every record in the window with how it was placed, how many cases it could have been about, and why - in words a reviewer can act on.
 - **Confirming is what makes the record corroborate the case.** The adapter refuses to guess between candidates, so the person names one, and the named case has to be on the route and service date the record reports or the confirmation is refused. The evidence is stored as reviewer-placed, so nothing later reads it as a link the match itself was sure of. Rejecting closes the link and changes nothing.
 - **Avail withdrawing a record is now visible.** The feed restates its trailing window nightly, so a record that stops being reported is corroboration being taken back - possibly from a case already reviewed on the strength of it. The link is marked rather than forgotten, and it comes back if the feed reports it again.
 - **An answer survives a run that finds the same thing, and does not survive one that places the record elsewhere** - that is no longer the link the reviewer agreed to.
 - `GET /api/avail-evidence-links` (`compliance-review.view`) lists what is outstanding; `POST /api/avail-evidence-links/{id}` (`compliance-review.review`) answers one. No console page yet.
 - **Verified.** 6 tests for the link and its wording, and a DB contract test covering re-runs, the exact-link refusal, confirming without naming a case, naming a case on the wrong route, a confirmation reaching the case's evidence, an answer surviving an unchanged run and not surviving a moved one, and a retraction clearing when the record returns.
 
-## [1.5.263] - 2026-09-18
+## [1.5.264] - 2026-09-18
 
 - **Avail corroborates missed-trip cases; it does not decide them.** The vendor's own retrospective report reaches the Missed-trip case module as a third source adapter (ADR-0035). It never opens a case, never reopens or closes one, and never rewrites a review - the only thing it can change on its own is whether the case is in conflict.
 - **Avail names no trip**, so a link is built from route, local service date and Published Trip start: **exact** when those agree to the minute and name exactly one case, **probable** when the start time is missing or several cases match, **unmatched** when none does. Only an exact link becomes evidence; probable and unmatched are counted and reported, never guessed at. Unmatched is the measure of what no other source noticed, since Avail cannot open a case.
@@ -22,6 +22,11 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **A contradiction becomes an Evidence conflict** - Avail says missed where the case concluded Timely service, or Avail says the trip ran and missed a stop where the case is a Confirmed missed trip. It is recorded once, keeps its first timestamp, and is never settled by preferring one source over the other.
 - **Migration 135** adds `evidence_conflict_at` and `evidence_conflict_reason`, and regenerates `vw_MissedTrip` so the reporting layer classifies by the same rule. A case with an unresolved conflict stops reaching occurrence intake - the Assessment evidence gate - while its operational outcome stands.
 - **Verified.** 1223 backend tests pass, including 17 new ones over the matching rule (the second is noise, a different minute is a different run, two cases at the same minute is probable not a guess) and the conflict rules (nothing reopens, no review is rewritten, evidence sits beside what the live sources recorded). A database contract case proves the gate holds in SQL as well as in TypeScript.
+
+## [1.5.262] - 2026-09-18
+
+- **Import from Entra says what it read.** Pressing it on dev reported nothing to import while Entra held 24 assignments across 7 people, and neither the page nor the API log said which half had gone wrong - the console never posted, so there was nothing to look at. Finding nothing is a claim about Entra, and it is now made with evidence: no principals at all names the app-role configuration (`ONBOARD_ACCESS_CONFIG_JSON` against the application's current app-role ids), groups without people names the directory read permission that expands group membership, and people without a recognised app role says so plainly. A successful import now leads with what it read - "24 read from Entra · 7 people, 24 grants, 0 skipped" - so the number written can be checked against the number found.
+- **Verified.** Console 671 tests, including the two new empty cases and the assertion that neither of them posts.
 
 ## [1.5.261] - 2026-09-18
 
