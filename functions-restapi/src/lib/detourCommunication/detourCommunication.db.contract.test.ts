@@ -89,14 +89,22 @@ async function reset(pool: sql.ConnectionPool) {
 const CONTRACTOR = { name: "Transit Operations", recipients: ["ops@example.com"] };
 const ACTOR = "occ@example.com";
 
+// Each Detour gets its own closure: two Detours describing the same closure
+// over the same dates are Likely duplicates, and eligibility refuses those -
+// which is correct, and would otherwise refuse every seeded Detour after the
+// first for a reason the test is not about.
+let seeded = 0;
+
 async function seedDetour(pool: sql.ConnectionPool, state: string, review: "current" | "needs_review" = "current"): Promise<string> {
+  seeded += 1;
   const id = (await pool.request()
     .input("state", sql.NVarChar(30), state)
     .input("review", sql.NVarChar(20), review)
+    .input("closure", sql.NVarChar(500), `Nicollet Ave at ${seeded}th`)
     .query<{ id: string }>(`
       INSERT INTO Detours (closure, start_date, end_date, source, created_by, fulfillment_mode, lifecycle_state, review_status, notification_audiences, service_impact)
       OUTPUT INSERTED.id
-      VALUES ('Nicollet Ave at 5th', '2026-09-20', '2026-10-20', 'manual', 'seed', 'avail', @state, @review, 'Riders', 'fixed_route')`)).recordset[0].id;
+      VALUES (@closure, '2026-09-20', '2026-10-20', 'manual', 'seed', 'avail', @state, @review, 'Riders', 'fixed_route')`)).recordset[0].id;
   await pool.request().input("id", sql.UniqueIdentifier, id)
     .query("INSERT INTO DetourWorkflowHistory (detour_id, event_type, to_state, source, changed_by) VALUES (@id, 'created', 'seed', 'manual', 'seed')");
   return id;
@@ -142,7 +150,7 @@ test("Detour communication eligibility against SQL Server", { skip: !connectionS
       // What went out is fixed before any attempt, and the row says queued
       // until the dispatch app reports back.
       assert.deepEqual([row.status, row.delivery_status, row.published_by, row.sent_recipients], ["published", "queued", ACTOR, "riders@example.com"]);
-      assert.match(row.sent_subject ?? "", /Detour: Nicollet Ave at 5th/);
+      assert.match(row.sent_subject ?? "", /Detour: Nicollet Ave at \d+th/);
       assert.deepEqual(port.sent.map((m) => m.recipients), [["riders@example.com"]]);
     });
 
@@ -164,7 +172,9 @@ test("Detour communication eligibility against SQL Server", { skip: !connectionS
 
     await t.test("an outstanding re-review and an unfulfilled Detour are refused", async () => {
       const outstanding = await seedDetour(pool, "fulfilled", "needs_review");
-      assert.equal((await sendFor(pool, outstanding, await seedCommunication(pool, outstanding))).ok, false);
+      const held = await sendFor(pool, outstanding, await seedCommunication(pool, outstanding));
+      assert.ok(!held.ok);
+      assert.equal(held.refusal.code, "re_review_outstanding");
       const pending = await seedDetour(pool, "awaiting_fulfillment");
       const refused = await sendFor(pool, pending, await seedCommunication(pool, pending));
       assert.ok(!refused.ok);
