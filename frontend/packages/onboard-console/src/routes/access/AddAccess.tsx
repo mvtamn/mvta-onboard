@@ -20,8 +20,10 @@ const PREVIEW_TONE: Record<string, [Tone, string]> = {
 // Two different acts share this page, and the difference is the point.
 //
 // Granting a role is OnBoard's own: Entra is asked only to find the person, and
-// the grant is then written against the person OnBoard knows - which means the
-// person has signed in at least once, because that is how OnBoard learns them.
+// the grant is then written against the person OnBoard knows. Signing in is one
+// way OnBoard comes to know somebody; picking them out of the directory here is
+// the other, so a new starter can be given their role before their first day
+// rather than after being turned away once.
 //
 // Inviting a guest is still Entra's: an invitation and the app-role assignment
 // that lets them reach OnBoard at all. Their OnBoard role is granted here, in
@@ -89,13 +91,21 @@ export function AddAccess() {
   }
 
   async function grant() {
-    if (!known || !chosen || !reason.trim()) return;
+    if (!picked || !chosen || !reason.trim()) return;
     setBusy(true);
     try {
+      // Somebody OnBoard has never seen is recorded from the directory first.
+      // The row is who Entra says they are and grants nothing by itself; their
+      // first sign-in fills in the rest as it always did.
+      const personId = known?.personId ?? (await api.addAccessPerson({
+        object_id: picked.id,
+        name: picked.display_name,
+        email: picked.sign_in_name,
+      })).personId;
       // A privileged role needs the stepped-up token the server asks for before
       // it will open the request for a second Access Administrator.
       const outcome = await api.grantAccessRole(
-        known.personId,
+        personId,
         {
           role_key: chosen.key,
           reason: reason.trim(),
@@ -103,7 +113,7 @@ export function AddAccess() {
         },
         isPrivilegedRole(chosen),
       );
-      const name = personLabel(known);
+      const name = known ? personLabel(known) : picked.display_name;
       const message = outcome.disposition === "pending_approval"
         ? `${chosen.name} for ${name} is waiting for a second Access Administrator to approve it.`
         : outcome.disposition === "already_held"
@@ -153,7 +163,7 @@ export function AddAccess() {
     }
   }
 
-  const whoDone = mode === "guest" ? !!guestEmail.trim() && !!sponsor.trim() : !!known;
+  const whoDone = mode === "guest" ? !!guestEmail.trim() && !!sponsor.trim() : !!picked;
 
   return <>
     <PageHead
@@ -193,8 +203,8 @@ export function AddAccess() {
                   </label>;
                 })}
               </fieldset> : <p className="am-fine">No matches in Entra.</p> : null}
-              {picked && !known ? <p className="am-callout attn"><Icon name="info" /><span>
-                <b>OnBoard has not seen {picked.display_name} yet.</b> A person becomes grantable the first time they sign in to OnBoard, because that is when OnBoard learns who they are. Ask them to sign in once, then grant the role here. If they already had access before roles moved into OnBoard, use <Link className="am-link" to="/admin/access">Import from Entra</Link> on the Overview.
+              {picked && !known ? <p className="am-callout"><Icon name="info" /><span>
+                <b>{picked.display_name} has not signed in to OnBoard yet.</b> Granting the role here records them from the directory, so the role is waiting the first time they sign in. If they already had access before roles moved into OnBoard, use <Link className="am-link" to="/admin/access">Import from Entra</Link> on the Overview instead, which keeps everything they hold.
               </span></p> : null}
               {known && known.roles.length ? <p className="am-fine">Holds now: {known.roles.map((held) => held.roleName).join(", ")}.</p> : null}
             </> : <div className="am-fields three">
@@ -236,10 +246,10 @@ export function AddAccess() {
       <aside className="am-summary" aria-label="Review changes">
         <div className="am-summary-head">
           <span className="am-eyebrow">REVIEW</span>
-          <h3>{mode === "guest" ? (guestChanges.length ? "Invite a guest" : "No invitation yet") : chosen && known ? `Grant ${chosen.name}` : "No grant yet"}</h3>
+          <h3>{mode === "guest" ? (guestChanges.length ? "Invite a guest" : "No invitation yet") : chosen && picked ? `Grant ${chosen.name}` : "No grant yet"}</h3>
           <small>{mode === "guest"
             ? results ? "Sent" : preview ? "Checked against Entra" : guestChanges.length ? "Not checked yet" : "Enter the guest’s details."
-            : granted ? "Recorded" : known && chosen ? "Applies when you grant it" : "Pick the person and a role."}</small>
+            : granted ? "Recorded" : picked && chosen ? "Applies when you grant it" : "Pick the person and a role."}</small>
         </div>
 
         {mode === "guest"
@@ -269,7 +279,7 @@ export function AddAccess() {
           </>
           : <>
             <ul className="am-plan">
-              <li><b>{known ? personLabel(known) : picked ? picked.display_name : "Nobody selected"}</b><span className="am-fine">{known ? "Known to OnBoard" : picked ? "Has not signed in to OnBoard yet" : "Search the directory above."}</span></li>
+              <li><b>{known ? personLabel(known) : picked ? picked.display_name : "Nobody selected"}</b><span className="am-fine">{known ? "Known to OnBoard" : picked ? "Added from the directory when you grant" : "Search the directory above."}</span></li>
               <li>
                 <b>{chosen ? chosen.name : "No role chosen"}</b>
                 {chosen && isPrivilegedRole(chosen) ? <Pill tone="warn">Needs a second approver</Pill> : null}
@@ -277,7 +287,7 @@ export function AddAccess() {
               </li>
             </ul>
             <div className="am-summary-foot">
-              <button type="button" className="am-btn primary" disabled={busy || !canManage || !known || !chosen || !reason.trim()} onClick={() => void grant()}>
+              <button type="button" className="am-btn primary" disabled={busy || !canManage || !picked || !chosen || !reason.trim()} onClick={() => void grant()}>
                 {chosen && isPrivilegedRole(chosen) ? "Request this role" : "Grant role"}
               </button>
               {granted

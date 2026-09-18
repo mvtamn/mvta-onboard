@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type PropsWithChildren } from "react";
 import {
   ApiError,
+  type AccessActivityEntry,
   type AccessGrantRequestView,
   type AccessHealthFinding,
   type AccessPersonView,
@@ -23,6 +24,13 @@ import { roleLabel } from "../../auth/roles.js";
 // three things and no more - find a person in the directory, invite a guest,
 // and show sign-in activity - so the Entra inventory is still read here for
 // the Access groups and Workloads pages and for naming audit targets.
+//
+// What happened to access is read from two places and shown as one list. The
+// OnBoard tables hold every grant, removal, request and role edit made since
+// the cutover; AccessManagementAudit holds the Graph-era record, which now
+// collects only previews, exports and sign-in views. Reading the older feed
+// alone left the Activity log showing "Checked a change" while the changes
+// themselves were missing, so both are read and merged here.
 // Access health is a separate read, kept on first visit to that page.
 
 export const HUMAN_ROLES: OnBoardAccessRole[] = [
@@ -138,6 +146,23 @@ export function principalAccountStatus(principal: OnBoardAccessPrincipal): { ton
   return { tone: "ok", label: "Enabled" };
 }
 
+/**
+ * One line of the activity feed, whichever record it came from: names already
+ * resolved, so a page renders it rather than deciding what it means.
+ */
+export interface ActivityRow {
+  id: string;
+  actor: string;
+  action: string;
+  /** Who it was done to, when it was done to somebody. */
+  target: string | null;
+  /** The role it was about, when it was about one. */
+  role: string | null;
+  reason: string | null;
+  outcome: string;
+  occurredAt: string;
+}
+
 interface AccessState {
   /** Who OnBoard knows, and what each of them holds (ADR-0032). */
   people: AccessPersonView[];
@@ -150,6 +175,8 @@ interface AccessState {
   /** The Entra inventory, still read for Access groups, Workloads and audit names. */
   principals: OnBoardAccessPrincipal[];
   audit: OnBoardAccessAuditEntry[];
+  /** Everything that has happened to access, newest first, already named. */
+  activity: ActivityRow[];
   environment: string;
   accessAdminFallback: boolean;
   loading: boolean;
@@ -175,6 +202,7 @@ export function AccessProvider({ children }: PropsWithChildren) {
   const [notReady, setNotReady] = useState<string | null>(null);
   const [principals, setPrincipals] = useState<OnBoardAccessPrincipal[]>([]);
   const [audit, setAudit] = useState<OnBoardAccessAuditEntry[]>([]);
+  const [activity, setActivity] = useState<AccessActivityEntry[]>([]);
   const [environment, setEnvironment] = useState("");
   const [accessAdminFallback, setAccessAdminFallback] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -192,8 +220,9 @@ export function AccessProvider({ children }: PropsWithChildren) {
       api.getAccessRoles(),
       api.getAccessPrincipals(),
       api.getAccessAudit(),
+      api.getAccessActivity(),
     ] as const);
-    const [peopleResult, requestsResult, rolesResult, inventoryResult, auditResult] = results;
+    const [peopleResult, requestsResult, rolesResult, inventoryResult, auditResult, activityResult] = results;
     try {
       // Each list defaults to empty rather than to undefined: a payload without
       // the field - an older API, a proxy returning something else - used to
@@ -208,6 +237,7 @@ export function AccessProvider({ children }: PropsWithChildren) {
         setAccessAdminFallback(inventoryResult.value.access_admin_fallback);
       }
       if (auditResult.status === "fulfilled") setAudit(auditResult.value.audit ?? []);
+      if (activityResult.status === "fulfilled") setActivity(activityResult.value.activity ?? []);
 
       const rejected = results.filter((result) => result.status === "rejected");
       setNotReady(rejected.map((result) => setupNotice(result.reason)).find(Boolean) ?? null);
@@ -242,13 +272,39 @@ export function AccessProvider({ children }: PropsWithChildren) {
       names.set(person.objectId, personLabel(person));
       names.set(person.personId, personLabel(person));
     }
+    const named = (value: string | null | undefined) => (value ? names.get(value) ?? value : null);
+    const rows: ActivityRow[] = [
+      ...activity.map((entry) => ({
+        id: entry.id,
+        actor: named(entry.actor_name) ?? "Unknown",
+        action: entry.action,
+        target: entry.target_name ?? named(entry.target_id),
+        role: entry.role,
+        reason: entry.reason,
+        outcome: entry.outcome,
+        occurredAt: entry.occurred_at,
+      })),
+      // The Graph-era rows kept an object id wherever the sign-in did not carry
+      // a name, which is how the feed came to show a bare GUID. Naming happens
+      // on the way in, once.
+      ...audit.map((entry, index) => ({
+        id: entry.id ?? `audit-${entry.occurred_at}-${index}`,
+        actor: named(entry.actor_name) ?? named(entry.actor_id) ?? "Unknown",
+        action: entry.action,
+        target: named(entry.target_id),
+        role: null,
+        reason: entry.reason,
+        outcome: entry.outcome,
+        occurredAt: entry.occurred_at,
+      })),
+    ].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
     return {
-      people, requests, roles, notReady, principals, audit, environment, accessAdminFallback,
+      people, requests, roles, notReady, principals, audit, activity: rows, environment, accessAdminFallback,
       loading, busy, setBusy, error, setError, notice, setNotice, load,
       findings, findingsLoading, loadFindings,
       principalName: (id: string) => names.get(id) ?? id,
     };
-  }, [accessAdminFallback, audit, busy, environment, error, findings, findingsLoading, load, loadFindings, loading, notReady, notice, people, principals, requests, roles]);
+  }, [accessAdminFallback, activity, audit, busy, environment, error, findings, findingsLoading, load, loadFindings, loading, notReady, notice, people, principals, requests, roles]);
 
   return <AccessContext.Provider value={value}>{children}</AccessContext.Provider>;
 }
