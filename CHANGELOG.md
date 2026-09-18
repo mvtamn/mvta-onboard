@@ -5,6 +5,13 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.279] - 2026-09-18
+
+- **Integrations & Data Health says when the database is behind the code.** There is no migration runner and no schema-version table - migrations are numbered files a person applies - so a merge can ship a read of a column nobody has added yet and nothing says so. On 2026-09-18 that happened: four migrations' worth of code went live at 14:59 UTC against a database missing all four, and four timers threw `Invalid column name 'evidence_conflict_reason'` about 150 times over an hour before anyone noticed.
+- **The checks already in the code could not have caught it.** There are a dozen `OBJECT_ID('dbo.X') IS NULL` guards across the handlers and every one asks whether a *table* exists. A migration that adds a *column* to a table that already exists sails straight through them - which is exactly what happened. Requirements are declared at column granularity for that reason.
+- **It reports through the existing feed checks**, so a missing migration appears as a failed row - "Not applied to this database: MonitoredMissedTrips.evidence_conflict_at is missing. Missed-trip polls and the review queue fail outright. Run sql/migration-135-*.sql." - with no console change at all.
+- **The rule is pure and tested without a database** (13 tests): a column missing from a table that exists, a column on an absent table reported once as the table, a partly applied migration still failing, one row per migration however many things it adds, and a guard that every declared migration names a file that exists.
+
 ## [1.5.278] - 2026-09-18
 
 - **Access & Identity's Activity log reads the record that holds the changes.** Both it and the Overview's Recent activity read `/api/access-management/audit` alone - the Graph-era `AccessManagementAudit` table. Since roles moved into OnBoard (ADR-0032), granting writes `AccessRoleGrants` and never touches that table, so the feed could only show previews, exports, sign-in views and guest invitations: a page of "Checked a change" with every grant invisible. A new `GET /manage/access/activity` reads grants, removals, privileged requests and their decisions, and role edits straight out of the OnBoard tables - they are already append-only, so nothing is written twice - and the console merges the two feeds so the pre-cutover record is not lost.
