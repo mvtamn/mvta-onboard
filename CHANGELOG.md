@@ -5,13 +5,20 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.268] - 2026-09-18
+## [1.5.269] - 2026-09-18
 
 - **Detector promotion is a dated decision, not a setting.** Taking a missed-trip detector out of Shadow detection was `MISSED_TRIP_PROMOTED_DETECTORS`, a list of names. It had no date, so the moment it changed every case that detector had ever opened started counting - including confirmed cases in months already measured. It kept no reason, no measured precision and no author. And SQL could not read it, so `vw_MissedTrip` had to report every detector as unpromoted and disagreed with the app by design.
 - **Migration 134 adds an append-only promotion history.** Detector family, the **service date** the decision takes effect from, promote or demote, the reason, the measured precision and sample size it was decided on, and who decided. A case counts toward an assessment when its detector was promoted on that case's service date; the latest decision at or before it wins. Demotion leaves the months the detector was trusted for counting as they did.
 - **Nothing is promoted by this change.** The setting was empty on dev, and an empty history means the same thing, so no figure moves. Queries carry their promotion facts as literals, so a database without migration 134 behaves exactly as before rather than failing.
 - **`vw_MissedTrip` reads the history itself**, since nothing regenerates a view when a promotion is recorded. The contract test runs both renderings over the same rows, so the warehouse agrees with the app by construction. ADR-0036 records the decision.
 - **Verified.** New `promotion.test.ts` (8 tests) covers dating, demotion, re-promotion, same-day reversal and unknown names; the missed-trip contract test now checks four promotion states, plus history against literals. Backend tests pass.
+## [1.5.268] - 2026-09-18
+
+- **One place for the words Missed Trips puts on a case.** Half the module's vocabulary lived in `missedTripReview.ts` and was tested; the other half - the detector name, the evidence-quality label, the route and trip code, review urgency (Aging/Overdue), and where a confirmed trip landed in the performance assessment - was private to the 1253-line `MissedTripAlerts.tsx` and had no tests, because reaching it meant rendering the page. It moved, with its reasoning comments intact. `MissedTripAlerts.tsx` drops to 1119 lines and is now rendering.
+- **20 new tests** over rules that had none, including the ones with real judgement in them: a route never reads "Route 420 · 420", a trip code falls back to whichever half exists, urgency stops once someone has reviewed however old the row is, and each assessment outcome - not linked, awaiting attribution, recorded but not charged, counted in a month that may already be finalized - says the right thing.
+- **No wording changes**, and no page split: the four pages inside `MissedTripAlerts.tsx` stay where they are for now.
+- **Found, not fixed:** a case held for an unknown data gap is labelled "Legacy — unverified", because the label falls through to legacy for anything that is not source-verified or experimental. Its own label is worth adding, separately.
+
 ## [1.5.267] - 2026-09-18
 
 - **A probable Avail link is now something a reviewer can answer.** 1.5.264 let Avail corroborate a case when the match is exact, and left a probable match "for a reviewer" - but nothing was written down, so each nightly run counted probable links, warned about them, and forgot them. There was never anything to confirm. Migration 136's `AvailEvidenceLinks` keeps every record in the window with how it was placed, how many cases it could have been about, and why - in words a reviewer can act on.
