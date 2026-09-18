@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.274] - 2026-09-18
+
+- **The Dashboard's "MVTA Connect" feed row is named after the feed it reads.** The row is bound to one dependency, `spare_on_demand_reconciliation` (`hooks/feedFreshness.ts`), but carried the vendor's name, and `summarizeFeeds` promotes the worst row to the console-wide freshness bar. With the on-demand monitor not switched on, every staff member saw "MVTA Connect unavailable" across the top of the Dashboard while the same console showed `spare_requests`, `spare_slots` and `spare_duties` delivering minutes earlier - sending anyone who believed it to the vendor rather than to the configuration. The row is now "On-demand reconciliation", with "MVTA Connect wait-time monitor" beneath it.
+- **A stream that has never delivered reads "Not received", not "Unavailable".** `judge` now sees the dependency's `last_success_at`: no delivery ever recorded is a feed that was never switched on or has never completed a first run, which is a different fault from an ingestion that broke. A stream that did deliver and then went unavailable still reads "Unavailable".
+- **Verified.** Console suite 716 tests pass, including a new test separating the never-delivered case from the stopped-delivering one. Frontend typecheck clean. No API, schema or migration change.
+
 ## [1.5.273] - 2026-09-18
 
 - **Fixed: migration 061 could not be applied to any database that needed it.** It adds `review_status` to `Detours` and then, **in the same batch**, a CHECK naming that column. SQL Server compiles a batch before executing it, so the reference fails with "Invalid column name" and the whole batch is abandoned - nothing added, and quietly enough that a run looks uneventful. Exactly the defect migration 092 had. The CHECK now runs through `EXEC`.

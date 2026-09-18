@@ -56,14 +56,14 @@ describe("Dashboard", () => {
   // The bar used to say "Live data connected" whenever the API answered, even
   // with a feed hours stale or never delivered.
   it("reports the feeds, not just the API, once the API is answering", () => {
-    feedHealth.summary = { state: "unavailable", label: "MVTA Connect unavailable" };
+    feedHealth.summary = { state: "unavailable", label: "On-demand reconciliation not received" };
     render(<MemoryRouter><Dashboard stats={stats()} /></MemoryRouter>);
 
     const bar = screen.getByRole("status");
-    expect(bar).toHaveTextContent("MVTA Connect unavailable");
+    expect(bar).toHaveTextContent("On-demand reconciliation not received");
     expect(bar).not.toHaveTextContent("Live data connected");
     expect(bar.className).toContain("unavailable");
-    expect(screen.getByLabelText("Dashboard summary")).toHaveTextContent("MVTA Connect unavailable");
+    expect(screen.getByLabelText("Dashboard summary")).toHaveTextContent("On-demand reconciliation not received");
     feedHealth.summary = { state: "live", label: "All feeds current" };
   });
 
