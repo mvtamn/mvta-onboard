@@ -7,6 +7,7 @@ import { probeGtfsRtFeed } from "../lib/gtfsRtReader";
 import { ledgerFeedChecks, summarizeFeedResponse, type FeedCheck } from "../lib/feedCheckResponse";
 import { feedHealthTableReady } from "../lib/kpiFeedHealth";
 import { loadKpiFeedHealthRecords } from "../lib/kpiTrustStore";
+import { missedTripDetectionSettings } from "../lib/missedTripCase";
 import { fetchSparePage, type SpareRequestRecord } from "../lib/spareApi";
 
 async function checkStaticGtfs(url: string | undefined): Promise<FeedCheck> {
@@ -39,7 +40,7 @@ async function checkSpareRequests(nowSeconds: number): Promise<FeedCheck> {
 }
 
 async function spareMissedTripPipelineChecks(): Promise<FeedCheck[]> {
-  const configured = process.env.SPARE_MISSED_TRIPS_ENABLED?.trim().toLowerCase() === "true";
+  const configured = missedTripDetectionSettings().spareEnabled;
   if (!configured) {
     return ["Requests", "Slots"].map((name) => ({ name: `Spare missed-trip ${name} ingestion`, configured: false }));
   }

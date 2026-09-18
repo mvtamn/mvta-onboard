@@ -27,6 +27,24 @@ import type { Actor, CaseAct, CaseKey, CaseRefusal, MissedTripClassification, Ob
 export * from "./types";
 export { classifyMissedTripCase, missedTripCaseSql, missedTripSourceRefSql } from "./classify";
 export * from "./promotion";
+export { missedTripDetectionSettings, type MissedTripDetectionSettings } from "./settings";
+export {
+  caseQuery,
+  caseTablesReady,
+  readMissedTripCases,
+  readMissedTripMonthlySummary,
+  viewCount,
+  DEFAULT_CASE_LIMIT,
+  MAX_CASE_LIMIT,
+  type CaseListRow,
+  type CaseQuery,
+  type CaseReadResult,
+  type CaseTablesReady,
+  type CaseTotals,
+  type CaseView,
+  type MissedTripsSummaryRow,
+  type MonthlySummaryResult,
+} from "./reads";
 
 export async function observeMissedTrips(pool: sql.ConnectionPool, observations: RunObservation[], now = new Date()): Promise<ObserveReport> {
   const report: ObserveReport = { created: 0, held: 0, confirmed: 0, closedByEvidence: 0, evidenceRecorded: 0, skippedChanged: 0, failed: [] };
@@ -106,6 +124,9 @@ export async function actOnMissedTripCase(pool: sql.ConnectionPool, key: CaseKey
     }
     const review = decision.review;
 
+    // Settling an Evidence conflict is exactly this act: a reviewer recording
+    // an outcome with both sources in front of them (ADR-0035). The review
+    // clears it - nothing else does, and it is never cleared automatically.
     await new sql.Request(tx)
       .input("trip_id", sql.NVarChar(100), key.tripId)
       .input("service_date", sql.NVarChar(20), key.serviceDate)
@@ -124,7 +145,9 @@ export async function actOnMissedTripCase(pool: sql.ConnectionPool, key: CaseKey
             validated_by = @validated_by,
             validated_at = SYSUTCDATETIME(),
             notes = @notes,
-            reason_code = @reason_code
+            reason_code = @reason_code,
+            evidence_conflict_at = NULL,
+            evidence_conflict_reason = NULL
         WHERE trip_id = @trip_id AND service_date = @service_date;
 
         INSERT INTO MissedTripReviewHistory (

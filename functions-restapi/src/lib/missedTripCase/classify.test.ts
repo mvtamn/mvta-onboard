@@ -57,9 +57,9 @@ test("only a Confirmed missed trip from a promoted detector counts toward assess
   assert.equal(classifyMissedTripCase(confirmed, none).counts_toward_assessment, false);
   assert.equal(classifyMissedTripCase(confirmed, promoted("gtfs_silent_no_show")).counts_toward_assessment, true);
   assert.equal(classifyMissedTripCase({ ...confirmed, source_system: "spare", detection_type: "spare_late_start" }, promoted("gtfs_silent_no_show")).counts_toward_assessment, false);
-  assert.equal(classifyMissedTripCase({ ...confirmed, data_quality_status: "legacy_unverified" }, promoted("gtfs_silent_no_show")).counts_toward_assessment, false);
   // The decision has a date: a case from before it does not count.
   assert.equal(classifyMissedTripCase({ ...confirmed, service_date: "20260831" }, promoted("gtfs_silent_no_show")).counts_toward_assessment, false);
+  assert.equal(classifyMissedTripCase({ ...confirmed, data_quality_status: "legacy_unverified" }, promoted("gtfs_silent_no_show")).counts_toward_assessment, false);
 });
 
 test("findings name what the evidence shows", () => {
@@ -74,9 +74,9 @@ test("findings name what the evidence shows", () => {
   for (const [overrides, finding] of rows) assert.equal(classifyMissedTripCase(row(overrides), none).evidence_finding, finding);
 });
 
-test("promotion reaches SQL as dated literals, and nothing promoted reads as Shadow detection", () => {
-  const sqlText = missedTripCaseSql("m", "mtc", promoted("spare"));
-  assert.match(sqlText, /mtc_base\.detector = N'spare' AND LEFT\(m\.service_date, 8\) >= N'20260901'/);
+test("promotion names are checked before they reach SQL", () => {
+  assert.match(missedTripCaseSql("m", "mtc", promoted("spare")),
+    /mtc_base\.detector = N'spare' AND LEFT\(m\.service_date, 8\) >= N'20260901'/);
   assert.match(missedTripCaseSql("m", "mtc", none), /1 = 0/);
   assert.match(missedTripCaseSql("m", "mtc", PROMOTION_HISTORY), /MissedTripDetectorPromotions/);
   assert.throws(() => missedTripCaseSql("m; DROP"), TypeError);
@@ -127,9 +127,52 @@ test("migration 106 can no longer replace the classified vw_MissedTrip", () => {
   assert.ok(guard < view && view < off, "the guard must open before the view and close after it");
 });
 
-test("migration 134's vw_MissedTrip classifies with missedTripCaseSql verbatim", () => {
+test("the newest vw_MissedTrip classifies with missedTripCaseSql verbatim", () => {
+  // Migrations are append-only, so the view is redefined by whichever migration
+  // last changed the classification - 137, which reads the promotion history.
+  // Older definitions are guarded off rather than edited.
   const squash = (text: string) => text.replace(/\s+/g, " ").trim();
-  const migration = readFileSync(join(process.cwd(), "sql", "migration-134-missed-trip-detector-promotion.sql"), "utf8");
+  const migration = readFileSync(join(process.cwd(), "sql", "migration-137-missed-trip-promotion-view.sql"), "utf8");
   assert.ok(squash(migration).includes(squash(missedTripCaseSql("m", "mtc", PROMOTION_HISTORY))),
-    "regenerate the CROSS APPLY in migration 134 from missedTripCaseSql(\"m\", \"mtc\", PROMOTION_HISTORY)");
+    "regenerate the CROSS APPLY in migration 137 from missedTripCaseSql(\"m\", \"mtc\", PROMOTION_HISTORY)");
+});
+
+test("migration 135 no longer replaces the promotion-aware vw_MissedTrip", () => {
+  // 137 is the newest definer, so 135's own view has to be guarded off the same
+  // way it guarded 125 - otherwise a re-run puts back a definition where every
+  // detector reads as unpromoted.
+  const migration = readFileSync(join(process.cwd(), "sql", "migration-135-missed-trip-evidence-conflict.sql"), "utf8");
+  const guard = migration.indexOf("IF OBJECT_ID('dbo.MissedTripDetectorPromotions', 'U') IS NOT NULL\n  SET NOEXEC ON;");
+  const view = migration.indexOf("CREATE OR ALTER VIEW dbo.vw_MissedTrip");
+  const off = migration.indexOf("SET NOEXEC OFF;");
+  assert.ok(guard > -1, "migration 135 must skip its vw_MissedTrip once migration 137 has run");
+  assert.ok(guard < view && view < off, "the guard must open before the view and close after it");
+});
+
+test("migration 125 no longer replaces the conflict-aware vw_MissedTrip", () => {
+  // Same shape of guard migration 106 carries against 125: 125 is re-runnable,
+  // so without this its pre-conflict definition would come back and the
+  // reporting layer would drop the Assessment evidence gate with nothing
+  // failing.
+  const migration = readFileSync(join(process.cwd(), "sql", "migration-125-missed-trip-review-outcomes-and-window.sql"), "utf8");
+  const guard = migration.indexOf("IF COL_LENGTH('dbo.MonitoredMissedTrips', 'evidence_conflict_at') IS NOT NULL\n  SET NOEXEC ON;");
+  const view = migration.indexOf("CREATE OR ALTER VIEW dbo.vw_MissedTrip");
+  const off = migration.indexOf("SET NOEXEC OFF;");
+  assert.ok(guard > -1, "migration 125 must skip its vw_MissedTrip once migration 135 has run");
+  assert.ok(guard < view && view < off, "the guard must open before the view and close after it");
+});
+
+test("an unresolved Evidence conflict blocks Assessment promotion without changing the outcome", () => {
+  const confirmed = row({ validation_status: "confirmed", source_system: "spare" });
+  const spare = promoted("spare");
+  const clean = classifyMissedTripCase(confirmed, spare);
+  assert.equal(clean.counts_toward_assessment, true);
+  assert.equal(clean.evidence_conflict, false);
+
+  const conflicted = classifyMissedTripCase({ ...confirmed, evidence_conflict_at: new Date() }, spare);
+  assert.equal(conflicted.evidence_conflict, true);
+  assert.equal(conflicted.counts_toward_assessment, false, "the gate blocks promotion");
+  assert.equal(conflicted.counts_as_missed, true, "the operational outcome is untouched");
+  assert.equal(conflicted.review_outcome, "confirmed_missed_trip");
+  assert.equal(conflicted.lifecycle, "reviewed", "a conflict is not a lifecycle");
 });

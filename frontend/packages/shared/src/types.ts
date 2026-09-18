@@ -628,6 +628,11 @@ export interface MissedTrip {
   held_reason: string | null;
   in_queue: boolean;
   concluded: boolean;
+  // Two exact-matched sources support incompatible findings (ADR-0035). It
+  // blocks the performance assessment and waits for a reviewer; it never
+  // changes the case's own outcome.
+  evidence_conflict: boolean;
+  evidence_conflict_reason: string | null;
 }
 
 export type OccurrenceReviewStatus = "candidate" | "confirmed" | "dismissed";

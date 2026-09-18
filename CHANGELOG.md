@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.266] - 2026-09-18
+## [1.5.272] - 2026-09-18
 
 - **Administration → Missed-trip Detectors.** The page that takes a detector out of Shadow detection, and puts it back. Each detector shows where it stands - counting toward assessments since a service date, or in Shadow detection, where its cases are still reviewed but never assessed - and the decisions behind it are listed with their evidence, reason and author.
 - **A promotion has to show its working.** The form asks for the precision measured over a complete service week and the number of cases it covers, and refuses a promotion below 95% precision, naming what it measured against what it needed (CONTEXT's bar, enforced in `decidePromotion` rather than left to the form). The on-demand detector additionally asks the person to confirm the two complete service weeks, dispatcher agreement and absence of unresolved feed-health issues that CONTEXT requires; the confirmation is written into the stored reason.
@@ -14,13 +14,77 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **Detector names this build does not know are reported**, not ignored, so a decision that promotes nothing cannot look applied.
 - **Verified.** 7 new tests for the page, 10 for its pure helpers, 7 more for the server's decision, plus the write path in the missed-trip contract test. Console 686 tests pass; backend tests pass.
 
-## [1.5.265] - 2026-09-18
+## [1.5.271] - 2026-09-18
 
 - **Detector promotion is a dated decision, not a setting.** Taking a missed-trip detector out of Shadow detection was `MISSED_TRIP_PROMOTED_DETECTORS`, a list of names. It had no date, so the moment it changed every case that detector had ever opened started counting - including confirmed cases in months already measured. It kept no reason, no measured precision and no author. And SQL could not read it, so `vw_MissedTrip` had to report every detector as unpromoted and disagreed with the app by design.
 - **Migration 134 adds an append-only promotion history.** Detector family, the **service date** the decision takes effect from, promote or demote, the reason, the measured precision and sample size it was decided on, and who decided. A case counts toward an assessment when its detector was promoted on that case's service date; the latest decision at or before it wins. Demotion leaves the months the detector was trusted for counting as they did.
 - **Nothing is promoted by this change.** The setting was empty on dev, and an empty history means the same thing, so no figure moves. Queries carry their promotion facts as literals, so a database without migration 134 behaves exactly as before rather than failing.
 - **`vw_MissedTrip` reads the history itself**, since nothing regenerates a view when a promotion is recorded. The contract test runs both renderings over the same rows, so the warehouse agrees with the app by construction. ADR-0035 records the decision.
 - **Verified.** New `promotion.test.ts` (8 tests) covers dating, demotion, re-promotion, same-day reversal and unknown names; the missed-trip contract test now checks four promotion states, plus history against literals. Backend tests pass.
+- **`vw_MissedTrip` reads the history itself**, since nothing regenerates a view when a promotion is recorded. The contract test runs both renderings over the same rows, so the warehouse agrees with the app by construction. ADR-0036 records the decision.
+- **Verified.** New `promotion.test.ts` (8 tests) covers dating, demotion, re-promotion, same-day reversal and unknown names; the missed-trip contract test now checks four promotion states, plus history against literals. Backend tests pass.
+## [1.5.270] - 2026-09-18
+
+- **The two statements of the missed-trip classification are now held to each other deliberately.** The rule exists twice on purpose - as TypeScript for the decide path, which runs inside a transaction and must stay pure, and as SQL for every set-based reader - and a database test compares them. That test was checking whichever rows earlier subtests happened to leave behind, roughly eighteen of them, which is incidental coverage of a contractual rule. It now walks the rule space on purpose: **8,642 rows** across every combination of status, review outcome, data quality, detection type, source, hold reason, detector version, operating window, late arrival and evidence conflict, under two promotion settings, reporting the first disagreements with the row that caused them rather than a bare failure.
+- Verified locally against the TypeScript side alone (there is no database here): the matrix reaches every lifecycle, every evidence finding and every detector. The comparison itself runs in CI.
+- **No rule changed**, and the duplication is deliberately still there - see the pull request for why removing it was judged the wrong trade.
+
+## [1.5.269] - 2026-09-18
+
+- **A disagreement between sources is now something a reviewer can see and settle.** ADR-0035 gave a Missed-trip case an Evidence conflict, but nothing rendered it: it existed only in the API and the database, and a conflict nobody can see cannot be settled. The case is flagged in the review queue and the history list, and the detail panel says what disagreed, in the words the server recorded, and what the reviewer is being asked to do about it.
+- **Recording a review settles it.** That is exactly what the ADR asks of a reviewer - an outcome reached with both sources in front of them - so the review clears the conflict and the trip becomes eligible for the performance assessment again. Nothing else clears it, and it is never cleared automatically.
+- **Fixed: the assessment line could contradict the server.** A confirmed trip held out by the Assessment evidence gate still read as "Counted in 09/2026", because the console worked that line out from the review alone. It now reads "Held — sources disagree", whatever the review said.
+- **Verified** by rendering it: the pill appears beside the lifecycle in both list layouts, and the detail callout carries the reason and the action. 696 console tests and 1223 backend tests pass, including the review that settles a conflict, proved against SQL.
+
+## [1.5.268] - 2026-09-18
+
+- **One place for the words Missed Trips puts on a case.** Half the module's vocabulary lived in `missedTripReview.ts` and was tested; the other half - the detector name, the evidence-quality label, the route and trip code, review urgency (Aging/Overdue), and where a confirmed trip landed in the performance assessment - was private to the 1253-line `MissedTripAlerts.tsx` and had no tests, because reaching it meant rendering the page. It moved, with its reasoning comments intact. `MissedTripAlerts.tsx` drops to 1119 lines and is now rendering.
+- **20 new tests** over rules that had none, including the ones with real judgement in them: a route never reads "Route 420 · 420", a trip code falls back to whichever half exists, urgency stops once someone has reviewed however old the row is, and each assessment outcome - not linked, awaiting attribution, recorded but not charged, counted in a month that may already be finalized - says the right thing.
+- **No wording changes**, and no page split: the four pages inside `MissedTripAlerts.tsx` stay where they are for now.
+- **Found, not fixed:** a case held for an unknown data gap is labelled "Legacy — unverified", because the label falls through to legacy for anything that is not source-verified or experimental. Its own label is worth adding, separately.
+
+## [1.5.267] - 2026-09-18
+
+- **A probable Avail link is now something a reviewer can answer.** 1.5.264 let Avail corroborate a case when the match is exact, and left a probable match "for a reviewer" - but nothing was written down, so each nightly run counted probable links, warned about them, and forgot them. There was never anything to confirm. Migration 136's `AvailEvidenceLinks` keeps every record in the window with how it was placed, how many cases it could have been about, and why - in words a reviewer can act on.
+- **Confirming is what makes the record corroborate the case.** The adapter refuses to guess between candidates, so the person names one, and the named case has to be on the route and service date the record reports or the confirmation is refused. The evidence is stored as reviewer-placed, so nothing later reads it as a link the match itself was sure of. Rejecting closes the link and changes nothing.
+- **Avail withdrawing a record is now visible.** The feed restates its trailing window nightly, so a record that stops being reported is corroboration being taken back - possibly from a case already reviewed on the strength of it. The link is marked rather than forgotten, and it comes back if the feed reports it again.
+- **An answer survives a run that finds the same thing, and does not survive one that places the record elsewhere** - that is no longer the link the reviewer agreed to.
+- `GET /api/avail-evidence-links` (`compliance-review.view`) lists what is outstanding; `POST /api/avail-evidence-links/{id}` (`compliance-review.review`) answers one. No console page yet.
+- **Verified.** 6 tests for the link and its wording, and a DB contract test covering re-runs, the exact-link refusal, confirming without naming a case, naming a case on the wrong route, a confirmation reaching the case's evidence, an answer surviving an unchanged run and not surviving a moved one, and a retraction clearing when the record returns.
+
+## [1.5.264] - 2026-09-18
+
+- **Avail corroborates missed-trip cases; it does not decide them.** The vendor's own retrospective report reaches the Missed-trip case module as a third source adapter (ADR-0035). It never opens a case, never reopens or closes one, and never rewrites a review - the only thing it can change on its own is whether the case is in conflict.
+- **Avail names no trip**, so a link is built from route, local service date and Published Trip start: **exact** when those agree to the minute and name exactly one case, **probable** when the start time is missing or several cases match, **unmatched** when none does. Only an exact link becomes evidence; probable and unmatched are counted and reported, never guessed at. Unmatched is the measure of what no other source noticed, since Avail cannot open a case.
+- **Evidence is copied onto the case, not referenced.** The Avail feed replaces its whole trailing three-month window nightly and its row ids do not survive, so a reference would dangle by construction and a reviewed case's evidence would change under it.
+- **A contradiction becomes an Evidence conflict** - Avail says missed where the case concluded Timely service, or Avail says the trip ran and missed a stop where the case is a Confirmed missed trip. It is recorded once, keeps its first timestamp, and is never settled by preferring one source over the other.
+- **Migration 135** adds `evidence_conflict_at` and `evidence_conflict_reason`, and regenerates `vw_MissedTrip` so the reporting layer classifies by the same rule. A case with an unresolved conflict stops reaching occurrence intake - the Assessment evidence gate - while its operational outcome stands.
+- **Verified.** 1223 backend tests pass, including 17 new ones over the matching rule (the second is noise, a different minute is a different run, two cases at the same minute is probable not a guess) and the conflict rules (nothing reopens, no review is rewritten, evidence sits beside what the live sources recorded). A database contract case proves the gate holds in SQL as well as in TypeScript.
+
+## [1.5.262] - 2026-09-18
+
+- **Import from Entra says what it read.** Pressing it on dev reported nothing to import while Entra held 24 assignments across 7 people, and neither the page nor the API log said which half had gone wrong - the console never posted, so there was nothing to look at. Finding nothing is a claim about Entra, and it is now made with evidence: no principals at all names the app-role configuration (`ONBOARD_ACCESS_CONFIG_JSON` against the application's current app-role ids), groups without people names the directory read permission that expands group membership, and people without a recognised app role says so plainly. A successful import now leads with what it read - "24 read from Entra · 7 people, 24 grants, 0 skipped" - so the number written can be checked against the number found.
+- **Verified.** Console 671 tests, including the two new empty cases and the assertion that neither of them posts.
+
+## [1.5.261] - 2026-09-18
+
+- **The Missed Trips list and its tiles cannot disagree.** The queue read model lived inside its endpoints: `GET /missed-trips` carried the list, thirteen totals, the paging rules, the occurrence join and two `OBJECT_ID` probes in its own body, and `GET /missed-trips-monthly-summary` stated "what counts as a finding" a second time as its own `WHERE`. Both now read through `lib/missedTripCase/reads.ts`, beside the module that already owned every write and every classification. The handlers shrink to authorization, query and response shape - 241 lines to 101, and 80 to 32.
+- **Proved, not asserted.** The list and the totals are still two queries over the same classification, so the database contract test now reads every view through the interface and checks that each view lists exactly what its tile counts, that consecutive pages never repeat a case, and that every finding lands in exactly one monthly bucket.
+- **The response shape stays with the endpoint.** The module returns cases and totals; feed health is still KPI trust's answer and the diagnostics envelope is still the endpoint's, so the module never learns what JSON the console expects.
+- **Two things the compiler found, both preserved rather than fixed:** the endpoint's row type omitted the six classification columns its own query returned, so the console was consuming columns nothing on the server named; and `?limit=` asks for one case rather than falling back to the default, as it always has. Both now have a name and a test.
+
+## [1.5.260] - 2026-09-18
+
+- **One reading of what the missed-trip detectors are doing.** `GTFS_SILENT_NO_SHOW_ENABLED`, `SPARE_MISSED_TRIPS_ENABLED`, `SPARE_MISSED_TRIP_SERVICE_IDS` and `SPARE_CONTRACTOR_FAULT_VALUES` were each parsed at the point of use - the same `?.trim().toLowerCase() === "true"` written out five times across the two adapters, the poll, the ingest, `/feed-checks` and `GET /missed-trips`. Whether a detector is running is part of the Missed-trip case module's interface, so `missedTripDetectionSettings(env)` now answers it and nothing outside reads those variables. A typo could previously have had the console call a detector paused while the poll ran it, and nothing would have failed.
+- **Fixed: a scope of nothing but separators counted as configured.** `spare_service_scope_configured` tested the raw string for emptiness, so `" , , "` reported a configured scope over zero services. It now counts the services actually named.
+- **`env` is a parameter**, as in `availClient` and `gtfsRtReader`, so a test names the settings it wants instead of mutating a global. 7 new tests cover what counts as "true" (`1` and `yes` do not), independent gating of the two detectors, service ids keeping Spare's own casing, fault values lowercased, and the separator-only list.
+- Promotion out of Shadow detection stays in `classify.ts`: `promotedDetectors()` already had this shape and is threaded through the classification and its SQL, so it stays beside the rules it governs.
+
+## [1.5.259] - 2026-09-18
+
+- **Fixed-route missed-trip detection reads through one seam.** Every read the GTFS detector makes - the day's scheduled runs with their operational evidence, start evidence, a cancellation's scheduled time, and feed health - is injected through `GtfsDetectionDeps` with a live default, the way `gtfsRtReader`, `feedRun` and `availClient` already do it. The rules that decide *which* trips are judged - past its 30-minute deadline, already started, on a special-event route, which service day it belongs to, and what the day's own evidence can support - are now pure functions over one Scheduled day and have tests for the first time (23 of them, no database).
+- **No change to detection.** The queries and the rules are the same; the detector is mid-Shadow-detection and its numbers stay comparable. One log-only difference: a service day with nothing scheduled no longer appends a second, usually empty, explanation to the poll's warning line.
+- **`Scheduled day` is in CONTEXT.md**, defined as what one pass read - deliberately *not* the retained `Schedule snapshot`, which the code still does not implement.
 
 ## [1.5.258] - 2026-09-18
 
