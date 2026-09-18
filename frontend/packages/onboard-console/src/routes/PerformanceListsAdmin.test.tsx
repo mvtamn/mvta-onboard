@@ -2,8 +2,11 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PerformanceListsAdmin } from "./PerformanceListsAdmin.js";
 
-let roles: string[] = ["OCC.Admin"];
-vi.mock("../auth/AuthContext.js", () => ({ useAuth: () => ({ roles }) }));
+let actions: string[] = ["contractor-performance.view", "contractor-performance.edit"];
+vi.mock("../auth/AccessContext.js", async () => {
+  const actual = await vi.importActual<typeof import("../auth/AccessContext.js")>("../auth/AccessContext.js");
+  return { ...actual, useAccess: () => actual.accessStateWith(actions) };
+});
 
 const putReferenceValue = vi.fn().mockResolvedValue({ id: "r1" });
 const deleteReferenceValue = vi.fn().mockResolvedValue({ id: "r1" });
@@ -24,7 +27,7 @@ const REFERENCE_VALUES = [
 
 describe("Performance assessment lists", () => {
   beforeEach(() => {
-    roles = ["OCC.Admin"];
+    actions = ["contractor-performance.view", "contractor-performance.edit"];
     values = { values: REFERENCE_VALUES, diagnostics: { table_ready: true } };
     vi.clearAllMocks();
   });
@@ -76,9 +79,9 @@ describe("Performance assessment lists", () => {
   });
 
   it("lets a non-administrator read the lists but change nothing", async () => {
-    roles = ["OCC.Compliance"];
+    actions = ["contractor-performance.view"];
     render(<PerformanceListsAdmin />);
-    expect(await screen.findByText(/requires Administrator access/)).toBeInTheDocument();
+    expect(await screen.findByText(/is not part of your access/)).toBeInTheDocument();
     expect(screen.getByLabelText("Label for percent")).toBeDisabled();
   });
 

@@ -872,6 +872,13 @@ Event AVL geofences, locations, crossings or the event audit stream. Neither
 was reachable from the console pages those roles can open. If Operations wants
 either back, it is a checkbox on the role once increment 4 ships the Roles page.
 
+Increment 3 moved the console onto the same answer: it calls `GET /me/access`
+once per sign-in and gates every route, link and control on the actions it
+returns, so the two sides can no longer disagree. `VITE_ACCESS_ADMIN_FALLBACK`
+is retired; `ONBOARD_ACCESS_ADMIN_FALLBACK` on the API is the only bootstrap
+switch left. Left to build: the Roles page (increment 4), grants written in
+OnBoard instead of Graph (5), and the cutover (6).
+
 The Entra steps — the OnBoard Users group, "Assignment required", removing the
 `OCC.*` app roles and revoking the two Graph write consents — belong to
 increments 5 and 6 and are listed in the plan. Do none of them yet: the app

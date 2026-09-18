@@ -1,33 +1,23 @@
 import { useState } from "react";
 import { NavLink } from "react-router-dom";
-import { roleLabel, type AppRole } from "../auth/roles.js";
-
-const ROLE_PRIORITY: AppRole[] = [
-  "OCC.Admin",
-  "OCC.AccessAdmin",
-  "OCC.Publisher",
-  "OCC.ComplianceManager",
-  "OCC.Compliance",
-  "OCC.Detour",
-  "OCC.EventAVL",
-  "OCC.Viewer",
-  "System.Ingestion",
-];
+import { useAccess } from "../auth/AccessContext.js";
 
 type OperatorIdentityProps = {
   name: string;
   username: string;
-  roles: AppRole[];
   canManageAccess: boolean;
   onSignOut: () => void;
 };
 
-export function OperatorIdentity({ name, username, roles, canManageAccess, onSignOut }: OperatorIdentityProps) {
+export function OperatorIdentity({ name, username, canManageAccess, onSignOut }: OperatorIdentityProps) {
+  const { access } = useAccess();
+  // The roles the server holds, in the order it returns them.
+  const roles = access?.roles ?? [];
   const [open, setOpen] = useState(false);
-  const [primaryRole] = ROLE_PRIORITY.filter((role) => roles.includes(role));
+  const [primaryRole] = roles;
   const extraRoleCount = Math.max(0, roles.length - (primaryRole ? 1 : 0));
   const summary = primaryRole
-    ? `${name} · ${roleLabel(primaryRole)}${extraRoleCount ? ` +${extraRoleCount}` : ""}`
+    ? `${name} · ${primaryRole.name}${extraRoleCount ? ` +${extraRoleCount}` : ""}`
     : `${name} · ${roles.length ? `${roles.length} roles` : "No assigned access"}`;
 
   return (
@@ -48,7 +38,7 @@ export function OperatorIdentity({ name, username, roles, canManageAccess, onSig
         <strong>{name}</strong>
         <span className="operator-identity-username">{username}</span>
         <span className="operator-identity-label">Assigned roles</span>
-        {roles.length ? <ul>{roles.map((role) => <li key={role}>{roleLabel(role)}</li>)}</ul> : <span>No assigned access</span>}
+        {roles.length ? <ul>{roles.map((role) => <li key={role.key}>{role.name}</li>)}</ul> : <span>No assigned access</span>}
         <div className="operator-identity-actions">
           {canManageAccess ? <NavLink to="/admin/access">View access</NavLink> : null}
           <button className="btn-signout" type="button" onClick={onSignOut}>Sign out</button>

@@ -6,7 +6,7 @@ import {
   formatExpires,
   ApiError,
 } from "@mvta/shared";
-import { useAuth } from "../auth/AuthContext.js";
+import { useAccess } from "../auth/AccessContext.js";
 import { api } from "../config.js";
 import { useAppDialog } from "./AppDialog.js";
 
@@ -27,11 +27,12 @@ const SEVERITY_PILL: Record<string, string> = {
 };
 
 // Active Messages table per the dashboard mockup, with Edit (new expiration)
-// and Retract actions. The UI gates by role for clarity; the API enforces it.
+// and Retract actions. The UI gates on the Module Action for clarity; the API
+// enforces it.
 export function MessagesTable({ compact = false, onChanged, onLoaded }: { compact?: boolean; onChanged?: () => void; onLoaded?: (messages: ActiveMessage[]) => void }) {
-  const { roles } = useAuth();
+  const { can } = useAccess();
   const { confirm } = useAppDialog();
-  const canWrite = roles.some((r) => r === "OCC.Publisher" || r === "OCC.Admin");
+  const canWrite = can("rider-alerts.publish");
 
   const [messages, setMessages] = useState<ActiveMessage[]>([]);
   const [loading, setLoading] = useState(true);

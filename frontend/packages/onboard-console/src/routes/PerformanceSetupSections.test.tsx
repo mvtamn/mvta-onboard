@@ -4,8 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PerformanceContractorsAdmin } from "./PerformanceContractorsAdmin.js";
 import { PerformanceAgreementsAdmin } from "./PerformanceAgreementsAdmin.js";
 
-let roles: string[] = ["OCC.Admin"];
-vi.mock("../auth/AuthContext.js", () => ({ useAuth: () => ({ roles }) }));
+let actions: string[] = ["contractor-performance.view", "contractor-performance.edit"];
+vi.mock("../auth/AccessContext.js", async () => {
+  const actual = await vi.importActual<typeof import("../auth/AccessContext.js")>("../auth/AccessContext.js");
+  return { ...actual, useAccess: () => actual.accessStateWith(actions) };
+});
 
 const putContractor = vi.fn().mockResolvedValue({ id: "c1" });
 const putPerformanceAgreement = vi.fn().mockResolvedValue({ id: "a1" });
@@ -27,7 +30,7 @@ const AGREEMENT = {
 };
 
 beforeEach(() => {
-  roles = ["OCC.Admin"];
+  actions = ["contractor-performance.view", "contractor-performance.edit"];
   contractors = { contractors: [CONTRACTOR], diagnostics: { table_ready: true } };
   agreements = { agreements: [AGREEMENT], assignments: [], diagnostics: { table_ready: true } };
   vi.clearAllMocks();
@@ -54,9 +57,9 @@ describe("Contractors, as its own section", () => {
   });
 
   it("lets a non-administrator read but not change", async () => {
-    roles = ["OCC.Compliance"];
+    actions = ["contractor-performance.view"];
     render(<MemoryRouter><PerformanceContractorsAdmin /></MemoryRouter>);
-    expect(await screen.findByText(/requires Administrator access/)).toBeInTheDocument();
+    expect(await screen.findByText(/is not part of your access/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "New contractor" })).not.toBeInTheDocument();
   });
 });

@@ -12,7 +12,7 @@ import {
   type CreateDetourInput,
   type DetourSegmentInput,
 } from "@mvta/shared";
-import { useAuth } from "../auth/AuthContext.js";
+import { useAccess } from "../auth/AccessContext.js";
 import { api } from "../config.js";
 import { detourMatchesSearch } from "../lib/detourSearch.js";
 import { actOffer, availEntryOffer } from "../lib/detourActs.js";
@@ -204,12 +204,12 @@ function detourToCloneForm(d: Detour): DetourFormState {
 // detour-and-event-module-implementation-plan.md (Part B).
 export function Detours() {
   const { confirm, prompt } = useAppDialog();
-  const { roles } = useAuth();
-  // Mirrors DETOUR_WRITE_ROLES / DETOUR_DELETE_ROLES in auth.ts. OCC.Detour
-  // can create, edit and attach, but not delete - the server enforces the
-  // real boundary; this only decides which controls are worth showing.
-  const canWrite = roles.some((r) => r === "OCC.Publisher" || r === "OCC.Admin" || r === "OCC.Detour");
-  const canDelete = roles.some((r) => r === "OCC.Publisher" || r === "OCC.Admin");
+  const { can } = useAccess();
+  // The same Module Actions the server checks. Editing and deleting are
+  // separate actions - the server enforces the real boundary; this only
+  // decides which controls are worth showing.
+  const canWrite = can("detours.edit");
+  const canDelete = can("detours.delete");
 
   const [detours, setDetours] = useState<Detour[] | null>(null);
   const [contractor, setContractor] = useState<DetourContractorNotification | null>(null);

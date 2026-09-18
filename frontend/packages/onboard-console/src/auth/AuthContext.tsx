@@ -1,11 +1,13 @@
-// Thin auth abstraction so components never import MSAL directly. Two
+// Thin auth abstraction so components never import MSAL directly. It answers
+// who is signed in, and deliberately not what they may do: that is Effective
+// Access, which the server resolves and AccessContext asks for (ADR-0032). The
+// `roles` claim in the token is no longer read by the console at all. Two
 // implementations exist: MsalAuthProvider (real Entra sign-in, production) and
 // MockAuthProvider (dev-only preview, see MockAuthProvider.tsx). Components
 // consume useAuth() and stay identical under either provider.
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { InteractionStatus, type AccountInfo } from "@azure/msal-browser";
 import { useMsal } from "@azure/msal-react";
-import { rolesOf, type AppRole } from "./roles.js";
 import { loginRequest } from "./msalConfig.js";
 
 export interface AuthAccount {
@@ -17,7 +19,6 @@ export interface AuthAccount {
 export interface AuthState {
   /** null = signed out */
   account: AuthAccount | null;
-  roles: AppRole[];
   signIn: () => void;
   signOut: () => void;
 }
@@ -45,7 +46,6 @@ export function MsalAuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthState>(
     () => ({
       account: account ? { id: typeof account.idTokenClaims?.oid === "string" ? account.idTokenClaims.oid : undefined, name: account.name, username: account.username } : null,
-      roles: rolesOf(account),
       signIn: () => {
         void instance.loginRedirect(loginRequest);
       },

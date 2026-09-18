@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { ContractorRecord, PerformanceAgreementRecord } from "@mvta/shared";
 import { Link } from "react-router-dom";
 import { api } from "../config.js";
-import { useAuth } from "../auth/AuthContext.js";
+import { useAccess } from "../auth/AccessContext.js";
 import "./modules/assessment/assessment.css";
 import "./performanceStandards.css";
 
@@ -25,8 +25,8 @@ const toServiceDate = (value: string) => value.replace(/-/g, "");
 const formatDate = (value: string | null | undefined) => toInputDate(value) || "—";
 
 export function PerformanceContractorsAdmin() {
-  const { roles } = useAuth();
-  const canEdit = roles.includes("OCC.Admin");
+  const { can } = useAccess();
+  const canEdit = can("contractor-performance.edit");
   const [contractors, setContractors] = useState<ContractorRecord[]>([]);
   const [agreements, setAgreements] = useState<PerformanceAgreementRecord[]>([]);
   const [agreementsError, setAgreementsError] = useState("");
@@ -99,7 +99,7 @@ export function PerformanceContractorsAdmin() {
         {canEdit && <button className="btn-primary" disabled={busy} onClick={() => edit(null)}>New contractor</button>}
       </div>
 
-      {!canEdit && <div className="assessment-warning">You can read the contractor list. Changing it requires Administrator access.</div>}
+      {!canEdit && <div className="assessment-warning">You can read the contractor list. Changing it is not part of your access.</div>}
       {!ready && <div className="assessment-warning">The contractor table is not present in this database yet.</div>}
       {error && <div className="assessment-error">{error}</div>}
       {notice && <div className="standards-notice">{notice}</div>}

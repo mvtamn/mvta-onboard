@@ -3,6 +3,11 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./auth/AuthContext.js", () => ({ useAuth: vi.fn() }));
+const held = vi.hoisted(() => ({ actions: [] as string[] }));
+vi.mock("./auth/AccessContext.js", async () => {
+  const actual = await vi.importActual<typeof import("./auth/AccessContext.js")>("./auth/AccessContext.js");
+  return { ...actual, useAccess: () => actual.accessStateWith(held.actions) };
+});
 // Route modules are stubbed: this file tests the shell, not the workspaces.
 const stub = () => null;
 vi.mock("./routes/AdminModules.js", () => ({
@@ -43,18 +48,18 @@ const { App } = await import("./App.js");
 describe("App authentication boundary", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    held.actions = [];
     vi.mocked(useAuth).mockReturnValue({
       account: null,
-      roles: [],
       signIn: vi.fn(),
       signOut: vi.fn(),
     });
   });
 
   it("makes no cross-workspace live-data claim in the shell", () => {
+    held.actions = ["dashboard.view", "rider-alerts.view", "service-risk.view", "dispatch-log.view"];
     vi.mocked(useAuth).mockReturnValue({
       account: { name: "Dispatcher", username: "dispatcher@mvta.test" },
-      roles: ["OCC.Viewer"],
       signIn: vi.fn(),
       signOut: vi.fn(),
     });
@@ -80,9 +85,9 @@ describe("App authentication boundary", () => {
   });
 
   it("shows the SST desk only what it can use and lands it on the Dispatch Log", () => {
+    held.actions = ["dispatch-log.view", "dispatch-log.verify"];
     vi.mocked(useAuth).mockReturnValue({
       account: { name: "SST Desk", username: "ocs@sst.test" },
-      roles: ["OCC.TripStartVerify"],
       signIn: vi.fn(),
       signOut: vi.fn(),
     });
@@ -114,9 +119,9 @@ describe("App authentication boundary", () => {
   });
 
   it("shows five release bullets in the popover and says how many it left out", async () => {
+    held.actions = ["dashboard.view", "rider-alerts.view"];
     vi.mocked(useAuth).mockReturnValue({
       account: { name: "Admin", username: "admin@mvta.test" },
-      roles: ["OCC.Admin"],
       signIn: vi.fn(),
       signOut: vi.fn(),
     });

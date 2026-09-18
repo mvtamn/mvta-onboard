@@ -2,6 +2,7 @@ import type { OnBoardAccessChangeRecord } from "@mvta/shared";
 import { api } from "../../config.js";
 import { roleLabel } from "../../auth/roles.js";
 import { useAuth } from "../../auth/AuthContext.js";
+import { useAccess as useMyAccess } from "../../auth/AccessContext.js";
 import { useAppDialog } from "../../components/AppDialog.js";
 import { Icon, Loading, PageHead, Pill } from "./AccessUi.js";
 import { displayTime, errorMessage, idempotencyKey, relativeTime, useAccess } from "./accessData.js";
@@ -15,6 +16,8 @@ const URGENT_MS = 4 * 3_600_000;
 export function AccessApprovals() {
   const { pending, loading, busy, setBusy, setError, setNotice, load, principalName } = useAccess();
   const { account } = useAuth();
+  const { can } = useMyAccess();
+  const canApprove = can("access-identity.approve"), canManage = can("access-identity.manage");
   const { prompt } = useAppDialog();
 
   const ordered = [...pending].sort((a, b) => (a.approval_expires_at ?? "9").localeCompare(b.approval_expires_at ?? "9"));
@@ -78,10 +81,10 @@ export function AccessApprovals() {
             </div>
             <div className="am-req-side">
               {legacy
-                ? <><p>Unverifiable legacy request — reject and resubmit.</p><button type="button" className="am-btn" disabled={busy} onClick={() => void decide(change, "rejected")}>Reject</button></>
+                ? <><p>Unverifiable legacy request — reject and resubmit.</p><button type="button" className="am-btn" disabled={busy || !canApprove} onClick={() => void decide(change, "rejected")}>Reject</button></>
                 : own
-                  ? <><p>Awaiting another Access Administrator</p><button type="button" className="am-btn" disabled={busy} onClick={() => void cancel(change)}>Cancel request</button></>
-                  : <><button type="button" className="am-btn primary" disabled={busy} onClick={() => void decide(change, "approved")}><Icon name="check" size={15} />Approve</button><button type="button" className="am-btn" disabled={busy} onClick={() => void decide(change, "rejected")}>Reject</button></>}
+                  ? <><p>Awaiting another Access Administrator</p><button type="button" className="am-btn" disabled={busy || !canManage} onClick={() => void cancel(change)}>Cancel request</button></>
+                  : <><button type="button" className="am-btn primary" disabled={busy || !canApprove} onClick={() => void decide(change, "approved")}><Icon name="check" size={15} />Approve</button><button type="button" className="am-btn" disabled={busy || !canApprove} onClick={() => void decide(change, "rejected")}>Reject</button></>}
             </div>
           </article>;
         })}
