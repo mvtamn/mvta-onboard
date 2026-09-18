@@ -54,6 +54,7 @@ CREATE TABLE dbo.MonitoredMissedTrips (
   detector_version NVARCHAR(30) NULL, data_quality_status NVARCHAR(30) NOT NULL DEFAULT 'legacy_unverified',
   source_system NVARCHAR(20) NOT NULL DEFAULT 'gtfs', source_record_id NVARCHAR(100) NULL, evidence_json NVARCHAR(MAX) NULL,
   undecided_reason NVARCHAR(60) NULL, expected_window_end_at DATETIME2 NULL,
+  evidence_conflict_at DATETIME2 NULL, evidence_conflict_reason NVARCHAR(300) NULL,
   CONSTRAINT PK_MonitoredMissedTrips PRIMARY KEY (trip_id, service_date),
   CONSTRAINT CK_MonitoredMissedTrips_Status CHECK (status IN ('watching', 'escalated', 'resolved')),
   CONSTRAINT CK_MonitoredMissedTrips_ValidationStatus CHECK (validation_status IN ('unreviewed', 'confirmed', 'timely_service', 'partial_service_failure', 'indeterminate', 'false_positive')),
@@ -245,8 +246,10 @@ test("Missed-trip cases against SQL Server", skip, async (t) => {
         const rows = (await pool.request().query(`
           SELECT m.trip_id, m.status, m.validation_status, m.data_quality_status, m.detection_type, m.source_system,
                  m.undecided_reason, m.grace_deadline_at, m.detected_late_arrival_at, m.detector_version, m.expected_window_end_at,
+                 m.evidence_conflict_at,
                  mtc.lifecycle, mtc.evidence_finding, mtc.review_outcome, mtc.detector, mtc.held_reason,
-                 mtc.legacy, mtc.held, mtc.in_queue, mtc.concluded, mtc.flagged_missed, mtc.counts_as_missed, mtc.counts_toward_assessment
+                 mtc.legacy, mtc.held, mtc.in_queue, mtc.concluded, mtc.flagged_missed, mtc.counts_as_missed,
+                 mtc.evidence_conflict, mtc.counts_toward_assessment
           FROM dbo.MonitoredMissedTrips m ${missedTripCaseSql("m")}`)).recordset;
         // NS1, C1, R1, SP1, SP2, RACE, LEG, REV and the review subtests' cases, plus K1-K7 and W1-W3.
         assert.ok(rows.length >= 18);
@@ -260,12 +263,46 @@ test("Missed-trip cases against SQL Server", skip, async (t) => {
             lifecycle: row.lifecycle, evidence_finding: row.evidence_finding, review_outcome: row.review_outcome ?? null,
             detector: row.detector, held_reason: row.held_reason ?? null, legacy: row.legacy, held: row.held,
             in_queue: row.in_queue, concluded: row.concluded, flagged_missed: row.flagged_missed,
-            counts_as_missed: row.counts_as_missed, counts_toward_assessment: row.counts_toward_assessment,
+            counts_as_missed: row.counts_as_missed, evidence_conflict: row.evidence_conflict,
+            counts_toward_assessment: row.counts_toward_assessment,
           };
           assert.deepEqual(actual, expected, `${row.trip_id} with promoted="${promoted}"`);
         }
       }
       delete process.env.MISSED_TRIP_PROMOTED_DETECTORS;
+    });
+
+
+    // ADR-0035: Avail corroborates and contradicts, through the same module
+    // every other source writes through.
+    await t.test("Avail contradicting a closed case records an Evidence conflict and reopens nothing", async () => {
+      await pool.request().query(`INSERT INTO dbo.MonitoredMissedTrips
+        (trip_id, service_date, route_id, scheduled_departure_at, grace_deadline_at, status, validation_status, detection_type, data_quality_status, source_system, detector_version)
+        VALUES ('AV1', '${DAY}', '460', '2026-09-17T14:00:00', '2026-09-17T14:30:00', 'resolved', 'unreviewed', 'silent_no_show', 'experimental', 'gtfs', 'gtfs-silent-v4')`);
+
+      const observation: RunObservation = {
+        run: { source: "avail", runId: "AV1", serviceDate: DAY, routeId: "460", scheduledStartAt: T0, deadlineAt: T0 },
+        detectorVersion: "avail-retrospective-v1",
+        fact: { kind: "retrospective_missed" },
+        evidence: { source: "avail", entireTripMissed: true },
+      };
+      const report = await observeMissedTrips(pool, [observation], T0);
+      assert.equal(report.created, 0, "Avail opens nothing");
+
+      const after = (await pool.request().query<{ status: string; validation_status: string; evidence_conflict_at: Date | null; evidence_conflict_reason: string | null; evidence_json: string | null }>(
+        "SELECT status, validation_status, evidence_conflict_at, evidence_conflict_reason, evidence_json FROM dbo.MonitoredMissedTrips WHERE trip_id = 'AV1'")).recordset[0];
+      assert.equal(after.status, "resolved", "the case is not reopened");
+      assert.equal(after.validation_status, "unreviewed", "no review is written");
+      assert.ok(after.evidence_conflict_at !== null, "the contradiction is recorded");
+      assert.match(after.evidence_conflict_reason ?? "", /Avail reports this run as missed/);
+      assert.match(after.evidence_json ?? "", /"avail"/);
+
+      // And the gate holds in SQL, not just in TypeScript.
+      const gated = (await pool.request().query<{ evidence_conflict: boolean; counts_toward_assessment: boolean }>(`
+        SELECT mtc.evidence_conflict, mtc.counts_toward_assessment
+        FROM dbo.MonitoredMissedTrips m ${missedTripCaseSql("m")} WHERE m.trip_id = 'AV1'`)).recordset[0];
+      assert.equal(gated.evidence_conflict, true);
+      assert.equal(gated.counts_toward_assessment, false);
     });
 
     // Candidate 2: the list and its totals are one answer. They are two

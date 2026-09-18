@@ -43,6 +43,9 @@ CREATE TABLE dbo.MonitoredMissedTrips (
   detector_version NVARCHAR(30) NULL, data_quality_status NVARCHAR(30) NOT NULL DEFAULT 'legacy_unverified',
   source_system NVARCHAR(20) NOT NULL DEFAULT 'gtfs', source_record_id NVARCHAR(100) NULL,
   undecided_reason NVARCHAR(60) NULL, expected_window_end_at DATETIME2 NULL,
+  -- Migration 135: an unresolved Evidence conflict keeps a case out of intake,
+  -- so the classification reads these and this table has to carry them.
+  evidence_conflict_at DATETIME2 NULL, evidence_conflict_reason NVARCHAR(300) NULL,
   CONSTRAINT PK_MonitoredMissedTrips PRIMARY KEY (trip_id, service_date)
 );
 CREATE TABLE dbo.FixedRouteDepartures (
