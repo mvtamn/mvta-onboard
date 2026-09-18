@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { api } from "../../config.js";
 import { MISSED_TRIP_ALERTS, type MissedTripAlert } from "./missedTrips.data.js";
 import {
-  REVIEW_DECISIONS, agingBadge, assessmentOutcome, buildReviewRequest, confirmBlockedReason,
+  REVIEW_DECISIONS, agingBadge, assessmentOutcome, buildReviewRequest, confirmBlockedReason, conflictNotice,
   dataQualityLabel, detectionTypeLabel, findingLabel, formatServiceMonth, heldReasonLabel, inView,
   lifecycleClass, lifecycleLabel, outcomeClass, outcomeLabel, pivotMonthlySummary, reviewMode,
   routeLabel, sourceLabel, tripCode,
@@ -99,6 +99,8 @@ function fromMissedTrip(trip: MissedTrip): MissedTripAlert {
     heldReason: trip.held_reason,
     inQueue: Boolean(trip.in_queue),
     concluded: Boolean(trip.concluded),
+    evidenceConflict: Boolean(trip.evidence_conflict),
+    evidenceConflictReason: trip.evidence_conflict_reason ?? null,
   };
 }
 
@@ -700,6 +702,9 @@ function MissedTripsInvestigationPage({
                           <span className={`pill-sm ${lifecycleClass(alert)}`}>
                             {lifecycleLabel(alert)}
                           </span>
+                          {alert.evidenceConflict && (
+                            <span className="pill-sm pill-warning" style={{ marginLeft: 6 }}>Sources disagree</span>
+                          )}
                           <div className="td-dim" style={{ marginTop: 4 }}>
                             {timeLabel(alert.graceDeadlineAt)} · {agoLabel(minutesAgo(alert.graceDeadlineAt))}
                           </div>
@@ -786,6 +791,9 @@ function MissedTripsInvestigationPage({
                     <span className={`pill-sm ${lifecycleClass(alert)}`}>
                       {lifecycleLabel(alert)}
                     </span>
+                    {alert.evidenceConflict && (
+                      <span className="pill-sm pill-warning" style={{ marginLeft: 6 }}>Sources disagree</span>
+                    )}
                     <small>{timeLabel(alert.graceDeadlineAt)} · {agoLabel(minutesAgo(alert.graceDeadlineAt))}</small>
                   </span>
                   <span className="risk-threshold">
@@ -870,6 +878,7 @@ function MissedTripDetail({
   const mode = reviewMode(alert);
   const confirmBlocked = mode === "review" ? confirmBlockedReason(alert) : null;
   const outcome = assessmentOutcome(alert);
+  const conflict = conflictNotice(alert);
 
   return (
     <aside className="risk-detail missed-trip-detail" aria-label={`${routeLabel(alert.route, routesById, alert.sourceSystem)} missed trip detail`}>
@@ -885,6 +894,16 @@ function MissedTripDetail({
           {lifecycleLabel(alert)}
         </span>
       </div>
+
+      {conflict && (
+        // An Evidence conflict is not a lifecycle: the case keeps its outcome,
+        // and what is held is the assessment. Said in that order.
+        <div className="missed-trip-conflict" role="note">
+          <strong>{conflict.label}</strong>
+          <p>{conflict.detail}</p>
+          <p>{conflict.action}</p>
+        </div>
+      )}
 
       <div className="risk-hero-metric">
         <span>Grace deadline</span>

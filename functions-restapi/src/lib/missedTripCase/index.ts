@@ -124,6 +124,9 @@ export async function actOnMissedTripCase(pool: sql.ConnectionPool, key: CaseKey
     }
     const review = decision.review;
 
+    // Settling an Evidence conflict is exactly this act: a reviewer recording
+    // an outcome with both sources in front of them (ADR-0035). The review
+    // clears it - nothing else does, and it is never cleared automatically.
     await new sql.Request(tx)
       .input("trip_id", sql.NVarChar(100), key.tripId)
       .input("service_date", sql.NVarChar(20), key.serviceDate)
@@ -142,7 +145,9 @@ export async function actOnMissedTripCase(pool: sql.ConnectionPool, key: CaseKey
             validated_by = @validated_by,
             validated_at = SYSUTCDATETIME(),
             notes = @notes,
-            reason_code = @reason_code
+            reason_code = @reason_code,
+            evidence_conflict_at = NULL,
+            evidence_conflict_reason = NULL
         WHERE trip_id = @trip_id AND service_date = @service_date;
 
         INSERT INTO MissedTripReviewHistory (
