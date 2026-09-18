@@ -5,11 +5,19 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.256] - 2026-09-18
+## [1.5.257] - 2026-09-18
 
 - **Fixed-route missed-trip detection reads through one seam.** Every read the GTFS detector makes - the day's scheduled runs with their operational evidence, start evidence, a cancellation's scheduled time, and feed health - is injected through `GtfsDetectionDeps` with a live default, the way `gtfsRtReader`, `feedRun` and `availClient` already do it. The rules that decide *which* trips are judged - past its 30-minute deadline, already started, on a special-event route, which service day it belongs to, and what the day's own evidence can support - are now pure functions over one Scheduled day and have tests for the first time (23 of them, no database).
 - **No change to detection.** The queries and the rules are the same; the detector is mid-Shadow-detection and its numbers stay comparable. One log-only difference: a service day with nothing scheduled no longer appends a second, usually empty, explanation to the poll's warning line.
 - **`Scheduled day` is in CONTEXT.md**, defined as what one pass read - deliberately *not* the retained `Schedule snapshot`, which the code still does not implement.
+## [1.5.256] - 2026-09-18
+
+- **The composer offers the channels the server allows.** `GET /detours/{id}/communications` now returns `channels` - each with its label, whether OnBoard sends or records it, and whether it needs recipients - and the console renders that list instead of the record's free-text channels plus an "Other…" escape. The console keeps no channel list of its own, so it cannot drift from migration 132's CHECK constraint. Increment 4 of `plans/detour-communications-implementation-plan.md`.
+- **A recorded channel behaves like what it is.** No recipients field, no Send button, and a date input for **when the message actually went out**, carried to the server as `occurred_at`. The row shows that date whenever it differs from the day it was recorded, so a detour communicated on Monday and written up on Tuesday reads correctly.
+- **Recording stays available on a closed detour**, where sending is refused: the block that disables Send does not disable writing down what already happened.
+- **The publish outcome reads in words** - "Sent via AVL messaging" rather than "Published via avl_messaging".
+- **Verified.** 5 new tests for `communicationAction` (Send offered only for a channel OnBoard sends, a recorded channel never blocked by a closed detour, email with no recipients, Teams carrying none, and an unknown channel from an older server treated as unsendable). Console 665 tests pass, backend 1159. The mock console cannot reach an API, so the composer itself could not be walked in a browser; the decisions it renders are covered by those tests instead.
+
 ## [1.5.255] - 2026-09-18
 
 - **Default audiences for Detours that name none.** `default_audiences` joins the contractor settings under Administration: a comma-separated list of the audiences every Detour must reach when its own record names nobody. Increment 2 of `plans/detour-communications-implementation-plan.md`.

@@ -2,7 +2,7 @@ import { app, type HttpRequest, type InvocationContext } from "@azure/functions"
 import { getPool, sql } from "../lib/db";
 import { requireAccess } from "../lib/access/require";
 import { isGuid, validateDetourCommunication } from "../lib/validation";
-import { detourChannel, readDetourNotificationSettings, recordSentElsewhere, sendCommunication } from "../lib/detourCommunication";
+import { channelOptions, detourChannel, needsRecipients, readDetourNotificationSettings, recordSentElsewhere, sendCommunication } from "../lib/detourCommunication";
 import { readDetourWorkflows } from "../lib/detourWorkflow";
 
 interface CommunicationRow { id: string; detour_id: string; audience: string; channel: string; recipients: string | null; content: string; status: "draft" | "published" | "failed"; outcome: string | null; created_by: string; created_at: Date; published_by: string | null; published_at: Date | null; }
@@ -32,7 +32,22 @@ app.http("detourCommunicationsList", {
           receiptsByCommunication.set(receipt.communication_id, list);
         }
       }
-      return { status: 200, jsonBody: { communications: result.recordset.map((row) => ({ ...row, receipts: receiptsByCommunication.get(row.id) ?? [] })) } };
+      // The channels the console may offer, decided here: which OnBoard sends,
+      // which a person records, and which need an address. The console renders
+      // this rather than keeping a second list that can drift from the CHECK
+      // constraint in migration 132.
+      const channels = channelOptions().map((option) => ({ ...option, needs_recipients: needsRecipients(option.channel) }));
+      return {
+        status: 200,
+        jsonBody: {
+          communications: result.recordset.map((row) => ({
+            ...row,
+            channel: detourChannel(row.channel) ?? row.channel,
+            receipts: receiptsByCommunication.get(row.id) ?? [],
+          })),
+          channels,
+        },
+      };
     } catch (err) { context.error("GET detour communications failed:", err); return { status: 500, jsonBody: { error: "Internal server error" } }; }
   },
 });
