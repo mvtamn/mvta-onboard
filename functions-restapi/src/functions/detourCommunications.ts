@@ -2,7 +2,7 @@ import { app, type HttpRequest, type InvocationContext } from "@azure/functions"
 import { getPool, sql } from "../lib/db";
 import { requireAccess } from "../lib/access/require";
 import { isGuid, validateDetourCommunication } from "../lib/validation";
-import { readContractorNotification, recordSentElsewhere, sendCommunication } from "../lib/detourCommunication";
+import { detourChannel, readContractorNotification, recordSentElsewhere, sendCommunication } from "../lib/detourCommunication";
 import { readDetourWorkflows } from "../lib/detourWorkflow";
 
 interface CommunicationRow { id: string; detour_id: string; audience: string; channel: string; recipients: string | null; content: string; status: "draft" | "published" | "failed"; outcome: string | null; created_by: string; created_at: Date; published_by: string | null; published_at: Date | null; }
@@ -51,7 +51,7 @@ app.http("detourCommunicationCreate", {
     try {
       const pool = await getPool();
       const req = pool.request();
-      req.input("detour_id", sql.UniqueIdentifier, id).input("audience", sql.NVarChar(100), (body.audience as string).trim()).input("channel", sql.NVarChar(100), (body.channel as string).trim()).input("recipients", sql.NVarChar(2000), body.recipients ?? null).input("content", sql.NVarChar(4000), (body.content as string).trim()).input("created_by", sql.NVarChar(200), auth.principal.userDetails || "system");
+      req.input("detour_id", sql.UniqueIdentifier, id).input("audience", sql.NVarChar(100), (body.audience as string).trim()).input("channel", sql.NVarChar(100), detourChannel(body.channel as string)).input("recipients", sql.NVarChar(2000), body.recipients ?? null).input("content", sql.NVarChar(4000), (body.content as string).trim()).input("created_by", sql.NVarChar(200), auth.principal.userDetails || "system");
       const result = await req.query<CommunicationRow>("INSERT INTO DetourCommunications (detour_id,audience,channel,recipients,content,created_by) OUTPUT INSERTED.* VALUES (@detour_id,@audience,@channel,@recipients,@content,@created_by)");
       return { status: 201, jsonBody: result.recordset[0] };
     } catch (err) { context.error("POST detour communication failed:", err); return { status: 500, jsonBody: { error: "Internal server error" } }; }
@@ -88,6 +88,11 @@ app.http("detourCommunicationPublish", {
         : await recordSentElsewhere({
           pool, detourId: id, communicationId, actor, contractor, workflow,
           outcome: typeof body.outcome === "string" ? body.outcome : "Published by Operations",
+          // When it actually went out. A recorded channel usually carries an
+          // earlier date than today: the AVL message went out on Monday and is
+          // being written down on Tuesday.
+          occurredAt: typeof body.occurred_at === "string" && !Number.isNaN(Date.parse(body.occurred_at))
+            ? new Date(body.occurred_at) : null,
         });
       const row = (await pool.request().input("id", sql.UniqueIdentifier, communicationId)
         .query<CommunicationRow>("SELECT * FROM DetourCommunications WHERE id=@id")).recordset[0];

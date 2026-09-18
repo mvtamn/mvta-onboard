@@ -19,6 +19,7 @@ import type { DetourWorkflowView } from "../detourWorkflow";
 import { communicationEligibility, eligibilityRefusal } from "./eligibility";
 import { classifyCommunication, communicationStateSql } from "./state";
 import { deliveryPortFor, EMAIL_CHANNEL } from "./delivery";
+import { detourChannel, isRecordedChannel } from "./channels";
 import type {
   CommunicationDetour,
   CommunicationEligibility,
@@ -31,6 +32,7 @@ export * from "./types";
 export * from "./eligibility";
 export * from "./state";
 export * from "./delivery";
+export * from "./channels";
 export * from "./contractorSettings";
 
 interface CommunicationRow {
@@ -114,9 +116,16 @@ export async function sendCommunication(input: SendInput): Promise<SendOutcome> 
   if (current.state !== "draft" && current.state !== "failed") {
     return { ok: false, status: 409, refusal: refusal("not_sendable", "Only a draft or failed communication can be sent") };
   }
+  const channel = detourChannel(row.channel);
+  if (!channel) return { ok: false, status: 409, refusal: eligibilityRefusal("unknown_channel") };
+  // A recorded channel has no transport: OnBoard does not update a road sign or
+  // send an Avail message, it writes down that somebody did.
+  if (isRecordedChannel(channel)) {
+    return { ok: false, status: 409, refusal: refusal("channel_is_recorded", "This channel is recorded, not sent. Record that it went out instead.") };
+  }
   const recipients = parseRecipients(row.recipients);
   const eligibility = communicationEligibility(detourFrom(row, input.workflow, input.contractor), {
-    audience: row.audience, channel: row.channel, recipients,
+    audience: row.audience, channel, recipients,
   });
   if (!eligibility.may_send) return { ok: false, status: 409, refusal: eligibility.refusal! };
 
@@ -170,7 +179,7 @@ export async function sendCommunication(input: SendInput): Promise<SendOutcome> 
  * question applies: a closed Detour is not one to tell riders about, however
  * the message went.
  */
-export async function recordSentElsewhere(input: Omit<SendInput, "port" | "context"> & { outcome: string }): Promise<SendOutcome> {
+export async function recordSentElsewhere(input: Omit<SendInput, "port" | "context"> & { outcome: string; occurredAt?: Date | null }): Promise<SendOutcome> {
   const hasDelivery = await deliveryColumnsReady(input.pool);
   const row = await load(input.pool, input.detourId, input.communicationId, hasDelivery);
   if (!row) return { ok: false, status: 404, refusal: refusal("not_found", "Communication was not found") };
@@ -178,19 +187,28 @@ export async function recordSentElsewhere(input: Omit<SendInput, "port" | "conte
   if (current.state !== "draft" && current.state !== "failed") {
     return { ok: false, status: 409, refusal: refusal("not_sendable", "Communication was not found or is already published") };
   }
+  const channel = detourChannel(row.channel);
+  if (!channel) return { ok: false, status: 409, refusal: eligibilityRefusal("unknown_channel") };
   const eligibility = communicationEligibility(
     detourFrom(row, input.workflow, input.contractor),
-    { audience: row.audience, channel: row.channel, recipients: parseRecipients(row.recipients) },
+    { audience: row.audience, channel, recipients: parseRecipients(row.recipients) },
   );
   // Recipients are the sender's business when they sent it themselves.
   const blocking = eligibility.refusal && eligibility.refusal.code !== "no_recipients" ? eligibility.refusal : null;
   if (blocking) return { ok: false, status: 409, refusal: blocking };
 
+  // When it actually went out. Defaults to now for a send somebody is
+  // recording as they do it; a recorded channel usually carries an earlier
+  // date, which is the whole point of the column.
   await input.pool.request()
     .input("id", sql.UniqueIdentifier, input.communicationId)
     .input("actor", sql.NVarChar(200), input.actor)
     .input("outcome", sql.NVarChar(500), input.outcome)
-    .query(`UPDATE DetourCommunications SET status='published', published_by=@actor, published_at=SYSUTCDATETIME(), outcome=@outcome WHERE id=@id`);
+    .input("occurred", sql.DateTime2, input.occurredAt ?? null)
+    .query(`UPDATE DetourCommunications
+            SET status='published', published_by=@actor, published_at=SYSUTCDATETIME(),
+                outcome=@outcome, occurred_at=ISNULL(@occurred, SYSUTCDATETIME())
+            WHERE id=@id`);
   return { ok: true, state: "recorded", delivery: { status: "sent" } };
 }
 
@@ -198,10 +216,14 @@ export async function recordSentElsewhere(input: Omit<SendInput, "port" | "conte
 export function audienceEligibility(
   detour: CommunicationDetour,
   channelFor: (audience: string) => { channel: string; recipients: string[] },
+
 ): { audience: string; eligibility: CommunicationEligibility }[] {
   return detour.required_audiences.map((audience) => ({
     audience,
-    eligibility: communicationEligibility(detour, { audience, ...channelFor(audience) }),
+    eligibility: communicationEligibility(detour, (() => {
+      const asked = channelFor(audience);
+      return { audience, channel: detourChannel(asked.channel), recipients: asked.recipients };
+    })()),
   }));
 }
 

@@ -58,6 +58,7 @@ const MIGRATIONS = [
   "migration-091-detour-map-geometry.sql",
   "migration-092-detour-communication-delivery.sql",
   "migration-093-detour-communication-receipts.sql",
+  "migration-132-detour-communication-channels.sql",
 ];
 
 // Two migrations add a column and then name it in the same batch, which SQL
@@ -123,8 +124,8 @@ async function seedCommunication(pool: sql.ConnectionPool, detourId: string, cha
 
 async function readRow(pool: sql.ConnectionPool, id: string) {
   return (await pool.request().input("id", sql.UniqueIdentifier, id).query<{
-    status: string; delivery_status: string | null; published_by: string | null; sent_subject: string | null; sent_recipients: string | null; outcome: string | null;
-  }>("SELECT status, delivery_status, published_by, sent_subject, sent_recipients, outcome FROM DetourCommunications WHERE id=@id")).recordset[0];
+    status: string; delivery_status: string | null; published_by: string | null; sent_subject: string | null; sent_recipients: string | null; outcome: string | null; occurred_at: Date | null;
+  }>("SELECT status, delivery_status, published_by, sent_subject, sent_recipients, outcome, occurred_at FROM DetourCommunications WHERE id=@id")).recordset[0];
 }
 
 async function sendFor(pool: sql.ConnectionPool, detourId: string, communicationId: string, port = fakeDeliveryPort("email", { status: "queued" } as const)) {
@@ -211,6 +212,43 @@ test("Detour communication eligibility against SQL Server", { skip: !connectionS
       const counted = (await pool.request().input("detour", sql.UniqueIdentifier, detour).query<{ n: number }>(
         `SELECT COUNT(DISTINCT c.audience) n FROM DetourCommunications c ${communicationStateSql("c")} WHERE c.detour_id=@detour AND cst.counted=1`)).recordset[0].n;
       assert.equal(counted, 1);
+    });
+
+    await t.test("a recorded channel is accepted on a closed Detour, with the date it went out", async () => {
+      // Recording is not sending: a Detour closes after it ends, so the AVL
+      // message that went out on Monday may be written down on Tuesday.
+      const detour = await seedDetour(pool, "closed");
+      const communication = await seedCommunication(pool, detour, "avl_messaging", null);
+      const workflow = (await readDetourWorkflows(pool, [detour])).get(detour)!;
+      const monday = new Date("2027-01-04T15:30:00Z");
+      const recorded = await recordSentElsewhere({
+        pool, detourId: detour, communicationId: communication, actor: ACTOR, contractor: CONTRACTOR, workflow,
+        outcome: "Sent in Avail", occurredAt: monday,
+      });
+      assert.ok(recorded.ok, recorded.ok ? "" : `refused: ${recorded.refusal.code}`);
+      const row = await readRow(pool, communication);
+      assert.deepEqual([row.status, row.outcome], ["published", "Sent in Avail"]);
+      assert.equal(row.occurred_at?.toISOString(), monday.toISOString(), "the date it went out, not the date it was typed");
+      assert.deepEqual(classifyCommunication(row), { state: "recorded", counted: true });
+    });
+
+    await t.test("a sent channel is still refused on a closed Detour, and a recorded channel is never sent", async () => {
+      const detour = await seedDetour(pool, "closed");
+      const email = await seedCommunication(pool, detour);
+      const workflow = (await readDetourWorkflows(pool, [detour])).get(detour)!;
+      const refusedRecord = await recordSentElsewhere({
+        pool, detourId: detour, communicationId: email, actor: ACTOR, contractor: CONTRACTOR, workflow, outcome: "Emailed by hand",
+      });
+      assert.ok(!refusedRecord.ok);
+      assert.equal(refusedRecord.refusal.code, "detour_closed");
+
+      // A road sign has no transport behind it: asking the server to send one
+      // is refused rather than quietly doing nothing.
+      const fulfilled = await seedDetour(pool, "fulfilled");
+      const signage = await seedCommunication(pool, fulfilled, "digital_signage", null);
+      const sent = await sendFor(pool, fulfilled, signage);
+      assert.ok(!sent.ok);
+      assert.equal(sent.refusal.code, "channel_is_recorded");
     });
 
     await t.test("a person recording that they sent it themselves is published without delivery facts", async () => {
