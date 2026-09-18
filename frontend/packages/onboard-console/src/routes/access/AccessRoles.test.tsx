@@ -10,9 +10,9 @@ import { AccessRoles, actionsChanged, roleSummaryLines } from "./AccessRoles.js"
 vi.mock("../../config.js", () => ({
   api: {
     // The section's shared load, which AccessLayout starts.
+    getAccessPeople: vi.fn(),
+    getAccessGrantRequests: vi.fn(),
     getAccessPrincipals: vi.fn(),
-    getPendingAccessChanges: vi.fn(),
-    getAccessExpirations: vi.fn(),
     getAccessAudit: vi.fn(),
     // The Roles page's own calls.
     getAccessCatalog: vi.fn(),
@@ -111,9 +111,9 @@ function renderRoles() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(api.getAccessPeople).mockResolvedValue({ people: [] });
+  vi.mocked(api.getAccessGrantRequests).mockResolvedValue({ requests: [] });
   vi.mocked(api.getAccessPrincipals).mockResolvedValue({ environment: "test", access_admin_fallback: false, principals: [] });
-  vi.mocked(api.getPendingAccessChanges).mockResolvedValue({ changes: [] });
-  vi.mocked(api.getAccessExpirations).mockResolvedValue({ expirations: [] });
   vi.mocked(api.getAccessAudit).mockResolvedValue({ audit: [] });
   vi.mocked(api.getAccessCatalog).mockResolvedValue({ modules: MODULES });
   vi.mocked(api.getAccessRoles).mockResolvedValue({ roles: [ACCESS_ADMIN, HELD, SYSTEM_ADMIN, DISPATCHER] });

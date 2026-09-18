@@ -64,6 +64,24 @@ export function AddAccessLink() {
   return <Link className="am-btn primary" to="/admin/access/add"><Icon name="userPlus" />Add access</Link>;
 }
 
+/**
+ * The access API answers 503 until migrations 129-131 are applied. Every page
+ * that reads OnBoard's own roles and grants says so the same way: as a state of
+ * the environment, not as a failure of the page.
+ */
+export function SetupNotice({ message }: { message: string }) {
+  return <p className="am-callout attn" role="status"><Icon name="warn" /><span>
+    <b>OnBoard’s roles are not set up in this environment yet.</b> {message}
+  </span></p>;
+}
+
+/** A Role OnBoard owns, named as the Roles page names it. */
+export function GrantChip({ name, privileged }: { name: string; privileged?: boolean }) {
+  return <span className={`am-role${privileged ? " priv" : ""}`} title={privileged ? `${name} · granting or removing this needs a second Access Administrator` : name}>
+    {privileged ? <Icon name="lock" size={11} /> : null}{name}
+  </span>;
+}
+
 export function RoleChip({ role }: { role: string }) {
   const privileged = isPrivileged(role);
   return <span className={`am-role${privileged ? " priv" : ""}`} title={privileged ? `${role} · changes need a second Access Administrator` : role}>

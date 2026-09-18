@@ -2,7 +2,10 @@ import { api } from "../../config.js";
 import { Icon } from "./AccessUi.js";
 import { errorMessage, spreadsheetSafeText, useAccess } from "./accessData.js";
 
-// Exports the whole inventory - people, groups and workloads - whichever page
+// Exports the Entra sign-in inventory - people, groups and workloads - which is
+// who may sign in, not what they may do: OnBoard roles are granted in People &
+// identity and are not in this file (ADR-0032).
+// Whichever page
 // it is pressed on. The export is itself recorded in the administrative audit.
 export function ExportInventoryButton() {
   const { busy, setBusy, setError, setNotice } = useAccess();
@@ -35,5 +38,5 @@ export function ExportInventoryButton() {
     }
   }
 
-  return <button type="button" className="am-btn" disabled={busy} onClick={() => void exportInventory()}><Icon name="download" />Export inventory</button>;
+  return <button type="button" className="am-btn" disabled={busy} onClick={() => void exportInventory()}><Icon name="download" />Export Entra inventory</button>;
 }
