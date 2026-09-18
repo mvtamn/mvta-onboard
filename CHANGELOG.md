@@ -5,6 +5,17 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.257] - 2026-09-18
+
+- **The cutover: a token no longer says what anybody may do.** Increment 6 of ADR-0032, now accepted. The resolver stops mapping `OCC.*` app roles to roles entirely - Effective Access comes only from Role Grants - and an environment whose tables are missing grants nobody anything rather than falling back to the token, because that is the safe direction. `System.Ingestion` is the one app role still read: a workload identity has no person record.
+- **`requireRole` and the twelve role sets are deleted.** `src/lib/auth.ts` is 78 lines that answer who the caller is and nothing about what they may do.
+- **The Entra-era write flow is gone**, along with the Graph calls the consents being revoked allowed: submitting grants and revocations, decisions, cancels, the expiry sweep and reconciliation - about 1,300 lines across the handler, the Graph client and the store. What Entra still does: finding a person, inviting a guest, and sign-in activity. The changes route survives narrowed to `invite_guest`, and a batch containing a grant or revoke is refused whole so it cannot half-apply. A guest invitation now invites and stops; their OnBoard role is granted afterwards as a Role Grant.
+- **`ONBOARD_ACCESS_ADMIN_FALLBACK` is gone** from the code, the Bicep and the console's setup banner. It let an Operations Administrator manage access before anyone held `OCC.AccessAdmin`, which has no meaning once roles are OnBoard's.
+- **Fixed on the way: a refusal that told the wrong story.** Decision Matrix governance collapsed every refusal into one 401 saying a stable Admin identity was required, so somebody holding the wrong role was told to fix their sign-in. A caller without the action now gets that answer in its own words, and the identity check stays for the case it is about - Easy Auth naming nobody, which leaves an audit trail with no author.
+- **Tests say what a person holds, not what their token claims.** A seam (`useAccessExecutorForTests`, `fakeAccessDb`) lets a unit test state access as rows, the way production reads it; 26 handler tests moved onto it, and each refusal case now also asserts the message, so a refusal cannot pass because the caller happened to hold nothing at all.
+- **`docs/runbooks/access-cutover.md`** is the order to run this in, and the Entra runbook is marked superseded. **Do not deploy this build to an environment that has not been migrated and imported**: migrations 129-131, the first Access Administrator, one sign-in, then Import from Entra - all before the deploy, or everybody lands on No access.
+- **Verified.** Backend 1134 passing, console 660 passing.
+
 ## [1.5.256] - 2026-09-18
 
 - **The composer offers the channels the server allows.** `GET /detours/{id}/communications` now returns `channels` - each with its label, whether OnBoard sends or records it, and whether it needs recipients - and the console renders that list instead of the record's free-text channels plus an "Other…" escape. The console keeps no channel list of its own, so it cannot drift from migration 132's CHECK constraint. Increment 4 of `plans/detour-communications-implementation-plan.md`.
