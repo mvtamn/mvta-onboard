@@ -7,6 +7,7 @@
 // write endpoints carry an Entra bearer token.
 
 import type {
+  AccessActivityEntry,
   ActiveMessage,
   AdminMessage,
   AppSettingRow,
@@ -1061,6 +1062,17 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<{ people: AccessPersonView[] }>("/api/manage/access/people", {}, true);
     },
     /**
+     * Makes a directory person grantable before their first sign-in. Safe to
+     * call for somebody OnBoard already knows: it answers their existing id.
+     */
+    addAccessPerson(person: { object_id: string; tenant_id?: string | null; name?: string | null; email?: string | null }) {
+      return request<{ personId: string; created: boolean }>(
+        "/api/manage/access/people",
+        { method: "POST", body: JSON.stringify(person) },
+        true,
+      );
+    },
+    /**
      * `privileged` asks Entra for the stepped-up token the server requires
      * before a locked or access-managing Role changes hands. Without it the
      * server refuses with "needs a recent sign-in confirmation" instead of
@@ -1926,6 +1938,14 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<OnBoardSignInInformation>(
         `/api/access-management/principals/${encodeURIComponent(principalId)}/sign-ins`, {}, true,
       );
+    },
+    /**
+     * What has actually happened to OnBoard access. The older
+     * `/access-management/audit` feed keeps only the Graph-era record, so both
+     * are read and shown together.
+     */
+    getAccessActivity() {
+      return request<{ activity: AccessActivityEntry[] }>("/api/manage/access/activity", {}, true);
     },
     getAccessAudit() {
       return request<{ audit: OnBoardAccessAuditEntry[] }>(

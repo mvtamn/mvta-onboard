@@ -205,6 +205,45 @@ export async function recordSignIn(
     `);
 }
 
+/**
+ * Makes somebody grantable before they have ever signed in.
+ *
+ * Sign-in was the only way into AccessPeople, so a new starter could not be
+ * given their role until they had first been turned away by OnBoard - which is
+ * backwards for the one case an administrator plans ahead for. The row records
+ * who the directory says they are; it grants nothing by itself, and their first
+ * sign-in fills in last_seen_at as it always did.
+ */
+export async function ensurePerson(
+  executor: Executor,
+  person: { objectId: string; tenantId: string | null; name: string | null; email: string | null },
+  actor: Actor,
+): Promise<{ personId: string; created: boolean }> {
+  if (!person.objectId.trim()) throw new RoleRuleError("A person needs their directory object id.");
+  const result = await request(executor)
+    .input("oid", sql.NVarChar(64), person.objectId.trim())
+    .input("tid", sql.NVarChar(64), person.tenantId)
+    .input("name", sql.NVarChar(200), person.name)
+    .input("email", sql.NVarChar(320), person.email)
+    .input("by", sql.NVarChar(200), `added by ${actor.name ?? actor.objectId ?? "an administrator"}`)
+    .query<{ person_id: string; created: number }>(`
+      UPDATE AccessPeople
+         SET entra_tenant_id = COALESCE(entra_tenant_id, @tid),
+             display_name = COALESCE(@name, display_name),
+             email = COALESCE(@email, email)
+       WHERE entra_object_id = @oid;
+      IF @@ROWCOUNT = 0
+        INSERT AccessPeople (entra_object_id, entra_tenant_id, display_name, email, created_by)
+        OUTPUT inserted.person_id, 1 AS created
+        VALUES (@oid, @tid, @name, @email, @by);
+      ELSE
+        SELECT person_id, 0 AS created FROM AccessPeople WHERE entra_object_id = @oid;
+    `);
+  const row = result.recordset[0];
+  if (!row) throw new RoleRuleError("That person could not be added.", 500);
+  return { personId: row.person_id, created: row.created === 1 };
+}
+
 async function personRow(executor: Executor, personId: string): Promise<PersonRow> {
   const result = await request(executor)
     .input("id", sql.UniqueIdentifier, personId)

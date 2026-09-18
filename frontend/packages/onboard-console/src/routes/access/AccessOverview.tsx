@@ -4,13 +4,13 @@ import { api } from "../../config.js";
 import { useAccess as useMyAccess } from "../../auth/AccessContext.js";
 import { AddAccessLink, GrantChip, Icon, Loading, PageHead, SetupNotice } from "./AccessUi.js";
 import { displayTime, errorMessage, isPrivilegedRole, relativeTime, useAccess } from "./accessData.js";
-import { actionLabel, outcomeNeedsLook } from "./auditVocabulary.js";
+import { actionLabel, isChange, outcomeNeedsLook } from "./auditVocabulary.js";
 import { ExportInventoryButton } from "./ExportInventoryButton.js";
 
 // The landing page of Access & Identity: what needs a decision, gathered from
 // the pages it lives on, and a picture of who holds what.
 export function AccessOverview() {
-  const { people, requests, roles, findings, notReady, audit, loading, busy, setBusy, setError, setNotice, load, principalName } = useAccess();
+  const { people, requests, roles, findings, notReady, activity, loading, busy, setBusy, setError, setNotice, load } = useAccess();
   const { can } = useMyAccess();
   const canManage = can("access-identity.manage");
   const [imported, setImported] = useState<string | null>(null);
@@ -24,7 +24,9 @@ export function AccessOverview() {
   const pending = requests.filter((request) => request.status === "pending");
   const soonest = pending.map((request) => request.approvalExpiresAt).sort()[0];
   const live = roles.filter((role) => !role.archived);
-  const recent = [...audit].sort((a, b) => b.occurred_at.localeCompare(a.occurred_at)).slice(0, 6);
+  // What changed, not who looked: the full record, previews and all, is one
+  // click away in the Activity log.
+  const recent = activity.filter((entry) => isChange(entry.action)).slice(0, 6);
 
   // The one-time catch-up: today's Entra app-role assignments become OnBoard
   // grants. Pressing it twice is safe - a person who already holds the role is
@@ -132,11 +134,11 @@ export function AccessOverview() {
       </section>
       <section className="am-card" aria-labelledby="am-recent-title">
         <div className="am-card-head"><h3 id="am-recent-title">Recent activity</h3><Link className="am-link" to="/admin/access/activity">Activity log</Link></div>
-        {recent.length ? <ul className="am-feed">{recent.map((entry, index) => <li key={entry.id ?? `${entry.occurred_at}-${index}`}>
+        {recent.length ? <ul className="am-feed">{recent.map((entry) => <li key={entry.id}>
           <span className={`am-dot${outcomeNeedsLook(entry.outcome) ? " bad" : ""}`} />
-          <span><b>{entry.actor_name}</b> · {actionLabel(entry.action)}{entry.target_id ? ` · ${principalName(entry.target_id)}` : ""}</span>
-          <small>{displayTime(entry.occurred_at)}</small>
-        </li>)}</ul> : <p className="am-empty">No administrative activity yet.</p>}
+          <span><b>{entry.actor}</b> · {actionLabel(entry.action)}{entry.target ? ` · ${entry.target}` : ""}{entry.role ? ` · ${entry.role}` : ""}</span>
+          <small>{displayTime(entry.occurredAt)}</small>
+        </li>)}</ul> : <p className="am-empty">Nothing has been granted, removed or changed yet.</p>}
       </section>
     </div>
   </>;
