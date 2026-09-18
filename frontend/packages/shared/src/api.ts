@@ -1304,6 +1304,15 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       );
     },
 
+    /** Who is carrying this Detour. `null` hands it back to nobody. */
+    assignDetour(id: string, owner: string | null) {
+      return request<{ id: string; workflow_owner: string | null }>(
+        `/api/detours/${id}/assign`,
+        { method: "POST", body: JSON.stringify({ owner }) },
+        true,
+      );
+    },
+
     updateDetour(id: string, input: UpdateDetourInput) {
       return request<{ id: string; updated_at: string }>(
         `/api/detours/${id}`,

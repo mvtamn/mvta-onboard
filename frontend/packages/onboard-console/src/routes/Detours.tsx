@@ -13,6 +13,7 @@ import {
   type DetourSegmentInput,
 } from "@mvta/shared";
 import { useAccess } from "../auth/AccessContext.js";
+import { useAuth } from "../auth/AuthContext.js";
 import { api } from "../config.js";
 import { detourMatchesSearch } from "../lib/detourSearch.js";
 import { actOffer, availEntryOffer } from "../lib/detourActs.js";
@@ -205,6 +206,11 @@ function detourToCloneForm(d: Detour): DetourFormState {
 export function Detours() {
   const { confirm, prompt } = useAppDialog();
   const { can } = useAccess();
+  // Who "Assign to me" means. The server records the signed-in principal
+  // anyway; this is only so the row can offer the shortcut and hide it from
+  // whoever already owns it.
+  const { account } = useAuth();
+  const me = account?.username ?? "";
   // The same Module Actions the server checks. Editing and deleting are
   // separate actions - the server enforces the real boundary; this only
   // decides which controls are worth showing.
@@ -362,6 +368,26 @@ export function Detours() {
     if (!reason?.trim()) return;
     try { await api.overrideDetourConflict(d.id, reason.trim()); load(); }
     catch (err) { setLoadError(err instanceof ApiError ? err.message : "Could not record the override"); }
+  }
+
+  // Taking a Detour, handing it on, or putting it back. Ownership says who acts
+  // next; it is not a state, so nothing else about the Detour moves.
+  async function assignToMe(d: Detour) {
+    try { await api.assignDetour(d.id, me || null); load(); }
+    catch (err) { setLoadError(err instanceof ApiError ? err.message : "Could not assign this detour"); }
+  }
+
+  async function assignToSomeone(d: Detour) {
+    const owner = await prompt({
+      title: d.workflow_owner ? "Reassign this detour" : "Assign this detour",
+      description: d.workflow_owner ? `${d.workflow_owner} has it now. Leave it empty to put it back to nobody.` : "Who is carrying this detour? Leave it empty to put it back to nobody.",
+      label: "Owner",
+      placeholder: "Name or email",
+      confirmLabel: "Save owner",
+    });
+    if (owner === null) return;
+    try { await api.assignDetour(d.id, owner.trim() || null); load(); }
+    catch (err) { setLoadError(err instanceof ApiError ? err.message : "Could not assign this detour"); }
   }
 
   async function completeReview(d: Detour) {
@@ -604,6 +630,12 @@ export function Detours() {
                       <td>
                         <b>{nextStepLabel(d.readiness)}</b>
                         <div className="td-dim" style={{ fontSize: "0.85em" }}>{d.workflow_owner || "Unassigned"}</div>
+                        {canWrite && d.lifecycle_state !== "closed" ? (
+                          <div onClick={(e) => e.stopPropagation()} className="detour-assign">
+                            {d.workflow_owner === me ? null : <button className="btn-link" onClick={() => void assignToMe(d)}>Assign to me</button>}
+                            <button className="btn-link" onClick={() => void assignToSomeone(d)}>{d.workflow_owner ? "Reassign" : "Someone else"}</button>
+                          </div>
+                        ) : null}
                         {readinessFlags(d).map((flag) => (
                           <div key={flag.text} className={flag.bad ? "warn-note" : "td-dim"} style={{ fontSize: "0.85em" }}>{flag.text}</div>
                         ))}

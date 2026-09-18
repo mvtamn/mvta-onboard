@@ -19,6 +19,7 @@ interface SnapshotRow {
   riders_directed: string | null;
   location: string | null;
   geometry_json: string | null;
+  workflow_owner: string | null;
   conflict_override_reason: string | null;
   conflict_override_ids: string | null;
   history_count: number;
@@ -34,7 +35,7 @@ export async function lockAndLoad(tx: sql.Transaction, id: string, withConflicts
   const result = await new sql.Request(tx).input("id", sql.UniqueIdentifier, id).query<SnapshotRow>(`
     SELECT d.id, d.lifecycle_state, d.fulfillment_mode, d.review_status, d.review_reason,
            d.closure, d.start_date, d.end_date, d.riders_directed, d.location, d.geometry_json,
-           d.conflict_override_reason, d.conflict_override_ids,
+           d.workflow_owner, d.conflict_override_reason, d.conflict_override_ids,
            (SELECT COUNT(*) FROM DetourWorkflowHistory h WHERE h.detour_id = d.id) AS history_count
     FROM Detours d WITH (UPDLOCK, HOLDLOCK)
     WHERE d.id = @id AND d.is_deleted = 0;
@@ -55,6 +56,7 @@ export async function lockAndLoad(tx: sql.Transaction, id: string, withConflicts
     fulfillment_mode: row.fulfillment_mode,
     review_status: row.review_status,
     review_reason: row.review_reason,
+    workflow_owner: row.workflow_owner,
     history_count: row.history_count,
     facts: {
       closure: row.closure,
@@ -121,6 +123,10 @@ export async function applyDecision(
     request.input("conflict_override_reason", sql.NVarChar(1000), patch.conflict_override.reason);
     request.input("conflict_override_ids", sql.NVarChar(sql.MAX), JSON.stringify(patch.conflict_override.ids));
   }
+  if (patch.owner !== undefined) {
+    sets.push("workflow_owner = @owner");
+    request.input("owner", sql.NVarChar(200), patch.owner);
+  }
   if (patch.review) {
     sets.push("review_status = @review_status", "review_reason = @review_reason");
     request.input("review_status", sql.NVarChar(20), patch.review.status);
@@ -158,6 +164,7 @@ interface ViewRow {
   fulfillment_mode: DetourFulfillmentMode;
   review_status: "current" | "needs_review";
   review_reason: string | null;
+  workflow_owner: string | null;
   conflict_override_reason: string | null;
   conflict_override_ids: string | null;
 }
@@ -168,7 +175,8 @@ export async function loadSnapshots(pool: sql.ConnectionPool, ids: string[]): Pr
   const wanted = new Set(ids.map((id) => id.toLowerCase()));
   if (wanted.size === 0) return [];
   const rows = await pool.request().query<ViewRow>(`
-    SELECT id, lifecycle_state, fulfillment_mode, review_status, review_reason, conflict_override_reason, conflict_override_ids
+    SELECT id, lifecycle_state, fulfillment_mode, review_status, review_reason, workflow_owner,
+           conflict_override_reason, conflict_override_ids
     FROM Detours WHERE is_deleted = 0
   `);
   const context = await loadDetourConflictContext(pool);
@@ -181,6 +189,7 @@ export async function loadSnapshots(pool: sql.ConnectionPool, ids: string[]): Pr
         id: row.id,
         lifecycle_state: row.lifecycle_state,
         fulfillment_mode: row.fulfillment_mode,
+        workflow_owner: row.workflow_owner,
         review_status: row.review_status,
         review_reason: row.review_reason,
         history_count: 1,
