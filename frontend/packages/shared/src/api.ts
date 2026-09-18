@@ -511,6 +511,76 @@ export interface AccessRoleHistoryEntry {
   after: { name: string; purpose: string; actions: string[] } | null;
 }
 
+
+/** Who holds OnBoard access, and what it lets them do (ADR-0032). */
+export interface AccessHeldGrant {
+  grantId: string;
+  roleKey: string;
+  roleName: string;
+  grantedAt: string;
+  grantedBy: string | null;
+  approvedBy: string | null;
+  expiresAt: string | null;
+}
+
+export interface AccessPersonView {
+  personId: string;
+  objectId: string;
+  tenantId: string | null;
+  name: string | null;
+  email: string | null;
+  kind: "member" | "guest";
+  status: string;
+  sponsorName: string | null;
+  organization: string | null;
+  justification: string | null;
+  importedFrom: string | null;
+  lastSeenAt: string | null;
+  roles: AccessHeldGrant[];
+  actions: string[];
+  summary: string[];
+}
+
+export interface AccessGrantRequestView {
+  requestId: string;
+  personId: string;
+  personName: string | null;
+  personEmail: string | null;
+  roleKey: string;
+  roleName: string;
+  action: "grant" | "revoke";
+  reason: string;
+  expiresAt: string | null;
+  status: string;
+  requestedByObjectId: string | null;
+  requestedByName: string | null;
+  requestedAt: string;
+  approvalExpiresAt: string;
+  decidedByName: string | null;
+  decidedAt: string | null;
+  decisionReason: string | null;
+}
+
+export type AccessGrantOutcome =
+  | { disposition: "applied"; grantId: string }
+  | { disposition: "already_held" }
+  | { disposition: "pending_approval"; requestId: string };
+
+export interface AccessHealthFinding {
+  code: string;
+  severity: "attention" | "watch";
+  headline: string;
+  detail: string;
+  people?: string[];
+}
+
+export interface AccessImportOutcome {
+  people: number;
+  granted: number;
+  skipped: number;
+  unknownRoles: string[];
+}
+
 export function createApiClient({ baseUrl, getToken, privilegedAuthenticationContext = "c1" }: ApiClientOptions) {
   const root = baseUrl.replace(/\/+$/, "");
 
@@ -969,6 +1039,34 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
      */
     getMyAccess() {
       return request<MyAccess>("/api/me/access", {}, true);
+    },
+
+    getAccessPeople() {
+      return request<{ people: AccessPersonView[] }>("/api/manage/access/people", {}, true);
+    },
+    grantAccessRole(personId: string, input: { role_key: string; reason: string; expires_at?: string | null }) {
+      return request<AccessGrantOutcome>(`/api/manage/access/people/${encodeURIComponent(personId)}/roles`, { method: "POST", body: JSON.stringify(input) }, true);
+    },
+    revokeAccessGrant(grantId: string, reason: string) {
+      return request<AccessGrantOutcome>(`/api/manage/access/grants/${encodeURIComponent(grantId)}/revoke`, { method: "POST", body: JSON.stringify({ reason }) }, true);
+    },
+    getAccessGrantRequests() {
+      return request<{ requests: AccessGrantRequestView[] }>("/api/manage/access/requests", {}, true);
+    },
+    decideAccessGrantRequest(requestId: string, decision: "approve" | "reject" | "cancel", reason?: string) {
+      // Approving is a Privileged Access Change: the token must carry the
+      // step-up claim, so the request asks for it the way the Entra-era flow did.
+      return request<{ status: string; grantId?: string }>(
+        `/api/manage/access/requests/${encodeURIComponent(requestId)}/${decision}`,
+        { method: "POST", body: JSON.stringify({ reason }) },
+        decision === "cancel" ? true : { authenticationContext: privilegedAuthenticationContext },
+      );
+    },
+    importAccessFromEntra(assignments: { object_id: string; tenant_id?: string | null; name?: string | null; email?: string | null; app_role: string; via?: string }[]) {
+      return request<AccessImportOutcome>("/api/manage/access/import", { method: "POST", body: JSON.stringify({ assignments }) }, true);
+    },
+    getAccessHealthFindings() {
+      return request<{ findings: AccessHealthFinding[] }>("/api/manage/access/health", {}, true);
     },
 
     getAccessCatalog() {

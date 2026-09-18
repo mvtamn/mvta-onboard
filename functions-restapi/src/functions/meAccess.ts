@@ -12,6 +12,8 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getCallerPrincipal } from "../lib/auth";
 import { resolveEffectiveAccess } from "../lib/access";
+import { grantsAvailable, recordSignIn } from "../lib/access/grants";
+import { getPool } from "../lib/db";
 
 app.http("meAccess", {
   route: "me/access",
@@ -24,6 +26,24 @@ app.http("meAccess", {
     }
     try {
       const access = await resolveEffectiveAccess(principal);
+      // Signing in is how an Access Administrator comes to see somebody on the
+      // People page, which is what the No access page promises. It must never
+      // decide the answer, so a failure here is logged and nothing more.
+      if (access.person.objectId) {
+        try {
+          const pool = await getPool();
+          if (await grantsAvailable(pool)) {
+            await recordSignIn(pool, {
+              objectId: access.person.objectId,
+              tenantId: access.person.tenantId,
+              name: access.person.name,
+              email: access.person.email,
+            });
+          }
+        } catch (error) {
+          context.warn("meAccess could not record the sign-in", error);
+        }
+      }
       return { status: 200, jsonBody: access };
     } catch (error) {
       context.error("meAccess failed", error);
