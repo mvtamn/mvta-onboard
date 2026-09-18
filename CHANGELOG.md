@@ -5,12 +5,17 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.262] - 2026-09-18
+## [1.5.266] - 2026-09-18
 
 - **One place for the words Missed Trips puts on a case.** Half the module's vocabulary lived in `missedTripReview.ts` and was tested; the other half - the detector name, the evidence-quality label, the route and trip code, review urgency (Aging/Overdue), and where a confirmed trip landed in the performance assessment - was private to the 1253-line `MissedTripAlerts.tsx` and had no tests, because reaching it meant rendering the page. It moved, with its reasoning comments intact. `MissedTripAlerts.tsx` drops to 1119 lines and is now rendering.
 - **20 new tests** over rules that had none, including the ones with real judgement in them: a route never reads "Route 420 · 420", a trip code falls back to whichever half exists, urgency stops once someone has reviewed however old the row is, and each assessment outcome - not linked, awaiting attribution, recorded but not charged, counted in a month that may already be finalized - says the right thing.
 - **No wording changes**, and no page split: the four pages inside `MissedTripAlerts.tsx` stay where they are for now.
 - **Found, not fixed:** a case held for an unknown data gap is labelled "Legacy — unverified", because the label falls through to legacy for anything that is not source-verified or experimental. Its own label is worth adding, separately.
+
+## [1.5.262] - 2026-09-18
+
+- **Import from Entra says what it read.** Pressing it on dev reported nothing to import while Entra held 24 assignments across 7 people, and neither the page nor the API log said which half had gone wrong - the console never posted, so there was nothing to look at. Finding nothing is a claim about Entra, and it is now made with evidence: no principals at all names the app-role configuration (`ONBOARD_ACCESS_CONFIG_JSON` against the application's current app-role ids), groups without people names the directory read permission that expands group membership, and people without a recognised app role says so plainly. A successful import now leads with what it read - "24 read from Entra · 7 people, 24 grants, 0 skipped" - so the number written can be checked against the number found.
+- **Verified.** Console 671 tests, including the two new empty cases and the assertion that neither of them posts.
 
 ## [1.5.261] - 2026-09-18
 
