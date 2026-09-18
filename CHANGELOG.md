@@ -5,6 +5,15 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.254] - 2026-09-17
+
+- **Detour communication channels are named, and split into sent and recorded.** `lib/detourCommunication/channels.ts` defines five: `email`, `sms`, `teams` are sent through the delivery port; `digital_signage` and `avl_messaging` are recorded, because the signs and Avail's operator messaging are somebody else's to operate. `channel` was any non-empty string since migration 059, and the intake form offered four chips plus free text. **Radio is dropped** - no Detour has ever used it. Increment 1 of `plans/detour-communications-implementation-plan.md`; B9/B15 approved as redesigned 2026-09-17.
+- **Recording is not sending.** Eligibility splits: a recorded channel is accepted on a **closed** Detour, because a Detour closes after it ends and the AVL message that went out on Monday may be written down on Tuesday. Every other refusal still applies - an outstanding re-review, an unfulfilled Detour, an unresolved likely duplicate - and sending on a closed Detour is still refused. Asking the server to *send* a recorded channel is refused with `channel_is_recorded` rather than quietly doing nothing.
+- **Only a channel that carries an address asks for one.** Publishing demanded a recipients string for every channel; now just `email` and `sms`. Teams posts to one configured channel and carries none.
+- **Migration 132** constrains `channel` to the five names and adds `occurred_at` - when a recorded message actually went out. Existing published rows get their `published_at`. Dev holds zero `DetourCommunications` rows, so nothing is adopted; an environment that does hold rows must be checked first, since a legacy channel string fails the CHECK.
+- **Older spellings still resolve.** `detourChannel` ignores case, spaces, hyphens and underscores, so "Teams", "E-Mail", "AVL messaging" and `avl_messaging` name one channel each rather than several. An unknown name is refused (`unknown_channel`), never guessed at.
+- **Verified.** `channels.test.ts`: 10 tests over the sent/recorded split, the recipients rule, radio's absence, the older spellings, and a guard that migration 132's CHECK matches the list. The contract test gains a recorded channel accepted on a closed Detour with the date it went out, a sent channel still refused there, and a road sign refused a send. Backend 1154 tests pass.
+
 ## [1.5.253] - 2026-09-17
 
 - **Access & Identity reads and writes OnBoard's own grants.** The last half of increment 5. People & guests lists everyone OnBoard has seen with the roles they hold, when they last signed in, and the Access Summary those roles add up to; granting picks a real role (with its summary on the card) and writes a grant; removing revokes one by its id with a reason. The group-versus-direct "assignment source" language is gone - a grant names a person.

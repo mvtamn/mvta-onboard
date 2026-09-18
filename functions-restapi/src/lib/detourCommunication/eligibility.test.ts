@@ -12,7 +12,7 @@ const fulfilled: CommunicationDetour = {
   conflict_status: "none",
   required_audiences: ["Riders", "Metro Transit"],
 };
-const toRiders = { audience: "Riders", channel: "email", recipients: ["rider-alerts@example.com"] };
+const toRiders = { audience: "Riders", channel: "email" as const, recipients: ["rider-alerts@example.com"] };
 
 test("a fulfilled Detour with nothing outstanding may tell its audience", () => {
   const eligibility = communicationEligibility(fulfilled, toRiders);
@@ -44,7 +44,7 @@ test("wording may be prepared before a Detour is in place, but not after it clos
 
 test("an email with nobody to send it to is refused; Teams carries no recipients", () => {
   assert.equal(communicationEligibility(fulfilled, { ...toRiders, recipients: [] }).refusal?.code, "no_recipients");
-  assert.equal(communicationEligibility(fulfilled, { audience: "Riders", channel: "Teams", recipients: [] }).may_send, true);
+  assert.equal(communicationEligibility(fulfilled, { audience: "Riders", channel: "teams", recipients: [] }).may_send, true);
 });
 
 test("an audience the record does not require is allowed, and said so", () => {
