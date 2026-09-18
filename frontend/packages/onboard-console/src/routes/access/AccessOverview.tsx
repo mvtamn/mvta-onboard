@@ -33,21 +33,33 @@ export function AccessOverview() {
     setBusy(true);
     try {
       const inventory = await api.getAccessPrincipals();
-      const assignments = inventory.principals
-        .filter((principal) => principal.principal_type === "user")
-        .flatMap((principal) => principal.assignments.map((assignment) => ({
-          object_id: principal.id,
-          name: principal.display_name,
-          email: principal.sign_in_name,
-          app_role: assignment.role,
-          via: assignment.source === "group" ? `group ${assignment.source_name}` : "direct assignment",
-        })));
+      const principals = inventory.principals ?? [];
+      const people = principals.filter((principal) => principal.principal_type === "user");
+      const assignments = people.flatMap((principal) => principal.assignments.map((assignment) => ({
+        object_id: principal.id,
+        name: principal.display_name,
+        email: principal.sign_in_name,
+        app_role: assignment.role,
+        via: assignment.source === "group" ? `group ${assignment.source_name}` : "direct assignment",
+      })));
       if (assignments.length === 0) {
-        setImported("Entra has no app-role assignments to import.");
+        // Finding nothing is a claim about Entra, and it was made without
+        // evidence: the first attempt at this on dev said "nothing to import"
+        // while Entra held 24 assignments across 7 people, and nothing on the
+        // page or in the API log said which half had gone wrong. Each way of
+        // finding nothing now names itself.
+        const groups = principals.filter((principal) => principal.principal_type === "group").length;
+        setImported(
+          principals.length === 0
+            ? "Entra returned nothing at all. The app roles it was asked about may not be the ones now registered - check ONBOARD_ACCESS_CONFIG_JSON against the application's app-role ids."
+            : people.length === 0
+              ? `Entra returned ${groups} ${groups === 1 ? "group" : "groups"} and no people, so no group's members could be read. That is a directory read permission, not a missing assignment.`
+              : `Entra returned ${people.length} ${people.length === 1 ? "person" : "people"}, none holding an app role OnBoard recognises.`,
+        );
         return;
       }
       const outcome = await api.importAccessFromEntra(assignments);
-      const summary = `${outcome.people} ${outcome.people === 1 ? "person" : "people"}, ${outcome.granted} ${outcome.granted === 1 ? "grant" : "grants"}, ${outcome.skipped} skipped`
+      const summary = `${assignments.length} read from Entra · ${outcome.people} ${outcome.people === 1 ? "person" : "people"}, ${outcome.granted} ${outcome.granted === 1 ? "grant" : "grants"}, ${outcome.skipped} skipped`
         + (outcome.unknownRoles.length ? `. No OnBoard role matches ${outcome.unknownRoles.join(", ")}, so those were left out.` : ".");
       setImported(summary);
       setNotice(`Imported from Entra: ${summary}`);
