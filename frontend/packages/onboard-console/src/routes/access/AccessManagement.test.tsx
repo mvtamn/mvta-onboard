@@ -265,9 +265,43 @@ describe("Overview", () => {
       app_role: "OCC.Viewer",
       via: "group OnBoard Viewers",
     }]);
-    expect(await screen.findByText("1 person, 1 grant, 0 skipped.")).toBeInTheDocument();
+    expect(await screen.findByText("1 read from Entra · 1 person, 1 grant, 0 skipped.")).toBeInTheDocument();
     // Pressing it refreshes what the section holds, so a second press is honest.
     expect(api.getAccessPeople).toHaveBeenCalledTimes(2);
+  });
+
+  // Finding nothing used to be one sentence blaming Entra, which on dev was
+  // wrong: Entra held 24 assignments and the read had gone wrong instead. Each
+  // way of finding nothing now says which one it was, and none of them posts.
+  it("says Entra returned nothing when the app roles asked about do not match", async () => {
+    vi.mocked(api.getAccessPrincipals).mockResolvedValue({ environment: "test", principals: [] } as never);
+    renderAt("/admin/access");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Import from Entra" }));
+    expect(await screen.findByText(/ONBOARD_ACCESS_CONFIG_JSON/)).toBeInTheDocument();
+    expect(api.importAccessFromEntra).not.toHaveBeenCalled();
+  });
+
+  it("names the unread group membership when Entra returns groups and no people", async () => {
+    vi.mocked(api.getAccessPrincipals).mockResolvedValue({
+      environment: "test",
+      principals: [{
+        id: "group-1",
+        display_name: "OnBoard Viewers",
+        sign_in_name: null,
+        principal_type: "group",
+        account_enabled: null,
+        guest_state: null,
+        assignments: [{ role: "OCC.Viewer", source: "direct", source_id: "a-1", source_name: "Enterprise application assignment" }],
+        effective_roles: ["OCC.Viewer"],
+      }],
+    } as never);
+    renderAt("/admin/access");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Import from Entra" }));
+    expect(await screen.findByText(/1 group and no people/)).toBeInTheDocument();
+    expect(await screen.findByText(/directory read permission/)).toBeInTheDocument();
+    expect(api.importAccessFromEntra).not.toHaveBeenCalled();
   });
 });
 
