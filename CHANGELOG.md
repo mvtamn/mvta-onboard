@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.254] - 2026-09-18
+
+- **Fixed-route missed-trip detection reads through one seam.** Every read the GTFS detector makes - the day's scheduled runs with their operational evidence, start evidence, a cancellation's scheduled time, and feed health - is injected through `GtfsDetectionDeps` with a live default, the way `gtfsRtReader`, `feedRun` and `availClient` already do it. The rules that decide *which* trips are judged - past its 30-minute deadline, already started, on a special-event route, which service day it belongs to, and what the day's own evidence can support - are now pure functions over one Scheduled day and have tests for the first time (23 of them, no database).
+- **No change to detection.** The queries and the rules are the same; the detector is mid-Shadow-detection and its numbers stay comparable. One log-only difference: a service day with nothing scheduled no longer appends a second, usually empty, explanation to the poll's warning line.
+- **`Scheduled day` is in CONTEXT.md**, defined as what one pass read - deliberately *not* the retained `Schedule snapshot`, which the code still does not implement.
+
 ## [1.5.253] - 2026-09-17
 
 - **Access & Identity reads and writes OnBoard's own grants.** The last half of increment 5. People & guests lists everyone OnBoard has seen with the roles they hold, when they last signed in, and the Access Summary those roles add up to; granting picks a real role (with its summary on the card) and writes a grant; removing revokes one by its id with a reason. The group-versus-direct "assignment source" language is gone - a grant names a person.
