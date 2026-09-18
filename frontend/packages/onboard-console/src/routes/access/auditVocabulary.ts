@@ -17,13 +17,31 @@ const ACTIONS: Record<string, string> = {
   access_reconciliation_viewed: "Checked access health",
   sign_in_details_viewed: "Viewed sign-ins",
   privileged_change_requested: "Requested a privileged change",
+  privileged_removal_requested: "Requested a privileged removal",
   privileged_change_approved: "Approved a privileged change",
   privileged_change_rejected: "Rejected a privileged change",
   privileged_change_cancelled: "Cancelled a privileged request",
   privileged_change_expired: "Privileged request expired",
   privileged_change_failed: "Privileged change failed",
   privileged_change_blocked: "Blocked a privileged change",
+  role_created: "Created a role",
+  role_edited: "Edited a role",
+  role_archived: "Archived a role",
 };
+
+/**
+ * Looking at access is recorded too, and on a quiet week it is most of what the
+ * record holds. The Overview shows what changed; the Activity log still shows
+ * everything, which is where somebody goes to see who looked.
+ */
+const LOOKED_AT = new Set([
+  "access_change_previewed",
+  "access_inventory_exported",
+  "access_reconciliation_viewed",
+  "sign_in_details_viewed",
+]);
+
+export const isChange = (action: string) => !LOOKED_AT.has(action);
 
 const OUTCOMES: Record<string, [Tone, string]> = {
   completed: ["ok", "Completed"],

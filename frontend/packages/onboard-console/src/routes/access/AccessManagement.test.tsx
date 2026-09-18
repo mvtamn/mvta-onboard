@@ -20,11 +20,13 @@ vi.mock("../../config.js", () => ({
     getAccessPeople: vi.fn(),
     getAccessGrantRequests: vi.fn(),
     getAccessRoles: vi.fn(),
+    addAccessPerson: vi.fn(),
     grantAccessRole: vi.fn(),
     revokeAccessGrant: vi.fn(),
     decideAccessGrantRequest: vi.fn(),
     importAccessFromEntra: vi.fn(),
     getAccessHealthFindings: vi.fn(),
+    getAccessActivity: vi.fn(),
     // The three things Entra is still asked.
     searchAccessDirectory: vi.fn(),
     getAccessSignIns: vi.fn(),
@@ -167,6 +169,8 @@ beforeEach(() => {
   vi.mocked(api.getAccessGrantRequests).mockResolvedValue({ requests: [] });
   vi.mocked(api.getAccessRoles).mockResolvedValue({ roles: [VIEWER, ACCESS_ADMIN] });
   vi.mocked(api.getAccessAudit).mockResolvedValue({ audit: [] });
+  vi.mocked(api.getAccessActivity).mockResolvedValue({ activity: [] });
+  vi.mocked(api.addAccessPerson).mockResolvedValue({ personId: "person-new", created: true });
   vi.mocked(api.getAccessPrincipals).mockResolvedValue({
     environment: "test",
     access_admin_fallback: false,
@@ -437,7 +441,10 @@ describe("Add access", () => {
     expect(await screen.findByText("Taylor Operator now holds Viewer.")).toBeInTheDocument();
   });
 
-  it("says plainly that somebody OnBoard has not seen has not signed in yet", async () => {
+  // Sign-in used to be the only way into OnBoard's people, so a new starter had
+  // to be turned away once before they could be given their role. Granting now
+  // records them from the directory first.
+  it("grants a role to somebody who has never signed in, recording them from the directory", async () => {
     vi.mocked(api.searchAccessDirectory).mockResolvedValue({ candidates: [{
       id: "user-404",
       display_name: "Morgan Manager",
@@ -449,14 +456,40 @@ describe("Add access", () => {
       effective_roles: [],
     }] });
 
+    vi.mocked(api.grantAccessRole).mockResolvedValue({ disposition: "applied", grantId: "grant-8" });
+
     renderAt("/admin/access/add");
     await userEvent.type(await screen.findByRole("searchbox", { name: "Search Entra directory" }), "Morgan");
     await userEvent.click(screen.getByRole("button", { name: "Search Entra" }));
     await userEvent.click(await screen.findByRole("radio", { name: /Morgan Manager/ }));
 
-    expect(screen.getByText(/OnBoard has not seen Morgan Manager yet/)).toBeInTheDocument();
-    expect(screen.getByText(/the first time they sign in to OnBoard/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Grant role" })).toBeDisabled();
+    expect(screen.getByText(/Morgan Manager has not signed in to OnBoard yet/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("radio", { name: /Viewer/ }));
+    await userEvent.type(screen.getByRole("textbox", { name: /Business reason/ }), "Starts Monday");
+    await userEvent.click(screen.getByRole("button", { name: "Grant role" }));
+
+    expect(api.addAccessPerson).toHaveBeenCalledWith({ object_id: "user-404", name: "Morgan Manager", email: "morgan@example.com" });
+    expect(api.grantAccessRole).toHaveBeenCalledWith("person-new", { role_key: "viewer", reason: "Starts Monday", expires_at: null }, false);
+    expect(await screen.findByText("Morgan Manager now holds Viewer.")).toBeInTheDocument();
+  });
+
+  it("does not record a person twice when OnBoard already knows them", async () => {
+    vi.mocked(api.searchAccessDirectory).mockResolvedValue({ candidates: [{
+      id: "user-1", display_name: "Taylor Operator", sign_in_name: "taylor@example.com", principal_type: "user",
+      account_enabled: true, guest_state: null, assignments: [], effective_roles: [],
+    }] });
+    vi.mocked(api.grantAccessRole).mockResolvedValue({ disposition: "applied", grantId: "grant-9" });
+
+    renderAt("/admin/access/add");
+    await userEvent.type(await screen.findByRole("searchbox", { name: "Search Entra directory" }), "Taylor");
+    await userEvent.click(screen.getByRole("button", { name: "Search Entra" }));
+    await userEvent.click(await screen.findByRole("radio", { name: /Taylor Operator/ }));
+    await userEvent.click(screen.getByRole("radio", { name: /Viewer/ }));
+    await userEvent.type(screen.getByRole("textbox", { name: /Business reason/ }), "Weekend cover");
+    await userEvent.click(screen.getByRole("button", { name: "Grant role" }));
+
+    expect(api.addAccessPerson).not.toHaveBeenCalled();
+    expect(api.grantAccessRole).toHaveBeenCalledWith("person-1", { role_key: "viewer", reason: "Weekend cover", expires_at: null }, false);
   });
 
   it("reads a privileged grant as needing a second Access Administrator, not as an error", async () => {
@@ -560,5 +593,50 @@ describe("Activity log", () => {
     await userEvent.click(screen.getByRole("button", { name: "Failed or blocked" }));
     expect(screen.queryByRole("cell", { name: "Granted access" })).not.toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "Blocked a privileged change" })).toBeInTheDocument();
+  });
+
+  // The grants people make live in OnBoard's own tables; the Graph-era audit
+  // records only what was looked at. Reading one without the other showed a
+  // log of previews with every real change missing.
+  it("shows OnBoard's own grants and role edits alongside the older audit", async () => {
+    vi.mocked(api.getAccessActivity).mockResolvedValue({ activity: [
+      { id: "g1:granted", actor_name: "Alex Administrator", action: "access_grant", target_id: "person-1", target_name: "Taylor Operator", role: "Viewer", reason: null, outcome: "completed", occurred_at: "2026-09-17T14:00:00Z" },
+      { id: "h1", actor_name: "Alex Administrator", action: "role_edited", target_id: null, target_name: null, role: "Publisher", reason: "Added event messages.", outcome: "completed", occurred_at: "2026-09-17T13:00:00Z" },
+    ] });
+    vi.mocked(api.getAccessAudit).mockResolvedValue({ audit: [
+      { id: "a1", environment: "test", actor_id: "x", actor_name: "Priya Shah", action: "access_change_previewed", target_id: null, reason: null, outcome: "validated", correlation_id: null, occurred_at: "2026-09-16T15:00:00Z" },
+    ] });
+    renderAt("/admin/access/activity");
+
+    expect(await screen.findByText("3 entries")).toBeInTheDocument();
+    const granted = (await screen.findByRole("cell", { name: "Granted access" })).closest("tr")!;
+    expect(within(granted).getByRole("cell", { name: "Viewer" })).toBeInTheDocument();
+    expect(within(granted).getByRole("cell", { name: "Taylor Operator" })).toBeInTheDocument();
+    const edited = screen.getByRole("cell", { name: "Edited a role" }).closest("tr")!;
+    expect(within(edited).getByRole("cell", { name: "Publisher" })).toBeInTheDocument();
+    // Newest first, whichever record a row came from.
+    expect(screen.getAllByRole("row")[2]).toBe(granted);
+  });
+});
+
+describe("Recent activity on the Overview", () => {
+  it("shows what changed, names an actor the older audit kept only as an id, and leaves looking out", async () => {
+    vi.mocked(api.getAccessActivity).mockResolvedValue({ activity: [
+      { id: "g1:granted", actor_name: "Alex Administrator", action: "access_grant", target_id: "person-1", target_name: "Taylor Operator", role: "Viewer", reason: null, outcome: "completed", occurred_at: "2026-09-17T14:00:00Z" },
+    ] });
+    vi.mocked(api.getAccessAudit).mockResolvedValue({ audit: [
+      // Recorded before the sign-in carried a name: the id is Taylor's, and
+      // the feed used to print the raw GUID.
+      { id: "a1", environment: "test", actor_id: "user-1", actor_name: "user-1", action: "guest_invitation", target_id: "user-2", reason: null, outcome: "completed", correlation_id: null, occurred_at: "2026-09-17T12:00:00Z" },
+      { id: "a2", environment: "test", actor_id: "user-1", actor_name: "user-1", action: "access_change_previewed", target_id: null, reason: null, outcome: "validated", correlation_id: null, occurred_at: "2026-09-17T13:00:00Z" },
+    ] });
+    renderAt("/admin/access");
+
+    const feed = (await screen.findByRole("heading", { name: "Recent activity" })).closest("section")!;
+    expect(within(feed).getByText(/Granted access · Taylor Operator · Viewer/)).toBeInTheDocument();
+    expect(within(feed).getByText(/Invited a guest · Riley Guest/)).toBeInTheDocument();
+    expect(within(feed).queryByText(/user-1/)).not.toBeInTheDocument();
+    // Previews belong to the Activity log, not to what changed.
+    expect(within(feed).queryByText(/Checked a change/)).not.toBeInTheDocument();
   });
 });

@@ -5,10 +5,12 @@ import test from "node:test";
 import type { CallerPrincipal } from "../auth";
 import { parseConnectionString, sql } from "../db";
 import { resolveEffectiveAccess } from "./index";
+import { listActivity } from "./activity";
 import {
   accessFindings,
   cancelRequest,
   decideRequest,
+  ensurePerson,
   grantRole,
   importAssignments,
   listPeople,
@@ -26,7 +28,11 @@ import {
 //     cannot be the person who asked, and whose approval goes stale;
 //   OnBoard refusing to leave itself with nobody able to manage access;
 //   the one-time Entra import being safe to run twice;
-//   health findings answering what an administrator should look at now.
+//   somebody recorded from the directory being grantable before their first
+//     sign-in, and that sign-in still landing on the same person;
+//   health findings answering what an administrator should look at now;
+//   the activity feed reading those same rows, so a grant made here is what the
+//     Activity log shows.
 const connectionString = process.env.DECISION_MATRIX_TEST_SQL_CONNECTION_STRING;
 const DATABASE = "mvta_access_grants_contract";
 const MIGRATIONS = ["129-app-owned-roles", "130-access-role-history", "131-onboard-grant-requests"];
@@ -192,6 +198,67 @@ test("granting OnBoard access against real SQL", { skip: !connectionString && "D
       assert.equal(dana.importedFrom, "entra");
       assert.equal(dana.roles[0].grantedBy, "imported from Entra (app role)");
       assert.ok((await resolveEffectiveAccess(principal(CHRIS), { executor: pool, useCache: false })).actions.includes("dashboard.view"));
+    });
+
+    await t.test("somebody can be recorded from the directory before they ever sign in", async () => {
+      const DANI = "eeeeeeee-5555-4555-8555-555555555555";
+      const added = await ensurePerson(pool, { objectId: DANI, tenantId: "tenant-1", name: "Dani", email: "dani@example.com" }, alice);
+      assert.equal(added.created, true);
+      // Recording somebody is not access: they hold nothing until granted.
+      const dani = (await listPeople(pool)).find((p) => p.objectId === DANI)!;
+      assert.deepEqual([dani.roles.length, dani.lastSeenAt], [0, null]);
+      assert.equal(dani.personId, added.personId);
+
+      assert.equal((await grantRole(pool, { personId: added.personId, roleKey: "viewer", reason: "Starts Monday." }, alice)).disposition, "applied");
+      assert.ok((await resolveEffectiveAccess(principal(DANI), { executor: pool, useCache: false })).actions.includes("dashboard.view"));
+
+      // Doing it twice is the same person, and their first sign-in still lands.
+      const again = await ensurePerson(pool, { objectId: DANI, tenantId: "tenant-1", name: "Dani Ruiz", email: null }, alice);
+      assert.deepEqual([again.personId, again.created], [added.personId, false]);
+      await recordSignIn(pool, { objectId: DANI, tenantId: "tenant-1", name: null, email: null });
+      const seen = (await listPeople(pool)).find((p) => p.objectId === DANI)!;
+      assert.deepEqual([seen.name, !!seen.lastSeenAt, seen.roles.length], ["Dani Ruiz", true, 1]);
+    });
+
+    await t.test("the activity feed is read from the grants themselves", async () => {
+      // A role edit is the one source without a call above it; written here so
+      // the history branch of the feed is exercised rather than assumed.
+      await pool.request().batch(
+        `INSERT AccessRoleHistory (role_key, change, actor_name, note) VALUES ('publisher', 'updated', 'Alice', 'Added event messages.')`,
+      );
+      const activity = await listActivity(pool);
+
+      // Newest first, the way both pages show it.
+      const times = activity.map((entry) => entry.occurred_at);
+      assert.deepEqual(times, [...times].sort().reverse());
+
+      const granted = activity.find((entry) => entry.action === "access_grant" && entry.role === "Publisher");
+      assert.equal(granted?.actor_name, "Alice");
+      // The name is read now, not copied when the grant was written: the Entra
+      // import above corrected it to "Chris", and the feed says so.
+      assert.equal(granted?.target_name, "Chris");
+      assert.equal(granted?.outcome, "completed");
+
+      const removed = activity.find((entry) => entry.action === "access_revoke" && entry.role === "Publisher");
+      assert.equal(removed?.reason, "Moved teams.");
+      // The same grant appears once as given and once as taken away.
+      assert.equal(granted!.id.replace(":granted", ""), removed!.id.replace(":revoked", ""));
+
+      // Both administrators asked for the other, so the request is found by who
+      // it was about rather than by being the only one of its kind.
+      const ben = BEN.slice(0, 5);
+      const asked = activity.find((entry) => entry.action === "privileged_change_requested" && entry.target_name === ben);
+      assert.deepEqual([asked?.actor_name, asked?.role, asked?.outcome], ["Alice", "Access Administrator", "approved"]);
+      const approved = activity.find((entry) => entry.action === "privileged_change_approved" && entry.target_name === ben);
+      assert.deepEqual([approved?.actor_name, approved?.reason], ["Ben", "Agreed."]);
+
+      const cancelled = activity.find((entry) => entry.action === "privileged_change_cancelled");
+      assert.equal(cancelled?.outcome, "cancelled");
+      // A request left to go stale reads as expired without anybody deciding it.
+      assert.ok(activity.some((entry) => entry.action === "privileged_change_requested" && entry.outcome === "expired"));
+
+      const edited = activity.find((entry) => entry.action === "role_edited");
+      assert.deepEqual([edited?.role, edited?.reason, edited?.target_id], ["Publisher", "Added event messages.", null]);
     });
 
     await t.test("health reports what an administrator should look at now", async () => {
