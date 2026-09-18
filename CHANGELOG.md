@@ -5,18 +5,25 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.259] - 2026-09-18
+## [1.5.260] - 2026-09-18
 
 - **One reading of what the missed-trip detectors are doing.** `GTFS_SILENT_NO_SHOW_ENABLED`, `SPARE_MISSED_TRIPS_ENABLED`, `SPARE_MISSED_TRIP_SERVICE_IDS` and `SPARE_CONTRACTOR_FAULT_VALUES` were each parsed at the point of use - the same `?.trim().toLowerCase() === "true"` written out five times across the two adapters, the poll, the ingest, `/feed-checks` and `GET /missed-trips`. Whether a detector is running is part of the Missed-trip case module's interface, so `missedTripDetectionSettings(env)` now answers it and nothing outside reads those variables. A typo could previously have had the console call a detector paused while the poll ran it, and nothing would have failed.
 - **Fixed: a scope of nothing but separators counted as configured.** `spare_service_scope_configured` tested the raw string for emptiness, so `" , , "` reported a configured scope over zero services. It now counts the services actually named.
 - **`env` is a parameter**, as in `availClient` and `gtfsRtReader`, so a test names the settings it wants instead of mutating a global. 7 new tests cover what counts as "true" (`1` and `yes` do not), independent gating of the two detectors, service ids keeping Spare's own casing, fault values lowercased, and the separator-only list.
 - Promotion out of Shadow detection stays in `classify.ts`: `promotedDetectors()` already had this shape and is threaded through the classification and its SQL, so it stays beside the rules it governs.
 
-## [1.5.258] - 2026-09-18
+## [1.5.259] - 2026-09-18
 
 - **Fixed-route missed-trip detection reads through one seam.** Every read the GTFS detector makes - the day's scheduled runs with their operational evidence, start evidence, a cancellation's scheduled time, and feed health - is injected through `GtfsDetectionDeps` with a live default, the way `gtfsRtReader`, `feedRun` and `availClient` already do it. The rules that decide *which* trips are judged - past its 30-minute deadline, already started, on a special-event route, which service day it belongs to, and what the day's own evidence can support - are now pure functions over one Scheduled day and have tests for the first time (23 of them, no database).
 - **No change to detection.** The queries and the rules are the same; the detector is mid-Shadow-detection and its numbers stay comparable. One log-only difference: a service day with nothing scheduled no longer appends a second, usually empty, explanation to the poll's warning line.
 - **`Scheduled day` is in CONTEXT.md**, defined as what one pass read - deliberately *not* the retained `Schedule snapshot`, which the code still does not implement.
+
+## [1.5.258] - 2026-09-18
+
+- **Fixed: migration 092 could not be applied to any database.** It adds the delivery columns and then, **in the same batch**, a CHECK naming `delivery_status`. SQL Server compiles a batch before executing it, so that reference fails with "Invalid column name" and the whole batch is abandoned - nothing added, and quietly enough that a run looks uneventful. The CHECK now runs through `EXEC`, as migration 061's does. The file is edited rather than superseded because it had **never applied anywhere**: dev is the only environment, and it was tried there twice.
+- **Why it mattered.** `delivery_status` is what server-side sending checks for, so every attempt to send a detour communication has answered 503 since migration 092 was written, and the console has fallen back to the `mailto:` link. Increment 3 of the communications plan is gated on this.
+- **A test keeps the shape from coming back.** `channels.test.ts` splits migration 092 on `GO`, ignores text inside `EXEC()` (which compiles when it runs), and fails if any batch adds a column and names it in a CHECK. The contract test's own workaround for 092 is deleted, since the migration is correct now.
+- **Verified.** Backend 1160 tests pass. The migration still needs applying on dev - the earlier attempts added nothing.
 
 ## [1.5.257] - 2026-09-18
 

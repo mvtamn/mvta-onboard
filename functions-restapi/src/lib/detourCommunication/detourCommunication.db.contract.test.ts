@@ -61,18 +61,15 @@ const MIGRATIONS = [
   "migration-132-detour-communication-channels.sql",
 ];
 
-// Two migrations add a column and then name it in the same batch, which SQL
-// Server compiles before the column exists. Neither file is edited, since dev
-// has run both; the CHECK runs through EXEC here instead.
+// 061 adds a column and then names it in a CHECK in the same batch, which SQL
+// Server compiles before the column exists. The file is not edited, since dev
+// has run it; the CHECK runs through EXEC here instead. (092 had the same
+// defect and was fixed in the migration itself - it had never applied
+// anywhere, which is how the defect survived.)
 const FRESH_DATABASE_ADJUSTMENTS: Record<string, (text: string) => string> = {
   "migration-061-detour-rereview-closure.sql": (text) => text.replace(
     "ALTER TABLE dbo.Detours ADD CONSTRAINT CK_Detours_ReviewStatus CHECK (review_status IN ('current', 'needs_review'));",
     "EXEC(N'ALTER TABLE dbo.Detours ADD CONSTRAINT CK_Detours_ReviewStatus CHECK (review_status IN (''current'', ''needs_review''))');",
-  ),
-  "migration-092-detour-communication-delivery.sql": (text) => text.replace(
-    `  ALTER TABLE DetourCommunications ADD CONSTRAINT CK_DetourCommunications_DeliveryStatus
-    CHECK (delivery_status IN ('not_requested', 'queued', 'sent', 'partially_sent', 'failed', 'skipped'));`,
-    `  EXEC(N'ALTER TABLE DetourCommunications ADD CONSTRAINT CK_DetourCommunications_DeliveryStatus CHECK (delivery_status IN (''not_requested'', ''queued'', ''sent'', ''partially_sent'', ''failed'', ''skipped''))');`,
   ),
 };
 
