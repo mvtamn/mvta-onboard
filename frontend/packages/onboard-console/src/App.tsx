@@ -53,6 +53,7 @@ import { AccessOverview } from "./routes/access/AccessOverview.js";
 import { AccessGroups, AccessPeople, AccessWorkloads } from "./routes/access/AccessInventory.js";
 import { AddAccess } from "./routes/access/AddAccess.js";
 import { AccessApprovals } from "./routes/access/AccessApprovals.js";
+import { AccessRoles } from "./routes/access/AccessRoles.js";
 import { AccessHealth } from "./routes/access/AccessHealth.js";
 import { AccessActivity } from "./routes/access/AccessActivity.js";
 import { OnDemandServiceStandardsAdmin } from "./routes/OnDemandServiceStandardsAdmin.js";
@@ -601,7 +602,7 @@ function AuthenticatedApp({ account, signOut }: {
               <Route path="/admin/access-management" element={<CompatibilityRedirect to="/admin/access" />} />
               <Route path="/admin" element={<RequireAccess anyOf={[...ADMIN_ACTIONS]}><AdminLayout /></RequireAccess>}>
                 <Route index element={<AdminHome />} />
-                {/* Access & Identity is seven pages under one heading; they share
+                {/* Access & Identity is eight pages under one heading; they share
                     one load through AccessLayout. */}
                 <Route path="access" element={<RequireAccess action="access-identity.view"><AccessLayout /></RequireAccess>}>
                   <Route index element={<AccessOverview />} />
@@ -609,6 +610,7 @@ function AuthenticatedApp({ account, signOut }: {
                   <Route path="groups" element={<AccessGroups />} />
                   <Route path="workloads" element={<AccessWorkloads />} />
                   <Route path="add" element={<AddAccess />} />
+                  <Route path="roles" element={<AccessRoles />} />
                   <Route path="approvals" element={<AccessApprovals />} />
                   <Route path="health" element={<AccessHealth />} />
                   <Route path="activity" element={<AccessActivity />} />
