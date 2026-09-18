@@ -1,5 +1,5 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
-import { ADMIN_ROLES, requireRole } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { getPool, sql } from "../lib/db";
 
 app.http("decisionMatrixGovernance", {
@@ -7,7 +7,7 @@ app.http("decisionMatrixGovernance", {
   methods: ["PATCH"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, ADMIN_ROLES);
+    const auth = await requireAccess(request, "decision-matrix.manage");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const procedureId = request.params.procedureId;
     const revision = Number(request.params.revision);

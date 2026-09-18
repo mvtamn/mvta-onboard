@@ -2,18 +2,16 @@
 // Part B6 of detour-module-consolidated-plan.md. Mirrors otpReasonCodes.ts,
 // minus `applies_to`: this table only ever serves one consumer.
 //
-//   GET   /detour-reason-codes?active_only=  - any detour-reading role
-//   POST  /detour-reason-codes               - OCC.Admin only
-//   PATCH /detour-reason-codes/{id}          - OCC.Admin only
+//   GET   /detour-reason-codes?active_only=  - detours.view
+//   POST  /detour-reason-codes               - service-configuration.edit
+//   PATCH /detour-reason-codes/{id}          - service-configuration.edit
 //
-// Read is gated on DETOUR_READ_ROLES rather than STAFF_READ_ROLES so the
-// same people who can see a detour can resolve its reason_code to a label -
-// including OCC.Compliance and OCC.Detour, neither of which is in
-// STAFF_READ_ROLES. Writes stay admin-only: this is a controlled vocabulary,
-// not day-to-day detour entry.
+// Read is detours.view so the same people who can see a detour can resolve
+// its reason_code to a label. Writes are service-configuration.edit: this is a
+// controlled vocabulary, not day-to-day detour entry.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, DETOUR_READ_ROLES, ADMIN_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import {
   validateCreateDetourReasonCode,
   validateUpdateDetourReasonCode,
@@ -39,9 +37,9 @@ const OUTPUT_COLUMNS = [
 app.http("detourReasonCodesList", {
   route: "detour-reason-codes",
   methods: ["GET"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, DETOUR_READ_ROLES);
+    const authResult = await requireAccess(request, "detours.view");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }
@@ -81,9 +79,9 @@ app.http("detourReasonCodesList", {
 app.http("detourReasonCodesCreate", {
   route: "detour-reason-codes",
   methods: ["POST"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, ADMIN_ROLES);
+    const authResult = await requireAccess(request, "service-configuration.edit");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }
@@ -129,9 +127,9 @@ app.http("detourReasonCodesCreate", {
 app.http("detourReasonCodesUpdate", {
   route: "detour-reason-codes/{id}",
   methods: ["PATCH"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, ADMIN_ROLES);
+    const authResult = await requireAccess(request, "service-configuration.edit");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

@@ -1,11 +1,11 @@
 // GET /event-vehicle-positions - the latest known position for every
 // vehicle position from the shared AVL projection, backing the console's
-// Event AVL view. OCC.Admin can read it;
+// Event AVL view. Reading it is event-avl.view;
 // plan membership classifies vehicles for the selected Event or operating
 // period, but does not hide active vehicles from the shared AVL feed.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { classifyEventScopeException } from "../lib/eventScopeExceptions";
 import { polygonContains } from "../lib/geofence";
 import { classifyVehicleZone, type VehicleZoneFence } from "../lib/eventVehicleZone";
@@ -52,9 +52,9 @@ interface EventVehiclePositionRow {
 app.http("eventVehiclePositionsList", {
   route: "event-vehicle-positions",
   methods: ["GET"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, STAFF_READ_ROLES);
+    const authResult = await requireAccess(request, "event-avl.view");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

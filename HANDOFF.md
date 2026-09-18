@@ -863,6 +863,15 @@ roles in the token, so applying the migration changes no one's access.
    for anything granted here and `"entra"` for app roles still in your token,
    and an Access Summary naming each module in words.
 
+Increment 2 (also on this branch) moved every endpoint onto those actions. It
+still resolves the app roles in your token, so nothing about signing in or
+about who can do what changes on dev, with two deliberate exceptions: a
+Publisher who is not also Compliance can no longer validate missed trips, set
+OTP exclusions or classify routes, and a Compliance user can no longer read
+Event AVL geofences, locations, crossings or the event audit stream. Neither
+was reachable from the console pages those roles can open. If Operations wants
+either back, it is a checkbox on the role once increment 4 ships the Roles page.
+
 The Entra steps — the OnBoard Users group, "Assignment required", removing the
 `OCC.*` app roles and revoking the two Graph write consents — belong to
 increments 5 and 6 and are listed in the plan. Do none of them yet: the app

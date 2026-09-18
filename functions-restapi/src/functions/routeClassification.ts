@@ -5,9 +5,9 @@
 // availAvlPoll.ts (Part A2). See detour-and-event-module-implementation-
 // plan.md (Part A1).
 //
-//   GET /route-classification              - any staff role, plus OCC.Compliance
-//   PUT /route-classification/{routeId}    - Publisher/Admin (upsert one row)
-//   DELETE /route-classification/{routeId} - Publisher/Admin (hard delete)
+//   GET /route-classification              - compliance-review.view
+//   PUT /route-classification/{routeId}    - service-configuration.edit (upsert one row)
+//   DELETE /route-classification/{routeId} - service-configuration.edit (hard delete)
 //
 // Hard delete, not the soft-delete/deactivate convention used elsewhere in
 // this repo (Detours, OtpReasonCodes) - this table is a pure current-state
@@ -19,7 +19,7 @@
 // afterward - there was no way to do that at all before this.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, STAFF_READ_ROLES, PUBLISH_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { validateRouteClassification, VALID_ROUTE_CATEGORIES } from "../lib/validation";
 
 interface RouteClassificationRow {
@@ -64,9 +64,9 @@ function toIsoDate(yyyymmdd: string | null): string | null {
 app.http("routeClassificationList", {
   route: "route-classification",
   methods: ["GET"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, [...STAFF_READ_ROLES, "OCC.Compliance"]);
+    const authResult = await requireAccess(request, "compliance-review.view");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }
@@ -137,9 +137,9 @@ app.http("routeClassificationList", {
 app.http("routeClassificationUpsert", {
   route: "route-classification/{routeId}",
   methods: ["PUT"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, PUBLISH_ROLES);
+    const authResult = await requireAccess(request, "service-configuration.edit");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }
@@ -234,9 +234,9 @@ app.http("routeClassificationUpsert", {
 app.http("routeClassificationDelete", {
   route: "route-classification/{routeId}",
   methods: ["DELETE"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, PUBLISH_ROLES);
+    const authResult = await requireAccess(request, "service-configuration.edit");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

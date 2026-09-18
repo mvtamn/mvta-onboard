@@ -16,7 +16,7 @@
 // UI decide presentation" approach as otpMonthlyTrend.ts.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
-import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { missedTripCaseSql } from "../lib/missedTripCase";
 
 interface MissedTripsSummaryRow {
@@ -36,9 +36,9 @@ interface MissedTripsSummaryRow {
 app.http("missedTripsMonthlySummary", {
   route: "missed-trips-monthly-summary",
   methods: ["GET"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, [...STAFF_READ_ROLES, "OCC.Compliance"]);
+    const authResult = await requireAccess(request, "compliance-review.view");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

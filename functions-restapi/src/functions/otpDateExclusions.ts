@@ -3,11 +3,11 @@
 // three staff-visible flags (notified/acknowledged/status) preserved from
 // the original design.
 //
-//   GET /otp-date-exclusions   - any staff role, plus OCC.Compliance
-//   POST /otp-date-exclusions  - Publisher/Admin, plus OCC.Compliance
+//   GET /otp-date-exclusions   - compliance-review.view
+//   POST /otp-date-exclusions  - compliance-review.review
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, STAFF_READ_ROLES, PUBLISH_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { validateDateExclusion } from "../lib/validation";
 
 interface DateExclusionRow {
@@ -28,9 +28,9 @@ interface DateExclusionRow {
 app.http("otpDateExclusionsList", {
   route: "otp-date-exclusions",
   methods: ["GET"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, [...STAFF_READ_ROLES, "OCC.Compliance"]);
+    const authResult = await requireAccess(request, "compliance-review.view");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }
@@ -60,9 +60,9 @@ app.http("otpDateExclusionsList", {
 app.http("otpDateExclusionsCreate", {
   route: "otp-date-exclusions",
   methods: ["POST"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, [...PUBLISH_ROLES, "OCC.Compliance"]);
+    const authResult = await requireAccess(request, "compliance-review.review");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

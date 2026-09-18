@@ -114,7 +114,12 @@ export const MODULES: AccessModule[] = [
     section: "Administration",
     actions: [{ key: "edit", label: "Maintain contractors, agreements and standards" }],
   },
-  { key: "subscribers", label: "Subscribers", section: "Administration", actions: [] },
+  {
+    key: "subscribers",
+    label: "Subscribers",
+    section: "Administration",
+    actions: [{ key: "detail", label: "See recent sign-ups (contact details masked)" }],
+  },
   { key: "governance-audit", label: "Governance & Audit", section: "Administration", actions: [] },
   {
     key: "access-identity",

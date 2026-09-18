@@ -1,5 +1,5 @@
 import { app, type HttpRequest, type InvocationContext, type Timer } from "@azure/functions";
-import { ADMIN_ROLES, requireRole } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { getPool } from "../lib/db";
 import { walkLocation } from "../lib/decisionMatrixLocationSync";
 import { DECISION_MATRIX_SURFACES, surfaceReady } from "../lib/decisionMatrixReadiness";
@@ -47,7 +47,7 @@ export async function walkSopFolder(context: InvocationContext, source: SopFolde
 }
 
 export async function listUnreferencedSops(request: HttpRequest, context: InvocationContext) {
-  const auth = requireRole(request, ADMIN_ROLES);
+  const auth = await requireAccess(request, "decision-matrix.manage");
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   try {
     const pool = await getPool();

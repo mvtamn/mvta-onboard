@@ -1,6 +1,6 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { ClientSecretCredential } from "@azure/identity";
-import { ADMIN_ROLES, requireRole } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { createSharePointLibrary, type LibraryConfig, type LibraryItemReader, type SharePointLibrary } from "../lib/sharepointLibrary";
 
 function setting(name: string): string | null {
@@ -87,7 +87,7 @@ export function approvedLibrary(): { config: LibraryConfig; library: SharePointL
 }
 
 export async function browseDecisionMatrixLibrary(request: HttpRequest, context: InvocationContext) {
-  const auth = requireRole(request, ADMIN_ROLES);
+  const auth = await requireAccess(request, "decision-matrix.manage");
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
 
   const config = libraryConfig();
