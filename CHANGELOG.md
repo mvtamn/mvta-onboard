@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.246] - 2026-09-17
+## [1.5.247] - 2026-09-17
 
 - **The Spare webhook receiver counts what it is sent.** It answers roughly 5,000 deliveries an hour and logs nothing per delivery, so which of the four subscribed event types are worth receiving could not be answered from the request table - one route serves all four. `lib/spareWebhookCounts.ts` counts deliveries by type and outcome (stored, coalesced, unusable, not admitted, read, skipped, shed, failed) and logs one line a minute as `spare_webhook_counts`. Counts only: no ids, no payload values. An empty minute logs nothing.
 - **An ETA is re-read from Spare only for a request the monitor is tracking.** An ETA payload carries no service and no ordering timestamp, so it can only be applied through the authoritative record - one outbound Spare call per update, the most expensive thing the receiver does. `etaUpdatesToRead` now filters those updates against `MonitoredOnDemandWaits` (`monitoredRequestIds`, one query per delivery). A request the monitor does not hold has no wait to update: per ADR 0023 the hourly reconciliation establishes monitored state, and a requestStatus delivery brings a new request in sooner than its ETAs would. Skipped updates are counted as `skipped_not_monitored`, so the saving is visible.
