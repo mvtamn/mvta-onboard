@@ -421,3 +421,32 @@ describe("TripStartLog live banner", () => {
     expect(container.querySelector(".live-banner.tone-live")).toBeNull();
   });
 });
+
+describe("when a row was initialled", () => {
+  it("times the initials in the grid and in the watch queue", async () => {
+    vi.mocked(api.getTripStartLog).mockResolvedValueOnce(response(DAY));
+    render(<TripStartLog />);
+
+    const table = await screen.findByRole("table", { name: "Dispatch log trips" });
+    // t2 carries JD's entry, recorded at 10:03 UTC on the service date.
+    const verifiedCell = within(table).getAllByRole("row")[2].querySelector(".tsl-verified");
+    expect(verifiedCell).toHaveTextContent("JD");
+    expect(verifiedCell?.textContent).toMatch(/\d{1,2}:\d{2}/);
+  });
+
+  it("names the day when the entry was made on another one", async () => {
+    const nextMorning = new Date(`${at("10:03:00Z")}`);
+    nextMorning.setUTCDate(nextMorning.getUTCDate() + 1);
+    const corrected = trip({
+      ...DAY[1],
+      trip_id: "t2",
+      verification: { observation: "observed_left_late", verified_by: "ocs@example.org", verified_initials: "JD", verified_at: nextMorning.toISOString(), note: null },
+    });
+    vi.mocked(api.getTripStartLog).mockResolvedValueOnce(response([DAY[0], corrected]));
+    render(<TripStartLog />);
+
+    const table = await screen.findByRole("table", { name: "Dispatch log trips" });
+    const verifiedCell = within(table).getAllByRole("row")[2].querySelector(".tsl-verified");
+    expect(verifiedCell?.textContent).toMatch(/[A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d{2}/);
+  });
+});

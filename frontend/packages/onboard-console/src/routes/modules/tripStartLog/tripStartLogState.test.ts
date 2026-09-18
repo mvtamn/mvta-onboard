@@ -21,6 +21,7 @@ import {
   sortTrips,
   startBucket,
   summarize,
+  verifiedAtLabel,
 } from "./tripStartLogState.js";
 
 function trip(overrides: Partial<TripStartLogTrip> & { trip_id: string }): TripStartLogTrip {
@@ -211,5 +212,15 @@ describe("verification", () => {
     expect(initialsFromAccount("Doe, Jane", "x@y")).toBe("JD");
     expect(initialsFromAccount(undefined, "jane.doe@sst.example")).toBe("JD");
     expect(initialsFromAccount(undefined, undefined)).toBe("?");
+  });
+
+  // The desk reads the log in Central time, and a service date can be
+  // initialled after midnight (a 25:10 trip) or corrected the next morning.
+  it("times an entry against the service date, naming the day only when it differs", () => {
+    // 20260908 at 08:21 Central.
+    expect(verifiedAtLabel("2026-09-08T13:21:00Z", "20260908")).toBe("8:21 AM");
+    // The same service date, initialled at 01:12 Central the next morning.
+    expect(verifiedAtLabel("2026-09-09T06:12:00Z", "20260908")).toBe("Sep 9, 1:12 AM");
+    expect(verifiedAtLabel(null, "20260908")).toBe("");
   });
 });

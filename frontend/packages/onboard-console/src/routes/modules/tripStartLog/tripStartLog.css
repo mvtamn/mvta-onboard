@@ -92,3 +92,8 @@ table.data.tsl-table td.tsl-clock { font-variant-numeric: tabular-nums; white-sp
 .tsl-chip:focus-visible { outline: 2px solid var(--brand-green); outline-offset: 2px; }
 .tsl-now { border-left: 2px solid var(--danger-text); bottom: 12px; pointer-events: none; position: absolute; top: 8px; }
 .tsl-now span { background: var(--danger-text); border-radius: 3px; color: #fff; font-size: 9.5px; font-weight: 800; left: -2px; padding: 1px 5px; position: absolute; top: -2px; }
+
+/* The Verified cell carries its time under the initials: small, muted, and
+   narrower than the initials so the workbook's column widths hold. */
+.tsl-verified { display: inline-flex; flex-direction: column; line-height: 1.25; }
+.tsl-verified-at { color: var(--text-muted); font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }

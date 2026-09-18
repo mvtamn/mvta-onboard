@@ -193,6 +193,21 @@ export function timeLabel(iso: string | null): string {
   return Number.isNaN(date.getTime()) ? "—" : date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
+/**
+ * When an entry was made, read against the service date it belongs to. Most
+ * entries are made during the day they describe, so the time alone is enough;
+ * a past-midnight trip initialled at 01:12, or a correction made the next
+ * morning, names its day so it cannot be misread as the service day.
+ */
+export function verifiedAtLabel(iso: string | null, serviceDate: string): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const time = date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  if (agencyTodayServiceDate(date) === serviceDate) return time;
+  return `${date.toLocaleDateString([], { month: "short", day: "numeric" })}, ${time}`;
+}
+
 export function deltaLabel(seconds: number | null): string {
   if (seconds === null) return "—";
   const minutes = Math.round(seconds / 60);
