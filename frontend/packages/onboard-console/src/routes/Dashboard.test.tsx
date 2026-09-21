@@ -15,6 +15,12 @@ const feedHealth: FeedFreshness = {
   refresh: vi.fn(),
 };
 vi.mock("../hooks/useFeedFreshness.js", () => ({ useFeedFreshness: () => feedHealth }));
+// Detour requests waiting on OCC. The hook does the fetching; the queue only
+// needs the rows, so the test supplies them directly.
+let pendingIntake: unknown[] = [];
+vi.mock("../hooks/usePendingIntake.js", () => ({
+  usePendingIntake: () => ({ intake: pendingIntake, count: pendingIntake.length }),
+}));
 
 function stats(overrides: Partial<LiveStats> = {}): LiveStats {
   return {
@@ -247,5 +253,42 @@ describe("priority queue", () => {
     const queue = screen.getByRole("region", { name: "Triage exceptions" });
     expect(queue).toHaveTextContent("Nothing needs triage");
     expect(queue).toHaveTextContent("1 rider alert is live and no suggested alerts are waiting");
+  });
+});
+
+describe("detour requests on the queue", () => {
+  afterEach(() => { pendingIntake = []; });
+
+  const intake = (id: string, hoursAgo: number, description: string) => ({
+    id, status: "pending_review", description, location: "Cedar Ave", created_by: "streets@example.com",
+    created_at: new Date(Date.now() - hoursAgo * 60 * MINUTE).toISOString(),
+  });
+
+  it("puts a waiting detour request on the queue, oldest first", () => {
+    pendingIntake = [intake("i1", 2, "Fresh request"), intake("i2", 30, "Older request")];
+    const { container } = render(
+      <MemoryRouter><Dashboard stats={stats({})} /></MemoryRouter>,
+    );
+    const titles = queueTitles(container);
+    expect(titles[0]).toContain("Older request");
+    expect(titles[1]).toContain("Fresh request");
+  });
+
+  it("leaves a request returned for information off it - that is the submitter's move", () => {
+    pendingIntake = [{ ...intake("i1", 30, "Returned request"), status: "needs_information" }];
+    const { container } = render(
+      <MemoryRouter><Dashboard stats={stats({})} /></MemoryRouter>,
+    );
+    expect(queueTitles(container)).toEqual([]);
+  });
+
+  it("ranks a rider alert about to expire above a waiting request", () => {
+    pendingIntake = [intake("i1", 48, "Two-day-old request")];
+    const { container } = render(
+      <MemoryRouter><Dashboard stats={stats({ activeMessages: [activeMessage()] })} /></MemoryRouter>,
+    );
+    const titles = queueTitles(container);
+    expect(titles[0]).toContain("Route 470");
+    expect(titles[1]).toContain("Two-day-old request");
   });
 });
