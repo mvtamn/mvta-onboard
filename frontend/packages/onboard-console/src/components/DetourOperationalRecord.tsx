@@ -3,7 +3,7 @@ import type { Detour } from "@mvta/shared";
 // The operational record Detour Intake collects and acceptance carries onto
 // the authoritative Detour: operating window times, affected service,
 // action instructions, required audiences/channels, and evidence. Rendered
-// identically on Detours & Closures and Detour Reports so the two views
+// identically on Detours & Closures and Detour Register so the two views
 // never disagree about what the record says. Manual entries made directly
 // on the Detours page never had these fields, so a record with nothing in
 // any group renders nothing rather than a block of dashes.

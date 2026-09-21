@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, type TripStartLogDiagnostics, type TripStartLogTrip, type TripStartVerificationAction } from "@mvta/shared";
 import { api } from "../../../config.js";
+import { useAccess } from "../../../auth/AccessContext.js";
 import { useAuth } from "../../../auth/AuthContext.js";
 import { useAppDialog } from "../../../components/AppDialog.js";
 import { formatRefreshCountdown, useFixedRouteRefresh } from "../../../context/FixedRouteRefreshContext.js";
@@ -17,7 +18,6 @@ import {
   TRIP_START_VIEWS,
   agencyTodayServiceDate,
   applyFilters,
-  canVerify,
   initialsFromAccount,
   filtersActive,
   inputToServiceDate,
@@ -74,8 +74,9 @@ export function TripStartLog() {
 
   // Who may initial a cell (spec §7.1: SST OCS, plus Admin for corrections),
   // and the initials the workbook cell will show for them.
-  const { roles, account } = useAuth();
-  const verifier = canVerify(roles);
+  const { account } = useAuth();
+  const { can } = useAccess();
+  const verifier = can("dispatch-log.verify");
   const initials = initialsFromAccount(account?.name, account?.username);
   const { prompt } = useAppDialog();
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useOutletContext } from "react-router-dom";
-import { useAuth } from "../auth/AuthContext.js";
+import { useAccess } from "../auth/AccessContext.js";
 import { AdminIcon, shortcutLabel } from "./AdminIcon.js";
 import { AdminQuickFind } from "./AdminQuickFind.js";
 import { findCurrent, visibleAreas, type AdminArea } from "./adminNav.js";
@@ -21,9 +21,9 @@ export function useAdminNav(): AdminOutletContext {
 }
 
 export function AdminLayout() {
-  const { roles } = useAuth();
+  const { can } = useAccess();
   const { pathname } = useLocation();
-  const areas = useMemo(() => visibleAreas(roles), [roles]);
+  const areas = useMemo(() => visibleAreas(can), [can]);
   const current = findCurrent(areas, pathname);
   const [findOpen, setFindOpen] = useState(false);
   const openQuickFind = useCallback(() => setFindOpen(true), []);

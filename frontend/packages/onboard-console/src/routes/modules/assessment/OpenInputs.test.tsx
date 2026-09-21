@@ -5,7 +5,7 @@ import { api } from "../../../config.js";
 import { OpenInputs } from "./OpenInputs.js";
 
 vi.mock("../../../config.js", () => ({ api: { getOpenManualInputs: vi.fn() } }));
-vi.mock("../../../auth/AuthContext.js", () => ({ useAuth: () => ({ roles: [], account: { username: "Rob@mvta.us" } }) }));
+vi.mock("../../../auth/AuthContext.js", () => ({ useAuth: () => ({ account: { username: "Rob@mvta.us" } }) }));
 const period: AssessmentPeriod = { id: "p1", contractor_id: "c1", contractor_name: "Transit Operations", service_month: "202607", status: "open", input_revision: 0, computed_revision: null, proposed_total: 0, final_total: null };
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 

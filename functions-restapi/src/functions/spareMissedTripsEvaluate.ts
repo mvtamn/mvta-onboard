@@ -4,18 +4,19 @@
 // ridership, wait-time, or garage-departure work.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool } from "../lib/db";
-import { observeMissedTrips } from "../lib/missedTripCase";
-import { contractorFaultValues, spareMissedTripsEnabled, spareObservations } from "../lib/missedTripCase/adapters/spare";
+import { missedTripDetectionSettings, observeMissedTrips } from "../lib/missedTripCase";
+import { spareObservations } from "../lib/missedTripCase/adapters/spare";
 
 app.timer("spareMissedTripsEvaluate", {
   schedule: "0 5/15 * * * *",
   handler: async (_timer: Timer, context: InvocationContext) => {
-    if (!spareMissedTripsEnabled()) {
+    const settings = missedTripDetectionSettings();
+    if (!settings.spareEnabled) {
       context.log("Spare missed-trip evaluation is disabled (SPARE_MISSED_TRIPS_ENABLED is not true).");
       return;
     }
     const pool = await getPool();
-    const { observations, tally } = await spareObservations(pool);
+    const { observations, tally } = await spareObservations(pool, settings);
     const report = await observeMissedTrips(pool, observations);
     for (const failure of report.failed) {
       context.error(`Failed to record Spare missed-trip case ${failure.runId} on ${failure.serviceDate}:`, failure.error);
@@ -26,7 +27,7 @@ app.timer("spareMissedTripsEvaluate", {
         `${report.confirmed} released from hold, ${report.closedByEvidence} closed by evidence, ` +
         `${report.evidenceRecorded} evidence recorded, ${report.skippedChanged} changed elsewhere, ${report.failed.length} failed.`,
     );
-    if (contractorFaultValues().size === 0) {
+    if (settings.spareContractorFaultValues.size === 0) {
       context.warn("SPARE_CONTRACTOR_FAULT_VALUES is empty; cancellations remain unknown instead of being auto-flagged.");
     }
   },

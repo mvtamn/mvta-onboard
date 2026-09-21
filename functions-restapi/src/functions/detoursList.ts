@@ -11,7 +11,8 @@ import { app, type HttpRequest, type InvocationContext } from "@azure/functions"
 import { getPool, sql } from "../lib/db";
 import { requireAccess } from "../lib/access/require";
 import { computeDetourStatus, toDateOnly, toTimeOnly, type DetourStatus } from "../lib/detourStatus";
-import { contractorFromSettings, requiredAudiences, type ContractorNotification } from "../lib/detourContractor";
+import { contractorFromSettings, defaultAudiencesFromSettings, requiredAudiences, type ContractorNotification } from "../lib/detourContractor";
+import { audienceEligibility, communicationStateSql, communicationStatus, deliveryColumnsReady } from "../lib/detourCommunication";
 import { readDetourWorkflows, type ActAvailability, type OfferedAct } from "../lib/detourWorkflow";
 
 function availableActsBody(acts: Record<OfferedAct, ActAvailability> | undefined) {
@@ -137,7 +138,7 @@ app.http("detoursList", {
       // a missing column fails even inside a CASE. Pre-migration the field
       // comes back undefined and the console falls back to hiding it, same
       // graceful-degradation pattern as every other un-run migration here.
-      const schemaCheck = await pool.request().query<{ has_column: number; reporting_ready: number; workflow_ready: number; avail_entry_ready: number; operational_fields: number; intake_fields: number; location_field: number; conflict_field: number; geometry_field: number; window_fields: number; communications_ready: number; review_ready: number }>(`
+      const schemaCheck = await pool.request().query<{ has_column: number; reporting_ready: number; workflow_ready: number; avail_entry_ready: number; operational_fields: number; intake_fields: number; location_field: number; conflict_field: number; geometry_field: number; window_fields: number; communications_ready: number; delivery_ready: number; review_ready: number }>(`
         SELECT
           CASE WHEN COL_LENGTH('dbo.Detours', 'internal_number') IS NULL
                THEN 0 ELSE 1 END AS has_column,
@@ -161,9 +162,13 @@ app.http("detoursList", {
                      OR COL_LENGTH('dbo.Detours', 'confirmation_contact') IS NULL
                 THEN 0 ELSE 1 END AS window_fields
           ,CASE WHEN OBJECT_ID('dbo.DetourCommunications', 'U') IS NULL THEN 0 ELSE 1 END AS communications_ready
+          ,CASE WHEN COL_LENGTH('dbo.DetourCommunications', 'delivery_status') IS NULL THEN 0 ELSE 1 END AS delivery_ready
           ,CASE WHEN COL_LENGTH('dbo.Detours', 'review_status') IS NULL THEN 0 ELSE 1 END AS review_ready
       `);
       const hasInternalNumber = schemaCheck.recordset[0]?.has_column === 1;
+      // Migration 092's delivery columns; without them a published row is one
+      // a person sent themselves.
+      const hasDelivery = schemaCheck.recordset[0]?.delivery_ready === 1;
       const hasReportingFields = schemaCheck.recordset[0]?.reporting_ready === 1;
       const hasWorkflowFields = schemaCheck.recordset[0]?.workflow_ready === 1;
       const hasAvailEntryFields = schemaCheck.recordset[0]?.avail_entry_ready === 1;
@@ -187,11 +192,15 @@ app.http("detoursList", {
       // Contractor notification settings (migration 089). Absent table or
       // rows means no contractor is configured, which changes nothing.
       let contractor: ContractorNotification = { name: null, recipients: [] };
+      // The audiences every Detour must reach when its own record names none -
+      // which is every Detour the Avail sync creates.
+      let defaultAudiences: string[] = [];
       try {
         const settings = await pool.request().query<{ setting_key: string; setting_value: string }>(
-          "SELECT setting_key, setting_value FROM AppSettings WHERE module = 'detour' AND setting_key IN ('contractor_name', 'contractor_recipients')",
+          "SELECT setting_key, setting_value FROM AppSettings WHERE module = 'detour' AND setting_key IN ('contractor_name', 'contractor_recipients', 'default_audiences')",
         );
         contractor = contractorFromSettings(settings.recordset);
+        defaultAudiences = defaultAudiencesFromSettings(settings.recordset);
       } catch { /* AppSettings not present in this environment */ }
 
       const detoursResult = await pool.request().query<DetourRow>(`
@@ -208,7 +217,7 @@ app.http("detoursList", {
                ${hasLocation ? ", location" : ""}
                ${hasConflictOverride ? ", conflict_override_reason, conflict_override_by, conflict_override_at, conflict_override_ids" : ""}
                ${hasGeometry ? ", geometry_json" : ""}
-               ${hasCommunications ? ", (SELECT COUNT(DISTINCT c.audience) FROM DetourCommunications c WHERE c.detour_id=Detours.id AND c.status='published') AS communications_published, (SELECT COUNT(*) FROM DetourCommunications c WHERE c.detour_id=Detours.id AND c.status='draft') AS communications_draft" : ""}
+               ${hasCommunications ? `, (SELECT COUNT(DISTINCT c.audience) FROM DetourCommunications c ${communicationStateSql("c", "cst", hasDelivery)} WHERE c.detour_id=Detours.id AND cst.counted=1) AS communications_published, (SELECT COUNT(*) FROM DetourCommunications c ${communicationStateSql("c", "cst", hasDelivery)} WHERE c.detour_id=Detours.id AND cst.state=N'draft') AS communications_draft` : ""}
                ${hasReviewFields ? ", review_status, review_reason, closure_reason" : ""}
         FROM Detours
         WHERE is_deleted = 0
@@ -260,14 +269,30 @@ app.http("detoursList", {
         ...(hasConflictOverride ? { conflict_override_reason: d.conflict_override_reason ?? null, conflict_override_by: d.conflict_override_by ?? null, conflict_override_at: d.conflict_override_at ?? null } : {}),
         ...(hasWindowFields ? { start_time: toTimeOnly(d.start_time), end_time: toTimeOnly(d.end_time), time_window_status: d.time_window_status ?? null, affected_stops_and_stations: d.affected_stops_and_stations ?? null, operational_impacts: d.operational_impacts ?? null, confirmation_contact: d.confirmation_contact ?? null } : {}),
         ...(hasOperationalFields || contractor.name ? {
-          required_audiences: requiredAudiences({ notification_audiences: parseList(d.notification_audiences), service_impact: d.service_impact ?? null }, contractor),
+          required_audiences: requiredAudiences({ notification_audiences: parseList(d.notification_audiences), service_impact: d.service_impact ?? null }, contractor, defaultAudiences),
         } : {}),
         ...(hasCommunications ? (() => {
-          const required = requiredAudiences({ notification_audiences: parseList(d.notification_audiences), service_impact: d.service_impact ?? null }, contractor);
+          const required = requiredAudiences({ notification_audiences: parseList(d.notification_audiences), service_impact: d.service_impact ?? null }, contractor, defaultAudiences);
+          const workflow = workflows.get(d.id);
           return {
             communications_published: d.communications_published ?? 0,
             communications_draft: d.communications_draft ?? 0,
-            communication_status: (d.communications_published ?? 0) >= required.length && required.length > 0 ? "published" : (d.communications_draft ?? 0) > 0 ? "draft" : "needs_communication",
+            communication_status: communicationStatus({ required: required.length, published: d.communications_published ?? 0, drafts: d.communications_draft ?? 0 }),
+            // Detour communication eligibility per audience, decided by the
+            // module the publish endpoint enforces, so the console renders a
+            // decision instead of re-deriving one from raw state.
+            audience_eligibility: workflow
+              ? audienceEligibility({
+                lifecycle_state: workflow.lifecycle_state,
+                fulfillment_mode: workflow.fulfillment_mode,
+                re_review_outstanding: workflow.re_review_outstanding,
+                conflict_status: workflow.conflict_status,
+                required_audiences: required,
+              }, (audience) => ({
+                channel: contractor.name && audience.trim().toLowerCase() === contractor.name.trim().toLowerCase() ? "email" : (parseList(d.notification_channels)[0] ?? "email"),
+                recipients: contractor.name && audience.trim().toLowerCase() === contractor.name.trim().toLowerCase() ? contractor.recipients : [],
+              }))
+              : [],
           };
         })() : {}),
         ...(hasReviewFields ? { review_status: d.review_status, review_reason: d.review_reason, closure_reason: d.closure_reason } : {}),

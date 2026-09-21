@@ -13,6 +13,7 @@
 import { assessableInputChangedSql } from "../assessment/materialChange";
 import { sql } from "../db";
 import { missedTripCaseSql } from "../missedTripCase/classify";
+import { detectorPromotionWindows, type PromotionWindow } from "../missedTripCase/promotion";
 import { INTAKE_READY_SQL, occurrenceAssignmentSql } from "./assignment";
 import { decideAmount, decideChange, decideManual, decideNew, refusal } from "./decide";
 import {
@@ -58,12 +59,14 @@ async function markInputChanged(tx: sql.Transaction, contractorId: string, servi
 // Each source's observations, as rows of (standard_id, service_date,
 // description, source_ref). Eligibility lives in sources.ts; gating (feed
 // trust) is the caller's.
-const CANDIDATE_ROWS: Record<CandidateSource, () => string> = {
-  missed_trips: () => `
+const CANDIDATE_ROWS: Record<CandidateSource, (promoted: readonly PromotionWindow[]) => string> = {
+  // Only a detector out of Shadow detection raises a candidate, and only for
+  // the service dates it was promoted for (missedTripCase/promotion.ts).
+  missed_trips: (promoted) => `
     SELECT standard.id standard_id, LEFT(m.service_date,8) service_date,
       CONCAT(N'Missed trip ',m.trip_id,N' on route ',m.route_id) description,
       ${occurrenceSourceRefSql("missed_trip", "m")} source_ref
-    FROM MonitoredMissedTrips m ${missedTripCaseSql("m")} CROSS JOIN ContractorPerformanceStandards standard
+    FROM MonitoredMissedTrips m ${missedTripCaseSql("m", "mtc", promoted)} CROSS JOIN ContractorPerformanceStandards standard
     WHERE standard.code='MISSED_TRIPS_FR' AND mtc.counts_toward_assessment=1
       AND ((ISNULL(m.source_system,N'gtfs')=N'spare' AND @allow_spare_missed_trips=1)
         OR (ISNULL(m.source_system,N'gtfs')<>N'spare' AND @allow_fixed_missed_trips=1))`,
@@ -105,6 +108,7 @@ export type RaiseResult = Record<CandidateSource, RaiseReport | { skipped: true 
 export async function raiseCandidates(pool: sql.ConnectionPool, params: RaiseParameters): Promise<RaiseResult> {
   const result = {} as RaiseResult;
   const ready = await schemaReady(pool);
+  const promoted = await detectorPromotionWindows(pool);
   for (const source of Object.keys(CANDIDATE_ROWS) as CandidateSource[]) {
     if (!ready || !params.gates[source]) { result[source] = { skipped: true }; continue; }
     const tx = new sql.Transaction(pool);
@@ -119,7 +123,7 @@ export async function raiseCandidates(pool: sql.ConnectionPool, params: RaisePar
         DECLARE @judged TABLE(standard_id UNIQUEIDENTIFIER, service_date CHAR(8), description NVARCHAR(2000), source_ref NVARCHAR(300), contractor_id UNIQUEIDENTIFIER, intake NVARCHAR(30));
         INSERT @judged
         SELECT o.standard_id, o.service_date, o.description, o.source_ref, x.contractor_id, x.intake
-        FROM (${CANDIDATE_ROWS[source]()}) o
+        FROM (${CANDIDATE_ROWS[source](promoted)}) o
         ${occurrenceAssignmentSql("o.service_date", "o.standard_id", "x")}
         WHERE NOT EXISTS(SELECT 1 FROM ComplianceOccurrences existing WITH (UPDLOCK, HOLDLOCK) WHERE existing.source_ref=o.source_ref);
 

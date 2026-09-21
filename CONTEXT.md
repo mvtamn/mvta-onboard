@@ -1208,6 +1208,15 @@ issue. Cases from a detector in Shadow detection can be reviewed but never
 reach Assessment promotion.
 _Avoid_: production truth, enabled detector
 
+**Detector promotion**:
+A dated decision that a detector family leaves Shadow detection, recorded with
+the precision and sample size it was measured on, the reason, and the person who
+decided. It takes effect from a service date and applies only to cases on that
+date onward, so a promotion never changes a month already measured. The same
+record demotes a detector, which leaves the service dates it was trusted for
+counting as they did.
+_Avoid_: enabling a detector, promoted detector list, retroactive promotion
+
 **Missed-trip review authority**:
 Operations authority to determine the service outcome represented by a
 Missed-trip case. It does not determine Service attribution or assessment
@@ -1257,6 +1266,15 @@ The authoritative passenger schedule effective for one local service date and
 retained as the expected-run baseline for later review. A later schedule does
 not rewrite the snapshot used for an existing Missed-trip case.
 _Avoid_: current static feed, mutable schedule
+
+**Scheduled day**:
+Everything one detection pass read about the runs expected on one local service
+date: the scheduled runs, their operational evidence, and the route
+classifications in effect. It is what a pass observed, not a retained baseline
+- a later pass reads the schedule as it stands then. Distinct from a Schedule
+snapshot, which is retained and does not change under an existing Missed-trip
+case.
+_Avoid_: schedule snapshot, service day, schedule import
 
 **Post-publication cancellation**:
 A cancellation of a run after it was present in the effective Schedule
