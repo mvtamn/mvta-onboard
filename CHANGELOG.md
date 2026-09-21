@@ -5,6 +5,16 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.285] - 2026-09-21
+
+- **The Review Queue reads the server's Flagged Stops.** Second half of ADR-0034: `OtpModule` renders `flagged` from `GET /otp-monthly` instead of deriving its own list, and `deriveCandidatesFromLive`, `DATA.candidates` and the console's copy of the threshold are gone. `usingLiveOtp` reads `diagnostics.record_count`; `stops` no longer travels, and `OtpMonthlyStopRow` is deleted with it - a month was 400-900 rows sent so the browser could filter them.
+- **Stops outside the fixed-route standard leave the queue.** Special-event, on-demand and non-revenue routes were reviewable and actionable to no effect, because the route is already outside Official Departure OTP. A row now reads day of week and departures sampled rather than a direction the feed does not carry, which every live row printed as an em dash.
+- **The Threshold Tuner previews through `?threshold=` and takes a month.** It re-derived the list locally at two thresholds on every slider tick - the second copy of the rule this ADR exists to prevent. It now asks the API, debounced, and can preview against any past month instead of only the current one.
+- **The three review write paths share one helper.** `resolve`, `copyFromPrevious` and `copyAllFromPrevious` each spelled out write-then-refetch-then-refresh-the-timeline; with the mock branch gone they collapse onto `record` + `refreshDecisions`.
+- **Preview mode keeps its sample routes and loses its sample queue.** Eleven invented stops with no `route_id` could be approved, which only flipped local state - the wrong lesson on the one page whose purpose is recording real decisions. The queue says the feed has no rows instead.
+- **Verified.** `OtpModule` gets its first tests (4) plus 4 for the queue row and 1 for the tuner's fetch; the queue-row test caught a real defect before review, JSX rendering `·` literally rather than a separator. Console 770 passing, backend 1263 passing, typecheck clean. No migration.
+
+
 ## [1.5.284] - 2026-09-21
 
 - **Which stops the Review Queue shows is decided on the server now.** ADR-0034 puts the flagging rule in `functions-restapi/src/lib/otpFlaggedStops.ts`: it takes the month's stop rows and a threshold and returns the Flagged Stops, worst lean first. `GET /otp-monthly` returns that list as `flagged`, beside `measurement` and never inside it - the measurement is the contractual figure ADR-0033 fixed in one place, and the threshold behind this list is a knob an administrator moves. `CONTEXT.md` gains **Flagged Stop** and **Early/Late Bias Threshold**; the word "candidate" is deliberately not reused, since it already means an Occurrence raised against an Agreement.

@@ -923,31 +923,6 @@ export type OnDemandDepartureOutcome =
   | "no_schedule"
   | "not_settled";
 
-// Avail's OTP Monthly By Route/Stop/Day of Week feed - real Attachment G
-// departure-adherence numbers, backing the OTP Compliance module's Route
-// Summary/Review Queue/Monthly Assessments pages (replacing that module's
-// mock data). See OTP-Feed-Evaluation-and-Recommendation.md.
-export interface OtpMonthlyStopRow {
-  service_month: string;
-  route_id: number;
-  stop_id: number;
-  day_of_week: string;
-  stop_name: string | null;
-  route_label: string | null;
-  pct_early: number | null;
-  pct_ontime: number | null;
-  pct_late: number | null;
-  pct_not_ontime: number | null;
-  pct_missed: number | null;
-  early: number | null;
-  ontime: number | null;
-  late: number | null;
-  missed: number | null;
-  actual_departures: number | null;
-  total: number | null;
-  updated_at: string;
-}
-
 /**
  * The OTP month measurement (functions-restapi/src/lib/otpMonth, ADR 0033).
  * The server decides what counts - fixed-route service, minus approved Stop
@@ -1025,8 +1000,8 @@ export interface OtpMonthlyRouteRollup {
 
 // Sub-monthly OTP trending (OtpDailyRouteStopHour) - added per
 // OTP-Feed-Evaluation-and-Recommendation (3).md's 2026-08-05 live-data
-// investigation update. Never the official Attachment G number - that's
-// OtpMonthlyStopRow above. No UI reads this yet; the field mapping itself
+// investigation update. Never the official Attachment G number - that's the
+// OTP month measurement above. No UI reads this yet; the field mapping itself
 // is unconfirmed (see functions-restapi/src/lib/otpDailyFeed.ts).
 export interface OtpDailyRow {
   calendar_date: string;

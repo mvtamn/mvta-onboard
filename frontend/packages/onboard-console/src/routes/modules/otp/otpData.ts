@@ -1,11 +1,23 @@
-// OTP Compliance module data (mock, used as a graceful fallback when the
-// real Avail feeds - see OTP-Feed-Evaluation-and-Recommendation.md - aren't
-// configured/populated yet). Reason codes, exclusion decisions, and the
-// detection threshold are now admin-editable/persisted via the DB (see
-// otpReasonCodes.ts/otpStopExclusions.ts/otpDateExclusions.ts/otpSettings.ts)
-// rather than hardcoded here - this file now holds only the mock preview
-// data and the pure derivation functions shared between live and mock modes.
-import type { OtpMonthlyStopRow } from "@mvta/shared";
+// Sample route rows for the OTP Compliance module, shown before the Avail
+// feed has anything for a month, plus the key a review decision is matched by.
+//
+// What used to live here and does not any more:
+//
+//   computeOfficialPct recomputed Official Departure OTP in the browser from
+//   rows it had flagged itself, against a hardcoded 85. The server measures it
+//   now and the console displays it (ADR 0033, otpFigures.ts).
+//
+//   deriveCandidatesFromLive decided which stop rows the Review Queue showed,
+//   over every row the API shipped, at a DEFAULT_EARLY_LATE_BIAS_THRESHOLD of
+//   its own - while the server stored and served a threshold it never read.
+//   The server decides Flagged Stops now (ADR 0034), and GET /otp-monthly
+//   returns them.
+//
+//   DATA.candidates was eleven invented stop rows for preview mode. Approving
+//   one did nothing but flip local state, because there was no real row to
+//   persist against - a Review Queue that taught a reviewer the wrong thing
+//   about the one page whose purpose is recording real decisions. Before a
+//   feed is populated the queue now says so.
 
 export interface RouteRow {
   route: string;
@@ -14,29 +26,7 @@ export interface RouteRow {
   pct_raw: number;
 }
 
-export interface Candidate {
-  route: string;
-  // Real numeric id + day-of-week for live rows, so a review decision can be
-  // persisted/matched against OtpStopExclusions (service_month+route_id+
-  // stop_id+day_of_week). null for the mock DATA.candidates below, which
-  // exist for preview only and are never persisted.
-  route_id: number | null;
-  stopName: string;
-  stopId: number;
-  day_of_week: string | null;
-  direction: string;
-  n: number;
-  early_pct: number;
-  late_pct: number;
-  ontime_pct: number;
-  missed_pct: number;
-  // The live Avail feed has no average-seconds-variance field - null for
-  // rows derived from it (deriveCandidatesFromLive below); only the mock
-  // DATA.candidates below carries a real value.
-  avg_var: number | null;
-}
-
-export const DATA: { routes: RouteRow[]; candidates: Candidate[] } = {
+export const DATA: { routes: RouteRow[] } = {
   routes: [
     { route: "493", total: 102, ontime: 45, pct_raw: 44.1 },
     { route: "490", total: 508, ontime: 231, pct_raw: 45.5 },
@@ -59,22 +49,14 @@ export const DATA: { routes: RouteRow[]; candidates: Candidate[] } = {
     { route: "445", total: 1104, ontime: 999, pct_raw: 90.5 },
     { route: "446", total: 1110, ontime: 1041, pct_raw: 93.8 },
   ],
-  candidates: [
-    { route: "490", route_id: null, stopName: "Wash/Coffman SW", stopId: 13209, day_of_week: null, direction: "North", n: 34, early_pct: 32.4, late_pct: 44.1, ontime_pct: 23.5, missed_pct: 0, avg_var: 164 },
-    { route: "470", route_id: null, stopName: "Eagan TS", stopId: 30535, day_of_week: null, direction: "South", n: 34, early_pct: 20.6, late_pct: 35.3, ontime_pct: 44.1, missed_pct: 0, avg_var: 144.7 },
-    { route: "490", route_id: null, stopName: "12 St/Hennep. S", stopId: 19332, day_of_week: null, direction: "North", n: 34, early_pct: 52.9, late_pct: 11.8, ontime_pct: 35.3, missed_pct: 0, avg_var: -132.2 },
-    { route: "477", route_id: null, stopName: "2 Av S/10 St NE", stopId: 53307, day_of_week: null, direction: "North", n: 89, early_pct: 19.1, late_pct: 15.7, ontime_pct: 65.2, missed_pct: 0, avg_var: 85.2 },
-    { route: "470", route_id: null, stopName: "2 Av S/10 St NE", stopId: 53307, day_of_week: null, direction: "North", n: 34, early_pct: 17.6, late_pct: 8.8, ontime_pct: 73.5, missed_pct: 0, avg_var: 67.6 },
-    { route: "460", route_id: null, stopName: "I35W/Lake St E", stopId: 17780, day_of_week: null, direction: "North", n: 89, early_pct: 36, late_pct: 1.1, ontime_pct: 62.9, missed_pct: 0, avg_var: -37.2 },
-    { route: "490", route_id: null, stopName: "2 Av S/10 St NE", stopId: 53307, day_of_week: null, direction: "North", n: 34, early_pct: 44.1, late_pct: 20.6, ontime_pct: 35.3, missed_pct: 0, avg_var: -32 },
-    { route: "477", route_id: null, stopName: "I35W/Lake St E", stopId: 17780, day_of_week: null, direction: "North", n: 89, early_pct: 25.8, late_pct: 10.1, ontime_pct: 64, missed_pct: 0, avg_var: 29.2 },
-    { route: "444", route_id: null, stopName: "Burnsville Tran", stopId: 31928, day_of_week: null, direction: "North", n: 282, early_pct: 41.5, late_pct: 11.3, ontime_pct: 46.8, missed_pct: 0.4, avg_var: 22.6 },
-    { route: "470", route_id: null, stopName: "I35W/Lake St E", stopId: 17780, day_of_week: null, direction: "North", n: 34, early_pct: 20.6, late_pct: 0, ontime_pct: 79.4, missed_pct: 0, avg_var: 14.4 },
-    { route: "444", route_id: null, stopName: "Burnsville Tran", stopId: 31928, day_of_week: null, direction: "South", n: 284, early_pct: 50.4, late_pct: 12.7, ontime_pct: 37, missed_pct: 0, avg_var: 0.7 },
-  ],
 };
 
-export type CandidateStatus = "pending" | "approved" | "rejected";
+/**
+ * Where a Flagged Stop's review stands. "pending" is the absence of a row in
+ * OtpStopExclusions, not a stored value - a stop has no row there until staff
+ * actually approve or reject it.
+ */
+export type StopExclusionStatus = "pending" | "approved" | "rejected";
 
 export const PAGE_META: Record<string, { title: string; sub: string }> = {
   dashboard: { title: "Dashboard", sub: "Portfolio view across all routes and open review items" },
@@ -85,54 +67,8 @@ export const PAGE_META: Record<string, { title: string; sub: string }> = {
   audit: { title: "Audit Stream", sub: "Full history of exclusion rule and finalization actions" },
 };
 
-// Official Departure OTP is the server's figure now (ADR 0033): the console
-// asks GET /otp-monthly for the month's measurement and displays it
-// (otpFigures.ts). computeOfficialPct used to recompute it here from rows the
-// browser had flagged itself, against a hardcoded 85, so Route Summary, the
-// Dashboard and the contractor's assessment could each show a different
-// official percentage for the same month.
-
-// A stop/route/day-of-week row is flagged for exclusion review when its
-// early or late percentage exceeds this share of departures - a clear,
-// obvious flag point (same convention as SpeedAlerts.tsx's fixed 50 mph
-// threshold), not a tuned statistical model. This is now the fallback
-// default only - the real, admin-editable value lives in OtpSettings
-// (otpSettings.ts) and is fetched at runtime; Administration > OTP
-// Compliance lets an OCC.Admin preview a different value before applying it.
-export const DEFAULT_EARLY_LATE_BIAS_THRESHOLD = 0.15;
-
-// Builds the Review Queue's candidate list from a live OTP Monthly feed
-// pull - any stop/route/day-of-week row whose early or late share exceeds
-// `threshold`. The feed has no per-record average-seconds-variance figure,
-// so it's a placeholder here. `threshold` is a parameter (not the module
-// constant above) so the admin threshold tuner can preview a different
-// value against the same already-fetched stop rows with no new fetch.
-export function deriveCandidatesFromLive(
-  stops: OtpMonthlyStopRow[],
-  threshold: number = DEFAULT_EARLY_LATE_BIAS_THRESHOLD,
-): Candidate[] {
-  return stops
-    .filter((s) => (s.pct_early ?? 0) > threshold || (s.pct_late ?? 0) > threshold)
-    .map((s) => ({
-      // The label the route is known by, so a candidate and its route line up
-      // under one name in the queue.
-      route: s.route_label ?? String(s.route_id),
-      route_id: s.route_id,
-      stopName: s.stop_name ?? `Stop ${s.stop_id}`,
-      stopId: s.stop_id,
-      day_of_week: s.day_of_week,
-      direction: "—",
-      n: s.total ?? 0,
-      early_pct: Math.round((s.pct_early ?? 0) * 1000) / 10,
-      late_pct: Math.round((s.pct_late ?? 0) * 1000) / 10,
-      ontime_pct: Math.round((s.pct_ontime ?? 0) * 1000) / 10,
-      missed_pct: Math.round((s.pct_missed ?? 0) * 1000) / 10,
-      avg_var: null,
-    }));
-}
-
 // Composite key matching OtpStopExclusions' unique constraint - used to
-// look up a candidate's persisted review decision.
+// look up a Flagged Stop's persisted review decision.
 export function stopExclusionKey(routeId: number | null, stopId: number, dayOfWeek: string | null): string {
   return `${routeId ?? "mock"}-${stopId}-${dayOfWeek ?? "mock"}`;
 }
