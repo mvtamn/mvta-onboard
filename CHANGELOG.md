@@ -5,6 +5,15 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.285] - 2026-09-21
+
+- **Avail's "no scheduled pullout" is midnight, not NULL, and the compliance rule never knew.** `garageDepartureCandidatePredicate()` guarded against a source gap with `pullout_scheduled IS NOT NULL`, which has never once fired: in 38 days of dev feed not a single row arrived with a null scheduled pullout. 694 arrived scheduled at exactly `00:00:00` instead, every one of them a Missed Pullout or a Missed Login, and not one has ever recorded a departure.
+- **They were the bulk of the review queue.** The same 18 blocks every day - among them 2222, 3333, 4444, 5555, 6666, 7777 and 9999, which are placeholders rather than service. Across all history the rule raised 1,091 reviewable runs; 397 survive the guard. For 2026-09-20 it was 19 before and 1 after.
+- **The rule now matches the time.** `CAST(d.pullout_scheduled AS TIME) <> '00:00:00'` in the candidate predicate and the same test in `lib/fixedRouteDepartureOutcome.ts`, so the console's per-row judgement and what becomes an occurrence still cannot disagree. Those rows read `no_schedule` ("No schedule") and are not reviewable.
+- **A genuine midnight pullout would be suppressed by this**, which is the trade taken deliberately: fixed route operates 04:00 to midnight, so midnight is when buses pull in, and no midnight pullout has ever been observed to happen.
+- **Verified.** 4 new tests (three on the outcome rule, one on the predicate); 1,256 REST API tests pass. Counts above are from `sqldb-mvta-onboard-dev`.
+- **Not included:** occurrences already raised from placeholder rows are still `candidate` and must be dismissed by hand - intake never withdraws one. The one-day lag in `complianceCandidatesPoll` is also still open; see the note on the service-date derivation in `lib/availPullout.ts`.
+
 ## [1.5.283] - 2026-09-18
 
 - **A detour request now reaches OCC without anybody going to look for it.** Submitting an intake notified nobody: no email, no Teams post, no queue entry, nothing in the dispatch app, and the Dashboard never fetched intake at all. The only way OCC learned that somebody had asked for a detour was to open Detour Intake and notice.

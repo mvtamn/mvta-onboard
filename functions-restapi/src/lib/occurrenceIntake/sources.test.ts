@@ -53,6 +53,14 @@ test("a run with no scheduled pullout is not a candidate", () => {
   assert.match(garageDepartureCandidatePredicate(), /pullout_scheduled IS NOT NULL/);
 });
 
+test("Avail's midnight placeholder is excluded like an absent schedule", () => {
+  // The null check alone never fired: Avail has never sent a NULL scheduled
+  // pullout, it sends 00:00:00 instead, and those rows were most of the
+  // candidates raised each night. The console applies the same rule in
+  // lib/fixedRouteDepartureOutcome.ts, so the two cannot disagree.
+  assert.match(garageDepartureCandidatePredicate(), /CAST\(d\.pullout_scheduled AS TIME\) <> '00:00:00'/);
+});
+
 test("matches the statuses that say a departure was missed", () => {
   // Missed Pullout and Missed Login are 408 runs that provably never left the
   // garage, and neither matched the previous list.
