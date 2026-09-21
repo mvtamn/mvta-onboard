@@ -6,7 +6,7 @@
 // The envelope shape is genuinely different from AVL Reports' - result.Pullout
 // (not result["AVL Reports"]), with RefreshTime/Property nested in a
 // result.results array rather than as sibling fields.
-import { agencyServiceDate } from "./missedTripTime";
+import { agencyLocalDateTimeToUtc, agencyServiceDate } from "./missedTripTime";
 
 export interface AvailPulloutReport {
   Block: number;
@@ -39,10 +39,34 @@ export interface MappedPullout {
   vehicle_label: string | null;
 }
 
+// Avail sends these as agency-local wall clock. Some values carry a trailing
+// 'Z' and the sample payload the fixtures came from carried it throughout, but
+// the suffix is not to be believed: taking it at face value stored every time
+// five hours early, which is how this feed came to report a 04:41 pullout as
+// 11:41 PM and to file each roster's early-morning tail under the previous
+// service date.
+//
+// The proof is in data this repo already holds. TripStartLog.scheduled_start_at
+// is a genuine UTC instant (serviceDateAndGtfsSecondsToUtc builds it from GTFS).
+// Line each block's pullout up against its own first trip of the day: read as
+// UTC, every block leaves the garage about five and a half hours before the
+// trip it is leaving for; read as agency-local, the gap is the 12 to 29 minutes
+// of deadhead between the garage and the first stop.
+//
+// So the wall-clock digits are what is trusted, and they are placed in agency
+// time. Any zone designator is discarded rather than honoured. Migration 138
+// corrected the rows stored under the old reading.
 function parseNullableDate(value: string | null): Date | null {
   if (!value) return null;
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d;
+  const parts = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/.exec(value);
+  if (!parts) return null;
+  const [year, month, day, hour, minute] = parts.slice(1, 6).map(Number);
+  const second = Number(parts[6] ?? 0);
+  // Guard clause, as elsewhere here: a malformed report is skipped, not thrown
+  // on, and Date.UTC would otherwise roll 2026-13-45 into a plausible-looking
+  // instant.
+  if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59 || second > 59) return null;
+  return agencyLocalDateTimeToUtc({ year, month, day, hour, minute, second });
 }
 
 // The Pullout endpoint takes no date segment - it always reports the
@@ -58,25 +82,9 @@ function parseNullableDate(value: string | null): Date | null {
 // the MERGE stays idempotent. The poll clock is only a last resort for a report
 // carrying no usable timestamp at all.
 //
-// KNOWN ISSUE, not fixed here. Avail's timestamps are agency-local wall clock
-// carrying no zone, so parseNullableDate stores their digits unchanged and
-// agencyServiceDate then subtracts the agency offset from a time that was
-// already local. The effective day boundary lands at 05:00 local rather than
-// midnight, and every run scheduled between 00:00 and 04:59 is filed under the
-// PREVIOUS service date. On dev that is 21-24 rows a day: 2026-09-21's first
-// pullouts, at 02:44 to 04:49, sit under service_date 20260920.
-//
-// Two things follow. The day assignment is wrong at the boundary, and - because
-// those rows belong to the roster Avail publishes at 02:30 local and keeps
-// updating all day - a service date is not actually frozen until 02:30 local
-// TWO days later, though settledServiceDateExclusive() calls it settled after
-// one. complianceCandidatesPoll only gets away with that because it runs a full
-// day behind; moving it earlier without fixing this would raise candidates
-// against runs still in flight, which intake never withdraws.
-//
-// Fixing it means reading the timestamps as agency-local, which re-dates stored
-// rows and the source_refs of occurrences already raised from them, so it needs
-// a backfill rather than a one-line change.
+// Avail's timestamps reach this function as real UTC instants (see
+// parseNullableDate), so the agency-local conversion below is applied exactly
+// once and the service day runs midnight to midnight in agency time.
 export function pulloutServiceDate(
   report: Pick<
     MappedPullout,

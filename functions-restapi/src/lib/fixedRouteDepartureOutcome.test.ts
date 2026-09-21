@@ -65,7 +65,7 @@ test("Avail's midnight placeholder is a source gap, not a missed departure", () 
   // matched they read as no_departure and became contractor penalties.
   const placeholder = row({
     pullout_status: "Missed Pullout",
-    pullout_scheduled: new Date("2026-09-04T00:00:00Z"),
+    pullout_scheduled: new Date("2026-09-04T05:00:00Z"), // midnight agency-local (CDT)
     pullout_actual: null,
     pullout_delta_seconds: null,
   });
@@ -77,8 +77,8 @@ test("Avail's midnight placeholder is a source gap, not a missed departure", () 
   );
 });
 
-test("the placeholder is recognised however the driver hands the time back", () => {
-  for (const scheduled of ["2026-09-04T00:00:00Z", "2026-09-04T00:00:00", "2026-09-04 00:00:00"]) {
+test("the placeholder is recognised on either side of the DST boundary", () => {
+  for (const scheduled of ["2026-09-04T05:00:00Z", "2026-02-04T06:00:00Z"]) {
     assert.strictEqual(
       fixedRouteDepartureOutcome(
         row({ pullout_status: "Missed Pullout", pullout_scheduled: scheduled, pullout_actual: null, pullout_delta_seconds: null }),
@@ -94,7 +94,7 @@ test("the placeholder is recognised however the driver hands the time back", () 
 test("only exact midnight is the placeholder, so real early runs still count", () => {
   // The guard must not swallow the genuine start of service. A 00:01 or 04:41
   // pullout is a committed time like any other.
-  for (const scheduled of ["2026-09-04T00:01:00Z", "2026-09-04T00:00:30Z", "2026-09-04T04:41:00Z"]) {
+  for (const scheduled of ["2026-09-04T05:01:00Z", "2026-09-04T05:00:30Z", "2026-09-04T09:41:00Z"]) {
     assert.strictEqual(
       fixedRouteDepartureOutcome(
         row({ pullout_status: "Missed Pullout", pullout_scheduled: scheduled, pullout_actual: null, pullout_delta_seconds: null }),

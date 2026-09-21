@@ -176,8 +176,10 @@ export function garageDepartureVarianceSeconds(
 //
 // That gap arrives as midnight, not as NULL, which is why the null check alone
 // was not enough: Avail has never sent a NULL pullout_scheduled, and the 694
-// rows it has sent scheduled at exactly 00:00:00 are the same 18 placeholder
-// blocks every day, none of which has ever departed. The reasoning, and why
+// rows it has sent scheduled at exactly midnight are the same 18 placeholder
+// blocks every day, none of which has ever departed. Midnight means midnight in
+// AGENCY time: since migration 138 this column holds real UTC instants, so the
+// placeholder reads 05:00Z in summer and 06:00Z in winter. The reasoning, and why
 // suppressing a genuine midnight pullout is the right trade, is in
 // lib/fixedRouteDepartureOutcome.ts beside the matching console rule.
 export function garageDepartureCandidatePredicate(): string {
@@ -185,7 +187,7 @@ export function garageDepartureCandidatePredicate(): string {
   return `d.pullout_status IN (${statuses})
             AND d.service_date < @settled_before
             AND d.pullout_scheduled IS NOT NULL
-            AND CAST(d.pullout_scheduled AS TIME) <> '00:00:00'
+            AND CAST(d.pullout_scheduled AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time' AS TIME) <> '00:00:00'
             AND (
               d.pullout_actual IS NULL
               OR DATEDIFF(SECOND, d.pullout_scheduled, d.pullout_actual) > @variance_seconds
