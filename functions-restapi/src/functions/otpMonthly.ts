@@ -2,12 +2,16 @@
 // data, backing the OTP Compliance console module's Route Summary/Review
 // Queue/Monthly Assessments pages. compliance-review.view can read;
 // all writes come from otpMonthlyFeedPoll.ts.
-// Accepts an optional ?month=YYYYMM query param (default: current month).
+// Accepts an optional ?month=YYYYMM query param (default: current month) and
+// an optional ?threshold= override for the Flagged Stops the Review Queue
+// works from (default: the stored Early/Late Bias Threshold).
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { requireAccess } from "../lib/access/require";
 import { serviceMonthOf } from "../lib/otpMonthlyFeed";
 import { measureOtpMonth } from "../lib/otpMonth";
+import { readFlaggedStops } from "../lib/otpFlaggedStops";
+import { readEarlyLateBiasThreshold } from "../lib/otpSettings";
 
 interface OtpMonthlyStopRow {
   service_month: string;
@@ -35,6 +39,19 @@ function resolveMonth(request: HttpRequest): string {
   return param && /^\d{6}$/.test(param) ? param : serviceMonthOf(new Date());
 }
 
+// An optional override of the Early/Late Bias Threshold, for the Threshold
+// Tuner in Administration > OTP Compliance. It previews a trial threshold
+// without owning a second copy of the flagging rule - which is the whole point
+// of the rule living on the server (ADR 0034). Absent, the stored setting
+// answers. `undefined` means "no override"; `null` means "malformed".
+function resolveThresholdOverride(request: HttpRequest): number | null | undefined {
+  const param = request.query.get("threshold");
+  if (param === null || param.trim() === "") return undefined;
+  const value = Number(param);
+  if (!Number.isFinite(value) || value <= 0 || value >= 1) return null;
+  return value;
+}
+
 // The stop rows the Review Queue works from, and the month's measurement.
 //
 // The figures - raw, excluded, assessable, per route and agency-wide, the
@@ -55,6 +72,13 @@ app.http("otpMonthlyList", {
     }
 
     const serviceMonth = resolveMonth(request);
+    const thresholdOverride = resolveThresholdOverride(request);
+    if (thresholdOverride === null) {
+      return {
+        status: 400,
+        jsonBody: { error: "threshold must be a number greater than 0 and less than 1" },
+      };
+    }
     const configured = Boolean(
       process.env.AVAIL_OTP_MONTHLY_URL?.trim() && process.env.AVAIL_AVL_REPORTS_API_KEY?.trim(),
     );
@@ -73,6 +97,13 @@ app.http("otpMonthlyList", {
           `)).recordset
         : [];
 
+      // Which stops the Review Queue asks a reviewer to look at. A sibling of
+      // the measurement, never part of it: the measurement is the contractual
+      // figure, and the threshold behind this list is a knob an administrator
+      // can move (ADR 0034).
+      const threshold = thresholdOverride ?? (await readEarlyLateBiasThreshold(pool));
+      const flagged = measurement.feed_ready ? await readFlaggedStops(pool, serviceMonth, threshold) : [];
+
       return {
         status: 200,
         jsonBody: {
@@ -87,6 +118,7 @@ app.http("otpMonthlyList", {
             pct_ontime: route.assessable.pct,
           })),
           measurement,
+          flagged,
           diagnostics: {
             configured,
             table_ready: measurement.feed_ready,
@@ -96,6 +128,10 @@ app.http("otpMonthlyList", {
             target: measurement.target,
             target_source: measurement.target_source,
             weather_days_recorded: measurement.weather_days_recorded,
+            // The threshold `flagged` was built at, so a reader can say which
+            // one it is looking at without asking /otp-settings as well.
+            flagged_threshold: threshold,
+            flagged_count: flagged.length,
           },
         },
       };
