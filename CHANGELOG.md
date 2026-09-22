@@ -5,6 +5,13 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.291] - 2026-09-22
+
+- **The Audit Stream's month scope reached only half the stream.** `?month=` filtered `OtpStopExclusions` and was never applied to `OtpDateExclusions`, so "Current month only" returned that month's stop decisions alongside every Weather Day Exclusion ever recorded. A weather day is scoped by the date it happened - `LEFT(service_date, 6)`, since `service_date` is CHAR(8) - not by when somebody typed it in, which can be a different month.
+- **`limit` was a slice taken in memory after reading both tables entire**, so `OtpDateExclusions` was read unbounded on every call. Both queries are now `SELECT TOP (@limit)` ordered newest first in SQL, each by the timestamp its own table carries - `reviewed_at` for a stop decision, `created_at` for a weather day.
+- **Two `OBJECT_ID` probes become one**, the way `lib/otpMonth` already does it.
+- **Verified.** 5 new checks on the two query builders, which are exported for the purpose; backend 1305 passing. Found during the OTP Compliance architecture review; the Exclusion Review module that follows has to preserve this behaviour rather than reinvent it. No migration.
+
 ## [1.5.290] - 2026-09-22
 
 - **An approved weather day is subtracted from the month now.** ADR 0033 recorded this as structurally impossible: Avail's monthly feed is keyed by service month, route, stop and *day of week*, so a row is "every Monday in September" and "the 7th" has nothing to bind to. The daily feed does carry a real calendar date, and on 2026-09-22 the two were shown to agree exactly — subtracting daily 2026-09-14 from September's `Mon` bucket leaves a residual that is **exactly zero on every weekday-only route**, and non-zero only on the eight routes running a Sunday schedule, where it matches each one's Sunday volume. That residual is Labor Day. Eleven exact zeroes across two independently polled Avail operations, keyed on different route fields, is not approximate agreement.
@@ -15,6 +22,7 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **Day-of-week spellings are load-bearing.** Avail writes `Tues` and `Thur`, not `Tue` and `Thu`, and a near-miss subtracts nothing silently. `AVAIL_DAY_OF_WEEK` names them and the approval path checks its derived value against the month's own rows before writing.
 - **`vw_OtpMonthlyRouteStop` publishes the new rule verbatim**, regenerated from `lib/otpMonth/rules.ts`; `rules.test.ts` reads migration 140 and fails if they drift. A report sums `AssessableTotalDepartures`/`AssessableOnTimeDepartures` rather than filtering on `IsAssessable`, because a date exclusion reduces a row instead of removing it. `IsAssessable` stays and still answers the figure before weather.
 - **Deliberately not done:** holidays are not excluded — Labor Day's reduced service still sits in September's Monday bucket and skews every day-of-week reading, including bias flagging, but what a holiday is worth is a contract question. Nothing notifies the contractor; the "notified"/"acknowledged" flags remain display-only. ADR 0038. Migration 140. 7 new checks; backend and frontend suites green.
+
 
 ## [1.5.288] - 2026-09-21
 

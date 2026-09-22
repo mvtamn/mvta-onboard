@@ -17,6 +17,29 @@ interface AuditEntry {
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 
+// Both queries are scoped, ordered and bounded in SQL. They used to be
+// neither: the month filter reached the stop exclusions only, so scoping the
+// stream to a month still returned every weather day ever recorded, and the
+// limit was a slice taken in memory after reading both tables entire.
+//
+// A Weather Day Exclusion belongs to the month its service date falls in.
+// service_date is CHAR(8) 'YYYYMMDD', so its month is the first six.
+export function stopExclusionAuditSql(month: string | null): string {
+  return `
+    SELECT TOP (@limit) route_id, stop_id, day_of_week, status, reason_code, reviewed_by, reviewed_at
+    FROM OtpStopExclusions
+    ${month ? "WHERE service_month = @service_month" : ""}
+    ORDER BY reviewed_at DESC`;
+}
+
+export function dateExclusionAuditSql(month: string | null): string {
+  return `
+    SELECT TOP (@limit) scope, route_id, service_date, reason_code, created_by, created_at
+    FROM OtpDateExclusions
+    ${month ? "WHERE LEFT(service_date, 6) = @service_month" : ""}
+    ORDER BY created_at DESC`;
+}
+
 app.http("otpAuditStreamList", {
   route: "otp-audit-stream",
   methods: ["GET"],
@@ -35,17 +58,17 @@ app.http("otpAuditStreamList", {
     try {
       const pool = await getPool();
 
-      const stopTableCheck = await pool.request().query<{ table_exists: number }>(`
-        SELECT CASE WHEN OBJECT_ID('dbo.OtpStopExclusions', 'U') IS NULL THEN 0 ELSE 1 END AS table_exists
-      `);
-      const dateTableCheck = await pool.request().query<{ table_exists: number }>(`
-        SELECT CASE WHEN OBJECT_ID('dbo.OtpDateExclusions', 'U') IS NULL THEN 0 ELSE 1 END AS table_exists
-      `);
+      // One probe rather than two round-trips, the way lib/otpMonth does it.
+      const tables = (await pool.request().query<{ stops: number; dates: number }>(`
+        SELECT CASE WHEN OBJECT_ID('dbo.OtpStopExclusions', 'U') IS NULL THEN 0 ELSE 1 END AS stops,
+               CASE WHEN OBJECT_ID('dbo.OtpDateExclusions', 'U') IS NULL THEN 0 ELSE 1 END AS dates
+      `)).recordset[0];
 
       const entries: AuditEntry[] = [];
 
-      if (stopTableCheck.recordset[0]?.table_exists === 1) {
+      if (tables?.stops === 1) {
         const req = pool.request();
+        req.input("limit", sql.Int, limit);
         if (month) req.input("service_month", sql.Char(6), month);
         const stopResult = await req.query<{
           route_id: number;
@@ -55,11 +78,7 @@ app.http("otpAuditStreamList", {
           reason_code: string | null;
           reviewed_by: string;
           reviewed_at: Date;
-        }>(`
-          SELECT route_id, stop_id, day_of_week, status, reason_code, reviewed_by, reviewed_at
-          FROM OtpStopExclusions
-          ${month ? "WHERE service_month = @service_month" : ""}
-        `);
+        }>(stopExclusionAuditSql(month));
         for (const r of stopResult.recordset) {
           entries.push({
             type: "stop_exclusion",
@@ -70,19 +89,18 @@ app.http("otpAuditStreamList", {
         }
       }
 
-      if (dateTableCheck.recordset[0]?.table_exists === 1) {
-        const dateResult = await pool.request().query<{
+      if (tables?.dates === 1) {
+        const dateReq = pool.request();
+        dateReq.input("limit", sql.Int, limit);
+        if (month) dateReq.input("service_month", sql.Char(6), month);
+        const dateResult = await dateReq.query<{
           scope: string;
           route_id: number | null;
           service_date: string;
           reason_code: string;
           created_by: string;
           created_at: Date;
-        }>(`
-          SELECT scope, route_id, service_date, reason_code, created_by, created_at
-          FROM OtpDateExclusions
-          ORDER BY created_at DESC
-        `);
+        }>(dateExclusionAuditSql(month));
         for (const r of dateResult.recordset) {
           entries.push({
             type: "date_exclusion",
