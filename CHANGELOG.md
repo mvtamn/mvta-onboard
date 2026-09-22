@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.290] - 2026-09-22
+## [1.5.292] - 2026-09-22
 
 - **The Review Queue reads the server's Flagged Stops.** Second half of ADR-0034: `OtpModule` renders `flagged` from `GET /otp-monthly` instead of deriving its own list, and `deriveCandidatesFromLive`, `DATA.candidates` and the console's copy of the threshold are gone. `usingLiveOtp` reads `diagnostics.record_count`; `stops` no longer travels, and `OtpMonthlyStopRow` is deleted with it - a month was 400-900 rows sent so the browser could filter them.
 - **Stops outside the fixed-route standard leave the queue.** Special-event, on-demand and non-revenue routes were reviewable and actionable to no effect, because the route is already outside Official Departure OTP. A row now reads day of week and departures sampled rather than a direction the feed does not carry, which every live row printed as an em dash.
@@ -13,6 +13,13 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **The three review write paths share one helper.** `resolve`, `copyFromPrevious` and `copyAllFromPrevious` each spelled out write-then-refetch-then-refresh-the-timeline; with the mock branch gone they collapse onto `record` + `refreshDecisions`.
 - **Preview mode keeps its sample routes and loses its sample queue.** Eleven invented stops with no `route_id` could be approved, which only flipped local state - the wrong lesson on the one page whose purpose is recording real decisions. The queue says the feed has no rows instead.
 - **Verified.** `OtpModule` gets its first tests (4) plus 4 for the queue row and 1 for the tuner's fetch; the queue-row test caught a real defect before review, JSX rendering `·` literally rather than a separator. Console 770 passing, backend 1263 passing, typecheck clean. No migration.
+
+## [1.5.291] - 2026-09-22
+
+- **The Audit Stream's month scope reached only half the stream.** `?month=` filtered `OtpStopExclusions` and was never applied to `OtpDateExclusions`, so "Current month only" returned that month's stop decisions alongside every Weather Day Exclusion ever recorded. A weather day is scoped by the date it happened - `LEFT(service_date, 6)`, since `service_date` is CHAR(8) - not by when somebody typed it in, which can be a different month.
+- **`limit` was a slice taken in memory after reading both tables entire**, so `OtpDateExclusions` was read unbounded on every call. Both queries are now `SELECT TOP (@limit)` ordered newest first in SQL, each by the timestamp its own table carries - `reviewed_at` for a stop decision, `created_at` for a weather day.
+- **Two `OBJECT_ID` probes become one**, the way `lib/otpMonth` already does it.
+- **Verified.** 5 new checks on the two query builders, which are exported for the purpose; backend 1305 passing. Found during the OTP Compliance architecture review; the Exclusion Review module that follows has to preserve this behaviour rather than reinvent it. No migration.
 
 ## [1.5.288] - 2026-09-21
 
