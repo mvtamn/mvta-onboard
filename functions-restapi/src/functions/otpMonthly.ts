@@ -1,6 +1,7 @@
 // GET /otp-monthly - Avail OTP Monthly By Route/Stop/Day of Week compliance
-// data, backing the OTP Compliance console module's Route Summary/Review
-// Queue/Monthly Assessments pages. compliance-review.view can read;
+// figures, backing the OTP Compliance console module's Route Summary/Review
+// Queue/Monthly Assessments pages. It returns the month's measurement and its
+// Flagged Stops, not the feed's raw stop rows. compliance-review.view can read;
 // all writes come from otpMonthlyFeedPoll.ts.
 // Accepts an optional ?month=YYYYMM query param (default: current month) and
 // an optional ?threshold= override for the Flagged Stops the Review Queue
@@ -12,27 +13,6 @@ import { serviceMonthOf } from "../lib/otpMonthlyFeed";
 import { measureOtpMonth } from "../lib/otpMonth";
 import { readFlaggedStops } from "../lib/otpFlaggedStops";
 import { readEarlyLateBiasThreshold } from "../lib/otpSettings";
-
-interface OtpMonthlyStopRow {
-  service_month: string;
-  route_id: number;
-  stop_id: number;
-  day_of_week: string;
-  stop_name: string | null;
-  route_label: string | null;
-  pct_early: number | null;
-  pct_ontime: number | null;
-  pct_late: number | null;
-  pct_not_ontime: number | null;
-  pct_missed: number | null;
-  early: number | null;
-  ontime: number | null;
-  late: number | null;
-  missed: number | null;
-  actual_departures: number | null;
-  total: number | null;
-  updated_at: Date;
-}
 
 function resolveMonth(request: HttpRequest): string {
   const param = request.query.get("month");
@@ -52,7 +32,7 @@ function resolveThresholdOverride(request: HttpRequest): number | null | undefin
   return value;
 }
 
-// The stop rows the Review Queue works from, and the month's measurement.
+// The month's measurement and its Flagged Stops.
 //
 // The figures - raw, excluded, assessable, per route and agency-wide, the
 // target and where the target came from - are the OTP month measurement
@@ -86,16 +66,16 @@ app.http("otpMonthlyList", {
     try {
       const pool = await getPool();
       const measurement = await measureOtpMonth(pool, serviceMonth);
-      const stops = measurement.feed_ready
-        ? (await pool.request().input("service_month", sql.Char(6), serviceMonth).query<OtpMonthlyStopRow>(`
-            SELECT service_month, route_id, stop_id, day_of_week, stop_name, route_label,
-                   pct_early, pct_ontime, pct_late, pct_not_ontime, pct_missed,
-                   early, ontime, late, missed, actual_departures, total, updated_at
+      // How many stop/day rows the feed holds for the month. The whole table
+      // used to be returned so the browser could work out its own Review
+      // Queue; now only the count travels, for the banner that reports it.
+      const recordCount = measurement.feed_ready
+        ? (await pool.request().input("service_month", sql.Char(6), serviceMonth).query<{ record_count: number }>(`
+            SELECT COUNT(*) AS record_count
             FROM OtpMonthlyRouteStopDay
             WHERE service_month = @service_month
-            ORDER BY route_id, stop_id, day_of_week
-          `)).recordset
-        : [];
+          `)).recordset[0]?.record_count ?? 0
+        : 0;
 
       // Which stops the Review Queue asks a reviewer to look at. A sibling of
       // the measurement, never part of it: the measurement is the contractual
@@ -107,7 +87,6 @@ app.http("otpMonthlyList", {
       return {
         status: 200,
         jsonBody: {
-          stops,
           // Kept for readers that predate the measurement: the same routes,
           // with the assessable figure as pct_ontime rather than the raw one.
           routes: measurement.routes.map((route) => ({
@@ -123,7 +102,7 @@ app.http("otpMonthlyList", {
             configured,
             table_ready: measurement.feed_ready,
             service_month: serviceMonth,
-            record_count: stops.length,
+            record_count: recordCount,
             routes_below_target: measurement.routes_below_target,
             target: measurement.target,
             target_source: measurement.target_source,

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ApiError,
-  type OtpMonthlyStopRow,
+  type FlaggedStop,
   type OtpMonthlyRouteRollup,
   type OtpStopExclusion,
   type OtpDateExclusion,
@@ -15,21 +15,19 @@ import {
 import { api } from "../../../config.js";
 import {
   DATA,
-  deriveCandidatesFromLive,
   stopExclusionKey,
-  DEFAULT_EARLY_LATE_BIAS_THRESHOLD,
   PAGE_META,
-  type Candidate,
-  type CandidateStatus,
+  type StopExclusionStatus,
 } from "./otpData.js";
-import { displayRoutes, percentText, previewRoutes, targetSentence, weatherSentence, type OtpDisplayRoute } from "./otpFigures.js";
+import { displayRoutes, percentText, previewRoutes, queueRow, targetSentence, weatherSentence, type OtpDisplayRoute, type QueueRow } from "./otpFigures.js";
 import "./otp.css";
 
 interface OtpMonthlyResponse {
-  stops: OtpMonthlyStopRow[];
   routes: OtpMonthlyRouteRollup[];
   /** Absent on a server older than 1.5.242; the console then shows the preview. */
   measurement?: OtpMonthMeasurement;
+  /** Absent on a server older than 1.5.288; the queue is then empty, not wrong. */
+  flagged?: FlaggedStop[];
   diagnostics: {
     configured: boolean;
     table_ready: boolean;
@@ -92,21 +90,19 @@ const NAV: { page: string; label: string }[] = [
 // from Avail's real OTP Monthly feed (otpMonthlyFeedPoll.ts) once it's
 // configured and has data for the current month; Monthly Assessments also
 // surfaces the real Missed Trips feed (availMissedTripsPoll.ts). Both fall
-// back to this file's mock DATA/candidates when the live feed isn't
-// configured yet or has no rows, so the module is never broken for a
-// signed-in reviewer before the feeds are live.
+// back to this file's sample routes when the live feed isn't configured yet
+// or has no rows, so the module is never broken for a signed-in reviewer
+// before the feeds are live. The Review Queue has no sample rows: a queue of
+// invented stops could be actioned to no effect.
 //
 // Review Queue approvals/rejections and weather exclusions are now
 // PERSISTED (OtpStopExclusions/OtpDateExclusions) when using live data -
 // they used to be ephemeral browser state that reset on reload. Reason
-// codes and the early/late bias detection threshold are admin-editable/
-// persisted too (OtpReasonCodes/OtpSettings), replacing what used to be
-// hardcoded arrays/constants; this module READS both and no longer edits
-// them - that moved to the Administration workspace's OTP Compliance page
-// (OtpComplianceAdmin.tsx), behind OCC.Admin. See detour-and-event-module-
-// implementation-plan.md's sibling OTP-completion plan for the full
-// design. Mock-preview mode (feed not configured/no rows) keeps its old
-// ephemeral behavior - there's nothing real to persist in that state.
+// codes are admin-editable/persisted too (OtpReasonCodes); this module READS
+// them and no longer edits them - that moved to the Administration
+// workspace's OTP Compliance page (OtpComplianceAdmin.tsx). The early/late
+// bias threshold is not read here at all any more: the server applies it and
+// returns the month's Flagged Stops (ADR 0034).
 export function OtpModule() {
   const [page, setPage] = useState("queue");
 
@@ -122,7 +118,6 @@ export function OtpModule() {
   const [liveOtp, setLiveOtp] = useState<OtpMonthlyResponse | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [threshold, setThreshold] = useState<number>(DEFAULT_EARLY_LATE_BIAS_THRESHOLD);
   const [stopExclusions, setStopExclusions] = useState<OtpStopExclusion[]>([]);
   const [dateExclusions, setDateExclusions] = useState<OtpDateExclusion[]>([]);
   const [stopReasonCodes, setStopReasonCodes] = useState<OtpReasonCode[]>([]);
@@ -138,12 +133,6 @@ export function OtpModule() {
   // to do with reason codes themselves.
   useEffect(() => {
     let cancelled = false;
-    api
-      .getOtpSettings()
-      .then((settings) => !cancelled && setThreshold(settings.early_late_bias_threshold))
-      .catch(() => {
-        /* graceful - the module falls back to the built-in default */
-      });
     api
       .getDateExclusions()
       .then((dates) => !cancelled && setDateExclusions(dates.exclusions))
@@ -196,7 +185,10 @@ export function OtpModule() {
     };
   }, [selectedMonth]);
 
-  const usingLiveOtp = Boolean(liveOtp?.diagnostics.table_ready && liveOtp.stops.length > 0);
+  // record_count is the server's count of stop/day rows for the month. It used
+  // to be `stops.length`, back when the whole table was shipped here so the
+  // browser could work out its own Review Queue (ADR 0034).
+  const usingLiveOtp = Boolean(liveOtp?.diagnostics.table_ready && liveOtp.diagnostics.record_count > 0);
   const serviceMonth = liveOtp?.diagnostics.service_month ?? null;
 
   useEffect(() => {
@@ -243,10 +235,10 @@ export function OtpModule() {
     () => (measurement ? displayRoutes(measurement) : previewRoutes(DATA.routes, 85)),
     [measurement],
   );
-  const candidateSource: Candidate[] = useMemo(
-    () => (usingLiveOtp ? deriveCandidatesFromLive(liveOtp!.stops, threshold) : DATA.candidates),
-    [usingLiveOtp, liveOtp, threshold],
-  );
+  // The month's Flagged Stops, as the server decided them and in the order it
+  // put them (ADR 0034). The browser used to derive this list itself.
+  const flaggedStops: FlaggedStop[] = usingLiveOtp ? liveOtp!.flagged ?? [] : [];
+  const queueRows: QueueRow[] = useMemo(() => flaggedStops.map(queueRow), [flaggedStops]);
 
   const exclusionByKey = useMemo(() => {
     const map = new Map<string, OtpStopExclusion>();
@@ -256,60 +248,64 @@ export function OtpModule() {
     return map;
   }, [stopExclusions]);
 
-  // Mock-mode-only ephemeral fallback (nothing real to persist in preview).
-  const [mockStates, setMockStates] = useState<{ status: CandidateStatus; reason: string }[]>(
-    DATA.candidates.map(() => ({ status: "pending", reason: "" })),
-  );
   const [draftReason, setDraftReason] = useState<Record<string, string>>({});
 
-  function candidateKey(c: Candidate, i: number): string {
-    return usingLiveOtp ? stopExclusionKey(c.route_id, c.stopId, c.day_of_week) : `mock-${i}`;
+  const keyOf = (stop: FlaggedStop): string =>
+    stopExclusionKey(stop.route_id, stop.stop_id, stop.day_of_week);
+
+  function statusOf(stop: FlaggedStop): StopExclusionStatus {
+    return exclusionByKey.get(keyOf(stop))?.status ?? "pending";
   }
 
-  function candidateStatus(c: Candidate, i: number): CandidateStatus {
-    if (usingLiveOtp) {
-      return exclusionByKey.get(candidateKey(c, i))?.status ?? "pending";
-    }
-    return mockStates[i]?.status ?? "pending";
+  function reasonOf(stop: FlaggedStop): string {
+    const persisted = exclusionByKey.get(keyOf(stop))?.reason_code;
+    return draftReason[keyOf(stop)] ?? persisted ?? stopReasonCodes[0]?.code ?? "";
   }
 
-  function candidateReason(c: Candidate, i: number): string {
-    const persisted = usingLiveOtp ? exclusionByKey.get(candidateKey(c, i))?.reason_code : mockStates[i]?.reason;
-    return draftReason[candidateKey(c, i)] ?? persisted ?? stopReasonCodes[0]?.code ?? "";
-  }
-
-  const statuses = candidateSource.map((c, i) => candidateStatus(c, i));
+  const statuses = flaggedStops.map(statusOf);
 
   const [auditRefreshTick, setAuditRefreshTick] = useState(0);
 
-  async function resolve(i: number, action: "approve" | "reject") {
-    const c = candidateSource[i];
-    const reason = candidateReason(c, i);
-    setActionError(null);
-
-    if (usingLiveOtp && serviceMonth && c.route_id !== null && c.day_of_week !== null) {
-      try {
-        await api.putStopExclusion({
-          service_month: serviceMonth,
-          route_id: c.route_id,
-          stop_id: c.stopId,
-          day_of_week: c.day_of_week,
-          status: action === "approve" ? "approved" : "rejected",
-          reason_code: reason || null,
-        });
-        const refreshed = await api.getStopExclusions(serviceMonth);
-        setStopExclusions(refreshed.exclusions);
-        setAuditRefreshTick((t) => t + 1);
-      } catch (err) {
-        setActionError(err instanceof ApiError ? err.message : "Could not save this review decision.");
-      }
-    } else {
-      setMockStates((cs) => {
-        const next = cs.slice();
-        next[i] = { status: action === "approve" ? "approved" : "rejected", reason };
-        return next;
+  // Every review decision takes the same shape: write the row, re-read the
+  // month, refresh the timeline. One place to get that sequence right - it
+  // used to be spelled out separately in each of the three below.
+  async function record(
+    stop: FlaggedStop,
+    decision: { status: "approved" | "rejected"; reason_code: string | null },
+    failure: string,
+  ): Promise<boolean> {
+    if (!serviceMonth) return false;
+    try {
+      await api.putStopExclusion({
+        service_month: serviceMonth,
+        route_id: stop.route_id,
+        stop_id: stop.stop_id,
+        day_of_week: stop.day_of_week,
+        ...decision,
       });
+      return true;
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : failure);
+      return false;
     }
+  }
+
+  async function refreshDecisions() {
+    if (!serviceMonth) return;
+    const refreshed = await api.getStopExclusions(serviceMonth);
+    setStopExclusions(refreshed.exclusions);
+    setAuditRefreshTick((t) => t + 1);
+  }
+
+  async function resolve(stop: FlaggedStop, action: "approve" | "reject") {
+    setActionError(null);
+    const reason = reasonOf(stop);
+    const saved = await record(
+      stop,
+      { status: action === "approve" ? "approved" : "rejected", reason_code: reason || null },
+      "Could not save this review decision.",
+    );
+    if (saved) await refreshDecisions();
   }
 
   // "Copy last month's decisions" - Option A of
@@ -318,71 +314,53 @@ export function OtpModule() {
   // not a silent carry-forward. A human still takes an explicit action
   // (the copy click itself) for every month; it's just one click applying
   // last month's answer instead of re-deriving it from scratch.
-  function previousDecisionFor(c: Candidate): OtpStopExclusion | undefined {
-    if (!usingLiveOtp || c.route_id === null || c.day_of_week === null) return undefined;
-    return previousExclusionByKey.get(stopExclusionKey(c.route_id, c.stopId, c.day_of_week));
+  function previousDecisionFor(stop: FlaggedStop): OtpStopExclusion | undefined {
+    return previousExclusionByKey.get(keyOf(stop));
   }
 
-  async function copyFromPrevious(i: number) {
-    const c = candidateSource[i];
-    const prev = previousDecisionFor(c);
-    if (!prev || !serviceMonth || c.route_id === null || c.day_of_week === null) return;
+  async function copyFromPrevious(stop: FlaggedStop) {
+    const prev = previousDecisionFor(stop);
+    if (!prev) return;
     setActionError(null);
-    try {
-      await api.putStopExclusion({
-        service_month: serviceMonth,
-        route_id: c.route_id,
-        stop_id: c.stopId,
-        day_of_week: c.day_of_week,
-        status: prev.status,
-        reason_code: prev.reason_code,
-      });
-      const refreshed = await api.getStopExclusions(serviceMonth);
-      setStopExclusions(refreshed.exclusions);
-      setAuditRefreshTick((t) => t + 1);
-    } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "Could not copy last month's decision.");
-    }
+    const saved = await record(
+      stop,
+      { status: prev.status, reason_code: prev.reason_code },
+      "Could not copy last month's decision.",
+    );
+    if (saved) await refreshDecisions();
   }
 
   const [copyingAll, setCopyingAll] = useState(false);
 
-  // Bulk version - one explicit click, still N real per-candidate PUTs (one
-  // dated row per stop, same as clicking each one individually) rather than
-  // a single "carry forward" record, so the audit trail stays identical in
-  // shape to doing this one candidate at a time.
+  // Bulk version - one explicit click, still N real per-stop PUTs (one dated
+  // row per stop, same as clicking each one individually) rather than a
+  // single "carry forward" record, so the audit trail stays identical in
+  // shape to doing this one stop at a time.
   async function copyAllFromPrevious() {
-    if (!serviceMonth) return;
     setActionError(null);
     setCopyingAll(true);
     try {
-      const targets = candidateSource
-        .map((c, i) => ({ c, i, prev: previousDecisionFor(c) }))
-        .filter(({ c, i, prev }) => prev && candidateStatus(c, i) === "pending");
+      const targets = flaggedStops
+        .map((stop) => ({ stop, prev: previousDecisionFor(stop) }))
+        .filter(({ stop, prev }) => prev && statusOf(stop) === "pending");
 
-      for (const { c, prev } of targets) {
-        if (!prev || c.route_id === null || c.day_of_week === null) continue;
-        await api.putStopExclusion({
-          service_month: serviceMonth,
-          route_id: c.route_id,
-          stop_id: c.stopId,
-          day_of_week: c.day_of_week,
-          status: prev.status,
-          reason_code: prev.reason_code,
-        });
+      for (const { stop, prev } of targets) {
+        if (!prev) continue;
+        const saved = await record(
+          stop,
+          { status: prev.status, reason_code: prev.reason_code },
+          "Could not copy all of last month's decisions.",
+        );
+        if (!saved) break;
       }
-      const refreshed = await api.getStopExclusions(serviceMonth);
-      setStopExclusions(refreshed.exclusions);
-      setAuditRefreshTick((t) => t + 1);
-    } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "Could not copy all of last month's decisions.");
+      await refreshDecisions();
     } finally {
       setCopyingAll(false);
     }
   }
 
-  function setReason(c: Candidate, i: number, reason: string) {
-    setDraftReason((d) => ({ ...d, [candidateKey(c, i)]: reason }));
+  function setReason(stop: FlaggedStop, reason: string) {
+    setDraftReason((d) => ({ ...d, [keyOf(stop)]: reason }));
   }
 
   async function addDateExclusion(input: {
@@ -456,9 +434,10 @@ export function OtpModule() {
       )}
       {page === "queue" && (
         <ReviewQueuePage
-          candidateSource={candidateSource}
-          statusOf={candidateStatus}
-          reasonOf={candidateReason}
+          flaggedStops={flaggedStops}
+          queueRows={queueRows}
+          statusOf={statusOf}
+          reasonOf={reasonOf}
           reasonCodes={stopReasonCodes}
           onResolve={resolve}
           onReason={setReason}
@@ -495,7 +474,7 @@ function DashboardPage({
   targetPct,
 }: {
   displayRows: OtpDisplayRoute[];
-  statuses: CandidateStatus[];
+  statuses: StopExclusionStatus[];
   weatherCount: number;
   measurement: OtpMonthMeasurement | null;
   targetPct: number;
@@ -508,7 +487,7 @@ function DashboardPage({
   // to show and, until ADR 0033, never did.
   const below = measurement ? measurement.routes_below_target : displayRows.filter((r) => r.status === "below").length;
   const cards = [
-    { label: "Pending review", value: pending, sub: "Candidate stops", color: "#F78E1E" },
+    { label: "Pending review", value: pending, sub: "Flagged stops", color: "#F78E1E" },
     { label: "Approved", value: approved, sub: "Active exclusion rules", color: "#00553D" },
     { label: `Routes below ${targetPct}%`, value: below, sub: "Official departure OTP", color: "#8A1F1F" },
     { label: "Weather exclusions", value: weatherCount, sub: "Recorded, not applied", color: "#417B68" },
@@ -590,13 +569,13 @@ function OtpTrendChart() {
   );
 }
 
-function AdherenceStrip({ c }: { c: Candidate }) {
-  const other = Math.max(0, 100 - c.early_pct - c.ontime_pct - c.late_pct - c.missed_pct);
+function AdherenceStrip({ row }: { row: QueueRow }) {
+  const other = Math.max(0, 100 - row.earlyPct - row.ontimePct - row.latePct - row.missedPct);
   const segs = [
-    { cls: "early", v: c.early_pct },
-    { cls: "ontime", v: c.ontime_pct },
-    { cls: "late", v: c.late_pct },
-    { cls: "missed", v: c.missed_pct + other },
+    { cls: "early", v: row.earlyPct },
+    { cls: "ontime", v: row.ontimePct },
+    { cls: "late", v: row.latePct },
+    { cls: "missed", v: row.missedPct + other },
   ];
   return (
     <div className="adherence-strip">
@@ -606,7 +585,8 @@ function AdherenceStrip({ c }: { c: Candidate }) {
 }
 
 function ReviewQueuePage({
-  candidateSource,
+  flaggedStops,
+  queueRows,
   statusOf,
   reasonOf,
   reasonCodes,
@@ -619,23 +599,24 @@ function ReviewQueuePage({
   onCopyAll,
   copyingAll,
 }: {
-  candidateSource: Candidate[];
-  statusOf: (c: Candidate, i: number) => CandidateStatus;
-  reasonOf: (c: Candidate, i: number) => string;
+  flaggedStops: FlaggedStop[];
+  queueRows: QueueRow[];
+  statusOf: (stop: FlaggedStop) => StopExclusionStatus;
+  reasonOf: (stop: FlaggedStop) => string;
   reasonCodes: OtpReasonCode[];
-  onResolve: (i: number, action: "approve" | "reject") => void;
-  onReason: (c: Candidate, i: number, reason: string) => void;
+  onResolve: (stop: FlaggedStop, action: "approve" | "reject") => void;
+  onReason: (stop: FlaggedStop, reason: string) => void;
   serviceMonth: string | null;
   auditRefreshTick: number;
-  previousDecisionFor: (c: Candidate) => OtpStopExclusion | undefined;
-  onCopy: (i: number) => void;
+  previousDecisionFor: (stop: FlaggedStop) => OtpStopExclusion | undefined;
+  onCopy: (stop: FlaggedStop) => void;
   onCopyAll: () => void;
   copyingAll: boolean;
 }) {
   const [routeFilter, setRouteFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("pending");
   const [search, setSearch] = useState("");
-  const routes = useMemo(() => [...new Set(candidateSource.map((c) => c.route))].sort(), [candidateSource]);
+  const routes = useMemo(() => [...new Set(queueRows.map((r) => r.routeLabel))].sort(), [queueRows]);
 
   const [timeline, setTimeline] = useState<OtpAuditEntry[]>([]);
   useEffect(() => {
@@ -647,8 +628,8 @@ function ReviewQueuePage({
 
   const reasonLabel = (code: string) => reasonCodes.find((r) => r.code === code)?.label ?? code;
 
-  const copyableCount = candidateSource.filter(
-    (c, i) => statusOf(c, i) === "pending" && previousDecisionFor(c),
+  const copyableCount = flaggedStops.filter(
+    (stop) => statusOf(stop) === "pending" && previousDecisionFor(stop),
   ).length;
 
   return (
@@ -661,7 +642,7 @@ function ReviewQueuePage({
           </select>
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="pending">Pending review</option>
-            <option value="all">All candidates</option>
+            <option value="all">All flagged stops</option>
             <option value="resolved">Resolved only</option>
           </select>
           <input placeholder="Search stop name…" value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -678,56 +659,51 @@ function ReviewQueuePage({
           </div>
         ) : null}
 
-        {candidateSource.length === 0 ? (
+        {queueRows.length === 0 ? (
           <div className="subcard empty-note" style={{ textAlign: "center", padding: "30px 20px" }}>
-            No stops currently show an early/late-bias pattern above the review threshold.
+            {serviceMonth
+              ? "No stops show an early/late-bias pattern above the review threshold this month."
+              : "The Avail OTP Monthly feed has no rows for this month yet, so there is nothing to review."}
           </div>
         ) : null}
 
-        {candidateSource.map((c, i) => {
-          const status = statusOf(c, i);
-          const reason = reasonOf(c, i);
-          if (routeFilter && c.route !== routeFilter) return null;
+        {queueRows.map((row, i) => {
+          const stop = flaggedStops[i]!;
+          const status = statusOf(stop);
+          const reason = reasonOf(stop);
+          if (routeFilter && row.routeLabel !== routeFilter) return null;
           if (statusFilter === "pending" && status !== "pending") return null;
           if (statusFilter === "resolved" && status === "pending") return null;
-          if (search && !c.stopName.toLowerCase().includes(search.toLowerCase())) return null;
+          if (search && !row.stopName.toLowerCase().includes(search.toLowerCase())) return null;
 
-          const varLabel =
-            c.avg_var !== null
-              ? c.avg_var < 0
-                ? `${Math.abs(c.avg_var)}s early (avg)`
-                : `${c.avg_var}s late (avg, mixed pattern)`
-              : c.early_pct > c.late_pct
-                ? "Early-biased"
-                : "Late-biased";
           const iconClass = status === "approved" ? "ok" : status === "rejected" ? "rejected" : "warn";
-          const iconGlyph = status === "approved" ? "✓" : status === "rejected" ? "✕" : "!";
-          const prevDecision = status === "pending" ? previousDecisionFor(c) : undefined;
+          const iconGlyph = status === "approved" ? "\u2713" : status === "rejected" ? "\u2715" : "!";
+          const prevDecision = status === "pending" ? previousDecisionFor(stop) : undefined;
 
           return (
-            <div className={`check-row${status === "pending" ? " highlight" : ""}`} key={`${c.route}-${c.stopId}-${i}`}>
+            <div className={`check-row${status === "pending" ? " highlight" : ""}`} key={row.key}>
               <div className={`status-icon ${iconClass}`}>{iconGlyph}</div>
               <div className="check-body">
-                <div className="check-title"><span className="route-chip">RT {c.route}</span>{c.stopName}</div>
-                <div className="check-desc">Stop {c.stopId} · {c.direction || "—"} · {c.n} trips sampled · {varLabel}</div>
-                <AdherenceStrip c={c} />
+                <div className="check-title"><span className="route-chip">RT {row.routeLabel}</span>{row.stopName}</div>
+                <div className="check-desc">Stop {row.stopId} · {row.dayOfWeek} · {row.sampled} departures sampled · {row.biasLabel}</div>
+                <AdherenceStrip row={row} />
                 {prevDecision ? (
                   <div className="muted" style={{ fontSize: "0.85em", marginTop: 4 }}>
                     Last month: {prevDecision.status === "approved" ? "Approved" : "Rejected"}
-                    {prevDecision.reason_code ? ` — ${reasonLabel(prevDecision.reason_code)}` : ""}
+                    {prevDecision.reason_code ? ` \u2014 ${reasonLabel(prevDecision.reason_code)}` : ""}
                   </div>
                 ) : null}
               </div>
               <div className="check-actions">
                 {status === "pending" ? (
                   <>
-                    <select value={reason} onChange={(e) => onReason(c, i, e.target.value)}>
+                    <select value={reason} onChange={(e) => onReason(stop, e.target.value)}>
                       {reasonCodes.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
                     </select>
-                    <button className="btn-post" onClick={() => onResolve(i, "approve")}>Approve</button>
-                    <button className="btn-sm" onClick={() => onResolve(i, "reject")}>Reject</button>
+                    <button className="btn-post" onClick={() => onResolve(stop, "approve")}>Approve</button>
+                    <button className="btn-sm" onClick={() => onResolve(stop, "reject")}>Reject</button>
                     {prevDecision ? (
-                      <button className="btn-sm" onClick={() => onCopy(i)}>Copy last month</button>
+                      <button className="btn-sm" onClick={() => onCopy(stop)}>Copy last month</button>
                     ) : null}
                   </>
                 ) : status === "approved" ? (
