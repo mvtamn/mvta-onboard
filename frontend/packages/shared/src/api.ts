@@ -22,6 +22,9 @@ import type {
   ContractorRecord,
   ContractorStandardTier,
   ApproveDateExclusionResult,
+  DeclareReducedServiceDayInput,
+  ReducedServiceDay,
+  ReducedServiceMonth,
   CreateDateExclusionInput,
   CreateDetourInput,
   CreateDetourIntakeInput,
@@ -1671,6 +1674,31 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<ApproveDateExclusionResult>(
         `/api/otp-date-exclusions/${encodeURIComponent(id)}/approve`,
         { method: "POST" },
+        true,
+      );
+    },
+
+    /** The month's declared reduced-service days, with the feed's evidence. */
+    getReducedServiceDays(month?: string) {
+      const suffix = month ? `?month=${encodeURIComponent(month)}` : "";
+      return request<{ service_month: string } & ReducedServiceMonth>(
+        `/api/otp-reduced-service-days${suffix}`, {}, true,
+      );
+    },
+
+    /** Declare a day, or re-declare one: a date carries one label. */
+    declareReducedServiceDay(input: DeclareReducedServiceDayInput) {
+      return request<{ day: ReducedServiceDay; service_month: string }>(
+        "/api/otp-reduced-service-days",
+        { method: "PUT", body: JSON.stringify(input) },
+        true,
+      );
+    },
+
+    deleteReducedServiceDay(id: string) {
+      return request<void>(
+        `/api/otp-reduced-service-days/${encodeURIComponent(id)}`,
+        { method: "DELETE" },
         true,
       );
     },

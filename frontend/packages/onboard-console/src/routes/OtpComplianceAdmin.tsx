@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import {
   ApiError,
+  type ReducedServiceMonth,
   type OtpReasonCode,
   type OtpHistoricalBackfillResponse,
 } from "@mvta/shared";
 import { api } from "../config.js";
+import { dayName, evidenceText } from "./modules/otp/reducedServiceNote.js";
 
 // Only a fallback for the slider's initial position, before GET /otp-settings
 // answers. The threshold that decides anything is the server's (ADR 0034).
@@ -30,6 +32,157 @@ function currentServiceMonth(): string {
 // copy of the same converter OtpModule.tsx keeps for its month picker.
 function fromMonthInputValue(value: string): string {
   return value.replace("-", "");
+}
+
+
+/**
+ * Declaring the days that did not run a normal schedule (ADR 0040).
+ *
+ * Here rather than in the Compliance tab for the same reason the threshold is:
+ * one declaration annotates every reviewer's queue for that month.
+ *
+ * Declared, not inferred. Detecting these from the daily OTP feed was tried
+ * and rejected - it keeps 90 days and holds nothing before 2026-09-14, so it
+ * cannot see Labor Day, the day that prompted the feature. Where the feed does
+ * hold the date it corroborates the declaration and never decides it.
+ */
+function ReducedServiceDays() {
+  const [month, setMonth] = useState<string>(currentServiceMonth());
+  const [data, setData] = useState<ReducedServiceMonth | null>(null);
+  const [date, setDate] = useState("");
+  const [label, setLabel] = useState("");
+  const [schedule, setSchedule] = useState("Sunday schedule");
+  const [notes, setNotes] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  function refresh(target: string) {
+    api.getReducedServiceDays(target).then(setData).catch(() => setData(null));
+  }
+  useEffect(() => { refresh(month); }, [month]);
+
+  async function declare() {
+    if (!date) { setError("Pick the service date."); return; }
+    if (!label.trim()) { setError("Name the day — 'Labor Day', 'Thanksgiving'."); return; }
+    if (!schedule.trim()) { setError("Say what ran instead — 'Sunday schedule'."); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      const declared = await api.declareReducedServiceDay({
+        service_date: date.replace(/-/g, ""),
+        label: label.trim(),
+        schedule_operated: schedule.trim(),
+        notes: notes.trim() || null,
+      });
+      setDate(""); setLabel(""); setNotes("");
+      // A day declared in a month other than the one on screen would otherwise
+      // vanish without explanation.
+      if (declared.service_month !== month) setMonth(declared.service_month);
+      else refresh(month);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not record this day.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove(id: string) {
+    setError(null);
+    try {
+      await api.deleteReducedServiceDay(id);
+      refresh(month);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not remove this day.");
+    }
+  }
+
+  const evidenceByDate = new Map((data?.evidence ?? []).map((item) => [item.service_date, item]));
+
+  return (
+    <div className="subcard" style={{ marginBottom: 16 }}>
+      <h2 style={{ marginTop: 0 }}>Reduced service days</h2>
+      <p className="panel-desc">
+        Days that did not run a normal schedule — a holiday on a Sunday timetable, a reduced
+        weekday. Avail's monthly OTP figures are grouped by day of week, so these are added into
+        that weekday's bucket: September's Monday figures include Labor Day. Declaring a day tells
+        reviewers that; it changes no figure. To take a day out of the contractor's figure, record
+        it under Weather Exclusions and approve it.
+      </p>
+      {error ? <p className="error-text">{error}</p> : null}
+
+      <div className="field-grid">
+        <div>
+          <p className="field-label">Service date</p>
+          <input className="f" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        </div>
+        <div>
+          <p className="field-label">What the day was</p>
+          <input className="f" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Labor Day" />
+        </div>
+        <div>
+          <p className="field-label">What ran instead</p>
+          <input className="f" value={schedule} onChange={(e) => setSchedule(e.target.value)} placeholder="Sunday schedule" />
+        </div>
+      </div>
+      <div className="field-grid single">
+        <div>
+          <p className="field-label">Notes</p>
+          <input className="f" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="optional" />
+        </div>
+      </div>
+      <button className="btn-post" disabled={saving} onClick={declare}>{saving ? "Saving…" : "Declare day"}</button>
+
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, margin: "16px 0 8px" }}>
+        Showing service month
+        <input
+          className="f"
+          type="month"
+          style={{ width: 150 }}
+          value={`${month.slice(0, 4)}-${month.slice(4, 6)}`}
+          onChange={(e) => e.target.value && setMonth(e.target.value.replace("-", ""))}
+        />
+      </label>
+
+      {!data || data.days.length === 0 ? (
+        <p className="empty-note">No reduced service days are declared for this month.</p>
+      ) : (
+        <table className="data">
+          <thead>
+            <tr><th>Date</th><th>Day</th><th>What it was</th><th>What ran</th><th>Feed says</th><th /></tr>
+          </thead>
+          <tbody>
+            {data.days.map((day) => {
+              const evidence = evidenceByDate.get(day.service_date);
+              const text = evidenceText(evidence);
+              return (
+                <tr key={day.id}>
+                  <td>{day.service_date}</td>
+                  <td>{dayName(day.day_of_week)}</td>
+                  <td>
+                    {day.label}
+                    {day.notes ? <div className="td-dim" style={{ marginTop: 2 }}>{day.notes}</div> : null}
+                  </td>
+                  <td>{day.schedule_operated}</td>
+                  <td>
+                    {text === null ? (
+                      // Silence where the feed cannot speak. It keeps nothing
+                      // before 2026-09-14 and 90 days after that.
+                      <span className="muted">No comparable data</span>
+                    ) : evidence?.coverage === "contradicted" ? (
+                      <span className="pill-sm pill-warning">{text}</span>
+                    ) : (
+                      <span className="ok-text">{text}</span>
+                    )}
+                  </td>
+                  <td><button className="btn-sm" onClick={() => remove(day.id)}>Remove</button></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
 }
 
 export function OtpComplianceAdmin() {
@@ -113,6 +266,8 @@ export function OtpComplianceAdmin() {
           codes={missedTripReasonCodes}
           onChanged={refreshReasonCodes}
         />
+
+        <ReducedServiceDays />
 
         <div className="subcard" style={{ marginBottom: 16 }}>
           <h2 style={{ marginTop: 0 }}>Threshold tuner</h2>

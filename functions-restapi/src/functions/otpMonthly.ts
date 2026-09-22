@@ -13,6 +13,7 @@ import { serviceMonthOf } from "../lib/otpMonthlyFeed";
 import { measureOtpMonth } from "../lib/otpMonth";
 import { readFlaggedStops } from "../lib/otpFlaggedStops";
 import { readEarlyLateBiasThreshold } from "../lib/otpSettings";
+import { readReducedServiceMonth } from "../lib/otpServiceDay";
 
 function resolveMonth(request: HttpRequest): string {
   const param = request.query.get("month");
@@ -83,6 +84,9 @@ app.http("otpMonthlyList", {
       // can move (ADR 0034).
       const threshold = thresholdOverride ?? (await readEarlyLateBiasThreshold(pool));
       const flagged = measurement.feed_ready ? await readFlaggedStops(pool, serviceMonth, threshold) : [];
+      // Beside the measurement, never inside it (ADR 0034's shape): a declared
+      // reduced-service day annotates a day-of-week bucket and moves no figure.
+      const reducedService = await readReducedServiceMonth(pool, serviceMonth);
 
       return {
         status: 200,
@@ -98,6 +102,7 @@ app.http("otpMonthlyList", {
           })),
           measurement,
           flagged,
+          reduced_service: reducedService,
           diagnostics: {
             configured,
             table_ready: measurement.feed_ready,

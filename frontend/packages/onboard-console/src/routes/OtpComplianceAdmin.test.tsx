@@ -11,6 +11,9 @@ vi.mock("../config.js", () => ({ api: {
   ] }),
   createReasonCode: vi.fn(),
   updateReasonCode: vi.fn(),
+  getReducedServiceDays: vi.fn().mockResolvedValue({ service_month: "202609", days: [], evidence: [], affected_day_of_week: [] }),
+  declareReducedServiceDay: vi.fn(),
+  deleteReducedServiceDay: vi.fn(),
   // The server decides which stops are flagged and how many (ADR 0034); the
   // console renders the answer. `threshold` is the tuner's trial value.
   getOtpMonthly: vi.fn().mockImplementation((_month?: string, threshold?: number) =>

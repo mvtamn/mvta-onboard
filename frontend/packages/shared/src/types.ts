@@ -979,6 +979,67 @@ export interface OtpMonthMeasurement {
 }
 
 /**
+ * A day the agency declares did not run a normal schedule - a holiday running
+ * a Sunday timetable, a reduced weekday (ADR 0040).
+ *
+ * Avail's monthly OTP feed groups by day of week, so such a day is added into
+ * that weekday's bucket with nothing to say so: September's Mon figures
+ * include Labor Day. It matters most in the Review Queue, where a Flagged Stop
+ * is decided from each stop's early and late shares per day of week.
+ *
+ * Declaring a day changes no figure. Taking a day out of the contractor's
+ * figure is a Weather/Emergency date exclusion, approved on its own evidence.
+ */
+export interface ReducedServiceDay {
+  id: string;
+  /** YYYYMMDD. */
+  service_date: string;
+  /** Avail's own spelling, stamped when the day was declared. */
+  day_of_week: string;
+  /** What the day was: "Labor Day". */
+  label: string;
+  /** What ran instead: "Sunday schedule". */
+  schedule_operated: string;
+  notes: string | null;
+  declared_by: string;
+  declared_at: string;
+}
+
+/**
+ * What the daily OTP feed says about a declared day. `contradicted` is a
+ * finding, not an error: a day declared a holiday that ran a full schedule is
+ * either the wrong date or a schedule that was not actually reduced.
+ */
+export type ReducedServiceCoverage =
+  | "corroborated"
+  | "contradicted"
+  | "no_daily_data"
+  | "insufficient_comparison";
+
+export interface ReducedServiceDayEvidence {
+  service_date: string;
+  coverage: ReducedServiceCoverage;
+  departures: number | null;
+  /** The median for that day of week in that month, declared days removed. */
+  typical: number | null;
+  share: number | null;
+}
+
+export interface ReducedServiceMonth {
+  days: ReducedServiceDay[];
+  evidence: ReducedServiceDayEvidence[];
+  /** The day-of-week buckets a reader should not compare naively. */
+  affected_day_of_week: string[];
+}
+
+export interface DeclareReducedServiceDayInput {
+  service_date: string;
+  label: string;
+  schedule_operated: string;
+  notes?: string | null;
+}
+
+/**
  * A Flagged Stop: a stop, on one route, on one day of the week, whose early or
  * late share of departures exceeds the Early/Late Bias Threshold for a service
  * month, putting it in front of a reviewer (CONTEXT "Flagged Stop").

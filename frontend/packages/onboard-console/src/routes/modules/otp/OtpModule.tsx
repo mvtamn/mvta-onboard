@@ -6,6 +6,7 @@ import {
   type OtpStopExclusion,
   type OtpDateExclusion,
   type DateExclusionSnapshot,
+  type ReducedServiceMonth,
   type OtpReasonCode,
   type OtpAuditEntry,
   type OtpMonthlyTrendPoint,
@@ -20,6 +21,7 @@ import {
   PAGE_META,
   type StopExclusionStatus,
 } from "./otpData.js";
+import { reducedServiceNote } from "./reducedServiceNote.js";
 import { displayRoutes, percentText, previewRoutes, queueRow, targetSentence, weatherSentence, type OtpDisplayRoute, type QueueRow } from "./otpFigures.js";
 import "./otp.css";
 
@@ -27,6 +29,8 @@ interface OtpMonthlyResponse {
   routes: OtpMonthlyRouteRollup[];
   /** Absent on a server older than 1.5.242; the console then shows the preview. */
   measurement?: OtpMonthMeasurement;
+  /** Absent on a server older than 1.5.296. */
+  reduced_service?: ReducedServiceMonth;
   /** Absent on a server older than 1.5.288; the queue is then empty, not wrong. */
   flagged?: FlaggedStop[];
   diagnostics: {
@@ -473,10 +477,11 @@ export function OtpModule() {
           onCopy={copyFromPrevious}
           onCopyAll={copyAllFromPrevious}
           copyingAll={copyingAll}
+          reducedService={liveOtp?.reduced_service}
         />
       )}
       {page === "routes" && (
-        <RouteSummaryPage displayRows={displayRows} targetPct={targetPct} measurement={measurement} />
+        <RouteSummaryPage displayRows={displayRows} targetPct={targetPct} measurement={measurement} reducedService={liveOtp?.reduced_service} />
       )}
       {page === "weather" && (
         <WeatherPage
@@ -626,6 +631,7 @@ function ReviewQueuePage({
   onCopy,
   onCopyAll,
   copyingAll,
+  reducedService,
 }: {
   flaggedStops: FlaggedStop[];
   queueRows: QueueRow[];
@@ -640,6 +646,7 @@ function ReviewQueuePage({
   onCopy: (stop: FlaggedStop) => void;
   onCopyAll: () => void;
   copyingAll: boolean;
+  reducedService: ReducedServiceMonth | null | undefined;
 }) {
   const [routeFilter, setRouteFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("pending");
@@ -663,6 +670,9 @@ function ReviewQueuePage({
   return (
     <div className="otp-two">
       <div className="subcard otp-queue">
+        {/* A Flagged Stop is decided per day of week, so a holiday inside a
+            bucket can make an ordinary stop look biased. */}
+        <ReducedServiceNote month={reducedService} />
         <div className="otp-queue-toolbar">
           <select value={routeFilter} onChange={(e) => setRouteFilter(e.target.value)}>
             <option value="">All routes</option>
@@ -759,18 +769,46 @@ function ReviewQueuePage({
   );
 }
 
+
+/**
+ * The month's reduced-service days, where there are any (ADR 0040).
+ *
+ * Shown on both the Review Queue and Route Summary because both read by day of
+ * week and both are misleading without it - the queue decides a Flagged Stop
+ * from each stop's early and late shares per day of week, and Route Summary's
+ * figures are the buckets themselves.
+ */
+function ReducedServiceNote({ month }: { month: ReducedServiceMonth | null | undefined }) {
+  const note = reducedServiceNote(month);
+  if (!note) return null;
+  return (
+    <div className="subcard empty-note" style={{ marginBottom: 16 }}>
+      <div>{note.headline}</div>
+      <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+        {note.days.map((line) => <li key={line} className="td-dim">{line}</li>)}
+      </ul>
+      <div className="td-dim" style={{ marginTop: 6 }}>
+        Declaring a day changes no figure. To take one out, record it under Weather Exclusions and approve it.
+      </div>
+    </div>
+  );
+}
+
 function RouteSummaryPage({
   displayRows,
   targetPct,
   measurement,
+  reducedService,
 }: {
   displayRows: OtpDisplayRoute[];
   targetPct: number;
   measurement: OtpMonthMeasurement | null;
+  reducedService: ReducedServiceMonth | null | undefined;
 }) {
   const target = `${Math.round(targetPct * 10) / 10}%`;
   return (
     <>
+      <ReducedServiceNote month={reducedService} />
       <div className="subcard empty-note" style={{ marginBottom: 16 }}>
         {measurement ? (
           <>

@@ -965,6 +965,43 @@ export function validateDateExclusion(body: UnknownBody): string[] {
   return errors;
 }
 
+export const MAX_REDUCED_SERVICE_LABEL_LENGTH = 120;
+export const MAX_REDUCED_SERVICE_SCHEDULE_LENGTH = 60;
+export const MAX_REDUCED_SERVICE_NOTES_LENGTH = 500;
+
+/**
+ * A declared reduced-service day (ADR 0040).
+ *
+ * `label` and `schedule_operated` are both required and both free text. They
+ * answer different questions - what the day was, and what ran instead - and a
+ * declaration missing either is not worth showing a reviewer: "2026-09-07 was
+ * unusual" tells nobody why a Monday bucket looks the way it does.
+ */
+export function validateReducedServiceDay(body: UnknownBody): string[] {
+  const errors: string[] = [];
+
+  if (typeof body.service_date !== "string" || !SERVICE_DATE_RE.test(body.service_date)) {
+    errors.push("service_date is required and must be a YYYYMMDD string");
+  }
+  if (typeof body.label !== "string" || body.label.trim() === "") {
+    errors.push("label is required and must be a non-empty string");
+  } else if (body.label.length > MAX_REDUCED_SERVICE_LABEL_LENGTH) {
+    errors.push(`label must be at most ${MAX_REDUCED_SERVICE_LABEL_LENGTH} characters`);
+  }
+  if (typeof body.schedule_operated !== "string" || body.schedule_operated.trim() === "") {
+    errors.push("schedule_operated is required and must be a non-empty string");
+  } else if (body.schedule_operated.length > MAX_REDUCED_SERVICE_SCHEDULE_LENGTH) {
+    errors.push(`schedule_operated must be at most ${MAX_REDUCED_SERVICE_SCHEDULE_LENGTH} characters`);
+  }
+  if (body.notes !== undefined && body.notes !== null) {
+    if (typeof body.notes !== "string" || body.notes.length > MAX_REDUCED_SERVICE_NOTES_LENGTH) {
+      errors.push(`notes must be a string of at most ${MAX_REDUCED_SERVICE_NOTES_LENGTH} characters if provided`);
+    }
+  }
+
+  return errors;
+}
+
 // migration-023 added 'missed_trip' as a third applies_to value, reusing
 // this table for Missed Trips' investigation-outcome dropdown instead of
 // standing up a separate reason-code table for one more use case.
