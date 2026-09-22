@@ -57,6 +57,26 @@ function parseNullableDate(value: string | null): Date | null {
 // from local midnight, so every poll across the day derives the same date and
 // the MERGE stays idempotent. The poll clock is only a last resort for a report
 // carrying no usable timestamp at all.
+//
+// KNOWN ISSUE, not fixed here. Avail's timestamps are agency-local wall clock
+// carrying no zone, so parseNullableDate stores their digits unchanged and
+// agencyServiceDate then subtracts the agency offset from a time that was
+// already local. The effective day boundary lands at 05:00 local rather than
+// midnight, and every run scheduled between 00:00 and 04:59 is filed under the
+// PREVIOUS service date. On dev that is 21-24 rows a day: 2026-09-21's first
+// pullouts, at 02:44 to 04:49, sit under service_date 20260920.
+//
+// Two things follow. The day assignment is wrong at the boundary, and - because
+// those rows belong to the roster Avail publishes at 02:30 local and keeps
+// updating all day - a service date is not actually frozen until 02:30 local
+// TWO days later, though settledServiceDateExclusive() calls it settled after
+// one. complianceCandidatesPoll only gets away with that because it runs a full
+// day behind; moving it earlier without fixing this would raise candidates
+// against runs still in flight, which intake never withdraws.
+//
+// Fixing it means reading the timestamps as agency-local, which re-dates stored
+// rows and the source_refs of occurrences already raised from them, so it needs
+// a backfill rather than a one-line change.
 export function pulloutServiceDate(
   report: Pick<
     MappedPullout,

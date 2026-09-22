@@ -173,11 +173,19 @@ export function garageDepartureVarianceSeconds(
 // committed time to have missed, so it is a gap in the source rather than a
 // breach, and the repo already refuses to turn absent evidence into a finding
 // (see the unknown_data_gap handling in gtfsMissedTripsPoll).
+//
+// That gap arrives as midnight, not as NULL, which is why the null check alone
+// was not enough: Avail has never sent a NULL pullout_scheduled, and the 694
+// rows it has sent scheduled at exactly 00:00:00 are the same 18 placeholder
+// blocks every day, none of which has ever departed. The reasoning, and why
+// suppressing a genuine midnight pullout is the right trade, is in
+// lib/fixedRouteDepartureOutcome.ts beside the matching console rule.
 export function garageDepartureCandidatePredicate(): string {
   const statuses = DEPARTURE_OUTCOME_STATUSES.map((status) => `'${status}'`).join(",");
   return `d.pullout_status IN (${statuses})
             AND d.service_date < @settled_before
             AND d.pullout_scheduled IS NOT NULL
+            AND CAST(d.pullout_scheduled AS TIME) <> '00:00:00'
             AND (
               d.pullout_actual IS NULL
               OR DATEDIFF(SECOND, d.pullout_scheduled, d.pullout_actual) > @variance_seconds
