@@ -12,8 +12,12 @@ export interface OtpRouteFigure {
   route_label: string | null;
   route_category: string;
   raw: OtpFigure;
-  /** What the exclusions and the category filter took out. */
+  /** What every rule took out: raw less assessable. */
   excluded: OtpFigure;
+  /** Of that, what the category filter and approved stop exclusions took. */
+  stop_excluded: OtpFigure;
+  /** Of that, what approved weather and emergency dates took (migration 140). */
+  date_excluded: OtpFigure;
   /** The Assessable Input: what the month is judged on. */
   assessable: OtpFigure;
   /** Null when the route has no assessable departures to judge. */
@@ -34,17 +38,30 @@ export interface OtpMonthMeasurement {
   target_source: OtpTargetSource;
   raw: OtpFigure;
   excluded: OtpFigure;
+  stop_excluded: OtpFigure;
+  date_excluded: OtpFigure;
   assessable: OtpFigure;
   routes: OtpRouteFigure[];
   /** Routes below target on the assessable figure. */
   routes_below_target: number;
   /**
-   * Weather and emergency days recorded for this month. They are NOT applied:
-   * Avail's monthly feed is keyed by day of week, not date, so a single date
-   * cannot be removed from it (ADR 0033). Reported so the console can say so
-   * rather than leave a reviewer wondering.
+   * Weather and emergency days recorded for this month, whatever their state -
+   * including the ones nobody has approved.
    */
   weather_days_recorded: number;
+  /**
+   * How many of those are actually subtracting from the assessable figure:
+   * approved, and holding the snapshot of what they took out (migration 140,
+   * ADR 0038).
+   *
+   * This used to be structurally impossible. ADR 0033 recorded that Avail's
+   * monthly feed is keyed by day of week, so a single date could not be
+   * removed from it, and the console said so. The daily feed carries a real
+   * calendar date and was shown on 2026-09-22 to reconcile exactly with the
+   * monthly one, so the date's own departures are snapshot on approval and
+   * subtracted from the month.
+   */
+  weather_days_applied: number;
   /** False when OtpMonthlyRouteStopDay is absent; every figure is then empty. */
   feed_ready: boolean;
 }

@@ -940,7 +940,12 @@ export interface OtpRouteFigure {
   route_label: string | null;
   route_category: RouteCategory | string;
   raw: OtpFigure;
+  /** What every rule took out: raw less assessable. */
   excluded: OtpFigure;
+  /** Of that, the category filter and approved stop exclusions. */
+  stop_excluded: OtpFigure;
+  /** Of that, approved weather and emergency dates (ADR 0038). */
+  date_excluded: OtpFigure;
   /** Official Departure OTP for the route. */
   assessable: OtpFigure;
   /** Null when the route has no assessable departures to judge. */
@@ -956,11 +961,20 @@ export interface OtpMonthMeasurement {
   target_source: OtpTargetSource;
   raw: OtpFigure;
   excluded: OtpFigure;
+  stop_excluded: OtpFigure;
+  date_excluded: OtpFigure;
   assessable: OtpFigure;
   routes: OtpRouteFigure[];
   routes_below_target: number;
-  /** Weather days recorded for the month. They are NOT applied (ADR 0033). */
+  /** Weather days recorded for the month, whatever their state. */
   weather_days_recorded: number;
+  /**
+   * How many of those are actually subtracting: approved, and holding the
+   * snapshot of what the date took out (ADR 0038). ADR 0033 recorded this as
+   * impossible, because the monthly feed is keyed by day of week; the daily
+   * feed carries a real date and reconciles with it exactly.
+   */
+  weather_days_applied: number;
   feed_ready: boolean;
 }
 
@@ -1678,6 +1692,10 @@ export interface OtpDateExclusion {
   acknowledged: boolean;
   created_by: string;
   created_at: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  /** What this exclusion is subtracting from the month, in departures. */
+  excluded_departures: number;
 }
 
 export interface CreateDateExclusionInput {

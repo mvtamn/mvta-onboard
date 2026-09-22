@@ -86,10 +86,27 @@ export function targetSentence(targetPct: number, source: OtpTargetSource = "cat
  * is aggregated by day of week, not by date, so removing one date would mean
  * removing every Monday in the month (ADR 0033).
  */
-export function weatherSentence(recorded: number): string {
+/**
+ * What the month's weather and emergency days are doing to the figure.
+ *
+ * Until ADR 0038 the answer was always "nothing", and this sentence said so:
+ * Avail's monthly feed is grouped by day of week, so a single date could not
+ * be taken out of it. An approved date now subtracts the departures frozen
+ * from the daily feed when it was approved, so the sentence has to tell the
+ * two states apart - a recorded day that nobody approved still moves nothing,
+ * and saying otherwise would overstate what the figure has been adjusted for.
+ */
+export function weatherSentence(recorded: number, applied = 0): string {
   if (recorded === 0) return "No weather or emergency days are recorded for this month.";
   const days = recorded === 1 ? "1 day is" : `${recorded} days are`;
-  return `${days} recorded for this month. They are kept for the record and are NOT removed from the OTP figures: the monthly feed Avail publishes is grouped by day of week, not by date, so a single date cannot be taken out of it.`;
+  if (applied === 0) {
+    return `${days} recorded for this month. None is approved, so none is removed from the OTP figures — approving a day subtracts the departures it carried.`;
+  }
+  const subtracting = applied === 1 ? "1 is approved and subtracting" : `${applied} are approved and subtracting`;
+  const rest = applied < recorded
+    ? ` The other ${recorded - applied === 1 ? "day is" : `${recorded - applied} days are`} recorded but not approved, so ${recorded - applied === 1 ? "it changes" : "they change"} nothing.`
+    : "";
+  return `${days} recorded for this month, and ${subtracting} its departures from the official figure.${rest} Raw OTP is left as Avail published it.`;
 }
 
 export const percentText = (pct: number | null): string => pct === null ? "—" : `${pct}%`;
