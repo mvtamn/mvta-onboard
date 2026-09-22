@@ -5,6 +5,16 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.295] - 2026-09-22
+
+- **A restatement of a closed month is recorded now.** Finding F1 of the OTP Compliance validation: `upsertOtpMonthlyReport` set `updated_at = SYSUTCDATETIME()` on every MERGE match, changed or not, and the poll re-reads a trailing window of three months — so after every nightly run every row in three months carried that run's stamp. `updated_at` meant "the poller ran". Nothing kept the previous figure either, so even a noticed change could not say what it changed from. Validation case T1.4 was unanswerable.
+- **It matters because the assessment is computed from these rows.** A finalized period is frozen (ADR 0006); the live figure beside it is not. If August is assessed at 83.62% and Avail later publishes different August numbers, OnBoard adopts them and the two diverge with nothing to say when or by how much.
+- **`updated_at` moves only when the row says something different**, via `WHEN MATCHED AND EXISTS (SELECT target.<cols> EXCEPT SELECT @<params>)`. EXCEPT rather than a chain of `<>`: a column going from NULL to a number is exactly the change worth catching, and every `<>` against NULL is unknown.
+- **Three things are deliberately not restatements.** A first ingestion — there was nothing to restate. A change inside the month's own service month — the month is still filling, and every poll legitimately changes almost every row. And a label or percentage moving alone — the row still updates, but the contractor is assessed on the counts.
+- **No settling window.** A month's last service days land in the first days of the next, so a legitimate tail shows up as a restatement a day or two after month end. Rather than guess a cutoff that would also hide a real early restatement, everything is recorded and `DaysAfterMonthEnd` travels with it in `vw_OtpRestatement` — the reader draws the line, not the schema.
+- **One statement, not three:** the MERGE's `OUTPUT` is the source the ledger's `INSERT` selects from, so a poll that changes nothing costs what it always did. The ledger's existence is read once per run rather than per row — the poll upserts ~2,700 rows a night — and `ledgerReady` is required rather than defaulted, because defaulting it false would silently stop recording and look exactly like "Avail never restates".
+- **Nothing surfaces in the console yet.** The reporting view came first because the person who needs it is validating through raw reporting; a banner on Integrations & Data Health is the natural follow-up. ADR 0039. Migration 141. 10 new checks, 8 of them against real SQL; backend suite green.
+
 ## [1.5.294] - 2026-09-22
 
 - **Weather Exclusions has an Approve button.** 1.5.290 made an approved weather day subtract from the month, but the only way to approve one was `POST /otp-date-exclusions/{id}/approve` — the console could record a day and never approve it, which is the same half-built state the page has been in since migration 018, one step further along.
