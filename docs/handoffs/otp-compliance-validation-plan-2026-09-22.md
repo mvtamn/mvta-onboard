@@ -1,47 +1,91 @@
 # OTP Compliance — validation & test plan
 
-For Rob's validation against raw Avail reporting and existing OCC process.
+**Purpose: decide whether OnBoard replaces the manual process as the official system of
+record for fixed-route OTP.**
 Written 2026-09-22 against dev and revised the same day for what shipped after the first
 draft. Current to **v1.5.295**. Read `otp-compliance-explainer-2026-09-22.md` first.
 
-**How to use this:** work the tiers in order. Tier 1 decides whether the numbers are
-trustworthy at all — if it fails, nothing below it matters. Tier 4 is the part only Rob can
-answer, and it is the real reason for this handoff.
+**How to use this:** **Tier A is the decision** — OnBoard's figure against the manual one,
+for three months, against an agreed tolerance. Tiers 1 and 3 are the evidence that makes a
+match there mean something. Tier 2 is already run. Tier 4 is the process questions that come
+back to Ty either way.
 
-Record each case as **Pass / Fail / Needs discussion**, with the two numbers compared.
+Record each case as **Pass / Fail / Needs discussion**, with both numbers where they differ.
+
+---
+
+## What this is for
+
+**The decision is whether OnBoard becomes the official system of record for fixed-route
+OTP**, replacing the manual process. Everything here serves that one question: *does
+OnBoard's number track the manual number closely enough to trust it in the contractor's
+place?*
+
+That is not the same as "is the code correct". The code can be provably correct and still
+produce a different number from the manual process — because the two apply different
+exclusions, count a different set of routes, or cut the month at a different boundary. Those
+differences are the finding, and explaining them is the work.
+
+### The acceptance standard, agreed before testing
+
+OnBoard is approved as the system of record when, across **three service months**:
+
+1. **Every month agrees within 0.5 percentage points** of the manual figure, and
+2. **No month lands in a different performance tier** under the two methods.
+
+Both must hold. The second is the one that matters contractually: a 0.2-point gap that
+straddles a tier boundary is worse than a 0.4-point gap in the middle of a band, because
+only the first changes what the contractor owes.
+
+The tier boundaries are **85% (meets)**, **80% (warning)** and **75% (tier 1)**.
+
+### The three months, and why these
+
+| Month | OnBoard assessable OTP | Tier | Distance to the nearest boundary |
+| --- | --- | --- | --- |
+| **2026-05** | 85.80% | Meets | **0.80 above 85** |
+| **2026-06** | 84.42% | Warning | **0.58 below 85** |
+| **2026-08** | 83.62% | Warning | 1.38 below 85 — mid-band |
+
+Two of the three sit *inside* the tolerance's danger zone. If the manual figure for 2026-06
+comes in at 85.0%, that is both a 0.58-point gap and a tier change — the test bites rather
+than passing by default. 2026-08 is the stable control: a month where the two methods should
+agree comfortably, so a difference there means something different from a difference at a
+boundary.
+
+2026-09 is deliberately excluded: the feed covers only 1–20 September, so it is not a whole
+month to compare.
 
 ---
 
 ## Start here
 
-**Tier 2 has already been run and passed.** You do not need to repeat it. What is left for
-you is Tier 1 — which needs Avail's own export and nobody else can do — plus Tiers 3 and 4.
+**Step 1 is not a comparison. It is establishing what you are comparing against** — see A0.
+There are two manual artifacts (a weekly CSV into a spreadsheet, and a canned Avail report
+run monthly), and they must agree with each other before either can be a baseline.
 
-**Four steps, in order:**
+Then:
 
-1. **Pull two reports from Avail**: *OTP Monthly By Route/Stop/Day of Week*
-   (`OtpByRouteStopDayAgg`) for **2026-07** and **2026-08**. Get them at route level, and at
-   route/stop/day-of-week level for at least route 490.
-2. **Work Tier 1** (below). This is the whole point of the handoff: does OnBoard hold what
-   Avail published? Everything else assumes it does.
-3. **Work Tier 3** with whoever runs the OCC review process day to day.
-4. **Bring Tier 4 to a conversation with Ty.** Those are decisions, not tests.
+1. **Reproduce the manual figure for 2026-05, 2026-06 and 2026-08**, by both manual methods.
+2. **Work Tier A** — the decision test. This is the handoff.
+3. **Work Tier 1** on 2026-08 — it is the evidence that OnBoard holds what Avail published,
+   which is what makes a match in Tier A meaningful rather than coincidental.
+4. **Work Tier 3** with whoever runs the OCC review day to day, and bring **Tier 4** to Ty.
 
-**What to send back:** for each case, Pass / Fail / Needs discussion, and where a number
-differs, both numbers with the month and route. A Tier 1 or Tier 2 failure is a defect worth
-logging. Tier 3 failures are usually configuration. Tier 4 outcomes are decisions to record.
+**Tier 2 is already done** — run against dev on 2026-09-22, every case passing except T2.4.
+Each case is stamped with its result. Do not repeat it.
+
+**What to send back:** the Tier A comparison table filled in, an explanation for every
+difference above 0.1 points, and a recommendation on the acceptance standard above.
 
 **Two things to know before you start.**
 
-*The system changed on 2026-09-22, after this plan was first written.* Weather days now
-actually subtract from the figure, they can be approved from the console, and a restatement
-of a closed month is recorded. The cases below reflect the system as it is now. If anything
+*The system changed on 2026-09-22.* Weather days now subtract from the figure, they can be
+approved from the console, and a restatement of a closed month is recorded. If anything
 reads as though weather is inert, that text is stale — tell us.
 
 *Ignore any page that says "Sample data".* That is mock preview shown when a month has no
 feed rows, and it is not the live figure.
-
----
 
 ## Before starting
 
@@ -50,12 +94,18 @@ feed rows, and it is not the live figure.
 | Environment | dev (the only OnBoard environment) |
 | Console | Compliance → OTP Compliance; Administration → OTP Compliance |
 | Access needed | `compliance-review.view` + `compliance-review.review`; `service-configuration.edit` for the admin page |
-| Reference months | **2026-07** (has approved + rejected exclusions) and **2026-08** (clean, complete) |
+| Decision months | **2026-05**, **2026-06**, **2026-08** — see "What this is for" |
+| Also useful | **2026-07**, the only other month carrying approved and rejected stop exclusions |
 | Never validate a page reading | "Sample data" — that is mock preview, not the feed |
 
-Rob needs, from Avail directly: the **OTP Monthly By Route/Stop/Day of Week**
-(`OtpByRouteStopDayAgg`) report for 2026-07 and 2026-08, at route level and at
-route/stop/day level for at least one route.
+Rob needs two things:
+
+1. **The manual OTP figure for 2026-05, 2026-06 and 2026-08**, by both current methods — the
+   weekly CSV summed in a spreadsheet, and the canned monthly Avail report. This is the
+   baseline the decision rests on.
+2. **From Avail directly**, the **OTP Monthly By Route/Stop/Day of Week**
+   (`OtpByRouteStopDayAgg`) report for **2026-08**, at route level and at route/stop/day
+   level for at least route 490. This is for Tier 1.
 
 ---
 
@@ -137,7 +187,110 @@ Queue's early/late bias flagging, which is computed per day of week — is affec
 
 ---
 
+---
+
+## Tier A — The decision: does OnBoard match the manual process?
+
+This is the handoff. Tiers 1–3 exist to make a match here mean something; on their own they
+prove only that OnBoard is internally consistent.
+
+### A0 — Establish the baseline, before comparing anything to it
+
+Two manual artifacts exist: a **weekly CSV from Avail summed in a spreadsheet**, and a
+**canned Avail report run monthly**. Produce both for 2026-05, 2026-06 and 2026-08, and
+compare them **to each other first**.
+
+*Expected:* the two manual methods agree.
+
+*If they do not, stop.* OnBoard cannot be validated against a baseline that does not agree
+with itself, and the finding is about the manual process rather than the system. Record both
+figures, decide which is authoritative, and say why — that decision is itself worth having
+written down, whatever happens to OnBoard.
+
+**The week-boundary problem, expected rather than a defect.** A weekly CSV cannot align to
+calendar months — the week containing 1 June also contains the end of May. Summing whole
+weeks into a month will differ from a month-grained figure, and the size of that difference
+is a property of the manual method, not an error in either system. Either split the boundary
+weeks, or record the effect and account for it. Do not let it masquerade as a discrepancy.
+
+### A1 — The comparison
+
+For each month, OnBoard's official figure is the **assessable** figure — Route Summary's
+"Official OTP %", or:
+
+```sql
+SELECT ServiceMonth,
+  CAST(100.0 * SUM(AssessableOnTimeDepartures) / NULLIF(SUM(AssessableTotalDepartures), 0)
+       AS DECIMAL(5,2)) OnBoardOtpPct
+FROM dbo.vw_OtpMonthlyRouteStop
+WHERE ServiceMonth IN ('202605','202606','202608')
+GROUP BY ServiceMonth ORDER BY ServiceMonth;
+```
+
+| Month | OnBoard | Manual (weekly CSV) | Manual (monthly report) | Difference (pts) | Within 0.5? |
+| --- | --- | --- | --- | --- | --- |
+| 2026-05 | 85.80% | | | | |
+| 2026-06 | 84.42% | | | | |
+| 2026-08 | 83.62% | | | | |
+
+Record the **raw** figure too. If OnBoard's raw and the manual figure agree but the
+assessable figures do not, the difference is entirely in the exclusions — which is a
+conversation about process, not about data.
+
+### A2 — Materiality: does the difference change anything?
+
+| Month | OnBoard tier | Manual tier | Same? |
+| --- | --- | --- | --- |
+| 2026-05 | Meets | | |
+| 2026-06 | Warning | | |
+| 2026-08 | Warning | | |
+
+Boundaries: **85 / 80 / 75**. *Expected:* identical tiers.
+
+**A month that tiers differently fails Tier A regardless of the point gap.** This is the
+whole materiality question: only a tier change alters what the contractor owes.
+
+### A3 — Explain every difference above 0.1 points
+
+A number that matches by luck is worth less than one that differs for a reason you
+understand. For each gap, say which of these it is:
+
+- **Route scope** — does the manual figure include special-event, on-demand or non-revenue
+  service? OnBoard counts fixed route only, and an unclassified route counts as fixed route.
+- **Exclusions** — the manual process may remove recovery or layover stops by hand. OnBoard
+  removes only approved Stop Exclusions, of which dev has 6 across nine months. **This is the
+  most likely single source of difference.**
+- **Weather and holidays** — OnBoard subtracts an approved weather date and nothing else. A
+  reduced-service day (Labor Day sits inside September's Monday figures) is annotated, not
+  removed.
+- **Week boundaries** — per A0.
+- **Departure vs arrival** — see T4.3. The manual note records a week where the two differed
+  by up to 36 points on a route, so if the manual process measures arrivals this is not a
+  reconciliation, it is a different metric.
+- **Measurement point** — Avail's own on-time threshold and outlier settings. If the manual
+  process runs the report with different parameters, the two are not comparable.
+
+### A4 — Direction
+
+Is OnBoard consistently higher, consistently lower, or scattered either side?
+
+*A consistent bias is a defect* — something systematic is different, and it will get worse
+in the months nobody checked. *Scatter within tolerance is noise* and is what a pass looks
+like.
+
+### A5 — The recommendation
+
+Tier A passes when every month is within **0.5 points** and **no month tiers differently**.
+
+State plainly: approve OnBoard as the system of record, approve it with named conditions, or
+do not approve it yet and say what would have to change.
+
 ## Tier 1 — Source fidelity: is OnBoard holding what Avail published?
+
+*Supporting evidence for Tier A.* A match in Tier A is only meaningful if OnBoard is
+faithfully holding Avail's data — otherwise two methods could agree while both being wrong.
+Work this on **2026-08**, the control month.
+
 
 The whole system rests on this. Nothing downstream can be right if it fails.
 
@@ -193,11 +346,20 @@ run (it is an upsert of identical data).
 
 ## Tier 2 — Rule correctness: are the two subtractions doing exactly what is documented?
 
+**This whole tier has already been run against dev and passed, apart from T2.4.** Each case
+is stamped with its result. They are kept in full so you can see what was checked, and
+re-run anything you want to see for yourself — but the only one that needs you is **T2.4**.
+
 **T2.1 — Raw − Excluded = Assessable**
+> **Already run 2026-09-22 against dev: PASS.** All nine months reconcile exactly, agency
+> and route level. Nothing to repeat — read on only if you want to see it yourself.
+
 Route Summary, 2026-07. *Expected:* for every route, and for the agency line, the three
 figures reconcile and the Δ column equals the difference in points.
 
 **T2.2 — The reporting view reproduces the console**
+> **Already run 2026-09-22 against dev: PASS.** 197 route-months compared between the
+> application's rule and the view, **0 mismatches**. Nothing to repeat.
 
 **The contract changed on 2026-09-22 (migration 140).** A weather-day exclusion *reduces* a
 row rather than removing it — the row is every Monday, and only one Monday came out — so a
@@ -224,11 +386,19 @@ answers a real question, **the figure before weather**. It is kept deliberately 
 can be compared. Just do not mistake it for the official number.
 
 **T2.3 — Only approved exclusions subtract**
+> **Already run 2026-09-22 against dev: PASS.** 6 approved decisions removed 6 rows, 3
+> rejected removed none, and no decision was orphaned. Nothing to repeat.
+
 2026-07 has 3 approved and 3 rejected decisions. *Expected:* exactly the 3 approved rows
 appear as `IsStopExcluded = 1`; the rejected stops still carry their full departures into
 the assessable figure.
 
 **T2.4 — Classification filter**
+> **Already run 2026-09-22 against dev: NOT PROVEN — this one is yours.** All 13 classified
+> routes carry zero OTP rows, so the fixed-route filter has never actually removed anything.
+> The rule is correct and covered in CI, but it has no production evidence. Do the temporary
+> classification below.
+
 Confirm every SpecialEvent / OnDemand / NonRevenue route is `IsAssessable = 0`, and that an
 unclassified route is assessable.
 *Expected:* on dev these classified routes contribute no OTP rows at all, so the filter is
@@ -237,18 +407,30 @@ route, checking it drops out of the official figure, then removing it. (This is 
 what the route-classification delete exists for.)
 
 **T2.5 — Approving an exclusion moves the figure by the right amount**
+> **Already run 2026-09-22 against dev: PASS.** 2026-07 excluded exactly 175 departures and
+> 119 on-time; 2026-09 exactly 79 and 34 — matching the approved stops precisely. Worth
+> doing once by hand anyway if you want to watch the figure move.
+
 Note a flagged stop's departures and on-time count. Approve it. Re-read Route Summary.
 *Expected:* that route's assessable total drops by exactly that stop/day's departures, and
 the official % recomputes to the new ratio. Then reject it back and confirm the figure
 returns.
 
 **T2.6 — Target provenance**
+> **Already run 2026-09-22 against dev: PASS.** 202601 and 202608 read a frozen period rule
+> set; every other month reads the catalog. All paths resolve to 0.85. Nothing to repeat.
+
 Route Summary states where the target came from. *Expected:* "catalog" at 85% for months
 with no active assessment period; a finalized month shows the frozen period figure.
 
 ---
 
 ## Tier 3 — Workflow: does the review process behave as OCC would run it?
+
+*Supporting evidence for Tier A.* If OnBoard becomes the system of record, these are the
+controls around the number — who can change it, whether the change is recorded, and whether
+a closed month can move.
+
 
 **T3.1 — Flagging rule** — with the threshold at 0.15, a stop appears in the queue if
 early% > 15 **or** late% > 15, fixed route only. Verify one flagged and one just-below stop
@@ -325,6 +507,7 @@ holds that?
 
 | Tier | Owner | Result | Date |
 | --- | --- | --- | --- |
+| **A — OnBoard vs the manual process** | **Rob** | | |
 | 1 — Source fidelity | Rob | | |
 | 2 — Rule correctness | Rob | | |
 | 3 — Workflow | Rob + OCC | | |
@@ -333,3 +516,16 @@ holds that?
 A Tier 1 or Tier 2 failure is a defect — log it with the month, route and both numbers.
 Tier 3 failures are usually configuration. Tier 4 outcomes are decisions to record, not
 bugs to file.
+
+**The system-of-record decision**
+
+| | |
+| --- | --- |
+| Recommended by | Rob |
+| Approved by | |
+| Date | |
+| Conditions, if any | |
+
+Approving means the contractor's assessed OTP is taken from OnBoard, and the manual process
+stops being the number of record. If it is approved with conditions, write the conditions
+here rather than in an email.
