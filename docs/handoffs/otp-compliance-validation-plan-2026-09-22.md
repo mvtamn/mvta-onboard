@@ -28,6 +28,82 @@ route/stop/day level for at least one route.
 
 ---
 
+## Pre-run results (2026-09-22, run against dev by Claude)
+
+Everything that could be settled without Avail's own export has been run. What remains for
+Rob is **Tier 1's external comparison** — the part only he can do — and Tier 3/4.
+
+| Case | Result | Evidence |
+| --- | --- | --- |
+| T1.1–T1.3 source fidelity | **Not runnable internally** | Requires Rob's Avail export. This is the real handoff task. |
+| T1.4 restatement detection | **Fail — defect found** | See F1 below |
+| T1.5 backfill idempotency | Not run (would write to dev) | Idempotent by construction (MERGE on the natural key) |
+| Feed health | **Pass** | `avail_otp_monthly` last success 2026-09-22 03:01, 2,672 records; `avail_otp_daily` 12:01, 3,783. No failures recorded. |
+| T2.1 Raw − Excluded = Assessable | **Pass** | All 9 months reconcile exactly, agency and route level |
+| T2.2 view reproduces the app rule | **Pass** | 197 route-months compared, **0 mismatches** |
+| T2.3 only approved exclusions subtract | **Pass** | 6 approved → 6 rows excluded; 3 rejected → 0 excluded; no orphaned decisions |
+| T2.4 classification filter | **Untested by real data** | See F2 below |
+| T2.5 exclusion arithmetic | **Pass** | 202607 excluded exactly 175 departures / 119 on-time; 202609 exactly 79 / 34 — matching the approved stops precisely |
+| T2.6 target provenance | **Pass** | 202601 and 202608 read a frozen period rule set; all other months read the catalog. Every path resolves to 0.85. |
+
+The measurement rule is sound. Tier 2 passed without qualification: the number the console
+shows, the number the assessment stores and the number Power BI publishes are provably the
+same number.
+
+### Findings
+
+**F1 — OnBoard cannot detect or evidence an Avail restatement.** The monthly upsert sets
+`updated_at = SYSUTCDATETIME()` on every match, whether or not any value changed. Every row
+in the trailing window therefore carries today's timestamp after every nightly poll. If
+Avail silently restates a closed month, OnBoard adopts the new figure with no record that it
+changed, and no way to answer "what did we assess on, and has the source moved since?"
+*Suggested fix:* only bump `updated_at` when a value actually differs, and record a
+restatement event when a month outside the current month changes. Small change, and it is
+what makes T1.4 answerable at all.
+
+**F2 — Subtraction A has never fired.** All 13 classified routes (8 SpecialEvent, 4
+NonRevenue, 1 OnDemand) carry **zero** OTP rows, so the fixed-route filter has never actually
+removed anything. Every route in the feed is FixedRoute. The rule is correct and tested in
+CI, but it has no production evidence. Rob should classify one live route temporarily,
+confirm it leaves the official figure, and remove the classification.
+
+**F3 — A one-record variance in the nightly ledger, unexplained.** The 2026-09-22 run
+recorded 2,672 records stored; the three trailing months hold 2,673 rows, all stamped by
+that run. No orphaned rows exist. It moves no figure, but it is unreconciled — Rob's T1.2
+route-level comparison will settle whether Avail published 2,672 or 2,673.
+
+**F4 — The daily feed reconciles exactly with the monthly feed.** See the section below.
+This is the finding that unblocks weather exclusions.
+
+### F4 in full — the daily feed is trustworthy, and dates can be subtracted
+
+`otpDailyFeed.ts` carries a standing caveat that its field mapping was "KNOWN UNCONFIRMED —
+more so than any other feed in this project", which is why the daily data is marked
+`IsOfficialRecord = 0`. That caveat can now be closed on evidence.
+
+The two feeds are polled independently, from different Avail operations, with different
+identifier fields (`RouteID` monthly, `RouteFareboxID` daily). They agree exactly:
+
+- Same 19 routes for September, same labels, and **all 86 stops shared** — the identifier
+  spaces are identical.
+- September's monthly feed covers service days 1–20. Subtracting the daily feed's Monday
+  2026-09-14 from the monthly Monday bucket leaves a residual that is **exactly zero for
+  every weekday-only route**, and non-zero only for the 8 routes that run a Sunday schedule.
+- That residual is Labor Day, 2026-09-07, running Sunday-level service — and it matches each
+  route's actual Sunday volume closely (436: 78 vs 78, 442: 60 vs 60, 446: 78 vs 78,
+  445: 98 vs 100, 447: 54 vs 51). Agency residual 1,043 vs Sunday 1,003.
+
+Exact zero residuals across eleven routes is not approximate agreement. It means a single
+calendar date's departures can be isolated from a monthly figure and subtracted correctly —
+which is precisely the mechanism weather exclusions were said to be impossible without.
+
+It also exposes a distortion nobody has been looking at: **Labor Day's reduced service is
+pooled into September's Monday bucket**, dragging the Monday day-of-week figure away from a
+normal Monday. Every holiday does this. Any day-of-week reading — including the Review
+Queue's early/late bias flagging, which is computed per day of week — is affected.
+
+---
+
 ## Tier 1 — Source fidelity: is OnBoard holding what Avail published?
 
 The whole system rests on this. Nothing downstream can be right if it fails.
