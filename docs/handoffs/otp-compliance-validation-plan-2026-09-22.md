@@ -193,11 +193,20 @@ run (it is an upsert of identical data).
 
 ## Tier 2 — Rule correctness: are the two subtractions doing exactly what is documented?
 
+**This whole tier has already been run against dev and passed, apart from T2.4.** Each case
+is stamped with its result. They are kept in full so you can see what was checked, and
+re-run anything you want to see for yourself — but the only one that needs you is **T2.4**.
+
 **T2.1 — Raw − Excluded = Assessable**
+> **Already run 2026-09-22 against dev: PASS.** All nine months reconcile exactly, agency
+> and route level. Nothing to repeat — read on only if you want to see it yourself.
+
 Route Summary, 2026-07. *Expected:* for every route, and for the agency line, the three
 figures reconcile and the Δ column equals the difference in points.
 
 **T2.2 — The reporting view reproduces the console**
+> **Already run 2026-09-22 against dev: PASS.** 197 route-months compared between the
+> application's rule and the view, **0 mismatches**. Nothing to repeat.
 
 **The contract changed on 2026-09-22 (migration 140).** A weather-day exclusion *reduces* a
 row rather than removing it — the row is every Monday, and only one Monday came out — so a
@@ -224,11 +233,19 @@ answers a real question, **the figure before weather**. It is kept deliberately 
 can be compared. Just do not mistake it for the official number.
 
 **T2.3 — Only approved exclusions subtract**
+> **Already run 2026-09-22 against dev: PASS.** 6 approved decisions removed 6 rows, 3
+> rejected removed none, and no decision was orphaned. Nothing to repeat.
+
 2026-07 has 3 approved and 3 rejected decisions. *Expected:* exactly the 3 approved rows
 appear as `IsStopExcluded = 1`; the rejected stops still carry their full departures into
 the assessable figure.
 
 **T2.4 — Classification filter**
+> **Already run 2026-09-22 against dev: NOT PROVEN — this one is yours.** All 13 classified
+> routes carry zero OTP rows, so the fixed-route filter has never actually removed anything.
+> The rule is correct and covered in CI, but it has no production evidence. Do the temporary
+> classification below.
+
 Confirm every SpecialEvent / OnDemand / NonRevenue route is `IsAssessable = 0`, and that an
 unclassified route is assessable.
 *Expected:* on dev these classified routes contribute no OTP rows at all, so the filter is
@@ -237,12 +254,19 @@ route, checking it drops out of the official figure, then removing it. (This is 
 what the route-classification delete exists for.)
 
 **T2.5 — Approving an exclusion moves the figure by the right amount**
+> **Already run 2026-09-22 against dev: PASS.** 2026-07 excluded exactly 175 departures and
+> 119 on-time; 2026-09 exactly 79 and 34 — matching the approved stops precisely. Worth
+> doing once by hand anyway if you want to watch the figure move.
+
 Note a flagged stop's departures and on-time count. Approve it. Re-read Route Summary.
 *Expected:* that route's assessable total drops by exactly that stop/day's departures, and
 the official % recomputes to the new ratio. Then reject it back and confirm the figure
 returns.
 
 **T2.6 — Target provenance**
+> **Already run 2026-09-22 against dev: PASS.** 202601 and 202608 read a frozen period rule
+> set; every other month reads the catalog. All paths resolve to 0.85. Nothing to repeat.
+
 Route Summary states where the target came from. *Expected:* "catalog" at 85% for months
 with no active assessment period; a finalized month shows the frozen period figure.
 
