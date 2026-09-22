@@ -147,11 +147,17 @@ every reviewer's queue.
 
 These are real, current, and each is a deliberate decision rather than a bug:
 
-1. **Weather/date exclusions are recorded but never applied to the figure.** Avail's
-   monthly feed is keyed by day of week, not date, so a single snow date cannot be removed
-   from it. The console reports the count of recorded weather days so a reviewer is told
-   rather than left guessing. If MVTA's existing process expects a snow day to move the
-   number, **that gap is the single biggest thing to settle with Rob.**
+1. **Weather/date exclusions are recorded but never applied to the figure — being fixed.**
+   Avail's monthly feed is keyed by day of week, not date, so a single snow date could not
+   be removed from it. Worse, a date could not even be *approved*: the table defaults to
+   `Proposed`, has no approver columns, and the API had no route to change it, so every
+   weather day ever recorded sat in a state nothing read.
+
+   This is addressed in PR #380 (ADR 0038, migration 140), after the daily feed was shown
+   to reconcile exactly with the monthly one — see F4 in the validation plan. An approved
+   date now subtracts the departures it carried, frozen at approval; raw stays untouched.
+   **Until #380 merges and migration 140 is applied, the behaviour below is what Rob will
+   see.** The process question in T4.1 is still worth settling either way.
 2. **"Contractor notified / acknowledged" on the Weather page is display-only.** The flags
    exist in the table and render, but nothing in OnBoard sets them and no notification is
    sent anywhere. Today it is a manual, off-system step.

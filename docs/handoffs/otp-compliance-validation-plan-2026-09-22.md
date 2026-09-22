@@ -225,12 +225,13 @@ that stops a closed assessment moving under the contractor's feet.
 
 These are not pass/fail. They are the decisions the handoff exists to surface.
 
-**T4.1 — Weather days.** OnBoard records weather/emergency dates but **cannot remove them
-from the figure**, because Avail's monthly feed has no calendar date. How does MVTA's
-existing process handle a snow day today? If it expects the number to move, the options are:
-(a) accept that weather is context, not an adjustment; (b) take the exclusion at the
-stop/day-of-week grain instead; or (c) move to a date-grained source. This is the single
-biggest open question in the handoff.
+**T4.1 — Weather days.** OnBoard could not remove a weather date from the figure, and could
+not even approve one. PR #380 (ADR 0038, migration 140) makes an approved date subtract the
+departures it carried, frozen at approval, on the evidence in F4. What remains is Rob's to
+decide: how does MVTA's existing process handle a snow day today, who approves one, and does
+the contractor see the adjustment before the month is assessed? Note two limits — a date
+before 2026-09-14 cannot be evidenced from the daily feed, and holidays are deliberately not
+excluded.
 
 **T4.2 — Contractor notification.** The Weather page shows "notified / acknowledged" but
 OnBoard sends nothing and sets nothing. Is notification a manual step today, and should
