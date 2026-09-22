@@ -5,6 +5,15 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.294] - 2026-09-22
+
+- **Weather Exclusions has an Approve button.** 1.5.290 made an approved weather day subtract from the month, but the only way to approve one was `POST /otp-date-exclusions/{id}/approve` — the console could record a day and never approve it, which is the same half-built state the page has been in since migration 018, one step further along.
+- **Approving says what it took out**: departures, stops and day of week, from the snapshot the server froze. "Removed 1,043 departures across 86 stops (Mon)" rather than a spinner that stops.
+- **A refusal shows the server's own reason, against the day it refused.** No departure data for the date, or no rows for that day of week — each says what to do instead, and the day stays recorded but unapproved. Kept per row rather than as one banner, so approving a second day cannot clear the first one's explanation.
+- **A "Removed from OTP" column** shows what each approved day is subtracting, and an approved day now shows its approver and date.
+- **Approving anything re-reads the month.** Approving a stop exclusion used to update the decision list and leave Route Summary showing the figure from before it, until the month was switched or the page reloaded — a pre-existing bug that approving a weather day would have made unmissable, since moving the figure is the entire point.
+- No migration; 140 carries the schema. 4 new checks; frontend 775 passing.
+
 ## [1.5.292] - 2026-09-22
 
 - **The Review Queue reads the server's Flagged Stops.** Second half of ADR-0034: `OtpModule` renders `flagged` from `GET /otp-monthly` instead of deriving its own list, and `deriveCandidatesFromLive`, `DATA.candidates` and the console's copy of the threshold are gone. `usingLiveOtp` reads `diagnostics.record_count`; `stops` no longer travels, and `OtpMonthlyStopRow` is deleted with it - a month was 400-900 rows sent so the browser could filter them.

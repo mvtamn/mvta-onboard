@@ -1,6 +1,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import type { FlaggedStop } from "@mvta/shared";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { ApiError, type FlaggedStop } from "@mvta/shared";
 import { OtpModule } from "./OtpModule.js";
 
 const stop = (overrides: Partial<FlaggedStop> = {}): FlaggedStop => ({
@@ -33,6 +34,16 @@ const monthly = (over: { flagged?: FlaggedStop[]; record_count?: number } = {}) 
 });
 
 const getOtpMonthly = vi.fn();
+const getDateExclusions = vi.fn();
+const approveDateExclusion = vi.fn();
+
+const dateExclusion = (over: Record<string, unknown> = {}) => ({
+  id: "de-1", scope: "Agency", route_id: null, service_date: "20260907",
+  reason_code: "WEATHER_SNOW", notes: "Snow emergency", status: "Proposed",
+  notified: false, notified_at: null, acknowledged: false,
+  created_by: "occ@example.com", created_at: "2026-09-08T12:00:00Z",
+  approved_by: null, approved_at: null, excluded_departures: 0, ...over,
+});
 
 vi.mock("../../../config.js", () => ({ api: {
   getOtpMonthly: (...args: unknown[]) => getOtpMonthly(...args),
@@ -40,7 +51,8 @@ vi.mock("../../../config.js", () => ({ api: {
   getReasonCodes: vi.fn().mockResolvedValue({ reason_codes: [
     { id: "rc1", code: "RECOVERY", label: "Recovery point", applies_to: "stop", sort_order: 1, is_active: true },
   ] }),
-  getDateExclusions: vi.fn().mockResolvedValue({ exclusions: [] }),
+  getDateExclusions: (...args: unknown[]) => getDateExclusions(...args),
+  approveDateExclusion: (...args: unknown[]) => approveDateExclusion(...args),
   getStopExclusions: vi.fn().mockResolvedValue({ exclusions: [] }),
   getOtpAuditStream: vi.fn().mockResolvedValue({ entries: [] }),
   getOtpMonthlyTrend: vi.fn().mockResolvedValue({ trend: [] }),
@@ -54,6 +66,13 @@ describe("the OTP Review Queue", () => {
   afterEach(() => {
     cleanup();
     getOtpMonthly.mockReset();
+    getDateExclusions.mockReset();
+    approveDateExclusion.mockReset();
+    getDateExclusions.mockResolvedValue({ exclusions: [] });
+  });
+
+  beforeEach(() => {
+    getDateExclusions.mockResolvedValue({ exclusions: [] });
   });
 
   it("renders the Flagged Stops the server sent, in the order it sent them", async () => {
@@ -97,5 +116,87 @@ describe("the OTP Review Queue", () => {
 
     await screen.findByText("Wash/Coffman SW");
     expect(getOtpMonthly.mock.calls).toContainEqual([expect.any(String)]);
+  });
+});
+
+
+describe("approving a weather day", () => {
+  afterEach(() => {
+    cleanup();
+    getOtpMonthly.mockReset();
+    getDateExclusions.mockReset();
+    approveDateExclusion.mockReset();
+  });
+
+  async function openWeatherPage() {
+    const view = render(<OtpModule />);
+    await screen.findByRole("button", { name: "Weather Exclusions" });
+    await userEvent.click(screen.getByRole("button", { name: "Weather Exclusions" }));
+    return view;
+  }
+
+  it("offers Approve on a recorded day, and says what approving took out", async () => {
+    getOtpMonthly.mockResolvedValue(monthly());
+    getDateExclusions.mockResolvedValue({ exclusions: [dateExclusion()] });
+    approveDateExclusion.mockResolvedValue({
+      exclusion: dateExclusion({ status: "Approved" }),
+      snapshot: { service_month: "202609", day_of_week: "Mon", stops: 86, departures: 1043 },
+    });
+
+    await openWeatherPage();
+    const approve = await screen.findByRole("button", { name: "Approve" });
+    await userEvent.click(approve);
+
+    // The reviewer is told what left the figure, not just that it worked.
+    expect(await screen.findByText(/Removed 1,043 departures across 86 stops \(Mon\)/)).toBeTruthy();
+    expect(approveDateExclusion).toHaveBeenCalledWith("de-1");
+  });
+
+  it("re-reads the month, because approving moves the official figure", async () => {
+    getOtpMonthly.mockResolvedValue(monthly());
+    getDateExclusions.mockResolvedValue({ exclusions: [dateExclusion()] });
+    approveDateExclusion.mockResolvedValue({
+      exclusion: dateExclusion({ status: "Approved" }),
+      snapshot: { service_month: "202609", day_of_week: "Mon", stops: 1, departures: 30 },
+    });
+
+    await openWeatherPage();
+    await screen.findByRole("button", { name: "Approve" });
+    const before = getOtpMonthly.mock.calls.length;
+    await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await screen.findByText(/Removed 30 departures/);
+
+    expect(getOtpMonthly.mock.calls.length).toBeGreaterThan(before);
+  });
+
+  it("shows the server's own reason when a date cannot be evidenced, and leaves it unapproved", async () => {
+    getOtpMonthly.mockResolvedValue(monthly());
+    getDateExclusions.mockResolvedValue({ exclusions: [dateExclusion()] });
+    approveDateExclusion.mockRejectedValue(
+      new ApiError(422, "The daily OTP feed holds no departures for 20260907, so there is nothing to subtract."),
+    );
+
+    await openWeatherPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Approve" }));
+
+    // Not "could not approve": the reviewer needs to know which of the three
+    // things was missing to know what to do next.
+    expect(await screen.findByRole("alert")).toHaveTextContent(/no departures for 20260907/);
+    // Still offered, because nothing was approved.
+    expect(screen.getByRole("button", { name: "Approve" })).toBeTruthy();
+  });
+
+  it("does not offer Approve on a day already approved, and shows what it removed", async () => {
+    getOtpMonthly.mockResolvedValue(monthly());
+    getDateExclusions.mockResolvedValue({ exclusions: [dateExclusion({
+      status: "Approved", approved_by: "rob@example.com", approved_at: "2026-09-22T17:00:00Z",
+      excluded_departures: 1043,
+    })] });
+
+    await openWeatherPage();
+    await screen.findByText("rob@example.com", { exact: false });
+
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+    expect(screen.getByText("1,043")).toBeTruthy();
   });
 });
