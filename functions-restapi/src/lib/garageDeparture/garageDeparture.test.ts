@@ -220,6 +220,30 @@ test("a status carrying an apostrophe is escaped rather than breaking the statem
   assert.equal(sql, "d.pullout_status IN (N'O''Hare')");
 });
 
+test("a predicate containing OR is safe to AND into a longer WHERE clause", () => {
+  // Callers interpolate this into `WHERE standard.code='...' AND <predicate>`,
+  // and AND binds tighter than OR. Unwrapped, the second arm escapes the
+  // standard filter and cross-joins every standard, so one departure is
+  // inserted once per standard and the pass dies on UX_CO_SourceRef. Caught
+  // by the DB contract test; kept here so it is caught without a database.
+  for (const predicate of [garageDepartureCandidatePredicate(), onDemandDepartureCandidatePredicate()]) {
+    if (!/\bOR\b/.test(predicate)) continue;
+    assert.ok(predicate.trimStart().startsWith("("), "a predicate with OR must be wrapped");
+    assert.ok(predicate.trimEnd().endsWith(")"), "a predicate with OR must be wrapped");
+    // Balanced, and the outer pair actually encloses the whole expression
+    // rather than being two adjacent groups.
+    let depth = 0;
+    let closedEarly = false;
+    for (const [index, char] of [...predicate.trim()].entries()) {
+      if (char === "(") depth += 1;
+      if (char === ")") depth -= 1;
+      if (depth === 0 && index < predicate.trim().length - 1) closedEarly = true;
+    }
+    assert.equal(depth, 0, "parentheses are balanced");
+    assert.equal(closedEarly, false, "one pair encloses the whole predicate");
+  }
+});
+
 test("a negated arm is a disjunction of negations, so a null cannot swallow the row", () => {
   // De Morgan rather than NOT (a AND b): NOT (actual IS NULL AND status IN
   // (...)) is UNKNOWN for a null status and would drop the row.

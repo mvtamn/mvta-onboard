@@ -117,5 +117,11 @@ export function renderCandidatePredicate<Outcome extends string>(
   }
   if (disjuncts.length === 0) throw new Error("A garage departure rule must have at least one candidate arm");
   if (disjuncts.length === 1) return disjuncts[0];
-  return disjuncts.map((disjunct) => `(\n              ${disjunct}\n            )`).join("\n            OR ");
+  // Wrapped, because callers interpolate this into a longer WHERE clause and
+  // AND binds tighter than OR. Unparenthesised, `code='GARAGE_DEPARTURE' AND
+  // A OR B` parses as `(code='GARAGE_DEPARTURE' AND A) OR B`: the second arm
+  // escapes the standard filter, cross-joins every standard, and the pass
+  // inserts the same source_ref once per standard.
+  const arms = disjuncts.map((disjunct) => `(\n              ${disjunct}\n            )`).join("\n            OR ");
+  return `(\n            ${arms}\n          )`;
 }
