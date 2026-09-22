@@ -1,14 +1,45 @@
 # OTP Compliance — validation & test plan
 
 For Rob's validation against raw Avail reporting and existing OCC process.
-Written 2026-09-22 against dev (v1.5.287). Read
-`otp-compliance-explainer-2026-09-22.md` first.
+Written 2026-09-22 against dev and revised the same day for what shipped after the first
+draft. Current to **v1.5.295**. Read `otp-compliance-explainer-2026-09-22.md` first.
 
 **How to use this:** work the tiers in order. Tier 1 decides whether the numbers are
 trustworthy at all — if it fails, nothing below it matters. Tier 4 is the part only Rob can
 answer, and it is the real reason for this handoff.
 
 Record each case as **Pass / Fail / Needs discussion**, with the two numbers compared.
+
+---
+
+## Start here
+
+**Tier 2 has already been run and passed.** You do not need to repeat it. What is left for
+you is Tier 1 — which needs Avail's own export and nobody else can do — plus Tiers 3 and 4.
+
+**Four steps, in order:**
+
+1. **Pull two reports from Avail**: *OTP Monthly By Route/Stop/Day of Week*
+   (`OtpByRouteStopDayAgg`) for **2026-07** and **2026-08**. Get them at route level, and at
+   route/stop/day-of-week level for at least route 490.
+2. **Work Tier 1** (below). This is the whole point of the handoff: does OnBoard hold what
+   Avail published? Everything else assumes it does.
+3. **Work Tier 3** with whoever runs the OCC review process day to day.
+4. **Bring Tier 4 to a conversation with Ty.** Those are decisions, not tests.
+
+**What to send back:** for each case, Pass / Fail / Needs discussion, and where a number
+differs, both numbers with the month and route. A Tier 1 or Tier 2 failure is a defect worth
+logging. Tier 3 failures are usually configuration. Tier 4 outcomes are decisions to record.
+
+**Two things to know before you start.**
+
+*The system changed on 2026-09-22, after this plan was first written.* Weather days now
+actually subtract from the figure, they can be approved from the console, and a restatement
+of a closed month is recorded. The cases below reflect the system as it is now. If anything
+reads as though weather is inert, that text is stale — tell us.
+
+*Ignore any page that says "Sample data".* That is mock preview shown when a month has no
+feed rows, and it is not the live figure.
 
 ---
 
@@ -36,7 +67,7 @@ Rob is **Tier 1's external comparison** — the part only he can do — and Tier
 | Case | Result | Evidence |
 | --- | --- | --- |
 | T1.1–T1.3 source fidelity | **Not runnable internally** | Requires Rob's Avail export. This is the real handoff task. |
-| T1.4 restatement detection | **Fail — defect found** | See F1 below |
+| T1.4 restatement detection | **Was a defect; fixed 2026-09-22** | See F1 below |
 | T1.5 backfill idempotency | Not run (would write to dev) | Idempotent by construction (MERGE on the natural key) |
 | Feed health | **Pass** | `avail_otp_monthly` last success 2026-09-22 03:01, 2,672 records; `avail_otp_daily` 12:01, 3,783. No failures recorded. |
 | T2.1 Raw − Excluded = Assessable | **Pass** | All 9 months reconcile exactly, agency and route level |
@@ -52,14 +83,15 @@ same number.
 
 ### Findings
 
-**F1 — OnBoard cannot detect or evidence an Avail restatement.** The monthly upsert sets
-`updated_at = SYSUTCDATETIME()` on every match, whether or not any value changed. Every row
-in the trailing window therefore carries today's timestamp after every nightly poll. If
-Avail silently restates a closed month, OnBoard adopts the new figure with no record that it
-changed, and no way to answer "what did we assess on, and has the source moved since?"
-*Suggested fix:* only bump `updated_at` when a value actually differs, and record a
-restatement event when a month outside the current month changes. Small change, and it is
-what makes T1.4 answerable at all.
+**F1 — OnBoard could not detect or evidence an Avail restatement. FIXED 2026-09-22.**
+The monthly upsert set `updated_at = SYSUTCDATETIME()` on every match, whether or not any
+value changed, so every row in the trailing window carried today's timestamp after every
+nightly poll. If Avail silently restated a closed month, OnBoard adopted the new figure with
+no record that it changed.
+
+`updated_at` now moves only when the row says something different, and a change to a month
+that is already over is recorded in `vw_OtpRestatement` with both figures and both deltas
+(ADR 0039, migration 141, applied). See T1.4 for how to read it.
 
 **F2 — Subtraction A has never fired.** All 13 classified routes (8 SpecialEvent, 4
 NonRevenue, 1 OnDemand) carry **zero** OTP rows, so the fixed-route filter has never actually
@@ -73,7 +105,8 @@ that run. No orphaned rows exist. It moves no figure, but it is unreconciled —
 route-level comparison will settle whether Avail published 2,672 or 2,673.
 
 **F4 — The daily feed reconciles exactly with the monthly feed.** See the section below.
-This is the finding that unblocks weather exclusions.
+This is the finding that unblocked weather exclusions, which shipped the same day
+(ADR 0038, migration 140, applied).
 
 ### F4 in full — the daily feed is trustworthy, and dates can be subtracted
 
@@ -127,9 +160,30 @@ Pick route 490 (it carries most of the exclusions). Compare every stop × day-of
 exactly, so a spelling change on Avail's side is a silent failure mode worth confirming.
 
 **T1.4 — A re-poll does not change a closed month**
-Note 2026-07's raw figure, wait for the next daily run (03:00 UTC), re-check.
-*Expected:* identical. *Watch for:* movement in a month that has closed, which would mean
-Avail is still restating it and the assessment timing needs to account for that.
+
+**This became answerable on 2026-09-22 (migration 141).** It was not before: the upsert
+stamped `updated_at` on every poll whether or not a value had changed, so a restatement and
+a no-op re-poll looked identical. Now `updated_at` moves only when the row actually changes,
+and a change to a month that is already over is recorded.
+
+```sql
+SELECT ServiceMonth, RouteId, StopId, DayOfWeek,
+       PreviousTotalDepartures, NewTotalDepartures, TotalDepartureDelta,
+       PreviousOnTimeDepartures, NewOnTimeDepartures, OnTimeDepartureDelta,
+       DetectedAt, DaysAfterMonthEnd
+FROM dbo.vw_OtpRestatement
+ORDER BY DetectedAt DESC;
+```
+
+*Expected:* empty, if Avail does not restate. **An empty result after a few weeks is the
+answer to this case, not a missing test.**
+
+*Watch for:* rows with a large `DaysAfterMonthEnd`. A day or two is the month's own tail
+arriving — Avail publishes a service day after it ends. Weeks later is a genuine restatement,
+and it means an assessed figure and the live figure beside it have diverged.
+
+*Limit worth knowing:* this only works forward. The ledger starts from the first poll after
+2026-09-22, so nothing can be said about whether Avail restated anything before that.
 
 **T1.5 — Backfill produces the same numbers as the poll**
 Administration → OTP Compliance → backfill 2026-06. *Expected:* figures unchanged after the
@@ -144,21 +198,30 @@ Route Summary, 2026-07. *Expected:* for every route, and for the agency line, th
 figures reconcile and the Δ column equals the difference in points.
 
 **T2.2 — The reporting view reproduces the console**
-Run against the reporting layer:
+
+**The contract changed on 2026-09-22 (migration 140).** A weather-day exclusion *reduces* a
+row rather than removing it — the row is every Monday, and only one Monday came out — so a
+boolean flag cannot carry it. Sum the assessable columns; do not filter on `IsAssessable`:
 
 ```sql
 SELECT ServiceMonth,
   SUM(TotalDepartures) RawTotal,
   SUM(OnTimeDepartures) RawOnTime,
-  SUM(CASE WHEN IsAssessable=1 THEN TotalDepartures  ELSE 0 END) AssessTotal,
-  SUM(CASE WHEN IsAssessable=1 THEN OnTimeDepartures ELSE 0 END) AssessOnTime
+  SUM(AssessableTotalDepartures)  AssessTotal,
+  SUM(AssessableOnTimeDepartures) AssessOnTime,
+  SUM(DateExcludedDepartures)     WeatherRemoved
 FROM dbo.vw_OtpMonthlyRouteStop
 WHERE ServiceMonth IN ('202607','202608')
 GROUP BY ServiceMonth;
 ```
 
-*Expected:* 202607 → 83.28% raw / 83.32% assessable; 202608 → 83.62% / 83.62%. These must
-equal the console's Route Summary figures to the digit.
+*Expected:* 202607 → 83.28% raw / 83.32% assessable; 202608 → 83.62% / 83.62%, and
+`WeatherRemoved` zero on both until a weather day is approved. These must equal the
+console's Route Summary figures to the digit.
+
+*Also worth knowing:* `SUM(CASE WHEN IsAssessable=1 THEN ...)` — the old form — still
+answers a real question, **the figure before weather**. It is kept deliberately so the two
+can be compared. Just do not mistake it for the official number.
 
 **T2.3 — Only approved exclusions subtract**
 2026-07 has 3 approved and 3 rejected decisions. *Expected:* exactly the 3 approved rows
@@ -226,8 +289,9 @@ that stops a closed assessment moving under the contractor's feet.
 These are not pass/fail. They are the decisions the handoff exists to surface.
 
 **T4.1 — Weather days.** OnBoard could not remove a weather date from the figure, and could
-not even approve one. PR #380 (ADR 0038, migration 140) makes an approved date subtract the
-departures it carried, frozen at approval, on the evidence in F4. What remains is Rob's to
+not even approve one. It can now, live on dev since 2026-09-22 (ADR 0038, migration 140):
+an approved date subtracts the departures it carried, frozen at approval, on the evidence in
+F4, and it is approved from the Weather page. What remains is Rob's to
 decide: how does MVTA's existing process handle a snow day today, who approves one, and does
 the contractor see the adjustment before the month is assessed? Note two limits — a date
 before 2026-09-14 cannot be evidenced from the daily feed, and holidays are deliberately not

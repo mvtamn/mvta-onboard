@@ -1,8 +1,13 @@
 # OTP Compliance — what every function does
 
 Handoff explainer for Rob's validation against raw Avail reporting and existing OCC process.
-Written 2026-09-22 against dev (v1.5.287). Companion document:
-`otp-compliance-validation-plan-2026-09-22.md`.
+Written 2026-09-22 against dev, and **revised the same day** for four changes that shipped
+after the first draft: weather days now subtract (ADR 0038), they can be approved from the
+console, a restatement of a closed month is recorded (ADR 0039), and the reporting view's
+contract changed with the first of those. Current to **v1.5.295**.
+
+Companion document: `otp-compliance-validation-plan-2026-09-22.md`, which carries the test
+plan and the Tier 1/Tier 2 results.
 
 ---
 
@@ -113,7 +118,15 @@ exclusions in points, and Meets/Below vs. the target. This is the page that answ
 routes moved, and by how much, and why".
 
 **Weather Exclusions** — log agency-wide or route-specific weather/emergency service days
-with a reason code and notes. **Read §6 before trusting this page.**
+with a reason code and notes, then **Approve** one to take it out of the figure.
+
+Approving freezes the departures that date carried and subtracts them from the month's
+official figure. The page tells you what it removed — *"Removed 1,043 departures across 86
+stops (Mon)"* — and a "Removed from OTP" column shows what each approved day is subtracting.
+A day that cannot be evidenced is **refused with the reason** rather than approved into
+something that changes nothing.
+
+Recording a day is not approving it. A recorded, unapproved day moves no figure.
 
 **Monthly Assessments** — the locked snapshot. If the month has an assessment period, it
 shows the figure the contractor was actually shown, with its tier and period status, and
@@ -147,20 +160,25 @@ every reviewer's queue.
 
 These are real, current, and each is a deliberate decision rather than a bug:
 
-1. **Weather/date exclusions are recorded but never applied to the figure — being fixed.**
-   Avail's monthly feed is keyed by day of week, not date, so a single snow date could not
-   be removed from it. Worse, a date could not even be *approved*: the table defaults to
-   `Proposed`, has no approver columns, and the API had no route to change it, so every
-   weather day ever recorded sat in a state nothing read.
+1. **Weather days now subtract — as of 2026-09-22.** They did not before, and could not
+   even be approved: the table defaulted to `Proposed`, had no approver columns, and the
+   API had no route to change it, so every weather day ever recorded sat in a state nothing
+   read. Avail's monthly feed is keyed by day of week, not date, so a single snow date had
+   nothing to bind to.
 
-   This is addressed in PR #380 (ADR 0038, migration 140), after the daily feed was shown
-   to reconcile exactly with the monthly one — see F4 in the validation plan. An approved
-   date now subtracts the departures it carried, frozen at approval; raw stays untouched.
-   **Until #380 merges and migration 140 is applied, the behaviour below is what Rob will
-   see.** The process question in T4.1 is still worth settling either way.
-2. **"Contractor notified / acknowledged" on the Weather page is display-only.** The flags
-   exist in the table and render, but nothing in OnBoard sets them and no notification is
-   sent anywhere. Today it is a manual, off-system step.
+   The daily feed does carry a real date, and was shown to reconcile exactly with the
+   monthly one (F4 in the validation plan). An approved date now subtracts the departures it
+   carried, frozen at the moment of approval; raw stays untouched. ADR 0038, migration 140,
+   applied and verified.
+
+   **Two limits.** A date before **2026-09-14** cannot be evidenced — the daily feed holds
+   nothing earlier — and the approval is refused rather than silently doing nothing. And the
+   daily feed keeps 90 days, so a date must be approved while it is still in that window.
+   The process questions in T4.1 are still open.
+2. **"Contractor notified / acknowledged" on the Weather page is display-only.** Still true.
+   The flags exist in the table and render, but nothing in OnBoard sets them and no
+   notification is sent anywhere. Today it is a manual, off-system step — which matters more
+   now that approving a day actually moves the contractor's figure. See T4.2.
 3. **No average seconds variance.** The live feed has no such field; the queue infers
    "Early-biased"/"Late-biased" from the shares instead. Any mock row showing "164s early"
    is sample data.
@@ -179,9 +197,18 @@ rather than re-implementing it.
 
 - `vw_OtpMonthlyRouteStop` — one row per month/route/stop/day with `IsAssessable`,
   `IsStopExcluded`, the exclusion's reason code, approver and approval time, plus every raw
-  count. **Summing `OnTimeDepartures / TotalDepartures` where `IsAssessable = 1` reproduces
-  the official figure exactly**; dropping the filter gives raw. The exclusion is exposed,
-  not applied, so both numbers reconcile from one view.
+  count. **Sum `AssessableTotalDepartures` and `AssessableOnTimeDepartures` for the official
+  figure**; sum `TotalDepartures` / `OnTimeDepartures` for raw. Both reconcile from one view.
+
+  *This changed on 2026-09-22.* The old contract was "sum where `IsAssessable = 1`", which
+  no longer gives the official figure, because a weather-day exclusion reduces a row rather
+  than removing it. `IsAssessable` is still published and the old form still answers a real
+  question — **the figure before weather** — so the two can be compared.
+  `DateExcludedDepartures` shows what weather took out of each row.
+- `vw_OtpRestatement` — every time Avail published different numbers for a month that had
+  already ended: the month, route, stop and day, both figures, both deltas, and how long
+  after month end it happened. Empty means Avail does not restate, which is itself the
+  answer to validation case T1.4.
 - `vw_OtpDailyRouteStopHour` — trending only, `IsOfficialRecord = 0`.
 - `vw_ScorecardKpi` / `vw_ScorecardPeriod` — the assessed layer (finalized periods, tiers,
   penalties).
