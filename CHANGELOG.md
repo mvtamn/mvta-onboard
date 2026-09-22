@@ -5,6 +5,14 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.291] - 2026-09-22
+
+- **The Audit Stream's month scope reached only half the stream.** `?month=` filtered `OtpStopExclusions` and was never applied to `OtpDateExclusions`, so "Current month only" returned that month's stop decisions alongside every Weather Day Exclusion ever recorded. A weather day is scoped by the date it happened - `LEFT(service_date, 6)`, since `service_date` is CHAR(8) - not by when somebody typed it in, which can be a different month.
+- **`limit` was a slice taken in memory after reading both tables entire**, so `OtpDateExclusions` was read unbounded on every call. Both queries are now `SELECT TOP (@limit)` ordered newest first in SQL, each by the timestamp its own table carries - `reviewed_at` for a stop decision, `created_at` for a weather day.
+- **Two `OBJECT_ID` probes become one**, the way `lib/otpMonth` already does it.
+- **Verified.** 5 new checks on the two query builders, which are exported for the purpose; backend 1305 passing. Found during the OTP Compliance architecture review; the Exclusion Review module that follows has to preserve this behaviour rather than reinvent it. No migration.
+
+
 ## [1.5.288] - 2026-09-21
 
 - **Which stops the Review Queue shows is decided on the server now.** ADR-0034 puts the flagging rule in `functions-restapi/src/lib/otpFlaggedStops.ts`: it takes the month's stop rows and a threshold and returns the Flagged Stops, worst lean first. `GET /otp-monthly` returns that list as `flagged`, beside `measurement` and never inside it - the measurement is the contractual figure ADR-0033 fixed in one place, and the threshold behind this list is a knob an administrator moves. `CONTEXT.md` gains **Flagged Stop** and **Early/Late Bias Threshold**; the word "candidate" is deliberately not reused, since it already means an Occurrence raised against an Agreement.
