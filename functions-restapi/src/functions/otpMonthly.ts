@@ -32,7 +32,7 @@ function resolveThresholdOverride(request: HttpRequest): number | null | undefin
   return value;
 }
 
-// The stop rows the Review Queue works from, and the month's measurement.
+// The month's measurement and its Flagged Stops.
 //
 // The figures - raw, excluded, assessable, per route and agency-wide, the
 // target and where the target came from - are the OTP month measurement

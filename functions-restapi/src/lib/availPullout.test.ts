@@ -42,11 +42,13 @@ test("maps a Late Relief pullout report", () => {
   assert.ok(mapped);
   assert.strictEqual(mapped!.block, 11801);
   assert.strictEqual(mapped!.run, 1811);
-  assert.strictEqual(mapped!.checkin_scheduled?.toISOString(), "2026-02-23T12:35:00.000Z");
+  // The feed's wall clock is agency time, whatever its 'Z' claims, so February
+  // values land six hours later in UTC (CST) - see parseNullableDate.
+  assert.strictEqual(mapped!.checkin_scheduled?.toISOString(), "2026-02-23T18:35:00.000Z");
   assert.strictEqual(mapped!.checkin_actual, null);
-  assert.strictEqual(mapped!.login_actual?.toISOString(), "2026-02-23T12:52:25.000Z");
-  assert.strictEqual(mapped!.pullout_scheduled?.toISOString(), "2026-02-23T12:50:00.000Z");
-  assert.strictEqual(mapped!.pullout_actual?.toISOString(), "2026-02-23T12:52:55.000Z");
+  assert.strictEqual(mapped!.login_actual?.toISOString(), "2026-02-23T18:52:25.000Z");
+  assert.strictEqual(mapped!.pullout_scheduled?.toISOString(), "2026-02-23T18:50:00.000Z");
+  assert.strictEqual(mapped!.pullout_actual?.toISOString(), "2026-02-23T18:52:55.000Z");
   assert.strictEqual(mapped!.pullout_status, "Late Relief");
   assert.strictEqual(mapped!.operator_name, "HAWTHORNE, PORSCHE -144");
   assert.strictEqual(mapped!.logon_id, 41901);
@@ -102,11 +104,39 @@ test("keeps one service date for a run across polls that straddle the UTC rollov
   );
 });
 
-test("anchors to the local date even when the scheduled pullout is a late-evening UTC value", () => {
-  // 2026-08-24T02:15:00Z is 21:15 CDT on 2026-08-23 - the UTC date has already
-  // advanced, the agency-local service date has not.
+test("an early-morning run belongs to the day it runs, not the one before", () => {
+  // 02:15 is agency-local wall clock, so this is a run in the small hours of
+  // the 24th. Reading the 'Z' literally used to make it 21:15 on the 23rd and
+  // file it a day early - which is what put each roster's 00:00-04:59 tail
+  // under the previous service date.
   const mapped = mapPulloutReport({ ...LATE_RELIEF, Pullout_Scheduled: "2026-08-24T02:15:00Z" });
-  assert.strictEqual(mapped!.service_date, "20260823");
+  assert.strictEqual(mapped!.service_date, "20260824");
+  assert.strictEqual(mapped!.pullout_scheduled?.toISOString(), "2026-08-24T07:15:00.000Z");
+});
+
+test("the zone designator is discarded, present or not", () => {
+  // Avail has sent both spellings; neither says anything true about the zone.
+  const withZ = mapPulloutReport({ ...LATE_RELIEF, Pullout_Scheduled: "2026-08-24T06:10:00Z" });
+  const without = mapPulloutReport({ ...LATE_RELIEF, Pullout_Scheduled: "2026-08-24T06:10:00" });
+  const spaced = mapPulloutReport({ ...LATE_RELIEF, Pullout_Scheduled: "2026-08-24 06:10:00" });
+  assert.strictEqual(withZ!.pullout_scheduled?.toISOString(), "2026-08-24T11:10:00.000Z");
+  assert.strictEqual(without!.pullout_scheduled?.toISOString(), "2026-08-24T11:10:00.000Z");
+  assert.strictEqual(spaced!.pullout_scheduled?.toISOString(), "2026-08-24T11:10:00.000Z");
+});
+
+test("each row gets its own DST offset", () => {
+  // The same wall clock is five hours from UTC in August and six in February.
+  const summer = mapPulloutReport({ ...LATE_RELIEF, Pullout_Scheduled: "2026-08-24T05:00:00" });
+  const winter = mapPulloutReport({ ...LATE_RELIEF, Pullout_Scheduled: "2026-02-24T05:00:00" });
+  assert.strictEqual(summer!.pullout_scheduled?.toISOString(), "2026-08-24T10:00:00.000Z");
+  assert.strictEqual(winter!.pullout_scheduled?.toISOString(), "2026-02-24T11:00:00.000Z");
+});
+
+test("a malformed timestamp is skipped, never rolled into a plausible instant", () => {
+  for (const bad of ["not-a-date", "2026-13-45T00:00:00", "2026-08-24T99:00:00", ""]) {
+    const mapped = mapPulloutReport({ ...LATE_RELIEF, Pullout_Actual: bad });
+    assert.strictEqual(mapped!.pullout_actual, null, JSON.stringify(bad));
+  }
 });
 
 test("falls back through scheduled, then actual, then the poll clock", () => {

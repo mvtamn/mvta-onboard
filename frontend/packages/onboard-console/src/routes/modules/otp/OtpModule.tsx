@@ -26,7 +26,7 @@ interface OtpMonthlyResponse {
   routes: OtpMonthlyRouteRollup[];
   /** Absent on a server older than 1.5.242; the console then shows the preview. */
   measurement?: OtpMonthMeasurement;
-  /** Absent on a server older than 1.5.284; the queue is then empty, not wrong. */
+  /** Absent on a server older than 1.5.288; the queue is then empty, not wrong. */
   flagged?: FlaggedStop[];
   diagnostics: {
     configured: boolean;
