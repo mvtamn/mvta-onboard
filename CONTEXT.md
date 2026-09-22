@@ -767,6 +767,14 @@ _Avoid_: raw OTP, adjusted OTP
 A reviewed and approved decision that one stop, on one route, on one day of the week, does not count toward Official Departure OTP for a service month — a recovery or layover point, or a data-quality defect. It is the only exclusion the monthly OTP feed's grain can express.
 _Avoid_: weather exclusion, dropped stop
 
+**Flagged Stop**:
+A stop, on one route, on one day of the week, whose early or late share of departures exceeds the Early/Late Bias Threshold for a service month, putting it in front of a reviewer. Being flagged decides nothing: it counts toward Official Departure OTP exactly as before unless a reviewer turns it into an approved Stop Exclusion. It is not a Candidate — no Agreement, occurrence, or Candidate Resolution is involved.
+_Avoid_: exclusion candidate, OTP candidate, biased stop
+
+**Early/Late Bias Threshold**:
+The share of departures, above which a stop's early or late running makes it a Flagged Stop. It is an operational review setting an administrator can change, not a contractual figure: moving it changes who gets looked at, never what a month scored.
+_Avoid_: OTP threshold, tolerance
+
 **Weather Day Exclusion**:
 A recorded weather or emergency service date. It is kept for the record and is NOT applied to Official Departure OTP: the monthly OTP feed is aggregated by day of week, not by date, so a single date cannot be removed from it (ADR 0033).
 _Avoid_: excluded day, relief day
@@ -1052,6 +1060,39 @@ _Avoid_: guest import, permanent contractor account
 The IT-controlled Entra/Portal recovery path used to restore privileged OnBoard
 access when the in-app approval path cannot operate.
 _Avoid_: admin bypass, shared emergency login
+
+## Garage departure language
+
+**Garage departure**:
+The departure of an assigned vehicle from its garage or start location,
+measured as the variance between its scheduled and actual departure. One
+concept with one source per service type, never both (ADR 0028): Avail's
+Pullout Reports for fixed route, Spare's duties for on-demand. A departure
+with no source for its service type is absent, not inferred from the other.
+_Avoid_: pullout, depot departure, two separate metrics
+
+**Departure outcome**:
+What one Garage departure is judged to have been, once its service day is
+settled: late, no departure, departed, or one of the reasons it cannot be
+judged - no schedule, not settled, and per service type either unresolved
+(fixed route: Avail has not finished classifying) or cancelled (on-demand:
+the duty had no departure to make). Late and no departure are the two that
+raise a Compliance occurrence. The outcome is a judgement of the evidence,
+not a status copied from a feed.
+_Avoid_: pullout status, duty status, breach
+
+**Departure allowance**:
+How late a Garage departure may be before it is worth a contractor's review.
+Ten minutes by default, set per environment. A departure inside the allowance
+is not a breach, whatever the source's own status says about it.
+_Avoid_: variance threshold, grace period, tolerance
+
+**Settled service day**:
+A service date whose Garage departure evidence has stopped moving, so its rows
+can be judged. A row on a day that is not settled has no Departure outcome
+yet, because a source status still in motion would raise a Compliance
+occurrence that is never withdrawn.
+_Avoid_: closed day, finalized period, yesterday
 
 ## Missed-trip language
 

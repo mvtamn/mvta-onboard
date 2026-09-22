@@ -455,7 +455,7 @@ export function RouteClassificationSection() {
 // category_default). PATCH is OCC.Admin-only, enforced server-side.
 
 // Detour reason categories - the vocabulary behind the Reporting fields on
-// Detours & Closures and the Reason filter on Detour Reports. Codes are
+// Detours & Closures and the Reason filter on Detour Register. Codes are
 // never deleted: a retired code stays on the detours that used it, so it
 // is deactivated instead, which hides it from the entry form while the
 // Reports page keeps resolving its label. The code itself is fixed once
@@ -517,7 +517,7 @@ export function DetourReasonCodesSection() {
       <div className="panel-header">Detour reason categories</div>
       <div className="panel-body">
         <p className="panel-desc">
-          Categories offered under Reporting on Detours &amp; Closures and used to filter Detour Reports.
+          Categories offered under Reporting on Detours &amp; Closures and used to filter Detour Register.
           Retiring a category hides it from new entries; detours already categorized keep it.
         </p>
         {error ? <p className="error-text">{error}</p> : null}

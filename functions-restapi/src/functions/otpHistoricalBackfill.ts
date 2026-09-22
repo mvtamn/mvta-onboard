@@ -30,7 +30,7 @@ import { getPool } from "../lib/db";
 import { requireAccess } from "../lib/access/require";
 import { validateOtpHistoricalBackfill } from "../lib/validation";
 import { availConfig, fetchAvail } from "../lib/availClient";
-import { mapOtpMonthlyReport, upsertOtpMonthlyReport } from "../lib/otpMonthlyFeed";
+import { mapOtpMonthlyReport, restatementLedgerReady, serviceMonthOf, upsertOtpMonthlyReport } from "../lib/otpMonthlyFeed";
 import { mapMissedTripReport, replaceMissedTripsForMonths } from "../lib/availMissedTripsFeed";
 
 function monthToDate(yyyymm: string): Date {
@@ -75,6 +75,8 @@ app.http("otpHistoricalBackfill", {
     }
 
     const pool = await getPool();
+    const ledgerReady = await restatementLedgerReady(pool);
+    const currentServiceMonth = serviceMonthOf(new Date());
 
     let otpResult: { reports_seen: number; upserted: number; error?: string };
     try {
@@ -83,7 +85,9 @@ app.http("otpHistoricalBackfill", {
       for (const report of reports) {
         const mapped = mapOtpMonthlyReport(report, month);
         if (!mapped) continue;
-        await upsertOtpMonthlyReport(pool, mapped);
+        // A backfill that changes an already-ingested past month is a
+        // restatement like any other, and is recorded as one.
+        await upsertOtpMonthlyReport(pool, mapped, { ledgerReady, currentServiceMonth });
         upserted++;
       }
       otpResult = { reports_seen: reports.length, upserted };

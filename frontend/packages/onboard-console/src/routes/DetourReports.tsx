@@ -20,7 +20,7 @@ import {
   type DetourFilters,
 } from "../lib/detourSearch.js";
 import { dateLabel, dateTimeLabel } from "../lib/detourDates.js";
-import { availEntryLabel, communicationStatusLabel, createdByLabel, fulfillmentPathLabel, readinessLabel, sourceLabel, workflowLabel } from "../lib/detourLabels.js";
+import { availEntryLabel, communicationStatusLabel, COMMUNICATION_PILL, createdByLabel, fulfillmentPathLabel, readinessLabel, sourceLabel, workflowLabel } from "../lib/detourLabels.js";
 import { DetourOperationalRecord } from "../components/DetourOperationalRecord.js";
 import { DetourWorkflowHistorySection } from "../components/DetourWorkflowHistorySection.js";
 import { DetourAttachmentsSection } from "../components/DetourAttachments.js";
@@ -28,7 +28,7 @@ import { DetourMap } from "../components/DetourMap.js";
 import { DetourDeliveryRecord } from "../components/DetourDeliveryRecord.js";
 import "./modules/detourReports.css";
 
-// Detour Reports - Part B7 of detour-module-consolidated-plan.md.
+// Detour Register - Part B7 of detour-module-consolidated-plan.md.
 //
 // Read-only by design. Detours.tsx stays the day-to-day entry/edit
 // workspace; this page exists so compliance and ops leadership can search
@@ -56,12 +56,6 @@ const STATUS_PILL: Record<DetourStatus, string> = {
   monitor: "pill-warning",
   recently_finished: "pill-muted",
   expired: "pill-muted",
-};
-
-const COMMUNICATION_PILL: Record<string, string> = {
-  published: "pill-success",
-  draft: "pill-accent",
-  needs_communication: "pill-warning",
 };
 
 // The status the page opens on. EMPTY_FILTERS stays the "nothing narrowed"
@@ -223,7 +217,7 @@ export function DetourReports() {
   return (
     <>
       <div className="panel-header">
-        <span>Detour Reports</span>
+        <span>Detour Register</span>
         <span className="chip" style={{ marginRight: 0 }}>Read-only</span>
       </div>
       <div className="panel-body">

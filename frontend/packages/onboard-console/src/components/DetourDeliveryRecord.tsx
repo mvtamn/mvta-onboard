@@ -5,7 +5,7 @@ import { dateTimeLabel } from "../lib/detourDates.js";
 
 // Read-only delivery record for a Detour: every communication with who
 // published it, how it was delivered, and the frozen copy of what went
-// out (migration 092). Detour Reports uses it as the compliance view; the
+// out (migration 092). Detour Register uses it as the compliance view; the
 // entry page reuses SentCopy beside its composer. Nothing here writes.
 
 export function deliveryLabel(c: DetourCommunication): string {

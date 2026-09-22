@@ -13,17 +13,18 @@ import {
   type DetourSegmentInput,
 } from "@mvta/shared";
 import { useAccess } from "../auth/AccessContext.js";
+import { useAuth } from "../auth/AuthContext.js";
 import { api } from "../config.js";
 import { detourMatchesSearch } from "../lib/detourSearch.js";
 import { actOffer, availEntryOffer } from "../lib/detourActs.js";
-import { nextStepLabel } from "../lib/detourLabels.js";
+import { communicationStatusLabel, COMMUNICATION_PILL, managedInLabel, nextStepLabel, readinessFlags } from "../lib/detourLabels.js";
 import { useAppDialog } from "../components/AppDialog.js";
 import { DetourOperationalRecord } from "../components/DetourOperationalRecord.js";
 import { DetourWorkflowHistorySection } from "../components/DetourWorkflowHistorySection.js";
 import { DetourAttachmentsSection } from "../components/DetourAttachments.js";
 import { DetourMap } from "../components/DetourMap.js";
 import { SentCopy, deliveryClass, deliveryLabel } from "../components/DetourDeliveryRecord.js";
-import { audiencePlan, communicationAction, communicationSubject, detourSendBlock, draftCommunicationText, mailtoLink, nextAudience } from "../lib/detourCommunicationDraft.js";
+import { audienceAddError, audiencePlan, communicationAction, communicationSubject, copyFrom, detourSendBlock, draftCommunicationText, mailtoLink, nextAudience, withAudience } from "../lib/detourCommunicationDraft.js";
 import { dateLabel, dateTimeLabel, toDateInputValue } from "../lib/detourDates.js";
 
 const STATUS_TABS: { key: DetourStatus | "all"; label: string }[] = [
@@ -205,6 +206,11 @@ function detourToCloneForm(d: Detour): DetourFormState {
 export function Detours() {
   const { confirm, prompt } = useAppDialog();
   const { can } = useAccess();
+  // Who "Assign to me" means. The server records the signed-in principal
+  // anyway; this is only so the row can offer the shortcut and hide it from
+  // whoever already owns it.
+  const { account } = useAuth();
+  const me = account?.username ?? "";
   // The same Module Actions the server checks. Editing and deleting are
   // separate actions - the server enforces the real boundary; this only
   // decides which controls are worth showing.
@@ -362,6 +368,26 @@ export function Detours() {
     if (!reason?.trim()) return;
     try { await api.overrideDetourConflict(d.id, reason.trim()); load(); }
     catch (err) { setLoadError(err instanceof ApiError ? err.message : "Could not record the override"); }
+  }
+
+  // Taking a Detour, handing it on, or putting it back. Ownership says who acts
+  // next; it is not a state, so nothing else about the Detour moves.
+  async function assignToMe(d: Detour) {
+    try { await api.assignDetour(d.id, me || null); load(); }
+    catch (err) { setLoadError(err instanceof ApiError ? err.message : "Could not assign this detour"); }
+  }
+
+  async function assignToSomeone(d: Detour) {
+    const owner = await prompt({
+      title: d.workflow_owner ? "Reassign this detour" : "Assign this detour",
+      description: d.workflow_owner ? `${d.workflow_owner} has it now. Leave it empty to put it back to nobody.` : "Who is carrying this detour? Leave it empty to put it back to nobody.",
+      label: "Owner",
+      placeholder: "Name or email",
+      confirmLabel: "Save owner",
+    });
+    if (owner === null) return;
+    try { await api.assignDetour(d.id, owner.trim() || null); load(); }
+    catch (err) { setLoadError(err instanceof ApiError ? err.message : "Could not assign this detour"); }
   }
 
   async function completeReview(d: Detour) {
@@ -566,12 +592,18 @@ export function Detours() {
           <div className="subcard" style={{ overflow: "hidden" }}>
             <table className="data">
               <thead>
+                {/* OCC runs the detour workflow from this pane, so the columns
+                    are the ones they act on: where it is managed, what it needs
+                    next and from whom, and whether anybody has been told.
+                    Where the record came from is in the expanded row - it is
+                    provenance, not a thing to do. */}
                 <tr>
-                  <th>Number</th>
+                  <th>Detour</th>
                   <th>Closure</th>
                   <th>Dates</th>
-                  <th>Status</th>
-                  <th>Source</th>
+                  <th>Managed in</th>
+                  <th>Next action &amp; owner</th>
+                  <th>Communications</th>
                   {canWrite ? <th>Actions</th> : null}
                 </tr>
               </thead>
@@ -580,15 +612,39 @@ export function Detours() {
                   <Fragment key={d.id}>
                     <tr style={{ cursor: "pointer" }} onClick={() => setExpandedId(expandedId === d.id ? null : d.id)}>
                       <td>
-                        {d.number || "—"}
-                        {d.internal_number ? (
-                          <div className="td-dim" style={{ fontSize: "0.85em" }}>{d.internal_number}</div>
-                        ) : null}
+                        {d.internal_number || d.number || "—"}
+                        <div className="td-dim" style={{ fontSize: "0.85em" }}>
+                          <span className={`pill-sm ${STATUS_PILL[d.status]}`}>{DETOUR_STATUS_LABELS[d.status]}</span>
+                        </div>
                       </td>
                       <td>{d.closure}</td>
                       <td className="td-dim">{dateLabel(d.start_date)} – {dateLabel(d.end_date)}</td>
-                      <td><span className={`pill-sm ${STATUS_PILL[d.status]}`}>{DETOUR_STATUS_LABELS[d.status]}</span></td>
-                      <td className="td-dim">{d.source === "avail" ? "Avail feed" : d.external_detour_id ? "OnBoard · Avail linked" : "OnBoard manual"}</td>
+                      <td>
+                        {/* Whether this Detour lives in Avail or is operated
+                            outside it decides what OCC can do with it at all. */}
+                        <span className={managedInLabel(d).outside ? "detour-managed is-outside" : "detour-managed"}>
+                          {managedInLabel(d).label}
+                        </span>
+                        <div className="td-dim" style={{ fontSize: "0.85em" }}>{managedInLabel(d).detail}</div>
+                      </td>
+                      <td>
+                        <b>{nextStepLabel(d.readiness)}</b>
+                        <div className="td-dim" style={{ fontSize: "0.85em" }}>{d.workflow_owner || "Unassigned"}</div>
+                        {canWrite && d.lifecycle_state !== "closed" ? (
+                          <div onClick={(e) => e.stopPropagation()} className="detour-assign">
+                            {d.workflow_owner === me ? null : <button className="btn-link" onClick={() => void assignToMe(d)}>Assign to me</button>}
+                            <button className="btn-link" onClick={() => void assignToSomeone(d)}>{d.workflow_owner ? "Reassign" : "Someone else"}</button>
+                          </div>
+                        ) : null}
+                        {readinessFlags(d).map((flag) => (
+                          <div key={flag.text} className={flag.bad ? "warn-note" : "td-dim"} style={{ fontSize: "0.85em" }}>{flag.text}</div>
+                        ))}
+                      </td>
+                      <td>
+                        <span className={`pill-sm ${COMMUNICATION_PILL[d.communication_status ?? ""] ?? "pill-muted"}`}>
+                          {communicationStatusLabel(d)}
+                        </span>
+                      </td>
                       {canWrite ? (
                         <td onClick={(e) => e.stopPropagation()}>
                           <button className="btn-sm" onClick={() => openEditForm(d)}>Edit</button>
@@ -654,7 +710,7 @@ export function Detours() {
                                 {actOffer(d, "manual_fallback").reason ? <span className="td-dim"> {actOffer(d, "manual_fallback").reason}</span> : null}
                               </p>
                             ) : null}
-                            <DetourCommunicationsSection detour={d} contractor={contractor} canWrite={canWrite} />
+                            <DetourCommunicationsSection detour={d} contractor={contractor} canWrite={canWrite} onDetourChanged={load} />
                             {numberYearMismatch(d.internal_number, d.start_date) ? (
                               <p className="warn-note">
                                 This detour's internal reference was issued for{" "}
@@ -766,7 +822,7 @@ function todayInputValue(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
-function DetourCommunicationsSection({ detour, contractor, canWrite }: { detour: Detour; contractor: DetourContractorNotification | null; canWrite: boolean }) {
+function DetourCommunicationsSection({ detour, contractor, canWrite, onDetourChanged }: { detour: Detour; contractor: DetourContractorNotification | null; canWrite: boolean; onDetourChanged: () => void }) {
   const [communications, setCommunications] = useState<import("@mvta/shared").DetourCommunication[]>([]);
   const [audienceChoice, setAudienceChoice] = useState<string>("");
   const [audienceOther, setAudienceOther] = useState("");
@@ -781,6 +837,9 @@ function DetourCommunicationsSection({ detour, contractor, canWrite }: { detour:
   const [recipients, setRecipients] = useState("");
   const [content, setContent] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // Where the draft's wording was copied from, so the writer knows to edit it.
+  const [seededFrom, setSeededFrom] = useState<string | null>(null);
+  const [newAudience, setNewAudience] = useState("");
   const [saving, setSaving] = useState(false);
 
   const plan = audiencePlan(detour, communications, contractor);
@@ -816,7 +875,7 @@ function DetourCommunicationsSection({ detour, contractor, canWrite }: { detour:
   const sendBlock = detourSendBlock(plan);
   const emailable = channel.toLowerCase() === "email" && recipients.trim() !== "" && content.trim() !== "";
 
-  function startDraft(forAudience: string) {
+  function startDraft(forAudience: string, forChannel?: string) {
     const item = plan.find((p) => p.audience === forAudience);
     setAudienceChoice(forAudience);
     if (item?.contractor) {
@@ -825,11 +884,34 @@ function DetourCommunicationsSection({ detour, contractor, canWrite }: { detour:
       setChannelChoice(requiredChannels.some((c) => c.toLowerCase() === "email") ? requiredChannels.find((c) => c.toLowerCase() === "email")! : OTHER);
       if (!requiredChannels.some((c) => c.toLowerCase() === "email")) setChannelOther("email");
       setRecipients(item.recipients.join(", "));
+    } else if (forChannel) {
+      setChannelChoice(forChannel);
     } else if (!channelChoice || channelChoice === OTHER) {
       setChannelChoice(requiredChannels[0] ?? OTHER);
     }
-    setContent(draftCommunicationText(detour, forAudience));
+    // An existing message for this Detour is a better start than the template:
+    // the email and the text say the same thing at different lengths, and
+    // retyping the second is how the two end up disagreeing. It is a starting
+    // point - whoever writes it still edits it.
+    const seed = forChannel ? copyFrom(communications, forAudience, forChannel) : null;
+    setContent(seed ? seed.content : draftCommunicationText(detour, forAudience));
+    setSeededFrom(seed?.from ?? null);
     setError(null);
+  }
+
+  async function addAudience() {
+    const problem = audienceAddError(detour.notification_audiences ?? [], newAudience);
+    if (problem) { setError(problem); return; }
+    setSaving(true); setError(null);
+    try {
+      await api.updateDetour(detour.id, {
+        notification_audiences: withAudience(detour.notification_audiences ?? [], newAudience),
+      });
+      setNewAudience("");
+      onDetourChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not add the audience");
+    } finally { setSaving(false); }
   }
 
   async function save() {
@@ -875,9 +957,34 @@ function DetourCommunicationsSection({ detour, contractor, canWrite }: { detour:
           <span className={item.progress === "published" ? "ok-text" : item.progress === "draft" ? "" : "warn-note"}>
             {item.progress === "published" ? "✓" : item.progress === "draft" ? "◐" : "○"} {item.audience}
           </span>
-          <span className="td-dim"> — {item.progress === "published" ? "published" : item.progress === "draft" ? "draft saved, not published" : "nothing drafted"}{item.contractor ? ` · contractor · email${item.recipients.length ? ` to ${item.recipients.join(", ")}` : " (no recipients configured - set them under Administration)"}` : item.channels.length ? ` · via ${item.channels.join(", ")}` : ""}</span>
-          {canWrite && item.progress !== "published" ? <> <button type="button" className="btn-sm" title={item.eligibility && !item.eligibility.may_draft ? sendBlock?.sentence : undefined} disabled={Boolean(item.eligibility && !item.eligibility.may_draft)} onClick={() => startDraft(item.audience)}>{item.progress === "draft" ? "Draft another" : "Draft"}</button></> : null}
+          <span className="td-dim"> — {item.progress === "published" ? "published" : item.progress === "draft" ? "not published on every channel yet" : "nothing drafted"}{item.contractor ? ` · contractor${item.recipients.length ? ` · email to ${item.recipients.join(", ")}` : " · email (no recipients configured - set them under Administration)"}` : ""}</span>
+          {/* One line per required channel: the wording differs per channel, so
+              the progress does too. Drafting starts on the channel that is
+              missing rather than on the audience in general. */}
+          {item.perChannel.length > 0 && <span className="comm-channel-marks">
+            {item.perChannel.map((state) => <button
+              key={state.channel}
+              type="button"
+              className={`comm-channel-mark is-${state.progress}`}
+              disabled={!canWrite || Boolean(item.eligibility && !item.eligibility.may_draft)}
+              title={item.eligibility && !item.eligibility.may_draft ? sendBlock?.sentence : `${state.progress === "published" ? "Published" : state.progress === "draft" ? "Drafted" : "Nothing yet"} · ${state.channel}`}
+              onClick={() => startDraft(item.audience, state.channel)}
+            >{state.progress === "published" ? "✓" : state.progress === "draft" ? "◐" : "○"} {state.channel}</button>)}
+          </span>}
         </li>)}</ul>
+        {canWrite && <div className="comm-add-audience">
+          {/* An audience the record does not name yet. It joins the Detour's own
+              list, so it is required like the rest: somebody added it on
+              purpose, and the Detour is not fully communicated without it. */}
+          <input
+            aria-label="Add an audience"
+            placeholder="Add an audience, e.g. Burnsville PD"
+            value={newAudience}
+            onChange={(event) => setNewAudience(event.target.value)}
+            onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void addAudience(); } }}
+          />
+          <button type="button" className="btn-sm" disabled={saving || !newAudience.trim()} onClick={() => void addAudience()}>Add audience</button>
+        </div>}
       </div>
     ) : <p className="td-dim">The record names no required audiences; communications here are recorded but do not change its communication status.</p>}
     {communications.map((communication) => <p key={communication.id}>
@@ -933,7 +1040,8 @@ function DetourCommunicationsSection({ detour, contractor, canWrite }: { detour:
         <label>Recipients<input value={recipients} onChange={(e) => setRecipients(e.target.value)} placeholder="Distribution list or team" /></label>
       ) : null}
       <label>Message
-        <textarea value={content} rows={6} onChange={(e) => setContent(e.target.value)} placeholder="Use Draft beside an audience to start from the record" />
+        <textarea value={content} rows={6} onChange={(e) => { setContent(e.target.value); setSeededFrom(null); }} placeholder="Choose a channel beside an audience to start from the record, or from what you have already written" />
+        {seededFrom && <small className="td-dim">Started from {seededFrom}. Edit it for this channel - a text message says less than an email.</small>}
       </label>
       <span>
         <button type="button" className="btn-sm" onClick={() => setContent(draftCommunicationText(detour, audience || undefined))}>Fill from record</button>{" "}

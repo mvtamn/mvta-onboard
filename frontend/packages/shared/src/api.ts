@@ -21,6 +21,7 @@ import type {
   ContractorPerformanceStandard,
   ContractorRecord,
   ContractorStandardTier,
+  ApproveDateExclusionResult,
   CreateDateExclusionInput,
   CreateDetourInput,
   CreateDetourIntakeInput,
@@ -43,6 +44,7 @@ import type {
   DetourIntakeStatus,
   DetourLifecycleState,
   DetourReasonCode,
+  FlaggedStop,
   DetourStatus,
   DetourWorkflowHistoryEntry,
   Event,
@@ -98,7 +100,6 @@ import type {
   OtpMonthlyRouteRollup,
   OtpMonthMeasurement,
   OtpTargetSource,
-  OtpMonthlyStopRow,
   OtpMonthlyTrendPoint,
   OtpReasonCode,
   OtpSettingsRow,
@@ -1244,13 +1245,23 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       }>(`/api/on-demand-departures${suffix}`, {}, true);
     },
 
-    getOtpMonthly(month?: string) {
-      const suffix = month ? `?month=${month}` : "";
+    /**
+     * A service month's OTP. `threshold` overrides the stored Early/Late Bias
+     * Threshold for `flagged` only - the Threshold Tuner previews a trial
+     * value with it, rather than re-deriving the list here (ADR 0034). It
+     * never moves a figure in `measurement`.
+     */
+    getOtpMonthly(month?: string, threshold?: number) {
+      const q = new URLSearchParams();
+      if (month) q.set("month", month);
+      if (threshold !== undefined) q.set("threshold", String(threshold));
+      const suffix = q.toString() ? `?${q}` : "";
       return request<{
-        stops: OtpMonthlyStopRow[];
         /** The same routes as `measurement.routes`, with the official figure as pct_ontime. */
         routes: OtpMonthlyRouteRollup[];
         measurement: OtpMonthMeasurement;
+        /** The month's Flagged Stops, worst lean first. */
+        flagged: FlaggedStop[];
         diagnostics: {
           configured: boolean;
           table_ready: boolean;
@@ -1260,6 +1271,9 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
           target: number;
           target_source: OtpTargetSource;
           weather_days_recorded: number;
+          /** The threshold `flagged` was built at. */
+          flagged_threshold: number;
+          flagged_count: number;
         };
       }>(`/api/otp-monthly${suffix}`, {}, true);
     },
@@ -1300,6 +1314,15 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<{ id: string; created_at: string }>(
         "/api/detours",
         { method: "POST", body: JSON.stringify(input) },
+        true,
+      );
+    },
+
+    /** Who is carrying this Detour. `null` hands it back to nobody. */
+    assignDetour(id: string, owner: string | null) {
+      return request<{ id: string; workflow_owner: string | null }>(
+        `/api/detours/${id}/assign`,
+        { method: "POST", body: JSON.stringify({ owner }) },
         true,
       );
     },
@@ -1632,6 +1655,22 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<OtpDateExclusion>(
         "/api/otp-date-exclusions",
         { method: "POST", body: JSON.stringify(input) },
+        true,
+      );
+    },
+
+    /**
+     * Approve a weather day, which freezes what it took out and subtracts it
+     * from the month (ADR 0038).
+     *
+     * A date the feed cannot evidence is refused with 422 rather than approved
+     * into a no-op, so the caller shows the server's reason rather than a
+     * generic failure.
+     */
+    approveDateExclusion(id: string) {
+      return request<ApproveDateExclusionResult>(
+        `/api/otp-date-exclusions/${encodeURIComponent(id)}/approve`,
+        { method: "POST" },
         true,
       );
     },

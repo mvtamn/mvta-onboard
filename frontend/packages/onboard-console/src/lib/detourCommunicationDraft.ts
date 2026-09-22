@@ -13,9 +13,28 @@ import { dateLabel } from "./detourDates.js";
 
 export type AudienceProgress = "published" | "draft" | "none";
 
+/**
+ * Where one message stands: a Detour reaches an audience on each channel the
+ * record requires, and the wording is rarely the same on all of them - a text
+ * message says less than an email. So a message is one per audience AND
+ * channel, and an audience is only told once every channel it needs has gone.
+ */
+export interface AudienceChannelState {
+  channel: string;
+  progress: AudienceProgress;
+  /** The message that exists for this pair, if one does. */
+  communicationId?: string;
+}
+
 export interface AudiencePlanItem {
   audience: string;
+  /**
+   * The audience as a whole: published only when every required channel is,
+   * draft when any message exists, none when none does.
+   */
   progress: AudienceProgress;
+  /** One entry per required channel, in the order the record requires them. */
+  perChannel: AudienceChannelState[];
   /**
    * Detour communication eligibility for this audience, as the server decided
    * it. Undefined on a server older than 1.5.249, where the console shows the
@@ -49,10 +68,26 @@ export function audiencePlan(
   const decided = new Map((detour.audience_eligibility ?? []).map((row: DetourAudienceEligibility) => [key(row.audience), row.eligibility]));
   return (detour.required_audiences ?? detour.notification_audiences ?? []).map((audience) => {
     const mine = communications.filter((c) => key(c.audience) === key(audience));
-    const progress: AudienceProgress = mine.some((c) => c.status === "published") ? "published" : mine.length > 0 ? "draft" : "none";
     const isContractor = Boolean(contractor?.name && key(contractor.name) === key(audience));
+    const wanted = isContractor ? ["email"] : channels;
+    const perChannel: AudienceChannelState[] = wanted.map((channel) => {
+      const forChannel = mine.filter((c) => key(c.channel) === key(channel));
+      const published = forChannel.find((c) => c.status === "published");
+      const draft = forChannel[0];
+      return {
+        channel,
+        progress: published ? "published" : draft ? "draft" : "none",
+        communicationId: (published ?? draft)?.id,
+      };
+    });
+    // Messages on a channel the record no longer requires still count as work
+    // done - they are why the audience reads as started rather than untouched.
+    const anyMessage = mine.length > 0;
+    const progress: AudienceProgress = perChannel.length > 0 && perChannel.every((c) => c.progress === "published")
+      ? "published"
+      : anyMessage ? "draft" : "none";
     return {
-      audience, progress,
+      audience, progress, perChannel,
       eligibility: decided.get(key(audience)),
       channels: isContractor ? ["email"] : channels,
       contractor: isContractor,
@@ -154,4 +189,46 @@ export function communicationAction(
       : canSend ? "Mark published (sent elsewhere)" : "Mark published",
     blocked: isRecorded ? undefined : sendBlock,
   };
+}
+
+/**
+ * Content to start a new message from: the same audience on another channel
+ * first, then the same channel to another audience.
+ *
+ * A text message and an email about one closure say the same thing at different
+ * lengths, and retyping the second from scratch is how the two end up
+ * contradicting each other. Seeding is a starting point, not a copy: whoever
+ * writes it still has to edit it, which is the point of having both.
+ */
+export function copyFrom(
+  communications: readonly DetourCommunication[],
+  audience: string,
+  channel: string,
+): { content: string; from: string } | null {
+  const sameAudience = communications.find((c) => key(c.audience) === key(audience) && key(c.channel) !== key(channel) && c.content.trim());
+  if (sameAudience) return { content: sameAudience.content, from: `${sameAudience.audience} · ${sameAudience.channel}` };
+  const sameChannel = communications.find((c) => key(c.channel) === key(channel) && key(c.audience) !== key(audience) && c.content.trim());
+  if (sameChannel) return { content: sameChannel.content, from: `${sameChannel.audience} · ${sameChannel.channel}` };
+  return null;
+}
+
+/**
+ * Adding an audience the record does not name yet. It joins the Detour's own
+ * list, so it is required like every other: somebody added it deliberately, and
+ * a Detour is not fully communicated until they have been told.
+ */
+export function withAudience(existing: readonly string[], audience: string): string[] {
+  const wanted = audience.trim();
+  if (!wanted) return [...existing];
+  if (existing.some((value) => key(value) === key(wanted))) return [...existing];
+  return [...existing, wanted];
+}
+
+/** Why an audience cannot be added, or null when it can. */
+export function audienceAddError(existing: readonly string[], audience: string): string | null {
+  const wanted = audience.trim();
+  if (!wanted) return "Name the audience to add.";
+  if (wanted.length > 100) return "That name is too long for an audience.";
+  if (existing.some((value) => key(value) === key(wanted))) return `${wanted} is already on this Detour.`;
+  return null;
 }

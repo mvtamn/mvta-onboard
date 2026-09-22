@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./auth/AuthContext.js";
 import { useAccess } from "./auth/AccessContext.js";
+import { usePendingIntake } from "./hooks/usePendingIntake.js";
 import { NoAccess, RequireAccess } from "./auth/RequireAccess.js";
 import { ErrorBoundary } from "./components/ErrorBoundary.js";
 import { useTheme } from "./theme/ThemeContext.js";
@@ -79,9 +80,9 @@ const PAGE_META: { match: (path: string) => boolean; title: string; sub: string 
   { match: (p) => p === "/service-operations", title: "Service Operations", sub: "Service-alert communications and operational monitoring" },
   { match: (p) => p === "/subscribers", title: "Subscribers", sub: "Opt-in totals and recent signups" },
   { match: (p) => p === "/audit", title: "Audit Log", sub: "Search every message ever posted" },
-  { match: (p) => p === "/detours", title: "Detours & Closures", sub: "Every detour/closure in one place, Avail-built or not" },
+  { match: (p) => p === "/detours", title: "Detours & Closures", sub: "Work active and upcoming detours — communications, Avail build, conflicts" },
   { match: (p) => p === "/detour-intake", title: "Detour Intake", sub: "Create and review the complete operational Detour record" },
-  { match: (p) => p === "/detour-reports", title: "Detour Reports", sub: "Search and export detour history — read-only" },
+  { match: (p) => p === "/detour-reports", title: "Detour Register", sub: "Every detour, active and past — search, filter and export, read-only" },
   { match: (p) => p === "/admin" || p.startsWith("/admin/"), title: "Administration", sub: "Manage access, resources, configuration, integrations, and governance" },
   {
     match: (p) => p === "/event-monitoring" || p.startsWith("/events/avl"),
@@ -124,7 +125,7 @@ function CompatibilityRedirect({ to }: { to: string }) {
 // One description per destination, shown in the collapsed rail's hover
 // flyout. PAGE_META can't supply these - it folds all of /admin/* into a
 // single "Administration" entry, and the flyout needs a line per link.
-type NavEntry = { to: string; end?: boolean; label: string; desc: string; icon: ReactNode };
+type NavEntry = { to: string; end?: boolean; label: string; desc: string; icon: ReactNode; /** Work waiting on this page, shown as a badge. Hidden at zero. */ count?: number };
 // `cluster` marks a category that folds into ONE icon while the rail is
 // collapsed (Administration: eight links, four of them the same wrench, which
 // is an unreadable icon stack at 64px). Its links move into a hover menu.
@@ -252,6 +253,9 @@ function AuthenticatedApp({ account, signOut }: {
   const canSeePerformanceAssessment = can("performance-assessment.view");
   const canSeeDetours = can("detours.view");
   const canSeeDetourIntake = can("detours.intake");
+  // Detour requests waiting on OCC. Nothing notifies them when one arrives, so
+  // the number has to be visible from wherever they are.
+  const { count: pendingIntakeCount } = usePendingIntake();
   const canSeeEventAvl = can("event-avl.view");
   const canSeeEventPlanning = can("event-planning.view");
   // Where a user without the Dashboard lands instead: the first workspace
@@ -336,9 +340,9 @@ function AuthenticatedApp({ account, signOut }: {
       id: "specialist-operations",
       name: "Specialist Operations",
       entries: navEntries(
-        canSeeDetours && { to: "/detours", label: "Detours & Closures", desc: "Every detour and closure in one place, Avail-built or not", icon: <IconDetour /> },
-        canSeeDetourIntake && { to: "/detour-intake", label: "Detour Intake", desc: "Create and review the complete operational Detour record", icon: <IconDetour /> },
-        canSeeDetours && { to: "/detour-reports", label: "Detour Reports", desc: "Search and export detour history — read-only", icon: <IconClock /> },
+        canSeeDetours && { to: "/detours", label: "Detours & Closures", desc: "Work active and upcoming detours — communications, Avail build, conflicts", icon: <IconDetour /> },
+        canSeeDetourIntake && { to: "/detour-intake", label: "Detour Intake", desc: "Create and review the complete operational Detour record", icon: <IconDetour />, count: pendingIntakeCount },
+        canSeeDetours && { to: "/detour-reports", label: "Detour Register", desc: "Every detour, active and past — search, filter and export, read-only", icon: <IconClock /> },
         canSeeOccTools && { to: "/occ", label: "OCC Tools", desc: "Service-risk prediction, procedure guidance, and vehicle monitoring", icon: <IconWrench /> },
       ),
     },
@@ -444,6 +448,9 @@ function AuthenticatedApp({ account, signOut }: {
                             <NavLink to={entry.to} end={entry.end} title={entry.label}>
                               {entry.icon}
                               <span className="nav-label">{entry.label}</span>
+                              {/* Work waiting on OCC, so a page nobody opened
+                                  still says it has something in it. */}
+                              {entry.count ? <span className="nav-count" aria-label={`${entry.count} waiting`}>{entry.count}</span> : null}
                             </NavLink>
                             {/* Sibling of the link, not a child: the anchor's
                                 text has to stay the label alone. */}

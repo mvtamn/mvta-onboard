@@ -57,3 +57,52 @@ test("the current service day is not settled, whatever the row says", () => {
 test("no scheduled pullout is a source gap, not a breach", () => {
   assert.strictEqual(fixedRouteDepartureOutcome(row({ pullout_scheduled: null, pullout_actual: null, pullout_delta_seconds: null }), VARIANCE, SETTLED_BEFORE), "no_schedule");
 });
+
+test("Avail's midnight placeholder is a source gap, not a missed departure", () => {
+  // The real shape of the false positive this rule was written for: 18 blocks
+  // a day arrive as Missed Pullout with a 00:00:00 scheduled pullout and no
+  // actual, and none of them has ever departed. Before the placeholder was
+  // matched they read as no_departure and became contractor penalties.
+  const placeholder = row({
+    pullout_status: "Missed Pullout",
+    pullout_scheduled: new Date("2026-09-04T05:00:00Z"), // midnight agency-local (CDT)
+    pullout_actual: null,
+    pullout_delta_seconds: null,
+  });
+  assert.strictEqual(fixedRouteDepartureOutcome(placeholder, VARIANCE, SETTLED_BEFORE), "no_schedule");
+  // Missed Login arrives the same way and must read the same.
+  assert.strictEqual(
+    fixedRouteDepartureOutcome({ ...placeholder, pullout_status: "Missed Login" }, VARIANCE, SETTLED_BEFORE),
+    "no_schedule",
+  );
+});
+
+test("the placeholder is recognised on either side of the DST boundary", () => {
+  for (const scheduled of ["2026-09-04T05:00:00Z", "2026-02-04T06:00:00Z"]) {
+    assert.strictEqual(
+      fixedRouteDepartureOutcome(
+        row({ pullout_status: "Missed Pullout", pullout_scheduled: scheduled, pullout_actual: null, pullout_delta_seconds: null }),
+        VARIANCE,
+        SETTLED_BEFORE,
+      ),
+      "no_schedule",
+      scheduled,
+    );
+  }
+});
+
+test("only exact midnight is the placeholder, so real early runs still count", () => {
+  // The guard must not swallow the genuine start of service. A 00:01 or 04:41
+  // pullout is a committed time like any other.
+  for (const scheduled of ["2026-09-04T05:01:00Z", "2026-09-04T05:00:30Z", "2026-09-04T09:41:00Z"]) {
+    assert.strictEqual(
+      fixedRouteDepartureOutcome(
+        row({ pullout_status: "Missed Pullout", pullout_scheduled: scheduled, pullout_actual: null, pullout_delta_seconds: null }),
+        VARIANCE,
+        SETTLED_BEFORE,
+      ),
+      "no_departure",
+      scheduled,
+    );
+  }
+});

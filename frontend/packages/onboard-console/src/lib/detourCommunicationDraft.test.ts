@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Detour, DetourCommunication, DetourCommunicationEligibility } from "@mvta/shared";
-import { audiencePlan, communicationAction, communicationSubject, detourSendBlock, draftCommunicationText, mailtoLink, nextAudience } from "./detourCommunicationDraft.js";
+import { audienceAddError, audiencePlan, communicationAction, communicationSubject, copyFrom, detourSendBlock, draftCommunicationText, mailtoLink, nextAudience, withAudience } from "./detourCommunicationDraft.js";
 
 const detour = {
   internal_number: "MVTA-DET-2026-0012", number: null, closure: "Cedar Ave bridge closed", location: "Cedar Ave at 5th St",
@@ -8,23 +8,53 @@ const detour = {
   segments: [{ id: "s1", detour_id: "d", routes: "460 SB", directions: "Via Nicollet to 6th", sort_order: 0 }],
   action_instructions: "Follow the posted detour.", riders_directed: "Use the stop at 6th St", affected_stops_and_stations: null,
   operational_impacts: null, confirmation_contact: "Project office 555-0100",
-  notification_audiences: ["Operators", "Operations management"], notification_channels: ["email", "radio"],
+  notification_audiences: ["Operators", "Operations management"], notification_channels: ["email", "sms"],
 } as unknown as Detour;
 
-function comm(audience: string, status: DetourCommunication["status"]): DetourCommunication {
-  return { id: `${audience}-${status}`, detour_id: "d", audience, channel: "email", recipients: null, content: "x", status, outcome: null, created_by: "a", created_at: "", published_by: null, published_at: null };
+function comm(audience: string, status: DetourCommunication["status"], channel = "email"): DetourCommunication {
+  return { id: `${audience}-${channel}-${status}`, detour_id: "d", audience, channel, recipients: null, content: "x", status, outcome: null, created_by: "a", created_at: "", published_by: null, published_at: null };
+}
+
+/** Told on every channel the record requires. */
+function told(audience: string): DetourCommunication[] {
+  return [comm(audience, "published"), comm(audience, "published", "sms")];
 }
 
 describe("audiencePlan", () => {
   it("reports each required audience's progress, matching case-insensitively", () => {
-    const plan = audiencePlan(detour, [comm("operators", "published"), comm("Operations management", "draft")]);
+    const plan = audiencePlan(detour, [...told("operators"), comm("Operations management", "draft")]);
     expect(plan.map((p) => [p.audience, p.progress])).toEqual([["Operators", "published"], ["Operations management", "draft"]]);
-    expect(plan[0].channels).toEqual(["email", "radio"]);
+    expect(plan[0].channels).toEqual(["email", "sms"]);
+  });
+
+  it("an audience is only told once every required channel has gone", () => {
+    const plan = audiencePlan(detour, [comm("Operators", "published")]);
+    expect(plan[0].progress).toBe("draft");
+    expect(plan[0].perChannel).toEqual([
+      { channel: "email", progress: "published", communicationId: "Operators-email-published" },
+      { channel: "sms", progress: "none", communicationId: undefined },
+    ]);
+  });
+
+  it("tracks each channel separately, so one can be sent while another is drafted", () => {
+    const plan = audiencePlan(detour, [comm("Operators", "published"), comm("Operators", "draft", "sms")]);
+    expect(plan[0].perChannel.map((c) => [c.channel, c.progress]))
+      .toEqual([["email", "published"], ["sms", "draft"]]);
+    expect(plan[0].progress).toBe("draft");
+  });
+
+  it("the contractor is reached by email alone, so email alone tells them", () => {
+    const plan = audiencePlan({ ...detour, required_audiences: ["SST"] }, [comm("SST", "published")],
+      { name: "SST", recipients: ["ops@example.com"] });
+    expect(plan[0].perChannel).toEqual([
+      { channel: "email", progress: "published", communicationId: "SST-email-published" },
+    ]);
+    expect(plan[0].progress).toBe("published");
   });
   it("opens on the first audience with nothing yet, then on drafts", () => {
-    expect(nextAudience(audiencePlan(detour, [comm("Operators", "published")]))?.audience).toBe("Operations management");
-    expect(nextAudience(audiencePlan(detour, [comm("Operators", "draft"), comm("Operations management", "published")]))?.audience).toBe("Operators");
-    expect(nextAudience(audiencePlan(detour, [comm("Operators", "published"), comm("Operations management", "published")]))).toBeNull();
+    expect(nextAudience(audiencePlan(detour, told("Operators")))?.audience).toBe("Operations management");
+    expect(nextAudience(audiencePlan(detour, [comm("Operators", "draft"), ...told("Operations management")]))?.audience).toBe("Operators");
+    expect(nextAudience(audiencePlan(detour, [...told("Operators"), ...told("Operations management")]))).toBeNull();
   });
   it("uses the server's required list and marks the contractor as email-to-recipients", () => {
     const plan = audiencePlan({ ...detour, required_audiences: ["Operators", "SST"] }, [], { name: "SST", recipients: ["ops@sst.com"] });
@@ -142,5 +172,42 @@ describe("communicationAction", () => {
     // sending rather than guessing at a transport.
     expect(communicationAction({ ...sent, channel: "radio", recipients: "someone" }, undefined, undefined))
       .toMatchObject({ canSend: false, isRecorded: false, recordLabel: "Mark published" });
+  });
+});
+
+describe("starting a message from one that exists", () => {
+  it("prefers the same audience on another channel", () => {
+    const messages = [
+      { ...comm("Operators", "published"), content: "Full email wording" },
+      { ...comm("Riders", "published", "sms"), content: "Short text" },
+    ];
+    expect(copyFrom(messages, "Operators", "sms")).toEqual({ content: "Full email wording", from: "Operators · email" });
+  });
+
+  it("falls back to the same channel for another audience", () => {
+    const messages = [{ ...comm("Riders", "published", "sms"), content: "Short text" }];
+    expect(copyFrom(messages, "Operators", "sms")).toEqual({ content: "Short text", from: "Riders · sms" });
+  });
+
+  it("offers nothing when there is nothing to copy", () => {
+    expect(copyFrom([], "Operators", "sms")).toBeNull();
+    expect(copyFrom([{ ...comm("Operators", "draft"), content: "  " }], "Operators", "sms")).toBeNull();
+  });
+});
+
+describe("adding an audience to the Detour", () => {
+  it("appends it, so it is required like the rest", () => {
+    expect(withAudience(["Operators"], "Burnsville PD")).toEqual(["Operators", "Burnsville PD"]);
+  });
+
+  it("refuses a name the Detour already has, whatever the casing", () => {
+    expect(audienceAddError(["Operators"], "operators")).toContain("already on this Detour");
+    expect(withAudience(["Operators"], "operators")).toEqual(["Operators"]);
+  });
+
+  it("refuses an empty or oversized name", () => {
+    expect(audienceAddError([], "   ")).toBe("Name the audience to add.");
+    expect(audienceAddError([], "x".repeat(101))).toContain("too long");
+    expect(audienceAddError(["Operators"], "Burnsville PD")).toBeNull();
   });
 });
