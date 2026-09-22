@@ -5,6 +5,7 @@ import {
   type OtpMonthlyRouteRollup,
   type OtpStopExclusion,
   type OtpDateExclusion,
+  type DateExclusionSnapshot,
   type OtpReasonCode,
   type OtpAuditEntry,
   type OtpMonthlyTrendPoint,
@@ -116,6 +117,11 @@ export function OtpModule() {
   const [selectedMonth, setSelectedMonth] = useState<string>(currentServiceMonth());
 
   const [liveOtp, setLiveOtp] = useState<OtpMonthlyResponse | null>(null);
+  // Approving anything moves the official figure, so the measurement has to be
+  // read again. It did not used to be: approving a stop exclusion updated the
+  // decision list and left Route Summary showing the figure from before it,
+  // until the month was switched or the page reloaded.
+  const [measurementTick, setMeasurementTick] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [stopExclusions, setStopExclusions] = useState<OtpStopExclusion[]>([]);
@@ -183,7 +189,7 @@ export function OtpModule() {
     return () => {
       cancelled = true;
     };
-  }, [selectedMonth]);
+  }, [selectedMonth, measurementTick]);
 
   // record_count is the server's count of stop/day rows for the month. It used
   // to be `stops.length`, back when the whole table was shipped here so the
@@ -295,6 +301,7 @@ export function OtpModule() {
     const refreshed = await api.getStopExclusions(serviceMonth);
     setStopExclusions(refreshed.exclusions);
     setAuditRefreshTick((t) => t + 1);
+    setMeasurementTick((t) => t + 1);
   }
 
   async function resolve(stop: FlaggedStop, action: "approve" | "reject") {
@@ -382,6 +389,25 @@ export function OtpModule() {
     setAuditRefreshTick((t) => t + 1);
   }
 
+  /**
+   * Approve a weather day. The server freezes what the date took out and the
+   * month subtracts it (ADR 0038), so the measurement is read again rather
+   * than left showing the figure from before the approval.
+   *
+   * A refusal carries the server's own reason - the daily feed has nothing for
+   * that date, or the month has no rows for its day of week - and it is shown
+   * as it came, because "could not approve" would leave the reviewer with no
+   * idea whether to retry, pick another date, or give up.
+   */
+  async function approveDateExclusion(id: string): Promise<DateExclusionSnapshot> {
+    const result = await api.approveDateExclusion(id);
+    const refreshed = await api.getDateExclusions();
+    setDateExclusions(refreshed.exclusions);
+    setAuditRefreshTick((t) => t + 1);
+    setMeasurementTick((t) => t + 1);
+    return result.snapshot;
+  }
+
   const meta = PAGE_META[page];
 
   return (
@@ -457,6 +483,7 @@ export function OtpModule() {
           dateExclusions={dateExclusions}
           reasonCodes={dateReasonCodes}
           onAdd={addDateExclusion}
+          onApprove={approveDateExclusion}
           recordedThisMonth={liveOtp?.diagnostics.weather_days_recorded ?? 0}
           appliedThisMonth={liveOtp?.measurement?.weather_days_applied ?? 0}
         />
@@ -787,12 +814,14 @@ function WeatherPage({
   dateExclusions,
   reasonCodes,
   onAdd,
+  onApprove,
   recordedThisMonth,
   appliedThisMonth,
 }: {
   dateExclusions: OtpDateExclusion[];
   reasonCodes: OtpReasonCode[];
   onAdd: (input: { scope: "Agency" | "Route"; route_id: number | null; service_date: string; reason_code: string; notes: string }) => Promise<void>;
+  onApprove: (id: string) => Promise<DateExclusionSnapshot>;
   recordedThisMonth: number;
   appliedThisMonth: number;
 }) {
@@ -825,6 +854,35 @@ function WeatherPage({
       setError(err instanceof ApiError ? err.message : "Could not save this exclusion.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  // Keyed by exclusion, not held as one banner: a refusal belongs against the
+  // date it refused, and approving a second date must not clear the first
+  // one's explanation.
+  const [approving, setApproving] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<Record<string, string>>({});
+  const [rowResult, setRowResult] = useState<Record<string, string>>({});
+
+  async function approve(exclusion: OtpDateExclusion) {
+    setApproving(exclusion.id);
+    setRowError((e) => ({ ...e, [exclusion.id]: "" }));
+    try {
+      const snapshot = await onApprove(exclusion.id);
+      const stops = snapshot.stops === 1 ? "1 stop" : `${snapshot.stops} stops`;
+      setRowResult((r) => ({
+        ...r,
+        [exclusion.id]: `Removed ${snapshot.departures.toLocaleString()} departures across ${stops} (${snapshot.day_of_week}).`,
+      }));
+    } catch (err) {
+      // The server's own reason, as it came. It says which of the three things
+      // was missing and what to do instead; "could not approve" would not.
+      setRowError((e) => ({
+        ...e,
+        [exclusion.id]: err instanceof ApiError ? err.message : "Could not approve this date.",
+      }));
+    } finally {
+      setApproving(null);
     }
   }
 
@@ -873,7 +931,7 @@ function WeatherPage({
       <div className="subcard" style={{ overflow: "hidden" }}>
         <table className="data">
           <thead>
-            <tr><th>Date</th><th>Scope</th><th>Reason</th><th>Status</th><th>Contractor notified</th></tr>
+            <tr><th>Date</th><th>Scope</th><th>Reason</th><th>Status</th><th>Removed from OTP</th><th>Contractor notified</th></tr>
           </thead>
           <tbody>
             {sorted.map((d) => (
@@ -884,7 +942,48 @@ function WeatherPage({
                   {reasonCodes.find((r) => r.code === d.reason_code)?.label ?? d.reason_code}
                   {d.notes ? <div className="td-dim" style={{ marginTop: 2 }}>{d.notes}</div> : null}
                 </td>
-                <td>{d.status === "Approved" ? <span className="pill-sm pill-success">Approved</span> : <span className="pill-sm pill-warning">Proposed</span>}</td>
+                <td>
+                  {d.status === "Approved" ? (
+                    <>
+                      <span className="pill-sm pill-success">Approved</span>
+                      {d.approved_by ? (
+                        <div className="td-dim" style={{ marginTop: 2 }}>
+                          {d.approved_by}{d.approved_at ? ` · ${d.approved_at.slice(0, 10)}` : ""}
+                        </div>
+                      ) : null}
+                    </>
+                  ) : (
+                    <>
+                      <span className="pill-sm pill-warning">Proposed</span>
+                      <div style={{ marginTop: 4 }}>
+                        <button
+                          className="btn-post btn-sm"
+                          disabled={approving !== null}
+                          onClick={() => approve(d)}
+                        >
+                          {approving === d.id ? "Approving…" : "Approve"}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                  {rowError[d.id] ? (
+                    <div className="error-text" style={{ marginTop: 4, fontSize: "0.85em" }} role="alert">{rowError[d.id]}</div>
+                  ) : null}
+                  {rowResult[d.id] ? (
+                    <div className="ok-text" style={{ marginTop: 4, fontSize: "0.85em" }}>{rowResult[d.id]}</div>
+                  ) : null}
+                </td>
+                <td>
+                  {d.status !== "Approved" ? (
+                    <span className="muted">—</span>
+                  ) : d.excluded_departures ? (
+                    <b>{d.excluded_departures.toLocaleString()}</b>
+                  ) : (
+                    // Approved with nothing frozen behind it: only possible for
+                    // a date approved before the snapshot existed.
+                    <span className="muted">Nothing recorded</span>
+                  )}
+                </td>
                 <td>
                   {!d.notified ? (
                     <span className="pill-sm pill-muted">Not yet notified</span>

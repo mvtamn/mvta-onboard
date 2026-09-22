@@ -1698,6 +1698,29 @@ export interface OtpDateExclusion {
   excluded_departures: number;
 }
 
+/**
+ * What approving a weather day froze: the departures that left the month's
+ * official figure, at the moment the reviewer approved it (ADR 0038).
+ *
+ * `departures` is what actually came out - fixed-route service only - so it is
+ * the number to show a reviewer, not the raw size of the day.
+ */
+export interface DateExclusionSnapshot {
+  service_month: string;
+  day_of_week: string;
+  /** Route/stop rows frozen. */
+  stops: number;
+  departures: number;
+}
+
+export interface ApproveDateExclusionResult {
+  exclusion: OtpDateExclusion;
+  snapshot: DateExclusionSnapshot;
+}
+
+/** Why an approval was refused, when the date could not be evidenced. */
+export type DateExclusionRefusal = "no_daily_data" | "day_of_week_absent" | "nothing_to_subtract";
+
 export interface CreateDateExclusionInput {
   scope: DateExclusionScope;
   route_id?: number | null;
