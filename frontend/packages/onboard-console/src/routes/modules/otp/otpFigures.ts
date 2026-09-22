@@ -7,7 +7,7 @@
 // recomputed its own "official" percentage from rows it had flagged itself,
 // and compared it against a hardcoded 85, so Route Summary and the Dashboard
 // could disagree with each other and with the contractor's assessment.
-import type { OtpMonthMeasurement, OtpRouteFigure, OtpTargetSource } from "@mvta/shared";
+import type { FlaggedStop, OtpMonthMeasurement, OtpRouteFigure, OtpTargetSource } from "@mvta/shared";
 import type { RouteRow } from "./otpData.js";
 
 export interface OtpDisplayRoute {
@@ -110,3 +110,42 @@ export function weatherSentence(recorded: number, applied = 0): string {
 }
 
 export const percentText = (pct: number | null): string => pct === null ? "—" : `${pct}%`;
+
+/** A Flagged Stop as the Review Queue renders it. Percentages, not shares. */
+export interface QueueRow {
+  key: string;
+  routeLabel: string;
+  stopName: string;
+  stopId: number;
+  dayOfWeek: string;
+  /** Departures the flag was worked out over. */
+  sampled: number;
+  earlyPct: number;
+  ontimePct: number;
+  latePct: number;
+  missedPct: number;
+  /** Which way the stop leans - the reason it is in front of a reviewer. */
+  biasLabel: "Early-biased" | "Late-biased";
+}
+
+/**
+ * The server decides which stops are here and in what order (ADR 0034); this
+ * only turns one into the row the queue draws. The monthly feed has no
+ * average-seconds variance, so the lean is read off the shares themselves -
+ * which is what the queue displayed for every live row anyway.
+ */
+export function queueRow(stop: FlaggedStop): QueueRow {
+  return {
+    key: `${stop.route_id}-${stop.stop_id}-${stop.day_of_week}`,
+    routeLabel: stop.route_label ?? String(stop.route_id),
+    stopName: stop.stop_name ?? `Stop ${stop.stop_id}`,
+    stopId: stop.stop_id,
+    dayOfWeek: stop.day_of_week,
+    sampled: stop.total,
+    earlyPct: asPercent(stop.pct_early) ?? 0,
+    ontimePct: asPercent(stop.pct_ontime) ?? 0,
+    latePct: asPercent(stop.pct_late) ?? 0,
+    missedPct: asPercent(stop.pct_missed) ?? 0,
+    biasLabel: stop.pct_early > stop.pct_late ? "Early-biased" : "Late-biased",
+  };
+}

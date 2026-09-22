@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OtpComplianceAdmin } from "./OtpComplianceAdmin.js";
 import { OtpModule } from "./modules/otp/OtpModule.js";
@@ -11,14 +11,22 @@ vi.mock("../config.js", () => ({ api: {
   ] }),
   createReasonCode: vi.fn(),
   updateReasonCode: vi.fn(),
-  getOtpMonthly: vi.fn().mockResolvedValue({
-    stops: [
-      { route_id: 490, route_label: "490", stop_id: 13209, stop_name: "Wash/Coffman SW", day_of_week: "Mon", total: 34, ontime: 8, pct_early: 0.324, pct_late: 0.441, pct_ontime: 0.235, pct_missed: 0 },
-      { route_id: 444, route_label: "444", stop_id: 31928, stop_name: "Burnsville Tran", day_of_week: "Mon", total: 282, ontime: 132, pct_early: 0.08, pct_late: 0.04, pct_ontime: 0.88, pct_missed: 0 },
-    ],
-    routes: [],
-    diagnostics: { configured: true, table_ready: true, service_month: "202609", record_count: 2, routes_below_target: 0, target: 0.85 },
-  }),
+  // The server decides which stops are flagged and how many (ADR 0034); the
+  // console renders the answer. `threshold` is the tuner's trial value.
+  getOtpMonthly: vi.fn().mockImplementation((_month?: string, threshold?: number) =>
+    Promise.resolve({
+      flagged: [
+        { route_id: 490, route_label: "490", stop_id: 13209, stop_name: "Wash/Coffman SW", day_of_week: "Monday", total: 34, pct_early: 0.324, pct_late: 0.441, pct_ontime: 0.235, pct_missed: 0 },
+      ],
+      routes: [],
+      diagnostics: {
+        configured: true, table_ready: true, service_month: "202609", record_count: 2,
+        routes_below_target: 0, target: 0.85,
+        flagged_threshold: threshold ?? 0.25,
+        flagged_count: threshold === undefined ? 7 : 3,
+      },
+    }),
+  ),
   getOtpMonthlyTrend: vi.fn().mockResolvedValue({ trend: [] }),
   getDateExclusions: vi.fn().mockResolvedValue({ exclusions: [] }),
   getStopExclusions: vi.fn().mockResolvedValue({ exclusions: [] }),
@@ -54,8 +62,32 @@ describe("OTP compliance administration", () => {
     // they arrive at all.
     expect(await screen.findByText("Currently applied (25%)")).toBeInTheDocument();
     expect(await screen.findByText("Preview threshold: 25.0%")).toBeInTheDocument();
-    // Only the 44.1%-late stop clears a 25% early/late share.
     expect(await screen.findByText("At preview threshold (25.0%)")).toBeInTheDocument();
+  });
+
+  it("asks the server for the count at a trial threshold instead of working it out here", async () => {
+    const { api } = (await import("../config.js")) as unknown as {
+      api: { getOtpMonthly: ReturnType<typeof vi.fn> };
+    };
+    api.getOtpMonthly.mockClear();
+    render(<OtpComplianceAdmin />);
+
+    // The count in force comes from a call with no threshold, so the server
+    // applies the stored one.
+    await screen.findByText("Currently applied (25%)");
+    await vi.waitFor(() =>
+      expect(api.getOtpMonthly.mock.calls).toContainEqual([expect.any(String)]),
+    );
+    expect(await screen.findByText("7")).toBeInTheDocument();
+
+    // Moving the slider asks again, with the trial value - it is never
+    // re-derived in the browser (ADR 0034).
+    fireEvent.change(await screen.findByRole("slider"), { target: { value: "40" } });
+    await vi.waitFor(
+      () => expect(api.getOtpMonthly.mock.calls).toContainEqual([expect.any(String), 0.4]),
+      { timeout: 2000 },
+    );
+    expect(await screen.findByText("At preview threshold (40.0%)")).toBeInTheDocument();
   });
 
   it("no longer offers Administration or Threshold Tuner inside the OTP module", async () => {

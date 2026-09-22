@@ -5,6 +5,15 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.292] - 2026-09-22
+
+- **The Review Queue reads the server's Flagged Stops.** Second half of ADR-0034: `OtpModule` renders `flagged` from `GET /otp-monthly` instead of deriving its own list, and `deriveCandidatesFromLive`, `DATA.candidates` and the console's copy of the threshold are gone. `usingLiveOtp` reads `diagnostics.record_count`; `stops` no longer travels, and `OtpMonthlyStopRow` is deleted with it - a month was 400-900 rows sent so the browser could filter them.
+- **Stops outside the fixed-route standard leave the queue.** Special-event, on-demand and non-revenue routes were reviewable and actionable to no effect, because the route is already outside Official Departure OTP. A row now reads day of week and departures sampled rather than a direction the feed does not carry, which every live row printed as an em dash.
+- **The Threshold Tuner previews through `?threshold=` and takes a month.** It re-derived the list locally at two thresholds on every slider tick - the second copy of the rule this ADR exists to prevent. It now asks the API, debounced, and can preview against any past month instead of only the current one.
+- **The three review write paths share one helper.** `resolve`, `copyFromPrevious` and `copyAllFromPrevious` each spelled out write-then-refetch-then-refresh-the-timeline; with the mock branch gone they collapse onto `record` + `refreshDecisions`.
+- **Preview mode keeps its sample routes and loses its sample queue.** Eleven invented stops with no `route_id` could be approved, which only flipped local state - the wrong lesson on the one page whose purpose is recording real decisions. The queue says the feed has no rows instead.
+- **Verified.** `OtpModule` gets its first tests (4) plus 4 for the queue row and 1 for the tuner's fetch; the queue-row test caught a real defect before review, JSX rendering `·` literally rather than a separator. Console 770 passing, backend 1263 passing, typecheck clean. No migration.
+
 ## [1.5.291] - 2026-09-22
 
 - **The Audit Stream's month scope reached only half the stream.** `?month=` filtered `OtpStopExclusions` and was never applied to `OtpDateExclusions`, so "Current month only" returned that month's stop decisions alongside every Weather Day Exclusion ever recorded. A weather day is scoped by the date it happened - `LEFT(service_date, 6)`, since `service_date` is CHAR(8) - not by when somebody typed it in, which can be a different month.
@@ -23,7 +32,6 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **`vw_OtpMonthlyRouteStop` publishes the new rule verbatim**, regenerated from `lib/otpMonth/rules.ts`; `rules.test.ts` reads migration 140 and fails if they drift. A report sums `AssessableTotalDepartures`/`AssessableOnTimeDepartures` rather than filtering on `IsAssessable`, because a date exclusion reduces a row instead of removing it. `IsAssessable` stays and still answers the figure before weather.
 - **Deliberately not done:** holidays are not excluded — Labor Day's reduced service still sits in September's Monday bucket and skews every day-of-week reading, including bias flagging, but what a holiday is worth is a contract question. Nothing notifies the contractor; the "notified"/"acknowledged" flags remain display-only. ADR 0038. Migration 140. 7 new checks; backend and frontend suites green.
 
-
 ## [1.5.288] - 2026-09-21
 
 - **Which stops the Review Queue shows is decided on the server now.** ADR-0034 puts the flagging rule in `functions-restapi/src/lib/otpFlaggedStops.ts`: it takes the month's stop rows and a threshold and returns the Flagged Stops, worst lean first. `GET /otp-monthly` returns that list as `flagged`, beside `measurement` and never inside it - the measurement is the contractual figure ADR-0033 fixed in one place, and the threshold behind this list is a knob an administrator moves. `CONTEXT.md` gains **Flagged Stop** and **Early/Late Bias Threshold**; the word "candidate" is deliberately not reused, since it already means an Occurrence raised against an Agreement.
@@ -31,6 +39,7 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **Only fixed-route service is flagged, and an excluded stop stays visible.** Excluding a stop on a special-event, on-demand or non-revenue route would move no figure; a route with no classification row counts as fixed route, so a new route is reviewable by default. Approved Stop Exclusions are deliberately not filtered out, so a past decision can be seen and reversed.
 - **`?threshold=` previews a trial value.** The Threshold Tuner could compute a trial count in the browser, and that is exactly what put the rule in two places; it asks the API instead. `readEarlyLateBiasThreshold` comes out of the `/otp-settings` handler so both readers share it, with its missing-table and missing-row fallback split out as a pure branch.
 - **Nothing on screen changes yet.** The Review Queue and the Threshold Tuner still derive their own list; the next release moves them onto `flagged` and drops `stops` from the response. Stops on special-event and on-demand routes leave the queue at that point. No migration. 11 new checks; backend suite green.
+
 ## [1.5.287] - 2026-09-21
 
 - **The garage-departure rule is declared once instead of written twice.** It has to exist in two forms - the per-row judgement Fixed Route and On-Demand Garage Departures show, and the `WHERE` clause the nightly candidate pass selects with - and both were hand-written and held together by a comment reading "mirrors ... clause for clause". The midnight-placeholder clause added in 1.5.285 and rewritten in 1.5.286 is what it looked like when it went wrong: one idea, spelled `agencyMinuteOfDay(d) === 0` on one side and a double `AT TIME ZONE` on the other.

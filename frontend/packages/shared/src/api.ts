@@ -99,7 +99,6 @@ import type {
   OtpMonthlyRouteRollup,
   OtpMonthMeasurement,
   OtpTargetSource,
-  OtpMonthlyStopRow,
   OtpMonthlyTrendPoint,
   OtpReasonCode,
   OtpSettingsRow,
@@ -1257,7 +1256,6 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       if (threshold !== undefined) q.set("threshold", String(threshold));
       const suffix = q.toString() ? `?${q}` : "";
       return request<{
-        stops: OtpMonthlyStopRow[];
         /** The same routes as `measurement.routes`, with the official figure as pct_ontime. */
         routes: OtpMonthlyRouteRollup[];
         measurement: OtpMonthMeasurement;
