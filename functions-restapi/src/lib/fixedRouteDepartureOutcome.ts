@@ -7,6 +7,8 @@
 // Why exactly these statuses, and why the settled-day guard, is argued at
 // length in functions/complianceCandidatesPoll.ts; this file only holds the
 // rule. Change it there in spirit and here in code.
+import { agencyMinuteOfDay } from "./missedTripTime";
+
 export const DEPARTURE_OUTCOME_STATUSES = [
   "Missed Pullout",
   "Missed Login",
@@ -59,13 +61,13 @@ export interface FixedRouteDepartureJudgement {
 // is when buses pull IN, and no midnight pullout has ever been observed to
 // happen.
 function scheduledAtAgencyMidnight(scheduled: Date | string): boolean {
-  // Avail's timestamps are agency-local wall clock carrying no zone, and they
-  // are stored and read back digit for digit, so the UTC accessors report the
-  // agency-local time rather than a converted one.
-  if (scheduled instanceof Date) {
-    return scheduled.getUTCHours() === 0 && scheduled.getUTCMinutes() === 0 && scheduled.getUTCSeconds() === 0;
-  }
-  return /[T ]00:00:00/.test(scheduled);
+  // Midnight in agency time. Since migration 138 these are real UTC instants,
+  // so the placeholder is 05:00Z in summer and 06:00Z in winter and cannot be
+  // recognised by reading the UTC clock. Seconds are the same in either zone,
+  // every US offset being a whole number of minutes.
+  const date = scheduled instanceof Date ? scheduled : new Date(scheduled);
+  if (Number.isNaN(date.getTime())) return false;
+  return agencyMinuteOfDay(date) === 0 && date.getUTCSeconds() === 0;
 }
 
 // Mirrors garageDepartureCandidatePredicate() in complianceCandidatesPoll.ts

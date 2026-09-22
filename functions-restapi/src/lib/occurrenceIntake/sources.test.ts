@@ -58,7 +58,11 @@ test("Avail's midnight placeholder is excluded like an absent schedule", () => {
   // pullout, it sends 00:00:00 instead, and those rows were most of the
   // candidates raised each night. The console applies the same rule in
   // lib/fixedRouteDepartureOutcome.ts, so the two cannot disagree.
-  assert.match(garageDepartureCandidatePredicate(), /CAST\(d\.pullout_scheduled AS TIME\) <> '00:00:00'/);
+  assert.match(
+    garageDepartureCandidatePredicate(),
+    /AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time' AS TIME\) <> '00:00:00'/,
+    "midnight is agency-local; the column holds UTC instants since migration 138",
+  );
 });
 
 test("matches the statuses that say a departure was missed", () => {
