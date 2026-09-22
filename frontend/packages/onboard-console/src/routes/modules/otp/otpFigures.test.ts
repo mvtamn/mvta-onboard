@@ -8,6 +8,7 @@ function route(overrides: Partial<OtpRouteFigure> = {}): OtpRouteFigure {
   return {
     route_id: 460, route_label: "460", route_category: "FixedRoute",
     raw: figure(300, 210), excluded: figure(100, 40), assessable: figure(200, 170),
+    stop_excluded: figure(100, 40), date_excluded: figure(0, 0),
     below_target: false, ...overrides,
   };
 }
@@ -59,13 +60,25 @@ describe("sentences", () => {
     expect(targetSentence(85, "default")).toMatch(/no performance standard is configured/);
   });
 
-  it("says weather days are recorded and not applied, and why", () => {
+  it("says nothing was removed while no weather day is approved", () => {
     expect(weatherSentence(0)).toMatch(/No weather or emergency days/);
     expect(weatherSentence(1)).toMatch(/^1 day is recorded/);
     const sentence = weatherSentence(3);
     expect(sentence).toMatch(/3 days are recorded/);
-    expect(sentence).toMatch(/NOT removed/);
-    expect(sentence).toMatch(/day of week, not by date/);
+    // A recorded day is a request, not an adjustment.
+    expect(sentence).toMatch(/None is approved, so none is removed/);
+  });
+
+  it("says what an approved weather day is subtracting, and leaves raw alone", () => {
+    const one = weatherSentence(1, 1);
+    expect(one).toMatch(/1 is approved and subtracting its departures/);
+    expect(one).toMatch(/Raw OTP is left as Avail published it/);
+    // Recorded but unapproved days are counted separately, so the sentence
+    // never implies the figure was adjusted for all of them.
+    const some = weatherSentence(3, 1);
+    expect(some).toMatch(/1 is approved and subtracting/);
+    expect(some).toMatch(/other 2 days are recorded but not approved/);
+    expect(weatherSentence(3, 3)).not.toMatch(/not approved/);
   });
 
   it("never prints a percentage it does not have", () => {

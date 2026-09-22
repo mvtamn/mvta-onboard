@@ -479,6 +479,7 @@ export function OtpModule() {
           reasonCodes={dateReasonCodes}
           onAdd={addDateExclusion}
           recordedThisMonth={liveOtp?.diagnostics.weather_days_recorded ?? 0}
+          appliedThisMonth={liveOtp?.measurement?.weather_days_applied ?? 0}
         />
       )}
       {page === "monthly" && <MonthlyAssessmentsPage otp={liveOtp} displayRows={displayRows} targetPct={targetPct} />}
@@ -811,11 +812,13 @@ function WeatherPage({
   reasonCodes,
   onAdd,
   recordedThisMonth,
+  appliedThisMonth,
 }: {
   dateExclusions: OtpDateExclusion[];
   reasonCodes: OtpReasonCode[];
   onAdd: (input: { scope: "Agency" | "Route"; route_id: number | null; service_date: string; reason_code: string; notes: string }) => Promise<void>;
   recordedThisMonth: number;
+  appliedThisMonth: number;
 }) {
   const [scope, setScope] = useState<"Agency" | "Route">("Agency");
   const [routeIdInput, setRouteIdInput] = useState("");
@@ -854,7 +857,7 @@ function WeatherPage({
   return (
     <>
       <div className="subcard empty-note" style={{ marginBottom: 16 }}>
-        {weatherSentence(recordedThisMonth)}
+        {weatherSentence(recordedThisMonth, appliedThisMonth)}
       </div>
       <div className="subcard" style={{ marginBottom: 16 }}>
         {error ? <p className="error-text">{error}</p> : null}
