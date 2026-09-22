@@ -1061,6 +1061,39 @@ The IT-controlled Entra/Portal recovery path used to restore privileged OnBoard
 access when the in-app approval path cannot operate.
 _Avoid_: admin bypass, shared emergency login
 
+## Garage departure language
+
+**Garage departure**:
+The departure of an assigned vehicle from its garage or start location,
+measured as the variance between its scheduled and actual departure. One
+concept with one source per service type, never both (ADR 0028): Avail's
+Pullout Reports for fixed route, Spare's duties for on-demand. A departure
+with no source for its service type is absent, not inferred from the other.
+_Avoid_: pullout, depot departure, two separate metrics
+
+**Departure outcome**:
+What one Garage departure is judged to have been, once its service day is
+settled: late, no departure, departed, or one of the reasons it cannot be
+judged - no schedule, not settled, and per service type either unresolved
+(fixed route: Avail has not finished classifying) or cancelled (on-demand:
+the duty had no departure to make). Late and no departure are the two that
+raise a Compliance occurrence. The outcome is a judgement of the evidence,
+not a status copied from a feed.
+_Avoid_: pullout status, duty status, breach
+
+**Departure allowance**:
+How late a Garage departure may be before it is worth a contractor's review.
+Ten minutes by default, set per environment. A departure inside the allowance
+is not a breach, whatever the source's own status says about it.
+_Avoid_: variance threshold, grace period, tolerance
+
+**Settled service day**:
+A service date whose Garage departure evidence has stopped moving, so its rows
+can be judged. A row on a day that is not settled has no Departure outcome
+yet, because a source status still in motion would raise a Compliance
+occurrence that is never withdrawn.
+_Avoid_: closed day, finalized period, yesterday
+
 ## Missed-trip language
 
 **Missed-trip candidate**:
