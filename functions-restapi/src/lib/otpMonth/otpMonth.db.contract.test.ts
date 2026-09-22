@@ -166,9 +166,10 @@ test("OTP month measurement against real SQL", { skip: !connectionString && "DEC
 
     await t.test("an approved weather day subtracts exactly what it was approved with", async () => {
       const snapshot = await takeDateExclusionSnapshot(pool, SNOW_MONDAY, "20260810", null);
-      // Only route 460 stop 100 is frozen: the fair shuttle's stop matches no
-      // monthly row, so storing it would make the date look evidenced while
-      // moving nothing.
+      // Only route 460 stop 100 is frozen. The fair shuttle ran that Monday and
+      // is in the monthly feed, but it is not this standard's service, so a
+      // snapshot row for it could never subtract anything - and 30 is then
+      // exactly what left the figure, which is what the receipt should say.
       assert.deepEqual(snapshot, { kind: "taken", serviceMonth: "202608", dayOfWeek: "Mon", rows: 1, departures: 30 });
 
       // Still Proposed, so still subtracting nothing.

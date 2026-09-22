@@ -10,7 +10,7 @@
 // would see an approved exclusion, the contractor would see an unchanged
 // figure, and nothing on screen would explain the gap.
 import { sql } from "./db";
-import { availDayOfWeek, serviceMonthOfDate } from "./otpMonth/rules";
+import { availDayOfWeek, FIXED_ROUTE_CATEGORY, otpRouteCategorySql, serviceMonthOfDate } from "./otpMonth/rules";
 import type { Executor } from "./otpMonth";
 
 const request = (executor: Executor) =>
@@ -91,14 +91,26 @@ export function matchable(
   return departures.filter((row) => monthlyKeys.has(`${row.route_id}-${row.stop_id}`));
 }
 
-/** The route/stop keys the month holds for one day of week. */
+/**
+ * The route/stop keys the month holds for one day of week, on fixed-route
+ * service only.
+ *
+ * The category filter is here and not only in the measurement because a
+ * snapshot row on a special-event or on-demand route could never subtract
+ * anything - the route is already outside Official Departure OTP - and storing
+ * it would overstate what the approval took out. `departures` in the approval
+ * receipt is then exactly what left the figure.
+ */
 export async function readMonthlyKeys(executor: Executor, serviceMonth: string, dayOfWeek: string): Promise<Set<string>> {
   const req = request(executor);
   req.input("month", sql.Char(6), serviceMonth);
   req.input("dow", sql.NVarChar(20), dayOfWeek);
   const result = await req.query<{ route_id: number; stop_id: number }>(`
-    SELECT route_id, stop_id FROM dbo.OtpMonthlyRouteStopDay
-    WHERE service_month = @month AND day_of_week = @dow
+    SELECT otp.route_id, otp.stop_id
+    FROM dbo.OtpMonthlyRouteStopDay otp
+    LEFT JOIN dbo.RouteClassification classification ON classification.route_id = otp.route_id
+    WHERE otp.service_month = @month AND otp.day_of_week = @dow
+      AND ${otpRouteCategorySql()} = N'${FIXED_ROUTE_CATEGORY}'
   `);
   return new Set(result.recordset.map((row) => `${row.route_id}-${row.stop_id}`));
 }

@@ -234,12 +234,16 @@ export async function measureOtpMonth(executor: Executor, month: string, options
  */
 async function readWeatherDays(executor: Executor, month: string, tables: Available): Promise<{ recorded: number; applied: number }> {
   const req = request(executor).input("month", sql.Char(6), month);
+  // The snapshot is reached by join, not by EXISTS inside the SUM: SQL Server
+  // refuses an aggregate over an expression containing a subquery.
   const row = (await req.query<{ recorded: number; applied: number }>(`
     SELECT COUNT(*) recorded,
-      SUM(CASE WHEN e.status = 'Approved' ${tables.date_departures
-        ? "AND EXISTS (SELECT 1 FROM dbo.OtpDateExclusionDepartures d WHERE d.exclusion_id = e.id)"
-        : "AND 1 = 0"} THEN 1 ELSE 0 END) applied
-    FROM dbo.OtpDateExclusions e WHERE LEFT(e.service_date,6) = @month
+      SUM(CASE WHEN e.status = 'Approved' AND ${tables.date_departures ? "snapshot.exclusion_id IS NOT NULL" : "1 = 0"} THEN 1 ELSE 0 END) applied
+    FROM dbo.OtpDateExclusions e
+    ${tables.date_departures
+      ? "LEFT JOIN (SELECT DISTINCT exclusion_id FROM dbo.OtpDateExclusionDepartures) snapshot ON snapshot.exclusion_id = e.id"
+      : ""}
+    WHERE LEFT(e.service_date,6) = @month
   `)).recordset[0];
   return { recorded: Number(row?.recorded ?? 0), applied: Number(row?.applied ?? 0) };
 }
