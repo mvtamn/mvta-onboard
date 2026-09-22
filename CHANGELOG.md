@@ -5,6 +5,16 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.287] - 2026-09-21
+
+- **The garage-departure rule is declared once instead of written twice.** It has to exist in two forms - the per-row judgement Fixed Route and On-Demand Garage Departures show, and the `WHERE` clause the nightly candidate pass selects with - and both were hand-written and held together by a comment reading "mirrors ... clause for clause". The midnight-placeholder clause added in 1.5.285 and rewritten in 1.5.286 is what it looked like when it went wrong: one idea, spelled `agencyMinuteOfDay(d) === 0` on one side and a double `AT TIME ZONE` on the other.
+- **`lib/garageDeparture` now holds each service type's rule as an ordered ladder**, and the candidate predicate is derived from it rather than written again. A closed vocabulary of six condition kinds, no raw-SQL escape hatch, and the agency time zone spelled in exactly one place under both the names Node and SQL Server need.
+- **No behaviour change.** Same outcomes, same allowance, same rows flagged. Every existing name and signature survives - the outcome strings are on the wire - so there is no migration, no API change and no console edit.
+- **Two declarations, not one parameterised rule**, per ADR 0028: fixed route turns on Avail's status ladder and its placeholder, on-demand on neither. They share the vocabulary, the evaluator and the renderer, which is where the duplication actually was.
+- **The generated SQL is more verbose than the hand-written statement** - one disjunct per candidate arm, keeping guards a person would have simplified away. Logically equivalent, and deliberately not simplified: a simplifier would be new logic able to be wrong in the one place this change exists to make trustworthy.
+- **Verified.** 1,264 REST API tests pass, 20 of them new, including a check that the derived predicate selects exactly the rows the ladder calls candidates across every combination of evidence. A new database contract test runs the nightly pass for real with one row per arm of both ladders; like the other contract tests it runs where a connection string is set.
+- **Known and not fixed here.** `settledServiceDateExclusive()` moves across unchanged and is still wrong at the boundary - see ADR 0037 and the note in `lib/availPullout.ts`. It needs its own evidence and its own backfill.
+
 ## [1.5.286] - 2026-09-21
 
 - **Avail's pullout times are agency-local wall clock, and everything read them as UTC.** The feed labels some values with a trailing `Z`; it is not true. The proof is in data the repo already holds: `TripStartLog.scheduled_start_at` is a genuine UTC instant built from GTFS, and lining each block's pullout up against its own first trip gives a gap of **5h20m** under the UTC reading and **12-29 minutes** - the garage-to-first-stop deadhead - under the agency-local one.

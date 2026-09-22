@@ -105,13 +105,27 @@ test("lets the timestamps decide, never the status alone", () => {
 });
 
 test("applies the same guards to every listed status", () => {
-  // The Red conditions are added to the list, not to a separate branch, so the
-  // settled-day and scheduled-pullout guards cover them too. A predicate that
-  // grew a second OR arm would let an unsettled row through.
-  const predicate = garageDepartureCandidatePredicate();
-  assert.equal(predicate.match(/pullout_status IN \(/g)?.length, 1, "one status list");
-  assert.equal(predicate.match(/service_date < @settled_before/g)?.length, 1, "one settled-day guard");
-  assert.equal(predicate.match(/pullout_scheduled IS NOT NULL/g)?.length, 1, "one schedule guard");
+  // The Red conditions are added to the status list, not to a separate branch,
+  // so the settled-day and scheduled-pullout guards cover them too.
+  //
+  // The predicate is now DERIVED from the ladder in lib/garageDeparture, which
+  // gives one disjunct per candidate arm - never departed, and departed too
+  // late - rather than the single conjunction this test was written against.
+  // So the guard is no longer "there is exactly one of each clause"; it is
+  // that EVERY disjunct carries every guard, which is what stops an unsettled
+  // row slipping through one arm. Equivalence with the ladder itself is
+  // proved in lib/garageDeparture/garageDeparture.test.ts and executed
+  // against SQL Server in occurrenceIntake.db.contract.test.ts.
+  const disjuncts = garageDepartureCandidatePredicate()
+    .split(/\n\s*OR\s*\(/)
+    .filter((part) => part.trim().length > 0);
+  assert.equal(disjuncts.length, 2, "one disjunct per candidate arm");
+  for (const [index, disjunct] of disjuncts.entries()) {
+    assert.match(disjunct, /pullout_status IN \(/, `disjunct ${index} carries the status list`);
+    assert.match(disjunct, /service_date < @settled_before/, `disjunct ${index} carries the settled-day guard`);
+    assert.match(disjunct, /pullout_scheduled IS NOT NULL/, `disjunct ${index} carries the schedule guard`);
+    assert.match(disjunct, /AS TIME\) <> '00:00:00'/, `disjunct ${index} carries the placeholder guard`);
+  }
 });
 
 test("does not match a status the feed has never emitted", () => {
