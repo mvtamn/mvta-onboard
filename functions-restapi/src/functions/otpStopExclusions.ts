@@ -8,22 +8,11 @@
 //   GET /otp-stop-exclusions?month=  - compliance-review.view
 //   PUT /otp-stop-exclusions          - compliance-review.review
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
-import { getPool, sql } from "../lib/db";
+import { getPool } from "../lib/db";
 import { requireAccess } from "../lib/access/require";
 import { validateStopExclusion } from "../lib/validation";
 import { serviceMonthOf } from "../lib/otpMonthlyFeed";
-
-interface StopExclusionRow {
-  id: string;
-  service_month: string;
-  route_id: number;
-  stop_id: number;
-  day_of_week: string;
-  status: "approved" | "rejected";
-  reason_code: string | null;
-  reviewed_by: string;
-  reviewed_at: Date;
-}
+import { recordStopExclusion, stopExclusionsForMonth, type StopExclusionDecision } from "../lib/otpExclusionReview";
 
 function resolveMonth(request: HttpRequest): string {
   const param = request.query.get("month");
@@ -39,26 +28,10 @@ app.http("otpStopExclusionsList", {
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }
-    const serviceMonth = resolveMonth(request);
-
     try {
       const pool = await getPool();
-      const tableCheck = await pool.request().query<{ table_exists: number }>(`
-        SELECT CASE WHEN OBJECT_ID('dbo.OtpStopExclusions', 'U') IS NULL THEN 0 ELSE 1 END AS table_exists
-      `);
-      if (tableCheck.recordset[0]?.table_exists !== 1) {
-        return { status: 200, jsonBody: { exclusions: [] } };
-      }
-
-      const req = pool.request();
-      req.input("service_month", sql.Char(6), serviceMonth);
-      const result = await req.query<StopExclusionRow>(`
-        SELECT id, service_month, route_id, stop_id, day_of_week, status, reason_code,
-               reviewed_by, reviewed_at
-        FROM OtpStopExclusions
-        WHERE service_month = @service_month
-      `);
-      return { status: 200, jsonBody: { exclusions: result.recordset } };
+      const exclusions = await stopExclusionsForMonth(pool, resolveMonth(request));
+      return { status: 200, jsonBody: { exclusions } };
     } catch (err) {
       context.error("GET /otp-stop-exclusions failed:", err);
       return { status: 500, jsonBody: { error: "Internal server error" } };
@@ -86,49 +59,15 @@ app.http("otpStopExclusionsUpsert", {
     if (errors.length > 0) {
       return { status: 400, jsonBody: { error: "Validation failed", details: errors } };
     }
-    const body = raw as {
-      service_month: string;
-      route_id: number;
-      stop_id: number;
-      day_of_week: string;
-      status: "approved" | "rejected";
-      reason_code?: string | null;
-    };
 
     try {
       const pool = await getPool();
-      const sqlRequest = pool.request();
-      sqlRequest.input("service_month", sql.Char(6), body.service_month);
-      sqlRequest.input("route_id", sql.Int, body.route_id);
-      sqlRequest.input("stop_id", sql.Int, body.stop_id);
-      // NVarChar(20), not (3) - migration-022: some real Avail day_of_week
-      // values overflowed the original "Mon"/"Tue"-sized column, same bug
-      // as OtpMonthlyRouteStopDay (migration-021).
-      sqlRequest.input("day_of_week", sql.NVarChar(20), body.day_of_week);
-      sqlRequest.input("status", sql.NVarChar(10), body.status);
-      sqlRequest.input("reason_code", sql.NVarChar, body.reason_code ?? null);
-      sqlRequest.input("reviewed_by", sql.NVarChar, authResult.principal.userDetails || "system");
-
-      const result = await sqlRequest.query<StopExclusionRow>(`
-        MERGE OtpStopExclusions WITH (HOLDLOCK) AS target
-        USING (
-          SELECT @service_month AS service_month, @route_id AS route_id,
-                 @stop_id AS stop_id, @day_of_week AS day_of_week
-        ) AS src
-        ON target.service_month = src.service_month AND target.route_id = src.route_id
-           AND target.stop_id = src.stop_id AND target.day_of_week = src.day_of_week
-        WHEN MATCHED THEN
-          UPDATE SET status = @status, reason_code = @reason_code,
-            reviewed_by = @reviewed_by, reviewed_at = SYSUTCDATETIME()
-        WHEN NOT MATCHED THEN
-          INSERT (service_month, route_id, stop_id, day_of_week, status, reason_code, reviewed_by)
-          VALUES (@service_month, @route_id, @stop_id, @day_of_week, @status, @reason_code, @reviewed_by)
-        OUTPUT INSERTED.id, INSERTED.service_month, INSERTED.route_id, INSERTED.stop_id,
-               INSERTED.day_of_week, INSERTED.status, INSERTED.reason_code,
-               INSERTED.reviewed_by, INSERTED.reviewed_at;
-      `);
-
-      return { status: 200, jsonBody: result.recordset[0] };
+      const record = await recordStopExclusion(
+        pool,
+        raw as StopExclusionDecision,
+        authResult.principal.userDetails || "system",
+      );
+      return { status: 200, jsonBody: record };
     } catch (err) {
       context.error("PUT /otp-stop-exclusions failed:", err);
       return { status: 500, jsonBody: { error: "Internal server error" } };
