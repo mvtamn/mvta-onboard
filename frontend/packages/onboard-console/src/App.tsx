@@ -1,7 +1,9 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./auth/AuthContext.js";
-import { RequireRole } from "./auth/RequireRole.js";
+import { useAccess } from "./auth/AccessContext.js";
+import { usePendingIntake } from "./hooks/usePendingIntake.js";
+import { NoAccess, RequireAccess } from "./auth/RequireAccess.js";
 import { ErrorBoundary } from "./components/ErrorBoundary.js";
 import { useTheme } from "./theme/ThemeContext.js";
 import { useLiveStats } from "./hooks/useLiveStats.js";
@@ -46,16 +48,19 @@ import { DetourIntake } from "./routes/DetourIntake.js";
 import { Changelog } from "./routes/Changelog.js";
 import { AdminHome } from "./components/AdminHome.js";
 import { AdminLayout } from "./components/AdminLayout.js";
+import { ADMIN_ACTIONS } from "./components/adminNav.js";
 import { AccessLayout } from "./routes/access/AccessUi.js";
 import { AccessOverview } from "./routes/access/AccessOverview.js";
 import { AccessGroups, AccessPeople, AccessWorkloads } from "./routes/access/AccessInventory.js";
 import { AddAccess } from "./routes/access/AddAccess.js";
 import { AccessApprovals } from "./routes/access/AccessApprovals.js";
+import { AccessRoles } from "./routes/access/AccessRoles.js";
 import { AccessHealth } from "./routes/access/AccessHealth.js";
 import { AccessActivity } from "./routes/access/AccessActivity.js";
 import { OnDemandServiceStandardsAdmin } from "./routes/OnDemandServiceStandardsAdmin.js";
 import { AdminEventAdministration, AdminGovernance, AdminIntegrations, AdminServiceConfiguration, AdminSubscribers } from "./routes/AdminModules.js";
 import { OtpComplianceAdmin } from "./routes/OtpComplianceAdmin.js";
+import { MissedTripDetectorsAdmin } from "./routes/MissedTripDetectorsAdmin.js";
 import { PerformanceStandardsAdmin } from "./routes/PerformanceStandardsAdmin.js";
 import { PerformanceContractorsAdmin } from "./routes/PerformanceContractorsAdmin.js";
 import { PerformanceAgreementsAdmin } from "./routes/PerformanceAgreementsAdmin.js";
@@ -64,31 +69,6 @@ import { CHANGELOG_ENTRIES } from "./routes/changelogData.js";
 import { FixedRouteRefreshProvider } from "./context/FixedRouteRefreshContext.js";
 import { LiveSignal, signalStateFor } from "./components/LiveSignal.js";
 import { OperatorIdentity } from "./components/OperatorIdentity.js";
-
-const ADMIN = ["OCC.Admin"] as const;
-const ACCESS_MANAGEMENT = import.meta.env.VITE_ACCESS_ADMIN_FALLBACK === "true"
-  ? ["OCC.AccessAdmin", "OCC.Admin"] as const
-  : ["OCC.AccessAdmin"] as const;
-const OCC_TOOLS = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin"] as const;
-// Dispatch Log reads the same trip-start log the API serves to staff and
-// Compliance readers (TRIP_START_LOG_READ_ROLES); a live monitoring view,
-// so it sits under Service Operations per ADR 0015.
-const DISPATCH_LOG = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin", "OCC.Compliance", "OCC.TripStartVerify"] as const;
-// The communications side of Service Operations - Overview, Compose, Active
-// Service Alerts, Suggested Alerts - reads the API's STAFF_READ_ROLES. Roles
-// outside it (Compliance-only, the SST desk's OCC.TripStartVerify) get a 403
-// from every call those pages make, so per ADR 0015 the links are hidden for
-// them and the group shows only the children they can reach.
-const COMMUNICATIONS = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin", "OCC.EventAVL"] as const;
-const EVENT_AVL = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin", "OCC.EventAVL"] as const;
-const COMPLIANCE = ["OCC.Compliance", "OCC.ComplianceManager", "OCC.Admin"] as const;
-// Read-only for OCC.Viewer, full create/edit/delete for Publisher/Admin (the
-// component itself hides write controls for Viewer-only; the server is the
-// real boundary, same convention as Compose).
-// Must stay in sync with DETOUR_READ_ROLES in functions-restapi/src/lib/auth.ts.
-// These two drifting apart is what previously let OCC.Compliance reach this
-// page and then get a 403 from GET /detours.
-const DETOURS = ["OCC.Viewer", "OCC.Publisher", "OCC.Admin", "OCC.Compliance", "OCC.Detour"] as const;
 
 const PAGE_META: { match: (path: string) => boolean; title: string; sub: string }[] = [
   { match: (p) => p === "/", title: "Dashboard", sub: "Compose and monitor active rider alerts" },
@@ -100,9 +80,9 @@ const PAGE_META: { match: (path: string) => boolean; title: string; sub: string 
   { match: (p) => p === "/service-operations", title: "Service Operations", sub: "Service-alert communications and operational monitoring" },
   { match: (p) => p === "/subscribers", title: "Subscribers", sub: "Opt-in totals and recent signups" },
   { match: (p) => p === "/audit", title: "Audit Log", sub: "Search every message ever posted" },
-  { match: (p) => p === "/detours", title: "Detours & Closures", sub: "Every detour/closure in one place, Avail-built or not" },
+  { match: (p) => p === "/detours", title: "Detours & Closures", sub: "Work active and upcoming detours — communications, Avail build, conflicts" },
   { match: (p) => p === "/detour-intake", title: "Detour Intake", sub: "Create and review the complete operational Detour record" },
-  { match: (p) => p === "/detour-reports", title: "Detour Reports", sub: "Search and export detour history — read-only" },
+  { match: (p) => p === "/detour-reports", title: "Detour Register", sub: "Every detour, active and past — search, filter and export, read-only" },
   { match: (p) => p === "/admin" || p.startsWith("/admin/"), title: "Administration", sub: "Manage access, resources, configuration, integrations, and governance" },
   {
     match: (p) => p === "/event-monitoring" || p.startsWith("/events/avl"),
@@ -145,7 +125,7 @@ function CompatibilityRedirect({ to }: { to: string }) {
 // One description per destination, shown in the collapsed rail's hover
 // flyout. PAGE_META can't supply these - it folds all of /admin/* into a
 // single "Administration" entry, and the flyout needs a line per link.
-type NavEntry = { to: string; end?: boolean; label: string; desc: string; icon: ReactNode };
+type NavEntry = { to: string; end?: boolean; label: string; desc: string; icon: ReactNode; /** Work waiting on this page, shown as a badge. Hidden at zero. */ count?: number };
 // `cluster` marks a category that folds into ONE icon while the rail is
 // collapsed (Administration: eight links, four of them the same wrench, which
 // is an unreadable icon stack at 64px). Its links move into a hover menu.
@@ -231,7 +211,7 @@ function ChangelogPopover({ onClose }: { onClose: () => void }) {
 }
 
 export function App() {
-  const { account, roles, signIn, signOut } = useAuth();
+  const { account, signIn, signOut } = useAuth();
 
   if (!account) {
     return (
@@ -253,29 +233,37 @@ export function App() {
     );
   }
 
-  return <AuthenticatedApp account={account} roles={roles} signOut={signOut} />;
+  return <AuthenticatedApp account={account} signOut={signOut} />;
 }
 
-function AuthenticatedApp({ account, roles, signOut }: {
+function AuthenticatedApp({ account, signOut }: {
   account: NonNullable<ReturnType<typeof useAuth>["account"]>;
-  roles: ReturnType<typeof useAuth>["roles"];
   signOut: ReturnType<typeof useAuth>["signOut"];
 }) {
   const { theme, toggle } = useTheme();
-  const isAdmin = roles.includes("OCC.Admin");
-  const canSeeServiceRisk = roles.some((role) => (OCC_TOOLS as readonly string[]).includes(role));
-  const canSeeDispatchLog = roles.some((role) => (DISPATCH_LOG as readonly string[]).includes(role));
-  const canSeeCommunications = roles.some((role) => (COMMUNICATIONS as readonly string[]).includes(role));
-  const canManageAccess = roles.some((role) => (ACCESS_MANAGEMENT as readonly string[]).includes(role));
-  const canSeeOccTools = roles.some((role) => (OCC_TOOLS as readonly string[]).includes(role));
-  const isCompliance = isAdmin || roles.includes("OCC.Compliance") || roles.includes("OCC.ComplianceManager");
-  const canSeeDetours = roles.some((r) => (DETOURS as readonly string[]).includes(r));
-  const canSeeEventAvl = roles.some((r) => (EVENT_AVL as readonly string[]).includes(r));
-  // Where a user without communications access lands instead of the
-  // Dashboard, which is built from the same data they cannot read.
-  const landing = canSeeCommunications ? null
+  const { can, canAny, noAccess } = useAccess();
+  const canSeeDashboard = can("dashboard.view");
+  const canSeeServiceRisk = can("service-risk.view");
+  const canSeeDispatchLog = can("dispatch-log.view");
+  const canSeeCommunications = can("rider-alerts.view");
+  const canManageAccess = can("access-identity.view");
+  const canSeeAdministration = canAny([...ADMIN_ACTIONS]);
+  const canSeeOccTools = can("decision-matrix.view");
+  const canSeeCompliance = can("compliance-review.view");
+  const canSeePerformanceAssessment = can("performance-assessment.view");
+  const canSeeDetours = can("detours.view");
+  const canSeeDetourIntake = can("detours.intake");
+  // Detour requests waiting on OCC. Nothing notifies them when one arrives, so
+  // the number has to be visible from wherever they are.
+  const { count: pendingIntakeCount } = usePendingIntake();
+  const canSeeEventAvl = can("event-avl.view");
+  const canSeeEventPlanning = can("event-planning.view");
+  // Where a user without the Dashboard lands instead: the first workspace
+  // their access opens.
+  const landing = canSeeDashboard ? null
+    : canSeeCommunications ? "/service-operations"
     : canSeeDispatchLog ? "/service-operations/dispatch-log"
-    : isCompliance ? "/compliance"
+    : canSeeCompliance ? "/compliance"
     : canSeeDetours ? "/detours"
     : null;
   const stats = useLiveStats();
@@ -339,7 +327,7 @@ function AuthenticatedApp({ account, roles, signOut }: {
       id: "service-operations",
       name: "Service Operations",
       entries: navEntries(
-        canSeeCommunications && { to: "/", end: true, label: "Dashboard", desc: "Compose and monitor active rider alerts", icon: <IconDashboard /> },
+        canSeeDashboard && { to: "/", end: true, label: "Dashboard", desc: "Compose and monitor active rider alerts", icon: <IconDashboard /> },
         canSeeCommunications && { to: "/service-operations", end: true, label: "Overview", desc: "Service-alert communications and operational monitoring", icon: <IconDashboard /> },
         canSeeCommunications && { to: "/service-operations/compose", label: "Compose", desc: "Draft a new Service Alert", icon: <IconCompose /> },
         canSeeCommunications && { to: "/service-operations/active", label: "Active Service Alerts", desc: "Edit or retract currently active alerts", icon: <IconMessages /> },
@@ -352,9 +340,9 @@ function AuthenticatedApp({ account, roles, signOut }: {
       id: "specialist-operations",
       name: "Specialist Operations",
       entries: navEntries(
-        canSeeDetours && { to: "/detours", label: "Detours & Closures", desc: "Every detour and closure in one place, Avail-built or not", icon: <IconDetour /> },
-        isAdmin && { to: "/detour-intake", label: "Detour Intake", desc: "Create and review the complete operational Detour record", icon: <IconDetour /> },
-        canSeeDetours && { to: "/detour-reports", label: "Detour Reports", desc: "Search and export detour history — read-only", icon: <IconClock /> },
+        canSeeDetours && { to: "/detours", label: "Detours & Closures", desc: "Work active and upcoming detours — communications, Avail build, conflicts", icon: <IconDetour /> },
+        canSeeDetourIntake && { to: "/detour-intake", label: "Detour Intake", desc: "Create and review the complete operational Detour record", icon: <IconDetour />, count: pendingIntakeCount },
+        canSeeDetours && { to: "/detour-reports", label: "Detour Register", desc: "Every detour, active and past — search, filter and export, read-only", icon: <IconClock /> },
         canSeeOccTools && { to: "/occ", label: "OCC Tools", desc: "Service-risk prediction, procedure guidance, and vehicle monitoring", icon: <IconWrench /> },
       ),
     },
@@ -362,7 +350,7 @@ function AuthenticatedApp({ account, roles, signOut }: {
       id: "events",
       name: "Events",
       entries: navEntries(
-        canSeeEventAvl && isAdmin && { to: "/events/planning", label: "Planning", desc: "Prepare and approve event service plans", icon: <IconBus /> },
+        canSeeEventPlanning && { to: "/events/planning", label: "Planning", desc: "Prepare and approve event service plans", icon: <IconBus /> },
         canSeeEventAvl && { to: "/events/avl", label: "Event AVL", desc: "Monitor active vehicles and event service in real time", icon: <IconBus /> },
       ),
     },
@@ -370,8 +358,8 @@ function AuthenticatedApp({ account, roles, signOut }: {
       id: "compliance",
       name: "Compliance & Assessment",
       entries: navEntries(
-        isCompliance && { to: "/compliance", label: "Compliance", desc: "OTP compliance and missed-trip investigation", icon: <IconShield /> },
-        isCompliance && { to: "/performance-assessment", label: "Performance Assessment", desc: "Monthly standards scoring, evidence, review, and issuance", icon: <IconAssessment /> },
+        canSeeCompliance && { to: "/compliance", label: "Compliance", desc: "OTP compliance and missed-trip investigation", icon: <IconShield /> },
+        canSeePerformanceAssessment && { to: "/performance-assessment", label: "Performance Assessment", desc: "Monthly standards scoring, evidence, review, and issuance", icon: <IconAssessment /> },
       ),
     },
     {
@@ -380,7 +368,7 @@ function AuthenticatedApp({ account, roles, signOut }: {
       // One link: /admin lists every area, and the pages inside it carry
       // their own breadcrumb, tabs and quick find (components/adminNav.ts).
       entries: navEntries(
-        (canManageAccess || isAdmin) && { to: "/admin", label: "Administration", desc: "Access, service setup, standards, integrations and governance", icon: <IconGear /> },
+        canSeeAdministration && { to: "/admin", label: "Administration", desc: "Access, service setup, standards, integrations and governance", icon: <IconGear /> },
       ),
     },
   ].filter((category) => category.entries.length > 0);
@@ -460,6 +448,9 @@ function AuthenticatedApp({ account, roles, signOut }: {
                             <NavLink to={entry.to} end={entry.end} title={entry.label}>
                               {entry.icon}
                               <span className="nav-label">{entry.label}</span>
+                              {/* Work waiting on OCC, so a page nobody opened
+                                  still says it has something in it. */}
+                              {entry.count ? <span className="nav-count" aria-label={`${entry.count} waiting`}>{entry.count}</span> : null}
                             </NavLink>
                             {/* Sibling of the link, not a child: the anchor's
                                 text has to stay the label alone. */}
@@ -545,7 +536,6 @@ function AuthenticatedApp({ account, roles, signOut }: {
             <OperatorIdentity
               name={account.name ?? account.username}
               username={account.username}
-              roles={roles}
               canManageAccess={canManageAccess}
               onSignOut={signOut}
             />
@@ -566,113 +556,122 @@ function AuthenticatedApp({ account, roles, signOut }: {
               previous route's error. */}
           <ErrorBoundary key={location.pathname}>
             <Routes>
-              <Route path="/" element={landing ? <Navigate to={landing} replace /> : <Dashboard stats={stats} onChanged={stats.refresh} />} />
+              <Route
+                path="/"
+                element={
+                  noAccess ? <NoAccess />
+                    : landing ? <Navigate to={landing} replace />
+                    : <RequireAccess action="dashboard.view"><Dashboard stats={stats} onChanged={stats.refresh} /></RequireAccess>
+                }
+              />
               <Route path="/service-operations" element={<ServiceOperations />}>
-                <Route index element={landing ? <Navigate to={landing} replace /> : <ServiceOperationsOverview stats={stats} />} />
-                <Route path="compose" element={<RequireRole allowed={[...COMMUNICATIONS]}><Compose onChanged={stats.refresh} /></RequireRole>} />
-                <Route path="active" element={<RequireRole allowed={[...COMMUNICATIONS]}><ActiveMessages onChanged={stats.refresh} /></RequireRole>} />
-                <Route path="suggested" element={<RequireRole allowed={[...COMMUNICATIONS]}><SuggestedAlerts onChanged={stats.refresh} /></RequireRole>} />
+                <Route index element={<RequireAccess action="rider-alerts.view"><ServiceOperationsOverview stats={stats} /></RequireAccess>} />
+                <Route path="compose" element={<RequireAccess action="rider-alerts.view"><Compose onChanged={stats.refresh} /></RequireAccess>} />
+                <Route path="active" element={<RequireAccess action="rider-alerts.view"><ActiveMessages onChanged={stats.refresh} /></RequireAccess>} />
+                <Route path="suggested" element={<RequireAccess action="rider-alerts.view"><SuggestedAlerts onChanged={stats.refresh} /></RequireAccess>} />
                 <Route
                   path="dispatch-log"
-                  element={<RequireRole allowed={[...DISPATCH_LOG]}><TripStartLog /></RequireRole>}
+                  element={<RequireAccess action="dispatch-log.view"><TripStartLog /></RequireAccess>}
                 />
                 <Route
                   path="risk"
-                  element={<RequireRole allowed={[...OCC_TOOLS]}><ServiceRiskQuality /></RequireRole>}
+                  element={<RequireAccess action="service-risk.view"><ServiceRiskQuality /></RequireAccess>}
                 />
               </Route>
-              <Route path="/compose" element={<Compose onChanged={stats.refresh} />} />
-              <Route path="/active" element={<ActiveMessages onChanged={stats.refresh} />} />
+              <Route path="/compose" element={<RequireAccess action="rider-alerts.view"><Compose onChanged={stats.refresh} /></RequireAccess>} />
+              <Route path="/active" element={<RequireAccess action="rider-alerts.view"><ActiveMessages onChanged={stats.refresh} /></RequireAccess>} />
               <Route
                 path="/detours"
                 element={
-                  <RequireRole allowed={[...DETOURS]}>
+                  <RequireAccess action="detours.view">
                     <Detours />
-                  </RequireRole>
+                  </RequireAccess>
                 }
               />
-              {/* Same role set as /detours - the reports page reads the very
+              {/* Same action as /detours - the reports page reads the very
                   same GET /detours endpoint, so anything narrower would be a
                   nav link that 403s. */}
               <Route
                 path="/detour-reports"
                 element={
-                  <RequireRole allowed={[...DETOURS]}>
+                  <RequireAccess action="detours.view">
                     <DetourReports />
-                  </RequireRole>
+                  </RequireAccess>
                 }
               />
               <Route
                 path="/detour-intake"
-                element={<RequireRole allowed={[...ADMIN]}><DetourIntake /></RequireRole>}
+                element={<RequireAccess action="detours.intake"><DetourIntake /></RequireAccess>}
               />
-              <Route path="/suggested" element={<SuggestedAlerts onChanged={stats.refresh} />} />
-              <Route path="/subscribers" element={<Subscribers />} />
-              <Route path="/audit" element={<AuditLog />} />
+              <Route path="/suggested" element={<RequireAccess action="rider-alerts.view"><SuggestedAlerts onChanged={stats.refresh} /></RequireAccess>} />
+              <Route path="/subscribers" element={<RequireAccess action="subscribers.view"><Subscribers /></RequireAccess>} />
+              <Route path="/audit" element={<RequireAccess action="governance-audit.view"><AuditLog /></RequireAccess>} />
               <Route path="/changelog" element={<Changelog />} />
               <Route path="/admin/access-management" element={<CompatibilityRedirect to="/admin/access" />} />
-              <Route path="/admin" element={<RequireRole allowed={[...ACCESS_MANAGEMENT, ...ADMIN]}><AdminLayout /></RequireRole>}>
+              <Route path="/admin" element={<RequireAccess anyOf={[...ADMIN_ACTIONS]}><AdminLayout /></RequireAccess>}>
                 <Route index element={<AdminHome />} />
-                {/* Access & Identity is seven pages under one heading; they share
+                {/* Access & Identity is eight pages under one heading; they share
                     one load through AccessLayout. */}
-                <Route path="access" element={<RequireRole allowed={[...ACCESS_MANAGEMENT]}><AccessLayout /></RequireRole>}>
+                <Route path="access" element={<RequireAccess action="access-identity.view"><AccessLayout /></RequireAccess>}>
                   <Route index element={<AccessOverview />} />
                   <Route path="people" element={<AccessPeople />} />
                   <Route path="groups" element={<AccessGroups />} />
                   <Route path="workloads" element={<AccessWorkloads />} />
                   <Route path="add" element={<AddAccess />} />
+                  <Route path="roles" element={<AccessRoles />} />
                   <Route path="approvals" element={<AccessApprovals />} />
                   <Route path="health" element={<AccessHealth />} />
                   <Route path="activity" element={<AccessActivity />} />
                   <Route path="*" element={<Navigate to="/admin/access" replace />} />
                 </Route>
-                <Route path="events" element={<RequireRole allowed={[...ADMIN]}><AdminEventAdministration /></RequireRole>} />
-                <Route path="service" element={<RequireRole allowed={[...ADMIN]}><AdminServiceConfiguration /></RequireRole>} />
-                <Route path="integrations" element={<RequireRole allowed={[...ADMIN]}><AdminIntegrations /></RequireRole>} />
-                <Route path="service-standards" element={<RequireRole allowed={[...ADMIN]}><OnDemandServiceStandardsAdmin /></RequireRole>} />
-                <Route path="decision-matrix" element={<RequireRole allowed={[...ADMIN]}><DecisionMatrixAdmin /></RequireRole>} />
-                <Route path="otp-compliance" element={<RequireRole allowed={[...ADMIN]}><OtpComplianceAdmin /></RequireRole>} />
+                <Route path="events" element={<RequireAccess action="service-configuration.edit"><AdminEventAdministration /></RequireAccess>} />
+                <Route path="service" element={<RequireAccess action="service-configuration.edit"><AdminServiceConfiguration /></RequireAccess>} />
+                <Route path="integrations" element={<RequireAccess action="integrations-health.view"><AdminIntegrations /></RequireAccess>} />
+                <Route path="service-standards" element={<RequireAccess action="service-configuration.edit"><OnDemandServiceStandardsAdmin /></RequireAccess>} />
+                <Route path="decision-matrix" element={<RequireAccess action="decision-matrix.manage"><DecisionMatrixAdmin /></RequireAccess>} />
+                <Route path="otp-compliance" element={<RequireAccess action="service-configuration.edit"><OtpComplianceAdmin /></RequireAccess>} />
+                <Route path="missed-trip-detectors" element={<RequireAccess action="service-configuration.edit"><MissedTripDetectorsAdmin /></RequireAccess>} />
                 {/* Performance assessment administration is four separate
                     jobs on one body of work, so each has its own section. The
                     old single-page path is kept as a redirect - it shipped and
                     people have it. */}
                 <Route path="performance" element={<Navigate to="/admin/performance/standards" replace />} />
-                <Route path="performance/contractors" element={<RequireRole allowed={[...ADMIN]}><PerformanceContractorsAdmin /></RequireRole>} />
-                <Route path="performance/agreements" element={<RequireRole allowed={[...ADMIN]}><PerformanceAgreementsAdmin /></RequireRole>} />
-                <Route path="performance/standards" element={<RequireRole allowed={[...ADMIN]}><PerformanceStandardsAdmin /></RequireRole>} />
-                <Route path="performance/lists" element={<RequireRole allowed={[...ADMIN]}><PerformanceListsAdmin /></RequireRole>} />
+                <Route path="performance/contractors" element={<RequireAccess action="contractor-performance.view"><PerformanceContractorsAdmin /></RequireAccess>} />
+                <Route path="performance/agreements" element={<RequireAccess action="contractor-performance.view"><PerformanceAgreementsAdmin /></RequireAccess>} />
+                <Route path="performance/standards" element={<RequireAccess action="contractor-performance.view"><PerformanceStandardsAdmin /></RequireAccess>} />
+                <Route path="performance/lists" element={<RequireAccess action="contractor-performance.view"><PerformanceListsAdmin /></RequireAccess>} />
                 <Route path="performance-standards" element={<Navigate to="/admin/performance/standards" replace />} />
-                <Route path="governance" element={<RequireRole allowed={[...ACCESS_MANAGEMENT]}><AdminGovernance /></RequireRole>} />
-                <Route path="subscribers" element={<RequireRole allowed={[...ACCESS_MANAGEMENT]}><AdminSubscribers /></RequireRole>} />
+                <Route path="governance" element={<RequireAccess action="governance-audit.view"><AdminGovernance /></RequireAccess>} />
+                <Route path="subscribers" element={<RequireAccess action="subscribers.view"><AdminSubscribers /></RequireAccess>} />
               </Route>
               <Route path="/event-monitoring" element={<CompatibilityRedirect to="/events/avl" />} />
               <Route path="/event-planning" element={<CompatibilityRedirect to="/events/planning" />} />
               <Route path="/events" element={<Navigate to="/events/avl" replace />} />
-              <Route path="/events/avl/field" element={<RequireRole allowed={[...EVENT_AVL]}><EventMonitoring fieldView /></RequireRole>} />
-              <Route path="/events/avl" element={<RequireRole allowed={[...EVENT_AVL]}><EventMonitoring /></RequireRole>} />
-              <Route path="/events/planning" element={<RequireRole allowed={[...ADMIN]}><EventPlanning /></RequireRole>} />
+              <Route path="/events/avl/field" element={<RequireAccess action="event-avl.view"><EventMonitoring fieldView /></RequireAccess>} />
+              <Route path="/events/avl" element={<RequireAccess action="event-avl.view"><EventMonitoring /></RequireAccess>} />
+              <Route path="/events/planning" element={<RequireAccess action="event-planning.view"><EventPlanning /></RequireAccess>} />
               <Route
                 path="/occ/*"
                 element={
-                  <RequireRole allowed={[...OCC_TOOLS]}>
+                  <RequireAccess action="decision-matrix.view">
                     <OccTools />
-                  </RequireRole>
+                  </RequireAccess>
                 }
               />
               <Route
                 path="/compliance/*"
                 element={
-                  <RequireRole allowed={[...COMPLIANCE]}>
+                  <RequireAccess action="compliance-review.view">
                     <Compliance />
-                  </RequireRole>
+                  </RequireAccess>
                 }
               />
               <Route
                 path="/performance-assessment/*"
                 element={
-                  <RequireRole allowed={[...COMPLIANCE]}>
+                  <RequireAccess action="performance-assessment.view">
                     <PerformanceAssessment />
-                  </RequireRole>
+                  </RequireAccess>
                 }
               />
             </Routes>

@@ -1,11 +1,11 @@
 import { app, type HttpRequest } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 
 app.http("eventGeofenceCrossings", {
   route: "event-geofence-crossings", methods: ["GET"], authLevel: "anonymous",
   handler: async (req: HttpRequest) => {
-    const auth = requireRole(req, [...STAFF_READ_ROLES, "OCC.Compliance"]);
+    const auth = await requireAccess(req, "event-avl.view");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const pool = await getPool();
     const request = pool.request();

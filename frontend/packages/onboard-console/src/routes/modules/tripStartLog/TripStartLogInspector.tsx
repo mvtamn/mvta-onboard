@@ -22,7 +22,7 @@ interface Props {
   onDisposition: (tripId: string) => void;
 }
 
-const NEEDS_ROLE = "Requires the Trip Start Verifier role";
+const NEEDS_ROLE = "Recording a verification is not part of your access";
 
 // The persistent panel below whichever view is open (spec §4.3). Selecting in
 // any view lands here, so the views never need detail panels of their own.

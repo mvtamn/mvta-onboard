@@ -22,6 +22,7 @@ import { getPool } from "../lib/db";
 import { availConfig, fetchAvail } from "../lib/availClient";
 import {
   mapOtpMonthlyReport,
+  restatementLedgerReady,
   serviceMonthOf,
   subtractMonths,
   upsertOtpMonthlyReport,
@@ -42,6 +43,9 @@ app.timer("otpMonthlyFeedPoll", {
     const now = new Date();
     await runFeedIngestion("avail_otp_monthly", context, async () => {
       const pool = await getPool();
+      // Read once for the whole run, not per row (migration 141).
+      const ledgerReady = await restatementLedgerReady(pool);
+      const currentServiceMonth = serviceMonthOf(now);
       let receivedReports = 0;
       let storedReports = 0;
       const failedMonths: string[] = [];
@@ -72,7 +76,7 @@ app.timer("otpMonthlyFeedPoll", {
           if (!mapped) continue;
 
           try {
-            await upsertOtpMonthlyReport(pool, mapped);
+            await upsertOtpMonthlyReport(pool, mapped, { ledgerReady, currentServiceMonth });
             upsertedCount++;
           } catch (err) {
             context.error(`Failed to upsert Avail OTP Monthly report for route ${mapped.route_id}/stop ${mapped.stop_id}:`, err);

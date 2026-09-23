@@ -1,6 +1,6 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { DETOUR_INTAKE_ROLES, requireRole } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { isGuid, validateCreateDetourIntake, validatePromoteDetourIntake, validateReviewDetourIntake } from "../lib/validation";
 import { toDateOnly, toTimeOnly } from "../lib/detourStatus";
 import { detourNumberYear } from "../lib/detourNumbering";
@@ -13,6 +13,7 @@ import { findLikelyDuplicates, type DuplicateCandidate } from "../lib/detourDupl
 import { parseGeometryJson } from "../lib/geoNearby";
 import { loadStopIndex, stopIdsForRecord, stopNameLookup } from "../lib/detourStops";
 import { detourIntakeSelectColumns } from "../lib/detourIntakeColumns";
+import { channelOptions, needsRecipients } from "../lib/detourCommunication";
 import { toDateOnly as dateOnly } from "../lib/detourStatus";
 
 const INTAKE_STATUSES = ["pending_review", "needs_information", "accepted", "rejected", "duplicate", "withdrawn"] as const;
@@ -37,7 +38,7 @@ app.http("detourIntakeList", {
   methods: ["GET"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, DETOUR_INTAKE_ROLES);
+    const auth = await requireAccess(request, "detours.intake");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     try {
       const status = request.query.get("status");
@@ -144,6 +145,11 @@ app.http("detourIntakeList", {
         status: 200,
         jsonBody: {
           intake: intake.map((row) => ({ ...row, likely_duplicates: likelyDuplicatesById.get(row.id) ?? [] })),
+          // The channels a communication can actually go out on, from the one
+          // module that names them (migration 132). Intake used to carry its
+          // own list - "radio" and "dispatch board" among them - so a detour
+          // could require a channel the composer had no way to offer.
+          channels: channelOptions().map((option) => ({ ...option, needs_recipients: needsRecipients(option.channel) })),
         },
       };
     } catch (err) {
@@ -158,7 +164,7 @@ app.http("detourIntakeCreate", {
   methods: ["POST"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, DETOUR_INTAKE_ROLES);
+    const auth = await requireAccess(request, "detours.intake");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     let body: Record<string, unknown>;
     try {
@@ -226,7 +232,7 @@ app.http("detourIntakeReview", {
   methods: ["PATCH"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, DETOUR_INTAKE_ROLES);
+    const auth = await requireAccess(request, "detours.intake");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const id = request.params.id;
     if (!isGuid(id)) return { status: 400, jsonBody: { error: "id must be a GUID" } };
@@ -289,7 +295,7 @@ app.http("detourIntakeUpdate", {
   methods: ["PUT"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, DETOUR_INTAKE_ROLES);
+    const auth = await requireAccess(request, "detours.intake");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const id = request.params.id;
     if (!isGuid(id)) return { status: 400, jsonBody: { error: "id must be a GUID" } };
@@ -375,7 +381,7 @@ app.http("detourIntakePromote", {
   methods: ["POST"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, DETOUR_INTAKE_ROLES);
+    const auth = await requireAccess(request, "detours.intake");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const id = request.params.id;
     if (!isGuid(id)) return { status: 400, jsonBody: { error: "id must be a GUID" } };

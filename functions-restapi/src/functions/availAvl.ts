@@ -1,10 +1,10 @@
 // GET /avail-avl - the latest known position for every vehicle reporting
 // through Avail's proprietary AVL Reports API, backing the console's Event
-// Monitoring view. Any staff role can read; this is visibility only - all
-// writes come from availAvlPoll.ts.
+// Monitoring view. event-avl.view or service-risk.view can read; this is
+// visibility only - all writes come from availAvlPoll.ts.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
-import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { requireAnyAccess } from "../lib/access/require";
 
 interface AvailAvlRow {
   vehicle_id: number;
@@ -25,9 +25,9 @@ interface AvailAvlRow {
 app.http("availAvlList", {
   route: "avail-avl",
   methods: ["GET"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, STAFF_READ_ROLES);
+    const authResult = await requireAnyAccess(request, ["event-avl.view", "service-risk.view"]);
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

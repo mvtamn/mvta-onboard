@@ -40,6 +40,10 @@ export interface CaseState {
   evidence_json: string | null;
   // Set once, when a silent no-show case is opened; never rewritten.
   expected_window_end_at: Date | null;
+  // ADR-0035. Set when a retrospective source contradicts what the case already
+  // concluded; never cleared here - resolving it is a reviewer's act.
+  evidence_conflict_at: Date | null;
+  evidence_conflict_reason: string | null;
 }
 
 export type DecisionOutcome = "created" | "held" | "confirmed" | "closed_by_evidence" | "evidence_recorded";
@@ -57,6 +61,7 @@ export type RunDecision =
     };
 
 const UNDECIDED_REASON_MAX = 60;
+const CONFLICT_REASON_MAX = 300;
 
 export function caseTripId(source: RunObservation["run"]["source"], runId: string): string {
   return source === "spare" ? `spare:${runId}` : runId;
@@ -68,6 +73,36 @@ function clipReason(reason: string): string {
 
 function evidenceJson(evidence: unknown): string | null {
   return evidence === undefined ? null : JSON.stringify(evidence);
+}
+
+// A retrospective source's evidence is kept beside whatever the live sources
+// already recorded, under its own key, rather than replacing it. Avail's own
+// rows do not survive the night (ADR-0035), so this snapshot is the retained
+// copy.
+function withSourceEvidence(existing: string | null, source: string, evidence: unknown): string {
+  let base: Record<string, unknown> = {};
+  if (existing) {
+    try {
+      const parsed: unknown = JSON.parse(existing);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) base = parsed as Record<string, unknown>;
+      else base = { previous: parsed };
+    } catch {
+      base = { previous: existing };
+    }
+  }
+  return JSON.stringify({ ...base, [source]: evidence });
+}
+
+// What a case has already concluded about whether the run operated. A
+// retrospective report that says otherwise is an Evidence conflict, not a
+// correction.
+function concludedTimely(state: CaseState): boolean {
+  return state.validation_status === "timely_service" || state.validation_status === "false_positive"
+    || (state.validation_status === "unreviewed" && state.status === "resolved");
+}
+
+function concludedMissed(state: CaseState): boolean {
+  return state.validation_status === "confirmed";
 }
 
 function isHeld(state: CaseState): boolean {
@@ -97,6 +132,8 @@ function created(observations: RunObservation[], now: Date): CaseState | null {
       first_seen_watching_at: now,
       evidence_json: evidenceJson(observation.evidence),
       expected_window_end_at: null as Date | null,
+      evidence_conflict_at: null as Date | null,
+      evidence_conflict_reason: null as string | null,
     };
     if (fact.kind === "cancellation") {
       return { ...base, status: "escalated", detection_type: "explicit_cancellation", data_quality_status: "source_verified", undecided_reason: null };
@@ -115,7 +152,7 @@ function created(observations: RunObservation[], now: Date): CaseState | null {
 }
 
 // Evidence about a case that exists (or was just opened in this pass).
-function applyEvidence(state: CaseState, observations: RunObservation[]): CaseState {
+function applyEvidence(state: CaseState, observations: RunObservation[], now: Date): CaseState {
   let next = { ...state };
   const open = () => next.validation_status === "unreviewed" && next.status !== "resolved";
   for (const { fact, detectorVersion, evidence, run } of observations) {
@@ -153,6 +190,20 @@ function applyEvidence(state: CaseState, observations: RunObservation[]): CaseSt
       if (open()) next = { ...next, status: "resolved", undecided_reason: null };
     } else if (fact.kind === "evaluation_gap" && next.source_system === "spare") {
       if (open() && !isHeld(next)) next = { ...next, status: "watching", undecided_reason: clipReason(fact.reason) };
+    } else if (fact.kind === "retrospective_missed" || fact.kind === "retrospective_partial") {
+      // ADR-0035: Avail corroborates, contradicts and enriches. It never opens
+      // a case, never reopens one, never closes one, and never rewrites a
+      // review - so the only state it can change is the Evidence conflict.
+      next = { ...next, evidence_json: withSourceEvidence(next.evidence_json, "avail", evidence ?? { fact }) };
+      const contradiction =
+        fact.kind === "retrospective_missed" && concludedTimely(next)
+          ? "Avail reports this run as missed; the case concluded Timely service."
+          : fact.kind === "retrospective_partial" && concludedMissed(next)
+            ? "Avail reports this run as operated with a missed stop; the case is a Confirmed missed trip."
+            : null;
+      if (contradiction && next.evidence_conflict_at === null) {
+        next = { ...next, evidence_conflict_at: now, evidence_conflict_reason: contradiction.slice(0, CONFLICT_REASON_MAX) };
+      }
     }
   }
   return next;
@@ -177,6 +228,7 @@ function applyConfirmation(state: CaseState, observations: RunObservation[], now
 const COMPARED: (keyof CaseState)[] = [
   "route_id", "scheduled_departure_at", "grace_deadline_at", "status", "data_quality_status", "detection_type",
   "detector_version", "undecided_reason", "detected_late_arrival_at", "evidence_json",
+  "evidence_conflict_at", "evidence_conflict_reason",
 ];
 
 function same(a: unknown, b: unknown): boolean {
@@ -192,7 +244,7 @@ export function decideRun(snapshot: CaseState | null, observations: RunObservati
   const start = snapshot ?? opened;
   if (!start) return null;
 
-  const decided = applyConfirmation(applyEvidence(start, observations), observations, now);
+  const decided = applyConfirmation(applyEvidence(start, observations, now), observations, now);
 
   if (!snapshot) {
     return { kind: "insert", row: decided, outcome: decided.status === "watching" || isHeld(decided) ? "held" : "created" };
@@ -248,7 +300,7 @@ export function decideReview(state: CaseState, act: CaseAct, now: Date): { refus
       : "Say why this legacy record is being rereviewed.");
   }
   if (act.outcome === "confirmed" && !reviewed && !legacy) {
-    const lifecycle = classifyMissedTripCase(state, new Set(), now).lifecycle;
+    const lifecycle = classifyMissedTripCase(state, [], now).lifecycle;
     if (lifecycle === "open" || lifecycle === "awaiting_evidence") {
       return refuseReview("awaiting_evidence", "This case is still awaiting evidence. It can be confirmed as a missed trip once its operating window has ended and detection has decided it.");
     }

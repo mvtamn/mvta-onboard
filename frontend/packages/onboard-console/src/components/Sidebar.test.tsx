@@ -14,9 +14,9 @@ const stats: LiveStats = {
 // As dev reported on 2026-09-14.
 const DEV_FEEDS: DashboardFeed[] = [
   { key: "gtfs-realtime", label: "GTFS-Realtime", detail: "Fixed-route trip updates", state: "live", stateLabel: "Current", lastDeliveryAt: new Date().toISOString() },
-  { key: "mvta-connect", label: "MVTA Connect", detail: "On-demand reconciliation", state: "unavailable", stateLabel: "Unavailable", lastDeliveryAt: null },
+  { key: "mvta-connect", label: "On-demand reconciliation", detail: "MVTA Connect wait-time monitor", state: "unavailable", stateLabel: "Not received", lastDeliveryAt: null },
 ];
-const DEV_SUMMARY: FeedSummary = { state: "unavailable", label: "MVTA Connect unavailable" };
+const DEV_SUMMARY: FeedSummary = { state: "unavailable", label: "On-demand reconciliation not received" };
 
 function renderRail(feeds = DEV_FEEDS, summary = DEV_SUMMARY, onRefresh = vi.fn()) {
   const view = render(<Sidebar stats={stats} feeds={feeds} summary={summary} checkedAt={new Date()} onRefresh={onRefresh} />);
@@ -28,15 +28,15 @@ describe("Sidebar", () => {
     renderRail();
     expect(screen.getByText(/GTFS-Realtime · Current/)).toBeInTheDocument();
     expect(screen.getByText(/Fixed-route trip updates · last delivery/)).toBeInTheDocument();
-    expect(screen.getByText(/MVTA Connect · Unavailable/)).toBeInTheDocument();
-    expect(screen.getByText(/On-demand reconciliation · no delivery recorded/)).toBeInTheDocument();
+    expect(screen.getByText(/On-demand reconciliation · Not received/)).toBeInTheDocument();
+    expect(screen.getByText(/MVTA Connect wait-time monitor · no delivery recorded/)).toBeInTheDocument();
   });
 
   // The rail used to say this about two console API calls under feed names.
   it("no longer reports an API call as a feed being live", () => {
     renderRail();
     expect(screen.queryByText(/Live data connected/)).toBeNull();
-    expect(screen.getByRole("status")).toHaveTextContent("MVTA Connect unavailable");
+    expect(screen.getByRole("status")).toHaveTextContent("On-demand reconciliation not received");
   });
 
   it("gives each feed a signal matching its state", () => {

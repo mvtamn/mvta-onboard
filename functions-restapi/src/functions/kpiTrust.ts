@@ -1,6 +1,6 @@
-// GET /kpi-trust - staff-only, PII-free current usability of feed-backed KPIs.
+// GET /kpi-trust - any OnBoard role, PII-free current usability of feed-backed KPIs.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
-import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { requireAnyOnBoardAccess } from "../lib/access/require";
 import { getPool } from "../lib/db";
 import { loadKpiTrust } from "../lib/kpiTrustStore";
 
@@ -9,7 +9,7 @@ app.http("kpiTrust", {
   methods: ["GET"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, STAFF_READ_ROLES);
+    const auth = await requireAnyOnBoardAccess(request);
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     try {
       const pool = await getPool();

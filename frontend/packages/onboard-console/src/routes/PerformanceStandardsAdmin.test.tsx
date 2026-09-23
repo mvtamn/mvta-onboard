@@ -4,8 +4,11 @@ import { MemoryRouter } from "react-router-dom";
 import { AppDialogProvider } from "../components/AppDialog.js";
 import { PerformanceStandardsAdmin } from "./PerformanceStandardsAdmin.js";
 
-let roles: string[] = ["OCC.Admin"];
-vi.mock("../auth/AuthContext.js", () => ({ useAuth: () => ({ roles }) }));
+let actions: string[] = ["contractor-performance.view", "contractor-performance.edit"];
+vi.mock("../auth/AccessContext.js", async () => {
+  const actual = await vi.importActual<typeof import("../auth/AccessContext.js")>("../auth/AccessContext.js");
+  return { ...actual, useAccess: () => actual.accessStateWith(actions) };
+});
 
 const AGREEMENT = {
   id: "a0000000-0000-4000-8000-000000000001", contractor_id: "c0000000-0000-4000-8000-000000000001",
@@ -89,7 +92,7 @@ async function open(code: string, tab?: "Details" | "Penalty bands" | "Assignmen
 
 describe("Performance Standards administration", () => {
   beforeEach(() => {
-    roles = ["OCC.Admin"];
+    actions = ["contractor-performance.view", "contractor-performance.edit"];
     referenceValues = { values: REFERENCE_VALUES, diagnostics: { table_ready: true } };
     catalog = {
       standards: [ORPHAN, OTP], tiers: TIERS, agreements: [AGREEMENT], resolvers: RESOLVERS, source_systems: SOURCE_SYSTEMS,
@@ -723,9 +726,9 @@ describe("Performance Standards administration", () => {
   });
 
   it("lets a non-administrator read the catalog but change nothing", async () => {
-    roles = ["OCC.Compliance"];
+    actions = ["contractor-performance.view"];
     view();
-    expect(await screen.findByText(/requires Administrator access/)).toBeInTheDocument();
+    expect(await screen.findByText(/is not part of your access/)).toBeInTheDocument();
     expect(screen.queryByText("New standard")).not.toBeInTheDocument();
     await open("OTP_FIXED_ROUTE");
     expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();

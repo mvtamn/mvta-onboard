@@ -24,13 +24,13 @@
 // month. Re-running for a month already covered (including the current
 // trailing window) is harmless, just redundant.
 //
-//   POST /otp-historical-backfill  body: {month: "YYYYMM"} - OCC.Admin only
+//   POST /otp-historical-backfill  body: {month: "YYYYMM"} - integrations-health.edit
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
-import { requireRole, ADMIN_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { validateOtpHistoricalBackfill } from "../lib/validation";
 import { availConfig, fetchAvail } from "../lib/availClient";
-import { mapOtpMonthlyReport, upsertOtpMonthlyReport } from "../lib/otpMonthlyFeed";
+import { mapOtpMonthlyReport, restatementLedgerReady, serviceMonthOf, upsertOtpMonthlyReport } from "../lib/otpMonthlyFeed";
 import { mapMissedTripReport, replaceMissedTripsForMonths } from "../lib/availMissedTripsFeed";
 
 function monthToDate(yyyymm: string): Date {
@@ -45,9 +45,9 @@ function lastDayOfMonth(yyyymm: string): Date {
 app.http("otpHistoricalBackfill", {
   route: "otp-historical-backfill",
   methods: ["POST"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, ADMIN_ROLES);
+    const authResult = await requireAccess(request, "integrations-health.edit");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }
@@ -75,6 +75,8 @@ app.http("otpHistoricalBackfill", {
     }
 
     const pool = await getPool();
+    const ledgerReady = await restatementLedgerReady(pool);
+    const currentServiceMonth = serviceMonthOf(new Date());
 
     let otpResult: { reports_seen: number; upserted: number; error?: string };
     try {
@@ -83,7 +85,9 @@ app.http("otpHistoricalBackfill", {
       for (const report of reports) {
         const mapped = mapOtpMonthlyReport(report, month);
         if (!mapped) continue;
-        await upsertOtpMonthlyReport(pool, mapped);
+        // A backfill that changes an already-ingested past month is a
+        // restatement like any other, and is recorded as one.
+        await upsertOtpMonthlyReport(pool, mapped, { ledgerReady, currentServiceMonth });
         upserted++;
       }
       otpResult = { reports_seen: reports.length, upserted };

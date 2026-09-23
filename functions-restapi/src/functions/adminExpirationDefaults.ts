@@ -1,19 +1,19 @@
 // Expiration defaults admin (architecture doc Section 9):
-//   GET  /manage/expiration-defaults              - any staff role
-//   PATCH /manage/expiration-defaults/{category}  - Admin only
+//   GET  /manage/expiration-defaults              - rider-alerts.view
+//   PATCH /manage/expiration-defaults/{category}  - service-configuration.edit
 // The ExpirationDefaults table is seeded by phase1-schema.sql; these defaults
 // drive expires_at when a message is created without an explicit expiration.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, STAFF_READ_ROLES, ADMIN_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { validateExpirationDefault, VALID_CATEGORIES } from "../lib/validation";
 
 app.http("expirationDefaultsList", {
   route: "manage/expiration-defaults",
   methods: ["GET"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, STAFF_READ_ROLES);
+    const authResult = await requireAccess(request, "rider-alerts.view");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }
@@ -36,9 +36,9 @@ app.http("expirationDefaultsList", {
 app.http("expirationDefaultsUpdate", {
   route: "manage/expiration-defaults/{category}",
   methods: ["PATCH"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, ADMIN_ROLES);
+    const authResult = await requireAccess(request, "service-configuration.edit");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

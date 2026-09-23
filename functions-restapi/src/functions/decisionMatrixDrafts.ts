@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
-import { ADMIN_ROLES, requireRole } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { getPool, sql } from "../lib/db";
 import type { LibraryItemReader } from "../lib/sharepointLibrary";
 import { prepareSupportingDocumentReferences, ReferenceRefusal, type PreparedReferences } from "../lib/supportingDocumentReferences";
@@ -147,7 +147,7 @@ function isDuplicateProcedure(error: unknown): boolean {
 }
 
 export async function createDecisionMatrixProcedureDraft(request: HttpRequest, context: InvocationContext, library: LibraryItemReader = approvedLibraryItems()) {
-  const auth = requireRole(request, ADMIN_ROLES);
+  const auth = await requireAccess(request, "decision-matrix.manage");
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   let body: unknown;
   try { body = await request.json(); } catch { return { status: 400, jsonBody: { error: "Request body must be valid JSON." } }; }
@@ -207,7 +207,7 @@ export async function createDecisionMatrixProcedureDraft(request: HttpRequest, c
 }
 
 export async function cloneDecisionMatrixProcedureDraft(request: HttpRequest, context: InvocationContext) {
-  const auth = requireRole(request, ADMIN_ROLES);
+  const auth = await requireAccess(request, "decision-matrix.manage");
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   const procedureId = request.params.procedureId;
   if (!procedureId) return { status: 400, jsonBody: { error: "procedureId is required." } };
@@ -265,7 +265,7 @@ export async function cloneDecisionMatrixProcedureDraft(request: HttpRequest, co
 }
 
 export async function saveDecisionMatrixProcedureDraft(request: HttpRequest, context: InvocationContext, library: LibraryItemReader = approvedLibraryItems()) {
-  const auth = requireRole(request, ADMIN_ROLES);
+  const auth = await requireAccess(request, "decision-matrix.manage");
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   const procedureId = request.params.procedureId;
   const revision = Number(request.params.revision);
@@ -316,7 +316,7 @@ export async function saveDecisionMatrixProcedureDraft(request: HttpRequest, con
 }
 
 export async function getDecisionMatrixProcedureDraft(request: HttpRequest, context: InvocationContext) {
-  const auth = requireRole(request, ADMIN_ROLES);
+  const auth = await requireAccess(request, "decision-matrix.manage");
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   const procedureId = request.params.procedureId;
   const revision = Number(request.params.revision);

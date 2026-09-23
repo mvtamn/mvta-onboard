@@ -1,10 +1,10 @@
 import { app, type HttpRequest } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, ADMIN_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { assignmentTarget, type AssignmentPlanStatus } from "../lib/eventAssignments";
 
 async function authorized(req: HttpRequest) {
-  return requireRole(req, ADMIN_ROLES);
+  return requireAccess(req, "event-avl.configure");
 }
 
 app.http("eventVehicleAssignments", {

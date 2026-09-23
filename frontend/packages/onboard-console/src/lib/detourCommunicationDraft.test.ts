@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Detour, DetourCommunication } from "@mvta/shared";
-import { audiencePlan, communicationSubject, draftCommunicationText, mailtoLink, nextAudience } from "./detourCommunicationDraft.js";
+import type { Detour, DetourCommunication, DetourCommunicationEligibility } from "@mvta/shared";
+import { audienceAddError, audiencePlan, communicationAction, communicationSubject, copyFrom, detourSendBlock, draftCommunicationText, mailtoLink, nextAudience, withAudience } from "./detourCommunicationDraft.js";
 
 const detour = {
   internal_number: "MVTA-DET-2026-0012", number: null, closure: "Cedar Ave bridge closed", location: "Cedar Ave at 5th St",
@@ -8,23 +8,53 @@ const detour = {
   segments: [{ id: "s1", detour_id: "d", routes: "460 SB", directions: "Via Nicollet to 6th", sort_order: 0 }],
   action_instructions: "Follow the posted detour.", riders_directed: "Use the stop at 6th St", affected_stops_and_stations: null,
   operational_impacts: null, confirmation_contact: "Project office 555-0100",
-  notification_audiences: ["Operators", "Operations management"], notification_channels: ["email", "radio"],
+  notification_audiences: ["Operators", "Operations management"], notification_channels: ["email", "sms"],
 } as unknown as Detour;
 
-function comm(audience: string, status: DetourCommunication["status"]): DetourCommunication {
-  return { id: `${audience}-${status}`, detour_id: "d", audience, channel: "email", recipients: null, content: "x", status, outcome: null, created_by: "a", created_at: "", published_by: null, published_at: null };
+function comm(audience: string, status: DetourCommunication["status"], channel = "email"): DetourCommunication {
+  return { id: `${audience}-${channel}-${status}`, detour_id: "d", audience, channel, recipients: null, content: "x", status, outcome: null, created_by: "a", created_at: "", published_by: null, published_at: null };
+}
+
+/** Told on every channel the record requires. */
+function told(audience: string): DetourCommunication[] {
+  return [comm(audience, "published"), comm(audience, "published", "sms")];
 }
 
 describe("audiencePlan", () => {
   it("reports each required audience's progress, matching case-insensitively", () => {
-    const plan = audiencePlan(detour, [comm("operators", "published"), comm("Operations management", "draft")]);
+    const plan = audiencePlan(detour, [...told("operators"), comm("Operations management", "draft")]);
     expect(plan.map((p) => [p.audience, p.progress])).toEqual([["Operators", "published"], ["Operations management", "draft"]]);
-    expect(plan[0].channels).toEqual(["email", "radio"]);
+    expect(plan[0].channels).toEqual(["email", "sms"]);
+  });
+
+  it("an audience is only told once every required channel has gone", () => {
+    const plan = audiencePlan(detour, [comm("Operators", "published")]);
+    expect(plan[0].progress).toBe("draft");
+    expect(plan[0].perChannel).toEqual([
+      { channel: "email", progress: "published", communicationId: "Operators-email-published" },
+      { channel: "sms", progress: "none", communicationId: undefined },
+    ]);
+  });
+
+  it("tracks each channel separately, so one can be sent while another is drafted", () => {
+    const plan = audiencePlan(detour, [comm("Operators", "published"), comm("Operators", "draft", "sms")]);
+    expect(plan[0].perChannel.map((c) => [c.channel, c.progress]))
+      .toEqual([["email", "published"], ["sms", "draft"]]);
+    expect(plan[0].progress).toBe("draft");
+  });
+
+  it("the contractor is reached by email alone, so email alone tells them", () => {
+    const plan = audiencePlan({ ...detour, required_audiences: ["SST"] }, [comm("SST", "published")],
+      { name: "SST", recipients: ["ops@example.com"] });
+    expect(plan[0].perChannel).toEqual([
+      { channel: "email", progress: "published", communicationId: "SST-email-published" },
+    ]);
+    expect(plan[0].progress).toBe("published");
   });
   it("opens on the first audience with nothing yet, then on drafts", () => {
-    expect(nextAudience(audiencePlan(detour, [comm("Operators", "published")]))?.audience).toBe("Operations management");
-    expect(nextAudience(audiencePlan(detour, [comm("Operators", "draft"), comm("Operations management", "published")]))?.audience).toBe("Operators");
-    expect(nextAudience(audiencePlan(detour, [comm("Operators", "published"), comm("Operations management", "published")]))).toBeNull();
+    expect(nextAudience(audiencePlan(detour, told("Operators")))?.audience).toBe("Operations management");
+    expect(nextAudience(audiencePlan(detour, [comm("Operators", "draft"), ...told("Operations management")]))?.audience).toBe("Operators");
+    expect(nextAudience(audiencePlan(detour, [...told("Operators"), ...told("Operations management")]))).toBeNull();
   });
   it("uses the server's required list and marks the contractor as email-to-recipients", () => {
     const plan = audiencePlan({ ...detour, required_audiences: ["Operators", "SST"] }, [], { name: "SST", recipients: ["ops@sst.com"] });
@@ -62,5 +92,122 @@ describe("mailtoLink and communicationSubject", () => {
   it("prefixes the subject with the reference when there is one", () => {
     expect(communicationSubject(detour)).toBe("[MVTA-DET-2026-0012] Detour: Cedar Ave bridge closed");
     expect(communicationSubject({ internal_number: null, number: null, closure: "X" })).toBe("Detour: X");
+  });
+});
+
+
+describe("Detour communication eligibility, as the server decided it", () => {
+  const eligible: DetourCommunicationEligibility = { may_draft: true, may_send: true, refusal: null, audience_not_required: false };
+  const closed: DetourCommunicationEligibility = {
+    may_draft: false, may_send: false, audience_not_required: false,
+    refusal: { code: "detour_closed", sentence: "This Detour is closed, so there is nothing left to tell this audience." },
+  };
+  const noRecipients: DetourCommunicationEligibility = {
+    may_draft: true, may_send: false, audience_not_required: false,
+    refusal: { code: "no_recipients", sentence: "Add at least one email recipient before sending." },
+  };
+
+  const withEligibility = (rows: { audience: string; eligibility: DetourCommunicationEligibility }[]) =>
+    ({ ...detour, required_audiences: rows.map((r) => r.audience), audience_eligibility: rows } as unknown as Detour);
+
+  it("carries each audience's decision onto its plan item", () => {
+    const plan = audiencePlan(withEligibility([
+      { audience: "Operators", eligibility: eligible },
+      { audience: "Operations management", eligibility: closed },
+    ]), []);
+    expect(plan.map((p) => [p.audience, p.eligibility?.may_send])).toEqual([["Operators", true], ["Operations management", false]]);
+    // Matching is how a person reads it, not byte-exact.
+    const cased = audiencePlan(withEligibility([{ audience: "Operators", eligibility: eligible }]), []);
+    expect(cased[0].eligibility).toBeDefined();
+  });
+
+  it("blocks sending on the Detour's own reason, not on a missing recipient", () => {
+    expect(detourSendBlock(audiencePlan(withEligibility([{ audience: "Operators", eligibility: closed }]), [])))
+      .toEqual(closed.refusal);
+    // A missing recipient is about one message, so it does not disable the
+    // whole Detour's sending - the server still refuses that one send.
+    expect(detourSendBlock(audiencePlan(withEligibility([{ audience: "Operators", eligibility: noRecipients }]), []))).toBeNull();
+    expect(detourSendBlock(audiencePlan(withEligibility([{ audience: "Operators", eligibility: eligible }]), []))).toBeNull();
+  });
+
+  it("says nothing on a server that does not send a decision", () => {
+    // 1.5.248 and earlier: the console must not invent a rule it does not own.
+    expect(detourSendBlock(audiencePlan(detour, []))).toBeNull();
+    expect(audiencePlan(detour, [])[0].eligibility).toBeUndefined();
+  });
+});
+
+describe("communicationAction", () => {
+  const sent = { channel: "email" as const, recipients: "ops@example.com", status: "draft" as const, delivery_status: undefined };
+  const emailOption = { channel: "email" as const, label: "Email", kind: "sent" as const, needs_recipients: true };
+  const avlOption = { channel: "avl_messaging" as const, label: "AVL messaging", kind: "recorded" as const, needs_recipients: false };
+  const signageOption = { channel: "digital_signage" as const, label: "Digital signage", kind: "recorded" as const, needs_recipients: false };
+
+  it("offers Send for a channel OnBoard sends, and blocks it with the server's reason", () => {
+    expect(communicationAction(sent, emailOption, undefined)).toMatchObject({ canSend: true, isRecorded: false, recordLabel: "Mark published (sent elsewhere)" });
+    expect(communicationAction(sent, emailOption, "This Detour is closed.")).toMatchObject({ canSend: true, blocked: "This Detour is closed." });
+  });
+
+  it("never offers Send for a recorded channel, and a closed Detour does not block writing one down", () => {
+    // The server allows recording on a closed Detour: Monday's AVL message may
+    // be written down on Tuesday.
+    const action = communicationAction({ ...sent, channel: "avl_messaging", recipients: null }, avlOption, "This Detour is closed.");
+    expect(action).toMatchObject({ canSend: false, isRecorded: true, recordLabel: "Record AVL messaging went out" });
+    expect(action.blocked).toBeUndefined();
+    expect(communicationAction({ ...sent, channel: "digital_signage", recipients: null }, signageOption, undefined).recordLabel)
+      .toBe("Record Digital signage went out");
+  });
+
+  it("does not offer Send for an email with no recipients", () => {
+    expect(communicationAction({ ...sent, recipients: null }, emailOption, undefined)).toMatchObject({ canSend: false, recordLabel: "Mark published" });
+  });
+
+  it("offers Send for Teams, which carries no recipients", () => {
+    const teams = { channel: "teams" as const, label: "Teams", kind: "sent" as const, needs_recipients: false };
+    expect(communicationAction({ ...sent, channel: "teams", recipients: null }, teams, undefined).canSend).toBe(true);
+  });
+
+  it("treats an unknown channel as one OnBoard does not send", () => {
+    // A server older than 1.5.254 sends no channel list; nothing is offered for
+    // sending rather than guessing at a transport.
+    expect(communicationAction({ ...sent, channel: "radio", recipients: "someone" }, undefined, undefined))
+      .toMatchObject({ canSend: false, isRecorded: false, recordLabel: "Mark published" });
+  });
+});
+
+describe("starting a message from one that exists", () => {
+  it("prefers the same audience on another channel", () => {
+    const messages = [
+      { ...comm("Operators", "published"), content: "Full email wording" },
+      { ...comm("Riders", "published", "sms"), content: "Short text" },
+    ];
+    expect(copyFrom(messages, "Operators", "sms")).toEqual({ content: "Full email wording", from: "Operators · email" });
+  });
+
+  it("falls back to the same channel for another audience", () => {
+    const messages = [{ ...comm("Riders", "published", "sms"), content: "Short text" }];
+    expect(copyFrom(messages, "Operators", "sms")).toEqual({ content: "Short text", from: "Riders · sms" });
+  });
+
+  it("offers nothing when there is nothing to copy", () => {
+    expect(copyFrom([], "Operators", "sms")).toBeNull();
+    expect(copyFrom([{ ...comm("Operators", "draft"), content: "  " }], "Operators", "sms")).toBeNull();
+  });
+});
+
+describe("adding an audience to the Detour", () => {
+  it("appends it, so it is required like the rest", () => {
+    expect(withAudience(["Operators"], "Burnsville PD")).toEqual(["Operators", "Burnsville PD"]);
+  });
+
+  it("refuses a name the Detour already has, whatever the casing", () => {
+    expect(audienceAddError(["Operators"], "operators")).toContain("already on this Detour");
+    expect(withAudience(["Operators"], "operators")).toEqual(["Operators"]);
+  });
+
+  it("refuses an empty or oversized name", () => {
+    expect(audienceAddError([], "   ")).toBe("Name the audience to add.");
+    expect(audienceAddError([], "x".repeat(101))).toContain("too long");
+    expect(audienceAddError(["Operators"], "Burnsville PD")).toBeNull();
   });
 });

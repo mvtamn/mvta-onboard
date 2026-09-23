@@ -10,7 +10,7 @@
 // boundary they used.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { agencyServiceDate } from "../lib/missedTripTime";
 import { onDemandDeparturesEnabled } from "../lib/onDemandDepartures";
 import { isJudged, onDemandDepartureOutcome, type OnDemandDepartureOutcome } from "../lib/onDemandDepartureOutcome";
@@ -50,9 +50,9 @@ interface OnDemandDepartureRow {
 app.http("onDemandDeparturesList", {
   route: "on-demand-departures",
   methods: ["GET"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, [...STAFF_READ_ROLES, "OCC.Compliance"]);
+    const authResult = await requireAccess(request, "compliance-review.view");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

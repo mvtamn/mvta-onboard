@@ -1,15 +1,15 @@
-// Persisted Review Queue decisions - a candidate (a stop/route/day-of-week
-// row flagged for early/late bias, see otpMonthlyFeed.ts) has no row here
-// until staff actually approve or reject it; a pending candidate is derived
-// live from OtpMonthlyRouteStopDay and never written here. computeOfficialPct
-// (Route Summary/Dashboard) treats an 'approved' row as excluded from the
-// route's official OTP%. Re-reviewing the same stop/day upserts in place.
+// Persisted Review Queue decisions - a Flagged Stop has no row here until
+// staff actually approve or reject it; a stop awaiting review is decided live
+// by lib/otpFlaggedStops (ADR 0034) and never written here. lib/otpMonth's
+// rules.ts treats an 'approved' row as excluded from Official Departure OTP.
+// Re-reviewing the same stop/day upserts in place, which is why an already
+// excluded stop stays in the queue.
 //
-//   GET /otp-stop-exclusions?month=  - any staff role, plus OCC.Compliance
-//   PUT /otp-stop-exclusions          - Publisher/Admin, plus OCC.Compliance
+//   GET /otp-stop-exclusions?month=  - compliance-review.view
+//   PUT /otp-stop-exclusions          - compliance-review.review
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, STAFF_READ_ROLES, PUBLISH_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { validateStopExclusion } from "../lib/validation";
 import { serviceMonthOf } from "../lib/otpMonthlyFeed";
 
@@ -33,9 +33,9 @@ function resolveMonth(request: HttpRequest): string {
 app.http("otpStopExclusionsList", {
   route: "otp-stop-exclusions",
   methods: ["GET"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, [...STAFF_READ_ROLES, "OCC.Compliance"]);
+    const authResult = await requireAccess(request, "compliance-review.view");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }
@@ -69,9 +69,9 @@ app.http("otpStopExclusionsList", {
 app.http("otpStopExclusionsUpsert", {
   route: "otp-stop-exclusions",
   methods: ["PUT"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, [...PUBLISH_ROLES, "OCC.Compliance"]);
+    const authResult = await requireAccess(request, "compliance-review.review");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

@@ -8,7 +8,7 @@
 // validated envelope but can create reviewable drafts only.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, INGESTION_ROLES, PUBLISH_ROLES } from "../lib/auth";
+import { requireAccessOrIngestion } from "../lib/access/require";
 import { validateCreateMessage } from "../lib/validation";
 import { publishMessageCreated } from "../lib/events";
 import type { CreateMessageBody } from "../lib/types";
@@ -22,9 +22,9 @@ interface InsertedRow {
 app.http("messagesCreate", {
   route: "messages",
   methods: ["POST"],
-  authLevel: "anonymous", // authorization is enforced in code below via requireRole
+  authLevel: "anonymous", // authorization is enforced in code below via requireAccessOrIngestion
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, [...PUBLISH_ROLES, ...INGESTION_ROLES]);
+    const authResult = await requireAccessOrIngestion(request, "rider-alerts.publish");
     if (!authResult.authorized) {
       return {
         status: authResult.status,

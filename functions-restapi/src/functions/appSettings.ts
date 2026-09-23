@@ -2,7 +2,7 @@
 // Monitoring's AVL polling interval.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, ADMIN_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 
 interface AppSettingRow {
   module: string;
@@ -21,7 +21,7 @@ app.http("appSettings", {
   methods: ["GET", "PATCH"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, ADMIN_ROLES);
+    const authResult = await requireAccess(request, "service-configuration.edit");
     if (!authResult.authorized) return { status: authResult.status, jsonBody: { error: authResult.message } };
 
     const moduleName = request.query.get("module")?.trim();

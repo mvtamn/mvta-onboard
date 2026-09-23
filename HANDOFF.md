@@ -574,6 +574,68 @@ IDs, then migrate one legacy candidate end to end — draft, check documents,
 submit, approve, read it as a controller. That last step exercises the
 lifecycle, the audit trail, the health check and the reader in one pass.
 
+## On-Demand service-quality monitor — activation (2026-09-17)
+
+**Approved by the project owner on 2026-09-17** and switched on by the PR that
+adds this section (dev parameters: `onDemandMonitoringEnabled: true`,
+`onDemandMonitoringServiceIds` set). The status section below (2026-09-08) is
+the history of how it got here; its blocker 1 (zones) was resolved in 1.5.236.
+
+- **Scope: all three MVTA Connect services**, an explicit choice by the owner:
+  `18b6ed3e-...` MVTA Connect, `d7046565-...` MVTA Connect - Eagan,
+  `7c31648d-...` MVTA Connect Shakopee - Prior Lake (names from
+  `SpareMissedTripSource`). The same set happens to be
+  `spareMissedTripServiceIds`; it is set on its own parameter, not derived from
+  it (ADR 0026). Eagan has no Operational zone, so its requests are recorded
+  Unzoned (monitoring-incomplete) - expected, not a fault.
+- **Activation gate: approved with four items still unevidenced** - approved
+  source owner and contract, confirmed non-PII field mapping and
+  pickup-commitment semantics, verified authenticated webhook delivery, and a
+  live controlled breach that creates one internal Suggested Alert and sends no
+  rider communication. The controlled breach is the first check to run once
+  the monitor is current. Suggested Alerts are staff drafts; nothing reaches a
+  rider without a staff action.
+- **Pre-activation rows:** none to clear. `MonitoredOnDemandWaits`,
+  `OnDemandRequestZoneSnapshots` and `OnDemandRequestCommitmentAudit` were all
+  empty on 2026-09-17.
+- **Zones:** one active version (Central Zone, Apple Valley; Shakopee - Prior
+  Lake Boundaries), pulled from Spare 2026-09-17 16:20 UTC.
+
+### Merge order
+
+1. **Spare repoints the webhook** to
+   `https://func-mvta-sparehook-dev.azurewebsites.net/api/on-demand-webhooks/spare`
+   (see "Spare webhook receiver on its own app", step 5). On 2026-09-17 Spare
+   still posted about 105,000 deliveries a day to the REST app, 6,000-6,700 an
+   hour from 6am to 6pm Central; the receiver app was ready (health 200, 401
+   without the secret, current package) and had received none. With the
+   monitor on, each requestStatus delivery becomes a database write and each
+   ETA delivery a Spare re-read - the load that saturated the REST app on
+   2026-09-05 - so it should land on the receiver's own plan.
+2. **Confirm deliveries moved** (that section's step 6).
+3. **Merge this PR after 10pm Central**, when deliveries fall to about 100-180
+   an hour. It is a parameters change, so it runs an infra deploy that restarts
+   the REST app. It also carries `spareWebhookOnRestApi: false`, step 7 of that
+   cutover, retiring the now-idle receiver on the REST app.
+
+   Steps 1 and 2 are **done**: Spare repointed at 17:54 UTC on 2026-09-17.
+   Deliveries were refused with 401 for about two hours because the receiver's
+   identity had no role assignments, so its `SPARE_WEBHOOK_AUTH_SECRET` Key
+   Vault reference resolved to the literal `@Microsoft.KeyVault(...)` string -
+   step 2 of that cutover had never been carried out. After the Key Vault
+   Secrets User grant (19:37 UTC) and a restart (20:34 UTC) every delivery was
+   accepted. Its `alwaysOn` was also off and was turned on by hand; PR #293 is
+   the durable fix. The two storage data-plane grants are still outstanding,
+   and the app runs without them.
+4. **At the next hour**, `onDemandSpareReconcile` records the first
+   `spare_on_demand_reconciliation` success; the On-Demand KPI trust state and
+   Service Risk & Quality should move off unavailable / Not connected.
+5. **Watch the 5-7am Central ramp** on the receiver: `onDemandSpareWebhook`
+   requests by `cloud_RoleName`, 503 sheds, p95 duration.
+
+If Spare cannot repoint soon, the fallback is step 3 alone, overnight, with the
+receiver still on the REST app, and a close watch on the morning ramp.
+
 ## On-Demand service-quality monitor — status (2026-09-08)
 
 **The monitor is off and has never run against real data.** Everything code can
@@ -836,3 +898,60 @@ effect on the next deploy.
   Avail retrospective reconciliation behind it before it stays. The counts are
   visible meanwhile: the poll log breaks the undecided total down by reason, and
   the console reports the held count.
+
+## App-owned roles — status (2026-09-17)
+
+ADR-0032 splits the two questions RBAC was answering with one Entra token:
+Entra decides who may sign in, OnBoard decides what they may do. The plan is
+`plans/app-owned-roles-plan.md` — module catalog, the nine seeded roles, six
+increments. Increment 1 (this change) is the vocabulary and the records only.
+Nothing enforces them: every endpoint still calls `requireRole` against the app
+roles in the token, so applying the migration changes no one's access.
+
+### Steps that are the user's
+
+1. **Apply `migration-129-app-owned-roles.sql`, `migration-130-access-role-history.sql` and `migration-131-onboard-grant-requests.sql` to dev.**
+   129 creates `AccessPeople`, `AccessRoles`, `AccessRoleActions` and
+   `AccessRoleGrants` and seeds the nine roles; 130 adds `AccessRoleHistory`.
+   Both are re-runnable, and 129 never overwrites a role an Access
+   Administrator later edits. Until they are applied, Access & Identity →
+   Roles shows a setup notice instead of the page.
+2. **Grant yourself the first Access Administrator.** The migration's last
+   batch does it once you paste your Entra object id into
+   `@firstAccessAdminObjectId` — `az ad signed-in-user show --query id -o tsv`
+   with the MVTA account, not the Azure subscription account. Until then it
+   prints that nothing was granted, and `ONBOARD_ACCESS_ADMIN_FALLBACK` is what
+   lets an OCC.Admin reach Access & Identity.
+3. **Check `GET /api/me/access` on dev** once the migration is applied. It
+   should report `rolesInOnBoard: true`, your roles with `source: "onboard"`
+   for anything granted here and `"entra"` for app roles still in your token,
+   and an Access Summary naming each module in words.
+
+Increment 2 (also on this branch) moved every endpoint onto those actions. It
+still resolves the app roles in your token, so nothing about signing in or
+about who can do what changes on dev, with two deliberate exceptions: a
+Publisher who is not also Compliance can no longer validate missed trips, set
+OTP exclusions or classify routes, and a Compliance user can no longer read
+Event AVL geofences, locations, crossings or the event audit stream. Neither
+was reachable from the console pages those roles can open. If Operations wants
+either back, it is a checkbox on the role once increment 4 ships the Roles page.
+
+Increment 3 moved the console onto the same answer: it calls `GET /me/access`
+once per sign-in and gates every route, link and control on the actions it
+returns, so the two sides can no longer disagree. `VITE_ACCESS_ADMIN_FALLBACK`
+is retired; `ONBOARD_ACCESS_ADMIN_FALLBACK` on the API is the only bootstrap
+switch left. Increment 4 added Access & Identity → Roles, which edits them. Increment 5
+added the grant, approval, import and health API and moved Access & Identity
+onto it. Left to build: the cutover (6) - stop reading app roles from the
+token, remove the OCC.* app roles from the registration, and revoke the two
+Graph write consents.
+
+Once the migrations are applied, the intended order on dev is: sign in (which
+lists you), grant yourself Access Administrator through migration 129's last
+batch, then press Import from Entra once so today's assignments become OnBoard
+grants.
+
+The Entra steps — the OnBoard Users group, "Assignment required", removing the
+`OCC.*` app roles and revoking the two Graph write consents — belong to
+increments 5 and 6 and are listed in the plan. Do none of them yet: the app
+roles in the token are still what authorizes every request.
