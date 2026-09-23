@@ -5,6 +5,15 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.297] - 2026-09-23
+
+- **Migration 138 must not shift a row the corrected poller already wrote.** 1.5.286's code reached `main` and deployed before the migration was applied, so the poller spent an hour writing true UTC instants into a table the migration still assumed was entirely agency-local wall clock. Applying it as written would have moved those 186 rows a second five hours and, because they were the most recently updated copy of each duplicate pair, the double-shifted row would have won the dedupe.
+- **`@utc_since` marks the boundary**, and it was read off the data rather than guessed: no row was written between 03:50 and 04:01:40 UTC, and the two sides separate cleanly against GTFS - measured against each block's own first trip in `TripStartLog`, rows at or after the boundary sit 10-37 minutes ahead of it (the deadhead, so no shift) and rows before it sit 310-336 minutes ahead (so they need one).
+- **`ComplianceOccurrences.service_month` is a persisted computed column** over `service_date`, so assigning it failed the whole migration. `XACT_ABORT` rolled the first attempt back cleanly - marker absent, 5,357 rows untouched - and the assignment is gone; the column follows `service_date` by itself.
+- **Both migrations are now applied to dev.** 138: 4,792 rows hold UTC instants, 565 duplicates removed, 910 re-dated, 66 occurrences adjusted, 186 left unshifted. 139: 653 placeholder candidates dismissed. Afterwards no row's `service_date` disagrees with its own scheduled pullout and no run is stored under two dates, both previously true of hundreds.
+- **Verified against GTFS, not against itself.** 1,652 of 1,662 departures now sit 10-37 minutes ahead of their block's first trip. The 10 that do not are afternoon `Expired Pullout` records on blocks whose first trip was hours earlier - relief and second pieces, for which a block's *first* trip is the wrong yardstick - and they range -72 to -304 minutes rather than clustering at the -300 a zone error would produce.
+- **Left alone deliberately:** the one placeholder already confirmed as `contractor_error` (block 1119, 2026-08-31, month 202608 still `in_review`). It is a charge for a run Avail never scheduled and wants reopening by a person.
+
 ## [1.5.296] - 2026-09-22
 
 - **Integrations & Data Health says when the database is behind the code.** There is no migration runner and no schema-version table - migrations are numbered files a person applies - so a merge can ship a read of a column nobody has added yet and nothing says so. On 2026-09-18 that happened: four migrations' worth of code went live at 14:59 UTC against a database missing all four, and four timers threw `Invalid column name 'evidence_conflict_reason'` about 150 times over an hour before anyone noticed.
