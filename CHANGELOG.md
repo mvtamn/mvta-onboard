@@ -5,6 +5,15 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.298] - 2026-09-23
+
+- **Stop Exclusions and the review timeline go through one module.** `lib/otpExclusionReview` holds what `otpStopExclusions.ts` and `otpAuditStream.ts` each knew separately: writing a decision, reading a month's back, and merging both kinds of exclusion into the Audit Stream's timeline. `recordStopExclusion`, `stopExclusionsForMonth`, `timeline`; it takes the same `Executor` seam as `lib/otpMonth` and `lib/otpFlaggedStops`. The audit handler goes from 104 lines to 37 and neither handler touches SQL.
+- **Audit entries cross the wire as data, not as sentences.** The handler built the English, and it has no access to `OtpReasonCodes` - so the Audit Stream printed `SCHED_RECOVERY` where the Review Queue, reading the same table, printed "Recovery point" for the very same decision. Entries are a discriminated union on `kind` now, and `otpAuditEntries.ts` words them in the console beside `otpFigures.ts`.
+- **Weather Day Exclusions are read here and never written.** ADR 0038 gave them an approval flow with a snapshot frozen in the same transaction; that is deliberately left where it is rather than pulled behind this interface while it is still being validated. The timeline reads them for the merge, which is the one thing neither handler could do alone.
+- **`CONTEXT.md`'s Weather Day Exclusion entry catches up with ADR 0038.** It still said a weather day "is NOT applied to Official Departure OTP" and that "a single date cannot be removed from it" - four releases after approving one started subtracting its departures.
+- **Verified.** 8 pure checks on the merge, the shaping and the limit; 10 on the wording, including that a code resolves to its label and an unlabelled one falls back rather than vanishing; a db contract test covering upsert-in-place, month scoping across both kinds, and a day-of-week value wider than three characters. The 1.5.291 query-text tests retire into it - the contract test checks the same behaviour against real SQL instead of against a string. Backend 1329 passing, console 785. No migration.
+
+
 ## [1.5.296] - 2026-09-22
 
 - **Integrations & Data Health says when the database is behind the code.** There is no migration runner and no schema-version table - migrations are numbered files a person applies - so a merge can ship a read of a column nobody has added yet and nothing says so. On 2026-09-18 that happened: four migrations' worth of code went live at 14:59 UTC against a database missing all four, and four timers threw `Invalid column name 'evidence_conflict_reason'` about 150 times over an hour before anyone noticed.

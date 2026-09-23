@@ -1729,12 +1729,34 @@ export interface CreateDateExclusionInput {
   notes?: string | null;
 }
 
-export interface OtpAuditEntry {
-  type: "stop_exclusion" | "date_exclusion";
-  title: string;
-  desc: string;
-  timestamp: string;
-}
+/**
+ * One thing that happened in exclusion review, as data rather than as a
+ * sentence. The server used to word these; it is the console that resolves a
+ * reason code to its label, so the Audit Stream showed a raw code where the
+ * Review Queue showed "Recovery point" for the same decision.
+ *
+ * Worded by otpAuditEntries.ts, beside the rest of the OTP display code.
+ */
+export type OtpAuditEntry =
+  | {
+      kind: "stop_exclusion";
+      at: string;
+      actor: string;
+      reason_code: string | null;
+      route_id: number;
+      stop_id: number;
+      day_of_week: string;
+      status: "approved" | "rejected";
+    }
+  | {
+      kind: "weather_day";
+      at: string;
+      actor: string;
+      reason_code: string;
+      scope: "Agency" | "Route";
+      route_id: number | null;
+      service_date: string;
+    };
 
 // "missed_trip" added by migration-023 - the same admin-editable table now
 // also backs Missed Trips' investigation-outcome dropdown.
