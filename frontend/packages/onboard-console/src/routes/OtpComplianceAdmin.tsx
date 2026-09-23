@@ -1,15 +1,20 @@
 import { useEffect, useState } from "react";
 import {
   ApiError,
-  type OtpMonthlyStopRow,
   type OtpReasonCode,
   type OtpHistoricalBackfillResponse,
 } from "@mvta/shared";
 import { api } from "../config.js";
-import {
-  deriveCandidatesFromLive,
-  DEFAULT_EARLY_LATE_BIAS_THRESHOLD,
-} from "./modules/otp/otpData.js";
+
+// Only a fallback for the slider's initial position, before GET /otp-settings
+// answers. The threshold that decides anything is the server's (ADR 0034).
+const FALLBACK_THRESHOLD_FOR_SLIDER = 0.15;
+
+// "YYYYMM" for today, to seed the tuner's month picker.
+function currentServiceMonth(): string {
+  const now = new Date();
+  return `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
 
 // OTP Compliance administration - reason codes, the early/late bias
 // detection threshold (with its preview-then-apply tuner), and the
@@ -35,11 +40,7 @@ export function OtpComplianceAdmin() {
   // managed here alongside the other two for one consistent CRUD surface,
   // even though Missed Trips itself is a different console module.
   const [missedTripReasonCodes, setMissedTripReasonCodes] = useState<OtpReasonCode[]>([]);
-  const [threshold, setThreshold] = useState<number>(DEFAULT_EARLY_LATE_BIAS_THRESHOLD);
-  // The tuner previews against the current month's real stop rows. Fetched
-  // here rather than passed in - this page no longer sits inside the OTP
-  // module, so it has no already-fetched feed pull to borrow.
-  const [liveStops, setLiveStops] = useState<OtpMonthlyStopRow[] | null>(null);
+  const [threshold, setThreshold] = useState<number>(FALLBACK_THRESHOLD_FOR_SLIDER);
 
   function refreshReasonCodes() {
     api.getReasonCodes("stop", true).then((d) => setStopReasonCodes(d.reason_codes)).catch(() => {});
@@ -76,15 +77,6 @@ export function OtpComplianceAdmin() {
       .then((d) => !cancelled && setMissedTripReasonCodes(d.reason_codes))
       .catch(() => {
         /* graceful - the table just shows nothing yet */
-      });
-    api
-      .getOtpMonthly()
-      .then((otp) => {
-        if (cancelled) return;
-        setLiveStops(otp.diagnostics.table_ready && otp.stops.length > 0 ? otp.stops : null);
-      })
-      .catch(() => {
-        /* graceful - the tuner explains it needs live feed data */
       });
     return () => {
       cancelled = true;
@@ -125,12 +117,11 @@ export function OtpComplianceAdmin() {
         <div className="subcard" style={{ marginBottom: 16 }}>
           <h2 style={{ marginTop: 0 }}>Threshold tuner</h2>
           <p className="panel-desc">
-            A stop/route/day-of-week row is flagged for exclusion review when its early or late share
-            of departures exceeds this threshold. Preview the effect on the current month's real feed
-            data before applying it.
+            A stop, on one route, on one day of the week, is flagged for exclusion review when its
+            early or late share of departures exceeds this threshold. Pick a month with real feed
+            data and preview the effect before applying it; applying changes every reviewer's queue.
           </p>
           <ThresholdTunerPage
-            liveStops={liveStops}
             currentThreshold={threshold}
             onApplied={(newThreshold) => setThreshold(newThreshold)}
           />
@@ -462,20 +453,23 @@ function ReasonCodeTable({
   );
 }
 
-// Preview-then-apply workspace over the current month's stop rows -
-// re-deriving the candidate list at a trial threshold is pure, so the
-// preview costs no extra fetch. Applying persists the new threshold
-// (OtpSettings) for every reviewer, not just this session.
+// Preview-then-apply workspace. The count at a trial threshold comes from the
+// API, not from re-deriving the list here: the flagging rule lives in one
+// place on the server (ADR 0034), and a local preview would put a second copy
+// of it in the browser - the exact split this was built to close. Applying
+// persists the new threshold (OtpSettings) for every reviewer.
 function ThresholdTunerPage({
-  liveStops,
   currentThreshold,
   onApplied,
 }: {
-  liveStops: OtpMonthlyStopRow[] | null;
   currentThreshold: number;
   onApplied: (newThreshold: number) => void;
 }) {
   const [previewPct, setPreviewPct] = useState(Math.round(currentThreshold * 1000) / 10);
+  const [month, setMonth] = useState(currentServiceMonth());
+  const [feedReady, setFeedReady] = useState<boolean | null>(null);
+  const [currentCount, setCurrentCount] = useState<number | null>(null);
+  const [previewCount, setPreviewCount] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
   const [applied, setApplied] = useState<string | null>(null);
@@ -488,18 +482,43 @@ function ThresholdTunerPage({
     setPreviewPct(Math.round(currentThreshold * 1000) / 10);
   }, [currentThreshold]);
 
-  if (!liveStops) {
-    return (
-      <div className="empty-note" style={{ textAlign: "center", padding: "40px 20px" }}>
-        Threshold tuning previews against the current month's live OTP Monthly feed data - there are
-        no rows for this month yet, so there is nothing to preview against. The saved threshold is
-        still in force.
-      </div>
-    );
-  }
+  // The count in force: no threshold param, so the server uses the stored one.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getOtpMonthly(month)
+      .then((otp) => {
+        if (cancelled) return;
+        setFeedReady(otp.diagnostics.table_ready && otp.diagnostics.record_count > 0);
+        setCurrentCount(otp.diagnostics.flagged_count ?? otp.flagged?.length ?? 0);
+      })
+      .catch(() => {
+        if (!cancelled) setFeedReady(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [month, currentThreshold]);
 
-  const previewCount = deriveCandidatesFromLive(liveStops, previewPct / 100).length;
-  const currentCount = deriveCandidatesFromLive(liveStops, currentThreshold).length;
+  // The count at the trial threshold. Debounced so dragging the slider is one
+  // request when it settles rather than one per pixel.
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      api
+        .getOtpMonthly(month, previewPct / 100)
+        .then((otp) => {
+          if (!cancelled) setPreviewCount(otp.diagnostics.flagged_count ?? otp.flagged?.length ?? 0);
+        })
+        .catch(() => {
+          if (!cancelled) setPreviewCount(null);
+        });
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [month, previewPct]);
 
   async function apply() {
     setApplying(true);
@@ -516,10 +535,33 @@ function ThresholdTunerPage({
     }
   }
 
+  const countText = (count: number | null): string =>
+    feedReady === false ? "\u2014" : count === null ? "\u2026" : String(count);
+
   return (
     <>
       {error ? <p className="error-text">{error}</p> : null}
       {applied ? <p className="ok-text">{applied}</p> : null}
+
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, marginBottom: 12 }}>
+        Preview against service month
+        <input
+          className="f"
+          type="month"
+          style={{ width: 150 }}
+          value={`${month.slice(0, 4)}-${month.slice(4, 6)}`}
+          max={`${currentServiceMonth().slice(0, 4)}-${currentServiceMonth().slice(4, 6)}`}
+          onChange={(e) => e.target.value && setMonth(e.target.value.replace("-", ""))}
+        />
+      </label>
+
+      {feedReady === false ? (
+        <p className="empty-note">
+          The Avail OTP Monthly feed has no rows for this month, so there is nothing to preview
+          against. Pick an earlier month. The saved threshold is still in force.
+        </p>
+      ) : null}
+
       <p className="field-label">Preview threshold: {previewPct.toFixed(1)}%</p>
       <input
         type="range"
@@ -533,17 +575,17 @@ function ThresholdTunerPage({
       <div className="stat-grid" style={{ marginTop: 16 }}>
         <div className="stat-card">
           <div className="stat-label">Currently applied ({Math.round(currentThreshold * 1000) / 10}%)</div>
-          <div className="stat-value">{currentCount}</div>
-          <div className="stat-sub">candidates flagged</div>
+          <div className="stat-value">{countText(currentCount)}</div>
+          <div className="stat-sub">stops flagged</div>
         </div>
         <div className="stat-card">
           <div className="stat-label">At preview threshold ({previewPct.toFixed(1)}%)</div>
-          <div className="stat-value">{previewCount}</div>
-          <div className="stat-sub">candidates flagged</div>
+          <div className="stat-value">{countText(previewCount)}</div>
+          <div className="stat-sub">stops flagged</div>
         </div>
       </div>
       <button className="btn-post" style={{ marginTop: 16 }} disabled={applying} onClick={apply}>
-        {applying ? "Applying…" : "Apply this threshold"}
+        {applying ? "Applying\u2026" : "Apply this threshold"}
       </button>
     </>
   );

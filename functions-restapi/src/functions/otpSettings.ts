@@ -1,10 +1,10 @@
-// The single admin-configurable OTP Compliance setting today: the early/
-// late bias threshold that decides which stop/route/day rows become Review
-// Queue candidates (see otpData.ts's deriveCandidatesFromLive). Same
+// The single admin-configurable OTP Compliance setting today: the Early/Late
+// Bias Threshold that decides which stop/route/day rows become Flagged Stops.
+// lib/otpSettings.ts reads it for GET /otp-monthly, which applies it; this
+// handler is the console's read and the Threshold Tuner's write. Same
 // single-row-settings-table pattern as ExpirationDefaults, just one row
-// instead of one per category. The Threshold Tuner's "Apply" action is the
-// only writer - previewing a different threshold is a pure client-side
-// recompute over already-fetched stop rows and needs no write permission.
+// instead of one per category. The tuner previews a trial threshold through
+// GET /otp-monthly?threshold=, so previewing still needs no write permission.
 //
 //   GET /otp-settings   - compliance-review.view
 //   PATCH /otp-settings - service-configuration.edit

@@ -1,9 +1,9 @@
-// Persisted Review Queue decisions - a candidate (a stop/route/day-of-week
-// row flagged for early/late bias, see otpMonthlyFeed.ts) has no row here
-// until staff actually approve or reject it; a pending candidate is derived
-// live from OtpMonthlyRouteStopDay and never written here. computeOfficialPct
-// (Route Summary/Dashboard) treats an 'approved' row as excluded from the
-// route's official OTP%. Re-reviewing the same stop/day upserts in place.
+// Persisted Review Queue decisions - a Flagged Stop has no row here until
+// staff actually approve or reject it; a stop awaiting review is decided live
+// by lib/otpFlaggedStops (ADR 0034) and never written here. lib/otpMonth's
+// rules.ts treats an 'approved' row as excluded from Official Departure OTP.
+// Re-reviewing the same stop/day upserts in place, which is why an already
+// excluded stop stays in the queue.
 //
 //   GET /otp-stop-exclusions?month=  - compliance-review.view
 //   PUT /otp-stop-exclusions          - compliance-review.review

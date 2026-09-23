@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { OtpMonthMeasurement, OtpRouteFigure } from "@mvta/shared";
-import { displayRoute, displayRoutes, percentText, previewRoutes, targetSentence, weatherSentence } from "./otpFigures";
+import type { FlaggedStop } from "@mvta/shared";
+import { displayRoute, displayRoutes, percentText, previewRoutes, queueRow, targetSentence, weatherSentence } from "./otpFigures";
 
 const figure = (departures: number, ontime: number) => ({ departures, ontime, pct: departures > 0 ? ontime / departures : null });
 
@@ -8,6 +9,7 @@ function route(overrides: Partial<OtpRouteFigure> = {}): OtpRouteFigure {
   return {
     route_id: 460, route_label: "460", route_category: "FixedRoute",
     raw: figure(300, 210), excluded: figure(100, 40), assessable: figure(200, 170),
+    stop_excluded: figure(100, 40), date_excluded: figure(0, 0),
     below_target: false, ...overrides,
   };
 }
@@ -59,17 +61,61 @@ describe("sentences", () => {
     expect(targetSentence(85, "default")).toMatch(/no performance standard is configured/);
   });
 
-  it("says weather days are recorded and not applied, and why", () => {
+  it("says nothing was removed while no weather day is approved", () => {
     expect(weatherSentence(0)).toMatch(/No weather or emergency days/);
     expect(weatherSentence(1)).toMatch(/^1 day is recorded/);
     const sentence = weatherSentence(3);
     expect(sentence).toMatch(/3 days are recorded/);
-    expect(sentence).toMatch(/NOT removed/);
-    expect(sentence).toMatch(/day of week, not by date/);
+    // A recorded day is a request, not an adjustment.
+    expect(sentence).toMatch(/None is approved, so none is removed/);
+  });
+
+  it("says what an approved weather day is subtracting, and leaves raw alone", () => {
+    const one = weatherSentence(1, 1);
+    expect(one).toMatch(/1 is approved and subtracting its departures/);
+    expect(one).toMatch(/Raw OTP is left as Avail published it/);
+    // Recorded but unapproved days are counted separately, so the sentence
+    // never implies the figure was adjusted for all of them.
+    const some = weatherSentence(3, 1);
+    expect(some).toMatch(/1 is approved and subtracting/);
+    expect(some).toMatch(/other 2 days are recorded but not approved/);
+    expect(weatherSentence(3, 3)).not.toMatch(/not approved/);
   });
 
   it("never prints a percentage it does not have", () => {
     expect(percentText(null)).toBe("—");
     expect(percentText(85)).toBe("85%");
+  });
+});
+
+describe("a Flagged Stop as the Review Queue draws it", () => {
+  const stop = (overrides: Partial<FlaggedStop> = {}): FlaggedStop => ({
+    route_id: 490, route_label: "490", stop_id: 13209, stop_name: "Wash/Coffman SW",
+    day_of_week: "Monday", total: 34,
+    pct_early: 0.324, pct_ontime: 0.235, pct_late: 0.441, pct_missed: 0, ...overrides,
+  });
+
+  it("turns the server's shares into the percentages the strip renders", () => {
+    const row = queueRow(stop());
+    expect(row.earlyPct).toBe(32.4);
+    expect(row.ontimePct).toBe(23.5);
+    expect(row.latePct).toBe(44.1);
+    expect(row.missedPct).toBe(0);
+    expect(row.sampled).toBe(34);
+  });
+
+  it("reads the lean off the shares, since the monthly feed has no variance figure", () => {
+    expect(queueRow(stop({ pct_early: 0.4, pct_late: 0.05 })).biasLabel).toBe("Early-biased");
+    expect(queueRow(stop({ pct_early: 0.05, pct_late: 0.4 })).biasLabel).toBe("Late-biased");
+  });
+
+  it("falls back to ids when the feed has no label or stop name", () => {
+    const row = queueRow(stop({ route_label: null, stop_name: null }));
+    expect(row.routeLabel).toBe("490");
+    expect(row.stopName).toBe("Stop 13209");
+  });
+
+  it("keys a row by the same stop/route/day the exclusion is stored under", () => {
+    expect(queueRow(stop()).key).toBe("490-13209-Monday");
   });
 });

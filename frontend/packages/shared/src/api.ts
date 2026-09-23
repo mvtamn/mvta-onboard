@@ -21,6 +21,7 @@ import type {
   ContractorPerformanceStandard,
   ContractorRecord,
   ContractorStandardTier,
+  ApproveDateExclusionResult,
   CreateDateExclusionInput,
   CreateDetourInput,
   CreateDetourIntakeInput,
@@ -99,7 +100,6 @@ import type {
   OtpMonthlyRouteRollup,
   OtpMonthMeasurement,
   OtpTargetSource,
-  OtpMonthlyStopRow,
   OtpMonthlyTrendPoint,
   OtpReasonCode,
   OtpSettingsRow,
@@ -1257,7 +1257,6 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       if (threshold !== undefined) q.set("threshold", String(threshold));
       const suffix = q.toString() ? `?${q}` : "";
       return request<{
-        stops: OtpMonthlyStopRow[];
         /** The same routes as `measurement.routes`, with the official figure as pct_ontime. */
         routes: OtpMonthlyRouteRollup[];
         measurement: OtpMonthMeasurement;
@@ -1656,6 +1655,22 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<OtpDateExclusion>(
         "/api/otp-date-exclusions",
         { method: "POST", body: JSON.stringify(input) },
+        true,
+      );
+    },
+
+    /**
+     * Approve a weather day, which freezes what it took out and subtracts it
+     * from the month (ADR 0038).
+     *
+     * A date the feed cannot evidence is refused with 422 rather than approved
+     * into a no-op, so the caller shows the server's reason rather than a
+     * generic failure.
+     */
+    approveDateExclusion(id: string) {
+      return request<ApproveDateExclusionResult>(
+        `/api/otp-date-exclusions/${encodeURIComponent(id)}/approve`,
+        { method: "POST" },
         true,
       );
     },

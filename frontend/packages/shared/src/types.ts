@@ -923,31 +923,6 @@ export type OnDemandDepartureOutcome =
   | "no_schedule"
   | "not_settled";
 
-// Avail's OTP Monthly By Route/Stop/Day of Week feed - real Attachment G
-// departure-adherence numbers, backing the OTP Compliance module's Route
-// Summary/Review Queue/Monthly Assessments pages (replacing that module's
-// mock data). See OTP-Feed-Evaluation-and-Recommendation.md.
-export interface OtpMonthlyStopRow {
-  service_month: string;
-  route_id: number;
-  stop_id: number;
-  day_of_week: string;
-  stop_name: string | null;
-  route_label: string | null;
-  pct_early: number | null;
-  pct_ontime: number | null;
-  pct_late: number | null;
-  pct_not_ontime: number | null;
-  pct_missed: number | null;
-  early: number | null;
-  ontime: number | null;
-  late: number | null;
-  missed: number | null;
-  actual_departures: number | null;
-  total: number | null;
-  updated_at: string;
-}
-
 /**
  * The OTP month measurement (functions-restapi/src/lib/otpMonth, ADR 0033).
  * The server decides what counts - fixed-route service, minus approved Stop
@@ -965,7 +940,12 @@ export interface OtpRouteFigure {
   route_label: string | null;
   route_category: RouteCategory | string;
   raw: OtpFigure;
+  /** What every rule took out: raw less assessable. */
   excluded: OtpFigure;
+  /** Of that, the category filter and approved stop exclusions. */
+  stop_excluded: OtpFigure;
+  /** Of that, approved weather and emergency dates (ADR 0038). */
+  date_excluded: OtpFigure;
   /** Official Departure OTP for the route. */
   assessable: OtpFigure;
   /** Null when the route has no assessable departures to judge. */
@@ -981,11 +961,20 @@ export interface OtpMonthMeasurement {
   target_source: OtpTargetSource;
   raw: OtpFigure;
   excluded: OtpFigure;
+  stop_excluded: OtpFigure;
+  date_excluded: OtpFigure;
   assessable: OtpFigure;
   routes: OtpRouteFigure[];
   routes_below_target: number;
-  /** Weather days recorded for the month. They are NOT applied (ADR 0033). */
+  /** Weather days recorded for the month, whatever their state. */
   weather_days_recorded: number;
+  /**
+   * How many of those are actually subtracting: approved, and holding the
+   * snapshot of what the date took out (ADR 0038). ADR 0033 recorded this as
+   * impossible, because the monthly feed is keyed by day of week; the daily
+   * feed carries a real date and reconciles with it exactly.
+   */
+  weather_days_applied: number;
   feed_ready: boolean;
 }
 
@@ -1025,8 +1014,8 @@ export interface OtpMonthlyRouteRollup {
 
 // Sub-monthly OTP trending (OtpDailyRouteStopHour) - added per
 // OTP-Feed-Evaluation-and-Recommendation (3).md's 2026-08-05 live-data
-// investigation update. Never the official Attachment G number - that's
-// OtpMonthlyStopRow above. No UI reads this yet; the field mapping itself
+// investigation update. Never the official Attachment G number - that's the
+// OTP month measurement above. No UI reads this yet; the field mapping itself
 // is unconfirmed (see functions-restapi/src/lib/otpDailyFeed.ts).
 export interface OtpDailyRow {
   calendar_date: string;
@@ -1703,7 +1692,34 @@ export interface OtpDateExclusion {
   acknowledged: boolean;
   created_by: string;
   created_at: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  /** What this exclusion is subtracting from the month, in departures. */
+  excluded_departures: number;
 }
+
+/**
+ * What approving a weather day froze: the departures that left the month's
+ * official figure, at the moment the reviewer approved it (ADR 0038).
+ *
+ * `departures` is what actually came out - fixed-route service only - so it is
+ * the number to show a reviewer, not the raw size of the day.
+ */
+export interface DateExclusionSnapshot {
+  service_month: string;
+  day_of_week: string;
+  /** Route/stop rows frozen. */
+  stops: number;
+  departures: number;
+}
+
+export interface ApproveDateExclusionResult {
+  exclusion: OtpDateExclusion;
+  snapshot: DateExclusionSnapshot;
+}
+
+/** Why an approval was refused, when the date could not be evidenced. */
+export type DateExclusionRefusal = "no_daily_data" | "day_of_week_absent" | "nothing_to_subtract";
 
 export interface CreateDateExclusionInput {
   scope: DateExclusionScope;
