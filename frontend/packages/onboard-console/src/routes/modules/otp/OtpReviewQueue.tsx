@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { type FlaggedStop, type OtpAuditEntry, type OtpReasonCode, type OtpStopExclusion } from "@mvta/shared";
+import { type FlaggedStop, type OtpAuditEntry, type ReasonCode, type OtpStopExclusion } from "@mvta/shared";
 import { api } from "../../../config.js";
 import { type StopExclusionStatus } from "./otpData.js";
 import { type QueueRow } from "./otpFigures.js";
@@ -39,7 +39,7 @@ export function ReviewQueuePage({
   queueRows: QueueRow[];
   statusOf: (stop: FlaggedStop) => StopExclusionStatus;
   reasonOf: (stop: FlaggedStop) => string;
-  reasonCodes: OtpReasonCode[];
+  reasonCodes: ReasonCode[];
   onResolve: (stop: FlaggedStop, action: "approve" | "reject") => void;
   onReason: (stop: FlaggedStop, reason: string) => void;
   serviceMonth: string | null;

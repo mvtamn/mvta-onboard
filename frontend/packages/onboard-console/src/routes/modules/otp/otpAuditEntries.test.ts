@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { OtpAuditEntry, OtpReasonCode } from "@mvta/shared";
+import type { OtpAuditEntry, ReasonCode } from "@mvta/shared";
 import { auditLine, auditLines, reasonLabeller, serviceDateLabel } from "./otpAuditEntries";
 
-const codes: OtpReasonCode[] = [
+const codes: ReasonCode[] = [
   { id: "r1", code: "SCHED_RECOVERY", label: "Recovery point", applies_to: "stop", sort_order: 1, is_active: true, updated_by: null, updated_at: "" },
   { id: "r2", code: "WEATHER_SNOW", label: "Snow or ice", applies_to: "date", sort_order: 1, is_active: true, updated_by: null, updated_at: "" },
 ];

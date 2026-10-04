@@ -6,7 +6,7 @@
 // "Recovery point" for the same decision. The facts cross the wire now
 // (functions-restapi/src/lib/otpExclusionReview) and the wording lives here,
 // beside otpFigures.ts, with the labels it needs.
-import type { OtpAuditEntry, OtpReasonCode } from "@mvta/shared";
+import type { OtpAuditEntry, ReasonCode } from "@mvta/shared";
 
 export interface AuditLine {
   title: string;
@@ -15,7 +15,7 @@ export interface AuditLine {
 }
 
 /** Resolve a reason code to the label staff chose for it. */
-export function reasonLabeller(reasonCodes: readonly OtpReasonCode[]): (code: string | null) => string {
+export function reasonLabeller(reasonCodes: readonly ReasonCode[]): (code: string | null) => string {
   const byCode = new Map(reasonCodes.map((r) => [r.code, r.label]));
   return (code) => (code === null || code === "" ? "no reason given" : byCode.get(code) ?? code);
 }
@@ -53,7 +53,7 @@ export function auditLine(entry: OtpAuditEntry, label: (code: string | null) => 
 
 export function auditLines(
   entries: readonly OtpAuditEntry[],
-  reasonCodes: readonly OtpReasonCode[],
+  reasonCodes: readonly ReasonCode[],
 ): AuditLine[] {
   const label = reasonLabeller(reasonCodes);
   return entries.map((entry) => auditLine(entry, label));

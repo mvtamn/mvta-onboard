@@ -1196,7 +1196,7 @@ export const DETOUR_SEVERITY_LABELS: Record<DetourSeverity, string> = {
   major: "Major",
 };
 
-// Admin-editable reason categories - Part B6. Mirrors OtpReasonCode minus
+// Admin-editable reason categories - Part B6. Mirrors ReasonCode minus
 // `applies_to`; this vocabulary only ever serves the detour module.
 export interface DetourReasonCode {
   id: string;
@@ -1762,7 +1762,7 @@ export type OtpAuditEntry =
 // also backs Missed Trips' investigation-outcome dropdown.
 export type ReasonCodeAppliesTo = "stop" | "date" | "missed_trip";
 
-export interface OtpReasonCode {
+export interface ReasonCode {
   id: string;
   code: string;
   label: string;
@@ -1772,6 +1772,9 @@ export interface OtpReasonCode {
   updated_by: string | null;
   updated_at: string;
 }
+
+/** @deprecated renamed to ReasonCode - three modules read these, not just OTP. */
+export type OtpReasonCode = ReasonCode;
 
 export interface CreateReasonCodeInput {
   code: string;

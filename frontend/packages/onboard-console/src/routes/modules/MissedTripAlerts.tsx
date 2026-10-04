@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ApiError, type GtfsRouteOption, type MissedTrip, type MissedTripReview, type MissedTripReviewDecision, type MissedTripsDiagnostics, type MissedTripsMonthlySummaryRow, type OccurrenceAttribution, type OtpReasonCode } from "@mvta/shared";
+import { ApiError, type GtfsRouteOption, type MissedTrip, type MissedTripReview, type MissedTripReviewDecision, type MissedTripsDiagnostics, type MissedTripsMonthlySummaryRow, type OccurrenceAttribution, type ReasonCode } from "@mvta/shared";
 import { Link } from "react-router-dom";
 import { api } from "../../config.js";
 import { MISSED_TRIP_ALERTS, type MissedTripAlert } from "./missedTrips.data.js";
@@ -214,7 +214,7 @@ function MissedTripsInvestigationPage({
   const [previewValidations, setPreviewValidations] = useState<
     Record<string, Pick<MissedTripAlert, "validationStatus" | "reasonCode" | "validatedBy" | "validatedAt" | "notes" | "lifecycle" | "inQueue" | "concluded">>
   >({});
-  const [reasonCodes, setReasonCodes] = useState<OtpReasonCode[]>([]);
+  const [reasonCodes, setReasonCodes] = useState<ReasonCode[]>([]);
   const [reviews, setReviews] = useState<MissedTripReview[]>([]);
 
   // Route + date filters, requested alongside the rest of this pass -
@@ -859,7 +859,7 @@ function MissedTripDetail({
 }: {
   alert: MissedTripAlert;
   routesById: Map<string, GtfsRouteOption>;
-  reasonCodes: OtpReasonCode[];
+  reasonCodes: ReasonCode[];
   reasonDraft: string;
   onReasonChange: (value: string) => void;
   notesDraft: string;

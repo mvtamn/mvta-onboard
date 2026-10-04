@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { ApiError, type OtpAuditEntry, type OtpReasonCode } from "@mvta/shared";
+import { ApiError, type OtpAuditEntry, type ReasonCode } from "@mvta/shared";
 import { api } from "../../../config.js";
 import { auditLines } from "./otpAuditEntries.js";
 import { formatServiceMonth } from "./otpServiceMonth.js";
 
-export function AuditStreamPage({ serviceMonth, reasonCodes }: { serviceMonth: string | null; reasonCodes: OtpReasonCode[] }) {
+export function AuditStreamPage({ serviceMonth, reasonCodes }: { serviceMonth: string | null; reasonCodes: ReasonCode[] }) {
   const [entries, setEntries] = useState<OtpAuditEntry[] | null>(null);
   const [scopeToMonth, setScopeToMonth] = useState(false);
   const [error, setError] = useState<string | null>(null);
