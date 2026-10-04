@@ -5,6 +5,14 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.305] - 2026-10-04
+
+- **The Dashboard triage queue was taking far more height than it needed.** No sizes had been scaled up; each row simply held a lot. With a 62px minimum, 13px padding and a two-line title, rows came to about 79px, so five rows plus the header and footer made about 500px and towered over the Data health card beside them.
+- **Rows are now about 48px.** On desktop the title is one line (13px, cut with an ellipsis); the full text is still in the `title` tooltip and one click away. The meta line, kind chip and rail are tighter, and the rail is no longer held at 104px wide. Below 760px the existing three-line clamp still applies, so phones lose nothing. `triageTitle()`'s budget is unchanged because the narrow layout still uses it.
+- **The header is one line.** The "Priority queue" eyebrow is gone (the title already says it), and a count pill shows how many exceptions are waiting in total, not just the five shown. The region's accessible name is still "Triage exceptions".
+- **Detour request chips had no style.** #373 (1.5.283) added the `intake` kind but no `.dashboard-queue-kind.intake` rule, so the chip rendered as bare text. It now uses the success pill tokens, which exist in both themes.
+- Designed on the Priority Queue Polish canvas first. CSS and Dashboard header markup only: no API change, no migration.
+
 ## [1.5.304] - 2026-10-04
 
 - **`/otp-reason-codes` becomes `/reason-codes`.** They have backed Missed Trips' investigation outcomes since migration 023 as well as OTP's two exclusion kinds, so the OTP prefix named one of three consumers. The client type `OtpReasonCode` becomes `ReasonCode` across 11 files, and the handler is `functions/reasonCodes.ts` beside the `lib/reasonCodes` it already used.
