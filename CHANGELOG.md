@@ -5,6 +5,14 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.299] - 2026-10-03
+
+- **The OTP Compliance module is eight files instead of one.** `OtpModule.tsx` was 1,153 lines holding six pages, two helper components and five date converters; it is now 449 lines of state and composition, with `OtpDashboard`, `OtpReviewQueue`, `OtpRouteSummary`, `OtpWeather`, `OtpMonthlyAssessments` and `OtpAuditStream` beside it, plus `otpServiceMonth.ts` for the "YYYYMM" converters the picker, "copy last month" and the Audit Stream's scope all share, and `otpResponse.ts` for the one type the module and Monthly Assessments both read.
+- **It is a move, not a rewrite.** No component's props, logic or markup changed, which is why all 785 console tests pass untouched - the point of doing the split on its own rather than alongside the state extraction that follows it. The Assessment module next door has had this shape since September; this brings OTP into line with it.
+- **Why it matters here specifically:** this file has taken four changes from different pieces of work in the last fortnight, and every one of them conflicted with another. Six files have six separate insertion points.
+- **Verified.** Console 785 passing (unchanged), typecheck clean, every page rendered in the console-mock preview with no errors. No migration, no API change.
+
+
 ## [1.5.298] - 2026-09-23
 
 - **Stop Exclusions and the review timeline go through one module.** `lib/otpExclusionReview` holds what `otpStopExclusions.ts` and `otpAuditStream.ts` each knew separately: writing a decision, reading a month's back, and merging both kinds of exclusion into the Audit Stream's timeline. `recordStopExclusion`, `stopExclusionsForMonth`, `timeline`; it takes the same `Executor` seam as `lib/otpMonth` and `lib/otpFlaggedStops`. The audit handler goes from 104 lines to 37 and neither handler touches SQL.
