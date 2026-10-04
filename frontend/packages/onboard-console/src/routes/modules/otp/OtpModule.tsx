@@ -21,6 +21,7 @@ import {
   type StopExclusionStatus,
 } from "./otpData.js";
 import { displayRoutes, percentText, previewRoutes, queueRow, targetSentence, weatherSentence, type OtpDisplayRoute, type QueueRow } from "./otpFigures.js";
+import { auditLines } from "./otpAuditEntries.js";
 import "./otp.css";
 
 interface OtpMonthlyResponse {
@@ -489,7 +490,7 @@ export function OtpModule() {
         />
       )}
       {page === "monthly" && <MonthlyAssessmentsPage otp={liveOtp} displayRows={displayRows} targetPct={targetPct} />}
-      {page === "audit" && <AuditStreamPage serviceMonth={serviceMonth} />}
+      {page === "audit" && <AuditStreamPage serviceMonth={serviceMonth} reasonCodes={stopReasonCodes} />}
     </div>
   );
 }
@@ -647,6 +648,7 @@ function ReviewQueuePage({
   const routes = useMemo(() => [...new Set(queueRows.map((r) => r.routeLabel))].sort(), [queueRows]);
 
   const [timeline, setTimeline] = useState<OtpAuditEntry[]>([]);
+  const timelineLines = useMemo(() => auditLines(timeline, reasonCodes), [timeline, reasonCodes]);
   useEffect(() => {
     api
       .getOtpAuditStream(serviceMonth ?? undefined, 6)
@@ -747,11 +749,11 @@ function ReviewQueuePage({
 
       <aside className="subcard otp-timeline">
         <h2>Review Timeline</h2>
-        {timeline.length === 0 ? <p className="muted">No review activity yet.</p> : null}
-        {timeline.map((t, i) => (
+        {timelineLines.length === 0 ? <p className="muted">No review activity yet.</p> : null}
+        {timelineLines.map((t, i) => (
           <div className="timeline-item" key={i}>
             <div className="t-title">{t.title}</div>
-            <div className="t-desc">{t.desc}</div>
+            <div className="t-desc">{t.detail}</div>
           </div>
         ))}
       </aside>
@@ -1113,7 +1115,7 @@ function MonthlyAssessmentsPage({
 // Real Audit Stream - built the same way the console's top-level Audit Log
 // is: by querying the exclusion records themselves (GET /otp-audit-stream),
 // not a separate generic log table.
-function AuditStreamPage({ serviceMonth }: { serviceMonth: string | null }) {
+function AuditStreamPage({ serviceMonth, reasonCodes }: { serviceMonth: string | null; reasonCodes: OtpReasonCode[] }) {
   const [entries, setEntries] = useState<OtpAuditEntry[] | null>(null);
   const [scopeToMonth, setScopeToMonth] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1139,11 +1141,11 @@ function AuditStreamPage({ serviceMonth }: { serviceMonth: string | null }) {
       {error ? <p className="error-text">{error}</p> : null}
       {entries === null && !error ? <p className="muted">Loading…</p> : null}
       {entries && entries.length === 0 ? <p className="empty-note">No exclusion actions recorded yet.</p> : null}
-      {entries?.map((t, i) => (
+      {auditLines(entries ?? [], reasonCodes).map((t, i) => (
         <div className="timeline-item" key={i}>
           <div className="t-title">{t.title}</div>
-          <div className="t-desc">{t.desc}</div>
-          <div className="td-dim" style={{ fontSize: 11 }}>{new Date(t.timestamp).toLocaleString()}</div>
+          <div className="t-desc">{t.detail}</div>
+          <div className="td-dim" style={{ fontSize: 11 }}>{new Date(t.at).toLocaleString()}</div>
         </div>
       ))}
     </div>
