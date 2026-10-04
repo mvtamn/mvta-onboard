@@ -8,13 +8,15 @@ import { formatServiceMonth } from "./otpServiceMonth.js";
 export function DashboardPage({
   displayRows,
   statuses,
-  weatherCount,
+  weatherRecorded,
+  weatherApplied,
   measurement,
   targetPct,
 }: {
   displayRows: OtpDisplayRoute[];
   statuses: StopExclusionStatus[];
-  weatherCount: number;
+  weatherRecorded: number;
+  weatherApplied: number;
   measurement: OtpMonthMeasurement | null;
   targetPct: number;
 }) {
@@ -29,7 +31,14 @@ export function DashboardPage({
     { label: "Pending review", value: pending, sub: "Flagged stops", color: "#F78E1E" },
     { label: "Approved", value: approved, sub: "Active exclusion rules", color: "#00553D" },
     { label: `Routes below ${targetPct}%`, value: below, sub: "Official departure OTP", color: "#8A1F1F" },
-    { label: "Weather exclusions", value: weatherCount, sub: "Recorded, not applied", color: "#417B68" },
+    {
+      label: "Weather exclusions",
+      value: weatherRecorded,
+      sub: weatherApplied === 0
+        ? "Recorded this month, none approved"
+        : `Recorded this month, ${weatherApplied} subtracting`,
+      color: "#417B68",
+    },
   ];
   return (
     <>
