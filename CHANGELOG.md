@@ -5,6 +5,14 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.301] - 2026-10-04
+
+- **`GET /otp-daily`'s default range was read in UTC while the rows are stored by Central service day.** `otpDailyFeed.ts` files `calendar_date` as an agency-Central service date, as the whole missed-trip and departure code does; the handler worked its own fallback window out with `getUTCDate()`. From 19:00 Central (18:00 in winter) until midnight, UTC has already turned over, so the default asked for `20260927..20261004` where it meant `20260926..20261003` - a day Avail has published nothing for, and the oldest day the reader wanted silently gone.
+- **The window now comes from `otpDailyDefaultRange(now)`** in `lib/otpDailyFeed.ts`, beside `otpDailyWindow` which the poller already uses, and built on the same `agencyServiceDate` the poller files rows under. The two still ask for different days on purpose - the poller stops before today because Avail has not published it - but they now count days in the same calendar, so a row filed under a date is a row found under that date.
+- **Nothing in the console reads this endpoint yet**, which is why the skew went unnoticed: it is built for trending views that do not exist. Worth fixing before something is built on top of it rather than after.
+- **Verified.** 5 new checks: midday where the two calendars agree, 19:00 and 04:59 Central-evening where UTC has rolled over and the old code was wrong, the real turnover at Central midnight, the same again in standard time where the offset differs, and that every day the poller stores falls inside the range a reader is given. Backend 1332 passing. No migration, no console change.
+
+
 ## [1.5.297] - 2026-09-23
 
 - **Migration 138 must not shift a row the corrected poller already wrote.** 1.5.286's code reached `main` and deployed before the migration was applied, so the poller spent an hour writing true UTC instants into a table the migration still assumed was entirely agency-local wall clock. Applying it as written would have moved those 186 rows a second five hours and, because they were the most recently updated copy of each duplicate pair, the double-shifted row would have won the dedupe.

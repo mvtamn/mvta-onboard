@@ -138,6 +138,26 @@ export interface OtpDailyWindow {
 // The completed service days a run at `now` should fetch: the Central days
 // before the one `now` falls in. Never the current day, which Avail has not
 // published and which would read as an empty day.
+/** How many service days GET /otp-daily shows when asked for no range. */
+export const OTP_DAILY_DEFAULT_RANGE_DAYS = 7;
+
+/**
+ * The service days a reader means by "the last week", as "YYYYMMDD".
+ *
+ * These are agency-Central service dates, because that is what the poller
+ * stores `calendar_date` as (`mapOtpDailyReport`). Reading the window in UTC
+ * instead - which is what GET /otp-daily did - shifts it forward by a day for
+ * the whole Central evening, since UTC has already turned over: at 19:00 in
+ * Minneapolis it is tomorrow in London. The reader then lost the oldest day of
+ * real data and was handed a day Avail has not published yet.
+ */
+export function otpDailyDefaultRange(now: Date, days = OTP_DAILY_DEFAULT_RANGE_DAYS): { start: string; end: string } {
+  return {
+    start: agencyServiceDate(now, -days).serviceDate,
+    end: agencyServiceDate(now, 0).serviceDate,
+  };
+}
+
 export function otpDailyWindow(now: Date, days = OTP_DAILY_TRAILING_DAYS): OtpDailyWindow {
   const serviceDates = Array.from({ length: days }, (_, i) => agencyServiceDate(now, i - days).serviceDate);
   const asUtcCalendarDay = (serviceDate: string) =>
