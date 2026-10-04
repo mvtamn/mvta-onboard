@@ -1097,6 +1097,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 /* Generic stat-card row, reused wherever a handful of stat-cards sit side by
    side (Subscribers tab, OTP dashboard, etc). */
 .stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+/* The card itself. Without this the grid laid out three unstyled divs, and
+   the per-card borderLeftColor that Subscribers and the OTP Dashboard pass
+   inline had no border to colour - inert since it was written. */
+.stat-card { padding: 12px 14px; border: 1px solid var(--border); border-left: 4px solid var(--border); border-radius: 10px; background: var(--surface-bg); }
+.stat-card .stat-label { color: var(--text-muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.stat-card .stat-value { margin-top: 4px; color: var(--text); font-size: 26px; font-weight: 800; line-height: 1.1; }
+.stat-card .stat-sub { margin-top: 2px; color: var(--text-muted); font-size: 12px; }
+@media (max-width: 900px) { .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
 /* Light normalization so embedded OCC modules sit inside the shell without
    fighting it: kill their page-level backgrounds, inherit the console font. */

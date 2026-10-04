@@ -52,3 +52,9 @@
 .otp-trend-bar.below { background: var(--late-orange); }
 .otp-trend-bar-label { font-size: 11px; font-weight: 700; color: var(--text); margin-top: 6px; }
 .otp-trend-bar-month { font-size: 10px; margin-top: 2px; }
+
+/* --late-orange is a light-mode value: at roughly 2.4:1 on the dark surface
+   the below-target bars and the adherence strip's late segment went muddy.
+   Lightened under the dark theme the way --brand-green-text and
+   --success-text already are. */
+[data-theme="dark"] .otp-panel { --late-orange: #ff8a4c; }

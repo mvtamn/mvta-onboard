@@ -5,6 +5,16 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.306] - 2026-10-04
+
+- **`.stat-card` had no rule in any stylesheet.** `.stat-grid` was styled and the card inside it was not, so every stat card rendered as three unstyled stacked `div`s on the page background - the OTP Dashboard's four figures, `Subscribers.tsx`'s pair, and the threshold tuner's preview. Both callers pass a per-card `borderLeftColor` inline, which had no border to colour and had been inert since it was written; the rule keeps that left border, so three pages get their severity colours at once.
+- **The trend chart judged months against a literal `85`** while the card four lines above read `diagnostics.target`. Nothing made them agree: a contract target off 85% would have coloured bars against the old figure while the card counted routes against the new one, and neither would have looked wrong. The chart takes the target as a prop and says which target it is using.
+- **`--late-orange` was a light-mode token with no dark counterpart**, sitting at roughly 2.4:1 on the dark surface, so below-target bars and the adherence strip's late segment went muddy under the theme toggle. Lightened under `[data-theme="dark"]` the way `--brand-green-text` and `--success-text` already are.
+- **The target is rounded once where the fraction becomes a percentage.** `0.85 * 100` is exactly 85, but `0.829 * 100` is `82.89999999999999`, and that figure is rendered as text in the card label.
+- **These come from PR #233, opened 2026-09-08 and now closed.** Its diagnosis was right and none of it had landed; its polish half was written against `OtpModule.tsx` before that file was split into six, so the fixes are re-landed here against today's code and the redesign is left to be decided on its own.
+- **Verified.** 3 new console checks - that both the bars and the card follow a 90% target, that the chart states it, and that an awkward target prints without its floating-point tail. All three fixes confirmed in the preview by computed style: the card's left border renders the colour its caller passes, and `--late-orange` flips from `#c34b18` to `#ff8a4c` under the dark theme. Console 804 passing. No migration.
+
+
 ## [1.5.305] - 2026-10-04
 
 - **`GET /otp-date-exclusions` is scoped to a service month**, by `LEFT(service_date, 6)` - the month a weather day happened in, never `created_at`, which is when somebody typed it in and can be a month later. The Weather page follows the module's picker like every other page; it used to list every date ever recorded whichever month was on screen, sorted in the browser.
