@@ -87,12 +87,6 @@ export function OtpModule() {
   useEffect(() => {
     let cancelled = false;
     api
-      .getDateExclusions()
-      .then((dates) => !cancelled && setDateExclusions(dates.exclusions))
-      .catch(() => {
-        /* graceful - Weather page just shows nothing logged yet */
-      });
-    api
       .getReasonCodes("stop", true)
       .then((stopCodes) => !cancelled && setStopReasonCodes(stopCodes.reason_codes))
       .catch(() => {
@@ -159,10 +153,19 @@ export function OtpModule() {
             : "Could not reach the OTP compliance service.",
         );
       });
+    // Weather days follow the picker too. They used to be fetched once for
+    // all time, so the page listed dates from months nobody was looking at.
+    api
+      .getDateExclusions(selectedMonth)
+      .then((dates) => !cancelled && setDateExclusions(dates.exclusions))
+      .catch(() => {
+        if (!cancelled) setDateExclusions([]);
+      });
     return () => {
       cancelled = true;
     };
-  }, [selectedMonth, measurementTick, review.decisionsVersion]);
+  }, [selectedMonth, measurementTick, review.decisionsVersion, weatherActionTick]);
+
   async function addDateExclusion(input: {
     scope: "Agency" | "Route";
     route_id: number | null;
@@ -177,7 +180,7 @@ export function OtpModule() {
       reason_code: input.reason_code,
       notes: input.notes || null,
     });
-    const refreshed = await api.getDateExclusions();
+    const refreshed = await api.getDateExclusions(selectedMonth);
     setDateExclusions(refreshed.exclusions);
     setWeatherActionTick((t) => t + 1);
   }
@@ -194,7 +197,7 @@ export function OtpModule() {
    */
   async function approveDateExclusion(id: string): Promise<DateExclusionSnapshot> {
     const result = await api.approveDateExclusion(id);
-    const refreshed = await api.getDateExclusions();
+    const refreshed = await api.getDateExclusions(selectedMonth);
     setDateExclusions(refreshed.exclusions);
     setWeatherActionTick((t) => t + 1);
     setMeasurementTick((t) => t + 1);
@@ -246,7 +249,8 @@ export function OtpModule() {
         <DashboardPage
           displayRows={displayRows}
           statuses={review.statuses}
-          weatherCount={dateExclusions.length}
+          weatherRecorded={liveOtp?.diagnostics.weather_days_recorded ?? 0}
+          weatherApplied={measurement?.weather_days_applied ?? 0}
           measurement={measurement}
           targetPct={targetPct}
         />

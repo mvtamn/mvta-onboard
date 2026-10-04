@@ -5,6 +5,15 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.305] - 2026-10-04
+
+- **`GET /otp-date-exclusions` is scoped to a service month**, by `LEFT(service_date, 6)` - the month a weather day happened in, never `created_at`, which is when somebody typed it in and can be a month later. The Weather page follows the module's picker like every other page; it used to list every date ever recorded whichever month was on screen, sorted in the browser.
+- **The Dashboard's weather card counts the month.** It read `dateExclusions.length` - every day ever - while `weatherSentence` on the Weather page beside it counted one month's, so the same idea had two numbers on two screens.
+- **And that card was asserting something false.** Its subtitle said "Recorded, not applied", which stopped being true at ADR 0038: an approved date subtracts the departures frozen when it was approved. It now reads "Recorded this month, none approved" or "Recorded this month, N subtracting", from the measurement's own counts rather than from a list length.
+- **Closes the last open item from the OTP Compliance architecture review.** It was agreed as part of the exclusion review module and dropped when ADR 0038 took over weather days mid-flight; this picks it up now that work has settled.
+- **Verified.** 2 new console checks - that the month is passed and that the card and the sentence agree - plus the existing suite. A test caught the fix being dead code: the fetch had been placed after the effect's cleanup `return`. Console 801 passing, backend 1340, typecheck clean, card confirmed in the preview. No migration.
+
+
 ## [1.5.304] - 2026-10-04
 
 - **`/otp-reason-codes` becomes `/reason-codes`.** They have backed Missed Trips' investigation outcomes since migration 023 as well as OTP's two exclusion kinds, so the OTP prefix named one of three consumers. The client type `OtpReasonCode` becomes `ReasonCode` across 11 files, and the handler is `functions/reasonCodes.ts` beside the `lib/reasonCodes` it already used.
