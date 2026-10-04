@@ -20,7 +20,14 @@ import {
 // reason a contract test is worth more here than unit tests over a fake.
 const connectionString = process.env.DECISION_MATRIX_TEST_SQL_CONNECTION_STRING;
 const DATABASE = "mvta_reason_codes_contract";
-const MIGRATIONS = ["018-otp-exclusions-and-settings", "025-detour-reporting-fields"];
+// 017 first: migration 025 creates DetourReasonCodes but also adds reporting
+// columns to Detours, which 017 creates. CI caught this - applying 025 alone
+// fails with "Cannot find the object Detours".
+const MIGRATIONS = [
+  "017-detours",
+  "018-otp-exclusions-and-settings",
+  "025-detour-reporting-fields",
+];
 const ACTOR = "reason-codes-contract";
 
 // Only the OTP table has a sub-kind; a create for the detour scope must not
