@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ApiError,
   type FlaggedStop,
-  type OtpStopExclusion,
   type OtpDateExclusion,
   type DateExclusionSnapshot,
   type OtpReasonCode,
@@ -15,14 +14,10 @@ import { RouteSummaryPage } from "./OtpRouteSummary.js";
 import { WeatherPage } from "./OtpWeather.js";
 import { MonthlyAssessmentsPage } from "./OtpMonthlyAssessments.js";
 import { AuditStreamPage } from "./OtpAuditStream.js";
-import { currentServiceMonth, formatServiceMonth, fromMonthInputValue, toMonthInputValue, previousServiceMonth } from "./otpServiceMonth.js";
-import {
-  DATA,
-  stopExclusionKey,
-  PAGE_META,
-  type StopExclusionStatus,
-} from "./otpData.js";
-import { displayRoutes, previewRoutes, queueRow, type OtpDisplayRoute, type QueueRow } from "./otpFigures.js";
+import { currentServiceMonth, formatServiceMonth, fromMonthInputValue, toMonthInputValue } from "./otpServiceMonth.js";
+import { useOtpReview } from "./useOtpReview.js";
+import { DATA, PAGE_META } from "./otpData.js";
+import { displayRoutes, previewRoutes, type OtpDisplayRoute } from "./otpFigures.js";
 import "./otp.css";
 
 const NAV: { page: string; label: string }[] = [
@@ -74,13 +69,13 @@ export function OtpModule() {
   // decision list and left Route Summary showing the figure from before it,
   // until the month was switched or the page reloaded.
   const [measurementTick, setMeasurementTick] = useState(0);
+  // Recording or approving a weather day also belongs in the timeline.
+  const [weatherActionTick, setWeatherActionTick] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [stopExclusions, setStopExclusions] = useState<OtpStopExclusion[]>([]);
   const [dateExclusions, setDateExclusions] = useState<OtpDateExclusion[]>([]);
   const [stopReasonCodes, setStopReasonCodes] = useState<OtpReasonCode[]>([]);
   const [dateReasonCodes, setDateReasonCodes] = useState<OtpReasonCode[]>([]);
-  const [actionError, setActionError] = useState<string | null>(null);
 
   // Month-independent - fetched once, not tied to selectedMonth. Each call
   // gets its OWN catch rather than one shared Promise.all - a Promise.all
@@ -114,14 +109,40 @@ export function OtpModule() {
     };
   }, []);
 
-  // Month-dependent - refetches whenever the picker changes. Also clears
-  // actionError - it used to persist across a month switch (nothing reset
-  // it), so a failed approve/reject on one month kept showing as a
-  // seemingly-unrelated error banner after switching to a different month
-  // entirely.
+
+  // record_count is the server's count of stop/day rows for the month. It used
+  // to be `stops.length`, back when the whole table was shipped here so the
+  // browser could work out its own Review Queue (ADR 0034).
+  const usingLiveOtp = Boolean(liveOtp?.diagnostics.table_ready && liveOtp.diagnostics.record_count > 0);
+  const serviceMonth = liveOtp?.diagnostics.service_month ?? null;
+
+  // The official figure per route is the server's (ADR 0033); the preview's
+  // sample data has no exclusions behind it and says so.
+  const targetPct = (usingLiveOtp ? liveOtp!.diagnostics.target : 0.85) * 100;
+  // A tab opened before this release reaches a server that sends no
+  // measurement; it then shows the preview rather than half a figure.
+  const measurement = usingLiveOtp ? liveOtp!.measurement ?? null : null;
+  const displayRows: OtpDisplayRoute[] = useMemo(
+    () => (measurement ? displayRoutes(measurement) : previewRoutes(DATA.routes, 85)),
+    [measurement],
+  );
+  // The month's Flagged Stops, as the server decided them and in the order it
+  // put them (ADR 0034). The browser used to derive this list itself.
+  const flaggedStops: FlaggedStop[] = useMemo(
+    () => (usingLiveOtp ? liveOtp!.flagged ?? [] : []),
+    [usingLiveOtp, liveOtp],
+  );
+
+
+  // Every decision the Review Queue makes, and the fetches behind them.
+  const review = useOtpReview({ serviceMonth, flaggedStops, reasonCodes: stopReasonCodes });
+
+  // The month's figures. Re-read when the picker moves, when a weather day is
+  // approved, and when the Review Queue records a decision - approving used to
+  // leave Route Summary showing the figure from before it. Declared after the
+  // hook because its dependency list reads what the hook returns.
   useEffect(() => {
     let cancelled = false;
-    setActionError(null);
     api
       .getOtpMonthly(selectedMonth)
       .then((otp) => {
@@ -141,187 +162,7 @@ export function OtpModule() {
     return () => {
       cancelled = true;
     };
-  }, [selectedMonth, measurementTick]);
-
-  // record_count is the server's count of stop/day rows for the month. It used
-  // to be `stops.length`, back when the whole table was shipped here so the
-  // browser could work out its own Review Queue (ADR 0034).
-  const usingLiveOtp = Boolean(liveOtp?.diagnostics.table_ready && liveOtp.diagnostics.record_count > 0);
-  const serviceMonth = liveOtp?.diagnostics.service_month ?? null;
-
-  useEffect(() => {
-    if (!usingLiveOtp || !serviceMonth) return;
-    api
-      .getStopExclusions(serviceMonth)
-      .then((d) => setStopExclusions(d.exclusions))
-      .catch(() => {
-        /* graceful - Review Queue simply shows everything as pending */
-      });
-  }, [usingLiveOtp, serviceMonth]);
-
-  // Previous month's decisions, for Review Queue's "copy last month" -
-  // Option A of plans/otp-exclusion-carryover-enhancement-scope.md. Read
-  // only; copying still goes through the normal PUT so this month gets
-  // its own real row.
-  const [previousMonthExclusions, setPreviousMonthExclusions] = useState<OtpStopExclusion[]>([]);
-  useEffect(() => {
-    if (!usingLiveOtp || !serviceMonth) {
-      setPreviousMonthExclusions([]);
-      return;
-    }
-    api
-      .getStopExclusions(previousServiceMonth(serviceMonth))
-      .then((d) => setPreviousMonthExclusions(d.exclusions))
-      .catch(() => setPreviousMonthExclusions([]));
-  }, [usingLiveOtp, serviceMonth]);
-
-  const previousExclusionByKey = useMemo(() => {
-    const map = new Map<string, OtpStopExclusion>();
-    for (const ex of previousMonthExclusions) {
-      map.set(stopExclusionKey(ex.route_id, ex.stop_id, ex.day_of_week), ex);
-    }
-    return map;
-  }, [previousMonthExclusions]);
-
-  // The official figure per route is the server's (ADR 0033); the preview's
-  // sample data has no exclusions behind it and says so.
-  const targetPct = (usingLiveOtp ? liveOtp!.diagnostics.target : 0.85) * 100;
-  // A tab opened before this release reaches a server that sends no
-  // measurement; it then shows the preview rather than half a figure.
-  const measurement = usingLiveOtp ? liveOtp!.measurement ?? null : null;
-  const displayRows: OtpDisplayRoute[] = useMemo(
-    () => (measurement ? displayRoutes(measurement) : previewRoutes(DATA.routes, 85)),
-    [measurement],
-  );
-  // The month's Flagged Stops, as the server decided them and in the order it
-  // put them (ADR 0034). The browser used to derive this list itself.
-  const flaggedStops: FlaggedStop[] = usingLiveOtp ? liveOtp!.flagged ?? [] : [];
-  const queueRows: QueueRow[] = useMemo(() => flaggedStops.map(queueRow), [flaggedStops]);
-
-  const exclusionByKey = useMemo(() => {
-    const map = new Map<string, OtpStopExclusion>();
-    for (const ex of stopExclusions) {
-      map.set(stopExclusionKey(ex.route_id, ex.stop_id, ex.day_of_week), ex);
-    }
-    return map;
-  }, [stopExclusions]);
-
-  const [draftReason, setDraftReason] = useState<Record<string, string>>({});
-
-  const keyOf = (stop: FlaggedStop): string =>
-    stopExclusionKey(stop.route_id, stop.stop_id, stop.day_of_week);
-
-  function statusOf(stop: FlaggedStop): StopExclusionStatus {
-    return exclusionByKey.get(keyOf(stop))?.status ?? "pending";
-  }
-
-  function reasonOf(stop: FlaggedStop): string {
-    const persisted = exclusionByKey.get(keyOf(stop))?.reason_code;
-    return draftReason[keyOf(stop)] ?? persisted ?? stopReasonCodes[0]?.code ?? "";
-  }
-
-  const statuses = flaggedStops.map(statusOf);
-
-  const [auditRefreshTick, setAuditRefreshTick] = useState(0);
-
-  // Every review decision takes the same shape: write the row, re-read the
-  // month, refresh the timeline. One place to get that sequence right - it
-  // used to be spelled out separately in each of the three below.
-  async function record(
-    stop: FlaggedStop,
-    decision: { status: "approved" | "rejected"; reason_code: string | null },
-    failure: string,
-  ): Promise<boolean> {
-    if (!serviceMonth) return false;
-    try {
-      await api.putStopExclusion({
-        service_month: serviceMonth,
-        route_id: stop.route_id,
-        stop_id: stop.stop_id,
-        day_of_week: stop.day_of_week,
-        ...decision,
-      });
-      return true;
-    } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : failure);
-      return false;
-    }
-  }
-
-  async function refreshDecisions() {
-    if (!serviceMonth) return;
-    const refreshed = await api.getStopExclusions(serviceMonth);
-    setStopExclusions(refreshed.exclusions);
-    setAuditRefreshTick((t) => t + 1);
-    setMeasurementTick((t) => t + 1);
-  }
-
-  async function resolve(stop: FlaggedStop, action: "approve" | "reject") {
-    setActionError(null);
-    const reason = reasonOf(stop);
-    const saved = await record(
-      stop,
-      { status: action === "approve" ? "approved" : "rejected", reason_code: reason || null },
-      "Could not save this review decision.",
-    );
-    if (saved) await refreshDecisions();
-  }
-
-  // "Copy last month's decisions" - Option A of
-  // plans/otp-exclusion-carryover-enhancement-scope.md. Deliberately still
-  // writes a fresh, real, dated row for THIS month via the normal PUT -
-  // not a silent carry-forward. A human still takes an explicit action
-  // (the copy click itself) for every month; it's just one click applying
-  // last month's answer instead of re-deriving it from scratch.
-  function previousDecisionFor(stop: FlaggedStop): OtpStopExclusion | undefined {
-    return previousExclusionByKey.get(keyOf(stop));
-  }
-
-  async function copyFromPrevious(stop: FlaggedStop) {
-    const prev = previousDecisionFor(stop);
-    if (!prev) return;
-    setActionError(null);
-    const saved = await record(
-      stop,
-      { status: prev.status, reason_code: prev.reason_code },
-      "Could not copy last month's decision.",
-    );
-    if (saved) await refreshDecisions();
-  }
-
-  const [copyingAll, setCopyingAll] = useState(false);
-
-  // Bulk version - one explicit click, still N real per-stop PUTs (one dated
-  // row per stop, same as clicking each one individually) rather than a
-  // single "carry forward" record, so the audit trail stays identical in
-  // shape to doing this one stop at a time.
-  async function copyAllFromPrevious() {
-    setActionError(null);
-    setCopyingAll(true);
-    try {
-      const targets = flaggedStops
-        .map((stop) => ({ stop, prev: previousDecisionFor(stop) }))
-        .filter(({ stop, prev }) => prev && statusOf(stop) === "pending");
-
-      for (const { stop, prev } of targets) {
-        if (!prev) continue;
-        const saved = await record(
-          stop,
-          { status: prev.status, reason_code: prev.reason_code },
-          "Could not copy all of last month's decisions.",
-        );
-        if (!saved) break;
-      }
-      await refreshDecisions();
-    } finally {
-      setCopyingAll(false);
-    }
-  }
-
-  function setReason(stop: FlaggedStop, reason: string) {
-    setDraftReason((d) => ({ ...d, [keyOf(stop)]: reason }));
-  }
-
+  }, [selectedMonth, measurementTick, review.decisionsVersion]);
   async function addDateExclusion(input: {
     scope: "Agency" | "Route";
     route_id: number | null;
@@ -338,7 +179,7 @@ export function OtpModule() {
     });
     const refreshed = await api.getDateExclusions();
     setDateExclusions(refreshed.exclusions);
-    setAuditRefreshTick((t) => t + 1);
+    setWeatherActionTick((t) => t + 1);
   }
 
   /**
@@ -355,7 +196,7 @@ export function OtpModule() {
     const result = await api.approveDateExclusion(id);
     const refreshed = await api.getDateExclusions();
     setDateExclusions(refreshed.exclusions);
-    setAuditRefreshTick((t) => t + 1);
+    setWeatherActionTick((t) => t + 1);
     setMeasurementTick((t) => t + 1);
     return result.snapshot;
   }
@@ -399,12 +240,12 @@ export function OtpModule() {
           />
         </label>
       </div>
-      {actionError ? <p className="error-text">{actionError}</p> : null}
+      {review.actionError ? <p className="error-text">{review.actionError}</p> : null}
 
       {page === "dashboard" && (
         <DashboardPage
           displayRows={displayRows}
-          statuses={statuses}
+          statuses={review.statuses}
           weatherCount={dateExclusions.length}
           measurement={measurement}
           targetPct={targetPct}
@@ -413,18 +254,18 @@ export function OtpModule() {
       {page === "queue" && (
         <ReviewQueuePage
           flaggedStops={flaggedStops}
-          queueRows={queueRows}
-          statusOf={statusOf}
-          reasonOf={reasonOf}
+          queueRows={review.queueRows}
+          statusOf={review.statusOf}
+          reasonOf={review.reasonOf}
           reasonCodes={stopReasonCodes}
-          onResolve={resolve}
-          onReason={setReason}
+          onResolve={review.resolve}
+          onReason={review.setReason}
           serviceMonth={serviceMonth}
-          auditRefreshTick={auditRefreshTick}
-          previousDecisionFor={previousDecisionFor}
-          onCopy={copyFromPrevious}
-          onCopyAll={copyAllFromPrevious}
-          copyingAll={copyingAll}
+          auditRefreshTick={review.auditRefreshTick + weatherActionTick}
+          previousDecisionFor={review.previousDecisionFor}
+          onCopy={review.copyFromPrevious}
+          onCopyAll={review.copyAllFromPrevious}
+          copyingAll={review.copyingAll}
         />
       )}
       {page === "routes" && (
