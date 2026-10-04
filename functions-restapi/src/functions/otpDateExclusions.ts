@@ -16,6 +16,7 @@ import { app, type HttpRequest, type InvocationContext } from "@azure/functions"
 import { getPool, sql } from "../lib/db";
 import { requireAccess } from "../lib/access/require";
 import { validateDateExclusion } from "../lib/validation";
+import { serviceMonthOf } from "../lib/otpMonthlyFeed";
 import { refusalMessage, takeDateExclusionSnapshot } from "../lib/otpDateExclusionSnapshot";
 
 interface DateExclusionRow {
@@ -46,6 +47,14 @@ app.http("otpDateExclusionsList", {
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }
+    // A weather day belongs to the month its service date falls in, so the
+    // page follows the module's month picker like every other page does. It
+    // used to return every date ever recorded, whichever month you were
+    // looking at, and the Dashboard counted all of them beside a sentence
+    // that counted one month's.
+    const monthParam = request.query.get("month");
+    const month = monthParam && /^\d{6}$/.test(monthParam) ? monthParam : serviceMonthOf(new Date());
+
     try {
       const pool = await getPool();
       const tableCheck = await pool.request().query<{ table_exists: number; approved: number; snapshot: number }>(`
@@ -62,12 +71,13 @@ app.http("otpDateExclusionsList", {
       const hasApproval = tableCheck.recordset[0]?.approved === 1;
       const hasSnapshot = tableCheck.recordset[0]?.snapshot === 1;
 
-      const result = await pool.request().query<DateExclusionRow>(`
+      const result = await pool.request().input("month", sql.Char(6), month).query<DateExclusionRow>(`
         SELECT e.id, e.scope, e.route_id, e.service_date, e.reason_code, e.notes, e.status,
                e.notified, e.notified_at, e.acknowledged, e.created_by, e.created_at,
                ${hasApproval ? "e.approved_by, e.approved_at" : "CAST(NULL AS NVARCHAR(200)) approved_by, CAST(NULL AS DATETIME2) approved_at"},
                ${hasSnapshot ? `(SELECT ISNULL(SUM(d.total),0) FROM dbo.OtpDateExclusionDepartures d WHERE d.exclusion_id = e.id)` : "0"} excluded_departures
         FROM OtpDateExclusions e
+        WHERE LEFT(e.service_date, 6) = @month
         ORDER BY e.service_date DESC
       `);
       return { status: 200, jsonBody: { exclusions: result.recordset } };

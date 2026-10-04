@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { ApiError, type FlaggedStop } from "@mvta/shared";
@@ -15,7 +15,7 @@ const flagged: FlaggedStop[] = [
   stop({ route_id: 444, route_label: "444", stop_id: 31928, stop_name: "Burnsville Tran", total: 282, pct_early: 0.415, pct_late: 0.113, pct_ontime: 0.468, pct_missed: 0.004 }),
 ];
 
-const monthly = (over: { flagged?: FlaggedStop[]; record_count?: number } = {}) => ({
+const monthly = (over: { flagged?: FlaggedStop[]; record_count?: number; weatherRecorded?: number; weatherApplied?: number } = {}) => ({
   routes: [],
   flagged: over.flagged ?? flagged,
   measurement: {
@@ -23,12 +23,15 @@ const monthly = (over: { flagged?: FlaggedStop[]; record_count?: number } = {}) 
     raw: { departures: 0, ontime: 0, pct: null },
     excluded: { departures: 0, ontime: 0, pct: null },
     assessable: { departures: 0, ontime: 0, pct: null },
-    routes: [], routes_below_target: 0, weather_days_recorded: 0, feed_ready: true,
+    routes: [], routes_below_target: 0,
+    weather_days_recorded: over.weatherRecorded ?? 0,
+    weather_days_applied: over.weatherApplied ?? 0,
+    feed_ready: true,
   },
   diagnostics: {
     configured: true, table_ready: true, service_month: "202609",
     record_count: over.record_count ?? 910, routes_below_target: 0, target: 0.85,
-    target_source: "catalog", weather_days_recorded: 0,
+    target_source: "catalog", weather_days_recorded: over.weatherRecorded ?? 0,
     flagged_threshold: 0.15, flagged_count: (over.flagged ?? flagged).length,
   },
 });
@@ -198,5 +201,44 @@ describe("approving a weather day", () => {
 
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
     expect(screen.getByText("1,043")).toBeTruthy();
+  });
+});
+
+describe("which month's weather days are shown", () => {
+  beforeEach(() => {
+    getOtpMonthly.mockResolvedValue(monthly());
+    getDateExclusions.mockResolvedValue({ exclusions: [] });
+  });
+  afterEach(() => {
+    cleanup();
+    getOtpMonthly.mockReset();
+    getDateExclusions.mockReset();
+  });
+
+  it("asks for the month being viewed, not for every date ever recorded", async () => {
+    render(<OtpModule />);
+    await screen.findByText("Wash/Coffman SW");
+    // It used to be fetched once with no month, so the Weather page listed
+    // dates from months nobody was looking at and the Dashboard counted all
+    // of them beside a sentence that counted one month's.
+    await vi.waitFor(() =>
+      expect(getDateExclusions.mock.calls).toContainEqual([expect.stringMatching(/^\d{6}$/)]),
+    );
+    expect(getDateExclusions.mock.calls.every((c) => c.length === 1)).toBe(true);
+  });
+
+  it("counts the month on the Dashboard card, the same as the sentence beside it", async () => {
+    getOtpMonthly.mockResolvedValue(monthly({ weatherRecorded: 2, weatherApplied: 1 }));
+    const { container } = render(<OtpModule />);
+    await screen.findByText("Wash/Coffman SW");
+    fireEvent.click(screen.getByRole("button", { name: "Dashboard" }));
+
+    const card = [...container.querySelectorAll(".stat-card")]
+      .find((c) => c.textContent?.includes("Weather exclusions"));
+    expect(card?.textContent).toContain("2");
+    // "Recorded, not applied" stopped being true at ADR 0038: an approved
+    // date subtracts the departures frozen when it was approved.
+    expect(card?.textContent).toContain("1 subtracting");
+    expect(card?.textContent).not.toContain("not applied");
   });
 });

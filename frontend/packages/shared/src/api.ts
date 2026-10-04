@@ -1647,8 +1647,10 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       );
     },
 
-    getDateExclusions() {
-      return request<{ exclusions: OtpDateExclusion[] }>("/api/otp-date-exclusions", {}, true);
+    /** Weather Day Exclusions for a service month. Defaults to the current one. */
+    getDateExclusions(month?: string) {
+      const suffix = month ? `?month=${month}` : "";
+      return request<{ exclusions: OtpDateExclusion[] }>(`/api/otp-date-exclusions${suffix}`, {}, true);
     },
 
     createDateExclusion(input: CreateDateExclusionInput) {
