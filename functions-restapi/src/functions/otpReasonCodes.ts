@@ -1,27 +1,26 @@
 // Admin-editable reason codes for stop exclusions (OTP Review Queue), date
-// exclusions (OTP Weather page), and - since migration-023 - Missed Trips'
-// investigation-outcome dropdown (applies_to='missed_trip'). Name is a
-// holdover from when this only served OTP; kept as-is rather than renaming
-// the table/route for a third, unrelated consumer.
+// exclusions (OTP Weather page), and - since migration 023 - Missed Trips'
+// investigation-outcome dropdown (applies_to='missed_trip').
+//
+// The name is a holdover from when this served OTP alone. It is wrong for a
+// table three modules read, and renaming it means a migration, a route, the
+// console and three consumers - deliberately not bundled into this change.
 //
 //   GET /otp-reason-codes?applies_to=&active_only=  - compliance-review.view
 //   POST /otp-reason-codes                           - service-configuration.edit
 //   PATCH /otp-reason-codes/{id}                     - service-configuration.edit
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
-import { getPool, sql } from "../lib/db";
+import { getPool } from "../lib/db";
 import { requireAccess } from "../lib/access/require";
 import { validateCreateReasonCode, validateUpdateReasonCode, isGuid } from "../lib/validation";
-
-interface ReasonCodeRow {
-  id: string;
-  code: string;
-  label: string;
-  applies_to: "stop" | "date" | "missed_trip";
-  is_active: boolean;
-  sort_order: number;
-  updated_by: string | null;
-  updated_at: Date;
-}
+import {
+  createReasonCode,
+  listReasonCodes,
+  updateReasonCode,
+  DuplicateReasonCode,
+  type CreateReasonCode,
+  type UpdateReasonCode,
+} from "../lib/reasonCodes";
 
 app.http("otpReasonCodesList", {
   route: "otp-reason-codes",
@@ -32,28 +31,13 @@ app.http("otpReasonCodesList", {
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }
-
-    const appliesTo = request.query.get("applies_to");
-    const activeOnly = request.query.get("active_only") === "true";
-
     try {
       const pool = await getPool();
-      const req = pool.request();
-      const conditions: string[] = [];
-      if (appliesTo === "stop" || appliesTo === "date" || appliesTo === "missed_trip") {
-        req.input("applies_to", sql.NVarChar(20), appliesTo);
-        conditions.push("applies_to = @applies_to");
-      }
-      if (activeOnly) conditions.push("is_active = 1");
-      const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-
-      const result = await req.query<ReasonCodeRow>(`
-        SELECT id, code, label, applies_to, is_active, sort_order, updated_by, updated_at
-        FROM OtpReasonCodes
-        ${where}
-        ORDER BY applies_to, sort_order
-      `);
-      return { status: 200, jsonBody: { reason_codes: result.recordset } };
+      const reason_codes = await listReasonCodes(pool, "otp", {
+        appliesTo: request.query.get("applies_to"),
+        activeOnly: request.query.get("active_only") === "true",
+      });
+      return { status: 200, jsonBody: { reason_codes } };
     } catch (err) {
       context.error("GET /otp-reason-codes failed:", err);
       return { status: 500, jsonBody: { error: "Internal server error" } };
@@ -77,28 +61,24 @@ app.http("otpReasonCodesCreate", {
     } catch {
       return { status: 400, jsonBody: { error: "Request body must be valid JSON" } };
     }
-    const errors = validateCreateReasonCode(raw as Record<string, unknown>);
+    const errors = validateCreateReasonCode(raw as Record<string, unknown>, "otp");
     if (errors.length > 0) {
       return { status: 400, jsonBody: { error: "Validation failed", details: errors } };
     }
-    const body = raw as { code: string; label: string; applies_to: "stop" | "date" | "missed_trip" };
 
     try {
       const pool = await getPool();
-      const sqlRequest = pool.request();
-      sqlRequest.input("code", sql.NVarChar, body.code);
-      sqlRequest.input("label", sql.NVarChar, body.label);
-      sqlRequest.input("applies_to", sql.NVarChar(20), body.applies_to);
-      sqlRequest.input("updated_by", sql.NVarChar, authResult.principal.userDetails || "system");
-
-      const result = await sqlRequest.query<ReasonCodeRow>(`
-        INSERT INTO OtpReasonCodes (code, label, applies_to, updated_by)
-        OUTPUT INSERTED.id, INSERTED.code, INSERTED.label, INSERTED.applies_to,
-               INSERTED.is_active, INSERTED.sort_order, INSERTED.updated_by, INSERTED.updated_at
-        VALUES (@code, @label, @applies_to, @updated_by)
-      `);
-      return { status: 201, jsonBody: result.recordset[0] };
+      const created = await createReasonCode(
+        pool,
+        "otp",
+        raw as CreateReasonCode,
+        authResult.principal.userDetails || "system",
+      );
+      return { status: 201, jsonBody: created };
     } catch (err) {
+      if (err instanceof DuplicateReasonCode) {
+        return { status: 409, jsonBody: { error: err.message } };
+      }
       context.error("POST /otp-reason-codes failed:", err);
       return { status: 500, jsonBody: { error: "Internal server error" } };
     }
@@ -130,40 +110,18 @@ app.http("otpReasonCodesUpdate", {
     if (errors.length > 0) {
       return { status: 400, jsonBody: { error: "Validation failed", details: errors } };
     }
-    const body = raw as { label?: string; is_active?: boolean; sort_order?: number };
 
     try {
       const pool = await getPool();
-      const sqlRequest = pool.request();
-      sqlRequest.input("id", sql.UniqueIdentifier, id);
-      sqlRequest.input("updated_by", sql.NVarChar, authResult.principal.userDetails || "system");
-
-      const sets: string[] = ["updated_by = @updated_by", "updated_at = SYSUTCDATETIME()"];
-      if (body.label !== undefined) {
-        sets.push("label = @label");
-        sqlRequest.input("label", sql.NVarChar, body.label);
-      }
-      if (body.is_active !== undefined) {
-        sets.push("is_active = @is_active");
-        sqlRequest.input("is_active", sql.Bit, body.is_active);
-      }
-      if (body.sort_order !== undefined) {
-        sets.push("sort_order = @sort_order");
-        sqlRequest.input("sort_order", sql.Int, body.sort_order);
-      }
-
-      const result = await sqlRequest.query<ReasonCodeRow>(`
-        UPDATE OtpReasonCodes
-        SET ${sets.join(", ")}
-        OUTPUT INSERTED.id, INSERTED.code, INSERTED.label, INSERTED.applies_to,
-               INSERTED.is_active, INSERTED.sort_order, INSERTED.updated_by, INSERTED.updated_at
-        WHERE id = @id
-      `);
-
-      if (result.recordset.length === 0) {
-        return { status: 404, jsonBody: { error: "Reason code not found" } };
-      }
-      return { status: 200, jsonBody: result.recordset[0] };
+      const updated = await updateReasonCode(
+        pool,
+        "otp",
+        id,
+        raw as UpdateReasonCode,
+        authResult.principal.userDetails || "system",
+      );
+      if (!updated) return { status: 404, jsonBody: { error: "Reason code not found" } };
+      return { status: 200, jsonBody: updated };
     } catch (err) {
       context.error("PATCH /otp-reason-codes/{id} failed:", err);
       return { status: 500, jsonBody: { error: "Internal server error" } };
