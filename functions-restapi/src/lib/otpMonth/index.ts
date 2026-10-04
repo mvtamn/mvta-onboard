@@ -10,40 +10,16 @@
 // "Routes below target · Official departure OTP" card counted raw routes.
 import { sql } from "../db";
 import { otpAssessableCountSql, otpAssessableJoinsSql, otpAssessableSql, otpDateExcludedJoinSql, otpRouteCategorySql } from "./rules";
-import type { MeasureOtpMonthOptions, OtpFigure, OtpMonthMeasurement, OtpRouteFigure, OtpTargetSource } from "./types";
+import type { MeasureOtpMonthOptions, OtpFigure, OtpMonthMeasurement, OtpRouteFigure } from "./types";
+import { requestFor as request, type Executor } from "./executor";
+import { figure, routeFigures, total, type RouteRow } from "./figures";
+import { readTarget } from "./target";
 
 export * from "./types";
 export * from "./rules";
-
-export const OTP_STANDARD_CODE = "OTP_FIXED_ROUTE";
-
-// Used only where nothing else answers: no Assessment Period, no catalog band.
-// It is Attachment G's figure, and the same number the console used to
-// hardcode in two places.
-export const DEFAULT_OTP_TARGET = 0.85;
-
-export type Executor = sql.ConnectionPool | sql.Transaction;
-const request = (executor: Executor) => executor instanceof sql.Transaction ? new sql.Request(executor) : executor.request();
-
-const figure = (departures: number, ontime: number): OtpFigure => ({
-  departures,
-  ontime,
-  pct: departures > 0 ? ontime / departures : null,
-});
-
-interface RouteRow {
-  service_month: string;
-  route_id: number;
-  route_label: string | null;
-  route_category: string;
-  raw_total: number;
-  raw_ontime: number;
-  /** After the category and stop-exclusion rules, before any date exclusion. */
-  before_dates_total: number;
-  before_dates_ontime: number;
-  total: number;
-  ontime: number;
-}
+export * from "./executor";
+export * from "./figures";
+export * from "./target";
 
 interface Available {
   /** OtpMonthlyRouteStopDay, the feed itself (migration 014). */
@@ -118,70 +94,6 @@ export function otpRouteFiguresSql(scope: "month" | "all", dateExclusions = true
     ${scope === "month" ? "WHERE otp.service_month = @month" : ""}
     GROUP BY otp.service_month, otp.route_id, ${otpRouteCategorySql()}`;
 }
-
-async function readTarget(executor: Executor, month: string, tables: Available, periodId?: string | null): Promise<{ target: number; source: OtpTargetSource }> {
-  if (tables.periods) {
-    const frozen = request(executor);
-    frozen.input("month", sql.Char(6), month);
-    frozen.input("period", sql.UniqueIdentifier, periodId ?? null);
-    // A month with one Assessment Period is judged by that period's frozen
-    // rules (ADR 0006), so a band edited later cannot restate a finalized
-    // month. Several periods - several contractors - and no caller to say
-    // which: the catalog answers, because guessing here would put one
-    // contractor's negotiated target on another's figure.
-    const rows = (await frozen.query<{ target_value: number | null; bound_low: number | null }>(`
-      SELECT TOP 2 ${tables.period_target ? "ps.target_value" : "CAST(NULL AS FLOAT) target_value"}, t.bound_low
-      FROM dbo.AssessmentPeriods p
-      JOIN dbo.AssessmentPeriodStandards ps ON ps.period_id = p.id AND ps.code = '${OTP_STANDARD_CODE}'
-      LEFT JOIN dbo.AssessmentPeriodTiers t ON t.period_id = ps.period_id AND t.standard_id = ps.standard_id AND t.tier_label = 'meets'
-      WHERE p.service_month = @month AND (@period IS NULL OR p.id = @period)
-    `)).recordset;
-    const target = rows.length === 1 ? rows[0].target_value ?? rows[0].bound_low : null;
-    if (target !== null && Number.isFinite(target)) return { target: Number(target), source: "period_rule_set" };
-  }
-  if (tables.catalog) {
-    const catalog = request(executor);
-    catalog.input("date", sql.Char(8), `${month}01`);
-    const row = (await catalog.query<{ target_value: number | null; bound_low: number | null }>(`
-      SELECT TOP 1 ${tables.catalog_target ? "s.target_value" : "CAST(NULL AS FLOAT) target_value"}, t.bound_low
-      FROM dbo.ContractorPerformanceStandards s
-      LEFT JOIN dbo.ContractorStandardTiers t ON t.standard_id = s.id AND t.tier_label = 'meets'
-        AND t.effective_start_date <= @date AND (t.effective_end_date IS NULL OR t.effective_end_date >= @date)
-      WHERE s.code = '${OTP_STANDARD_CODE}'
-      ORDER BY t.effective_start_date DESC
-    `)).recordset[0];
-    const target = row?.target_value ?? row?.bound_low ?? null;
-    if (target !== null && Number.isFinite(target)) return { target: Number(target), source: "catalog" };
-  }
-  return { target: DEFAULT_OTP_TARGET, source: "default" };
-}
-
-function routeFigures(rows: RouteRow[], target: number): OtpRouteFigure[] {
-  return rows.map((row) => {
-    const raw = figure(Number(row.raw_total), Number(row.raw_ontime));
-    const beforeDates = figure(Number(row.before_dates_total), Number(row.before_dates_ontime));
-    const assessable = figure(Number(row.total), Number(row.ontime));
-    const excluded = figure(raw.departures - assessable.departures, raw.ontime - assessable.ontime);
-    // The two rules, told apart. A reviewer asking why a route moved is owed
-    // the difference between "a stop came out" and "a snow day came out".
-    const stopExcluded = figure(raw.departures - beforeDates.departures, raw.ontime - beforeDates.ontime);
-    const dateExcluded = figure(beforeDates.departures - assessable.departures, beforeDates.ontime - assessable.ontime);
-    return {
-      route_id: row.route_id,
-      route_label: row.route_label,
-      route_category: row.route_category,
-      raw, excluded, assessable,
-      stop_excluded: stopExcluded,
-      date_excluded: dateExcluded,
-      below_target: assessable.pct === null ? null : assessable.pct < target,
-    };
-  });
-}
-
-const total = (routes: OtpRouteFigure[], pick: (route: OtpRouteFigure) => OtpFigure) => figure(
-  routes.reduce((sum, route) => sum + pick(route).departures, 0),
-  routes.reduce((sum, route) => sum + pick(route).ontime, 0),
-);
 
 /**
  * Fixed-route OTP for one service month: raw, excluded and assessable, agency
