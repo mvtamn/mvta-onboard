@@ -5,6 +5,15 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.302] - 2026-10-04
+
+- **Two reason-code tables are managed by one module.** `lib/reasonCodes.ts` answers list/create/update for both `OtpReasonCodes` and `DetourReasonCodes`; the two handlers drop from 362 lines to 267 and neither touches SQL. The PATCH bodies had been line-for-line identical apart from the table name, and `validation.ts` carried two copies of the same rules 500 lines apart, each with its own `MAX_..._LENGTH` constant that happened to hold the same 30.
+- **The duplication had already drifted, which is the actual argument for this.** Creating a duplicate OTP reason code returned a 500 where the detour one returned a 409; the OTP create ignored `sort_order` where the detour one accepted it; one bound `label` to the column's real width and the other left it open. Those are now one behaviour, taking the better half of each.
+- **What differs between the tables is data, not code.** A scope descriptor holds the table name, the column list, the ordering and whether there is an `applies_to` sub-kind. `DetourReasonCodes` was deliberately NOT given a vestigial `applies_to` column to make the two match: that would be letting the code dictate the schema.
+- **`OtpReasonCodes` keeps its misleading name on purpose.** It has backed Missed Trips' investigation outcomes since migration 023, so the name is wrong for a table three modules read - but renaming it touches a migration, a route, the console and three consumers, and bundling that here would make a behaviour-preserving refactor unreviewable.
+- **Verified.** 6 new checks on the scope-aware validator, and a contract test that runs the *same* assertions against *both* scopes - add, list, edit, retire, a duplicate refused as a user error, an unknown id reported as not found - because "these two behave identically" is the module's whole claim and nothing but real SQL proves it. Also covered: the same code may exist under two OTP sub-kinds but not twice under one, and a table whose migration has not run lists empty rather than failing. Backend 1333 passing. No migration, no console change.
+
+
 ## [1.5.297] - 2026-09-23
 
 - **Migration 138 must not shift a row the corrected poller already wrote.** 1.5.286's code reached `main` and deployed before the migration was applied, so the poller spent an hour writing true UTC instants into a table the migration still assumed was entirely agency-local wall clock. Applying it as written would have moved those 186 rows a second five hours and, because they were the most recently updated copy of each duplicate pair, the double-shifted row would have won the dedupe.

@@ -696,3 +696,57 @@ test("validateManualMetric still requires the figure itself", () => {
   assert.deepStrictEqual(validateManualMetric(metric({ metric_value: Number.NaN })), ["standard_id, contractor_id, service_month, finite metric_value, and source_note are required"]);
   assert.deepStrictEqual(validateManualMetric(metric({ source_note: "  " })), ["standard_id, contractor_id, service_month, finite metric_value, and source_note are required"]);
 });
+
+// One set of reason-code rules under two scopes. These were two copies of the
+// same validator 500 lines apart, each with its own MAX_..._LENGTH constant
+// that happened to hold the same 30 - the kind of pair where a widened column
+// gets one of them updated and not the other.
+test("an OTP reason code must say which kind it applies to", () => {
+  assert.equal(validateCreateReasonCode({ code: "RECOVERY", label: "Recovery point", applies_to: "stop" }, "otp").length, 0);
+  const missing = validateCreateReasonCode({ code: "RECOVERY", label: "Recovery point" }, "otp");
+  assert.ok(missing.some((e) => e.includes("applies_to")));
+  const wrong = validateCreateReasonCode({ code: "R", label: "R", applies_to: "nonsense" }, "otp");
+  assert.ok(wrong.some((e) => e.includes("applies_to")));
+});
+
+test("a detour reason code has no kind, and is told so if one is sent", () => {
+  assert.equal(validateCreateReasonCode({ code: "BRIDGE", label: "Bridge lift" }, "detour").length, 0);
+  // Accepting it silently would let a caller believe a sub-kind was recorded
+  // against a table that has no column for one.
+  const sent = validateCreateReasonCode({ code: "BRIDGE", label: "Bridge lift", applies_to: "stop" }, "detour");
+  assert.ok(sent.some((e) => e.includes("applies_to")));
+});
+
+test("the scope defaults to OTP, so an un-scoped call keeps its old rules", () => {
+  assert.deepEqual(
+    validateCreateReasonCode({ code: "RECOVERY", label: "Recovery point" }),
+    validateCreateReasonCode({ code: "RECOVERY", label: "Recovery point" }, "otp"),
+  );
+});
+
+test("both scopes hold code and label to the same lengths", () => {
+  const longCode = { code: "x".repeat(31), label: "fine" };
+  const longLabel = { code: "fine", label: "x".repeat(101) };
+  for (const scope of ["otp", "detour"] as const) {
+    const extra = scope === "otp" ? { applies_to: "stop" as const } : {};
+    assert.ok(validateCreateReasonCode({ ...longCode, ...extra }, scope).some((e) => e.includes("30 characters")));
+    assert.ok(validateCreateReasonCode({ ...longLabel, ...extra }, scope).some((e) => e.includes("100 characters")));
+  }
+});
+
+test("a sort order has to be a whole number", () => {
+  assert.ok(validateCreateReasonCode({ code: "A", label: "A", applies_to: "stop", sort_order: 1.5 }, "otp")
+    .some((e) => e.includes("sort_order")));
+  assert.equal(validateCreateReasonCode({ code: "A", label: "A", applies_to: "stop", sort_order: 3 }, "otp").length, 0);
+});
+
+test("the detour validators are the shared ones under their scope", () => {
+  assert.deepEqual(
+    validateCreateDetourReasonCode({ code: "BRIDGE", label: "Bridge lift" }),
+    validateCreateReasonCode({ code: "BRIDGE", label: "Bridge lift" }, "detour"),
+  );
+  assert.deepEqual(
+    validateUpdateDetourReasonCode({ label: "" }),
+    validateUpdateReasonCode({ label: "" }),
+  );
+});
