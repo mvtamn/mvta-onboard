@@ -12,15 +12,12 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **Three real defects, each now with a test that fails without the fix.** A failed approve left its banner on whatever month you switched to. The previous month's decisions stayed on screen against the new month until its fetch landed, so a stop could read "Excluded" when nothing had been decided for it. An unsaved reason carried across a month switch onto a different month's row.
 - **One deliberate separation.** The hook tells the caller when a decision has moved the figure (`decisionsVersion`) rather than re-reading the measurement itself, so re-reading stays where the feed is owned. Approving a weather day keeps its own counter, because it belongs in the timeline too.
 - **Verified.** 14 new checks through `renderHook`: what is asked for and when, what a row's reason falls back to, that a failed write does not claim the figure moved, that nothing is written with no month resolved, that copy-all touches only pending stops with a previous decision and stops at the first failure. Console 799 passing, typecheck clean, Review Queue checked in the preview. No migration, no API change.
-
-
 ## [1.5.299] - 2026-10-03
 
 - **The OTP Compliance module is eight files instead of one.** `OtpModule.tsx` was 1,153 lines holding six pages, two helper components and five date converters; it is now 449 lines of state and composition, with `OtpDashboard`, `OtpReviewQueue`, `OtpRouteSummary`, `OtpWeather`, `OtpMonthlyAssessments` and `OtpAuditStream` beside it, plus `otpServiceMonth.ts` for the "YYYYMM" converters the picker, "copy last month" and the Audit Stream's scope all share, and `otpResponse.ts` for the one type the module and Monthly Assessments both read.
 - **It is a move, not a rewrite.** No component's props, logic or markup changed, which is why all 785 console tests pass untouched - the point of doing the split on its own rather than alongside the state extraction that follows it. The Assessment module next door has had this shape since September; this brings OTP into line with it.
 - **Why it matters here specifically:** this file has taken four changes from different pieces of work in the last fortnight, and every one of them conflicted with another. Six files have six separate insertion points.
 - **Verified.** Console 785 passing (unchanged), typecheck clean, every page rendered in the console-mock preview with no errors. No migration, no API change.
-
 
 ## [1.5.298] - 2026-09-23
 
