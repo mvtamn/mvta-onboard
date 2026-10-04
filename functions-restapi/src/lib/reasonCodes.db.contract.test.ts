@@ -121,10 +121,14 @@ test("reason codes against real SQL", { skip: !connectionString && "DECISION_MAT
 
     await t.test("only the OTP scope filters by sub-kind", async () => {
       await createReasonCode(pool, "otp", { code: "CONTRACT_D", label: "A date one", applies_to: "date" }, ACTOR);
+      // Migration 018 seeds date codes of its own, so assert on what the
+      // filter includes and excludes rather than on the whole list.
       const dates = await listReasonCodes(pool, "otp", { appliesTo: "date" });
-      assert.deepEqual(dates.map((r) => r.code), ["CONTRACT_D"]);
+      assert.ok(dates.some((r) => r.code === "CONTRACT_D"));
+      assert.ok(dates.every((r) => r.applies_to === "date"), "a date filter returns only date codes");
       const stops = await listReasonCodes(pool, "otp", { appliesTo: "stop" });
       assert.equal(stops.some((r) => r.code === "CONTRACT_D"), false);
+      assert.ok(stops.every((r) => r.applies_to === "stop"), "a stop filter returns only stop codes");
 
       // The same filter against the detour scope is ignored rather than
       // producing an error or an empty list - that table has no sub-kind.
