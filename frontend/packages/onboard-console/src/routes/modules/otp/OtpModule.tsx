@@ -4,7 +4,7 @@ import {
   type FlaggedStop,
   type OtpDateExclusion,
   type DateExclusionSnapshot,
-  type OtpReasonCode,
+  type ReasonCode,
 } from "@mvta/shared";
 import { api } from "../../../config.js";
 import type { OtpMonthlyResponse } from "./otpResponse.js";
@@ -74,8 +74,8 @@ export function OtpModule() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [dateExclusions, setDateExclusions] = useState<OtpDateExclusion[]>([]);
-  const [stopReasonCodes, setStopReasonCodes] = useState<OtpReasonCode[]>([]);
-  const [dateReasonCodes, setDateReasonCodes] = useState<OtpReasonCode[]>([]);
+  const [stopReasonCodes, setStopReasonCodes] = useState<ReasonCode[]>([]);
+  const [dateReasonCodes, setDateReasonCodes] = useState<ReasonCode[]>([]);
 
   // Month-independent - fetched once, not tied to selectedMonth. Each call
   // gets its OWN catch rather than one shared Promise.all - a Promise.all

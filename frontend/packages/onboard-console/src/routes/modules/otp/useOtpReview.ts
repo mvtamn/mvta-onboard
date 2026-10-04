@@ -16,7 +16,7 @@
 // said about otpFigures.ts in the review that led here. The cost is that this
 // has to be tested with renderHook rather than by calling a function.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ApiError, type FlaggedStop, type OtpReasonCode, type OtpStopExclusion } from "@mvta/shared";
+import { ApiError, type FlaggedStop, type ReasonCode, type OtpStopExclusion } from "@mvta/shared";
 import { api } from "../../../config.js";
 import { stopExclusionKey, type StopExclusionStatus } from "./otpData.js";
 import { queueRow, type QueueRow } from "./otpFigures.js";
@@ -28,7 +28,7 @@ export interface OtpReviewInput {
   /** The month's Flagged Stops, as the server decided them (ADR 0034). */
   flaggedStops: readonly FlaggedStop[];
   /** For defaulting a row's reason when nothing is persisted or drafted. */
-  reasonCodes: readonly OtpReasonCode[];
+  reasonCodes: readonly ReasonCode[];
 }
 
 export interface OtpReview {

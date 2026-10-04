@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ApiError, type DateExclusionSnapshot, type OtpDateExclusion, type OtpReasonCode } from "@mvta/shared";
+import { ApiError, type DateExclusionSnapshot, type OtpDateExclusion, type ReasonCode } from "@mvta/shared";
 import { weatherSentence } from "./otpFigures.js";
 
 export function WeatherPage({
@@ -11,7 +11,7 @@ export function WeatherPage({
   appliedThisMonth,
 }: {
   dateExclusions: OtpDateExclusion[];
-  reasonCodes: OtpReasonCode[];
+  reasonCodes: ReasonCode[];
   onAdd: (input: { scope: "Agency" | "Route"; route_id: number | null; service_date: string; reason_code: string; notes: string }) => Promise<void>;
   onApprove: (id: string) => Promise<DateExclusionSnapshot>;
   recordedThisMonth: number;

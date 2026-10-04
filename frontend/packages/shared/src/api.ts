@@ -101,7 +101,7 @@ import type {
   OtpMonthMeasurement,
   OtpTargetSource,
   OtpMonthlyTrendPoint,
-  OtpReasonCode,
+  ReasonCode,
   OtpSettingsRow,
   OtpStopExclusion,
   PeriodKpiAssessment,
@@ -1688,20 +1688,20 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       if (appliesTo) qs.set("applies_to", appliesTo);
       if (activeOnly) qs.set("active_only", "true");
       const suffix = qs.toString() ? `?${qs.toString()}` : "";
-      return request<{ reason_codes: OtpReasonCode[] }>(`/api/otp-reason-codes${suffix}`, {}, true);
+      return request<{ reason_codes: ReasonCode[] }>(`/api/reason-codes${suffix}`, {}, true);
     },
 
     createReasonCode(input: CreateReasonCodeInput) {
-      return request<OtpReasonCode>(
-        "/api/otp-reason-codes",
+      return request<ReasonCode>(
+        "/api/reason-codes",
         { method: "POST", body: JSON.stringify(input) },
         true,
       );
     },
 
     updateReasonCode(id: string, input: UpdateReasonCodeInput) {
-      return request<OtpReasonCode>(
-        `/api/otp-reason-codes/${id}`,
+      return request<ReasonCode>(
+        `/api/reason-codes/${id}`,
         { method: "PATCH", body: JSON.stringify(input) },
         true,
       );

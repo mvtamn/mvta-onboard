@@ -5,6 +5,14 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.304] - 2026-10-04
+
+- **`/otp-reason-codes` becomes `/reason-codes`.** They have backed Missed Trips' investigation outcomes since migration 023 as well as OTP's two exclusion kinds, so the OTP prefix named one of three consumers. The client type `OtpReasonCode` becomes `ReasonCode` across 11 files, and the handler is `functions/reasonCodes.ts` beside the `lib/reasonCodes` it already used.
+- **The old routes still answer, on the same handlers**, so a console loaded before this release keeps working. That matters more than it sounds: both the Review Queue and the Weather page swallow a failed reason-code fetch as "graceful", so a 404 would not raise an error - it would show an empty dropdown that reads as "nobody has configured any". **The legacy routes come out one release after this one.**
+- **The TABLE is deliberately still `OtpReasonCodes`.** Four reporting views join it (migrations 106, 135 and 137) and those feed Power BI, so renaming it means recreating them - not worth doing while the OTP figures are under validation, and worth nothing to anyone outside this repo. The name is wrong there and stays wrong, on purpose, with a note saying so.
+- **Verified.** Both route sets proved to resolve to the same three handler functions, not merely to exist. `OtpReasonCode` is kept as a deprecated alias of `ReasonCode` so nothing outside this change breaks. Backend 1340 passing, console 799 passing, typecheck clean. No migration.
+
+
 ## [1.5.302] - 2026-10-04
 
 - **Two reason-code tables are managed by one module.** `lib/reasonCodes.ts` answers list/create/update for both `OtpReasonCodes` and `DetourReasonCodes`; the two handlers drop from 362 lines to 267 and neither touches SQL. The PATCH bodies had been line-for-line identical apart from the table name, and `validation.ts` carried two copies of the same rules 500 lines apart, each with its own `MAX_..._LENGTH` constant that happened to hold the same 30.

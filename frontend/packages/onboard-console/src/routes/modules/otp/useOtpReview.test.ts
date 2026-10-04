@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, type FlaggedStop, type OtpReasonCode, type OtpStopExclusion } from "@mvta/shared";
+import { ApiError, type FlaggedStop, type ReasonCode, type OtpStopExclusion } from "@mvta/shared";
 import { useOtpReview } from "./useOtpReview";
 
 const getStopExclusions = vi.fn();
@@ -25,7 +25,7 @@ const decision = (over: Partial<OtpStopExclusion> = {}): OtpStopExclusion => ({
   reviewed_at: "2026-09-10T12:00:00.000Z", ...over,
 } as OtpStopExclusion);
 
-const codes: OtpReasonCode[] = [
+const codes: ReasonCode[] = [
   { id: "r1", code: "SCHED_RECOVERY", label: "Recovery point", applies_to: "stop", sort_order: 1, is_active: true, updated_by: null, updated_at: "" },
 ];
 
