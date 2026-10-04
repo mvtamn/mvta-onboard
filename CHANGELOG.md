@@ -5,6 +5,15 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.303] - 2026-10-04
+
+- **The month measurement's arithmetic can be checked without a database.** `figure`, `routeFigures` and `total` were private helpers inside `measureOtpMonth`, reachable only through the db contract test - which skips without a SQL connection. They are `otpMonth/figures.ts` now, with 10 checks over the numbers a contractor is actually assessed on: a share with no departures is null rather than 0%, a route with nothing assessable is neither below target nor above it, `below_target` is strictly below so a route exactly on target meets, and the agency line is routes added up rather than their percentages averaged.
+- **ADR 0038's stop/date split gets the same treatment.** The two halves of `excluded` are differences between successive stages of one query, so they add up to the whole and cannot overlap - there is now a test saying so, and another for the case where the stop rule already removed everything a date would have.
+- **Target resolution is `otpMonth/target.ts`.** It reaches five tables belonging to the assessment domain, which is why it is its own file. **`measureOtpMonth` still calls it**: the caller does not get to supply a target, because several places answering that question is exactly what ADR 0033 ended, and `target_source` stays part of the measurement's answer.
+- **The branch that most needed a test now has one.** Where several Assessment Periods cover one month, none may answer - several periods are several contractors, and putting one's negotiated target on another's figure would be worse than falling back to the catalog. The db contract test covers one period and no period; it never covered two. 9 checks on target resolution, including that a NaN is refused rather than used, which would otherwise make every route read as meeting.
+- **Verified.** `otpMonth/index.ts` 279 -> 191 lines; 18 new checks, all pure; the existing suite passes unchanged, which is the signal for a refactor that moves no behaviour. Backend 1345 passing. No migration, no API change, no console change.
+
+
 ## [1.5.297] - 2026-09-23
 
 - **Migration 138 must not shift a row the corrected poller already wrote.** 1.5.286's code reached `main` and deployed before the migration was applied, so the poller spent an hour writing true UTC instants into a table the migration still assumed was entirely agency-local wall clock. Applying it as written would have moved those 186 rows a second five hours and, because they were the most recently updated copy of each duplicate pair, the double-shifted row would have won the dedupe.
