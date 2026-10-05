@@ -71,9 +71,15 @@ export function Dashboard({ stats, onChanged }: { stats: LiveStats; onChanged?: 
         <div className="dashboard-triage-grid">
           <section className="dashboard-queue" aria-labelledby="dashboard-queue-title">
             <div className="dashboard-section-heading">
-              <div>
-                <span className="dashboard-eyebrow">Priority queue</span>
+              {/* One line: the queue sits beside the Data health card and should not
+                  spend two lines of header on a label the title already says. */}
+              <div className="dashboard-queue-heading">
                 <h2 id="dashboard-queue-title">Triage exceptions</h2>
+                {triageItems.length > 0 ? (
+                  <span className="dashboard-queue-count" aria-label={`${triageItems.length} exceptions`}>
+                    {triageItems.length}
+                  </span>
+                ) : null}
               </div>
               <NavLink className="btn-sm" to="/service-operations/suggested">Open Suggested Alerts</NavLink>
             </div>

@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.306] - 2026-10-04
+## [1.5.307] - 2026-10-05
 
 - **`.stat-card` had no rule in any stylesheet.** `.stat-grid` was styled and the card inside it was not, so every stat card rendered as three unstyled stacked `div`s on the page background - the OTP Dashboard's four figures, `Subscribers.tsx`'s pair, and the threshold tuner's preview. Both callers pass a per-card `borderLeftColor` inline, which had no border to colour and had been inert since it was written; the rule keeps that left border, so three pages get their severity colours at once.
 - **The trend chart judged months against a literal `85`** while the card four lines above read `diagnostics.target`. Nothing made them agree: a contract target off 85% would have coloured bars against the old figure while the card counted routes against the new one, and neither would have looked wrong. The chart takes the target as a prop and says which target it is using.
@@ -14,6 +14,13 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **These come from PR #233, opened 2026-09-08 and now closed.** Its diagnosis was right and none of it had landed; its polish half was written against `OtpModule.tsx` before that file was split into six, so the fixes are re-landed here against today's code and the redesign is left to be decided on its own.
 - **Verified.** 3 new console checks - that both the bars and the card follow a 90% target, that the chart states it, and that an awkward target prints without its floating-point tail. All three fixes confirmed in the preview by computed style: the card's left border renders the colour its caller passes, and `--late-orange` flips from `#c34b18` to `#ff8a4c` under the dark theme. Console 804 passing. No migration.
 
+## [1.5.306] - 2026-10-04
+
+- **The Dashboard triage queue was taking far more height than it needed.** No sizes had been scaled up; each row simply held a lot. With a 62px minimum, 13px padding and a two-line title, rows came to about 79px, so five rows plus the header and footer made about 500px and towered over the Data health card beside them.
+- **Rows are now about 48px.** On desktop the title is one line (13px, cut with an ellipsis); the full text is still in the `title` tooltip and one click away. The meta line, kind chip and rail are tighter, and the rail is no longer held at 104px wide. Below 760px the existing three-line clamp still applies, so phones lose nothing. `triageTitle()`'s budget is unchanged because the narrow layout still uses it.
+- **The header is one line.** The "Priority queue" eyebrow is gone (the title already says it), and a count pill shows how many exceptions are waiting in total, not just the five shown. The region's accessible name is still "Triage exceptions".
+- **Detour request chips had no style.** #373 (1.5.283) added the `intake` kind but no `.dashboard-queue-kind.intake` rule, so the chip rendered as bare text. It now uses the success pill tokens, which exist in both themes.
+- Designed on the Priority Queue Polish canvas first. CSS and Dashboard header markup only: no API change, no migration.
 
 ## [1.5.305] - 2026-10-04
 
@@ -23,14 +30,12 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **Closes the last open item from the OTP Compliance architecture review.** It was agreed as part of the exclusion review module and dropped when ADR 0038 took over weather days mid-flight; this picks it up now that work has settled.
 - **Verified.** 2 new console checks - that the month is passed and that the card and the sentence agree - plus the existing suite. A test caught the fix being dead code: the fetch had been placed after the effect's cleanup `return`. Console 801 passing, backend 1340, typecheck clean, card confirmed in the preview. No migration.
 
-
 ## [1.5.304] - 2026-10-04
 
 - **`/otp-reason-codes` becomes `/reason-codes`.** They have backed Missed Trips' investigation outcomes since migration 023 as well as OTP's two exclusion kinds, so the OTP prefix named one of three consumers. The client type `OtpReasonCode` becomes `ReasonCode` across 11 files, and the handler is `functions/reasonCodes.ts` beside the `lib/reasonCodes` it already used.
 - **The old routes still answer, on the same handlers**, so a console loaded before this release keeps working. That matters more than it sounds: both the Review Queue and the Weather page swallow a failed reason-code fetch as "graceful", so a 404 would not raise an error - it would show an empty dropdown that reads as "nobody has configured any". **The legacy routes come out one release after this one.**
 - **The TABLE is deliberately still `OtpReasonCodes`.** Four reporting views join it (migrations 106, 135 and 137) and those feed Power BI, so renaming it means recreating them - not worth doing while the OTP figures are under validation, and worth nothing to anyone outside this repo. The name is wrong there and stays wrong, on purpose, with a note saying so.
 - **Verified.** Both route sets proved to resolve to the same three handler functions, not merely to exist. `OtpReasonCode` is kept as a deprecated alias of `ReasonCode` so nothing outside this change breaks. Backend 1340 passing, console 799 passing, typecheck clean. No migration.
-
 
 ## [1.5.302] - 2026-10-04
 
