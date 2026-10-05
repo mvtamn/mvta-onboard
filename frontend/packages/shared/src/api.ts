@@ -99,6 +99,7 @@ import type {
   OtpHistoricalBackfillResponse,
   OtpMonthlyRouteRollup,
   OtpMonthMeasurement,
+  OtpRouteStops,
   OtpTargetSource,
   OtpMonthlyTrendPoint,
   ReasonCode,
@@ -1276,6 +1277,12 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
           flagged_count: number;
         };
       }>(`/api/otp-monthly${suffix}`, {}, true);
+    },
+
+    /** One route's stops for the month, for Route Summary's stop drill-down. */
+    getOtpRouteStops(routeId: number, month?: string) {
+      const suffix = month ? `?${new URLSearchParams({ month })}` : "";
+      return request<OtpRouteStops>(`/api/otp-monthly/routes/${encodeURIComponent(String(routeId))}/stops${suffix}`, {}, true);
     },
 
     getOtpDaily(params?: { start?: string; end?: string; route_id?: number }) {

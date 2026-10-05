@@ -10,7 +10,7 @@ import { app, type HttpRequest, type InvocationContext } from "@azure/functions"
 import { getPool, sql } from "../lib/db";
 import { requireAccess } from "../lib/access/require";
 import { serviceMonthOf } from "../lib/otpMonthlyFeed";
-import { measureOtpMonth } from "../lib/otpMonth";
+import { measureOtpMonth, measureOtpRouteStops } from "../lib/otpMonth";
 import { readFlaggedStops } from "../lib/otpFlaggedStops";
 import { readEarlyLateBiasThreshold } from "../lib/otpSettings";
 
@@ -116,6 +116,34 @@ app.http("otpMonthlyList", {
       };
     } catch (err) {
       context.error("GET /otp-monthly failed:", err);
+      return { status: 500, jsonBody: { error: "Internal server error" } };
+    }
+  },
+});
+
+// GET /otp-monthly/routes/{routeId}/stops - one route's stops for the month,
+// for Route Summary's stop drill-down. Each stop carries its own share of the
+// route's Official Departure OTP, worked out by the measurement module with
+// the same rule as the route figure, so the bars and the route row cannot
+// disagree. Same access as the month itself.
+app.http("otpMonthlyRouteStops", {
+  route: "otp-monthly/routes/{routeId}/stops",
+  methods: ["GET"],
+  authLevel: "anonymous", // authorization enforced via requireAccess below
+  handler: async (request: HttpRequest, context: InvocationContext) => {
+    const authResult = await requireAccess(request, "compliance-review.view");
+    if (!authResult.authorized) {
+      return { status: authResult.status, jsonBody: { error: authResult.message } };
+    }
+    const routeId = Number(request.params.routeId);
+    if (!Number.isInteger(routeId) || routeId <= 0) {
+      return { status: 400, jsonBody: { error: "routeId must be a positive whole number" } };
+    }
+    try {
+      const pool = await getPool();
+      return { status: 200, jsonBody: await measureOtpRouteStops(pool, resolveMonth(request), routeId) };
+    } catch (err) {
+      context.error("GET /otp-monthly/routes/{routeId}/stops failed:", err);
       return { status: 500, jsonBody: { error: "Internal server error" } };
     }
   },
