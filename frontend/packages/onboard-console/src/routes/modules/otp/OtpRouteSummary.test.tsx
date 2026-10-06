@@ -41,18 +41,18 @@ const stops: OtpRouteStops = {
 const getOtpRouteStops = vi.fn();
 vi.mock("../../../config.js", () => ({ api: { getOtpRouteStops: (...args: unknown[]) => getOtpRouteStops(...args) } }));
 
-describe("Route Summary's stop drill-down", () => {
+describe("Route Summary's timepoint drill-down", () => {
   afterEach(() => {
     cleanup();
     getOtpRouteStops.mockReset();
   });
 
-  it("opens a route's stops worst first, excluded stops last", async () => {
+  it("opens a route's timepoints worst first, excluded ones last", async () => {
     getOtpRouteStops.mockResolvedValue(stops);
     render(<RouteSummaryPage displayRows={displayRoutes(measurement)} targetPct={85} measurement={measurement} serviceMonth="202609" />);
 
     await userEvent.click(screen.getByRole("button", { name: /RT 460/ }));
-    const list = await screen.findByRole("list", { name: /Route 460 stops/ });
+    const list = await screen.findByRole("list", { name: /Route 460 timepoints/ });
     const rows = within(list).getAllByRole("listitem").map((item) => item.getAttribute("aria-label"));
     expect(rows).toEqual([
       "Cedar Grove: 85% on time, 200 departures, 0% early, 15% late",
@@ -71,7 +71,7 @@ describe("Route Summary's stop drill-down", () => {
     await userEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     await userEvent.click(screen.getByRole("button", { name: "Close" }));
-    expect(screen.queryByRole("list", { name: /Route 460 stops/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: /Route 460 timepoints/ })).not.toBeInTheDocument();
     expect(toggle).toHaveAttribute("aria-expanded", "false");
   });
 
@@ -82,7 +82,7 @@ describe("Route Summary's stop drill-down", () => {
     expect(await screen.findByText("Could not reach the OTP compliance service.")).toBeInTheDocument();
   });
 
-  it("offers no drill-down on sample data, which has no stops behind it", () => {
+  it("offers no drill-down on sample data, which has no timepoints behind it", () => {
     render(<RouteSummaryPage displayRows={displayRoutes(measurement)} targetPct={85} measurement={null} serviceMonth={null} />);
     expect(screen.queryByRole("button", { name: /RT 460/ })).not.toBeInTheDocument();
   });

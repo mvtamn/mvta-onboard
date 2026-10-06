@@ -4,7 +4,7 @@ import { api } from "../../../config.js";
 import { percentText } from "./otpFigures.js";
 import { stopBarLabel, stopBars, type StopBar } from "./otpStops.js";
 
-// Route Summary's stop drill-down: one stacked bar per stop, worst first, with
+// Route Summary's timepoint drill-down: one stacked bar per stop, worst first, with
 // the month's target as a line the on-time segment reads against. Hand-rolled
 // like the trend chart and the adherence strip; there is no chart dependency.
 
@@ -61,7 +61,7 @@ export function OtpStopChart({
       .catch((err) => {
         if (cancelled) return;
         setData(null);
-        setError(err instanceof ApiError ? `Could not load stops: ${err.message}` : "Could not reach the OTP compliance service.");
+        setError(err instanceof ApiError ? `Could not load timepoints: ${err.message}` : "Could not reach the OTP compliance service.");
       });
     return () => {
       cancelled = true;
@@ -84,7 +84,7 @@ export function OtpStopChart({
       <div className="otp-stop-head">
         <h3 id="otp-stop-heading">
           <span className="route-chip">RT {routeLabel}</span>
-          OTP by stop
+          OTP by timepoint
           {routePct !== null ? <span className="muted"> · route {percentText(routePct)} official</span> : null}
         </h3>
         <button type="button" className="btn-sm" onClick={onClose}>Close</button>
@@ -98,19 +98,19 @@ export function OtpStopChart({
       </div>
 
       {error ? <p className="error-text">{error}</p>
-        : !loaded ? <p className="muted">Loading stops…</p>
-          : bars.length === 0 ? <p className="muted">The OTP Monthly feed has no stops for this route this month.</p>
+        : !loaded ? <p className="muted">Loading timepoints…</p>
+          : bars.length === 0 ? <p className="muted">The OTP Monthly feed has no timepoints for this route this month.</p>
             : (
               <>
-                <ol className="otp-stop-list" aria-label={`Route ${routeLabel} stops, lowest on-time performance first`}>
+                <ol className="otp-stop-list" aria-label={`Route ${routeLabel} timepoints, lowest on-time performance first`}>
                   {shown.map((bar) => <Bar key={bar.key} bar={bar} targetPct={targetPct} />)}
                 </ol>
                 <p className="otp-stop-foot muted">
-                  Worst first; stops are not in route order (the monthly feed carries no stop sequence or direction).
+                  Avail measures OTP at timepoints, so these are the route's timepoints, not every stop. Worst first, not in route order: the monthly feed carries no stop sequence or direction.
                   {anyApprox ? " * After a weather day the early/late split is apportioned; on-time is exact." : ""}
                   {bars.length > FIRST_SHOWN ? (
                     <> <button type="button" className="btn-sm" onClick={() => setShowAll((v) => !v)}>
-                      {showAll ? `Show worst ${FIRST_SHOWN}` : `Show all ${bars.length} stops`}
+                      {showAll ? `Show worst ${FIRST_SHOWN}` : `Show all ${bars.length} timepoints`}
                     </button></>
                   ) : null}
                 </p>

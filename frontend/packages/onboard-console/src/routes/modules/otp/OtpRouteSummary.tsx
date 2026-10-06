@@ -16,8 +16,8 @@ export function RouteSummaryPage({
   serviceMonth: string | null;
 }) {
   const target = `${Math.round(targetPct * 10) / 10}%`;
-  // Which route's stops are open. Sample rows are keyed by label, not route ID,
-  // and have no stops behind them, so the drill-down is live data only.
+  // Which route's timepoints are open. Sample rows are keyed by label, not route
+  // ID, and have no timepoints behind them, so the drill-down is live data only.
   const [openRoute, setOpenRoute] = useState<OtpDisplayRoute | null>(null);
   const canDrill = Boolean(measurement && serviceMonth);
   const open = canDrill && openRoute && displayRows.some((r) => r.key === openRoute.key) ? openRoute : null;
@@ -59,7 +59,7 @@ export function RouteSummaryPage({
                       onClick={() => setOpenRoute(open?.key === r.key ? null : r)}
                     >
                       <span className="route-chip">RT {r.label}</span>
-                      <span className="otp-route-hint">{open?.key === r.key ? "Hide stops" : "Stops"}</span>
+                      <span className="otp-route-hint">{open?.key === r.key ? "Hide timepoints" : "Timepoints"}</span>
                     </button>
                   ) : <span className="route-chip">RT {r.label}</span>}
                 </td>
