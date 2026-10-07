@@ -3,6 +3,7 @@ import { OnBehalfOfCredential } from "@azure/identity";
 import { requireAccess } from "../lib/access/require";
 import { getPool, sql } from "../lib/db";
 import { DECISION_MATRIX_SURFACES, surfaceReady } from "../lib/decisionMatrixReadiness";
+import { readProcedureAvailability } from "../lib/procedureAvailability";
 import { isInlineImageMime } from "../lib/supportingDocumentReferences";
 
 type RevisionRow = { procedure_id: string; revision: number; condition_key: string; condition: string; severity: string; severity_meaning: string; owner_team: string; owner_contact: string | null; effective_at: Date; next_review_at: Date; tags_json: string };
@@ -87,5 +88,38 @@ export async function previewDecisionMatrixRendition(request: HttpRequest, conte
   } catch (error) { context.error("GET Decision Matrix visual rendition failed", error); return { status: 502, jsonBody: { error: "SharePoint rendition could not be displayed." } }; }
 }
 
+/**
+ * Why one Procedure can be asked about by id.
+ *
+ * A controller's bookmark carries ?procedure_id=. The list answers only with
+ * Approved revisions, so a retired or withdrawn Procedure used to come back as
+ * silence - and silence beside a list of other guidance reads as "fine". This
+ * says which it is, and distinguishes it from the ordinary case of a search
+ * box having filtered the Procedure out of view.
+ *
+ * It is a reader endpoint (decision-matrix.view): the point is to stop a
+ * controller acting on withdrawn guidance, so it must answer the controller.
+ * It discloses no Draft content - a never-approved Procedure yields its
+ * condition and nothing else.
+ */
+export async function getDecisionMatrixAvailability(request: HttpRequest, context: InvocationContext) {
+  const auth = await requireAccess(request, "decision-matrix.view");
+  if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
+  const procedureId = request.params.procedureId;
+  if (!procedureId) return { status: 400, jsonBody: { error: "A Procedure identity is required." } };
+  try {
+    const pool = await getPool();
+    // An unmigrated database cannot say anything about a Procedure. Answering
+    // "unknown" there would tell a controller their link is wrong when the
+    // truth is that this environment has no Matrix at all.
+    if (!(await decisionMatrixTablesReady(pool))) return { status: 200, jsonBody: { procedure_id: procedureId, availability: null, diagnostics: { table_ready: false } } };
+    return { status: 200, jsonBody: { procedure_id: procedureId, availability: await readProcedureAvailability(pool, procedureId), diagnostics: { table_ready: true } } };
+  } catch (error) {
+    context.error("GET Decision Matrix Procedure availability failed", error);
+    return { status: 500, jsonBody: { error: "Whether this Procedure is still approved could not be read." } };
+  }
+}
+
 app.http("decisionMatrix", { route: "decision-matrix", methods: ["GET"], authLevel: "anonymous", handler: listDecisionMatrix });
 app.http("decisionMatrixRenditionPreview", { route: "decision-matrix/procedures/{procedureId}/revisions/{revision}/document-references/{referenceId}/preview", methods: ["GET"], authLevel: "anonymous", handler: previewDecisionMatrixRendition });
+app.http("decisionMatrixAvailability", { route: "decision-matrix/procedures/{procedureId}/availability", methods: ["GET"], authLevel: "anonymous", handler: getDecisionMatrixAvailability });
