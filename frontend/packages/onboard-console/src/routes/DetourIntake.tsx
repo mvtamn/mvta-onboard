@@ -3,7 +3,7 @@ import { type CreateDetourIntakeInput, type DetourChannelOption, type DetourFulf
 import { channelChips, retiredHint, toggleChannel } from "../lib/detourIntakeChannels.js";
 import { api } from "../config.js";
 import { dateTimeLabel } from "../lib/detourDates.js";
-import { DETOUR_ATTACHMENT_ACCEPT, isImageAttachment } from "../components/DetourAttachments.js";
+import { AttachmentDropzone, isImageAttachment, pasteFilesHandler } from "../components/DetourAttachments.js";
 import { DetourMap } from "../components/DetourMap.js";
 
 const MODES: { value: DetourFulfillmentMode; label: string; help: string }[] = [
@@ -233,7 +233,7 @@ export function DetourIntake() {
       {error && <p className="error-text" role="alert">{error}</p>}
       {notice && <p className="muted" role="status">{notice}</p>}
       <div className="intake-layout">
-        <div className="intake-form">
+        <div className="intake-form" onPaste={pasteFilesHandler((pasted) => setFiles((current) => [...current, ...pasted]))}>
           <div className="intake-intro">
             <div>
               <span className="eyebrow">{editing ? (resubmitting ? "UPDATE AND RESUBMIT" : "UPDATE DETOUR INTAKE") : "NEW DETOUR INTAKE"}</span>
@@ -343,10 +343,10 @@ export function DetourIntake() {
                 <div className={`intake-field intake-field-wide ${invalid("segments") ? "is-invalid" : ""}`}>
                   <span className="intake-field-label"><span>Impacted route segments <span className="req">*</span> <span className="hint">at least one</span></span>{form.segments.length ? <span className="hint">{form.segments.length} segment{form.segments.length === 1 ? "" : "s"}</span> : null}</span>
                   <div className="segment-table">
-                    <div className="segment-table-head" aria-hidden="true"><span>Routes / stops</span><span>Directions or operating notes</span><span></span></div>
+                    <div className="segment-table-head" aria-hidden="true"><span>Routes / stops</span><span>Directions or operating notes · one turn per line</span><span></span></div>
                     {form.segments.map((segment, index) => <div key={index} className="segment-row">
                       <input value={segment.routes} placeholder="e.g. 440 SB" aria-label={`Segment ${index + 1} routes`} onChange={(e) => set("segments", form.segments.map((item, i) => i === index ? { ...item, routes: e.target.value } : item))} />
-                      <input value={segment.directions ?? ""} placeholder="Turn-by-turn or operating notes" aria-label={`Segment ${index + 1} directions`} onChange={(e) => set("segments", form.segments.map((item, i) => i === index ? { ...item, directions: e.target.value || null } : item))} />
+                      <textarea className="directions-input" rows={4} value={segment.directions ?? ""} placeholder={"Turn-by-turn, one per line, or operating notes"} aria-label={`Segment ${index + 1} directions`} onChange={(e) => set("segments", form.segments.map((item, i) => i === index ? { ...item, directions: e.target.value || null } : item))} />
                       <button type="button" className="btn-icon-sm" aria-label={`Remove segment ${index + 1}`} onClick={() => set("segments", form.segments.filter((_, i) => i !== index))}><IconX /></button>
                     </div>)}
                     <div className="segment-table-foot"><button type="button" className="btn-sm" onClick={() => set("segments", [...form.segments, { routes: "", directions: null }])}>+ Add segment</button></div>
@@ -423,11 +423,7 @@ export function DetourIntake() {
               </label>
               <div className="intake-field intake-field-wide">
                 <span className="intake-field-label"><span>Supporting files</span></span>
-                <label className="dropzone">
-                  <IconUpload />
-                  <span>Drop the source email, PDF, maps, or photos here, or <b>browse</b>. Images, PDF, Office, CSV, text · 25 MB each.</span>
-                  <input type="file" accept={DETOUR_ATTACHMENT_ACCEPT} multiple style={{ display: "none" }} onChange={(e) => setFiles((current) => [...current, ...Array.from(e.target.files ?? [])])} />
-                </label>
+                <AttachmentDropzone onFiles={(picked) => setFiles((current) => [...current, ...picked])} />
                 {files.length ? <div className="file-tiles">{files.map((file, index) => <span key={`${file.name}-${index}`} className="file-tile"><span className="file-tile-kind">{fileKind(file.name)}</span><span><b>{file.name}</b><small>{sizeLabel(file.size)} · will upload on submit</small></span><button type="button" className="btn-icon-sm" aria-label={`Remove ${file.name}`} onClick={() => setFiles((current) => current.filter((_, i) => i !== index))}><IconX /></button></span>)}</div> : null}
                 {editing ? <IntakeImages intakeId={editing.id} /> : null}
                 <span className="intake-help">{editing ? "Files already attached stay with the record; add more here if needed." : ""}</span>
@@ -554,7 +550,6 @@ const IconAlert = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="no
 const IconPin = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 22s7-7 7-12a7 7 0 0 0-14 0c0 5 7 12 7 12z" /><circle cx="12" cy="10" r="2.5" /></svg>;
 const IconBus = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="15" rx="2" /><path d="M4 11h16M8 18v2M16 18v2" /><circle cx="8" cy="14.5" r="1" /><circle cx="16" cy="14.5" r="1" /></svg>;
 const IconVan = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 17h2l2-6h10l2 6h2" /><circle cx="7" cy="18" r="2" /><circle cx="17" cy="18" r="2" /><path d="M9 11V7h6v4" /></svg>;
-const IconUpload = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 16V4M6 10l6-6 6 6M4 20h16" /></svg>;
 
 function IntakeImages({ intakeId }: { intakeId: string }) {
   const [images, setImages] = useState<DetourImage[] | null>(null);
