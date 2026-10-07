@@ -99,9 +99,10 @@ import type {
   OtpHistoricalBackfillResponse,
   OtpMonthlyRouteRollup,
   OtpMonthMeasurement,
+  OtpRouteStops,
   OtpTargetSource,
   OtpMonthlyTrendPoint,
-  OtpReasonCode,
+  ReasonCode,
   OtpSettingsRow,
   OtpStopExclusion,
   PeriodKpiAssessment,
@@ -258,6 +259,25 @@ export interface DecisionMatrixReaderProcedure {
   immediate_actions: Array<{ id: string; kind: string; instruction: string }>;
   document_references: Array<{ reference_id: string; document_type: string; is_primary: boolean; document_code: string; expected_file_name: string; expected_mime_type: string; web_url: string; health_status: "Valid" | "Needs review" | "Unavailable"; checked_at: string | null; health_reason: string | null; source_available: boolean; inline_preview_available: boolean }>;
 }
+
+export interface DecisionMatrixProcedureReplacement {
+  procedure_id: string;
+  revision: number;
+  condition: string;
+}
+
+/**
+ * Why a bookmarked Procedure gets its own answer: the reader lists Approved
+ * revisions only, so a retired or withdrawn one came back as silence beside a
+ * list of other guidance. "approved" means it is current and the reader simply
+ * did not have it in view - usually because a search filtered it out.
+ */
+export type DecisionMatrixProcedureAvailability =
+  | { state: "approved" }
+  | { state: "withdrawn"; condition: string; decided_at: string; reason: string | null; replacement: DecisionMatrixProcedureReplacement | null }
+  | { state: "retired"; condition: string; decided_at: string; reason: string | null; replacement: DecisionMatrixProcedureReplacement | null }
+  | { state: "unpublished"; condition: string }
+  | { state: "unknown" };
 
 export interface DecisionMatrixRecommendation {
   match_rule_id: string;
@@ -864,6 +884,18 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<{ source_type: string; source_qualifier: string; recommendations: DecisionMatrixRecommendation[] }>(`/api/decision-matrix/recommendations?${query}`, {}, true);
     },
 
+    /**
+     * Whether one Procedure is still approved. Asked only when a bookmarked
+     * procedure_id is not among the approved Procedures on screen.
+     */
+    getDecisionMatrixAvailability(procedureId: string) {
+      return request<{ procedure_id: string; availability: DecisionMatrixProcedureAvailability | null; diagnostics: { table_ready: boolean } }>(
+        `/api/decision-matrix/procedures/${encodeURIComponent(procedureId)}/availability`,
+        {},
+        true,
+      );
+    },
+
     getDecisionMatrixRendition(procedureId: string, revision: number, referenceId: string) {
       return requestBlob(`/api/decision-matrix/procedures/${encodeURIComponent(procedureId)}/revisions/${revision}/document-references/${encodeURIComponent(referenceId)}/preview`);
     },
@@ -1278,6 +1310,12 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       }>(`/api/otp-monthly${suffix}`, {}, true);
     },
 
+    /** One route's stops for the month, for Route Summary's stop drill-down. */
+    getOtpRouteStops(routeId: number, month?: string) {
+      const suffix = month ? `?${new URLSearchParams({ month })}` : "";
+      return request<OtpRouteStops>(`/api/otp-monthly/routes/${encodeURIComponent(String(routeId))}/stops${suffix}`, {}, true);
+    },
+
     getOtpDaily(params?: { start?: string; end?: string; route_id?: number }) {
       const q = new URLSearchParams();
       if (params?.start) q.set("start", params.start);
@@ -1647,8 +1685,10 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       );
     },
 
-    getDateExclusions() {
-      return request<{ exclusions: OtpDateExclusion[] }>("/api/otp-date-exclusions", {}, true);
+    /** Weather Day Exclusions for a service month. Defaults to the current one. */
+    getDateExclusions(month?: string) {
+      const suffix = month ? `?month=${month}` : "";
+      return request<{ exclusions: OtpDateExclusion[] }>(`/api/otp-date-exclusions${suffix}`, {}, true);
     },
 
     createDateExclusion(input: CreateDateExclusionInput) {
@@ -1688,20 +1728,20 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       if (appliesTo) qs.set("applies_to", appliesTo);
       if (activeOnly) qs.set("active_only", "true");
       const suffix = qs.toString() ? `?${qs.toString()}` : "";
-      return request<{ reason_codes: OtpReasonCode[] }>(`/api/otp-reason-codes${suffix}`, {}, true);
+      return request<{ reason_codes: ReasonCode[] }>(`/api/reason-codes${suffix}`, {}, true);
     },
 
     createReasonCode(input: CreateReasonCodeInput) {
-      return request<OtpReasonCode>(
-        "/api/otp-reason-codes",
+      return request<ReasonCode>(
+        "/api/reason-codes",
         { method: "POST", body: JSON.stringify(input) },
         true,
       );
     },
 
     updateReasonCode(id: string, input: UpdateReasonCodeInput) {
-      return request<OtpReasonCode>(
-        `/api/otp-reason-codes/${id}`,
+      return request<ReasonCode>(
+        `/api/reason-codes/${id}`,
         { method: "PATCH", body: JSON.stringify(input) },
         true,
       );

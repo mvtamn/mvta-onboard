@@ -149,7 +149,12 @@ export function draftCommunicationText(detour: Pick<Detour, "internal_number" | 
     detour.action_instructions ? `Action: ${detour.action_instructions}` : null,
     detour.riders_directed ? `Riders: ${detour.riders_directed}` : null,
     detour.operational_impacts ? `Operational impacts: ${detour.operational_impacts}` : null,
-    detour.segments.filter((s) => s.directions).map((s) => `${s.routes}: ${s.directions}`).join("\n") || null,
+    // A turn-per-line list starts under its route, so the email reads
+    // the way it was typed; a one-liner stays beside the route.
+    detour.segments.filter((s) => s.directions?.trim()).map((s) => {
+      const directions = s.directions!.trim();
+      return directions.includes("\n") ? `${s.routes}:\n${directions}` : `${s.routes}: ${directions}`;
+    }).join("\n") || null,
     detour.confirmation_contact ? `Questions: ${detour.confirmation_contact}` : null,
   ];
   const text = lines.filter((line): line is string => line !== null).join("\n").replace(/\n{3,}/g, "\n\n").trim();

@@ -30,8 +30,9 @@
 --     SYSUTCDATETIME() and were always genuinely UTC.
 --   * service_date is re-derived from the corrected pullout_scheduled.
 --   * Occurrences raised from a moved row have their source_ref, service_date
---     and service_month rewritten to match, because source_ref embeds the
---     service date and is how intake dedupes.
+--     rewritten to match, because source_ref embeds the service date and is how
+--     intake dedupes. service_month follows by itself, being a persisted
+--     computed column over service_date.
 --
 -- THE DUPLICATES THIS HAS TO CLEAR FIRST
 --
@@ -79,6 +80,22 @@ DECLARE @apply BIT = 0;
 
 DECLARE @AGENCY_TZ SYSNAME = N'Central Standard Time';
 
+-- Rows the corrected poller has already written hold true UTC instants and must
+-- NOT be shifted again. On dev the code reached main before this migration ran,
+-- so 186 rows of the current roster were already correct by the time it did.
+--
+-- updated_at is the discriminator, because only the poller writes this table and
+-- it stamps every MERGE. The boundary below was read off the data, not guessed:
+-- there is no write at all between 03:50 and 04:01:40, and the two sides
+-- separate cleanly against GTFS. Lining each block's pullout up against its own
+-- first trip in TripStartLog (a genuine UTC instant), rows at or after the
+-- boundary sit 10-37 minutes ahead of their first trip - the deadhead, so they
+-- need no shift - and rows before it sit 310-336 minutes ahead, so they do.
+--
+-- Set this to a time before the first row this database holds if the corrected
+-- poller has never run against it, which makes the whole table eligible.
+DECLARE @utc_since DATETIME2 = '2026-09-22T04:00:00';
+
 IF OBJECT_ID(N'dbo.FixedRouteDepartures', N'U') IS NULL
    OR OBJECT_ID(N'dbo.ComplianceOccurrences', N'U') IS NULL
    OR OBJECT_ID(N'dbo.AssessmentPeriods', N'U') IS NULL
@@ -104,25 +121,38 @@ END;
 
 IF OBJECT_ID(N'tempdb..#corrected') IS NOT NULL DROP TABLE #corrected;
 
+WITH corrected AS (
+  -- The wall clock is declared to be agency time, then converted to UTC - but
+  -- only for a row the old code wrote. Per row, so a date either side of a DST
+  -- boundary gets its own offset.
+  SELECT d.*,
+    CASE WHEN d.updated_at < @utc_since THEN CAST(d.checkin_scheduled AT TIME ZONE @AGENCY_TZ AT TIME ZONE N'UTC' AS DATETIME2) ELSE d.checkin_scheduled END AS c_checkin_scheduled,
+    CASE WHEN d.updated_at < @utc_since THEN CAST(d.checkin_actual    AT TIME ZONE @AGENCY_TZ AT TIME ZONE N'UTC' AS DATETIME2) ELSE d.checkin_actual    END AS c_checkin_actual,
+    CASE WHEN d.updated_at < @utc_since THEN CAST(d.login_scheduled   AT TIME ZONE @AGENCY_TZ AT TIME ZONE N'UTC' AS DATETIME2) ELSE d.login_scheduled   END AS c_login_scheduled,
+    CASE WHEN d.updated_at < @utc_since THEN CAST(d.login_actual      AT TIME ZONE @AGENCY_TZ AT TIME ZONE N'UTC' AS DATETIME2) ELSE d.login_actual      END AS c_login_actual,
+    CASE WHEN d.updated_at < @utc_since THEN CAST(d.pullout_scheduled AT TIME ZONE @AGENCY_TZ AT TIME ZONE N'UTC' AS DATETIME2) ELSE d.pullout_scheduled END AS c_pullout_scheduled,
+    CASE WHEN d.updated_at < @utc_since THEN CAST(d.pullout_actual    AT TIME ZONE @AGENCY_TZ AT TIME ZONE N'UTC' AS DATETIME2) ELSE d.pullout_actual    END AS c_pullout_actual
+  FROM dbo.FixedRouteDepartures d
+)
 SELECT
     d.service_date  AS old_service_date,
     d.block,
     d.run,
-    -- The wall clock is declared to be agency time, then converted to UTC.
-    -- Per row, so a date either side of a DST boundary gets its own offset.
-    CAST(d.checkin_scheduled AT TIME ZONE @AGENCY_TZ AT TIME ZONE N'UTC' AS DATETIME2) AS checkin_scheduled,
-    CAST(d.checkin_actual    AT TIME ZONE @AGENCY_TZ AT TIME ZONE N'UTC' AS DATETIME2) AS checkin_actual,
-    CAST(d.login_scheduled   AT TIME ZONE @AGENCY_TZ AT TIME ZONE N'UTC' AS DATETIME2) AS login_scheduled,
-    CAST(d.login_actual      AT TIME ZONE @AGENCY_TZ AT TIME ZONE N'UTC' AS DATETIME2) AS login_actual,
-    CAST(d.pullout_scheduled AT TIME ZONE @AGENCY_TZ AT TIME ZONE N'UTC' AS DATETIME2) AS pullout_scheduled,
-    CAST(d.pullout_actual    AT TIME ZONE @AGENCY_TZ AT TIME ZONE N'UTC' AS DATETIME2) AS pullout_actual,
+    d.c_checkin_scheduled AS checkin_scheduled,
+    d.c_checkin_actual    AS checkin_actual,
+    d.c_login_scheduled   AS login_scheduled,
+    d.c_login_actual      AS login_actual,
+    d.c_pullout_scheduled AS pullout_scheduled,
+    d.c_pullout_actual    AS pullout_actual,
     d.pullout_status, d.operator_name, d.logon_id, d.vehicle_label,
     d.first_seen_at, d.updated_at,
-    -- The service date is the agency-local calendar date of the run's own
-    -- scheduled pullout - the same anchor order pulloutServiceDate uses, so
-    -- the backfill and the poller agree row for row.
-    CONVERT(CHAR(8), COALESCE(d.pullout_scheduled, d.login_scheduled, d.checkin_scheduled,
-                              d.pullout_actual,    d.login_actual,    d.checkin_actual), 112) AS new_service_date,
+    -- Every row now holds a true UTC instant, so the service date is simply the
+    -- agency-local calendar date of the run's own scheduled pullout - the same
+    -- anchor order pulloutServiceDate uses, so the backfill and the poller agree
+    -- row for row.
+    CONVERT(CHAR(8), COALESCE(d.c_pullout_scheduled, d.c_login_scheduled, d.c_checkin_scheduled,
+                              d.c_pullout_actual,    d.c_login_actual,    d.c_checkin_actual)
+                     AT TIME ZONE N'UTC' AT TIME ZONE @AGENCY_TZ, 112) AS new_service_date,
     -- How complete this copy is, for picking the survivor of a duplicate pair.
     (CASE WHEN d.pullout_actual  IS NOT NULL THEN 1 ELSE 0 END
    + CASE WHEN d.login_actual    IS NOT NULL THEN 1 ELSE 0 END
@@ -132,7 +162,7 @@ SELECT
    + CASE WHEN d.vehicle_label   IS NOT NULL THEN 1 ELSE 0 END
    + CASE WHEN d.logon_id        IS NOT NULL THEN 1 ELSE 0 END) AS completeness
 INTO #corrected
-FROM dbo.FixedRouteDepartures d;
+FROM corrected d;
 
 -- A row with no usable timestamp at all cannot be re-dated from evidence and
 -- is left exactly where it is rather than guessed at.
@@ -163,7 +193,10 @@ DECLARE @dup_keys       INT = (SELECT COUNT(*) FROM (SELECT new_service_date, bl
                                                      GROUP BY new_service_date, block, run HAVING COUNT(*) > 1) x);
 DECLARE @loser_max_date CHAR(8) = (SELECT MAX(old_service_date) FROM #corrected WHERE keep = 0);
 
-PRINT CONCAT('Migration 138: ', @rows_total, ' departure rows held.');
+DECLARE @already_utc INT = (SELECT COUNT(*) FROM #corrected WHERE updated_at >= @utc_since);
+
+PRINT CONCAT('Migration 138: ', @rows_total, ' departure rows held; ', @already_utc,
+             ' already written by the corrected poller and shifted by nothing.');
 PRINT CONCAT('Migration 138: ', @dup_keys, ' duplicate keys after correction; ', @losers,
              ' duplicate rows will be deleted (latest is dated ', ISNULL(@loser_max_date, '-'), ').');
 PRINT CONCAT('Migration 138: ', @redated, ' surviving rows change service_date.');
@@ -286,10 +319,11 @@ FROM dbo.ComplianceOccurrences o
 JOIN #occ x ON x.id = o.id
 WHERE x.keep = 0 AND x.superseded = 0;
 
+-- service_month is a persisted computed column over service_date
+-- (LEFT(service_date, 6)), so it follows on its own and must not be assigned.
 UPDATE o
 SET source_ref   = x.new_source_ref,
-    service_date = x.new_service_date,
-    service_month = x.new_service_month
+    service_date = x.new_service_date
 FROM dbo.ComplianceOccurrences o
 JOIN #occ x ON x.id = o.id
 WHERE x.keep = 1;

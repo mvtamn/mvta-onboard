@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ClipboardEvent, type ReactNode } from "react";
 import { ApiError, type DetourImage } from "@mvta/shared";
 import { api } from "../config.js";
 import { resizeImageFile } from "../lib/imageResize.js";
+import { filesFromTransfer } from "../lib/pastedFiles.js";
 
 // Attachments on an authoritative Detour. The store is DetourImages, but
 // what lands in it is not only images: Detour Intake accepts PDFs and
@@ -15,6 +16,11 @@ import { resizeImageFile } from "../lib/imageResize.js";
 // passes through the API body. Images are resized client-side first
 // (imageResize.ts passes non-images through untouched). Same write tier
 // as editing the detour.
+//
+// Files can come in three ways: the picker, a drop onto the zone, or a
+// paste (a screenshot copied to the clipboard) anywhere in the surrounding
+// form - OCC asked for paste because the map is usually a snip out of an
+// email, and saving it to disk first just to re-pick it was the friction.
 
 export const DETOUR_ATTACHMENT_ACCEPT = "image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,text/plain";
 
@@ -36,6 +42,90 @@ function sizeLabel(bytes: number | null): string {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+// One file to one Detour: resize, PUT to Blob via SAS, then record it.
+export async function uploadDetourAttachment(detourId: string, rawFile: File): Promise<void> {
+  const file = await resizeImageFile(rawFile);
+  const contentType = file.type || "application/octet-stream";
+  const { upload_url, blob_path } = await api.getDetourImageUploadUrl(detourId, file.name, contentType);
+  const putRes = await fetch(upload_url, { method: "PUT", headers: { "x-ms-blob-type": "BlockBlob", "Content-Type": contentType }, body: file });
+  if (!putRes.ok) throw new Error(`Upload to storage failed (${putRes.status})`);
+  await api.createDetourImage(detourId, { blob_path, file_name: file.name, content_type: contentType, size_bytes: file.size });
+}
+
+// onPaste for a whole form: a clipboard holding files becomes attachments.
+// Pasting into a text field still pastes text when the clipboard has any -
+// Word and Outlook put a picture of the copied text on the clipboard
+// alongside the text itself, and that must not turn into an attachment.
+export function pasteFilesHandler(onFiles: (files: File[]) => void) {
+  return (e: ClipboardEvent) => {
+    const files = filesFromTransfer(e.clipboardData);
+    if (files.length === 0) return;
+    const target = e.target as HTMLElement;
+    const inTextField = target instanceof HTMLTextAreaElement || (target instanceof HTMLInputElement && target.type !== "file") || target.isContentEditable;
+    if (inTextField && e.clipboardData.getData("text/plain")) return;
+    e.preventDefault();
+    onFiles(files);
+  };
+}
+
+// Picker + drop target. It takes focus when clicked so a paste has
+// somewhere to land; the paste itself is handled by the form around it
+// (pasteFilesHandler), so Ctrl+V works from anywhere in that form too.
+// Only "browse" opens the file picker - a click anywhere on the zone
+// opening it would make click-then-paste impossible.
+export function AttachmentDropzone({ onFiles, disabled, children }: { onFiles: (files: File[]) => void; disabled?: boolean; children?: ReactNode }) {
+  const [over, setOver] = useState(false);
+  const [focused, setFocused] = useState(false);
+  return (
+    <div
+      className={`dropzone${over ? " is-over" : ""}`}
+      tabIndex={disabled ? -1 : 0}
+      aria-label="Attach files: drop, paste, or browse"
+      style={disabled ? { cursor: "default", opacity: 0.6 } : { cursor: "default" }}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      onDragOver={(e) => { if (disabled) return; e.preventDefault(); setOver(true); }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => { e.preventDefault(); setOver(false); if (disabled) return; const files = filesFromTransfer(e.dataTransfer); if (files.length) onFiles(files); }}
+    >
+      <IconUpload />
+      <span>
+        {children ?? (focused
+          ? <>Ready - press <b>Ctrl+V</b> to paste a screenshot, or <BrowseLink disabled={disabled} onFiles={onFiles} />.</>
+          : <>Drop files here, click here and paste a screenshot (Ctrl+V), or <BrowseLink disabled={disabled} onFiles={onFiles} />. Images, PDF, Office, CSV, text.</>)}
+      </span>
+    </div>
+  );
+}
+
+function BrowseLink({ onFiles, disabled }: { onFiles: (files: File[]) => void; disabled?: boolean }) {
+  return (
+    <label style={{ cursor: disabled ? "default" : "pointer" }}>
+      <b style={{ textDecoration: "underline" }}>browse</b>
+      <input type="file" accept={DETOUR_ATTACHMENT_ACCEPT} multiple disabled={disabled} style={{ display: "none" }} onChange={(e) => { const files = Array.from(e.target.files ?? []); e.target.value = ""; if (files.length) onFiles(files); }} />
+    </label>
+  );
+}
+
+// Files picked before the Detour exists to hold them - the new-detour form
+// uploads these once Save has an id.
+export function StagedAttachments({ files, onRemove, note = "will upload on save" }: { files: File[]; onRemove: (index: number) => void; note?: string }) {
+  if (files.length === 0) return null;
+  return (
+    <div className="file-tiles" style={{ marginTop: 8 }}>
+      {files.map((file, index) => (
+        <span key={`${file.name}-${index}`} className="file-tile">
+          <span className="file-tile-kind">{extensionLabel(file.name, file.type || null).slice(0, 4)}</span>
+          <span><b>{file.name}</b><small>{sizeLabel(file.size)} · {note}</small></span>
+          <button type="button" className="btn-icon-sm" aria-label={`Remove ${file.name}`} onClick={() => onRemove(index)}>×</button>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+const IconUpload = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 16V4M6 10l6-6 6 6M4 20h16" /></svg>;
 
 const TILE = { width: 90, height: 90, borderRadius: 6, border: "1px solid var(--border)" } as const;
 
@@ -71,18 +161,11 @@ export function DetourAttachmentsSection({ detourId, canWrite }: { detourId: str
   }
   useEffect(load, [detourId]);
 
-  async function handleFiles(fileList: FileList) {
+  async function handleFiles(fileList: File[]) {
     setUploading(true);
     setError(null);
     try {
-      for (const rawFile of Array.from(fileList)) {
-        const file = await resizeImageFile(rawFile);
-        const contentType = file.type || "application/octet-stream";
-        const { upload_url, blob_path } = await api.getDetourImageUploadUrl(detourId, file.name, contentType);
-        const putRes = await fetch(upload_url, { method: "PUT", headers: { "x-ms-blob-type": "BlockBlob", "Content-Type": contentType }, body: file });
-        if (!putRes.ok) throw new Error(`Upload to storage failed (${putRes.status})`);
-        await api.createDetourImage(detourId, { blob_path, file_name: file.name, content_type: contentType, size_bytes: file.size });
-      }
+      for (const rawFile of fileList) await uploadDetourAttachment(detourId, rawFile);
       load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Upload failed.");
@@ -92,7 +175,7 @@ export function DetourAttachmentsSection({ detourId, canWrite }: { detourId: str
   }
 
   return (
-    <div style={{ marginTop: 12 }}>
+    <div style={{ marginTop: 12 }} onPaste={canWrite && !uploading ? pasteFilesHandler((f) => void handleFiles(f)) : undefined}>
       <p className="field-label">Attachments</p>
       {error ? <p className="error-text">{error}</p> : null}
       {files === null && !error ? <p className="muted">Loading attachments…</p> : null}
@@ -103,10 +186,9 @@ export function DetourAttachmentsSection({ detourId, canWrite }: { detourId: str
         </div>
       ) : null}
       {canWrite ? (
-        <label className="btn-sm" style={{ display: "inline-block", cursor: uploading ? "default" : "pointer" }}>
-          {uploading ? "Uploading…" : "+ Attach files"}
-          <input type="file" accept={DETOUR_ATTACHMENT_ACCEPT} multiple disabled={uploading} style={{ display: "none" }} onChange={(e) => e.target.files && handleFiles(e.target.files)} />
-        </label>
+        <AttachmentDropzone disabled={uploading} onFiles={(f) => void handleFiles(f)}>
+          {uploading ? "Uploading…" : undefined}
+        </AttachmentDropzone>
       ) : null}
     </div>
   );

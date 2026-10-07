@@ -93,6 +93,19 @@
 .dmx-state-warning { background: var(--pill-warning-bg); color: var(--text); }
 .dmx-state-error { background: var(--pill-danger-bg); color: var(--danger-text); }
 .dmx-state-info { margin: 0 0 14px; background: var(--surface-alt-bg); color: var(--text-dim); }
+
+/* A withdrawn Procedure's notice carries several sentences and up to two
+   buttons. Inline they ran together into a wall a controller has to parse
+   under pressure, so each part gets its own line and the buttons sit at the
+   end. At narrow widths the buttons stay full-width targets rather than
+   shrinking to the text. */
+.dmx-withdrawn { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.dmx-withdrawn strong { font-size: 13.5px; line-height: 1.35; }
+.dmx-withdrawn-reason { color: var(--text); }
+.dmx-withdrawn .btn-sm { margin-top: 2px; }
+@media (max-width: 640px) {
+  .dmx-withdrawn .btn-sm { width: 100%; text-align: center; }
+}
 .dmx-unavailable { color: var(--text-dim); font-size: 11px; }
 .action-list { margin: 0; padding-left: 20px; line-height: 1.5; }
 .dmx-details { display: grid; gap: 10px; margin-top: 14px; }

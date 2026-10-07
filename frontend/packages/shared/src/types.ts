@@ -978,6 +978,46 @@ export interface OtpMonthMeasurement {
   feed_ready: boolean;
 }
 
+/** How one stop's departures split. `other` (missed, mostly) makes the four sum to `total`. */
+export interface OtpStopMix {
+  total: number;
+  early: number;
+  ontime: number;
+  late: number;
+  other: number;
+}
+
+/**
+ * One stop on one route for a service month, all days summed - the stop's own
+ * share of the route's Official Departure OTP, by the same server rule, so a
+ * route's stops add up to the route row.
+ */
+export interface OtpStopFigure {
+  stop_id: number;
+  stop_name: string | null;
+  raw: OtpFigure;
+  /** Every departure, rules aside: what an excluded stop shows. */
+  raw_mix: OtpStopMix;
+  /** After the route-category and stop-exclusion rules, before weather days. */
+  mix: OtpStopMix;
+  assessable: OtpFigure;
+  /** What approved weather and emergency dates took from this stop. */
+  date_excluded: OtpFigure;
+  /** Days of the week an approved Stop Exclusion covers, in Avail's spelling. */
+  excluded_days: string[];
+}
+
+/** GET /api/otp-monthly/routes/{routeId}/stops. */
+export interface OtpRouteStops {
+  service_month: string;
+  route_id: number;
+  target: number;
+  target_source: OtpTargetSource;
+  route: OtpRouteFigure | null;
+  stops: OtpStopFigure[];
+  feed_ready: boolean;
+}
+
 /**
  * A Flagged Stop: a stop, on one route, on one day of the week, whose early or
  * late share of departures exceeds the Early/Late Bias Threshold for a service
@@ -1196,7 +1236,7 @@ export const DETOUR_SEVERITY_LABELS: Record<DetourSeverity, string> = {
   major: "Major",
 };
 
-// Admin-editable reason categories - Part B6. Mirrors OtpReasonCode minus
+// Admin-editable reason categories - Part B6. Mirrors ReasonCode minus
 // `applies_to`; this vocabulary only ever serves the detour module.
 export interface DetourReasonCode {
   id: string;
@@ -1729,18 +1769,40 @@ export interface CreateDateExclusionInput {
   notes?: string | null;
 }
 
-export interface OtpAuditEntry {
-  type: "stop_exclusion" | "date_exclusion";
-  title: string;
-  desc: string;
-  timestamp: string;
-}
+/**
+ * One thing that happened in exclusion review, as data rather than as a
+ * sentence. The server used to word these; it is the console that resolves a
+ * reason code to its label, so the Audit Stream showed a raw code where the
+ * Review Queue showed "Recovery point" for the same decision.
+ *
+ * Worded by otpAuditEntries.ts, beside the rest of the OTP display code.
+ */
+export type OtpAuditEntry =
+  | {
+      kind: "stop_exclusion";
+      at: string;
+      actor: string;
+      reason_code: string | null;
+      route_id: number;
+      stop_id: number;
+      day_of_week: string;
+      status: "approved" | "rejected";
+    }
+  | {
+      kind: "weather_day";
+      at: string;
+      actor: string;
+      reason_code: string;
+      scope: "Agency" | "Route";
+      route_id: number | null;
+      service_date: string;
+    };
 
 // "missed_trip" added by migration-023 - the same admin-editable table now
 // also backs Missed Trips' investigation-outcome dropdown.
 export type ReasonCodeAppliesTo = "stop" | "date" | "missed_trip";
 
-export interface OtpReasonCode {
+export interface ReasonCode {
   id: string;
   code: string;
   label: string;
@@ -1750,6 +1812,9 @@ export interface OtpReasonCode {
   updated_by: string | null;
   updated_at: string;
 }
+
+/** @deprecated renamed to ReasonCode - three modules read these, not just OTP. */
+export type OtpReasonCode = ReasonCode;
 
 export interface CreateReasonCodeInput {
   code: string;

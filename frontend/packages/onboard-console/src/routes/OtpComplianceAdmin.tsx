@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ApiError,
-  type OtpReasonCode,
+  type ReasonCode,
   type OtpHistoricalBackfillResponse,
 } from "@mvta/shared";
 import { api } from "../config.js";
@@ -33,13 +33,13 @@ function fromMonthInputValue(value: string): string {
 }
 
 export function OtpComplianceAdmin() {
-  const [stopReasonCodes, setStopReasonCodes] = useState<OtpReasonCode[]>([]);
-  const [dateReasonCodes, setDateReasonCodes] = useState<OtpReasonCode[]>([]);
+  const [stopReasonCodes, setStopReasonCodes] = useState<ReasonCode[]>([]);
+  const [dateReasonCodes, setDateReasonCodes] = useState<ReasonCode[]>([]);
   // Missed Trips' investigation-outcome dropdown reuses this same table
   // (migration-023's applies_to='missed_trip') rather than a separate one -
   // managed here alongside the other two for one consistent CRUD surface,
   // even though Missed Trips itself is a different console module.
-  const [missedTripReasonCodes, setMissedTripReasonCodes] = useState<OtpReasonCode[]>([]);
+  const [missedTripReasonCodes, setMissedTripReasonCodes] = useState<ReasonCode[]>([]);
   const [threshold, setThreshold] = useState<number>(FALLBACK_THRESHOLD_FOR_SLIDER);
 
   function refreshReasonCodes() {
@@ -279,7 +279,7 @@ function ReasonCodeTable({
   title: string;
   hint: string;
   appliesTo: "stop" | "date" | "missed_trip";
-  codes: OtpReasonCode[];
+  codes: ReasonCode[];
   onChanged: () => void;
 }) {
   const [error, setError] = useState<string | null>(null);
@@ -293,13 +293,13 @@ function ReasonCodeTable({
   const [newLabel, setNewLabel] = useState("");
   const [addBusy, setAddBusy] = useState(false);
 
-  function startEdit(c: OtpReasonCode) {
+  function startEdit(c: ReasonCode) {
     setEditingId(c.id);
     setEditLabel(c.label);
     setError(null);
   }
 
-  async function saveEdit(c: OtpReasonCode) {
+  async function saveEdit(c: ReasonCode) {
     if (!editLabel.trim()) {
       setError("Label can't be empty.");
       return;
@@ -321,7 +321,7 @@ function ReasonCodeTable({
     }
   }
 
-  async function toggleActive(c: OtpReasonCode) {
+  async function toggleActive(c: ReasonCode) {
     setBusyId(c.id);
     setError(null);
     try {
