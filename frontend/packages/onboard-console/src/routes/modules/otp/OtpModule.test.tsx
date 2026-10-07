@@ -15,11 +15,11 @@ const flagged: FlaggedStop[] = [
   stop({ route_id: 444, route_label: "444", stop_id: 31928, stop_name: "Burnsville Tran", total: 282, pct_early: 0.415, pct_late: 0.113, pct_ontime: 0.468, pct_missed: 0.004 }),
 ];
 
-const monthly = (over: { flagged?: FlaggedStop[]; record_count?: number; weatherRecorded?: number; weatherApplied?: number } = {}) => ({
+const monthly = (over: { flagged?: FlaggedStop[]; record_count?: number; weatherRecorded?: number; weatherApplied?: number; target?: number } = {}) => ({
   routes: [],
   flagged: over.flagged ?? flagged,
   measurement: {
-    service_month: "202609", target: 0.85, target_source: "catalog",
+    service_month: "202609", target: over.target ?? 0.85, target_source: "catalog",
     raw: { departures: 0, ontime: 0, pct: null },
     excluded: { departures: 0, ontime: 0, pct: null },
     assessable: { departures: 0, ontime: 0, pct: null },
@@ -30,7 +30,7 @@ const monthly = (over: { flagged?: FlaggedStop[]; record_count?: number; weather
   },
   diagnostics: {
     configured: true, table_ready: true, service_month: "202609",
-    record_count: over.record_count ?? 910, routes_below_target: 0, target: 0.85,
+    record_count: over.record_count ?? 910, routes_below_target: 0, target: over.target ?? 0.85,
     target_source: "catalog", weather_days_recorded: over.weatherRecorded ?? 0,
     flagged_threshold: 0.15, flagged_count: (over.flagged ?? flagged).length,
   },
@@ -38,6 +38,7 @@ const monthly = (over: { flagged?: FlaggedStop[]; record_count?: number; weather
 
 const getOtpMonthly = vi.fn();
 const getDateExclusions = vi.fn();
+const getOtpMonthlyTrend = vi.fn();
 const approveDateExclusion = vi.fn();
 
 const dateExclusion = (over: Record<string, unknown> = {}) => ({
@@ -58,12 +59,14 @@ vi.mock("../../../config.js", () => ({ api: {
   approveDateExclusion: (...args: unknown[]) => approveDateExclusion(...args),
   getStopExclusions: vi.fn().mockResolvedValue({ exclusions: [] }),
   getOtpAuditStream: vi.fn().mockResolvedValue({ entries: [] }),
-  getOtpMonthlyTrend: vi.fn().mockResolvedValue({ trend: [] }),
+  getOtpMonthlyTrend: (...args: unknown[]) => getOtpMonthlyTrend(...args),
   putStopExclusion: vi.fn(),
   createDateExclusion: vi.fn(),
   getAssessmentPeriods: vi.fn().mockResolvedValue({ periods: [] }),
   getPeriodAssessments: vi.fn().mockResolvedValue({ assessments: [] }),
 } }));
+
+getOtpMonthlyTrend.mockResolvedValue({ trend: [] });
 
 describe("the OTP Review Queue", () => {
   afterEach(() => {
@@ -240,5 +243,56 @@ describe("which month's weather days are shown", () => {
     // date subtracts the departures frozen when it was approved.
     expect(card?.textContent).toContain("1 subtracting");
     expect(card?.textContent).not.toContain("not applied");
+  });
+});
+
+describe("the trend chart and the card beside it", () => {
+  const trend = [
+    { service_month: "202607", pct_ontime: 0.88, total: 100, ontime: 88 },
+    { service_month: "202608", pct_ontime: 0.84, total: 100, ontime: 84 },
+  ];
+  afterEach(() => {
+    cleanup();
+    getOtpMonthly.mockReset();
+    getDateExclusions.mockReset();
+  });
+
+  it("judges a month against the contract target, not a hardcoded 85", async () => {
+    // The card read diagnostics.target while the chart judged against a
+    // literal 85. At a target of 90 both of these months are below it; the
+    // old chart would have coloured the 88 as meeting while the card counted
+    // it as below, and neither would have looked wrong.
+    getOtpMonthly.mockResolvedValue(monthly({ target: 0.9 }));
+    getDateExclusions.mockResolvedValue({ exclusions: [] });
+    getOtpMonthlyTrend.mockResolvedValue({ trend });
+    const { container } = render(<OtpModule />);
+    await screen.findByText("Wash/Coffman SW");
+    fireEvent.click(screen.getByRole("button", { name: "Dashboard" }));
+
+    await vi.waitFor(() => expect(container.querySelectorAll(".otp-trend-bar").length).toBe(2));
+    const bars = [...container.querySelectorAll(".otp-trend-bar")];
+    expect(bars.every((b) => b.classList.contains("below"))).toBe(true);
+    expect(screen.getByText("Routes below 90%")).toBeInTheDocument();
+  });
+
+  it("says which target the bars are judged against", async () => {
+    getOtpMonthly.mockResolvedValue(monthly({ target: 0.9 }));
+    getDateExclusions.mockResolvedValue({ exclusions: [] });
+    getOtpMonthlyTrend.mockResolvedValue({ trend });
+    render(<OtpModule />);
+    await screen.findByText("Wash/Coffman SW");
+    fireEvent.click(screen.getByRole("button", { name: "Dashboard" }));
+    expect(await screen.findByText(/target of 90%/)).toBeInTheDocument();
+  });
+
+  it("prints a target that does not divide cleanly without its floating-point tail", async () => {
+    // 0.829 * 100 is 82.89999999999999.
+    getOtpMonthly.mockResolvedValue(monthly({ target: 0.829 }));
+    getDateExclusions.mockResolvedValue({ exclusions: [] });
+    getOtpMonthlyTrend.mockResolvedValue({ trend });
+    render(<OtpModule />);
+    await screen.findByText("Wash/Coffman SW");
+    fireEvent.click(screen.getByRole("button", { name: "Dashboard" }));
+    expect(screen.getByText("Routes below 82.9%")).toBeInTheDocument();
   });
 });
