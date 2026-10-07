@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { DecisionMatrixDiagnostics, DecisionMatrixReaderProcedure, DecisionMatrixRecommendation } from "@mvta/shared";
+import type { DecisionMatrixDiagnostics, DecisionMatrixProcedureAvailability, DecisionMatrixReaderProcedure, DecisionMatrixRecommendation } from "@mvta/shared";
 import { ApiError } from "@mvta/shared";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../../config.js";
@@ -56,6 +56,19 @@ export function DecisionMatrix() {
   }, [sourceType, sourceQualifier]);
 
   const selected = useMemo(() => procedures?.find((procedure) => procedure.procedure_id === selectedId) ?? null, [procedures, selectedId]);
+
+  // A bookmark carries ?procedure_id=. When it is not among the approved
+  // Procedures on screen there are two very different reasons, and the reader
+  // cannot tell them apart on its own: the search box filtered it out, or the
+  // Procedure was retired or withdrawn. Until this asked, both looked the same
+  // - a collapsed list of OTHER guidance, which reads as "nothing is wrong".
+  const [availability, setAvailability] = useState<DecisionMatrixProcedureAvailability | null>(null);
+  useEffect(() => {
+    if (!selectedId || !procedures || selected) { setAvailability(null); return; }
+    let cancelled = false;
+    api.getDecisionMatrixAvailability(selectedId).then((result) => { if (!cancelled) setAvailability(result.availability); }).catch(() => { if (!cancelled) setAvailability(null); });
+    return () => { cancelled = true; };
+  }, [selectedId, procedures, selected]);
   function update(params: Record<string, string | null>) {
     const next = new URLSearchParams(searchParams);
     for (const [name, value] of Object.entries(params)) value ? next.set(name, value) : next.delete(name);
@@ -66,8 +79,38 @@ export function DecisionMatrix() {
     <header className="dmx-hero"><span className="dmx-eyebrow">Governed operational guidance</span><h1>Control Center Decision Matrix</h1><p>Read approved criteria and immediate actions first. Supporting documents remain in SharePoint.</p></header>
     <div className="dmx-controls"><div className="searchrow"><label className="sr-only" htmlFor="decision-matrix-search">Search approved Procedures</label><input id="decision-matrix-search" className="search" type="search" placeholder="Search condition, criteria, actions, tags, or document identifier…" value={query} onChange={(event) => update({ q: event.target.value || null })} />{query ? <button className="btn-sm" type="button" onClick={() => update({ q: null })}>Clear search</button> : null}<div className="viewtoggle" aria-label="Decision Matrix view">{VIEWS.map((option) => <button key={option.value} type="button" aria-pressed={view === option.value} className={view === option.value ? "active" : ""} onClick={() => update({ view: option.value })}>{option.label}</button>)}</div></div><div className="dmx-meta">{state === "not_connected" ? "Not connected" : state === "unavailable" ? "Unavailable" : `${procedures?.length ?? 0} approved Procedure${procedures?.length === 1 ? "" : "s"}`}</div></div>
     {error ? <div className="dmx-state dmx-state-error" role="alert">{error}</div> : null}
+    <BookmarkNotice availability={availability} onChoose={(id) => update({ procedure_id: id })} onDismiss={() => update({ procedure_id: null })} />
     {recommendations.length ? <section className="dmx-matches" aria-label="Suggested Procedures"><strong>Suggested Procedures — controller selection required</strong><span>Source: {sourceType} · {sourceQualifier}</span>{recommendations.map((recommendation) => <div className="dmx-recommendation" key={recommendation.match_rule_id}><button type="button" className="btn-sm" onClick={() => update({ procedure_id: recommendation.procedure_id })}>Choose {recommendation.condition}</button><span>Priority {recommendation.priority} · {recommendation.explanation}</span></div>)}</section> : null}
     {state === "loading" ? <div className="dmx-empty" role="status">Loading approved Procedures…</div> : state === "unavailable" ? null : state === "not_connected" ? <div className="dmx-state dmx-state-warning" role="status"><strong>Decision Matrix is not connected.</strong> This environment's database has no Procedure tables, so there is no approved guidance to read. Apply migration 076; governance, legacy migration and recommendations also need 078, 079 and 080.</div> : state === "unpublished" ? <div className="dmx-empty">No Procedure has been approved yet. Approved guidance appears here once an OCC Admin publishes a revision.</div> : state === "no_match" ? <div className="dmx-empty">No approved Procedures match this search.</div> : !procedures ? null : view === "grid" ? <div className="matrix-grid">{procedures.map((procedure) => <ProcedureCard key={`${procedure.procedure_id}-${procedure.revision}`} procedure={procedure} onSelect={() => update({ procedure_id: procedure.procedure_id })} />)}</div> : view === "qrg" ? <QrgView procedures={procedures} onSelect={(id) => update({ procedure_id: id })} /> : <div className="matrix-list">{procedures.map((procedure) => <ProcedureReader key={`${procedure.procedure_id}-${procedure.revision}`} procedure={procedure} actionFirst={view === "action-first"} expanded={selected?.procedure_id === procedure.procedure_id || !selectedId} onSelect={() => update({ procedure_id: procedure.procedure_id })} />)}</div>}
+  </div>;
+}
+
+/**
+ * What to say about a bookmarked Procedure that is not on screen.
+ *
+ * "approved" is the quiet case and says nothing: the Procedure is current and
+ * a search merely hid it, so a warning there would be a false alarm. The two
+ * states that matter are loud, because the failure being prevented is a
+ * controller acting on guidance that was deliberately stopped. Ordinary
+ * retirement always has an approved replacement to offer; emergency
+ * withdrawal usually does not, and saying so plainly beats offering nothing.
+ */
+function BookmarkNotice({ availability, onChoose, onDismiss }: { availability: DecisionMatrixProcedureAvailability | null; onChoose: (procedureId: string) => void; onDismiss: () => void }) {
+  if (!availability || availability.state === "approved") return null;
+  if (availability.state === "unknown") {
+    return <div className="dmx-state dmx-state-warning" role="status"><strong>That link does not name a Procedure in this Matrix.</strong> It may have been written against an earlier Matrix, or the identity may be mistyped. The approved Procedures below are unaffected. <button type="button" className="btn-sm" onClick={onDismiss}>Clear</button></div>;
+  }
+  if (availability.state === "unpublished") {
+    return <div className="dmx-state dmx-state-warning" role="status"><strong>"{availability.condition}" has never been approved.</strong> A Draft exists, but no revision of it has been published, so there is no approved guidance to read. <button type="button" className="btn-sm" onClick={onDismiss}>Clear</button></div>;
+  }
+  const withdrawn = availability.state === "withdrawn";
+  return <div className="dmx-state dmx-state-error dmx-withdrawn" role="alert">
+    <strong>"{availability.condition}" {withdrawn ? "was withdrawn" : "was retired"} on {formatDate(availability.decided_at)} and must not be used.</strong>
+    {availability.reason ? <span className="dmx-withdrawn-reason">{withdrawn ? "Withdrawn because: " : "Retired because: "}{availability.reason}</span> : null}
+    {availability.replacement
+      ? <span>An approved replacement exists. <button type="button" className="btn-sm" onClick={() => onChoose(availability.replacement!.procedure_id)}>Read {availability.replacement.condition} instead</button></span>
+      : <span>{withdrawn ? "No replacement has been approved. Ask the OCC supervisor what to follow before acting." : "Its replacement is no longer approved either. Ask the OCC supervisor what to follow before acting."}</span>}
+    <button type="button" className="btn-sm" onClick={onDismiss}>Dismiss and read the Matrix</button>
   </div>;
 }
 
