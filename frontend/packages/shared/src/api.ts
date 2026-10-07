@@ -260,6 +260,25 @@ export interface DecisionMatrixReaderProcedure {
   document_references: Array<{ reference_id: string; document_type: string; is_primary: boolean; document_code: string; expected_file_name: string; expected_mime_type: string; web_url: string; health_status: "Valid" | "Needs review" | "Unavailable"; checked_at: string | null; health_reason: string | null; source_available: boolean; inline_preview_available: boolean }>;
 }
 
+export interface DecisionMatrixProcedureReplacement {
+  procedure_id: string;
+  revision: number;
+  condition: string;
+}
+
+/**
+ * Why a bookmarked Procedure gets its own answer: the reader lists Approved
+ * revisions only, so a retired or withdrawn one came back as silence beside a
+ * list of other guidance. "approved" means it is current and the reader simply
+ * did not have it in view - usually because a search filtered it out.
+ */
+export type DecisionMatrixProcedureAvailability =
+  | { state: "approved" }
+  | { state: "withdrawn"; condition: string; decided_at: string; reason: string | null; replacement: DecisionMatrixProcedureReplacement | null }
+  | { state: "retired"; condition: string; decided_at: string; reason: string | null; replacement: DecisionMatrixProcedureReplacement | null }
+  | { state: "unpublished"; condition: string }
+  | { state: "unknown" };
+
 export interface DecisionMatrixRecommendation {
   match_rule_id: string;
   source_type: "SuggestedAlert" | "ServiceRisk";
@@ -863,6 +882,18 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       query.set("source_type", input.sourceType);
       query.set("source_qualifier", input.sourceQualifier);
       return request<{ source_type: string; source_qualifier: string; recommendations: DecisionMatrixRecommendation[] }>(`/api/decision-matrix/recommendations?${query}`, {}, true);
+    },
+
+    /**
+     * Whether one Procedure is still approved. Asked only when a bookmarked
+     * procedure_id is not among the approved Procedures on screen.
+     */
+    getDecisionMatrixAvailability(procedureId: string) {
+      return request<{ procedure_id: string; availability: DecisionMatrixProcedureAvailability | null; diagnostics: { table_ready: boolean } }>(
+        `/api/decision-matrix/procedures/${encodeURIComponent(procedureId)}/availability`,
+        {},
+        true,
+      );
     },
 
     getDecisionMatrixRendition(procedureId: string, revision: number, referenceId: string) {
