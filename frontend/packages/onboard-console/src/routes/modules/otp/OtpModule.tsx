@@ -273,7 +273,7 @@ export function OtpModule() {
         />
       )}
       {page === "routes" && (
-        <RouteSummaryPage displayRows={displayRows} targetPct={targetPct} measurement={measurement} />
+        <RouteSummaryPage displayRows={displayRows} targetPct={targetPct} measurement={measurement} serviceMonth={serviceMonth} />
       )}
       {page === "weather" && (
         <WeatherPage

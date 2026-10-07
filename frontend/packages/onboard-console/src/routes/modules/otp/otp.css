@@ -52,3 +52,44 @@
 .otp-trend-bar.below { background: var(--late-orange); }
 .otp-trend-bar-label { font-size: 11px; font-weight: 700; color: var(--text); margin-top: 6px; }
 .otp-trend-bar-month { font-size: 10px; margin-top: 2px; }
+
+/* Route Summary's stop drill-down: one stacked bar per stop, worst first.
+   Segments reuse the adherence strip's .seg colours, on-time leftmost so its
+   edge reads against the target line. */
+.otp-route-btn { all: unset; cursor: pointer; border-radius: 5px; }
+.otp-route-btn:focus-visible { outline: 2px solid var(--brand-green); outline-offset: 2px; }
+.otp-route-btn[aria-expanded="true"] .route-chip { box-shadow: 0 0 0 2px var(--surface-bg), 0 0 0 4px var(--brand-green); }
+.otp-route-btn .otp-route-hint { font-size: 11px; color: var(--text-muted); }
+.otp-route-btn:hover .otp-route-hint { color: var(--brand-green-text); text-decoration: underline; }
+
+.otp-stop-panel { margin-bottom: 16px; }
+.otp-stop-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.otp-stop-head h3 { font-size: 15px; font-weight: 700; color: var(--text); margin: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.otp-stop-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 11.5px; color: var(--text-muted); margin: 10px 0 12px; }
+.otp-stop-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.otp-stop-legend i.seg { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+.otp-stop-target-key { display: inline-block; width: 2px; height: 12px; background: var(--text); }
+
+.otp-stop-list { list-style: none; margin: 0; padding: 0; }
+.otp-stop-row { display: grid; grid-template-columns: minmax(140px, 260px) 1fr 58px; gap: 12px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border-soft); }
+.otp-stop-row:last-child { border-bottom: none; }
+.otp-stop-name { min-width: 0; display: flex; flex-direction: column; }
+.otp-stop-name > span:first-child { font-size: 12.5px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.otp-stop-sub { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.otp-stop-track { position: relative; display: flex; height: 14px; border-radius: 2px; overflow: visible; background: var(--surface-alt-bg); }
+/* A global .seg rule rounds every segment into a pill, which turns a thin
+   early or late slice into a dot; the bar is one shape, squared inside. */
+.otp-stop-track .seg { height: 100%; border-radius: 0; }
+.otp-stop-track .seg:first-child { border-radius: 2px 0 0 2px; }
+.otp-stop-target { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--text); }
+.otp-stop-value { font-size: 12.5px; font-weight: 700; color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
+.otp-stop-value.below { color: var(--danger-text); }
+.otp-stop-approx { color: var(--text-muted); font-weight: 400; margin-left: 1px; }
+.otp-stop-row.low_volume .otp-stop-track, .otp-stop-row.excluded .otp-stop-track { opacity: 0.45; }
+.otp-stop-row.excluded .otp-stop-name > span:first-child { color: var(--text-muted); }
+.otp-stop-foot { font-size: 11.5px; margin: 12px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+@media (max-width: 640px) {
+  .otp-stop-row { grid-template-columns: 1fr 52px; }
+  .otp-stop-name { grid-column: 1 / -1; }
+}
