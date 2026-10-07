@@ -978,6 +978,46 @@ export interface OtpMonthMeasurement {
   feed_ready: boolean;
 }
 
+/** How one stop's departures split. `other` (missed, mostly) makes the four sum to `total`. */
+export interface OtpStopMix {
+  total: number;
+  early: number;
+  ontime: number;
+  late: number;
+  other: number;
+}
+
+/**
+ * One stop on one route for a service month, all days summed - the stop's own
+ * share of the route's Official Departure OTP, by the same server rule, so a
+ * route's stops add up to the route row.
+ */
+export interface OtpStopFigure {
+  stop_id: number;
+  stop_name: string | null;
+  raw: OtpFigure;
+  /** Every departure, rules aside: what an excluded stop shows. */
+  raw_mix: OtpStopMix;
+  /** After the route-category and stop-exclusion rules, before weather days. */
+  mix: OtpStopMix;
+  assessable: OtpFigure;
+  /** What approved weather and emergency dates took from this stop. */
+  date_excluded: OtpFigure;
+  /** Days of the week an approved Stop Exclusion covers, in Avail's spelling. */
+  excluded_days: string[];
+}
+
+/** GET /api/otp-monthly/routes/{routeId}/stops. */
+export interface OtpRouteStops {
+  service_month: string;
+  route_id: number;
+  target: number;
+  target_source: OtpTargetSource;
+  route: OtpRouteFigure | null;
+  stops: OtpStopFigure[];
+  feed_ready: boolean;
+}
+
 /**
  * A Flagged Stop: a stop, on one route, on one day of the week, whose early or
  * late share of departures exceeds the Early/Late Bias Threshold for a service

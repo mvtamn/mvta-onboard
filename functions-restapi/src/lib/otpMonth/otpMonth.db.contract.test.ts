@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import { parseConnectionString, sql } from "../db";
-import { isOtpRowAssessable, measureOtpMonth, measureOtpTrend, otpAssessableJoinsSql, otpAssessableSql } from "./index";
+import { isOtpRowAssessable, measureOtpMonth, measureOtpRouteStops, measureOtpTrend, otpAssessableJoinsSql, otpAssessableSql } from "./index";
 import { takeDateExclusionSnapshot } from "../otpDateExclusionSnapshot";
 
 // The OTP month measurement module against a real SQL Server. rules.test.ts
@@ -140,6 +140,44 @@ test("OTP month measurement against real SQL", { skip: !connectionString && "DEC
       }
     });
 
+    await t.test("a route's stops add up to the route, with the stop rule applied per stop", async () => {
+      // Early and late leave the measurement alone; the stop view splits by them.
+      await pool.request().batch(`
+        UPDATE OtpMonthlyRouteStopDay SET early=5, late=15 WHERE service_month='202608' AND route_id=460 AND stop_id=100 AND day_of_week='Mon';
+        UPDATE OtpMonthlyRouteStopDay SET early=2, late=8 WHERE service_month='202608' AND route_id=460 AND stop_id=100 AND day_of_week='Tue';
+        UPDATE OtpMonthlyRouteStopDay SET early=0, late=50 WHERE service_month='202608' AND route_id=460 AND stop_id=101;`);
+      const view = await measureOtpRouteStops(pool, "202608", 460);
+      assert.equal(view.feed_ready, true);
+      assert.equal(view.target, 0.85);
+      const stops = Object.fromEntries(view.stops.map(stop => [stop.stop_id, stop]));
+      assert.deepEqual(Object.keys(stops).sort(), ["100", "101"]);
+
+      // Stop 100: both days count. Its rejected Tuesday exclusion leaves it in.
+      assert.deepEqual(stops[100].excluded_days, []);
+      assert.deepEqual([stops[100].assessable.departures, stops[100].assessable.ontime], [200, 170]);
+      assert.deepEqual(stops[100].mix, { total: 200, early: 7, ontime: 170, late: 23, other: 0 });
+
+      // Stop 101: its only day is excluded, so nothing of it is assessable,
+      // but its raw split is still there to show.
+      assert.deepEqual(stops[101].excluded_days, ["Mon"]);
+      assert.equal(stops[101].assessable.departures, 0);
+      assert.equal(stops[101].assessable.pct, null);
+      assert.deepEqual(stops[101].raw_mix, { total: 100, early: 0, ontime: 40, late: 50, other: 10 });
+      assert.equal(stops[101].mix.total, 0);
+
+      // The stops sum to the route's own figure, raw and assessable.
+      const sum = (pick: (stop: typeof view.stops[number]) => number) => view.stops.reduce((n, stop) => n + pick(stop), 0);
+      assert.deepEqual([sum(stop => stop.raw.departures), sum(stop => stop.assessable.departures), sum(stop => stop.assessable.ontime)],
+        [view.route!.raw.departures, view.route!.assessable.departures, view.route!.assessable.ontime]);
+
+      // A route the standard does not cover has stops, none of them assessable.
+      const shuttle = await measureOtpRouteStops(pool, "202608", 1131);
+      assert.deepEqual(shuttle.stops.map(stop => [stop.stop_id, stop.raw.departures, stop.assessable.departures]), [[900, 50, 0]]);
+      // A route the feed has never heard of is empty, not an error.
+      const unknown = await measureOtpRouteStops(pool, "202608", 9999);
+      assert.deepEqual([unknown.route, unknown.stops], [null, []]);
+    });
+
     await t.test("a recorded weather day changes nothing until it is approved", async () => {
       const august = await measureOtpMonth(pool, "202608");
       // Both August dates are recorded; neither is approved, so neither moves
@@ -189,6 +227,13 @@ test("OTP month measurement against real SQL", { skip: !connectionString && "DEC
       // The route carries the same subtraction.
       const route460 = august.routes.find((route) => route.route_id === 460)!;
       assert.deepEqual([route460.date_excluded.departures, route460.assessable.departures], [30, 170]);
+
+      // The stop view takes the same 30 from the same stop, and says so.
+      const stopView = await measureOtpRouteStops(pool, "202608", 460);
+      const stop100 = stopView.stops.find((stop) => stop.stop_id === 100)!;
+      assert.deepEqual([stop100.date_excluded.departures, stop100.date_excluded.ontime], [30, 12]);
+      assert.deepEqual([stop100.assessable.departures, stop100.assessable.ontime], [170, 158]);
+      assert.equal(stop100.mix.total, 200);
 
       // The reporting view publishes the identical figure.
       const view = (await pool.request().query<{ total: number; ontime: number }>(`
