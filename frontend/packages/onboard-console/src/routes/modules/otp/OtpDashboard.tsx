@@ -61,12 +61,12 @@ export function DashboardPage({
             : "."}
         </div>
       ) : null}
-      <OtpTrendChart />
+      <OtpTrendChart targetPct={targetPct} />
     </>
   );
 }
 
-function OtpTrendChart() {
+function OtpTrendChart({ targetPct }: { targetPct: number }) {
   const [trend, setTrend] = useState<OtpMonthlyTrendPoint[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -91,6 +91,7 @@ function OtpTrendChart() {
   return (
     <div className="subcard">
       <h2 style={{ marginTop: 0 }}>Agency-wide OTP % trend</h2>
+      <p className="td-dim" style={{ marginTop: -4 }}>Against the month's target of {targetPct}%.</p>
       <div className="otp-trend-chart">
         {trend.map((t) => {
           const pct = t.pct_ontime !== null ? Math.round(t.pct_ontime * 1000) / 10 : null;
@@ -98,7 +99,7 @@ function OtpTrendChart() {
             <div className="otp-trend-bar-col" key={t.service_month}>
               <div className="otp-trend-bar-track">
                 <div
-                  className={`otp-trend-bar ${pct !== null && pct < 85 ? "below" : "meets"}`}
+                  className={`otp-trend-bar ${pct !== null && pct < targetPct ? "below" : "meets"}`}
                   style={{ height: `${pct ?? 0}%` }}
                   title={pct !== null ? `${pct}%` : "no data"}
                 />

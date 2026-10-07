@@ -112,7 +112,11 @@ export function OtpModule() {
 
   // The official figure per route is the server's (ADR 0033); the preview's
   // sample data has no exclusions behind it and says so.
-  const targetPct = (usingLiveOtp ? liveOtp!.diagnostics.target : 0.85) * 100;
+  // Rounded once here, where the fraction becomes a percentage, because it is
+  // rendered as text in the card label and the trend caption. 0.85 * 100 is
+  // exactly 85, but 0.829 * 100 is 82.89999999999999 - a target anyone might
+  // negotiate would print its own floating-point error.
+  const targetPct = Math.round((usingLiveOtp ? liveOtp!.diagnostics.target : 0.85) * 1000) / 10;
   // A tab opened before this release reaches a server that sends no
   // measurement; it then shows the preview rather than half a figure.
   const measurement = usingLiveOtp ? liveOtp!.measurement ?? null : null;
