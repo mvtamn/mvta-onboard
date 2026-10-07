@@ -502,7 +502,7 @@ export function DetourReports() {
                                   <h4>Route segments</h4>
                                   <dl className="dr-dl">
                                     {d.segments.map((s) => (
-                                      <div key={s.id}><dt>{s.routes}</dt><dd>{s.directions || "Both directions not recorded"}</dd></div>
+                                      <div key={s.id}><dt>{s.routes}</dt><dd className="directions-text">{s.directions || "Both directions not recorded"}</dd></div>
                                     ))}
                                   </dl>
                                 </div>

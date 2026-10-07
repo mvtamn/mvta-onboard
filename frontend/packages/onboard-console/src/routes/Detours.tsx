@@ -21,7 +21,7 @@ import { communicationStatusLabel, COMMUNICATION_PILL, managedInLabel, nextStepL
 import { useAppDialog } from "../components/AppDialog.js";
 import { DetourOperationalRecord } from "../components/DetourOperationalRecord.js";
 import { DetourWorkflowHistorySection } from "../components/DetourWorkflowHistorySection.js";
-import { DetourAttachmentsSection } from "../components/DetourAttachments.js";
+import { AttachmentDropzone, DetourAttachmentsSection, StagedAttachments, pasteFilesHandler, uploadDetourAttachment } from "../components/DetourAttachments.js";
 import { DetourMap } from "../components/DetourMap.js";
 import { SentCopy, deliveryClass, deliveryLabel } from "../components/DetourDeliveryRecord.js";
 import { audienceAddError, audiencePlan, communicationAction, communicationSubject, copyFrom, detourSendBlock, draftCommunicationText, mailtoLink, nextAudience, withAudience } from "../lib/detourCommunicationDraft.js";
@@ -68,6 +68,10 @@ function toDateTimeLocalInput(value: string | null | undefined): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+
+// Turn-by-turn reads as a list on a bus; one turn per line keeps it that way
+// in the form, the expanded row, and the email (sent pre-wrap).
+const DIRECTIONS_PLACEHOLDER = "Turn-by-turn, one per line, e.g.\nFrom temporary stop in SW corner lot\nLoop in lot to exit back to Wescott Rd\nL Wescott Rd\nBTR";
 
 const EMPTY_SEGMENT: DetourSegmentInput = { routes: "", directions: "" };
 
@@ -230,6 +234,9 @@ export function Detours() {
   const [form, setForm] = useState<DetourFormState>(BLANK_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  // Attachments picked in the form. A new Detour has no id to hang them on
+  // until Save creates it, so they wait here and upload after.
+  const [stagedFiles, setStagedFiles] = useState<File[]>([]);
 
   function load() {
     api
@@ -270,6 +277,7 @@ export function Detours() {
     reasonCodes.length > 0 || (detours?.some((d) => "reason_code" in d) ?? false);
 
   function openNewForm() {
+    setStagedFiles([]);
     setEditingId(null);
     setForm(BLANK_FORM);
     setFormError(null);
@@ -277,6 +285,7 @@ export function Detours() {
   }
 
   function openEditForm(d: Detour) {
+    setStagedFiles([]);
     setEditingId(d.id);
     setForm(detourToForm(d));
     setFormError(null);
@@ -286,6 +295,7 @@ export function Detours() {
   // Opens the new-detour form pre-filled from an existing row. editingId
   // stays null, so Save creates rather than overwriting the original.
   function openCloneForm(d: Detour) {
+    setStagedFiles([]);
     setEditingId(null);
     setForm(detourToCloneForm(d));
     setFormError(null);
@@ -300,17 +310,32 @@ export function Detours() {
     }
     setSaving(true);
     setFormError(null);
+    let savedId = editingId;
+    let detourSaved = false;
     try {
       const input = formToInput(form);
-      if (editingId) {
-        await api.updateDetour(editingId, input);
+      if (savedId) {
+        await api.updateDetour(savedId, input);
       } else {
-        await api.createDetour(input);
+        savedId = (await api.createDetour(input)).id;
+        // From here a retry must update this row, not create a second one.
+        setEditingId(savedId);
+      }
+      detourSaved = true;
+      const pending = stagedFiles.slice();
+      while (pending.length > 0) {
+        await uploadDetourAttachment(savedId, pending[0]);
+        pending.shift();
+        setStagedFiles(pending.slice());
       }
       setShowForm(false);
       load();
     } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : "Save failed.");
+      const message = err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Save failed.";
+      setFormError(detourSaved
+        ? `The detour is saved, but not every attachment uploaded (${message}). Save again to retry the files still listed.`
+        : message);
+      if (detourSaved) load();
     } finally {
       setSaving(false);
     }
@@ -463,7 +488,7 @@ export function Detours() {
         {loadError ? <p className="error-text">{loadError}</p> : null}
 
         {showForm && (
-          <div className="subcard" style={{ marginBottom: 16 }}>
+          <div className="subcard" style={{ marginBottom: 16 }} onPaste={pasteFilesHandler((files) => setStagedFiles((current) => [...current, ...files]))}>
             <h2 style={{ marginTop: 0 }}>{editingId ? "Edit detour" : "New detour"}</h2>
             {formError ? <p className="error-text">{formError}</p> : null}
             <div className="field-grid">
@@ -493,12 +518,12 @@ export function Detours() {
               </div>
             </div>
 
-            <p className="field-label" style={{ marginTop: 10 }}>Route segments</p>
+            <p className="field-label" style={{ marginTop: 10 }}>Route segments <span className="hint">(one turn per line in directions - Enter starts the next)</span></p>
             {form.segments.map((seg, i) => (
-              <div className="field-grid two" key={i} style={{ marginBottom: 6 }}>
+              <div className="field-grid two" key={i} style={{ marginBottom: 6, alignItems: "start" }}>
                 <input className="f" value={seg.routes} onChange={(e) => updateSegment(i, "routes", e.target.value)} placeholder="Routes, e.g. 460 SB, 465 SB" />
-                <span style={{ display: "flex", gap: 6 }}>
-                  <input className="f" value={seg.directions ?? ""} onChange={(e) => updateSegment(i, "directions", e.target.value)} placeholder="Turn-by-turn directions" style={{ flex: 1 }} />
+                <span style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+                  <textarea className="f directions-input" rows={4} value={seg.directions ?? ""} onChange={(e) => updateSegment(i, "directions", e.target.value)} placeholder={DIRECTIONS_PLACEHOLDER} aria-label={`Segment ${i + 1} turn-by-turn directions`} style={{ flex: 1 }} />
                   {form.segments.length > 1 && (
                     <button className="btn-sm" onClick={() => removeSegmentRow(i)}>Remove</button>
                   )}
@@ -558,6 +583,11 @@ export function Detours() {
                 </div>
               </>
             )}
+
+            <p className="field-label" style={{ marginTop: 14 }}>Attachments <span className="hint">(maps, the source email, photos)</span></p>
+            <AttachmentDropzone onFiles={(files) => setStagedFiles((current) => [...current, ...files])} />
+            <StagedAttachments files={stagedFiles} onRemove={(index) => setStagedFiles((current) => current.filter((_, i) => i !== index))} />
+            {editingId ? <p className="td-dim" style={{ marginTop: 6 }}>Files already attached stay with the detour - they're listed when the row is expanded.</p> : null}
 
             <p className="field-label" style={{ marginTop: 14 }}>Notified</p>
             <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
@@ -727,7 +757,7 @@ export function Detours() {
                                 <thead><tr><th>Routes</th><th>Directions</th></tr></thead>
                                 <tbody>
                                   {d.segments.map((s) => (
-                                    <tr key={s.id}><td>{s.routes}</td><td className="td-dim">{s.directions || "—"}</td></tr>
+                                    <tr key={s.id}><td>{s.routes}</td><td className="td-dim directions-text">{s.directions || "—"}</td></tr>
                                   ))}
                                 </tbody>
                               </table>

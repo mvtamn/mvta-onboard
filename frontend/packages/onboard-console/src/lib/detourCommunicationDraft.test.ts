@@ -82,6 +82,11 @@ describe("draftCommunicationText", () => {
     const text = draftCommunicationText({ ...detour, internal_number: null, location: null, start_date: null, end_date: null, start_time: null, end_time: null, time_window_status: null, segments: [], action_instructions: null, riders_directed: null, confirmation_contact: null });
     expect(text).toBe("Cedar Ave bridge closed\nWhen: Dates to be confirmed");
   });
+  it("starts turn-per-line directions under their route", () => {
+    const segments = [{ id: "s1", detour_id: "d", routes: "436 NB", directions: "From temporary stop in SW corner lot\nLoop in lot to exit back to Wescott Rd\nL Wescott Rd\nBTR\n", sort_order: 0 }];
+    const text = draftCommunicationText({ ...detour, segments });
+    expect(text).toContain("436 NB:\nFrom temporary stop in SW corner lot\nLoop in lot to exit back to Wescott Rd\nL Wescott Rd\nBTR");
+  });
 });
 
 describe("mailtoLink and communicationSubject", () => {

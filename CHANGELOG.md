@@ -5,6 +5,14 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.310] - 2026-10-07
+
+- **A new detour can carry attachments.** OCC feedback: there was no way to add a document or image while creating a detour. Only an existing detour's expanded row (and Detour Intake) had one. The New Detour form now holds the files it is given and uploads them once Save returns the new id. If an upload fails after the detour was created, the form switches to editing that row, so Save again retries the files still listed rather than creating a second detour.
+- **Paste a screenshot.** `pasteFilesHandler` turns a clipboard holding files into attachments, anywhere in the New Detour form, an existing detour's attachments section, or the Intake form. A clipboard that also holds text (Word and Outlook put an image of copied text beside the text) still pastes as text into a field. Snips arrive named `image.png` by every browser, so `lib/pastedFiles` renames them `pasted-YYYYMMDD-HHMMSS.png`. Blob paths were already UUID-prefixed, so equal names never overwrote anything.
+- **One dropzone.** `AttachmentDropzone` takes focus on click so a paste has somewhere to land, and only "browse" opens the picker. Intake's old dropzone said "Drop ... here" but was a bare `<label>` with no drop handler, so dropping a file did nothing. It does now.
+- **Directions are one turn per line.** The directions field is a 4-row textarea in both forms. The expanded detour and the Detour Register render it `pre-line`. The drafted notice puts a multi-line segment under `436 NB:` on its own line, and the email body was already `pre-wrap`. Existing single-line entries display as before. No backend change, no migration.
+- **Verified.** New `pastedFiles` tests plus a draft test for the multi-line layout; console 822 tests passing after merging main, typecheck clean. In the mock-auth preview, a paste on the New Detour form staged a renamed screenshot and a text paste into the directions box did not, and on Intake a drop and a paste each staged a file. Upload-after-create is not exercised against a real API.
+
 ## [1.5.309] - 2026-10-07
 
 - **A withdrawn Procedure was a silent dead end.** The Decision Matrix reader lists Approved revisions only - correct, since withdrawn guidance must not be read as current - but a controller's bookmark carries `?procedure_id=`, and when that Procedure was no longer approved the reader found nothing, selected nothing and said nothing. What was on screen was a collapsed list of OTHER Procedures, which reads as "the Matrix just opened on the list", not "the thing you asked for was stopped". This was the one user story of the thirty-two in the reference-layer spec with no implementation behind it.
