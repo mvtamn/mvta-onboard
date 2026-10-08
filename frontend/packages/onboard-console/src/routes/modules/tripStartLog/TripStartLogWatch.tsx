@@ -9,6 +9,7 @@ import {
   upNext,
   type DispositionReason,
 } from "./tripStartLogState.js";
+import { VerifiedInitials } from "./VerifiedInitials.js";
 
 interface Props {
   trips: TripStartLogTrip[];
@@ -79,7 +80,7 @@ export function TripStartLogWatch({ trips, serviceDate, now, isToday, selectedTr
                   <span className="tsl-watch-actions">
                     <span className="pill-sm pill-accent">Rotation</span>
                     {trip.verification ? (
-                      <span className="tsl-initials" title={trip.verification.verified_by}>{trip.verification.verified_initials}</span>
+                      <VerifiedInitials trip={trip} />
                     ) : (
                       <>
                         <button type="button" className="btn-sm" disabled={!canVerify} title={canVerify ? "Mark observed on time" : NEEDS_ROLE} onClick={() => onVerify(trip.trip_id, "observed_on_time")}>On time</button>
@@ -124,7 +125,7 @@ export function TripStartLogWatch({ trips, serviceDate, now, isToday, selectedTr
                 </button>
                 <span className="tsl-watch-actions">
                   {trip.verification ? (
-                    <span className="tsl-initials" title={trip.verification.verified_by}>{trip.verification.verified_initials}</span>
+                    <VerifiedInitials trip={trip} />
                   ) : (
                     <button type="button" className="btn-sm" disabled={!canVerify} title={canVerify ? "Leave the cell blank and record the procedure followed" : NEEDS_ROLE} onClick={() => onDisposition(trip.trip_id)}>Record disposition</button>
                   )}

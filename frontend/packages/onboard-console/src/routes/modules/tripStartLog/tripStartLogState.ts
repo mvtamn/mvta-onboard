@@ -180,6 +180,9 @@ export function summarize(trips: readonly TripStartLogTrip[]): TripStartSummary 
 
 // --- formatting ------------------------------------------------------------
 
+/** The agency's clock: every Dispatch Log date rule and stamp is read in it. */
+export const AGENCY_TIME_ZONE = "America/Chicago";
+
 /** GTFS seconds as the clock the schedule prints, past-midnight kept ("25:10"). */
 export function gtfsClock(seconds: number): string {
   const h = Math.floor(seconds / 3600);
@@ -191,6 +194,26 @@ export function timeLabel(iso: string | null): string {
   if (!iso) return "—";
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? "—" : date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+/**
+ * When an entry was made, read against the service date it belongs to. Most
+ * entries are made during the day they describe, so the time alone is enough;
+ * a past-midnight trip initialled at 01:12, or a correction made the next
+ * morning, names its day so it cannot be misread as the service day.
+ *
+ * Central throughout, like the service date it is read against: the desk is
+ * in Minnesota, and a browser elsewhere must not print a time that disagrees
+ * with the day rule applied to it.
+ */
+export function verifiedAtLabel(iso: string | null, serviceDate: string): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const time = date.toLocaleTimeString("en-US", { timeZone: AGENCY_TIME_ZONE, hour: "numeric", minute: "2-digit" });
+  if (agencyTodayServiceDate(date) === serviceDate) return time;
+  const day = date.toLocaleDateString("en-US", { timeZone: AGENCY_TIME_ZONE, month: "short", day: "numeric" });
+  return `${day}, ${time}`;
 }
 
 export function deltaLabel(seconds: number | null): string {
@@ -243,7 +266,7 @@ export const UP_NEXT_HORIZON_MINUTES = 90;
 /** Today's agency-local service date, the same calendar-day rule the API uses. */
 export function agencyTodayServiceDate(now: Date): string {
   const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit",
+    timeZone: AGENCY_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit",
   }).formatToParts(now);
   const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? "";
   return `${get("year")}${get("month")}${get("day")}`;
