@@ -4,7 +4,8 @@ import { requireAccess } from "../lib/access/require";
 import { eventOperatingContextAction } from "../lib/eventOperatingContextAuth";
 import { eventPlanAction, eventPlanAuthority, eventPlanRevisionAuthority } from "../lib/eventPlanAuthority";
 import { validateOperatingPeriod } from "../lib/eventOperatingPeriods";
-import { validateEventPlanReadiness, type EventPlanReadiness } from "../lib/eventPlanValidation";
+import { type EventPlanReadiness } from "../lib/eventPlanValidation";
+import { PLAN_TRANSITIONS, transitionEventPlan } from "../lib/eventPlanLifecycle";
 
 const tableFor = (kind: string, revision = false) => ({
   routes: revision ? "EventServicePlanRevisionRoutes" : "EventServicePlanRoutes",
@@ -13,7 +14,12 @@ const tableFor = (kind: string, revision = false) => ({
 } as Record<string, string>)[kind];
 const keyFor = (kind: string) => kind === "routes" ? "route_id" : kind === "geofences" ? "geofence_id" : "location_id";
 
-async function captureScopeSnapshot(pool: Awaited<ReturnType<typeof getPool>>, planId: string, actor: string, revisionId: string | null = null) {
+// Both helpers take whatever is running the statements, so an activation can
+// put its snapshot inside the same transaction as the status change. They used
+// to take the pool, which is exactly how the snapshot escaped it.
+type Executor = Awaited<ReturnType<typeof getPool>> | sql.Transaction;
+
+async function captureScopeSnapshot(pool: Executor, planId: string, actor: string, revisionId: string | null = null) {
   const routes = (await pool.request().input("plan", sql.UniqueIdentifier, planId).query("SELECT rc.route_id,rc.route_label,rc.route_category,rc.is_active FROM EventServicePlanRoutes link JOIN RouteClassification rc ON rc.route_id=link.route_id WHERE link.service_plan_id=@plan ORDER BY rc.route_id")).recordset;
   const geofences = (await pool.request().input("plan", sql.UniqueIdentifier, planId).query("SELECT g.id geofence_id,g.name,g.polygon,g.purpose,g.is_active FROM EventServicePlanGeofences link JOIN EventGeofences g ON g.id=link.geofence_id WHERE link.service_plan_id=@plan ORDER BY g.id")).recordset;
   const locations = (await pool.request().input("plan", sql.UniqueIdentifier, planId).query("SELECT l.id location_id,l.name,l.category,l.latitude,l.longitude,l.notes,l.is_active FROM EventServicePlanLocations link JOIN EventLocations l ON l.id=link.location_id WHERE link.service_plan_id=@plan ORDER BY l.id")).recordset;
@@ -29,7 +35,7 @@ async function captureScopeSnapshot(pool: Awaited<ReturnType<typeof getPool>>, p
   return (await request.query("INSERT INTO EventServicePlanScopeSnapshots(service_plan_id,revision_id,captured_by,routes_json,geofences_json,locations_json,rules_json) OUTPUT INSERTED.* VALUES(@plan,@revision,@by,@routes,@geofences,@locations,@rules)")).recordset[0];
 }
 
-async function readPlanReadiness(pool: Awaited<ReturnType<typeof getPool>>, planId: string): Promise<EventPlanReadiness> {
+async function readPlanReadiness(pool: Executor, planId: string): Promise<EventPlanReadiness> {
   const request = pool.request().input("id", sql.UniqueIdentifier, planId);
   const result = await request.query<EventPlanReadiness>(`
     SELECT
@@ -175,28 +181,24 @@ app.http("eventServicePlanAction", { route: "event-service-plans/{id}/{action}",
       return { status: 201, jsonBody: created };
     } catch (error) { await transaction.rollback(); throw error; }
   }
-  if (["submit-review", "approve", "advance", "complete", "suspend"].includes(action)) {
-    const transitions: Record<string, { from: string; to: string }> = { "submit-review": { from: "draft", to: "review" }, approve: { from: "review", to: "approved" }, advance: { from: "approved", to: "active" }, complete: { from: "active", to: "completed" }, suspend: { from: "active", to: "suspended" } };
-    const transition = transitions[action]; const r = pool.request(); r.input("id", sql.UniqueIdentifier, id); r.input("by", sql.NVarChar, auth.principal.userDetails ?? "system");
+  if (Object.hasOwn(PLAN_TRANSITIONS, action)) {
+    const actor = auth.principal.userDetails ?? "system";
     let conflictOverrideReason: string | null = null;
-    if (action === "approve" || action === "advance") {
-      try {
-        const body = await req.json() as { conflict_override_reason?: unknown };
-        if (typeof body.conflict_override_reason === "string") conflictOverrideReason = body.conflict_override_reason.trim() || null;
-      } catch { /* an empty body is valid when no override is needed */ }
-    }
-    if (action === "approve" || action === "advance") {
-      const readiness = await readPlanReadiness(pool, id);
-      const validation = validateEventPlanReadiness(readiness, conflictOverrideReason);
-      if (!validation.valid) return { status: 409, jsonBody: { error: validation.error } };
-      if (readiness.routeConflict && conflictOverrideReason) {
-        await pool.request().input("plan", sql.UniqueIdentifier, id).input("type", sql.NVarChar, "route_overlap").input("key", sql.NVarChar, "active-route-overlap").input("reason", sql.NVarChar(1000), conflictOverrideReason).input("by", sql.NVarChar, auth.principal.userDetails ?? "system").query("INSERT INTO EventServicePlanConflictOverrides(service_plan_id,conflict_type,conflict_key,reason,created_by) VALUES(@plan,@type,@key,@reason,@by)");
-      }
-    }
-    if (action === "advance") {
-      await captureScopeSnapshot(pool, id, auth.principal.userDetails ?? "system");
-    }
-    const out = await r.query("UPDATE EventServicePlans SET status='" + transition.to + "',updated_by=@by,updated_at=SYSUTCDATETIME() OUTPUT INSERTED.* WHERE id=@id AND status='" + transition.from + "'"); return out.recordset.length ? { status: 200, jsonBody: out.recordset[0] } : { status: 409, jsonBody: { error: `Plan must be ${transition.from} before it can be ${transition.to}` } };
+    try {
+      const body = await req.json() as { conflict_override_reason?: unknown };
+      if (typeof body.conflict_override_reason === "string") conflictOverrideReason = body.conflict_override_reason.trim() || null;
+    } catch { /* an empty body is valid when no override is needed */ }
+    // The order inside, and the fact that it is one transaction, is the whole
+    // point - see lib/eventPlanLifecycle.
+    const transaction = pool.transaction();
+    await transaction.begin();
+    try {
+      const result = await transitionEventPlan(transaction, { planId: id, action, actor, conflictOverrideReason }, {
+        readReadiness: (tx, planId) => readPlanReadiness(tx as unknown as Executor, planId),
+        captureSnapshot: (tx, planId, by) => captureScopeSnapshot(tx as unknown as Executor, planId, by),
+      });
+      return { status: result.status, jsonBody: result.body };
+    } catch (error) { await transaction.rollback().catch(() => undefined); throw error; }
   }
   const kind = action === "routes" || action === "geofences" || action === "locations" ? action : null; const table = kind && tableFor(kind); if (!table) return { status: 404, jsonBody: { error: "Unknown service-plan action" } };
   const body = await req.json() as Record<string, unknown>; const key = keyFor(kind); const revisionId = req.query.get("revision_id");
@@ -221,9 +223,14 @@ app.http("eventServicePlanRevisionAction", { route: "event-service-plans/{id}/re
     const transaction = pool.transaction(); await transaction.begin();
     try {
       await transaction.request().input("revision", sql.UniqueIdentifier, revisionId).input("plan", sql.UniqueIdentifier, planId).input("by", sql.NVarChar, auth.principal.userDetails ?? "system").query("DELETE FROM EventServicePlanRoutes WHERE service_plan_id=@plan; INSERT INTO EventServicePlanRoutes SELECT @plan,route_id FROM EventServicePlanRevisionRoutes WHERE revision_id=@revision; DELETE FROM EventServicePlanGeofences WHERE service_plan_id=@plan; INSERT INTO EventServicePlanGeofences SELECT @plan,geofence_id FROM EventServicePlanRevisionGeofences WHERE revision_id=@revision; DELETE FROM EventServicePlanLocations WHERE service_plan_id=@plan; INSERT INTO EventServicePlanLocations SELECT @plan,location_id FROM EventServicePlanRevisionLocations WHERE revision_id=@revision; UPDATE EventServicePlans SET start_at=(SELECT start_at FROM EventServicePlanRevisions WHERE id=@revision),end_at=(SELECT end_at FROM EventServicePlanRevisions WHERE id=@revision),updated_by=@by,updated_at=SYSUTCDATETIME() WHERE id=@plan; UPDATE EventServicePlanRevisions SET status='applied',updated_by=@by,updated_at=SYSUTCDATETIME() WHERE id=@revision;");
+      // The snapshot belongs to the same transaction as the scope it describes.
+      // Captured after the commit, a failed insert left the active scope
+      // replaced while Event AVL and crossing detection went on reading the
+      // PREVIOUS snapshot - planning and monitoring silently disagreeing, with
+      // nothing to show which was right.
+      await captureScopeSnapshot(transaction, planId, auth.principal.userDetails ?? "system", revisionId);
       await transaction.commit();
-    } catch (error) { await transaction.rollback(); throw error; }
-    await captureScopeSnapshot(pool, planId, auth.principal.userDetails ?? "system", revisionId);
+    } catch (error) { await transaction.rollback().catch(() => undefined); throw error; }
     return { status: 200, jsonBody: { ok: true, status: "applied" } };
   }
   if (!transition[action]) return { status: 404, jsonBody: { error: "Unknown revision action" } };
