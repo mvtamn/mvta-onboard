@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiError, type Event, type EventGeofence, type EventLocation, type EventOperationalMessaging, type EventServicePlan } from "@mvta/shared";
 import { api } from "../config.js";
+import { formatMvtaLocal, instantToMvtaLocal, mvtaLocalToInstant } from "@mvta/shared";
 import { useAccess } from "../auth/AccessContext.js";
 import { useAuth } from "../auth/AuthContext.js";
 import { useEventWorkspace } from "../context/EventWorkspaceContext.js";
@@ -41,20 +42,27 @@ function FeedbackNote({ feedback }: { feedback: Feedback | null }) {
   return <p className={`event-feedback ${feedback.kind}`} role={feedback.kind === "error" ? "alert" : "status"}>{feedback.text}</p>;
 }
 
-function localInput(value: string | null | undefined): string {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const offset = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+// These three used to do their own timezone arithmetic with
+// getTimezoneOffset() and new Date("YYYY-MM-DDTHH:mm"), both of which mean the
+// BROWSER's zone - under a label that says MVTA-local. Off a Central machine a
+// planner typed 18:00 meaning six at the garage and stored six wherever they
+// were sitting, and every later read repeated the same offset so nothing ever
+// looked wrong. The agency clock belongs to the agency: @mvta/shared owns it.
+function toUtc(value: string): string | undefined {
+  return value ? mvtaLocalToInstant(value)?.toISOString() : undefined;
 }
 
-function toUtc(value: string): string | undefined {
-  return value ? new Date(value).toISOString() : undefined;
+// Comparing two wall clocks as browser time happens to work on most days,
+// because both carry the same wrong offset - but not across a DST boundary,
+// where they do not. Both comparisons go through the agency clock.
+function periodIsOrdered(startWall: string, endWall: string): boolean {
+  const start = mvtaLocalToInstant(startWall);
+  const end = mvtaLocalToInstant(endWall);
+  return !!start && !!end && start.getTime() < end.getTime();
 }
 
 function localParts(value: string | null | undefined): { date: string; time: string } {
-  const local = localInput(value);
+  const local = instantToMvtaLocal(value);
   return local ? { date: local.slice(0, 10), time: local.slice(11, 16) } : { date: "", time: "" };
 }
 
@@ -62,7 +70,7 @@ function localParts(value: string | null | undefined): { date: string; time: str
 // "changed" even when both sides are simply empty - treat that case as
 // unchanged instead.
 function timesDiffer(localValue: string, isoValue: string | null | undefined): boolean {
-  const a = localValue ? new Date(localValue).getTime() : NaN;
+  const a = localValue ? (mvtaLocalToInstant(localValue)?.getTime() ?? NaN) : NaN;
   const b = isoValue ? new Date(isoValue).getTime() : NaN;
   if (Number.isNaN(a) && Number.isNaN(b)) return false;
   return a !== b;
@@ -219,7 +227,7 @@ export function EventPlanning() {
     href?: string;
   }[] = [
     { label: "Event selected", ready: Boolean(event), focusId: "event-select" },
-    { label: "Operating dates are valid", ready: Boolean(startAt && endAt && new Date(startAt).getTime() < new Date(endAt).getTime()), focusId: "event-plan-name" },
+    { label: "Operating dates are valid", ready: Boolean(startAt && endAt && periodIsOrdered(startAt, endAt)), focusId: "event-plan-name" },
     { label: "Active SpecialEvent route linked", ready: counts.routes > 0, resource: "routes" },
     { label: "Monitoring Area linked", ready: counts.geofences > 0, resource: "geofences" },
     { label: "Route conflicts reviewed", ready: !plan?.route_conflict || Boolean(conflictOverrideReason.trim()), focusId: "event-conflict-override" },
@@ -238,7 +246,7 @@ export function EventPlanning() {
   const readyToActivate = readiness.every((item) => item.ready);
   const editable = Boolean(plan && ["draft", "review"].includes(plan.status));
   const planNameEditable = Boolean(plan && ["draft", "review", "active"].includes(plan.status));
-  const periodError = startAt && endAt && new Date(startAt).getTime() >= new Date(endAt).getTime()
+  const periodError = startAt && endAt && !periodIsOrdered(startAt, endAt)
     ? "End time must be later than the start time."
     : "";
   const periodReady = Boolean(planName.trim() && startAt && endAt && !periodError);
@@ -553,7 +561,7 @@ export function EventPlanning() {
         {periodError && <p className="event-field-error" role="alert">{periodError}</p>}
       </>}
       {plan && <>
-        <p className="muted">Current Event Plan: <strong>{plan.name}</strong> · {plan.start_at ? new Date(plan.start_at).toLocaleString() : "time not configured"} – {plan.end_at ? new Date(plan.end_at).toLocaleString() : "time not configured"}</p>
+        <p className="muted">Current Event Plan: <strong>{plan.name}</strong> · {plan.start_at ? formatMvtaLocal(plan.start_at) : "time not configured"} – {plan.end_at ? formatMvtaLocal(plan.end_at) : "time not configured"} MVTA-local</p>
         <div className="actions event-scope-actions">
           {editable && <button className="btn-sm" disabled={!periodReady} onClick={() => void savePlanDetails()}>Save draft</button>}
           <button className="btn-sm" onClick={() => void duplicatePlanWithScope()}>Copy to a new Event Plan</button>
@@ -647,7 +655,7 @@ export function EventPlanning() {
           <strong>Review evidence</strong>
           <dl>
             <div><dt>Event</dt><dd>{event?.name ?? "Not selected"}</dd></div>
-            <div><dt>Event Plan</dt><dd>{plan.start_at ? `${new Date(plan.start_at).toLocaleString()} – ${new Date(plan.end_at ?? plan.start_at).toLocaleString()}` : "Not configured"} · MVTA-local time</dd></div>
+            <div><dt>Event Plan</dt><dd>{plan.start_at ? `${formatMvtaLocal(plan.start_at)} – ${formatMvtaLocal(plan.end_at ?? plan.start_at)}` : "Not configured"} · MVTA-local time</dd></div>
             <div><dt>Routes</dt><dd>{links.filter((link) => link.kind === "routes").map((link) => link.label).join(", ") || "None"}</dd></div>
             <div><dt>Monitoring Areas</dt><dd>{links.filter((link) => link.kind === "geofences").map((link) => link.label).join(", ") || "None"}</dd></div>
             <div><dt>Transit locations</dt><dd>{links.filter((link) => link.kind === "locations").map((link) => link.label).join(", ") || "None"}</dd></div>
