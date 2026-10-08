@@ -656,6 +656,39 @@ describe("EventPlanning", () => {
   // planner could approve and activate their own Event Plan - and sign off
   // their own conflict override. The workspace now says which authority it is
   // waiting on instead of offering a button the API refuses.
+  // Operating periods used to be converted with the BROWSER's zone - a planner
+  // off Central typed 18:00 meaning six at the garage and stored six wherever
+  // they were sitting, under copy saying "MVTA-local time". These assert exact
+  // instants, so they only hold if the agency clock is used; CI runs in UTC.
+  describe("MVTA-local operating periods", () => {
+    it("stores the Central instant for the wall clock that was typed", async () => {
+      mockApiData({ events: [makeEvent()], plans: [] });
+      renderEventPlanning(["/console/event-planning?event=evt1"]);
+      const user = userEvent.setup();
+      await user.type(await screen.findByLabelText("Event Plan name"), "State Fair");
+      await user.type(screen.getByLabelText("Starts date"), "2026-07-04");
+      await user.type(screen.getByLabelText("Starts time"), "18:00");
+      await user.type(screen.getByLabelText("Ends date"), "2026-07-05");
+      await user.type(screen.getByLabelText("Ends time"), "02:00");
+      await user.click(screen.getByRole("button", { name: "Create Event Plan" }));
+      await waitFor(() => expect(api.createEventServicePlan).toHaveBeenCalled());
+      // 6pm Central on 4 July is CDT (-5), so 23:00Z - not 18:00Z, which is
+      // what a browser running in UTC used to send.
+      expect(api.createEventServicePlan).toHaveBeenCalledWith(expect.objectContaining({
+        start_at: "2026-07-04T23:00:00.000Z",
+        end_at: "2026-07-05T07:00:00.000Z",
+      }));
+    });
+
+    it("puts a stored instant back into the form on the agency clock", async () => {
+      mockApiData({ events: [makeEvent()], plans: [makePlan({ start_at: "2026-01-16T00:00:00.000Z", end_at: "2026-01-16T06:00:00.000Z" })] });
+      renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
+      // Midnight UTC in January is 6pm the previous evening in Central (CST).
+      await waitFor(() => expect(screen.getByLabelText("Starts date")).toHaveValue("2026-01-15"));
+      expect(screen.getByLabelText("Starts time")).toHaveValue("18:00");
+    });
+  });
+
   describe("separated planning authorities", () => {
     it("tells an author that approval is not theirs to give", async () => {
       actions = ["event-planning.view", "event-planning.edit"];
