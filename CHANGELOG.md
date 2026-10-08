@@ -5,6 +5,14 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.314] - 2026-10-08
+
+- **A refused activation left a published scope behind.** Activating an Event Plan called `captureScopeSnapshot` - and wrote the reasoned conflict override - on the connection pool, BEFORE an UPDATE guarded by `WHERE status='approved'`. When that guard matched nothing, which a double submit or a concurrent transition will do, the caller got a 409 while a snapshot row and an override row had already been written for a plan that never activated. Event AVL and crossing detection read published snapshots, so this was exactly the partially-published scope that activation is specified to make impossible.
+- **Applying a revision published its snapshot outside its own transaction.** The scope swap committed, and the snapshot was captured after it. A failure in between left the active scope replaced while Event AVL and crossing detection went on reading the PREVIOUS snapshot - planning and monitoring silently disagreeing, with nothing to say which was right.
+- **One transaction, and the order inside it is the fix.** The plan's own row is locked (`UPDLOCK,HOLDLOCK`) and its status checked first; readiness is validated against that locked row; only then are the override and the snapshot written; the status change is last and still guarded. Every refusal rolls back, so a refusal writes nothing at all.
+- **The lifecycle moved out of the handler to be testable.** It was an inline arrow inside `app.http`, reachable only with a live database, which is why neither defect had a test. `lib/eventPlanLifecycle.ts` now owns it behind a transaction seam; the handler keeps authorization and body parsing.
+- **Verified.** 10 new checks on the order statements are issued in and whether the transaction committed or rolled back - the property that actually broke. They were mutation-checked: reintroducing the original ordering fails **7 of the 10**, so they would have caught it. Backend 1380 passing, console 838 passing, both typechecks clean. No migration.
+
 ## [1.5.313] - 2026-10-08
 
 - **One permission covered authoring, approving and activating an Event Plan.** `event-planning.edit` was labelled "Author and activate event plans", and `eventServicePlans.ts` resolved every mutating route's permission from the HTTP method - GET read, anything else `edit`. So submit-review, approve, advance, suspend, complete, revision approve, revision apply and the reasoned conflict override all shared one authority: the person who drafted a plan could approve it, activate it, and accept their own override. The override exists to be reviewed, and a reason you write and accept yourself is not a review.
