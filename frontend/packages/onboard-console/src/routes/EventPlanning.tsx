@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiError, type Event, type EventGeofence, type EventLocation, type EventOperationalMessaging, type EventServicePlan } from "@mvta/shared";
 import { api } from "../config.js";
+import { useAccess } from "../auth/AccessContext.js";
 import { useAuth } from "../auth/AuthContext.js";
 import { useEventWorkspace } from "../context/EventWorkspaceContext.js";
 import { EventWorkspaceNav } from "../components/EventWorkspaceNav.js";
@@ -93,6 +94,12 @@ function EventDateTimeField({
 
 export function EventPlanning() {
   const { signIn } = useAuth();
+  // Approving and activating are separate authorities from authoring, so the
+  // workspace has to say which of them this person holds rather than offering
+  // a button the API will refuse. See lib/eventPlanAuthority on the server.
+  const { can } = useAccess();
+  const mayApprove = can("event-planning.approve");
+  const mayActivate = can("event-planning.activate");
   const { confirm } = useAppDialog();
   const [events, setEvents] = useState<Event[]>([]);
   const [plans, setPlans] = useState<EventServicePlan[]>([]);
@@ -455,13 +462,19 @@ export function EventPlanning() {
         : plan.status === "draft"
           ? { title: "Submit Event Plan for review", detail: "The operating scope is complete and ready for review.", label: "Submit Event Plan for review", run: () => void transition("submit-review") }
           : plan.status === "review"
-            ? { title: "Approve Event Plan", detail: "Review the completed scope, then approve it for activation.", label: "Approve Event Plan", run: () => void transition("approve") }
+            ? mayApprove
+              ? { title: "Approve Event Plan", detail: "Review the completed scope, then approve it for activation.", label: "Approve Event Plan", run: () => void transition("approve") }
+              : { title: "Waiting for a reviewer", detail: "This Event Plan is submitted and complete. Approving it is a reviewer's decision, which you do not hold.", label: "Approval not yours to give", disabled: true }
             : plan.status === "approved"
-              ? { title: "Activate Event Plan", detail: readyToActivate ? "Publishes the selected routes, Monitoring Areas, rules, and locations to internal Event AVL." : `Blocked until every readiness check passes${firstMissing ? `: ${firstMissing.label}` : ""}.`, label: "Activate Event Plan", run: () => void transition("advance"), disabled: !readyToActivate }
+              ? mayActivate
+                ? { title: "Activate Event Plan", detail: readyToActivate ? "Publishes the selected routes, Monitoring Areas, rules, and locations to internal Event AVL." : `Blocked until every readiness check passes${firstMissing ? `: ${firstMissing.label}` : ""}.`, label: "Activate Event Plan", run: () => void transition("advance"), disabled: !readyToActivate }
+                : { title: "Waiting for operations to activate", detail: "This Event Plan is approved. Starting live Event AVL monitoring is an operations decision, which you do not hold.", label: "Activation not yours to start", disabled: true }
               : plan.status === "active"
                 ? { title: "Monitor in Event AVL", detail: "This Event Plan is active and ready for internal vehicle monitoring.", label: "Open Event AVL", link: `/events/avl?event=${encodeURIComponent(selectedEventId)}${plan ? `&plan=${encodeURIComponent(plan.id)}` : ""}` }
                 : plan.status === "suspended"
-                  ? { title: "Event Plan suspended", detail: "Event AVL monitoring is paused for this Event Plan.", label: "Complete Event Plan", run: () => void transition("complete") }
+                  ? mayActivate
+                    ? { title: "Event Plan suspended", detail: "Event AVL monitoring is paused for this Event Plan.", label: "Complete Event Plan", run: () => void transition("complete") }
+                    : { title: "Event Plan suspended", detail: "Event AVL monitoring is paused for this Event Plan. Completing it is an operations decision, which you do not hold.", label: "Completion not yours to make", disabled: true }
                   : { title: "Event Plan completed", detail: "This Event Plan is no longer active. Its scope and history remain available.", label: "Event Plan completed", disabled: true };
 
   return <div className="event-planning">
@@ -666,8 +679,8 @@ export function EventPlanning() {
         {plan.status === "active" && <div className="event-lifecycle-secondary">
           <span className="event-lifecycle-secondary-label">Active Event Plan controls:</span>
           <button className="btn-sm" onClick={() => void prepareRevision()}>Modify active scope</button>
-          <button className="btn-sm danger" onClick={() => void transition("suspend")}>Suspend operations</button>
-          <button className="btn-sm" onClick={() => void transition("complete")}>Complete Event Plan</button>
+          {mayActivate && <button className="btn-sm danger" onClick={() => void transition("suspend")}>Suspend operations</button>}
+          {mayActivate && <button className="btn-sm" onClick={() => void transition("complete")}>Complete Event Plan</button>}
         </div>}
         {plan.status === "approved" && <div className="event-lifecycle-secondary">
           <span className="event-lifecycle-secondary-label">Need to correct the approved scope?</span>
@@ -677,8 +690,12 @@ export function EventPlanning() {
           <div className="event-revision-card-header"><strong>Pending revision</strong><span className="pill-sm pill-accent">{displayStatus(revision.status)}</span></div>
           <p className="muted">The active scope remains unchanged until this revision is applied.</p>
           {revision.status === "draft" && <button className="btn-primary" onClick={() => void revise("submit-review")}>Submit revision for review</button>}
-          {revision.status === "review" && <button className="btn-primary" onClick={() => void revise("approve")}>Approve revision</button>}
-          {revision.status === "approved" && <button className="btn-primary" onClick={() => void revise("apply")}>Apply revision to active scope</button>}
+          {revision.status === "review" && (mayApprove
+            ? <button className="btn-primary" onClick={() => void revise("approve")}>Approve revision</button>
+            : <span className="muted">Submitted for review. Approving a revision is a reviewer&rsquo;s decision.</span>)}
+          {revision.status === "approved" && (mayActivate
+            ? <button className="btn-primary" onClick={() => void revise("apply")}>Apply revision to active scope</button>
+            : <span className="muted">Approved. Applying it replaces the live scope, which is an operations decision.</span>)}
           <button className="btn-sm" onClick={() => selectRevision("")}>Clear revision</button>
         </div>}
       </div>
