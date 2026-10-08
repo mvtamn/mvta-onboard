@@ -500,7 +500,7 @@ describe("the history behind a cell", () => {
   });
 
   it("re-reads the history once an entry is recorded", async () => {
-    authState.roles = ["OCC.TripStartVerify"];
+    actions = ["dispatch-log.view", "dispatch-log.verify"];
     vi.mocked(api.getTripStartLog).mockResolvedValueOnce(response(DAY));
     vi.mocked(api.getTripStartVerificationHistory).mockResolvedValue({ service_date: SERVICE_DATE, trip_id: "t1", events: [] });
     vi.mocked(api.recordTripStartVerification).mockResolvedValueOnce({ verification: verified("observed_on_time") });

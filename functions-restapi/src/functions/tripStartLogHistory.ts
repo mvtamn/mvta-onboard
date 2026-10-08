@@ -8,12 +8,12 @@
 // log need to see. Written by the verify endpoint, never here.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
-import { requireRole, TRIP_START_LOG_READ_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { isValidServiceDate } from "../lib/tripStartRotation";
 import { loadTripStartVerificationHistory, verificationEventsTableReady } from "../lib/tripStartLogHistory";
 
 export async function getTripStartVerificationHistory(request: HttpRequest, context: InvocationContext) {
-  const authResult = requireRole(request, TRIP_START_LOG_READ_ROLES);
+  const authResult = await requireAccess(request, "dispatch-log.view");
   if (!authResult.authorized) {
     return { status: authResult.status, jsonBody: { error: authResult.message } };
   }
@@ -45,6 +45,6 @@ export async function getTripStartVerificationHistory(request: HttpRequest, cont
 app.http("tripStartLogHistoryGet", {
   route: "trip-start-log/history",
   methods: ["GET"],
-  authLevel: "anonymous", // authorization enforced via requireRole above
+  authLevel: "anonymous", // authorization enforced via requireAccess above
   handler: getTripStartVerificationHistory,
 });
