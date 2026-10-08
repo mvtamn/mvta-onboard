@@ -2,6 +2,7 @@ import { app, type HttpRequest } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { requireAccess } from "../lib/access/require";
 import { eventOperatingContextAction } from "../lib/eventOperatingContextAuth";
+import { eventPlanAction, eventPlanAuthority, eventPlanRevisionAuthority } from "../lib/eventPlanAuthority";
 import { validateOperatingPeriod } from "../lib/eventOperatingPeriods";
 import { validateEventPlanReadiness, type EventPlanReadiness } from "../lib/eventPlanValidation";
 
@@ -51,6 +52,16 @@ async function readPlanReadiness(pool: Awaited<ReturnType<typeof getPool>>, plan
 
 async function authorized(req: HttpRequest) {
   return requireAccess(req, eventOperatingContextAction(req.method));
+}
+
+/**
+ * Authorizes one Event Plan act against the authority that act needs, rather
+ * than against the HTTP method. An act this does not know is a 404, not a
+ * permission guess. See lib/eventPlanAuthority.
+ */
+async function authorizedFor(req: HttpRequest, authority: ReturnType<typeof eventPlanAuthority>) {
+  if (!authority) return { authorized: false as const, status: 404, message: "Unknown service-plan action" };
+  return requireAccess(req, eventPlanAction(authority));
 }
 
 app.http("eventServicePlans", { route: "event-service-plans", methods: ["GET", "POST"], authLevel: "anonymous", handler: async (req: HttpRequest) => {
@@ -112,8 +123,9 @@ app.http("eventServicePlans", { route: "event-service-plans", methods: ["GET", "
 } });
 
 app.http("eventServicePlanAction", { route: "event-service-plans/{id}/{action}", methods: ["PATCH", "POST"], authLevel: "anonymous", handler: async (req: HttpRequest) => {
-  const auth = await authorized(req); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
-  const action = req.params.action; const pool = await getPool(); const id = req.params.id;
+  const action = req.params.action;
+  const auth = await authorizedFor(req, eventPlanAuthority(action)); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
+  const pool = await getPool(); const id = req.params.id;
   if (action === "details") {
     const body = await req.json() as Record<string, unknown>;
     const current = (await pool.request().input("id", sql.UniqueIdentifier, id).query<{ status: string }>("SELECT status FROM EventServicePlans WHERE id=@id")).recordset[0];
@@ -200,8 +212,8 @@ app.http("eventServicePlanAction", { route: "event-service-plans/{id}/{action}",
 } });
 
 app.http("eventServicePlanRevisionAction", { route: "event-service-plans/{id}/revisions/{revisionId}/{action}", methods: ["POST", "PATCH"], authLevel: "anonymous", handler: async (req: HttpRequest) => {
-  const auth = await authorized(req); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
-  const action = req.params.action; const transition: Record<string, { from: string; to: string }> = { "submit-review": { from: "draft", to: "review" }, approve: { from: "review", to: "approved" }, reject: { from: "review", to: "rejected" } };
+  const action = req.params.action;
+  const auth = await authorizedFor(req, eventPlanRevisionAuthority(action)); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } }; const transition: Record<string, { from: string; to: string }> = { "submit-review": { from: "draft", to: "review" }, approve: { from: "review", to: "approved" }, reject: { from: "review", to: "rejected" } };
   const pool = await getPool(); const revisionId = req.params.revisionId; const planId = req.params.id; const r = pool.request(); r.input("revision", sql.UniqueIdentifier, revisionId); r.input("plan", sql.UniqueIdentifier, planId); r.input("by", sql.NVarChar, auth.principal.userDetails ?? "system");
   if (action === "apply") {
     const current = (await r.query<{ status: string }>("SELECT r.status,p.status plan_status FROM EventServicePlanRevisions r JOIN EventServicePlans p ON p.id=r.service_plan_id WHERE r.id=@revision AND r.service_plan_id=@plan")).recordset[0] as { status: string; plan_status: string } | undefined;

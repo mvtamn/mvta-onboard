@@ -246,6 +246,18 @@ Event Planning console. In domain, API, audit, and lifecycle language this is
 still a Service Plan: the label does not change the Service Plan entity or the
 meaning of an operating period.
 
+## Planning authority
+
+Who may move an Event Plan, held as three separate permissions rather than one.
+**Author** (`event-planning.edit`) prepares the scope and submits it for review.
+**Approve** (`event-planning.approve`) accepts a submitted plan or revision,
+including any reasoned conflict override. **Activate**
+(`event-planning.activate`) starts, suspends and completes live Event AVL
+monitoring, and applies an approved revision to the active scope. They are
+distinct because an override exists to be reviewed, and a reason written and
+accepted by the same person is not a review. An administrator holding every
+action still holds all three.
+
 ## Operational observation
 
 An observed runtime fact, such as a vehicle entering or leaving a geofence.

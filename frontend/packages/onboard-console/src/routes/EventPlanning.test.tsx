@@ -7,6 +7,15 @@ import { EventWorkspaceProvider } from "../context/EventWorkspaceContext.js";
 import { AppDialogProvider } from "../components/AppDialog.js";
 import { EventPlanning } from "./EventPlanning.js";
 
+// Every existing expectation was written when one permission covered authoring,
+// approving and activating, so the default holds all three and those tests are
+// unchanged. The authority tests below narrow it.
+let actions: string[] = ["event-planning.view", "event-planning.edit", "event-planning.approve", "event-planning.activate"];
+vi.mock("../auth/AccessContext.js", async () => {
+  const actual = await vi.importActual<typeof import("../auth/AccessContext.js")>("../auth/AccessContext.js");
+  return { ...actual, useAccess: () => actual.accessStateWith(actions) };
+});
+
 vi.mock("../config.js", () => ({
   api: {
     getEvents: vi.fn(),
@@ -93,6 +102,7 @@ async function findLinkedResourceRow(label: string) {
 }
 
 beforeEach(() => {
+  actions = ["event-planning.view", "event-planning.edit", "event-planning.approve", "event-planning.activate"];
   vi.clearAllMocks();
 });
 
@@ -639,6 +649,53 @@ describe("EventPlanning", () => {
       const monitor = await screen.findByRole("link", { name: "Open Event AVL" });
       expect(monitor).toHaveAttribute("href", expect.stringContaining("/events/avl"));
       expect(monitor.closest(".event-next-action")).not.toBeNull();
+    });
+  });
+
+  // Authoring, approving and activating used to be one permission, so a
+  // planner could approve and activate their own Event Plan - and sign off
+  // their own conflict override. The workspace now says which authority it is
+  // waiting on instead of offering a button the API refuses.
+  describe("separated planning authorities", () => {
+    it("tells an author that approval is not theirs to give", async () => {
+      actions = ["event-planning.view", "event-planning.edit"];
+      mockApiData({ events: [makeEvent()], plans: [makePlan({ status: "review" })] });
+      renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
+      expect(await screen.findByText("Waiting for a reviewer")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Approve Event Plan" })).not.toBeInTheDocument();
+    });
+
+    it("tells a reviewer that activation is an operations decision", async () => {
+      actions = ["event-planning.view", "event-planning.edit", "event-planning.approve"];
+      mockApiData({
+        events: [makeEvent()],
+        plans: [makePlan({ status: "approved", links: [
+          { kind: "routes", service_plan_id: "plan1", value: 12, label: "Route 12" },
+          { kind: "geofences", service_plan_id: "plan1", value: "geo1", label: "Gate" },
+        ] })],
+        geofences: [makeGeofence({ rules: [{ id: "rule1", geofence_id: "geo1", transition: "enter", heading_min: 0, heading_max: 360, destination_label: "Gate", destination_location_id: null, message_type: "custom", send_mode: "auto", sort_order: 1 }] })],
+      });
+      renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
+      expect(await screen.findByText("Waiting for operations to activate")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Activate Event Plan" })).not.toBeInTheDocument();
+    });
+
+    it("keeps the approver out of suspending and completing live monitoring", async () => {
+      actions = ["event-planning.view", "event-planning.edit", "event-planning.approve"];
+      mockApiData({ events: [makeEvent()], plans: [makePlan({ status: "active" })] });
+      renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
+      await screen.findByText("Monitor in Event AVL");
+      expect(screen.queryByRole("button", { name: "Suspend operations" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Complete Event Plan" })).not.toBeInTheDocument();
+    });
+
+    it("still offers both to someone holding both authorities", async () => {
+      // The administrator case, and the guard against reading a disabled
+      // workspace as proof the split works.
+      mockApiData({ events: [makeEvent()], plans: [makePlan({ status: "active" })] });
+      renderEventPlanning(["/console/event-planning?event=evt1&plan=plan1"]);
+      expect(await screen.findByRole("button", { name: "Suspend operations" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Complete Event Plan" })).toBeInTheDocument();
     });
   });
 

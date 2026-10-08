@@ -79,7 +79,15 @@ export const MODULES: AccessModule[] = [
     key: "event-planning",
     label: "Event Planning",
     section: "Events",
-    actions: [{ key: "edit", label: "Author and activate event plans" }],
+    // Three authorities, because one was how a planner could approve and
+    // activate their own Event Plan and sign off their own conflict override.
+    // Spec #75: planning staff prepare and submit, reviewers approve,
+    // operations activate, suspend and complete.
+    actions: [
+      { key: "edit", label: "Author and submit event plans" },
+      { key: "approve", label: "Approve event plans and revisions" },
+      { key: "activate", label: "Activate, suspend and complete event plans" },
+    ],
   },
   {
     key: "compliance-review",
